@@ -41,6 +41,8 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `deck/template_profile` | `DeckTemplateProfileParams` | `TemplateProfile` | `deck/template_profile`: of an open deck, or of a template file. |
 | `deck/undo` | `DeckUndoParams` | `DeckUndoResult` | `deck/undo`: takes back the agent's edit `edit` (the revision its `deck_edit` made), when it is the agent's latest one still in the deck (presentation-deck-edit §5). |
 | `deck/view` | `DeckViewParams` | `DeckViewResult` | `deck/view`: a slide rasterized on this machine (§6.5). |
+| `deliveries/list` | `DeliveriesListParams` | `DeliveriesListResult` |  |
+| `deliveries/seen` | `DeliveriesSeenParams` | `Empty` |  |
 | `files/list` | `FilesListParams` | `FilesListResult` | Parameters of `files/list`. |
 | `files/read` | `FilesReadParams` | `FilesReadResult` | Parameters of `files/read`. |
 | `files/watch` | `FilesWatchParams` | `Empty` | Parameters of `files/watch`. |

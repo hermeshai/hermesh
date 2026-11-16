@@ -290,6 +290,15 @@
       "$ref": "#/definitions/DeckViewResult"
     },
     {
+      "$ref": "#/definitions/DeliveriesListParams"
+    },
+    {
+      "$ref": "#/definitions/DeliveriesListResult"
+    },
+    {
+      "$ref": "#/definitions/DeliveriesSeenParams"
+    },
+    {
       "$ref": "#/definitions/DesktopStatus"
     },
     {
@@ -1973,6 +1982,12 @@
           "description": "The bot every user has: it cannot be deleted.",
           "type": "boolean"
         },
+        "deliveries_latest": {
+          "description": "The latest send in that list, as `deliveries/list` numbers them: the list changed when this moves.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
         "failed": {
           "description": "Its last task failed, so no message may be coming. Only while its conversation is loaded.",
           "type": "boolean"
@@ -1996,6 +2011,12 @@
         },
         "name": {
           "type": "string"
+        },
+        "new_deliveries": {
+          "description": "The files it sent since the owner last looked at the list of them (`deliveries/seen`).",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
         },
         "pinned": {
           "type": "boolean"
@@ -8694,6 +8715,264 @@
         "width_px"
       ],
       "type": "object"
+    },
+    "DeliveredFile": {
+      "description": "A file a bot sent: the sends from one path are one file.",
+      "properties": {
+        "kind": {
+          "$ref": "#/definitions/DeliveryKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "description": "Where it was on the Her Server when sent, absolute.",
+          "type": "string"
+        },
+        "versions": {
+          "description": "Newest first, each a different content: the same content sent again is its latest send. One entry when the latest send kept no copy, as nothing earlier can be shown.",
+          "items": {
+            "$ref": "#/definitions/Delivery"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "path",
+        "versions"
+      ],
+      "type": "object"
+    },
+    "DeliveriesListParams": {
+      "properties": {
+        "before": {
+          "description": "Files whose latest send is before this one: the `next` of the page before. The newest without it.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "bot_id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DeliveryKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "description": "How many files: 50 without it, at most 200.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "description": "Only files with this in their name, in the bot's words or in what they came from, in any version, without regard to case.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "bot_id"
+      ],
+      "type": "object"
+    },
+    "DeliveriesListResult": {
+      "description": "Result of `deliveries/list`.",
+      "properties": {
+        "files": {
+          "description": "Newest first, by their latest send.",
+          "items": {
+            "$ref": "#/definitions/DeliveredFile"
+          },
+          "type": "array"
+        },
+        "next": {
+          "description": "The `before` of the next page, when there is one.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "seen": {
+          "description": "The last send the owner saw (`deliveries/seen`): a later one is new.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files",
+        "seen"
+      ],
+      "type": "object"
+    },
+    "DeliveriesSeenParams": {
+      "properties": {
+        "bot_id": {
+          "type": "string"
+        },
+        "seq": {
+          "description": "The highest `seq` the list showed. The mark never goes back.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bot_id",
+        "seq"
+      ],
+      "type": "object"
+    },
+    "Delivery": {
+      "description": "One send of a file.",
+      "properties": {
+        "call_id": {
+          "type": "string"
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "sent_at": {
+          "description": "RFC 3339.",
+          "type": "string"
+        },
+        "seq": {
+          "description": "Its number among the bot's sends, growing.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "session_id": {
+          "description": "The conversation it was sent in, and the `send_to_user` call that sent it: its message.",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "The copy kept of it as it was when sent, absolute, and its content's SHA-256: what to read. None when no copy was kept; it is then read from `path`, as it is now.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "snapshot": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DeliverySource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What it came from; none for what the owner asked for in the conversation."
+        },
+        "text": {
+          "description": "The bot's words with it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "width": {
+          "description": "A picture's size in pixels, when known.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "call_id",
+        "sent_at",
+        "seq",
+        "session_id",
+        "size"
+      ],
+      "type": "object"
+    },
+    "DeliveryKind": {
+      "description": "What a file a bot sent is, by its name; a picture by its contents (docs/her-deliverables.md §4.2).",
+      "enum": [
+        "doc",
+        "sheet",
+        "slide",
+        "image",
+        "code",
+        "other"
+      ],
+      "type": "string"
+    },
+    "DeliverySource": {
+      "description": "The routine or the session a file came from, and its name as the bot heard it.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/DeliverySourceKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "name"
+      ],
+      "type": "object"
+    },
+    "DeliverySourceKind": {
+      "oneOf": [
+        {
+          "description": "A routine's report the bot was passing on.",
+          "enum": [
+            "routine"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "News of a coding session the bot was telling the owner of.",
+          "enum": [
+            "session"
+          ],
+          "type": "string"
+        }
+      ]
     },
     "Delta": {
       "oneOf": [
@@ -19024,6 +19303,13 @@
           "type": "string"
         },
         {
+          "description": "A copy of each file an assistant sent, as it was when sent (docs/her-deliverables.md §4.1).",
+          "enum": [
+            "sent"
+          ],
+          "type": "string"
+        },
+        {
           "description": "Conversations, with the full output of their tools.",
           "enum": [
             "conversations"
@@ -21276,6 +21562,14 @@
       "params": "DeckViewParams",
       "result": "DeckViewResult"
     },
+    "deliveries/list": {
+      "params": "DeliveriesListParams",
+      "result": "DeliveriesListResult"
+    },
+    "deliveries/seen": {
+      "params": "DeliveriesSeenParams",
+      "result": "Empty"
+    },
     "desktop/status": {
       "result": "DesktopStatus"
     },
@@ -21682,6 +21976,8 @@
       "deck/template_profile": "stable",
       "deck/undo": "stable",
       "deck/view": "stable",
+      "deliveries/list": "stable",
+      "deliveries/seen": "stable",
       "desktop/status": "experimental",
       "doc/apply": "experimental",
       "doc/autofill": "experimental",

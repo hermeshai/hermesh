@@ -331,6 +331,8 @@ export type BotSummary = {
   created_at: string;
   /** The bot every user has: it cannot be deleted. */
   default?: boolean;
+  /** The latest send in that list, as `deliveries/list` numbers them: the list changed when this moves. */
+  deliveries_latest?: number;
   /** Its last task failed, so no message may be coming. Only while its conversation is loaded. */
   failed?: boolean;
   id: string;
@@ -338,6 +340,8 @@ export type BotSummary = {
   /** The owner asked not to be alerted about this bot, on any device. */
   muted?: boolean;
   name: string;
+  /** The files it sent since the owner last looked at the list of them (`deliveries/seen`). */
+  new_deliveries?: number;
   pinned?: boolean;
   /** Its routines, oldest first (docs/kernel/routine-design.md §8). */
   routines?: RoutineSummary[];
@@ -1894,6 +1898,77 @@ export type DeckViewResult = {
   version: string;
   width_px: number;
 };
+
+/** A file a bot sent: the sends from one path are one file. */
+export type DeliveredFile = {
+  kind: DeliveryKind;
+  name: string;
+  /** Where it was on the Her Server when sent, absolute. */
+  path: string;
+  /** Newest first, each a different content: the same content sent again is its latest send. One entry when the latest send kept no copy, as nothing earlier can be shown. */
+  versions: Delivery[];
+};
+
+export type DeliveriesListParams = {
+  /** Files whose latest send is before this one: the `next` of the page before. The newest without it. */
+  before?: number | null;
+  bot_id: string;
+  kind?: DeliveryKind | null;
+  /** How many files: 50 without it, at most 200. */
+  limit?: number | null;
+  /** Only files with this in their name, in the bot's words or in what they came from, in any version, without regard to case. */
+  query?: string | null;
+};
+
+/** Result of `deliveries/list`. */
+export type DeliveriesListResult = {
+  /** Newest first, by their latest send. */
+  files: DeliveredFile[];
+  /** The `before` of the next page, when there is one. */
+  next?: number | null;
+  /** The last send the owner saw (`deliveries/seen`): a later one is new. */
+  seen: number;
+};
+
+export type DeliveriesSeenParams = {
+  bot_id: string;
+  /** The highest `seq` the list showed. The mark never goes back. */
+  seq: number;
+};
+
+/** One send of a file. */
+export type Delivery = {
+  call_id: string;
+  height?: number | null;
+  /** RFC 3339. */
+  sent_at: string;
+  /** Its number among the bot's sends, growing. */
+  seq: number;
+  /** The conversation it was sent in, and the `send_to_user` call that sent it: its message. */
+  session_id: string;
+  /** The copy kept of it as it was when sent, absolute, and its content's SHA-256: what to read. None when no copy was kept; it is then read from `path`, as it is now. */
+  sha256?: string | null;
+  size: number;
+  snapshot?: string | null;
+  /** What it came from; none for what the owner asked for in the conversation. */
+  source?: DeliverySource | null;
+  /** The bot's words with it. */
+  text?: string | null;
+  /** A picture's size in pixels, when known. */
+  width?: number | null;
+};
+
+/** What a file a bot sent is, by its name; a picture by its contents (docs/her-deliverables.md §4.2). */
+export type DeliveryKind = "doc" | "sheet" | "slide" | "image" | "code" | "other";
+
+/** The routine or the session a file came from, and its name as the bot heard it. */
+export type DeliverySource = {
+  id: string;
+  kind: DeliverySourceKind;
+  name: string;
+};
+
+export type DeliverySourceKind = "routine" | "session";
 
 export type Delta = {
   index: number;
@@ -4428,7 +4503,7 @@ export type Speaker = "user" | "bot";
 
 export type StopReason = "stop" | "length" | "tool_use" | "error" | "aborted";
 
-export type StorageKind = "files" | "conversations" | "trash" | "memory" | "browser" | "cache" | "other";
+export type StorageKind = "files" | "sent" | "conversations" | "trash" | "memory" | "browser" | "cache" | "other";
 
 /** One kind of data in her's data directory. */
 export type StoragePart = {
@@ -4932,6 +5007,8 @@ export interface Methods {
   "deck/template_profile": [DeckTemplateProfileParams, TemplateProfile];
   "deck/undo": [DeckUndoParams, DeckUndoResult];
   "deck/view": [DeckViewParams, DeckViewResult];
+  "deliveries/list": [DeliveriesListParams, DeliveriesListResult];
+  "deliveries/seen": [DeliveriesSeenParams, Empty];
   "desktop/status": [Record<string, never>, DesktopStatus];
   "doc/apply": [DocApplyParams, DocApplyResult];
   "doc/autofill": [DocAutofillParams, DocApplyResult];

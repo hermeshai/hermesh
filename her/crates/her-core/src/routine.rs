@@ -180,6 +180,13 @@ pub fn run_transcript(store: &dyn SessionStore, log: &Path) -> Vec<TranscriptIte
     items
 }
 
+/// A whole log as clients show a conversation, with its header: None when it cannot be read.
+pub fn log_transcript(store: &dyn SessionStore, log: &Path) -> Option<(crate::store::SessionHeader, Vec<TranscriptItem>)> {
+    let (header, entries) = store.read(&SessionRef::Path(log.to_path_buf())).ok()?;
+    let history = History::from_entries(entries);
+    Some((header, crate::kernel::transcript_of(history.branch())))
+}
+
 /// How a bot's session reaches its routines.
 pub(crate) struct RoutineLink {
     pub(crate) host: Arc<dyn RoutineHost>,

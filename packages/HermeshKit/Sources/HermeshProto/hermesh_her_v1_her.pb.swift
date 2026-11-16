@@ -283,7 +283,9 @@ public nonisolated struct Hermesh_Her_V1_DownloadRequest: Sendable {
 
   public var botID: String = String()
 
-  /// Absolute, or relative to the assistant's folder; inside that folder.
+  /// Absolute, or relative to the assistant's folder; inside that folder, or
+  /// inside bots/<id>/sent, where her keeps a copy of each file the assistant
+  /// sent, as it was when sent (docs/her-deliverables.md §4.1).
   public var path: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()

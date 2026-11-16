@@ -25,7 +25,9 @@ use serde_json::Value;
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
+use std::io::Read;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::cards::Cards;
@@ -249,10 +251,53 @@ fn invalid(message: impl Into<String>) -> ToolError {
     ToolError::InvalidArgs(message.into())
 }
 
+/// Where a bot's session keeps a copy of each file it sends, `bots/<id>/sent`
+/// (docs/her-deliverables.md §4.1).
+pub(crate) struct SentDir(pub(crate) PathBuf);
+
+/// The largest file a copy is kept of. Where the disk cannot clone a file the copy is a real
+/// one, and a larger file would stall the turn and fill the disk: it is sent without one.
+const MAX_COPY: u64 = 100 * 1024 * 1024;
+
+/// Keeps `from` as it is now: `dir/<the SHA-256 of its content>/<its name>`, read-only. The
+/// same content is kept once. Gives the copy, the hash and the copy's size. Blocking I/O.
+fn keep_copy(dir: &Path, from: &Path) -> io::Result<(PathBuf, String, u64)> {
+    let name = from.file_name().ok_or_else(|| io::Error::other("the file has no name"))?;
+    std::fs::create_dir_all(dir)?;
+    // To a name nothing has yet, so the disk may clone the file instead of copying it; and the
+    // hash is the copy's, so it names the bytes kept whatever happens to the file meanwhile.
+    let work = tempfile::Builder::new().prefix(".copy-").tempdir_in(dir)?;
+    let copy = work.path().join(name);
+    std::fs::copy(from, &copy)?;
+    let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
+    let (mut file, mut buf, mut size) = (std::fs::File::open(&copy)?, vec![0; 64 * 1024], 0);
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        digest.update(&buf[..n]);
+        size += n as u64;
+    }
+    let sha256: String = digest.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    let kept = dir.join(&sha256).join(name);
+    if !kept.is_file() {
+        std::fs::create_dir_all(dir.join(&sha256))?;
+        std::fs::rename(&copy, &kept)?;
+        let mut permissions = std::fs::metadata(&kept)?.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&kept, permissions)?;
+    }
+    Ok((kept, sha256, size))
+}
+
 /// A file's entry in the result's details, for user interfaces: where it is, how large, and for
 /// an image the panel can show (by its contents, like the file panel) its size. Or why it cannot
-/// be sent. Looked at when the call runs: the model may make the file in the same step.
-async fn sent_file(env: &dyn Environment, raw: &str) -> Result<Value, String> {
+/// be sent. Looked at when the call runs: the model may make the file in the same step. With
+/// `sent`, a copy of the file as it is now is kept there, and the entry names it (`snapshot`,
+/// `sha256`, and the copy's `size`); a file too large, or one that cannot be copied, goes
+/// without, since delivering matters more than keeping.
+async fn sent_file(env: &dyn Environment, raw: &str, sent: Option<&Path>) -> Result<Value, String> {
     if raw.starts_with("http://") || raw.starts_with("https://") {
         return Err(format!("{raw}: a web address, save it to a file first"));
     }
@@ -281,6 +326,20 @@ async fn sent_file(env: &dyn Environment, raw: &str) -> Result<Value, String> {
         if let Some((width, height)) = format.dimensions(&head.bytes) {
             file["width"] = json!(width);
             file["height"] = json!(height);
+        }
+    }
+    if let Some(dir) = sent
+        && meta.size <= MAX_COPY
+    {
+        let (dir, from) = (dir.to_path_buf(), path.clone());
+        match tokio::task::spawn_blocking(move || keep_copy(&dir, &from)).await {
+            Ok(Ok((copy, sha256, size))) => {
+                file["size"] = json!(size);
+                file["sha256"] = json!(sha256);
+                file["snapshot"] = json!(copy);
+            }
+            Ok(Err(err)) => tracing::warn!("no copy kept of {}: {err}", path.display()),
+            Err(err) => tracing::warn!("no copy kept of {}: {err}", path.display()),
         }
     }
     Ok(file)
@@ -363,8 +422,9 @@ impl TypedTool for SendToUser {
                 }
                 let mut details = Vec::with_capacity(files.len());
                 let mut wrong = Vec::new();
+                let copies = ctx.session_state.get::<SentDir>();
                 for file in &files {
-                    match sent_file(ctx.env.as_ref(), &file.path).await {
+                    match sent_file(ctx.env.as_ref(), &file.path, copies.as_deref().map(|dir| dir.0.as_path())).await {
                         Ok(file) => details.push(file),
                         Err(why) => wrong.push(why),
                     }

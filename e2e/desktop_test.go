@@ -41,6 +41,9 @@ type desktopFixture struct {
 	// The address of a connector's service that signs in with OAuth, for
 	// Her to ask for on a secure card (empty when none).
 	Connector string `json:"connector,omitempty"`
+	// This Mac's her home, for the spec to change a file Her sent as her
+	// model would (empty when none).
+	HerHome string `json:"herHome,omitempty"`
 	// her's ChatGPT fixture, standing in for OpenAI, for the app to open
 	// its sign-in page (empty when none).
 	ChatGPT string `json:"chatgpt,omitempty"`
@@ -118,7 +121,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" || name == "her-older" || name == "her-reply" || name == "progress" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerReply, TestDesktopHerProgress
+		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" || name == "her-older" || name == "her-reply" || name == "progress" || name == "her-deliveries" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -223,6 +226,23 @@ func TestDesktopHerReply(t *testing.T) {
 		t.Skip("pnpm not installed")
 	}
 	herSpec(t, desktopHerWorld(t), "her-reply.spec.ts")
+}
+
+// TestDesktopHerDeliveries runs the end-to-end test of the files Her sent, in
+// a list of their own (apps/desktop/e2e/her-deliveries.spec.ts,
+// docs/her-deliverables.md) in the same world: Her sends a file, it is
+// changed and sent again, and the owner finds both versions in the panel,
+// opens each as it was sent, goes to its message and replies to it.
+//
+//	go test ./e2e -run TestDesktopHerDeliveries -v -timeout 30m
+func TestDesktopHerDeliveries(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "her-deliveries.spec.ts")
 }
 
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this
@@ -363,7 +383,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	t.Cleanup(daemon.stop)
 	w.joinTyped(work, home, "work-mac")
-	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, Connector: connector, owner: w}
+	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, Connector: connector, HerHome: macHome, owner: w}
 }
 
 // desktopWorld is an owner Mac with a session in every state the app

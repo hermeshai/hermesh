@@ -11,6 +11,7 @@ import { AssistantPanel } from "./AssistantPanel";
 import { useConversation, useEnvironment, useKept, useWaiting } from "./connection";
 import { HerContext, useHer, type Her, type HerSheet, type Panel } from "./context";
 import { Conversation, putInComposer, showRun } from "./Conversation";
+import { DeliveriesPanel } from "./Deliveries";
 import { Progress } from "./Progress";
 import { environments, envState, pickEnvironment } from "./environments";
 import { RoutinesPanel } from "./RoutinesPanel";
@@ -164,6 +165,7 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
             onClose={() => setPanel(null)}
           />
         )}
+        {bot && shown?.kind === "files" && <DeliveriesPanel bot={bot} kept={kept?.deliveries ?? null} onClose={() => setPanel(null)} />}
         {sheet?.kind === "access" && <AccessSheet bot={sheet.bot} />}
         {sheet?.kind === "add" && <AddEnvironmentSheet />}
       </div>

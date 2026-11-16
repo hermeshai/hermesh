@@ -96,6 +96,12 @@ public struct HerFile: Equatable, Sendable {
     public var size: Int
     /// One that shows as a picture.
     public var image: Bool
+    /// The copy her kept of it as it was when sent (docs/her-deliverables.md §4.1), absolute. Nil from a her that
+    /// keeps none, and for a file too large.
+    public var snapshot: String?
+
+    /// What to read of it: the copy, as it was when sent, when her kept one; else the file where it is now.
+    public var source: String { snapshot ?? path }
 }
 
 /// A coding session Her started or works on, as her session_start call's result names it (its details, docs/her-team.md §6.2, or
@@ -362,7 +368,9 @@ func delivered(_ c: HerCall, _ state: CallState, _ result: HerResult?) -> HerIte
 /// The files of a message of files, from its result's details.
 private func filesOf(_ r: HerResult?) -> [HerFile] {
     (r?.details["files"].array ?? []).compactMap { f in
-        f["path"].string.map { HerFile(path: $0, name: baseName($0), size: f["size"].int ?? 0, image: f["image"].bool == true) }
+        f["path"].string.map {
+            HerFile(path: $0, name: baseName($0), size: f["size"].int ?? 0, image: f["image"].bool == true, snapshot: f["snapshot"].string.flatMap { $0.isEmpty ? nil : $0 })
+        }
     }
 }
 

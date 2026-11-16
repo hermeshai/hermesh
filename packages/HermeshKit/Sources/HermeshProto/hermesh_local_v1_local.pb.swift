@@ -3227,6 +3227,12 @@ public nonisolated struct Hermesh_Local_V1_GetHerConversationResponse: Sendable 
   /// no earlier history; empty when none is kept.
   public var snapshot: Data = Data()
 
+  /// The first page of the files Her sent, as deliveries/list last answered
+  /// it here (her's DeliveriesListResult, as JSON), its mark of what the
+  /// owner saw moved by deliveries/seen since; empty when none is kept
+  /// (docs/her-deliverables.md §4.4).
+  public var deliveries: Data = Data()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -9418,7 +9424,7 @@ nonisolated extension Hermesh_Local_V1_GetHerConversationRequest: SwiftProtobuf.
 
 nonisolated extension Hermesh_Local_V1_GetHerConversationResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetHerConversationResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bot\0\u{1}snapshot\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}bot\0\u{1}snapshot\0\u{1}deliveries\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9428,6 +9434,7 @@ nonisolated extension Hermesh_Local_V1_GetHerConversationResponse: SwiftProtobuf
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularBytesField(value: &self.bot) }()
       case 2: try { try decoder.decodeSingularBytesField(value: &self.snapshot) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.deliveries) }()
       default: break
       }
     }
@@ -9440,12 +9447,16 @@ nonisolated extension Hermesh_Local_V1_GetHerConversationResponse: SwiftProtobuf
     if !self.snapshot.isEmpty {
       try visitor.visitSingularBytesField(value: self.snapshot, fieldNumber: 2)
     }
+    if !self.deliveries.isEmpty {
+      try visitor.visitSingularBytesField(value: self.deliveries, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_GetHerConversationResponse, rhs: Hermesh_Local_V1_GetHerConversationResponse) -> Bool {
     if lhs.bot != rhs.bot {return false}
     if lhs.snapshot != rhs.snapshot {return false}
+    if lhs.deliveries != rhs.deliveries {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

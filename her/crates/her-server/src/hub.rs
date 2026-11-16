@@ -171,6 +171,7 @@ pub(crate) enum Listing {
         id: String,
         bots: Arc<crate::bots::Registry>,
         routines: Arc<crate::routines::Routines>,
+        deliveries: Arc<crate::deliveries::Deliveries>,
         /// The session list, not to be listed in: its observer tells the extension.
         sessions: Arc<ListFeed>,
     },
@@ -400,9 +401,10 @@ impl Hub {
 
     fn dispatch(&mut self, event: Event) {
         self.mirror.apply(&event);
-        if let Listing::Bot { id, bots, routines, .. } = &self.listing {
+        if let Listing::Bot { id, bots, routines, deliveries, .. } = &self.listing {
             bots.on_event(id, &event, &self.mirror);
             routines.on_event(id, &event);
+            deliveries.on_event(id, &event, &self.mirror);
         }
         // The session's approvals, and a sub-agent's as its `agent_event` carries them.
         let (agent, asked) = match &event.msg {

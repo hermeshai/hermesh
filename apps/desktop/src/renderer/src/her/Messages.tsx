@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { imageRatio, imageRows, type BotFile, type RpcClient } from "@hermesh/her-client";
+import { imageRatio, imageRows, readSent, type BotFile, type RpcClient } from "@hermesh/her-client";
 import { errorText, useStore } from "../store";
 import { Markdown } from "../session/Markdown";
 import { Lightbox, Tile } from "./Composer";
@@ -12,7 +12,8 @@ import { FilePreview, previews } from "./preview/FilePreview";
 // Its files are on its machine: pictures are read through the tunnel
 // to show (files/read), a PDF or Markdown opens over the window
 // (preview/FilePreview), other files are saved to Downloads on this Mac
-// (HerDownload) and shown there.
+// (HerDownload) and shown there. Each is read from the copy her kept of it
+// as it was sent, when there is one (readSent).
 
 /** Where a conversation's files are read: its connection and session. */
 export type FileScope = { rpc: RpcClient | null; session: string; bot: string };
@@ -20,32 +21,32 @@ export type FileScope = { rpc: RpcClient | null; session: string; bot: string };
 /** The pictures of a message, as data URLs; null for one that can't be read as a picture. */
 function useImages(scope: FileScope, files: BotFile[]) {
   const [pictures, setPictures] = useState<Record<string, string | null>>({});
-  const paths = files.filter((f) => f.image).map((f) => f.path);
+  const images = files.filter((f) => f.image);
   useEffect(() => {
     const rpc = scope.rpc;
     if (!rpc) return;
     let live = true;
     const keep = (path: string, picture: string | null) => live && setPictures((p) => ({ ...p, [path]: picture }));
-    for (const path of paths) {
-      if (pictures[path] !== undefined) continue;
-      rpc.request("files/read", { session_id: scope.session, path })
-        .then((read) => keep(path, read.image ? `data:${read.image.mime_type};base64,${read.image.data}` : null))
-        .catch(() => keep(path, null));
+    for (const f of images) {
+      if (pictures[f.path] !== undefined) continue;
+      readSent(f, (path) => rpc.request("files/read", { session_id: scope.session, path }))
+        .then((read) => keep(f.path, read.image ? `data:${read.image.mime_type};base64,${read.image.data}` : null))
+        .catch(() => keep(f.path, null));
     }
     return () => {
       live = false;
     };
-  }, [scope.rpc, scope.session, paths.join("\0")]);
+  }, [scope.rpc, scope.session, images.map((f) => f.snapshot ?? f.path).join("\0")]);
   return pictures;
 }
 
-/** Saves one of the assistant's files to Downloads and shows it there. */
+/** Saves one of the assistant's files to Downloads and shows it there: `snapshot` is the copy of a sent file, saved in its place. */
 export function useSaveFile(bot: string) {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
-  return (path: string, name: string) =>
-    window.hermesh?.saveHerFile(her.machine.machineId, bot, path).then(
+  return (path: string, name: string, snapshot?: string) =>
+    readSent({ path, snapshot }, (from) => window.hermesh?.saveHerFile(her.machine.machineId, bot, from) ?? Promise.reject(new Error("no app"))).then(
       () => st.show(t("files.saved", { name })),
       (e) => st.show(errorText(e)),
     );
@@ -69,11 +70,11 @@ export function SentFiles({ scope, files, text }: { scope: FileScope; files: Bot
       {others.length > 0 && (
         <div className="bfiles">
           {others.map((f, i) => (
-            <Tile key={i} name={f.name} meta={sizeText(f.size)} views={previews(f.name)} onOpen={() => (previews(f.name) ? setShown(f) : void save(f.path, f.name))} />
+            <Tile key={i} name={f.name} meta={sizeText(f.size)} views={previews(f.name)} onOpen={() => (previews(f.name) ? setShown(f) : void save(f.path, f.name, f.snapshot))} />
           ))}
         </div>
       )}
-      {shown && <FilePreview scope={scope} path={shown.path} name={shown.name} onSave={() => void save(shown.path, shown.name)} onClose={() => setShown(null)} />}
+      {shown && <FilePreview scope={scope} path={shown.path} snapshot={shown.snapshot} name={shown.name} onSave={() => void save(shown.path, shown.name, shown.snapshot)} onClose={() => setShown(null)} />}
     </div>
   );
 }

@@ -71,6 +71,11 @@ impl JsonlStore {
         }
     }
 
+    /// Every log in the store's folder, oldest first: the bots' and sub-agents' too.
+    pub fn logs(&self) -> Vec<PathBuf> {
+        self.all_files()
+    }
+
     fn all_files(&self) -> Vec<PathBuf> {
         let mut out = Vec::new();
         collect_jsonl(&self.dir, &mut out, 0);

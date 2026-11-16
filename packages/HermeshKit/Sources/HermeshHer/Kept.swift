@@ -11,12 +11,14 @@ import HermeshProto
 public struct HerKept: Equatable, Sendable {
     public var bot: HerBot
     public var session: HerSession?
+    /// The first page of the files Her sent, as deliveries/list last answered it here (docs/her-deliverables.md §4.4).
+    public var deliveries: HerDeliveries?
 }
 
 /// What hermeshd keeps, or nil for nothing.
 public func herKept(_ r: Hermesh_Local_V1_GetHerConversationResponse) -> HerKept? {
     guard let j = try? JSON.parse(r.bot), let bot = HerBot(j) else { return nil }
-    return HerKept(bot: bot, session: (try? JSON.parse(r.snapshot)).flatMap { HerSession(snapshot: $0) })
+    return HerKept(bot: bot, session: (try? JSON.parse(r.snapshot)).flatMap { HerSession(snapshot: $0) }, deliveries: (try? JSON.parse(r.deliveries)).flatMap(HerDeliveries.init))
 }
 
 /// A message this app sent that HerSend has not answered for yet, or refused (docs/her-sending.md §5.2).
