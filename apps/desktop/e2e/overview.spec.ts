@@ -1,5 +1,43 @@
 import { expect, test } from "@playwright/test";
-import { launch, snap, thisComputer, sessionList, navTo } from "./app";
+import { launch, mapHeight, snap, thisComputer, sessionList, navTo } from "./app";
+
+test("map height waits for the first resize delivery after navigation", async () => {
+  const { app, page } = await launch();
+  try {
+    await sessionList(page); // Unmount Work before observing its next first layout.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1009, 800));
+    await page.evaluate(() => {
+      const real = window.ResizeObserver;
+      const deliveries: (() => void)[] = [];
+      (window as unknown as { deliverMapResize(): void }).deliverMapResize = () => deliveries.splice(0).forEach((f) => f());
+      (window as unknown as { mapResizePending(): number }).mapResizePending = () => deliveries.length;
+      window.ResizeObserver = class extends real {
+        constructor(callback: ResizeObserverCallback) {
+          super((entries, observer) => {
+            if (entries.some((e) => e.target.classList.contains("lmap-box"))) deliveries.push(() => callback(entries, observer));
+            else callback(entries, observer);
+          });
+        }
+      };
+    });
+    await navTo(page, /^工作/);
+    const map = page.getByRole("region", { name: "链路" });
+    await expect(map).toBeVisible();
+    const stage = map.locator(".lmap-stage");
+    await expect(stage).toHaveJSProperty("offsetWidth", 820);
+    expect(await map.locator(".lmap-box").evaluate((el) => el.clientWidth)).toBeLessThan(820);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { mapResizePending(): number }).mapResizePending())).toBeGreaterThan(0);
+    const measurement = mapHeight(map);
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => {
+      (window as unknown as { deliverMapResize(): void }).deliverMapResize();
+      resolve();
+    })));
+    await expect.poll(() => stage.evaluate((el) => el.style.transform)).not.toBe("scale(1)");
+    expect(await measurement).toBe((await map.boundingBox())!.height);
+  } finally {
+    await app.close();
+  }
+});
 
 // Work (the overview): what needs the owner, the link map of grants,
 // machines and projects, what runs now (questions and failures first), what

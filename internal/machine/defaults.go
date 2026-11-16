@@ -115,4 +115,17 @@ func (n *Machine) agentModels(a *machinev1.AgentStatus, i provider.Info) {
 	if i.Own != (provider.Settings{}) {
 		a.Own = &identityv1.AgentDefaults{Agent: a.Name, Model: i.Own.Model, Effort: i.Own.Effort, Speed: i.Own.Speed}
 	}
+	if p, ok := n.cfg.Providers[a.Name].(provider.ModelCatalogProvider); ok {
+		for _, c := range p.ModelCatalogs() {
+			v := &machinev1.AgentModelCatalog{Scope: c.Scope, Source: c.Source, State: c.State,
+				DefaultModel: c.DefaultModel, CurrentModel: c.CurrentModel}
+			if !c.ObservedAt.IsZero() {
+				v.ObservedAtUnixMs, v.ExpiresAtUnixMs = c.ObservedAt.UnixMilli(), c.ExpiresAt.UnixMilli()
+			}
+			for _, m := range c.Models {
+				v.Models = append(v.Models, &machinev1.AgentModel{Id: m.ID, Name: m.Name, Efforts: m.Efforts})
+			}
+			a.ModelCatalogs = append(a.ModelCatalogs, v)
+		}
+	}
 }

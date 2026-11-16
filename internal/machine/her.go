@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"slices"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -17,6 +19,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/internal/herhost"
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // Her on this machine (docs/her-server.md): whether the owner turned it on
@@ -196,6 +199,22 @@ func (n *Machine) statusFor(p *Principal) *machinev1.MachineStatus {
 	st := n.Status()
 	if p == nil || p.Kind != PrincipalOwner {
 		st.Her, st.Screen, st.DirectAddrs = nil, nil, nil
+		for _, a := range st.Agents {
+			a.ModelCatalogs = slices.DeleteFunc(a.ModelCatalogs, func(c *machinev1.AgentModelCatalog) bool {
+				if p == nil || p.Grant == nil || !identity.Allows(p.Grant.Agents, a.Name) {
+					return true
+				}
+				if c.Scope == "isolated" {
+					return false
+				}
+				_, id, ok := strings.Cut(c.Scope, "/")
+				if !ok {
+					return true
+				}
+				_, _, err := n.sessions.find(p, id, false)
+				return err != nil
+			})
+		}
 	}
 	return st
 }
