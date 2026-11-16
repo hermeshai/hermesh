@@ -121,7 +121,7 @@ fn config() -> BrowserConfig {
 #[tokio::test]
 async fn a_stale_tab_does_not_block_the_others_or_snapshot_and_recovery() {
     let dir = tempfile::tempdir().unwrap();
-    let pool = pool(dir.path(), vec!["T6", "T7", "T8"], "No tab with given id 7");
+    let pool = pool(dir.path(), vec!["T6", "T7", "T8"], "No tab with given id 7.");
     let browser = pool.acquire(&config()).await.unwrap();
     let numbers = TabNumbers {
         tabs: [("T6".into(), "u1".into()), ("T7".into(), "u2".into()), ("T8".into(), "u3".into())].into(),
@@ -148,7 +148,7 @@ async fn a_stale_tab_does_not_block_the_others_or_snapshot_and_recovery() {
 
 #[tokio::test]
 async fn only_stale_tabs_can_recover_to_empty_and_open_a_new_page() {
-    for error in ["No tab with given id 7", "No target with given id T7", "the tab was closed"] {
+    for error in ["No tab with given id 7", "No tab with given id 7.", "No target with given id T7", "the tab was closed"] {
         let dir = tempfile::tempdir().unwrap();
         let pool = pool(dir.path(), vec!["T7"], error);
         let browser = pool.acquire(&config()).await.unwrap();
@@ -166,6 +166,10 @@ async fn recovery_does_not_swallow_permission_or_connection_errors() {
         "Permission denied",
         "Another debugger is already attached",
         "No tab with given id 999",
+        "No tab with given id 999.",
+        "Permission denied: No tab with given id 7.",
+        "Target.attachToTarget: No tab with given id 7.",
+        "No tab with given id 7.extra",
         "disconnect",
     ] {
         let dir = tempfile::tempdir().unwrap();
@@ -176,7 +180,7 @@ async fn recovery_does_not_swallow_permission_or_connection_errors() {
         if error == "disconnect" {
             assert!(matches!(failed, BrowserError::Cdp(CdpError::Closed)));
         } else {
-            assert!(failed.to_string().contains(error));
+            assert_eq!(failed.to_string(), format!("Target.attachToTarget: {error}"));
         }
     }
 }
@@ -211,7 +215,7 @@ async fn kernel_tools_list_snapshot_and_open_after_recovering_stale_tabs() {
         let mut registry = ModelRegistry::new(Catalog::default(), RegistryOptions::default());
         registry.register_api(api.clone());
         registry.insert_provider(ScriptedApi::provider());
-        let pool = Arc::new(pool(dir.path(), targets.clone(), "No tab with given id 7"));
+        let pool = Arc::new(pool(dir.path(), targets.clone(), "No tab with given id 7."));
         let deps = KernelDeps {
             llm: Arc::new(registry),
             tools: Arc::new(builtin_registry(BashTool::default())),

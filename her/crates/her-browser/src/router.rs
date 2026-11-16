@@ -389,6 +389,7 @@ impl Router {
                                 && (message == format!("No target with given id {id}")
                                     || message == "the tab was closed"
                                     || id.strip_prefix('T').is_some_and(|tab| {
+                                        let message = message.strip_suffix('.').unwrap_or(&message);
                                         !tab.is_empty() && tab.bytes().all(|b| b.is_ascii_digit()) && message == format!("No tab with given id {tab}")
                                     })) =>
                         {

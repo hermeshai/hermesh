@@ -142,11 +142,11 @@ test("a tab closed while the kernel attaches is not left attached", async () => 
   assert.deepEqual(fake.log.at(-1), ["detach", 100]);
 });
 
-test("a missing restored tab is forgotten without losing the other session tabs", async () => {
+for (const message of ["No tab with given id 7", "No tab with given id 7."]) test(`a missing restored tab is forgotten: ${message}`, async () => {
   const { b, fake, call, events } = browser();
   fake.kept.push({ tabId: 7, label: "s1" }, { tabId: 8, label: "s1" }, { tabId: 9, label: "s2" });
   fake.tabs.attach = async (tabId) => {
-    if (tabId === 7) throw new Error("No tab with given id 7");
+    if (tabId === 7) throw new Error(message);
   };
   await call("Target.getTargets", { herSession: "s1" });
   assert.match((await call("Target.attachToTarget", { targetId: "T7" })).error.message, /No tab/);
@@ -162,7 +162,7 @@ test("a missing restored tab is forgotten without losing the other session tabs"
 });
 
 test("attach errors other than the missing tab keep the tab recoverable", async () => {
-  for (const message of ["Permission denied", "Another debugger is already attached", "the browser connection is closed", "No tab with given id 999"]) {
+  for (const message of ["Permission denied", "Another debugger is already attached", "the browser connection is closed", "No tab with given id 999", "No tab with given id 999.", "Permission denied: No tab with given id 7.", "Target.attachToTarget: No tab with given id 7.", "No tab with given id 7.extra"]) {
     const { b, fake, call, events } = browser();
     fake.kept.push({ tabId: 7, label: "s1" });
     fake.tabs.attach = async () => { throw new Error(message); };

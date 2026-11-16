@@ -41,7 +41,7 @@ for (const carried of [false, true]) test(`recovery from ${carried ? "carried" :
     },
     debugger: {
       onEvent: event(), onDetach: event(),
-      attach: async ({ tabId }) => { if (missing && tabId === 7) throw new Error("No tab with given id 7"); },
+      attach: async ({ tabId }) => { if (missing && tabId === 7) throw new Error(`No tab with given id 7${carried ? "." : ""}`); },
       detach: async () => {}, sendCommand: async () => ({}),
     },
     windows: { onRemoved: event() },
