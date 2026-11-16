@@ -80,9 +80,11 @@ func tellHerDetails(t *testing.T, env *herEnvironment, text, decision, want stri
 			details = e.Result.Details
 		case e.Type == "tool_started" && e.Name == "send_to_user" && strings.Contains(e.Args.Text, want):
 			return asked, e.Args.Text, details
+		case e.Type == "tool_started" && e.Name == "send_to_user":
+			said = e.Args.Text
 		}
 	}
-	t.Fatalf("Her never said %q: %v", want, stream.Err())
+	t.Fatalf("Her never said %q (she said %q, the mesh call's details %s): %v", want, said, details, stream.Err())
 	return nil, "", nil
 }
 

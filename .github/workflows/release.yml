@@ -75,6 +75,46 @@ jobs:
           name: her-linux-${{ matrix.arch }}
           path: her-linux-${{ matrix.arch }}
           if-no-files-found: error
+  # her for Windows, which install.ps1 puts beside hermeshd on a PC that is
+  # only a machine (the app carries its own): built as her's releases are,
+  # with MSVC; arm64 is built on the x64 runner. The binaries job signs it.
+  her-windows:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            triple: x86_64-pc-windows-msvc
+          - arch: arm64
+            triple: aarch64-pc-windows-msvc
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read access to the NimbleOffice fork
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
+            echo "::error::NIMBLEOFFICE_TOKEN is required to build her"
+            exit 1
+          fi
+          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: build her
+        working-directory: her
+        run: |
+          rustup target add ${{ matrix.triple }}
+          cargo build --profile dist --locked -p her-cli --bin her --no-default-features --target ${{ matrix.triple }}
+          cp target/${{ matrix.triple }}/dist/her.exe ../her-windows-${{ matrix.arch }}.exe
+      - if: matrix.arch == 'amd64'
+        run: ./her-windows-amd64.exe --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: her-windows-${{ matrix.arch }}
+          path: her-windows-${{ matrix.arch }}.exe
+          if-no-files-found: error
   # Computer Control's helper for Linux (docs/computer-control-linux.md §5),
   # against glibc 2.28, built on a runner of each architecture; the
   # binaries job signs it.
@@ -99,7 +139,7 @@ jobs:
           path: hermesh-screen-linux-${{ matrix.arch }}
           if-no-files-found: error
   binaries:
-    needs: [notes, her, screen]
+    needs: [notes, her, her-windows, screen]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,7 +153,7 @@ jobs:
         run: corepack enable && pnpm install --frozen-lockfile --filter "@hermesh/her-console..." && pnpm --dir her/apps/console build
       - uses: actions/download-artifact@v4
         with:
-          pattern: her-linux-*
+          pattern: her-*
           path: ${{ runner.temp }}/her
           merge-multiple: true
       - uses: actions/download-artifact@v4
@@ -129,6 +169,7 @@ jobs:
           printf '%s\n' "$RELEASE_SIGNING_KEY" > /tmp/release.key
           VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key \
             HER_LINUX_AMD64="$RUNNER_TEMP/her/her-linux-amd64" HER_LINUX_ARM64="$RUNNER_TEMP/her/her-linux-arm64" HER_CONSOLE=her/apps/console/dist \
+            HER_WINDOWS_AMD64="$RUNNER_TEMP/her/her-windows-amd64.exe" HER_WINDOWS_ARM64="$RUNNER_TEMP/her/her-windows-arm64.exe" \
             SCREEN_LINUX_AMD64="$RUNNER_TEMP/screen/hermesh-screen-linux-amd64" SCREEN_LINUX_ARM64="$RUNNER_TEMP/screen/hermesh-screen-linux-arm64" ./scripts/release.sh
           rm -f /tmp/release.key
       - run: gh release upload "$TAG" dist/release/* --clobber

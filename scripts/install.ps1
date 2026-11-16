@@ -80,10 +80,8 @@ try {
     $f = $line -split '\s+'
     if ($f.Length -ge 2) { $sums[$f[1].TrimStart('*')] = $f[0].ToLower() }
   }
-  $bins = if ($Cli) { @("hermesh") } else { @("hermeshd", "hermeshdw", "hermesh") }
-  New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
-  foreach ($b in $bins) {
-    $asset = "$b-windows-$Arch.exe"
+  # A release file, downloaded and checked against the signed list.
+  function Get-Verified([string]$asset) {
     Write-Host "> downloading $asset"
     $file = Join-Path $Tmp $asset
     Invoke-WebRequest -UseBasicParsing "$Base/$asset" -OutFile $file
@@ -91,12 +89,32 @@ try {
     $sha = [Security.Cryptography.SHA256]::Create()
     $hash = -join ($sha.ComputeHash([IO.File]::ReadAllBytes($file)) | ForEach-Object { $_.ToString("x2") })
     if ($hash -ne $sums[$asset]) { throw "hermesh install: $asset checksum mismatch" }
-    # A running program can be renamed, not overwritten: the old one moves
-    # aside, and goes once nothing runs it.
-    $dest = Join-Path $BinDir "$b.exe"
-    Get-ChildItem -Path $BinDir -Filter "$b.exe.*.old" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    return $file
+  }
+  # A running program can be renamed, not overwritten: the old one moves
+  # aside, and goes once nothing runs it.
+  function Install-Program([string]$file, [string]$name) {
+    $dest = Join-Path $BinDir $name
+    Get-ChildItem -Path $BinDir -Filter "$name.*.old" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path $dest) { Move-Item $dest "$dest.$(Get-Random).old" }
     Move-Item $file $dest
+  }
+  $bins = if ($Cli) { @("hermesh") } else { @("hermeshd", "hermeshdw", "hermesh") }
+  New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
+  foreach ($b in $bins) {
+    Install-Program (Get-Verified "$b-windows-$Arch.exe") "$b.exe"
+  }
+  # Her's kernel and its console, beside hermeshd, which runs them while Her
+  # is on for this PC (docs/her-server.md §6.4): from a release that has them.
+  if (-not $Cli -and $sums.ContainsKey("her-windows-$Arch.exe")) {
+    $console = Get-Verified "her-console.tar.gz"
+    $unpacked = Join-Path $Tmp "her-console"
+    New-Item -ItemType Directory -Path $unpacked | Out-Null
+    # Windows' own tar (10 and later), not another on PATH that takes C: for a host.
+    & (Join-Path $env:SystemRoot "System32\tar.exe") -xzf $console -C $unpacked
+    if ($LASTEXITCODE -ne 0) { throw "hermesh install: cannot unpack her-console.tar.gz" }
+    Install-Program (Get-Verified "her-windows-$Arch.exe") "her.exe"
+    Install-Program $unpacked "her-console"
   }
   Write-Host "installed to $BinDir"
 } finally {
