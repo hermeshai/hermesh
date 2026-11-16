@@ -222,7 +222,8 @@ async fn tools_add_dir_and_image_reach_the_run() {
     let elsewhere = env.workspace("elsewhere");
     let cwd = env.workspace("here");
     let target = elsewhere.join("made.txt");
-    let prompt = format!("[[mock:bash:touch {}]] go", target.display());
+    // As the bash tool tells the model to write a path on Windows: with forward slashes.
+    let prompt = format!("[[mock:bash:touch {}]] go", target.display().to_string().replace('\\', "/"));
     let out = env
         .her_in(&cwd, &["exec", "--add-dir", elsewhere.to_str().unwrap(), "--permission-mode", "accept-edits", &prompt])
         .stdin(std::process::Stdio::null())

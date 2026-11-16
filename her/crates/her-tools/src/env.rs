@@ -31,9 +31,9 @@ pub trait Environment: Send + Sync + 'static {
             return normalize_lexically(&path);
         }
         let expanded = if raw == "~" {
-            dirs::home_dir().unwrap_or_else(|| PathBuf::from(raw))
+            std::env::home_dir().unwrap_or_else(|| PathBuf::from(raw))
         } else if let Some(rest) = raw.strip_prefix("~/") {
-            dirs::home_dir().map(|h| h.join(rest)).unwrap_or_else(|| PathBuf::from(raw))
+            std::env::home_dir().map(|h| h.join(rest)).unwrap_or_else(|| PathBuf::from(raw))
         } else {
             PathBuf::from(raw)
         };

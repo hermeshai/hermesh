@@ -107,8 +107,12 @@ async fn the_command_line_adds_switches_and_removes_skills_and_servers() {
     let (code, out) = run(&env, &work, &["skills", "remove", "weekly"]).await;
     assert_eq!(code, 0, "{out}");
     assert!(!installed.exists());
-    let trashed = if cfg!(target_os = "macos") { ".Trash/weekly" } else { ".local/share/Trash/files/weekly" };
-    assert!(env.user_home().join(trashed).join("SKILL.md").is_file(), "{out}");
+    if cfg!(windows) {
+        assert!(out.contains("to the Recycle Bin"), "{out}");
+    } else {
+        let trashed = if cfg!(target_os = "macos") { ".Trash/weekly" } else { ".local/share/Trash/files/weekly" };
+        assert!(env.user_home().join(trashed).join("SKILL.md").is_file(), "{out}");
+    }
 
     // A server with a secret: the value goes to the credential store, the file gets a reference.
     let bin = server_bin();
@@ -251,7 +255,7 @@ async fn the_page_manages_configuration_skills_and_servers_through_the_service()
     // Off for this project only: the personal project layer, which the page may write.
     let off = json!({"layer": "user_project", "cwd": work, "edits": [{"key_path": "mcp_servers.vault.enabled", "value": false}]});
     let written = client.request("config/write", off).await.unwrap();
-    assert!(written["file"].as_str().unwrap().contains("/projects/"), "{written:#}");
+    assert!(Path::new(written["file"].as_str().unwrap()).components().any(|part| part.as_os_str() == "projects"), "{written:#}");
     let listed = client.request("mcp/list", json!({"cwd": work})).await.unwrap();
     let vault = listed["servers"].as_array().unwrap().iter().find(|s| s["name"] == "vault").unwrap().clone();
     assert_eq!((vault["enabled"].as_bool(), vault["disabled_by"].as_str()), (Some(false), Some("user_project")));

@@ -183,7 +183,7 @@ async fn live_qoder_connection() {
     let existing_home = std::env::var_os("HER_QODER_TEST_HOME").map(std::path::PathBuf::from);
     let home = existing_home
         .clone()
-        .unwrap_or_else(|| dirs::home_dir().unwrap().join(".her-qoder-e2e"));
+        .unwrap_or_else(|| std::env::home_dir().unwrap().join(".her-qoder-e2e"));
     tokio::fs::create_dir_all(&home).await.unwrap();
     let env = crate::platform::system_for(&home, "qoder");
     let source = env.interactive_login().await.unwrap();

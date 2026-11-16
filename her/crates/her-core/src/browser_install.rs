@@ -293,8 +293,11 @@ mod tests {
         let exe = testing_executable(platform).unwrap();
         zip.start_file(exe.to_string_lossy(), options).unwrap();
         zip.write_all(b"#!/bin/sh\necho chrome\n").unwrap();
-        zip.add_symlink(format!("chrome-{platform}/current"), exe.file_name().unwrap().to_string_lossy(), options)
-            .unwrap();
+        // Windows' archives have no links, and its install takes none.
+        if cfg!(unix) {
+            zip.add_symlink(format!("chrome-{platform}/current"), exe.file_name().unwrap().to_string_lossy(), options)
+                .unwrap();
+        }
         if let Some((link, target)) = extra {
             zip.add_symlink(link, target, options).unwrap();
         }
@@ -357,8 +360,7 @@ mod tests {
         let bad = archive(platform, Some((&format!("chrome-{platform}/evil"), "../../../etc/passwd")));
         let url = serve(bad.clone(), Some(md5_base64(&bad))).await;
         let err = install_from(&client, &url, dir.path(), |_, _| {}).await.unwrap_err();
-        // Windows' install takes no archive with links at all.
-        assert!(err.contains(if cfg!(windows) { "has links" } else { "link out" }), "{err}");
+        assert!(err.contains("link out"), "{err}");
         assert!(!dir.path().join("chromium").exists());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "no leftovers");
 

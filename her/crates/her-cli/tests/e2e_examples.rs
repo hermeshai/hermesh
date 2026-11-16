@@ -22,6 +22,8 @@ fn run(env: &TestEnv, interpreter: &str, script: &str, prompt: &str) -> Option<(
         .current_dir(env.work.path())
         .env("HER_HOME", env.home.path())
         .env("HOME", env.user_home())
+        // Where her finds the home on Windows.
+        .env("USERPROFILE", env.user_home())
         .env("HER_CREDENTIAL_STORE", "file")
         .output()
         .unwrap();

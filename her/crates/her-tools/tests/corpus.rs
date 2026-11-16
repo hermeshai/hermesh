@@ -870,7 +870,7 @@ mod edit {
 
     #[tokio::test]
     async fn random_edits_on_long_lines_and_boundaries() {
-        let tally = random_edits(&["long/", "size/", "place/", "nul/"], 0x23).await;
+        let tally = random_edits(&["long/", "size/", "place/", "nuls/"], 0x23).await;
         tally.check(&["exact", "several", "missing"], "long");
     }
 

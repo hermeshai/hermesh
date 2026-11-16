@@ -157,7 +157,12 @@ pub fn omission_note(omission: &Omission, saved: Option<&SavedOutput>) -> String
             match omission.lines {
                 Some((first, _)) => note.push_str(&format!(" (read it with offset={first})")),
                 // read shows lines and cuts long ones; bytes need a command.
-                None => note.push_str(&format!(" (print those bytes with: head -c {end} {path} | tail -c +{start})")),
+                // Quoted for a POSIX shell: a path may hold spaces (Application Support) and, on
+                // Windows, backslashes, which Git for Windows' bash would take for escapes.
+                None => {
+                    let quoted = format!("'{}'", saved.path.display().to_string().replace('\'', r"'\''"));
+                    note.push_str(&format!(" (print those bytes with: head -c {end} {quoted} | tail -c +{start})"))
+                }
             }
             note.push(']');
         }
@@ -423,7 +428,11 @@ mod tests {
             capped: false,
         };
         assert!(
-            omission_note(&omission, Some(&saved)).ends_with("(print those bytes with: head -c 9900 /s/out.txt | tail -c +101)]")
+            omission_note(&omission, Some(&saved)).ends_with("(print those bytes with: head -c 9900 '/s/out.txt' | tail -c +101)]")
+        );
+        let saved = SavedOutput { path: PathBuf::from(r"C:\Users\o'brien\out.txt"), capped: false };
+        assert!(
+            omission_note(&omission, Some(&saved)).ends_with(r"(print those bytes with: head -c 9900 'C:\Users\o'\''brien\out.txt' | tail -c +101)]")
         );
     }
 

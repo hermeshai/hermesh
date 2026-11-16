@@ -80,6 +80,8 @@ impl TestEnv {
             .current_dir(cwd)
             .env("HER_HOME", self.home.path())
             .env("HOME", self.user_home())
+            // Where her finds the home on Windows.
+            .env("USERPROFILE", self.user_home())
             .env_remove("XDG_DATA_HOME")
             // Saved keys go to a file in the test's home, never the developer's keychain.
             .env("HER_CREDENTIAL_STORE", "file")

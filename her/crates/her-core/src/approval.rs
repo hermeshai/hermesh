@@ -339,13 +339,17 @@ fn evaluate_bash(command: &str, view: &SessionView) -> Gate {
         .chain(view.session_rules.iter())
         .cloned()
         .collect();
-    let home = dirs::home_dir();
+    let home = std::env::home_dir();
     let ctx = ShellContext {
         cwd: view.env.cwd(),
         home: home.as_deref(),
         cdpath: std::env::var_os("CDPATH").is_some_and(|value| !value.is_empty()),
     };
-    let analysis = rules::analyze(command, &ctx);
+    // The analysis reads a POSIX shell's words. PowerShell takes a backslash as part of a
+    // path, where a POSIX shell takes it for an escape: as slashes, the paths stay paths.
+    let powershell = her_tools::local_env::is_powershell(&view.env.os().shell);
+    let analyzed = if powershell { command.replace('\\', "/") } else { command.to_string() };
+    let analysis = rules::analyze(&analyzed, &ctx);
     // Deny and ask rules see every command the line may run: behind wrappers, inside
     // scripts, under an absolute path, and past git's global options.
     let matching = |decision: RuleDecision| {
@@ -367,6 +371,11 @@ fn evaluate_bash(command: &str, view: &SessionView) -> Gate {
     }
     if let Some(reason) = critical_deletion(&analysis, view, home.as_deref()) {
         return ask(command.to_string(), Some(reason));
+    }
+    // What PowerShell deletes is not read from its words: every deletion is confirmed there,
+    // whatever the mode.
+    if powershell && let Some(verb) = powershell_deletion(command) {
+        return ask(command.to_string(), Some(format!("`{verb}` deletes files in PowerShell, where her cannot check what it removes.")));
     }
     if let Some(rule) = matching(RuleDecision::Ask) {
         return ask(command.to_string(), Some(rule_reason(rule)));
@@ -393,7 +402,9 @@ fn evaluate_bash(command: &str, view: &SessionView) -> Gate {
             }
             continue;
         }
+        // `mkdir`, `cp` and `mv` are other commands in PowerShell, with other options.
         if mode == PermissionMode::AcceptEdits
+            && !powershell
             && let Some(file_command) = rules::file_command(words)
         {
             match check_workspace_operands(&file_command, &found.cwds, view, home.as_deref()) {
@@ -429,6 +440,21 @@ fn rule_reason(rule: &CommandRule) -> String {
 
 fn protected_reason(name: &str) -> String {
     format!("The path is protected ({name}).")
+}
+
+/// The first command or method in a PowerShell line that deletes: `Remove-Item` and its
+/// aliases, cmd's `del` and `rd`, .NET's `Delete()`. Any word counts, inside strings and
+/// scripts too: a false alarm only asks.
+fn powershell_deletion(command: &str) -> Option<String> {
+    const VERBS: &[&str] = &["remove-item", "ri", "rm", "rmdir", "rd", "del", "erase", "clear-recyclebin", "format-volume"];
+    let lower = command.to_ascii_lowercase();
+    if lower.contains(".delete(") || lower.contains("::delete(") {
+        return Some("Delete()".into());
+    }
+    lower
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == '_'))
+        .find(|word| VERBS.contains(word))
+        .map(str::to_string)
 }
 
 /// Why the command must be confirmed for what it deletes, whatever the mode.
@@ -680,6 +706,41 @@ mod tests {
 
     fn gate(command: &str, view: &SessionView) -> Gate {
         evaluate(&bash(command), ToolKind::Mutating, view)
+    }
+
+    /// In PowerShell every deletion asks, whatever the mode and however it is written; file
+    /// commands do not run unasked in accept-edits; other commands keep their rules.
+    #[test]
+    fn powershell_deletions_always_ask() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut bypass = view(dir.path(), PermissionMode::BypassPermissions);
+        bypass.env = Arc::new(LocalEnvironment::new(dir.path().to_path_buf()).with_shell("C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
+        let asked = |command: &str, view: &SessionView| match gate(command, view) {
+            Gate::Ask { reason, .. } => reason.unwrap_or_default(),
+            other => panic!("{command}: {other:?}"),
+        };
+        for (command, verb) in [
+            ("Remove-Item -Recurse -Force C:\\Users\\me\\proj", "remove-item"),
+            ("Get-ChildItem *.log | Remove-Item", "remove-item"),
+            ("ri build", "ri"),
+            ("RM -r out", "rm"),
+            ("cmd /c rd /s /q C:\\tmp", "rd"),
+            ("del /q notes.txt", "del"),
+            ("[System.IO.Directory]::Delete('C:\\x', $true)", "Delete()"),
+        ] {
+            assert!(asked(command, &bypass).contains(&format!("`{verb}` deletes")), "{command}");
+        }
+        assert_eq!(gate("Get-ChildItem C:\\Users", &bypass), Gate::Allow);
+        assert_eq!(gate("git status", &bypass), Gate::Allow);
+        // Deny rules still read the words.
+        assert!(matches!(gate("rm -rf build", &bypass), Gate::Deny(_)));
+
+        let mut edits = view(dir.path(), PermissionMode::AcceptEdits);
+        edits.env = bypass.env.clone();
+        assert!(matches!(gate("mkdir docs", &edits), Gate::Ask { .. }), "mkdir is New-Item there");
+        let mut bash_edits = view(dir.path(), PermissionMode::AcceptEdits);
+        bash_edits.env = Arc::new(LocalEnvironment::new(dir.path().to_path_buf()).with_shell("/bin/bash"));
+        assert_eq!(gate("mkdir docs", &bash_edits), Gate::Allow);
     }
 
     fn doc_call(name: &str, args: serde_json::Value) -> ToolCall {
