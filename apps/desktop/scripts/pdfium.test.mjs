@@ -34,6 +34,23 @@ test("the pinned archive is downloaded once, checked and extracted", () => {
   assert.equal(urls.length, 1, "the cache is reused");
 });
 
+test("Linux's archive of the same release is another one, with its own digest", () => {
+  const root = tmp();
+  fs.mkdirSync(path.join(root, "lib"));
+  fs.writeFileSync(path.join(root, "lib", "libpdfium.so"), "linux library");
+  fs.writeFileSync(path.join(root, "LICENSE"), "licence");
+  const archive = path.join(tmp(), "pdfium.tgz");
+  execFileSync("tar", ["-czf", archive, "-C", root, "lib", "LICENSE"]);
+  const sha256 = createHash("sha256").update(fs.readFileSync(archive)).digest("hex");
+  const urls = [];
+  const download = (url, to) => (urls.push(url), fs.copyFileSync(archive, to));
+  const release = { tag: "chromium/1", sha256: { x64: "0".repeat(64), "linux-x64": sha256, "linux-arm64": "0".repeat(64) } };
+  const dir = pdfiumFor("x64", tmp(), release, download, "linux");
+  assert.equal(fs.readFileSync(path.join(dir, pdfiumLibraryIn.linux), "utf8"), "linux library");
+  assert.deepEqual(urls, ["https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/1/pdfium-linux-x64.tgz"]);
+  assert.throws(() => pdfiumFor("arm64", tmp(), release, download, "linux"), /sha256/);
+});
+
 test("an archive that is not the pinned one is refused, and nothing is kept", () => {
   const { archive } = fakeArchive();
   const cache = tmp();

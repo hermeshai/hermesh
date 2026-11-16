@@ -37,6 +37,10 @@ import (
 //     updates hermeshd, her and the console together, and Her answers on B;
 //  4. `hermeshd uninstall` removes her and the console, and leaves ~/.her.
 //
+// The releases also carry her PDF component (docs/linux.md §4), which the
+// install command puts in her-pdf/ beside her, an update replaces with her,
+// and uninstalling removes.
+//
 // The releases' her is HERMESH_HER_LINUX, else built in Docker (linuxHer).
 func TestLinuxHer(t *testing.T) {
 	if os.Getenv("HERMESH_DOCKER") != "1" {
@@ -59,7 +63,8 @@ func TestLinuxHer(t *testing.T) {
 		b := append(slices.Clip(her), bytes.Repeat([]byte{0}, i)...)
 		h := sha256.Sum256(b)
 		herSum[v] = hex.EncodeToString(h[:])
-		releases.add(t, v, map[string][]byte{herAsset: b, "her-console.tar.gz": herConsoleArchive(t, "the console of "+v)})
+		releases.add(t, v, map[string][]byte{herAsset: b, "her-console.tar.gz": herConsoleArchive(t, "the console of "+v),
+			"her-pdf-linux-" + runtime.GOARCH + ".tar.gz": herPDFArchive(t, "the PDF worker of "+v)})
 	}
 	releases.publish("0.0.1")
 
@@ -100,6 +105,14 @@ func TestLinuxHer(t *testing.T) {
 	if err := install.Wait(); err != nil || !strings.Contains(out.String(), "› downloading "+herAsset) || !strings.Contains(out.String(), "✓ Background service on") {
 		t.Fatalf("install: %v\n%s", err, out.String())
 	}
+	// her's PDF component (docs/linux.md §4), beside her and from her release.
+	pdf := func(want string) {
+		t.Helper()
+		if s, err := sh("/root/.local/bin/her-pdf/her-doc-worker; ls /root/.local/bin/her-pdf"); err != nil || s != want+"\nher-doc-worker\nlibpdfium.so" {
+			t.Fatalf("her-pdf: %v\n%s", err, s)
+		}
+	}
+	pdf("the PDF worker of 0.0.1")
 	id := approved.MachineId
 	machineVersion := func() string {
 		if m := listedMachine(t, c, id); m != nil && m.Online && m.Status != nil {
@@ -169,9 +182,11 @@ func TestLinuxHer(t *testing.T) {
 		t.Fatalf("while Her works: the machine on %q, Her typing %v", v, typing())
 	}
 	eventually(t, 2*time.Minute, "the machine on 0.0.2 once Her is done", func() bool { return machineVersion() == "0.0.2" })
-	if s, _ := sh("sha256sum /root/.local/bin/her; ls -a /root/.local/bin"); !strings.HasPrefix(s, herSum["0.0.2"]) || !strings.Contains(s, ".her.previous") || !strings.Contains(s, ".her-console.previous") {
+	if s, _ := sh("sha256sum /root/.local/bin/her; ls -a /root/.local/bin"); !strings.HasPrefix(s, herSum["0.0.2"]) || !strings.Contains(s, ".her.previous") || !strings.Contains(s, ".her-console.previous") ||
+		!strings.Contains(s, ".her-pdf.previous") {
 		t.Errorf("her after the update: %s", s)
 	}
+	pdf("the PDF worker of 0.0.2")
 	eventually(t, 2*time.Minute, "Her running again", func() bool {
 		h := listedMachine(t, c, id).GetHer()
 		return h.GetRunning() && h.GetModelReady()
@@ -185,7 +200,7 @@ func TestLinuxHer(t *testing.T) {
 		!strings.Contains(s, "Her's assistants, conversations and settings, in /root/.her") || !strings.Contains(s, "✓ Hermesh is uninstalled for root.") {
 		t.Fatalf("uninstall: %v\n%s", err, s)
 	}
-	if left, _ := sh("pgrep -l her; ls -d /root/.local/bin/her /root/.local/bin/her-console /root/.config/google-chrome/NativeMessagingHosts/* /root/.local/share/hermesh/chrome-extension 2>/dev/null"); left != "" {
+	if left, _ := sh("pgrep -l her; ls -d /root/.local/bin/her /root/.local/bin/her-console /root/.local/bin/her-pdf /root/.config/google-chrome/NativeMessagingHosts/* /root/.local/share/hermesh/chrome-extension 2>/dev/null"); left != "" {
 		t.Errorf("left after uninstalling:\n%s", left)
 	}
 	if _, err := sh("test -f /root/.her/models.toml"); err != nil {
@@ -205,6 +220,27 @@ func herConsoleArchive(t *testing.T, text string) []byte {
 	tw.Write([]byte(page))
 	if tw.Close() != nil || zw.Close() != nil {
 		t.Fatal("console archive")
+	}
+	return b.Bytes()
+}
+
+// herPDFArchive is her-pdf-linux-<arch>.tar.gz as scripts/release.sh makes
+// it, with a worker that only says text and a library that is none: what an
+// install, an update and uninstalling do with it needs no more.
+func herPDFArchive(t *testing.T, text string) []byte {
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	tw := tar.NewWriter(zw)
+	tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: "./", Mode: 0o755})
+	for _, f := range []struct {
+		name, body string
+		mode       int64
+	}{{"./her-doc-worker", "#!/bin/sh\necho '" + text + "'\n", 0o755}, {"./libpdfium.so", "", 0o644}} {
+		tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: f.name, Mode: f.mode, Size: int64(len(f.body))})
+		tw.Write([]byte(f.body))
+	}
+	if tw.Close() != nil || zw.Close() != nil {
+		t.Fatal("her-pdf archive")
 	}
 	return b.Bytes()
 }

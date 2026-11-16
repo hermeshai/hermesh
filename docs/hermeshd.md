@@ -13,9 +13,12 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 - It installs `hermeshd` and `hermesh` in `~/.local/bin` and runs
   `hermeshd pair`: scan the code it shows with Hermesh on your iPhone (or
   enter it in the app), then type the two digits your device shows.
-- On Linux it also installs `her` and `her-console/` there (not with
-  `--cli` or `--device`), Her's kernel and its console. They run only once
-  you turn Her on for this machine in the Hermesh app
+- On Linux it also installs `her`, `her-console/`, `her-pdf/` and
+  `her-computer/` there (not with `--cli` or `--device`): Her's kernel, its
+  console, what reads PDFs for it, and agent-desktop, which Her's computer
+  use runs on a computer with a desktop ([linux.md](linux.md) §4, §5; the
+  last two need glibc). They run only once you turn
+  Her on for this machine in the Hermesh app
   ([her-server.md](her-server.md)), keeping Her's data in `~/.her`.
 - As root, it says it installs for root: press Enter, or type another
   user to install for (creating it if needed). From then on, run the

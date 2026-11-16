@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { agentDesktopBinaries, agentDesktopFiles, integrityOf } from "./agent-desktop.mjs";
+import { agentDesktopBinaries, agentDesktopFiles, agentDesktopLinuxFiles, integrityOf } from "./agent-desktop.mjs";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "hermesh-ad-"));
 
@@ -14,11 +14,14 @@ function fakePackage(corrupt = false) {
   const root = tmp();
   const bin = path.join(root, "package", "bin");
   fs.mkdirSync(bin, { recursive: true });
-  for (const name of agentDesktopFiles) {
-    for (const arch of ["arm64", "x64"]) {
-      const file = path.join(bin, `${name}-darwin-${arch}`);
-      fs.writeFileSync(file, `${name} ${arch}`);
-      fs.writeFileSync(`${file}.sha256`, `${createHash("sha256").update(`${name} ${arch}`).digest("hex")}  ${path.basename(file)}\n`);
+  for (const [system, names] of [["darwin", agentDesktopFiles], ["linux", agentDesktopLinuxFiles]]) {
+    for (const name of names) {
+      for (const arch of ["arm64", "x64"]) {
+        const file = path.join(bin, `${name}-${system}-${arch}`);
+        const body = system === "darwin" ? `${name} ${arch}` : `${name} ${system} ${arch}`;
+        fs.writeFileSync(file, body);
+        fs.writeFileSync(`${file}.sha256`, `${createHash("sha256").update(body).digest("hex")}  ${path.basename(file)}\n`);
+      }
     }
   }
   for (const arch of ["arm64", "x64"]) {
@@ -52,6 +55,10 @@ test("the pinned package is fetched once, checked, and its binaries picked by ar
   const windows = agentDesktopBinaries("arm64", cache, release, pack, "win32");
   assert.deepEqual(Object.keys(windows), ["agent-desktop.exe"]);
   assert.equal(fs.readFileSync(windows["agent-desktop.exe"], "utf8"), "agent-desktop.exe arm64");
+  // Linux's, for the release that carries them for her: the program and its clipboard helper.
+  const linux = agentDesktopBinaries("arm64", cache, release, pack, "linux");
+  assert.deepEqual(Object.keys(linux), agentDesktopLinuxFiles);
+  assert.equal(fs.readFileSync(linux["agent-desktop-linux-clipboard-owner"], "utf8"), "agent-desktop-linux-clipboard-owner linux arm64");
   assert.equal(packs, 1, "the cache is reused");
 });
 

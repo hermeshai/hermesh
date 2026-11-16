@@ -56,10 +56,23 @@ func programs() []string {
 
 // herConsole is the folder of her's console beside her, and
 // herConsoleAsset its archive in a release (docs/her-server.md §6.4).
+// herComputer is the folder of agent-desktop, which her's computer use
+// runs on a Linux desktop (docs/linux.md §5), and herPDF the folder of her
+// PDF worker and PDFium (§4), which must be her's own release's.
 const (
 	herConsole      = "her-console"
 	herConsoleAsset = "her-console.tar.gz"
+	herComputer     = "her-computer"
+	herPDF          = "her-pdf"
 )
+
+// folders are the folders beside her that an update replaces whole, each
+// with its archive in a release.
+var folders = map[string]string{
+	herConsole:  herConsoleAsset,
+	herComputer: herComputer + "-" + runtime.GOOS + "-" + runtime.GOARCH + ".tar.gz",
+	herPDF:      herPDF + "-" + runtime.GOOS + "-" + runtime.GOARCH + ".tar.gz",
+}
 
 // asset is a program's file in a release: hermeshd-linux-arm64,
 // hermeshd-windows-amd64.exe.
@@ -202,8 +215,10 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	if names == nil {
 		return nil, fmt.Errorf("no Hermesh programs in %s", dir)
 	}
-	if st, err := os.Stat(filepath.Join(dir, herConsole)); err == nil && st.IsDir() && r.sums[herConsoleAsset] != "" {
-		names = append(names, herConsole)
+	for _, name := range []string{herConsole, herComputer, herPDF} {
+		if st, err := os.Stat(filepath.Join(dir, name)); err == nil && st.IsDir() && r.sums[folders[name]] != "" {
+			names = append(names, name)
+		}
 	}
 	for _, name := range names {
 		if err := download(ctx, dir, name, r); err != nil {
@@ -217,7 +232,7 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 		path := filepath.Join(dir, name)
 		prev := previousPath(dir, name)
 		os.RemoveAll(prev)
-		if name == herConsole { // a folder, moved aside whole
+		if folders[name] != "" { // a folder, moved aside whole
 			if err := os.Rename(path, prev); err != nil {
 				return nil, err
 			}
@@ -246,8 +261,8 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 // download puts name's next version beside it, checked.
 func download(ctx context.Context, dir, name string, r *Release) error {
 	file := asset(name)
-	if name == herConsole {
-		file = herConsoleAsset
+	if folders[name] != "" {
+		file = folders[name]
 	}
 	want := r.sums[file]
 	if want == "" {
@@ -261,7 +276,7 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 		return fmt.Errorf("%s does not match its checksum", file)
 	}
 	tmp := newPath(dir, name)
-	if name == herConsole {
+	if folders[name] != "" {
 		os.RemoveAll(tmp)
 		if err := unpack(body, tmp); err != nil {
 			return fmt.Errorf("cannot unpack %s: %w", file, err)
@@ -290,7 +305,8 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 // only from a release that carries them.
 func ownVersion(name string) bool { return name == "her" || name == "hermesh-screen" }
 
-// unpack writes the folders and files of a .tar.gz into dir.
+// unpack writes the folders and files of a .tar.gz into dir, its programs
+// as programs.
 func unpack(body []byte, dir string) error {
 	zr, err := gzip.NewReader(bytes.NewReader(body))
 	if err != nil {
@@ -320,7 +336,11 @@ func unpack(body []byte, dir string) error {
 			var b []byte
 			if b, err = io.ReadAll(tr); err == nil {
 				os.MkdirAll(filepath.Dir(path), 0o755)
-				err = os.WriteFile(path, b, 0o644)
+				mode := os.FileMode(0o644)
+				if h.Mode&0o111 != 0 {
+					mode = 0o755
+				}
+				err = os.WriteFile(path, b, mode)
 			}
 		}
 		if err != nil {

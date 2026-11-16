@@ -12,6 +12,10 @@
 #   HER_WINDOWS_AMD64, HER_WINDOWS_ARM64  her for Windows, which install.ps1 puts beside hermeshd
 #   HER_CONSOLE               her console's built files (her/apps/console/dist)
 #   SCREEN_LINUX_AMD64, SCREEN_LINUX_ARM64  hermesh-screen for Linux (apps/screen/linux/build-release.sh)
+#   HER_PDF_LINUX_AMD64, HER_PDF_LINUX_ARM64  folders with her-doc-worker (her's PDF worker, against glibc) and
+#                             PDFium (node apps/desktop/scripts/pdfium.mjs linux <x64|arm64> <folder> puts PDFium there)
+#   HER_COMPUTER_LINUX_AMD64, HER_COMPUTER_LINUX_ARM64  folders with agent-desktop for Linux, which
+#                             Her's computer use runs (node apps/desktop/scripts/agent-desktop.mjs linux <x64|arm64> <folder>)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${VERSION:?set VERSION}"
@@ -38,6 +42,10 @@ done
 [ -z "${SCREEN_LINUX_AMD64:-}" ] || install -m 0755 "$SCREEN_LINUX_AMD64" "$OUT/hermesh-screen-linux-amd64"
 [ -z "${SCREEN_LINUX_ARM64:-}" ] || install -m 0755 "$SCREEN_LINUX_ARM64" "$OUT/hermesh-screen-linux-arm64"
 [ -z "${HER_CONSOLE:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-console.tar.gz" -C "$HER_CONSOLE" .
+[ -z "${HER_PDF_LINUX_AMD64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-pdf-linux-amd64.tar.gz" -C "$HER_PDF_LINUX_AMD64" .
+[ -z "${HER_PDF_LINUX_ARM64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-pdf-linux-arm64.tar.gz" -C "$HER_PDF_LINUX_ARM64" .
+[ -z "${HER_COMPUTER_LINUX_AMD64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-computer-linux-amd64.tar.gz" -C "$HER_COMPUTER_LINUX_AMD64" .
+[ -z "${HER_COMPUTER_LINUX_ARM64:-}" ] || COPYFILE_DISABLE=1 tar -czf "$OUT/her-computer-linux-arm64.tar.gz" -C "$HER_COMPUTER_LINUX_ARM64" .
 # The version, signed with the programs, for installed ones to update (docs/machine-updates.md).
 printf '%s\n' "${VERSION#v}" > "$OUT/version"
 (cd "$OUT" && (command -v sha256sum >/dev/null && sha256sum her* version || shasum -a 256 her* version) > checksums.txt)

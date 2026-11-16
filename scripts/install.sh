@@ -2,7 +2,8 @@
 # Hermesh installer. Downloads release binaries from GitHub Releases,
 # verifies them against a signed checksum list, installs them under
 # ~/.local/bin (a Linux machine: with her and her-console/, Her's kernel and
-# its console, and hermesh-screen, Computer Control's helper) and (for
+# its console, her-computer/ and her-pdf/, what her computer use and her PDF
+# tools run, and hermesh-screen, Computer Control's helper) and (for
 # machines) starts pairing.
 #
 #   Add a machine:   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- [connection address]
@@ -330,6 +331,30 @@ if [ "$MODE" = machine ] && grep -q " her-$OS-$ARCH\$" "$TMP/checksums.txt"; the
   rm -rf "$BIN_DIR/her-console"
   cp -R "$TMP/her-console" "$BIN_DIR/her-console"
   [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-console"
+fi
+# agent-desktop, which Her's computer use runs on a desktop (docs/linux.md
+# §5), in a folder of its own beside her: its clipboard helper refuses a
+# folder that others can write to. It needs glibc.
+if [ "$MODE" = machine ] && grep -q " her-computer-$OS-$ARCH.tar.gz\$" "$TMP/checksums.txt" \
+  && { [ -e /lib64/ld-linux-x86-64.so.2 ] || [ -e /lib/ld-linux-aarch64.so.1 ]; }; then
+  fetch "her-computer-$OS-$ARCH.tar.gz"
+  mkdir "$TMP/her-computer"
+  tar -xzf "$TMP/her-computer-$OS-$ARCH.tar.gz" -C "$TMP/her-computer"
+  rm -rf "$BIN_DIR/her-computer"
+  cp -R "$TMP/her-computer" "$BIN_DIR/her-computer"
+  chmod -R u+rwX,go-w,go+rX "$BIN_DIR/her-computer"
+  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-computer"
+fi
+# Her's PDF worker and PDFium (docs/linux.md §4), from the same release as
+# her, which is static and cannot load the library itself. They need glibc.
+if [ "$MODE" = machine ] && grep -q " her-pdf-$OS-$ARCH.tar.gz\$" "$TMP/checksums.txt" \
+  && { [ -e /lib64/ld-linux-x86-64.so.2 ] || [ -e /lib/ld-linux-aarch64.so.1 ]; }; then
+  fetch "her-pdf-$OS-$ARCH.tar.gz"
+  mkdir "$TMP/her-pdf"
+  tar -xzf "$TMP/her-pdf-$OS-$ARCH.tar.gz" -C "$TMP/her-pdf"
+  rm -rf "$BIN_DIR/her-pdf"
+  cp -R "$TMP/her-pdf" "$BIN_DIR/her-pdf"
+  [ -z "$AS" ] || chown -R "$FOR_USER:$(id -gn "$FOR_USER")" "$BIN_DIR/her-pdf"
 fi
 # Computer Control's helper, beside hermeshd, which starts it while one of
 # the owner's devices sees this screen (docs/computer-control-linux.md).

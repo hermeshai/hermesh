@@ -188,10 +188,11 @@ func (h *Host) supervise(ctx context.Context, done chan struct{}) {
 // serve runs her once: until it stops, or ctx ends and it is stopped.
 func (h *Host) serve(ctx context.Context) error {
 	env := h.cfg.Env()
-	if (runtime.GOOS == "darwin" || runtime.GOOS == "windows") && !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "HER_DESKTOP=") }) {
+	if (runtime.GOOS == "darwin" || runtime.GOOS == "windows" || runtime.GOOS == "linux") && !slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, "HER_DESKTOP=") }) {
 		// Computer use is on unless the owner's configuration turns it off:
 		// macOS asks the owner for its permissions first (docs/her-server.md
-		// §4.4), and Windows asks for none.
+		// §4.4), Windows asks for none, and on Linux her offers it only while
+		// someone is logged in to the desktop (docs/linux.md §5).
 		env = append(env, "HER_DESKTOP=on")
 	}
 	home, _ := os.UserHomeDir()

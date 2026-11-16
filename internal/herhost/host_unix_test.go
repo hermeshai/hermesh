@@ -295,10 +295,10 @@ func TestHostSaysWhyHerFails(t *testing.T) {
 	}
 }
 
-// On a Mac her runs with computer use on unless the owner's configuration
-// turns it off (HER_DESKTOP=on); hermeshd's own HER_DESKTOP wins, and
-// elsewhere none is set.
-func TestHostTurnsComputerUseOnOnAMac(t *testing.T) {
+// On a Mac and on Linux her runs with computer use on unless the owner's
+// configuration turns it off (HER_DESKTOP=on); hermeshd's own HER_DESKTOP
+// wins.
+func TestHostTurnsComputerUseOn(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "her")
 	os.WriteFile(bin, []byte("#!/bin/sh\necho \"her: desktop ${HER_DESKTOP-unset}\" >&2\nexit 3\n"), 0o755)
 	without := func() []string {
@@ -308,7 +308,7 @@ func TestHostTurnsComputerUseOnOnAMac(t *testing.T) {
 		env  func() []string
 		want string
 	}{
-		{without, map[bool]string{true: "on", false: "unset"}[runtime.GOOS == "darwin"]},
+		{without, map[bool]string{true: "on", false: "unset"}[runtime.GOOS == "darwin" || runtime.GOOS == "linux"]},
 		{func() []string { return append(without(), "HER_DESKTOP=off") }, "off"},
 	} {
 		h := New(Config{Bin: bin, Socket: shortSocket(t), Env: c.env})

@@ -116,7 +116,7 @@ func uninstall(ctx context.Context, w io.Writer, ask func(string) (string, error
 	if p := filepath.Join(filepath.Dir(bin), "hermesh"); exists(p) {
 		programs = append([]string{p}, programs...)
 	}
-	for _, name := range []string{"her", "her-console", "hermesh-screen"} {
+	for _, name := range []string{"her", "her-console", "her-computer", "her-pdf", "hermesh-screen"} {
 		if p := filepath.Join(filepath.Dir(bin), name); exists(p) {
 			programs = append(programs, p)
 		}

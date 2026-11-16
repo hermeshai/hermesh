@@ -15,12 +15,15 @@ export const pdfiumRelease = {
     x64: "40865f34642c34d82cc336132df9e0347133f4692cd46776647af160f9a5cca9",
     "win-arm64": "ab7c45c25fc8456fd9b94666ce3dd27a940f4984f54b328f012468f869d34346",
     "win-x64": "808d36da9bc5a3104315fb307c80998121f565ee53953633bf33e80d7429e5ac",
+    // Linux's, which Hermesh's release carries beside her PDF worker (docs/linux.md §4).
+    "linux-arm64": "d7247b33ae5545615a5e877235dd97afc879e3a8805689684f528cae3339d352",
+    "linux-x64": "d9d67bc40af03aef4fe28a60b19b1086f28ace019c8c9caf19cb7fe3d14ceca3",
   },
 };
 
 export const pdfiumLibrary = "libpdfium.dylib";
-/** The library in an extracted release, by system: the Mac's (`mac`) or Windows' (`win`). */
-export const pdfiumLibraryIn = { mac: path.join("lib", pdfiumLibrary), win: path.join("bin", "pdfium.dll") };
+/** The library in an extracted release, by system: the Mac's (`mac`), Windows' (`win`) or Linux's (`linux`). */
+export const pdfiumLibraryIn = { mac: path.join("lib", pdfiumLibrary), win: path.join("bin", "pdfium.dll"), linux: path.join("lib", "libpdfium.so") };
 
 /**
  * The folder `pdfiumFor` extracted the release for `arch` (arm64 or x64) and `system` into, from
@@ -69,4 +72,17 @@ export function minimalPdf() {
 
 function curl(url, to) {
   execFileSync("curl", ["--fail", "--location", "--silent", "--show-error", "--output", to, url], { stdio: "inherit" });
+}
+
+// `node pdfium.mjs linux <x64|arm64> <folder>`: PDFium and its licence into the folder a Linux
+// release carries as her-pdf-linux-<arch>.tar.gz (scripts/release.sh), beside her PDF worker.
+if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename && process.argv[2] === "linux") {
+  const [arch, folder] = process.argv.slice(3);
+  if (!pdfiumRelease.sha256[`linux-${arch}`] || !folder) throw new Error("usage: pdfium.mjs linux <x64|arm64> <folder>");
+  const from = pdfiumFor(arch, path.join(import.meta.dirname, "..", "node_modules", ".cache", "pdfium"), pdfiumRelease, curl, "linux");
+  fs.mkdirSync(folder, { recursive: true });
+  fs.chmodSync(folder, 0o755);
+  fs.copyFileSync(path.join(from, pdfiumLibraryIn.linux), path.join(folder, "libpdfium.so"));
+  fs.copyFileSync(path.join(from, "LICENSE"), path.join(folder, "PDFium-LICENSE"));
+  for (const name of ["libpdfium.so", "PDFium-LICENSE"]) fs.chmodSync(path.join(folder, name), 0o644);
 }
