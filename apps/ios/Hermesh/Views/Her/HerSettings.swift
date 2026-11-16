@@ -302,6 +302,7 @@ func herData(_ m: HerMachine) -> Bool { m.hasStatus ? m.status.her.data : m.her.
 /// choices says so.
 struct HerChoices: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var size
     /// Inside a sheet the signing sheet can't show over it: Face ID asks at once, the owner having chosen here.
     var signedHere = false
     var onDone: (String) -> Void = { _ in }
@@ -329,15 +330,19 @@ struct HerChoices: View {
         case .unsupported(let why): String(localized: "Can’t run Her: \(why)")
         case nil: String(localized: "Online · \(platformText(m.status.platform))")
         }
-        return HStack(spacing: 12) {
-            Image(systemName: machineIcon(m)).font(.body).frame(width: 36, height: 36)
-                .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(m.machineName).font(.subheadline.weight(.semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                if herData(m) { Text("Her’s data from before is still here").font(.caption).foregroundStyle(.secondary) }
+        // In the largest text sizes the button goes under the machine, whose name then has the row's width.
+        let layout = size.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            HStack(spacing: 12) {
+                Image(systemName: machineIcon(m)).font(.body).frame(width: 36, height: 36)
+                    .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(m.machineName).font(.subheadline.weight(.semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(size.isAccessibilitySize ? nil : 2)
+                    if herData(m) { Text("Her’s data from before is still here").font(.caption).foregroundStyle(.secondary) }
+                }
             }
-            Spacer(minLength: 8)
+            if !size.isAccessibilitySize { Spacer(minLength: 8) }
             if turning == m.machineID {
                 ProgressView()
             } else {

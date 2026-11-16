@@ -802,7 +802,10 @@ What changes, because Her may run on another computer than the app:
 
 - **Environments.** One at a time. At the page's top, in the middle, is
   Her's avatar, larger than a bar's, with its name on a capsule over the avatar's lower
-  edge, on the Mac as on the iPhone; the conversation scrolls under them.
+  edge, on the Mac as on the iPhone; the conversation scrolls under them,
+  fading as it reaches them. On the iPhone, while the keyboard is up, the
+  avatar shrinks into the row of buttons beside a short capsule (the name
+  and the team's dot), giving the conversation the room.
   On the Mac, when there are two or more environments, the capsule also
   holds the environment shown as a quiet menu ("Her · Mac mini"): each
   environment with whether it is online and its unread count, then Add

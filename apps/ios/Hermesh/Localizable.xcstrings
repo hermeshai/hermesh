@@ -1922,6 +1922,16 @@
         }
       }
     },
+    "Closes the team panel": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起团队面板"
+          }
+        }
+      }
+    },
     "Codex · Your server": {
       "localizations": {
         "zh-Hans": {
@@ -3305,6 +3315,16 @@
         }
       }
     },
+    "Her’s Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 的设置"
+          }
+        }
+      }
+    },
     "Her’s scheduled tasks show here once she runs on one of your machines.": {
       "localizations": {
         "zh-Hans": {
@@ -4621,6 +4641,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "此图无法绘制。"
+          }
+        }
+      }
+    },
+    "This is taking longer than usual. You can keep waiting, look at Her’s settings, or run her on another machine.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动比平时久一些。你可以继续等，看看 Her 的设置，或者换一台机器运行她。"
           }
         }
       }

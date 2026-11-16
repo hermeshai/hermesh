@@ -75,8 +75,6 @@ struct HerConversation: View {
                 reveal(key, in: proxy, after: .zero)
             }
         }
-        // Nothing drawn under the top: the conversation scrolls under Her's mark and the menu button as it is.
-        .scrollEdgeEffectHidden(true, for: .top)
         // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)

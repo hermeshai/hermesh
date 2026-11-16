@@ -169,7 +169,14 @@ func iphoneHerEnv(t *testing.T) []string {
 	if err := os.WriteFile(without, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	env := append(herEnv(her, herConsole(t), home, mock.base), "HER_TEST_WITHOUT="+without)
+	// Her slow to start, as on a computer where she takes a while (testHerStarting, POST /her-slow): while this
+	// file is there, her waits before she starts. Her by the wrapper's name, which restartHerWithout looks for.
+	slow := filepath.Join(t.TempDir(), "her-slow")
+	wrapper := filepath.Join(t.TempDir(), "her")
+	if err := os.WriteFile(wrapper, []byte(fmt.Sprintf("#!/bin/bash\nwhile [ -e %q ]; do sleep 0.2; done\nexec -a \"$0\" %q \"$@\"\n", slow, her)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := append(herEnv(wrapper, herConsole(t), home, mock.base), "HER_TEST_WITHOUT="+without, "HER_TEST_SLOW="+slow)
 	// Nor a key or model from this computer, which the login shell may have.
 	for _, kv := range shellenv.Environ() {
 		if name, _, _ := strings.Cut(kv, "="); strings.HasSuffix(name, "_API_KEY") || name == "HER_MODEL" {
@@ -505,6 +512,29 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			methods = strings.Split(m, ",")
 		}
 		if err := restartHerWithout(w, methods); err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		reply(rw, map[string]string{})
+	})
+	// Her slow to start (testHerStarting): POST makes her wait before she starts, DELETE lets her.
+	mux.HandleFunc("/her-slow", func(rw http.ResponseWriter, r *http.Request) {
+		var slow string
+		for _, kv := range w.daemonEnv {
+			if v, ok := strings.CutPrefix(kv, "HER_TEST_SLOW="); ok {
+				slow = v
+			}
+		}
+		var err error
+		switch {
+		case slow == "":
+			err = fmt.Errorf("the owner Mac runs no her with HER_TEST_SLOW")
+		case r.Method == http.MethodPost:
+			err = os.WriteFile(slow, nil, 0o600)
+		default:
+			err = os.Remove(slow)
+		}
+		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}

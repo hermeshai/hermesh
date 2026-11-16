@@ -119,20 +119,32 @@ struct MachineRow: View {
     let machine: Machine
     var trusted = false
 
+    @Environment(\.dynamicTypeSize) private var size
+
     var body: some View {
         let m = machine
-        let running = Int(m.status.runningSessions)
-        HStack(spacing: 12) {
-            Image(systemName: machineIcon(m)).frame(width: 28, height: 28).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(m.machineName)
-                    if trusted { TrustedMark() }
+        // In the largest text sizes the state goes under the name, which then has the row's width.
+        let layout = size.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
+            HStack(spacing: 12) {
+                Image(systemName: machineIcon(m)).frame(width: 28, height: 28).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Text(m.machineName)
+                        if trusted { TrustedMark() }
+                    }
+                    Text(m.online ? platformText(m.status.platform) : String(localized: "Last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))"))
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
-                Text(m.online ? platformText(m.status.platform) : String(localized: "Last online \(m.hasLastSeen ? agoText(m.lastSeen.date, now: model.now) : String(localized: "a long time ago"))"))
-                    .font(.subheadline).foregroundStyle(.secondary)
             }
-            Spacer()
+            if !size.isAccessibilitySize { Spacer() }
+            state(m)
+        }
+    }
+
+    private func state(_ m: Machine) -> some View {
+        let running = Int(m.status.runningSessions)
+        return HStack(spacing: 12) {
             Circle().fill(m.online ? Color.green : .clear).strokeBorder(m.online ? .clear : Color.secondary, lineWidth: 1.5)
                 .frame(width: 8, height: 8)
             Group {
@@ -148,6 +160,8 @@ struct MachineRow: View {
             }
             .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
         }
+        // Under the name, past the icon.
+        .padding(.leading, size.isAccessibilitySize ? 40 : 0)
     }
 }
 

@@ -23,8 +23,10 @@ struct HerView: View {
 }
 
 /// One environment's Her: the menu button, her mark large in the middle with her name tag over its lower edge,
-/// Progress at the right (the work she sent out, docs/her-team.md §15), and the conversation scrolling under them. The tag says what the team is doing (docs/her-team.md §4.2) and
-/// opens the team panel; her mark opens her settings.
+/// Progress at the right (the work she sent out, docs/her-team.md §15), and the conversation scrolling under them,
+/// fading as it reaches them. The tag says what the team is doing (docs/her-team.md §4.2) and opens the team panel;
+/// her mark opens her settings, or closes the panel while it shows. While the keyboard is up her mark is small, in
+/// the row of buttons beside a short tag, and the conversation has the room (docs/her-server.md §9).
 private struct HerPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
@@ -34,6 +36,10 @@ private struct HerPage: View {
     let machine: HerMachine
     /// The team panel shows.
     @State private var team = false
+    /// The keyboard is up.
+    @State private var typing = false
+    /// How tall the status bar is, where the conversation fades out.
+    @State private var statusBar: CGFloat = 0
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
@@ -44,6 +50,19 @@ private struct HerPage: View {
             } else {
                 HerStatus(machine: machine, state: state)
             }
+        }
+        // The whole page whatever shows: her mark at the top and the panel's dim over all of it, not around a
+        // status as tall as its words.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Scrolled up, the conversation fades out under her mark and the buttons (the bar's own edge blurs it there)
+        // and is gone by the status bar: the clock is never read over a message.
+        .mask {
+            VStack(spacing: 0) {
+                Color.clear.frame(height: statusBar)
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 28)
+                Color.black
+            }
+            .ignoresSafeArea()
         }
         // Over the conversation and its composer, under her mark: the panel grows from where the tag is.
         .overlay(alignment: .top) {
@@ -75,6 +94,10 @@ private struct HerPage: View {
             }
         }
         .safeAreaBar(edge: .top) { header(chat) }
+        // Outside the bar, the top inset is the status bar's (or the system's bar's, beside the menu).
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusBar = $0 }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in setTyping(true) }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in setTyping(false) }
         // A row opened, or a sheet: the panel is done.
         .onChange(of: model.path) { team = false }
         .onChange(of: model.sheet) { team = false }
@@ -86,7 +109,9 @@ private struct HerPage: View {
     }
 
     private func header(_ chat: HerChat) -> some View {
-        ZStack(alignment: .top) {
+        // Typing, her mark gives the conversation its room; never while the panel hangs from the tag.
+        let small = typing && !team
+        return ZStack(alignment: .top) {
             HStack {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
                 Spacer()
@@ -95,37 +120,66 @@ private struct HerPage: View {
                     HerRoutinesButton(dot: herRoutineDot(bot.routines))
                 }
             }
-            VStack(spacing: -16) {
-                Button {
-                    model.path.append(.herSettings)
-                } label: {
-                    HerAvatar(size: 72, busy: chat.live.map(herBusy) ?? false)
+            if small {
+                // In the row, between the buttons and clear of them (as wide a margin each side, so in the middle).
+                HStack(spacing: 6) {
+                    avatar(chat, size: 40)
+                    tag(chat, short: true)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text(chat.bot?.name ?? "Her"))
-                .accessibilityHint(Text("Opens Her’s settings"))
-                .accessibilityIdentifier("her-avatar")
-                .zIndex(1)
-                Button {
-                    showTeam(true)
-                } label: {
-                    HerTag(name: chat.bot?.name ?? "Her", team: teamState(model.sessions, requests: model.pairings.count), paused: phase != .active)
-                        .frame(height: tagHeight)
-                        .padding(.horizontal, 14)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, 104)
+            } else {
+                VStack(spacing: -16) {
+                    avatar(chat, size: 72).zIndex(1)
+                    tag(chat, short: false)
                 }
-                .buttonStyle(.plain)
-                .accessibilityHint(Text("Shows what your agents are doing"))
-                .accessibilityIdentifier("her-tag")
-                // The panel takes its place.
-                .opacity(team ? 0 : 1)
-                .allowsHitTesting(!team)
             }
         }
+        // The tag's words grow with the text size, up to what the top has room for.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 16).padding(.bottom, 4)
+        .animation(still ? nil : .snappy(duration: 0.3), value: small)
     }
 
+    private func avatar(_ chat: HerChat, size: CGFloat) -> some View {
+        Button {
+            // Over the panel, it closes it: the settings would open from under it.
+            if team { showTeam(false) } else { model.path.append(.herSettings) }
+        } label: {
+            HerAvatar(size: size, busy: chat.live.map(herBusy) ?? false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(chat.bot?.name ?? "Her"))
+        .accessibilityHint(team ? Text("Closes the team panel") : Text("Opens Her’s settings"))
+        .accessibilityIdentifier("her-avatar")
+        .matchedGeometryEffect(id: "avatar", in: top)
+    }
+
+    private func tag(_ chat: HerChat, short: Bool) -> some View {
+        Button {
+            showTeam(true)
+        } label: {
+            HerTag(name: chat.bot?.name ?? "Her", team: teamState(model.sessions, requests: model.pairings.count), paused: phase != .active, short: short)
+                .frame(height: tagHeight)
+                .padding(.horizontal, short ? 12 : 14)
+                .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text("Shows what your agents are doing"))
+        .accessibilityIdentifier("her-tag")
+        // The panel takes its place.
+        .opacity(team ? 0 : 1)
+        .allowsHitTesting(!team)
+        .matchedGeometryEffect(id: "tag", in: top)
+    }
+
+    @Namespace private var top
     private let tagHeight: CGFloat = 36
+
+    private func setTyping(_ on: Bool) {
+        guard typing != on else { return }
+        withAnimation(still ? nil : .snappy(duration: 0.3)) { typing = on }
+    }
 
     private func showTeam(_ on: Bool) {
         if on { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
@@ -135,18 +189,27 @@ private struct HerPage: View {
 
 /// Her's name tag: her name and, beside it, the team's state, the first that holds (TeamState.Tag): one session
 /// that waits, by its coding agent; how many things wait; how many sessions failed; how many run, with their
-/// agents' logos. While something needs the owner and sessions also run, their number follows, at a ring.
+/// agents' logos. While something needs the owner and sessions also run, their number follows, at a ring. Short
+/// (while the keyboard is up), her name and the state's dot or ring alone; VoiceOver reads the words either way.
 private struct HerTag: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let name: String
     let team: TeamState
     /// Nothing turns while the app is not in front.
     let paused: Bool
+    var short = false
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(name).font(.system(size: 17, weight: .semibold))
-            if team.tag != .quiet {
+            Text(name).font(.headline)
+            if short {
+                switch team.tag {
+                case .waiting, .needYou: dot(.orange)
+                case .failed: dot(.red)
+                case .working: runningRing
+                case .quiet: EmptyView()
+                }
+            } else if team.tag != .quiet {
                 Capsule().fill(.tertiary).frame(width: 1, height: 14)
                 switch team.tag {
                 case .waiting(let agent):
@@ -174,10 +237,25 @@ private struct HerTag: View {
                 }
             }
         }
-        .font(.system(size: 15, weight: .medium))
+        .font(.subheadline.weight(.medium))
         .lineLimit(1)
         .animation(still ? nil : .snappy, value: team.tag)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: spoken))
+    }
+
+    /// What the tag says, in words.
+    private var spoken: String {
+        var parts = [name]
+        switch team.tag {
+        case .waiting(let agent): parts.append(String(localized: "\(agentShortTitle(agent)) is waiting"))
+        case .needYou(let n): parts.append(String(localized: "\(n) need you"))
+        case .failed(let n): parts.append(String(localized: "\(n) failed"))
+        case .working(let n): parts.append(String(localized: "\(n) working"))
+        case .quiet: break
+        }
+        if case .working = team.tag {} else if team.tag != .quiet && !team.running.isEmpty { parts.append("\(team.running.count)") }
+        return parts.joined(separator: ", ")
     }
 
     private func dot(_ color: Color) -> some View { Circle().fill(color).frame(width: 9, height: 9) }
@@ -213,7 +291,8 @@ private struct TeamPanel: View {
             ScrollView { content(team, today: today) }.scrollIndicators(.hidden)
         }
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 34, style: .continuous))
-        .padding(.horizontal, 10).padding(.bottom, 24)
+        // Short of the composer's row however much it lists: the dim to tap stays in sight on a small iPhone.
+        .padding(.horizontal, 10).padding(.bottom, 88)
         .task { await model.loadWork(.today) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("team-panel")
@@ -390,11 +469,59 @@ private struct HerStatus: View {
                 Label("Her couldn’t start on \(name)", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(error).textSelection(.enabled)
+            } actions: {
+                HerWayOut()
             }
         case .starting:
-            PageLoader(text: "Her is starting on \(name)…")
+            HerStarting(name: name)
         default:
             PageLoader(text: "Reading the conversation…", bare: true)
         }
+    }
+}
+
+/// Her starting on a machine; past the while it usually takes, it says so, and what the owner can do meanwhile.
+private struct HerStarting: View {
+    let name: String
+    @State private var long = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            PageLoader(text: "Her is starting on \(name)…")
+            if long {
+                VStack(spacing: 16) {
+                    Text("This is taking longer than usual. You can keep waiting, look at Her’s settings, or run her on another machine.")
+                        .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    HerWayOut()
+                }
+                .padding(.horizontal, 32)
+                .transition(.opacity)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("her-starting-long")
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(15))
+            withAnimation { long = true }
+        }
+    }
+}
+
+/// Where the owner can go while Her doesn't run where she was turned on: her settings (turning her off there), or
+/// another machine to run her on.
+private struct HerWayOut: View {
+    @Environment(AppModel.self) private var model
+    @State private var adding = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Button("Her’s Settings") { model.path.append(.herSettings) }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("her-status-settings")
+            Button("Turn On Her on Another Machine…") { adding = true }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("her-status-another")
+        }
+        .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
     }
 }
