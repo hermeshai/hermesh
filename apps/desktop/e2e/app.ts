@@ -1,4 +1,4 @@
-import { _electron as electron, type ElectronApplication, type Page } from "@playwright/test";
+import { _electron as electron, expect, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -124,3 +124,26 @@ export async function answerMenu(app: ElectronApplication, id: string) {
 
 
 export { navTo, sessionList } from "./sessions";
+
+/** Measure after navigation's column transition and the map's resize delivery. */
+export async function mapHeight(map: Locator): Promise<number> {
+  await map.locator(".lmap-box").evaluate((box) => Promise.all(box.closest(".mainwrap")!.getAnimations().map((a) => a.finished)));
+  await expect.poll(() => map.locator(".lmap-box").evaluate((box) => {
+    const stage = box.querySelector<HTMLElement>(".lmap-stage")!;
+    const expected = document.createElement("div").style;
+    expected.transform = `scale(${Math.min(1.15, box.clientWidth / stage.offsetWidth)})`;
+    return stage.style.transform === expected.transform;
+  })).toBe(true);
+  return (await map.boundingBox())!.height;
+}
+
+/** Closing the target can interrupt the input acknowledgement itself. */
+export async function clickToClose(button: Locator): Promise<void> {
+  const page = button.page();
+  await Promise.all([
+    page.waitForEvent("close"),
+    button.click({ noWaitAfter: true }).catch((error: unknown) => {
+      if (!page.isClosed() || !(error instanceof Error) || !/^locator\.click: Target page, context or browser has been closed(?:\n|$)/.test(error.message)) throw error;
+    }),
+  ]);
+}
