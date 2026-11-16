@@ -76,6 +76,6 @@
     "window": "in a window there",
     "noWindow": "with no window",
     "missing": "There is no Chrome on the {{computer}} Her runs on. Install Google Chrome there, and Her finds it.",
-    "linuxInstall": "On Ubuntu or Debian (x86-64), in a terminal there:"
+    "linuxInstall": "On Ubuntu or Debian, in a terminal there:"
   }
 }

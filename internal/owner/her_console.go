@@ -235,7 +235,8 @@ func (c *herConsole) startSignin(w http.ResponseWriter, r *http.Request) {
 	go s.srv.Serve(ln)
 	time.AfterFunc(signinGiveUp, func() {
 		s.srv.Close()
-		s.finish(map[string]string{"error": "no sign-in came back in time"})
+		// The console says it in the person's language, by the error's name.
+		s.finish(map[string]string{"error": "signin_timeout", "error_description": "no sign-in came back in time"})
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"id": id, "redirect_uri": "http://127.0.0.1:" + s.port + req.Path})
 }

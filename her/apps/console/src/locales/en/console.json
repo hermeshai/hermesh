@@ -19,7 +19,8 @@
   "close": "Close",
   "error": {
     "disconnected": "The connection to Her was lost",
-    "notConnected": "Not connected to Her yet"
+    "notConnected": "Not connected to Her yet",
+    "signinTimedOut": "Nobody signed in within 10 minutes. Start the sign-in again."
   },
   "time": {
     "justNow": "just now",

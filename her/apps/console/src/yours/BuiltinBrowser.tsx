@@ -9,7 +9,9 @@ import { builtin, builtinConfig, herSystem, programName } from "./yours";
 // is on goes with browser control, at the top of the page.
 
 /** Google Chrome for Linux comes as a .deb for x86-64 only. */
-const LINUX_INSTALL = "wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb\nsudo apt install ./google-chrome-stable_current_amd64.deb";
+// Google Chrome's package for the computer's own architecture: x86-64 or, since 2026, arm64.
+const LINUX_INSTALL =
+  "wget https://dl.google.com/linux/direct/google-chrome-stable_current_$(dpkg --print-architecture).deb\nsudo apt install ./google-chrome-stable_current_$(dpkg --print-architecture).deb";
 
 export function BuiltinBrowser({ browser }: { browser: BrowserState }) {
   const { t } = useTranslation("yours");
