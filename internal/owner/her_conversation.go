@@ -393,6 +393,8 @@ func (o *Owner) keepDeliveries(machineID string, req *herv1.Request, res *herv1.
 		Before *json.RawMessage `json:"before"`
 		Query  string           `json:"query"`
 		Kind   string           `json:"kind"`
+		Media  *bool            `json:"media"`
+		Source *json.RawMessage `json:"source"`
 		Seq    int64            `json:"seq"`
 	}
 	if json.Unmarshal(req.Params, &p) != nil || p.BotID == "" || p.BotID != o.st.herBotID(machineID) {
@@ -402,7 +404,7 @@ func (o *Owner) keepDeliveries(machineID string, req *herv1.Request, res *herv1.
 	switch {
 	case req.Method == "deliveries/seen":
 		err = o.st.seeHerDeliveries(machineID, p.Seq)
-	case p.Before == nil && p.Query == "" && p.Kind == "":
+	case p.Before == nil && p.Query == "" && p.Kind == "" && p.Media == nil && p.Source == nil:
 		_, err = o.st.db.Exec(`INSERT INTO her_deliveries(machine_id,page) VALUES(?,?) ON CONFLICT(machine_id) DO UPDATE SET page=excluded.page`, machineID, res.GetResult())
 	}
 	if err != nil {

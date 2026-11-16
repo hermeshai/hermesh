@@ -220,6 +220,94 @@ async fn a_routine_said_in_the_chat_runs_at_its_time_and_the_bot_tells_the_user(
 }
 
 /// Nothing to tell: the chat stays as it was, and the record says what it checked.
+/// What a routine's run made is the routine's in the list of what the bot sent
+/// (docs/her-deliverables.md §4.11): sent when its report woke the bot, and sent again later because
+/// the owner asked for it. What the owner asked for in the chat stays the conversation's; the list
+/// shows one source's files, and says which sources there are.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_files_a_routine_made_are_its_whenever_the_bot_sends_them() {
+    // Files changed without asking, as a run cannot ask: it writes in the bot's folder.
+    let env = TestEnv::new("accept-edits", "").await;
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    client.request("initialize", json!({"protocol_version": 2, "client_info": {"name": "e2e"}})).await.unwrap();
+    let mut wire = route(incoming);
+    let schema = SchemaCheck::new(&["DeliveriesListResult", "DeliveriesSourcesResult"]);
+    let bot = the_bot(&client).await;
+    let session = open(&client, &bot).await;
+
+    say(&client, &session, "[[mock:routine_file:早报|in 2s|brief.md]]").await;
+    // Making a routine is asked about; the owner says yes.
+    let asked = until_event(&mut wire, |e| e["type"] == "approval_requested" || ended(e)).await;
+    let mut events = asked.clone();
+    if let Some(ask) = asked.last().filter(|e| e["type"] == "approval_requested") {
+        let approve = json!({"session_id": session, "op": {"type": "approval", "call_id": ask["call_id"], "decision": {"type": "approve"}}});
+        client.request("session/op", approve).await.expect("approved");
+        events = until_event(&mut wire, ended).await;
+    }
+    let change = events.iter().find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "manage_routine").expect("made");
+    let routine_id = change["result"]["details"]["routine_id"].as_str().unwrap().to_string();
+
+    // At its time: the run writes the file, and its report wakes the bot, which sends it.
+    let events = until_event(&mut wire, ended).await;
+    let mail = &events.iter().find(|e| e["type"] == "message_completed" && e["mail"].is_object()).expect("the report")["mail"];
+    let run = mail["from"]["id"].as_str().unwrap().to_string();
+    assert!(
+        events.iter().any(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && !e["result"]["is_error"].as_bool().unwrap()),
+        "{events:?}"
+    );
+    let brief = env.home.path().join("bots").join(&bot).join("files").join("brief.md");
+    assert!(std::fs::read_to_string(&brief).unwrap().starts_with("# 早报"), "the run wrote it");
+
+    // Later, the owner asks for it again, with a file of their own.
+    std::fs::write(brief.with_file_name("mine.md"), "我的笔记").unwrap();
+    say(&client, &session, "[[mock:attach:brief.md,mine.md]] 再发我一次").await;
+    until_event(&mut wire, ended).await;
+
+    let list = |source: Value| {
+        let client = &client;
+        let bot = bot.clone();
+        async move {
+            let mut params = json!({"bot_id": bot});
+            if !source.is_null() {
+                params["source"] = source;
+            }
+            client.request("deliveries/list", params).await.unwrap()
+        }
+    };
+    // Recorded as the calls complete, by a writer of its own: a moment.
+    let mut all = Value::Null;
+    for _ in 0..50 {
+        all = list(Value::Null).await;
+        if all["files"].as_array().is_some_and(|f| f.len() == 2) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    schema.check("DeliveriesListResult", &all);
+    let file = |name: &str| all["files"].as_array().unwrap().iter().find(|f| f["name"] == name).cloned().unwrap_or(Value::Null);
+    let versions = file("brief.md")["versions"].as_array().cloned().unwrap_or_default();
+    assert_eq!(versions.len(), 1, "sent twice as it was: one version, its latest send");
+    let source = &versions[0]["source"];
+    assert_eq!((source["kind"].as_str(), source["id"].as_str(), source["name"].as_str()), (Some("routine"), Some(routine_id.as_str()), Some("早报")), "{all}");
+    assert_eq!(source["run"], run.as_str(), "and the run that wrote it");
+    assert!(file("mine.md")["versions"][0].get("source").is_none(), "the owner's own file: the conversation's");
+
+    let only = list(json!({"kind": "routine", "id": routine_id})).await;
+    assert_eq!(only["files"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect::<Vec<_>>(), ["brief.md"]);
+    let only = list(json!({"kind": "conversation"})).await;
+    assert_eq!(only["files"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect::<Vec<_>>(), ["mine.md"]);
+
+    let sources = client.request("deliveries/sources", json!({"bot_id": bot})).await.unwrap();
+    schema.check("DeliveriesSourcesResult", &sources);
+    assert_eq!(
+        sources,
+        json!({"sources": [
+            {"filter": {"kind": "conversation"}, "files": 1, "media": 0, "latest": file("mine.md")["versions"][0]["seq"]},
+            {"filter": {"kind": "routine", "id": routine_id}, "name": "早报", "files": 1, "media": 0, "latest": file("brief.md")["versions"][0]["seq"]},
+        ], "silent": 0})
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_run_with_nothing_to_tell_stays_out_of_the_chat() {
     let env = TestEnv::new("bypass-permissions", "").await;

@@ -269,17 +269,7 @@ fn keep_copy(dir: &Path, from: &Path) -> io::Result<(PathBuf, String, u64)> {
     let work = tempfile::Builder::new().prefix(".copy-").tempdir_in(dir)?;
     let copy = work.path().join(name);
     std::fs::copy(from, &copy)?;
-    let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
-    let (mut file, mut buf, mut size) = (std::fs::File::open(&copy)?, vec![0; 64 * 1024], 0);
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        digest.update(&buf[..n]);
-        size += n as u64;
-    }
-    let sha256: String = digest.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    let (sha256, size) = sha256_of(&copy)?;
     let kept = dir.join(&sha256).join(name);
     if !kept.is_file() {
         std::fs::create_dir_all(dir.join(&sha256))?;
@@ -289,6 +279,60 @@ fn keep_copy(dir: &Path, from: &Path) -> io::Result<(PathBuf, String, u64)> {
         std::fs::set_permissions(&kept, permissions)?;
     }
     Ok((kept, sha256, size))
+}
+
+/// The SHA-256 of a file's content, in hex, and its size. Blocking I/O.
+fn sha256_of(path: &Path) -> io::Result<(String, u64)> {
+    let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
+    let (mut file, mut buf, mut size) = (std::fs::File::open(path)?, vec![0; 64 * 1024], 0);
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        digest.update(&buf[..n]);
+        size += n as u64;
+    }
+    Ok((digest.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect(), size))
+}
+
+/// How many entries of a folder `written_since` looks at, at most.
+const MAX_WALK: usize = 20_000;
+
+/// The files under `dir` changed since `since`, each with the SHA-256 of its content now: what a
+/// routine's run wrote in the bot's folder, so that a file the bot sends with that content is
+/// known to come from the run (docs/her-deliverables.md §4.11). Hidden files and folders are
+/// passed over, as are links and files too large to keep a copy of. Blocking I/O.
+pub fn written_since(dir: &Path, since: std::time::SystemTime) -> Vec<(PathBuf, String)> {
+    let (mut out, mut dirs, mut seen) = (Vec::new(), vec![dir.to_path_buf()], 0);
+    while let Some(dir) = dirs.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            seen += 1;
+            if seen > MAX_WALK {
+                return out;
+            }
+            if entry.file_name().to_string_lossy().starts_with('.') {
+                continue;
+            }
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                dirs.push(entry.path());
+            } else if kind.is_file()
+                && let Ok(meta) = entry.metadata()
+                && meta.len() <= MAX_COPY
+                && meta.modified().is_ok_and(|at| at >= since)
+                && let Ok((sha256, _)) = sha256_of(&entry.path())
+            {
+                out.push((entry.path(), sha256));
+            }
+        }
+    }
+    out
 }
 
 /// A file's entry in the result's details, for user interfaces: where it is, how large, and for
@@ -482,5 +526,24 @@ mod tests {
         assert!(asks(&json!({ "text": "Which one?", "options": [{ "label": "A" }] })));
         assert!(!asks(&json!({ "text": "Done.", "options": [] })));
         assert!(!asks(&json!({ "type": "text", "text": "Done.", "options": [{ "label": "A" }] })));
+    }
+
+    #[test]
+    fn what_a_run_wrote_is_what_changed_in_the_folder_since_it_started() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("old.md"), "before").unwrap();
+        let since = std::time::SystemTime::now();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::create_dir_all(dir.path().join("reports")).unwrap();
+        std::fs::write(dir.path().join("reports/brief.md"), "hello").unwrap();
+        std::fs::create_dir_all(dir.path().join(".cache")).unwrap();
+        std::fs::write(dir.path().join(".cache/x"), "hidden").unwrap();
+        std::fs::write(dir.path().join(".notes"), "hidden").unwrap();
+
+        let found = written_since(dir.path(), since);
+        assert_eq!(
+            found,
+            vec![(dir.path().join("reports/brief.md"), "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824".to_string())]
+        );
     }
 }

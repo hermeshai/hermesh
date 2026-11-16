@@ -147,6 +147,30 @@ The prototype is the reference; this section states the rules.
 | The machine's Hermesh is older | The entry shows with the "需更新" mark, and its page is the Needs Update view (version-skew.md §6.2) |
 | A file with no copy | It opens from its path, as today. If the path is gone, the row says the file is no longer on the machine |
 
+### 3.5 By source (2026-11-16)
+
+Where a file came from is not on its row: most rows would say the same
+thing, and the list stays two lines. It is a filter instead, light to reach
+and out of the way (prototype: `her-deliveries-filter-demo.html`).
+
+- **The entry**: one glass button at the top right of the files page
+  (iPhone) and by Close at the top of the panel (Mac). Filled with the tint
+  while a source is chosen.
+- **What opens**: on the iPhone a sheet from the bottom, half the screen,
+  dragged up for all of it, where a thumb reaches and many sources fit; on
+  the Mac a menu under the button, as a mouse reaches anywhere alike.
+- **What it lists**: All Sources; Asked in the Conversation; Routines; and
+  Coding Sessions, each with how many files the current tab shows. The
+  latest first, not by name, so the daily briefs stay on top. With more
+  than eight sources, a search. A source with none in the tab can't be
+  chosen. A deleted routine stays, marked deleted: its files do. The
+  routines that sent no file are not listed, but a line at the end says how
+  many there are.
+- **Chosen**: the sheet or menu closes; under the tabs a bar says which
+  source and how many files, with × to show all again. It works with the
+  tabs and the search. One source at a time.
+- **A file's source** is its latest send's.
+
 ## 4. How it works
 
 ```
@@ -264,15 +288,7 @@ keeps records that change and get queried (`db.rs`).
 **Kind** is from the name's extension, by one table in `her-protocol` that
 both clients' icons use too; a picture is what `sent_file` found to be one.
 
-**What it came from** follows what the clients' conversation already does
-(`Chat.swift`, `botChat.ts`). A message Her sends after a routine's report
-(`MailInfo.routine_id`, named by `from.name`) and before the owner's next
-message is marked as that routine's. A message she sends after a session's
-news (`MailKind::News`, `from`) has that session's card under it. The
-record takes the latest such mail since the owner's last message and the
-last task's end, as the clients do. It is read from the conversation's
-transcript as the hub holds it when the send completes, so nothing is kept
-between events and a conversation loaded again needs no catching up.
+**What it came from**: §4.11.
 
 A session's news is named by whoever the mesh host names (`mesh/news`'s
 `from`), which need not be the session's title. So the record keeps the
@@ -424,6 +440,45 @@ overstates: a copy of an unchanged file takes no space of its own.
   that let her read the file stands as before.
 - **Search** runs as bound parameters, never as SQL text.
 
+### 4.11 Where a file came from (2026-11-16)
+
+The first rule followed what the clients' conversation does: the latest
+routine report or session news since the owner's last message and the last
+task's end. It missed two things that happen: a routine's report wakes Her,
+she gives the work to a sub-agent, and sends its file in a later task woken
+by that agent's report; and a routine's file sent later, because the owner
+asked for it again. The record now goes by three rules, the first that
+applies:
+
+1. **Who wrote the content.** When a routine's run ends, her looks in the
+   bot's folder for the files changed since the run started whose names the
+   run's own log mentions (the folder is shared with the conversation,
+   which may be writing there too), and keeps their SHA-256 (`run_files`:
+   the run, the routine and its name, the path, the hash). A file sent with
+   one of those contents is the routine's, whenever it is sent. Sends made
+   before the run's end was saved, since the report reaches Her first, are
+   claimed then, if made after the run started.
+2. **What woke the send.** The latest of what Her was told since the last
+   task's end: a routine's report is that routine's (and its run); news of
+   a coding session is that session's; the owner's message is the
+   conversation's. A sub-agent's report goes back to the call that last
+   gave that agent work (`spawn_agent` or `send_message`, by `agent_id` in
+   its result) and is whatever Her was doing then.
+3. **Otherwise** the conversation's.
+
+The record keeps the run (`source_run`) too. A run that cannot write, as in
+the strict mode where nothing is changed without asking and nobody is there
+to ask, makes no files; what its report woke is still its by rule 2.
+
+`deliveries/sources` counts files by their latest send's source: a routine
+by its id and its name now, sessions by their name (each session is new, its
+name stays), and how many of them are pictures, video or audio, so a tab
+shows its own count. `deliveries/list` takes `source` (`conversation`,
+`routine` with `id`, `session` with `name`). hermeshd keeps only the page
+that has no filter at all, `media` and `source` included.
+
+Records written before this keep the source the first rule gave them.
+
 ## 5. Tests
 
 | Layer | What |
@@ -553,6 +608,22 @@ that does not exist answers not found before it is judged outside the
 folder, so a copy that was removed is not found, and the client's rule
 (§4.8) falls back to the path either way.
 
+### 6.4 What is built (2026-11-16): where a file came from, and the filter
+
+§4.11 in her-server (`deliveries.rs`: `SCHEMA_V3`, `source_of` following sub-agents back, `run_files` and
+`run_ended`, `sources`, `list`'s `source`), her-core (`bot::written_since`), her-protocol
+(`DeliverySourceFilter`, `deliveries/sources`), hermeshd (allowed; the page kept only without any filter), the
+shared cases (`testdata/deliveries.json`), the Mac's menu and the iPhone's sheet (§3.5), and her-mock's
+`write` and `routine_file`.
+
+Tests: `deliveries.rs` (a sub-agent's work traced back, a run's content claimed whenever sent, the filter, the
+sources); her-cli `e2e_routines` (a routine's run writes a file, sent on and asked for again: the routine's
+both times); `TestHerDeliveries` through hermeshd; the Mac's `her-deliveries.spec.ts` and the iPhone's
+`testHerDeliveries` (the filter, chosen and cleared). With GPT-6.1-Sol, in a kept test home with full access
+(`~/.her-test`): the owner's file is the conversation's; a one-off routine's brief is the routine's with its run,
+when its report woke Her and when the owner asked for it again; the sources and one source's files are right.
+With files changed without asking, the run could not run `date` and wrote nothing, which its report said.
+
 ## 7. The owner's decisions
 
 | Question | Decision |
@@ -565,6 +636,9 @@ folder, so a copy that was removed is not found, and the client's rule
 | Removing old versions | Not in this version: keep all, and show the size on the Storage page |
 | Conversations in the trash | Left out of the backfill (§4.7) |
 | A session's name as a source | The session's id is recorded; the client names it (§4.2) |
+| Where a file came from | Not on its row; a light filter by source instead (§3.5): the iPhone's from the bottom |
+| Choosing sources | One at a time |
+| Routines that sent no file | Not listed; a line says how many |
 
 The owner settled the name, what is listed, the interaction and the copy,
 and left the rest to this design's recommendations.

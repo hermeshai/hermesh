@@ -1920,6 +1920,8 @@ export type DeliveriesListParams = {
   media?: boolean | null;
   /** Only files with this in their name, in the bot's words or in what they came from, in any version, without regard to case. */
   query?: string | null;
+  /** Only files whose latest send came from this (`deliveries/sources`). */
+  source?: DeliverySourceFilter | null;
 };
 
 /** Result of `deliveries/list`. */
@@ -1936,6 +1938,17 @@ export type DeliveriesSeenParams = {
   bot_id: string;
   /** The highest `seq` the list showed. The mark never goes back. */
   seq: number;
+};
+
+export type DeliveriesSourcesParams = {
+  bot_id: string;
+};
+
+/** Result of `deliveries/sources`: where a bot's files came from, the latest first. */
+export type DeliveriesSourcesResult = {
+  /** The bot's routines that sent no file: not listed. */
+  silent: number;
+  sources: DeliverySourceCount[];
 };
 
 /** One send of a file. */
@@ -1967,6 +1980,34 @@ export type DeliveryKind = "doc" | "sheet" | "slide" | "image" | "video" | "audi
 export type DeliverySource = {
   id: string;
   kind: DeliverySourceKind;
+  name: string;
+  /** A routine's run it came from (`bots/routine_run`), when known. */
+  run?: string | null;
+};
+
+/** A source of a bot's files: those whose latest send came from it. */
+export type DeliverySourceCount = {
+  /** How many files, and how many of them are pictures, video or audio. */
+  files: number;
+  /** What `deliveries/list` takes to show them. */
+  filter: DeliverySourceFilter;
+  /** A routine that was deleted: the files it sent stay. */
+  gone?: boolean;
+  /** Its latest send (`Delivery::seq`). */
+  latest: number;
+  media: number;
+  /** What it is called now: a routine's current name, a session's, or none for the conversation. */
+  name?: string | null;
+};
+
+/** What a list of files keeps by where they came from. */
+export type DeliverySourceFilter = {
+  kind: "conversation";
+} | {
+  id: string;
+  kind: "routine";
+} | {
+  kind: "session";
   name: string;
 };
 
@@ -5011,6 +5052,7 @@ export interface Methods {
   "deck/view": [DeckViewParams, DeckViewResult];
   "deliveries/list": [DeliveriesListParams, DeliveriesListResult];
   "deliveries/seen": [DeliveriesSeenParams, Empty];
+  "deliveries/sources": [DeliveriesSourcesParams, DeliveriesSourcesResult];
   "desktop/status": [Record<string, never>, DesktopStatus];
   "doc/apply": [DocApplyParams, DocApplyResult];
   "doc/autofill": [DocAutofillParams, DocApplyResult];

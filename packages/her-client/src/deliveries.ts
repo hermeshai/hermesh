@@ -5,7 +5,7 @@
 // HermeshHer (Deliveries.swift) does the same, and both run the cases in
 // testdata/deliveries.json.
 
-import type { DeliveredFile, DeliveriesListResult, Delivery, DeliveryKind } from "@hermesh/her-protocol";
+import type { DeliveredFile, DeliveriesListResult, Delivery, DeliveryKind, DeliverySourceCount, DeliverySourceFilter } from "@hermesh/her-protocol";
 import type { ReplyQuote } from "./steps.ts";
 
 /** When a file was last sent, as the list groups it. */
@@ -72,4 +72,37 @@ export function joinDeliveries(pages: DeliveriesListResult[]): DeliveriesListRes
   }
   const last = pages.at(-1);
   return { files, seen: Math.max(0, ...pages.map((p) => p.seen)), ...(last?.next !== undefined ? { next: last.next } : {}) };
+}
+
+/** Two filters of where files came from are the same one. */
+export function sameSource(a: DeliverySourceFilter | null | undefined, b: DeliverySourceFilter | null | undefined): boolean {
+  if (!a || !b) return !a && !b;
+  if (a.kind === "routine" && b.kind === "routine") return a.id === b.id;
+  if (a.kind === "session" && b.kind === "session") return a.name === b.name;
+  return a.kind === b.kind;
+}
+
+/** The file came from that source: its latest send did (deliveries/list's `source`, for the page kept offline). */
+export function fromSource(f: DeliveredFile, filter: DeliverySourceFilter): boolean {
+  const s = f.versions[0]?.source;
+  if (filter.kind === "conversation") return !s;
+  if (filter.kind === "routine") return s?.kind === "routine" && s.id === filter.id;
+  return s?.kind === "session" && s.name === filter.name;
+}
+
+/** How many of a source's files a tab shows: all, only media, or only documents. */
+export function sourceCount(s: DeliverySourceCount, media: boolean | undefined): number {
+  return media === undefined ? s.files : media ? s.media : s.files - s.media;
+}
+
+/** The sources as the filter lists them, each kind apart and the latest first; a search keeps those with it in their name. */
+export function sourceGroups(sources: DeliverySourceCount[], query: string): { conversation?: DeliverySourceCount; routines: DeliverySourceCount[]; sessions: DeliverySourceCount[] } {
+  const q = query.trim().toLowerCase();
+  const kept = sources.filter((s) => (q ? (s.name ?? "").toLowerCase().includes(q) : true));
+  const conversation = kept.find((s) => s.filter.kind === "conversation");
+  return {
+    ...(conversation ? { conversation } : {}),
+    routines: kept.filter((s) => s.filter.kind === "routine"),
+    sessions: kept.filter((s) => s.filter.kind === "session"),
+  };
 }

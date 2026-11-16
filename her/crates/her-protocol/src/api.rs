@@ -250,6 +250,8 @@ pub mod method {
     pub const DELIVERIES_LIST: &str = "deliveries/list";
     /// The owner looked at that list: nothing in it is new.
     pub const DELIVERIES_SEEN: &str = "deliveries/seen";
+    /// Where the files in that list came from, to show one source's.
+    pub const DELIVERIES_SOURCES: &str = "deliveries/sources";
     // A bot's routines (docs/kernel/routine-design.md §8). New ones and edits come from the chat.
     pub const BOTS_ROUTINE: &str = "bots/routine";
     pub const BOTS_ROUTINE_RUNS: &str = "bots/routine_runs";
