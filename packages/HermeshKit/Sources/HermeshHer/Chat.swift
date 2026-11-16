@@ -514,6 +514,17 @@ public func herBusy(_ v: HerSession) -> Bool {
     (v.live.map { $0.approvals.isEmpty } ?? false) || v.agents.contains { $0.status == "running" }
 }
 
+/// A sub-agent at work, as the busy bubble names it: what Her called the work, else its name (the Mac's busyBubble).
+public struct HerWorkingAgent: Equatable, Sendable {
+    public var id: String
+    public var label: String
+}
+
+/// The sub-agents at work, in the order Her started them.
+public func herWorkingAgents(_ v: HerSession) -> [HerWorkingAgent] {
+    v.agents.filter { $0.status == "running" }.map { HerWorkingAgent(id: $0.id, label: $0.description.isEmpty ? $0.name : $0.description) }
+}
+
 /// The op that answers an approval: Her's own, or a sub-agent's.
 public func herApprovalOp(_ a: HerApproval, agent: HerAgent?, decision: JSON) -> JSON {
     if let agent { return ["type": "agent_approval", "agent": .string(agent.id), "call_id": .string(a.callID), "decision": decision] }
