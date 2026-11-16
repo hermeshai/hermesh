@@ -1,24 +1,21 @@
 // The files Her sent, in a list of their own (docs/her-deliverables.md §3.1,
 // §4.3): what both apps read of deliveries/list. her answers the pages; here
-// they are joined, grouped by time or by what they came from, marked new, and
+// they are joined, grouped by when each was last sent, marked new, and
 // turned into what to read and the quote a reply carries. The iPhone's
 // HermeshHer (Deliveries.swift) does the same, and both run the cases in
 // testdata/deliveries.json.
 
-import type { DeliveredFile, DeliveriesListResult, Delivery, DeliverySource } from "@hermesh/her-protocol";
+import type { DeliveredFile, DeliveriesListResult, Delivery, DeliveryKind } from "@hermesh/her-protocol";
 import type { ReplyQuote } from "./steps.ts";
-
-/** How the list is grouped. */
-export type DeliveryGroupBy = "time" | "source";
 
 /** When a file was last sent, as the list groups it. */
 export type DeliveryDay = "today" | "yesterday" | "week" | "earlier";
 
-/**
- * A group of the list: by time, its day; by source, `conversation` for what the owner asked for, else
- * `routine:<id>` or `session:<id>`, with that source as its latest file names it.
- */
-export type DeliveryGroup = { key: string; source?: DeliverySource; files: DeliveredFile[] };
+/** A group of the list: the day its files were last sent. */
+export type DeliveryGroup = { key: DeliveryDay; files: DeliveredFile[] };
+
+/** Pictures, video and audio: what the list shows apart from documents (deliveries/list's `media`). */
+export const isMediaKind = (kind: DeliveryKind) => kind === "image" || kind === "video" || kind === "audio";
 
 const DAY = 86_400_000;
 
@@ -29,15 +26,13 @@ export function deliveryDay(sentAt: string, now: number, offsetMinutes: number):
   return ago <= 0 ? "today" : ago === 1 ? "yesterday" : ago < 7 ? "week" : "earlier";
 }
 
-/** The files in groups, each group where its first file is (the files come newest first). */
-export function groupDeliveries(files: DeliveredFile[], by: DeliveryGroupBy, now: number, offsetMinutes: number): DeliveryGroup[] {
+/** The files by the day each was last sent, each group where its first file is (the files come newest first). */
+export function groupDeliveries(files: DeliveredFile[], now: number, offsetMinutes: number): DeliveryGroup[] {
   const groups: DeliveryGroup[] = [];
   for (const f of files) {
-    const v = f.versions[0];
-    const source = v?.source;
-    const key = by === "time" ? deliveryDay(v?.sent_at ?? "", now, offsetMinutes) : source ? `${source.kind}:${source.id}` : "conversation";
+    const key = deliveryDay(f.versions[0]?.sent_at ?? "", now, offsetMinutes);
     let g = groups.find((g) => g.key === key);
-    if (!g) groups.push((g = { key, ...(by === "source" && source ? { source } : {}), files: [] }));
+    if (!g) groups.push((g = { key, files: [] }));
     g.files.push(f);
   }
   return groups;

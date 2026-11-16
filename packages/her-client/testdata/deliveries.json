@@ -1,57 +1,256 @@
 {
-  "_": "The files Her sent, as both apps read deliveries/list (docs/her-deliverables.md §3.1, §4.3): grouping, what is new, what to read, the quote for a reply, pages joined. her-client's deliveries.test.ts and HermeshHer's DeliveriesTests.swift run these. Times: now is 2026-11-16 14:40 at UTC+8 (06:40Z).",
+  "_": "The files Her sent, as both apps read deliveries/list (docs/her-deliverables.md §3.1, §4.3): grouping by time, which files are media, what is new, what to read, the quote for a reply, pages joined. her-client's deliveries.test.ts and HermeshHer's DeliveriesTests.swift run these. Times: now is 2026-11-16 14:40 at UTC+8 (06:40Z).",
   "now": "2026-11-16T06:40:00Z",
   "offset_minutes": 480,
   "page": {
     "seen": 4,
     "next": 2,
     "files": [
-      { "path": "/h/bots/her/files/杭州出差行程.pdf", "name": "杭州出差行程.pdf", "kind": "doc", "versions": [
-        { "seq": 9, "session_id": "s2", "call_id": "c9", "size": 184000, "sha256": "p9", "snapshot": "/h/bots/her/sent/p9/杭州出差行程.pdf", "text": "行程排好了。", "sent_at": "2026-11-16T06:32:00Z" } ] },
-      { "path": "/h/bots/her/files/晨报-11-16.md", "name": "晨报-11-16.md", "kind": "doc", "versions": [
-        { "seq": 8, "session_id": "s2", "call_id": "c8", "size": 5600, "sha256": "m8", "snapshot": "/h/bots/her/sent/m8/晨报-11-16.md", "text": "早上好。", "sent_at": "2026-11-16T00:00:00Z",
-          "source": { "kind": "routine", "id": "rtn_1", "name": "每日晨报" } } ] },
-      { "path": "/h/bots/her/files/Q3 竞品分析.docx", "name": "Q3 竞品分析.docx", "kind": "doc", "versions": [
-        { "seq": 7, "session_id": "s2", "call_id": "c7", "size": 1310000, "sha256": "d7", "snapshot": "/h/bots/her/sent/d7/Q3 竞品分析.docx", "text": "加好了：最前面是一页结论摘要。", "sent_at": "2026-11-15T16:05:00Z" },
-        { "seq": 3, "session_id": "s1", "call_id": "c3", "size": 1100000, "sha256": "d3", "snapshot": "/h/bots/her/sent/d3/Q3 竞品分析.docx", "text": "初稿好了。", "sent_at": "2026-11-15T02:26:00Z" } ] },
-      { "path": "/h/bots/her/files/接口联调报告.md", "name": "接口联调报告.md", "kind": "doc", "versions": [
-        { "seq": 5, "session_id": "s1", "call_id": "c5", "size": 12400, "sha256": "r5", "snapshot": "/h/bots/her/sent/r5/接口联调报告.md", "text": "联调跑完了：42 个接口过了 40 个。", "sent_at": "2026-11-15T09:20:00Z",
-          "source": { "kind": "session", "id": "ses_9", "name": "接口联调脚本" } } ] },
-      { "path": "/Users/me/合同.pdf", "name": "合同.pdf", "kind": "doc", "versions": [
-        { "seq": 4, "session_id": "s1", "call_id": "c4", "size": 9, "sent_at": "2026-11-12T03:00:00Z" } ] },
-      { "path": "/h/bots/her/files/晨报-11-15.md", "name": "晨报-11-15.md", "kind": "doc", "versions": [
-        { "seq": 2, "session_id": "s1", "call_id": "c2", "size": 5300, "sha256": "m2", "snapshot": "/h/bots/her/sent/m2/晨报-11-15.md", "text": "早上好。", "sent_at": "2026-11-01T00:00:00Z",
-          "source": { "kind": "routine", "id": "rtn_1", "name": "每日晨报" } } ] }
+      {
+        "path": "/h/bots/her/files/杭州出差行程.pdf",
+        "name": "杭州出差行程.pdf",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 9,
+            "session_id": "s2",
+            "call_id": "c9",
+            "size": 184000,
+            "sha256": "p9",
+            "snapshot": "/h/bots/her/sent/p9/杭州出差行程.pdf",
+            "text": "行程排好了。",
+            "sent_at": "2026-11-16T06:32:00Z"
+          }
+        ]
+      },
+      {
+        "path": "/h/bots/her/files/晨报-11-16.md",
+        "name": "晨报-11-16.md",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 8,
+            "session_id": "s2",
+            "call_id": "c8",
+            "size": 5600,
+            "sha256": "m8",
+            "snapshot": "/h/bots/her/sent/m8/晨报-11-16.md",
+            "text": "早上好。",
+            "sent_at": "2026-11-16T00:00:00Z",
+            "source": {
+              "kind": "routine",
+              "id": "rtn_1",
+              "name": "每日晨报"
+            }
+          }
+        ]
+      },
+      {
+        "path": "/h/bots/her/files/Q3 竞品分析.docx",
+        "name": "Q3 竞品分析.docx",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 7,
+            "session_id": "s2",
+            "call_id": "c7",
+            "size": 1310000,
+            "sha256": "d7",
+            "snapshot": "/h/bots/her/sent/d7/Q3 竞品分析.docx",
+            "text": "加好了：最前面是一页结论摘要。",
+            "sent_at": "2026-11-15T16:05:00Z"
+          },
+          {
+            "seq": 3,
+            "session_id": "s1",
+            "call_id": "c3",
+            "size": 1100000,
+            "sha256": "d3",
+            "snapshot": "/h/bots/her/sent/d3/Q3 竞品分析.docx",
+            "text": "初稿好了。",
+            "sent_at": "2026-11-15T02:26:00Z"
+          }
+        ]
+      },
+      {
+        "path": "/h/bots/her/files/接口联调报告.md",
+        "name": "接口联调报告.md",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 5,
+            "session_id": "s1",
+            "call_id": "c5",
+            "size": 12400,
+            "sha256": "r5",
+            "snapshot": "/h/bots/her/sent/r5/接口联调报告.md",
+            "text": "联调跑完了：42 个接口过了 40 个。",
+            "sent_at": "2026-11-15T09:20:00Z",
+            "source": {
+              "kind": "session",
+              "id": "ses_9",
+              "name": "接口联调脚本"
+            }
+          }
+        ]
+      },
+      {
+        "path": "/Users/me/合同.pdf",
+        "name": "合同.pdf",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 4,
+            "session_id": "s1",
+            "call_id": "c4",
+            "size": 9,
+            "sent_at": "2026-11-12T03:00:00Z"
+          }
+        ]
+      },
+      {
+        "path": "/h/bots/her/files/晨报-11-15.md",
+        "name": "晨报-11-15.md",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 2,
+            "session_id": "s1",
+            "call_id": "c2",
+            "size": 5300,
+            "sha256": "m2",
+            "snapshot": "/h/bots/her/sent/m2/晨报-11-15.md",
+            "text": "早上好。",
+            "sent_at": "2026-11-01T00:00:00Z",
+            "source": {
+              "kind": "routine",
+              "id": "rtn_1",
+              "name": "每日晨报"
+            }
+          }
+        ]
+      }
     ]
   },
   "by_time": [
-    { "key": "today", "files": ["杭州出差行程.pdf", "晨报-11-16.md", "Q3 竞品分析.docx"] },
-    { "key": "yesterday", "files": ["接口联调报告.md"] },
-    { "key": "week", "files": ["合同.pdf"] },
-    { "key": "earlier", "files": ["晨报-11-15.md"] }
+    {
+      "key": "today",
+      "files": [
+        "杭州出差行程.pdf",
+        "晨报-11-16.md",
+        "Q3 竞品分析.docx"
+      ]
+    },
+    {
+      "key": "yesterday",
+      "files": [
+        "接口联调报告.md"
+      ]
+    },
+    {
+      "key": "week",
+      "files": [
+        "合同.pdf"
+      ]
+    },
+    {
+      "key": "earlier",
+      "files": [
+        "晨报-11-15.md"
+      ]
+    }
   ],
-  "by_source": [
-    { "key": "conversation", "files": ["杭州出差行程.pdf", "Q3 竞品分析.docx", "合同.pdf"] },
-    { "key": "routine:rtn_1", "name": "每日晨报", "files": ["晨报-11-16.md", "晨报-11-15.md"] },
-    { "key": "session:ses_9", "name": "接口联调脚本", "files": ["接口联调报告.md"] }
+  "new": [
+    "杭州出差行程.pdf",
+    "晨报-11-16.md",
+    "Q3 竞品分析.docx",
+    "接口联调报告.md"
   ],
-  "new": ["杭州出差行程.pdf", "晨报-11-16.md", "Q3 竞品分析.docx", "接口联调报告.md"],
   "read": [
-    { "file": "Q3 竞品分析.docx", "version": 1, "path": "/h/bots/her/files/Q3 竞品分析.docx", "snapshot": "/h/bots/her/sent/d3/Q3 竞品分析.docx" },
-    { "file": "合同.pdf", "version": 0, "path": "/Users/me/合同.pdf" }
+    {
+      "file": "Q3 竞品分析.docx",
+      "version": 1,
+      "path": "/h/bots/her/files/Q3 竞品分析.docx",
+      "snapshot": "/h/bots/her/sent/d3/Q3 竞品分析.docx"
+    },
+    {
+      "file": "合同.pdf",
+      "version": 0,
+      "path": "/Users/me/合同.pdf"
+    }
   ],
   "quotes": [
-    { "file": "Q3 竞品分析.docx", "version": 0, "quote": { "ref": "c7", "own": false, "text": "Q3 竞品分析.docx\n加好了：最前面是一页结论摘要。", "partial": true } },
-    { "file": "合同.pdf", "version": 0, "quote": { "ref": "c4", "own": false, "text": "合同.pdf", "partial": true } }
+    {
+      "file": "Q3 竞品分析.docx",
+      "version": 0,
+      "quote": {
+        "ref": "c7",
+        "own": false,
+        "text": "Q3 竞品分析.docx\n加好了：最前面是一页结论摘要。",
+        "partial": true
+      }
+    },
+    {
+      "file": "合同.pdf",
+      "version": 0,
+      "quote": {
+        "ref": "c4",
+        "own": false,
+        "text": "合同.pdf",
+        "partial": true
+      }
+    }
   ],
   "next_page": {
     "seen": 4,
     "files": [
-      { "path": "/h/bots/her/files/晨报-11-15.md", "name": "晨报-11-15.md", "kind": "doc", "versions": [
-        { "seq": 2, "session_id": "s1", "call_id": "c2", "size": 5300, "sent_at": "2026-11-01T00:00:00Z" } ] },
-      { "path": "/h/bots/her/files/old.png", "name": "old.png", "kind": "image", "versions": [
-        { "seq": 1, "session_id": "s1", "call_id": "c1", "size": 10, "width": 3, "height": 2, "sent_at": "2026-10-30T00:00:00Z" } ] }
+      {
+        "path": "/h/bots/her/files/晨报-11-15.md",
+        "name": "晨报-11-15.md",
+        "kind": "doc",
+        "versions": [
+          {
+            "seq": 2,
+            "session_id": "s1",
+            "call_id": "c2",
+            "size": 5300,
+            "sent_at": "2026-11-01T00:00:00Z"
+          }
+        ]
+      },
+      {
+        "path": "/h/bots/her/files/old.png",
+        "name": "old.png",
+        "kind": "image",
+        "versions": [
+          {
+            "seq": 1,
+            "session_id": "s1",
+            "call_id": "c1",
+            "size": 10,
+            "width": 3,
+            "height": 2,
+            "sent_at": "2026-10-30T00:00:00Z"
+          }
+        ]
+      }
     ]
   },
-  "joined": ["杭州出差行程.pdf", "晨报-11-16.md", "Q3 竞品分析.docx", "接口联调报告.md", "合同.pdf", "晨报-11-15.md", "old.png"]
+  "joined": [
+    "杭州出差行程.pdf",
+    "晨报-11-16.md",
+    "Q3 竞品分析.docx",
+    "接口联调报告.md",
+    "合同.pdf",
+    "晨报-11-15.md",
+    "old.png"
+  ],
+  "media": {
+    "clip.mov": true,
+    "voice.m4a": true,
+    "photo.png": true,
+    "report.pdf": false,
+    "main.go": false,
+    "data.zip": false
+  }
 }

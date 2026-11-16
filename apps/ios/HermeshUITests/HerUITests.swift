@@ -289,9 +289,13 @@ extension HermeshUITests {
         let back = app.navigationBars.buttons["BackButton"]
         if let close = app.navigationBars.buttons.allElementsBoundByIndex.last(where: { $0.isHittable && $0.identifier != "BackButton" }) { close.tap() }
         XCTAssertTrue(back.waitForExistence(timeout: 10), "the search ended")
-        tap("her-files-kind-image")
-        XCTAssertTrue(any["her-files-empty"].firstMatch.waitForExistence(timeout: 15), "no pictures")
-        tap("her-files-kind-all")
+        // The tabs: the report is a document, and there is no media.
+        let tabs = any["her-files-tabs"].firstMatch
+        tabs.buttons["媒体"].tap()
+        XCTAssertTrue(any["her-files-empty"].firstMatch.waitForExistence(timeout: 15), "no media")
+        tabs.buttons["文档"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "the report among the documents")
+        tabs.buttons["全部"].tap()
         XCTAssertTrue(row.waitForExistence(timeout: 15))
 
         // The Mac offline: the list as last seen, and the latest version, opened before, opens from this iPhone.

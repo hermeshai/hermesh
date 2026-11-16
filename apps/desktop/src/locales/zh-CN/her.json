@@ -194,29 +194,16 @@
     "button": "文件",
     "buttonNew": "文件，{{count}} 份新的",
     "search": "搜文件名，或 Her 说过的话",
-    "kinds": {
+    "tabs": {
       "all": "全部",
-      "doc": "文档",
-      "sheet": "表格",
-      "slide": "演示",
-      "image": "图片",
-      "code": "代码"
-    },
-    "group": {
-      "label": "分组",
-      "time": "按时间",
-      "source": "按来源"
+      "documents": "文档",
+      "media": "媒体"
     },
     "day": {
       "today": "今天",
       "yesterday": "昨天",
       "week": "过去 7 天",
       "earlier": "更早"
-    },
-    "source": {
-      "conversation": "对话里要的",
-      "routine": "定时任务",
-      "session": "编程会话"
     },
     "versions": "{{count}} 个版本",
     "version": "第 {{n}} 版",
@@ -234,7 +221,6 @@
     "offline": "{{name}} 离线。这是上次看到的列表；打开过的文件这台 Mac 上还有，其余等它回来。",
     "needsMachine": "{{name}} 离线，它回来后才能打开这份",
     "earlierConversation": "这份来自已清空的对话",
-    "fromEarlier": "来自已清空的对话",
     "notInConversation": "对话里已经找不到这条消息",
     "more": "加载更多",
     "noPreview": "这类文件不能在这里预览，可以下载后打开。",
