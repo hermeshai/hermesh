@@ -43,6 +43,16 @@ enum Route: Hashable {
     case herFiles // the files Her sent (docs/her-deliverables.md §3.3), from her page's top
     case routine(String) // one of them, by id
     case routineRun(String, String) // a run of one: routine id, run id
+    case herMemory // what Her remembers (docs/her-memory.md)
+    case herModel // her model and thinking, and the model sign-ins of her environment
+    case herProvider(String) // a model provider's models, by its id
+    case herEnvironment // where Her runs: the environments, storage, the console, turning her off
+    case herStorage // where her data is on her machine
+    case herConsole // the environment's console, the web page
+    case herSkills // her skills
+    case herSkill(String) // one of them, by its folder
+    case herSearch // web search
+    case herBrowser // the browsers she uses
 
     /// A list of sessions: on a wide screen it stands as a column, what it leads to beside it.
     var isList: Bool {

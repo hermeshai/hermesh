@@ -192,25 +192,38 @@ extension HermeshUITests {
             shot("her team panel")
             closeTeam()
         }
-        if go("her-progress") { sleep(2); shot("progress"); herBackToConversation() }
-        if go("her-routines") { sleep(2); shot("routines"); herBackToConversation() }
-
-        // Her's settings and the pages they open.
+        // Her's page: each tab, and the pages its cards open.
         if go("her-avatar") {
             sleep(2)
-            shot("her settings")
-            app.swipeUp()
-            shot("her settings, further down")
-            app.swipeUp()
-            shot("her settings, end")
-            if go("her-memory") { sleep(2); shot("her memory"); back() }
-            if go("her-connectors") {
-                sleep(2)
-                shot("connectors")
-                if go("connectors-add") { sleep(1); shot("add connector"); dismiss() }
-                back()
+            shot("her page, work")
+            if go("her-progress") { sleep(2); shot("progress"); back() }
+            if go("her-files") { sleep(2); shot("files"); back() }
+            if go("her-routines") { sleep(2); shot("routines"); back() }
+            if go("her-tab-abilities") {
+                sleep(1)
+                shot("her page, abilities")
+                if go("her-memory") { sleep(2); shot("her memory"); back() }
+                if go("her-skills") { sleep(2); shot("skills"); back() }
+                if go("her-connectors") {
+                    sleep(2)
+                    shot("connectors")
+                    if go("connectors-add") { sleep(1); shot("add connector"); dismiss() }
+                    back()
+                }
+                if go("her-search") { sleep(2); shot("web search"); back() }
+                if go("her-browser") { sleep(2); shot("browser"); back() }
             }
-            if visit("her-model") { sleep(1); shot("her model"); dismiss() }
+            if go("her-tab-settings") {
+                sleep(1)
+                shot("her page, settings")
+                if go("her-model-page") { sleep(2); shot("her model"); back() }
+                if go("her-environment") {
+                    sleep(2)
+                    shot("her environment")
+                    if go("her-storage") { sleep(2); shot("storage"); back() }
+                    back()
+                }
+            }
             herBackToConversation()
         }
 

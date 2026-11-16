@@ -43,10 +43,13 @@ extension HermeshUITests {
         let name = app.buttons["her-avatar"]
         XCTAssertTrue(name.waitForExistence(timeout: 180), "Her's page")
         name.tap()
-        let row = app.descendants(matching: .any)["her-computer-control"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 60), "the row in Her's settings")
-        XCTAssertTrue(text("远程桌面").exists && text("在手机上查看并操作 owner-mac 的屏幕。").exists)
-        herShot("Computer Control: the row in Her's settings")
+        // A glass button at the top right of her page, the one tap it takes.
+        let row = app.buttons["her-computer-control"]
+        XCTAssertTrue(row.waitForExistence(timeout: 60), "Remote Desktop on her page")
+        XCTAssertTrue(row.label.contains("远程桌面"), row.label)
+        XCTAssertGreaterThan(row.frame.minX, app.windows.firstMatch.frame.midX, "at the top right")
+        XCTAssertLessThan(row.frame.maxY, app.buttons["her-tab-work"].frame.minY, "above the tabs")
+        herShot("Computer Control: Remote Desktop on her page")
         row.tap()
         // Face ID stands aside in the tests (-HermeshTestApprove); then the Mac's picture.
         XCTAssertTrue(surface.waitForExistence(timeout: 30), "the page")
@@ -69,8 +72,8 @@ extension HermeshUITests {
         let name = app.buttons["her-avatar"]
         XCTAssertTrue(name.waitForExistence(timeout: 60), "Her's page")
         name.tap()
-        let row = app.descendants(matching: .any)["her-computer-control"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 60), "the row in Her's settings")
+        let row = app.buttons["her-computer-control"]
+        XCTAssertTrue(row.waitForExistence(timeout: 60), "Remote Desktop on her page")
         row.tap()
         XCTAssertTrue(surface.waitForExistence(timeout: 30), "the page")
         let hint = app.descendants(matching: .any)["screen-relay-hint"].firstMatch
@@ -225,6 +228,6 @@ extension HermeshUITests {
         try waitFor("upright again") { surface.frame.width < surface.frame.height ? true : nil }
         tap("screen-close")
         XCTAssertTrue(surface.waitForNonExistence(timeout: 10), "the page closed")
-        XCTAssertTrue(app.descendants(matching: .any)["her-computer-control"].firstMatch.waitForExistence(timeout: 10), "back in Her's settings")
+        XCTAssertTrue(app.descendants(matching: .any)["her-computer-control"].firstMatch.waitForExistence(timeout: 10), "back on her page")
     }
 }

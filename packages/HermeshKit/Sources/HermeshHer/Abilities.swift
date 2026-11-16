@@ -218,7 +218,7 @@ public enum HerSiteLevel: String, Sendable, CaseIterable { case act, navigate, a
 
 /// What the Browser page shows (browser/status and `[browser]` of config/read): whether Her controls browsers,
 /// where new pages open, the owner's own Chrome, the built-in browser, and the sites.
-public struct HerBrowser: Equatable, Sendable {
+public struct HerBrowsers: Equatable, Sendable {
     /// The owner's Chrome: not connected and not used; connected, not used yet; used; used but not connected now;
     /// connected but too old on one side.
     public enum Yours: String, Sendable { case off, ready, on, lost, outdated }
@@ -229,6 +229,8 @@ public struct HerBrowser: Equatable, Sendable {
     public var prefersYours: Bool
     /// `browser.extension`, nil when not set.
     public var extensionUsed: Bool?
+    /// `backend = "extension"`: the old way of choosing the owner's Chrome, rewritten on the next write.
+    public var legacyBackend: Bool
     /// A desktop app shows embedded browsers there.
     public var embedded: Bool
     /// The built-in browser shows a window.
@@ -246,7 +248,7 @@ public struct HerBrowser: Equatable, Sendable {
     public var exceptions: [(origin: String, level: HerSiteLevel)]
 
     public static func == (a: Self, b: Self) -> Bool {
-        a.control == b.control && a.prefersYours == b.prefersYours && a.extensionUsed == b.extensionUsed && a.embedded == b.embedded && a.window == b.window
+        a.control == b.control && a.legacyBackend == b.legacyBackend && a.prefersYours == b.prefersYours && a.extensionUsed == b.extensionUsed && a.embedded == b.embedded && a.window == b.window
             && a.os == b.os && a.program == b.program && a.chrome == b.chrome && a.yours == b.yours && a.allSites == b.allSites
             && a.exceptions.map(\.origin) == b.exceptions.map(\.origin) && a.exceptions.map(\.level) == b.exceptions.map(\.level)
     }
@@ -256,7 +258,8 @@ public struct HerBrowser: Equatable, Sendable {
         let b = config["browser"]
         control = b["enabled"].bool
         prefersYours = b["default"].string == "yours"
-        extensionUsed = b["extension"].bool ?? (b["backend"].string == "extension" ? true : nil)
+        legacyBackend = b["backend"].string == "extension"
+        extensionUsed = b["extension"].bool ?? (legacyBackend ? true : nil)
         embedded = status["embedded"].bool ?? false
         window = status["window"].bool ?? false
         os = status["os"].string == "linux" ? "linux" : "macos"
@@ -278,6 +281,13 @@ public struct HerBrowser: Equatable, Sendable {
     public var controlling: Bool { control ?? (embedded || extensionUsed == true) }
     /// Where new pages open: the owner's Chrome only while Her uses it and it is connected.
     public var opensInYours: Bool { prefersYours && yours == .on }
+
+    /// Her uses the owner's Chrome, or stops.
+    public func extensionEdits(_ on: Bool) -> JSON {
+        var edits: [JSON] = [["key_path": "browser.extension", "value": .bool(on)]]
+        if legacyBackend { edits.append(["key_path": "browser.backend", "value": nil]) }
+        return .array(edits)
+    }
 
     public static func controlEdits(_ on: Bool) -> JSON { [["key_path": "browser.enabled", "value": .bool(on)]] }
     public static func defaultEdits(yours: Bool) -> JSON { [["key_path": "browser.default", "value": .string(yours ? "yours" : "builtin")]] }
@@ -479,10 +489,10 @@ public struct HerAbilityCalls: Sendable {
     }
     public func removeSearchKey(_ id: String) async throws { _ = try await call("credentials/delete", ["name": .string("web-search.\(id)")]) }
 
-    public func browser() async throws -> HerBrowser {
+    public func browser() async throws -> HerBrowsers {
         async let status = call("browser/status", [:])
         async let config = call("config/read", [:])
-        return HerBrowser(status: try await status, config: try await config["config"])
+        return HerBrowsers(status: try await status, config: try await config["config"])
     }
 
     public func storage() async throws -> HerStorage { HerStorage(try await call("storage/usage", [:])) }

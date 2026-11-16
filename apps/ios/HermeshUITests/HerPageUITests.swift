@@ -130,10 +130,10 @@ extension HermeshUITests {
         sleep(1)
         XCTAssertLessThanOrEqual(panel.frame.maxY, attach.frame.minY + 1, "short of the composer: \(panel.frame), \(attach.frame)")
         herShot("Her: the team panel, short of the composer")
-        // Her mark, over it, closes it; her settings stay shut.
+        // Her mark, over it, closes it; her page stays shut.
         tap("her-avatar")
         XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "her mark closes the panel")
-        XCTAssertFalse(text("运行在").exists, "not her settings")
+        XCTAssertFalse(app.buttons["her-tab-work"].exists, "not her page")
     }
 
     func herTypingRoom() throws {
