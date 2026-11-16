@@ -21,6 +21,11 @@ function fakePackage(corrupt = false) {
       fs.writeFileSync(`${file}.sha256`, `${createHash("sha256").update(`${name} ${arch}`).digest("hex")}  ${path.basename(file)}\n`);
     }
   }
+  for (const arch of ["arm64", "x64"]) {
+    const file = path.join(bin, `agent-desktop-win32-${arch}.exe`);
+    fs.writeFileSync(file, `agent-desktop.exe ${arch}`);
+    fs.writeFileSync(`${file}.sha256`, `${createHash("sha256").update(`agent-desktop.exe ${arch}`).digest("hex")}  ${path.basename(file)}\n`);
+  }
   if (corrupt) fs.writeFileSync(path.join(bin, "agent-desktop-darwin-arm64"), "tampered");
   const tarball = path.join(root, "agent-desktop-9.9.9.tgz");
   execFileSync("tar", ["-czf", tarball, "-C", root, "package"]);
@@ -43,6 +48,10 @@ test("the pinned package is fetched once, checked, and its binaries picked by ar
   assert.equal(fs.readFileSync(got["agent-desktop"], "utf8"), "agent-desktop x64");
   assert.equal(fs.readFileSync(got["agent-desktop-macos-helper"], "utf8"), "agent-desktop-macos-helper x64");
   agentDesktopBinaries("arm64", cache, release, pack);
+  // Windows has one program, under its own name.
+  const windows = agentDesktopBinaries("arm64", cache, release, pack, "win32");
+  assert.deepEqual(Object.keys(windows), ["agent-desktop.exe"]);
+  assert.equal(fs.readFileSync(windows["agent-desktop.exe"], "utf8"), "agent-desktop.exe arm64");
   assert.equal(packs, 1, "the cache is reused");
 });
 

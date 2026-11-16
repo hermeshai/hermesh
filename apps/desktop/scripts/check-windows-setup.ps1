@@ -36,6 +36,12 @@ foreach ($cli in "hermesh", "hermeshd") {
   & (Join-Path $bin "$cli.exe") version
   if ($LASTEXITCODE -ne 0) { Fail "$cli version" }
 }
+# Her beside hermeshd, which runs it from there, with what is hers.
+& (Join-Path $bin "her.exe") --version
+if ($LASTEXITCODE -ne 0) { Fail "her --version" }
+foreach ($f in "her-console\index.html", "pdfium.dll", "agent-desktop.exe") {
+  if (-not (Test-Path (Join-Path $bin $f))) { Fail "no $f beside her" }
+}
 $action = (Get-ScheduledTask -TaskName $task).Actions[0]
 Write-Host "logon task: $($action.Execute) $($action.Arguments)"
 if ($action.Execute -ne (Join-Path $bin "hermeshdw.exe") -or $action.Arguments -notmatch '--owner') { Fail "the logon task runs something else" }

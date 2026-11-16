@@ -263,6 +263,18 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable && pnpm install --frozen-lockfile
+      # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
+      - name: Read access to the NimbleOffice fork
+        shell: bash
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
+            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: build, and sign the feed
         shell: bash
         env:

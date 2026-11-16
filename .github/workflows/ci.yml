@@ -158,8 +158,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: end-to-end (desktop app)
         run: go test ./e2e -run '^TestDesktop$' -count=1 -v -timeout 30m
+      # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
+      - name: Read access to the NimbleOffice fork
+        shell: bash
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
+            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      # her is built once, with the profile that takes the least of this job's time.
       - name: package
         run: node apps/desktop/scripts/package-win.mjs
+        env:
+          HERMESH_HER_PROFILE: release
       - name: install it, open it, uninstall it
         shell: pwsh
         run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
@@ -171,6 +186,7 @@ jobs:
           openssl ec -in "$RUNNER_TEMP/test.key" -pubout -out "$RUNNER_TEMP/test.pub"
           export HERMESH_UPDATE_FEED=http://127.0.0.1:8765 HERMESH_RELEASE_URL=http://127.0.0.1:8765
           export HERMESH_RELEASE_PUBKEY_FILE="$RUNNER_TEMP/test.pub" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/test.key"
+          export HERMESH_HER_PROFILE=release
           VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
           VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
           pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
@@ -179,6 +195,7 @@ jobs:
         run: node apps/desktop/scripts/package-win.mjs
         env:
           HERMESH_ARCH: arm64
+          HERMESH_HER_PROFILE: release
       - uses: actions/upload-artifact@v4
         with:
           name: Hermesh-windows-setup
