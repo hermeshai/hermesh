@@ -33,6 +33,8 @@ final class ScreenSession: Identifiable {
     var live = false
     /// Why the session ended; nil while it lasts.
     var ended: String?
+    /// The connection dropped or the session ended since it was last connected: connected again, that is felt.
+    private var lost = false
     /// Why the machine has no picture ("screen_recording", "consent", "locked", …), or empty.
     var machineError = ""
     /// What the machine said with it.
@@ -155,9 +157,19 @@ final class ScreenSession: Identifiable {
             Task { @MainActor in
                 guard let self, self.connection === c else { return }
                 if link.phase == "failed" {
+                    Haptic.error.play()
+                    self.lost = true
                     self.ended = link.error ?? ""
                     self.keyboard = false
                 } else {
+                    // Felt as the page says it: "Reconnecting…" over the picture, then the picture again.
+                    if link.phase == "reconnecting", self.link.phase != "reconnecting", self.live {
+                        Haptic.warning.play()
+                        self.lost = true
+                    } else if link.phase == "connected", self.lost {
+                        Haptic.success.play()
+                        self.lost = false
+                    }
                     self.link = link
                 }
             }

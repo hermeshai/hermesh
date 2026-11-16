@@ -35,6 +35,12 @@ struct SessionView: View {
                     .onChange(of: s.isActive) { _, running in rebuild(running: running) }
                     // The agent asks while the owner looks.
                     .onChange(of: s.pendingQuestion?.questionID) { _, asked in if asked != nil { Haptic.asks.play() } }
+                    // A turn ends while the owner looks: done, or failed; one stopped on purpose plays none.
+                    .onChange(of: s.status) { was, now in
+                        guard [.queued, .preparing, .running, .waitingInput].contains(was), now == .idle || now == .crashed,
+                              let s = model.session(id) else { return }
+                        if s.isFailed { Haptic.error.play() } else if !s.progress.hasLastFailure { Haptic.success.play() }
+                    }
             } else {
                 PageLoader(text: "Reading the session…", bare: true)
             }
