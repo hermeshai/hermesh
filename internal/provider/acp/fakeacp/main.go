@@ -31,6 +31,10 @@
 //	                                  and drop session/set_model
 //	FAKE_ACP_ALLOW_ALWAYS_ONLY=1      offer only allow_always/reject_once
 //	FAKE_ACP_IMAGES=1                 take image prompt blocks
+//	FAKE_ACP_OPTIONS=1                advertise session/options (never creates a session)
+//	FAKE_ACP_OPTIONS_ERROR=<code>     fail session/options; "wait" waits for cancellation
+//	FAKE_ACP_CONFIG_FILE=<path>       configOptions JSON used by new/options
+//	FAKE_ACP_LOG=<path>               append method names only, for no-prompt assertions
 package main
 
 import (
@@ -160,6 +164,12 @@ func main() {
 }
 
 func handle(m msg) {
+	if path := os.Getenv("FAKE_ACP_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			fmt.Fprintln(f, m.Method)
+			f.Close()
+		}
+	}
 	var p struct {
 		SessionID string `json:"sessionId"`
 		Cwd       string `json:"cwd"`
@@ -188,9 +198,14 @@ func handle(m msg) {
 		json.Unmarshal(m.Params, &ip)
 		canElicit = ip.ClientCapabilities.Elicitation.Form != nil
 		caps := map[string]any{"loadSession": resume == "load"}
+		sessionCaps := map[string]any{}
 		if resume == "resume" {
-			caps["sessionCapabilities"] = map[string]any{"resume": map[string]any{}}
+			sessionCaps["resume"] = map[string]any{}
 		}
+		if os.Getenv("FAKE_ACP_OPTIONS") == "1" {
+			sessionCaps["options"] = map[string]any{}
+		}
+		caps["sessionCapabilities"] = sessionCaps
 		caps["promptCapabilities"] = map[string]any{"image": os.Getenv("FAKE_ACP_IMAGES") == "1"}
 		var auth []any
 		if authID != "" {
@@ -215,6 +230,21 @@ func handle(m msg) {
 		json.Unmarshal(m.Params, &params)
 		mode = params.ModeID
 		reply(m.ID, map[string]any{})
+	case "session/options":
+		if os.Getenv("FAKE_ACP_OPTIONS") != "1" {
+			replyErr(m.ID, -32601, "not advertised")
+			return
+		}
+		if code := os.Getenv("FAKE_ACP_OPTIONS_ERROR"); code != "" {
+			if code == "wait" {
+				time.Sleep(30 * time.Second)
+				return
+			}
+			n, _ := strconv.Atoi(code)
+			replyErr(m.ID, n, "sensitive server error must not be exposed")
+			return
+		}
+		reply(m.ID, map[string]any{"configOptions": modelConfig("")})
 	case "session/new":
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
@@ -225,15 +255,7 @@ func handle(m msg) {
 		save(sid, &history{})
 		res := map[string]any{"sessionId": sid}
 		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
-			var opts []any
-			for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
-				opts = append(opts, map[string]any{"value": x, "name": x})
-			}
-			res["configOptions"] = []any{
-				map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": "ask", "options": []any{map[string]any{"value": "ask"}}},
-				map[string]any{"id": "llm", "category": "model", "type": "select", "currentValue": "default",
-					"options": []any{map[string]any{"group": "g", "name": "Models", "options": opts}}},
-			}
+			res["configOptions"] = modelConfig("")
 		}
 		reply(m.ID, res)
 	case "session/load", "session/resume":
@@ -254,10 +276,17 @@ func handle(m msg) {
 				update(p.SessionID, map[string]any{"sessionUpdate": "tool_call", "toolCallId": "old", "title": "old", "kind": "edit", "status": "completed"})
 			}
 		}
-		reply(m.ID, map[string]any{})
+		res := map[string]any{}
+		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
+			res["configOptions"] = modelConfig("")
+		}
+		reply(m.ID, res)
 	case "session/set_config_option":
 		if p.ConfigID == "llm" && os.Getenv("FAKE_ACP_CONFIG") == "1" {
-			reply(m.ID, map[string]any{"configOptions": []any{}})
+			reply(m.ID, map[string]any{"configOptions": modelConfig(p.Value)})
+			if options := os.Getenv("FAKE_ACP_EAGER_UPDATE"); options != "" {
+				update(p.SessionID, map[string]any{"sessionUpdate": "config_option_update", "configOptions": json.RawMessage(options)})
+			}
 			return
 		}
 		replyErr(m.ID, -32602, "unknown config option "+p.ConfigID)
@@ -317,6 +346,8 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 	for _, line := range strings.Split(text, "\n") {
 		cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch cmd {
+		case "model-options":
+			update(sid, map[string]any{"sessionUpdate": "config_option_update", "configOptions": json.RawMessage(arg)})
 		case "say":
 			r := []rune(strings.ReplaceAll(arg, `\n`, "\n")) // split between characters, as agents stream
 			half := len(r) / 2
@@ -408,6 +439,28 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 		}
 	}
 	reply(id, map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 100, "outputTokens": 20, "cachedReadTokens": 5}})
+}
+
+func modelConfig(current string) any {
+	if file := os.Getenv("FAKE_ACP_CONFIG_FILE"); file != "" {
+		b, _ := os.ReadFile(file)
+		return json.RawMessage(b)
+	}
+	opts := []any{}
+	for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+		if x == "" {
+			continue
+		}
+		opts = append(opts, map[string]any{"value": x, "name": x})
+		if current == "" {
+			current = x
+		}
+	}
+	return []any{
+		map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": "ask", "options": []any{map[string]any{"value": "ask"}}},
+		map[string]any{"id": "llm", "category": "model", "type": "select", "currentValue": current,
+			"options": []any{map[string]any{"group": "g", "name": "Models", "options": opts}}},
+	}
 }
 
 func tool(sid, kind, title string, input map[string]any, path string, run func() (string, error)) {

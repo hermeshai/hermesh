@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap, sessionList } from "./app";
+import { clickToClose, launch, snap, sessionList } from "./app";
 import { installer, restartInstaller, type Hook } from "./install-app";
 
 test.skip(process.platform !== "darwin", "macOS updates");
@@ -239,8 +239,59 @@ test("release history fits short content and keeps its actions visible with long
   await history.locator(".update-scroll").evaluate((e) => { e.scrollTop = e.scrollHeight; });
   await expect(history.getByRole("button", { name: "完整更新历史" })).toBeInViewport();
   await snap(history, "history-long");
-  await history.getByRole("button", { name: "完成", exact: true }).click();
+  await clickToClose(history.getByRole("button", { name: "完成", exact: true }));
   await expect.poll(() => app.windows().some((p) => p.url().endsWith("#whats-new"))).toBe(false);
+  await expect(main.locator(".side-nav, .rail-nav")).toBeVisible();
+});
+
+test("Done waits for native close even when it interrupts the click acknowledgement", async () => {
+  const app = await installer(true);
+  const main = await app.firstWindow();
+  await expect(await sessionList(main)).toBeVisible();
+  for (let i = 0; i < 10; i++) {
+    const [history] = await Promise.all([app.waitForEvent("window"), clickMenu(app, "whatsNew")]);
+    const done = history.getByRole("button", { name: "完成", exact: true });
+    await expect(done).toBeVisible();
+    const id = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith("#whats-new"))!.id);
+    let clicked = false;
+    await history.exposeFunction("closeImmediately", async (trusted: boolean) => {
+      clicked = trusted;
+      await app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.destroy(), id);
+    });
+    await done.evaluate((button) => button.addEventListener("click", (event) => {
+      // Close natively while the renderer is still handling the real mouse click.
+      void (window as unknown as { closeImmediately(trusted: boolean): Promise<void> }).closeImmediately(event.isTrusted);
+      const until = performance.now() + 100;
+      while (performance.now() < until) { /* Hold the input acknowledgement. */ }
+    }, { capture: true }));
+    await clickToClose(done);
+    expect(clicked).toBe(true);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id) === null, id)).toBe(true);
+    await expect(main.locator(".side-nav, .rail-nav")).toBeVisible();
+  }
+});
+
+test("waiting for Done never accepts a disabled button or a window that stays open", async () => {
+  const app = await installer(true);
+  const main = await app.firstWindow();
+  await expect(await sessionList(main)).toBeVisible();
+  const [history] = await Promise.all([app.waitForEvent("window"), clickMenu(app, "whatsNew")]);
+  const done = history.getByRole("button", { name: "完成", exact: true });
+  await expect(done).toBeVisible();
+  history.setDefaultTimeout(1000);
+  await done.evaluate((button: HTMLButtonElement) => { button.disabled = true; });
+  await expect(clickToClose(done)).rejects.toThrow(/Timeout/);
+  await done.evaluate((button: HTMLButtonElement) => {
+    button.disabled = false;
+    button.addEventListener("click", (event) => {
+      button.dataset.clicked = String(event.isTrusted);
+      event.stopImmediatePropagation();
+    }, { capture: true });
+  });
+  await expect(clickToClose(done)).rejects.toThrow(/Timeout/);
+  await expect(done).toHaveAttribute("data-clicked", "true");
+  expect(history.isClosed()).toBe(false);
+  await expect(done).toBeVisible();
 });
 
 test("a restart restores the selected session, layout and unfinished answer", async () => {
