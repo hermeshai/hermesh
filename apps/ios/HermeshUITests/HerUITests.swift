@@ -34,18 +34,22 @@ extension HermeshUITests {
         try herProgress()
     }
 
-    /// Her's connectors (docs/her-connectors-demo.html): added on their page by an address, which Her then uses in
-    /// the conversation she has, with no card; turned off from the plus beside the composer, she no longer can; removed
-    /// on its page. The address is her-mock's test tools, open to anyone (startMCPTools).
+    /// Her's connectors (docs/her-connectors-v2-demo.html): what their page offers, with GitHub's sheet; then one
+    /// connected by its address each way her can find: needing no sign-in, a token (a wrong one first), and an
+    /// account signed in to in the browser. Her uses the first in the conversation she has, with no card; turned off
+    /// from the plus beside the composer, she no longer can; each is disconnected on its page. The addresses are
+    /// her-mock's test tools (startMCPTools).
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerConnectors go test ./e2e -run TestIPhone -v -timeout 40m
     @objc func testHerConnectors() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["HERMESH_E2E_HER"] != nil, let url = env["HERMESH_E2E_MCP_URL"] else { throw XCTSkip("run with Her built") }
+        let tokenURL = try XCTUnwrap(env["HERMESH_E2E_MCP_TOKEN_URL"]), token = try XCTUnwrap(env["HERMESH_E2E_MCP_TOKEN"])
+        let accountURL = try XCTUnwrap(env["HERMESH_E2E_MCP_ACCOUNT_URL"])
         try join()
         try herTurnOn()
         try herOnboarding()
-        try herConnectors(url)
+        try herConnectors(url, tokenURL: tokenURL, token: token, accountURL: accountURL)
     }
 
     /// Scheduled tasks (docs/kernel/routine-design.md §8), from the clock at the top right of Her's page: the list, a
@@ -877,7 +881,7 @@ extension HermeshUITests {
         herShot("Progress: ended")
     }
 
-    func herConnectors(_ url: String) throws {
+    func herConnectors(_ url: String, tokenURL: String, token: String, accountURL: String) throws {
         // Her's settings: a row of its own, with nothing yet.
         app.buttons["her-avatar"].tap()
         let row = app.buttons["her-connectors"]
@@ -887,44 +891,90 @@ extension HermeshUITests {
         XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 20), "the page, empty")
         herShot("Connectors: none yet")
 
-        // Added by its address: her checks it, finds it needs no sign-in, adds it, and lists its tools.
-        tap("connectors-add")
-        let name = app.textFields["add-connector-name"]
-        XCTAssertTrue(name.waitForExistence(timeout: 10))
-        name.tap()
-        name.typeText("tools")
-        let address = app.textFields["add-connector-url"]
-        address.tap()
-        address.typeText(url)
-        tap("add-connector-connect")
-        XCTAssertTrue(text("不需要鉴权 · 检测到").waitForExistence(timeout: 30), "the way her found")
-        herShot("Connectors: adding, how it signs in")
-        tap("add-connector-add")
-        XCTAssertTrue(app.descendants(matching: .any)["add-connector-done"].firstMatch.waitForExistence(timeout: 30), "added")
-        XCTAssertTrue(text("已添加 tools").exists && text("Her 现在就能用").exists)
-        herShot("Connectors: added")
-        tap("add-connector-close")
-        let added = app.descendants(matching: .any)["connector-tools"].firstMatch
-        XCTAssertTrue(added.waitForExistence(timeout: 10), "in the list")
-        XCTAssertTrue(text("可用 ·").waitForExistence(timeout: 20), "available, with its tools")
-        herShot("Connectors: mine")
+        // The page offers GitHub: one button, an account's sign-in; a token is the owner's to choose instead.
+        tap("connector-connect-github")
+        let go = app.buttons["connect-go"]
+        XCTAssertTrue(go.waitForExistence(timeout: 10), "GitHub's sheet")
+        XCTAssertEqual(go.label, "登录并连接", "GitHub signs in with an account")
+        XCTAssertTrue(text("Her 以你的身份使用它").exists, "what connecting means")
+        herShot("Connectors: GitHub's sheet")
+        tap("connect-token-instead")
+        XCTAssertTrue(text("用令牌连接 GitHub").waitForExistence(timeout: 10), "a token, chosen")
+        herShot("Connectors: GitHub with a token")
+        XCTAssertEqual(app.buttons["connect-back"].label, "返回")
+        tap("connect-back")
+        XCTAssertTrue(go.waitForExistence(timeout: 10), "back on what connecting means")
+        tap("connect-back")
 
-        // Its page: the tools it offers.
-        added.staticTexts["tools"].firstMatch.tap()
+        // The whole of a group, on a page of its own.
+        tap("connectors-all-development")
+        XCTAssertTrue(app.buttons["connector-connect-amplitude"].waitForExistence(timeout: 10), "the rest of the group")
+        herShot("Connectors: a whole group")
+        app.navigationBars.buttons["连接器"].firstMatch.tap()
+        XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 10), "the page again")
+
+        // An address of the owner's own that needs no sign-in: her asks it, says so, adds it, and lists its tools.
+        try herConnectAddress(url, finds: "不需要登录")
+        herShot("Connectors: an address, what her found")
+        tap("connect-go")
+        try herConnected("server")
+        herShot("Connectors: connected")
+        tap("connect-close")
+        tap("connector-view-server")
         XCTAssertTrue(app.descendants(matching: .any)["connector-page"].firstMatch.waitForExistence(timeout: 10), "its page")
-        XCTAssertTrue(text("echo").waitForExistence(timeout: 20), "its tools")
         herShot("Connectors: its page")
+        tap("connector-tools")
+        XCTAssertTrue(text("echo").waitForExistence(timeout: 20), "its tools")
+        herShot("Connectors: its tools")
+        app.navigationBars.buttons.firstMatch.tap()
+        app.navigationBars.buttons["连接器"].firstMatch.tap()
+
+        // One that wants a token: a token it refuses writes nothing; the right one connects it. Then it is
+        // disconnected on its page.
+        try herConnectAddress(tokenURL, finds: "Her 用你的令牌使用它")
+        tap("connect-go")
+        try herToken("not-the-token")
+        XCTAssertTrue(app.descendants(matching: .any)["connect-failed"].firstMatch.waitForExistence(timeout: 30), "refused")
+        herShot("Connectors: a token refused")
+        tap("connect-retry")
+        XCTAssertTrue(text("Her 用你的令牌使用它").waitForExistence(timeout: 30), "asked again")
+        XCTAssertFalse(app.buttons["connector-view-server-2"].exists, "nothing was added")
+        tap("connect-go")
+        try herToken(token)
+        try herConnected("server-2")
+        XCTAssertEqual(app.buttons["connect-back"].label, "查看 server-2")
+        tap("connect-back")
+        XCTAssertTrue(text("保存在").waitForExistence(timeout: 10), "its page says where the token is")
+        herShot("Connectors: one with a token")
+        try herDisconnect("server-2")
+
+        // One that signs in with an account: the browser, then it is connected; its page says it is signed in.
+        try herConnectAddress(accountURL, finds: "Her 以你的身份使用它")
+        XCTAssertEqual(app.buttons["connect-go"].label, "登录并连接")
+        tap("connect-go")
+        // iOS asks first whether the app may open the sign-in; the test server's sign-in page then approves at once.
+        let proceed = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["继续"]
+        XCTAssertTrue(proceed.waitForExistence(timeout: 30), "iOS asks before the sign-in opens")
+        herShot("Connectors: the sign-in, asked")
+        proceed.tap()
+        try herConnected("server-2")
+        XCTAssertEqual(app.buttons["connect-back"].label, "查看 server-2")
+        tap("connect-back")
+        XCTAssertTrue(text("mock-user").waitForExistence(timeout: 10), "its page names the account signed in to")
+        XCTAssertTrue(text("已用你的 server-2 账号登录").exists, "and says it is signed in")
+        herShot("Connectors: one with an account")
+        try herDisconnect("server-2")
         herBackToConversation()
 
-        // Her uses it in the conversation she has, with no card.
-        herSend("[[mock:mcp_env:tools:HERMESH_UI_TEST]] 用一下")
+        // Her uses the first in the conversation she has, with no card.
+        herSend("[[mock:mcp_env:server:HERMESH_UI_TEST]] 用一下")
         herAllowIfAsked()
         XCTAssertTrue(text("mcp done: (unset)").waitForExistence(timeout: 60), "what the connector said, in Her's answer")
 
         // Turned off from the plus beside the composer: Her no longer has it.
         tap("her-attach")
         tap("her-connectors-menu")
-        let toggle = app.switches["connector-switch-tools"]
+        let toggle = app.switches["connector-switch-server"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 20), "its switch in the sheet")
         XCTAssertEqual(toggle.value as? String, "1")
         herShot("Connectors: from the plus")
@@ -932,26 +982,57 @@ extension HermeshUITests {
         try waitFor("turned off (\(toggle.value ?? ""))") { toggle.value as? String == "0" ? true : nil }
         XCTAssertTrue(text("关掉的连接器，Her 从下一步起就不用了").exists, "the sheet says when it takes effect")
         app.navigationBars.buttons["完成"].tap()
-        herSend("[[mock:mcp_env:tools:HERMESH_UI_TEST]] 再用一下")
+        herSend("[[mock:mcp_env:server:HERMESH_UI_TEST]] 再用一下")
         herAllowIfAsked()
         let gone = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@ AND NOT label CONTAINS %@", "mcp done:", "(unset)")).firstMatch
         XCTAssertTrue(gone.waitForExistence(timeout: 60), "Her can't use it any more")
 
-        // Removed on its page: the list has none again.
+        // Disconnected on its page: the list has none again.
         app.buttons["her-avatar"].tap()
         tap("her-connectors")
-        let off = app.descendants(matching: .any)["connector-tools"].firstMatch
-        XCTAssertTrue(off.waitForExistence(timeout: 20))
-        XCTAssertTrue(text("已停用").waitForExistence(timeout: 10), "off, in the list")
-        off.staticTexts["tools"].firstMatch.tap()
-        tap("connector-more")
-        app.buttons["删除连接器"].firstMatch.tap()
-        let confirm = app.sheets.buttons["删除连接器"].firstMatch
+        XCTAssertTrue(text("已停用").waitForExistence(timeout: 20), "off, in the list")
+        tap("connector-view-server")
+        try herDisconnect("server")
+        XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 20), "none again")
+        herShot("Connectors: none again")
+        herBackToConversation()
+    }
+
+    /// Opens the sheet for an address of the owner's own and has her ask it: `finds` is what the sheet then says.
+    func herConnectAddress(_ url: String, finds: String) throws {
+        tap("connectors-add")
+        let address = app.textFields["connect-address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10), "the address")
+        address.tap()
+        address.typeText(url)
+        tap("connect-continue")
+        XCTAssertTrue(text(finds).waitForExistence(timeout: 30), "what her found: \(finds)")
+    }
+
+    /// Types a token into the sheet's token step and connects with it.
+    func herToken(_ token: String) throws {
+        let field = app.secureTextFields["connect-token"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the token")
+        field.tap()
+        field.typeText(token)
+        tap("connect-token-go")
+    }
+
+    /// The sheet says the connector is added, under `name`, and that Her can use it.
+    func herConnected(_ name: String) throws {
+        XCTAssertTrue(app.descendants(matching: .any)["connect-done"].firstMatch.waitForExistence(timeout: 60), "connected")
+        XCTAssertTrue(text("已添加 \(name)").exists && text("Her 现在就能用").exists, "added as \(name)")
+    }
+
+    /// Disconnects the connector whose page shows: asked first, then it is gone from the list.
+    func herDisconnect(_ name: String) throws {
+        let remove = app.descendants(matching: .any)["connector-remove"].firstMatch
+        for _ in 0..<4 where !remove.isHittable { app.swipeUp() }
+        remove.tap()
+        let confirm = app.sheets.buttons["断开"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "asked first")
         confirm.tap()
-        XCTAssertTrue(text("还没有连接器").waitForExistence(timeout: 20), "none again")
-        herShot("Connectors: removed")
-        herBackToConversation()
+        try waitFor("\(name) is gone") { self.app.buttons["connector-view-\(name)"].exists ? nil : true }
     }
 
     /// Back down the pages to Her's conversation.

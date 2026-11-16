@@ -1,6 +1,6 @@
 import Foundation
 
-// An environment's connectors, as the connectors page manages them (docs/her-connectors-demo.html): her's MCP
+// An environment's connectors, as the connectors page manages them (docs/her-connectors-v2-demo.html): her's MCP
 // servers in the user's configuration, read with mcp/list and changed with config/write, as the console does
 // (her/apps/console/src/customize). Her's conversation takes up every change from her next step.
 
@@ -32,6 +32,8 @@ public struct HerConnector: Equatable, Sendable, Identifiable {
     public let auth: Auth
     /// Signed in, for one that signs in: her's auth_state is logged_in.
     public let signedIn: Bool
+    /// The account signed in to, when the sign-in told her.
+    public let account: String?
     public let state: State
     public let tools: Int?
     public let error: String?
@@ -50,6 +52,7 @@ public struct HerConnector: Equatable, Sendable, Identifiable {
         summary = j["summary"].string ?? ""
         auth = Auth(rawValue: j["auth"].string ?? "") ?? .none
         signedIn = j["auth_state"].string == "logged_in"
+        account = j["account"].string
         let status = j["status"]
         state = State(rawValue: status["state"].string ?? "") ?? .unknown
         tools = status["tools"].int
@@ -129,6 +132,34 @@ public struct HerConnectorProbe: Equatable, Sendable {
     }
 }
 
+/// How connecting goes on from what her found (docs/her-connectors-v2-demo.html): the owner presses Connect, and
+/// the way is her's to find, an account before a token.
+public enum HerConnectWay: Equatable, Sendable {
+    /// Why a token is asked for.
+    public enum TokenReason: Sendable {
+        /// The server asks for a sign-in and offers none with an account.
+        case noAccountSignIn
+        /// It signs in with an account, but only for apps registered with it, and her is not one.
+        case registeredAppsOnly
+        /// The owner chose a token over the account.
+        case chosen
+    }
+
+    /// Nothing to sign in to: it is added as it is.
+    case open
+    /// The owner's account at the service, in the browser.
+    case account
+    case token(TokenReason)
+
+    public init(_ probe: HerConnectorProbe) {
+        switch probe.auth {
+        case .none: self = .open
+        case .oauth: self = probe.ownClient ? .token(.registeredAppsOnly) : .account
+        case .token: self = .token(.noAccountSignIn)
+        }
+    }
+}
+
 /// How a new connector signs in.
 public enum HerConnectorSignIn: Sendable, Equatable {
     case none
@@ -195,19 +226,26 @@ public struct HerConnectorCalls: Sendable {
         }
     }
 
-    /// Adds a remote connector: a token is saved first; an account is signed in to first with `signIn`, which runs
-    /// the browser (herSignInConnector with the server); then it is written and checked once. The tools it offers,
-    /// nil when the sign-in did not end with one.
+    /// Adds a remote connector: a token is saved first and tried as it would be written, and one the server refuses
+    /// is forgotten again (as the console does); an account is signed in to first with `signIn`, which runs the
+    /// browser (herSignInConnector with the server); then it is written and checked once. The tools it offers, nil
+    /// when the sign-in did not end with one.
     public func add(name: String, url: String, signIn: HerConnectorSignIn,
                     signingIn: @Sendable (_ server: JSON) async -> HerSignInEnd = { _ in .failed("") }) async throws -> [HerConnectorTool]? {
         let server = Self.server(url: url, signIn: signIn, name: name)
+        var named = server
+        if case .object(var o) = named { o["name"] = .string(name); named = .object(o) }
         switch signIn {
         case .none: break
-        case .token(let value): _ = try await call("credentials/set", ["name": .string(herCredentialName(name)), "value": .string(value)])
+        case .token(let value):
+            _ = try await call("credentials/set", ["name": .string(herCredentialName(name)), "value": .string(value)])
+            let tried = HerConnectorProbe(try await call("mcp/probe", ["probe_id": .string(UUID().uuidString), "server": named]))
+            if let error = tried.error {
+                _ = try? await call("credentials/delete", ["name": .string(herCredentialName(name))])
+                throw HerSignInRefusal(error)
+            }
         case .oauth:
-            var login = server
-            if case .object(var o) = login { o["name"] = .string(name); login = .object(o) }
-            switch await signingIn(login) {
+            switch await signingIn(named) {
             case .connected: break
             case .cancelled: return nil
             case .failed(let why): throw HerSignInRefusal(why)
@@ -243,6 +281,20 @@ public func herSuggestedConnectorName(_ url: String) -> String {
         if c.isASCII && (c.isLetter || c.isNumber || c == "_" || c == "-") { out.append(c) } else if out.last != "-" { out.append("-") }
     }
     return String(out.trimmingCharacters(in: CharacterSet(charactersIn: "-")).prefix(32))
+}
+
+/// The name a connector added by its address alone gets: the one its address suggests, `server` when it suggests
+/// none, with a number after it while that is one of `taken`.
+public func herNewConnectorName(_ url: String, taken: Set<String>) -> String {
+    let suggested = herSuggestedConnectorName(url)
+    let base = suggested.isEmpty ? "server" : suggested
+    var name = base, n = 2
+    while taken.contains(name) {
+        let suffix = "-\(n)"
+        name = String(base.prefix(32 - suffix.count)) + suffix
+        n += 1
+    }
+    return name
 }
 
 /// A connector's name as one segment of a key path.

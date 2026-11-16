@@ -659,8 +659,11 @@ final class HerChat {
             return try JSON.parse(body)
         })
         let tunnel = HerTunnel(api: live), machine = machineID
+        // Once the catcher has the code the browser goes at once: the owner is not left on a page telling them to
+        // close it, and its closing no longer stops the sign-in.
         return HerSignInDeps(catcher: catcher, call: { method, params in try await HerConnection.call(tunnel, machineID: machine, method, params) },
-                             open: { url in await HerBrowser.shared.open(url, closed: closed) })
+                             open: { url in await HerBrowser.shared.open(url, closed: closed) },
+                             caught: { await HerBrowser.shared.close() })
     }
 }
 

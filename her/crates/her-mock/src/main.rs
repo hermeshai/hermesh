@@ -1,6 +1,10 @@
 //! `her-mock [ADDR] [--simulation | --tools]`: model gateway, optionally with companion MCP tools: the
-//! simulation's, or the test server's own (echo, env…), open to anyone, for a connector added by its address.
+//! simulation's, or the test server's own (echo, env…) for a connector added by its address: open to anyone, and
+//! twice more behind a sign-in, one that wants a token and one that signs in with an account.
 use std::io::Write;
+
+/// The token the test server behind a token takes.
+const TEST_TOKEN: &str = "her-mock-token";
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> std::io::Result<()> {
@@ -45,6 +49,18 @@ async fn main() -> std::io::Result<()> {
         None
     };
     let test_tools = if tools { Some(her_mock::mcp::serve_http("127.0.0.1:0", her_mock::mcp::McpTestOptions::default()).await?) } else { None };
+    // The same tools behind a sign-in, for a connector that asks for one: a token, and an account (the client
+    // registers itself, so that nothing outside this machine is asked).
+    let signed_in = if tools {
+        let token = her_mock::mcp::McpTestOptions { auth: her_mock::mcp_auth::McpTestAuth::Token(TEST_TOKEN.into()), ..Default::default() };
+        let account = her_mock::mcp::McpTestOptions {
+            auth: her_mock::mcp_auth::McpTestAuth::OAuth(her_mock::mcp_auth::OAuthOptions { metadata_document: false, ..Default::default() }),
+            ..Default::default()
+        };
+        Some((her_mock::mcp::serve_http("127.0.0.1:0", token).await?, her_mock::mcp::serve_http("127.0.0.1:0", account).await?))
+    } else {
+        None
+    };
     let mut out = std::io::stdout().lock();
     writeln!(
         out,
@@ -60,6 +76,9 @@ async fn main() -> std::io::Result<()> {
     }
     if let Some(tools) = &test_tools {
         writeln!(out, "# MCP test tools\nmcp_url = {:?}", tools.url())?;
+    }
+    if let Some((token, account)) = &signed_in {
+        writeln!(out, "mcp_token_url = {:?}\nmcp_token = {:?}\nmcp_account_url = {:?}", token.url(), TEST_TOKEN, account.url())?;
     }
     out.flush()?;
     drop(out);

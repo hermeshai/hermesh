@@ -268,6 +268,9 @@ final class FakeSignIn: @unchecked Sendable {
     var opened: [URL] = []
     var polls: [() throws -> JSON]
     var answers: [String: JSON]
+    /// Runs when the catcher has what the browser brought back.
+    var onCaught: () -> Void = {}
+    var caught = 0
 
     init(polls: [() throws -> JSON], answers: [String: JSON]) {
         self.polls = polls
@@ -280,8 +283,17 @@ final class FakeSignIn: @unchecked Sendable {
                 let next = self.lock.withLock { self.polls.isEmpty ? { ["pending": true] } : self.polls.removeFirst() }
                 return try next()
             }),
-            call: { method, params in self.lock.withLock { self.called.append((method, params)); return self.answers[method] ?? [:] } },
+            // A request from a cancelled task is cut off, as one on the connection is; the ones that cancel her's
+            // side are made all the same.
+            call: { method, params in
+                if !["mcp/login_cancel", "mcp/logout", "chatgpt/cancel"].contains(method) { try Task.checkCancellation() }
+                return self.lock.withLock { self.called.append((method, params)); return self.answers[method] ?? [:] }
+            },
             open: { url in self.lock.withLock { self.opened.append(url) } },
+            caught: {
+                let then = self.lock.withLock { self.caught += 1; return self.onCaught }
+                then()
+            },
             retry: .milliseconds(1))
     }
 }
@@ -321,6 +333,17 @@ final class FakeSignIn: @unchecked Sendable {
     let done = FakeSignIn(polls: [{ ["code": "k", "state": "s", "iss": "https://issuer"] }], answers: ["mcp/login": ["authorize_url": "https://mcp.example/auth", "login_id": "M2"]])
     #expect(await herSignInConnector(done.deps, name: "tracker") == .connected(account: nil))
     #expect(done.called.last?.0 == "mcp/login_complete" && done.called.last?.1 == ["login_id": "M2", "code": "k", "state": "s", "iss": "https://issuer"])
+    #expect(done.caught == 1, "the browser is let go as soon as the code is caught")
+}
+
+@Test func aConnectorSignInStoppedOnceTheCodeIsCaughtStillEnds() async {
+    // The owner closes the browser on the page that says it is done, while her is still taking the code: her's
+    // side goes on, and the sign-in ends signed in, not cancelled with half its work done.
+    let f = FakeSignIn(polls: [{ ["code": "k", "state": "s"] }], answers: ["mcp/login": ["authorize_url": "https://mcp.example/auth", "login_id": "M3"]])
+    f.onCaught = { withUnsafeCurrentTask { $0?.cancel() } }
+    let end = await Task { await herSignInConnector(f.deps, name: "tracker", server: ["url": "https://mcp.example/mcp", "auth": "oauth"]) }.value
+    #expect(end == .connected(account: nil))
+    #expect(f.called.map(\.0) == ["mcp/login", "mcp/login_complete"], "nothing signed out")
 }
 
 /// A method her doesn't answer means her there is older than this app: it says so, in place of

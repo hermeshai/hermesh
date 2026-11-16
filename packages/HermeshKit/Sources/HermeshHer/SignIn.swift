@@ -36,13 +36,17 @@ public struct HerSignInDeps: Sendable {
     public var call: @Sendable (_ method: String, _ params: JSON) async throws -> JSON
     /// Shows the authorization page.
     public var open: @Sendable (URL) async throws -> Void
+    /// The catcher has what the browser brought back: the page has done its part, and can go.
+    public var caught: @Sendable () async -> Void
     /// How long to wait before asking the catcher again after a request failed on the way.
     public var retry: Duration
 
-    public init(catcher: HerCatcher, call: @escaping @Sendable (String, JSON) async throws -> JSON, open: @escaping @Sendable (URL) async throws -> Void, retry: Duration = .seconds(1)) {
+    public init(catcher: HerCatcher, call: @escaping @Sendable (String, JSON) async throws -> JSON, open: @escaping @Sendable (URL) async throws -> Void,
+                caught: @escaping @Sendable () async -> Void = {}, retry: Duration = .seconds(1)) {
         self.catcher = catcher
         self.call = call
         self.open = open
+        self.caught = caught
         self.retry = retry
     }
 }
@@ -106,7 +110,7 @@ private enum Started {
 /// A sign-in that ends on this device: once her has the tokens, or with why not. The provider's refusal, a failure on
 /// the way, or cancelling the task cancels her's side too.
 private func signIn(_ d: HerSignInDeps, path: String, page: (URL) -> Bool, start: (String) async throws -> Started,
-                    complete: (String, JSON) async throws -> HerSignInEnd, cancel: (String) async -> Void) async -> HerSignInEnd {
+                    complete: @escaping @Sendable (String, JSON) async throws -> HerSignInEnd, cancel: (String) async -> Void) async -> HerSignInEnd {
     var login: String?
     do {
         let catcher = try await d.catcher.start(path)
@@ -120,11 +124,14 @@ private func signIn(_ d: HerSignInDeps, path: String, page: (URL) -> Bool, start
         try Task.checkCancellation()
         try await d.open(url)
         let got = try await caught(d, catcher.id)
+        await d.caught()
         if let error = got["error"].string {
             await cancel(id)
             return .failed(got["error_description"].text ?? error)
         }
-        return try await complete(id, got)
+        // From here her takes the code, whether or not this task is cancelled now (the owner closing a browser
+        // that has done its part): stopping half way would leave her signed in and this side saying it was not.
+        return try await Task { try await complete(id, got) }.value
     } catch {
         if let login { await cancel(login) }
         if Task.isCancelled || error is CancellationError { return .cancelled }
