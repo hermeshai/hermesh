@@ -652,7 +652,7 @@ mod tests {
                 if path.is_dir() {
                     walk(&path, root, out);
                 } else {
-                    out.push(path.strip_prefix(root).unwrap().to_string_lossy().into_owned());
+                    out.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
                 }
             }
         }

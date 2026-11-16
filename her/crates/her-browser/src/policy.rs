@@ -231,7 +231,9 @@ mod tests {
     fn schemes() {
         assert_eq!(url_kind(&url("https://example.com/a")), UrlKind::Web);
         assert_eq!(url_kind(&url("about:blank")), UrlKind::Blank);
-        assert!(matches!(url_kind(&url("file:///tmp/a.html")), UrlKind::File(_)));
+        // A local file's address names a drive on Windows.
+        let file = if cfg!(windows) { "file:///C:/tmp/a.html" } else { "file:///tmp/a.html" };
+        assert!(matches!(url_kind(&url(file)), UrlKind::File(_)));
         for refused in ["javascript:alert(1)", "data:text/html,hi", "chrome://settings", "chrome-extension://x/y", "about:config"] {
             assert!(matches!(url_kind(&url(refused)), UrlKind::Refused(_)), "{refused}");
         }
