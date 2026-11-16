@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { DeliveriesListResult, DeliveryKind } from "@hermesh/her-protocol";
-import { deliveryDay, deliveryFile, deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries } from "./deliveries.ts";
+import { deliveryDay, deliveryFile, deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries } from "./deliveries.ts";
 
 // The cases HermeshHer runs too, so both apps read the list the same way.
 type Case = {
@@ -32,6 +32,13 @@ test("the list groups by the day each file was last sent, in local time", () => 
 test("pictures, video and audio are media; the rest are documents", () => {
   const kinds: Record<string, DeliveryKind> = { mov: "video", m4a: "audio", png: "image", pdf: "doc", go: "code", zip: "other" };
   for (const [name, media] of Object.entries(shared.media)) assert.equal(isMediaKind(kinds[name.split(".").pop()!]), media, name);
+});
+
+test("a tab shows only its kind, whatever her answered", () => {
+  const mixed = joinDeliveries([shared.page, shared.next_page]);
+  assert.deepEqual(onlyDeliveries(mixed, true).files.map((f) => f.name), ["old.png"]);
+  assert.equal(onlyDeliveries(mixed, false).files.length, mixed.files.length - 1);
+  assert.equal(onlyDeliveries(mixed, undefined), mixed);
 });
 
 test("a file is new while its latest send is after what the owner saw", () => {

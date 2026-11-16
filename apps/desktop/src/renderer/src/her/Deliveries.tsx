@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, readSent } from "@hermesh/her-client";
+import { deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries, readSent } from "@hermesh/her-client";
 import type { BotSummary, DeliveredFile, DeliveriesListResult, Delivery } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
@@ -82,7 +82,7 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     if (older || !online) return;
     let live = true;
     her.call("deliveries/list", { bot_id: bot.id, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) }).then(
-      (r) => live && (setList(r), setError(null), setLacks(false)),
+      (r) => live && (setList(onlyDeliveries(r, tab === "all" ? undefined : tab === "media")), setError(null), setLacks(false)),
       (e) => live && (setError(errorText(e)), setLacks(needsUpdate(e))),
     );
     return () => {
@@ -133,6 +133,7 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     setMore(true);
     her
       .call("deliveries/list", { bot_id: bot.id, before: list.next, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) })
+      .then((r) => onlyDeliveries(r, tab === "all" ? undefined : tab === "media"))
       .then((r) => setList((l) => (l ? joinDeliveries([l, r]) : r)), (e) => st.show(errorText(e)))
       .finally(() => setMore(false));
   };

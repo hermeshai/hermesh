@@ -38,6 +38,11 @@ export function groupDeliveries(files: DeliveredFile[], now: number, offsetMinut
   return groups;
 }
 
+/** Only media (true) or only documents (false), or all (undefined): what a tab shows, whatever her answered (one older than the `media` filter answers all of them). */
+export function onlyDeliveries(page: DeliveriesListResult, media: boolean | undefined): DeliveriesListResult {
+  return media === undefined ? page : { ...page, files: page.files.filter((f) => isMediaKind(f.kind) === media) };
+}
+
 /** Sent since the owner last looked at the list. */
 export function isNewDelivery(f: DeliveredFile, seen: number): boolean {
   return (f.versions[0]?.seq ?? 0) > seen;

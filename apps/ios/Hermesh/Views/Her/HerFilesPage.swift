@@ -177,7 +177,7 @@ private struct HerFilesList: View {
         guard online else { return }
         do {
             let page = try await chat.callAlone("deliveries/list", params())
-            list = HerDeliveries(page)
+            list = HerDeliveries(page)?.only(media: tab == .all ? nil : tab == .media)
             failed = nil
             older = false
         } catch {
@@ -192,7 +192,7 @@ private struct HerFilesList: View {
         Task {
             defer { loadingMore = false }
             if let j = try? await chat.callAlone("deliveries/list", params(before: next)), let page = HerDeliveries(j), let had = list {
-                list = had.joined(page)
+                list = had.joined(page.only(media: tab == .all ? nil : tab == .media))
             }
         }
     }

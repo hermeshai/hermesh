@@ -113,6 +113,13 @@ public struct HerDeliveries: Equatable, Sendable {
         next = j["next"].int
     }
 
+    /// Only media (true) or only documents (false), or all (nil): what a tab shows, whatever her answered (one older
+    /// than the `media` filter answers all of them).
+    public func only(media: Bool?) -> HerDeliveries {
+        guard let media else { return self }
+        return HerDeliveries(files: files.filter { $0.kind.isMedia == media }, seen: seen, next: next)
+    }
+
     /// The next page after this, in order: a file on both (sent again between them) stays where it was first.
     public func joined(_ page: HerDeliveries) -> HerDeliveries {
         let have = Set(files.map(\.path))
