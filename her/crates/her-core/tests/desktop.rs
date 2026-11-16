@@ -187,6 +187,24 @@ async fn approve_for_session(h: &mut Harness, call_id: String) {
     h.kernel.submit(Op::Approval { call_id, decision }).await.unwrap();
 }
 
+/// What the model is told of computer use: any app, a browser app among them, with no word
+/// against web pages in its catalog line or in the guidelines tool_search gives. Operates
+/// nothing, so it runs everywhere.
+#[tokio::test]
+async fn computer_use_is_offered_for_any_app() {
+    let mut h = harness(PermissionMode::Manual).await;
+    h.api.push(Script::tool_call("c1", "tool_search", json!({ "query": "cua" })));
+    h.api.push(Script::text("found"));
+    h.kernel.submit(Op::prompt("look at my Chrome extensions")).await.unwrap();
+    until(&mut h.kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    let system = h.api.requests()[0].system.clone();
+    assert!(system.contains("- cua: Computer use: see and operate any of the apps on this computer"), "{system}");
+    let found = last_results(&h.api).join("\n");
+    assert!(found.contains("cua_launch") && found.contains("Desktop apps are data"), "definitions and guidelines: {found}");
+    let lower = found.to_lowercase();
+    assert!(!lower.contains("browser") && !lower.contains("web page"), "{found}");
+}
+
 #[tokio::test]
 async fn reads_and_types_into_textedit_with_per_app_approval() {
     if !enabled() {
