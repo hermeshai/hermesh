@@ -83,6 +83,12 @@ mod unix {
         UnixStream::connect(path).await
     }
 
+    /// The two directions of a client's connection: dropping the one that writes ends the
+    /// connection for the service.
+    pub fn split_client(stream: ClientStream) -> (tokio::net::unix::OwnedReadHalf, tokio::net::unix::OwnedWriteHalf) {
+        stream.into_split()
+    }
+
     /// Whether a service takes connections at `path`.
     pub fn answers(path: &Path) -> bool {
         std::os::unix::net::UnixStream::connect(path).is_ok()
@@ -185,6 +191,54 @@ mod windows {
             }
         }
         ClientOptions::new().open(&name)
+    }
+
+    /// The two directions of a client's connection: dropping the one that writes ends the
+    /// connection for the service. A pipe has no half to close, as a socket has: what reads
+    /// then ends too, and the pipe closes with both.
+    pub fn split_client(stream: ClientStream) -> (ClientRead, ClientWrite) {
+        let (read, write) = tokio::io::split(stream);
+        let over = tokio_util::sync::CancellationToken::new();
+        (
+            ClientRead { inner: read, over: Box::pin(over.clone().cancelled_owned()), ended: false },
+            ClientWrite { inner: write, _over: over.drop_guard() },
+        )
+    }
+
+    pub struct ClientRead {
+        inner: tokio::io::ReadHalf<ClientStream>,
+        over: std::pin::Pin<Box<tokio_util::sync::WaitForCancellationFutureOwned>>,
+        ended: bool,
+    }
+
+    pub struct ClientWrite {
+        inner: tokio::io::WriteHalf<ClientStream>,
+        _over: tokio_util::sync::DropGuard,
+    }
+
+    impl tokio::io::AsyncRead for ClientRead {
+        fn poll_read(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<io::Result<()>> {
+            use std::future::Future as _;
+            if self.ended || self.over.as_mut().poll(cx).is_ready() {
+                self.ended = true;
+                return std::task::Poll::Ready(Ok(()));
+            }
+            std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
+    impl tokio::io::AsyncWrite for ClientWrite {
+        fn poll_write(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<io::Result<usize>> {
+            std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<io::Result<()>> {
+            std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<io::Result<()>> {
+            std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+        }
     }
 
     /// Whether a service takes connections at `path`.
@@ -325,6 +379,19 @@ mod tests {
         }
         assert_eq!(&first.await.unwrap(), b"pong");
         assert_eq!(&second.await.unwrap(), b"pong");
+
+        // A client that drops what it writes with is gone for the service, which reads no more
+        // from it; closed there, the client's reading ends too.
+        let client = connect(&path).await.unwrap();
+        let (stream, _) = listener.accept().await.unwrap().unwrap();
+        let (mut client_read, client_write) = split_client(client);
+        drop(client_write);
+        let (mut read, write) = split(stream);
+        let mut rest = Vec::new();
+        // Windows says a pipe's other end is gone with an error, a socket with its end.
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), read.read_to_end(&mut rest)).await.expect("the service sees the client gone");
+        drop((read, write));
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), client_read.read_to_end(&mut rest)).await.expect("the client's reading ends");
 
         assert!(answers(&path));
         drop(served);

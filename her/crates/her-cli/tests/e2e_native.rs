@@ -362,7 +362,7 @@ async fn a_line_without_end_is_answered_on_every_transport() {
     let url = format!("unix://{}", socket.display());
     let mut service = env.her(&["serve", "--listen", &url]).spawn().unwrap();
     wait_for_socket(&socket).await;
-    let (read, write) = tokio::io::split(endpoint::connect(&socket).await.unwrap());
+    let (read, write) = endpoint::split_client(endpoint::connect(&socket).await.unwrap());
     answers_a_line_without_end(read, write, native).await;
     service.kill().await.unwrap();
 }
@@ -518,7 +518,7 @@ async fn skills_list_reports_a_session_and_a_directory() {
 
 async fn connect(path: &Path) -> (Client, her_rpc::IncomingRx) {
     let stream = endpoint::connect(path).await.expect("connect");
-    let (read, write) = tokio::io::split(stream);
+    let (read, write) = her_server::endpoint::split_client(stream);
     let (client, incoming) = Client::connect(read, write);
     native_init(&client).await;
     (client, incoming)
@@ -777,7 +777,7 @@ async fn every_client_and_every_list_go_back_with_a_resend() {
 
     // The service says it can.
     let stream = endpoint::connect(&socket).await.unwrap();
-    let (read, write) = tokio::io::split(stream);
+    let (read, write) = her_server::endpoint::split_client(stream);
     let (asked, _asked_in) = Client::connect(read, write);
     let init = asked
         .request("initialize", json!({"protocol_version": 2, "client_info": {"name": "e2e"}}))

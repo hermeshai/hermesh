@@ -624,7 +624,7 @@ async fn routines_belong_to_the_bot_not_the_conversation() {
 
 async fn connect(path: &Path) -> (Client, IncomingRx) {
     let stream = her_server::endpoint::connect(path).await.expect("connect");
-    let (read, write) = tokio::io::split(stream);
+    let (read, write) = her_server::endpoint::split_client(stream);
     let (client, incoming) = Client::connect(read, write);
     native_init(&client).await;
     (client, incoming)
