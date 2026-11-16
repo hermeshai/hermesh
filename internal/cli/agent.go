@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -24,8 +25,21 @@ type machineAgent struct {
 	Version   string       `json:"version"`
 	Models    []agentModel `json:"models"`
 	// What a session runs with when the client names none.
-	DefaultModel  string `json:"default_model"`
-	DefaultEffort string `json:"default_effort"`
+	DefaultModel  string              `json:"default_model"`
+	DefaultEffort string              `json:"default_effort"`
+	ModelCatalogs []agentModelCatalog `json:"model_catalogs,omitempty"`
+}
+
+type agentModelCatalog struct {
+	Scope        string       `json:"scope"`
+	Source       string       `json:"source"`
+	State        string       `json:"state"`
+	Models       []agentModel `json:"models"`
+	DefaultModel string       `json:"default_model"`
+	CurrentModel string       `json:"current_model"`
+	ObservedAt   int64        `json:"observed_at_unix_ms"`
+	ExpiresAt    int64        `json:"expires_at_unix_ms"`
+	Stale        bool         `json:"stale"`
 }
 
 type agentModel struct {
@@ -76,6 +90,15 @@ on that machine, else the agent's own; empty when Hermesh can't tell).
 Pass a model's id to session start --model and one of its efforts to
 --effort.
 
+Antigravity reports scoped model_catalogs instead of a machine-wide model
+list. Each snapshot includes scope, source, state, observation/expiry times,
+and stale. A catalog's default_model is the initial selection in that scope;
+current_model may change. An unknown or session_required catalog is not an
+empty entitlement list. Only state=known confirms the reported choices
+(including an empty list); expired snapshots are historical. The session's
+own config options remain authoritative. Listing never creates a session
+or sends a prompt. It queries session/options only when advertised.
+
 A machine that is offline is listed after the agents as machine/*: its
 agents cannot be listed until it is back. Being offline is not an error.`,
 		Args: cobra.NoArgs,
@@ -108,6 +131,14 @@ agents cannot be listed until it is back. Being offline is not an error.`,
 					ids = append(ids, m.ID)
 				}
 				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", ag.Agent, ag.Machine, cmp.Or(strings.TrimSpace(ag.DefaultModel+" "+ag.DefaultEffort), "-"), cmp.Or(strings.Join(ids, ", "), "-"))
+				for _, c := range ag.ModelCatalogs {
+					ids := []string{}
+					for _, m := range c.Models {
+						ids = append(ids, m.ID)
+					}
+					fmt.Fprintf(tw, "  %s\t%s\t%s\t%s (%s; %s; observed=%d; stale=%t)\n", c.Scope, ag.Machine,
+						cmp.Or(c.DefaultModel, "unknown"), cmp.Or(strings.Join(ids, ", "), "-"), c.State, c.Source, c.ObservedAt, c.Stale)
+				}
 			}
 			for _, m := range offline {
 				fmt.Fprintf(tw, "%s/*\t-\t-\toffline: %s\n", m.Machine, offlineText(m))
@@ -148,6 +179,16 @@ func (a *app) listAgents(ctx context.Context, c *peer.Client, machines []machine
 				DefaultModel: cmp.Or(ag.Defaults.GetModel(), ag.Own.GetModel()), DefaultEffort: cmp.Or(ag.Defaults.GetEffort(), ag.Own.GetEffort())}
 			for _, x := range ag.Models {
 				e.Models = append(e.Models, agentModel{ID: x.Id, Efforts: append([]string{}, x.Efforts...)})
+			}
+			for _, c := range ag.ModelCatalogs {
+				v := agentModelCatalog{Scope: c.Scope, Source: c.Source, State: c.State,
+					Models: []agentModel{}, DefaultModel: c.DefaultModel, CurrentModel: c.CurrentModel,
+					ObservedAt: c.ObservedAtUnixMs, ExpiresAt: c.ExpiresAtUnixMs,
+					Stale: c.ExpiresAtUnixMs != 0 && time.Now().UnixMilli() >= c.ExpiresAtUnixMs}
+				for _, m := range c.Models {
+					v.Models = append(v.Models, agentModel{ID: m.Id, Efforts: append([]string{}, m.Efforts...)})
+				}
+				e.ModelCatalogs = append(e.ModelCatalogs, v)
 			}
 			out = append(out, e)
 		}

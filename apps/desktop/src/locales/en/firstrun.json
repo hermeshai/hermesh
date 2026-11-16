@@ -122,6 +122,22 @@
     "prompt": "Use Hermesh to have {{agent}} say hello to me."
   },
   "prepare": {
+    "catalogsTitle": "Observed models",
+    "catalogsNote": "Choices reported for each scope, not a machine-wide guarantee. Listing creates no conversation and sends no prompt.",
+    "catalogSource": "Source: {{source}}",
+    "catalogNever": "Not observed yet",
+    "catalogExpired": "Expired observation · availability needs revalidation",
+    "catalogEmpty": "The server reported no choices in this scope.",
+    "catalogInitial": "Initial model: {{model}}",
+    "catalogCurrent": "Current model: {{model}}",
+    "catalogState": {
+      "known": "Observed",
+      "unknown": "Unknown",
+      "session_required": "Unknown until a normal session reports its choices",
+      "auth_required": "Authentication required",
+      "timeout": "Discovery timed out",
+      "error": "Discovery failed"
+    },
     "promise": "Never reads any agent’s tokens or keys. Runs them from the command line just as you do.",
     "later": "Set Up Later",
     "next": "Next: Connect Your Agent",

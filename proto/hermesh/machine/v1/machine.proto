@@ -297,6 +297,26 @@ message AgentStatus {
   AgentProblem problem = 11;
   // Where it was found, when it was.
   string binary = 12;
+  // Scoped ACP observations. These are not machine-wide model entitlements;
+  // a session's own config options remain authoritative. Empty on older peers.
+  repeated AgentModelCatalog model_catalogs = 13;
+}
+
+message AgentModelCatalog {
+  // project/session address, or "isolated" for a probe with no project data.
+  string scope = 1;
+  // acp_initialize, acp_options, acp_session, or acp_update.
+  string source = 2;
+  // known (including zero models), unknown, session_required, auth_required,
+  // timeout, or error. Failures can retain an expired previous observation.
+  string state = 3;
+  repeated AgentModel models = 4;
+  // Initial selection of a NEW session, before Hermesh applies overrides.
+  // Never inferred from a resumed session or subsequent model changes.
+  string default_model = 5;
+  string current_model = 6;
+  int64 observed_at_unix_ms = 7;
+  int64 expires_at_unix_ms = 8;
 }
 
 enum AgentProblem {
