@@ -10,7 +10,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, fixture, gitRepo, launch, pickAnswers, snap, sessionList, navTo } from "./app";
+import { answerMenu, fixture, gitRepo, launch, pickAnswers, snap, sessionList, navTo, mapHeight } from "./app";
 
 // The first run against owner daemons nobody has set up (the fixture's
 // fresh ones; each can be set up once): a relay of one's own, the browser
@@ -640,7 +640,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(grok).not.toContainText("尚无会话", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
   // Resting on it shows its card, over the map, which keeps its height.
-  const height = (await map.boundingBox())!.height;
+  const height = await mapHeight(map);
   await grok.hover();
   const card = page.getByRole("dialog", { name: "Grok Bot" });
   await expect(card).toBeVisible();
