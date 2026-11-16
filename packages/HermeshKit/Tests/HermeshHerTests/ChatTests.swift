@@ -167,6 +167,16 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(lines.map { "\($0.sign)\($0.text)" } == ["-one", "+two", "+three"])
 }
 
+@Test func theBusyBubbleNamesTheSubAgentsAtWork() {
+    var v = snapshot([said("u1", "delegate", ts: 1)])
+    #expect(herWorkingAgents(v).isEmpty)
+    v.apply(["seq": 11, "ts": 2, "type": "agent_started", "agent_id": "ag1", "name": "writer", "description": "写长文", "call_id": "sp1", "session_file": "/a"])
+    v.apply(["seq": 12, "ts": 3, "type": "agent_started", "agent_id": "ag2", "name": "sales", "description": "", "call_id": "sp2", "session_file": "/b"])
+    #expect(herWorkingAgents(v) == [HerWorkingAgent(id: "ag1", label: "写长文"), HerWorkingAgent(id: "ag2", label: "sales")], "what Her called the work, else its name")
+    v.apply(["seq": 13, "ts": 4, "type": "agent_status", "agent_id": "ag1", "status": "completed", "summary": "done"])
+    #expect(herWorkingAgents(v).map(\.id) == ["ag2"], "one that finished is not at work")
+}
+
 @Test func aSessionOnTheOwnersComputersAsksInItsOwnWords() {
     let ask: JSON = ["call_id": "c1", "name": "session_start", "args": ["project": "homemini/hermesh"], "summary": "Start Codex in homemini/hermesh\n\nFix the flaky relay test.\n  Keep the diff small.\n",
                      "proposed_rule": ["prefix": ["mesh", "homemini/hermesh"]]]
