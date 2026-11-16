@@ -637,8 +637,17 @@ extension HermeshUITests {
         let card = app.descendants(matching: .any)["her-session-Her 派的活"].firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 60), "the session's card")
         try waitFor("the card says the session is done", timeout: 90) { card.label.contains("完成") || card.label.contains("个文件") ? true : nil }
+        // The scripted model echoes the tool result under the card, then the session's news, which she tells the
+        // owner of: the card moves down under that, where the owner reads now (docs/her-team.md §4.4). One card.
+        let words = app.descendants(matching: .any).matching(identifier: "her-reply")
+        let news = words.containing(NSPredicate(format: "label CONTAINS %@", "turn_done")).firstMatch
+        XCTAssertTrue(news.waitForExistence(timeout: 90), "what she says of the session's news")
+        try waitFor("the card under what she said of its news") {
+            let lowest = words.allElementsBoundByIndex.map(\.frame.maxY).max() ?? 0
+            return card.frame.minY >= lowest ? true : nil
+        }
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "her-session-Her 派的活").count, 1, "one card a session")
         if app.buttons["to-end"].exists { tap("to-end") }
-        // The scripted model echoes the tool result and session news after the card; scroll back to it.
         for _ in 0..<12 where !card.isHittable { app.swipeDown() }
         XCTAssertTrue(waitUntil { card.isHittable }, "the card is in view before opening it")
         herShot("Her: a session she started")
