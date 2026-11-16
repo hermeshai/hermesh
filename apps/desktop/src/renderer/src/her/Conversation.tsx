@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botChat, busyBubble, pendingApproval, replyOf, runningAgents, toolObject, type BotItem, type ReplyQuote, type ToolView } from "@hermesh/her-client";
+import { botChat, busyBubble, pendingApproval, replyOf, runningAgents, type BotItem, type ReplyQuote } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import type { HerWaiting } from "@hermesh/proto/local";
 import { agoText } from "@hermesh/core";
@@ -12,6 +12,7 @@ import { ContentScope } from "../session/scope";
 import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
 import { errorText, useNow, useStore } from "../store";
 import { Approval, type SendOp } from "./Approval";
+import { BusyBubble } from "./Busy";
 import { addAttachments, type Attachment } from "./attachments";
 import { cardOf } from "./cards";
 import { ChromeWait, useWaitsForChrome } from "./ChromeWait";
@@ -20,7 +21,7 @@ import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
 import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
-import { messageTime, momentText, timeLine, toolVerb } from "./format";
+import { messageTime, momentText, timeLine } from "./format";
 import { Question, SentFiles, useSaveFile, type FileScope } from "./Messages";
 import { FilePreview, previews } from "./preview/FilePreview";
 import { QuoteCard, quoteOf, quoteText, ReplyButton, ReplyPill, Replying } from "./reply";
@@ -749,42 +750,6 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
         </div>
       </div>
     </>
-  );
-}
-
-/**
- * The last bubble while something is at work (bot-mode-design §6.7, docs/her-team.md §15.6): three dots while the
- * assistant answers; while it is on a call, what the call does follows them, shimmering, in the words Progress says a
- * step in. Once it has answered, while a sub-agent of its is still at work, the dots stay, followed by that sub-agent
- * and what it does.
- */
-function BusyBubble({ busy, retry }: { busy: { now: ToolView | null; agent?: string }; retry?: { at: number } }) {
-  const { t } = useTranslation("her");
-  const now = useNow(1000).getTime();
-  const unstable = retry && now - retry.at > 10_000;
-  const step = busy.now && `${toolVerb(busy.now)} ${toolObject(busy.now)}`.trim();
-  const label = unstable ? t("chat.retrying") : busy.agent ? `${busy.agent} · ${step || t("line.agentWorking")}` : step || undefined;
-  return (
-    <div className="bm working">
-      <div className="bm-b">
-        <div className="bline">
-          <div className="bbub wbub">
-            <div className="wb-h" title={label ?? t("line.typing")}>
-              <span className={`dots ${label ? "quiet" : ""}`} aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-              {label && (
-                <span className="wb-w">
-                  <span className="wb-t shimmer">{label}</span>
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 

@@ -39,7 +39,9 @@
   },
   "line": {
     "typing": "正在输入…",
-    "agentWorking": "正在工作"
+    "agentAtWork": "子智能体 · {{name}}，正在工作",
+    "agentsWorking_other": "{{count}} 个子智能体正在工作",
+    "allInProgress": "在「进展」中查看全部"
   },
   "head": {
     "settings": "助手设置",

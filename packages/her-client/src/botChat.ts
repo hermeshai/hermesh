@@ -1,5 +1,5 @@
 import type { ErrorInfo } from "@hermesh/her-protocol";
-import { callTarget, runningAgents, type AgentView, type SessionView } from "./session.ts";
+import { callTarget, runningAgents, type SessionView } from "./session.ts";
 import { conversation, detailsOf, userText, type ReplyQuote, type ToolView, type WorkItem } from "./steps.ts";
 import { baseName } from "./text.ts";
 
@@ -342,23 +342,22 @@ export function imageRatio(f: Pick<BotFile, "width" | "height">, alone: boolean)
   return alone ? clamp(own, 0.5, 4) : clamp(own, 0.75, 2);
 }
 
-/**
- * What the busy bubble shows (docs/her-team.md §15.6): while the bot answers, the call it is on, as Progress says a
- * step (toolVerb, toolObject), else the dots alone; once it has answered, while a sub-agent of its is still at work,
- * that sub-agent (`agent`, as it is called) and the call it is on. Null when nothing is at work, and while what is
- * waits for the owner: an approval in the composer's place says so.
- */
-export function busyBubble(v: SessionView): { now: ToolView | null; agent?: string } | null {
-  if (v.live) return v.live.approvals.length > 0 ? null : { now: stepOf(v) };
-  // The one that started last, of those not waiting for the owner.
-  const a = runningAgents(v)
-    .filter((a) => !a.view.live?.approvals.length)
-    .reduce<AgentView | null>((last, a) => (!last || a.since > last.since ? a : last), null);
-  return a ? { now: stepOf(a.view), agent: a.description || a.name } : null;
+/** A sub-agent the busy bubble names: its id, to open its record, and what it is called (as an approval names it). */
+export interface BusyAgent {
+  id: string;
+  name: string;
 }
 
-/** The call a task is on: not its words (send_to_user), nor a sub-agent it starts, which show as themselves. */
-function stepOf(v: SessionView): ToolView | null {
-  const t = v.live?.tools.findLast((t) => (t.phase === "running" || t.phase === "pending") && t.name !== "send_to_user" && t.name !== "spawn_agent");
-  return t ? { call_id: t.call_id, name: t.name, category: t.category, title: t.title, args: t.args, state: t.phase as ToolView["state"] } : null;
+/**
+ * Who the busy bubble names (docs/her-team.md §15.6): the bot, while it answers, and its sub-agents at work that wait
+ * for nobody, the one that started last first. Only who, never what they are doing. Null when nothing is at work, and
+ * while the bot waits for the owner: an approval in the composer's place says so.
+ */
+export function busyBubble(v: SessionView): { her: boolean; agents: BusyAgent[] } | null {
+  if (v.live?.approvals.length) return null;
+  const agents = runningAgents(v)
+    .filter((a) => !a.view.live?.approvals.length)
+    .sort((a, b) => b.since - a.since)
+    .map((a) => ({ id: a.id, name: a.description || a.name }));
+  return v.live || agents.length ? { her: !!v.live, agents } : null;
 }

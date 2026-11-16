@@ -216,7 +216,7 @@ private struct HerRows: View, Equatable {
             ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
                 HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
             }
-            if let busy { HerTyping(now: busy.now, agent: busy.agent).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+            if let busy { HerTyping(her: busy.her, agents: busy.agents).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
         }
         // As wide as the page with nothing in it too: the scroll view is as wide as this, and what shows over it
         // while the conversation is empty (her greeting) was laid out 40 points wide.
@@ -840,75 +840,159 @@ struct HerPill: ButtonStyle {
     }
 }
 
-/// The last thing while Her answers (the Mac's BusyBubble): three dots, in her bubble. While she is on a call, the
-/// dots quieten and what the call does follows them, shimmering, in the words Progress says a step in. Her sub-agents
-/// at work once she has answered keep it, named, with what they do (docs/her-team.md §15.6).
+/// The last bubble while something of Her's is at work (the Mac's BusyBubble, docs/her-team.md §15.6): one line, the
+/// dots and who is at work, swept left to right by one light. Her while she answers ("Typing…"), then her sub-agents
+/// at work by name, never what they do. One sub-agent opens its record (›). Several take turns, the next each time
+/// the light has swept the line, with their number and a chevron pointing where their menu opens (up): the system's
+/// menu, listing them all, each opening its record, and Progress.
 struct HerTyping: View {
-    var now: HerToolStep? = nil
-    /// A sub-agent at work once Her has answered: it, then what it does (docs/her-team.md §15.6).
-    var agent: String? = nil
+    @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var still
+    var her = true
+    var agents: [HerBusyBubble.Agent] = []
+    /// The list of who is at work is open, and the turn the names stay at while it is; where it was left for.
+    @State private var listing = false
+    @State private var held: Int?
+    @State private var going: Route?
+
+    /// How long the light takes to sweep the line, as on the Mac.
+    private static let sweep = 2.4
 
     var body: some View {
-        let own = now.map { "\(herStepVerb($0)) \($0.object)" }
-        let step = agent.map { "\($0) · \(own ?? String(localized: "Working"))" } ?? own
-        HStack(spacing: 7) {
-            dots
-            if let step {
-                Text(verbatim: step).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).modifier(HerShimmer())
-            }
-        }
-        .padding(.horizontal, 14).padding(.vertical, step == nil ? 11 : 9)
-        .background(Palette.reply, in: .capsule)
-        .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 0.5))
-        .accessibilityElement()
-        .accessibilityLabel(step.map { Text(verbatim: $0) } ?? Text("Typing…"))
-        .accessibilityIdentifier("her-typing")
-    }
-
-    /// The dots, smaller and fainter once words follow them.
-    private var dots: some View {
-        let quiet = now != nil || agent != nil
-        return TimelineView(.animation(paused: still)) { t in
-            let phase = t.date.timeIntervalSinceReferenceDate * 2.4
-            HStack(spacing: quiet ? 3 : 4) {
-                ForEach(0 ..< 3) { i in
-                    Circle().fill(.secondary).frame(width: quiet ? 4 : 7, height: quiet ? 4 : 7)
-                        .opacity(still ? 0.6 : 0.35 + (quiet ? 0.65 : 0.5) * max(0, sin(phase - Double(i) * 0.7)))
+        let typing = String(localized: "Typing…")
+        // What VoiceOver says: Her first, while she answers, then who else is at work.
+        let said = { (rest: String) in her ? String(localized: "\(typing), \(rest)") : rest }
+        Group {
+            if agents.isEmpty {
+                line { EmptyView() }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(verbatim: typing))
+            } else if agents.count == 1 {
+                Button { model.path.append(.progressAgent(agents[0].id)) } label: {
+                    line { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: said(String(localized: "Sub-agent · \(agents[0].name), at work"))))
+            } else {
+                Button {
+                    held = Int(Date.now.timeIntervalSinceReferenceDate / Self.sweep)
+                    listing = true
+                } label: {
+                    line {
+                        HStack(spacing: 3) {
+                            Text(verbatim: "\(agents.count)").monospacedDigit()
+                            Image(systemName: "chevron.up").font(.caption2.weight(.bold)).rotationEffect(.degrees(listing ? 180 : 0))
+                        }
+                        .font(.footnote).foregroundStyle(.tertiary)
+                        .animation(still ? nil : .snappy(duration: 0.2), value: listing)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: said(String(localized: "\(agents.count) sub-agents at work: \(agents.map(\.name).formatted(.list(type: .and)))"))))
+                .accessibilityHint(Text("Shows who is at work"))
+                .popover(isPresented: $listing, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) { menu }
+                // A list left open stays where it opened: once the line moves (her words coming in), it goes.
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { _, _ in if listing { listing = false } }
+                .onChange(of: listing) { _, shown in
+                    // Where the owner chose to go, once the list has gone.
+                    guard !shown else { return }
+                    held = nil
+                    if let route = going {
+                        going = nil
+                        model.path.append(route)
+                    }
                 }
             }
         }
+        .accessibilityIdentifier("her-typing")
     }
-}
 
-/// A band of the bubble's colour sweeping across words at work (the Mac's .shimmer): a gradient the size of the
-/// words, whose band one animation, set once, moves across them, and off either side.
-private struct HerShimmer: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var still
-    @State private var on = false
-
-    func body(content: Content) -> some View {
-        content.overlay {
-            if !still {
-                Band(center: on ? 1.36 : -0.36)
-                    .animation(.linear(duration: 2.4).repeatForever(autoreverses: false), value: on)
-                    .allowsHitTesting(false)
-                    .onAppear { on = true }
+    /// Who is at work, each opening their record, then Progress: as the Mac's menu, over the line.
+    private var menu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(agents.count) sub-agents at work").font(.footnote).foregroundStyle(.secondary)
+                .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+            ForEach(agents, id: \.id) { a in
+                Button { go(.progressAgent(a.id)) } label: {
+                    HStack(spacing: 10) {
+                        HStack(spacing: 3) { ForEach(0 ..< 3, id: \.self) { _ in Circle().fill(.secondary).frame(width: 5, height: 5) } }
+                        Text(verbatim: a.name).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
             }
+            Divider().padding(.leading, 16)
+            Button { go(.progress) } label: {
+                Text("See All in Progress").foregroundStyle(.tint)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.bottom, 4)
+        .frame(minWidth: 240, alignment: .leading)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    private func go(_ route: Route) {
+        going = route
+        listing = false
+    }
+
+    /// The bubble: the dots and the words under the moving light, then what ends the line.
+    private func line(@ViewBuilder end: () -> some View) -> some View {
+        HStack(spacing: 10) {
+            TimelineView(.animation(paused: still)) { t in
+                let swept = t.date.timeIntervalSinceReferenceDate / Self.sweep
+                let phase = swept - swept.rounded(.down)
+                words(turn: still ? 0 : held ?? Int(swept))
+                    .mask { if still { Rectangle() } else { light(at: phase) } }
+            }
+            end()
+        }
+        .padding(.horizontal, 15)
+        .frame(minHeight: 44)
+        .background(Palette.reply, in: .capsule)
+        .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 0.5))
+        .contentShape(.capsule)
+    }
+
+    /// The dots, still, and who is at work; several by turns, in a cell as wide as the widest name.
+    private func words(turn: Int) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 3) {
+                ForEach(0 ..< 3, id: \.self) { _ in Circle().fill(.secondary).frame(width: 5, height: 5) }
+            }
+            HStack(spacing: 6) {
+                if her { Text("Typing…") }
+                if her, !agents.isEmpty { Text(verbatim: "·").foregroundStyle(.tertiary) }
+                if agents.count == 1 { Text(verbatim: agents[0].name) }
+                if agents.count > 1 {
+                    let shown = turn % agents.count
+                    ZStack(alignment: .leading) {
+                        ForEach(Array(agents.enumerated()), id: \.element.id) { i, a in
+                            Text(verbatim: a.name).opacity(i == shown ? 1 : 0).offset(y: i == shown ? 0 : 3)
+                        }
+                    }
+                    .animation(still ? nil : .easeOut(duration: 0.4), value: shown)
+                }
+            }
+            .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
         }
     }
 
-    /// The band, centred at `center` of the words' width, as wide as 0.72 of it.
-    private struct Band: View, Animatable {
-        var center: CGFloat
-        var animatableData: CGFloat {
-            get { center }
-            set { center = newValue }
-        }
-
-        var body: some View {
-            LinearGradient(colors: [.clear, Palette.reply.opacity(0.64), .clear],
-                           startPoint: UnitPoint(x: center - 0.36, y: 0.5), endPoint: UnitPoint(x: center + 0.36, y: 0.5))
+    /// A mask whose band, fainter, crosses the line from left to right once a sweep (`phase` 0 to 1).
+    private func light(at phase: Double) -> some View {
+        GeometryReader { g in
+            let w = g.size.width
+            LinearGradient(stops: [.init(color: .black, location: 0.38), .init(color: .black.opacity(0.28), location: 0.5), .init(color: .black, location: 0.62)],
+                           startPoint: .leading, endPoint: .trailing)
+                .frame(width: w * 3)
+                .offset(x: -2 * w + 2 * w * phase)
         }
     }
 }

@@ -15061,12 +15061,62 @@
         }
       }
     },
-    "Working": {
+    "Sub-agent · %@, at work": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在工作"
+            "value": "子智能体 · %@，正在工作"
+          }
+        }
+      }
+    },
+    "%lld sub-agents at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个子智能体正在工作"
+          }
+        }
+      }
+    },
+    "%lld sub-agents at work: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 个子智能体正在工作：%2$@"
+          }
+        }
+      }
+    },
+    "See All in Progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「进展」中查看全部"
+          }
+        }
+      }
+    },
+    "%@, %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@"
+          }
+        }
+      }
+    },
+    "Shows who is at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示正在工作的子智能体"
           }
         }
       }
