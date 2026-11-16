@@ -322,6 +322,39 @@ extension HermeshUITests {
         XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "opened from this iPhone")
         tap("close")
         _ = try control("machine?up=1", method: "POST")
+
+        // Where a file came from is not on its row (docs/her-deliverables.md §3.5): a scheduled task makes a brief each
+        // run, and Her sends it on when its report wakes her. The glass button at the top right opens the sources from
+        // the bottom; choosing the task shows its files only, as the bar under the tabs says, until it is cleared.
+        // The brief is there for her to send whether or not the run, which cannot ask, may write it.
+        let brief = "# 每日早报".addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        _ = try control("her-file?name=brief.md&text=\(brief)", method: "POST")
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        back.tap()
+        herSend("[[mock:routine_file:每日早报|in 2s|brief.md]] 每天早上发我早报")
+        approveIfAsked()
+        XCTAssertTrue(app.buttons["her-file-brief.md"].waitForExistence(timeout: 120), "the brief, sent on")
+        if app.keyboards.count > 0 { app.swipeDown() }
+        tap("her-files")
+        let briefRow = any["her-file-row-brief.md"].firstMatch
+        XCTAssertTrue(briefRow.waitForExistence(timeout: 30) && row.exists, "the brief among the files")
+        let sources = any["her-files-sources"].firstMatch
+        XCTAssertTrue(sources.waitForExistence(timeout: 30), "the filter at the top right")
+        sources.tap()
+        XCTAssertTrue(app.navigationBars["按来源看"].waitForExistence(timeout: 10), "the sources, from the bottom")
+        let task = any["her-source-每日早报"].firstMatch
+        XCTAssertTrue(task.waitForExistence(timeout: 10) && any["her-source-对话里要的"].firstMatch.exists, "the task, and the conversation")
+        herShot("Her: the files by source")
+        task.tap()
+        XCTAssertTrue(app.navigationBars["按来源看"].waitForNonExistence(timeout: 10), "chosen: the sheet goes")
+        let chosen = any["her-files-source"].firstMatch
+        XCTAssertTrue(chosen.waitForExistence(timeout: 10), "the bar says which")
+        XCTAssertTrue(waitUntil(timeout: 15) { !row.exists } && briefRow.exists, "only the task's files")
+        XCTAssertTrue(chosen.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "每日早报")).count > 0, "named")
+        herShot("Her: one source's files")
+        tap("her-files-source-clear")
+        XCTAssertTrue(row.waitForExistence(timeout: 15) && briefRow.exists, "all again")
+        XCTAssertFalse(chosen.exists)
     }
 
     func herReplying() throws {

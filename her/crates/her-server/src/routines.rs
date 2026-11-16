@@ -856,7 +856,19 @@ impl Routines {
         self.open_runs.fetch_add(1, Ordering::AcqRel);
         let routines = self.clone();
         tokio::spawn(async move {
+            let started = Timestamp::now();
             let (ended, told) = server.carry_out_routine_run(&fire).await;
+            let wrote = crate::deliveries::RunWrote {
+                bot: fire.bot.clone(),
+                routine: fire.run.routine_id.clone(),
+                name: fire.run.name.clone(),
+                run: fire.run.id.clone(),
+                // To the second before, as sends are stamped (§4.11).
+                started: stamp(Timestamp::from_second(started.as_second()).unwrap_or(started)),
+                files: Vec::new(),
+            };
+            let folder = routines.home.bot_files_dir(&fire.bot);
+            server.0.deliveries.run_ended(folder, started.into(), ended.log.clone(), wrote).await;
             routines.finish(&fire, ended, told, Timestamp::now()).await;
             routines.open_runs.fetch_sub(1, Ordering::AcqRel);
             routines.runs_saved.notify_waiters();

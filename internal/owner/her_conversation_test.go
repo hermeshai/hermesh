@@ -421,7 +421,7 @@ func TestHerDeliveriesKept(t *testing.T) {
 		t.Fatalf("the first page: %s", got)
 	}
 	h.call["deliveries/list"] = `{"files":[],"seen":2}`
-	for _, params := range []string{`{"bot_id":"her","before":4}`, `{"bot_id":"her","query":"a"}`, `{"bot_id":"her","kind":"image"}`, `{"bot_id":"other"}`} {
+	for _, params := range []string{`{"bot_id":"her","before":4}`, `{"bot_id":"her","query":"a"}`, `{"bot_id":"her","kind":"image"}`, `{"bot_id":"her","media":false}`, `{"bot_id":"her","source":{"kind":"conversation"}}`, `{"bot_id":"other"}`} {
 		call("deliveries/list", params)
 		if got := kept(d); got != first {
 			t.Fatalf("after %s: %s", params, got)

@@ -19,18 +19,20 @@ import (
 // hermeshd: the machine says it answers the two requests; a file sent,
 // changed and sent again is one file with two versions, each with the copy
 // to read; her row counts the files the owner has not seen, until the list
-// was seen.
+// was seen. A file a routine made is the routine's (§4.11): the list shows one
+// source's files, and says which sources there are; a filtered page is not
+// the one kept here.
 func TestHerDeliveries(t *testing.T) {
 	env := newHerEnvironment(t)
 	if env.container != "" {
 		t.Skip("the test writes the machine's files from here")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 
-	eventually(t, 30*time.Second, "the machine lists the two requests", func() bool {
+	eventually(t, 30*time.Second, "the machine lists the three requests", func() bool {
 		methods := listedMachine(t, env.c, env.machine).GetHer().GetMethods()
-		return slices.Contains(methods, "deliveries/list") && slices.Contains(methods, "deliveries/seen")
+		return slices.Contains(methods, "deliveries/list") && slices.Contains(methods, "deliveries/seen") && slices.Contains(methods, "deliveries/sources")
 	})
 
 	type listed struct {
@@ -47,13 +49,18 @@ func TestHerDeliveries(t *testing.T) {
 		} `json:"files"`
 		Seen int `json:"seen"`
 	}
-	list := func() (l listed) {
+	listOf := func(source map[string]string) (l listed) {
 		t.Helper()
-		if err := json.Unmarshal(herCall(t, env, "", "deliveries/list", map[string]string{"bot_id": env.bot.ID}), &l); err != nil {
+		params := map[string]any{"bot_id": env.bot.ID}
+		if source != nil {
+			params["source"] = source
+		}
+		if err := json.Unmarshal(herCall(t, env, "", "deliveries/list", params), &l); err != nil {
 			t.Fatal(err)
 		}
 		return l
 	}
+	list := func() listed { return listOf(nil) }
 	// Her's row, as bots/subscribe lists it now.
 	row := func() (r struct {
 		New    int `json:"new_deliveries"`
@@ -78,7 +85,7 @@ func TestHerDeliveries(t *testing.T) {
 		t.Fatalf("before anything was sent: %+v", l)
 	}
 
-	stream, _, _ := openAssistant(t, ctx, env)
+	stream, op, session := openAssistant(t, ctx, env)
 	defer stream.Close()
 	send := func(path string) {
 		t.Helper()
@@ -155,6 +162,78 @@ func TestHerDeliveries(t *testing.T) {
 	if err := json.Unmarshal(kept.Deliveries, &page); err != nil || len(page.Files) != 2 || page.Files[0].Name != "report.md" || len(page.Files[0].Versions) != 2 || page.Seen != 3 {
 		t.Fatalf("the page kept here: %s (%v)", kept.Deliveries, err)
 	}
+
+	// A routine that makes a file each run, sent on by Her when its report
+	// wakes her: the routine's, by the run that wrote it. Her changes files
+	// without asking, so that a run, which cannot ask, can write; making the
+	// routine is asked about, and the owner says yes.
+	if _, err := env.c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: env.machine, BotId: env.bot.ID, PermissionMode: "accept-edits"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := env.c.HerSend(ctx, &localv1.HerSendRequest{MachineId: env.machine, BotId: env.bot.ID, Text: "[[mock:routine_file:Morning brief|in 2s|brief.md]] Every morning, a brief."})
+	if err != nil || !res.Delivered {
+		t.Fatalf("HerSend: %v %v", res, err)
+	}
+	untilEvent(t, stream, "the brief sent on", func(e herEvent) bool {
+		if e.Type == "approval_requested" && e.Name == "manage_routine" {
+			herCall(t, env, op.ConnectionId, "session/op", map[string]any{"session_id": session,
+				"op": map[string]any{"type": "approval", "call_id": e.CallID, "decision": map[string]string{"type": "approve"}}})
+		}
+		return e.Type == "tool_completed" && e.Result.ToolName == "send_to_user" && !e.Result.IsError && sentFile(e.Result.Details, "brief.md")
+	})
+	var sources struct {
+		Sources []struct {
+			Filter map[string]string `json:"filter"`
+			Name   string            `json:"name"`
+			Files  int               `json:"files"`
+		} `json:"sources"`
+	}
+	var raw json.RawMessage
+	for deadline := time.Now().Add(30 * time.Second); ; time.Sleep(200 * time.Millisecond) {
+		raw = herCall(t, env, "", "deliveries/sources", map[string]string{"bot_id": env.bot.ID})
+		json.Unmarshal(raw, &sources)
+		if len(sources.Sources) == 2 && sources.Sources[0].Filter["kind"] == "routine" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the routine among the sources: %s", raw)
+		}
+	}
+	routine := sources.Sources[0]
+	if routine.Name != "Morning brief" || routine.Files != 1 || sources.Sources[1].Filter["kind"] != "conversation" || sources.Sources[1].Files != 2 {
+		t.Fatalf("the sources: %+v", sources)
+	}
+	if all := list(); len(all.Files) != 3 || all.Files[0].Name != "brief.md" {
+		t.Fatalf("all of them: %+v", all)
+	}
+	if only := listOf(routine.Filter); len(only.Files) != 1 || only.Files[0].Name != "brief.md" {
+		t.Fatalf("the routine's: %+v", only)
+	}
+	if only := listOf(map[string]string{"kind": "conversation"}); len(only.Files) != 2 {
+		t.Fatalf("the conversation's: %+v", only)
+	}
+	if kept, err = env.c.GetHerConversation(ctx, &localv1.GetHerConversationRequest{MachineId: env.machine}); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(kept.Deliveries, &page); err != nil || len(page.Files) != 3 {
+		t.Fatalf("the page kept here is all of them, not the last filtered one: %s (%v)", kept.Deliveries, err)
+	}
+}
+
+// sentFile: a send_to_user result's details name a file of that name.
+func sentFile(details json.RawMessage, name string) bool {
+	var d struct {
+		Files []struct {
+			Path string `json:"path"`
+		} `json:"files"`
+	}
+	json.Unmarshal(details, &d)
+	for _, f := range d.Files {
+		if filepath.Base(f.Path) == name {
+			return true
+		}
+	}
+	return false
 }
 
 // TestHerSentCopies: her keeps a copy of each file Her sends, as it was when

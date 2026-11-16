@@ -51,6 +51,8 @@
 //! | `note_session:SECONDS` | the same in a session: `spawn_agent`, `交给子智能体了。`, then `回复：<the latest message>` for whatever comes next |
 //! | `note:SECONDS:TEXT` | half a second later, a sub-agent's `send_message` of TEXT to `main`, then a bash call running `sleep SECONDS`, then `写完了。` |
 //! | `routine:NAME\|SCHEDULE\|RUN` | a bot's `manage_routine` create, with RUN as the routine's prompt in brackets (`[[mock:RUN]]`); then `转告：<its result>` sent with `end_turn`, and for each report that wakes it, what the run found, sent with `end_turn` |
+//! | `write:PATH\|TEXT` | a `write` of TEXT to PATH, then `write done` |
+//! | `routine_file:NAME\|SCHEDULE\|FILE` | as `routine`, with a run that writes FILE in its folder (`write`), and each report that wakes it passed on with FILE attached, as a model sends what a routine made |
 //! | `connect:NAME[\|URL]` | Her's `call_tool` on `connector_connect` (`name` NAME, `url` URL); then `send_to_user` of the card it prepared (`type` card); when how the card ended wakes her: if it is done, `call_tool` on the connector's `echo` (`mcp__NAME__echo`); then `转告：<its note>`, with what `echo` said on a line of its own, sent with `end_turn` |
 //! | `say:TEXT` | TEXT, as it is |
 //! | `remember:LINE` | a bot noting LINE in its memory, the `MEMORY.md` its system prompt gives in `<memory path="…">`: a `write` of LINE when nothing is there yet, else an `edit` that puts LINE after the last line; then `记下了。` sent with `end_turn` |
@@ -644,6 +646,13 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
             0 => Plan::Step(Step::calls(vec![("bash", json!({ "command": if arg.is_empty() { "echo hi" } else { arg } }))])),
             _ => done("bash"),
         },
+        "write" => match step {
+            0 => {
+                let (path, text) = arg.split_once('|').unwrap_or((arg, ""));
+                Plan::Step(Step::calls(vec![("write", json!({ "path": path, "content": format!("{text}\n") }))]))
+            }
+            _ => done("write"),
+        },
         "files" => match step {
             0 => Plan::Step(Step::calls(vec![("write", json!({"path": "notes.txt", "content": "alpha\nbeta\n"}))])),
             1 => Plan::Step(Step::calls(vec![("read", json!({"path": "notes.txt"}))])),
@@ -921,6 +930,29 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 let text = messages.iter().rev().map(content_text).find(|text| !text.starts_with("<environment_update>")).unwrap_or_default();
                 let text = routine_found(&text).map_or_else(|| format!("转告：{text}"), str::to_string);
                 Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": text, "end_turn": true }))]))
+            }
+        },
+        // A routine that makes a file each run, which the bot sends on (docs/her-deliverables.md §4.11).
+        "routine_file" => match step {
+            0 => {
+                let mut parts = arg.splitn(3, '|');
+                let (name, schedule, file) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+                let run = format!("[[mock:write:{file}|# {name}]]");
+                Plan::Step(Step::calls(vec![(
+                    "manage_routine",
+                    json!({ "action": "create", "name": name, "prompt": run, "schedule": schedule, "when": "说好的时间" }),
+                )]))
+            }
+            _ => {
+                let text = messages.iter().rev().map(content_text).find(|text| !text.starts_with("<environment_update>")).unwrap_or_default();
+                let file = arg.splitn(3, '|').nth(2).unwrap_or("");
+                match routine_found(&text) {
+                    Some(found) => Plan::Step(Step::calls(vec![(
+                        "send_to_user",
+                        json!({ "type": "attachment", "text": format!("转告：{found}"), "files": [{ "path": file }], "end_turn": true }),
+                    )])),
+                    None => Plan::Step(Step::calls(vec![("send_to_user", json!({ "text": format!("转告：{text}"), "end_turn": true }))])),
+                }
             }
         },
         // Her asks the owner for a connector on a secure card (docs/her-secure-cards.md §6).
