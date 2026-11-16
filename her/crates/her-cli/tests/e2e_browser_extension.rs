@@ -518,6 +518,53 @@ async fn the_default_falls_back_to_the_built_in_browser_until_the_users_connects
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
 
+/// her on a Linux computer with a desktop, started as Hermesh starts it there: by a service of
+/// the user's that began at boot, before anyone logged in, so her's own environment names no
+/// display. Once someone logs in to the desktop, which puts its display in the user's systemd,
+/// the built-in browser has a window to show, without her starting again.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_built_in_browser_gets_a_window_once_someone_logs_in_to_the_desktop() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let env = TestEnv::new("manual", "").await;
+    // The user's systemd, standing in: its environment is the file beside it.
+    let bin = env.home.path().join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let session = bin.join("session-environment");
+    std::fs::write(&session, "HOME=/home/someone\n").unwrap();
+    let systemctl = bin.join("systemctl");
+    std::fs::write(&systemctl, format!("#!/bin/sh\n[ \"$1 $2\" = \"--user show-environment\" ] && cat '{}'\n", session.display())).unwrap();
+    std::fs::set_permissions(&systemctl, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let socket = env.home.path().join("run").join("her.sock");
+    let listen = format!("unix://{}", socket.display());
+    let mut command = env.her(&["serve", "--listen", &listen]);
+    command.env("PATH", format!("{}:{}", bin.display(), std::env::var("PATH").unwrap()));
+    for name in ["DISPLAY", "WAYLAND_DISPLAY", "SSH_CONNECTION", "SSH_TTY"] {
+        command.env_remove(name);
+    }
+    let mut service = command.spawn().unwrap();
+    for _ in 0..1200 {
+        if UnixStream::connect(&socket).await.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let (read, write) = UnixStream::connect(&socket).await.expect("the service listens").into_split();
+    let (client, incoming) = Client::connect(read, write);
+    native_init(&client).await;
+    let _demux = Demux::spawn(incoming);
+
+    let status = client.request("browser/status", json!({})).await.unwrap();
+    assert_eq!(status["window"], false, "nobody is logged in: {status}");
+    std::fs::write(&session, "HOME=/home/someone\nDISPLAY=:0\nXAUTHORITY=/run/user/1000/gdm/Xauthority\n").unwrap();
+    let status = client.request("browser/status", json!({})).await.unwrap();
+    assert_eq!(status["window"], true, "someone logged in: {status}");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
 // ---- The tabs' lifetime and the connection's (browser-design §8.4.7) ----
 
 /// A service on `socket`, and a client that follows the browsers' status.

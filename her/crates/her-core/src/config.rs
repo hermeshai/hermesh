@@ -286,9 +286,12 @@ impl DesktopSettings {
 
     /// Whether the computer use tools are on, `app` saying whether the desktop app is connected.
     /// `HER_DESKTOP=on` turns them on where nothing is set: a host that runs her on a Mac, where
-    /// macOS asks the owner for the permissions first (Hermesh, docs/her-server.md §4.4).
+    /// macOS asks the owner for the permissions first (Hermesh, docs/her-server.md §4.4), or on a
+    /// Linux computer, where it counts only while someone is logged in to its desktop: a server
+    /// has no apps to use.
     pub fn on(&self, app: bool) -> bool {
-        self.enabled.unwrap_or(app || std::env::var_os("HER_DESKTOP").is_some_and(|v| v == "on"))
+        let host = || std::env::var_os("HER_DESKTOP").is_some_and(|v| v == "on") && (!cfg!(target_os = "linux") || her_browser::pool::has_display());
+        self.enabled.unwrap_or_else(|| app || host())
     }
 
     /// The configured level of `app`, by bundle id or name.

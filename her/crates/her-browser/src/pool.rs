@@ -121,8 +121,9 @@ const NO_EXTENSION: &str = "The Hermesh extension is not connected, so the brows
 pub struct BrowserPool {
     /// `~/.her/browser`.
     root: PathBuf,
-    /// What `Headless::Auto` means in this process.
-    auto_headless: bool,
+    /// What `Headless::Auto` means in this process; `None`: no window only while there is no
+    /// display to show one on.
+    auto_headless: Option<bool>,
     launcher: Arc<dyn Launcher>,
     /// The desktop app connected to this process, if any.
     host: Mutex<Option<Arc<dyn EmbeddedHost>>>,
@@ -162,14 +163,17 @@ impl BrowserPool {
     /// `interactive`: a person may watch, so `Headless::Auto` shows a window when there is a
     /// display. `her exec` passes false.
     pub fn new(root: PathBuf, interactive: bool) -> Self {
-        Self::with_launcher(root, interactive && has_display(), Arc::new(ManagedLauncher))
+        let mut pool = Self::with_launcher(root, false, Arc::new(ManagedLauncher));
+        // Asked each time: someone may log in to the desktop after this process started.
+        pool.auto_headless = (!interactive).then_some(true);
+        pool
     }
 
     pub fn with_launcher(root: PathBuf, auto_headless_off: bool, launcher: Arc<dyn Launcher>) -> Self {
         let chosen = std::fs::read_to_string(root.join(IN_USE_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         Self {
             root,
-            auto_headless: !auto_headless_off,
+            auto_headless: Some(!auto_headless_off),
             launcher,
             host: Mutex::new(None),
             extensions: Mutex::new(Vec::new()),
@@ -412,7 +416,7 @@ impl BrowserPool {
 
     /// Whether the built-in browser shows a window where `browser.headless` is auto.
     pub fn shows_window(&self) -> bool {
-        !self.auto_headless
+        !self.auto_headless.unwrap_or_else(|| !has_display())
     }
 
     async fn launch(&self, config: &BrowserConfig) -> Result<Arc<Browser>, BrowserError> {
@@ -439,7 +443,7 @@ impl BrowserPool {
         let headless = match config.headless {
             Headless::On => true,
             Headless::Off => false,
-            Headless::Auto => self.auto_headless,
+            Headless::Auto => !self.shows_window(),
         };
         // The configured one, else one installed on the machine, else her's own (D-194).
         let executable = config.executable.clone().or_else(|| {
@@ -532,7 +536,38 @@ pub fn has_display() -> bool {
     if cfg!(any(target_os = "macos", windows)) {
         return true;
     }
+    own_display() || !session_display().is_empty()
+}
+
+fn own_display() -> bool {
     std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
+/// The desktop session's display on Linux, and what else names that session, for a program this
+/// process starts there (a browser, agent-desktop), when this process's own environment names
+/// no display: a service of the user's often starts before anyone logs in (hermeshd, with
+/// lingering on), and her with it. The desktops put theirs in the user's systemd once someone
+/// logs in, where Computer Control's helper finds it too (docs/computer-control-linux.md §3.1).
+/// Empty when this process has a display, when nobody is logged in to a desktop, and on other
+/// systems.
+pub fn session_display() -> Vec<(String, String)> {
+    if !cfg!(target_os = "linux") || own_display() {
+        return Vec::new();
+    }
+    let shown = std::process::Command::new("systemctl").args(["--user", "show-environment"]).stdin(std::process::Stdio::null()).output();
+    shown.map(|out| display_in(&String::from_utf8_lossy(&out.stdout))).unwrap_or_default()
+}
+
+/// The display's variables in what `systemctl --user show-environment` printed; none unless a
+/// display is among them.
+fn display_in(environment: &str) -> Vec<(String, String)> {
+    let found: Vec<(String, String)> = environment
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .filter(|(name, _)| ["DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"].contains(name))
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect();
+    if found.iter().any(|(name, _)| name == "DISPLAY" || name == "WAYLAND_DISPLAY") { found } else { Vec::new() }
 }
 
 /// Where a running browser is.
@@ -644,5 +679,23 @@ async fn close(conn: Arc<Conn>, mut closing: Closing) {
         if starting.get(&closing.key).is_some_and(|gate| Arc::strong_count(gate) == 1) {
             starting.remove(&closing.key);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_in;
+
+    #[test]
+    fn the_sessions_display_is_what_the_users_systemd_holds() {
+        let logged_in = "HOME=/home/alice\nDISPLAY=:0\nXAUTHORITY=/run/user/1000/gdm/Xauthority\nWAYLAND_DISPLAY=wayland-0\nXDG_CURRENT_DESKTOP=ubuntu:GNOME\nPATH=/usr/bin\n";
+        let pair = |name: &str, value: &str| (name.to_string(), value.to_string());
+        assert_eq!(
+            display_in(logged_in),
+            [pair("DISPLAY", ":0"), pair("XAUTHORITY", "/run/user/1000/gdm/Xauthority"), pair("WAYLAND_DISPLAY", "wayland-0"), pair("XDG_CURRENT_DESKTOP", "ubuntu:GNOME")]
+        );
+        // Before anyone logs in, and on a server: nothing to show a window on.
+        assert!(display_in("HOME=/home/alice\nXAUTHORITY=/home/alice/.Xauthority\nXDG_SESSION_TYPE=tty\nPATH=/usr/bin\n").is_empty());
+        assert!(display_in("").is_empty());
     }
 }

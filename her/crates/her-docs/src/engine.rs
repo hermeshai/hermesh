@@ -94,7 +94,8 @@ pub struct Rendered {
 }
 
 /// Where the PDFium library is: `HER_PDFIUM`, else beside the program (Hermesh.app's
-/// `Contents/MacOS` or `Contents/Frameworks`), else the `pdf` component (`her install pdf`), else
+/// `Contents/MacOS` or `Contents/Frameworks`), else the `pdf` component (`her-pdf/` beside the
+/// program on a Linux machine of Hermesh's, or `her install pdf`), else
 /// `$HER_HOME/pdfium/lib`, else, in development builds, the copy `tools/pdfium` downloads into.
 pub fn locate_library() -> Option<PathBuf> {
     let name = Pdfium::pdfium_platform_library_name();
@@ -107,9 +108,7 @@ pub fn locate_library() -> Option<PathBuf> {
         candidates.push(dir.join(&name));
         candidates.push(dir.join("../Frameworks").join(&name));
     }
-    if let Some(dir) = crate::pdf_addon_dir() {
-        candidates.push(dir.join(&name));
-    }
+    candidates.extend(crate::pdf_dirs().into_iter().map(|dir| dir.join(&name)));
     if let Some(home) = crate::her_home() {
         candidates.push(home.join("pdfium/lib").join(&name));
     }

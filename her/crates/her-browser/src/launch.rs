@@ -237,6 +237,7 @@ fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, Browser
         .args(arguments(options, cfg!(target_os = "linux") && unsafe { libc::geteuid() } == 0))
         .env_clear()
         .envs(KEPT_ENV.iter().filter_map(|name| std::env::var_os(name).map(|value| (name, value))))
+        .envs(crate::pool::session_display())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

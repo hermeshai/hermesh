@@ -29,8 +29,12 @@ pub(crate) fn her_home() -> Option<std::path::PathBuf> {
     }
 }
 
-/// The `pdf` component of this version. Another version's is not used: the worker and the program
+/// Where the `pdf` component may be: `her-pdf/` beside the program, where Hermesh's install puts
+/// it on Linux with her from the same release (docs/linux.md §4), then this version's own in
+/// her's home (`her install pdf`). Another version's is not used: the worker and the program
 /// that talks to it are released together.
-pub(crate) fn pdf_addon_dir() -> Option<std::path::PathBuf> {
-    her_home().map(|home| home.join("addons").join("pdf").join(env!("CARGO_PKG_VERSION")))
+pub(crate) fn pdf_dirs() -> Vec<std::path::PathBuf> {
+    let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(|dir| dir.join("her-pdf")));
+    let own = her_home().map(|home| home.join("addons").join("pdf").join(env!("CARGO_PKG_VERSION")));
+    beside.into_iter().chain(own).collect()
 }

@@ -271,12 +271,15 @@ async fn chatgpt_login(overrides: &[String], model: Option<String>, interactive:
         eprintln!("Sign in to ChatGPT in your browser:\n{url}");
         crate::cmd_customize::open_browser(url);
     }
+    let pasted = crate::cmd_customize::take_pasted_redirect(started.authorize_url.as_deref().unwrap_or_default());
+    tokio::pin!(pasted);
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
                 if let Some(id) = &started.login_id { let _ = chatgpt.cancel(id); }
                 bail!("sign-in cancelled");
             }
+            () = &mut pasted => {}
             _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {}
         }
         let status = chatgpt.status()?;
