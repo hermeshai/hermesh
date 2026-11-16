@@ -232,8 +232,11 @@ mod tests {
         std::os::unix::fs::symlink(dir.path().join("src"), dir.path().join("linked")).unwrap();
         let listed = list(dir.path()).unwrap();
         let names: Vec<(&str, bool, bool)> = listed.entries.iter().map(|e| (e.name.as_str(), e.dir, e.link)).collect();
-        assert_eq!(names, [("Docs", true, false), ("linked", true, true), ("src", true, false), ("A1.txt", false, false), ("a2.txt", false, false), ("a10.txt", false, false), ("b.txt", false, false)]);
-        assert_eq!(listed.entries[3].size, 1);
+        let mut expected = vec![("Docs", true, false), ("linked", true, true), ("src", true, false), ("A1.txt", false, false), ("a2.txt", false, false), ("a10.txt", false, false), ("b.txt", false, false)];
+        // The link is made on Unix only.
+        expected.retain(|entry| cfg!(unix) || entry.0 != "linked");
+        assert_eq!(names, expected);
+        assert_eq!(listed.entries.iter().find(|e| e.name == "A1.txt").unwrap().size, 1);
         assert!(!listed.truncated);
     }
 

@@ -664,7 +664,8 @@ mod tests {
         let manual = view(PermissionMode::Manual, vec![], SitePolicy::default(), &root);
         let inside_url = Url::from_file_path(root.join("index.html")).unwrap().to_string();
         assert_eq!(evaluate(&[nav(&inside_url)], &manual).await, Gate::Allow);
-        let outside = evaluate(&[nav("file:///etc/hosts")], &manual).await;
+        // A local file's address names a drive on Windows.
+        let outside = evaluate(&[nav(if cfg!(windows) { "file:///C:/Windows/win.ini" } else { "file:///etc/hosts" })], &manual).await;
         assert_eq!(asks(&outside).unwrap(), vec![], "no grant for files outside");
         let upload = Authority::Upload {
             origin: "http://localhost:3000".into(),
