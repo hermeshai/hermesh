@@ -1,11 +1,12 @@
 //! A local server: a child process speaking newline-delimited JSON on stdin and stdout.
 //!
-//! The process gets its own process group, and signals always go to the whole group:
-//! wrappers such as `npx` start the real server as a grandchild.
+//! The process leads a tree of its own (`her_tools::proctree`), stopped as a whole: wrappers
+//! such as `npx` start the real server as a grandchild.
 
 use async_trait::async_trait;
 use her_rpc::Frame;
 use her_rpc::FrameReader;
+use her_tools::proctree::ProcessTree;
 use parking_lot::Mutex;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -41,7 +42,7 @@ pub(crate) struct StdioTransport {
     server: String,
     /// Dropping the sender closes the child's stdin.
     out: Mutex<Option<mpsc::UnboundedSender<Vec<u8>>>>,
-    pid: Option<u32>,
+    tree: ProcessTree,
     exited: watch::Receiver<bool>,
     stderr: Arc<Mutex<VecDeque<u8>>>,
 }
@@ -53,7 +54,9 @@ pub(crate) struct SpawnError {
 }
 
 pub(crate) fn spawn(spec: StdioSpec, inbound: mpsc::UnboundedSender<Inbound>) -> Result<Arc<StdioTransport>, SpawnError> {
-    let mut command = Command::new(&spec.program);
+    // Windows' names have no case: its `PATH` is `Path`.
+    let path = spec.env.iter().find(|(name, _)| name.eq_ignore_ascii_case("PATH")).map(|(_, value)| value.as_str());
+    let mut command = Command::new(her_tools::proctree::program(&spec.program, path));
     command
         .args(&spec.args)
         .env_clear()
@@ -63,9 +66,7 @@ pub(crate) fn spawn(spec: StdioSpec, inbound: mpsc::UnboundedSender<Inbound>) ->
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
-    let mut child = command.spawn().map_err(|err| {
+    let (mut child, tree) = ProcessTree::spawn(&mut command).map_err(|err| {
         let permanent = matches!(err.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied);
         let message = match err.kind() {
             std::io::ErrorKind::NotFound if !spec.cwd.is_dir() => {
@@ -76,7 +77,6 @@ pub(crate) fn spawn(spec: StdioSpec, inbound: mpsc::UnboundedSender<Inbound>) ->
         };
         SpawnError { message, permanent }
     })?;
-    let pid = child.id();
     let stdin = child.stdin.take();
     let stdout = child.stdout.take();
     let stderr_pipe = child.stderr.take();
@@ -149,7 +149,7 @@ pub(crate) fn spawn(spec: StdioSpec, inbound: mpsc::UnboundedSender<Inbound>) ->
     Ok(Arc::new(StdioTransport {
         server: spec.server,
         out: Mutex::new(Some(out_tx)),
-        pid,
+        tree,
         exited: exited_rx,
         stderr,
     }))
@@ -182,18 +182,6 @@ fn with_stderr(message: String, tail: &Mutex<VecDeque<u8>>) -> String {
 }
 
 impl StdioTransport {
-    fn signal_group(&self, signal: i32) {
-        #[cfg(unix)]
-        if let Some(pid) = self.pid {
-            // SAFETY: plain syscall; the group was created for this child (process_group(0)).
-            unsafe {
-                libc::killpg(pid as libc::pid_t, signal);
-            }
-        }
-        #[cfg(not(unix))]
-        let _ = signal;
-    }
-
     async fn wait_exit(&self, within: Duration) -> bool {
         let mut exited = self.exited.clone();
         tokio::time::timeout(within, exited.wait_for(|done| *done)).await.is_ok()
@@ -219,13 +207,13 @@ impl Transport for StdioTransport {
     async fn close(&self) {
         self.out.lock().take();
         if self.wait_exit(Duration::from_secs(2)).await {
-            // The server exited; anything it started in its group goes too.
-            self.signal_group(libc_sigterm());
+            // The server exited; anything it started goes too.
+            self.tree.terminate();
             return;
         }
-        self.signal_group(libc_sigterm());
+        self.tree.terminate();
         if !self.wait_exit(Duration::from_secs(1)).await {
-            self.signal_group(libc_sigkill());
+            self.tree.kill();
             let _ = self.wait_exit(Duration::from_secs(1)).await;
         }
         tracing::debug!(server = %self.server, "stopped the MCP server process");
@@ -234,26 +222,9 @@ impl Transport for StdioTransport {
 
 impl Drop for StdioTransport {
     fn drop(&mut self) {
-        // her is going away without a clean shutdown: take the whole group down.
+        // her is going away without a clean shutdown: take the whole tree down.
         if !*self.exited.borrow() {
-            self.signal_group(libc_sigkill());
+            self.tree.kill();
         }
     }
-}
-
-#[cfg(unix)]
-fn libc_sigterm() -> i32 {
-    libc::SIGTERM
-}
-#[cfg(unix)]
-fn libc_sigkill() -> i32 {
-    libc::SIGKILL
-}
-#[cfg(not(unix))]
-fn libc_sigterm() -> i32 {
-    15
-}
-#[cfg(not(unix))]
-fn libc_sigkill() -> i32 {
-    9
 }

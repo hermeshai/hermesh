@@ -264,6 +264,7 @@ mod tests {
     use crate::files::FileStamp;
     use crate::tool::Tool;
     use crate::typed::Typed;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
@@ -296,6 +297,7 @@ mod tests {
         out
     }
 
+    #[cfg(unix)]
     fn is_root() -> bool {
         unsafe { libc::geteuid() == 0 }
     }
@@ -377,6 +379,7 @@ mod tests {
         assert_eq!(snapshot(dir.path()), before);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn refuses_read_only_files() {
         if is_root() {
@@ -397,6 +400,7 @@ mod tests {
         assert_eq!(snapshot(dir.path()), before, "file kept and no temporary file left");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn never_replaces_a_named_pipe() {
         use std::os::unix::ffi::OsStrExt;
@@ -416,6 +420,7 @@ mod tests {
         assert!(std::fs::symlink_metadata(&fifo).unwrap().file_type().is_fifo());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn writes_through_symlinks() {
         let dir = tempfile::tempdir().unwrap();

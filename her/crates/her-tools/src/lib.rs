@@ -8,6 +8,7 @@ pub mod env;
 pub mod files;
 pub mod image;
 pub mod local_env;
+pub mod proctree;
 pub mod registry;
 pub mod text;
 pub mod tool;

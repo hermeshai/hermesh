@@ -289,13 +289,72 @@ fn nonblocking(fd: std::os::fd::OwnedFd) -> std::io::Result<std::os::fd::OwnedFd
     Ok(fd)
 }
 
-#[cfg(not(unix))]
-fn spawn(_executable: &Path, _options: &LaunchOptions) -> Result<Launched, BrowserError> {
-    // Windows passes the pipe as inherited handles (`--remote-debugging-io-pipes`); not
-    // verified yet (browser-design D-195).
-    Err(BrowserError::Launch(
-        "the managed browser is not supported on this platform yet".into(),
-    ))
+/// On Windows the browser takes its two pipe ends as handles it inherits, named in
+/// `--remote-debugging-io-pipes` (browser-design D-195). They are named pipes: her's ends are
+/// overlapped, as tokio needs, and the browser's are plain.
+#[cfg(windows)]
+fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, BrowserError> {
+    use std::os::windows::io::AsRawHandle;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
+    use tokio::net::windows::named_pipe::ServerOptions;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
+    use windows_sys::Win32::Foundation::SetHandleInformation;
+
+    static LAUNCHES: AtomicU64 = AtomicU64::new(0);
+
+    std::fs::create_dir_all(&options.user_data_dir).map_err(|e| {
+        BrowserError::Launch(format!("cannot create {}: {e}", options.user_data_dir.display()))
+    })?;
+    let launch_error = |e: std::io::Error| BrowserError::Launch(format!("cannot create the browser pipe: {e}"));
+    let launch = LAUNCHES.fetch_add(1, Ordering::Relaxed);
+    let name = |end: &str| format!(r"\\.\pipe\her-browser-{}-{launch}-{end}", std::process::id());
+    // One instance each, the first of its name: nobody else serves or joins these pipes.
+    let pipe = |end: &str, inbound: bool| -> std::io::Result<_> {
+        let name = name(end);
+        let ours = ServerOptions::new()
+            .access_inbound(inbound)
+            .access_outbound(!inbound)
+            .first_pipe_instance(true)
+            .max_instances(1)
+            .create(&name)?;
+        let theirs = std::fs::OpenOptions::new().read(!inbound).write(inbound).open(&name)?;
+        // SAFETY: the handle is open, owned by `theirs`.
+        if unsafe { SetHandleInformation(theirs.as_raw_handle() as HANDLE, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) } == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok((ours, theirs))
+    };
+    let (we_write, browser_reads) = pipe("in", false).map_err(launch_error)?;
+    let (we_read, browser_writes) = pipe("out", true).map_err(launch_error)?;
+    let mut args = arguments(options, false);
+    args.insert(
+        1,
+        format!(
+            "--remote-debugging-io-pipes={},{}",
+            browser_reads.as_raw_handle() as usize,
+            browser_writes.as_raw_handle() as usize
+        ),
+    );
+    let child = tokio::process::Command::new(executable)
+        .args(args)
+        .env_clear()
+        .envs(KEPT_ENV.iter().filter_map(|name| std::env::var_os(name).map(|value| (name, value))))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| BrowserError::Launch(format!("cannot start {}: {e}", executable.display())))?;
+    drop(browser_reads);
+    drop(browser_writes);
+    let (conn, events) = Conn::start(we_read, we_write, COMMAND_TIMEOUT);
+    Ok(Launched {
+        conn,
+        events,
+        child: Some(child),
+    })
 }
 
 /// A profile held by this process: an advisory lock that the system releases when the
@@ -343,9 +402,24 @@ fn try_lock(file: &File) -> bool {
     unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
 }
 
-#[cfg(not(unix))]
-fn try_lock(_file: &File) -> bool {
-    true
+/// Windows keeps other processes from reading a locked range, and the holder's pid in the
+/// file is for them to read: the lock is on one byte far past the file's end.
+#[cfg(windows)]
+fn try_lock(file: &File) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_EXCLUSIVE_LOCK;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_FAIL_IMMEDIATELY;
+    use windows_sys::Win32::Storage::FileSystem::LockFileEx;
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    // SAFETY: zeroes are a valid value of this plain C struct.
+    let mut at: OVERLAPPED = unsafe { std::mem::zeroed() };
+    at.Anonymous.Anonymous.OffsetHigh = 1;
+    // SAFETY: LockFileEx on a handle we own; `at` names the byte and outlives the call.
+    unsafe {
+        LockFileEx(file.as_raw_handle() as HANDLE, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &mut at) != 0
+    }
 }
 
 #[cfg(test)]

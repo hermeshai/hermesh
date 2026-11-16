@@ -34,13 +34,10 @@ import (
 // HERMESH_HER_MOCK, else the her-mock beside that her.
 func herBinaries(t *testing.T) (her, mock string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("her has no Windows build")
-	}
 	her = herBinary(t, "HERMESH_HER_BIN", "her")
 	mock = os.Getenv("HERMESH_HER_MOCK")
 	if mock == "" {
-		mock = filepath.Join(filepath.Dir(her), "her-mock")
+		mock = filepath.Join(filepath.Dir(her), "her-mock"+exe)
 	}
 	if _, err := os.Stat(mock); err != nil {
 		t.Skipf("no her-mock (%v): build her (cargo build in her/) or set HERMESH_HER_MOCK", err)
@@ -54,7 +51,7 @@ func herBinary(t *testing.T, env, name string) string {
 	t.Helper()
 	p := os.Getenv(env)
 	if p == "" {
-		p, _ = filepath.Abs(filepath.Join("her", "target", "debug", name))
+		p, _ = filepath.Abs(filepath.Join("her", "target", "debug", name+exe))
 	}
 	if _, err := os.Stat(p); err != nil {
 		t.Skipf("no %s (%v): build her (cargo build in her/) or set %s", name, err, env)

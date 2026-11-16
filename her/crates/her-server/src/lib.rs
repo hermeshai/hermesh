@@ -6,9 +6,11 @@
 //! all connections attached to the session.
 
 pub mod conn;
+pub mod endpoint;
 pub mod errors;
 pub mod frame;
 pub mod hub;
+#[cfg(unix)]
 pub mod limits;
 pub mod list;
 pub mod memory;

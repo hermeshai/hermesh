@@ -1,4 +1,5 @@
-//! End-to-end: the native protocol over `her serve --stdio` and `her serve --listen unix://`.
+//! End-to-end: the native protocol over `her serve --stdio` and `her serve --listen unix://`
+//! (a Unix socket; a named pipe on Windows).
 
 mod common;
 
@@ -10,6 +11,7 @@ use common::native_init;
 use common::native_prompt;
 use common::recv;
 use her_rpc::Client;
+use her_server::endpoint;
 use serde_json::Value;
 use serde_json::json;
 use std::path::Path;
@@ -22,7 +24,6 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufReader;
 use tokio::io::Lines;
-use tokio::net::UnixStream;
 
 async fn new_session(client: &Client, cwd: &Path) -> (String, Value) {
     let result = client
@@ -361,7 +362,7 @@ async fn a_line_without_end_is_answered_on_every_transport() {
     let url = format!("unix://{}", socket.display());
     let mut service = env.her(&["serve", "--listen", &url]).spawn().unwrap();
     wait_for_socket(&socket).await;
-    let (read, write) = UnixStream::connect(&socket).await.unwrap().into_split();
+    let (read, write) = tokio::io::split(endpoint::connect(&socket).await.unwrap());
     answers_a_line_without_end(read, write, native).await;
     service.kill().await.unwrap();
 }
@@ -515,8 +516,8 @@ async fn skills_list_reports_a_session_and_a_directory() {
 }
 
 async fn connect(path: &Path) -> (Client, her_rpc::IncomingRx) {
-    let stream = UnixStream::connect(path).await.expect("connect");
-    let (read, write) = stream.into_split();
+    let stream = endpoint::connect(path).await.expect("connect");
+    let (read, write) = tokio::io::split(stream);
     let (client, incoming) = Client::connect(read, write);
     native_init(&client).await;
     (client, incoming)
@@ -524,7 +525,7 @@ async fn connect(path: &Path) -> (Client, her_rpc::IncomingRx) {
 
 async fn wait_for_socket(path: &Path) {
     for _ in 0..200 {
-        if UnixStream::connect(path).await.is_ok() {
+        if endpoint::connect(path).await.is_ok() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
@@ -543,7 +544,7 @@ async fn clients_gone_before_their_answers_leave_the_service_up() {
     wait_for_socket(&socket).await;
     let init = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocol_version": 2, "client_info": {"name": "e2e"}}});
     for _ in 0..20 {
-        let mut stream = UnixStream::connect(&socket).await.unwrap();
+        let mut stream = endpoint::connect(&socket).await.unwrap();
         let mut burst = format!("{init}\n");
         for id in 2..50 {
             burst.push_str(&format!("{}\n", json!({"jsonrpc": "2.0", "id": id, "method": "models/list", "params": {}})));
@@ -774,8 +775,8 @@ async fn every_client_and_every_list_go_back_with_a_resend() {
     wait_for_socket(&socket).await;
 
     // The service says it can.
-    let stream = UnixStream::connect(&socket).await.unwrap();
-    let (read, write) = stream.into_split();
+    let stream = endpoint::connect(&socket).await.unwrap();
+    let (read, write) = tokio::io::split(stream);
     let (asked, _asked_in) = Client::connect(read, write);
     let init = asked
         .request("initialize", json!({"protocol_version": 2, "client_info": {"name": "e2e"}}))

@@ -1517,6 +1517,7 @@ esac
         ]}}})
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_focused_text_element_is_found() {
         let tree = &focused_field("w-1")["data"]["tree"];

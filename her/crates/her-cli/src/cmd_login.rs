@@ -116,6 +116,35 @@ fn read_hidden(question: &str) -> anyhow::Result<String> {
     Ok(line.trim().to_string())
 }
 
+#[cfg(windows)]
+fn read_hidden(question: &str) -> anyhow::Result<String> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::System::Console::ENABLE_ECHO_INPUT;
+    use windows_sys::Win32::System::Console::GetConsoleMode;
+    use windows_sys::Win32::System::Console::SetConsoleMode;
+
+    eprint!("{question}");
+    std::io::stderr().flush()?;
+    let console = std::io::stdin().as_raw_handle() as HANDLE;
+    let mut mode = 0u32;
+    // SAFETY: standard input's handle, open for the life of the process; `mode` outlives the call.
+    let original = (unsafe { GetConsoleMode(console, &mut mode) } != 0).then_some(mode);
+    if let Some(original) = original {
+        // SAFETY: the same handle, and the mode read from it less echo.
+        unsafe { SetConsoleMode(console, original & !ENABLE_ECHO_INPUT) };
+    }
+    let mut line = String::new();
+    let read = std::io::stdin().lock().read_line(&mut line);
+    if let Some(original) = original {
+        // SAFETY: as above.
+        unsafe { SetConsoleMode(console, original) };
+    }
+    eprintln!();
+    read?;
+    Ok(line.trim().to_string())
+}
+
 fn providers_with_keys(listing: &ModelsListResult) -> Vec<&ProviderSummary> {
     // The Anthropic-compatible DeepSeek endpoint is the same account as DeepSeek.
     listing.providers.iter().filter(|p| matches!(p.auth, her_protocol::api::AuthKind::ApiKey) && p.id != "deepseek-anthropic").collect()

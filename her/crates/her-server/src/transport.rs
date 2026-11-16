@@ -1,19 +1,18 @@
-//! Transports: one connection on stdio, or a local service on a Unix socket.
+//! Transports: one connection on stdio, or a local service on its endpoint (a Unix socket; a
+//! named pipe on Windows, see `endpoint`).
 
 use std::fs::File;
 use std::io;
-use std::os::fd::AsRawFd;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tokio::net::UnixListener;
 
 use crate::conn::Protocol;
 use crate::conn::run_connection;
+use crate::endpoint;
 use crate::server::Server;
 
 /// Serves one client on stdin and stdout. When stdin closes, every session is closed.
@@ -32,6 +31,7 @@ pub fn default_socket_path(server: &Server) -> PathBuf {
 }
 
 /// Socket paths are limited to the size of `sockaddr_un.sun_path`, terminator included.
+#[cfg(unix)]
 const MAX_SOCKET_PATH: usize = 103;
 
 pub struct UnixService {
@@ -40,14 +40,16 @@ pub struct UnixService {
     pub idle_exit: Option<Duration>,
 }
 
-/// Listens on a private Unix socket until a client sends `server/shutdown`, the server is
-/// asked to stop, or it stays idle for `idle_exit`. Only the owner's processes may connect.
+/// Listens on the private endpoint at the path until a client sends `server/shutdown`, the
+/// server is asked to stop, or it stays idle for `idle_exit`. Only the owner's processes may
+/// connect.
 pub async fn serve_unix(
     server: Server,
     service: UnixService,
     protocol: impl Fn() -> Arc<dyn Protocol> + Send + Sync + 'static,
 ) -> io::Result<()> {
     let path = service.path;
+    #[cfg(unix)]
     if path.as_os_str().len() > MAX_SOCKET_PATH {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -59,7 +61,11 @@ pub async fn serve_unix(
     }
     let dir = path.parent().unwrap_or(Path::new("."));
     std::fs::create_dir_all(dir)?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     // One service per socket: the lock is held for the life of the process. The file is
     // opened without truncating it: until the lock is ours, it holds the running service's
     // record.
@@ -82,20 +88,7 @@ pub async fn serve_unix(
     }
     write_record(&mut lock, &path)?;
     // Holding the lock, any existing socket file is stale.
-    match std::fs::remove_file(&path) {
-        Ok(()) => {}
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-        Err(err) => return Err(err),
-    }
-    let listener = UnixListener::bind(&path)?;
-    // The longest queue of connections waiting to be accepted that the system allows: 4096
-    // by default on Linux, and on macOS 128 unless `kern.ipc.somaxconn` is raised. Clients
-    // retry while it is full (protocol-design §8.2).
-    // SAFETY: listening again on the socket just bound only changes the queue length.
-    if unsafe { libc::listen(listener.as_raw_fd(), -1) } != 0 {
-        tracing::debug!(err = %io::Error::last_os_error(), "kept the default accept queue");
-    }
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let mut listener = endpoint::Listener::bind(&path)?;
     tracing::info!(socket = %path.display(), "her service listening");
     // The record goes to disk once clients can connect: the sync takes about 4 ms on macOS,
     // and readers on this machine see the record without it.
@@ -106,29 +99,17 @@ pub async fn serve_unix(
     let protocol = Arc::new(protocol);
     let active = Arc::new(AtomicUsize::new(0));
     let stopped = server.shutdown_token();
-    let uid = unsafe { libc::geteuid() };
     let mut idle_since = tokio::time::Instant::now();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
     loop {
         tokio::select! {
             accepted = listener.accept() => {
-                let (stream, _) = match accepted {
-                    Ok(pair) => pair,
+                let (stream, peer_pid) = match accepted {
+                    Ok(Some(pair)) => pair,
+                    Ok(None) => continue,
                     Err(err) => {
                         tracing::warn!(%err, "accept failed");
                         tokio::time::sleep(Duration::from_millis(50)).await;
-                        continue;
-                    }
-                };
-                let peer_pid = match stream.peer_cred() {
-                    Ok(cred) if cred.uid() == uid => cred.pid().and_then(|pid| u32::try_from(pid).ok()),
-                    Ok(cred) => {
-                        tracing::warn!(uid = cred.uid(), "refused a connection from another user");
-                        continue;
-                    }
-                    // The peer is already gone (a readiness probe, say).
-                    Err(err) => {
-                        tracing::debug!(%err, "dropped a connection whose peer could not be identified");
                         continue;
                     }
                 };
@@ -137,7 +118,7 @@ pub async fn serve_unix(
                 let active = active.clone();
                 active.fetch_add(1, Ordering::Relaxed);
                 tokio::spawn(async move {
-                    let (read, write) = stream.into_split();
+                    let (read, write) = endpoint::split(stream);
                     crate::conn::run_peer_connection(server, read, write, protocol, peer_pid).await;
                     active.fetch_sub(1, Ordering::Relaxed);
                 });

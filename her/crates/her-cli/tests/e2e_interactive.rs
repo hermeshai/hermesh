@@ -1,5 +1,8 @@
 //! The interactive mode on a real pseudo-terminal: what a person would type and see.
 
+// Unix only: a pseudo-terminal.
+#![cfg(unix)]
+
 mod common;
 
 use common::TestEnv;

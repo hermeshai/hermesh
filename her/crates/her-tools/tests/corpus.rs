@@ -105,6 +105,7 @@ mod read {
     use rand::Rng;
     use rand::seq::SliceRandom;
     use std::sync::Arc;
+    #[cfg(unix)]
     use std::time::Duration;
     use support::corpus::rng;
     use support::model::line_starts;
@@ -1086,8 +1087,11 @@ mod edit {
 
 mod write {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
+    #[cfg(unix)]
     use support::error;
     use support::model::write_result;
     use support::model::written;
@@ -1156,6 +1160,7 @@ mod write {
         }
     }
 
+    #[cfg(unix)]
     /// write replaces only a version of the file this session read or wrote; any change since,
     /// even one that keeps the size and the modification time, needs another read.
     #[tokio::test]
@@ -1213,6 +1218,7 @@ mod write {
         assert_eq!(text(&out), write_result(&display, true, 4, &[]));
     }
 
+    #[cfg(unix)]
     /// Through a link the file it points to is replaced and the link stays; the session knows
     /// the file under every name. A dangling link creates its target.
     #[tokio::test]
@@ -1251,6 +1257,7 @@ mod write {
         assert!(std::fs::symlink_metadata(s.path("dangling")).unwrap().file_type().is_symlink());
     }
 
+    #[cfg(unix)]
     /// Writes that cannot happen are refused, and leave the directory as it was, without
     /// temporary files.
     #[tokio::test]
@@ -1439,10 +1446,15 @@ const STALE: &str =
 /// Regressions: each was a bug this suite found, fixed since.
 mod regressions {
     use super::*;
+    #[cfg(unix)]
     use her_tools::Tool;
+    #[cfg(unix)]
     use her_tools::Typed;
+    #[cfg(unix)]
     use her_tools::builtin::EditTool;
+    #[cfg(unix)]
     use her_tools::builtin::WriteTool;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use support::model::EditModel;
     use support::model::Located;
@@ -1512,6 +1524,7 @@ mod regressions {
         assert!(joins > 0, "no edit joined a CR and an LF");
     }
 
+    #[cfg(unix)]
     /// edit's check passes for a file it may not write, so the user approves an edit that
     /// then fails; write's check refuses the same file.
     #[tokio::test]
@@ -1528,6 +1541,7 @@ mod regressions {
         assert_eq!(check.map_err(|e| e.to_string()), Err(run.to_string()), "check and run");
     }
 
+    #[cfg(unix)]
     /// write's check passes for a link whose target is in a directory that does not exist,
     /// although the run never creates that directory.
     #[tokio::test]
@@ -1540,6 +1554,7 @@ mod regressions {
         assert!(check.is_err(), "check passed; the run said: {run}");
     }
 
+    #[cfg(unix)]
     /// The checks of write and edit pass for files in a directory this process may not
     /// write, where neither can put its temporary file.
     #[tokio::test]

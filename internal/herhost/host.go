@@ -207,7 +207,7 @@ func (h *Host) serve(ctx context.Context) error {
 		select {
 		case <-p.Done():
 		default:
-			provider.KillGroup(p.Pgid())
+			h.end(p)
 		}
 		<-p.Done()
 	}()

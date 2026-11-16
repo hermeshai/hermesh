@@ -1,6 +1,9 @@
 //! Load test: many concurrent sessions through every invocation path, scripted by the mock
 //! model, with every reply checked. `HER_STRESS_SCALE` multiplies the load (default 1).
 
+// Unix only: sockets and limits of Unix.
+#![cfg(unix)]
+
 mod common;
 
 use common::Demux;

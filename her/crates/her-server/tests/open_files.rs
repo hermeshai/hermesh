@@ -1,6 +1,9 @@
 //! Raising the open file limit. A test file of its own, since it changes a limit of the whole
 //! process.
 
+// Unix only: the open file limit, which Windows has not.
+#![cfg(unix)]
+
 #[test]
 fn the_open_file_limit_is_raised_from_the_usual_256() {
     let mut limit = libc::rlimit {

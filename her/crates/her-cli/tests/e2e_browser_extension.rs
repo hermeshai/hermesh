@@ -7,6 +7,9 @@
 //! browser is installed. Another test stands in for the extension to check the bridge versions
 //! (D-219) without a browser.
 
+// Unix only: the extension's host, not installed on Windows yet.
+#![cfg(unix)]
+
 mod common;
 
 use common::Demux;

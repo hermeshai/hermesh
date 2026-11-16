@@ -281,6 +281,7 @@ pub fn next_offset(text: &str) -> Option<u64> {
     note[at..end].parse().ok()
 }
 
+#[cfg(unix)]
 /// Whether this process runs as root, which may write anything.
 pub fn is_root() -> bool {
     unsafe { libc::geteuid() == 0 }
