@@ -63,6 +63,18 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
     await composer.press("Enter");
   };
 
+  // Conversations open at the end and virtualize earlier rows; read back through history
+  // before checking the first reply, including after restarting the app or Her.
+  const readGreeting = async (timeout: number) => {
+    const log = page.getByRole("log", { name: "对话" });
+    const scroll = page.locator(".cscroll").filter({ has: log });
+    await expect.poll(async () => {
+      await scroll.hover();
+      await page.mouse.wheel(0, -2000);
+      return log.textContent();
+    }, { timeout }).toContain("你好，主人");
+  };
+
   // The sidebar's Her entry, by her name alone. Her runs nowhere yet: its first run asks where, this Mac or
   // work-mac.
   await expect(page.locator(".side-nav").getByRole("button", { name: /^Her/ })).toHaveText("Her未启用");
@@ -346,6 +358,13 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   expect(await consolePage.evaluate(() => typeof (window as { hermesh?: unknown }).hermesh)).toBe("undefined");
   await consolePage.close();
 
+  // Keep the first reply outside the final virtual window when this conversation opens again.
+  for (let i = 0; i < 16; i++) {
+    const reply = `历史确认 ${i}`;
+    await send(mockSend(reply));
+    await expect(log.locator(".bm .bbub").last()).toHaveText(reply, { timeout: 30_000 });
+  }
+
   // A second environment: work-mac, from ⋯ › 添加环境…. The page goes there once Her runs on it, and the
   // environment shows beside Her's name, as a menu of both.
   await page.getByRole("button", { name: "更多", exact: true }).click();
@@ -454,7 +473,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   expect(Math.abs(menu!.x + menu!.width - (button!.x + button!.width))).toBeLessThan(2);
   expect(menu!.x).toBeGreaterThanOrEqual(0);
   await envs.filter({ hasNotText: "work-mac" }).click();
-  await expect(log).toContainText("你好，主人");
+  await readGreeting(30_000);
   await expect(log).not.toContainText("来自 work-mac");
   await expect(log).not.toContainText("已接上");
   await (await environments(page)).filter({ hasText: "work-mac" }).click();
@@ -489,7 +508,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // whether her data goes too, keeping it unless chosen. Kept, Settings › Machines says so and Her carries on
   // once turned on again from its switch; there, her data erased, she starts anew, asking for a model.
   await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 30_000 });
+  await readGreeting(30_000);
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
   await page.getByRole("complementary", { name: "助手设置" }).getByRole("button", { name: /^在 .+ 上关闭 Her…$/ }).click();
   const off = page.getByRole("dialog", { name: /^在「.+」上关闭 Her？$/ });
@@ -528,7 +547,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(kept).toBeHidden();
   await expect.poll(async () => (await environmentNames(page)).length, { timeout: 60_000 }).toBe(2);
   await (await environments(page)).filter({ hasNotText: "work-mac" }).click();
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("你好，主人", { timeout: 60_000 });
+  await readGreeting(60_000);
 
   // Turned off from the switch, her data kept, then erased from the row after asking: turned on again, she
   // starts anew, asking for a model.
