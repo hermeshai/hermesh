@@ -30,7 +30,8 @@ impl Server {
             accessibility: DesktopPermission::Unsupported,
             screen_recording: DesktopPermission::Unsupported,
         };
-        if !cfg!(target_os = "macos") {
+        // Windows asks for no permission: the CLI says so of each.
+        if !cfg!(any(target_os = "macos", windows)) {
             return Ok(status);
         }
         (status.accessibility, status.screen_recording) = (DesktopPermission::Unknown, DesktopPermission::Unknown);

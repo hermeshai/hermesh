@@ -86,12 +86,12 @@ func TestHerLookup(t *testing.T) {
 	}
 }
 
-// The browsers start the her Hermesh ships for the extension, on a Mac and
-// on Linux, never one HERMESH_HER_BIN names, as tests do.
+// The browsers start the her Hermesh ships for the extension, never one
+// HERMESH_HER_BIN names, as tests do.
 func TestHerExtensionHost(t *testing.T) {
 	t.Setenv("HERMESH_HER_BIN", "")
-	if got := herExtensionHost(); got != (runtime.GOOS != "windows") {
-		t.Fatalf("the shipped her on %s: %v", runtime.GOOS, got)
+	if !herExtensionHost() {
+		t.Fatal("the shipped her is not registered with the browsers")
 	}
 	t.Setenv("HERMESH_HER_BIN", "/dev/her")
 	if herExtensionHost() {

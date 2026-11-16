@@ -607,7 +607,8 @@ pub(crate) enum ActAction {
     Focus,
     /// Scrolls the element; `direction` and `amount`.
     Scroll,
-    /// Presses the key combo in `text` (return, escape, cmd+s) in the app; needs no ref.
+    /// Presses the key combo in `text` (return, escape, cmd+s; ctrl+s on Windows) in the app;
+    /// needs no ref.
     Press,
     /// Clicks at `x`, `y` of screenshot `shot`.
     ClickAt,
@@ -1071,13 +1072,16 @@ impl Saved {
     }
 }
 
+/// The system's key combo for pasting.
+const PASTE: &str = if cfg!(windows) { "ctrl+v" } else { "cmd+v" };
+
 /// `text` typed where `key`'s focus is, by pasting it: any language and any length, as one
 /// edit. The user's clipboard is put back afterwards: text, an image or files (emptied, when it
 /// held none of these).
 async fn paste(ctx: &ToolCtx, key: &str, text: &str) -> Result<Value, ToolError> {
     let saved = Saved::from(run(ctx, "clipboard-get", vec!["--format".into(), "auto".into()]).await.ok());
     run(ctx, "clipboard-set", vec!["--".into(), text.to_string()]).await?;
-    let pasted = press_headed(ctx, key, "cmd+v").await;
+    let pasted = press_headed(ctx, key, PASTE).await;
     tokio::time::sleep(PASTE_SETTLE).await;
     let (command, args) = saved.restore_args();
     let restored = run(ctx, command, args).await;
