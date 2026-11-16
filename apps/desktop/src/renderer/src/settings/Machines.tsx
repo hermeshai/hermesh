@@ -113,7 +113,8 @@ function HerRow({ m }: { m: Machine }) {
   const [pending, setPending] = useState<boolean | null>(null);
   const on = pending ?? m.her?.enabled ?? false;
   const unsupported = m.her?.unsupported ?? "";
-  const windows = unsupported === "windows" || (m.status?.platform ?? "").split("/")[0] === "windows";
+  // A PC whose Hermesh is from before her ran on Windows.
+  const windows = unsupported === "windows";
   const set = async (v: boolean) => {
     if (!v) return st.set({ sheet: { kind: "herOff", machineId: m.machineId, machineName: m.machineName } });
     setPending(v);

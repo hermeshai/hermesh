@@ -42,7 +42,7 @@ fn here(home: &HerHome) -> anyhow::Result<Workspace> {
 
 pub fn skills_add(from: &Path, project: bool, replace: bool) -> anyhow::Result<u8> {
     let home = setup::home()?;
-    let from = std::fs::canonicalize(from).with_context(|| format!("cannot read {}", from.display()))?;
+    let from = dunce::canonicalize(from).with_context(|| format!("cannot read {}", from.display()))?;
     let (root, scope) = if project {
         let Some(project_root) = here(&home)?.project_root else {
             bail!("--project needs a project: run it inside a repository");
@@ -100,7 +100,7 @@ pub fn skills_switch(name_or_path: &str, enabled: bool) -> anyhow::Result<u8> {
     let verb = if enabled { "enabled" } else { "disabled" };
     let (what, result) = match as_path(name_or_path) {
         Some(path) => {
-            let dir = std::fs::canonicalize(&path).with_context(|| format!("cannot read {name_or_path}"))?;
+            let dir = dunce::canonicalize(&path).with_context(|| format!("cannot read {name_or_path}"))?;
             (shorten(&home, &dir), install::set_enabled(&home, &dir, enabled)?)
         }
         None => {

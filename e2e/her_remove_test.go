@@ -107,7 +107,7 @@ func TestHerUninstallErasesHerData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	daemon = filepath.Join(home, ".local", "bin", "hermeshd")
+	daemon = filepath.Join(home, ".local", "bin", "hermeshd"+exe)
 	os.MkdirAll(filepath.Dir(daemon), 0o755)
 	if err := os.WriteFile(daemon, b, 0o755); err != nil {
 		t.Fatal(err)

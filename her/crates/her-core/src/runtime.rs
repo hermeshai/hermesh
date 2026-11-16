@@ -73,7 +73,7 @@ pub struct Workspace {
 impl Workspace {
     /// `overrides` are `key=value` settings that beat both configuration files.
     pub fn open(home: &HerHome, cwd: &Path, overrides: &[String]) -> Result<Self, RuntimeError> {
-        let cwd = std::fs::canonicalize(cwd).map_err(|source| RuntimeError::Cwd {
+        let cwd = dunce::canonicalize(cwd).map_err(|source| RuntimeError::Cwd {
             path: cwd.to_path_buf(),
             source,
         })?;

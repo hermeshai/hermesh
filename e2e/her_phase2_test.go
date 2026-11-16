@@ -521,8 +521,9 @@ func TestHerFilesBothWays(t *testing.T) {
 		t.Fatalf("HerSend with files: %v %v", res, err)
 	}
 	said := untilEvent(t, stream, "Her's answer naming the files", func(e herEvent) bool { return e.sentText("Attached files:") })
-	named := regexp.MustCompile(`(?m)^(/.+)$`).FindAllStringSubmatch(said.Args.Text, -1)
-	if len(named) != 2 || !strings.HasSuffix(named[0][1], "/uploads/notes.txt") || !strings.HasSuffix(named[1][1], "/uploads/pic.png") {
+	// Full paths, as her's system writes them: /… or C:\….
+	named := regexp.MustCompile(`(?m)^((?:/|[A-Za-z]:\\).+)$`).FindAllStringSubmatch(said.Args.Text, -1)
+	if len(named) != 2 || !strings.HasSuffix(filepath.ToSlash(named[0][1]), "/uploads/notes.txt") || !strings.HasSuffix(filepath.ToSlash(named[1][1]), "/uploads/pic.png") {
 		t.Fatalf("the files the message names: %q", said.Args.Text)
 	}
 
@@ -701,7 +702,9 @@ func chatGPTFixture(t *testing.T) string {
 		t.Skip("no node to run her's ChatGPT fixture")
 	}
 	fixture, _ := filepath.Abs(filepath.Join("her", "crates", "her-connections", "tests", "chatgpt-fixture.mjs"))
-	p := start(t, "chatgpt fixture", nil, node, "--input-type=module", "-e", `const f = await (await import(process.argv[1])).fixture();
+	// By its URL: a module's path with a drive is none to import.
+	p := start(t, "chatgpt fixture", nil, node, "--input-type=module", "-e", `const { pathToFileURL } = await import("node:url");
+const f = await (await import(pathToFileURL(process.argv[1]).href)).fixture();
 process.on("SIGTERM", () => f.close().then(() => process.exit(0)));
 console.log("fixture at " + f.base);`, fixture)
 	t.Cleanup(p.stop) // so that it removes its folder

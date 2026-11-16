@@ -215,7 +215,7 @@ async fn a_document_is_found_again_by_its_id() {
     };
     // Another run: nothing open, the directory remembers the file.
     let store = store(tmp.path());
-    assert_eq!(store.path_of(&id).unwrap(), std::fs::canonicalize(&file).unwrap());
+    assert_eq!(store.path_of(&id).unwrap(), dunce::canonicalize(&file).unwrap());
     assert!(store.path_of("../etc").is_err());
     assert!(store.path_of("0123456789abcdef").is_err());
 }

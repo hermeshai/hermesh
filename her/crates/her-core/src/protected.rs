@@ -219,7 +219,7 @@ fn canonical_lossy_from(path: &Path, hops: usize) -> PathBuf {
     let mut existing = path;
     let mut rest = Vec::new();
     loop {
-        if let Ok(canonical) = std::fs::canonicalize(existing) {
+        if let Ok(canonical) = dunce::canonicalize(existing) {
             let mut out = canonical;
             for part in rest.iter().rev() {
                 out.push(part);

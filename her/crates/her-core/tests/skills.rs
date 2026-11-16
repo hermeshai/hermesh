@@ -41,7 +41,7 @@ struct Env {
 
 fn env() -> Env {
     let dir = tempfile::tempdir().unwrap();
-    let base = std::fs::canonicalize(dir.path()).unwrap();
+    let base = dunce::canonicalize(dir.path()).unwrap();
     let work = base.join("work");
     std::fs::create_dir_all(&work).unwrap();
     let user = base.join("user");

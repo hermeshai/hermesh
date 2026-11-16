@@ -54,6 +54,7 @@ test("an environment's state: offline with when it was seen, starting, failed, n
 test("the first run offers this Mac first, then machines that can run Her, then those that can't and why", () => {
   const choices = herChoices([
     machine("w", "gaming-pc", { platform: "windows/amd64" }),
+    machine("p", "old-pc", { platform: "windows/amd64", her: { unsupported: "windows" } }),
     machine("o", "old-mac", { online: false, platform: "darwin/arm64" }),
     machine("c", "cloud", { platform: "linux/amd64" }),
     machine("l", "this", { local: true, platform: "darwin/arm64" }),
@@ -65,14 +66,15 @@ test("the first run offers this Mac first, then machines that can run Her, then 
     [
       ["l", null, undefined],
       ["c", null, undefined],
-      ["w", "windows", undefined],
+      ["w", null, undefined],
       ["n", "unsupported", "no her"],
       ["o", "offline", undefined],
+      ["p", "windows", undefined],
     ],
   );
-  // A PC running the app: its own machine can't run Her either.
-  assert.equal(herChoices([machine("l", "this", { local: true, platform: "windows/amd64" })])[0].why, "windows");
-  // Her says it can't run there, whatever the platform says.
+  // A PC running the app: its own machine runs Her too.
+  assert.equal(herChoices([machine("l", "this", { local: true, platform: "windows/amd64" })])[0].why, null);
+  // A Hermesh from before her ran on Windows says it can't, whatever the platform says.
   assert.equal(herChoices([machine("x", "box", { her: { unsupported: "windows" } })])[0].why, "windows");
 });
 

@@ -244,7 +244,7 @@ pub fn env_overrides(warnings: &mut Vec<String>) -> anyhow::Result<Vec<String>> 
 /// The project that `dir` belongs to (its git checkout), or `dir` itself. Sessions are
 /// listed and continued per workspace.
 pub fn workspace(dir: &Path) -> PathBuf {
-    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     instructions::find_project_root(&dir, &[".git".to_string()]).unwrap_or(dir)
 }
 

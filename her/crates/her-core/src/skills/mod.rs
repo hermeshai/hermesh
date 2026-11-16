@@ -375,21 +375,21 @@ fn project_dirs(cwd: &Path, project_root: Option<&Path>, home: Option<&Path>) ->
             .collect(),
         _ => vec![cwd.to_path_buf()],
     };
-    let home = home.map(|home| std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()));
+    let home = home.map(|home| dunce::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()));
     dirs.into_iter()
-        .filter(|dir| home.as_ref().is_none_or(|home| std::fs::canonicalize(dir).as_ref().unwrap_or(dir) != home))
+        .filter(|dir| home.as_ref().is_none_or(|home| dunce::canonicalize(dir).as_ref().unwrap_or(dir) != home))
         .collect()
 }
 
 /// Whether the skill in `dir` is on by default, as its root says in [`discover`]: false only
 /// inside a project's `.claude/skills` (not the home's, which `skills.other_apps` reads as on).
 pub fn on_by_default(dir: &Path, user_home: Option<&Path>) -> bool {
-    let home = user_home.map(|home| std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()));
+    let home = user_home.map(|home| dunce::canonicalize(home).unwrap_or_else(|_| home.to_path_buf()));
     !dir.ancestors().any(|root| {
         root.file_name().is_some_and(|name| name == "skills")
             && root.parent().is_some_and(|app| app.file_name().is_some_and(|name| name == OTHER_APP_DIR))
             && root.parent().and_then(Path::parent).is_some_and(|project| {
-                home.as_ref().is_none_or(|home| std::fs::canonicalize(project).as_ref().unwrap_or(&project.to_path_buf()) != home)
+                home.as_ref().is_none_or(|home| dunce::canonicalize(project).as_ref().unwrap_or(&project.to_path_buf()) != home)
             })
     })
 }
@@ -682,7 +682,7 @@ impl PathsAndNames {
         for item in items {
             if is_path(item) {
                 let path = expand(item, sources.user_home, sources.cwd);
-                paths.push(std::fs::canonicalize(&path).unwrap_or(path));
+                paths.push(dunce::canonicalize(&path).unwrap_or(path));
             } else {
                 names.insert(item.clone());
             }
@@ -697,7 +697,7 @@ impl PathsAndNames {
         if self.paths.is_empty() {
             return false;
         }
-        let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let real = |path: &Path| dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
         let (file, dir) = (real(&entry.path), real(entry.dir()));
         self.paths.iter().any(|path| *path == file || *path == dir)
     }
@@ -727,12 +727,12 @@ type FileId = PathBuf;
 
 #[cfg(not(unix))]
 fn file_id(_meta: &Metadata, path: &Path) -> FileId {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(not(unix))]
 fn entry_id(entry: &std::fs::DirEntry, _root: &Metadata) -> Option<FileId> {
-    Some(std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path()))
+    Some(dunce::canonicalize(entry.path()).unwrap_or_else(|_| entry.path()))
 }
 
 #[cfg(test)]
@@ -747,7 +747,7 @@ mod tests {
     impl Fixture {
         fn new() -> Self {
             let dir = tempfile::tempdir().unwrap();
-            let base = std::fs::canonicalize(dir.path()).unwrap();
+            let base = dunce::canonicalize(dir.path()).unwrap();
             Self { _dir: dir, base }
         }
 
@@ -913,7 +913,7 @@ mod tests {
         let set = fx.discover("work", None, &other_apps);
         assert_eq!(set.entries.len(), 1, "{:?}", states(&set));
         assert_eq!(set.entries[0].path, root.join("shared/SKILL.md"), "the path as found, not resolved");
-        assert_eq!(std::fs::canonicalize(&set.entries[0].path).unwrap(), real);
+        assert_eq!(dunce::canonicalize(&set.entries[0].path).unwrap(), real);
     }
 
     #[test]

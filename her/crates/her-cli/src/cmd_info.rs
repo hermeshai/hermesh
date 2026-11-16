@@ -840,7 +840,7 @@ pub fn sessions_rename(session: &str, title: &str) -> anyhow::Result<u8> {
     let Some(title) = her_core::clean_title(title) else { anyhow::bail!("the title is empty") };
     let reference = if session == "last" {
         let cwd = std::env::current_dir()?;
-        SessionRef::LastIn(setup::workspace(&std::fs::canonicalize(&cwd)?))
+        SessionRef::LastIn(setup::workspace(&dunce::canonicalize(&cwd)?))
     } else {
         SessionRef::Id(session.to_string())
     };
@@ -860,7 +860,7 @@ pub fn trust(dir: Option<PathBuf>, remove: bool) -> anyhow::Result<u8> {
         Some(dir) => dir,
         None => std::env::current_dir()?,
     };
-    let dir = std::fs::canonicalize(&dir)?;
+    let dir = dunce::canonicalize(&dir)?;
     let root = instructions::find_project_root(&dir, &[".git".to_string()]).unwrap_or(dir);
     if remove {
         let file = crate::cmd_customize::shorten(&home, &home.trusted_file());

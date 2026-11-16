@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+dunce.workspace = true
 serde.workspace = true
 clap.workspace = true
 her-mock.workspace = true

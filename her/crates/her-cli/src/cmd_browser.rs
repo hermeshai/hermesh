@@ -527,7 +527,7 @@ pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket:
         println!("extension: {}", folder.display());
     }
     let exe = std::env::current_exe().context("cannot find the her program")?;
-    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let exe = dunce::canonicalize(&exe).unwrap_or(exe);
     // Chrome starts the host in a folder of its own.
     let socket = socket.map(std::path::absolute).transpose()?;
     let launcher = home.browser_dir().join("native-host");

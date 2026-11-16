@@ -869,8 +869,8 @@ mod tests {
         assert_eq!(out.exit_code, Some(1), "{}", out.output.head);
         let out = run("Write-Output (Get-Location).Path").await.unwrap();
         assert_eq!(out.exit_code, Some(0), "{}", out.output.head);
-        let cwd = std::fs::canonicalize(dir.path()).unwrap();
-        let printed = std::fs::canonicalize(out.output.head.trim()).unwrap();
+        let cwd = dunce::canonicalize(dir.path()).unwrap();
+        let printed = dunce::canonicalize(out.output.head.trim()).unwrap();
         assert_eq!(printed, cwd);
     }
 

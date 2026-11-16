@@ -67,7 +67,7 @@ impl TestEnv {
     pub fn workspace(&self, name: &str) -> PathBuf {
         let dir = self.work.path().join(name);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::canonicalize(dir).unwrap()
+        dunce::canonicalize(dir).unwrap()
     }
 
     pub fn her(&self, args: &[&str]) -> Command {

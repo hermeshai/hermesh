@@ -473,7 +473,7 @@ pub fn lock(path: &Path, her_dir: &Path) -> Result<File, WriteError> {
     let dir = her_dir.join("run").join("locks");
     create_private_dir(&dir).map_err(|source| WriteError::Io { path: dir.clone(), source })?;
     // The same file however it is spelled: its directory exists by now.
-    let real = match (path.parent().and_then(|p| std::fs::canonicalize(p).ok()), path.file_name()) {
+    let real = match (path.parent().and_then(|p| dunce::canonicalize(p).ok()), path.file_name()) {
         (Some(parent), Some(name)) => parent.join(name),
         _ => path.to_path_buf(),
     };

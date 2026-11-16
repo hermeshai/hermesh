@@ -191,7 +191,7 @@
     "herRun": "Run Her on this machine",
     "herDesc": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Touch ID.",
     "herDesc_win": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Windows Hello.",
-    "herWindows": "Her can’t run on Windows yet.",
+    "herWindows": "Update Hermesh on this PC to run Her.",
     "herUnsupported": "Her can’t run here: {{reason}}",
     "herKept": "Her’s data is still on this machine; turned on again, she carries on.",
     "herErase": "Erase Data…",

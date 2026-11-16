@@ -128,9 +128,9 @@ pub fn decode(bytes: &[u8]) -> Option<(String, &'static str)> {
 /// her's own data, which the file panel shows but never writes (D-263): session logs and their
 /// data, logs, and the service's run folder.
 pub fn refused(home: &HerHome, path: &Path) -> bool {
-    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let real = |p: &Path| dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     // The file may not exist yet: its folder decides.
-    let target = match std::fs::canonicalize(path) {
+    let target = match dunce::canonicalize(path) {
         Ok(p) => p,
         Err(_) => path.parent().map(|dir| real(dir).join(path.file_name().unwrap_or_default())).unwrap_or_else(|| path.to_path_buf()),
     };

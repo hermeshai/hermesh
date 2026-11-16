@@ -99,7 +99,7 @@ fn managed_by(path: &Path) -> Option<&'static str> {
 
 pub async fn upgrade(check: bool, version: Option<String>, as_json: bool) -> anyhow::Result<u8> {
     let exe = std::env::current_exe().context("cannot tell where this program is")?;
-    let exe = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let exe = dunce::canonicalize(&exe).unwrap_or(exe);
     let manifest = release::fetch_manifest(version.as_deref()).await.map_err(anyhow::Error::msg)?;
     let newer = release::is_newer(&manifest.version, release::VERSION);
     if check {

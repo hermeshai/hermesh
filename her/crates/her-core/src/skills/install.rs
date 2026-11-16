@@ -273,7 +273,7 @@ struct SkillFile {
 
 /// Every file of the skill, checked against the limits; links that point outside it refused.
 fn collect(dir: &Path) -> Result<Vec<SkillFile>, InstallError> {
-    let root = std::fs::canonicalize(dir).map_err(io_err(format!("cannot read {}", dir.display())))?;
+    let root = dunce::canonicalize(dir).map_err(io_err(format!("cannot read {}", dir.display())))?;
     let mut out = Vec::new();
     let mut total = 0u64;
     let mut stack = vec![(PathBuf::new(), 0usize)];
@@ -293,7 +293,7 @@ fn collect(dir: &Path) -> Result<Vec<SkillFile>, InstallError> {
             let rel = relative.join(&name);
             let meta = std::fs::metadata(&path).map_err(io_err(format!("cannot read {}", path.display())))?;
             if entry.file_type().map(|t| t.is_symlink()).unwrap_or(false) {
-                let real = std::fs::canonicalize(&path).map_err(io_err(format!("cannot follow {}", path.display())))?;
+                let real = dunce::canonicalize(&path).map_err(io_err(format!("cannot follow {}", path.display())))?;
                 if !real.starts_with(&root) {
                     return Err(InstallError::Invalid(format!("{} links outside the skill", rel.display())));
                 }
@@ -358,8 +358,8 @@ fn skill_dir(path: &Path) -> PathBuf {
 pub fn remove(path: &Path, user_root: &Path, trash: &Trash) -> Result<PathBuf, InstallError> {
     let dir = skill_dir(path);
     let not_removable = || InstallError::NotRemovable(format!("{} is not one of your own skills in {}", dir.display(), user_root.display()));
-    let real = std::fs::canonicalize(&dir).map_err(|_| not_removable())?;
-    let root = std::fs::canonicalize(user_root).map_err(|_| not_removable())?;
+    let real = dunce::canonicalize(&dir).map_err(|_| not_removable())?;
+    let root = dunce::canonicalize(user_root).map_err(|_| not_removable())?;
     let Ok(inside) = real.strip_prefix(&root) else { return Err(not_removable()) };
     let first = inside.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned()).unwrap_or_default();
     if first.is_empty() || first.starts_with('.') || !real.join(SKILL_FILE).is_file() {
@@ -421,8 +421,8 @@ pub fn read(path: &Path, file: &str) -> Result<SkillsReadResult, InstallError> {
     if relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
         return Err(outside());
     }
-    let root = std::fs::canonicalize(&dir).map_err(io_err(format!("cannot read {}", dir.display())))?;
-    let real = std::fs::canonicalize(root.join(relative)).map_err(io_err(format!("cannot read {file}")))?;
+    let root = dunce::canonicalize(&dir).map_err(io_err(format!("cannot read {}", dir.display())))?;
+    let real = dunce::canonicalize(root.join(relative)).map_err(io_err(format!("cannot read {file}")))?;
     if !real.starts_with(&root) || !real.is_file() {
         return Err(outside());
     }
@@ -520,7 +520,7 @@ pub fn set_name_enabled(
 /// Whether an entry of `skills.disabled` or `skills.opt_in` names one of `dirs` (or its
 /// `SKILL.md`) by path.
 fn names_dirs<'a>(home: &'a HerHome, dirs: &[PathBuf]) -> impl Fn(&str) -> bool + 'a {
-    let real = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let real = |p: &Path| dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     let known: Vec<PathBuf> = dirs.iter().flat_map(|d| [real(d), real(&d.join(SKILL_FILE))]).collect();
     let base = dirs.first().cloned().unwrap_or_default();
     move |item: &str| is_path(item) && known.contains(&real(&expand(item, home.user_home(), &base)))

@@ -384,7 +384,7 @@ fn find_session(session: &str) -> anyhow::Result<(PathBuf, PathBuf)> {
 /// Asks once, only when the project really brings something to trust (§12.2).
 fn ask_about_trust(cwd: &Path) -> anyhow::Result<()> {
     let home = setup::home()?;
-    let Ok(cwd) = std::fs::canonicalize(cwd) else { return Ok(()) };
+    let Ok(cwd) = dunce::canonicalize(cwd) else { return Ok(()) };
     let root = instructions::find_project_root(&cwd, &[".git".to_string()]).unwrap_or(cwd);
     if instructions::is_trusted(&home, &root) || instructions::was_declined(&home, &root) {
         return Ok(());

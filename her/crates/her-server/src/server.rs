@@ -1069,7 +1069,7 @@ fn spawn_memory_upkeep(inner: &Arc<Inner>) {
 }
 
 fn project_dir(dir: &Path) -> PathBuf {
-    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let dir = dunce::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
     instructions::find_project_root(&dir, &[".git".to_string()]).unwrap_or(dir)
 }
 

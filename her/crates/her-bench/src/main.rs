@@ -270,7 +270,7 @@ impl Env {
             "# 示例项目\n\n这个项目演示数列计算。`value_N` 返回第 N 项，结果不超过上限。\n\n## Build\n\n    cargo build\n".repeat(12),
         )
         .unwrap();
-        std::fs::canonicalize(dir).unwrap()
+        dunce::canonicalize(dir).unwrap()
     }
 }
 
@@ -483,7 +483,7 @@ async fn stop_service(env: &Env, service: &mut tokio::process::Child) -> std::io
 
 async fn run(args: Args) -> std::io::Result<()> {
     let mut args = args;
-    args.her = std::fs::canonicalize(&args.her)?;
+    args.her = dunce::canonicalize(&args.her)?;
     if args.scenario != "rounds" {
         return stress::run(args).await;
     }

@@ -1002,6 +1002,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1049,7 +1055,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1499,6 +1505,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dunce",
  "her-mock",
  "her-rpc",
  "libc",
@@ -1516,6 +1523,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "dirs",
+ "dunce",
  "futures",
  "libc",
  "parking_lot",
@@ -1542,6 +1550,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "crossterm",
+ "dunce",
  "encoding_rs",
  "flate2",
  "futures",
@@ -1623,6 +1632,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs",
+ "dunce",
  "encoding_rs",
  "flate2",
  "futures",
@@ -1661,6 +1671,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "windows-sys 0.61.2",
  "yaml-rust2",
  "zip",
 ]
@@ -1683,6 +1694,7 @@ name = "her-docs"
 version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
+ "dunce",
  "her-protocol",
  "her-sheet",
  "her-slide",
@@ -1819,6 +1831,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chrono",
+ "dunce",
  "futures",
  "her-browser",
  "her-connections",
@@ -1881,6 +1894,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "dirs",
+ "dunce",
  "her-llm",
  "libc",
  "memchr",
@@ -3782,7 +3796,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3838,7 +3852,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4445,10 +4459,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5177,7 +5191,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

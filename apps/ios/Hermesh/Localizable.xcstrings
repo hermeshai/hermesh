@@ -10740,12 +10740,12 @@
         }
       }
     },
-    "Windows isn’t supported yet": {
+    "Update Hermesh on this PC to run Her": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Windows 暂不支持"
+            "value": "需先更新这台电脑上的 Hermesh"
           }
         }
       }

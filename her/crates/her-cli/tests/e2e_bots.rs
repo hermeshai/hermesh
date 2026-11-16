@@ -165,7 +165,7 @@ async fn a_bot_talks_in_messages_and_its_row_follows() {
     let (_, log) = logs(env.home.path()).into_iter().find(|(_, text)| text.contains(&session)).expect("the log");
     assert!(log.contains("You are 研究员, the user's assistant."));
     let folder = env.home.path().join("bots").join(&bot).join("files");
-    assert!(log.contains(&format!("\"cwd\":\"{}", std::fs::canonicalize(&folder).unwrap().display())));
+    assert!(log.contains(&format!("\"cwd\":\"{}", dunce::canonicalize(&folder).unwrap().display())));
 }
 
 #[tokio::test]
@@ -747,7 +747,7 @@ async fn a_bot_remembers_across_a_cleared_conversation() {
     std::fs::write(memory.with_file_name("launch.md"), "# Launch\n").unwrap();
     let kept = client.request("bots/memory", json!({"bot_id": bot})).await.unwrap();
     assert_eq!(kept["text"], format!("{LINE}\n"));
-    assert_eq!(Path::new(kept["path"].as_str().unwrap()).canonicalize().unwrap(), memory.canonicalize().unwrap());
+    assert_eq!(dunce::canonicalize(kept["path"].as_str().unwrap()).unwrap(), dunce::canonicalize(&memory).unwrap());
     let pages = kept["pages"].as_array().unwrap();
     assert_eq!(pages.len(), 1, "{kept}");
     assert_eq!(pages[0]["name"], "launch.md");

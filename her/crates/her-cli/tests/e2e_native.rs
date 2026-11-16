@@ -221,7 +221,7 @@ async fn a_session_without_a_project_works_in_a_folder_of_its_own() {
     let created = client.request("session/new", json!({})).await.unwrap();
     let session = created["session_id"].as_str().unwrap().to_string();
     let cwd = std::path::PathBuf::from(created["snapshot"]["session"]["cwd"].as_str().unwrap());
-    let chats = std::fs::canonicalize(env.home.path().join("chats")).unwrap();
+    let chats = dunce::canonicalize(env.home.path().join("chats")).unwrap();
     assert_eq!(cwd.parent(), Some(chats.as_path()));
     assert_eq!(std::fs::read_dir(&cwd).unwrap().count(), 0, "made empty");
     let project = env.workspace("a");

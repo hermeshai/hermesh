@@ -17,6 +17,7 @@ local-accounts = ["her-connections/local-accounts"]
 
 [dependencies]
 crossterm.workspace = true
+dunce.workspace = true
 unicode-width.workspace = true
 toml_edit.workspace = true
 base64.workspace = true
