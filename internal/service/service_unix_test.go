@@ -4,6 +4,7 @@ package service
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -85,5 +86,28 @@ echo "$@" >> `+calls+"\n"), 0o755)
 	b, _ := os.ReadFile(calls)
 	if want := "--user daemon-reload\n--user enable hermeshd.service\n--user start hermeshd.service\n"; string(b) != want {
 		t.Errorf("systemctl calls:\n%s\nwant:\n%s", b, want)
+	}
+}
+
+// A shell without USER (docker exec, cron, cloud-init) still finds that the
+// service starts at boot: lingering is asked about by the account's name.
+func TestAtBootWithoutUSER(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("systemd")
+	}
+	me, err := user.Current()
+	if err != nil {
+		t.Skip(err)
+	}
+	bin, run := t.TempDir(), t.TempDir()
+	t.Setenv("XDG_RUNTIME_DIR", run)
+	t.Setenv("USER", "")
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	os.MkdirAll(filepath.Join(run, "systemd"), 0o755)
+	os.WriteFile(filepath.Join(run, "systemd", "private"), nil, 0o644)
+	os.WriteFile(filepath.Join(bin, "systemctl"), []byte("#!/bin/sh\nexit 0\n"), 0o755)
+	os.WriteFile(filepath.Join(bin, "loginctl"), []byte("#!/bin/sh\n[ \"$2\" = \""+me.Username+"\" ] && echo Linger=yes\n"), 0o755)
+	if !AtBoot() {
+		t.Fatal("AtBoot is false for a service that is enabled, with lingering on")
 	}
 }

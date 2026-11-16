@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -54,7 +55,7 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 		lingerErr := enableLinger()
 		if err := userBus(); err != nil {
 			if lingerErr != nil {
-				return fmt.Errorf("%w; turn lingering on with `sudo loginctl enable-linger %s` and try again", err, os.Getenv("USER"))
+				return fmt.Errorf("%w; turn lingering on with `sudo loginctl enable-linger %s` and try again", err, userName())
 			}
 			return err
 		}
@@ -71,7 +72,7 @@ func Install(bin, dataDir, logDir string, args ...string) error {
 			}
 		}
 		if lingerErr != nil {
-			fmt.Fprintln(os.Stderr, "note: could not enable lingering; run `sudo loginctl enable-linger "+os.Getenv("USER")+"` so hermeshd keeps running after you log out")
+			fmt.Fprintln(os.Stderr, "note: could not enable lingering; run `sudo loginctl enable-linger "+userName()+"` so hermeshd keeps running after you log out")
 		}
 		return nil
 	}
@@ -112,10 +113,22 @@ func Restart() error {
 	return fmt.Errorf("unsupported platform %s", runtime.GOOS)
 }
 
+// userName is this user's name: $USER, else the account's, as cron, docker
+// exec and cloud-init leave USER unset.
+func userName() string {
+	if name := os.Getenv("USER"); name != "" {
+		return name
+	}
+	if u, err := user.Current(); err == nil {
+		return u.Username
+	}
+	return ""
+}
+
 // enableLinger turns lingering on for this user, unless it is on already
 // (the installer, as root, turned it on).
 func enableLinger() error {
-	user := os.Getenv("USER")
+	user := userName()
 	if user == "" {
 		return errors.New("USER is not set")
 	}
@@ -175,7 +188,7 @@ func AtBoot() bool {
 		if userBus() != nil || exec.Command("systemctl", "--user", "is-enabled", "--quiet", "hermeshd.service").Run() != nil {
 			return false
 		}
-		out, err := exec.Command("loginctl", "show-user", os.Getenv("USER"), "--property=Linger").Output()
+		out, err := exec.Command("loginctl", "show-user", userName(), "--property=Linger").Output()
 		return err == nil && strings.TrimSpace(string(out)) == "Linger=yes"
 	}
 	return false
