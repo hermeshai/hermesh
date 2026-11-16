@@ -89,9 +89,12 @@ private struct HerPage: View {
             }
         }
         .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
-        // With the bars on the side (iPhone Duo), the menu button is in the system's bar.
+        // With the bars on the side (iPhone Duo), the menu button and Progress are in the system's bar.
         .toolbar {
-            if sideBars { MenuToolbarItem() }
+            if sideBars {
+                MenuToolbarItem()
+                if chat.bot != nil { ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) } }
+            }
         }
         .safeAreaBar(edge: .top) { header(chat) }
         // Outside the bar, the top inset is the status bar's (or the system's bar's, beside the menu).
@@ -115,6 +118,8 @@ private struct HerPage: View {
             HStack(spacing: 8) {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
                 Spacer()
+                // Progress, looked at often: a button of its own, not a card of her page (docs/her-team.md §15).
+                if chat.bot != nil, !sideBars { HerProgressButton(marks: herProgressMarks(chat)) }
             }
             if small {
                 // In the row, between the buttons and clear of them (as wide a margin each side, so in the middle).
@@ -139,8 +144,8 @@ private struct HerPage: View {
     }
 
     private func avatar(_ chat: HerChat, size: CGFloat) -> some View {
-        // Something of hers waits for the owner: a sub-agent's approval, or a scheduled task whose last run failed.
-        let waits = herProgressMarks(chat).waiting > 0 || herRoutineDot(chat.bot?.routines ?? []) == .failed
+        // A scheduled task whose last run failed, which her page's card says; what waits in Progress, its button does.
+        let waits = herRoutineDot(chat.bot?.routines ?? []) == .failed
         return Button {
             // Over the panel, it closes it: her page would open from under it.
             if team { showTeam(false) } else { model.path.append(.herSettings) }
@@ -361,6 +366,44 @@ private struct HerConnections: ViewModifier {
 
 extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
+}
+
+/// Progress, at the top right of Her's conversation, or in the system's bar where it stands on the side (inBar): the
+/// work she sent out to her sub-agents (docs/her-team.md §15), marked orange while one waits for the owner, else blue
+/// while one is at work.
+private struct HerProgressButton: View {
+    @Environment(AppModel.self) private var model
+    let marks: (waiting: Int, running: Int)
+    var inBar = false
+
+    var body: some View {
+        Group {
+            if inBar {
+                // The bar draws the button, as it does the menu button beside it.
+                Button { model.path.append(.progress) } label: {
+                    Image(systemName: "waveform.path.ecg")
+                        .overlay(alignment: .topTrailing) {
+                            if let dot { Circle().fill(dot).frame(width: 8, height: 8).offset(x: 5, y: -4) }
+                        }
+                }
+            } else {
+                Button { model.path.append(.progress) } label: {
+                    Image(systemName: "waveform.path.ecg").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                        .overlay(alignment: .topTrailing) {
+                            if let dot { Circle().fill(dot).frame(width: 8, height: 8).offset(x: -9, y: 11) }
+                        }
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityLabel(marks.waiting > 0 ? Text("Progress, \(marks.waiting) waiting for you")
+            : marks.running > 0 ? Text("Progress, \(marks.running) at work") : Text("Progress"))
+        .accessibilityIdentifier("her-progress")
+    }
+
+    private var dot: Color? { marks.waiting > 0 ? .orange : marks.running > 0 ? .accentColor : nil }
 }
 
 /// The menu button, as root pages have it in their bar: Her's page draws its own top.

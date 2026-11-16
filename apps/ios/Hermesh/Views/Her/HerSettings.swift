@@ -113,7 +113,6 @@ private struct HerPageBody: View {
     // MARK: Work
 
     @ViewBuilder private var work: some View {
-        let marks = herProgressMarks(chat)
         let bot = chat.bot
         let older = herAnswers(machine.her, "deliveries/list") == false
         let routines: HerEntryStatus? = switch herRoutineDot(bot?.routines ?? []) {
@@ -121,10 +120,8 @@ private struct HerPageBody: View {
         case .running: .active(String(localized: "Running…"))
         case nil: nil
         }
+        // Progress is no card here: a button over her conversation, as often as it is looked at (docs/her-team.md §15).
         HerEntryCards {
-            HerEntryCard(title: "Progress", symbol: "waveform.path.ecg", id: "her-progress",
-                    status: marks.waiting > 0 ? .attention(String(localized: "\(marks.waiting) waiting for you"))
-                        : marks.running > 0 ? .plain(String(localized: "\(marks.running) at work")) : nil) { go(.progress) }
             HStack(spacing: 10) {
                 HerEntryCard(title: "Files", symbol: "tray", id: "her-files",
                         status: older ? .attention(String(localized: "Needs Update")) : (bot?.newDeliveries ?? 0) > 0 ? .plain(String(localized: "\(bot?.newDeliveries ?? 0) new")) : nil) { go(.herFiles) }

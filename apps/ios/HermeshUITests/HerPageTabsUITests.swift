@@ -18,8 +18,16 @@ final class HerPageTabsUITests: XCTestCase {
     }
 
     func testTabsAndTheirPages() {
-        // The conversation's top is her alone: her work is on her page.
-        for id in ["her-files", "her-progress", "her-routines"] { XCTAssertFalse(app.buttons[id].exists, "no \(id) over the conversation") }
+        // The conversation's top: her, and Progress, looked at often, at the top right; the rest of her work is on her
+        // page.
+        let screen = app.windows.firstMatch.frame
+        let progress = app.buttons["her-progress"]
+        XCTAssertTrue(progress.waitForExistence(timeout: 10) && progress.frame.minX > screen.midX, "Progress over the conversation, on the right")
+        for id in ["her-files", "her-routines"] { XCTAssertFalse(app.buttons[id].exists, "no \(id) over the conversation") }
+        progress.tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10), "Progress opens")
+        shot("进展")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("her-avatar")
         let work = app.buttons["her-tab-work"]
         XCTAssertTrue(work.waitForExistence(timeout: 10), "her page")
@@ -27,13 +35,13 @@ final class HerPageTabsUITests: XCTestCase {
         tap("her-tab-work")
         XCTAssertTrue(work.isSelected, "Work")
         shot("her page, work")
-        let screen = app.windows.firstMatch.frame
+        XCTAssertFalse(app.buttons["her-progress"].exists, "no Progress card: it is over the conversation")
         let remote = app.buttons["her-computer-control"]
         if remote.exists { XCTAssertGreaterThan(remote.frame.minX, screen.midX, "Remote Desktop at the top right") }
 
         // Each tab's cards, each opening its page and coming back to the same tab.
         let tabs: [(tab: String, cards: [(id: String, title: String)])] = [
-            ("work", [("her-progress", "进展"), ("her-files", "文件"), ("her-routines", "定时任务")]),
+            ("work", [("her-files", "文件"), ("her-routines", "定时任务")]),
             ("abilities", [("her-memory", "记忆"), ("her-skills", "技能"), ("her-connectors", "连接器"), ("her-search", "联网搜索"), ("her-browser", "浏览器")]),
         ]
         for (tab, cards) in tabs {

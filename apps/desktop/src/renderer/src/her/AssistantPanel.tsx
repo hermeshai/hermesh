@@ -38,7 +38,7 @@ function rememberedTab(): HerTab {
 
 /**
  * Her's page, beside the conversation (docs/her-panel-demo.html): her avatar and name, changed where they are, and
- * three tabs, one kind of thing in each. Work: what she is doing (Progress), the files she sent, her scheduled tasks.
+ * three tabs, one kind of thing in each. Work: the files she sent and her scheduled tasks (Progress is a button of her top).
  * Abilities: what she remembers, her skills, the apps and services she is connected to, web search and the browsers.
  * Settings: her model, what she may do without asking (full access is signed, docs/her-server.md §8), whether she
  * alerts, her environment, and clearing her conversation. Each card is only a way in, with at most a word of how it
@@ -197,26 +197,17 @@ function Cards({ children }: { children: ReactNode }) {
   );
 }
 
-/** Work: Progress (a page of its own), the files she sent and her scheduled tasks. */
+/** Work: the files she sent and her scheduled tasks. */
 function WorkCards({ bot }: { bot: BotSummary }) {
   const { t } = useTranslation("her");
   const { t: tc } = useTranslation("common");
   const her = useHer();
-  const st = useStore();
-  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
   const older = herAnswers(her.machine, "deliveries/list") === false;
   const fresh = bot.new_deliveries ?? 0;
   const dot = routineDot(bot.routines);
+  // Progress is no card here: a button of her top, as often as it is looked at (docs/her-team.md §15).
   return (
     <Cards>
-      <Card
-        id="her-progress"
-        wide
-        title={t("progress.title")}
-        icon="pulse"
-        status={waits > 0 ? { text: t("progress.waiting", { count: waits }), tone: "warn" } : running > 0 ? { text: t("progress.atWork", { count: running }) } : null}
-        onOpen={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}
-      />
       <Card
         id="her-files"
         title={t("files.title")}
