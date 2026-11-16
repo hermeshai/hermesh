@@ -21,6 +21,9 @@ use tokio::net::TcpStream;
 use crate::mcp::HttpRequest;
 use crate::mcp::write_response;
 
+/// The account a sign-in to the test server is for.
+pub const MOCK_ACCOUNT: &str = "mock-user";
+
 /// Who may call the test server.
 #[derive(Clone, Debug, Default)]
 pub enum McpTestAuth {
@@ -198,7 +201,14 @@ pub(crate) async fn route(stream: &mut TcpStream, request: &HttpRequest, path: &
                         return Some(write_json(stream, "400 Bad Request", &json!({"error": "invalid_grant", "error_description": "code, client, redirect, verifier or resource does not match"})).await);
                     }
                     oauth.grants.fetch_add(1, Ordering::Relaxed);
-                    json_ok(oauth.issue(options.token_ttl_secs, &client))
+                    // A sign-in says who signed in, as an OpenID Connect server does in its id token.
+                    let mut issued = oauth.issue(options.token_ttl_secs, &client);
+                    issued["id_token"] = json!(format!(
+                        "{}.{}.",
+                        URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#),
+                        URL_SAFE_NO_PAD.encode(json!({"sub": "1", "preferred_username": MOCK_ACCOUNT}).to_string())
+                    ));
+                    json_ok(issued)
                 }
                 "refresh_token" => {
                     let old = get("refresh_token");

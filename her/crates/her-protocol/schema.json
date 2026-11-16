@@ -13974,6 +13974,13 @@
     "McpServerView": {
       "description": "One server as the page shows it; secrets never appear, only the names they are saved under.",
       "properties": {
+        "account": {
+          "description": "The account signed in to, for display, when the sign-in told her (an id token's name, or GitHub's login).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "auth": {
           "$ref": "#/definitions/McpAuthKind"
         },

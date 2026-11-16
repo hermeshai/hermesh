@@ -3161,6 +3161,8 @@ export type McpServerStatusView = {
 
 /** One server as the page shows it; secrets never appear, only the names they are saved under. */
 export type McpServerView = {
+  /** The account signed in to, for display, when the sign-in told her (an id token's name, or GitHub's login). */
+  account?: string | null;
   auth: McpAuthKind;
   /** Authenticated, but the provider did not grant every requested permission. */
   auth_partial?: boolean | null;

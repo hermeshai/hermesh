@@ -254,6 +254,11 @@ pub async fn start_login(req: LoginRequest) -> Result<PendingLogin, String> {
         if !scopes.is_empty() {
             q.append_pair("scope", &scopes.join(" "));
         }
+        // GitHub otherwise goes straight back for an app the person allowed before, without
+        // showing which of their accounts it signs in with.
+        if meta.issuer == client::GITHUB {
+            q.append_pair("prompt", "select_account");
+        }
     }
     let (tx, done) = oneshot::channel();
     let cancel = CancellationToken::new();
@@ -304,6 +309,8 @@ struct TokenResponse {
     expires_in: Option<u64>,
     #[serde(default)]
     scope: Option<String>,
+    #[serde(default)]
+    id_token: Option<String>,
 }
 
 /// Posts to the token endpoint; a secret, when there is one, goes in Basic authentication.
@@ -456,6 +463,42 @@ async fn await_redirect(mut redirects: mpsc::Receiver<Redirected>, ex: Exchange,
     let _ = done.send(result);
 }
 
+/// Where GitHub says who a token belongs to.
+const GITHUB_USER: &str = "https://api.github.com/user";
+
+/// The account a sign-in is for, to show beside the connector: the name in the id token when the
+/// authorization server sent one, else, for GitHub, the token owner's login. For display only:
+/// nothing trusts it, so the id token's signature is not checked. None when neither says.
+async fn account(http: &reqwest::Client, issuer: &str, id_token: Option<&str>, access_token: &str) -> Option<String> {
+    if let Some(name) = id_token.and_then(id_token_name) {
+        return Some(name);
+    }
+    if issuer != client::GITHUB {
+        return None;
+    }
+    let response = http
+        .get(GITHUB_USER)
+        .bearer_auth(access_token)
+        .header("accept", "application/vnd.github+json")
+        .header("user-agent", "her")
+        .timeout(Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let user: serde_json::Value = response.json().await.ok()?;
+    user["login"].as_str().filter(|s| !s.is_empty()).map(String::from)
+}
+
+/// The name an id token gives its subject: preferred_username, else email, else name.
+fn id_token_name(jwt: &str) -> Option<String> {
+    let payload = jwt.split('.').nth(1)?;
+    let claims: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok()?).ok()?;
+    ["preferred_username", "email", "name"].iter().find_map(|k| claims[*k].as_str().filter(|s| !s.is_empty()).map(String::from))
+}
+
 /// Trades the code for tokens and saves them under the server's name.
 async fn redeem(ex: &Exchange, code: &str) -> Result<(), String> {
     let pairs = [
@@ -479,8 +522,11 @@ async fn redeem(ex: &Exchange, code: &str) -> Result<(), String> {
                 revocation_endpoint: ex.meta.revocation_endpoint.clone(),
                 client_id: ex.client.client_id.clone(),
                 client_secret: ex.client.client_secret.clone(),
+                account: None,
             };
-            let token = apply(base, t);
+            let id_token = t.id_token.clone();
+            let mut token = apply(base, t);
+            token.account = account(&ex.http, &ex.meta.issuer, id_token.as_deref(), &token.access_token).await;
             let server = ex.server.clone();
             tokio::task::spawn_blocking(move || super::save(&server, &token)).await.map_err(|e| e.to_string()).and_then(|r| r)
         }
@@ -505,5 +551,18 @@ mod tests {
     #[test]
     fn form_encoding() {
         assert_eq!(form(&[("a b", "x/y?z"), ("k", "~ok")]), "a%20b=x%2Fy%3Fz&k=~ok");
+    }
+
+    fn jwt(claims: serde_json::Value) -> String {
+        format!("{}.{}.sig", URL_SAFE_NO_PAD.encode(r#"{"alg":"none"}"#), URL_SAFE_NO_PAD.encode(claims.to_string()))
+    }
+
+    #[test]
+    fn an_id_token_names_its_account() {
+        assert_eq!(id_token_name(&jwt(json!({"sub": "1", "preferred_username": "lin", "email": "lin@example.com"}))).as_deref(), Some("lin"));
+        assert_eq!(id_token_name(&jwt(json!({"sub": "1", "email": "lin@example.com", "name": "Lin"}))).as_deref(), Some("lin@example.com"));
+        assert_eq!(id_token_name(&jwt(json!({"sub": "1", "name": "Lin"}))).as_deref(), Some("Lin"));
+        assert_eq!(id_token_name(&jwt(json!({"sub": "1", "email": ""}))), None, "nothing to show");
+        assert_eq!(id_token_name("not a token"), None);
     }
 }
