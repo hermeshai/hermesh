@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botChat, busyBubble, pendingApproval, type BotItem, type WorkingAgent } from "@hermesh/her-client";
+import { botChat, busyBubble, pendingApproval, replyOf, type BotItem, type ReplyQuote, type WorkingAgent } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import type { HerWaiting } from "@hermesh/proto/local";
 import { agoText } from "@hermesh/core";
@@ -23,6 +23,7 @@ import { FailureCard, PastFailure } from "./Failure";
 import { messageTime, momentText, thingsText, timeLine } from "./format";
 import { Question, SentFiles, useSaveFile, type FileScope } from "./Messages";
 import { FilePreview, previews } from "./preview/FilePreview";
+import { QuoteCard, quoteOf, quoteText, ReplyButton, ReplyPill, Replying } from "./reply";
 import { Onboarding, useOnboarding } from "./ModelOnboarding";
 import { onboardingAfter, withOnboarding } from "./onboarding";
 import { SecureCard } from "./SecureCard";
@@ -47,7 +48,10 @@ export const showRun = (machineId: string, run: string) => runShowers.get(machin
 /** A message not sent, back into the composer of an environment's conversation (Edit). */
 const composerReturn = new Map<string, (sent: Draft) => void>();
 
-type Draft = { text: string; attachments: Attachment[] };
+/** What the next message replies to, into the composer of an environment's conversation (docs/her-reply.md). */
+const composerReply = new Map<string, (reply: ReplyQuote) => void>();
+
+type Draft = { text: string; attachments: Attachment[]; reply?: ReplyQuote };
 
 /**
  * What this Mac sent and HerSend has not answered for, or refused, by environment (docs/her-sending.md §5.2): with the
@@ -189,6 +193,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   onWaiting: () => Promise<HerWaiting[]>;
 }) {
   const { t } = useTranslation("her");
+  const st = useStore();
   const her = useHer();
   const { view, session } = conv;
   const chat = useMemo(() => (view ? botChat(view).filter((i) => i.kind !== "deck_edit") : []), [view]);
@@ -321,6 +326,26 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
       if (runShowers.get(key) === show) runShowers.delete(key);
     };
   }, [key, items, scrollToKey]);
+  // A reply goes to the composer; the message one replied to comes into view, marked a moment. A core that is not
+  // this app's yet (it restarts once its sessions end) would drop what a message replies to: it says so instead.
+  const canReply = st.status?.abilities?.includes("her_reply") !== false;
+  const replying = useMemo(
+    () => ({
+      name: bot.name,
+      start: (reply: ReplyQuote) => (canReply ? composerReply.get(key)?.(reply) : st.show(t("reply.needsUpdate"))),
+      show: (ref: string) => {
+        if (!items.some((i) => i.key === ref)) return st.show(t("reply.gone"));
+        atEnd.current = false;
+        scrollToKey(ref, {
+          then: (el) => {
+            el.classList.add("rtn-flash");
+            setTimeout(() => el.classList.remove("rtn-flash"), 1500);
+          },
+        });
+      },
+    }),
+    [bot.name, canReply, key, items, scrollToKey, st.show, t],
+  );
   const files: FileScope = { rpc: conv.rpc, session: session ?? "", bot: bot.id };
   const drawItem = (item: Item, previous: number | undefined) => {
     const line = <TimeSince at={item.ts} previous={previous} />;
@@ -398,7 +423,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     }
   };
   return (
-    <>
+    <Replying.Provider value={replying}>
       <div className="cscroll" ref={scrollRef} onScroll={onScroll}>
         <div className="dbody" ref={body} style={{ paddingBottom: dock + 40 }}>
           {view?.before && (
@@ -428,8 +453,9 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
       <button className={`tobottom ${away ? "on" : ""}`} style={{ "--dock": `${dock}px` } as CSSProperties} aria-label={t("chat.toBottom")} title={t("chat.toBottom")} tabIndex={away ? 0 : -1} aria-hidden={!away} onClick={toEnd}>
         <Icon name="arrowDown" />
       </button>
+      <ReplyPill root={scroller} />
       <Dock bot={bot} conv={conv} op={op} state={state} onWaiting={onWaiting} onHeight={setDock} />
-    </>
+    </Replying.Provider>
   );
 }
 
@@ -472,7 +498,7 @@ function UserBubble({ item, fresh, line, scope }: { item: Extract<BotItem, { kin
   return (
     <>
       {line}
-      <div className={`um ${fresh ? "add-anim" : ""} ${item.queued ? "queued" : ""}`} title={item.queued ? t("chat.queued") : undefined}>
+      <div className={`um ${fresh ? "add-anim" : ""} ${item.queued ? "queued" : ""}`} title={item.queued ? t("chat.queued") : undefined} data-reply-key={said.text !== "" ? item.key : undefined} data-reply-own="">
         {(item.images.length > 0 || said.files.length > 0) && (
           <div className="um-att">
             {item.images.map((im, i) => (
@@ -484,15 +510,27 @@ function UserBubble({ item, fresh, line, scope }: { item: Extract<BotItem, { kin
           </div>
         )}
         {shown && <FilePreview scope={scope} path={shown} name={baseName(shown)} onSave={() => void save(shown, baseName(shown))} onClose={() => setShown(null)} />}
-        {said.text !== "" && <div className="bub sel-text">{said.text}</div>}
+        <OwnBubble text={said.text} reply={item.reply} />
         <div className="msg-act">
           <span className="msg-meta">
             <MessageTime at={item.ts} />
           </span>
+          {said.text !== "" && <ReplyButton quote={() => quoteOf(item.key, true, said.text)} />}
           <CopyButton text={said.text} />
         </div>
       </div>
     </>
+  );
+}
+
+/** The owner's words in their bubble, under what they reply to. */
+function OwnBubble({ text, reply }: { text: string; reply?: ReplyQuote }) {
+  if (text === "" && !reply) return null;
+  return (
+    <div className="bub sel-text">
+      {reply && <QuoteCard reply={reply} />}
+      {text !== "" && <span className="bub-t">{text}</span>}
+    </div>
   );
 }
 
@@ -517,7 +555,7 @@ function SendingBubble({ item, line }: { item: SendingItem; line: ReactNode }) {
             ))}
           </div>
         )}
-        {item.text !== "" && <div className="bub sel-text">{item.text}</div>}
+        <OwnBubble text={item.text} reply={item.reply} />
         <div className={`um-wait ${item.refused !== null ? "warn" : ""}`} role="status">
           {item.refused === null ? (
             <span>{t("waiting.sending")}</span>
@@ -574,7 +612,7 @@ function WaitingBubble({ item, line, onDiscarded }: { item: WaitingItem; line: R
             ))}
           </div>
         )}
-        {item.text !== "" && <div className="bub sel-text">{item.text}</div>}
+        <OwnBubble text={item.text} reply={item.reply} />
         <div className={`um-wait ${refused ? "warn" : ""}`} role="status">
           <Icon name={refused ? "alert" : "clock"} className="sm" />
           <span title={refused ? item.error : undefined}>{refused ? t("waiting.failed", { error: item.error }) : t("waiting.until", { name })}</span>
@@ -625,7 +663,7 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
   return (
     <>
       {line}
-      <div className={`bm ${fresh ? "add-anim" : ""}`} data-run={source?.run_id}>
+      <div className={`bm ${fresh ? "add-anim" : ""}`} data-run={source?.run_id} data-reply-key={copy ? item.key : undefined}>
         <div className="bm-b">
           <div className="bline">
             {children}
@@ -633,6 +671,7 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
               <span className="msg-meta">
                 <MessageTime at={item.ts} />
               </span>
+              {copy && <ReplyButton quote={() => quoteOf(item.key, false, copy)} />}
               {copy !== undefined && <CopyButton text={copy} />}
               {source && (
                 <button
@@ -727,7 +766,7 @@ function BusyBubble({ busy, retry, onOpen }: { busy: { typing: boolean; agents: 
 }
 
 /** What the owner had written to each assistant and not sent yet, by environment and assistant. */
-const drafts = new Map<string, { text: string; attachments: Attachment[] }>();
+const drafts = new Map<string, Draft>();
 /** What failed tasks handed back that is in a composer already. */
 const handed = new WeakSet<object>();
 
@@ -753,8 +792,8 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   const key = her.machine.machineId;
   const asking = view && conv.rpc ? pendingApproval(view) : null;
   const waitsForChrome = useWaitsForChrome(conv.rpc, conv.session);
-  const [draft, setDraft] = useState(() => drafts.get(key) ?? { text: "", attachments: [] });
-  const change = (d: { text: string; attachments: Attachment[] }) => {
+  const [draft, setDraft] = useState<Draft>(() => drafts.get(key) ?? { text: "", attachments: [] });
+  const change = (d: Draft) => {
     setDraft(d);
     drafts.set(key, d);
   };
@@ -763,9 +802,11 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
     const returned = view?.returned;
     if (!returned?.length || handed.has(returned)) return;
     handed.add(returned);
-    const text = returned.map((m) => m.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n")).filter(Boolean);
-    const d = drafts.get(key) ?? { text: "", attachments: [] };
-    change({ ...d, text: [...text, d.text.trim()].filter(Boolean).join("\n\n") });
+    // What one replied to goes back as that, not as words.
+    const text = returned.map((m) => m.content.flatMap((c) => (c.type === "text" && !replyOf(c.text) ? [c.text] : [])).join("\n")).filter(Boolean);
+    const reply = returned.flatMap((m) => m.content.flatMap((c) => (c.type === "text" ? [replyOf(c.text)] : []))).find((r) => r !== null);
+    const d: Draft = drafts.get(key) ?? { text: "", attachments: [] };
+    change({ ...d, text: [...text, d.text.trim()].filter(Boolean).join("\n\n"), ...(reply && !d.reply && { reply }) });
   }, [view?.returned]);
   // What the routines panel writes for the owner to finish: ready to type on.
   useEffect(() => {
@@ -782,12 +823,24 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   // A message not sent, edited: back into the composer, before what is there.
   useEffect(() => {
     const put = (sent: Draft) => {
-      const d = drafts.get(key) ?? { text: "", attachments: [] };
-      change({ text: [sent.text, d.text].filter(Boolean).join("\n"), attachments: addAttachments(sent.attachments, d.attachments) });
+      const d: Draft = drafts.get(key) ?? { text: "", attachments: [] };
+      const reply = sent.reply ?? d.reply;
+      change({ text: [sent.text, d.text].filter(Boolean).join("\n"), attachments: addAttachments(sent.attachments, d.attachments), ...(reply && { reply }) });
     };
     composerReturn.set(key, put);
     return () => {
       if (composerReturn.get(key) === put) composerReturn.delete(key);
+    };
+  }, [key]);
+  // What the next message replies to, from a message's Reply or from words selected in one.
+  useEffect(() => {
+    const put = (reply: ReplyQuote) => {
+      change({ ...(drafts.get(key) ?? { text: "", attachments: [] }), reply });
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(".her .cmp-in")?.focus());
+    };
+    composerReply.set(key, put);
+    return () => {
+      if (composerReply.get(key) === put) composerReply.delete(key);
     };
   }, [key]);
   const name = her.machine.machineName;
@@ -813,6 +866,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
           text: m.draft.text.trim(),
           localPaths: paths,
           pictures,
+          reply: m.draft.reply,
           connectionId: c.rpc && c.session ? (c.connectionId ?? "") : "",
           sessionId: c.rpc && c.connectionId ? (c.session ?? "") : "",
         });
@@ -848,6 +902,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       images: sent.attachments.flatMap((a) => (a.kind === "image" ? [{ mime_type: a.mime_type, data: a.data }] : [])),
       ts: Date.now(),
       refused: null,
+      ...(sent.reply && { reply: sent.reply }),
       draft: sent,
     });
     void deliver(id);
@@ -874,6 +929,8 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       onChange={(text) => change({ ...draft, text })}
       attachments={draft.attachments}
       onAttachments={(attachments) => change({ ...draft, attachments })}
+      quote={draft.reply && { label: draft.reply.own ? t("reply.own") : t("reply.to", { name: bot.name }), text: quoteText(draft.reply.text) }}
+      onUnquote={() => change({ text: draft.text, attachments: draft.attachments })}
       onSend={send}
       canSend={!noModel}
       placeholder={noModel ? t("onboard.placeholder") : t("chat.placeholder", { name: bot.name })}

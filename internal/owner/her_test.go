@@ -1284,3 +1284,92 @@ func TestHerRoundDeliversMachinesSideBySide(t *testing.T) {
 		t.Fatalf("waiting: %v", list)
 	}
 }
+
+// A reply is written for her as the shared cases say (docs/her-reply.md
+// §4.1), which the apps read back; one too long is cut and says it is a
+// part; one that names no message or quotes nothing is not written.
+func TestHerReplyBlock(t *testing.T) {
+	raw, err := os.ReadFile("testdata/her_reply.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var shared struct {
+		Cases []struct {
+			Reply struct {
+				Ref     string
+				Own     bool
+				Text    string
+				Partial bool
+			}
+			Block string
+		}
+	}
+	if err := json.Unmarshal(raw, &shared); err != nil || len(shared.Cases) < 4 {
+		t.Fatalf("cases: %d %v", len(shared.Cases), err)
+	}
+	for _, c := range shared.Cases {
+		r := &localv1.HerReply{Ref: c.Reply.Ref, Own: c.Reply.Own, Text: c.Reply.Text, Partial: c.Reply.Partial}
+		if got := replyBlock(r); got != c.Block {
+			t.Errorf("%+v:\n%s\nwant\n%s", c.Reply, got, c.Block)
+		}
+	}
+	long := replyBlock(&localv1.HerReply{Ref: "call_1", Text: strings.Repeat("长", herReplyMax) + "尾\nlast"})
+	if want := "<resource uri=\"her-reply:call_1\">\nReplying to this earlier message of yours, quoted in part:\n> " + strings.Repeat("长", herReplyMax) + "…\n</resource>"; long != want {
+		t.Errorf("a long one: %d bytes, ends %q", len(long), long[len(long)-40:])
+	}
+	if got := replyBlock(&localv1.HerReply{Ref: "call_1", Text: " one\r\n two \r\n"}); !strings.Contains(got, ":\n> one\n>  two\n</resource>") {
+		t.Errorf("line ends: %q", got)
+	}
+	for _, r := range []*localv1.HerReply{nil, {}, {Ref: "call_1"}, {Ref: "call_1", Text: " \n "}, {Text: "words"},
+		{Ref: "call 1", Text: "words"}, {Ref: "a\">", Text: "words"}, {Ref: strings.Repeat("a", 129), Text: "words"}} {
+		if got := replyBlock(r); got != "" {
+			t.Errorf("%v: %q", r, got)
+		}
+	}
+}
+
+// A message that replies carries what it replies to after its words and
+// before what is attached, whether it goes at once or waits for the
+// machine first.
+func TestHerSendReplies(t *testing.T) {
+	h := &herSide{}
+	_, o, down, _ := herOwner(t, h)
+	ctx := context.Background()
+	file := filepath.Join(t.TempDir(), "notes.txt")
+	os.WriteFile(file, []byte("some notes"), 0o644)
+	reply := &localv1.HerReply{Ref: "call_7", Text: "the second hotel", Partial: true}
+	block := "<resource uri=\"her-reply:call_7\">\nReplying to this earlier message of yours, quoted in part:\n> the second hotel\n</resource>"
+	if res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "/compact is it far?", LocalPaths: []string{file}, Reply: reply}); err != nil || !res.Delivered {
+		t.Fatalf("send: %v %v", res, err)
+	}
+	if got := h.sent(t)[0].Input; len(got) != 3 || got[0]["text"] != "/compact is it far?" || got[1]["text"] != block ||
+		got[2]["text"] != "Attached files:\n/her/bots/b1/files/uploads/notes.txt" {
+		t.Fatalf("handed %+v", got)
+	}
+	// One that quotes nothing goes as its words.
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "plain", Reply: &localv1.HerReply{Ref: "call_7"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.sent(t)[1].Input; len(got) != 1 || got[0]["text"] != "plain" {
+		t.Fatalf("handed %+v", got)
+	}
+	// A reply alone is no message.
+	if _, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Reply: reply}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a reply alone: %v", err)
+	}
+	// Written while the machine is away, it waits with its reply and goes with it.
+	down.Store(true)
+	res, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "and the first?", Reply: &localv1.HerReply{Ref: "hw_1", Own: true, Text: "which one"}})
+	if err != nil || res.Delivered || res.Waiting.GetReply().GetRef() != "hw_1" {
+		t.Fatalf("send to a machine that is away: %v %v", res, err)
+	}
+	if list, _ := o.st.herWaiting("m_1", "b1"); len(list) != 1 || !list[0].Reply.Own || list[0].Reply.Text != "which one" {
+		t.Fatalf("kept: %v", list)
+	}
+	down.Store(false)
+	o.flushWaiting(ctx)
+	if got := h.sent(t); len(got) != 3 || len(got[2].Input) != 2 || got[2].Input[0]["text"] != "and the first?" ||
+		got[2].Input[1]["text"] != "<resource uri=\"her-reply:hw_1\">\nReplying to this earlier message of mine, quoted in full:\n> which one\n</resource>" {
+		t.Fatalf("handed %+v", got)
+	}
+}

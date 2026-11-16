@@ -431,6 +431,30 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .rtn-line .ic{width:13px;height:13px;flex:none}
 .rtn-flash .bbub{animation:rtn-flash 1.4s var(--ease-out)}
 @keyframes rtn-flash{0%,40%{box-shadow:inset 0 0 0 1.5px var(--accent)}100%{box-shadow:inset 0 0 0 .5px var(--sep)}}
+/* A reply (docs/her-reply.md): what a message replies to at the top of its bubble, a button that brings that message
+   into view; what the next one replies to above the composer's text; Reply over words selected in a message. */
+.rq{display:flex;gap:8px;width:calc(100% + 12px);margin:-2px -6px 7px;padding:6px 9px 6px 8px;border:0;border-radius:var(--r-md);background:rgba(255,255,255,.17);color:inherit;font:inherit;font-size:13px;line-height:1.45;text-align:left;white-space:normal;user-select:none;-webkit-user-select:none;outline-offset:-2px}
+.rq:hover{background:rgba(255,255,255,.25)}
+.rq:last-child{margin-bottom:-2px}
+.rq::before{content:"";flex:none;width:2.5px;border-radius:2px;background:rgba(255,255,255,.8)}
+.rq-t{min-width:0;display:flex;flex-direction:column}
+.rq-t b{font-size:12px;font-weight:600}
+.rq-t span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;opacity:.86;white-space:pre-wrap;overflow-wrap:anywhere}
+.rtn-flash .um .bub{animation:rq-flash 1.4s var(--ease-out)}
+@keyframes rq-flash{0%,40%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 38%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
+.cmp-q{display:flex;align-items:flex-start;gap:9px;padding:7px 6px 7px 9px;border-radius:var(--r-md);background:var(--fill);animation:her-up .22s cubic-bezier(.2,0,0,1)}
+.cmp-q::before{content:"";flex:none;align-self:stretch;width:2.5px;border-radius:2px;background:var(--accent)}
+.cmp-q-t{flex:1;min-width:0;display:flex;flex-direction:column}
+.cmp-q-t b{font-size:12px;font-weight:600;line-height:17px;color:var(--accent-t)}
+.cmp-q-t span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:19px;color:var(--l2);white-space:pre-wrap;overflow-wrap:anywhere}
+.cmp-q-x{flex:none;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:none;color:var(--l2);display:flex;align-items:center;justify-content:center}
+.cmp-q-x:hover{background:var(--fill2);color:var(--l1)}
+.cmp-q-x .ic{width:11px;height:11px;stroke-width:2.6}
+.reply-pill{position:fixed;z-index:60;transform:translate(-50%,0);height:30px;padding:0 11px 0 9px;border:0;border-radius:15px;background:var(--pill);box-shadow:0 0 0 .5px var(--pill-bd),0 4px 14px rgba(0,0,0,.14);display:flex;align-items:center;gap:5px;font:inherit;font-size:12.5px;font-weight:550;color:var(--l1);cursor:default;animation:fade .12s;-webkit-app-region:no-drag}
+.reply-pill:hover{background:color-mix(in srgb,var(--pill) 92%,var(--l1))}
+.reply-pill .ic{width:14px;height:14px;color:var(--accent-t)}
+@media (prefers-reduced-motion:reduce){.cmp-q,.reply-pill{animation:none}}
+
 .tb.rtn-btn{position:relative}
 .tb .rtn-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--orange)}
 .tb .rtn-dot.run{background:var(--accent)}

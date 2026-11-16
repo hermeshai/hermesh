@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 回复与引用 · 原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  /* iPhone (apps/ios Palette) */
+  --i-bg:#fff;--i-l1:#000;--i-l2:rgba(60,60,67,.6);--i-l3:rgba(60,60,67,.3);--i-sep:rgba(0,0,0,.08);
+  --i-fill:rgba(118,118,128,.12);--i-reply:#f4f4f7;--i-me:#3d5bff;--i-tint:#3d5bff;
+  --i-glass:rgba(255,255,255,.78);--i-glass-bd:rgba(0,0,0,.07);--i-sheet:#f2f2f7;--i-pop:rgba(250,250,252,.94);--i-mark:rgba(255,204,0,.24);
+  /* Mac (apps/desktop app.css) */
+  --win:#fff;--win2:#f4f4f7;--side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);
+  --accent:#3d5bff;--accent-t:#3d5bff;--accent-bg:rgba(61,91,255,.10);
+  --bot-reply:#f4f4f7;--pill:#fff;--pill-bd:rgba(0,0,0,.12);
+  --glass:rgba(255,255,255,.86);--glass-sh:0 0 0 .5px rgba(0,0,0,.12),0 4px 14px rgba(0,0,0,.12);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#1a1b20;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000;--i-l1:#fff;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.3);--i-sep:rgba(255,255,255,.1);
+  --i-fill:rgba(118,118,128,.24);--i-reply:rgba(255,255,255,.06);--i-me:#4f6bff;--i-tint:#6f87ff;
+  --i-glass:rgba(44,44,48,.78);--i-glass-bd:rgba(255,255,255,.1);--i-sheet:#1c1c1e;--i-pop:rgba(44,44,48,.95);--i-mark:rgba(255,214,10,.2);
+  --win:#1e1e21;--win2:#29292d;--side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);
+  --accent:#4f6bff;--accent-t:#8ea0ff;--accent-bg:rgba(91,121,255,.18);
+  --bot-reply:rgba(255,255,255,.06);--pill:#2b2b30;--pill-bd:rgba(255,255,255,.12);
+  --glass:rgba(58,58,64,.9);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.4);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-mac);min-height:100vh;padding-bottom:110px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1480px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1480px;margin:0 auto;padding:10px 24px;display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+#stage{min-width:0;max-width:100%;display:flex;justify-content:center}
+.notes{width:360px;max-width:100%;flex:none;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes h3+p{margin:0;color:var(--page-fg2)}
+.notes ul,.notes ol{margin:6px 0 0;padding-left:19px}
+.notes li{margin:4px 0}
+.notes .tag{display:inline-block;font-size:11px;padding:0 7px;border-radius:99px;background:var(--accent-bg);color:var(--accent-t);margin-right:5px;font-weight:600}
+.notes .tag.old{background:var(--fill2);color:var(--page-fg2)}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--page-bd)}
+.wire{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.wire div{font-size:11.5px;color:var(--page-fg2)}
+.wire pre{margin:0;padding:8px 10px;border-radius:8px;background:var(--fill);font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--page-fg)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:3px 10px;border-radius:7px;background:var(--fill2);color:var(--page-fg)}
+.ctl button.on{background:var(--accent);color:#fff}
+.hide{display:none!important}
+
+/* ================= Mac ================= */
+.mac{width:1000px;max-width:100%;height:720px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:flex;background:var(--win);color:var(--l1);font:13px/1.45 var(--font-mac);position:relative}
+.mside{width:196px;background:var(--side);border-right:.5px solid var(--sep);padding:46px 10px 10px;flex:none;position:relative}
+.lights{position:absolute;top:16px;left:16px;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:6px;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.mside .it{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:7px}
+.mside .it.on{background:var(--fill2);font-weight:550}
+.mside .gh{font-size:11.5px;color:var(--l3);padding:14px 10px 4px}
+.mside .ses{height:28px;padding:0 10px;display:flex;align-items:center;gap:8px;color:var(--l2);white-space:nowrap;overflow:hidden}
+.mside .ses i{width:6px;height:6px;border-radius:3px;background:#17924f;flex:none}
+.av{border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd6e7,#ff7eb6 40%,#7b61ff 100%);flex:none}
+.mmain{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.mtop{height:52px;display:flex;align-items:center;justify-content:center;gap:8px;flex:none;border-bottom:.5px solid var(--sep);font-weight:600;font-size:14px}
+.mtop small{font-weight:400;color:var(--l2);font-size:12.5px}
+.mconv{flex:1;overflow-y:auto;padding:14px 24px 26px;position:relative}
+.col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:2px 0}
+.mrow{display:flex;align-items:flex-end;gap:6px;position:relative;border-radius:14px;transition:background .5s,box-shadow .5s}
+.mrow.me{flex-direction:column;align-items:flex-end;gap:5px;margin-bottom:10px}
+.mrow.flash{background:var(--accent-bg);box-shadow:0 0 0 7px var(--accent-bg)}
+.mb{min-width:0;max-width:min(640px,100%);padding:9px 15px;border-radius:12px;background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);font-size:14.5px;line-height:1.625;overflow-wrap:anywhere}
+.mb p{margin:0}.mb p+p,.mb p+ul,.mb ul+p,.mb p+ol,.mb ol+p{margin-top:8px}
+.mb ul,.mb ol{margin:0;padding-left:20px}
+.mu{max-width:80%;background:var(--accent);color:#fff;border-radius:12px;padding:9px 15px;font-size:14.5px;line-height:1.625;overflow-wrap:anywhere}
+.mu .tx{white-space:pre-wrap}
+.mu ::selection{background:rgba(255,255,255,.34)}
+.mact{display:flex;align-items:center;gap:1px;opacity:0;transition:opacity .12s;color:var(--l3);font-size:11.5px;white-space:nowrap;flex:none;padding:2px 4px}
+.mrow.me .mact{position:absolute;top:100%;right:0;margin-top:1px;z-index:2}
+.mrow:hover .mact{opacity:1}
+.mact span{margin-right:5px}
+.tb{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.tb:hover{background:var(--fill2);color:var(--l1)}
+.tb svg{width:14px;height:14px}
+/* quote card in a sent bubble */
+.q{display:flex;gap:8px;text-align:left;width:calc(100% + 12px);margin:-2px -6px 7px;padding:6px 9px 6px 8px;border-radius:8px;background:rgba(255,255,255,.17);font-size:13px;line-height:1.45;cursor:pointer}
+.q:hover{background:rgba(255,255,255,.25)}
+.q::before{content:"";width:2.5px;border-radius:2px;background:rgba(255,255,255,.8);flex:none}
+.q b{display:block;font-size:12px;font-weight:600}
+.q span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;opacity:.86;white-space:pre-wrap}
+.qa{display:flex;align-items:center;gap:6px;max-width:min(460px,80%);font-size:12.5px;color:var(--l2);cursor:pointer;padding:1px 4px}
+.qa:hover{color:var(--l1)}
+.qa svg{width:13px;height:13px;flex:none}
+.qa span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qa b{font-weight:600;flex:none}
+/* composer */
+.cmpz{padding:0 24px 18px;flex:none}
+.cmp{max-width:720px;margin:0 auto;background:var(--pill);border-radius:12px;box-shadow:0 0 0 .5px var(--pill-bd),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06);padding:6px;display:flex;flex-direction:column;gap:6px}
+.cmp:focus-within{box-shadow:0 0 0 .5px var(--pill-bd),0 0 0 3px var(--accent-bg),0 6px 20px rgba(0,0,0,.06)}
+.cq{display:flex;gap:9px;align-items:flex-start;padding:7px 6px 7px 9px;border-radius:8px;background:var(--fill);animation:qin .22s cubic-bezier(.2,0,0,1)}
+@keyframes qin{from{opacity:0;transform:translateY(6px)}}
+.cq::before{content:"";width:2.5px;align-self:stretch;border-radius:2px;background:var(--accent);flex:none}
+.cq .k{flex:1;min-width:0}
+.cq b{display:block;font-size:12px;font-weight:600;color:var(--accent-t);line-height:17px}
+.cq span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;line-height:19px;color:var(--l2);white-space:pre-wrap}
+.cq .x{width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--l2);flex:none}
+.cq .x:hover{background:var(--fill2);color:var(--l1)}
+.cq .x svg{width:10px;height:10px}
+.cmp-row{display:flex;align-items:flex-end;gap:4px}
+.cmp-plus{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--l2);flex:none}
+.cmp-plus svg{width:18px;height:18px}
+.cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 4px;height:32px}
+.cmp-in::placeholder{color:var(--l3)}
+.send{width:32px;height:32px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.send:disabled{color:var(--l3);background:var(--fill2);cursor:default}
+.send svg{width:16px;height:16px}
+/* selection pill */
+.selpill{position:absolute;z-index:20;transform:translate(-50%,0);height:30px;padding:0 11px 0 9px;border-radius:15px;background:var(--glass);backdrop-filter:blur(18px);box-shadow:var(--glass-sh);display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:550;color:var(--l1);animation:pin .14s ease-out}
+@keyframes pin{from{opacity:0;transform:translate(-50%,4px) scale(.96)}}
+.selpill svg{width:14px;height:14px;color:var(--accent-t)}
+.selpill:hover{background:var(--win)}
+.dots{display:flex;gap:4px;padding:4px 0}
+.dots i{width:6px;height:6px;border-radius:3px;background:var(--l3);animation:bl 1s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+/* ================= iPhone ================= */
+.phone{width:393px;height:852px;border-radius:56px;padding:12px;background:#111;box-shadow:0 30px 80px rgba(10,20,50,.35),inset 0 0 0 2px #333;flex:none}
+.scr{position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);font:17px/1.3 var(--font-ios);letter-spacing:-.2px;user-select:none;-webkit-user-select:none}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 40px;font-size:16px;font-weight:600;z-index:30;pointer-events:none}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;z-index:31}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--i-l1);opacity:.85;z-index:70;pointer-events:none}
+.inav{position:absolute;top:50px;left:0;right:0;height:48px;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:600;z-index:6;background:linear-gradient(var(--i-bg) 70%,transparent)}
+.inav .back{position:absolute;left:14px;color:var(--i-tint)}
+.inav .back svg{width:12px;height:20px}
+.iscroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding:106px 16px 110px;display:flex;flex-direction:column;gap:10px;touch-action:pan-y}
+.iscroll::-webkit-scrollbar{display:none}
+.itime{align-self:center;font-size:12px;color:var(--i-l3);margin:4px 0}
+.prow{display:flex;position:relative;border-radius:14px;transition:background .4s,box-shadow .4s}
+.prow.me{justify-content:flex-end;padding-left:48px}
+.prow.her{padding-right:20px}
+.prow.flash{background:var(--i-mark);box-shadow:0 0 0 8px var(--i-mark)}
+.pb{position:relative;padding:9px 14px;border-radius:18px;font-size:17px;line-height:1.36;overflow-wrap:anywhere;transition:transform .22s cubic-bezier(.2,0,0,1);cursor:default}
+.pb.drag{transition:none}
+.prow.her .pb{background:var(--i-reply);box-shadow:inset 0 0 0 .5px var(--i-sep)}
+.prow.me .pb{background:var(--i-me);color:#fff}
+.prow.me .pb .tx{white-space:pre-wrap}
+.pb p{margin:0}.pb p+p,.pb p+ul,.pb ul+p,.pb p+ol,.pb ol+p{margin-top:9px}
+.pb ul,.pb ol{margin:0;padding-left:22px}
+.pb .q{font-size:15px;border-radius:11px;margin:-1px -5px 7px;width:calc(100% + 10px);padding:6px 10px 6px 8px}
+.pb .q b{font-size:13px}
+.prow .qa{font-size:13px;color:var(--i-l2);max-width:100%}
+.prow.me.above{flex-direction:column;align-items:flex-end;gap:4px}
+.swp{position:absolute;left:0;top:50%;width:30px;height:30px;margin-top:-15px;border-radius:15px;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l2);opacity:0;transform:scale(.6);pointer-events:none}
+.swp svg{width:15px;height:15px}
+.swp.arm{background:var(--i-tint);color:#fff}
+/* composer */
+.icomp{position:absolute;left:12px;right:12px;bottom:26px;display:flex;gap:8px;align-items:flex-end;z-index:8}
+.iplus{width:44px;height:44px;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;flex:none;color:var(--i-l1)}
+.iplus svg{width:19px;height:19px}
+.ibox{flex:1;min-width:0;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden}
+.iq{display:flex;gap:9px;align-items:center;padding:9px 8px 8px 14px;border-bottom:.5px solid var(--i-sep);animation:qin .24s cubic-bezier(.2,0,0,1)}
+.iq::before{content:"";width:3px;align-self:stretch;border-radius:2px;background:var(--i-tint);flex:none}
+.iq .k{flex:1;min-width:0}
+.iq b{display:block;font-size:13px;font-weight:600;color:var(--i-tint);line-height:17px}
+.iq span{display:block;font-size:14px;line-height:19px;color:var(--i-l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iq .x{width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex:none}
+.iq .x i{width:20px;height:20px;border-radius:10px;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l2)}
+.iq .x svg{width:9px;height:9px}
+.irow{display:flex;align-items:center;min-height:44px;padding:0 6px 0 16px;gap:6px}
+.irow input{flex:1;min-width:0;border:0;outline:none;background:none;font:16px var(--font-ios);color:var(--i-l1);user-select:text;-webkit-user-select:text}
+.irow input::placeholder{color:var(--i-l3)}
+.isend{width:32px;height:32px;border-radius:16px;background:var(--i-tint);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.isend:disabled{background:var(--i-fill);color:var(--i-l3);cursor:default}
+.isend svg{width:16px;height:16px}
+/* context menu */
+.iscrim{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.16);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);animation:fade .18s}
+@keyframes fade{from{opacity:0}}
+.ilift{position:absolute;z-index:41;margin:0;animation:lift .22s cubic-bezier(.2,0,0,1) forwards;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.ilift.her{background:var(--i-bg)}
+@keyframes lift{to{transform:scale(1.025)}}
+.imenu{position:absolute;z-index:42;width:230px;border-radius:14px;background:var(--i-pop);backdrop-filter:blur(30px);box-shadow:0 10px 40px rgba(0,0,0,.24);overflow:hidden;animation:mpop .2s cubic-bezier(.2,0,0,1)}
+@keyframes mpop{from{opacity:0;transform:scale(.85)}}
+.imenu button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 16px;font-size:17px;text-align:left}
+.imenu button+button{border-top:.5px solid var(--i-sep)}
+.imenu button:active{background:var(--i-fill)}
+.imenu svg{width:19px;height:19px;flex:none}
+/* select-text sheet */
+.isheet{position:absolute;left:0;right:0;bottom:0;height:64%;background:var(--i-sheet);border-radius:26px 26px 0 0;z-index:50;display:flex;flex-direction:column;box-shadow:0 -10px 40px rgba(0,0,0,.18);animation:sup .3s cubic-bezier(.2,0,0,1)}
+@keyframes sup{from{transform:translateY(100%)}}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--i-l3);margin:6px auto 0;flex:none}
+.sh{height:46px;display:flex;align-items:center;justify-content:center;font-weight:600;position:relative;flex:none}
+.sh button{position:absolute;right:16px;color:var(--i-tint);font-weight:600;font-size:17px}
+.stext{flex:1;overflow-y:auto;padding:6px 20px 40px;font-size:17px;line-height:1.45;user-select:text;-webkit-user-select:text;cursor:text;white-space:pre-wrap}
+.stext::selection{background:rgba(61,91,255,.28)}
+.shint{padding:0 20px 8px;font-size:13px;color:var(--i-l2)}
+.iedit{position:absolute;z-index:60;transform:translate(-50%,0);display:flex;border-radius:12px;background:var(--i-pop);backdrop-filter:blur(30px);box-shadow:0 6px 24px rgba(0,0,0,.22),0 0 0 .5px var(--i-glass-bd);overflow:hidden;font-size:15px;animation:pin .14s ease-out;white-space:nowrap}
+.iedit button{padding:9px 13px}
+.iedit button+button{border-left:.5px solid var(--i-sep)}
+.iedit button.pri{color:var(--i-tint);font-weight:600}
+.iedit button.off{color:var(--i-l3);cursor:default}
+</style>
+</head>
+<body>
+<div class="top"><h1>Her 回复与引用 · 原型</h1><span>对话是可操作的：悬停、选中文字、长按、左滑都能试。底部切换平台，以及「现状 / 新方案」对比。</span></div>
+<div class="wrap"><div id="stage"></div><aside class="notes" id="notes"></aside></div>
+<div class="ctl" id="ctl"></div>
+
+<script>
+const I = {
+  reply: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5A5.5 5.5 0 0 1 20 14.5V20"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  sel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h1.5A1.5 1.5 0 0 1 12 5.5v13a1.5 1.5 0 0 1-1.5 1.5H9M15 4h-1.5A1.5 1.5 0 0 0 12 5.5M15 20h-1.5a1.5 1.5 0 0 1-1.5-1.5M4 9v6M20 9v6"/></svg>',
+  back: '<svg viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2 2 10l8 8"/></svg>',
+};
+const LIMIT = 2000;
+/* The block hermeshd puts after the owner's words (docs/her-reply.md §5.1). */
+const replyBlock = (q) => `<resource uri="her-reply:${q.id}">\nReplying to this earlier message of ${q.who === "her" ? "yours" : "mine"}, quoted in ${q.part ? "part" : "full"}:\n${q.text.split("\n").map((l) => (l ? "> " + l : ">")).join("\n")}\n</resource>`;
+const replyLabel = (q) => (q.who === "her" ? "回复 Her" : "引用自己的消息");
+
+const seed = () => [
+  { t: "周一 14:02" },
+  { id: "m1", who: "me", text: "下周三到周五去杭州出差，帮我排一下行程。" },
+  { id: "m2", who: "her", html: "<p>排好了，先看整体安排：</p><p><b>周三</b></p><ul><li>上午 9:05 的高铁出发，10:12 到杭州东站</li><li>下午 2 点到客户园区，先和对方技术负责人过一遍接口方案</li></ul><p><b>周四</b></p><ul><li>上午内部评审，建议留出 1 小时准备演示环境</li><li>下午 3 点正式汇报，结束后对方安排了晚餐</li></ul><p><b>周五</b></p><ul><li>上午机动，可以处理遗留问题</li><li>下午 4:30 的高铁返程，6 点前到家</li></ul>" },
+  { id: "m3", who: "her", html: "<p>酒店有两个候选：</p><ol><li>园区旁的商务酒店，步行 5 分钟，每晚约 520 元</li><li>西湖边的精品酒店，打车 25 分钟，每晚约 780 元</li></ol><p>如果以通勤为先，我建议选第一个。</p>" },
+  { id: "m4", who: "me", text: "预算没问题。周四晚餐大概几点结束？" },
+  { id: "m5", who: "her", html: "<p>对方行政说一般 8:30 左右结束。我在日历里留到了 9 点，之后没有别的安排。</p>" },
+  { id: "m6", who: "her", html: "<p>另外提醒一下：周五返程的票现在只剩二等座，一等座需要候补。要我先锁一张二等座吗？</p>" },
+  { id: "m7", who: "me", text: "先锁上吧。" },
+  { id: "m8", who: "her", html: "<p>已锁定周五 16:30 的二等座，30 分钟内付款有效。你确认后我再出票。</p>" },
+  { t: "14:31" },
+];
+const seedReply = () => [
+  { id: "m9", who: "me", text: "这家周四晚上从晚餐的地方回去方便吗？", quote: { id: "m3", who: "her", text: "西湖边的精品酒店，打车 25 分钟，每晚约 780 元", part: true } },
+  { id: "m10", who: "her", html: "<p>方便。晚餐的餐厅离这家酒店步行 10 分钟，比回园区那家近得多。不过住这里的话，周五上午去园区要提前 40 分钟出发。</p>" },
+];
+
+const S = { plat: "mac", theme: "light", mode: "new", qstyle: "in", msgs: [], quote: null, last: null, n: 20 };
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const isNew = () => S.mode === "new";
+const name = (who) => (who === "her" ? "Her" : "你");
+const plain = (m) => {
+  if (m.text !== undefined) return m.text;
+  const d = document.createElement("div");
+  d.innerHTML = m.html.replace(/<\/(p|li)>/g, "\n</$1>").replace(/<li>/g, "<li>· ");
+  return d.textContent.trim();
+};
+function reset() {
+  S.msgs = isNew() ? [...seed(), ...seedReply()] : seed();
+  S.quote = null;
+  S.last = isNew() ? { text: S.msgs.at(-2).text, quote: S.msgs.at(-2).quote } : null;
+}
+
+/* ---------- skeleton ---------- */
+function build() {
+  $("#stage").innerHTML = `
+  <div class="mac" id="mac">
+    <div class="mside"><div class="lights"><i></i><i></i><i></i></div>
+      <div class="it on"><span class="av" style="width:18px;height:18px"></span>Her</div>
+      <div class="it">总览</div>
+      <div class="gh">会话</div>
+      <div class="ses"><i></i>修复登录页样式</div><div class="ses"><i></i>接口联调脚本</div><div class="ses">整理发布说明</div>
+    </div>
+    <div class="mmain">
+      <div class="mtop"><span class="av" style="width:24px;height:24px"></span>Her <small>MacBook Pro</small></div>
+      <div class="mconv" id="mconv"><div class="col" id="mcol"></div></div>
+      <div class="cmpz"><div class="cmp"><div id="mq"></div>
+        <div class="cmp-row"><button class="cmp-plus" aria-label="添加文件">${I.plus}</button>
+          <textarea class="cmp-in" id="min" rows="1" placeholder="给 Her 发消息"></textarea>
+          <button class="send" id="msend" aria-label="发送" disabled>${I.up}</button></div></div></div>
+      <button class="selpill hide" id="selpill">${I.reply}回复</button>
+    </div>
+  </div>
+  <div class="phone" id="phone"><div class="scr" id="scr">
+    <div class="sb"><span>9:41</span><span style="width:26px;height:12px;border-radius:4px;background:currentColor;opacity:.9"></span></div><div class="island"></div>
+    <div class="inav"><span class="back">${I.back}</span><span class="av" style="width:26px;height:26px"></span>Her</div>
+    <div class="iscroll" id="iscroll"></div>
+    <div class="icomp"><button class="iplus" aria-label="添加">${I.plus}</button>
+      <div class="ibox"><div id="iq"></div><div class="irow"><input id="iin" placeholder="给 Her 发消息"><button class="isend" id="isend" aria-label="发送" disabled>${I.up}</button></div></div></div>
+    <div id="iover"></div>
+    <div class="home"></div>
+  </div></div>`;
+  for (const [inp, btn] of [[$("#min"), $("#msend")], [$("#iin"), $("#isend")]]) {
+    inp.addEventListener("input", ready);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && S.quote) return setQuote(null);
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      send(inp);
+    });
+    btn.addEventListener("click", () => send(inp));
+  }
+  macEvents();
+  phoneEvents();
+}
+
+/* ---------- conversation ---------- */
+function quoteCard(q) {
+  const body = `<b>${name(q.who)}</b><span>${esc(q.text)}</span>`;
+  return S.qstyle === "in"
+    ? `<button class="q" data-jump="${q.id}">${`<div>${body}</div>`}</button>`
+    : `<button class="qa" data-jump="${q.id}">${I.reply}<b>${name(q.who)}</b><span>${esc(q.text.replace(/\n/g, " "))}</span></button>`;
+}
+function paintConv() {
+  const mac = [], ph = [];
+  for (const m of S.msgs) {
+    if (m.t) { mac.push(`<div class="tdiv">${m.t}</div>`); ph.push(`<div class="itime">${m.t}</div>`); continue; }
+    const body = m.typing ? `<div class="dots"><i></i><i></i><i></i></div>` : m.who === "her" ? `<div class="tx">${m.html}</div>` : `<div class="tx">${esc(m.text)}</div>`;
+    const q = m.quote ? quoteCard(m.quote) : "";
+    const inQ = S.qstyle === "in" ? q : "", upQ = S.qstyle === "in" ? "" : q;
+    const act = m.typing ? "" : `<div class="mact"><span>14:${m.who === "me" ? "31" : "32"}</span>${isNew() ? `<button class="tb" data-reply="${m.id}" title="回复" aria-label="回复">${I.reply}</button>` : ""}<button class="tb" title="复制" aria-label="复制">${I.copy}</button></div>`;
+    mac.push(m.who === "her"
+      ? `<div class="mrow her" data-id="${m.id}"><div class="mb">${body}</div>${act}</div>`
+      : `<div class="mrow me" data-id="${m.id}">${upQ}<div class="mu">${inQ}${body}</div>${act}</div>`);
+    ph.push(`<div class="prow ${m.who} ${upQ ? "above" : ""}" data-id="${m.id}"><span class="swp">${I.reply}</span>${upQ}<div class="pb" ${m.typing ? "" : `data-msg="${m.id}"`}>${inQ}${body}</div></div>`);
+  }
+  $("#mcol").innerHTML = mac.join("");
+  $("#iscroll").innerHTML = ph.join("");
+}
+function toEnd() {
+  for (const el of [$("#mconv"), $("#iscroll")]) el.scrollTop = el.scrollHeight;
+}
+function paintQuote() {
+  const q = S.quote;
+  $("#mq").innerHTML = q ? `<div class="cq"><div class="k"><b>${replyLabel(q)}</b><span>${esc(q.text)}</span></div><button class="x" data-unquote aria-label="取消回复">${I.x}</button></div>` : "";
+  $("#iq").innerHTML = q ? `<div class="iq"><div class="k"><b>${replyLabel(q)}</b><span>${esc(q.text.replace(/\n/g, " "))}</span></div><button class="x" data-unquote aria-label="取消回复"><i>${I.x}</i></button></div>` : "";
+  ready();
+}
+function ready() {
+  $("#msend").disabled = $("#min").value.trim() === "";
+  $("#isend").disabled = $("#iin").value.trim() === "";
+}
+function setQuote(q) {
+  S.quote = q;
+  paintQuote();
+  if (q) (S.plat === "mac" ? $("#min") : $("#iin")).focus();
+}
+function quoteOf(id, text) {
+  const m = S.msgs.find((x) => x.id === id);
+  if (!m) return;
+  const whole = plain(m);
+  let t = (text ?? whole).trim();
+  const part = t.length < whole.length;
+  if (t.length > LIMIT) t = t.slice(0, LIMIT) + "…";
+  setQuote({ id, who: m.who, text: t, part });
+}
+function send(inp) {
+  const text = inp.value.trim();
+  if (!text) return;
+  const quote = isNew() ? S.quote : null;
+  S.msgs.push({ id: "m" + ++S.n, who: "me", text, ...(quote && { quote }) });
+  S.last = { text, quote };
+  $("#min").value = $("#iin").value = "";
+  S.quote = null;
+  const typing = { id: "m" + ++S.n, who: "her", typing: true };
+  S.msgs.push(typing);
+  paintConv(); paintQuote(); paintNotes(); toEnd();
+  setTimeout(() => {
+    const short = quote ? quote.text.replace(/\s+/g, " ").slice(0, 16) + (quote.text.length > 16 ? "…" : "") : "";
+    delete typing.typing;
+    typing.html = quote
+      ? `<p>关于你引用的「${esc(short)}」：Her 只针对这一段作答，不用你重复上下文，也不会把整条消息重讲一遍。<span style="opacity:.55">（演示回复）</span></p>`
+      : `<p>收到。<span style="opacity:.55">（演示回复）</span></p>`;
+    paintConv(); toEnd();
+  }, 900);
+}
+function jump(id) {
+  for (const box of [$("#mconv"), $("#iscroll")]) {
+    const el = $(`[data-id="${id}"]`, box);
+    if (!el || !box.offsetParent) continue;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    box.scrollTo({ top: top - box.clientHeight / 2 + el.offsetHeight / 2, behavior: "smooth" });
+    setTimeout(() => el.classList.add("flash"), 260);
+    setTimeout(() => el.classList.remove("flash"), 1900);
+  }
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-jump],[data-reply],[data-unquote]");
+  if (!t) return;
+  if (t.dataset.jump) jump(t.dataset.jump);
+  else if (t.dataset.reply) quoteOf(t.dataset.reply);
+  else setQuote(null);
+});
+
+/* ---------- Mac: a selection inside one message shows Reply ---------- */
+function macEvents() {
+  const pill = $("#selpill"), mac = $("#mac");
+  let picked = null, down = false;
+  const hide = () => (pill.classList.add("hide"), (picked = null));
+  const look = () => {
+    hide();
+    if (!isNew() || down) return;
+    const sel = getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+    const row = (n) => (n.nodeType === 1 ? n : n.parentElement)?.closest("#mconv .mrow");
+    const a = row(sel.anchorNode), b = row(sel.focusNode);
+    const text = sel.toString().trim();
+    // One message's words only: a selection that runs into another message, or into a quote card, gets no Reply.
+    if (!a || a !== b || !text || (sel.anchorNode.parentElement.closest(".q,.qa,.mact"))) return;
+    const r = sel.getRangeAt(0).getBoundingClientRect(), box = pill.parentElement.getBoundingClientRect(), seen = $("#mconv").getBoundingClientRect();
+    if (r.bottom < seen.top || r.top > seen.bottom) return;
+    picked = { id: a.dataset.id, text };
+    pill.style.left = `${Math.min(Math.max(r.left + r.width / 2 - box.left, 44), box.width - 44)}px`;
+    pill.style.top = `${Math.max(r.top - box.top - 38, 6)}px`;
+    pill.classList.remove("hide");
+  };
+  mac.addEventListener("mousedown", (e) => { if (!e.target.closest("#selpill")) { down = true; hide(); } });
+  document.addEventListener("mouseup", () => { down = false; setTimeout(look, 0); });
+  document.addEventListener("keyup", (e) => e.shiftKey && look());
+  $("#mconv").addEventListener("scroll", hide);
+  pill.addEventListener("mousedown", (e) => e.preventDefault());
+  pill.addEventListener("click", () => {
+    if (!picked) return;
+    const p = picked;
+    getSelection().removeAllRanges();
+    hide();
+    quoteOf(p.id, p.text);
+  });
+}
+
+/* ---------- iPhone: touch and hold, swipe left, Select Text ---------- */
+function phoneEvents() {
+  const scr = $("#scr"), list = $("#iscroll"), over = $("#iover");
+  const close = () => (over.innerHTML = "");
+  let press = null;
+  list.addEventListener("pointerdown", (e) => {
+    const pb = e.target.closest(".pb[data-msg]");
+    if (!pb || e.target.closest("[data-jump]")) return;
+    press = { pb, x: e.clientX, y: e.clientY, swipe: false, armed: false, icon: $(".swp", pb.parentElement), timer: setTimeout(() => { const p = press; press = null; menu(p.pb); }, 430) };
+  });
+  list.addEventListener("pointermove", (e) => {
+    if (!press) return;
+    const dx = e.clientX - press.x, dy = e.clientY - press.y;
+    if (!press.swipe) {
+      if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) return cancel();
+      if (-dx < 10 || !isNew()) { if (Math.abs(dx) > 8) clearTimeout(press.timer); return; }
+      clearTimeout(press.timer);
+      press.swipe = true;
+      press.pb.classList.add("drag");
+      // The arrow shows where the bubble's trailing edge was.
+      press.icon.style.left = `${press.pb.offsetLeft + press.pb.offsetWidth - 36}px`;
+    }
+    const x = Math.max(0, Math.min(-dx * 0.62, 70)), p = Math.min(x / 46, 1);
+    press.armed = p >= 1;
+    press.pb.style.transform = `translateX(${-x}px)`;
+    press.icon.style.opacity = p;
+    press.icon.style.transform = `scale(${0.6 + 0.4 * p})`;
+    press.icon.classList.toggle("arm", press.armed);
+  });
+  const cancel = () => {
+    if (!press) return;
+    clearTimeout(press.timer);
+    press.pb.classList.remove("drag");
+    press.pb.style.transform = "";
+    press.icon.style.opacity = "";
+    press.icon.style.transform = "";
+    press.icon.classList.remove("arm");
+    const p = press;
+    press = null;
+    return p;
+  };
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) list.addEventListener(ev, () => { const p = cancel(); if (p?.armed) quoteOf(p.pb.dataset.msg); });
+  list.addEventListener("contextmenu", (e) => { const pb = e.target.closest(".pb[data-msg]"); if (pb) { e.preventDefault(); cancel(); menu(pb); } });
+
+  function menu(pb) {
+    const id = pb.dataset.msg, r = pb.getBoundingClientRect(), s = scr.getBoundingClientRect();
+    const her = pb.parentElement.classList.contains("her");
+    const items = isNew()
+      ? [["reply", I.reply, "回复"], ["copy", I.copy, "拷贝"], ["select", I.sel, "选择文本"]]
+      : [["copy", I.copy, "拷贝"]];
+    const h = items.length * 45, top = r.top - s.top, below = top + r.height + 10;
+    const mt = below + h < s.height - 40 ? below : Math.max(top - h - 10, 60);
+    over.innerHTML = `<div class="iscrim" data-close></div>
+      <div class="pb ilift ${her ? "her" : ""}" style="left:${r.left - s.left}px;top:${top}px;width:${r.width}px;${her ? "box-shadow:inset 0 0 0 .5px var(--i-sep),0 10px 30px rgba(0,0,0,.18);background:var(--i-reply)" : "background:var(--i-me);color:#fff"}">${pb.innerHTML}</div>
+      <div class="imenu" style="top:${mt}px;${her ? `left:${r.left - s.left}px` : `right:${s.right - r.right}px`};transform-origin:${her ? "left" : "right"} top">${items.map(([k, ic, label]) => `<button data-do="${k}">${ic}${label}</button>`).join("")}</div>`;
+    over.onclick = (e) => {
+      const b = e.target.closest("[data-do]");
+      if (!b && !e.target.closest("[data-close]")) return;
+      close();
+      if (b?.dataset.do === "reply") quoteOf(id);
+      if (b?.dataset.do === "select") sheet(id);
+    };
+  }
+  function sheet(id) {
+    const m = S.msgs.find((x) => x.id === id);
+    over.innerHTML = `<div class="iscrim" data-close style="backdrop-filter:none;background:rgba(0,0,0,.3)"></div>
+      <div class="isheet"><div class="grab"></div><div class="sh">选择文本<button data-close>完成</button></div>
+      <div class="shint">拖动选出一段，再点「回复」。</div><div class="stext" id="stext">${esc(plain(m))}</div></div>
+      <div class="iedit hide" id="iedit"><button class="pri" data-do="reply">回复</button><button data-do="copy">拷贝</button><button class="off">查询</button><button class="off">翻译</button></div>`;
+    const edit = $("#iedit"), box = $("#stext");
+    let down = false, picked = "";
+    const look = () => {
+      edit.classList.add("hide");
+      const sel = getSelection();
+      if (down || !sel || sel.isCollapsed || !box.contains(sel.anchorNode) || !box.contains(sel.focusNode)) return;
+      picked = sel.toString().trim();
+      if (!picked) return;
+      const r = sel.getRangeAt(0).getBoundingClientRect(), s = scr.getBoundingClientRect();
+      edit.style.left = `${Math.min(Math.max(r.left + r.width / 2 - s.left, 104), s.width - 104)}px`;
+      edit.style.top = `${r.top - s.top - 46}px`;
+      edit.classList.remove("hide");
+    };
+    box.onmousedown = () => { down = true; edit.classList.add("hide"); };
+    box.onmouseup = box.onmouseleave = () => { down = false; setTimeout(look, 0); };
+    box.onscroll = () => edit.classList.add("hide");
+    $(".isheet", over).onanimationend = look;
+    edit.onmousedown = (e) => e.preventDefault();
+    over.onclick = (e) => {
+      const b = e.target.closest("[data-do]");
+      if (b) {
+        getSelection().removeAllRanges();
+        close();
+        if (b.dataset.do === "reply") quoteOf(id, picked);
+      } else if (e.target.closest("[data-close]")) close();
+    };
+  }
+}
+
+/* ---------- notes and controls ---------- */
+function wire() {
+  const l = S.last;
+  if (!l) return `<p style="color:var(--page-fg2);margin:6px 0 0">发一条带引用的消息，这里会显示 Her 实际收到的内容。</p>`;
+  const block = l.quote ? replyBlock(l.quote) : null;
+  return `<div class="wire"><div>① 你的话（气泡正文）</div><pre>${esc(l.text)}</pre>${block ? `<div>② 引用块（跟在正文后面；界面不显示这段文字，而是解析成引用卡）</div><pre>${esc(block)}</pre>` : `<div>这条没有引用，只有正文。</div>`}</div>`;
+}
+function paintNotes() {
+  const mac = S.plat === "mac", n = isNew();
+  const now = mac
+    ? ["悬停一条消息，只有「时间 + 复制」", "选中文字只能用系统的复制", "想追问某一段，只能自己复制粘贴再描述一遍"]
+    : ["长按一条消息，菜单里只有「拷贝」", "不能选出消息里的一段文字", "想追问某一段，只能凭记忆重新描述"];
+  const add = mac
+    ? [["新增", "悬停操作里多一个「回复」，对 Her 的消息和自己的消息都有"], ["新增", "在一条消息里选中一段文字，选区上方浮出「回复」胶囊"], ["新增", "输入框顶部出现引用条：点 ✕ 或按 Esc 取消"], ["新增", "发出的气泡带引用卡，点一下跳回原消息并高亮"]]
+    : [["新增", "长按菜单：回复 / 拷贝 / 选择文本"], ["新增", "「选择文本」打开半屏面板，自由选区，系统编辑菜单里多一个「回复」"], ["新增", "输入框上方出现引用条，点 ✕ 取消"], ["新增", "发出的气泡带引用卡，点一下跳回原消息并高亮"], ["新增", "左滑气泡快速回复；长按菜单始终是主入口"]];
+  const tryIt = mac
+    ? ["把鼠标移到任意一条消息上，点「回复」箭头", "在 Her 的长消息里拖选一句话，点浮出的「回复」", "输入几个字，回车发送", "点气泡里的引用卡，看它跳回原文"]
+    : ["按住一条消息约半秒（或右键），选「回复」", "再长按一条，选「选择文本」，拖选一段后点「回复」", "把一条消息向左拖，松手", "点气泡里的引用卡，看它跳回原文"];
+  $("#notes").innerHTML = `<h3>${mac ? "Mac" : "iPhone"} · ${n ? "新方案" : "现状"}</h3>
+    ${n ? `<ul>${add.map(([tag, s]) => `<li><span class="tag">${tag}</span>${s}</li>`).join("")}</ul>
+      <div class="blk"><h3>试试看</h3><ol>${tryIt.map((s) => `<li>${s}</li>`).join("")}</ol></div>
+      <div class="blk"><h3>上一条消息交给 Her 的内容</h3>${wire()}</div>`
+      : `<ul>${now.map((s) => `<li><span class="tag old">现状</span>${s}</li>`).join("")}</ul><div class="blk" style="color:var(--page-fg2)">切到「新方案」看这次要加的东西。</div>`}`;
+}
+function paintCtl() {
+  const g = (label, key, opts) => `<div class="g"><b>${label}</b>${opts.map(([v, s]) => `<button class="${S[key] === v ? "on" : ""}" data-set="${key}:${v}">${s}</button>`).join("")}</div>`;
+  $("#ctl").innerHTML = g("平台", "plat", [["mac", "Mac"], ["phone", "iPhone"]]) + g("对比", "mode", [["old", "现状"], ["new", "新方案"]]) +
+    g("引用卡", "qstyle", [["in", "气泡内"], ["above", "气泡上方"]]) + g("外观", "theme", [["light", "浅色"], ["dark", "深色"]]) +
+    `<div class="g"><button data-set="reset:1">重置对话</button></div>`;
+}
+$("#ctl").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-set]");
+  if (!b) return;
+  const [k, v] = b.dataset.set.split(":");
+  if (k !== "reset") S[k] = v;
+  if (k === "reset" || k === "mode") { reset(); $("#min").value = $("#iin").value = ""; }
+  paint(k === "reset" || k === "mode" || k === "plat");
+});
+function paint(end) {
+  document.documentElement.dataset.theme = S.theme;
+  $("#mac").classList.toggle("hide", S.plat !== "mac");
+  $("#phone").classList.toggle("hide", S.plat !== "phone");
+  $("#selpill").classList.add("hide");
+  $("#iover").innerHTML = "";
+  paintConv(); paintQuote(); paintNotes(); paintCtl();
+  if (end) toEnd();
+}
+const want = new URLSearchParams(location.search);
+for (const k of ["plat", "theme", "mode", "qstyle"]) if (want.get(k)) S[k] = want.get(k);
+reset(); build(); paint(true);
+</script>
+</body>
+</html>

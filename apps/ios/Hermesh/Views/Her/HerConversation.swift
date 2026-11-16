@@ -29,8 +29,10 @@ struct HerConversation: View {
     @State private var page: HerFileText?
     /// The conversation's connection has been opening again for a while.
     @State private var slow = false
-    /// The message a scheduled task's run page brought into view, marked a moment.
+    /// The message a scheduled task's run page brought into view, or one a reply quotes, marked a moment.
     @State private var marked: String?
+    /// The message whose text is being selected from, to reply to a part of it (docs/her-reply.md §3.3).
+    @State private var selecting: HerSelecting?
 
     /// No model works there: Her's onboarding, the app speaking for her, until the conversation opens on one.
     private var noModel: Bool { state == .noModel || chat.noModel }
@@ -58,7 +60,7 @@ struct HerConversation: View {
                             .accessibilityIdentifier("her-earlier")
                     }
                     ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
-                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, marked: marked == row.key)
+                        HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
                     }
                     if busy { HerTyping().padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
                 }
@@ -75,14 +77,15 @@ struct HerConversation: View {
                 guard let run = chat.revealRun else { return }
                 chat.revealRun = nil
                 guard let key = rows.first(where: { $0.source?.runID == run })?.key else { return }
-                atEnd = false
-                Task {
-                    try? await Task.sleep(for: .milliseconds(450))
-                    withAnimation(still ? nil : .smooth) { proxy.scrollTo(key, anchor: .center) }
-                    withAnimation(.easeOut(duration: 0.2)) { marked = key }
-                    try? await Task.sleep(for: .seconds(1.6))
-                    withAnimation(.easeOut(duration: 0.6)) { if marked == key { marked = nil } }
-                }
+                reveal(key, in: proxy, after: .milliseconds(450))
+            }
+            // The message a reply quotes, asked for from its quote: the same. One that is not among those read
+            // here (earlier history) says so.
+            .onChange(of: chat.revealMessage) {
+                guard let key = chat.revealMessage else { return }
+                chat.revealMessage = nil
+                guard rows.contains(where: { $0.key == key }) else { return model.show(String(localized: "The message this replies to isn’t here anymore")) }
+                reveal(key, in: proxy, after: .zero)
             }
         }
         // Nothing drawn under the top: the conversation scrolls under Her's mark and the menu button as it is.
@@ -132,6 +135,9 @@ struct HerConversation: View {
         }
         .quickLookPreview($preview)
         .sheet(item: $page) { HerFilePage(file: $0) }
+        .sheet(item: $selecting) { from in
+            HerSelectText(text: from.text) { picked in chat.reply(herQuote(ref: from.id, own: from.own, whole: from.text, selected: picked)) }
+        }
         // Her's onboarding: begun when her says no model works there, or HerStatus says so for a while (it says
         // Her runs a moment before her has listed her models); done once the conversation opens on a model.
         .task(id: state == .noModel) {
@@ -150,6 +156,20 @@ struct HerConversation: View {
         }
         .onChange(of: openedModel) {
             if let m = openedModel { chat.flow?.finish(model: m, session: chat.live?.sessionID, after: said.last?.key, at: .now) }
+        }
+    }
+}
+
+extension HerConversation {
+    /// Brings a row into view and marks it a moment.
+    private func reveal(_ key: String, in proxy: ScrollViewProxy, after wait: Duration) {
+        atEnd = false
+        Task {
+            try? await Task.sleep(for: wait)
+            withAnimation(still ? nil : .smooth) { proxy.scrollTo(key, anchor: .center) }
+            withAnimation(.easeOut(duration: 0.2)) { marked = key }
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(.easeOut(duration: 0.6)) { if marked == key { marked = nil } }
         }
     }
 }
@@ -180,7 +200,8 @@ private struct HerRow: View {
     let machine: HerMachine
     @Binding var preview: URL?
     @Binding var page: HerFileText?
-    /// Brought into view from a scheduled task's run: marked a moment.
+    @Binding var selecting: HerSelecting?
+    /// Brought into view from a scheduled task's run, or from a reply that quotes it: marked a moment.
     var marked = false
     /// One of the owner's files being brought here.
     @State private var opening: String?
@@ -193,7 +214,7 @@ private struct HerRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 if let source = row.source { HerRunSource(source: source) }
-                content
+                content.environment(\.herReplying, replying)
             }
             .padding(marked ? 8 : 0)
             .background(marked ? Color.yellow.opacity(0.22) : .clear, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -214,13 +235,34 @@ private struct HerRow: View {
         }
     }
 
+    /// How this row's message is replied to (docs/her-reply.md §3.1): one of the conversation that has words.
+    private var replying: HerReplying? {
+        let said: (words: String?, own: Bool)
+        switch row.kind {
+        case .user(let text, _, _, _): said = (text, true)
+        case .her(let text), .question(let text, _, _): said = (text, false)
+        case .attachment(_, let text), .card(_, let text): said = (text, false)
+        default: return nil
+        }
+        guard let words = said.words, !words.isEmpty else { return nil }
+        let key = row.key, own = said.own
+        return HerReplying(
+            reply: { chat.reply(herQuote(ref: key, own: own, whole: words)) },
+            select: { selecting = HerSelecting(id: key, own: own, text: herPlainText(words)) })
+    }
+
+    /// What the owner's message replies to, at the top of its bubble: a tap brings that message into view.
+    private var quote: HerQuote? {
+        row.reply.map { reply in HerQuote(reply: reply, name: chat.bot?.name ?? "Her") { chat.revealMessage = reply.ref } }
+    }
+
     @ViewBuilder private var content: some View {
         switch row.kind {
         case .user(let text, let images, let files, let queued):
-            HerBubble(text: text, images: images, files: files, opening: opening, open: open).opacity(queued ? 0.62 : 1)
+            HerBubble(text: text, images: images, files: files, opening: opening, open: open, quote: quote).opacity(queued ? 0.62 : 1)
         case .waiting(let id, let text, let files, let error):
             VStack(alignment: .trailing, spacing: 5) {
-                HerBubble(text: text, images: [], files: files).opacity(0.62)
+                HerBubble(text: text, images: [], files: files, quote: quote).opacity(0.62)
                 // One her keeps refusing holds back those after it, so it can be discarded.
                 HStack(spacing: 8) {
                     if error.isEmpty || error == "offline" {
@@ -239,7 +281,7 @@ private struct HerRow: View {
             .accessibilityIdentifier("her-waiting")
         case .sending(let id, let text, let images, let files, let refused):
             VStack(alignment: .trailing, spacing: 5) {
-                HerBubble(text: text, images: images, files: files).opacity(refused == nil ? 0.62 : 1)
+                HerBubble(text: text, images: images, files: files, quote: quote).opacity(refused == nil ? 0.62 : 1)
                 HStack(spacing: 8) {
                     if let refused {
                         Label("Not delivered: \(refused)", systemImage: "exclamationmark.triangle").lineLimit(2)
@@ -357,6 +399,8 @@ struct HerBubble: View {
     let files: [String]
     var opening: String?
     var open: ((String) -> Void)?
+    /// What it replies to.
+    var quote: HerQuote?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -379,14 +423,16 @@ struct HerBubble: View {
                     }
                 }
             }
-            if !text.isEmpty {
-                Text(text)
-                    .lineSpacing(3)
-                    .foregroundStyle(Palette.bubbleText)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+            if !text.isEmpty || quote != nil {
+                VStack(alignment: .leading, spacing: 7) {
+                    if let quote { HerQuoteCard(quote: quote).padding(.horizontal, -5).padding(.top, -1) }
+                    if !text.isEmpty { Text(text).lineSpacing(3) }
+                }
+                .foregroundStyle(Palette.bubbleText)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .herMessageActions(copy: text)
             }
         }
         .padding(.leading, 48)
@@ -403,7 +449,7 @@ struct HerWords: View {
             .herFill()
             .padding(.horizontal, 14).padding(.vertical, 9)
             .herReply()
-            .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+            .herMessageActions(copy: text)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("her-reply")
             .herSide()
@@ -709,7 +755,7 @@ private struct HerQuestion: View {
         }
         .frame(maxWidth: asking ? .infinity : nil, alignment: .leading)
         .herReply()
-        .contextMenu { Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text } }
+        .herMessageActions(copy: text)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("her-question")
         .herSide()

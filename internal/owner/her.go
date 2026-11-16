@@ -572,7 +572,7 @@ func (o *Owner) HerSend(ctx context.Context, req *localv1.HerSendRequest) (*loca
 	fresh := w == nil
 	if fresh { // else a send tried again: the one kept goes
 		w = &localv1.HerWaiting{Id: id, MachineId: req.MachineId, BotId: req.BotId, Text: req.Text,
-			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now()}
+			LocalPaths: slices.Clone(req.LocalPaths), CreatedAt: timestamppb.Now(), Reply: req.Reply}
 		if err := o.keepPictures(w, req.Pictures); err != nil {
 			return nil, err
 		}
@@ -698,6 +698,9 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 	if text := strings.TrimSpace(w.Text); text != "" {
 		input = append(input, map[string]any{"type": "text", "text": text})
 	}
+	if block := replyBlock(w.Reply); block != "" {
+		input = append(input, map[string]any{"type": "text", "text": block})
+	}
 	var paths []string
 	for _, p := range w.LocalPaths {
 		if picture := o.herPicture(p); picture != nil {
@@ -773,6 +776,58 @@ func attachedBlock(paths []string) string {
 		}
 	}
 	return prefix + strings.Join(paths, "\n")
+}
+
+// herReplyMax is how much of a message a reply quotes, in characters.
+const herReplyMax = 2000
+
+// replyBlock tells her what a message replies to, after its words
+// (docs/her-reply.md §4.1): the quoted words, each line marked, in the text
+// her kernel takes as an embedded resource, so that nothing in them reads
+// as the owner's own (a /skill: mention). The apps show it as a quote, not
+// as text (her-client's replyOf, HermeshHer's). "" for a reply that names
+// no message or quotes nothing: the message goes without it.
+func replyBlock(r *localv1.HerReply) string {
+	text := strings.TrimSpace(strings.ReplaceAll(r.GetText(), "\r\n", "\n"))
+	if text == "" || !herReplyRef(r.GetRef()) {
+		return ""
+	}
+	whose, part := "yours", r.Partial
+	if r.Own {
+		whose = "mine"
+	}
+	if runes := []rune(text); len(runes) > herReplyMax {
+		text, part = strings.TrimSpace(string(runes[:herReplyMax]))+"…", true
+	}
+	quoted := "full"
+	if part {
+		quoted = "part"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "<resource uri=\"her-reply:%s\">\nReplying to this earlier message of %s, quoted in %s:\n", r.Ref, whose, quoted)
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimRight(line, " \t\r"); line == "" {
+			b.WriteString(">\n")
+		} else {
+			b.WriteString("> " + line + "\n")
+		}
+	}
+	b.WriteString("</resource>")
+	return b.String()
+}
+
+// herReplyRef: what names a message of a conversation, the owner's by its
+// id and hers by her call's.
+func herReplyRef(ref string) bool {
+	if len(ref) == 0 || len(ref) > 128 {
+		return false
+	}
+	for _, c := range ref {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("_:.-", c)) {
+			return false
+		}
+	}
+	return true
 }
 
 // wakeHer has the waiting messages tried now: a machine may answer again.

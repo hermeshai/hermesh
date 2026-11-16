@@ -57,6 +57,8 @@ export function lastText(last: LastMessage): { text: string; files: string[] } {
   let text = last.text;
   let files: string[] = last.file ? [last.file] : [];
   if (last.from === "user") {
+    // What it replies to (hermeshd's replyBlock, docs/her-reply.md §4.1) is none of its words.
+    text = text.replace(/<resource uri="her-reply:[^"\n]*">\n[^\n]*\n(?:>[^\n]*\n)+<\/resource>\n?/, "");
     const at = text.indexOf(attached);
     if (at >= 0) {
       files = text.slice(at + attached.length).split("\n").filter(Boolean).map((p) => p.split(/[\\/]/).at(-1) ?? p);

@@ -320,6 +320,9 @@ message GetStatusResponse {
   // each time this device connects: "" when it has none, and on a server
   // of one's own.
   string account_avatar_url = 20;
+  // What this core does that an app must not take for granted of an older
+  // one (docs/version-skew.md §6.1): "her_reply" (docs/her-reply.md).
+  repeated string abilities = 21;
 }
 
 message ListProfilesRequest {}
@@ -1226,6 +1229,23 @@ message HerSendRequest {
   // own.
   string connection_id = 7;
   string session_id = 8;
+  // What the message replies to (docs/her-reply.md).
+  HerReply reply = 9;
+}
+
+// What a message replies to: an earlier message of the conversation, or a
+// part of one (docs/her-reply.md).
+message HerReply {
+  // The quoted message's key in the conversation: the owner's message's
+  // id, or the id of her send_to_user call. At most 128 of
+  // A-Z a-z 0-9 _ : . -
+  string ref = 1;
+  // The quoted message is the owner's own.
+  bool own = 2;
+  // The quoted words: a selection, or the message's text.
+  string text = 3;
+  // Text is a part of the message.
+  bool partial = 4;
 }
 
 message HerPicture {
@@ -1269,6 +1289,7 @@ message HerWaiting {
   google.protobuf.Timestamp created_at = 6;
   // Why the last try failed, when one did.
   string error = 7;
+  HerReply reply = 8;
 }
 
 message GetHerConversationRequest {

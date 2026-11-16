@@ -750,7 +750,8 @@ func (o *Owner) Status() *localv1.GetStatusResponse {
 func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	st := &localv1.GetStatusResponse{Initialized: o.ownerID != "", OwnerId: o.ownerID, RelayUrl: o.relayURL, Version: machine.Version}
+	st := &localv1.GetStatusResponse{Initialized: o.ownerID != "", OwnerId: o.ownerID, RelayUrl: o.relayURL, Version: machine.Version,
+		Abilities: []string{"her_reply"}}
 	if o.ownerID != "" {
 		st.ConnectAddress = connaddr.Format(o.relayURL, o.ownerID)
 	}

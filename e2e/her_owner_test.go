@@ -709,3 +709,41 @@ func restartHerWithout(w *ownerMac, methods []string) error {
 	}
 	return fmt.Errorf("her did not start again")
 }
+
+// TestHerReply sends Her a message that replies to a part of what she said
+// (docs/her-reply.md), as the apps do through HerSend: this Mac's hermeshd
+// says it can, and her model is told what the owner wrote, then what it
+// replies to. her-mock sends back the prompt it got.
+func TestHerReply(t *testing.T) {
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	w := newOwnerMac(t, herEnv(her, herConsole(t), herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop)
+	c := w.app.client
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	mac := localMachine(t, c)
+	if st, err := c.GetStatus(ctx, &localv1.GetStatusRequest{}); err != nil || !strings.Contains(strings.Join(st.Abilities, " "), "her_reply") {
+		t.Fatalf("what this hermeshd can do: %v %v", st.GetAbilities(), err)
+	}
+	turnHerOn(t, c, mac)
+	bot := defaultBot(t, c, mac)
+	talk(t, c, mac, bot.ID, "two hotels: by the park, by the lake")
+
+	stream, _ := herOpen(t, ctx, c, mac, herSetup("bots/open", map[string]string{"bot_id": bot.ID}))
+	defer stream.Close()
+	res, err := c.HerSend(ctx, &localv1.HerSendRequest{MachineId: mac, BotId: bot.ID, Text: "[[mock:send]] is it far?",
+		Reply: &localv1.HerReply{Ref: "call_1", Text: "by the lake", Partial: true}})
+	if err != nil || !res.Delivered {
+		t.Fatalf("HerSend: %v %v", res, err)
+	}
+	// As the event's JSON carries it: the owner's words, then the block.
+	told := []byte(`is it far?\n<resource uri=\"her-reply:call_1\">\nReplying to this earlier message of yours, quoted in part:\n> by the lake\n</resource>`)
+	for stream.Receive() {
+		n := stream.Msg().GetNotification()
+		if n != nil && n.Method == "session/event" && bytes.Contains(n.Params, []byte("send_to_user")) && bytes.Contains(n.Params, told) {
+			return
+		}
+	}
+	t.Fatalf("her model was not told what the message replies to: %v", stream.Err())
+}

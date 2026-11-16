@@ -71,6 +71,8 @@ final class HerChat {
     var wantsFocus = false
     /// The routine's run whose message the conversation is to bring into view, and mark.
     var revealRun: String?
+    /// The message one replied to, which the conversation is to bring into view and mark (docs/her-reply.md).
+    var revealMessage: String?
     /// What was sent and HerSend has not answered for, or refused (docs/her-sending.md §5.2); the drafts they were, to
     /// send again or edit.
     private(set) var sending: [HerOutgoing] = []
@@ -255,7 +257,9 @@ final class HerChat {
                     case .notification("session/event", let p) where p["session_id"].string == opened:
                         let e = p["event"]
                         // What a task that ended early hands back goes back into the composer, once.
-                        let back = (e["seq"].int ?? 0) > (self.live?.lastSeq ?? .max) ? herReturned(e) : []
+                        let fresh = (e["seq"].int ?? 0) > (self.live?.lastSeq ?? .max)
+                        let back = fresh ? herReturned(e) : []
+                        if fresh, draft.reply == nil, let reply = herReturnedReply(e) { draft.reply = reply }
                         let was = self.live
                         self.live?.apply(e)
                         feel(was, self.live)
@@ -344,6 +348,12 @@ final class HerChat {
         }
     }
 
+    /// What the next message replies to: above the composer's words, which take the keyboard.
+    func reply(_ quote: HerReply) {
+        draft.reply = quote
+        wantsFocus = true
+    }
+
     /// Words for the owner to finish (a scheduled task's page writes them), after what the composer holds, ready to
     /// type on.
     func put(_ text: String) {
@@ -411,7 +421,7 @@ final class HerChat {
         outgoing[id] = sent
         sending.append(HerOutgoing(id: id, text: sent.text.trimmingCharacters(in: .whitespacesAndNewlines),
                                    images: sent.photos.map { HerImage(mime: "image/jpeg", data: $0.data.base64EncodedString()) },
-                                   files: sent.files.map(\.name), ts: Date.now.timeIntervalSince1970 * 1000))
+                                   files: sent.files.map(\.name), ts: Date.now.timeIntervalSince1970 * 1000, reply: sent.reply))
         Task { await deliver(id) }
     }
 
@@ -440,6 +450,7 @@ final class HerChat {
         r.text = sent.text
         r.localPaths = sent.files.map(\.path)
         r.pictures = sent.photos.map { p in .with { $0.name = p.name; $0.data = p.data } }
+        if let reply = sent.reply { r.reply = reply.proto }
         if convUp, let connection = conv?.connectionID, let session = live?.sessionID {
             r.connectionID = connection
             r.sessionID = session
@@ -657,6 +668,8 @@ struct HerDraft: Equatable {
     var text = ""
     var photos: [Photo] = []
     var files: [File] = []
+    /// What the message replies to (docs/her-reply.md): no message by itself.
+    var reply: HerReply?
 
     struct Photo: Equatable, Identifiable {
         let id = UUID()
@@ -676,7 +689,8 @@ struct HerDraft: Equatable {
 
     /// This draft, then what was written since it was sent.
     func joined(_ later: HerDraft) -> HerDraft {
-        HerDraft(text: [text, later.text].filter { !$0.isEmpty }.joined(separator: "\n"), photos: photos + later.photos, files: files + later.files)
+        HerDraft(text: [text, later.text].filter { !$0.isEmpty }.joined(separator: "\n"), photos: photos + later.photos, files: files + later.files,
+                 reply: reply ?? later.reply)
     }
 }
 

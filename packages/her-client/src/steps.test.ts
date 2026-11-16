@@ -197,3 +197,25 @@ test("the open presentation goes along with a message but is not shown", () => {
   assert.match((block as { text: string }).text, /deck\.pptx/);
   assert.equal(userText([{ type: "text", text: "当前打开的ppt内容是啥" }, block]).text, "当前打开的ppt内容是啥");
 });
+
+// The cases the core writes its blocks from (internal/owner TestHerReplyBlock), so that what it writes is what is read.
+test("what a message replies to is read back from its block, and shows as a quote, not as words", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { replyOf } = await import("./steps.ts");
+  const shared = JSON.parse(readFileSync(new URL("../../../internal/owner/testdata/her_reply.json", import.meta.url), "utf8")) as {
+    cases: { reply: { ref: string; own: boolean; text: string; partial: boolean }; block: string }[];
+    not: string[];
+  };
+  assert.ok(shared.cases.length >= 4 && shared.not.length >= 8);
+  for (const c of shared.cases) assert.deepEqual(replyOf(c.block), c.reply, c.block);
+  for (const text of shared.not) assert.equal(replyOf(text), null, text);
+
+  const { reply, block } = shared.cases[0];
+  assert.deepEqual(userText([{ type: "text", text: "is it far?" }, { type: "text", text: block }, attachedBlock(["/w/a"])]), { text: "is it far?", files: ["/w/a"], comments: [], quotes: [], tabs: [], reply });
+  // Words that only look like one stay words.
+  assert.deepEqual(userText([{ type: "text", text: shared.not[0] }]), { text: shared.not[0], files: [], comments: [], quotes: [], tabs: [] });
+  const v = play([{ type: "message_completed", message_id: "u1", message: { role: "user", content: [{ type: "text", text: "is it far?" }, { type: "text", text: block }], ts: 1 } }]);
+  const step = conversation(v)[0];
+  assert.ok(step.kind === "user" && step.text === "is it far?");
+  assert.deepEqual(step.reply, reply);
+});

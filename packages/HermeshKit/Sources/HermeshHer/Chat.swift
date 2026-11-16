@@ -26,6 +26,8 @@ public struct HerItem: Equatable, Identifiable, Sendable {
     public var kind: Kind
     /// The routine's run whose report this message passes on.
     public var source: HerRoutineSource?
+    /// What the owner's message replies to (docs/her-reply.md).
+    public var reply: HerReply?
     public var id: String { key }
 
     public enum Kind: Equatable, Sendable {
@@ -55,11 +57,12 @@ public struct HerItem: Equatable, Identifiable, Sendable {
         case routine(HerRoutineChange)
     }
 
-    public init(key: String, ts: Double, kind: Kind, source: HerRoutineSource? = nil) {
+    public init(key: String, ts: Double, kind: Kind, source: HerRoutineSource? = nil, reply: HerReply? = nil) {
         self.key = key
         self.ts = ts
         self.kind = kind
         self.source = source
+        self.reply = reply
     }
 
     /// Drawn as the owner's: on the right.
@@ -234,7 +237,7 @@ public func herChat(_ v: HerSession) -> [HerItem] {
                 if mail.kind == "to_user" { out.append(HerItem(key: id, ts: ts, kind: .her(messageBody(texts(content))))) }
                 if let routine = mail.routineID { source = HerRoutineSource(routineID: routine, runID: mail.fromID, name: mail.fromName) }
             } else {
-                out.append(HerItem(key: id, ts: ts, kind: ownerKind(content, queued: false)))
+                out.append(HerItem(key: id, ts: ts, kind: ownerKind(content, queued: false), reply: ownerReply(content)))
                 source = nil
             }
         case .assistant(_, let calls, let ts, let duration, _):
@@ -265,7 +268,7 @@ public func herChat(_ v: HerSession) -> [HerItem] {
         out[i].kind = .failure(f, last: true)
     }
     // One that joined the conversation keeps its id there.
-    for q in v.queued where !out.contains(where: { $0.key == q.id }) { out.append(HerItem(key: q.id, ts: q.ts, kind: ownerKind(q.content, queued: true))) }
+    for q in v.queued where !out.contains(where: { $0.key == q.id }) { out.append(HerItem(key: q.id, ts: q.ts, kind: ownerKind(q.content, queued: true), reply: ownerReply(q.content))) }
     // In the order things were sent; the same time keeps the history's order.
     var sorted = out.enumerated().sorted { $0.element.ts != $1.element.ts ? $0.element.ts < $1.element.ts : $0.offset < $1.offset }.map(\.element)
     // The latest question can be answered until the owner says anything.
@@ -308,13 +311,14 @@ private func filesOf(_ r: HerResult?) -> [HerFile] {
     }
 }
 
-/// The owner's message: its words, pictures and the files it names, either way they name them.
+/// The owner's message: its words, pictures and the files it names, either way they name them. What it replies to
+/// is no part of its words (ownerReply).
 func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kind {
     var words: [String] = [], files: [String] = [], images: [HerImage] = []
     for c in content {
         switch c {
         case .text(let t):
-            if let paths = attachedPaths(t) { files += paths } else { words.append(t) }
+            if let paths = attachedPaths(t) { files += paths } else if herReply(t) == nil { words.append(t) }
         case .image(let mime, let data):
             images.append(HerImage(mime: mime, data: data))
         }
@@ -322,6 +326,73 @@ func ownerKind(_ content: [HerUserContent], queued: Bool) -> HerItem.Kind {
     var text = words.joined(separator: "\n")
     if files.isEmpty { (text, files) = splitAttached(text) }
     return .user(text: text, images: images, files: files, queued: queued)
+}
+
+/// What the owner's message replies to, when it says so.
+func ownerReply(_ content: [HerUserContent]) -> HerReply? {
+    for case .text(let t) in content { if let reply = herReply(t) { return reply } }
+    return nil
+}
+
+/// What a message replies to: an earlier message of the conversation, or a part of one (docs/her-reply.md).
+public struct HerReply: Equatable, Sendable {
+    /// The quoted message's row key: the owner's message's id, or the id of her send_to_user call.
+    public var ref: String
+    /// The quoted message is the owner's own.
+    public var own: Bool
+    public var text: String
+    /// Text is a part of the message.
+    public var partial: Bool
+
+    public init(ref: String, own: Bool, text: String, partial: Bool) {
+        self.ref = ref
+        self.own = own
+        self.text = text
+        self.partial = partial
+    }
+}
+
+/// The reply a text block tells her of, as the core writes it after the owner's words (its replyBlock, §4.1): the
+/// conversation shows it as a quote. Nil for any other text; both run the cases in internal/owner/testdata/her_reply.json.
+public func herReply(_ block: String) -> HerReply? {
+    var lines = block.components(separatedBy: "\n")
+    guard lines.count >= 4, lines.removeLast() == "</resource>" else { return nil }
+    let open = lines.removeFirst(), head = lines.removeFirst()
+    let before = "<resource uri=\"her-reply:", after = "\">"
+    guard open.hasPrefix(before), open.hasSuffix(after), open.count > before.count + after.count else { return nil }
+    let ref = String(open.dropFirst(before.count).dropLast(after.count))
+    let named = ref.utf8.allSatisfy { c in
+        (c >= 0x30 && c <= 0x39) || (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c == 0x5f || c == 0x3a || c == 0x2e || c == 0x2d
+    }
+    guard named, ref.utf8.count <= 128 else { return nil }
+    let said = { (whose: String, how: String) in "Replying to this earlier message of \(whose), quoted in \(how):" }
+    let own = head == said("mine", "part") || head == said("mine", "full")
+    let partial = head == said("yours", "part") || head == said("mine", "part")
+    guard own || partial || head == said("yours", "full") else { return nil }
+    guard lines.allSatisfy({ $0 == ">" || $0.hasPrefix("> ") }) else { return nil }
+    return HerReply(ref: ref, own: own, text: lines.map { String($0.dropFirst(2)) }.joined(separator: "\n"), partial: partial)
+}
+
+/// How much of a message a reply quotes, in characters (the core cuts at the same length).
+private let replyMax = 2000
+
+/// The reply to the message `ref`: the words `selected` in it, or all of `whole`.
+public func herQuote(ref: String, own: Bool, whole: String, selected: String? = nil) -> HerReply {
+    let full = whole.trimmingCharacters(in: .whitespacesAndNewlines)
+    var text = (selected ?? full).trimmingCharacters(in: .whitespacesAndNewlines)
+    var partial = text != full
+    if text.unicodeScalars.count > replyMax {
+        text = String(String.UnicodeScalarView(text.unicodeScalars.prefix(replyMax))).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+        partial = true
+    }
+    return HerReply(ref: ref, own: own, text: text, partial: partial)
+}
+
+/// A message's Markdown as plain words: the marks of emphasis, code and links gone, its lines and list marks as
+/// written. What a quote's card shows of a whole message, and what Select Text offers to select from.
+public func herPlainText(_ markdown: String) -> String {
+    let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    return (try? AttributedString(markdown: markdown, options: options)).map { String($0.characters) } ?? markdown
 }
 
 func texts(_ content: [HerUserContent]) -> String {

@@ -54,7 +54,7 @@ export interface TaskChain {
 export type Step =
   /** The owner's message: its words, the images it carries, the files it points at (attachedBlock), and the skills
    * its `/skill:name` mentions loaded (drawn as tags). */
-  | { kind: "user"; key: string; text: string; images: { mime_type: string; data: string }[]; files: string[]; comments: WebComment[]; quotes: DocQuote[]; tabs: HandedTabs[]; skills: string[]; ts: number }
+  | { kind: "user"; key: string; text: string; images: { mime_type: string; data: string }[]; files: string[]; comments: WebComment[]; quotes: DocQuote[]; tabs: HandedTabs[]; skills: string[]; ts: number; reply?: ReplyQuote }
   /** The model's words; live: still being written (the draft). */
   | { kind: "text"; key: string; text: string; ts: number; live: boolean }
   /** Consecutive thinking and tool calls. */
@@ -129,10 +129,10 @@ export function settledSteps(v: SessionView): Step[] {
           if (!endsRound(e.mail)) out.push({ kind: "agent_message", key: e.message_id, agent_id: from.id, name: from.name, text: messageBody(text), ts: m.ts, agent: byId.get(from.id), to_user: e.mail.kind === "to_user" });
           else out.push({ kind: "report", key: e.message_id, agent_id: from.id, name: from.name, status: e.mail.status, text: reportBody(text), no_reply: e.mail.no_reply === true, ts: m.ts, agent: byId.get(from.id), routine });
         } else if (m.role === "user") {
-          const { text, files, comments, quotes, tabs } = userText(m.content);
+          const { text, files, comments, quotes, tabs, reply } = userText(m.content);
           const images = m.content.flatMap((c) => (c.type === "image" ? [{ mime_type: c.mime_type, data: c.data }] : []));
           const skills = (e.skills ?? []).map((s) => s.name);
-          out.push({ kind: "user", key: e.message_id, text, images, files, comments, quotes, tabs, skills, ts: m.ts });
+          out.push({ kind: "user", key: e.message_id, text, images, files, comments, quotes, tabs, skills, ts: m.ts, ...(reply && { reply }) });
         } else if (m.role === "assistant") {
           blocks(e.message_id, m.content, m.ts, (call) => {
             seen.add(call.id);
@@ -554,15 +554,41 @@ function tabsOf(text: string): HandedTabs | null {
   }
 }
 
-/** A user message's words, the paths of its attachedBlock, the parts of pages of its webCommentBlock, its quoted parts of documents and the browser tabs it hands over. */
-export function userText(content: UserContent[]): { text: string; files: string[]; comments: WebComment[]; quotes: DocQuote[]; tabs: HandedTabs[] } {
+/**
+ * What a message replies to: an earlier message of the conversation, or a part of one (docs/her-reply.md).
+ * ref: that message's key, the owner's message's id or the id of her send_to_user call; own: it is the
+ * owner's own; partial: text is a part of it.
+ */
+export type ReplyQuote = { ref: string; own: boolean; text: string; partial: boolean };
+
+const replyShape = /^<resource uri="her-reply:([A-Za-z0-9_:.-]{1,128})">\nReplying to this earlier message of (yours|mine), quoted in (part|full):\n((?:>(?: [^\n]*)?\n)+)<\/resource>$/;
+
+/**
+ * The reply a text block tells her of, as hermeshd writes it after the owner's words (its replyBlock, §4.1): the
+ * window shows it as a quote. Null for any other text; both run the cases in internal/owner/testdata/her_reply.json.
+ */
+export function replyOf(text: string): ReplyQuote | null {
+  const m = replyShape.exec(text);
+  if (!m) return null;
+  const lines = m[4].split("\n").slice(0, -1).map((line) => line.slice(2));
+  return { ref: m[1], own: m[2] === "mine", text: lines.join("\n"), partial: m[3] === "part" };
+}
+
+/** A user message's words, the paths of its attachedBlock, the parts of pages of its webCommentBlock, its quoted parts of documents, the browser tabs it hands over and what it replies to. */
+export function userText(content: UserContent[]): { text: string; files: string[]; comments: WebComment[]; quotes: DocQuote[]; tabs: HandedTabs[]; reply?: ReplyQuote } {
   const texts: string[] = [];
   const files: string[] = [];
   const comments: WebComment[] = [];
   const quotes: DocQuote[] = [];
   const tabs: HandedTabs[] = [];
+  let reply: ReplyQuote | null = null;
   for (const c of content) {
     if (c.type !== "text") continue;
+    const replied = replyOf(c.text);
+    if (replied) {
+      reply = replied;
+      continue;
+    }
     const web = c.text.startsWith(browserComments) ? webComments(c.text) : null;
     const quoted = c.text.startsWith(docQuotes) ? quotesOf(c.text) : null;
     const handed = tabsOf(c.text);
@@ -574,7 +600,7 @@ export function userText(content: UserContent[]): { text: string; files: string[
     else if (paths) files.push(...paths);
     else texts.push(c.text);
   }
-  return { text: texts.join("\n"), files, comments, quotes, tabs };
+  return { text: texts.join("\n"), files, comments, quotes, tabs, ...(reply && { reply }) };
 }
 
 /** Whether what came after this message may have changed files: the calls that write, delete, move or run, and the work of sub-agents. */

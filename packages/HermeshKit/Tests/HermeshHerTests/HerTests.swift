@@ -324,3 +324,30 @@ final class FakeSignIn: @unchecked Sendable {
     #expect(herAnswers(her, "bots/routine") == false)
 }
 
+
+/// A message that replies keeps what it replies to while this device keeps it, and while the app sends it.
+@Test func aMessageKeptOrBeingSentKeepsWhatItRepliesTo() {
+    let reply = HerReply(ref: "call_7", own: false, text: "the second hotel", partial: true)
+    let kept: [Hermesh_Local_V1_HerWaiting] = [.with { $0.id = "hw_k"; $0.botID = "b1"; $0.text = "is it far?"; $0.reply = reply.proto }]
+    let rows = herOutbox(sending: [HerOutgoing(id: "hw_s", text: "and by car?", ts: 9, reply: HerReply(ref: "hw_k", own: true, text: "is it far?", partial: false))],
+                         waiting: kept, botID: "b1", said: [])
+    #expect(rows.map(\.reply) == [reply, HerReply(ref: "hw_k", own: true, text: "is it far?", partial: false)])
+    #expect(HerReply(reply.proto) == reply)
+}
+
+/// A reply quotes a whole message as it was written, or the words selected in it, cut where the core cuts; a card
+/// shows a whole message's words without its Markdown's marks; what a task hands back keeps what it replied to.
+@Test func aReplyQuotesAMessageOrAPartOfIt() {
+    #expect(herQuote(ref: "c1", own: false, whole: " **Two** hotels.\n") == HerReply(ref: "c1", own: false, text: "**Two** hotels.", partial: false))
+    #expect(herQuote(ref: "u1", own: true, whole: "Two hotels.", selected: " hotels ") == HerReply(ref: "u1", own: true, text: "hotels", partial: true))
+    #expect(herQuote(ref: "c1", own: false, whole: "Two hotels.", selected: "Two hotels.").partial == false)
+    let long = herQuote(ref: "c1", own: false, whole: String(repeating: "长", count: 2001))
+    #expect(long.text == String(repeating: "长", count: 2000) + "…" && long.partial)
+    #expect(herPlainText("**周三**\n- 上午 `9:05` 的[高铁](https://example.com)\n\n1. _第二_") == "周三\n- 上午 9:05 的高铁\n\n1. 第二")
+
+    let block = "<resource uri=\"her-reply:c1\">\nReplying to this earlier message of yours, quoted in part:\n> the second hotel\n</resource>"
+    let failed: JSON = ["type": "task_interrupted", "returned_input": [["content": [["type": "text", "text": "is it far?"], ["type": "text", "text": .string(block)]]]]]
+    #expect(herReturned(failed) == ["is it far?"])
+    #expect(herReturnedReply(failed) == HerReply(ref: "c1", own: false, text: "the second hotel", partial: true))
+    #expect(herReturnedReply(["type": "task_completed"]) == nil)
+}

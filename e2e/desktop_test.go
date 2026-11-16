@@ -208,6 +208,23 @@ func TestDesktopHerProgress(t *testing.T) {
 	herSpec(t, desktopHerWorld(t), "progress.spec.ts")
 }
 
+// TestDesktopHerReply runs the end-to-end test of replying to a message of
+// Her's conversation (apps/desktop/e2e/her-reply.spec.ts, docs/her-reply.md)
+// in the same world: the owner replies to a message of Her's, to words
+// selected in it and to one of their own, and Her is told what each replies
+// to.
+//
+//	go test ./e2e -run TestDesktopHerReply -v -timeout 30m
+func TestDesktopHerReply(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "her-reply.spec.ts")
+}
+
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this
 // Mac, whose her has no model yet, Her's onboarding signs in to ChatGPT all
 // the way. her's ChatGPT fixture stands in for OpenAI, as in
