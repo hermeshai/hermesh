@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { AssistantContent, BotSummary, Event, EventMsg, SessionInfo, Usage } from "@hermesh/her-protocol";
 import { applyEvents, fromSnapshot, type SessionView } from "./session.ts";
 import { attention, botLine, initialOf, lastText, mergeBots, plain, searchBots, sortBots } from "./bots.ts";
-import { botChat, busyBubble, imageRatio, imageRows } from "./botChat.ts";
+import { botChat, busyBubble, imageRatio, imageRows, readSent } from "./botChat.ts";
 
 const bot = (id: string, o: Partial<BotSummary> = {}): BotSummary => ({ id, name: id, avatar: { kind: "mono", hue: "slate" }, created_at: "2026-11-01T00:00:00Z", ...o });
 const at = (minute: number) => `2026-11-04T10:${String(minute).padStart(2, "0")}:00Z`;
@@ -223,6 +223,29 @@ test("files show once they were found to be there, with what the result says of 
 
   const wrong = play([...begun, done("c1"), done("c2", "send_to_user", "gone.pdf: no such file", true)]);
   assert.deepEqual(shape(wrong), ["user:发我", "bot:好了。"], "a wrong path shows nothing");
+});
+
+test("a sent file is read from the copy her kept of it, and from where it is now without one", async () => {
+  const v = play([
+    { type: "task_started", task_id: "t1" },
+    user("u1", "发我", 10_000),
+    assistant("a1", [attachCall("c1", ["报告.md", "old.md"])], 11_000),
+    started("c1"),
+    sentFiles("c1", [{ path: "/b/files/报告.md", size: 9, sha256: "3f9a", snapshot: "/b/sent/3f9a/报告.md" }, { path: "/b/files/old.md", size: 4 }]),
+  ]);
+  const item = botChat(v)[1];
+  assert.ok(item.kind === "attachment");
+  const [kept, plain] = item.files;
+  assert.deepEqual(kept, { path: "/b/files/报告.md", name: "报告.md", size: 9, image: false, snapshot: "/b/sent/3f9a/报告.md" });
+  assert.equal(plain.snapshot, undefined);
+
+  const asked: string[] = [];
+  const read = (gone: string[]) => (path: string) => (asked.push(path), gone.includes(path) ? Promise.reject(new Error("not found")) : Promise.resolve(path));
+  assert.equal(await readSent(kept, read([])), "/b/sent/3f9a/报告.md", "as it was sent");
+  assert.equal(await readSent(plain, read([])), "/b/files/old.md");
+  assert.equal(await readSent(kept, read(["/b/sent/3f9a/报告.md"])), "/b/files/报告.md", "the copy is gone: the file where it is now");
+  await assert.rejects(readSent(kept, read(["/b/sent/3f9a/报告.md", "/b/files/报告.md"])), /not found/);
+  assert.deepEqual(asked, ["/b/sent/3f9a/报告.md", "/b/files/old.md", "/b/sent/3f9a/报告.md", "/b/files/报告.md", "/b/sent/3f9a/报告.md", "/b/files/报告.md"]);
 });
 
 test("files may come with words, and a call without a type is what it carries", () => {

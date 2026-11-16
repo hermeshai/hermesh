@@ -68,6 +68,10 @@ const paths: Record<string, string> = {
   eyeOff: "<path d=\"M6.3 3.8A6 6 0 0 1 8 3.6c4 0 6.4 4.4 6.4 4.4a11 11 0 0 1-1.6 2.1M4.3 4.9C2.6 6 1.6 8 1.6 8s2.4 4.4 6.4 4.4c1.3 0 2.5-.4 3.4-1M6.6 6.6a1.9 1.9 0 0 0 2.8 2.8M2.2 2.2l11.6 11.6\"/>",
   arrowR: "<path d=\"M3 8h10M9.2 4.2L13 8l-3.8 3.8\"/>",
   doc: "<path d=\"M4.2 1.9h5l2.6 2.6v8.6c0 .6-.4 1-1 1H4.2c-.6 0-1-.4-1-1V2.9c0-.6.4-1 1-1z\"/><path d=\"M9.2 1.9v2.6h2.6\"/>",
+  // A tray: the files Her sent (docs/her-deliverables.md §3.2).
+  tray: "<path d=\"M2 9.4l1.7-5.1c.2-.5.6-.8 1.2-.8h6.2c.5 0 1 .3 1.2.8L14 9.4\"/><path d=\"M2 9.4h3.4l.7 1.8h3.8l.7-1.8H14v2.8c0 .7-.6 1.3-1.3 1.3H3.3c-.7 0-1.3-.6-1.3-1.3z\"/>",
+  // A speech bubble with an arrow in it: go to a message in the conversation.
+  bubble: "<path d=\"M13.8 7.6a5.6 5.6 0 0 1-8 5L2.2 13.8l1.1-3.4a5.6 5.6 0 1 1 10.5-2.8z\"/><path d=\"M5.8 7.6h4.2M8.6 5.9l1.7 1.7-1.7 1.7\"/>",
   pin: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\"/><path d=\"M8 8.8v4.8\"/>",
   play: "<path d=\"M5 3.4v9.2L12.4 8z\"/>",
   retry: "<path d=\"M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4\"/><path d=\"M12 2.4v2.8H9.2\"/>",

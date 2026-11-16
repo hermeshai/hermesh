@@ -51,8 +51,9 @@ const bridge: Bridge = {
     }
   },
   openHerConsole: (machineId: string, page?: string) => ask("her-console", machineId, page),
-  saveHerFile: (machineId: string, botId: string, path: string) => ask("her-save-file", machineId, botId, path),
-  readHerFile: (machineId: string, botId: string, path: string) => ask("her-read-file", machineId, botId, path),
+  saveHerFile: (machineId: string, botId: string, path: string, sha?: string) => ask("her-save-file", machineId, botId, path, sha),
+  readHerFile: (machineId: string, botId: string, path: string, sha?: string) => ask("her-read-file", machineId, botId, path, sha),
+  herFilesKept: (machineId: string, files: [string, string][]) => ask("her-files-kept", machineId, files),
   signInHerChatGpt: (machineId: string) => ask("her-chatgpt", machineId),
   reopenHerChatGpt: (machineId: string) => ipcRenderer.send("her-chatgpt-reopen", machineId),
   cancelHerChatGpt: (machineId: string) => ipcRenderer.send("her-chatgpt-cancel", machineId),

@@ -71,7 +71,11 @@ func (l *localService) GetHerConversation(ctx context.Context, req *localv1.GetH
 	if err != nil {
 		return nil, err
 	}
-	return &localv1.GetHerConversationResponse{Bot: bot, Snapshot: snapshot}, nil
+	deliveries, err := l.o().st.herDeliveries(req.MachineId)
+	if err != nil {
+		return nil, err
+	}
+	return &localv1.GetHerConversationResponse{Bot: bot, Snapshot: snapshot, Deliveries: deliveries}, nil
 }
 
 func (l *localService) HerUpload(ctx context.Context, req *localv1.HerUploadRequest) (*localv1.HerUploadResponse, error) {

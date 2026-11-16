@@ -52,6 +52,19 @@ extension HermeshUITests {
         try herConnectors(url, tokenURL: tokenURL, token: token, accountURL: accountURL)
     }
 
+    /// The files Her sent (docs/her-deliverables.md §3.3), from the tray beside the menu: a report sent, changed and
+    /// sent again is one row with two versions, each opening as it was sent; Show in Conversation and Reply from a
+    /// file; search and the kinds; and the list while the Mac is offline, where a file opened before still opens.
+    ///
+    ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerDeliveries go test ./e2e -run TestIPhone -v -timeout 40m
+    @objc func testHerDeliveries() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+        try herDeliveries()
+    }
+
     /// Scheduled tasks (docs/kernel/routine-design.md §8), from the clock at the top right of Her's page: the list, a
     /// task's page and a run's, and the ways in from her conversation.
     ///
@@ -211,6 +224,106 @@ extension HermeshUITests {
     /// top of its bubble and Her is told of it after the owner's words (her-mock sends back the prompt it got). Select
     /// Text opens the message's words on a sheet, where Reply leads the edit menu of what is selected. Swiping a
     /// message left replies to all of it. A quote brings the message it quotes into view.
+    func herDeliveries() throws {
+        let any = app.descendants(matching: .any)
+        func write(_ text: String) throws {
+            let q = text.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+            _ = try control("her-file?name=report.md&text=\(q)", method: "POST")
+        }
+        let button = any["her-files"].firstMatch
+        // Sent: the tray counts one new file.
+        try write("# 季度报告\n\n初稿：只有营收。\n")
+        herSend("[[mock:attach:report.md]] 发我报告")
+        XCTAssertTrue(app.buttons["her-file-report.md"].waitForExistence(timeout: 60), "the file in the conversation")
+        XCTAssertTrue(waitUntil(timeout: 30) { button.label.contains("1") }, "one new file: \(button.label)")
+        // Changed and sent again: still one file new.
+        try write("# 季度报告\n\n第二版：营收和利润。\n")
+        herSend("[[mock:attach:report.md]] 改好再发")
+        XCTAssertTrue(waitUntil(timeout: 60) { self.app.buttons.matching(identifier: "her-file-report.md").count == 2 }, "sent twice")
+        XCTAssertTrue(button.label.contains("1"), button.label)
+        herShot("Her: the tray counts a new file")
+
+        // The page: one row, its two versions under it.
+        if app.keyboards.count > 0 { app.swipeDown() }
+        tap("her-files")
+        XCTAssertTrue(app.navigationBars["文件"].waitForExistence(timeout: 30), "the files page")
+        let row = any["her-file-row-report.md"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the report's row")
+        XCTAssertEqual(any.matching(identifier: "her-file-row-report.md").count, 1, "once")
+        herShot("Her: the files she sent")
+        // Two lines: the name and when, then Her's words and how many versions; the versions are on its page.
+        XCTAssertTrue(row.label.contains("2 个版本"), row.label)
+        row.tap()
+        let page = any["her-delivery-page"].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 30), "the latest on its page")
+        XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "the latest as it was sent")
+        let versions = any["her-delivery-versions"].firstMatch
+        XCTAssertTrue(versions.waitForExistence(timeout: 10), "the switch between versions")
+        versions.buttons.element(boundBy: 1).tap()
+        XCTAssertTrue(text("初稿：只有营收。").waitForExistence(timeout: 30), "the first version as it was sent")
+        XCTAssertFalse(text("第二版").exists)
+        herShot("Her: the first version")
+        versions.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "the latest")
+
+        // Show in Conversation: back to her page, with the message.
+        tap("her-delivery-show")
+        XCTAssertTrue(page.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(any["her-composer"].firstMatch.waitForExistence(timeout: 30), "her conversation")
+        XCTAssertTrue(app.buttons["her-file-report.md"].firstMatch.waitForExistence(timeout: 10), "its message")
+        XCTAssertTrue(waitUntil(timeout: 30) { button.label == "文件" }, "the list was seen: nothing new (\(button.label))")
+
+        // Reply from a file: the composer quotes it, and Her is told which file.
+        tap("her-files")
+        XCTAssertTrue(row.waitForExistence(timeout: 30))
+        row.tap()
+        XCTAssertTrue(page.waitForExistence(timeout: 30))
+        tap("her-delivery-reply")
+        let bar = any["her-reply-bar"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 15) { bar.exists && bar.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "report.md")).count > 0 }, "the file is quoted")
+        herSend("[[mock:send]] 加一节现金流")
+        XCTAssertTrue(waitUntil(timeout: 60) { any.matching(NSPredicate(format: "label CONTAINS %@", "quoted in part")).count > 0 }, "Her was told")
+
+        // Search and the kinds.
+        if app.keyboards.count > 0 { app.swipeDown() }
+        tap("her-files")
+        XCTAssertTrue(row.waitForExistence(timeout: 30))
+        let search = app.searchFields.firstMatch
+        XCTAssertTrue(search.waitForExistence(timeout: 10))
+        search.tap()
+        search.typeText("没有这个")
+        XCTAssertTrue(any["her-files-empty"].firstMatch.waitForExistence(timeout: 15), "nothing found")
+        // The field's own clear button: the words go, and the list is all again.
+        search.buttons.firstMatch.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "all again")
+        // The search ends with the bar's own button beside the field (iOS 26 shows Close there, not Cancel).
+        let back = app.navigationBars.buttons["BackButton"]
+        if let close = app.navigationBars.buttons.allElementsBoundByIndex.last(where: { $0.isHittable && $0.identifier != "BackButton" }) { close.tap() }
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "the search ended")
+        // The tabs: the report is a document, and there is no media.
+        let tabs = any["her-files-tabs"].firstMatch
+        tabs.buttons["媒体"].tap()
+        XCTAssertTrue(any["her-files-empty"].firstMatch.waitForExistence(timeout: 15), "no media")
+        tabs.buttons["文档"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "the report among the documents")
+        tabs.buttons["全部"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+
+        // The Mac offline: the list as last seen, and the latest version, opened before, opens from this iPhone.
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "back to her page")
+        back.tap()
+        tap("her-files")
+        XCTAssertTrue(any["her-files-offline"].firstMatch.waitForExistence(timeout: 120), "it says the Mac is offline")
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "the list as last seen")
+        herShot("Her: the files while the Mac is offline")
+        row.tap()
+        XCTAssertTrue(page.waitForExistence(timeout: 30))
+        XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "opened from this iPhone")
+        tap("close")
+        _ = try control("machine?up=1", method: "POST")
+    }
+
     func herReplying() throws {
         let any = app.descendants(matching: .any)
         // Her long reply of herChat: in view above the keyboard, where her first words have scrolled away.

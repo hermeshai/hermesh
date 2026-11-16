@@ -65,7 +65,7 @@ struct HerFilePage: View {
 
 /// Code in numbered lines, coloured as the Mac colours it once the highlighter has read it: plain until then, and
 /// for code too long to colour quickly.
-private struct HerCodeLines: View {
+struct HerCodeLines: View {
     let code: String
     let lines: [Substring]
     let lang: String

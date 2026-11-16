@@ -238,8 +238,8 @@ func TestParseKeyPath(t *testing.T) {
 // What the owner's devices may call is what her answers and the list allows;
 // a her that lists nothing leaves it unknown (docs/version-skew.md §6.1).
 func TestOpenTo(t *testing.T) {
-	got := openTo([]string{"bots/memory", "server/shutdown", "session/new", "bots/subscribe"})
-	if strings.Join(got, ",") != "bots/memory,bots/subscribe" {
+	got := openTo([]string{"bots/memory", "server/shutdown", "session/new", "bots/subscribe", "deliveries/list", "deliveries/seen"})
+	if strings.Join(got, ",") != "bots/memory,bots/subscribe,deliveries/list,deliveries/seen" {
 		t.Fatalf("openTo: %v", got)
 	}
 	if openTo(nil) != nil {

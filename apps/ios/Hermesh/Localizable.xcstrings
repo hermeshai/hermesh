@@ -12795,6 +12795,266 @@
           }
         }
       }
+    },
+    "Files, needs an update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件，需更新"
+          }
+        }
+      }
+    },
+    "Files, %lld new": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件，%lld 份新的"
+          }
+        }
+      }
+    },
+    "The files Her sends you show here once she runs on one of your machines.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在你的某台电脑上运行后，她发给你的文件会显示在这里。"
+          }
+        }
+      }
+    },
+    "%@ is offline. This is the list as last seen; files opened before are on this iPhone, the rest wait for it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 离线。这是上次看到的列表；打开过的文件这台 iPhone 上还有，其余等它回来。"
+          }
+        }
+      }
+    },
+    "Load More": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加载更多"
+          }
+        }
+      }
+    },
+    "Search names, or what Her said": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜文件名，或 Her 说过的话"
+          }
+        }
+      }
+    },
+    "Nothing Found": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有找到"
+          }
+        }
+      }
+    },
+    "The files Her sends you are kept here": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 发给你的文件都收在这里"
+          }
+        }
+      }
+    },
+    "Try other words: names and what Her said with each file are both searched.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "换个词试试，文件名和 Her 发文件时说的话都能搜。"
+          }
+        }
+      }
+    },
+    "Reports, sheets, pictures: every file she sends in the conversation can be found here again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "报告、表格、图片……发在对话里的每一份，都能在这儿找回来。"
+          }
+        }
+      }
+    },
+    "Can’t Read the Files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读不到文件"
+          }
+        }
+      }
+    },
+    "Yesterday": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "昨天"
+          }
+        }
+      }
+    },
+    "Past 7 Days": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "过去 7 天"
+          }
+        }
+      }
+    },
+    "Documents": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文档"
+          }
+        }
+      }
+    },
+    "New file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新文件"
+          }
+        }
+      }
+    },
+    "From a cleared conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自已清空的对话"
+          }
+        }
+      }
+    },
+    "Preview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览"
+          }
+        }
+      }
+    },
+    "Show in Conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在对话中查看"
+          }
+        }
+      }
+    },
+    "Reply to Have Her Revise": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复，让 Her 接着改"
+          }
+        }
+      }
+    },
+    "%lld versions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个版本"
+          }
+        }
+      }
+    },
+    "Version %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "第 %lld 版"
+          }
+        }
+      }
+    },
+    "Latest": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最新"
+          }
+        }
+      }
+    },
+    "%@ is offline; this file opens once it is back": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 离线，它回来后才能打开这份"
+          }
+        }
+      }
+    },
+    "This came from a cleared conversation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这份来自已清空的对话"
+          }
+        }
+      }
+    },
+    "Can’t Open This File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打不开这个文件"
+          }
+        }
+      }
+    },
+    "Media": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "媒体"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -45,6 +45,18 @@ export const putInComposer = (machineId: string, text: string) => composerText.g
 /** Brings a routine run's message into view in an environment's conversation, and flashes it. */
 export const showRun = (machineId: string, run: string) => runShowers.get(machineId)?.(run);
 
+/**
+ * How the conversation on screen brings a message into view by its key, loading earlier history until it is there,
+ * by environment (docs/her-deliverables.md §3.1). `session`: the conversation the message was sent in.
+ */
+const messageShowers = new Map<string, (key: string, session: string) => void>();
+
+/** Brings a message of an environment's conversation into view, and flashes it: Show in Conversation. */
+export const showMessage = (machineId: string, key: string, session: string) => messageShowers.get(machineId)?.(key, session);
+
+/** Puts a reply in the composer of an environment's conversation (docs/her-reply.md), from beside it. */
+export const replyInComposer = (machineId: string, reply: ReplyQuote) => composerReply.get(machineId)?.(reply);
+
 /** A message not sent, back into the composer of an environment's conversation (Edit). */
 const composerReturn = new Map<string, (sent: Draft) => void>();
 
@@ -342,6 +354,42 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
       if (runShowers.get(key) === show) runShowers.delete(key);
     };
   }, [key, items, scrollToKey]);
+  // A message asked for from beside the conversation (the files Her sent): into view, marked a moment, once the
+  // history holds it; earlier pages are read until it does, or until there are none.
+  const seeking = useRef<{ key: string; pages: number } | null>(null);
+  const seek = () => {
+    const want = seeking.current;
+    if (!want) return;
+    if (items.some((i) => i.key === want.key)) {
+      seeking.current = null;
+      atEnd.current = false;
+      scrollToKey(want.key, {
+        then: (el) => {
+          el.classList.add("rtn-flash");
+          setTimeout(() => el.classList.remove("rtn-flash"), 1500);
+        },
+      });
+    } else if (view?.before && want.pages < 50) {
+      if (asking.current) return;
+      want.pages++;
+      earlier();
+    } else {
+      seeking.current = null;
+      st.show(t("files.notInConversation"));
+    }
+  };
+  useEffect(seek, [items, paging]);
+  useEffect(() => {
+    const show = (key: string, from: string) => {
+      if (session && from !== session) return st.show(t("files.earlierConversation"));
+      seeking.current = { key, pages: 0 };
+      seek();
+    };
+    messageShowers.set(key, show);
+    return () => {
+      if (messageShowers.get(key) === show) messageShowers.delete(key);
+    };
+  });
   // A reply goes to the composer; the message one replied to comes into view, marked a moment. A core that is not
   // this app's yet (it restarts once its sessions end) would drop what a message replies to: it says so instead.
   const canReply = st.status?.abilities?.includes("her_reply") !== false;

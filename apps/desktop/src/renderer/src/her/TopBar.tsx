@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { botWorking, routineDot } from "@hermesh/her-client";
 import { Icon } from "../icons";
 import { Avatar, BotAvatar } from "./Avatar";
+import { DeliveriesButton } from "./Deliveries";
 import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
@@ -24,7 +25,7 @@ export function TopBar() {
   const bot = her.bot;
   const panel = her.panel;
   const dot = bot ? routineDot(bot.routines) : null;
-  const toggle = (kind: "settings" | "routines") => her.setPanel(panel?.kind === kind ? null : kind === "settings" ? { kind } : { kind, route: {} });
+  const toggle = (kind: "settings" | "routines" | "files") => her.setPanel(panel?.kind === kind ? null : kind === "routines" ? { kind, route: {} } : { kind });
   const team = useTeam();
   const [teamOpen, setTeamOpen] = useState(false);
   const capsule = useRef<HTMLButtonElement>(null);
@@ -51,6 +52,7 @@ export function TopBar() {
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
       {bot && <ProgressButton />}
+      {bot && <DeliveriesButton bot={bot} open={panel?.kind === "files"} onClick={() => toggle("files")} />}
       {bot && (
         <button className={`tb rtn-btn ${panel?.kind === "routines" ? "on" : ""}`} title={t("routines.title")} aria-label={t("routines.title")} aria-pressed={panel?.kind === "routines"} onClick={() => toggle("routines")}>
           <Icon name="clock" />

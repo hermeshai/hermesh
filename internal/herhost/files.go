@@ -18,7 +18,10 @@ import (
 )
 
 // Files in and out of an assistant's folder, <her home>/bots/<id>/files
-// (docs/her-server.md §6.3), straight from the disk: her need not run.
+// (docs/her-server.md §6.3), straight from the disk: her need not run. A
+// download also reads <her home>/bots/<id>/sent, where her keeps a copy of
+// each file the assistant sent, as it was when sent
+// (docs/her-deliverables.md §4.1).
 
 const chunk = 64 << 10
 
@@ -61,7 +64,8 @@ func (h *Host) Upload(ctx context.Context, start *herv1.UploadStart, r io.Reader
 	return &herv1.UploadResponse{Path: path}, nil
 }
 
-// Download sends a file of the assistant's folder: `start`, then its bytes.
+// Download sends a file of the assistant's folder, or a copy of one it
+// sent: `start`, then its bytes.
 func (h *Host) Download(ctx context.Context, req *herv1.DownloadRequest, send func(*herv1.DownloadResponse) error) error {
 	folder, err := h.folder(req.GetBotId())
 	if err != nil {
@@ -74,9 +78,16 @@ func (h *Host) Download(ctx context.Context, req *herv1.DownloadRequest, send fu
 	if !filepath.IsAbs(p) {
 		p = filepath.Join(folder, p)
 	}
-	if p, err = inside(folder, p); err != nil {
+	q, err := inside(folder, p)
+	if connect.CodeOf(err) == connect.CodePermissionDenied {
+		if kept, kerr := h.sentCopy(req.GetBotId(), p); kerr == nil {
+			q, err = kept, nil
+		}
+	}
+	if err != nil {
 		return err
 	}
+	p = q
 	f, err := os.Open(p)
 	if err != nil {
 		return err
@@ -131,6 +142,20 @@ func (h *Host) folder(id string) (string, error) {
 		return "", err
 	}
 	return inside(bot, dir)
+}
+
+// sentCopy is p with its symlinks resolved, when it is inside the copies of
+// what the assistant sent, bots/<id>/sent, itself inside the assistant's
+// own folder. id is an assistant's (folder checked it).
+func (h *Host) sentCopy(id, p string) (string, error) {
+	h.mu.Lock()
+	bot := filepath.Join(h.home, "bots", id)
+	h.mu.Unlock()
+	dir, err := inside(bot, filepath.Join(bot, "sent"))
+	if err != nil {
+		return "", err
+	}
+	return inside(dir, p)
 }
 
 // inside is p with its symlinks resolved, when that is dir or inside it.

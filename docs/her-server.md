@@ -696,7 +696,9 @@ What `~/.her` holds on a Her Server:
   models.toml        model providers and models
   her.db             routines and other records that change
   bots/<id>/         an assistant: bot.json, its avatar, its folder
-                     (files/, what it makes), its memory (her-memory.md)
+                     (files/, what it makes), its memory (her-memory.md),
+                     and a copy of each file it sent, as it was when sent
+                     (sent/, her-deliverables.md §4.1)
   chats/<id>/        the folder of a conversation started without a project
   sessions/          conversations, as JSON lines, by date, each with the
                      full output of its tools beside it

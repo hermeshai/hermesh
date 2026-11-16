@@ -246,6 +246,10 @@ pub mod method {
     pub const BOTS_MEMORY_CLEAR: &str = "bots/memory_clear";
     /// Server notification to `bots/subscribe`rs.
     pub const BOTS_CHANGED: &str = "bots/changed";
+    /// The files a bot sent its owner, newest first (docs/her-deliverables.md §4.3).
+    pub const DELIVERIES_LIST: &str = "deliveries/list";
+    /// The owner looked at that list: nothing in it is new.
+    pub const DELIVERIES_SEEN: &str = "deliveries/seen";
     // A bot's routines (docs/kernel/routine-design.md §8). New ones and edits come from the chat.
     pub const BOTS_ROUTINE: &str = "bots/routine";
     pub const BOTS_ROUTINE_RUNS: &str = "bots/routine_runs";
@@ -724,6 +728,8 @@ pub struct StoragePart {
 pub enum StorageKind {
     /// What assistants and conversations made: each bot's folder, each chat's folder.
     Files,
+    /// A copy of each file an assistant sent, as it was when sent (docs/her-deliverables.md §4.1).
+    Sent,
     /// Conversations, with the full output of their tools.
     Conversations,
     /// Deleted conversations, kept until removed by hand.

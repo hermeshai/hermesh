@@ -153,6 +153,12 @@ impl HerHome {
         self.bot_dir(id).join("files")
     }
 
+    /// The copies of the files a bot sent its owner, each as it was when sent, beside its
+    /// working folder (docs/her-deliverables.md §4.1).
+    pub fn bot_sent_dir(&self, id: &str) -> PathBuf {
+        self.bot_dir(id).join("sent")
+    }
+
     /// A bot's memory: the notes it keeps about its owner and their work, beside its working
     /// folder, so that clearing its conversation leaves them (docs/her-memory.md §3).
     pub fn bot_memory_dir(&self, id: &str) -> PathBuf {

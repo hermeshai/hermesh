@@ -68,7 +68,7 @@ struct HerConversation: View {
             }
             // The message a reply quotes, asked for from its quote: the same. One that is not among those read
             // here (earlier history) says so.
-            .onChange(of: chat.revealMessage) {
+            .onChange(of: chat.revealMessage, initial: true) {
                 guard let key = chat.revealMessage else { return }
                 chat.revealMessage = nil
                 guard rows.contains(where: { $0.key == key }) else { return model.show(String(localized: "The message this replies to isn’t here anymore")) }
@@ -716,13 +716,13 @@ private struct HerFiles: View {
     @State private var opening: String?
 
     var body: some View {
-        let pictures = files.filter { $0.image && !chat.unreadable($0.path) }
+        let pictures = files.filter { $0.image && !chat.unreadable($0) }
         let others = files.filter { f in !pictures.contains(f) }
         VStack(alignment: .leading, spacing: 8) {
             ForEach(pictures, id: \.path) { f in
                 Button { open(f) } label: {
                     Group {
-                        if let picture = chat.pictures[f.path] ?? nil {
+                        if let picture = chat.pictures[f.source] ?? nil {
                             Image(uiImage: picture).resizable().scaledToFit()
                         } else {
                             Palette.fill.frame(height: 180).overlay { ProgressView() }
@@ -733,7 +733,7 @@ private struct HerFiles: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(f.name)
-                .task(id: f.path) { await chat.loadPicture(f.path) }
+                .task(id: f.source) { await chat.loadPicture(f) }
             }
             if !others.isEmpty {
                 VStack(spacing: 0) {
@@ -768,16 +768,17 @@ private struct HerFiles: View {
         guard opening == nil else { return }
         opening = f.path
         Task {
-            await openHerFile(chat: chat, path: f.path, preview: $preview, page: $page)
+            await openHerFile(chat: chat, path: f.path, snapshot: f.snapshot, preview: $preview, page: $page)
             opening = nil
         }
     }
 }
 
 /// A file on Her's machine, brought here when tapped: Markdown and code to read on a page of the app's, the rest (a
-/// PDF, a document) for Quick Look to preview and save.
-@MainActor func openHerFile(chat: HerChat, path: String, preview: Binding<URL?>, page: Binding<HerFileText?>) async {
-    guard let url = await chat.download(path) else { return }
+/// PDF, a document) for Quick Look to preview and save. `snapshot`: the copy her kept of a file she sent, brought in
+/// its place.
+@MainActor func openHerFile(chat: HerChat, path: String, snapshot: String? = nil, sha256: String? = nil, preview: Binding<URL?>, page: Binding<HerFileText?>) async {
+    guard let url = await chat.download(path, snapshot: snapshot, sha256: sha256) else { return }
     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? .max
     if let kind = HerFileKind(name: url.lastPathComponent, size: size), let text = try? String(contentsOf: url, encoding: .utf8) {
         page.wrappedValue = HerFileText(url: url, text: text, kind: kind)

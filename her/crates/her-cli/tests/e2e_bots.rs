@@ -863,6 +863,124 @@ fn png_head(width: u32, height: u32) -> Vec<u8> {
     bytes
 }
 
+/// The files a bot sent are listed apart from its conversation (docs/her-deliverables.md §4.2,
+/// §4.3): one file a path, a version for each content it was sent with, each read from the
+/// copy kept of it; the bot's row counts the files the owner has not seen there; and the
+/// list outlives the conversation.
+#[tokio::test]
+async fn the_files_a_bot_sent_are_listed_with_their_versions_and_counted_until_seen() {
+    let env = TestEnv::new("manual", "").await;
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming);
+    let schema = SchemaCheck::new(&["BotsChangedParams", "DeliveriesListResult"]);
+    client.request("bots/subscribe", Value::Null).await.unwrap();
+    let created = client.request("bots/create", json!({"name": "\u{7814}\u{7a76}\u{5458}", "avatar": {"kind": "mono", "hue": "teal"}})).await.unwrap();
+    let bot = created["bot"]["id"].as_str().unwrap().to_string();
+    let session = open(&client, &bot).await;
+    let folder = env.home.path().join("bots").join(&bot).join("files");
+    let list = |params: Value| client.request("deliveries/list", params);
+    assert_eq!(list(json!({"bot_id": bot})).await.unwrap(), json!({"files": [], "seen": 0}), "nothing sent yet");
+
+    std::fs::write(folder.join("report.md"), "first").unwrap();
+    std::fs::write(folder.join("chart.png"), png_head(960, 600)).unwrap();
+    say(&client, &session, "[[mock:attach:report.md,chart.png]] send them").await;
+    until_event(&mut wire, ended).await;
+    let row = until_row(&mut wire, &bot, |b| b["new_deliveries"] == 2).await;
+    schema.check("BotsChangedParams", &json!({"bots": [row.clone()]}));
+    assert_eq!(row["deliveries_latest"], 2);
+
+    // Changed and sent again: the same file, a version later; still two files new.
+    std::fs::write(folder.join("report.md"), "second, longer").unwrap();
+    say(&client, &session, "[[mock:attach:report.md]] again").await;
+    until_event(&mut wire, ended).await;
+    let row = until_row(&mut wire, &bot, |b| b["deliveries_latest"] == 3).await;
+    assert_eq!(row["new_deliveries"], 2);
+
+    let listed = list(json!({"bot_id": bot})).await.unwrap();
+    schema.check("DeliveriesListResult", &listed);
+    let files = listed["files"].as_array().unwrap();
+    let names: Vec<_> = files.iter().map(|f| (f["name"].as_str().unwrap(), f["kind"].as_str().unwrap(), f["versions"].as_array().unwrap().len())).collect();
+    assert_eq!(names, [("report.md", "doc", 2), ("chart.png", "image", 1)], "{listed}");
+    assert_eq!((listed["seen"].as_u64(), listed.get("next")), (Some(0), None));
+    let versions = files[0]["versions"].as_array().unwrap();
+    let kept = |v: &Value| std::fs::read_to_string(v["snapshot"].as_str().expect("a copy")).unwrap();
+    assert_eq!((kept(&versions[0]), kept(&versions[1])), ("second, longer".to_string(), "first".to_string()), "each as it was sent");
+    assert_eq!((versions[0]["seq"].as_u64(), versions[1]["seq"].as_u64()), (Some(3), Some(1)));
+    assert!(versions.iter().all(|v| v["session_id"] == session.as_str() && v["sent_at"].as_str().is_some_and(|t| t.ends_with('Z'))), "{listed}");
+    assert_eq!((files[1]["versions"][0]["width"].as_u64(), files[1]["versions"][0]["height"].as_u64()), (Some(960), Some(600)));
+
+    let named = |listed: &Value| listed["files"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+    assert_eq!(named(&list(json!({"bot_id": bot, "kind": "image"})).await.unwrap()), ["chart.png"]);
+    assert_eq!(named(&list(json!({"bot_id": bot, "query": "REPORT"})).await.unwrap()), ["report.md"]);
+    let first = list(json!({"bot_id": bot, "limit": 1})).await.unwrap();
+    assert_eq!((named(&first), first["next"].as_u64()), (vec!["report.md".to_string()], Some(3)));
+    assert_eq!(named(&list(json!({"bot_id": bot, "limit": 1, "before": 3})).await.unwrap()), ["chart.png"]);
+
+    // Seen: the row says so, and the list says up to where.
+    client.request("deliveries/seen", json!({"bot_id": bot, "seq": 3})).await.unwrap();
+    let row = until_row(&mut wire, &bot, |b| b.get("new_deliveries").is_none()).await;
+    assert_eq!(row["deliveries_latest"], 3);
+    assert_eq!(list(json!({"bot_id": bot})).await.unwrap()["seen"], 3);
+
+    // The conversation cleared, what was sent in it is still listed.
+    client.request("bots/clear", json!({"bot_id": bot})).await.unwrap();
+    until_row(&mut wire, &bot, |b| b.get("session_id").is_none()).await;
+    assert_eq!(named(&list(json!({"bot_id": bot})).await.unwrap()), ["report.md", "chart.png"]);
+    assert!(list(json!({"bot_id": "nobody"})).await.is_err());
+}
+
+/// What a bot sent before her recorded it is read from its conversations' logs before its
+/// next send is written (docs/her-deliverables.md §4.7): listed, seen, and older than that send.
+/// A conversation cleared before is not read.
+#[tokio::test]
+async fn files_sent_before_there_was_a_record_are_read_from_the_logs() {
+    let env = TestEnv::new("manual", "").await;
+    let bot;
+    {
+        let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+        native_init(&client).await;
+        let mut wire = route(incoming);
+        let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+        bot = listed["bots"][0]["id"].as_str().unwrap().to_string();
+        let folder = env.home.path().join("bots").join(&bot).join("files");
+        std::fs::create_dir_all(&folder).unwrap();
+        for name in ["cleared.md", "kept.md", "new.md"] {
+            std::fs::write(folder.join(name), name).unwrap();
+        }
+        let first = open(&client, &bot).await;
+        say(&client, &first, "[[mock:attach:cleared.md]] send it").await;
+        until_event(&mut wire, ended).await;
+        client.request("bots/clear", json!({"bot_id": bot})).await.unwrap();
+        let second = open(&client, &bot).await;
+        say(&client, &second, "[[mock:attach:kept.md]] send it").await;
+        until_event(&mut wire, ended).await;
+        client.request("server/shutdown", json!({})).await.unwrap();
+        common::exit_code(&mut child).await;
+    }
+    // As a her from before the record left it: no database.
+    for entry in std::fs::read_dir(env.home.path()).unwrap().flatten() {
+        if entry.file_name().to_string_lossy().starts_with("her.db") {
+            std::fs::remove_file(entry.path()).unwrap();
+        }
+    }
+    let (_child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+    native_init(&client).await;
+    let mut wire = route(incoming);
+    client.request("bots/subscribe", Value::Null).await.unwrap();
+    let list = || client.request("deliveries/list", json!({"bot_id": bot}));
+    assert_eq!(list().await.unwrap()["files"], json!([]), "nothing is read until something is sent");
+    let session = open(&client, &bot).await;
+    say(&client, &session, "[[mock:attach:new.md]] send it").await;
+    until_event(&mut wire, ended).await;
+    let row = until_row(&mut wire, &bot, |b| b["deliveries_latest"] == 2).await;
+    assert_eq!(row["new_deliveries"], 1, "what was sent before is seen: {row}");
+    let listed = list().await.unwrap();
+    let files: Vec<_> = listed["files"].as_array().unwrap().iter().map(|f| (f["name"].as_str().unwrap(), f["versions"][0]["seq"].as_u64().unwrap())).collect();
+    assert_eq!(files, [("new.md", 2), ("kept.md", 1)], "the cleared conversation's file is not read: {listed}");
+    assert_eq!(listed["seen"], 1);
+}
+
 #[tokio::test]
 async fn files_and_questions_show_in_the_bots_row_and_count_as_unread() {
     let env = TestEnv::new("manual", "").await;
