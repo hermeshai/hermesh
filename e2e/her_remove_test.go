@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -98,6 +99,9 @@ func TestHerRemovedMachineKeepsHerData(t *testing.T) {
 // home goes with the machine, which its owner's devices stop listing.
 func TestHerUninstallErasesHerData(t *testing.T) {
 	skipHerInDocker(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("Hermesh is uninstalled in Settings on Windows, and `hermeshd erase` erases Her's data")
+	}
 	env := newHerEnvironment(t)
 	daemon, data, cli := herServer(t, env)
 	// A copy, in a home of the test's: uninstall removes the hermeshd it
