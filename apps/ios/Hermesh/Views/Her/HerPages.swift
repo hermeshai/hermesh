@@ -79,9 +79,11 @@ func herBytes(_ n: Int64) -> String { n.formatted(.byteCount(style: .file)) }
 
 /// The calls of the console's pages, on the environment's connection.
 extension HerChat {
+    /// What her pages read and change, each on a request of its own (callAlone): a page asks at once, not after the
+    /// environment's connection has opened through the relay, which can take long on a phone, or not come at all.
     var abilities: HerAbilityCalls { HerAbilityCalls { [weak self] m, p in
         guard let self else { throw CancellationError() }
-        return try await self.call(m, p)
+        return try await self.callAlone(m, p)
     } }
 }
 
@@ -177,7 +179,7 @@ private struct HerModelList: View {
             }
         }
         .listSectionSpacing(.compact)
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") { await load() }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") { await load() }
         .confirmationDialog("Forget the ChatGPT account?", isPresented: $forgetting, titleVisibility: .visible) {
             Button("Forget Account", role: .destructive) { forget() }
         } message: {
@@ -240,7 +242,7 @@ private struct HerModelList: View {
     }
 
     private func load() async {
-        guard chat.envUp else { return }
+        guard herReachable(machine) else { return }
         do {
             let (p, m) = try await chat.abilities.providers()
             providers = p
@@ -363,7 +365,7 @@ private struct HerProviderList: View {
         .listSectionSpacing(.compact)
         .searchable(text: $query, prompt: Text("Search Models"))
         .navigationTitle(provider.map(herProviderTitle) ?? "")
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") { await load() }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") { await load() }
         .confirmationDialog("Remove \(provider.map(herProviderTitle) ?? "")?", isPresented: $removing, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { remove() }
         } message: {
@@ -379,7 +381,7 @@ private struct HerProviderList: View {
     }
 
     private func load() async {
-        guard chat.envUp, let (p, m) = try? await chat.abilities.providers() else { return }
+        guard herReachable(machine), let (p, m) = try? await chat.abilities.providers() else { return }
         provider = p.all.first { $0.id == id }
         models = m
         showing = showing.filter { k, v in m.models.first { $0.id == k }?.shown != v }
@@ -604,8 +606,8 @@ private struct HerEnvironmentList: View {
             }
         }
         .listSectionSpacing(.compact)
-        .task(id: chat.envUp) {
-            if chat.envUp, herAnswers(machine.her, "storage/usage") != false { total = (try? await chat.abilities.storage())?.total }
+        .task(id: herReachable(machine)) {
+            if herReachable(machine), herAnswers(machine.her, "storage/usage") != false { total = (try? await chat.abilities.storage())?.total }
         }
         // Her data stays unless the owner chooses to erase it too (docs/her-server.md §5.6).
         .confirmationDialog("Turn off Her on “\(machine.machineName)”?", isPresented: $turningOff, titleVisibility: .visible) {
@@ -731,8 +733,8 @@ private struct HerStorageList: View {
             }
         }
         .listSectionSpacing(.compact)
-        .task(id: chat.envUp) {
-            guard chat.envUp else { return }
+        .task(id: herReachable(machine)) {
+            guard herReachable(machine) else { return }
             do { storage = try await chat.abilities.storage() } catch { failed = error.localizedDescription }
         }
         .accessibilityIdentifier("her-storage-page")
