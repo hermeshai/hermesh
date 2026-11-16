@@ -1,37 +1,64 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { SessionView } from "@hermesh/her-client";
-import type { AvatarHue, AvatarInput, BotMemoryResult, BotSummary, McpServerView, PermissionMode } from "@hermesh/her-protocol";
+import { routineDot, type SessionView } from "@hermesh/her-client";
+import type { AvatarHue, AvatarInput, BotSummary, McpServerView, ModelsListResult, PermissionMode } from "@hermesh/her-protocol";
 import { local } from "../api";
 import { Icon } from "../icons";
+import { herAnswers } from "../skew";
 import { useStore } from "../store";
 import type { SendOp } from "./Approval";
 import { BotAvatar } from "./Avatar";
 import { useHer } from "./context";
-import { permissionDesc, permissionTitle } from "./format";
+import { modelTitle, permissionDesc, permissionTitle, thinkingTitle } from "./format";
 import { GrantLine } from "./GrantLine";
 import { isEmpty, MemoryPage, useMemory } from "./Memory";
-import { MenuButton, MenuItem, ModelRows } from "./menus";
+import { MenuButton, MenuItem } from "./menus";
 import type { FileScope } from "./Messages";
 import { AvatarChoices, NAME_MAX, pickPicture } from "./sheets";
 
 const modes: PermissionMode[] = ["manual", "accept-edits", "bypass-permissions"];
 
+/** The three tabs of Her's page. */
+export type HerTab = "work" | "abilities" | "settings";
+const tabs: { id: HerTab; icon: string }[] = [
+  { id: "work", icon: "checklist" },
+  { id: "abilities", icon: "puzzle" },
+  { id: "settings", icon: "gear" },
+];
+
+/** The tab chosen last: her page opens on it. */
+function rememberedTab(): HerTab {
+  try {
+    const t = localStorage.getItem("her-tab");
+    return t === "abilities" || t === "settings" ? t : "work";
+  } catch {
+    return "work";
+  }
+}
+
 /**
- * Her's settings, beside the conversation: its avatar and
- * name, changed where they are; the model it answers with, from those its environment can use, and how
- * hard it thinks; what it may do without asking (full access is signed, docs/her-server.md §8); whether
- * it alerts; what it remembers (docs/her-memory.md), on a page of its own; clearing its chat or its memory;
- * turning Her off on its machine (docs/her-server.md §5.6).
- * What the whole environment does is in its console.
+ * Her's page, beside the conversation (docs/her-panel-demo.html): her avatar and name, changed where they are, and
+ * three tabs, one kind of thing in each. Work: what she is doing (Progress), the files she sent, her scheduled tasks.
+ * Abilities: what she remembers, her skills, the apps and services she is connected to, web search and the browsers.
+ * Settings: her model, what she may do without asking (full access is signed, docs/her-server.md §8), whether she
+ * alerts, her environment, and clearing her conversation. Each card is only a way in, with at most a word of how it
+ * stands; what it holds is on the page it opens here, beside the conversation, with a way back.
  */
 export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSummary; view: SessionView | null; op: SendOp; files: FileScope; onClose: () => void }) {
   const { t } = useTranslation("her");
-  const { t: tc } = useTranslation("common");
   const st = useStore();
   const her = useHer();
+  const [tab, setTabState] = useState<HerTab>(rememberedTab);
+  const setTab = (next: HerTab) => {
+    setTabState(next);
+    try {
+      localStorage.setItem("her-tab", next);
+    } catch {
+      // A convenience: without storage Work shows first.
+    }
+  };
   const memoryShown = her.panel?.kind === "settings" && her.panel.page === "memory";
-  const { memory, older, reload } = useMemory(bot);
+  if (memoryShown) return <MemoryPage bot={bot} files={files} onBack={() => her.setPanel({ kind: "settings" })} onClose={onClose} />;
   // Clearing the chat is asked first, and what stays is said (bot-mode-design §6.5.1).
   const clear = () =>
     st.set({
@@ -44,21 +71,8 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
         done: t("clear.done"),
       },
     });
-  // The memory goes to the trash, and the assistant stops remembering at once; the chat stays.
-  const clearMemory = () =>
-    older ? st.show(tc("needsUpdate.text")) : st.set({
-      sheet: {
-        kind: "confirm",
-        title: t("memoryClear.title", { name: bot.name }),
-        message: t("memoryClear.message"),
-        button: t("memoryClear.button"),
-        run: () => her.call("bots/memory_clear", { bot_id: bot.id }).then(reload),
-        done: t("memoryClear.done"),
-      },
-    });
-  if (memoryShown) return <MemoryPage bot={bot} files={files} onBack={() => her.setPanel({ kind: "settings" })} onClose={onClose} />;
   return (
-    <aside className="her-panel bpn" aria-label={t("head.settings")}>
+    <aside className="her-panel bpn" aria-label={t("head.settings")} data-testid="her-panel">
       <div className="her-panel-top drag">
         <button className="tb" title={t("panel.close")} aria-label={t("panel.close")} onClick={onClose}>
           <Icon name="x" />
@@ -66,102 +80,266 @@ export function AssistantPanel({ bot, view, op, files, onClose }: { bot: BotSumm
       </div>
       <div className="her-panel-body">
         <BotHero key={bot.id} bot={bot} />
-        <div className="form">
-          {view && <ModelSection view={view} op={op} />}
-          {view && <PermissionSection bot={bot} mode={view.info.permission_mode} />}
-          <ConnectorsSection />
-          <section>
-            <h3 className="fhead">{t("panel.notifications")}</h3>
-            <div className="fgroup">
-              <div className="frow">
-                <span className="fl">{t("panel.muted")}</span>
-                <div className="fv">
-                  <button
-                    className={`sw ${bot.muted ? "on" : ""}`}
-                    role="switch"
-                    aria-checked={!!bot.muted}
-                    aria-label={t("panel.muted")}
-                    onClick={() => void her.run(() => her.call("bots/update", { bot_id: bot.id, muted: !bot.muted }))}
-                  />
+        <div className="hp-tabs" role="tablist" aria-label={t("hp.tabs")}>
+          {tabs.map((x) => (
+            <button key={x.id} role="tab" aria-selected={x.id === tab} className={x.id === tab ? "on" : ""} data-testid={`her-tab-${x.id}`} onClick={() => setTab(x.id)}>
+              <Icon name={x.icon} />
+              {t(`hp.tab.${x.id}`)}
+            </button>
+          ))}
+        </div>
+        <div className="hp-page" key={tab} role="tabpanel">
+          {tab === "work" && <WorkCards bot={bot} />}
+          {tab === "abilities" && <AbilityCards bot={bot} />}
+          {tab === "settings" && (
+            <div className="form">
+              <section>
+                <div className="fgroup">
+                  <button className="frow bpn-go" data-testid="her-model-page" onClick={() => her.setPanel({ kind: "model" })}>
+                    <span className="fl">{t("model.model")}</span>
+                    <span className="fv">
+                      <span className="hp-val">{view ? modelLine(view, her.env.models) : ""}</span>
+                      <Icon name="chevR" />
+                    </span>
+                  </button>
+                  {view && <PermissionRow bot={bot} mode={view.info.permission_mode} />}
+                  <div className="frow">
+                    <span className="fl">{t("panel.muted")}</span>
+                    <div className="fv">
+                      <button
+                        className={`sw ${bot.muted ? "on" : ""}`}
+                        role="switch"
+                        aria-checked={!!bot.muted}
+                        aria-label={t("panel.muted")}
+                        onClick={() => void her.run(() => her.call("bots/update", { bot_id: bot.id, muted: !bot.muted }))}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+                <p className="set-note">{view ? t("panel.permissionNote", { desc: permissionDesc(view.info.permission_mode) }) : t("panel.mutedNote")}</p>
+                <GrantLine m={her.machine} />
+              </section>
+              <section className="fgroup">
+                <button className="frow bpn-go" data-testid="her-environment" onClick={() => her.setPanel({ kind: "environment" })}>
+                  <span className="fl">{t("hp.environment")}</span>
+                  <span className="fv">
+                    <span className="hp-val">{her.machine.machineName}</span>
+                    <Icon name="chevR" />
+                  </span>
+                </button>
+              </section>
+              <section className="fgroup">
+                <button className="frow bpn-end" data-testid="her-clear" onClick={clear}>
+                  {t("panel.clear")}
+                </button>
+              </section>
             </div>
-            <p className="set-note">{t("panel.mutedNote")}</p>
-          </section>
-          <MemorySection memory={memory} older={older} />
-          <section className="fgroup">
-            <button className="frow bpn-end" onClick={clear}>
-              {t("panel.clear")}
-            </button>
-            <button className="frow bpn-end" onClick={clearMemory}>
-              {t("panel.clearMemory")}
-            </button>
-          </section>
-          <section className="fgroup">
-            <button className="frow bpn-end" onClick={() => st.set({ sheet: { kind: "herOff", machineId: her.machine.machineId, machineName: her.machine.machineName } })}>
-              {t("panel.turnOff", { machine: her.machine.machineName })}
-            </button>
-          </section>
+          )}
         </div>
       </div>
     </aside>
   );
 }
 
-/**
- * The apps and services Her can use (docs/her-connectors-demo.html): one row, how many are on or need the owner, to
- * the console's Connectors page. They are the environment's, shared by its assistants.
- */
-function ConnectorsSection() {
+/** The model and, when it offers levels, how hard it thinks: "GPT-5.5 · High". */
+function modelLine(view: SessionView, models: ModelsListResult): string {
+  const { model, thinking } = view.info;
+  if (!model) return "";
+  const entry = models.models.find((m) => m.id === model);
+  const title = modelTitle(model, models);
+  return entry && entry.thinking_levels.length > 0 ? `${title} · ${thinkingTitle(thinking)}` : title;
+}
+
+/** What a card says of how its page stands, when it says anything. */
+type Status = { text: string; tone?: "warn" | "run" } | null;
+
+/** A way in: its name, at most a word of how it stands, and its glyph, on a pane of glass. */
+function Card({ id, title, icon, status, wide, onOpen }: { id: string; title: string; icon: string; status?: Status; wide?: boolean; onOpen: () => void }) {
   const { t } = useTranslation("her");
-  const her = useHer();
-  const [servers, setServers] = useState<McpServerView[] | null>(null);
-  useEffect(() => {
-    let live = true;
-    her.call("mcp/list", {}).then((r) => live && setServers(r.servers), () => {});
-    return () => {
-      live = false;
-    };
-  }, [her.call]);
-  const on = servers?.filter((s) => s.enabled) ?? [];
-  const attention = on.filter((s) => s.status.state === "failed" || s.status.state === "needs_login" || (!!s.connector && s.auth_state !== "logged_in")).length;
   return (
-    <section>
-      <h3 className="fhead">{t("panel.connectors")}</h3>
-      <div className="fgroup">
-        <button className="frow bpn-go" onClick={() => her.openConsole("connectors")}>
-          <span className="fl">{t("panel.connectorsRow")}</span>
-          <span className="fv">
-            {servers &&
-              (attention > 0 ? <span className="needs-update">{t("panel.connectorsAttention", { count: attention })}</span> : servers.length === 0 ? t("panel.connectorsNone") : t("panel.connectorsOn", { count: on.length }))}
-            <Icon name="chevR" />
-          </span>
-        </button>
-      </div>
-      <p className="set-note">{t("panel.connectorsNote", { machine: her.machine.machineName })}</p>
-    </section>
+    <button className={`hp-card ${wide ? "wide" : ""}`} data-testid={id} onClick={onOpen} aria-label={status ? t("hp.cardLabel", { title, status: status.text }) : title}>
+      <b>{title}</b>
+      {status && (
+        <span className={`hp-st ${status.tone ?? ""}`}>
+          {status.tone === "warn" && <i className="hp-dot" />}
+          {status.text}
+        </span>
+      )}
+      <Icon name={icon} className="hp-glyph" />
+    </button>
   );
 }
 
-/** What it remembers: one row to its page, which says only when there is nothing yet. */
-function MemorySection({ memory, older }: { memory: BotMemoryResult | null; older: boolean }) {
+/** The cards of a tab: panes of glass over a field of Her's own colours. */
+function Cards({ children }: { children: ReactNode }) {
+  return (
+    <div className="hp-cards">
+      <div className="hp-field" aria-hidden="true" />
+      {children}
+    </div>
+  );
+}
+
+/** Work: Progress (a page of its own), the files she sent and her scheduled tasks. */
+function WorkCards({ bot }: { bot: BotSummary }) {
   const { t } = useTranslation("her");
   const { t: tc } = useTranslation("common");
   const her = useHer();
+  const st = useStore();
+  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
+  const older = herAnswers(her.machine, "deliveries/list") === false;
+  const fresh = bot.new_deliveries ?? 0;
+  const dot = routineDot(bot.routines);
   return (
-    <section>
-      <h3 className="fhead">{t("panel.memory")}</h3>
-      <div className="fgroup">
-        <button className="frow bpn-go" onClick={() => her.setPanel({ kind: "settings", page: "memory" })}>
-          <span className="fl">{t("panel.memoryRow")}</span>
-          <span className="fv">
-            {older ? <span className="needs-update">{tc("needsUpdate.mark")}</span> : memory && isEmpty(memory) && t("panel.memoryNone")}
-            <Icon name="chevR" />
+    <Cards>
+      <Card
+        id="her-progress"
+        wide
+        title={t("progress.title")}
+        icon="pulse"
+        status={waits > 0 ? { text: t("progress.waiting", { count: waits }), tone: "warn" } : running > 0 ? { text: t("progress.atWork", { count: running }) } : null}
+        onOpen={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}
+      />
+      <Card
+        id="her-files"
+        title={t("files.title")}
+        icon="tray"
+        status={older ? { text: tc("needsUpdate.mark"), tone: "warn" } : fresh > 0 ? { text: t("hp.newFiles", { count: fresh }) } : null}
+        onOpen={() => her.setPanel({ kind: "files" })}
+      />
+      <Card
+        id="her-routines"
+        title={t("routines.title")}
+        icon="clock"
+        status={dot === "failed" ? { text: t("hp.lastFailed"), tone: "warn" } : dot === "running" ? { text: t("routines.running"), tone: "run" } : null}
+        onOpen={() => her.setPanel({ kind: "routines", route: {} })}
+      />
+    </Cards>
+  );
+}
+
+/** Abilities: her memory, her skills, the connectors as themselves, web search and the browsers. */
+function AbilityCards({ bot }: { bot: BotSummary }) {
+  const { t } = useTranslation("her");
+  const { t: tc } = useTranslation("common");
+  const her = useHer();
+  const { memory, older } = useMemory(bot);
+  const [searching, setSearching] = useState<boolean | null>(null);
+  const [browsing, setBrowsing] = useState<boolean | null>(null);
+  const rpc = her.env.rpc;
+  useEffect(() => {
+    if (!rpc) return;
+    let live = true;
+    const read = () => {
+      if (herAnswers(her.machine, "web_search/status") !== false) her.call("web_search/status", {}).then((r) => live && setSearching(r.enabled), () => {});
+      if (herAnswers(her.machine, "browser/status") !== false) {
+        Promise.all([her.call("browser/status", {}), her.call("config/read", {})]).then(
+          ([status, config]) => {
+            const b = ((config.config as Record<string, unknown> | null)?.browser ?? {}) as Record<string, unknown>;
+            const used = typeof b.extension === "boolean" ? b.extension : b.backend === "extension";
+            if (live) setBrowsing(typeof b.enabled === "boolean" ? b.enabled : status.embedded || used);
+          },
+          () => {},
+        );
+      }
+    };
+    read();
+    const off = rpc.on("config/changed", read);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [rpc, her.call]);
+  const onOff = (v: boolean | null): Status => (v === null ? null : { text: t(v ? "hp.on" : "hp.off") });
+  return (
+    <Cards>
+      <Card
+        id="her-memory"
+        title={t("memory.title")}
+        icon="brain"
+        status={older ? { text: tc("needsUpdate.mark"), tone: "warn" } : memory && isEmpty(memory) ? { text: t("panel.memoryNone") } : null}
+        onOpen={() => her.setPanel({ kind: "settings", page: "memory" })}
+      />
+      <Card
+        id="her-skills"
+        title={t("hp.skills")}
+        icon="read"
+        status={herAnswers(her.machine, "skills/list") === false ? { text: tc("needsUpdate.mark"), tone: "warn" } : null}
+        onOpen={() => her.setPanel({ kind: "skills" })}
+      />
+      <ConnectorTray />
+      <Card id="her-search" title={t("hp.search")} icon="search" status={onOff(searching)} onOpen={() => her.setPanel({ kind: "search" })} />
+      <Card id="her-browser" title={t("hp.browser")} icon="window" status={onOff(browsing)} onOpen={() => her.setPanel({ kind: "browser" })} />
+    </Cards>
+  );
+}
+
+/** A connector's two letters, for one without an icon of its own. */
+function monogram(name: string): string {
+  const parts = name.split(/[-_\s]+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase();
+}
+
+/**
+ * The connectors as themselves: each one on, marked where it needs the owner, then a place to add one. They are the
+ * environment's, shared by its assistants, and managed on its console's Connectors page, which the tray opens; a
+ * service opens its own.
+ */
+function ConnectorTray() {
+  const { t } = useTranslation("her");
+  const her = useHer();
+  const [servers, setServers] = useState<McpServerView[] | null>(null);
+  const rpc = her.env.rpc;
+  useEffect(() => {
+    if (!rpc) return;
+    let live = true;
+    const read = () => her.call("mcp/list", {}).then((r) => live && setServers(r.servers), () => {});
+    read();
+    const off = rpc.on("mcp/changed", read);
+    return () => {
+      live = false;
+      off();
+    };
+  }, [rpc, her.call]);
+  const on = servers?.filter((s) => s.enabled) ?? [];
+  const needs = (s: McpServerView) => s.status.state === "failed" || s.status.state === "needs_login" || (!!s.connector && s.auth_state !== "logged_in");
+  const attention = on.filter(needs).length;
+  const room = on.length > 4 ? 3 : 4;
+  // The console takes a page and an item of lowercase letters (main's her-console); others open its list.
+  const open = (name?: string) => her.openConsole(name && /^[a-z]+$/.test(name) ? `connectors/${name}` : "connectors");
+  return (
+    <div className="hp-card wide hp-tray" data-testid="her-connectors-tray">
+      <button className="hp-tray-head" data-testid="her-connectors" onClick={() => open()}>
+        <b>{t("panel.connectors")}</b>
+        {servers && (
+          <span className={`hp-st ${attention > 0 ? "warn" : ""}`}>
+            {attention > 0 && <i className="hp-dot" />}
+            {attention > 0 ? t("panel.connectorsAttention", { count: attention }) : servers.length === 0 ? t("panel.connectorsNone") : t("panel.connectorsOn", { count: on.length })}
           </span>
+        )}
+        <Icon name="chevR" />
+      </button>
+      <div className="hp-apps">
+        {on.slice(0, room).map((s) => (
+          <button key={s.name} className={`hp-app ${needs(s) ? "at" : ""}`} title={s.name} onClick={() => open(s.name)}>
+            {s.icon ? <img src={s.icon} alt="" /> : <i>{monogram(s.name)}</i>}
+            <u>{s.name}</u>
+          </button>
+        ))}
+        {on.length > room && (
+          <button className="hp-app more" onClick={() => open()}>
+            <i>+{on.length - room}</i>
+            <u>{t("hp.more")}</u>
+          </button>
+        )}
+        <button className="hp-app add" onClick={() => open()}>
+          <i>
+            <Icon name="plus" />
+          </i>
+          <u>{t("hp.add")}</u>
         </button>
       </div>
-      <p className="set-note">{t("panel.memoryNote")}</p>
-    </section>
+    </div>
   );
 }
 
@@ -261,24 +439,11 @@ function NameField({ initial, className, end }: { initial: string; className: st
   );
 }
 
-/** The model this assistant answers with and how hard it thinks: its conversation's own. */
-function ModelSection({ view, op }: { view: SessionView; op: SendOp }) {
-  const { t } = useTranslation("her");
-  const { model, thinking } = view.info;
-  return (
-    <section>
-      <h3 className="fhead">{t("panel.model")}</h3>
-      <ModelRows below model={model} thinking={thinking} onModel={(ref) => void op({ type: "set_model", model: ref })} onThinking={(l) => void op({ type: "set_model", model, thinking: l })} />
-      <p className="set-note">{t("panel.modelNote")}</p>
-    </section>
-  );
-}
-
 /**
- * What this assistant may do without asking. Asking more is set at once; full access asks first
- * (AccessSheet). What it starts follows it, and the note says so.
+ * What this assistant may do without asking, as a row of her Settings tab. Asking more is set at once; full access
+ * asks first (AccessSheet). What it starts follows it, and the note under the group says so.
  */
-function PermissionSection({ bot, mode }: { bot: BotSummary; mode: PermissionMode }) {
+function PermissionRow({ bot, mode }: { bot: BotSummary; mode: PermissionMode }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const choose = (m: PermissionMode) => {
@@ -287,22 +452,13 @@ function PermissionSection({ bot, mode }: { bot: BotSummary; mode: PermissionMod
     void her.run(() => local.setHerAssistantMode({ machineId: her.machine.machineId, botId: bot.id, permissionMode: m }));
   };
   return (
-    <section className="bpn-perm">
-      <h3 className="fhead">{t("panel.permission")}</h3>
-      <div className="fgroup">
-        <div className="frow">
-          <span className="fl">{t("panel.permissionMode")}</span>
-          <div className="fv">
-            <MenuButton className="mb" align="right" below title={t("panel.permissionMode")} label={<><span className="lbl strong">{permissionTitle(mode)}</span><Icon name="chevD" /></>}>
-              {(close) =>
-                modes.map((m) => <MenuItem key={m} checked={m === mode} label={permissionTitle(m)} desc={permissionDesc(m)} onClick={() => (close(), choose(m))} />)
-              }
-            </MenuButton>
-          </div>
-        </div>
+    <div className="frow">
+      <span className="fl">{t("panel.permissionMode")}</span>
+      <div className="fv">
+        <MenuButton className="mb" align="right" below title={t("panel.permissionMode")} label={<><span className="lbl strong">{permissionTitle(mode)}</span><Icon name="chevD" /></>}>
+          {(close) => modes.map((m) => <MenuItem key={m} checked={m === mode} label={permissionTitle(m)} desc={permissionDesc(m)} onClick={() => (close(), choose(m))} />)}
+        </MenuButton>
       </div>
-      <p className="set-note">{t("panel.permissionNote", { desc: permissionDesc(mode) })}</p>
-      <GrantLine m={her.machine} />
-    </section>
+    </div>
   );
 }
