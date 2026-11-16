@@ -37,7 +37,7 @@ export const fixture: Fixture = JSON.parse(fs.readFileSync(process.env.HERMESH_E
  * Starts the built app (pnpm build) against the fixture's daemon (or the one
  * at socket), with a new profile unless given one. The app follows the
  * system's languages, which macOS lets a single run override
- * (-AppleLanguages; on Windows the app reads HERMESH_TEST_LANGUAGES); the
+ * (-AppleLanguages; on Windows and Linux the app reads HERMESH_TEST_LANGUAGES); the
  * tests read the app in Chinese unless they ask for other languages
  * (language.spec.ts).
  */
@@ -56,7 +56,7 @@ export async function launch(
     env: {
       ...process.env,
       HERMESH_SOCKET: socket,
-      ...(process.platform === "win32" ? { HERMESH_TEST_LANGUAGES: languages.join(",") } : {}),
+      ...(process.platform !== "darwin" ? { HERMESH_TEST_LANGUAGES: languages.join(",") } : {}),
       HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")),
       ...o.env,
     },

@@ -8,7 +8,7 @@ import { preferences } from "./notify";
 // Language & Region). Chosen once, at start; a new choice needs a restart.
 
 export function chooseLanguage() {
-  // Test runs on Windows, which has no -AppleLanguages, name the system's languages instead.
+  // Test runs on Windows and Linux, which have no -AppleLanguages, name the system's languages instead.
   const system = !app.isPackaged && process.env.HERMESH_TEST_LANGUAGES ? process.env.HERMESH_TEST_LANGUAGES.split(",") : app.getPreferredSystemLanguages();
   setLanguage(resolveLanguage(preferences().language, system));
 }

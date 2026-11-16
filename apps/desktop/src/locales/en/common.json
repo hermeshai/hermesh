@@ -156,6 +156,7 @@
   "health": {
     "thisMac": "This Mac",
     "thisMac_win": "This PC",
+    "thisMac_linux": "This Computer",
     "processesTitle": "{{name}} can’t start new programs",
     "processesTitleNear": "{{name}} is running out of processes",
     "processesBody": "Process limit reached ({{used}} / {{limit}}). Hermesh can’t start coding agents, so new sessions will fail. It will recover automatically once the program holding those processes quits.",
@@ -175,6 +176,7 @@
     "shortShellPath": "Can’t read PATH",
     "openActivityMonitor": "Open Activity Monitor",
     "openActivityMonitor_win": "Open Task Manager",
+    "openActivityMonitor_linux": "Open System Monitor",
     "view": "View",
     "listLabel": "Problems"
   },

@@ -1,6 +1,7 @@
 {
   "thisMac": "This Mac",
   "thisMac_win": "This PC",
+  "thisMac_linux": "This Computer",
   "waiting": "Waiting for you",
   "page": {
     "showInfo": "Show info panel {{keys}}",
@@ -36,6 +37,7 @@
       "notConnected": "Can’t reach Hermesh",
       "notConnectedDetail": "This conversation is stored on {{name}} and will appear once this Mac reconnects.",
       "notConnectedDetail_win": "This conversation is stored on {{name}} and will appear once this PC reconnects.",
+      "notConnectedDetail_linux": "This conversation is stored on {{name}} and will appear once this computer reconnects.",
       "noAnswer": "{{name}} isn’t responding",
       "noAnswerDetail": "This conversation is stored on that machine. Retrying automatically; it will appear once the machine responds."
     },
@@ -84,6 +86,7 @@
     "copyPath": "Copy Project Path",
     "copyBranch": "Copy Branch Name",
     "openInFinder": "Open in Finder",
+    "openInFinder_linux": "Open in Files",
     "openInExplorer": "Open in File Explorer",
     "openInTerminal": "Open in Terminal",
     "notRepo": "Not a git repository",

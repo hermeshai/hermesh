@@ -19,7 +19,7 @@ import zhOverview from "../locales/zh-CN/overview.json" with { type: "json" };
 import zhSession from "../locales/zh-CN/session.json" with { type: "json" };
 import zhSettings from "../locales/zh-CN/settings.json" with { type: "json" };
 import zhSheets from "../locales/zh-CN/sheets.json" with { type: "json" };
-import { windowsWords } from "./words";
+import { systemWords } from "./words";
 
 // The desktop app's text, by namespace: main (the main process: menus,
 // notifications, dialogs), common (what several pages share), and one per
@@ -55,14 +55,14 @@ export function setLanguage(lng: Language) {
 }
 
 /**
- * On Windows a key's Windows variant takes its place where there is one
- * ("thisMac_win": "This PC"; plural forms as "files_win_one"), in every
- * language and namespace (docs/windows.md §5.3). Once, before anything
- * shows text.
+ * On Windows and on Linux a key's variant for that system takes its place
+ * where there is one ("thisMac_win": "This PC", "thisMac_linux": "This
+ * Computer"; plural forms as "files_win_one"), in every language and
+ * namespace (docs/windows.md §5.3). Once, before anything shows text.
  */
-export function useWindowsWords() {
+export function useSystemWords(system: "win" | "linux") {
   for (const lng of languages) {
-    for (const ns of Object.keys(i18n.store.data[lng] ?? {})) i18n.addResourceBundle(lng, ns, windowsWords(i18n.getResourceBundle(lng, ns)), false, true);
+    for (const ns of Object.keys(i18n.store.data[lng] ?? {})) i18n.addResourceBundle(lng, ns, systemWords(i18n.getResourceBundle(lng, ns), system), false, true);
   }
 }
 

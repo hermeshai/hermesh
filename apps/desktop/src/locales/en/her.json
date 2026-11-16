@@ -19,6 +19,7 @@
     "sub": "Her works on the machine you choose: its conversations, memory and files stay there, and it answers while that machine is on.",
     "thisMac": "This Mac",
     "thisMac_win": "This PC",
+    "thisMac_linux": "This Computer",
     "thisMacDesc": "Her goes offline while this Mac sleeps",
     "thisMacDesc_win": "Her goes offline while this PC sleeps",
     "windows": "Update Hermesh on this PC to run Her",
@@ -245,6 +246,7 @@
     "fit": "Fit Width",
     "search": "Search the Document (⌘F)",
     "search_win": "Search the Document (Ctrl+F)",
+    "search_linux": "Search the Document (Ctrl+F)",
     "searchPlaceholder": "Search the document",
     "noMatch": "Not found",
     "sidebar": "Outline and Pages",
@@ -362,6 +364,7 @@
     "clear": "Clear Chat",
     "clearMemory": "Clear Memory",
     "permissionNote_win": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with Windows Hello.",
+    "permissionNote_linux": "{{desc}}. The agents and scheduled tasks Her starts run with it too, while you are away as well. Full access is confirmed with your password.",
     "turnOff": "Turn Off Her on {{machine}}…"
   },
   "approval": {

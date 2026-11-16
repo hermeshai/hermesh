@@ -19,6 +19,7 @@
     "sub": "Her 在你选的机器上工作：对话、记忆和文件都留在那里，那台机器开着时它就能回你。",
     "thisMac": "这台 Mac",
     "thisMac_win": "这台电脑",
+    "thisMac_linux": "这台电脑",
     "thisMacDesc": "Mac 睡眠时 Her 也会离线",
     "thisMacDesc_win": "这台电脑睡眠时 Her 也会离线",
     "windows": "需先更新这台电脑上的 Hermesh",
@@ -241,6 +242,7 @@
     "fit": "适合宽度",
     "search": "在文档中搜索（⌘F）",
     "search_win": "在文档中搜索（Ctrl+F）",
+    "search_linux": "在文档中搜索（Ctrl+F）",
     "searchPlaceholder": "搜索文档",
     "noMatch": "没有找到",
     "sidebar": "目录与页面",
@@ -356,6 +358,7 @@
     "clear": "清空聊天记录",
     "clearMemory": "清空记忆",
     "permissionNote_win": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Windows Hello 确认。",
+    "permissionNote_linux": "{{desc}}。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用系统密码确认。",
     "turnOff": "在 {{machine}} 上关闭 Her…"
   },
   "approval": {

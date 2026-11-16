@@ -1,5 +1,5 @@
 import { pickLanguage } from "@hermesh/core";
-import { languages, setLanguage, useWindowsWords, type Language } from "../../shared/i18n";
+import { languages, setLanguage, useSystemWords, type Language } from "../../shared/i18n";
 import { platform } from "./platform";
 
 // The page's language: the one the main process chose for this run, or (a
@@ -8,5 +8,5 @@ import { platform } from "./platform";
 const chosen = window.hermesh?.language;
 const lng: Language = chosen && languages.includes(chosen) ? chosen : pickLanguage(navigator.languages);
 setLanguage(lng);
-if (platform === "win") useWindowsWords();
+if (platform !== "mac") useSystemWords(platform);
 document.documentElement.lang = lng;
