@@ -13,6 +13,7 @@ import { TargetRelay } from "./relay.js";
  * @property {(url: string, label?: string) => Promise<number>} create  A new tab of the agent's; its id.
  * @property {(tabId: number, label?: string) => void} adopt  A tab an agent tab opened joins its group.
  * @property {(tabId: number) => void} close
+ * @property {(tabId: number) => void} forget  Forgets a missing tab's persisted session ownership.
  * @property {(tabId: number) => void} activate
  * @property {(tabId: number) => Promise<void>} attach  Attaches the debugger.
  * @property {(tabId: number) => void} detach
@@ -91,7 +92,17 @@ export class ExtensionBrowser extends TargetRelay {
   }
 
   async attachPage(t) {
-    await this.tabs.attach(t.tabId);
+    try {
+      await this.tabs.attach(t.tabId);
+    } catch (e) {
+      // A missed onRemoved must not leave a dead tab in the next connection's recovery.
+      // Other attach failures (permissions, another debugger) can still be recovered.
+      if (e instanceof Error && e.message === `No tab with given id ${t.tabId}`) {
+        this.tabs.forget(t.tabId);
+        this.drop(t, "the tab was closed", "gone");
+      }
+      throw e;
+    }
     if (!this.targets.has(t.targetId)) {
       this.tabs.detach(t.tabId);
       throw new Error("the tab was closed");

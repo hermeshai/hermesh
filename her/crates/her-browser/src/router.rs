@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use url::Url;
 
 use crate::BrowserError;
+use crate::cdp::CdpError;
 use crate::cdp::CdpEvent;
 use crate::cdp::Conn;
 
@@ -381,7 +382,24 @@ impl Router {
             for info in infos {
                 let id = str_of(info, "targetId");
                 if !id.is_empty() {
-                    tabs.push(self.attach(owner, id, None).await?);
+                    match self.attach(owner, id, None).await {
+                        Ok(tab) => tabs.push(tab),
+                        Err(BrowserError::Cdp(CdpError::Protocol { method, message, .. }))
+                            if method == "Target.attachToTarget"
+                                && (message == format!("No target with given id {id}")
+                                    || message == "the tab was closed"
+                                    || id.strip_prefix('T').is_some_and(|tab| {
+                                        !tab.is_empty() && tab.bytes().all(|b| b.is_ascii_digit()) && message == format!("No tab with given id {tab}")
+                                    })) =>
+                        {
+                            // A tab can close between getTargets and attach, or an old extension
+                            // can offer a stale saved tab. Keep restoring the remaining pages.
+                            if let Some(entry) = self.state.lock().owners.get_mut(&owner) {
+                                entry.known.remove(id);
+                            }
+                        }
+                        Err(err) => return Err(err),
+                    }
                 }
             }
         }
