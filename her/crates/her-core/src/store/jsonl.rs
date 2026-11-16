@@ -334,7 +334,9 @@ impl SessionStore for JsonlStore {
         // A crash can leave a half-written last line; drop it so new lines start cleanly.
         if !text.is_empty() && !text.ends_with('\n') {
             let keep = text.rfind('\n').map(|i| i + 1).unwrap_or(0);
-            file.set_len(keep as u64).map_err(io_err(&path))?;
+            // Through a handle of its own: Windows lets one that may only append change no
+            // length.
+            OpenOptions::new().write(true).open(&path).and_then(|log| log.set_len(keep as u64)).map_err(io_err(&path))?;
             text.truncate(keep);
             warnings.push("dropped an incomplete last line from the session log".to_string());
         }
@@ -532,9 +534,9 @@ impl JsonlStore {
         let name = path.file_name().map_or_else(|| PathBuf::from(format!("{}.jsonl", header.id)), PathBuf::from);
         // The session's files go with its log.
         let (data_dir, _) = crate::paths::HerHome::session_data_dir(&path, &header.id);
-        std::fs::rename(&path, trash.join(&name)).map_err(io_err(&path))?;
+        her_tools::files::rename(&path, &trash.join(&name)).map_err(io_err(&path))?;
         if data_dir.is_dir() {
-            std::fs::rename(&data_dir, trash.join(name.with_extension(""))).map_err(io_err(&data_dir))?;
+            her_tools::files::rename(&data_dir, &trash.join(name.with_extension(""))).map_err(io_err(&data_dir))?;
         }
         Ok(header.id)
     }
@@ -681,6 +683,24 @@ mod tests {
         assert!(newer.location.exists());
         assert!(store.unwritten.lock().is_empty());
         assert_eq!(ids(&store, 10, None), [NEWER, OLDER]);
+    }
+
+    /// A log whose last line was cut short (a crash) opens without it, and the next line
+    /// starts on its own.
+    #[tokio::test]
+    async fn an_incomplete_last_line_is_dropped_when_the_log_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = JsonlStore::new(dir.path().join("sessions"));
+        let path = dir.path().join("sessions").join(format!("20261029T000000-{OLDER}.jsonl"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let header = serde_json::to_string(&SessionHeader::new(OLDER.into(), dir.path().to_path_buf())).unwrap();
+        std::fs::write(&path, format!("{header}\n{{\"id\":\"half")).unwrap();
+
+        let loaded = store.open(&SessionRef::Path(path.clone())).unwrap();
+        assert_eq!(loaded.header.id, OLDER);
+        assert!(loaded.entries.is_empty());
+        assert_eq!(loaded.warnings, ["dropped an incomplete last line from the session log"]);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), format!("{header}\n"));
     }
 
     /// A bot's session is opened through its bot: never listed, never "the last session",

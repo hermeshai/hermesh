@@ -165,7 +165,9 @@ async fn a_bot_talks_in_messages_and_its_row_follows() {
     let (_, log) = logs(env.home.path()).into_iter().find(|(_, text)| text.contains(&session)).expect("the log");
     assert!(log.contains("You are 研究员, the user's assistant."));
     let folder = env.home.path().join("bots").join(&bot).join("files");
-    assert!(log.contains(&format!("\"cwd\":\"{}", dunce::canonicalize(&folder).unwrap().display())));
+    // As the log's JSON writes the path.
+    let cwd = serde_json::to_string(&dunce::canonicalize(&folder).unwrap()).unwrap();
+    assert!(log.contains(&format!("\"cwd\":{}", cwd.trim_end_matches('"'))));
 }
 
 #[tokio::test]
