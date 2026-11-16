@@ -121,9 +121,7 @@ extension HermeshUITests {
         // What turning her on means, from the bytes to be signed; Face ID approves.
         XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         herShot("Her: turning her on")
-        // Turning her on also lets her use the owner's computers, and the sheet says so: Approve is below the fold.
-        let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
-        for _ in 0..<4 where !approve.exists { app.swipeUp() }
+        // Turning her on also lets her use the owner's computers, and the sheet says so; Approve stays in sight.
         tap("sign-approve")
     }
 
