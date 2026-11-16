@@ -52,14 +52,15 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(panel.locator(".fhead").first()).toContainText("今天");
   await expect(row.getByLabel("新的")).toBeVisible();
   await expect(button).toHaveAttribute("aria-label", "文件");
-  const versions = panel.getByRole("button", { name: "2 个版本" });
-  await versions.click();
-  await expect(panel.locator(".dlv-ver")).toHaveCount(2);
+  // Two lines: the name and when, then Her's words (none here: its size) and how many versions.
+  await expect(row.locator(".dlv-vers")).toHaveText("2 个版本");
   await snap(page, "her-files-panel");
 
-  // Each version as it was sent: the first is the draft, though the file now holds the second.
-  await panel.locator(".dlv-ver").filter({ hasText: "第 1 版" }).click();
+  // Each version as it was sent, switched where it opens: the first is the draft, though the file now holds the second.
+  await row.getByRole("button", { name: /^打开/ }).click();
   const preview = page.getByTestId("her-file-preview");
+  await expect(preview).toContainText("第二版：营收和利润。", { timeout: 30_000 });
+  await preview.getByRole("radio", { name: "第 1 版" }).click();
   await expect(preview).toContainText("初稿：只有营收。", { timeout: 30_000 });
   await expect(preview).toContainText("第 1 版");
   await snap(page, "her-files-preview-v1");
@@ -83,22 +84,18 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(heard).toContainText("Replying to this earlier message of yours, quoted in part:", { timeout: 60_000 });
   await expect(heard.locator("blockquote")).toContainText("季度报告.md");
 
-  // Search and the kinds: nothing found says so; a kind with none of them is empty.
+  // Search and the tabs: nothing found says so; the report is a document, and there is no media.
   const search = panel.getByRole("textbox", { name: "搜文件名，或 Her 说过的话" });
   await search.fill("没有这个");
   await expect(panel.getByTestId("files-empty")).toContainText("没有找到", { timeout: 10_000 });
   await search.fill("季度");
   await expect(row).toHaveCount(1, { timeout: 10_000 });
-  await panel.getByRole("radio", { name: "图片" }).click();
+  await panel.getByRole("radio", { name: "媒体" }).click();
   await expect(panel.getByTestId("files-empty")).toContainText("没有找到", { timeout: 10_000 });
   await panel.getByRole("radio", { name: "文档" }).click();
   await expect(row).toHaveCount(1, { timeout: 10_000 });
+  await panel.getByRole("radio", { name: "全部" }).click();
   await search.fill("");
-
-  // Grouped by what each came from: what the owner asked for in the conversation.
-  await panel.getByRole("button", { name: "分组" }).click();
-  await page.getByRole("menuitemradio", { name: "按来源" }).click();
-  await expect(panel.locator(".fhead").first()).toContainText("对话里要的");
 
   // Closed, the list is seen: the next file is the only new one, and nothing old is marked.
   await panel.getByRole("button", { name: "关闭" }).click();

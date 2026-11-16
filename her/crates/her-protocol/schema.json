@@ -8778,6 +8778,13 @@
             "null"
           ]
         },
+        "media": {
+          "description": "true: only pictures, video and audio (DeliveryKind::is_media); false: only the rest, the documents. Both without it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "query": {
           "description": "Only files with this in their name, in the bot's words or in what they came from, in any version, without regard to case.",
           "type": [
@@ -8931,6 +8938,8 @@
         "sheet",
         "slide",
         "image",
+        "video",
+        "audio",
         "code",
         "other"
       ],

@@ -1,8 +1,8 @@
 import Foundation
 
 // The files Her sent, in a list of their own (docs/her-deliverables.md §3.1, §4.3): what the iPhone reads of
-// deliveries/list. her answers the pages; here they are joined, grouped by time or by what they came from, marked
-// new, and turned into what to read and the quote a reply carries. her-client's deliveries.ts does the same, and
+// deliveries/list. her answers the pages; here they are joined, grouped by when each was last sent, marked new, and
+// turned into what to read and the quote a reply carries. her-client's deliveries.ts does the same, and
 // both run the cases in packages/her-client/testdata/deliveries.json.
 
 /// Where a file came from: a routine's report or a coding session's news Her passed on.
@@ -56,7 +56,12 @@ public struct HerDelivery: Equatable, Sendable, Identifiable {
 
 /// A file Her sent: her sends from one path, newest first, each a different content.
 public struct HerDeliveredFile: Equatable, Sendable, Identifiable {
-    public enum Kind: String, Sendable { case doc, sheet, slide, image, code, other }
+    public enum Kind: String, Sendable {
+        case doc, sheet, slide, image, video, audio, code, other
+
+        /// Pictures, video and audio: what the list shows apart from documents (deliveries/list's `media`).
+        public var isMedia: Bool { self == .image || self == .video || self == .audio }
+    }
     public var path: String
     public var name: String
     public var kind: Kind
@@ -115,19 +120,14 @@ public struct HerDeliveries: Equatable, Sendable {
     }
 }
 
-/// How the list is grouped.
-public enum HerDeliveryGrouping: String, Sendable, CaseIterable { case time, source }
-
 /// When a file was last sent, as the list groups it.
 public enum HerDeliveryDay: String, Sendable { case today, yesterday, week, earlier }
 
-/// A group of the list: by time, its day; by source, `conversation`, `routine:<id>` or `session:<id>`, with that
-/// source as its latest file names it.
+/// A group of the list: the day its files were last sent.
 public struct HerDeliveryGroup: Equatable, Sendable, Identifiable {
-    public var key: String
-    public var source: HerDeliverySource?
+    public var day: HerDeliveryDay
     public var files: [HerDeliveredFile]
-    public var id: String { key }
+    public var id: String { day.rawValue }
 }
 
 /// The day of `sent` from the day of `now`, in `zone`.
@@ -138,20 +138,15 @@ public func herDeliveryDay(_ sent: Date, now: Date, zone: TimeZone) -> HerDelive
     return ago <= 0 ? .today : ago == 1 ? .yesterday : ago < 7 ? .week : .earlier
 }
 
-/// The files in groups, each group where its first file is (the files come newest first).
-public func herDeliveryGroups(_ files: [HerDeliveredFile], by: HerDeliveryGrouping, now: Date, zone: TimeZone) -> [HerDeliveryGroup] {
+/// The files by the day each was last sent, each group where its first file is (the files come newest first).
+public func herDeliveryGroups(_ files: [HerDeliveredFile], now: Date, zone: TimeZone) -> [HerDeliveryGroup] {
     var groups: [HerDeliveryGroup] = []
     for f in files {
-        let source = f.latest?.source
-        let key: String
-        switch by {
-        case .time: key = herDeliveryDay(f.latest?.sentAt ?? .distantPast, now: now, zone: zone).rawValue
-        case .source: key = source.map { "\($0.kind.rawValue):\($0.id)" } ?? "conversation"
-        }
-        if let i = groups.firstIndex(where: { $0.key == key }) {
+        let day = herDeliveryDay(f.latest?.sentAt ?? .distantPast, now: now, zone: zone)
+        if let i = groups.firstIndex(where: { $0.day == day }) {
             groups[i].files.append(f)
         } else {
-            groups.append(HerDeliveryGroup(key: key, source: by == .source ? source : nil, files: [f]))
+            groups.append(HerDeliveryGroup(day: day, files: [f]))
         }
     }
     return groups

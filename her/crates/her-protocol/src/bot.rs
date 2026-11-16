@@ -229,11 +229,18 @@ pub enum DeliveryKind {
     Sheet,
     Slide,
     Image,
+    Video,
+    Audio,
     Code,
     Other,
 }
 
 impl DeliveryKind {
+    /// Pictures, video and audio: what the apps list apart from documents.
+    pub fn is_media(self) -> bool {
+        matches!(self, Self::Image | Self::Video | Self::Audio)
+    }
+
     /// By the name's extension, without regard to case; `image`: its contents are a picture's.
     pub fn of(name: &str, image: bool) -> Self {
         if image {
@@ -245,6 +252,8 @@ impl DeliveryKind {
             "xlsx" | "xls" | "csv" | "tsv" | "numbers" | "ods" => Self::Sheet,
             "pptx" | "ppt" | "key" | "odp" => Self::Slide,
             "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "svg" | "bmp" | "tiff" => Self::Image,
+            "mp4" | "mov" | "m4v" | "webm" | "avi" | "mkv" => Self::Video,
+            "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg" | "opus" => Self::Audio,
             "rs" | "go" | "py" | "js" | "mjs" | "ts" | "tsx" | "jsx" | "java" | "kt" | "swift" | "c" | "h" | "cc" | "cpp" | "hpp" | "cs" | "rb" | "php"
             | "sh" | "bash" | "zsh" | "sql" | "json" | "yaml" | "yml" | "toml" | "xml" | "css" | "scss" | "lua" | "r" | "diff" | "patch" | "ipynb" => Self::Code,
             _ => Self::Other,
@@ -257,6 +266,8 @@ impl DeliveryKind {
             Self::Sheet => "sheet",
             Self::Slide => "slide",
             Self::Image => "image",
+            Self::Video => "video",
+            Self::Audio => "audio",
             Self::Code => "code",
             Self::Other => "other",
         }
@@ -278,6 +289,10 @@ pub struct DeliveriesListParams {
     pub query: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<DeliveryKind>,
+    /// true: only pictures, video and audio (DeliveryKind::is_media); false: only the rest, the
+    /// documents. Both without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<bool>,
 }
 
 /// Result of `deliveries/list`.

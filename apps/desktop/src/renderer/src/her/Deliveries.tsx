@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { deliveryQuote, groupDeliveries, isNewDelivery, joinDeliveries, readSent, type DeliveryDay, type DeliveryGroupBy } from "@hermesh/her-client";
-import type { BotSummary, DeliveredFile, DeliveriesListResult, Delivery, DeliveryKind } from "@hermesh/her-protocol";
+import { deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, readSent } from "@hermesh/her-client";
+import type { BotSummary, DeliveredFile, DeliveriesListResult, Delivery } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
 import { Dialog } from "../session/markdown/Dialog";
@@ -18,21 +18,15 @@ import { PdfView } from "./preview/PdfView";
 import "./preview/preview.css";
 
 // The files Her sent, in a place of their own (docs/her-deliverables.md §3): beside the conversation, where her
-// settings and routines open. Newest first, searched and filtered by her, grouped here by time or by what each
-// came from; a file sent again from the same path is one row, its versions under it. A file opens over the window,
+// settings and routines open. Newest first, searched by her, by the day each was last sent; three tabs: all, the
+// documents (what is read: reports, sheets, slides, PDF, Markdown, code and the rest) and the media (pictures, video
+// and audio, as a grid). A file sent again from the same path is one row; its versions are switched where it opens. A file opens over the window,
 // from the copy her kept of it as it was sent, and is kept on this Mac by its hash once read, so it opens while the
 // machine is offline too. From a file: Show in Conversation, and Reply, which quotes it so Her goes on with it.
 
-const KINDS = ["all", "doc", "sheet", "slide", "image", "code"] as const;
-
-/** The grouping chosen last, on this Mac. */
-function rememberedGroup(): DeliveryGroupBy {
-  try {
-    return localStorage.getItem("her-files-group") === "source" ? "source" : "time";
-  } catch {
-    return "time";
-  }
-}
+/** Which of the files show. */
+type Tab = "all" | "documents" | "media";
+const TABS: Tab[] = ["all", "documents", "media"];
 
 /** The extension, as a file's icon shows it. */
 const extOf = (name: string) => (name.includes(".") ? name.slice(name.lastIndexOf(".") + 1).toLowerCase() : "");
@@ -69,13 +63,11 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
   const older = herAnswers(machine, "deliveries/list") === false;
   const [query, setQuery] = useState("");
   const [typed, setTyped] = useState("");
-  const [kind, setKind] = useState<"all" | DeliveryKind>("all");
-  const [group, setGroup] = useState<DeliveryGroupBy>(rememberedGroup);
+  const [tab, setTab] = useState<Tab>("all");
   const [list, setList] = useState<DeliveriesListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lacks, setLacks] = useState(false);
   const [more, setMore] = useState(false);
-  const [open, setOpen] = useState<Set<string>>(new Set());
   const [shown, setShown] = useState<{ file: DeliveredFile; version: number } | null>(null);
   const [menu, setMenu] = useState<{ file: DeliveredFile; x: number; y: number } | null>(null);
   const [onMac, setOnMac] = useState<Set<string>>(new Set());
@@ -84,27 +76,19 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     const wait = setTimeout(() => setQuery(typed.trim()), 200);
     return () => clearTimeout(wait);
   }, [typed]);
-  useEffect(() => {
-    try {
-      localStorage.setItem("her-files-group", group);
-    } catch {
-      // A convenience: without storage it groups by time.
-    }
-  }, [group]);
-
   // The first page, asked for again when her says the list changed (the row's latest send) or the search does.
   const latest = bot.deliveries_latest ?? 0;
   useEffect(() => {
     if (older || !online) return;
     let live = true;
-    her.call("deliveries/list", { bot_id: bot.id, ...(query ? { query } : {}), ...(kind !== "all" ? { kind } : {}) }).then(
+    her.call("deliveries/list", { bot_id: bot.id, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) }).then(
       (r) => live && (setList(r), setError(null), setLacks(false)),
       (e) => live && (setError(errorText(e)), setLacks(needsUpdate(e))),
     );
     return () => {
       live = false;
     };
-  }, [bot.id, latest, query, kind, online, older]);
+  }, [bot.id, latest, query, tab, online, older]);
 
   // Offline, or until her answers: the page this Mac keeps, searched and filtered here.
   const shownList = useMemo<DeliveriesListResult | null>(() => {
@@ -112,10 +96,10 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     if (!kept) return null;
     const q = query.toLowerCase();
     const files = kept.files.filter(
-      (f) => (kind === "all" || f.kind === kind) && (!q || [f.name, ...f.versions.flatMap((v) => [v.text ?? "", v.source?.name ?? ""])].some((s) => s.toLowerCase().includes(q))),
+      (f) => (tab === "all" || isMediaKind(f.kind) === (tab === "media")) && (!q || [f.name, ...f.versions.flatMap((v) => [v.text ?? "", v.source?.name ?? ""])].some((s) => s.toLowerCase().includes(q))),
     );
     return { files, seen: kept.seen };
-  }, [list, kept, query, kind]);
+  }, [list, kept, query, tab]);
 
   // Which files this Mac has, for while the machine is offline.
   const shaList = (shownList?.files ?? []).flatMap((f) => f.versions.flatMap((v) => (v.sha256 ? [[v.sha256, f.name] as [string, string]] : [])));
@@ -148,7 +132,7 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     if (!list?.next || more) return;
     setMore(true);
     her
-      .call("deliveries/list", { bot_id: bot.id, before: list.next, ...(query ? { query } : {}), ...(kind !== "all" ? { kind } : {}) })
+      .call("deliveries/list", { bot_id: bot.id, before: list.next, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) })
       .then((r) => setList((l) => (l ? joinDeliveries([l, r]) : r)), (e) => st.show(errorText(e)))
       .finally(() => setMore(false));
   };
@@ -185,15 +169,12 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     },
   };
 
-  const groups = shownList ? groupDeliveries(shownList.files, group, now.getTime(), -now.getTimezoneOffset()) : [];
-  const groupTitle = (key: string, source?: { name: string }): string =>
-    group === "time" ? t(`files.day.${key as DeliveryDay}`) : key === "conversation" ? t("files.source.conversation") : (source?.name ?? key);
-  const searching = query !== "" || kind !== "all";
+  const groups = shownList ? groupDeliveries(shownList.files, now.getTime(), -now.getTimezoneOffset()) : [];
+  const searching = query !== "" || tab !== "all";
   return (
     <aside className="her-panel rtn dlv" aria-label={t("files.title")}>
       <div className="her-panel-top drag rtn-top">
         <span className="rtn-tt">{t("files.title")}</span>
-        <GroupMenu group={group} onGroup={setGroup} />
         <button className="tb" title={t("panel.close")} aria-label={t("panel.close")} onClick={onClose}>
           <Icon name="x" />
         </button>
@@ -212,10 +193,10 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
               <Icon name="search" className="sm" />
               <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={t("files.search")} aria-label={t("files.search")} />
             </label>
-            <div className="dlv-kinds" role="radiogroup" aria-label={t("files.title")}>
-              {KINDS.map((k) => (
-                <button key={k} role="radio" aria-checked={kind === k} className={kind === k ? "on" : ""} onClick={() => setKind(k)}>
-                  {t(`files.kinds.${k}`)}
+            <div className="dlv-tabs" role="radiogroup" aria-label={t("files.title")}>
+              {TABS.map((k) => (
+                <button key={k} role="radio" aria-checked={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>
+                  {t(`files.tabs.${k}`)}
                 </button>
               ))}
             </div>
@@ -237,11 +218,10 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
             {groups.map((g) => (
               <section key={g.key} className="dlv-group">
                 <h3 className="fhead">
-                  {groupTitle(g.key, g.source)}
+                  {t(`files.day.${g.key}`)}
                   <small>{g.files.length}</small>
-                  {g.source && <span className="dlv-gk">{t(`files.source.${g.source.kind}`)}</span>}
                 </h3>
-                {kind === "image" ? (
+                {tab === "media" ? (
                   <div className="dlv-grid">
                     {g.files.map((f) => (
                       <Thumb key={f.path} file={f} fresh={isNewDelivery(f, shownList!.seen)} enabled={canOpen(f, f.versions[0])} onOpen={() => act.open(f)} />
@@ -255,10 +235,7 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
                       bot={bot}
                       now={now}
                       fresh={isNewDelivery(f, shownList!.seen)}
-                      bySource={group === "source"}
                       enabled={canOpen(f, f.versions[0])}
-                      open={open.has(f.path)}
-                      onToggle={() => setOpen((s) => (s.has(f.path) ? new Set([...s].filter((p) => p !== f.path)) : new Set([...s, f.path])))}
                       act={act}
                       onMenu={(e) => {
                         e.preventDefault();
@@ -297,46 +274,6 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
 
 type Acts = Record<"open" | "show" | "reply" | "download", (f: DeliveredFile, version?: number) => void>;
 
-function GroupMenu({ group, onGroup }: { group: DeliveryGroupBy; onGroup: (g: DeliveryGroupBy) => void }) {
-  const { t } = useTranslation("her");
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!at) return;
-    menu.current?.focus();
-    const outside = (e: MouseEvent) => !menu.current?.contains(e.target as Node) && setAt(null);
-    document.addEventListener("mousedown", outside);
-    return () => document.removeEventListener("mousedown", outside);
-  }, [at]);
-  return (
-    <>
-      <button
-        className="tb dlv-groupby"
-        title={t("files.group.label")}
-        aria-label={t("files.group.label")}
-        aria-haspopup="menu"
-        aria-expanded={!!at}
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setAt(at ? null : { x: innerWidth - r.right, y: r.bottom + 4 });
-        }}
-      >
-        <Icon name="filter" className="sm" />
-        <span>{t(`files.group.${group}`)}</span>
-      </button>
-      {at &&
-        createPortal(
-          <div className="vmenu her-menu down" role="menu" aria-label={t("files.group.label")} tabIndex={-1} ref={menu} style={{ right: at.x, top: at.y }} onKeyDown={(e) => menuKeys(e, menu.current, () => setAt(null))}>
-            {(["time", "source"] as const).map((g) => (
-              <MenuItem key={g} checked={group === g} label={t(`files.group.${g}`)} onClick={() => (onGroup(g), setAt(null))} />
-            ))}
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
 function RowMenu({ at, act, onClose }: { at: { file: DeliveredFile; x: number; y: number }; act: Acts; onClose: () => void }) {
   const { t } = useTranslation("her");
   const menu = useRef<HTMLDivElement>(null);
@@ -374,85 +311,64 @@ function FileIcon({ file }: { file: DeliveredFile }) {
   );
 }
 
-function Row({ file, bot, now, fresh, bySource, enabled, open, onToggle, act, onMenu }: {
+/** When a file was last sent, as its row says it: the time under Today and Yesterday, the day before that. */
+function whenText(at: Date, now: Date, language: string): string {
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const ago = Math.round((day(now) - day(at)) / 86_400_000);
+  return ago <= 1 ? at.toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" }) : at.toLocaleDateString(language, { month: "short", day: "numeric" });
+}
+
+/**
+ * A row, two lines: the name, with the new dot and when it was last sent; then Her's words with it (its size when
+ * she said nothing), and how many versions there are. Its size, where it came from and its versions one by one are
+ * where it opens. Hovering shows its actions over the time.
+ */
+function Row({ file, bot, now, fresh, enabled, act, onMenu }: {
   file: DeliveredFile;
   bot: BotSummary;
   now: Date;
   fresh: boolean;
-  bySource: boolean;
   enabled: boolean;
-  open: boolean;
-  onToggle: () => void;
   act: Acts;
   onMenu: (e: ReactMouseEvent) => void;
 }) {
-  const { t } = useTranslation("her");
+  const { t, i18n } = useTranslation("her");
   const v = file.versions[0];
   const earlier = !!bot.session_id && v.session_id !== bot.session_id;
   const stem = file.name.includes(".") ? file.name.slice(0, file.name.lastIndexOf(".")) : file.name;
   return (
-    <>
-      <div className={`dlv-row ${enabled ? "" : "off"}`} data-testid="her-file-row" data-name={file.name} onContextMenu={onMenu}>
-        <button className="dlv-open" aria-label={`${t("files.open")} ${file.name}`} onClick={() => act.open(file)}>
-          <FileIcon file={file} />
-          <span className="dlv-k">
+    <div className={`dlv-row ${enabled ? "" : "off"}`} data-testid="her-file-row" data-name={file.name} onContextMenu={onMenu}>
+      <button className="dlv-open" aria-label={`${t("files.open")} ${file.name}`} onClick={() => act.open(file)}>
+        <FileIcon file={file} />
+        <span className="dlv-k">
+          <span className="dlv-l1">
             <span className="dlv-n">
               <span className="dlv-stem">{stem}</span>
               {stem !== file.name && <em>{file.name.slice(stem.length)}</em>}
               {fresh && <i className="dlv-dot" aria-label={t("files.new")} />}
             </span>
-            {v.text && <span className="dlv-say">{v.text}</span>}
-            <span className="dlv-meta">
-              <span>
-                {momentText(new Date(v.sent_at), now)} · {sizeText(v.size)}
-              </span>
-              {!bySource && v.source && (
-                <span className="dlv-chip">
-                  <Icon name={v.source.kind === "routine" ? "clock" : "code"} className="sm" />
-                  {v.source.name}
-                </span>
-              )}
-              {earlier && <span className="dlv-chip">{t("files.fromEarlier")}</span>}
-            </span>
+            <span className="dlv-when">{whenText(new Date(v.sent_at), now, i18n.language)}</span>
           </span>
-        </button>
-        {file.versions.length > 1 && (
-          <button className={`dlv-vers ${open ? "open" : ""}`} aria-expanded={open} onClick={onToggle}>
-            {t("files.versions", { count: file.versions.length })}
-            <Icon name="chevD" className="sm" />
+          <span className="dlv-l2">
+            <span className="dlv-say">{v.text ?? sizeText(v.size)}</span>
+            {file.versions.length > 1 && <span className="dlv-vers">{t("files.versions", { count: file.versions.length })}</span>}
+          </span>
+        </span>
+      </button>
+      <span className="dlv-acts">
+        {!earlier && (
+          <button className="tb" title={t("files.show")} aria-label={t("files.show")} onClick={() => act.show(file)}>
+            <Icon name="bubble" className="sm" />
           </button>
         )}
-        <span className="dlv-acts">
-          {!earlier && (
-            <button className="tb" title={t("files.show")} aria-label={t("files.show")} onClick={() => act.show(file)}>
-              <Icon name="bubble" className="sm" />
-            </button>
-          )}
-          <button className="tb" title={t("files.reply")} aria-label={t("files.reply")} onClick={() => act.reply(file)}>
-            <Icon name="reply" className="sm" />
-          </button>
-          <button className="tb" title={t("files.download")} aria-label={t("files.download")} onClick={() => act.download(file)}>
-            <Icon name="arrowD" className="sm" />
-          </button>
-        </span>
-      </div>
-      {open && (
-        <div className="dlv-history" role="list">
-          {file.versions.map((x, i) => (
-            <button key={x.seq} role="listitem" className="dlv-ver" onClick={() => act.open(file, i)}>
-              <b>
-                {t("files.version", { n: file.versions.length - i })}
-                {i === 0 && t("files.latestMark")}
-                <small>
-                  {momentText(new Date(x.sent_at), now)} · {sizeText(x.size)}
-                </small>
-              </b>
-              {x.text && <span>{x.text}</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </>
+        <button className="tb" title={t("files.reply")} aria-label={t("files.reply")} onClick={() => act.reply(file)}>
+          <Icon name="reply" className="sm" />
+        </button>
+        <button className="tb" title={t("files.download")} aria-label={t("files.download")} onClick={() => act.download(file)}>
+          <Icon name="arrowD" className="sm" />
+        </button>
+      </span>
+    </div>
   );
 }
 
@@ -482,7 +398,7 @@ function usePicture(file: DeliveredFile, v: Delivery | undefined, enabled: boole
 }
 
 function Thumb({ file, fresh, enabled, onOpen }: { file: DeliveredFile; fresh: boolean; enabled: boolean; onOpen: () => void }) {
-  const url = usePicture(file, file.versions[0], enabled);
+  const url = usePicture(file, file.versions[0], enabled && file.kind === "image");
   return (
     <button className={`dlv-thumb ${enabled ? "" : "off"}`} title={file.name} aria-label={file.name} data-testid="her-file-thumb" onClick={onOpen}>
       {url ? <img src={url} alt="" draggable={false} /> : <FileIcon file={file} />}

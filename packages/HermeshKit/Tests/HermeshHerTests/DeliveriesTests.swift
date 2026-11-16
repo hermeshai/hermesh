@@ -16,19 +16,19 @@ private func named(_ groups: [HerDeliveryGroup]) -> [[String]] { groups.map { $0
 private func expected(_ key: String) -> [JSON] { shared[key].array! }
 
 @Test func theListGroupsByTheDayEachFileWasLastSentInLocalTime() {
-    let groups = herDeliveryGroups(page.files, by: .time, now: now, zone: zone)
-    #expect(groups.map(\.key) == expected("by_time").map { $0["key"].string! })
+    let groups = herDeliveryGroups(page.files, now: now, zone: zone)
+    #expect(groups.map(\.day.rawValue) == expected("by_time").map { $0["key"].string! })
     #expect(named(groups) == expected("by_time").map { $0["files"].array!.map { $0.string! } })
     let late = herDate("2026-11-15T16:05:00Z")!
     #expect(herDeliveryDay(late, now: now, zone: TimeZone(secondsFromGMT: 0)!) == .yesterday)
     #expect(herDeliveryDay(late, now: now, zone: zone) == .today)
 }
 
-@Test func theListGroupsByWhatEachFileCameFrom() {
-    let groups = herDeliveryGroups(page.files, by: .source, now: now, zone: zone)
-    #expect(groups.map(\.key) == expected("by_source").map { $0["key"].string! })
-    #expect(groups.map { $0.source?.name } == expected("by_source").map { $0["name"].string })
-    #expect(named(groups) == expected("by_source").map { $0["files"].array!.map { $0.string! } })
+@Test func picturesVideoAndAudioAreMediaTheRestAreDocuments() {
+    let kinds: [String: HerDeliveredFile.Kind] = ["mov": .video, "m4a": .audio, "png": .image, "pdf": .doc, "go": .code, "zip": .other]
+    for (name, media) in shared["media"].object! {
+        #expect(kinds[(name as NSString).pathExtension]!.isMedia == media.bool!, "\(name)")
+    }
 }
 
 @Test func aFileIsNewWhileItsLatestSendIsAfterWhatTheOwnerSaw() {

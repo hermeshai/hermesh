@@ -76,8 +76,12 @@ The prototype is the reference; this section states the rules.
   only, and their files reach the owner when Her passes them on, so one rule
   covers them. Not listed: files in her folder she never sent, and files the
   owner sent her.
-- **A row:** the file's name; the words Her sent it with, one line; when,
-  its size, what it came from, and how many versions.
+- **A row:** two lines. The file's name, with the new mark, and when it was
+  last sent (the time under Today and Yesterday, the day before that); then
+  the words Her sent it with (its size when she said none), and how many
+  versions there are. Its size, where it came from and its versions one by
+  one are where it opens (decided 2026-11-16 on the owner's phone: four
+  lines were crowded).
 - **What it came from:** nothing for a file the owner asked for in the
   conversation; a scheduled task's name, or a coding session's, when Her
   sent it while passing on that task's report or that session's news
@@ -90,10 +94,12 @@ The prototype is the reference; this section states the rules.
   the entry shows how many files are. Closing the list is having seen them.
   It is apart from the conversation's unread count.
 - **Search** matches the name, Her's words and what it came from, of any
-  version. **Filters:** All, Documents, Sheets, Slides, Pictures, Code.
-  Pictures alone show as a grid.
-- **Grouping:** by time (Today, Yesterday, Past 7 Days, Earlier) or by what
-  it came from. The choice is remembered per device.
+  version. **Three tabs:** All; Documents, what is read (reports, sheets,
+  slides, PDF, Markdown, code, and anything that is not media); Media,
+  pictures, video and audio, as a grid (`deliveries/list`'s `media`). The
+  list is in sections by the day each file was last sent (Today, Yesterday,
+  Past 7 Days, Earlier). Six kinds and a grouping by source were too many to
+  mean anything (the owner, 2026-11-16).
 - **Opening a file** shows it as the conversation does today (§4.5, §4.6).
   Under it: who sent it and when, Her's words, Show in Conversation, Reply.
   A file with versions has a switch between them.

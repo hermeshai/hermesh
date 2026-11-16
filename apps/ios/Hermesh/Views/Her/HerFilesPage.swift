@@ -7,7 +7,8 @@ import SwiftUI
 // as the Mac's panel lists them. Newest first, searched and filtered by her, grouped here by time or by what each
 // came from; a file sent again from the same path is one row, its versions under it. A file opens on a page of its
 // own, from the copy her kept of it as it was sent, with what Her said with it, Show in Conversation and Reply under
-// it. Once read, a file is kept on this iPhone by its hash, so it opens while her machine is offline too.
+// it. Three tabs: all of them, documents (what is read: reports, sheets, slides, PDF, Markdown, code and the rest), and
+// media (pictures, video and audio), the media as a grid. Once read, a file is kept on this iPhone by its hash, so it opens while her machine is offline too.
 
 /// The environment her page shows, with Her as it lists her.
 struct HerFilesPage: View {
@@ -53,8 +54,7 @@ private struct HerFilesList: View {
     let machine: HerMachine
     let bot: HerBot
     @State private var query = ""
-    @State private var kind: HerDeliveredFile.Kind?
-    @AppStorage("herFilesGroup") private var grouping = HerDeliveryGrouping.time.rawValue
+    @State private var tab = Tab.all
     @State private var list: HerDeliveries?
     @State private var failed: String?
     @State private var older = false
@@ -72,15 +72,14 @@ private struct HerFilesList: View {
     /// What the list asks her for, again whenever it changes.
     private struct Asked: Equatable {
         var query: String
-        var kind: String?
+        var tab: Tab
         var latest: Int
         var online: Bool
     }
 
     var body: some View {
         let shownList = list ?? keptList
-        let by = HerDeliveryGrouping(rawValue: grouping) ?? .time
-        let groups = shownList.map { herDeliveryGroups($0.files, by: by, now: model.now, zone: .current) } ?? []
+        let groups = shownList.map { herDeliveryGroups($0.files, now: model.now, zone: .current) } ?? []
         List {
             if !online, shownList != nil {
                 Section {
@@ -91,7 +90,7 @@ private struct HerFilesList: View {
             }
             ForEach(groups) { g in
                 Section {
-                    if kind == .image {
+                    if tab == .media {
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
                             ForEach(g.files) { f in
                                 HerFileThumb(chat: chat, file: f, fresh: f.isNew(seen: shownList?.seen ?? 0), enabled: canOpen(f, 0)) { open(f, 0) }
@@ -99,14 +98,12 @@ private struct HerFilesList: View {
                         }
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     } else {
-                        ForEach(g.files) { f in row(f, seen: shownList?.seen ?? 0, bySource: by == .source) }
+                        ForEach(g.files) { f in row(f, seen: shownList?.seen ?? 0) }
                     }
                 } header: {
                     HStack {
-                        Text(groupTitle(g, by: by))
+                        Text(dayTitle(g.day))
                         Text(verbatim: "\(g.files.count)").foregroundStyle(.tertiary)
-                        Spacer()
-                        if let s = g.source { Text(s.kind == .routine ? "Scheduled Task" : "Coding Session").foregroundStyle(.tertiary) }
                     }
                 }
             }
@@ -119,10 +116,10 @@ private struct HerFilesList: View {
         }
         .listStyle(.insetGrouped)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text("Search names, or what Her said"))
-        .safeAreaInset(edge: .top, spacing: 0) { kinds }
+        .safeAreaInset(edge: .top, spacing: 0) { tabs }
         .overlay {
             if let shownList, shownList.files.isEmpty {
-                let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty || kind != nil
+                let searching = !query.trimmingCharacters(in: .whitespaces).isEmpty || tab != .all
                 ContentUnavailableView {
                     Label(searching ? "Nothing Found" : "The files Her sends you are kept here", systemImage: searching ? "magnifyingglass" : "tray")
                 } description: {
@@ -137,24 +134,10 @@ private struct HerFilesList: View {
                 ProgressView()
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Picker("Group", selection: $grouping) {
-                        Text("By Time").tag(HerDeliveryGrouping.time.rawValue)
-                        Text("By Source").tag(HerDeliveryGrouping.source.rawValue)
-                    }
-                } label: {
-                    Label(by == .time ? "By Time" : "By Source", systemImage: "line.3.horizontal.decrease")
-                        .labelStyle(.titleAndIcon)
-                }
-                .accessibilityIdentifier("her-files-group")
-            }
-        }
         // The pages under this one are hidden, and their tasks with them: the environment's connection is this page's
         // to hold while it shows.
         .task(id: herReachable(machine) && machine.her.running) { if herReachable(machine) && machine.her.running { await chat.followEnvironment() } }
-        .task(id: Asked(query: query.trimmingCharacters(in: .whitespaces), kind: kind?.rawValue, latest: bot.deliveriesLatest, online: online)) { await load() }
+        .task(id: Asked(query: query.trimmingCharacters(in: .whitespaces), tab: tab, latest: bot.deliveriesLatest, online: online)) { await load() }
         // What the list showed, from the first time it shows: leaving is having seen up to there.
         .onChange(of: shownList?.files.compactMap { $0.latest?.seq } ?? [], initial: true) {
             guard let s = shownList else { return }
@@ -176,7 +159,7 @@ private struct HerFilesList: View {
         guard let kept = chat.kept?.deliveries else { return nil }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let files = kept.files.filter { f in
-            (kind == nil || f.kind == kind) && (q.isEmpty || ([f.name] + f.versions.flatMap { [$0.text ?? "", $0.source?.name ?? ""] }).contains { $0.lowercased().contains(q) })
+            (tab == .all || f.kind.isMedia == (tab == .media)) && (q.isEmpty || ([f.name] + f.versions.flatMap { [$0.text ?? "", $0.source?.name ?? ""] }).contains { $0.lowercased().contains(q) })
         }
         return HerDeliveries(files: files, seen: kept.seen)
     }
@@ -185,7 +168,7 @@ private struct HerFilesList: View {
         var p: [String: JSON] = ["bot_id": .string(bot.id)]
         let q = query.trimmingCharacters(in: .whitespaces)
         if !q.isEmpty { p["query"] = .string(q) }
-        if let kind { p["kind"] = .string(kind.rawValue) }
+        if tab != .all { p["media"] = .bool(tab == .media) }
         if let before { p["before"] = .number(Double(before)) }
         return .object(p)
     }
@@ -221,52 +204,36 @@ private struct HerFilesList: View {
         Task { await chat.seeDeliveries(bot: id, upTo: seq) }
     }
 
-    private func groupTitle(_ g: HerDeliveryGroup, by: HerDeliveryGrouping) -> String {
-        switch by {
-        case .time:
-            switch HerDeliveryDay(rawValue: g.key) {
-            case .today: String(localized: "Today")
-            case .yesterday: String(localized: "Yesterday")
-            case .week: String(localized: "Past 7 Days")
-            default: String(localized: "Earlier")
-            }
-        case .source: g.source?.name ?? String(localized: "Asked in the Conversation")
+    private func dayTitle(_ day: HerDeliveryDay) -> String {
+        switch day {
+        case .today: String(localized: "Today")
+        case .yesterday: String(localized: "Yesterday")
+        case .week: String(localized: "Past 7 Days")
+        case .earlier: String(localized: "Earlier")
         }
     }
 
     // MARK: A row
 
-    private var kinds: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                chip(nil, "All")
-                chip(.doc, "Documents")
-                chip(.sheet, "Sheets")
-                chip(.slide, "Slides")
-                chip(.image, "Pictures")
-                chip(.code, "Code")
-            }
-            .padding(.horizontal, 16).padding(.vertical, 8)
-        }
-        .background(.bar)
-    }
+    /// Which of the files show.
+    enum Tab: String, Hashable { case all, documents, media }
 
-    private func chip(_ k: HerDeliveredFile.Kind?, _ title: LocalizedStringKey) -> some View {
-        Button { kind = k } label: {
-            Text(title).font(.subheadline.weight(.medium))
-                .padding(.horizontal, 13).padding(.vertical, 6)
-                .foregroundStyle(kind == k ? Color(.systemBackground) : .primary)
-                .background(kind == k ? Color.primary : Color(.tertiarySystemFill), in: .capsule)
+    private var tabs: some View {
+        Picker("Show", selection: $tab) {
+            Text("All").tag(Tab.all)
+            Text("Documents").tag(Tab.documents)
+            Text("Media").tag(Tab.media)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(kind == k ? .isSelected : [])
-        .accessibilityIdentifier("her-files-kind-\(k?.rawValue ?? "all")")
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(.bar)
+        .accessibilityIdentifier("her-files-tabs")
     }
 
     /// A row, two lines: the name, with the new dot and when it was last sent; then Her's words with it (its size
     /// when she said nothing), and how many versions there are. The rest (its size, where it came from, its
     /// versions one by one) is on its page.
-    private func row(_ f: HerDeliveredFile, seen: Int, bySource: Bool) -> some View {
+    private func row(_ f: HerDeliveredFile, seen: Int) -> some View {
         let v = f.versions[0]
         let earlier = bot.sessionID != nil && v.sessionID != bot.sessionID
         let fresh = f.isNew(seen: seen)
@@ -376,6 +343,7 @@ private struct HerFileIcon: View {
         switch (file.kind, (file.name as NSString).pathExtension.lowercased()) {
         case (_, "pdf"): .red
         case (_, "md"), (.image, _), (.other, _): .gray
+        case (.video, _), (.audio, _): .pink
         case (.doc, _): .blue
         case (.sheet, _): .green
         case (.slide, _): .orange
@@ -410,7 +378,7 @@ private struct HerFileThumb: View {
         .accessibilityLabel(Text(file.name))
         .accessibilityIdentifier("her-file-thumb-\(file.name)")
         .task(id: file.latest?.seq) {
-            guard enabled, let v = file.latest, let url = await chat.download(file.path, snapshot: v.snapshot, sha256: v.sha256) else { return }
+            guard enabled, file.kind == .image, let v = file.latest, let url = await chat.download(file.path, snapshot: v.snapshot, sha256: v.sha256) else { return }
             picture = UIImage(contentsOfFile: url.path)
         }
     }

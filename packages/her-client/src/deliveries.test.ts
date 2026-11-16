@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import type { DeliveriesListResult } from "@hermesh/her-protocol";
-import { deliveryDay, deliveryFile, deliveryQuote, groupDeliveries, isNewDelivery, joinDeliveries } from "./deliveries.ts";
+import type { DeliveriesListResult, DeliveryKind } from "@hermesh/her-protocol";
+import { deliveryDay, deliveryFile, deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries } from "./deliveries.ts";
 
 // The cases HermeshHer runs too, so both apps read the list the same way.
 type Case = {
@@ -10,7 +10,7 @@ type Case = {
   offset_minutes: number;
   page: DeliveriesListResult;
   by_time: { key: string; files: string[] }[];
-  by_source: { key: string; name?: string; files: string[] }[];
+  media: Record<string, boolean>;
   new: string[];
   read: { file: string; version: number; path: string; snapshot?: string }[];
   quotes: { file: string; version: number; quote: { ref: string; own: boolean; text: string; partial: boolean } }[];
@@ -22,19 +22,16 @@ const now = Date.parse(shared.now);
 const file = (name: string) => shared.page.files.find((f) => f.name === name)!;
 
 test("the list groups by the day each file was last sent, in local time", () => {
-  const groups = groupDeliveries(shared.page.files, "time", now, shared.offset_minutes);
+  const groups = groupDeliveries(shared.page.files, now, shared.offset_minutes);
   assert.deepEqual(groups.map((g) => ({ key: g.key, files: g.files.map((f) => f.name) })), shared.by_time);
   // At UTC the day ends elsewhere: a file sent at 16:05Z on the 15th is yesterday there, today at UTC+8.
   assert.equal(deliveryDay("2026-11-15T16:05:00Z", now, 0), "yesterday");
   assert.equal(deliveryDay("2026-11-15T16:05:00Z", now, 480), "today");
 });
 
-test("the list groups by what each file came from, with that source's name", () => {
-  const groups = groupDeliveries(shared.page.files, "source", now, shared.offset_minutes);
-  assert.deepEqual(
-    groups.map((g) => ({ key: g.key, ...(g.source ? { name: g.source.name } : {}), files: g.files.map((f) => f.name) })),
-    shared.by_source,
-  );
+test("pictures, video and audio are media; the rest are documents", () => {
+  const kinds: Record<string, DeliveryKind> = { mov: "video", m4a: "audio", png: "image", pdf: "doc", go: "code", zip: "other" };
+  for (const [name, media] of Object.entries(shared.media)) assert.equal(isMediaKind(kinds[name.split(".").pop()!]), media, name);
 });
 
 test("a file is new while its latest send is after what the owner saw", () => {

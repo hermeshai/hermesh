@@ -182,6 +182,8 @@ fn kind_of(text: &str) -> DeliveryKind {
         "sheet" => DeliveryKind::Sheet,
         "slide" => DeliveryKind::Slide,
         "image" => DeliveryKind::Image,
+        "video" => DeliveryKind::Video,
+        "audio" => DeliveryKind::Audio,
         "code" => DeliveryKind::Code,
         _ => DeliveryKind::Other,
     }
@@ -295,10 +297,11 @@ fn list(conn: &Connection, p: &DeliveriesListParams) -> rusqlite::Result<Deliver
                       WHERE bot_id = ?1 AND (name LIKE ?2 ESCAPE '\' OR text LIKE ?2 ESCAPE '\' OR source_name LIKE ?2 ESCAPE '\')))
              GROUP BY path)
            WHERE (?3 IS NULL OR latest < ?3) AND (?4 IS NULL OR kind = ?4)
+             AND (?6 IS NULL OR (kind IN ('image', 'video', 'audio')) = ?6)
            ORDER BY latest DESC LIMIT ?5",
     )?;
     let mut found: Vec<(String, String, String, i64)> = pages
-        .query_map(params![p.bot_id, query, before, p.kind.map(DeliveryKind::as_str), (limit + 1) as i64], |row| {
+        .query_map(params![p.bot_id, query, before, p.kind.map(DeliveryKind::as_str), (limit + 1) as i64, p.media], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
         })?
         .collect::<rusqlite::Result<_>>()?;
@@ -636,6 +639,7 @@ mod tests {
             limit: None,
             query: None,
             kind: None,
+            media: None,
         }
     }
 
@@ -659,6 +663,9 @@ mod tests {
         assert_eq!((image.name.as_str(), image.kind, image.width, image.height), ("图.png", DeliveryKind::Image, Some(960), Some(600)));
         assert_eq!((image.sha256.as_deref(), image.snapshot.as_deref()), (Some("aa"), Some("/h/bots/b1/sent/aa/图.png")));
         assert_eq!((file.name.as_str(), file.kind, file.size, file.sha256.as_deref()), ("合同.PDF", DeliveryKind::Doc, 9, None), "by its extension, whatever its case");
+        let kinds: Vec<_> = ["clip.MP4", "voice.m4a", "photo.heic", "notes.txt", "data.zip"].iter().map(|n| DeliveryKind::of(n, false)).collect();
+        assert_eq!(kinds, [DeliveryKind::Video, DeliveryKind::Audio, DeliveryKind::Image, DeliveryKind::Doc, DeliveryKind::Other]);
+        assert_eq!(kinds.iter().map(|k| k.is_media()).collect::<Vec<_>>(), [true, true, true, false, false], "media is pictures, video and audio");
         assert_eq!(sent_of("b1", "s1", "c2", r#"{"card":{}}"#, String::new(), None), None, "a message of no files");
         assert_eq!(sent_of("b1", "s1", "c2", r#"{"files":[]}"#, String::new(), None), None);
     }
@@ -789,6 +796,9 @@ mod tests {
         assert!(find("3x1").await.files.is_empty(), "an underscore is no wildcard");
         assert!(find("%").await.files.len() == 1 && find("  ").await.files.len() == 4, "blank is no search");
 
+        let media = |media: bool| listed(&db, DeliveriesListParams { media: Some(media), ..page("b1") });
+        assert_eq!(names(&media(true).await), ["a.png"], "pictures, video and audio");
+        assert_eq!(names(&media(false).await), ["晨报.md", "Q3_100%.docx", "销售.xlsx"], "the documents, the sheet among them");
         let kind = |kind: DeliveryKind| listed(&db, DeliveriesListParams { kind: Some(kind), ..page("b1") });
         assert_eq!(names(&kind(DeliveryKind::Image).await), ["a.png"]);
         assert_eq!(names(&kind(DeliveryKind::Doc).await), ["晨报.md", "Q3_100%.docx"]);

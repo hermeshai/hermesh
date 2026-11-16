@@ -1916,6 +1916,8 @@ export type DeliveriesListParams = {
   kind?: DeliveryKind | null;
   /** How many files: 50 without it, at most 200. */
   limit?: number | null;
+  /** true: only pictures, video and audio (DeliveryKind::is_media); false: only the rest, the documents. Both without it. */
+  media?: boolean | null;
   /** Only files with this in their name, in the bot's words or in what they came from, in any version, without regard to case. */
   query?: string | null;
 };
@@ -1959,7 +1961,7 @@ export type Delivery = {
 };
 
 /** What a file a bot sent is, by its name; a picture by its contents (docs/her-deliverables.md §4.2). */
-export type DeliveryKind = "doc" | "sheet" | "slide" | "image" | "code" | "other";
+export type DeliveryKind = "doc" | "sheet" | "slide" | "image" | "video" | "audio" | "code" | "other";
 
 /** The routine or the session a file came from, and its name as the bot heard it. */
 export type DeliverySource = {

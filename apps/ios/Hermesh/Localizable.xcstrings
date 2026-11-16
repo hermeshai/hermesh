@@ -12826,16 +12826,6 @@
         }
       }
     },
-    "Coding Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "编程会话"
-          }
-        }
-      }
-    },
     "Load More": {
       "localizations": {
         "zh-Hans": {
@@ -12906,26 +12896,6 @@
         }
       }
     },
-    "By Time": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按时间"
-          }
-        }
-      }
-    },
-    "By Source": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按来源"
-          }
-        }
-      }
-    },
     "Yesterday": {
       "localizations": {
         "zh-Hans": {
@@ -12946,62 +12916,12 @@
         }
       }
     },
-    "Asked in the Conversation": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对话里要的"
-          }
-        }
-      }
-    },
     "Documents": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "文档"
-          }
-        }
-      }
-    },
-    "Sheets": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "表格"
-          }
-        }
-      }
-    },
-    "Slides": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "演示"
-          }
-        }
-      }
-    },
-    "Pictures": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "图片"
-          }
-        }
-      }
-    },
-    "Code": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "代码"
           }
         }
       }
@@ -13112,6 +13032,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "打不开这个文件"
+          }
+        }
+      }
+    },
+    "Media": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "媒体"
           }
         }
       }

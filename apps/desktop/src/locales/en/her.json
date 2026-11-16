@@ -195,29 +195,16 @@
     "button": "Files",
     "buttonNew": "Files, {{count}} new",
     "search": "Search names, or what Her said",
-    "kinds": {
+    "tabs": {
       "all": "All",
-      "doc": "Documents",
-      "sheet": "Sheets",
-      "slide": "Slides",
-      "image": "Pictures",
-      "code": "Code"
-    },
-    "group": {
-      "label": "Group",
-      "time": "By Time",
-      "source": "By Source"
+      "documents": "Documents",
+      "media": "Media"
     },
     "day": {
       "today": "Today",
       "yesterday": "Yesterday",
       "week": "Past 7 Days",
       "earlier": "Earlier"
-    },
-    "source": {
-      "conversation": "Asked in the Conversation",
-      "routine": "Scheduled Task",
-      "session": "Coding Session"
     },
     "versions": "{{count}} versions",
     "version": "Version {{n}}",
@@ -235,7 +222,6 @@
     "offline": "{{name}} is offline. This is the list as last seen; files opened before are on this Mac, the rest wait for it.",
     "needsMachine": "{{name}} is offline; this file opens once it is back",
     "earlierConversation": "This came from a cleared conversation",
-    "fromEarlier": "From a cleared conversation",
     "notInConversation": "That message is no longer in the conversation",
     "more": "Load More",
     "noPreview": "This kind of file can't be previewed here; download it to open it.",
