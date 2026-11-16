@@ -140,7 +140,9 @@ Reduce Motion it changes at once.
 ### 4.3 The team panel
 
 A glass panel that grows out of the tag, under the avatar, over a dimmed
-conversation. It closes by a tap outside, a swipe up, or opening a row.
+conversation. It closes by a tap outside, a tap on the avatar, a swipe up,
+or opening a row. However much it lists, it stops short of the composer's
+row (it scrolls inside), so the dim to tap stays in sight on a small iPhone.
 
 | Section | Rows | From |
 |---|---|---|
