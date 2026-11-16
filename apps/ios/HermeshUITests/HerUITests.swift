@@ -240,15 +240,18 @@ extension HermeshUITests {
         XCTAssertTrue(row.waitForExistence(timeout: 30), "the report's row")
         XCTAssertEqual(any.matching(identifier: "her-file-row-report.md").count, 1, "once")
         herShot("Her: the files she sent")
-        tap("her-file-versions-report.md")
-        tap("her-file-version-1")
+        // Two lines: the name and when, then Her's words and how many versions; the versions are on its page.
+        XCTAssertTrue(row.label.contains("2 个版本"), row.label)
+        row.tap()
         let page = any["her-delivery-page"].firstMatch
-        XCTAssertTrue(page.waitForExistence(timeout: 30), "a version on its page")
+        XCTAssertTrue(page.waitForExistence(timeout: 30), "the latest on its page")
+        XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "the latest as it was sent")
+        let versions = any["her-delivery-versions"].firstMatch
+        XCTAssertTrue(versions.waitForExistence(timeout: 10), "the switch between versions")
+        versions.buttons.element(boundBy: 1).tap()
         XCTAssertTrue(text("初稿：只有营收。").waitForExistence(timeout: 30), "the first version as it was sent")
         XCTAssertFalse(text("第二版").exists)
         herShot("Her: the first version")
-        let versions = any["her-delivery-versions"].firstMatch
-        XCTAssertTrue(versions.waitForExistence(timeout: 10), "the switch between versions")
         versions.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(text("第二版：营收和利润。").waitForExistence(timeout: 30), "the latest")
 

@@ -364,8 +364,14 @@ final class HerChat {
     /// The owner saw the list of the files Her sent up to `seq` (deliveries/seen): on a connection of its own, as the
     /// page that saw it is leaving, and its hold on the environment's connection with it.
     func seeDeliveries(bot: String, upTo seq: Int) async {
-        guard let live = api?.live else { return }
-        _ = try? await HerConnection.call(HerTunnel(api: live), machineID: machineID, "deliveries/seen", ["bot_id": .string(bot), "seq": .number(Double(seq))])
+        _ = try? await callAlone("deliveries/seen", ["bot_id": .string(bot), "seq": .number(Double(seq))])
+    }
+
+    /// A request to her on a connection of its own (HerCall without one): it goes at once, without waiting for the
+    /// environment's connection, which a page that just came up may still be opening through the relay.
+    func callAlone(_ method: String, _ params: JSON) async throws -> JSON {
+        guard let live = api?.live else { throw notConnected }
+        return try await HerConnection.call(HerTunnel(api: live), machineID: machineID, method, params)
     }
 
     /// What the next message replies to: above the composer's words, which take the keyboard.
