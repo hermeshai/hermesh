@@ -181,6 +181,12 @@ final class HerChat {
             envTask = nil
             if f.running { envTask = Task { await self.followEnvironment() } }
         }
+        // Another Her (her data erased, Her on again): what was said was to the one before, and this iPhone's copy
+        // was of hers too. Until the new one's conversation opens (with no model yet, it doesn't), it shows nothing.
+        if let was = following?.bot, let now = f.bot, was != now {
+            live = nil
+            if kept?.bot.id != now { kept = nil }
+        }
         // A model connected opens the conversation her refused for want of one; otherwise what the machine says of
         // its models changes nothing on an open conversation (docs/her-sending.md §5.4).
         var reopen = f
