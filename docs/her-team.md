@@ -1081,33 +1081,42 @@ kind; the apps tell by the `/` and do not read on with it.
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
   sub-agent's post under Needs you, what set it off from its ⓘ, Review to
   its record, the approval answered there, its report, time and tokens; the
-  post under Earlier once it ends; another at work, the top bar's "1 at
-  work" and its post under Now, with no busy bubble; Her's own call in her
-  busy bubble (§15.6); a coding session she starts, a card in her
+  post under Earlier once it ends; another at work, Progress's "1 at
+  work", its post under Now, and the busy bubble naming it and its call;
+  Her's own call in her busy bubble (§15.6); a coding session she starts, a card in her
   conversation and no post.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
   Needs you, its ⓘ's sheet with the owner's words and Her's, Review to
   the record, and the ended post under Earlier; another at work, Progress
-  marked at work, its post under Now, no busy bubble; Her's own call in
-  her busy bubble. `testHerApprovalEnd`: under a conversation longer than
+  marked at work, its post under Now, the busy bubble naming it and its
+  call; Her's own call in her busy bubble. `testHerApprovalEnd`: under a conversation longer than
   the page, a sub-agent's question in the composer's place leaves her last
   words in view.
 
 ### 15.6 The busy bubble
 
-Decided by the owner on 2026-11-16. The dots at the end of her
-conversation mean what they mean in any chat: she is answering. They show
-while her task runs and waits for no approval, and are gone once she has
-answered. A sub-agent at work after that is Progress's to show (its post
-under Now, the button's blue dot), not the conversation's: a background
-piece of work can run for half an hour, and dots that long only worry. In
-Her's bot mode she never waits for a sub-agent within a reply
-(`spawn_agent` there has no `wait`), so no sub-agent belongs in the bubble.
+Decided by the owner on 2026-11-17, in place of what was decided on
+2026-11-16 (the dots gone once she answered, a sub-agent at work being
+Progress's alone): trying it, the owner found a conversation gone quiet
+while her work went on misleading. The dots at the end of her conversation
+say something of hers is at work:
+
+- While her task runs and waits for no approval, she is answering: the
+  dots.
+- Once she has answered, while a sub-agent of hers is still at work and
+  waits for nobody, the dots stay. Of several, the one that started last
+  is shown; Progress has them all.
+- While what is at work waits for the owner (an approval of hers, or of
+  the sub-agent's), there are no dots: the question in the composer's
+  place says so.
 
 While she is on a call of her own (not her words, `send_to_user`, nor a
 sub-agent she starts), the dots quieten and the call follows them,
 shimmering, in the words Progress says a sub-agent's step in: "Running
-df -h". It is read from the task's live tools alone (her-client's
-`busyBubble`, HermeshHer's `herBusyBubble`), nothing more is asked of her,
-and nothing of the conversation is worked out again for it.
+df -h". For a sub-agent the words name it first, as an approval does (its
+description, else its name), then its call, or "Working" while it is on
+none: "写长文 · Running sleep 60". It is read from the task's live tools and
+the sub-agents' own live tools alone (her-client's `busyBubble`,
+HermeshHer's `herBusyBubble`), nothing more is asked of her, and nothing of
+the conversation is worked out again for it.

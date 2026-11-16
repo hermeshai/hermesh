@@ -169,7 +169,7 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(lines.map { "\($0.sign)\($0.text)" } == ["-one", "+two", "+three"])
 }
 
-@Test func theBusyBubbleSaysTheCallHerIsOnAndIsGoneOnceSheAnswered() {
+@Test func theBusyBubbleSaysTheCallHerIsOnThenASubAgentsWhileOneIsAtWork() {
     var v = snapshot([said("u1", "看看磁盘", ts: 1)], task: ["task_id": "t1", "turn": 1])
     #expect(herBusyBubble(v) == HerBusyBubble(now: nil), "the dots alone while she writes")
     v.apply(["seq": 11, "ts": 2, "type": "tool_started", "call_id": "b1", "name": "bash", "category": "execute", "title": "df -h", "args": ["command": "df -h"]])
@@ -180,7 +180,15 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(herBusyBubble(v)?.now?.callID == "b1", "starting a sub-agent, or saying something, is not what she does")
     v.apply(["seq": 15, "ts": 6, "type": "agent_started", "agent_id": "ag1", "name": "writer", "description": "写长文", "call_id": "s1", "session_file": "/a"])
     v.apply(["seq": 16, "ts": 7, "type": "task_completed", "task_id": "t1", "reason": "end_turn"])
-    #expect(herBusyBubble(v) == nil, "she answered: the sub-agent's work is Progress's")
+    #expect(herBusyBubble(v) == HerBusyBubble(now: nil, agent: "写长文"), "she answered: the sub-agent at work, by its name")
+    v.apply(["seq": 17, "ts": 8, "type": "agent_event", "agent_id": "ag1", "event": ["seq": 1, "ts": 8, "type": "task_started", "task_id": "x"]])
+    v.apply(["seq": 18, "ts": 9, "type": "agent_event", "agent_id": "ag1", "event": ["seq": 2, "ts": 9, "type": "tool_started", "call_id": "r1", "name": "read", "category": "read", "title": "notes.md", "args": ["path": "notes.md"]]])
+    #expect(herBusyBubble(v)?.agent == "写长文" && herBusyBubble(v)?.now?.callID == "r1", "and the call it is on")
+    var asking = v
+    asking.apply(["seq": 19, "ts": 10, "type": "agent_event", "agent_id": "ag1", "event": ["seq": 3, "ts": 10, "type": "approval_requested", "call_id": "e1", "name": "bash", "summary": "rm", "args": ["command": "rm -rf build"]]])
+    #expect(herBusyBubble(asking) == nil, "waiting for the owner is not being at work")
+    v.apply(["seq": 19, "ts": 10, "type": "agent_status", "agent_id": "ag1", "status": "completed", "summary": "写完了"])
+    #expect(herBusyBubble(v) == nil, "nothing at work, no bubble")
 }
 
 @Test func aSessionOnTheOwnersComputersAsksInItsOwnWords() {

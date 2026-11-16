@@ -1009,9 +1009,10 @@ extension HermeshUITests {
         // marked while it waits for the owner, and on her page Progress says so.
         herSend("[[mock:relay_slow:3]] 写一篇长文")
         XCTAssertTrue(text("好，这个要一会儿，写好发你。").waitForExistence(timeout: 60), "Her's words")
-        // She has answered: no dots while her sub-agent works, whose work is Progress's (docs/her-team.md §15).
+        // She has answered, and her sub-agent waits for the owner: no dots, the question is Progress's (docs/her-team.md
+        // §15.6).
         let typing = app.descendants(matching: .any)["her-typing"]
-        XCTAssertTrue(waitUntil(timeout: 30) { !typing.exists }, "no busy bubble once she answered")
+        XCTAssertTrue(waitUntil(timeout: 30) { !typing.exists }, "no busy bubble while what is at work waits for the owner")
         try waitFor("her mark is marked (\(mark.label))", timeout: 60) { mark.label.contains("有事在等你") ? true : nil }
         herShot("Her: her mark marked")
         herPage("work")
@@ -1063,12 +1064,13 @@ extension HermeshUITests {
         XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
         herShot("Progress: ended")
 
-        // Another, allowed: it works on in the background, with no dots in her conversation, and Progress says one is
-        // at work.
+        // Another, allowed: it works on in the background; her conversation's dots stay, saying which and what it
+        // does, and Progress says one is at work.
         herBackToConversation()
         herSend("[[mock:relay_slow:60]] 再写一篇")
         tap("her-allow-once", timeout: 60)
-        XCTAssertTrue(waitUntil(timeout: 30) { !typing.exists }, "no busy bubble while only her sub-agent works")
+        try waitFor("the dots say her sub-agent and its call (\(typing.exists ? typing.label : "none"))", timeout: 30) { typing.exists && typing.label.contains("写长文 · 正在运行 sleep 60") ? true : nil }
+        herShot("Her: a sub-agent at work, in the busy bubble")
         herPage("work")
         try waitFor("Progress says one is at work (\(entry.label))", timeout: 60) { entry.label.contains("1 个进行中") ? true : nil }
         herShot("Her: Progress, one at work")

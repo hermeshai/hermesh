@@ -38,7 +38,8 @@
     "allow": "允许 Her 使用你的电脑"
   },
   "line": {
-    "typing": "正在输入…"
+    "typing": "正在输入…",
+    "agentWorking": "正在工作"
   },
   "head": {
     "settings": "助手设置",

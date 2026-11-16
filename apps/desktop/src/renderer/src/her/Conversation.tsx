@@ -753,16 +753,17 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
 }
 
 /**
- * The last bubble while the assistant answers (bot-mode-design §6.7): three dots; while it is on a call, what the call
- * does follows them, shimmering, in the words Progress says a step in (docs/her-team.md §15). Its sub-agents at work
- * are Progress's to show, not this bubble's: it is gone once the assistant has answered.
+ * The last bubble while something is at work (bot-mode-design §6.7, docs/her-team.md §15.6): three dots while the
+ * assistant answers; while it is on a call, what the call does follows them, shimmering, in the words Progress says a
+ * step in. Once it has answered, while a sub-agent of its is still at work, the dots stay, followed by that sub-agent
+ * and what it does.
  */
-function BusyBubble({ busy, retry }: { busy: { now: ToolView | null }; retry?: { at: number } }) {
+function BusyBubble({ busy, retry }: { busy: { now: ToolView | null; agent?: string }; retry?: { at: number } }) {
   const { t } = useTranslation("her");
   const now = useNow(1000).getTime();
   const unstable = retry && now - retry.at > 10_000;
-  const step = busy.now;
-  const label = unstable ? t("chat.retrying") : step ? `${toolVerb(step)} ${toolObject(step)}`.trim() : undefined;
+  const step = busy.now && `${toolVerb(busy.now)} ${toolObject(busy.now)}`.trim();
+  const label = unstable ? t("chat.retrying") : busy.agent ? `${busy.agent} · ${step || t("line.agentWorking")}` : step || undefined;
   return (
     <div className="bm working">
       <div className="bm-b">
