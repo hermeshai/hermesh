@@ -865,6 +865,24 @@ impl NativeProtocol {
                 }
                 Err(err) => conn.send_error(Some(id), &err),
             },
+            method::DELIVERIES_LIST => match her_rpc::params::<her_protocol::bot::DeliveriesListParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        conn.send(reply(&id, server.deliveries_list(p).await.map(|r| json!(r))));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::DELIVERIES_SEEN => match her_rpc::params::<her_protocol::bot::DeliveriesSeenParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        conn.send(reply(&id, server.deliveries_seen(p).await.map(|()| json!({}))));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
             method::BOTS_CLEAR | method::BOTS_DELETE => match her_rpc::params::<BotIdParams>(params) {
                 Ok(p) => {
                     let (conn, id, clear) = (conn.clone(), id.clone(), method_name == method::BOTS_CLEAR);

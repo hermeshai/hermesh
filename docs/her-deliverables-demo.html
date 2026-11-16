@@ -1,0 +1,877 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 文件 · 原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Monaco,monospace;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  /* iPhone (apps/ios Palette) */
+  --i-bg:#fff;--i-l1:#000;--i-l2:rgba(60,60,67,.6);--i-l3:rgba(60,60,67,.3);--i-sep:rgba(0,0,0,.08);
+  --i-fill:rgba(118,118,128,.12);--i-reply:#f4f4f7;--i-me:#3d5bff;--i-tint:#3d5bff;
+  --i-glass:rgba(255,255,255,.78);--i-glass-bd:rgba(0,0,0,.07);--i-sheet:#f2f2f7;--i-pop:rgba(250,250,252,.94);--i-mark:rgba(255,204,0,.24);
+  /* Mac (apps/desktop app.css) */
+  --win:#fff;--win2:#f4f4f7;--side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);
+  --accent:#3d5bff;--accent-t:#3d5bff;--accent-bg:rgba(61,91,255,.10);
+  --bot-reply:#f4f4f7;--pill:#fff;--pill-bd:rgba(0,0,0,.12);
+  --glass:rgba(255,255,255,.86);--glass-sh:0 0 0 .5px rgba(0,0,0,.12),0 4px 14px rgba(0,0,0,.12);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+  --ka:.12;
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#1a1b20;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000;--i-l1:#fff;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.3);--i-sep:rgba(255,255,255,.1);
+  --i-fill:rgba(118,118,128,.24);--i-reply:rgba(255,255,255,.06);--i-me:#4f6bff;--i-tint:#6f87ff;
+  --i-glass:rgba(44,44,48,.78);--i-glass-bd:rgba(255,255,255,.1);--i-sheet:#1c1c1e;--i-pop:rgba(44,44,48,.95);--i-mark:rgba(255,214,10,.2);
+  --win:#1e1e21;--win2:#29292d;--side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);
+  --accent:#4f6bff;--accent-t:#8ea0ff;--accent-bg:rgba(91,121,255,.18);
+  --bot-reply:rgba(255,255,255,.06);--pill:#2b2b30;--pill-bd:rgba(255,255,255,.12);
+  --glass:rgba(58,58,64,.9);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),0 4px 14px rgba(0,0,0,.4);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+  --ka:.22;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-mac);min-height:100vh;padding-bottom:110px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1520px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1520px;margin:0 auto;padding:10px 24px;display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+#stage{min-width:0;max-width:100%;display:flex;justify-content:center}
+.notes{width:372px;max-width:100%;flex:none;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes p{margin:0;color:var(--page-fg2)}
+.notes ul,.notes ol{margin:6px 0 0;padding-left:19px}
+.notes li{margin:4px 0}
+.notes .tag{display:inline-block;font-size:11px;padding:0 7px;border-radius:99px;background:var(--accent-bg);color:var(--accent-t);margin-right:5px;font-weight:600}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--page-bd)}
+.notes pre{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:var(--fill);font:11.5px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--page-fg)}
+.notes li b{font-weight:600}
+.notes li i{font-style:normal;color:var(--page-fg2)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:3px 10px;border-radius:7px;background:var(--fill2);color:var(--page-fg)}
+.ctl button.on{background:var(--accent);color:#fff}
+.hide{display:none!important}
+.av{border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffd6e7,#ff7eb6 40%,#7b61ff 100%);flex:none;display:block}
+
+/* What both platforms share is drawn in these: each sets them to its own palette. */
+.scr{--c1:var(--i-l1);--c2:var(--i-l2);--c3:var(--i-l3);--csep:var(--i-sep);--cfill:var(--i-fill);--tint:var(--i-tint);--cbg:var(--i-bg);--cmark:var(--i-mark)}
+.mac{--c1:var(--l1);--c2:var(--l2);--c3:var(--l3);--csep:var(--sep);--cfill:var(--fill2);--tint:var(--accent-t);--cbg:var(--win);--cmark:var(--accent-bg)}
+
+/* ---------- a file's icon, by kind ---------- */
+.fi{position:relative;flex:none;width:36px;height:44px;border-radius:7px;background:color-mix(in srgb,var(--k) calc(var(--ka)*100%),transparent);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font:700 8.5px/1 var(--font-ios);letter-spacing:.3px;color:var(--k);overflow:hidden}
+.fi::before{content:"";position:absolute;left:8px;right:8px;top:9px;height:2px;border-radius:1px;background:var(--k);opacity:.42;box-shadow:0 5px 0 var(--k),0 10px 0 var(--k)}
+.fi.img{padding:0}.fi.img::before{display:none}
+.fi.sm{width:30px;height:36px;border-radius:6px;font-size:6.5px;letter-spacing:0;padding-bottom:4px}
+.fi.sm::before{left:7px;right:7px;top:7px;box-shadow:0 4px 0 var(--k),0 8px 0 var(--k)}
+.k-doc{--k:#2f6bff}.k-pdf{--k:#e5484d}.k-md{--k:#6b7280}.k-sheet{--k:#1a9d55}.k-slide{--k:#e8830c}.k-code{--k:#8e5bd6}.k-image{--k:#6b7280}
+[data-theme=dark] .k-md,[data-theme=dark] .k-image{--k:#a3a8b4}
+/* a picture Her made, drawn here in place of the file */
+.shot{width:100%;height:100%;display:flex;gap:6%;align-items:flex-end;justify-content:center;padding:16% 10% 12%;background:linear-gradient(160deg,var(--a),var(--b))}
+.shot i{flex:1;border-radius:8% 8% 4% 4%;background:rgba(255,255,255,.8);height:58%}
+.shot i:nth-child(2){height:80%;background:#fff}
+.shot.s1{--a:#c9d6ff;--b:#6f87ff}.shot.s2{--a:#ffe1c4;--b:#ff8f5a}.shot.s3{--a:#c8f1dc;--b:#2fb37a}
+.shot.bar{--a:#eef1fb;--b:#dfe4f5;gap:5%}
+.shot.bar i{background:#3d5bff;border-radius:6% 6% 0 0;height:34%}
+.shot.bar i:nth-child(2){height:52%;background:#3d5bff}.shot.bar i:nth-child(3){height:44%}.shot.bar i:nth-child(4){height:76%}.shot.bar i:nth-child(5){height:92%}
+
+/* ---------- the conversation (both) ---------- */
+.row{display:flex}
+.row.me{justify-content:flex-end}
+.bub{overflow-wrap:anywhere}
+.bub .tx{white-space:pre-wrap}
+.hblk{display:flex;flex-direction:column;align-items:flex-start;gap:6px;border-radius:14px;transition:background .45s,box-shadow .45s;min-width:0}
+.hblk.flash{background:var(--cmark);box-shadow:0 0 0 8px var(--cmark)}
+.srcl{display:flex;align-items:center;gap:5px;color:var(--c2);font-size:12.5px;padding:0 4px}
+.srcl svg{width:13px;height:13px}
+.pics{display:flex;gap:6px;width:100%}
+.cpic{flex:1;max-width:190px;aspect-ratio:4/3;border-radius:14px;overflow:hidden;cursor:pointer}
+.cfl{border-radius:14px;background:var(--bubble);box-shadow:inset 0 0 0 .5px var(--csep);min-width:230px;max-width:100%;overflow:hidden}
+.cf{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;min-width:0}
+.cf+.cf{border-top:.5px solid var(--csep)}
+.cf:hover{background:var(--cfill)}
+.cf .k{min-width:0}
+.cf b{display:block;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cf .k span{color:var(--c2);font-size:12px}
+.q{display:flex;gap:8px;text-align:left;width:calc(100% + 12px);margin:-2px -6px 7px;padding:6px 9px 6px 8px;border-radius:9px;background:rgba(255,255,255,.17);font-size:13px;line-height:1.45;cursor:pointer;color:#fff}
+.q::before{content:"";width:2.5px;border-radius:2px;background:rgba(255,255,255,.8);flex:none}
+.q b{display:block;font-size:12px;font-weight:600}
+.q span{display:block;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.dots{display:flex;gap:4px;padding:5px 0}
+.dots i{width:6px;height:6px;border-radius:3px;background:var(--c3);animation:bl 1s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bl{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+/* ---------- the list of what Her delivered (both) ---------- */
+.srch{display:flex;align-items:center;gap:6px;border-radius:10px;background:var(--cfill);color:var(--c2);padding:0 9px}
+.srch svg{width:15px;height:15px;flex:none}
+.srch input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;color:var(--c1);user-select:text;-webkit-user-select:text}
+.srch input::placeholder{color:var(--c2)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border-radius:99px;background:var(--cfill);color:var(--c1);white-space:nowrap}
+.chips button.on{background:var(--c1);color:var(--cbg)}
+.gh{display:flex;align-items:baseline;gap:6px;color:var(--c2);font-weight:600}
+.gh small{font-weight:400;color:var(--c3)}
+.gh .sk{font-weight:400;color:var(--c2);margin-left:auto}
+.frow{display:flex;gap:12px;align-items:flex-start;position:relative;cursor:pointer}
+.frow.off{opacity:.45}
+.fk{flex:1;min-width:0}
+.fn{display:flex;align-items:center;font-weight:550;color:var(--c1)}
+.fn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn em{font-style:normal;flex:none}
+.nd{flex:none;width:8px;height:8px;border-radius:4px;background:var(--tint);margin-left:7px}
+.fs{color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fm{display:flex;align-items:center;gap:6px;color:var(--c2);white-space:nowrap;overflow:hidden}
+.chip{display:inline-flex;align-items:center;gap:3px;padding:1px 7px;border-radius:99px;background:var(--cfill);color:var(--c2);flex:none;line-height:1.5}
+.chip svg{width:11px;height:11px}
+button.chip{color:var(--tint);background:color-mix(in srgb,var(--tint) 12%,transparent);font-weight:550}
+button.chip svg{transition:transform .18s}
+button.chip.open svg{transform:rotate(180deg)}
+.vh{border-left:2px solid var(--csep);display:flex;flex-direction:column;animation:vin .2s ease-out}
+@keyframes vin{from{opacity:0;transform:translateY(-4px)}}
+.vr{display:flex;flex-direction:column;cursor:pointer;border-radius:8px}
+.vr:hover{background:var(--cfill)}
+.vr b{font-weight:550;color:var(--c1)}
+.vr b small{font-weight:400;color:var(--c2);margin-left:6px}
+.vr span{color:var(--c2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grid{display:grid;grid-template-columns:repeat(3,1fr)}
+.gi{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;cursor:pointer}
+.gi .nd{position:absolute;top:7px;right:7px;box-shadow:0 0 0 2px #fff}
+.banner{display:flex;gap:8px;align-items:flex-start;border-radius:12px;background:var(--cfill);color:var(--c2);line-height:1.45}
+.banner svg{width:16px;height:16px;flex:none;margin-top:1px}
+.empty{display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--c2);gap:6px}
+.empty svg{width:44px;height:44px;color:var(--c3);margin-bottom:6px}
+.empty b{color:var(--c1);font-weight:600}
+
+/* ---------- a file, opened (both) ---------- */
+.pv{display:flex;flex-direction:column;min-height:0;height:100%}
+.pv-top{display:flex;align-items:center;gap:10px;flex:none}
+.pv-t{flex:1;min-width:0;text-align:center}
+.pv-t b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-t span{display:block;color:var(--c2);font-size:12px}
+.pv-vers{display:flex;justify-content:center;gap:2px;flex:none;align-self:center;background:var(--cfill);border-radius:9px;padding:2px}
+.pv-vers button{padding:3px 12px;border-radius:7px;font-size:12.5px;color:var(--c2)}
+.pv-vers button.on{background:var(--cbg);color:var(--c1);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.pv-body{flex:1;min-height:0;overflow:auto;user-select:text;-webkit-user-select:text}
+.pv-ctx{flex:none;display:flex;flex-direction:column;gap:10px}
+.pv-say{display:flex;gap:10px;align-items:flex-start}
+.pv-say .k{flex:1;min-width:0}
+.pv-say b{display:flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px;color:var(--c2)}
+.pv-say span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:var(--c1)}
+.pv-btns{display:flex;gap:8px}
+.pv-btns button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border-radius:11px;background:var(--cfill);font-weight:550}
+.pv-btns button.pri{background:var(--tint);color:#fff}
+[data-theme=dark] .pv-btns button.pri{background:var(--i-me)}
+.pv-btns svg{width:15px;height:15px}
+.paper{background:#fff;color:#1b1c22;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.08);padding:26px 24px 30px;font:13px/1.7 var(--font-ios);max-width:580px;margin:0 auto}
+.paper h1{font-size:19px;margin:0 0 2px}.paper h2{font-size:14.5px;margin:16px 0 4px}.paper p{margin:6px 0}
+.paper .sub{color:#6b7280;font-size:12px}
+.paper ul{margin:4px 0;padding-left:18px}
+.paper table{border-collapse:collapse;width:100%;font-size:12px;margin:8px 0}
+.paper td,.paper th{border:1px solid #d9dce3;padding:4px 7px;text-align:left}
+.paper th{background:#f3f4f7;font-weight:600}
+.paper .sum{background:#eef2ff;border-left:3px solid #3d5bff;padding:8px 12px;border-radius:4px;margin:10px 0}
+.paper .sum b{color:#3d5bff}
+.xl{background:#fff;color:#1b1c22;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.08);overflow:auto;max-width:620px;margin:0 auto}
+.xl table{border-collapse:collapse;font:12px/1.5 var(--font-ios);min-width:100%}
+.xl td,.xl th{border:1px solid #e1e3e8;padding:4px 10px;white-space:nowrap;text-align:left}
+.xl th{background:#f3f4f7;color:#6b7280;font-weight:500;text-align:center}
+.xl tr:nth-child(2) td{font-weight:600;background:#eaf6ef}
+.xl .tab{padding:6px 10px;font-size:11.5px;color:#1a9d55;font-weight:600;border-top:1px solid #e1e3e8}
+.sl{max-width:620px;margin:0 auto}
+.sl .big{aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,#161b36,#3d5bff);color:#fff;padding:7% 7% 5%;display:flex;flex-direction:column;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.sl .big small{opacity:.7;font-size:12px}
+.sl .big b{font-size:26px;line-height:1.2;margin:4px 0}
+.sl .big .bars{flex:1;display:flex;align-items:flex-end;gap:5%;margin-top:6%}
+.sl .big .bars i{flex:1;background:rgba(255,255,255,.85);border-radius:4px 4px 0 0}
+.sl .strip{display:flex;gap:8px;margin-top:12px}
+.sl .strip i{flex:1;aspect-ratio:16/9;border-radius:5px;background:var(--cfill)}
+.sl .strip i.on{background:linear-gradient(135deg,#161b36,#3d5bff);box-shadow:0 0 0 2px var(--tint)}
+.pmd{max-width:580px;margin:0 auto;color:var(--c1);font-size:15px;line-height:1.62}
+.pmd h1{font-size:21px;margin:0 0 8px}.pmd h2{font-size:16px;margin:18px 0 4px}.pmd ul{margin:4px 0;padding-left:20px}.pmd p{margin:6px 0}
+.pmd code{font:12.5px var(--mono);background:var(--cfill);padding:1px 5px;border-radius:4px}
+.pcode{max-width:620px;margin:0 auto;font:12px/1.65 var(--mono);color:var(--c1);white-space:pre-wrap;overflow-wrap:anywhere}
+.pcode div{padding:0 8px;border-radius:3px}
+.pcode .add{background:rgba(26,157,85,.16)}.pcode .del{background:rgba(229,72,77,.16)}.pcode .hd{color:var(--c2)}
+.pimg{max-width:560px;margin:0 auto;aspect-ratio:4/3;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+
+/* a menu, where it was asked for */
+.pop-s{position:absolute;inset:0;z-index:80}
+.pop{position:absolute;z-index:81;min-width:190px;border-radius:13px;overflow:hidden;background:var(--i-pop);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:0 10px 40px rgba(0,0,0,.24),0 0 0 .5px var(--csep);animation:mpop .16s cubic-bezier(.2,0,0,1);color:var(--c1)}
+@keyframes mpop{from{opacity:0;transform:scale(.9)}}
+.pop button{display:flex;align-items:center;gap:11px;width:100%;text-align:left}
+.pop button span{flex:1}
+.pop svg{width:17px;height:17px;flex:none}
+.pop.p-phone button{padding:11px 15px;font-size:16.5px}
+.pop.p-phone button+button{border-top:.5px solid var(--csep)}
+.pop.p-mac{min-width:170px;border-radius:9px;padding:4px;background:var(--glass);box-shadow:var(--glass-sh),0 10px 30px rgba(0,0,0,.18)}
+.pop.p-mac button{padding:5px 9px;border-radius:5px;font-size:13px}
+.pop.p-mac button:hover{background:var(--accent);color:#fff}
+.pop.p-mac svg{width:14px;height:14px}
+.toast{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);z-index:85;padding:8px 14px;border-radius:99px;background:rgba(30,30,34,.92);color:#fff;font-size:13px;white-space:nowrap;animation:tin .2s ease-out;pointer-events:none}
+@keyframes tin{from{opacity:0;transform:translate(-50%,6px)}}
+.badge{position:absolute;min-width:17px;height:17px;padding:0 5px;border-radius:9px;background:var(--tint);color:#fff;font:700 11px/17px var(--font-ios);text-align:center;box-shadow:0 0 0 2px var(--cbg)}
+[data-theme=dark] .badge{background:var(--i-me)}
+
+/* ================= Mac ================= */
+.mac{width:1040px;max-width:100%;height:740px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:flex;background:var(--win);color:var(--l1);font:13px/1.45 var(--font-mac);position:relative;--bubble:var(--bot-reply)}
+.mside{width:196px;background:var(--side);border-right:.5px solid var(--sep);padding:46px 10px 10px;flex:none;position:relative}
+.lights{position:absolute;top:16px;left:16px;display:flex;gap:8px}
+.lights i{width:12px;height:12px;border-radius:6px;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.mside .it{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:7px}
+.mside .it.on{background:var(--fill2);font-weight:550}
+.mside .gt{font-size:11.5px;color:var(--l3);padding:14px 10px 4px}
+.mside .ses{height:28px;padding:0 10px;display:flex;align-items:center;gap:8px;color:var(--l2);white-space:nowrap;overflow:hidden}
+.mside .ses i{width:6px;height:6px;border-radius:3px;background:#17924f;flex:none}
+.mmain{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+.mhead{position:absolute;top:0;left:0;right:0;height:96px;z-index:3;pointer-events:none;background:linear-gradient(var(--win) 46%,transparent)}
+.mhead>*{pointer-events:auto}
+.mid{position:absolute;top:6px;left:0;right:0;width:fit-content;margin:0 auto;display:flex;flex-direction:column;align-items:center}
+.mcap{margin-top:-13px;height:28px;padding:0 13px;border-radius:14px;background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(20px);display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;position:relative}
+.mcap small{font-size:12.5px;color:var(--l2);font-weight:400}
+.mcap i{width:1px;height:12px;background:var(--l4)}
+.mtb{position:absolute;top:10px;right:12px;display:flex;gap:2px}
+.tb{position:relative;width:30px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.tb:hover,.tb.on{background:var(--fill2);color:var(--l1)}
+.tb svg{width:16px;height:16px}
+.tb .badge{top:-3px;right:-4px;min-width:15px;height:15px;font-size:10px;line-height:15px;padding:0 4px}
+.mconv{flex:1;overflow-y:auto;padding:104px 24px 26px}
+.mac .col{max-width:720px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.mac .tdiv{align-self:center;font-size:11.5px;color:var(--l3);margin:6px 0 0}
+.mac .row.her .bub{max-width:min(600px,100%);padding:9px 15px;border-radius:12px;background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);font-size:14.5px;line-height:1.6}
+.mac .row.me .bub{max-width:80%;background:var(--accent);color:#fff;border-radius:12px;padding:9px 15px;font-size:14.5px;line-height:1.6}
+.mac .cfl{border-radius:12px}
+.mac .cf b{font-size:13px}
+.mac .cpic{border-radius:10px}
+.cmpz{padding:0 24px 18px;flex:none}
+.cmp{max-width:720px;margin:0 auto;background:var(--pill);border-radius:12px;box-shadow:0 0 0 .5px var(--pill-bd),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06);padding:6px;display:flex;flex-direction:column;gap:6px}
+.cq{display:flex;gap:9px;align-items:flex-start;padding:7px 6px 7px 9px;border-radius:8px;background:var(--fill);animation:qin .22s cubic-bezier(.2,0,0,1)}
+@keyframes qin{from{opacity:0;transform:translateY(6px)}}
+.cq::before{content:"";width:2.5px;align-self:stretch;border-radius:2px;background:var(--accent);flex:none}
+.cq .k{flex:1;min-width:0}
+.cq b{display:block;font-size:12px;font-weight:600;color:var(--accent-t);line-height:17px}
+.cq span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;line-height:19px;color:var(--l2)}
+.cq .x{width:20px;height:20px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:var(--l2);flex:none}
+.cq .x svg{width:10px;height:10px}
+.cmp-row{display:flex;align-items:flex-end;gap:4px}
+.cmp-plus{width:32px;height:32px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--l2);flex:none}
+.cmp-plus svg{width:18px;height:18px}
+.cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 4px;height:32px}
+.cmp-in::placeholder{color:var(--l3)}
+.send{width:32px;height:32px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.send:disabled{color:var(--l3);background:var(--fill2);cursor:default}
+.send svg{width:16px;height:16px}
+/* the panel beside the conversation, as Her's settings and her scheduled tasks open */
+.mpanel{width:340px;flex:none;display:flex;flex-direction:column;min-height:0;background:var(--win);border-left:.5px solid var(--sep);animation:bpn .18s ease-out}
+@keyframes bpn{from{opacity:0;transform:translateX(12px)}}
+.mp-top{height:44px;flex:none;display:flex;align-items:center;gap:2px;padding:0 10px 0 16px}
+.mp-top b{flex:1;font-size:14px;font-weight:600}
+.mp-top .lbl{width:auto;padding:0 8px;gap:4px;font-size:12px}
+.mp-top .lbl svg{width:13px;height:13px}
+.mpanel .srch{margin:0 14px;height:28px;font-size:13px}
+.mpanel .chips{padding:10px 14px 4px;flex:none}
+.mpanel .chips button{padding:2px 10px;font-size:12px}
+.mp-body{flex:1;min-height:0;overflow-y:auto;padding:0 6px 20px}
+.mpanel .gh{padding:14px 10px 4px;font-size:11.5px}
+.mpanel .frow{padding:7px 10px;border-radius:8px;gap:10px}
+.mpanel .frow:hover{background:var(--fill)}
+.mpanel .fn{font-size:13px}
+.mpanel .fs{font-size:12px;margin-top:1px}
+.mpanel .fm{font-size:11.5px;margin-top:3px}
+.mpanel .chip{font-size:11px}
+.mpanel .fa{position:absolute;top:5px;right:6px;display:none;gap:1px;background:var(--win);border-radius:7px;box-shadow:var(--glass-sh)}
+.mpanel .frow:hover .fa{display:flex}
+.mpanel .fa .tb{width:26px;height:24px}
+.mpanel .fa svg{width:14px;height:14px}
+.mpanel .vh{margin:0 10px 6px 28px;padding-left:10px}
+.mpanel .vr{padding:5px 8px;font-size:12px}
+.mpanel .grid{gap:6px;padding:4px 10px}
+.mpanel .banner{margin:10px 10px 0;padding:9px 11px;font-size:12px}
+.mpanel .empty{padding:80px 30px;font-size:12.5px}
+.mprev{position:absolute;inset:0;z-index:60;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;animation:fade .16s}
+@keyframes fade{from{opacity:0}}
+.mprev .pv{width:760px;max-width:calc(100% - 60px);height:calc(100% - 60px);background:var(--win2);border-radius:12px;box-shadow:var(--shadow-win);overflow:hidden}
+.mprev .pv-top{height:48px;padding:0 12px;border-bottom:.5px solid var(--sep);background:var(--win)}
+.mprev .pv-t{text-align:left;padding-left:4px}
+.mprev .pv-t b{font-size:13.5px}
+.mprev .pv-vers{margin:10px 0 0}
+.mprev .pv-body{padding:18px 26px 22px}
+.mprev .pv-ctx{flex-direction:row;align-items:center;padding:10px 14px;border-top:.5px solid var(--sep);background:var(--win)}
+.mprev .pv-say{flex:1;min-width:0}
+.mprev .pv-say span{font-size:13px;-webkit-line-clamp:1}
+.mprev .pv-btns button{flex:none;padding:5px 12px;border-radius:7px;font-size:13px}
+
+/* ================= iPhone ================= */
+.phone{width:417px;height:876px;border-radius:58px;padding:12px;background:#111;box-shadow:0 30px 80px rgba(10,20,50,.35),inset 0 0 0 2px #333;flex:none}
+.scr{position:relative;width:100%;height:100%;border-radius:46px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);font:17px/1.3 var(--font-ios);letter-spacing:-.2px;user-select:none;-webkit-user-select:none;--bubble:var(--i-reply)}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 44px;font-size:16px;font-weight:600;z-index:75;pointer-events:none}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;z-index:76}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--i-l1);opacity:.85;z-index:77;pointer-events:none}
+.gbtn{position:relative;width:44px;height:44px;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;justify-content:center;flex:none;color:var(--i-l1)}
+.gbtn svg{width:20px;height:20px}
+.gbtn .badge{top:-2px;right:-3px}
+.gbtn.lbl{width:auto;padding:0 14px;font-size:15px;font-weight:550;gap:5px}
+.gbtn.lbl svg{width:15px;height:15px}
+.ihead{position:absolute;top:0;left:0;right:0;height:172px;z-index:6;pointer-events:none;background:linear-gradient(var(--i-bg) 66%,transparent)}
+.ihead>*{pointer-events:auto}
+.ihl,.ihr{position:absolute;top:58px;display:flex;gap:8px}
+.ihl{left:16px}.ihr{right:16px}
+.iav{position:absolute;top:54px;left:50%;margin-left:-36px}
+.itag{position:absolute;top:110px;left:50%;transform:translateX(-50%);height:36px;padding:0 14px;border-radius:18px;background:var(--i-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;gap:7px;font-weight:600;white-space:nowrap}
+.itag small{font-size:15px;font-weight:500;color:var(--i-l2)}
+.itag i{width:1px;height:14px;background:var(--i-l3)}
+.iscroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;padding:176px 16px 110px;display:flex;flex-direction:column;gap:10px;transition:transform .34s cubic-bezier(.2,0,0,1)}
+.iscroll::-webkit-scrollbar{display:none}
+.scr .tdiv{align-self:center;font-size:12px;color:var(--i-l3);margin:6px 0 0}
+.scr .row.me{padding-left:48px}
+.scr .row.her{padding-right:14px}
+.scr .bub{padding:9px 14px;border-radius:18px;font-size:17px;line-height:1.36}
+.scr .row.her .bub{background:var(--i-reply);box-shadow:inset 0 0 0 .5px var(--i-sep)}
+.scr .row.me .bub{background:var(--i-me);color:#fff}
+.scr .cfl{border-radius:18px}
+.scr .cf b{font-size:15px}
+.scr .cf .k span{font-size:13px}
+.scr .srcl{font-size:13px}
+.scr .q{font-size:15px;border-radius:11px}
+.icomp{position:absolute;left:12px;right:12px;bottom:26px;display:flex;gap:8px;align-items:flex-end;z-index:8}
+.ibox{flex:1;min-width:0;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 2px 10px rgba(0,0,0,.08);display:flex;flex-direction:column;overflow:hidden}
+.iq{display:flex;gap:9px;align-items:center;padding:9px 8px 8px 14px;border-bottom:.5px solid var(--i-sep);animation:qin .24s cubic-bezier(.2,0,0,1)}
+.iq::before{content:"";width:3px;align-self:stretch;border-radius:2px;background:var(--i-tint);flex:none}
+.iq .k{flex:1;min-width:0}
+.iq b{display:block;font-size:13px;font-weight:600;color:var(--i-tint);line-height:17px}
+.iq span{display:block;font-size:14px;line-height:19px;color:var(--i-l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.iq .x{width:28px;height:28px;display:flex;align-items:center;justify-content:center;flex:none}
+.iq .x i{width:20px;height:20px;border-radius:10px;background:var(--i-fill);display:flex;align-items:center;justify-content:center;color:var(--i-l2)}
+.iq .x svg{width:9px;height:9px}
+.irow{display:flex;align-items:center;min-height:44px;padding:0 6px 0 16px;gap:6px}
+.irow input{flex:1;min-width:0;border:0;outline:none;background:none;font:16px var(--font-ios);color:var(--i-l1);user-select:text;-webkit-user-select:text}
+.irow input::placeholder{color:var(--i-l3)}
+.isend{width:32px;height:32px;border-radius:16px;background:var(--i-me);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+.isend:disabled{background:var(--i-fill);color:var(--i-l3);cursor:default}
+.isend svg{width:16px;height:16px}
+/* the page of what Her delivered, pushed over the conversation */
+.ipage{position:absolute;inset:0;z-index:20;background:var(--i-bg);transform:translateX(100%);transition:transform .34s cubic-bezier(.2,0,0,1);display:flex;flex-direction:column;box-shadow:-10px 0 30px rgba(0,0,0,.1)}
+.scr.open .ipage{transform:none}
+.scr.open .iscroll,.scr.open .ihead,.scr.open .icomp{transform:translateX(-28%)}
+.ihead,.icomp{transition:transform .34s cubic-bezier(.2,0,0,1)}
+.pnav{flex:none;height:112px;padding:58px 16px 0;display:flex;align-items:flex-start;justify-content:space-between;position:relative}
+.pnav b{position:absolute;left:0;right:0;top:58px;line-height:44px;text-align:center;font-weight:600;pointer-events:none}
+.ipage .srch{margin:0 16px;height:38px;font-size:16px;flex:none}
+.ipage .chips{padding:12px 16px 6px;flex:none}
+.ipage .chips button{padding:6px 14px;font-size:14.5px;font-weight:500}
+.pbody{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;padding-bottom:50px}
+.pbody::-webkit-scrollbar{display:none}
+.ipage .gh{padding:18px 16px 4px;font-size:13px}
+.ipage .frow{padding:10px 16px}
+.ipage .frow+.frow::before,.ipage .vh+.frow::before{content:"";position:absolute;top:0;left:64px;right:0;height:.5px;background:var(--i-sep)}
+.ipage .frow:active{background:var(--i-fill)}
+.ipage .fn{font-size:16px}
+.ipage .fs{font-size:14px;margin-top:1px}
+.ipage .fm{font-size:12.5px;margin-top:5px}
+.ipage .chip{font-size:12px}
+.ipage .fa{display:none}
+.ipage .vh{margin:0 16px 10px 34px;padding-left:16px}
+.ipage .vr{padding:7px 8px;font-size:14px}
+.ipage .vr span{font-size:13px}
+.ipage .grid{gap:8px;padding:6px 16px}
+.ipage .banner{margin:12px 16px 0;padding:10px 12px;font-size:13px}
+.ipage .empty{padding:120px 40px;font-size:14.5px}
+.iprev{position:absolute;inset:0;z-index:40;background:var(--i-sheet)}
+.iprev.in{animation:sup .32s cubic-bezier(.2,0,0,1)}
+@keyframes sup{from{transform:translateY(100%)}}
+.iprev .pv-top{padding:58px 16px 8px}
+.iprev .pv-t b{font-size:16px}
+.iprev .pv-vers{margin:2px 0 6px}
+.iprev .pv-vers button{padding:5px 14px;font-size:13.5px}
+.iprev .pv-body{padding:10px 14px 18px}
+.iprev .pv-ctx{margin:0 10px 26px;padding:12px;border-radius:24px;background:var(--i-glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:0 0 0 .5px var(--i-glass-bd),0 4px 20px rgba(0,0,0,.1)}
+.iprev .pv-say span{font-size:15px;line-height:1.35}
+.iprev .pv-btns button{height:42px;font-size:15.5px;border-radius:14px}
+.iprev .paper{padding:22px 18px 26px}
+</style>
+</head>
+<body>
+<div class="top"><h1>Her 文件 · 原型</h1><span>Her 发给你的每一份文件，收在一个独立入口里。页面可以操作：点入口、搜、筛、点开、定位回对话、回复让她接着改。</span></div>
+<div class="wrap"><div id="stage"></div><aside class="notes" id="notes"></aside></div>
+<div class="ctl" id="ctl"></div>
+
+<script>
+const ic = (d, w = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I = {
+  tray: ic('<path d="M3 13.5 5.6 6a2 2 0 0 1 1.9-1.4h9A2 2 0 0 1 18.4 6L21 13.5"/><path d="M3 13.5h5l1 2.6h6l1-2.6h5v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  menu: ic('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+  pulse: ic('<path d="M3 12h4l2.5-6 4 12 2.5-6h5"/>'),
+  clock: ic('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  more: ic('<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>'),
+  back: ic('<path d="M15 5 8 12l7 7"/>', 2.4),
+  x: ic('<path d="M6 6l12 12M18 6 6 18"/>', 2.6),
+  search: ic('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>'),
+  share: ic('<path d="M12 15V4M8 7.5 12 3.5l4 4"/><path d="M7 11H6a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a2 2 0 0 0-2-2h-1"/>'),
+  down: ic('<path d="M12 4v11M8 11.5l4 4 4-4"/><path d="M5 20h14"/>'),
+  locate: ic('<path d="M20 11.5a7.5 7.5 0 0 1-10.6 6.8L4 20l1.6-4.6A7.5 7.5 0 1 1 20 11.5Z"/><path d="M9 11.5h6M12.5 9l2.5 2.5-2.5 2.5"/>'),
+  reply: ic('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5A5.5 5.5 0 0 1 20 14.5V20"/>'),
+  sort: ic('<path d="M4 7h16M7 12h10M10 17h4"/>'),
+  chev: ic('<path d="m6 9 6 6 6-6"/>', 2.4),
+  check: ic('<path d="m5 12.5 4.5 4.5L19 7.5"/>', 2.4),
+  code: ic('<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>'),
+  eye: ic('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>'),
+  cloud: ic('<path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 10.2 3.9 3.9 0 0 1 17.5 18Z"/><path d="M4 4l16 16"/>'),
+  plus: ic('<path d="M12 5v14M5 12h14"/>', 2.2),
+  up: ic('<path d="M12 19V5M6 11l6-6 6 6"/>', 2.8),
+};
+const HOST = "Mac mini";
+const KIND = { docx: "doc", pdf: "doc", md: "doc", txt: "doc", xlsx: "sheet", csv: "sheet", pptx: "slide", png: "image", jpg: "image", diff: "code", sh: "code", py: "code" };
+const FILTERS = [["all", "全部"], ["doc", "文档"], ["sheet", "表格"], ["slide", "演示"], ["image", "图片"], ["code", "代码"]];
+
+/* The conversation. A message of Her's that carries files is one delivery (send_to_user, type "attachment");
+   day counts from today, 2026-11-16. The same name sent again is the same file, a version later. */
+const seed = () => [
+  { id: "a1", day: -9, time: "10:12", ask: "把融资路演的 deck 按 10 月的数据更新一版。", say: "更新好了：市场规模和营收两页换成了 10 月的数据，其余没动。", files: [["融资路演.pptx", 4812000]] },
+  { id: "a2", day: -6, time: "18:30", src: ["routine", "每周周报"], say: "这周的周报：合并了 14 个 PR，还有 3 个在评审。", files: [["周报-11-10.md", 7900]] },
+  { id: "a3", day: -4, time: "16:05", ask: "把周会录音整理成纪要，待办单独列出来。", say: "纪要整理好了，6 条待办都标了负责人。", files: [["周会纪要-11-12.docx", 48200]] },
+  { id: "a4", day: -3, time: "11:40", ask: "把上个月的销售数据按区域做个透视。", say: "透视表做好了，华东环比涨了 18%，另外配了一张趋势图。", files: [["销售数据透视.xlsx", 96300], ["区域销售趋势.png", 212000]] },
+  { id: "a5", day: -1, time: "08:00", src: ["routine", "每日晨报"], say: "早上好。昨晚有 2 封要你回的邮件，今天 3 个会。", files: [["晨报-11-15.md", 5300]] },
+  { id: "a6", day: -1, time: "10:26", ask: "帮我做一份 Q3 竞品分析，重点看定价。", say: "初稿好了，先看看结构对不对。", files: [["Q3 竞品分析.docx", 1100000]] },
+  { id: "a7", day: -1, time: "15:48", ask: "定价这节太薄了，加上各家的套餐对比。", say: "定价一节重写了，加了四家的套餐对比表。", files: [["Q3 竞品分析.docx", 1240000]] },
+  { id: "a8", day: -1, time: "17:20", src: ["session", "接口联调脚本"], say: "联调跑完了：42 个接口过了 40 个，没过的两个和修法都在报告里。", files: [["接口联调报告.md", 12400], ["fix-timeout.diff", 2100]] },
+  { id: "a9", day: 0, time: "08:00", src: ["routine", "每日晨报"], say: "早上好。今天 2 个会，杭州出差的行程还没定。", files: [["晨报-11-16.md", 5600]], isNew: true },
+  { id: "a10", day: 0, time: "11:20", ask: "看看这三家官网现在的定价页长什么样。", say: "三家的定价页都截下来了。", files: [["定价页-甲.png", 486000], ["定价页-乙.png", 512000], ["定价页-丙.png", 431000]] },
+  { id: "a11", day: 0, time: "13:05", ask: "Q3 分析最前面加一页结论摘要，给老板看。", say: "加好了：最前面是一页结论摘要，三条结论各配一个数字。", files: [["Q3 竞品分析.docx", 1310000]] },
+  { id: "a12", day: 0, time: "14:32", ask: "下周三到周五去杭州出差，帮我排一下行程。", say: "行程排好了，三天的安排在 PDF 里，两家酒店的对比单独做了一张表。", files: [["杭州出差行程.pdf", 184000], ["酒店对比.xlsx", 23000]], isNew: true },
+];
+
+const S = { plat: "phone", theme: "light", entry: "left", group: "time", state: "ok", filter: "all", q: "", open: false, prev: null, quote: null, msgs: [], expanded: new Set(), cached: new Set(), last: null, n: 0, min: 40 };
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const ext = (n) => n.slice(n.lastIndexOf(".") + 1).toLowerCase();
+const size = (b) => (b >= 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB");
+const dayLabel = (d) => (d === 0 ? "今天" : d === -1 ? "昨天" : `11月${16 + d}日`);
+const when = (v) => `${dayLabel(v.day)} ${v.time}`;
+const root = () => (S.plat === "phone" ? $("#scr") : $("#mac"));
+function reset() {
+  Object.assign(S, { msgs: seed(), quote: null, prev: null, open: false, filter: "all", q: "", last: null, expanded: new Set(), cached: new Set(["Q3 竞品分析.docx", "杭州出差行程.pdf", "晨报-11-15.md"]) });
+}
+
+/* ---------- what Her delivered, from the conversation: one a file, its sends newest first ---------- */
+function items() {
+  const by = new Map();
+  S.msgs.forEach((m, ord) => {
+    for (const [name, bytes] of m.files ?? []) {
+      const d = by.get(name) ?? { name, ext: ext(name), kind: KIND[ext(name)] ?? "doc", vers: [] };
+      d.vers.unshift({ msg: m.id, day: m.day, time: m.time, say: m.say, ask: m.ask, src: m.src, size: bytes, isNew: !!m.isNew, ord });
+      by.set(name, d);
+    }
+  });
+  return [...by.values()].sort((a, b) => b.vers[0].ord - a.vers[0].ord);
+}
+const item = (name) => items().find((d) => d.name === name);
+const fresh = () => items().filter((d) => d.vers[0].isNew).length;
+function shown() {
+  if (S.state === "empty") return [];
+  const q = S.q.trim().toLowerCase();
+  return items().filter((d) => (S.filter === "all" || d.kind === S.filter) &&
+    (!q || (d.name + d.vers.map((v) => v.say + (v.ask ?? "") + (v.src?.[1] ?? "")).join(" ")).toLowerCase().includes(q)));
+}
+function groups(list) {
+  const out = new Map();
+  for (const d of list) {
+    const v = d.vers[0];
+    const key = S.group === "time"
+      ? (v.day === 0 ? "今天" : v.day === -1 ? "昨天" : v.day >= -7 ? "过去 7 天" : "更早")
+      : (v.src ? v.src[1] : "对话里要的");
+    const sub = S.group === "source" && v.src ? (v.src[0] === "routine" ? "定时任务" : "编程会话") : "";
+    if (!out.has(key)) out.set(key, { sub, list: [] });
+    out.get(key).list.push(d);
+  }
+  return [...out];
+}
+
+/* ---------- drawing a file ---------- */
+function shot(name) {
+  if (name.includes("趋势")) return `<div class="shot bar"><i></i><i></i><i></i><i></i><i></i></div>`;
+  return `<div class="shot s${"甲乙丙".indexOf(name.at(-5)) + 1 || 1}"><i></i><i></i><i></i></div>`;
+}
+function icon(d, sm) {
+  if (d.kind === "image") return `<span class="fi img ${sm ? "sm" : ""}">${shot(d.name)}</span>`;
+  const k = d.ext === "pdf" ? "pdf" : d.ext === "md" ? "md" : d.kind;
+  return `<span class="fi k-${k} ${sm ? "sm" : ""}">${d.ext.toUpperCase()}</span>`;
+}
+const srcChip = (src) => (src ? `<span class="chip">${src[0] === "routine" ? I.clock : I.code}${esc(src[1])}</span>` : "");
+function row(d) {
+  const v = d.vers[0], n = d.vers.length, open = S.expanded.has(d.name), stem = d.name.slice(0, d.name.lastIndexOf("."));
+  const off = S.state === "offline" && !S.cached.has(d.name);
+  const hist = open ? `<div class="vh">${d.vers.map((x, i) => `<div class="vr" data-f="${esc(d.name)}" data-v="${i}"><b>第 ${n - i} 版${i === 0 ? "（最新）" : ""}<small>${when(x)} · ${size(x.size)}</small></b><span>${esc(x.say)}</span></div>`).join("")}</div>` : "";
+  return `<div class="frow ${off ? "off" : ""}" data-f="${esc(d.name)}">${icon(d)}
+    <div class="fk"><div class="fn"><span>${esc(stem)}</span><em>.${d.ext}</em>${v.isNew ? `<i class="nd" title="新的"></i>` : ""}</div>
+      <div class="fs">${esc(v.say)}</div>
+      <div class="fm"><span>${when(v)} · ${size(v.size)}</span>${S.group === "time" ? srcChip(v.src) : ""}${n > 1 ? `<button class="chip ${open ? "open" : ""}" data-act="vers">${n} 个版本${I.chev}</button>` : ""}</div></div>
+    <div class="fa"><button class="tb" data-act="locate" title="在对话中查看">${I.locate}</button><button class="tb" data-act="reply" title="回复，让 Her 接着改">${I.reply}</button><button class="tb" data-act="share" title="下载">${I.down}</button></div>
+  </div>${hist}`;
+}
+function listHTML() {
+  const list = shown();
+  const banner = S.state === "offline" ? `<div class="banner">${I.cloud}<div>${HOST} 离线。这是上次同步的列表，打开过的文件这台设备上还有，其余等它回来。</div></div>` : "";
+  if (!list.length) {
+    return banner + (S.q.trim() || S.filter !== "all"
+      ? `<div class="empty">${I.search}<b>没有找到</b>换个词试试，文件名和 Her 交付时说的话都能搜。</div>`
+      : `<div class="empty">${I.tray}<b>Her 发给你的文件都收在这里</b>报告、表格、图片……发在对话里的每一份，都能在这儿找回来。</div>`);
+  }
+  return banner + groups(list).map(([key, g]) => `<div class="gh">${key}<small>${g.list.length}</small>${g.sub ? `<span class="sk">${g.sub}</span>` : ""}</div>` +
+    (S.filter === "image"
+      ? `<div class="grid">${g.list.map((d) => `<div class="gi" data-f="${esc(d.name)}" title="${esc(d.name)}">${shot(d.name)}${d.vers[0].isNew ? `<i class="nd"></i>` : ""}</div>`).join("")}</div>`
+      : g.list.map(row).join(""))).join("");
+}
+
+/* ---------- a file opened: its content, drawn; under it what Her said with it, and the way back ---------- */
+const table = (rows) => `<table>${rows.map((r, i) => `<tr>${r.map((c) => (i ? `<td>${c}</td>` : `<th>${c}</th>`)).join("")}</tr>`).join("")}</table>`;
+function mock(d, ver) {
+  const n = d.name;
+  if (d.kind === "image") return `<div class="pimg">${shot(n)}</div>`;
+  if (d.ext === "pptx") return `<div class="sl"><div class="big"><small>融资路演 · 03</small><b>市场规模：10 月达 86 亿</b><small>同比 +41%，连续三个季度加速</small><div class="bars"><i style="height:30%"></i><i style="height:44%"></i><i style="height:52%"></i><i style="height:71%"></i><i style="height:100%"></i></div></div><div class="strip"><i></i><i></i><i class="on"></i><i></i><i></i><i></i></div></div>`;
+  if (d.kind === "sheet") {
+    const rows = n.includes("酒店")
+      ? [["酒店", "到园区", "每晚", "三晚合计", "备注"], ["园区商务酒店", "步行 5 分钟", "¥520", "¥1,560", "含早"], ["西湖精品酒店", "打车 25 分钟", "¥780", "¥2,340", "周四晚餐步行可达"]]
+      : [["区域", "8 月", "9 月", "10 月", "环比"], ["华东", "412", "438", "517", "+18%"], ["华南", "356", "349", "371", "+6%"], ["华北", "298", "305", "312", "+2%"], ["西南", "141", "166", "172", "+4%"]];
+    const cols = ["", ..."ABCDE"].slice(0, rows[0].length + 1);
+    return `<div class="xl"><table><tr>${cols.map((c) => `<th>${c}</th>`).join("")}</tr>${rows.map((r, i) => `<tr><th>${i + 1}</th>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</table><div class="tab">Sheet1</div></div>`;
+  }
+  if (d.kind === "code") return `<div class="pcode"><div class="hd">--- a/scripts/contract/client.py</div><div class="hd">+++ b/scripts/contract/client.py</div><div class="hd">@@ -41,7 +41,9 @@ def call(path, payload):</div><div>     session = make_session()</div><div class="del">-    resp = session.post(url, json=payload, timeout=3)</div><div class="add">+    resp = session.post(url, json=payload, timeout=(3, 15))</div><div class="add">+    if resp.status_code == 504:</div><div class="add">+        resp = retry(session, url, payload)</div><div>     resp.raise_for_status()</div><div>     return resp.json()</div></div>`;
+  if (d.ext === "md") {
+    if (n.startsWith("晨报")) return `<div class="pmd"><h1>晨报 · ${n.slice(3, 8).replace("-", "月")}日</h1><h2>要你回的</h2><ul><li>法务：供应商合同第 7 条的修改意见，今天下班前要</li><li>王磊：周四汇报的演示环境用哪套数据</li></ul><h2>今天的会</h2><ul><li>10:30 产品周会</li><li>15:00 和设计过新版首页</li></ul><h2>还悬着的</h2><p>杭州出差的行程没定，高铁票周三上午的只剩二等座。</p></div>`;
+    if (n.startsWith("周报")) return `<div class="pmd"><h1>周报 · 11月4日—11月10日</h1><h2>做完的</h2><ul><li>合并 14 个 PR，登录页改版上线</li><li>接口联调脚本覆盖到 42 个接口</li></ul><h2>在路上的</h2><ul><li>3 个 PR 在评审</li><li>Q3 竞品分析等定价数据</li></ul></div>`;
+    return `<div class="pmd"><h1>接口联调报告</h1><p>共 42 个接口，通过 40 个。</p><h2>没通过的</h2><ul><li><code>POST /orders/batch</code>：超过 3 秒超时，网关返回 504</li><li><code>GET /reports/export</code>：分页游标在第 3 页后失效</li></ul><h2>修法</h2><p>超时改成连接 3 秒、读取 15 秒，504 重试一次，见 <code>fix-timeout.diff</code>。游标的问题在服务端，已经写进了给后端的说明。</p></div>`;
+  }
+  if (n.includes("杭州")) return `<div class="paper"><h1>杭州出差行程</h1><div class="sub">11月18日（周三）— 11月20日（周五）</div><h2>周三</h2><ul><li>9:05 高铁出发，10:12 到杭州东站</li><li>14:00 到客户园区，和对方技术负责人过接口方案</li></ul><h2>周四</h2><ul><li>上午内部评审，留 1 小时准备演示环境</li><li>15:00 正式汇报，结束后对方安排晚餐</li></ul><h2>周五</h2><ul><li>上午机动，处理遗留问题</li><li>16:30 高铁返程，18:00 前到家</li></ul></div>`;
+  if (n.includes("纪要")) return `<div class="paper"><h1>周会纪要</h1><div class="sub">11月12日 · 参会 7 人</div><h2>结论</h2><ul><li>新版首页 11月底灰度，先放 10%</li><li>定价调整等 Q3 竞品分析出来再定</li></ul><h2>待办</h2>${table([["事项", "负责人", "期限"], ["首页灰度方案", "陈静", "11月19日"], ["竞品定价数据", "Her", "11月16日"], ["合同第 7 条回复法务", "你", "11月16日"]])}</div>`;
+  return `<div class="paper"><h1>Q3 竞品分析</h1><div class="sub">第 ${ver} 版</div>
+    ${ver >= 3 ? `<div class="sum"><b>结论摘要</b><ul><li>四家里三家在 Q3 涨了价，平均 <b>+12%</b></li><li>入门档的差距缩到 <b>¥20</b> 以内，拼的是配额</li><li>我们的团队档比同档便宜 <b>18%</b>，有上调空间</li></ul></div>` : ""}
+    ${ver >= 4 ? `<p><i>第 ${ver} 版：按你回复的意见又改了一轮。</i></p>` : ""}
+    <h2>一、概览</h2><p>Q3 四家主要竞品都调整了套餐结构，方向一致：入门档做低门槛，团队档按席位加价。</p>
+    <h2>二、定价</h2>${ver >= 2 ? table([["", "入门", "专业", "团队（每席）"], ["甲", "¥99", "¥299", "¥189"], ["乙", "¥89", "¥329", "¥209"], ["丙", "¥109", "¥279", "¥179"], ["我们", "¥99", "¥289", "¥159"]]) : `<p>各家入门档在 ¥89—¥109 之间，专业档 ¥279—¥329。</p>`}
+    <h2>三、功能</h2><p>差异集中在协作与权限，三家都把审计日志放进了团队档。</p></div>`;
+}
+function prevHTML() {
+  const p = S.prev, d = item(p.name), n = d.vers.length, v = d.vers[p.vi], ver = n - p.vi;
+  const vers = n > 1 ? `<div class="pv-vers">${d.vers.map((_, i) => `<button class="${i === p.vi ? "on" : ""}" data-act="ver:${i}">第 ${n - i} 版</button>`).join("")}</div>` : "";
+  const btn = S.plat === "phone" ? "gbtn" : "tb";
+  return `<div class="pv">
+    <div class="pv-top"><button class="${btn}" data-close aria-label="关闭">${I.x}</button><div class="pv-t"><b>${esc(d.name)}</b><span>${size(v.size)}${n > 1 ? ` · 第 ${ver} 版${p.vi === 0 ? "（最新）" : ""}` : ""}</span></div><button class="${btn}" data-act="share" aria-label="${S.plat === "phone" ? "分享" : "下载"}">${S.plat === "phone" ? I.share : I.down}</button></div>
+    ${vers}<div class="pv-body">${mock(d, ver)}</div>
+    <div class="pv-ctx"><div class="pv-say"><span class="av" style="width:30px;height:30px"></span><div class="k"><b>Her · ${when(v)}${srcChip(v.src)}</b><span>${esc(v.say)}</span></div></div>
+      <div class="pv-btns"><button data-act="locate">${I.locate}在对话中查看</button><button class="pri" data-act="reply">${I.reply}回复</button></div></div>
+  </div>`;
+}
+function paintPrev(enter) {
+  $("#iover").innerHTML = S.prev && S.plat === "phone" ? `<div class="iprev ${enter ? "in" : ""}">${prevHTML()}</div>` : "";
+  $("#mover").innerHTML = S.prev && S.plat === "mac" ? `<div class="mprev" data-close style="${enter ? "" : "animation:none"}">${prevHTML()}</div>` : "";
+}
+function openPrev(name, vi = 0, same) {
+  if (S.state === "offline" && !S.cached.has(name)) return toast(`${HOST} 离线，等它回来才能打开这份`);
+  S.cached.add(name);
+  S.prev = { name, vi };
+  S.last = S.prev;
+  paintPrev(!same);
+  paintNotes();
+}
+
+/* ---------- skeleton ---------- */
+function build() {
+  const panel = (id) => `<div class="srch">${I.search}<input id="${id}search" placeholder="搜文件名，或 Her 说过的话"></div><div class="chips" id="${id}chips"></div>`;
+  $("#stage").innerHTML = `
+  <div class="mac" id="mac">
+    <div class="mside"><div class="lights"><i></i><i></i><i></i></div>
+      <div class="it on"><span class="av" style="width:18px;height:18px"></span>Her</div><div class="it">总览</div>
+      <div class="gt">会话</div><div class="ses"><i></i>修复登录页样式</div><div class="ses"><i></i>接口联调脚本</div><div class="ses">整理发布说明</div></div>
+    <div class="mmain">
+      <div class="mhead"><div class="mid"><span class="av" style="width:56px;height:56px"></span><div class="mcap">Her<i></i><small>2 个在工作</small></div></div><div class="mtb" id="mtb"></div></div>
+      <div class="mconv" id="mconv"><div class="col" id="mcol"></div></div>
+      <div class="cmpz"><div class="cmp"><div id="mq"></div><div class="cmp-row"><button class="cmp-plus" aria-label="添加文件">${I.plus}</button>
+        <textarea class="cmp-in" id="min" rows="1" placeholder="给 Her 发消息"></textarea><button class="send" id="msend" aria-label="发送" disabled>${I.up}</button></div></div></div>
+    </div>
+    <div class="mpanel hide" id="mpanel"><div class="mp-top"><b>文件</b><button class="tb lbl" data-act="group" id="mgroup"></button><button class="tb" data-back aria-label="关闭">${I.x}</button></div>
+      ${panel("m")}<div class="mp-body" id="mlist"></div></div>
+    <div id="mover"></div>
+  </div>
+  <div class="phone" id="phone"><div class="scr" id="scr">
+    <div class="sb"><span>9:41</span><span style="width:26px;height:12px;border-radius:4px;background:currentColor;opacity:.9"></span></div><div class="island"></div>
+    <div class="ihead" id="ihead"></div>
+    <div class="iscroll" id="iscroll"></div>
+    <div class="icomp"><button class="gbtn" aria-label="添加">${I.plus}</button>
+      <div class="ibox"><div id="iq"></div><div class="irow"><input id="iin" placeholder="给 Her 发消息"><button class="isend" id="isend" aria-label="发送" disabled>${I.up}</button></div></div></div>
+    <div class="ipage" id="ipage"><div class="pnav"><button class="gbtn" data-back aria-label="返回">${I.back}</button><b>文件</b><button class="gbtn lbl" data-act="group" id="igroup"></button></div>
+      ${panel("i")}<div class="pbody" id="ilist"></div></div>
+    <div id="iover"></div>
+    <div class="home"></div>
+  </div></div>`;
+  for (const [inp, btn] of [[$("#min"), $("#msend")], [$("#iin"), $("#isend")]]) {
+    inp.addEventListener("input", ready);
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && S.quote) return setQuote(null);
+      if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+      e.preventDefault();
+      send(inp);
+    });
+    btn.addEventListener("click", () => send(inp));
+  }
+  for (const id of ["#msearch", "#isearch"]) $(id).addEventListener("input", (e) => { S.q = e.target.value; paintList(); });
+  holdEvents();
+}
+
+/* ---------- conversation ---------- */
+function paintConv() {
+  const out = [];
+  let last = null;
+  for (const m of S.msgs) {
+    if (m.day !== last) out.push(`<div class="tdiv">${dayLabel(m.day)} ${m.time}</div>`), (last = m.day);
+    if (m.ask) {
+      const q = m.quote ? `<button class="q" data-jump="${m.quote.msg}"><div><b>Her</b><span>${esc(m.quote.name)}</span></div></button>` : "";
+      out.push(`<div class="row me"><div class="bub">${q}<div class="tx">${esc(m.ask)}</div></div></div>`);
+    }
+    if (m.typing) { out.push(`<div class="row her"><div class="bub"><div class="dots"><i></i><i></i><i></i></div></div></div>`); continue; }
+    const files = (m.files ?? []).map(([name]) => item(name));
+    const vi = (d) => d.vers.findIndex((v) => v.msg === m.id);
+    const pics = files.filter((d) => d.kind === "image"), others = files.filter((d) => d.kind !== "image");
+    out.push(`<div class="row her"><div class="hblk" data-id="${m.id}">
+      ${m.src ? `<div class="srcl">${m.src[0] === "routine" ? I.clock : I.code}${esc(m.src[1])}</div>` : ""}
+      <div class="bub">${esc(m.say)}</div>
+      ${pics.length ? `<div class="pics">${pics.map((d) => `<div class="cpic" data-f="${esc(d.name)}" title="${esc(d.name)}">${shot(d.name)}</div>`).join("")}</div>` : ""}
+      ${others.length ? `<div class="cfl">${others.map((d) => `<div class="cf" data-f="${esc(d.name)}" data-v="${vi(d)}">${icon(d, true)}<div class="k"><b>${esc(d.name)}</b><span>${size(d.vers[vi(d)].size)}</span></div></div>`).join("")}</div>` : ""}
+    </div></div>`);
+  }
+  $("#mcol").innerHTML = $("#iscroll").innerHTML = out.join("");
+}
+const toEnd = () => { for (const el of [$("#mconv"), $("#iscroll")]) el.scrollTop = el.scrollHeight; };
+function jump(id) {
+  for (const box of [$("#mconv"), $("#iscroll")]) {
+    const el = $(`[data-id="${id}"]`, box);
+    if (!el || !box.offsetParent) continue;
+    const top = el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop;
+    box.scrollTo({ top: top - box.clientHeight / 2 + el.offsetHeight / 2, behavior: "smooth" });
+    setTimeout(() => el.classList.add("flash"), 300);
+    setTimeout(() => el.classList.remove("flash"), 2100);
+  }
+}
+function paintQuote() {
+  const q = S.quote, x = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>`;
+  const body = q ? `<div class="k"><b>回复 Her</b><span>${esc(q.name)} · ${esc(q.say)}</span></div>` : "";
+  $("#mq").innerHTML = q ? `<div class="cq">${body}<button class="x" data-unquote aria-label="取消回复">${x}</button></div>` : "";
+  $("#iq").innerHTML = q ? `<div class="iq">${body}<button class="x" data-unquote aria-label="取消回复"><i>${x}</i></button></div>` : "";
+  ready();
+}
+function ready() {
+  $("#msend").disabled = $("#min").value.trim() === "";
+  $("#isend").disabled = $("#iin").value.trim() === "";
+}
+function setQuote(q) {
+  S.quote = q;
+  paintQuote();
+  if (q) (S.plat === "mac" ? $("#min") : $("#iin")).focus();
+}
+/* A reply to a delivery comes back as the same file, a version later: it shows as new at the entry. */
+function send(inp) {
+  const text = inp.value.trim();
+  if (!text) return;
+  const q = S.quote, m = { id: "n" + ++S.n, day: 0, time: `14:${S.min++}`, ask: text, quote: q, typing: true };
+  S.msgs.push(m);
+  $("#min").value = $("#iin").value = "";
+  S.quote = null;
+  paintConv(); paintQuote(); toEnd();
+  setTimeout(() => {
+    delete m.typing;
+    if (q) {
+      const d = item(q.name);
+      m.say = `改好了，这是「${q.name}」的第 ${d.vers.length + 1} 版。`;
+      m.files = [[q.name, Math.round(d.vers[0].size * 1.04)]];
+      m.isNew = true;
+    } else m.say = "收到。（演示回复）";
+    paint(); toEnd();
+  }, 1100);
+}
+
+/* ---------- the entry, the list, menus ---------- */
+function paintShell() {
+  const n = S.open ? 0 : fresh(), badge = n ? `<span class="badge">${n}</span>` : "";
+  const files = `<button class="gbtn" data-entry aria-label="文件${n ? `，${n} 份新的` : ""}">${I.tray}${badge}</button>`;
+  $("#ihead").innerHTML = `<div class="ihl"><button class="gbtn" aria-label="菜单">${I.menu}</button>${S.entry === "left" ? files : ""}</div>
+    <div class="ihr">${S.entry === "right" ? files : ""}<button class="gbtn" aria-label="进度">${I.pulse}</button><button class="gbtn" aria-label="定时任务">${I.clock}</button></div>
+    <span class="av iav" style="width:72px;height:72px"></span><div class="itag">Her<i></i><small>2 个在工作</small></div>`;
+  $("#mtb").innerHTML = `<button class="tb" title="进度">${I.pulse}</button><button class="tb" title="定时任务">${I.clock}</button><button class="tb ${S.open ? "on" : ""}" data-entry title="文件" aria-pressed="${S.open}">${I.tray}${badge}</button><button class="tb" title="更多">${I.more}</button>`;
+  $("#scr").classList.toggle("open", S.open);
+  $("#mpanel").classList.toggle("hide", !S.open);
+  const label = S.group === "time" ? "按时间" : "按来源";
+  $("#igroup").innerHTML = `${I.sort}${label}`;
+  $("#mgroup").innerHTML = `${I.sort}${label}`;
+}
+function paintList() {
+  const chips = FILTERS.map(([k, s]) => `<button class="${S.filter === k ? "on" : ""}" data-filter="${k}">${s}</button>`).join("");
+  for (const id of ["m", "i"]) {
+    $(`#${id}chips`).innerHTML = chips;
+    $(`#${id}list`).innerHTML = listHTML();
+    if ($(`#${id}search`).value !== S.q) $(`#${id}search`).value = S.q;
+  }
+}
+/* Closing the list is having seen it: nothing in it is new after. */
+function setOpen(on) {
+  if (S.open && !on) S.msgs.forEach((m) => delete m.isNew);
+  S.open = on;
+  paintShell();
+  paintList();
+}
+function toast(text) {
+  $(".toast")?.remove();
+  const el = Object.assign(document.createElement("div"), { className: "toast", textContent: text });
+  root().append(el);
+  setTimeout(() => el.remove(), 1900);
+}
+function pop(x, y, items, pick) {
+  $("#pop")?.remove();
+  const r = root().getBoundingClientRect(), w = Object.assign(document.createElement("div"), { id: "pop" });
+  w.innerHTML = `<div class="pop-s"></div><div class="pop p-${S.plat}">${items.map(([k, icn, label, on]) => `<button data-k="${k}">${icn}<span>${label}</span>${on ? I.check : ""}</button>`).join("")}</div>`;
+  root().append(w);
+  const m = w.lastChild;
+  m.style.left = `${Math.max(8, Math.min(x - r.left, r.width - m.offsetWidth - 8))}px`;
+  m.style.top = `${Math.max(8, Math.min(y - r.top, r.height - m.offsetHeight - 8))}px`;
+  w.onclick = (e) => {
+    e.stopPropagation();
+    const b = e.target.closest("[data-k]");
+    w.remove();
+    if (b) pick(b.dataset.k);
+  };
+}
+function rowMenu(name, x, y) {
+  const mac = S.plat === "mac";
+  pop(x, y, [["open", I.eye, mac ? "打开" : "预览"], ["locate", I.locate, "在对话中查看"], ["reply", I.reply, "回复，让 Her 接着改"], ["share", mac ? I.down : I.share, mac ? "下载" : "分享…"]], (k) => act(k, name, 0));
+}
+function act(k, name, vi = 0) {
+  const d = item(name), v = d?.vers[vi];
+  if (k === "open") return openPrev(name, vi);
+  if (k === "share") return toast(S.plat === "mac" ? `已存到「下载」：${name}` : "系统的分享面板：存到「文件」、隔空投送、发给别人");
+  if (k === "vers") { S.expanded.has(name) ? S.expanded.delete(name) : S.expanded.add(name); return paintList(); }
+  S.prev = null;
+  paintPrev();
+  // The iPhone goes back to the conversation; on the Mac the list stays beside it.
+  if (S.plat === "phone") setOpen(false);
+  if (k === "locate") setTimeout(() => jump(v.msg), S.plat === "phone" ? 340 : 0);
+  if (k === "reply") setQuote({ msg: v.msg, name, say: v.say });
+}
+document.addEventListener("click", (e) => {
+  if (S.held) return void (S.held = false);
+  const t = e.target.closest("[data-set],[data-act],[data-f],[data-entry],[data-back],[data-close],[data-filter],[data-jump],[data-unquote]");
+  if (!t) return;
+  const d = t.dataset;
+  if (d.set) return setCtl(d.set);
+  if (d.entry !== undefined) return setOpen(!S.open);
+  if (d.back !== undefined) return setOpen(false);
+  if (d.close !== undefined) { if (t !== e.target && t.classList.contains("mprev")) return; S.prev = null; return paintPrev(); }
+  if (d.filter) { S.filter = d.filter; return paintList(); }
+  if (d.jump) return jump(d.jump);
+  if (d.unquote !== undefined) return setQuote(null);
+  const r = t.closest("[data-f]"), name = r ? r.dataset.f : S.prev?.name, vi = r ? +(r.dataset.v ?? 0) : (S.prev?.vi ?? 0);
+  if (d.act === "group") {
+    const b = t.getBoundingClientRect();
+    return pop(b.right - 190, b.bottom + 6, [["time", I.clock, "按时间", S.group === "time"], ["source", I.sort, "按来源", S.group === "source"]], (k) => { S.group = k; paint(); });
+  }
+  if (d.act?.startsWith("ver:")) return openPrev(S.prev.name, +d.act.slice(4), true);
+  act(d.act ?? "open", name, vi);
+});
+/* Touch and hold a row (or the secondary click): its menu. */
+function holdEvents() {
+  let timer = null;
+  const rowOf = (e) => e.target.closest("#ilist [data-f], #mlist [data-f]");
+  document.addEventListener("pointerdown", (e) => {
+    const r = rowOf(e);
+    if (!r || S.plat !== "phone" || e.button) return;
+    timer = setTimeout(() => { S.held = true; rowMenu(r.dataset.f, e.clientX - 40, e.clientY + 10); }, 430);
+  });
+  for (const ev of ["pointerup", "pointermove", "pointercancel"]) document.addEventListener(ev, (e) => { if (ev !== "pointermove" || Math.abs(e.movementX) + Math.abs(e.movementY) > 4) clearTimeout(timer); });
+  document.addEventListener("contextmenu", (e) => {
+    const r = rowOf(e);
+    if (!r) return;
+    e.preventDefault();
+    clearTimeout(timer);
+    rowMenu(r.dataset.f, e.clientX, e.clientY);
+  });
+}
+
+/* ---------- notes and controls ---------- */
+function record() {
+  const p = S.last ?? { name: "Q3 竞品分析.docx", vi: 0 }, d = item(p.name), v = d?.vers[p.vi];
+  if (!v) return "";
+  const src = v.src ? `{ "kind": "${v.src[0]}", "name": "${v.src[1]}" }` : `{ "kind": "chat" }`;
+  return `{
+  "name": "${d.name}",
+  "path": "~/.her/bots/her/files/${d.name}",
+  "size": ${v.size},
+  "sent_at": "2026-11-${16 + v.day}T${v.time}",
+  "message": "${v.msg}",        // 哪一次 send_to_user
+  "text": "${v.say}",
+  "source": ${src},
+  "snapshot": "~/.her/bots/her/sent/${(v.ord * 2654435761 >>> 0).toString(16)}…/${d.name}"  // 发出那一刻的副本
+}`;
+}
+function paintNotes() {
+  const mac = S.plat === "mac";
+  const points = mac
+    ? ["顶栏右侧多一个「文件」按钮，和「定时任务」一样在对话旁边开一栏（340pt），不离开对话", "悬停一行：在对话中查看 / 回复 / 下载；右键是同一组菜单", "点一行在窗口里打开预览（沿用现在的 FilePreview），底部是 Her 交付时说的话", "有新文件而这一栏没开着时，按钮上是数字"]
+    : ["Her 页顶部多一个「文件」按钮，推入一页；有新文件时带数字", "一行三层：文件名 → Her 交付时说的那句话 → 时间、大小、来源、版本", "点开是预览（沿用 Quick Look 和 HerFilePage），底部一张卡：Her 的话 +「在对话中查看」「回复」", "长按一行：预览 / 在对话中查看 / 回复 / 分享"];
+  const tryIt = [mac ? "点顶栏右侧带数字的托盘按钮" : "点左上角带数字的托盘按钮", "点「Q3 竞品分析」那行的「3 个版本」，再分别点开第 1、2、3 版", "点「在对话中查看」，看它回到那条消息并高亮", "点「回复」，写一句话发出去：Her 交回第 4 版，入口上出现数字", "搜「晨报」或「定价」；切到「图片」；右上角改成「按来源」", "底部把「状态」切到「离线」和「空」"];
+  const ask = [
+    ["收什么", "只收 Her 用 send_to_user 发给你的文件。<i>定时任务和子代理只能发文字，它们的文件由 Her 转交时进来；她工作目录里没发出来的中间文件不算；你发给她的文件不收。</i>"],
+    ["同名文件", "同一路径再发一次算新版本，叠成一行。<i>Her 在发出时存一份副本（bots/&lt;id&gt;/sent/），旧版本和旧消息里的附件都按当时的内容打开。</i>"],
+    ["iPhone 入口", "左边菜单按钮旁（左二右二）。<i>右边放三个会碰到头像，底部「入口」可以切过去看。</i>"],
+    ["叫什么", "「文件」。<i>代码和协议里叫 deliveries，因为 files/* 已经是文件面板的请求。</i>"],
+    ["大文件和清理", "超过 100 MB 的不存副本；旧版本这一版全留，在控制台的存储页显示占用。"],
+    ["新的标记何时消", "关掉这一页（栏）就算看过。<i>和对话的未读分开计。</i>"],
+  ];
+  $("#notes").innerHTML = `<h3>${mac ? "Mac" : "iPhone"} · 文件</h3>
+    <p>和聊天软件的「聊天文件」相比多三样：每份带着 Her 交付时说的话、同一份文件的多次修改叠成版本、能直接回复让她接着改。</p>
+    <ul>${points.map((s) => `<li>${s}</li>`).join("")}</ul>
+    <div class="blk"><h3>试试看</h3><ol>${tryIt.map((s) => `<li>${s}</li>`).join("")}</ol></div>
+    <div class="blk"><h3>已经定的</h3><ol>${ask.map(([a, b]) => `<li><b>${a}：</b>${b}</li>`).join("")}</ol></div>
+    <div class="blk"><h3>一条交付记录</h3><p>Her Server 在 send_to_user 送达时记一条（her.db），列表从这里读，不从对话里现扫：设备只留最近 100 条消息，清空对话后文件也还在。下面是你上一份点开的：</p><pre>${esc(record())}</pre></div>`;
+}
+function paintCtl() {
+  const g = (label, key, opts) => `<div class="g"><b>${label}</b>${opts.map(([v, s]) => `<button class="${S[key] === v ? "on" : ""}" data-set="${key}:${v}">${s}</button>`).join("")}</div>`;
+  $("#ctl").innerHTML = g("平台", "plat", [["phone", "iPhone"], ["mac", "Mac"]]) + g("入口（iPhone）", "entry", [["left", "菜单旁"], ["right", "右上三个"]]) +
+    g("分组", "group", [["time", "按时间"], ["source", "按来源"]]) + g("状态", "state", [["ok", "正常"], ["offline", "离线"], ["empty", "空"]]) +
+    g("外观", "theme", [["light", "浅色"], ["dark", "深色"]]) + `<div class="g"><button data-set="reset:1">重置</button></div>`;
+}
+function setCtl(s) {
+  const [k, v] = s.split(":");
+  if (k === "reset") reset(); else S[k] = v;
+  if (k === "plat") S.prev = null;
+  paint();
+  if (k === "reset" || k === "plat") toEnd();
+}
+function paint() {
+  document.documentElement.dataset.theme = S.theme;
+  $("#mac").classList.toggle("hide", S.plat !== "mac");
+  $("#phone").classList.toggle("hide", S.plat !== "phone");
+  $("#pop")?.remove();
+  paintConv(); paintShell(); paintList(); paintPrev(); paintQuote(); paintNotes(); paintCtl();
+}
+const want = new URLSearchParams(location.search);
+reset(); build();
+for (const k of ["plat", "theme", "entry", "group", "state", "filter"]) if (want.get(k)) S[k] = want.get(k);
+S.open = want.get("open") === "1";
+paint(); toEnd();
+if (want.get("file")) openPrev(want.get("file"), +(want.get("v") ?? 0));
+</script>
+</body>
+</html>

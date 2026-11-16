@@ -1305,6 +1305,11 @@ message GetHerConversationResponse {
   // JSON), holding what the Her entry shows of its last 100 messages and
   // no earlier history; empty when none is kept.
   bytes snapshot = 2;
+  // The first page of the files Her sent, as deliveries/list last answered
+  // it here (her's DeliveriesListResult, as JSON), its mark of what the
+  // owner saw moved by deliveries/seen since; empty when none is kept
+  // (docs/her-deliverables.md §4.4).
+  bytes deliveries = 3;
 }
 
 message HerUploadRequest {

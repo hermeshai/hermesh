@@ -22,7 +22,7 @@ CREATE TABLE grants (
   revoked INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
-`, workMigrations, herMigrations, herKeptMigrations}
+`, workMigrations, herMigrations, herKeptMigrations, herDeliveriesMigrations}
 
 type store struct{ db *sql.DB }
 

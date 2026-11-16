@@ -360,10 +360,89 @@ func (s *store) herKept(machineID string) (bot, snapshot []byte, err error) {
 
 // dropHerKept forgets what is kept of the machine's Her.
 func (s *store) dropHerKept(machineID string) error {
-	for _, q := range []string{`DELETE FROM her_bots WHERE machine_id=?`, `DELETE FROM her_conversations WHERE machine_id=?`} {
+	for _, q := range []string{`DELETE FROM her_bots WHERE machine_id=?`, `DELETE FROM her_conversations WHERE machine_id=?`, `DELETE FROM her_deliveries WHERE machine_id=?`} {
 		if _, err := s.db.Exec(q, machineID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// The files Her sent (docs/her-deliverables.md §4.4): the first page of
+// deliveries/list as the last call for it here answered, so the list opens at
+// once and shows while the machine is offline. Kept from the HerCall that
+// asked, never asked for on its own.
+
+var herDeliveriesMigrations = `
+CREATE TABLE her_deliveries (
+  machine_id TEXT PRIMARY KEY,
+  page BLOB NOT NULL
+);
+`
+
+// keepDeliveries keeps what a call for Her's files answered: the first page of
+// deliveries/list, the newest files without a search or a filter; and, after
+// deliveries/seen, how far the owner saw on the page kept.
+func (o *Owner) keepDeliveries(machineID string, req *herv1.Request, res *herv1.Response) {
+	if req == nil || res == nil || res.GetError() != nil || (req.Method != "deliveries/list" && req.Method != "deliveries/seen") {
+		return
+	}
+	var p struct {
+		BotID  string           `json:"bot_id"`
+		Before *json.RawMessage `json:"before"`
+		Query  string           `json:"query"`
+		Kind   string           `json:"kind"`
+		Seq    int64            `json:"seq"`
+	}
+	if json.Unmarshal(req.Params, &p) != nil || p.BotID == "" || p.BotID != o.st.herBotID(machineID) {
+		return // not Her's
+	}
+	var err error
+	switch {
+	case req.Method == "deliveries/seen":
+		err = o.st.seeHerDeliveries(machineID, p.Seq)
+	case p.Before == nil && p.Query == "" && p.Kind == "":
+		_, err = o.st.db.Exec(`INSERT INTO her_deliveries(machine_id,page) VALUES(?,?) ON CONFLICT(machine_id) DO UPDATE SET page=excluded.page`, machineID, res.GetResult())
+	}
+	if err != nil {
+		o.log.Warn("Her's files not kept", "machine", machineID, "err", err)
+	}
+}
+
+// seeHerDeliveries moves the kept page's mark of what the owner saw to seq,
+// never back.
+func (s *store) seeHerDeliveries(machineID string, seq int64) error {
+	var page []byte
+	if err := s.db.QueryRow(`SELECT page FROM her_deliveries WHERE machine_id=?`, machineID).Scan(&page); errors.Is(err, sql.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	var seen int64
+	if json.Unmarshal(page, &fields) != nil {
+		return nil
+	}
+	json.Unmarshal(fields["seen"], &seen)
+	if seq <= seen {
+		return nil
+	}
+	fields["seen"], _ = json.Marshal(seq)
+	b, err := json.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE her_deliveries SET page=? WHERE machine_id=?`, b, machineID)
+	return err
+}
+
+// herDeliveries is the first page of Her's files as kept here, or nil.
+func (s *store) herDeliveries(machineID string) ([]byte, error) {
+	var page []byte
+	err := s.db.QueryRow(`SELECT page FROM her_deliveries WHERE machine_id=?`, machineID).Scan(&page)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return page, err
 }

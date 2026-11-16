@@ -280,7 +280,7 @@ struct Fire {
 }
 
 /// `2026-11-05T01:00:00Z`: how the database and the protocol write a moment.
-fn stamp(at: Timestamp) -> String {
+pub(crate) fn stamp(at: Timestamp) -> String {
     at.round(jiff::Unit::Second).unwrap_or(at).to_string()
 }
 
@@ -651,6 +651,10 @@ impl Routines {
                 for bot in bots {
                     self.show(&bot);
                 }
+                // What else keeps records there says what it holds (crate::deliveries).
+                if let Some(server) = self.server() {
+                    server.0.deliveries.opened();
+                }
             }
             Err(err) => self.failed(err.to_string()),
         }
@@ -670,6 +674,21 @@ impl Routines {
             Store::Empty => Err(RoutineError::Unavailable("there is no database yet".into())),
             Store::Failed(why) => Err(RoutineError::Unavailable(why.clone())),
         }
+    }
+
+    /// The database, for what else keeps records in it (crate::deliveries): none where there is
+    /// none, and why when it cannot be used.
+    pub(crate) fn database(&self) -> Result<Option<Db>, String> {
+        match &self.state.lock().store {
+            Store::Open(db) => Ok(Some(db.clone())),
+            Store::Off | Store::Empty => Ok(None),
+            Store::Failed(why) => Err(why.clone()),
+        }
+    }
+
+    /// The same, made now if there is none yet; none where it cannot be had.
+    pub(crate) async fn database_for_new(&self) -> Option<Db> {
+        self.db_for_new().await.ok()
     }
 
     /// The database, made now if this is the first routine.

@@ -518,3 +518,56 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 
 /* A feature the machine's older Hermesh lacks (docs/version-skew.md §6.2). */
 .needs-update{color:var(--orange)}
+
+/* The files Her sent (Deliveries.tsx, docs/her-deliverables.md §3.2): the button's count, and the panel beside the
+   conversation, where her settings and routines open. A row: the file's icon by kind, its name, Her's words, then
+   when, how large, where it came from and its versions; its actions show on hover. */
+.dlv-btn .dlv-badge{position:absolute;top:0;right:-2px;min-width:15px;height:15px;padding:0 4px;box-sizing:border-box;border-radius:8px;background:var(--accent);color:#fff;font-size:10px;font-weight:600;line-height:15px;text-align:center;box-shadow:0 0 0 2px var(--win)}
+.dlv-tools{flex:none;display:flex;flex-direction:column;gap:9px;padding:0 14px 6px}
+.dlv-search{display:flex;align-items:center;gap:6px;height:28px;padding:0 9px;border-radius:8px;background:var(--fill2);color:var(--l2)}
+.dlv-search input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;font-size:13px;color:var(--l1)}
+.dlv-search input::placeholder{color:var(--l3)}
+.dlv-tabs{display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--fill2)}
+.dlv-tabs button{flex:1;height:22px;border:0;border-radius:6px;background:none;color:var(--l2);font:inherit;font-size:12px;cursor:pointer}
+.dlv-tabs button.on{background:var(--win);color:var(--l1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.dlv-body{padding:0 6px 20px}
+.dlv-banner{margin:6px 8px 4px;padding:8px 10px;border-radius:9px;background:var(--fill2);font-size:12px;line-height:1.5;color:var(--l2)}
+.dlv-group .fhead{display:flex;align-items:baseline;gap:6px;margin:14px 10px 4px;font-size:11.5px}
+.dlv-group .fhead small{font-weight:400;color:var(--l3)}
+.dlv-row{position:relative;display:flex;flex-wrap:wrap;align-items:flex-start;border-radius:8px}
+.dlv-row:hover{background:var(--fill)}
+.dlv-row.off{opacity:.45}
+.dlv-open{flex:1 1 100%;display:flex;gap:10px;align-items:center;min-width:0;padding:7px 10px;border:0;background:none;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.dlv-k{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.dlv-l1,.dlv-l2{display:flex;align-items:baseline;gap:8px;min-width:0}
+.dlv-n{flex:1;display:flex;align-items:center;min-width:0;font-size:13px;font-weight:550;color:var(--l1)}
+.dlv-when{flex:none;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+.dlv-row:hover .dlv-when,.dlv-row:focus-within .dlv-when{visibility:hidden}
+.dlv-stem{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dlv-n em{flex:none;font-style:normal}
+.dlv-dot{flex:none;width:7px;height:7px;margin-left:6px;border-radius:50%;background:var(--accent)}
+.dlv-say{flex:1;min-width:0;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlv-vers{flex:none;padding:0 7px;border-radius:99px;background:var(--accent-bg, var(--fill2));color:var(--accent);font-size:11px;font-weight:550;line-height:17px}
+.dlv-acts{position:absolute;top:5px;right:6px;display:none;gap:1px;padding:1px;border-radius:7px;background:var(--win);box-shadow:var(--glass-sh, 0 0 0 .5px var(--sep))}
+.dlv-row:hover .dlv-acts,.dlv-row:focus-within .dlv-acts{display:flex}
+.dlv-acts .tb{width:26px;height:24px}
+.dlv-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 10px}
+.dlv-thumb{position:relative;aspect-ratio:1;padding:0;border:0;border-radius:9px;overflow:hidden;background:var(--fill2);display:grid;place-items:center;cursor:pointer}
+.dlv-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.dlv-thumb.off{opacity:.45}
+.dlv-thumb .dlv-dot{position:absolute;top:6px;right:6px;margin:0;box-shadow:0 0 0 2px #fff}
+.dlv-more{display:flex;margin:12px auto 0}
+.dlv-fi{position:relative;flex:none;width:30px;height:36px;box-sizing:border-box;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px;font-size:7px;font-weight:700;letter-spacing:.2px;color:var(--k);background:color-mix(in srgb,var(--k) 13%,transparent);overflow:hidden}
+.dlv-fi::before{content:"";position:absolute;left:7px;right:7px;top:7px;height:2px;border-radius:1px;background:var(--k);opacity:.42;box-shadow:0 4px 0 var(--k),0 8px 0 var(--k)}
+.dlv-fi.k-video,.dlv-fi.k-audio{--k:#d6457a}.dlv-fi.k-doc{--k:#2f6bff}.dlv-fi.k-pdf{--k:#e5484d}.dlv-fi.k-md,.dlv-fi.k-other,.dlv-fi.k-image{--k:#7a7f8c}.dlv-fi.k-sheet{--k:#1a9d55}.dlv-fi.k-slide{--k:#e8830c}.dlv-fi.k-code{--k:#8e5bd6}
+.dlv-pv .fpv-name small{margin-left:8px;font-weight:400;color:var(--l2)}
+.dlv-switch{flex:none;display:flex;justify-content:center;gap:2px;margin:8px auto 0;padding:2px;border-radius:8px;background:var(--fill2)}
+.dlv-switch button{height:22px;padding:0 12px;border:0;border-radius:6px;background:none;font:inherit;font-size:12px;color:var(--l2);cursor:pointer}
+.dlv-switch button.on{background:var(--win);color:var(--l1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.dlv-switch button:disabled{opacity:.4;cursor:default}
+.dlv-pic{flex:1;min-height:0;display:grid;place-items:center;padding:18px}
+.dlv-pic img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 6px 22px rgba(0,0,0,.14)}
+.dlv-foot{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:.5px solid var(--sep)}
+.dlv-said{flex:1;min-width:0;display:flex;flex-direction:column;font-size:13px}
+.dlv-said b{font-size:12px;font-weight:600;color:var(--l2)}
+.dlv-said span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--l1)}

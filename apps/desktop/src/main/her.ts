@@ -31,24 +31,69 @@ export async function herConsoleURL(machineId: string): Promise<string> {
   return (await localService().getHerConsole({ machineId })).url;
 }
 
-/** Saves a file from an assistant's folder on its machine to Downloads (a number added when its name is taken), and shows it there. */
-export async function saveHerFile(machineId: string, botId: string, path: string): Promise<void> {
-  const r = await localService().herDownload({ machineId, botId, path, localDir: app.getPath("downloads") });
+/**
+ * Where a file Her sent is kept on this Mac once read, by its content's SHA-256 (docs/her-deliverables.md §4.5): it
+ * opens and saves from here while its machine is offline. Only by a hash her gave (the copy she kept of it), so what
+ * is kept is what was sent; a file larger than CACHE_MAX is not kept.
+ */
+const CACHE_MAX = 50 * 1024 * 1024;
+const sha256 = /^[0-9a-f]{64}$/;
+function cached(machineId: string, sha: string | undefined, name: string): string | null {
+  if (!sha || !sha256.test(sha) || /[\\/]/.test(machineId)) return null;
+  return path.join(app.getPath("userData"), "Her Files", machineId, sha, path.basename(name));
+}
+const exists = (p: string | null) => (p ? fs.access(p).then(() => true, () => false) : Promise.resolve(false));
+
+/** `name` in `dir`, or with a number added while that is taken ("pic 2.png"), as hermeshd names a download. */
+async function freeName(dir: string, name: string): Promise<string> {
+  const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+  for (let n = 1; ; n++) {
+    const p = path.join(dir, n === 1 ? name : `${stem} ${n}${ext}`);
+    if (!(await exists(p))) return p;
+  }
+}
+
+/**
+ * Saves a file from an assistant's folder on its machine to Downloads (a number added when its name is taken), and
+ * shows it there; with `sha`, from this Mac's copy when it has one.
+ */
+export async function saveHerFile(machineId: string, botId: string, file: string, sha?: string): Promise<void> {
+  const kept = cached(machineId, sha, file);
+  if (kept && (await exists(kept))) {
+    const to = await freeName(app.getPath("downloads"), path.basename(file));
+    await fs.copyFile(kept, to);
+    shell.showItemInFolder(to);
+    return;
+  }
+  const r = await localService().herDownload({ machineId, botId, path: file, localDir: app.getPath("downloads") });
   shell.showItemInFolder(r.localPath);
 }
 
 /**
- * One of an assistant's files, to show in the window (a PDF): fetched into a folder of its own
- * that is gone once its bytes are read, so a preview leaves nothing behind on this Mac.
+ * One of an assistant's files, to show in the window: fetched into a folder of its own that is gone once its bytes
+ * are read. With `sha`, a file Her sent: read from this Mac's copy when it has one, and kept there otherwise.
  */
-export async function readHerFile(machineId: string, botId: string, file: string): Promise<Uint8Array> {
+export async function readHerFile(machineId: string, botId: string, file: string, sha?: string): Promise<Uint8Array> {
+  const kept = cached(machineId, sha, file);
+  if (kept && (await exists(kept))) return new Uint8Array(await fs.readFile(kept));
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "hermesh-preview-"));
   try {
     const r = await localService().herDownload({ machineId, botId, path: file, localDir: dir });
-    return new Uint8Array(await fs.readFile(r.localPath));
+    const bytes = new Uint8Array(await fs.readFile(r.localPath));
+    if (kept && bytes.length <= CACHE_MAX) {
+      await fs.mkdir(path.dirname(kept), { recursive: true });
+      await fs.writeFile(kept, bytes).catch(() => {});
+    }
+    return bytes;
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
   }
+}
+
+/** Which of these files Her sent this Mac keeps, by their hash: [hash, name] each. */
+export async function herFilesKept(machineId: string, files: [string, string][]): Promise<string[]> {
+  const kept = await Promise.all(files.map(async ([sha, name]) => ((await exists(cached(machineId, sha, name))) ? sha : null)));
+  return kept.filter((s): s is string => s !== null);
 }
 
 /** A request to her on a machine, on a connection of its own (HerCall): its result, or her's error thrown. */

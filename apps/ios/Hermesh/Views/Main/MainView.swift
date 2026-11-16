@@ -95,6 +95,7 @@ private struct PageView: View {
         case .progress: ProgressPage()
         case .progressAgent(let id): ProgressAgentPage(agentID: id)
         case .routines: RoutinesPage()
+        case .herFiles: HerFilesPage()
         case .routine(let id): RoutinePage(routineID: id)
         case .routineRun(let routine, let run): RoutineRunPage(routineID: routine, runID: run)
         }

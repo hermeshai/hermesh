@@ -327,7 +327,9 @@ export type DownloadRequest = Message<"hermesh.her.v1.DownloadRequest"> & {
   botId: string;
 
   /**
-   * Absolute, or relative to the assistant's folder; inside that folder.
+   * Absolute, or relative to the assistant's folder; inside that folder, or
+   * inside bots/<id>/sent, where her keeps a copy of each file the assistant
+   * sent, as it was when sent (docs/her-deliverables.md §4.1).
    *
    * @generated from field: string path = 2;
    */

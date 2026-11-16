@@ -125,6 +125,52 @@ func TestUpload(t *testing.T) {
 	code(t, err, connect.CodeFailedPrecondition)
 }
 
+// A download also reads the copies her keeps of what the assistant sent
+// (bots/<id>/sent), and nothing else beside the assistant's folder: no way
+// out of there by a link either, nor through a sent/ that is one.
+func TestDownloadSentCopy(t *testing.T) {
+	noHerHere(t)
+	home := herHomeWithBot(t)
+	h := onAt(t, home)
+	bot := filepath.Join(home, "bots", "b1")
+	if _, _, err := download(h, "b1", filepath.Join(bot, "sent", "abc", "report.md")); connect.CodeOf(err) != connect.CodeNotFound {
+		t.Fatalf("before anything was sent: %v", err)
+	}
+	copy := filepath.Join(bot, "sent", "abc", "report.md")
+	os.MkdirAll(filepath.Dir(copy), 0o700)
+	os.WriteFile(copy, []byte("as sent\n"), 0o400)
+	os.MkdirAll(filepath.Join(bot, "memory"), 0o700)
+	os.WriteFile(filepath.Join(bot, "memory", "MEMORY.md"), []byte("notes\n"), 0o600)
+	os.Symlink(filepath.Join(home, "config.toml"), filepath.Join(bot, "sent", "abc", "link.toml"))
+
+	for _, p := range []string{copy, "../sent/abc/report.md"} {
+		start, data, err := download(h, "b1", p)
+		if err != nil || start.GetName() != "report.md" || start.GetSize() != 8 || data != "as sent\n" {
+			t.Fatalf("download(%s) = %v %q %v", p, start, data, err)
+		}
+	}
+	for p, want := range map[string]connect.Code{
+		filepath.Join(bot, "sent", "abc", "link.toml"):  connect.CodePermissionDenied,
+		filepath.Join(bot, "memory", "MEMORY.md"):       connect.CodePermissionDenied,
+		filepath.Join(bot, "bot.json"):                  connect.CodePermissionDenied,
+		filepath.Join(bot, "sent", "abc", "missing.md"): connect.CodeNotFound,
+		filepath.Join(bot, "sent", "abc"):               connect.CodeInvalidArgument,
+	} {
+		if _, _, err := download(h, "b1", p); connect.CodeOf(err) != want {
+			t.Errorf("download(%q) = %v, want %v", p, err, want)
+		}
+	}
+
+	// sent/ a link to elsewhere serves nothing.
+	other := herHomeWithBot(t)
+	elsewhere := t.TempDir()
+	os.WriteFile(filepath.Join(elsewhere, "secret.txt"), []byte("no"), 0o600)
+	os.Symlink(elsewhere, filepath.Join(other, "bots", "b1", "sent"))
+	if _, _, err := download(onAt(t, other), "b1", filepath.Join(other, "bots", "b1", "sent", "secret.txt")); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Errorf("through a sent/ that is a link: %v", err)
+	}
+}
+
 // A download is a file of the assistant's folder, by a path inside it,
 // absolute or relative: no way out by .. or a link.
 func TestDownload(t *testing.T) {

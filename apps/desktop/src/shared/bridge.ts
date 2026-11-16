@@ -82,10 +82,12 @@ export type Bridge = {
   pathForFile(file: File): string;
   /** A machine's Her console, in a window of its own (docs/her-server.md §5.3); at `page`, its address's hash ("browser/connect"). */
   openHerConsole(machineId: string, page?: string): Promise<void>;
-  /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there. */
-  saveHerFile(machineId: string, botId: string, path: string): Promise<void>;
-  /** A file from an assistant's folder on its machine, read whole to show in the window (a PDF); nothing of it stays on this computer. */
-  readHerFile(machineId: string, botId: string, path: string): Promise<Uint8Array>;
+  /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there; `sha`: a file Her sent, from this computer's copy when it has one. */
+  saveHerFile(machineId: string, botId: string, path: string, sha?: string): Promise<void>;
+  /** A file from an assistant's folder on its machine, read whole to show in the window (a PDF); with `sha`, a file Her sent, kept on this computer by its hash once read (docs/her-deliverables.md §4.5). */
+  readHerFile(machineId: string, botId: string, path: string, sha?: string): Promise<Uint8Array>;
+  /** Which of the files Her sent this computer keeps, by their hash: [hash, name] each. */
+  herFilesKept(machineId: string, files: [string, string][]): Promise<string[]>;
   /** Signs in to ChatGPT for a machine's Her in the browser (shared/herSignin.ts); resolves once it ended. */
   signInHerChatGpt(machineId: string): Promise<ChatGptSignIn>;
   /** Opens the browser again at the sign-in under way for a machine. */

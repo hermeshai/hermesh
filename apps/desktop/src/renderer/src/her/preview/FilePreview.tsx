@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { readSent } from "@hermesh/her-client";
 import type { FilesReadResult } from "@hermesh/her-protocol";
 import { Icon } from "../../icons";
 import { Markdown } from "../../session/Markdown";
@@ -14,13 +15,14 @@ import "./preview.css";
 
 // A file of the conversation to read, over the window: a PDF as its pages, Markdown as it reads
 // (or as its source). The file stays on the assistant's machine; Save puts a copy in Downloads.
+// A sent file is read from the copy her kept of it (`snapshot`), as it was when sent.
 
 /** The files a tile opens here rather than saving them to Downloads. */
 export const previews = (name: string) => isPdf(name) || isMarkdown(name);
 const isPdf = (name: string) => /\.pdf$/i.test(name);
 const isMarkdown = (name: string) => /\.(md|markdown)$/i.test(name);
 
-export function FilePreview({ scope, path, name, onSave, onClose }: { scope: FileScope; path: string; name: string; onSave: () => void; onClose: () => void }) {
+export function FilePreview({ scope, path, snapshot, name, onSave, onClose }: { scope: FileScope; path: string; snapshot?: string; name: string; onSave: () => void; onClose: () => void }) {
   const { t } = useTranslation("her");
   const [source, setSource] = useState(false);
   // Over the page, not inside the bubble it came from; its keys stay its own (an approval waiting under it answers to Enter).
@@ -45,7 +47,7 @@ export function FilePreview({ scope, path, name, onSave, onClose }: { scope: Fil
         </div>
         {/* The first thing with the keys, so the arrows and Page Down read on from the start. */}
         <div className="fpv-body" tabIndex={-1} ref={(el) => el?.setAttribute("autofocus", "")}>
-          {isPdf(name) ? <PdfBody bot={scope.bot} path={path} name={name} /> : <TextBody scope={scope} path={path} name={name} source={source} />}
+          {isPdf(name) ? <PdfBody bot={scope.bot} path={path} snapshot={snapshot} name={name} /> : <TextBody scope={scope} path={path} snapshot={snapshot} name={name} source={source} />}
         </div>
       </div>
     </Dialog>,
@@ -54,13 +56,13 @@ export function FilePreview({ scope, path, name, onSave, onClose }: { scope: Fil
 }
 
 /** A PDF, fetched whole from the assistant's machine, then shown by pdf.js. */
-function PdfBody({ bot, path, name }: { bot: string; path: string; name: string }) {
+function PdfBody({ bot, path, snapshot, name }: { bot: string; path: string; snapshot?: string; name: string }) {
   const { t } = useTranslation("her");
   const her = useHer();
   const [read, setRead] = useState<Uint8Array | { error: string } | null>(null);
   useEffect(() => {
     let live = true;
-    const reading = window.hermesh?.readHerFile(her.machine.machineId, bot, path) ?? Promise.reject(new Error("no app"));
+    const reading = readSent({ path, snapshot }, (from) => window.hermesh?.readHerFile(her.machine.machineId, bot, from) ?? Promise.reject(new Error("no app")));
     reading.then(
       (bytes) => live && setRead(bytes),
       (e) => live && setRead({ error: errorText(e) }),
@@ -68,28 +70,28 @@ function PdfBody({ bot, path, name }: { bot: string; path: string; name: string 
     return () => {
       live = false;
     };
-  }, [her.machine.machineId, bot, path]);
+  }, [her.machine.machineId, bot, path, snapshot]);
   if (!read) return <Loading />;
   if ("error" in read) return <div className="fpv-msg">{t("preview.failed", { name, error: read.error })}</div>;
   return <PdfView bytes={read} name={name} />;
 }
 
 /** Markdown, read through the assistant's connection: as it reads, or its source. */
-function TextBody({ scope, path, name, source }: { scope: FileScope; path: string; name: string; source: boolean }) {
+function TextBody({ scope, path, snapshot, name, source }: { scope: FileScope; path: string; snapshot?: string; name: string; source: boolean }) {
   const { t } = useTranslation("her");
   const [read, setRead] = useState<FilesReadResult | { error: string } | null>(null);
   useEffect(() => {
     const rpc = scope.rpc;
     if (!rpc) return;
     let live = true;
-    rpc.request("files/read", { session_id: scope.session, path }).then(
+    readSent({ path, snapshot }, (from) => rpc.request("files/read", { session_id: scope.session, path: from })).then(
       (r) => live && setRead(r),
       (e) => live && setRead({ error: errorText(e) }),
     );
     return () => {
       live = false;
     };
-  }, [scope.rpc, scope.session, path]);
+  }, [scope.rpc, scope.session, path, snapshot]);
   if (!read) return <Loading />;
   if ("error" in read) return <div className="fpv-msg">{t("preview.failed", { name, error: read.error })}</div>;
   if (read.kind === "too_large") return <div className="fpv-msg">{t("preview.tooLarge", { size: sizeText(read.size) })}</div>;

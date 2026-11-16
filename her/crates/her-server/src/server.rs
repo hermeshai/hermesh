@@ -165,6 +165,8 @@ pub(crate) struct Inner {
     pub(crate) bots: Arc<crate::bots::Registry>,
     /// Their routines (crate::routines).
     pub(crate) routines: Arc<crate::routines::Routines>,
+    /// The files they sent their owner (crate::deliveries).
+    pub(crate) deliveries: Arc<crate::deliveries::Deliveries>,
     /// The connectors Her's conversation reaches, and its cards that wait for a sign-in
     /// (crate::cards).
     pub(crate) connectors: Arc<crate::cards::Connectors>,
@@ -199,6 +201,7 @@ impl Server {
         let docs = Arc::new(her_docs::DocStore::new(options.home.root().join("docs"), options.doc_worker));
         let bots = Arc::new(crate::bots::Registry::new(options.home.clone()));
         let routines = crate::routines::Routines::new(options.home.clone(), bots.clone());
+        let deliveries = crate::deliveries::Deliveries::new(routines.clone(), bots.clone(), &options.home.sessions_dir());
         let server = Server(Arc::new(Inner {
             connections: connections.clone(),
             model_watchers: Mutex::new(HashMap::new()),
@@ -209,6 +212,7 @@ impl Server {
             feed: Arc::new(ListFeed::default()),
             bots,
             routines,
+            deliveries,
             connectors: Arc::default(),
             mesh: Arc::default(),
             defaults,
@@ -425,6 +429,7 @@ impl Server {
                 id,
                 bots: self.0.bots.clone(),
                 routines: self.0.routines.clone(),
+                deliveries: self.0.deliveries.clone(),
                 sessions: self.0.feed.clone(),
             },
             None => hub::Listing::Sessions(self.0.feed.clone()),

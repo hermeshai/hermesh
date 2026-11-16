@@ -438,7 +438,11 @@ func (o *Owner) HerCall(ctx context.Context, machineID string, req *herv1.CallRe
 	if err != nil {
 		return nil, err
 	}
-	return h.HerCall(ctx, req)
+	res, err := h.HerCall(ctx, req)
+	if err == nil {
+		o.keepDeliveries(machineID, req.GetRequest(), res.GetResponse())
+	}
+	return res, err
 }
 
 // herResult is what a her request returned, or her's error.

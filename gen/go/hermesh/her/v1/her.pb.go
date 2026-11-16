@@ -718,7 +718,9 @@ func (x *UploadResponse) GetPath() string {
 type DownloadRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	BotId string                 `protobuf:"bytes,1,opt,name=bot_id,json=botId,proto3" json:"bot_id,omitempty"`
-	// Absolute, or relative to the assistant's folder; inside that folder.
+	// Absolute, or relative to the assistant's folder; inside that folder, or
+	// inside bots/<id>/sent, where her keeps a copy of each file the assistant
+	// sent, as it was when sent (docs/her-deliverables.md §4.1).
 	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
