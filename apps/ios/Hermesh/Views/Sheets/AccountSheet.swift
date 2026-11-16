@@ -433,23 +433,37 @@ struct SigningSheet: View {
                         if let w = card.warning { Label(w, systemImage: "exclamationmark.triangle").font(.subheadline).foregroundStyle(.orange) }
                     }
                 }
-                Section {
-                    HStack(spacing: 10) {
-                        Button { model.signer.rejectShown() } label: { Text("Deny").frame(maxWidth: .infinity) }
-                            .buttonStyle(.glass)
-                        Button { model.signer.approveShown() } label: { Label("Approve", systemImage: "faceid").frame(maxWidth: .infinity) }
-                            .buttonStyle(.glassProminent)
-                            .disabled(model.signer.working)
-                            .accessibilityIdentifier("sign-approve")
-                    }
-                    .controlSize(.large)
-                    .listRowBackground(Color.clear).listRowInsets(EdgeInsets())
-                }
             }
+            // Always in sight, however long what is signed reads: the owner never looks for them.
+            .safeAreaBar(edge: .bottom) { buttons }
             .navigationTitle("Needs Your Confirmation")
             .navigationBarTitleDisplayMode(.inline)
         }
         .interactiveDismissDisabled(model.signer.working)
+    }
+
+    /// Deny and Approve side by side; one over the other in the largest text sizes, Approve on top.
+    private var buttons: some View {
+        let layout = size.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 10))
+        return layout {
+            if size.isAccessibilitySize { approve; deny } else { deny; approve }
+        }
+        .controlSize(.large)
+        .padding(.horizontal, 20).padding(.vertical, 8)
+    }
+
+    @Environment(\.dynamicTypeSize) private var size
+
+    private var deny: some View {
+        Button { model.signer.rejectShown() } label: { Text("Deny").frame(maxWidth: .infinity) }
+            .buttonStyle(.glass)
+    }
+
+    private var approve: some View {
+        Button { model.signer.approveShown() } label: { Label("Approve", systemImage: "faceid").frame(maxWidth: .infinity) }
+            .buttonStyle(.glassProminent)
+            .disabled(model.signer.working)
+            .accessibilityIdentifier("sign-approve")
     }
 }
 
