@@ -3,7 +3,8 @@ import Testing
 @testable import HermeshHer
 
 // The Progress page's groups, cards and records (docs/her-team.md §15): what the owner said, and under it the
-// sub-agents and coding sessions Her started for it, each as it stands now, with the sub-agent's whole record.
+// sub-agents Her started for it, each as it stands now, with its whole record. Coding sessions she started are not
+// her progress.
 
 private let usage: JSON = ["per_model": ["p/m": ["input": 100, "output": 20, "cache_read": 0, "cache_write": 0]]]
 
@@ -33,14 +34,12 @@ private func inner(_ seq: Int, _ agent: String, _ n: Int, _ event: [String: JSON
         ["agent_id": "ag1", "name": "data", "description": "整理数据", "call_id": "c1", "status": "running", "since": 2000, "transcript": ["items": []]],
     ])
     let groups = herProgress(v)
-    #expect(groups.map(\.key) == ["u1", "u3"], "what sent nothing out is no group")
+    #expect(groups.map(\.key) == ["u1"], "what sent nothing out, or a coding session only, is no group")
     #expect(groups[0].parent == .user(text: "准备周报", ts: 1000) && groups[0].said == "分两路去办。")
     guard case .agent(let first) = groups[0].tasks[0], case .agent(let second) = groups[0].tasks[1] else { Issue.record("no agents"); return }
     #expect(first.agent?.id == "ag1" && herAgentState(first) == .running && herAgentTitle(first) == "整理数据")
     // Its agent_started has not come: it is starting, and goes by its task's first line.
     #expect(second.agent == nil && herAgentState(second) == .starting && herAgentTitle(second) == "看竞品的定价。")
-    guard case .session(let key, let started) = groups[1].tasks[0] else { Issue.record("no session"); return }
-    #expect(key == "c3" && started.sessionID == "S1" && started.title == "修测试" && groups[1].said == nil)
 }
 
 @Test func aSubAgentsCardAndRecordFollowItsOwnConversation() {

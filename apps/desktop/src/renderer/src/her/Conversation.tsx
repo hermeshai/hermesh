@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botChat, busyBubble, pendingApproval, replyOf, type BotItem, type ReplyQuote, type WorkingAgent } from "@hermesh/her-client";
+import { botChat, busyBubble, pendingApproval, replyOf, runningAgents, toolObject, type BotItem, type ReplyQuote, type ToolView } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import type { HerWaiting } from "@hermesh/proto/local";
 import { agoText } from "@hermesh/core";
@@ -20,7 +20,7 @@ import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
 import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
-import { messageTime, momentText, thingsText, timeLine } from "./format";
+import { messageTime, momentText, timeLine, toolVerb } from "./format";
 import { Question, SentFiles, useSaveFile, type FileScope } from "./Messages";
 import { FilePreview, previews } from "./preview/FilePreview";
 import { QuoteCard, quoteOf, quoteText, ReplyButton, ReplyPill, Replying } from "./reply";
@@ -288,11 +288,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
     else if (el && fromEnd.current !== null) el.scrollTop = el.scrollHeight - fromEnd.current;
     fromEnd.current = null;
     if (el && el.scrollTop < el.clientHeight * 1.5) earlier();
-  }, [items, busy?.typing, busy?.agents.length, dock]);
-  const follow = () => {
-    const el = scroll.current;
-    if (el && atEnd.current) el.scrollTop = el.scrollHeight;
-  };
+  }, [items, !!busy, dock]);
   const lastTop = useRef(0);
   const onScroll = () => {
     const el = scroll.current;
@@ -328,7 +324,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
   }, [chose]);
 
   const empty = items.length === 0 && !busy;
-  const working = busy?.agents.length ?? 0;
+  const working = view ? runningAgents(view).length : 0;
   const rows = useMemo(() => botRows(items), [items]);
   const virtual = useVirtualRows({ scroller, list, rows, initial: rowHeights });
   const held = useRef(0);
@@ -509,7 +505,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
                       </div>
                     )),
               )}
-              {busy && <BusyBubble busy={busy} retry={view?.live?.retry} onOpen={follow} />}
+              {busy && <BusyBubble busy={busy} retry={view?.live?.retry} />}
             </div>
           )}
         </div>
@@ -757,71 +753,33 @@ function BotMessage({ item, fresh, line, copy, after, children }: { item: SentIt
 }
 
 /**
- * The last bubble while the assistant is busy (bot-mode-design §6.7): three dots; with sub-agents at
- * work, they quieten and what the assistant called the work opens out after them, shimmering. Several
- * show as a count that opens to their names.
+ * The last bubble while the assistant answers (bot-mode-design §6.7): three dots; while it is on a call, what the call
+ * does follows them, shimmering, in the words Progress says a step in (docs/her-team.md §15). Its sub-agents at work
+ * are Progress's to show, not this bubble's: it is gone once the assistant has answered.
  */
-function BusyBubble({ busy, retry, onOpen }: { busy: { typing: boolean; agents: WorkingAgent[] }; retry?: { at: number }; onOpen: () => void }) {
+function BusyBubble({ busy, retry }: { busy: { now: ToolView | null }; retry?: { at: number } }) {
   const { t } = useTranslation("her");
-  const st = useStore();
-  const her = useHer();
-  // An agent at work opens its record on the Progress page (docs/her-team.md §15).
-  const record = (agent: string) => st.set({ selection: { kind: "progress", machine: her.machine.machineId, task: { agent } } });
   const now = useNow(1000).getTime();
-  const [open, setOpen] = useState(false);
-  const agents = busy.agents;
   const unstable = retry && now - retry.at > 10_000;
-  const label = agents.length === 1 ? agents[0].label : unstable ? t("chat.retrying") : undefined;
-  const several = agents.length > 1;
-  const dots = (
-    <span className={`dots ${several || label ? "quiet" : ""}`} aria-hidden="true">
-      <i />
-      <i />
-      <i />
-    </span>
-  );
-  const shown = open && several;
-  useLayoutEffect(() => {
-    if (shown) onOpen();
-  }, [shown]);
+  const step = busy.now;
+  const label = unstable ? t("chat.retrying") : step ? `${toolVerb(step)} ${toolObject(step)}`.trim() : undefined;
   return (
     <div className="bm working">
       <div className="bm-b">
         <div className="bline">
-          <div className={`bbub wbub ${shown ? "open" : ""}`}>
-            {several ? (
-              <button className="wb-h" aria-expanded={shown} title={shown ? t("chat.busyClose") : t("chat.busyOpen")} onClick={() => setOpen(!open)}>
-                {dots}
+          <div className="bbub wbub">
+            <div className="wb-h" title={label ?? t("line.typing")}>
+              <span className={`dots ${label ? "quiet" : ""}`} aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+              {label && (
                 <span className="wb-w">
-                  <span className="wb-t shimmer">{t("line.agents", { things: thingsText(agents.length) })}</span>
+                  <span className="wb-t shimmer">{label}</span>
                 </span>
-                <Icon name="chevD" className="chev" />
-              </button>
-            ) : (
-              <div className="wb-h" title={label ?? t("line.typing")}>
-                {dots}
-                {label && agents.length === 1 ? (
-                  <button className="wb-w wb-go" onClick={() => record(agents[0].id)}>
-                    <span className="wb-t shimmer">{label}</span>
-                  </button>
-                ) : (
-                  label && (
-                    <span className="wb-w">
-                      <span className="wb-t shimmer">{label}</span>
-                    </span>
-                  )
-                )}
-              </div>
-            )}
-            {shown && (
-              <div className="wb-l">
-                {agents.map((a) => (
-                  <button key={a.id} className="wb-r wb-go shimmer" onClick={() => record(a.id)}>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>

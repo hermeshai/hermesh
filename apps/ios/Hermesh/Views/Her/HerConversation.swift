@@ -45,11 +45,11 @@ struct HerConversation: View {
         let waiting = chat.bot.map { herOutbox(sending: chat.sending, waiting: chat.waiting, botID: $0.id, said: said) } ?? []
         let place = herOnboardingPlace(chat.flow, noModel: noModel, session: chat.session?.sessionID, last: (said + waiting).last?.key)
         let rows = herWithOnboarding(said + waiting, place, at: chat.flow?.at ?? .now)
-        let busy = chat.live.map(herBusy) ?? false
+        let busy = chat.live.flatMap(herBusyBubble)
         let asking = chat.convUp ? chat.live.flatMap(herPendingApproval) : nil
         ScrollViewReader { proxy in
             ScrollView {
-                HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, agents: chat.live.map(herWorkingAgents) ?? [], machine: machine, marked: marked,
+                HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, machine: machine, marked: marked,
                         topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
                     .equatable()
             }
@@ -89,7 +89,7 @@ struct HerConversation: View {
         .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
         .scrollDismissesKeyboard(.interactively)
         .overlay {
-            if rows.isEmpty && !busy { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
+            if rows.isEmpty && busy == nil { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
         }
         .safeAreaInset(edge: .top) {
             if case .offline(let seen) = state {
@@ -189,9 +189,8 @@ private struct HerRows: View, Equatable {
     let rows: [HerItem]
     /// Earlier messages can be read at the top.
     let earlier: Bool
-    let busy: Bool
-    /// The sub-agents at work, named in the busy bubble.
-    let agents: [HerWorkingAgent]
+    /// What the busy bubble shows while Her answers.
+    let busy: HerBusyBubble?
     let machine: HerMachine
     let marked: String?
     @Binding var topSeen: Bool
@@ -200,7 +199,7 @@ private struct HerRows: View, Equatable {
     @Binding var selecting: HerSelecting?
 
     nonisolated static func == (a: HerRows, b: HerRows) -> Bool {
-        a.rows == b.rows && a.earlier == b.earlier && a.busy == b.busy && a.agents == b.agents && a.marked == b.marked && a.machine == b.machine
+        a.rows == b.rows && a.earlier == b.earlier && a.busy == b.busy && a.marked == b.marked && a.machine == b.machine
     }
 
     var body: some View {
@@ -217,7 +216,7 @@ private struct HerRows: View, Equatable {
             ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
                 HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
             }
-            if busy { HerTyping(agents: agents).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+            if let busy { HerTyping(now: busy.now).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
         }
         // As wide as the page with nothing in it too: the scroll view is as wide as this, and what shows over it
         // while the conversation is empty (her greeting) was laid out 40 points wide.
@@ -841,54 +840,32 @@ struct HerPill: ButtonStyle {
     }
 }
 
-/// The last thing while Her is at work (the Mac's BusyBubble): three dots, in her bubble. With sub-agents at work,
-/// the dots quieten and what Her called the work follows them, shimmering, and opens its record on Progress.
-/// Several show as a count that opens to their names.
+/// The last thing while Her answers (the Mac's BusyBubble): three dots, in her bubble. While she is on a call, the
+/// dots quieten and what the call does follows them, shimmering, in the words Progress says a step in. Her sub-agents
+/// at work are Progress's to show: the bubble is gone once she has answered (docs/her-team.md §15).
 struct HerTyping: View {
-    var agents: [HerWorkingAgent] = []
-    @Environment(AppModel.self) private var model
+    var now: HerToolStep? = nil
     @Environment(\.accessibilityReduceMotion) private var still
-    @State private var open = false
 
     var body: some View {
-        let shown = open && agents.count > 1
-        let shape = shown ? AnyShape(RoundedRectangle(cornerRadius: 19, style: .continuous)) : AnyShape(Capsule())
-        VStack(alignment: .leading, spacing: 6) {
-            if agents.count > 1 {
-                Button { withAnimation(.snappy(duration: 0.24)) { open.toggle() } } label: {
-                    HStack(spacing: 7) {
-                        dots
-                        line(Text("Working on \(agents.count) things"))
-                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(shown ? 90 : 0))
-                    }
-                }
-                .accessibilityIdentifier("her-typing-agents")
-                if shown {
-                    ForEach(agents, id: \.id) { a in
-                        Button { model.path.append(.progressAgent(a.id)) } label: { line(Text(verbatim: a.label)) }
-                            .accessibilityIdentifier("her-typing-agent")
-                    }
-                }
-            } else if let a = agents.first {
-                Button { model.path.append(.progressAgent(a.id)) } label: { HStack(spacing: 7) { dots; line(Text(verbatim: a.label)) } }
-                    .accessibilityIdentifier("her-typing-agent")
-            } else {
-                dots
+        let step = now.map { "\(herStepVerb($0)) \($0.object)" }
+        HStack(spacing: 7) {
+            dots
+            if let step {
+                Text(verbatim: step).font(.subheadline).foregroundStyle(.secondary).lineLimit(1).modifier(HerShimmer())
             }
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 14).padding(.vertical, agents.isEmpty ? 11 : 9)
-        .background(Palette.reply, in: shape)
-        .overlay(shape.stroke(Palette.separator, lineWidth: 0.5))
-        .accessibilityElement(children: agents.isEmpty ? .ignore : .contain)
-        .accessibilityLabel(agents.isEmpty ? Text("Typing…") : Text(verbatim: ""))
+        .padding(.horizontal, 14).padding(.vertical, step == nil ? 11 : 9)
+        .background(Palette.reply, in: .capsule)
+        .overlay(Capsule().strokeBorder(Palette.separator, lineWidth: 0.5))
+        .accessibilityElement()
+        .accessibilityLabel(step.map { Text(verbatim: $0) } ?? Text("Typing…"))
         .accessibilityIdentifier("her-typing")
     }
 
     /// The dots, smaller and fainter once words follow them.
     private var dots: some View {
-        let quiet = !agents.isEmpty
+        let quiet = now != nil
         return TimelineView(.animation(paused: still)) { t in
             let phase = t.date.timeIntervalSinceReferenceDate * 2.4
             HStack(spacing: quiet ? 3 : 4) {
@@ -898,11 +875,6 @@ struct HerTyping: View {
                 }
             }
         }
-        .accessibilityHidden(true)
-    }
-
-    private func line(_ text: Text) -> some View {
-        text.font(.subheadline).foregroundStyle(.secondary).lineLimit(1).modifier(HerShimmer())
     }
 }
 

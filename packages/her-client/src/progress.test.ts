@@ -47,7 +47,7 @@ const startSession = (id: string, session: string, title: string): [AssistantCon
 const inner = (agent: string, n: number, msg: EventMsg): EventMsg => ({ type: "agent_event", agent_id: agent, event: { seq: n, ts: 1000 * (seq + 1), ...msg } as Event });
 const done = (task: string): EventMsg => ({ type: "task_completed", task_id: task, usage: totals, reason: "done" });
 
-test("each thing the owner said heads the work the bot sent out for it; what sent nothing out is no group", () => {
+test("each thing the owner said heads the work the bot sent out for it; what sent nothing out, or a coding session only, is no group", () => {
   const [told, toldDone] = say("c9", "分两路去办。");
   const [start, started] = startSession("c3", "S1", "修测试");
   const v = play([
@@ -72,10 +72,7 @@ test("each thing the owner said heads the work the bot sent out for it; what sen
   const groups = progressGroups(v);
   assert.deepEqual(groups.map((g) => [g.parent.kind === "user" ? g.parent.text : g.parent.kind, g.said, g.tasks.map((t) => t.kind)]), [
     ["准备周报", "分两路去办。", ["agent", "agent"]],
-    ["把 relay 的测试修一下", undefined, ["session"]],
   ]);
-  const session = groups[1].tasks[0];
-  assert.ok(session.kind === "session" && session.started.session_id === "S1" && session.started.title === "修测试");
   assert.deepEqual([...agentTitles(groups[0].tasks).values()], ["整理数据", "看竞品"]);
   assert.equal(findAgentTask(groups, "ag2")?.task.key, "c2");
   assert.equal(findAgentTask(groups, "c1")?.group.key, "u1");

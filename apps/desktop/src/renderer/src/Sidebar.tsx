@@ -165,19 +165,6 @@ function HerItem() {
   );
 }
 
-/**
- * What Her sent out and how it stands (docs/her-team.md §15), for the Progress button on her page: her coding
- * sessions, as Watch brings them, and her sub-agents while a page of hers follows her conversation.
- */
-export function progressMarks(st: Store) {
-  const her = herClients(st);
-  const mine = st.sessions.filter((s) => her.includes(s.createdBy) && s.status !== SessionStatus.ARCHIVED);
-  return {
-    waits: mine.filter((s) => s.status === SessionStatus.WAITING_INPUT).length + (st.herAgents?.waits ?? 0),
-    running: mine.filter(isActive).length + (st.herAgents?.running ?? 0),
-  };
-}
-
 /** Work (the overview, docs/her-team.md §14.2): an orange dot when something needs the owner, and what runs. */
 export function workMarks(st: Store, now: Date) {
   const team = teamState(st.sessions, st.pairings.length);

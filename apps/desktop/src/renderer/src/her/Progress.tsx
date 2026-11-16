@@ -5,15 +5,10 @@ import {
   toolObject, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step,
 } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
-import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, codingAgentShort, dateOf, displayTitle, elapsedSeconds, isActive, isFailed, listTime, pendingQuestion, tokensText, updatedDate } from "@hermesh/core";
-import { AgentLogo } from "@hermesh/ui";
+import { clockText, elapsedSeconds, listTime, tokensText } from "@hermesh/core";
 import { Icon } from "../icons";
-import { Chat } from "../session/Chat";
 import { ContentScope } from "../session/scope";
-import { useSessionEvents } from "../session/events";
 import { Markdown } from "../session/Markdown";
-import { machineName } from "../Sidebar";
 import { useNow, useStore, type ProgressTaskRef } from "../store";
 import { Approval, type SendOp } from "./Approval";
 import { Cat } from "./Cat";
@@ -25,22 +20,14 @@ import { durationText, messageTime, toolVerb } from "./format";
 import { StepRow } from "./Process";
 import "./progress.css";
 
-// Progress (docs/her-team.md §15): the work Her sent out as a feed, one post a piece of work, with what set it off
-// at its foot; behind each post the whole record of that piece of work. Everything is read from the conversation
-// the Her page already follows (its sub-agents' own sessions come with it), so the page asks her for nothing more;
-// a coding session's record is the session's own page, shown here.
+// Progress (docs/her-team.md §15): the work Her sent out to her sub-agents as a feed, one post a piece of work, with
+// what set it off at its foot; behind each post the whole record of that piece of work. Everything is read from the
+// conversation the Her page already follows (its sub-agents' own sessions come with it), so the page asks her for
+// nothing more. Coding sessions she started are not here: they are on their own pages.
 
-/** How a post stands: a sub-agent's state, or the same words for a coding session; gone: the window holds the session no more. */
-type Stand = AgentState | "gone";
+/** How a post stands: its sub-agent's state. */
+type Stand = AgentState;
 
-function sessionStand(s: Session | undefined): Stand {
-  if (!s) return "gone";
-  if (s.status === SessionStatus.WAITING_INPUT) return "waiting";
-  if (isFailed(s)) return "failed";
-  return isActive(s) ? "running" : "done";
-}
-
-const sessionTokens = (s: Session | undefined) => Number((s?.progress?.usage?.inputTokens ?? 0n) + (s?.progress?.usage?.outputTokens ?? 0n));
 const atWork = (s: Stand) => s === "running" || s === "starting";
 /** It waits for the owner, or could not go on: the posts that carry a mark, above the rest. */
 const needsOwner = (s: Stand) => s === "waiting" || s === "failed";
@@ -52,35 +39,27 @@ interface Post {
   group: ProgressGroup;
   stand: Stand;
   title: string;
-  /** A sub-agent's. */
-  post: AgentPost | null;
-  session?: Session;
+  post: AgentPost;
   /** When it began its work (at work) or last changed (otherwise): the feed's order. */
   at: number;
 }
 
 function usePosts(view: SessionView | null): { groups: ProgressGroup[]; posts: Post[] } {
-  const st = useStore();
   const groups = useMemo(() => (view ? progressGroups(view) : []), [view]);
   const posts = useMemo(
     () =>
       groups
         .flatMap((g) => {
           const titles = agentTitles(g.tasks);
-          return g.tasks.map((t): Post => {
-            if (t.kind === "agent") return { task: t, group: g, stand: agentState(t.launch), title: titles.get(t.key) ?? "", post: agentPost(t.launch), at: t.launch.agent?.since ?? parentTime(g) };
-            const s = st.sessions.find((x) => x.sessionId === t.started.session_id);
-            const at = s ? ((isActive(s) && dateOf(s.progress?.turnStartedAt)) || updatedDate(s)).getTime() : parentTime(g);
-            return { task: t, group: g, stand: sessionStand(s), title: s ? displayTitle(s) : t.started.title, post: null, session: s, at };
-          });
+          return g.tasks.map((t): Post => ({ task: t, group: g, stand: agentState(t.launch), title: titles.get(t.key) ?? "", post: agentPost(t.launch), at: t.launch.agent?.since ?? parentTime(g) }));
         })
         .sort((a, b) => b.at - a.at),
-    [groups, st.sessions],
+    [groups],
   );
   return { groups, posts };
 }
 
-const sameTask = (task: ProgressTask, ref: ProgressTaskRef) => ("agent" in ref ? task.kind === "agent" && task.launch.agent?.id === ref.agent : task.kind === "session" && task.started.session_id === ref.session);
+const sameTask = (task: ProgressTask, ref: ProgressTaskRef) => task.launch.agent?.id === ref.agent;
 
 export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv; op: SendOp; task?: ProgressTaskRef }) {
   const her = useHer();
@@ -108,7 +87,7 @@ function useOpen() {
   };
 }
 
-const refOf = (task: ProgressTask): ProgressTaskRef | null => (task.kind === "session" ? { session: task.started.session_id } : task.launch.agent ? { agent: task.launch.agent.id } : null);
+const refOf = (task: ProgressTask): ProgressTaskRef | null => (task.launch.agent ? { agent: task.launch.agent.id } : null);
 
 // MARK: The feed
 
@@ -204,16 +183,10 @@ function PostView({ post: p, onSource }: { post: Post; onSource: (key: string) =
   const now = useNow(atWork(p.stand) || p.stand === "waiting" ? 10_000 : 60_000);
   const ref = refOf(p.task);
   const open = () => ref && go.task(ref);
-  const s = p.session;
-  const since = p.task.kind === "agent" ? (p.task.launch.agent?.since ?? p.at) : ((s && dateOf(s.progress?.turnStartedAt)?.getTime()) || p.at);
-  const words =
-    p.task.kind === "agent" ? p.post?.words
-    : !s ? t("progress.sessionGone")
-    : p.stand === "waiting" ? (pendingQuestion(s)?.items[0]?.text || t("common:team.waitingForAnswer"))
-    : p.stand === "failed" ? (s.progress?.lastFailure?.message || t("common:team.lastTurnFailed"))
-    : null;
-  const tokens = p.task.kind === "agent" ? (p.task.launch.agent ? agentTokens(p.task.launch.agent) : 0) : sessionTokens(s);
-  const stateWord = p.stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${p.stand}`);
+  const since = p.task.launch.agent?.since ?? p.at;
+  const words = p.post.words;
+  const tokens = p.task.launch.agent ? agentTokens(p.task.launch.agent) : 0;
+  const stateWord = t(`progress.state.${p.stand}`);
   return (
     <article className="pf-p" aria-label={p.title}>
       <button className="pf-main" disabled={!ref} onClick={open} aria-label={[p.title, stateWord, words].filter(Boolean).join(" · ")}>
@@ -241,64 +214,43 @@ function PostView({ post: p, onSource }: { post: Post; onSource: (key: string) =
 
 /** What shows where a post stands: the step it is on while it works, what waits for the owner, what it made. */
 function Piece({ post: p, open }: { post: Post; open: () => void }) {
-  const { t } = useTranslation(["her", "common"]);
-  const s = p.session;
-  if (p.task.kind === "agent") {
-    const post = p.post;
-    switch (p.stand) {
-      case "starting":
-        return <div className="pf-well">{t("progress.starting")}</div>;
-      case "running":
-        return (
-          <button className="pf-well pf-now" onClick={open}>
-            <Beat count={post?.calls ?? 0} />
-            {post?.now ? (
-              <span className="pf-step">
-                <span>{toolVerb(post.now)}</span> {post.now.category === "execute" ? <code>{toolObject(post.now)}</code> : <b>{toolObject(post.now)}</b>}
-              </span>
-            ) : (
-              <span className="pf-step">{t("progress.thinking")}</span>
-            )}
-          </button>
-        );
-      case "waiting":
-        return (
-          <div className="pf-well pf-ask">
-            <span>{t("progress.state.waiting")}</span>
-            <button className="btn primary" onClick={open}>{t("progress.review")}</button>
-          </div>
-        );
-      case "done":
-        if (!post?.files.length) return null;
-        return (
-          <button className="pf-well pf-files" onClick={open}>
-            <Icon name="doc" />
-            <b>{post.files[0].split("/").at(-1)}</b>
-            {post.files.length > 1 && <span>{t("progress.files", { count: post.files.length })}</span>}
-          </button>
-        );
-      default:
-        return null;
-    }
+  const { t } = useTranslation("her");
+  const post = p.post;
+  switch (p.stand) {
+    case "starting":
+      return <div className="pf-well">{t("progress.starting")}</div>;
+    case "running":
+      return (
+        <button className="pf-well pf-now" onClick={open}>
+          <Beat count={post.calls} />
+          {post.now ? (
+            <span className="pf-step">
+              <span>{toolVerb(post.now)}</span> {post.now.category === "execute" ? <code>{toolObject(post.now)}</code> : <b>{toolObject(post.now)}</b>}
+            </span>
+          ) : (
+            <span className="pf-step">{t("progress.thinking")}</span>
+          )}
+        </button>
+      );
+    case "waiting":
+      return (
+        <div className="pf-well pf-ask">
+          <span>{t("progress.state.waiting")}</span>
+          <button className="btn primary" onClick={open}>{t("progress.review")}</button>
+        </div>
+      );
+    case "done":
+      if (!post.files.length) return null;
+      return (
+        <button className="pf-well pf-files" onClick={open}>
+          <Icon name="doc" />
+          <b>{post.files[0].split("/").at(-1)}</b>
+          {post.files.length > 1 && <span>{t("progress.files", { count: post.files.length })}</span>}
+        </button>
+      );
+    default:
+      return null;
   }
-  if (!s) return null;
-  if (p.stand === "running")
-    return (
-      <button className="pf-well pf-now" onClick={open}>
-        <span className="busy" aria-hidden="true"><i /></span>
-        <span className="pf-step">{s.progress?.currentTool ? <code>{s.progress.currentTool}</code> : t("progress.working")}</span>
-      </button>
-    );
-  const d = s.progress?.diffStat;
-  if (p.stand === "done" && d && d.filesChanged > 0)
-    return (
-      <button className="pf-well pf-diff" onClick={open}>
-        <b className="add">+{d.insertions}</b>
-        <b className="del">−{d.deletions}</b>
-        <span>{t("progress.files", { count: d.filesChanged })}</span>
-      </button>
-    );
-  return null;
 }
 
 /** A sub-agent's calls as bars, the last beating while it works: at most the last eight. */
@@ -375,7 +327,7 @@ function SourcePanel({ bot, group: g, posts, here, onClose }: { bot: BotSummary;
                   <SibMark stand={x.stand} />
                   <span>
                     <b>{x.title}</b>
-                    <span>{x.stand === "gone" ? t("progress.sessionGone") : t(`progress.state.${x.stand}`)}</span>
+                    <span>{t(`progress.state.${x.stand}`)}</span>
                   </span>
                   <Icon name="chevR" className="sm" />
                 </button>
@@ -395,9 +347,7 @@ function SourcePanel({ bot, group: g, posts, here, onClose }: { bot: BotSummary;
 function TaskPage({ post: p, conv, op, onSource }: { post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void }) {
   const { t } = useTranslation("her");
   const go = useOpen();
-  const st = useStore();
   const task = p.task;
-  const session = p.session;
   return (
     <>
       <div className="ctool drag pt-bar">
@@ -407,14 +357,11 @@ function TaskPage({ post: p, conv, op, onSource }: { post: Post; conv: Conv; op:
         </button>
         <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
         <span className="pt-gap" />
-        {session && <button className="link" onClick={() => st.select(session.sessionId)}>{t("progress.openSession")}</button>}
       </div>
-      {task.kind === "agent" && task.launch.agent ? (
+      {task.launch.agent ? (
         <AgentRecord launch={task.launch} agent={task.launch.agent} title={p.title} conv={conv} op={op} />
-      ) : session ? (
-        <SessionRecord s={session} />
       ) : (
-        <div className="pg-empty"><span>{t(task.kind === "session" ? "progress.sessionGone" : "progress.gone")}</span></div>
+        <div className="pg-empty"><span>{t("progress.gone")}</span></div>
       )}
     </>
   );
@@ -446,24 +393,6 @@ function useFacts(a: AgentView | undefined): string {
   const took = agentElapsed(a, now.getTime());
   const time = running ? t("progress.ran", { time: clockText(elapsedSeconds(new Date(a.since), now)) }) : took > 0 ? t("progress.took", { time: durationText(took) }) : "";
   return [time, tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : ""].filter(Boolean).join(" · ");
-}
-
-/** A coding session's record is its own page's conversation, drawn here: nothing is read twice, and it answers its question as there. */
-function SessionRecord({ s }: { s: Session }) {
-  const st = useStore();
-  const { events, draft } = useSessionEvents(s.sessionId, s.progress?.lastEventSeq ?? 0n);
-  return (
-    <div className="dwrap pt-session">
-      <div className="dmain">
-        <div className="pt-shead">
-          <AgentLogo agent={s.agent} size={22} />
-          <b>{displayTitle(s)}</b>
-          <span>{codingAgentShort(s.agent)} · {machineName(st, s.machineId)}</span>
-        </div>
-        <Chat key={s.sessionId} s={s} events={events} draft={draft} />
-      </div>
-    </div>
-  );
 }
 
 /**

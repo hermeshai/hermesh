@@ -8,7 +8,6 @@ import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
 import { TagWords, TeamPanel, useTeam } from "../team";
-import { progressMarks } from "../Sidebar";
 import { useStore } from "../store";
 
 /**
@@ -64,17 +63,22 @@ export function TopBar() {
   );
 }
 
-/** Progress, a page of Her's: an orange dot while a piece of the work she sent out waits for the owner. */
+/**
+ * Progress, a page of Her's (docs/her-team.md §15): an orange dot while a sub-agent of hers waits for the owner, else a
+ * blue one while one is at work, as her page follows her conversation.
+ */
 function ProgressButton() {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
-  const { waits } = progressMarks(st);
-  const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}` : t("progress.title");
+  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
+  const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}`
+    : running > 0 ? `${t("progress.title")} · ${t("progress.atWork", { count: running })}`
+    : t("progress.title");
   return (
     <button className="tb rtn-btn" title={label} aria-label={label} onClick={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}>
       <Icon name="pulse" />
-      {waits > 0 && <i className="rtn-dot" />}
+      {(waits > 0 || running > 0) && <i className={`rtn-dot ${waits > 0 ? "" : "run"}`} />}
     </button>
   );
 }

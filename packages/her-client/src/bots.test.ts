@@ -135,7 +135,7 @@ test("a message sent while the bot answered keeps its place, whether queued or i
     { type: "queue_changed", queued: [{ id: "u2", mode: "steer", message: { content: [{ type: "text", text: "再写一首夏天的" }], ts: 10_500 } }] },
   ]);
   assert.deepEqual(botChat(live).map((i) => i.kind === "user" && `${i.text}${i.queued ? " (queued)" : ""}`), ["写一首春天的诗", "再写一首夏天的 (queued)"]);
-  assert.deepEqual(busyBubble(live), { typing: true, agents: [] });
+  assert.deepEqual(busyBubble(live), { now: null }, "the dots alone while it writes");
   const later = applyEvents(live, [
     { seq: 10, ts: 0, ...assistant("a1", [send("c1", "春天的诗。", true)], 11_000, 2000) } as Event,
     { seq: 11, ts: 0, ...started("c1") } as Event,
@@ -177,23 +177,35 @@ test("a failed, refused or cancelled send shows nothing; an approval is no part 
   assert.ok(failure.kind === "failure" && failure.last && failure.error.kind === "rate_limited");
 });
 
-test("sub-agents at work make the bot busy, each with what it was asked to do", () => {
+test("the busy bubble says the call the bot is on; a sub-agent at work after it answered is no part of it", () => {
+  const working = play([
+    { type: "task_started", task_id: "t1" },
+    user("u1", "看看磁盘还剩多少", 10_000),
+    assistant("a1", [{ type: "tool_call", id: "c1", name: "bash", arguments: { command: "df -h" } }], 11_000),
+    { type: "tool_started", call_id: "c1", name: "bash", args: { command: "df -h" }, category: "execute", title: "df -h" },
+    { type: "tool_running", call_id: "c1" },
+  ]);
+  const busy = busyBubble(working);
+  assert.equal(busy?.now?.call_id, "c1");
+  assert.equal(busy?.now?.category, "execute");
+  assert.equal(busy?.now?.state, "running");
+  assert.equal(busy?.now?.title, "df -h");
+
   const v = play([
     { type: "task_started", task_id: "t1" },
     user("u1", "调研一下", 10_000),
     assistant("a1", [{ type: "tool_call", id: "c1", name: "spawn_agent", arguments: { description: "调研更新方案", task: "…" } }, send("c2", "在查了。", true)], 11_000),
     started("c1", "spawn_agent"),
     started("c2"),
-    { type: "agent_started", agent_id: "g1", name: "agent", description: "调研更新方案", session_file: "/g.jsonl", call_id: "c1" },
-    done("c1", "spawn_agent", "started"),
-    done("c2"),
-    { type: "task_completed", task_id: "t1", usage: { per_model: {} }, reason: "done" },
-    { type: "agent_event", agent_id: "g1", event: { seq: 1, ts: 1, type: "task_started", task_id: "t1" } },
-    { type: "agent_event", agent_id: "g1", event: { seq: 2, ts: 2, type: "tool_started", call_id: "x", name: "bash", args: {}, category: "execute", title: "curl releases" } },
   ]);
-  const busy = busyBubble(v);
-  assert.equal(busy?.typing, false);
-  assert.deepEqual(busy?.agents.map((h) => h.label), ["调研更新方案"]);
+  assert.deepEqual(busyBubble(v), { now: null }, "starting a sub-agent, or saying something, is not what she does");
+  const after = applyEvents(v, [
+    { seq: 20, ts: 0, type: "agent_started", agent_id: "g1", name: "agent", description: "调研更新方案", session_file: "/g.jsonl", call_id: "c1" } as Event,
+    { seq: 21, ts: 0, ...done("c1", "spawn_agent", "started") } as Event,
+    { seq: 22, ts: 0, ...done("c2") } as Event,
+    { seq: 23, ts: 0, type: "task_completed", task_id: "t1", usage: { per_model: {} }, reason: "done" } as Event,
+  ]);
+  assert.equal(busyBubble(after), null, "she answered: the sub-agent's work is Progress's");
 });
 
 // ---- message types (bot-design §3.12) ----

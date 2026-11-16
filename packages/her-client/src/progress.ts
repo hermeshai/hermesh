@@ -1,24 +1,22 @@
 import type { TaskEndItem } from "@hermesh/her-protocol";
-import { saidTo, startedSession, type StartedSession } from "./botChat.ts";
+import { saidTo } from "./botChat.ts";
 import { type AgentView, type SessionView } from "./session.ts";
 import { conversation, taskGists, toolObject, type AgentLaunch, type Step, type ToolView, type WorkItem } from "./steps.ts";
 import { plain } from "./bots.ts";
 import { totals } from "./text.ts";
 
 // The work a bot sent out, as the Progress page shows it (docs/her-team.md §15): for each thing the owner
-// said to it, the sub-agents it started for that and the coding sessions it started on the mesh, each a post of
-// its own with what set it off at its foot; and what a sub-agent's post says. Worked out
+// said to it, the sub-agents it started for that, each a post of its own with what set it off at its foot; and
+// what a sub-agent's post says. Coding sessions it started on the mesh are not its progress: the sessions'
+// own pages hold them (§15, 2026-11-16). Worked out
 // from the conversation the page already follows, sub-agents' own sessions included (their agent_events), so
 // the page asks her for nothing more.
 
 /** How a sub-agent stands, as its card says it. waiting: it asks the owner to approve a call. */
 export type AgentState = "starting" | "running" | "waiting" | "done" | "failed" | "stopped";
 
-export type ProgressTask =
-  /** A sub-agent the bot started: its spawn call, and the agent as it is now. */
-  | { kind: "agent"; key: string; launch: AgentLaunch }
-  /** A coding session the bot started through the mesh; how it stands is the app's to say, from the sessions it holds. */
-  | { kind: "session"; key: string; started: StartedSession };
+/** A sub-agent the bot started: its spawn call, and the agent as it is now. */
+export type ProgressTask = { kind: "agent"; key: string; launch: AgentLaunch };
 
 /** What set a group's work off. earlier: the calls that started these agents are on a page of the history not read yet. */
 export type ProgressParent = { kind: "user"; text: string; ts: number } | { kind: "routine"; name: string; ts: number } | { kind: "earlier" };
@@ -69,8 +67,6 @@ export function progressGroups(v: SessionView): ProgressGroup[] {
         break;
       case "work":
         for (const item of s.items) {
-          const started = startedSession(item);
-          if (started) group().tasks.push({ kind: "session", key: item.key, started });
           const said = saidTo(item);
           if (said !== null && current) current.said = said;
         }
@@ -89,9 +85,9 @@ export function progressGroups(v: SessionView): ProgressGroup[] {
 }
 
 /** A sub-agent's card, by the task's key (its spawn call) or the agent's id. */
-export function findAgentTask(groups: ProgressGroup[], id: string): { group: ProgressGroup; task: Extract<ProgressTask, { kind: "agent" }> } | undefined {
+export function findAgentTask(groups: ProgressGroup[], id: string): { group: ProgressGroup; task: ProgressTask } | undefined {
   for (const group of groups) {
-    for (const task of group.tasks) if (task.kind === "agent" && (task.key === id || task.launch.agent?.id === id)) return { group, task };
+    for (const task of group.tasks) if (task.key === id || task.launch.agent?.id === id) return { group, task };
   }
   return undefined;
 }
@@ -113,7 +109,7 @@ export function agentState(l: AgentLaunch): AgentState {
 
 /** What each of a group's sub-agents is called: what the bot called the work, else a line of its task that tells it from the others, else its handle. */
 export function agentTitles(tasks: ProgressTask[]): Map<string, string> {
-  const agents = tasks.flatMap((t) => (t.kind === "agent" ? [t.launch] : []));
+  const agents = tasks.map((t) => t.launch);
   const gists = taskGists(agents.map((l) => l.task));
   return new Map(agents.map((l, i) => [l.call_id, l.description || gists[i] || l.name]));
 }
