@@ -274,6 +274,26 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeRef})
 	}
 	res, err := s.call(ctx, method, params)
+	copied := false
+	if method == "thread/resume" && isOpenElsewhere(err) {
+		// Codex (0.169) lets one process write a thread, and that process
+		// keeps it while it runs. This session's last process may still be
+		// on its way out: once more, a moment later.
+		select {
+		case <-time.After(time.Second):
+		case <-ctx.Done():
+		}
+		if res, err = s.call(ctx, method, params); isOpenElsewhere(err) {
+			// Another Codex program has it (the Codex app, once the user
+			// opens the thread there, for as long as it runs): go on in a
+			// copy, which has the whole conversation.
+			if r, ferr := s.call(ctx, "thread/fork", params); ferr == nil {
+				res, err, copied = r, nil, true
+			} else {
+				err = fmt.Errorf("%w; it is open in another Codex program on this machine (the Codex app?), and copying it failed: %v", err, ferr)
+			}
+		}
+	}
 	if err != nil {
 		if method == "thread/resume" && provider.IsResumeRejected(err.Error()) {
 			err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, err.Error())
@@ -293,6 +313,9 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s.threadID = tr.Thread.ID
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID, Model: tr.Model, Effort: tr.ReasoningEffort})
+	if copied {
+		s.emit(provider.Event{Kind: provider.EventError, Text: "the session's Codex conversation is open in another Codex program on this machine (the Codex app?), which keeps it to itself; the session goes on in a copy of it, with everything so far"})
+	}
 	if spec.Title != "" {
 		// The Codex apps list the thread by this name, not by its directory.
 		s.SetTitle(ctx, spec.Title)
@@ -301,6 +324,12 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		return fail(err)
 	}
 	return s, nil
+}
+
+// isOpenElsewhere reports whether err is Codex refusing a thread another
+// running Codex process has open.
+func isOpenElsewhere(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "already has an active writer")
 }
 
 type rpcResult struct {
