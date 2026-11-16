@@ -18,7 +18,10 @@ use super::discovery::AuthServerMeta;
 /// (`HER_GITHUB_OAUTH_CLIENT_SECRET`); it ships in the binary, so it is public, as a native
 /// app's is (RFC 8252 §8.5): the loopback redirect and PKCE keep sign-ins safe. A build without
 /// it has no built-in client.
-const BUILTIN: &[(&str, &str, Option<&str>)] = &[("https://github.com/login/oauth", "Ov23liCY8iwmJDRtTvvD", option_env!("HER_GITHUB_OAUTH_CLIENT_SECRET"))];
+const BUILTIN: &[(&str, &str, Option<&str>)] = &[(GITHUB, "Ov23liCY8iwmJDRtTvvD", option_env!("HER_GITHUB_OAUTH_CLIENT_SECRET"))];
+
+/// GitHub's authorization server, as its metadata names it.
+pub(crate) const GITHUB: &str = "https://github.com/login/oauth";
 
 /// The client id and secret her registered with `issuer`, when this build has them.
 pub(crate) fn builtin(issuer: &str) -> Option<(&'static str, &'static str)> {

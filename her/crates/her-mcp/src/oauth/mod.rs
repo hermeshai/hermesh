@@ -74,6 +74,9 @@ pub struct StoredToken {
     pub client_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_secret: Option<String>,
+    /// The account signed in to, for display: what the sign-in said of it, if anything.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
 }
 
 /// The credential holding a server's tokens.
@@ -106,6 +109,11 @@ pub fn sign_in_way(server: &str) -> String {
 /// Whether `server` has tokens for `url`.
 pub fn signed_in(server: &str, url: &str) -> bool {
     load(server).is_some_and(|t| t.resource == url)
+}
+
+/// The account a server's saved sign-in is for, when the sign-in said.
+pub fn account(server: &str, url: &str) -> Option<String> {
+    load(server).filter(|t| t.resource == url).and_then(|t| t.account)
 }
 
 /// Signs out: revokes the refresh token when the authorization server offers revocation,

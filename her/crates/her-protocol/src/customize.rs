@@ -403,6 +403,10 @@ pub struct McpServerView {
     /// Authenticated, but the provider did not grant every requested permission.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth_partial: Option<bool>,
+    /// The account signed in to, for display, when the sign-in told her (an id token's name, or
+    /// GitHub's login).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
     /// The credentials its configuration refers to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub credentials: Vec<String>,

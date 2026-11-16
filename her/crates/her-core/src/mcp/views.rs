@@ -86,9 +86,11 @@ pub fn view(workspace: &Workspace, home: &HerHome, server: &McpServerConfig, liv
         auth_state = Some(if signed_in { McpAuthState::LoggedIn } else { McpAuthState::NeedsLogin });
         if !signed_in && status.state != McpStatusState::Untrusted { status.state = McpStatusState::NeedsLogin; }
     }
+    let mut account = None;
     if server.uses_oauth() {
         // Signs in with OAuth: signed in when tokens for this address are saved (mcp-design §13.8).
         auth = McpAuthKind::Oauth;
+        account = server.url.as_deref().and_then(|url| her_mcp::oauth::account(&server.name, url));
         let signed_in = server.url.as_deref().is_some_and(|url| her_mcp::oauth::signed_in(&server.name, url));
         auth_state = Some(if signed_in { McpAuthState::LoggedIn } else { McpAuthState::NeedsLogin });
         if !signed_in && status.state != McpStatusState::Untrusted {
@@ -102,6 +104,7 @@ pub fn view(workspace: &Workspace, home: &HerHome, server: &McpServerConfig, liv
     }
     McpServerView {
         auth_partial: managed.as_ref().filter(|m| crate::connectors::partial_permissions(home.root(), m)).map(|_| true),
+        account,
         connector: managed.map(|m| m.id),
         name: server.name.clone(),
         layer,
@@ -235,6 +238,7 @@ fn untrusted(workspace: &Workspace, home: &HerHome) -> Vec<McpServerView> {
                 auth: McpAuthKind::None,
                 auth_state: None,
                 auth_partial: None,
+                account: None,
                 credentials: Vec::new(),
                 status: McpServerStatusView {
                     state: McpStatusState::Untrusted,

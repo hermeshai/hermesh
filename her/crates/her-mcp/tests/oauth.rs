@@ -230,6 +230,9 @@ async fn signing_in_reuses_one_registration_refreshes_and_signs_out() {
 
     assert_eq!(sign_in("tracker", &mock.url(), &home, None, None).await, McpOAuthClientKind::Registration);
     assert!(oauth::signed_in("tracker", &mock.url()));
+    // The id token said who signed in: kept beside the tokens, for the connector to show.
+    assert_eq!(oauth::account("tracker", &mock.url()).as_deref(), Some(her_mock::mcp_auth::MOCK_ACCOUNT));
+    assert_eq!(oauth::account("tracker", "https://elsewhere.example/mcp"), None, "only for the address signed in to");
     // The token lives a second: the call refreshes it first, and works.
     tokio::time::sleep(Duration::from_millis(1100)).await;
     let options = CallOptions { cancel: CancellationToken::new(), progress: None };
@@ -238,6 +241,7 @@ async fn signing_in_reuses_one_registration_refreshes_and_signs_out() {
     let (registrations, grants, refreshes, _) = mock.oauth_counts();
     assert_eq!((registrations, grants), (1, 1));
     assert!(refreshes >= 1, "refreshed before use");
+    assert_eq!(oauth::account("tracker", &mock.url()).as_deref(), Some(her_mock::mcp_auth::MOCK_ACCOUNT), "a refresh keeps it");
     server.shutdown().await;
 
     // Signing in again reuses the registration: one client per authorization server.
