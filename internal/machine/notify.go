@@ -42,15 +42,14 @@ type noticeSession struct {
 	// asker asked for the turn the notice is about; askerConv and
 	// creatorConv are where news goes for the asker and the creator.
 	asker, askerConv, creatorConv string
+	// failure is why the session crashed, for the status that says so.
+	failure *sessionv1.Failure
 }
 
-// notices keeps the push targets and what was last sent per session.
+// notices keeps the push targets and the notices the relay has not taken.
 type notices struct {
 	mu      sync.Mutex
 	targets []pushTarget
-	// sent remembers the last notice of each session, so a crash after a
-	// failed turn is not announced twice.
-	sent map[string]string
 	// waiting is, per thread, the newest notice the relay has not taken:
 	// the machine was not connected, or the call failed. It goes out once
 	// the machine is connected again (sendWaitingNotices).
@@ -129,7 +128,8 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 			nt.Kind = "session_started"
 		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
 			nt.Kind = "failure"
-			nt.Failure = sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED
+			nt.Failure = s.failure.GetKind()
+			nt.FailureMessage, _ = provider.Truncate(s.failure.GetMessage(), 300)
 		default:
 			return
 		}
@@ -139,16 +139,6 @@ func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
 	default:
 		return
 	}
-	n.notices.mu.Lock()
-	if n.notices.sent == nil {
-		n.notices.sent = map[string]string{}
-	}
-	if nt.Kind == "failure" && n.notices.sent[s.id] == "failure" && e.GetStatus() != nil {
-		n.notices.mu.Unlock()
-		return
-	}
-	n.notices.sent[s.id] = nt.Kind
-	n.notices.mu.Unlock()
 	n.notify(nt, s.id, func() {
 		nt.Grant = n.knownClients()[s.createdBy].Label
 		nt.Machine = n.Name()

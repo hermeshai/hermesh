@@ -110,3 +110,61 @@ func TestCodexThreadTitleAndArchive(t *testing.T) {
 		t.Fatalf("resumed: ref %s, %q", tr2.ref, tr2.result.Text)
 	}
 }
+
+// TestCodexThreadOpenElsewhere: the real Codex lets one process write a
+// thread. While another Codex process has a session's thread open (as the
+// Codex app does once the user opens it there), a resume goes on in a copy
+// that has the conversation, says so, and resumes like any thread later.
+func TestCodexThreadOpenElsewhere(t *testing.T) {
+	if os.Getenv("HERMESH_REAL_CLI") != "1" {
+		t.Skip("real Codex: HERMESH_REAL_CLI=1")
+	}
+	p := &codex.Provider{PathEnv: os.Getenv("PATH")}
+	if info := p.Discover(context.Background()); !info.Available || !info.LoggedIn {
+		t.Skipf("codex not available: %+v", info)
+	}
+	ctx := context.Background()
+	dir := gitRepo(t)
+	allow := func(context.Context, provider.ToolAction) provider.Decision { return provider.Decision{Allow: true} }
+	spec := provider.StartSpec{WorkDir: dir, TempDir: t.TempDir(), Env: os.Environ(), Gate: allow, Title: "kumquat"}
+	spec.Prompt = "Remember the word kumquat. Reply with just: ok"
+	other, err := p.Start(ctx, spec) // stays open, as the thread in the Codex app
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	tr := collect(t, other, 3*time.Minute)
+	if tr.result.IsError || tr.ref == "" {
+		t.Fatalf("turn: %+v", tr.result)
+	}
+
+	spec.ResumeRef, spec.Prompt = tr.ref, "Which word did I ask you to remember? Reply with just the word."
+	s, err := p.Start(ctx, spec)
+	if err != nil {
+		t.Fatalf("resume of a thread open elsewhere: %v", err)
+	}
+	defer s.Close()
+	tr2 := collect(t, s, 3*time.Minute)
+	if tr2.result.IsError || tr2.ref == "" || tr2.ref == tr.ref || !strings.Contains(strings.ToLower(tr2.result.Text), "kumquat") {
+		t.Fatalf("in the copy: ref %s (was %s), %+v", tr2.ref, tr.ref, tr2.result)
+	}
+	said := false
+	for _, e := range tr2.events {
+		said = said || e.Kind == provider.EventError && strings.Contains(e.Text, "open in another Codex program")
+	}
+	if !said {
+		t.Fatalf("no word of the copy: %+v", tr2.events)
+	}
+	s.Close()
+	<-s.Done()
+
+	spec.ResumeRef, spec.Prompt = tr2.ref, "Say the word once more. Reply with just the word."
+	s, err = p.Start(ctx, spec)
+	if err != nil {
+		t.Fatalf("resume of the copy: %v", err)
+	}
+	defer s.Close()
+	if tr3 := collect(t, s, 3*time.Minute); tr3.result.IsError || tr3.ref != tr2.ref || !strings.Contains(strings.ToLower(tr3.result.Text), "kumquat") {
+		t.Fatalf("the copy resumed: ref %s, %+v", tr3.ref, tr3.result)
+	}
+}

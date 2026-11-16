@@ -20,8 +20,11 @@
 //	                         state across processes, as Codex does:
 //	                         thread/name/set, thread/archive and
 //	                         thread/unarchive answer as Codex 0.167 does, and
-//	                         thread/resume refuses an archived thread; each
-//	                         of these calls is appended to calls in it
+//	                         thread/resume refuses an archived thread, and
+//	                         one another Codex process has open (a file
+//	                         <thread>.busy), as Codex 0.169 does, which
+//	                         thread/fork still copies; each of these calls
+//	                         is appended to calls in it
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
 // config/read answers FAKE_CODEX_CONFIG, a JSON object (default {});
@@ -105,7 +108,13 @@ func threads(m msg) bool {
 	_, err := os.Stat(archived)
 	isArchived := err == nil
 	switch m.Method {
+	case "thread/fork":
+		return false
 	case "thread/resume":
+		if _, err := os.Stat(filepath.Join(dir, p.ThreadID+".busy")); err == nil {
+			fail(m.ID, "thread "+p.ThreadID+" already has an active writer")
+			return true
+		}
 		if !isArchived {
 			return false
 		}
@@ -160,7 +169,7 @@ func main() {
 			continue
 		}
 		switch m.Method {
-		case "thread/resume", "thread/archive", "thread/unarchive", "thread/name/set":
+		case "thread/resume", "thread/fork", "thread/archive", "thread/unarchive", "thread/name/set":
 			if threads(m) {
 				continue
 			}
@@ -182,7 +191,7 @@ func main() {
 				cfg = json.RawMessage(c)
 			}
 			reply(m.ID, map[string]any{"config": cfg})
-		case "thread/start", "thread/resume":
+		case "thread/start", "thread/resume", "thread/fork":
 			if f := os.Getenv("FAKE_CODEX_FAIL_START"); f != "" && os.Remove(f) == nil {
 				fmt.Fprintln(os.Stderr, "fakecodex: failing this start")
 				os.Exit(1)
@@ -215,7 +224,8 @@ func main() {
 			st.mu.Lock()
 			st.cwd = p.Cwd
 			st.thread = p.ThreadID
-			if st.thread == "" {
+			if st.thread == "" || m.Method == "thread/fork" { // a fork is a new thread
+
 				st.thread = fmt.Sprintf("thr_%d_%d", os.Getpid(), time.Now().UnixNano())
 			}
 			st.mu.Unlock()
