@@ -59,7 +59,9 @@ type Provider struct {
 	// PathEnv is the PATH used to find binaries ("": the login shell's).
 	PathEnv string
 	// Binary overrides discovery (tests use a fake agent).
-	Binary string
+	Binary   string
+	modelsMu sync.Mutex
+	catalogs map[string]cachedCatalog
 }
 
 func (p *Provider) Name() string { return p.Agent.Name }
@@ -151,6 +153,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	info.LoggedIn = true
 	if p.Name() == "antigravity" {
 		info.LoggedIn = antigravityConfigured(env)
+		p.discoverModels(ctx, bin, pre, env)
 	}
 	return info
 }
@@ -181,6 +184,16 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s := &session{name: p.Name(), proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
 		gate: spec.Gate, ctx: ctx, known: map[string]*toolCall{}, calls: map[string]provider.Decision{}, finished: map[string]bool{}}
+	if p.Name() == "antigravity" {
+		key := modelContext(bin, spec.Env)
+		scope := spec.ModelScope
+		if scope == "" {
+			scope = "workspace:" + modelHash(spec.WorkDir)
+		}
+		s.catalog = func(data json.RawMessage, initial bool) {
+			p.observeModels(key, scope, "acp_session", data, initial)
+		}
+	}
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
 		proc.Stop(time.Second)
@@ -389,6 +402,7 @@ type session struct {
 	gate      provider.Gate
 	ctx       context.Context
 	sessionID string
+	catalog   func(json.RawMessage, bool)
 	// images: the agent takes image content blocks (promptCapabilities).
 	images    bool
 	replaying atomic.Bool
@@ -635,7 +649,17 @@ func (s *session) request(method string, params any, done func(rpcResult)) error
 
 func (s *session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	ch := make(chan rpcResult, 1)
-	if err := s.request(method, params, func(r rpcResult) { ch <- r }); err != nil {
+	if err := s.request(method, params, func(r rpcResult) {
+		// Observe responses on the reader, before the next notification. The
+		// caller goroutine must not overwrite a newer config_option_update.
+		if r.err == nil && s.catalog != nil {
+			switch method {
+			case "session/new", "session/load", "session/resume", "session/set_config_option":
+				s.catalog(r.result, method == "session/new")
+			}
+		}
+		ch <- r
+	}); err != nil {
 		return nil, err
 	}
 	select {
@@ -802,6 +826,7 @@ func (s *session) handleUpdate(params json.RawMessage) {
 		Update struct {
 			SessionUpdate string          `json:"sessionUpdate"`
 			Content       json.RawMessage `json:"content"`
+			ConfigOptions json.RawMessage `json:"configOptions"`
 			toolCall
 		} `json:"update"`
 	}
@@ -810,6 +835,10 @@ func (s *session) handleUpdate(params json.RawMessage) {
 	}
 	u := p.Update
 	switch u.SessionUpdate {
+	case "config_option_update":
+		if s.catalog != nil {
+			s.catalog(paramsForOptions(u.ConfigOptions), false)
+		}
 	case "agent_message_chunk":
 		var c struct {
 			Type string `json:"type"`
