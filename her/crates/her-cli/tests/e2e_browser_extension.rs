@@ -839,7 +839,7 @@ async fn the_agent_lets_go_of_its_tabs_and_finds_them_again() {
         shown = evaluate_in(
             &chrome,
             &popup,
-            "({head: document.querySelector('.head').textContent === chrome.i18n.getMessage('waitingOne'), what: document.querySelector('.line.whole')?.textContent, done: document.querySelector('button.primary')?.textContent === chrome.i18n.getMessage('done')})",
+            "({head: document.querySelector('.head')?.textContent === chrome.i18n.getMessage('waitingOne'), what: document.querySelector('.line.whole')?.textContent, done: document.querySelector('button.primary')?.textContent === chrome.i18n.getMessage('done')})",
         )
         .await;
         if shown == json!({"head": true, "what": "sign in", "done": true}) {
