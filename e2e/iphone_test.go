@@ -638,6 +638,19 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]string{})
 	})
+	// The Mac's screen helper quits (testHerHaptics): the session under way ends.
+	mux.HandleFunc("POST /screen-end", func(rw http.ResponseWriter, _ *http.Request) {
+		log := inputLog()
+		if log == "" {
+			http.Error(rw, "no screen helper input log", 500)
+			return
+		}
+		if out, err := exec.Command("pkill", "-f", log).CombinedOutput(); err != nil {
+			http.Error(rw, fmt.Sprintf("pkill: %v %s", err, out), 500)
+			return
+		}
+		reply(rw, map[string]string{})
+	})
 	mux.HandleFunc("GET /digits", func(rw http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -812,11 +825,15 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 	})
 	// An agent asks a new question (for a notification).
 	// wait: how long the agent works before it asks (a Go duration), for a page opened meanwhile.
+	// then: what the agent does once answered, in the fake's script (`fail 出错了`, say).
 	mux.HandleFunc("POST /ask", func(rw http.ResponseWriter, r *http.Request) {
 		title := r.URL.Query().Get("title")
 		prompt := "ask " + title + "|发布,先不"
 		if wait := r.URL.Query().Get("wait"); wait != "" {
 			prompt = "sleep " + wait + "\n" + prompt
+		}
+		if then := r.URL.Query().Get("then"); then != "" {
+			prompt += "\n" + then
 		}
 		go func() {
 			s, _ := w.startSession(2*time.Minute, "--agent", "gemini", "--title", title, "--prompt", prompt, "--wait")
