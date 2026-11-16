@@ -1,6 +1,7 @@
 {
   "title": "Computer use",
   "intro": "Her can read and operate the other apps on this Mac once macOS allows it.",
+  "intro_linux": "Her can read and operate the other apps on this computer while you are logged in to its desktop.",
   "off": "Computer use is off in this environment.",
   "missing": "A part of computer use is missing: reinstall Hermesh.",
   "accessibility": "Accessibility",
