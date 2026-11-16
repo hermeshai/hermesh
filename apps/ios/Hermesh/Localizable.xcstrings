@@ -9960,6 +9960,16 @@
         }
       }
     },
+    "Working on %lld things": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在处理 %lld 件事"
+          }
+        }
+      }
+    },
     "Hi, I’m %@. I work on %@. Tell me what you need, several things at once if you like.": {
       "localizations": {
         "zh-Hans": {
