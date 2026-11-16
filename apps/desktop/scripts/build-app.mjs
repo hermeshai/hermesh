@@ -38,6 +38,9 @@
 //                              (default: the GitHub release v<VERSION>)
 //   HERMESH_UPDATE_FEED        test builds only: where the app looks for updates (default: the latest GitHub release)
 //   HERMESH_TEST_DATA_DIR      test builds only: the data directory (and so the daemon socket) baked into the app
+//   HER_GITHUB_OAUTH_CLIENT_SECRET   the secret of her's GitHub OAuth app, built into her (her-mcp oauth/client.rs);
+//                              else the repository's git-ignored .env's. Without it, signing in to GitHub's MCP
+//                              server needs a token or the user's own app.
 import { packager } from "@electron/packager";
 import { flipFuses, FuseV1Options, FuseVersion } from "@electron/fuses";
 import { sign } from "@electron/osx-sign";
@@ -101,9 +104,14 @@ const archs = arch === "universal" ? ["arm64", "x64"] : [arch];
 const triples = { arm64: "aarch64-apple-darwin", x64: "x86_64-apple-darwin" };
 const herRoot = path.join(root, "her");
 step(`building her (${arch})`);
+const githubSecret = process.env.HER_GITHUB_OAUTH_CLIENT_SECRET || dotenv(path.join(root, ".env"), "HER_GITHUB_OAUTH_CLIENT_SECRET");
+if (!githubSecret) console.warn("⚠️  no HER_GITHUB_OAUTH_CLIENT_SECRET, here or in .env: this her signs in to GitHub with a token only.");
 sh("rustup", ["target", "add", ...archs.map((a) => triples[a])], { cwd: herRoot });
 for (const a of archs) {
-  sh("cargo", ["build", "--profile", "dist", "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triples[a]], { cwd: herRoot });
+  sh("cargo", ["build", "--profile", "dist", "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triples[a]], {
+    cwd: herRoot,
+    env: { ...process.env, HER_GITHUB_OAUTH_CLIENT_SECRET: githubSecret },
+  });
 }
 fat(archs.map((a) => path.join(herRoot, "target", triples[a], "dist/her")), path.join(tmp, "her"));
 
@@ -303,6 +311,16 @@ if (arch !== "universal") {
 }
 if (identity === "-") console.warn("⚠️  ad-hoc signature: the LaunchAgent (SMAppService) and Gatekeeper need a Developer ID signature.");
 else if (!auth) console.warn("⚠️  signed but not notarized: others who download it will be blocked the first time they open it.");
+
+/** The value of `key` in the .env file at `file` (KEY=value, quotes optional), "" when there is none. */
+function dotenv(file, key) {
+  if (!fs.existsSync(file)) return "";
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m && m[1] === key) return m[2].replace(/^(['"])(.*)\1$/, "$2");
+  }
+  return "";
+}
 
 /** `files`, one per architecture of this build in `archs`' order, as one Mach-O file `to` holding exactly those. */
 function fat(files, to) {
