@@ -349,6 +349,12 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts["断线后送达"].waitForExistence(timeout: 180), "delivered once the relay is back, and answered")
         XCTAssertEqual(shown("[[mock:send:断线后送达]] hi"), 1, "the message once")
         XCTAssertTrue(waitUntil(timeout: 30) { !app.descendants(matching: .any)["her-waiting"].exists && !app.descendants(matching: .any)["her-sending"].exists })
+
+        // A command her takes without it joining the conversation (/context): it is not shown as being sent for long.
+        // Before 2026-11-16 it said "Sending…" for good, with no way to remove it.
+        herSend("/context")
+        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
+        XCTAssertTrue(waitUntil(timeout: 30) { !app.descendants(matching: .any)["her-sending"].exists }, "no longer shown as being sent")
     }
 
     func herAdd() throws {

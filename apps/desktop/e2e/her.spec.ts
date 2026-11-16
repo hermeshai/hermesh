@@ -131,6 +131,11 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(log.locator(".um").filter({ hasText: mockSend("只收到一次") })).toHaveCount(1);
   await expect(log.locator(".um.waiting, [data-testid=her-sending]")).toHaveCount(0);
   await expect(composer).toHaveValue("");
+  // A command her takes without it joining the conversation (/context): it is not shown as being sent for long.
+  // Before 2026-11-16 it said "正在发送…" for good, with no way to remove it.
+  await send("/context");
+  await expect(composer).toHaveValue("", { timeout: 1_000 });
+  await expect(log.locator("[data-testid=her-sending]")).toHaveCount(0, { timeout: 30_000 });
 
   // A step that needs the owner's own Chrome, whose extension is not connected: it waits, and a card above the
   // composer says so. Connecting opens the console at its guide; going on without it this time lets the step go on.
