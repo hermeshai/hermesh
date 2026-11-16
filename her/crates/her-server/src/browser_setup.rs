@@ -55,13 +55,16 @@ fn mac_browser(app: &str) -> Option<&str> {
 fn extension_folder(home: &Path) -> PathBuf {
     if cfg!(target_os = "macos") {
         home.join("Library/Application Support/Hermesh/Chrome Extension")
+    } else if cfg!(windows) {
+        home.join(r"AppData\Local\Hermesh\Chrome Extension")
     } else {
         home.join(".local/share/hermesh/chrome-extension")
     }
 }
 
 async fn show_extension_folder() -> Result<(), RpcError> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| RpcError::internal("HOME is not set"))?;
+    let home = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    let home = std::env::var_os(home).map(PathBuf::from).ok_or_else(|| RpcError::internal(format!("{home} is not set")))?;
     let folder = extension_folder(&home);
     if !folder.join("manifest.json").is_file() {
         return Err(RpcError::invalid_request(format!("the Hermesh extension is not in {} yet", folder.display())));
@@ -69,6 +72,9 @@ async fn show_extension_folder() -> Result<(), RpcError> {
     if cfg!(target_os = "macos") {
         // Selected in its Finder window, ready to drag.
         run(Command::new("open").arg("-R").arg(&folder)).await
+    } else if cfg!(windows) {
+        // Explorer answers 1 whatever it did: its window is all there is to wait for.
+        Command::new("explorer").arg(&folder).stdin(Stdio::null()).spawn().map(drop).map_err(|e| RpcError::internal(format!("cannot run explorer: {e}")))
     } else {
         run(Command::new("xdg-open").arg(&folder)).await
     }

@@ -96,9 +96,11 @@ jobs:
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: PDFium for the document tests
         run: |
-          mkdir -p "$RUNNER_TEMP/pdfium"
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/pdfium-win-x64.tgz" | tar xz -C "$RUNNER_TEMP/pdfium"
-          echo "HER_PDFIUM=$(cygpath -w "$RUNNER_TEMP/pdfium/bin/pdfium.dll")" >> "$GITHUB_ENV"
+          # tar takes "D:" for a host's name: the folder as bash names it.
+          dir="$(cygpath -u "$RUNNER_TEMP")/pdfium"
+          mkdir -p "$dir"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/pdfium-win-x64.tgz" | tar xz -C "$dir"
+          echo "HER_PDFIUM=$(cygpath -w "$dir/bin/pdfium.dll")" >> "$GITHUB_ENV"
       # her-bench drives a service over Unix sockets and reads Unix's process accounting.
       - name: Rust tests, every crate but the benchmarks
         run: cargo test --workspace --exclude her-bench --no-fail-fast

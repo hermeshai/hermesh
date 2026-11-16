@@ -383,6 +383,7 @@ async fn read_message<R: tokio::io::AsyncRead + Unpin>(input: &mut R) -> anyhow:
 
 // ---- Installing ----
 
+#[cfg(unix)]
 /// Where each Chromium-family browser looks for the user's Native Messaging hosts.
 fn browser_dirs() -> Vec<(&'static str, PathBuf)> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
@@ -410,10 +411,12 @@ fn browser_dirs() -> Vec<(&'static str, PathBuf)> {
     list.iter().map(|(name, dir)| (*name, home.join(dir))).collect()
 }
 
+#[cfg(unix)]
 fn manifest_path(user_data_dir: &Path) -> PathBuf {
     user_data_dir.join("NativeMessagingHosts").join(format!("{HOST_NAME}.json"))
 }
 
+#[cfg(unix)]
 /// The script Chrome runs: Chrome passes no environment of ours and allows no arguments in
 /// the manifest, so the script holds both, and the service's socket when it is not the home's.
 fn launcher_script(exe: &Path, home: &Path, socket: Option<&Path>) -> String {
@@ -456,7 +459,7 @@ const EXTENSION_FILES: &[(&str, &[u8])] = &[
 
 /// Makes `folder` the extension, unless it is that already: written beside it first, so
 /// Chrome never finds half of it.
-fn place_extension(folder: &Path) -> anyhow::Result<()> {
+pub(crate) fn place_extension(folder: &Path) -> anyhow::Result<()> {
     if EXTENSION_FILES.iter().all(|(name, data)| std::fs::read(folder.join(name)).is_ok_and(|have| have == *data)) {
         return Ok(());
     }
@@ -478,14 +481,45 @@ fn place_extension(folder: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// The origins that may start the host: the Hermesh extension's, the store's, and the ones
+/// given.
+pub(crate) fn allowed_origins(extension_ids: &[String]) -> anyhow::Result<Vec<String>> {
+    let mut ids: Vec<&str> = vec![EXTENSION_ID];
+    ids.extend(STORE_EXTENSION_ID);
+    ids.extend(extension_ids.iter().map(String::as_str));
+    for id in &ids {
+        anyhow::ensure!(
+            id.len() == 32 && id.bytes().all(|b| (b'a'..=b'p').contains(&b)),
+            "\"{id}\" is not an extension ID (32 letters a to p)"
+        );
+    }
+    Ok(ids.iter().map(|id| format!("chrome-extension://{id}/")).collect())
+}
+
+/// The host's manifest, as Chrome reads it: `program` is what it starts.
+pub(crate) fn host_manifest(program: &Path, origins: &[String]) -> Value {
+    json!({
+        "name": HOST_NAME,
+        "description": "Hermesh: lets the agent use the tabs it opens in this browser",
+        "path": program,
+        "type": "stdio",
+        "allowed_origins": origins,
+    })
+}
+
+#[cfg(windows)]
+pub use crate::native_host_windows::install;
+#[cfg(windows)]
+pub use crate::native_host_windows::status;
+#[cfg(windows)]
+pub use crate::native_host_windows::uninstall;
+
 /// `her browser extension install`: the launcher script, and a manifest for every
 /// Chromium-family browser on this machine (or for one user data directory); with `folder`,
 /// the extension itself there, to load in Chrome.
+#[cfg(unix)]
 pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket: Option<PathBuf>, folder: Option<PathBuf>) -> anyhow::Result<u8> {
-    // Windows finds a host through the registry, and starts a program, not a script.
-    if cfg!(windows) {
-        anyhow::bail!("the Hermesh extension's host is not installed on Windows yet");
-    }
+    use std::os::unix::fs::PermissionsExt as _;
     let home = setup::home()?;
     // First: it is there to load even where no browser is installed yet.
     if let Some(folder) = &folder {
@@ -499,28 +533,9 @@ pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket:
     let launcher = home.browser_dir().join("native-host");
     std::fs::create_dir_all(home.browser_dir())?;
     std::fs::write(&launcher, launcher_script(&exe, home.root(), socket.as_deref()))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))?;
-    }
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))?;
 
-    let mut ids: Vec<&str> = vec![EXTENSION_ID];
-    ids.extend(STORE_EXTENSION_ID);
-    ids.extend(extension_ids.iter().map(String::as_str));
-    for id in &ids {
-        anyhow::ensure!(
-            id.len() == 32 && id.bytes().all(|b| (b'a'..=b'p').contains(&b)),
-            "\"{id}\" is not an extension ID (32 letters a to p)"
-        );
-    }
-    let manifest = json!({
-        "name": HOST_NAME,
-        "description": "Hermesh: lets the agent use the tabs it opens in this browser",
-        "path": launcher,
-        "type": "stdio",
-        "allowed_origins": ids.iter().map(|id| format!("chrome-extension://{id}/")).collect::<Vec<_>>(),
-    });
+    let manifest = host_manifest(&launcher, &allowed_origins(extension_ids)?);
     let targets: Vec<(String, PathBuf)> = match user_data_dir {
         Some(dir) => vec![(dir.display().to_string(), dir)],
         // Only browsers that are installed: their directory exists.
@@ -546,6 +561,7 @@ pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket:
     Ok(0)
 }
 
+#[cfg(unix)]
 /// `her browser extension uninstall`: removes the manifests and the script.
 pub fn uninstall() -> anyhow::Result<u8> {
     let home = setup::home()?;
@@ -564,6 +580,7 @@ pub fn uninstall() -> anyhow::Result<u8> {
     Ok(0)
 }
 
+#[cfg(unix)]
 /// `her browser extension status`: where the host is installed, and whether what each
 /// browser would start is there and is this home's.
 pub fn status(as_json: bool) -> anyhow::Result<u8> {
@@ -599,6 +616,7 @@ pub fn status(as_json: bool) -> anyhow::Result<u8> {
     Ok(0)
 }
 
+#[cfg(unix)]
 /// What a browser's manifest says about the host it would start.
 fn manifest_state(manifest: &Path, launcher: &Path) -> String {
     let path = std::fs::read_to_string(manifest)
@@ -613,6 +631,7 @@ fn manifest_state(manifest: &Path, launcher: &Path) -> String {
     }
 }
 
+#[cfg(unix)]
 /// The program a launcher script starts.
 fn launcher_program(launcher: &Path) -> Option<PathBuf> {
     let script = std::fs::read_to_string(launcher).ok()?;
@@ -727,6 +746,7 @@ mod tests {
         assert!(!host_action("not json"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn status_says_what_a_manifest_points_at() {
         let dir = tempfile::tempdir().unwrap();
@@ -747,6 +767,7 @@ mod tests {
         assert!(manifest_state(&manifest, &launcher).contains("another Hermesh home"));
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_launcher_quotes_its_paths() {
         let script = launcher_script(Path::new("/Apps/Her Work/her"), Path::new("/Users/o'brien/.her"), None);

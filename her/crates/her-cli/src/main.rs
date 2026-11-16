@@ -16,6 +16,8 @@ mod cmd_interactive;
 mod cmd_login;
 mod cmd_mcp;
 mod cmd_serve;
+#[cfg(windows)]
+mod native_host_windows;
 mod render;
 mod setup;
 mod term;
@@ -1154,7 +1156,19 @@ fn main() -> ExitCode {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
-    let args = match first_word(std::env::args_os().collect()) {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    // On Windows Chrome starts her itself as the extension's host, with Chrome's own arguments
+    // and none of her's environment: the registry has the home it was registered for.
+    #[cfg(windows)]
+    let args = {
+        let (args, home) = native_host_windows::host_command(args);
+        if let Some(home) = home.filter(|_| std::env::var_os("HER_HOME").is_none()) {
+            // SAFETY: before any thread is started.
+            unsafe { std::env::set_var("HER_HOME", home) };
+        }
+        args
+    };
+    let args = match first_word(args) {
         Ok(args) => args,
         Err(message) => {
             eprintln!("{message}");

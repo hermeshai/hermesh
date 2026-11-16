@@ -46,8 +46,11 @@ func (h *Host) extension(ctx context.Context, args ...string) {
 // extension. The extension's manifest carries its key, so its ID doesn't
 // depend on the folder.
 func ExtensionFolder(home string) string {
-	if runtime.GOOS == "darwin" {
+	switch runtime.GOOS {
+	case "darwin":
 		return filepath.Join(home, "Library", "Application Support", "Hermesh", "Chrome Extension")
+	case "windows":
+		return filepath.Join(home, "AppData", "Local", "Hermesh", "Chrome Extension")
 	}
 	return filepath.Join(home, ".local", "share", "hermesh", "chrome-extension")
 }
@@ -66,11 +69,16 @@ func (h *Host) registerExtension(ctx context.Context) {
 	h.extension(ctx, args...)
 }
 
-// userHome is the home her runs with: HOME of her environment.
+// userHome is the home her runs with: HOME of her environment, USERPROFILE
+// on Windows.
 func userHome(env []string) string {
+	name := "HOME="
+	if runtime.GOOS == "windows" {
+		name = "USERPROFILE="
+	}
 	home := ""
 	for _, kv := range env {
-		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
+		if v, ok := strings.CutPrefix(kv, name); ok {
 			home = v
 		}
 	}
