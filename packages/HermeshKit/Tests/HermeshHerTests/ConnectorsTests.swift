@@ -40,6 +40,10 @@ final class Recorder: @unchecked Sendable {
     #expect(c.checkedAt == (try? Date("2026-11-15T09:12:00Z", strategy: .iso8601)))
     #expect(HerConnector(view("pw", transport: "stdio"))!.command, "started as a command")
     #expect(HerConnector(["layer": "user"]) == nil, "no name, no connector")
+    var signed = view("github", auth: "oauth", authState: "logged_in")
+    if case .object(var o) = signed { o["account"] = "octocat"; signed = .object(o) }
+    #expect(HerConnector(signed)!.account == "octocat", "the account signed in to")
+    #expect(HerConnector(view("github", auth: "oauth", authState: "logged_in"))!.account == nil, "none when her doesn't know it")
 }
 
 @Test func eachRowSaysWhatTheConnectorIsUpTo() {
@@ -84,10 +88,23 @@ final class Recorder: @unchecked Sendable {
     r.answers["mcp/check"] = ["server": view("docs"), "tools": [["name": "search"], ["name": "fetch", "description": "Reads a page"]]]
     let tools = try await r.calls_.add(name: "docs", url: "https://mcp.example.com/mcp", signIn: .token("t-1"))
     #expect(tools?.map(\.name) == ["search", "fetch"])
-    #expect(r.methods == ["credentials/set", "config/write", "mcp/check"])
+    #expect(r.methods == ["credentials/set", "mcp/probe", "config/write", "mcp/check"])
     #expect(r.calls[0].1 == ["name": "mcp.docs", "value": "t-1"])
-    #expect(r.calls[1].1["edits"][0]["value"] == ["url": "https://mcp.example.com/mcp", "headers": ["Authorization": "Bearer ${credential:mcp.docs}"]])
-    #expect(!r.calls[1].1.data().contains(Data("t-1".utf8)), "the token itself is never written")
+    let written: JSON = ["url": "https://mcp.example.com/mcp", "headers": ["Authorization": "Bearer ${credential:mcp.docs}"]]
+    #expect(r.calls[1].1["server"] == ["name": "docs", "url": "https://mcp.example.com/mcp", "headers": ["Authorization": "Bearer ${credential:mcp.docs}"]],
+            "tried as it would be written, before it is")
+    #expect(r.calls[2].1["edits"][0]["value"] == written)
+    #expect(!r.calls[2].1.data().contains(Data("t-1".utf8)), "the token itself is never written")
+}
+
+@Test func aTokenTheServerRefusesLeavesNothingBehind() async throws {
+    let r = Recorder()
+    r.answers["mcp/probe"] = ["suggested": ["auth": "token"], "error": "the server refused the token (HTTP 401)"]
+    await #expect(throws: HerSignInRefusal.self) {
+        try await r.calls_.add(name: "docs", url: "https://mcp.example.com/mcp", signIn: .token("wrong"))
+    }
+    #expect(r.methods == ["credentials/set", "mcp/probe", "credentials/delete"], "nothing is written, and the token is forgotten")
+    #expect(r.calls[2].1 == ["name": "mcp.docs"])
 }
 
 @Test func anAccountIsSignedInToBeforeItIsWritten() async throws {
@@ -117,6 +134,26 @@ final class Recorder: @unchecked Sendable {
                                "tools": [["name": "echo"]], "error": nil])
     #expect(p.auth == .oauth && p.requiresAuth && p.ownClient && p.tools.map(\.name) == ["echo"] && p.error == nil)
     #expect(HerConnectorProbe(["suggested": ["auth": "none"], "error": "connection refused"]).error == "connection refused")
+}
+
+@Test func connectingGoesByWhatHerFound() {
+    func way(_ suggested: JSON) -> HerConnectWay { HerConnectWay(HerConnectorProbe(["suggested": suggested])) }
+    #expect(way(["auth": "none"]) == .open, "nothing to sign in to")
+    #expect(way(["auth": "oauth", "client": "metadata_document"]) == .account, "an account her can sign in to as she is")
+    #expect(way(["auth": "oauth", "client": "builtin"]) == .account)
+    #expect(way(["auth": "oauth", "client": "registration"]) == .account)
+    #expect(way(["auth": "oauth", "client": "own"]) == .token(.registeredAppsOnly), "an account only for apps registered there")
+    #expect(way(["auth": "token"]) == .token(.noAccountSignIn))
+}
+
+@Test func aConnectorAddedByItsAddressIsNamedFromIt() {
+    #expect(herNewConnectorName("https://mcp.linear.app/mcp", taken: []) == "linear")
+    #expect(herNewConnectorName("https://mcp.linear.app/mcp", taken: ["linear"]) == "linear-2")
+    #expect(herNewConnectorName("https://mcp.linear.app/mcp", taken: ["linear", "linear-2"]) == "linear-3")
+    #expect(herNewConnectorName("http://127.0.0.1:8080/mcp", taken: []) == "server", "an address by number names nothing")
+    let long = String(repeating: "a", count: 32)
+    let second = herNewConnectorName("https://\(long).com/mcp", taken: [long])
+    #expect(second == String(repeating: "a", count: 30) + "-2" && herValidConnectorName(second))
 }
 
 @Test func aNameIsSuggestedFromTheAddress() {

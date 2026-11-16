@@ -115,7 +115,7 @@ func TestIPhone(t *testing.T) {
 	// xcodebuild hands TEST_RUNNER_-prefixed variables to the UI tests.
 	runner := []string{"TEST_RUNNER_HERMESH_E2E_CONTROL=" + control, "TEST_RUNNER_HERMESH_E2E_FOLDERS=" + folders}
 	if her != nil {
-		runner = append(runner, "TEST_RUNNER_HERMESH_E2E_HER=1", "TEST_RUNNER_HERMESH_E2E_MCP_URL="+startMCPTools(t))
+		runner = append(append(runner, "TEST_RUNNER_HERMESH_E2E_HER=1"), startMCPTools(t)...)
 	}
 	r := run(t, runner, 30*time.Minute, "xcodebuild", args...)
 	if r.code != 0 {
@@ -179,9 +179,11 @@ func iphoneHerEnv(t *testing.T) []string {
 	return env
 }
 
-// startMCPTools is an MCP server open to anyone, with her-mock's test tools
-// (echo, env…), for testHerConnectors to add as a connector by its address.
-func startMCPTools(t *testing.T) string {
+// startMCPTools is her-mock's MCP test tools (echo, env…) for
+// testHerConnectors to add as connectors by their addresses: open to
+// anyone, behind a token, and behind an account's sign-in. It returns what
+// the UI tests are told of them.
+func startMCPTools(t *testing.T) []string {
 	t.Helper()
 	bin := os.Getenv("HERMESH_HER_MOCK")
 	if bin == "" {
@@ -192,15 +194,20 @@ func startMCPTools(t *testing.T) string {
 		bin = filepath.Join(filepath.Dir(her), "her-mock")
 	}
 	p := start(t, "her-mock tools", nil, bin, "127.0.0.1:0", "--tools")
-	var url string
+	names := map[string]string{"mcp_url": "MCP_URL", "mcp_token_url": "MCP_TOKEN_URL", "mcp_token": "MCP_TOKEN", "mcp_account_url": "MCP_ACCOUNT_URL"}
+	var env []string
 	eventually(t, 20*time.Second, "the MCP test tools up", func() bool {
-		m := regexp.MustCompile(`mcp_url = "([^"]+)"`).FindStringSubmatch(p.output())
-		if m != nil {
-			url = m[1]
+		env = nil
+		for key, name := range names {
+			m := regexp.MustCompile(`(?m)^` + key + ` = "([^"]+)"`).FindStringSubmatch(p.output())
+			if m == nil {
+				return false
+			}
+			env = append(env, "TEST_RUNNER_HERMESH_E2E_"+name+"="+m[1])
 		}
-		return m != nil
+		return true
 	})
-	return url
+	return env
 }
 
 // checkIPhoneStrings: every string the build found in the app and its

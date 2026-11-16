@@ -90,6 +90,8 @@ private struct PageView: View {
         case .herSettings: HerSettings()
         case .herConnectors: HerConnectorsPage()
         case .herConnector(let name): HerConnectorPage(name: name)
+        case .herConnectorTools(let name): HerConnectorToolsPage(name: name)
+        case .herConnectorGroup(let id): HerConnectorGroupPage(id: id)
         case .progress: ProgressPage()
         case .progressAgent(let id): ProgressAgentPage(agentID: id)
         case .routines: RoutinesPage()
