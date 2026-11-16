@@ -222,7 +222,8 @@ async fn the_skills_command_lists_layers_shadows_and_problems() {
 
     // The text form: active skills, paths short, and a hint at what --all would add.
     let output = env.her_in(&work, &["skills"]).output().await.unwrap();
-    let text = String::from_utf8_lossy(&output.stdout);
+    // Paths with forward slashes, whatever the system's separator.
+    let text = String::from_utf8_lossy(&output.stdout).replace('\\', "/");
     assert!(text.contains("project  lint"), "{text}");
     assert!(text.contains(".agents/skills/lint/SKILL.md"), "{text}");
     assert!(text.contains("gen-report/SKILL.md"), "{text}");

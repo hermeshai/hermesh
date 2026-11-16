@@ -428,7 +428,7 @@ async fn skills_list_reports_a_session_and_a_directory() {
         &work.join(".agents/skills/lint/SKILL.md"),
         "---\nname: lint\ndescription: Lint rules.\ndisable-model-invocation: true\n---\nUse the house rules.\n",
     );
-    let lint = work.join(".agents/skills/lint/SKILL.md");
+    let lint = work.join(".agents").join("skills").join("lint").join("SKILL.md");
     let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
     native_init(&client).await;
     let demux = Demux::spawn(incoming);

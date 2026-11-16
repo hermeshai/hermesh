@@ -29,7 +29,8 @@ use crate::setup;
 /// `~/x` for paths in the user's home.
 pub(crate) fn shorten(home: &HerHome, path: &Path) -> String {
     match home.user_home().and_then(|user| path.strip_prefix(user).ok()) {
-        Some(rest) => format!("~/{}", rest.display()),
+        // With the system's separator: ~\.claude\skills on Windows.
+        Some(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
         None => path.display().to_string(),
     }
 }
