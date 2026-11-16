@@ -115,9 +115,8 @@ const NO_HOST: &str = "No desktop app is connected to show the embedded browser.
 const EXTENSION_NOTE: &str = "This is the user's own browser: they can see the tabs you open, and their sign-ins \
     are real. Act as carefully as with their accounts.";
 
-const NO_EXTENSION: &str = "The Hermesh extension is not connected, so the user's own browser cannot be used. \
-    Ask the user to open their browser with the Hermesh extension, or to connect it again in Hermesh; \
-    the built-in browser does not have their sign-ins.";
+const NO_EXTENSION: &str = "The Hermesh extension is not connected, so the browser tools cannot reach the user's own \
+    browser, and the built-in browser does not have their sign-ins. The user can connect it again in Hermesh.";
 
 pub struct BrowserPool {
     /// `~/.her/browser`.
