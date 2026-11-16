@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { routineDot, type SessionView } from "@hermesh/her-client";
 import type { AvatarHue, AvatarInput, BotSummary, McpServerView, ModelsListResult, PermissionMode } from "@hermesh/her-protocol";
@@ -170,11 +170,28 @@ function Card({ id, title, icon, status, wide, onOpen }: { id: string; title: st
   );
 }
 
-/** The cards of a tab: panes of glass over a field of Her's own colours. */
+/**
+ * The cards of a tab: panes of glass over Her's own colours, and only there. One field is drawn across the cards'
+ * area, each card showing the part it covers (--fs, its size, and --fp, where the card is in it); the page around
+ * the cards, the gaps between them included, keeps its own background.
+ */
 function Cards({ children }: { children: ReactNode }) {
+  const grid = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = grid.current;
+    if (!el) return;
+    const place = () => {
+      el.style.setProperty("--fs", `${el.clientWidth}px ${el.clientHeight}px`);
+      for (const card of el.querySelectorAll<HTMLElement>(":scope > .hp-card")) card.style.setProperty("--fp", `${-card.offsetLeft}px ${-card.offsetTop}px`);
+    };
+    place();
+    const seen = new ResizeObserver(place);
+    seen.observe(el);
+    for (const card of el.children) seen.observe(card);
+    return () => seen.disconnect();
+  }, []);
   return (
-    <div className="hp-cards">
-      <div className="hp-field" aria-hidden="true" />
+    <div className="hp-cards" ref={grid}>
       {children}
     </div>
   );

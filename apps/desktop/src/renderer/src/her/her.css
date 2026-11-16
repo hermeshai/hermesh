@@ -586,13 +586,19 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .hp-page{padding-top:12px;animation:hp-in .22s var(--ease-out)}
 @keyframes hp-in{from{opacity:0;transform:translateY(4px)}}
 @media (prefers-reduced-motion:reduce){.hp-page{animation:none}}
-.hp-cards{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.hp-field{position:absolute;inset:-22px -10px;z-index:-1;pointer-events:none;filter:blur(30px);opacity:.62;
-  background:radial-gradient(38% 30% at 16% 14%,#8f9bf0,transparent 72%),radial-gradient(34% 28% at 84% 22%,#f29bc0,transparent 72%),radial-gradient(42% 30% at 56% 60%,#7fc4ea,transparent 72%),radial-gradient(40% 28% at 14% 90%,#b59cf2,transparent 72%)}
-@media (prefers-color-scheme:dark){.hp-field{opacity:.8}}
-.hp-card{position:relative;min-height:84px;padding:10px 12px;border:0;border-radius:16px;text-align:left;font:inherit;color:var(--l1);display:flex;flex-direction:column;gap:2px;
-  background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.42));box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 6px 20px rgba(60,70,140,.1);
-  -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5);transition:transform .2s var(--ease-out)}
+.hp-cards{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:8px;--fa:.9}
+@media (prefers-color-scheme:dark){.hp-cards{--fa:1}}
+.hp-card{position:relative;isolation:isolate;min-height:84px;padding:10px 12px;border:0;border-radius:16px;text-align:left;font:inherit;color:var(--l1);display:flex;flex-direction:column;gap:2px;
+  background:none;box-shadow:0 6px 20px rgba(60,70,140,.1);transition:transform .2s var(--ease-out)}
+/* the glass, over the colours and under the words */
+.hp-card::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(135deg,rgba(255,255,255,.42),rgba(255,255,255,.12));box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)}
+/* Her's lilac, rose, sky and violet under the glass, blurred, and only inside the card: one field across the cards,
+   each card showing the part it covers (Cards sets --fs, its size, and --fp, where the card is in it) */
+.hp-card::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;clip-path:inset(0 round 16px);filter:blur(16px);
+  background-image:radial-gradient(64% 56% at 16% 14%,rgb(143 155 240/var(--fa)),transparent 80%),radial-gradient(60% 52% at 84% 22%,rgb(242 155 192/var(--fa)),transparent 80%),
+    radial-gradient(68% 56% at 56% 60%,rgb(127 196 234/var(--fa)),transparent 80%),radial-gradient(64% 54% at 14% 90%,rgb(181 156 242/var(--fa)),transparent 80%);
+  background-size:var(--fs,100% 100%);background-position:var(--fp,0 0);background-repeat:no-repeat}
 .hp-card.wide{grid-column:1/-1}
 button.hp-card{cursor:pointer}
 button.hp-card:active{transform:scale(.985)}
@@ -603,7 +609,8 @@ button.hp-card:active{transform:scale(.985)}
 .hp-dot{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:none}
 .hp-glyph.ic{position:absolute;right:11px;bottom:10px;width:18px;height:18px;color:var(--l2)}
 @media (prefers-color-scheme:dark){
-  .hp-card{background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.05));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.28)}
+  .hp-card{box-shadow:none}
+  .hp-card::after{background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.04));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.28)}
 }
 /* the connectors as themselves */
 .hp-tray{min-height:0;padding:10px 12px 8px;gap:9px}
