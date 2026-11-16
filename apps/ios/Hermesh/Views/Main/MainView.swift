@@ -98,6 +98,16 @@ private struct PageView: View {
         case .herFiles: HerFilesPage()
         case .routine(let id): RoutinePage(routineID: id)
         case .routineRun(let routine, let run): RoutineRunPage(routineID: routine, runID: run)
+        case .herMemory: HerEnvironmentPage { chat, machine in HerMemoryRoute(chat: chat, machine: machine) }
+        case .herModel: HerModelPage()
+        case .herProvider(let id): HerProviderPage(id: id)
+        case .herEnvironment: HerEnvironmentSettings()
+        case .herStorage: HerStoragePage()
+        case .herConsole: HerConsolePage()
+        case .herSkills: HerSkillsPage()
+        case .herSkill(let dir): HerSkillPage(dir: dir)
+        case .herSearch: HerSearchPage()
+        case .herBrowser: HerBrowserPage()
         }
     }
 

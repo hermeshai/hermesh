@@ -46,21 +46,21 @@ private func skill(_ name: String, scope: String = "user", state: String = "acti
 }
 
 @Test func theBrowserPageReadsStatusAndConfig() {
-    let none = HerBrowser(status: ["embedded": false, "window": false, "os": "linux"], config: [:])
+    let none = HerBrowsers(status: ["embedded": false, "window": false, "os": "linux"], config: [:])
     #expect(!none.controlling && none.yours == .off && none.allSites == .ask && none.exceptions.isEmpty && none.os == "linux")
 
-    let used = HerBrowser(status: ["embedded": false, "window": true, "program": "Google Chrome", "extension": ["browser": "Google Chrome 141"]],
+    let used = HerBrowsers(status: ["embedded": false, "window": true, "program": "Google Chrome", "extension": ["browser": "Google Chrome 141"]],
                           config: ["browser": ["extension": true, "default": "yours", "sites": ["*": "navigate", "https://github.com": "act"]]])
     #expect(used.controlling && used.yours == .on && used.opensInYours && used.chrome == "Google Chrome 141")
     #expect(used.allSites == .navigate && used.exceptions.map(\.origin) == ["https://github.com"] && used.exceptions[0].level == .act)
 
-    let lost = HerBrowser(status: ["embedded": false, "window": false], config: ["browser": ["extension": true, "default": "yours", "enabled": false]])
+    let lost = HerBrowsers(status: ["embedded": false, "window": false], config: ["browser": ["extension": true, "default": "yours", "enabled": false]])
     #expect(lost.yours == .lost && !lost.opensInYours && !lost.controlling)
-    let old = HerBrowser(status: ["embedded": true, "window": false, "extension": ["problem": "update_extension"]], config: [:])
+    let old = HerBrowsers(status: ["embedded": true, "window": false, "extension": ["problem": "update_extension"]], config: [:])
     #expect(old.yours == .outdated && old.controlling && old.chrome == nil)
 
-    #expect(HerBrowser.allSitesEdits(.ask) == [["key_path": "browser.sites.\"*\"", "value": nil]])
-    #expect(HerBrowser.siteEdits("https://github.com", .act) == [["key_path": "browser.sites.\"https://github.com\"", "value": "act"]])
+    #expect(HerBrowsers.allSitesEdits(.ask) == [["key_path": "browser.sites.\"*\"", "value": nil]])
+    #expect(HerBrowsers.siteEdits("https://github.com", .act) == [["key_path": "browser.sites.\"https://github.com\"", "value": "act"]])
 }
 
 @Test func aSiteIsKeptByItsOrigin() {
