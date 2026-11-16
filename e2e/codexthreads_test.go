@@ -16,7 +16,9 @@ import (
 // the session is in use. The title follows a rename, also while the agent
 // runs; archiving the session archives the thread, and unarchiving brings
 // it back. A thread the user archived in the Codex app still resumes, with
-// its conversation, when the session gets a message.
+// its conversation, when the session gets a message. A thread the user has
+// open in the Codex app cannot be resumed (Codex 0.169 lets one process
+// write a thread): the session goes on in a copy of it, and says so.
 func TestCodexThreads(t *testing.T) {
 	unixOnly(t, "its fake codex is a shell script")
 	if testing.Short() {
@@ -74,5 +76,38 @@ esac
 	}
 	if c := calls(); !strings.Contains(c, "thread/unarchive "+ref+"\nthread/resume "+ref+"\n") {
 		t.Fatalf("not unarchived before the resume:\n%s", c)
+	}
+
+	// The session's agent process is gone (as after ten idle minutes), and
+	// the user has the thread open in the Codex app, which keeps it to
+	// itself: the next message goes on in a copy of the conversation.
+	for _, cmd := range []string{"archive", "unarchive"} {
+		if r := w.cli(30*time.Second, "session", cmd, s.SessionID); r.code != 0 {
+			t.Fatalf("%s: %d %s %s", cmd, r.code, r.stdout, r.stderr)
+		}
+	}
+	os.WriteFile(filepath.Join(threads, ref+".busy"), nil, 0o644)
+	s3, r := w.send(60*time.Second, s.SessionID, "Anything else?")
+	if r.code != 0 || s3.Status != "idle" || s3.LastFailure != nil || s3.Result != "done: Anything else?" {
+		t.Fatalf("send while the thread is open in Codex: %d %s %s", r.code, r.stdout, r.stderr)
+	}
+	copied := s3.Ref
+	if copied == "" || copied == ref || name(copied) != "Feishu QR review" {
+		t.Fatalf("went on in thread %q (was %q), named %q; calls:\n%s", copied, ref, name(copied), calls())
+	}
+	if c := calls(); !strings.Contains(c, "thread/fork "+ref+"\n") {
+		t.Fatalf("the thread was not copied:\n%s", c)
+	}
+	if ev := w.cli(30*time.Second, "session", "events", s.SessionID, "--limit", "1000", "-o", "json").stdout; !strings.Contains(ev, "open in another Codex program") {
+		t.Fatalf("the session does not say it went on in a copy:\n%s", ev)
+	}
+	// From then on the copy is the session's thread.
+	for _, cmd := range []string{"archive", "unarchive"} {
+		if r := w.cli(30*time.Second, "session", cmd, s.SessionID); r.code != 0 {
+			t.Fatalf("%s: %d %s %s", cmd, r.code, r.stdout, r.stderr)
+		}
+	}
+	if s4, r := w.send(60*time.Second, s.SessionID, "Thanks."); r.code != 0 || s4.Status != "idle" || s4.Ref != copied || s4.LastFailure != nil {
+		t.Fatalf("send after the copy: %d %s %s", r.code, r.stdout, r.stderr)
 	}
 }

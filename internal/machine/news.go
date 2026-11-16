@@ -202,7 +202,8 @@ func (n *Machine) newsMessage(to *inboxv1.Address, s noticeSession, e *sessionv1
 		if k.Status.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
 			return nil
 		}
-		news.Kind, news.Failure = "failure", sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED
+		news.Kind, news.Failure = "failure", s.failure.GetKind()
+		news.FailureMessage, _ = provider.Truncate(s.failure.GetMessage(), 1000)
 	default:
 		return nil
 	}

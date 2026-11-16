@@ -188,6 +188,9 @@ type live struct {
 	questionSeq  int
 	resumedStart bool
 	finishing    bool
+	// turnFailed: the last turn failed and no status followed it yet (the
+	// crashed status that does is no news of its own).
+	turnFailed bool
 	// restarting re-runs the current turn in a fresh provider session
 	// (the resume was refused before the turn did anything), or resumes
 	// it after a rate limit (retryLater).
@@ -463,7 +466,7 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	}
 	s.dispatch()
 	if s.notice != nil { // the owner hears of a session an agent started
-		go s.notice(noticeSession{id, r.Title, r.CreatedBy, r.ProjectID, r.Agent, l.asker, l.askerConv, r.Conversation}, queued)
+		go s.notice(noticeSession{id, r.Title, r.CreatedBy, r.ProjectID, r.Agent, l.asker, l.askerConv, r.Conversation, nil}, queued)
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -2227,11 +2230,21 @@ func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string)
 	var ns *noticeSession
 	switch k := e.Kind.(type) {
 	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_QuestionResolved, *sessionv1.SessionEvent_TurnCompleted:
-		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation}
-	case *sessionv1.SessionEvent_Status:
-		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation}
+		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation, nil}
+		if tc := e.GetTurnCompleted(); tc != nil {
+			l.turnFailed = tc.Failure != nil
 		}
+	case *sessionv1.SessionEvent_Status:
+		// A crash that ends a failed turn was told with the turn. Any
+		// other is told here: an agent that could not start says why.
+		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED && !l.turnFailed {
+			f := p.LastFailure
+			if f == nil || f.Message != k.Status.Reason { // an earlier turn's
+				f = &sessionv1.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: k.Status.Reason}
+			}
+			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation, f}
+		}
+		l.turnFailed = false
 	}
 	l.mu.Unlock()
 	mEvents.Inc()
