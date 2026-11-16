@@ -905,7 +905,7 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 60), "the last reply")
         XCTAssertTrue(app.descendants(matching: .any)["her-composer"].firstMatch.waitForExistence(timeout: 30))
         XCTAssertTrue(first.waitForNonExistence(timeout: 30), "only the last few messages")
-        for _ in 0 ..< 6 where !first.exists { app.swipeDown() }
+        for _ in 0 ..< 15 where !first.waitForExistence(timeout: 2) { app.swipeDown() }
         XCTAssertTrue(first.waitForExistence(timeout: 30), "the first ones, read at the top")
         herShot("Her: earlier messages read")
     }
@@ -1444,6 +1444,7 @@ extension HermeshUITests {
         try waitFor("paused", timeout: 20) { enabled.value as? String == "0" && !text("接下来").exists ? true : nil }
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(lines.firstMatch.waitForExistence(timeout: 10), "back in the conversation")
+        herPage("work")
         entry.tap()
         XCTAssertTrue(text("已暂停").waitForExistence(timeout: 10), "under Paused")
         let night = app.descendants(matching: .any).matching(identifier: "routine-row").containing(NSPredicate(format: "label CONTAINS %@", "夜间检查")).firstMatch
@@ -1463,8 +1464,7 @@ extension HermeshUITests {
         let runs = app.descendants(matching: .any).matching(identifier: "routine-run")
         try waitFor("its run, told", timeout: 90) { runs.containing(NSPredicate(format: "label CONTAINS %@", "发给你了")).firstMatch.exists ? true : nil }
         herShot("Scheduled task: run now")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        herBackToConversation()
         XCTAssertTrue(app.staticTexts["夜间检查做完了。"].waitForExistence(timeout: 30), "its report, passed on")
 
         // The reminder, a minute after it was made: its message names the task, and opens the run.
@@ -1481,6 +1481,7 @@ extension HermeshUITests {
         XCTAssertTrue(waitUntil(timeout: 10) { self.app.staticTexts["该起来活动一下了。"].isHittable }, "its message in view")
 
         // A one-off that has run is over: under Finished, where it is deleted from its page.
+        herPage("work")
         entry.tap()
         XCTAssertTrue(text("已结束").waitForExistence(timeout: 20), "under Finished")
         let stretch = app.descendants(matching: .any).matching(identifier: "routine-row").containing(NSPredicate(format: "label CONTAINS %@", "拉伸")).firstMatch
@@ -1494,7 +1495,7 @@ extension HermeshUITests {
         try waitFor("gone from the list", timeout: 20) { !text("已结束").exists && !stretch.exists ? true : nil }
         XCTAssertTrue(night.exists, "the other one stays")
         herShot("Scheduled tasks: one deleted")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        herBackToConversation()
 
         // Deleted, its message still opens the run it came from, with the task named as deleted and nothing to open.
         XCTAssertTrue(source.waitForExistence(timeout: 10), "the message still names it")
