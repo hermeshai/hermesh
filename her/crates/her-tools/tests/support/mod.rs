@@ -79,7 +79,8 @@ impl Session {
     }
 
     pub fn path(&self, name: &str) -> PathBuf {
-        self.dir.path().join(name)
+        // Part by part: the system's separator between them, as the tools name files.
+        name.split('/').fold(self.dir.path().to_path_buf(), |path, part| path.join(part))
     }
 
     /// How the tools name `name` in their results.

@@ -76,7 +76,7 @@ pub async fn serve_unix(
         .create(true)
         .truncate(false)
         .open(&lock_path)?;
-    match lock.try_lock() {
+    match her_tools::files::try_lock(&lock) {
         Ok(()) => {}
         Err(std::fs::TryLockError::WouldBlock) => {
             return Err(io::Error::new(

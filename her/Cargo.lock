@@ -1842,6 +1842,7 @@ dependencies = [
  "her-mcp",
  "her-protocol",
  "her-rpc",
+ "her-tools",
  "her-word",
  "jiff",
  "libc",

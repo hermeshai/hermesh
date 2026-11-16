@@ -349,7 +349,7 @@ mod tests {
         std::fs::write(dir.path().join("empty.txt"), "").unwrap();
         let ctx = test_ctx(dir.path());
         let missing = run(&ReadTool, json!({"path": "nope.txt"}), ctx.clone()).await.unwrap_err();
-        assert_eq!(missing.to_string(), format!("File not found: {}/nope.txt", dir.path().display()));
+        assert_eq!(missing.to_string(), format!("File not found: {}", dir.path().join("nope.txt").display()));
         let binary = run(&ReadTool, json!({"path": "bin"}), ctx.clone()).await.unwrap_err();
         assert!(binary.to_string().contains("is a binary file (4 bytes)"));
         let beyond = run(&ReadTool, json!({"path": "short.txt", "offset": 9}), ctx.clone()).await.unwrap_err();
@@ -489,7 +489,7 @@ mod tests {
         assert!(out.content_text().contains("does not accept images"));
         ctx.model_accepts_images = true;
         let out = run(&ReadTool, json!({"path": "a.png"}), ctx).await.unwrap();
-        assert_eq!(out.content_text(), format!("Image: {}/a.png (PNG, 1280x720, 345.0 KB)", dir.path().display()));
+        assert_eq!(out.content_text(), format!("Image: {} (PNG, 1280x720, 345.0 KB)", dir.path().join("a.png").display()));
         let UserContent::Image { mime_type, data } = &out.content[1] else { panic!("{out:?}") };
         assert_eq!(mime_type, "image/png");
         assert_eq!(base64::engine::general_purpose::STANDARD.decode(data).unwrap(), png(1280, 720, 345 * 1024));
@@ -555,7 +555,8 @@ mod tests {
     async fn accepts_file_urls() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("my file.txt"), "hello\n").unwrap();
-        let url = format!("file://{}/my%20file.txt", dir.path().display());
+        // file:///tmp/…, or file:///C:/… on Windows.
+        let url = format!("file:///{}/my%20file.txt", dir.path().display().to_string().replace('\\', "/").trim_start_matches('/'));
         let out = read(dir.path(), json!({ "path": url })).await.unwrap();
         assert_eq!(out.content_text(), "hello\n");
     }

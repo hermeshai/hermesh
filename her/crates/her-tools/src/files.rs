@@ -42,6 +42,41 @@ impl FileStamp {
     }
 }
 
+/// Takes the exclusive lock of a file that others read meanwhile (a session's log, a service's
+/// record), without waiting.
+#[cfg(not(windows))]
+pub fn try_lock(file: &std::fs::File) -> Result<(), std::fs::TryLockError> {
+    file.try_lock()
+}
+
+/// Windows keeps other handles from reading the bytes a lock covers: the lock is on one byte
+/// far past the file's end. The handle must be one that may read or overwrite the file.
+#[cfg(windows)]
+pub fn try_lock(file: &std::fs::File) -> Result<(), std::fs::TryLockError> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::ERROR_IO_PENDING;
+    use windows_sys::Win32::Foundation::ERROR_LOCK_VIOLATION;
+    use windows_sys::Win32::Foundation::HANDLE;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_EXCLUSIVE_LOCK;
+    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_FAIL_IMMEDIATELY;
+    use windows_sys::Win32::Storage::FileSystem::LockFileEx;
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+
+    // SAFETY: zeroes are a valid value of this plain C struct.
+    let mut at: OVERLAPPED = unsafe { std::mem::zeroed() };
+    at.Anonymous.Anonymous.OffsetHigh = 0x7fff_ffff;
+    // SAFETY: LockFileEx on a handle the caller keeps open; `at` names the byte and outlives
+    // the call.
+    if unsafe { LockFileEx(file.as_raw_handle() as HANDLE, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &mut at) } != 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    match err.raw_os_error().map(|code| code as u32) {
+        Some(ERROR_LOCK_VIOLATION | ERROR_IO_PENDING) => Err(std::fs::TryLockError::WouldBlock),
+        _ => Err(std::fs::TryLockError::Error(err)),
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum StaleReason {
     NotRead,
@@ -140,6 +175,8 @@ mod tests {
         assert_eq!(tracker.verify(path, replaced), Err(StaleReason::Changed));
     }
 
+    // Windows gives no change time or file identity to tell by (docs/windows.md §15).
+    #[cfg(unix)]
     #[test]
     fn a_kept_mtime_still_shows_as_a_change() {
         let dir = tempfile::tempdir().unwrap();

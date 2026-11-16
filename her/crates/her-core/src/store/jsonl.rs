@@ -188,42 +188,8 @@ fn io_err(path: &Path) -> impl FnOnce(io::Error) -> StoreError + '_ {
     }
 }
 
-/// Takes the log's lock, which one writer holds at a time.
-#[cfg(not(windows))]
-fn try_lock(file: &File) -> Result<(), std::fs::TryLockError> {
-    file.try_lock()
-}
-
-/// Windows keeps other handles from reading the bytes a lock covers, and a log is read while
-/// its session writes it: the lock is on one byte far past any log's end.
-#[cfg(windows)]
-fn try_lock(file: &File) -> Result<(), std::fs::TryLockError> {
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Foundation::ERROR_IO_PENDING;
-    use windows_sys::Win32::Foundation::ERROR_LOCK_VIOLATION;
-    use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_EXCLUSIVE_LOCK;
-    use windows_sys::Win32::Storage::FileSystem::LOCKFILE_FAIL_IMMEDIATELY;
-    use windows_sys::Win32::Storage::FileSystem::LockFileEx;
-    use windows_sys::Win32::System::IO::OVERLAPPED;
-
-    // SAFETY: zeroes are a valid value of this plain C struct.
-    let mut at: OVERLAPPED = unsafe { std::mem::zeroed() };
-    at.Anonymous.Anonymous.OffsetHigh = 0x7fff_ffff;
-    // SAFETY: LockFileEx on a handle the caller keeps open; `at` names the byte and outlives
-    // the call.
-    if unsafe { LockFileEx(file.as_raw_handle() as HANDLE, LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &mut at) } != 0 {
-        return Ok(());
-    }
-    let err = io::Error::last_os_error();
-    match err.raw_os_error().map(|code| code as u32) {
-        Some(ERROR_LOCK_VIOLATION | ERROR_IO_PENDING) => Err(std::fs::TryLockError::WouldBlock),
-        _ => Err(std::fs::TryLockError::Error(err)),
-    }
-}
-
 fn lock(file: &File, path: &Path) -> Result<(), StoreError> {
-    match try_lock(file) {
+    match her_tools::files::try_lock(file) {
         Ok(()) => Ok(()),
         Err(std::fs::TryLockError::WouldBlock) => Err(StoreError::Locked(path.to_path_buf())),
         Err(std::fs::TryLockError::Error(source)) => Err(StoreError::Io {
@@ -285,7 +251,7 @@ fn create_log(path: &Path, header: &str) -> io::Result<File> {
     // Read as well: Windows locks a file only through a handle that may read or overwrite it,
     // which one that may only append is not.
     let mut file = private(OpenOptions::new().create_new(true).read(true).append(true)).open(path)?;
-    try_lock(&file).map_err(|err| match err {
+    her_tools::files::try_lock(&file).map_err(|err| match err {
         std::fs::TryLockError::WouldBlock => {
             io::Error::new(io::ErrorKind::WouldBlock, format!("{} is locked by another process", path.display()))
         }
@@ -325,7 +291,8 @@ impl LineSink for FileSink {
 impl SessionStore for JsonlStore {
     fn create(&self, header: &SessionHeader) -> Result<CreatedSession, StoreError> {
         let now = chrono::Local::now();
-        let dir = self.dir.join(now.format("%Y/%m/%d").to_string());
+        // A folder per part: the system's separator between them.
+        let dir = ["%Y", "%m", "%d"].iter().fold(self.dir.clone(), |dir, part| dir.join(now.format(part).to_string()));
         let path = dir.join(format!("{}-{}.jsonl", now.format("%Y%m%dT%H%M%S"), header.id));
         let line = serde_json::to_string(header).map_err(|e| StoreError::Corrupt {
             path: path.clone(),
@@ -748,7 +715,7 @@ mod tests {
         use crate::store::entry::TaskStatus;
         let dir = tempfile::tempdir().unwrap();
         let sessions = dir.path().join("sessions");
-        let day = sessions.join("2026/10/29");
+        let day = sessions.join("2026").join("10").join("29");
         std::fs::create_dir_all(&day).unwrap();
         let path = day.join(format!("20261029T000000-{OLDER}.jsonl"));
         let header = serde_json::to_string(&SessionHeader::new(OLDER.into(), dir.path().join("work"))).unwrap();

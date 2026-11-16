@@ -374,6 +374,7 @@ async fn resident_mib(pid: u32) -> u64 {
 }
 
 /// The report: `her acp < /dev/zero` held 2.1 GB and said nothing.
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn endless_input_is_answered_and_stays_bounded() {
     let env = TestEnv::new("manual", "").await;
