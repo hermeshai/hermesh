@@ -10,6 +10,10 @@
 //!
 //! What a bot sent before there was a record of it is written once from its conversations'
 //! logs (§4.7), before anything it sends from then on, and seen: nothing old shows as new.
+//!
+//! Where a file came from (§4.11): a routine's run, when the run wrote that content in the bot's
+//! folder; otherwise what woke the bot to send it, followed back through the sub-agents it gave
+//! the work to; otherwise the owner's asking in the conversation.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -23,9 +27,13 @@ use her_protocol::bot::DeliveredFile;
 use her_protocol::bot::DeliveriesListParams;
 use her_protocol::bot::DeliveriesListResult;
 use her_protocol::bot::DeliveriesSeenParams;
+use her_protocol::bot::DeliveriesSourcesParams;
+use her_protocol::bot::DeliveriesSourcesResult;
 use her_protocol::bot::Delivery;
 use her_protocol::bot::DeliveryKind;
 use her_protocol::bot::DeliverySource;
+use her_protocol::bot::DeliverySourceCount;
+use her_protocol::bot::DeliverySourceFilter;
 use her_protocol::bot::DeliverySourceKind;
 use her_rpc::RpcError;
 use parking_lot::Mutex;
@@ -74,6 +82,23 @@ CREATE TABLE delivery_marks (
   seen       INTEGER NOT NULL DEFAULT 0,
   backfilled INTEGER NOT NULL DEFAULT 0
 ) STRICT;
+";
+
+/// The third (§4.11): the run a file came from, and what each routine's run wrote in the bot's
+/// folder, by content.
+pub(crate) const SCHEMA_V3: &str = "
+ALTER TABLE deliveries ADD COLUMN source_run TEXT;
+CREATE TABLE run_files (
+  run_id     TEXT NOT NULL,
+  routine_id TEXT NOT NULL,
+  bot_id     TEXT NOT NULL,
+  name       TEXT NOT NULL,
+  path       TEXT NOT NULL,
+  sha256     TEXT NOT NULL,
+  at         TEXT NOT NULL,
+  PRIMARY KEY (run_id, path)
+) STRICT;
+CREATE INDEX run_files_by_content ON run_files(bot_id, sha256);
 ";
 
 /// A page of the list without a `limit`, and the most one may ask for.
@@ -141,32 +166,75 @@ fn sent_of(bot: &str, session: &str, call: &str, details: &str, at: String, sour
     })
 }
 
-/// What the bot's next message comes from, by the rule the clients' conversation follows: the
-/// latest report of a routine's run, or news of a session, since the owner's last message and
-/// the last task's end. None for what the owner asked for in the conversation.
+/// What the bot's next message comes from: the latest of what it was told since the last task's
+/// end. A routine's report, or news of a session, is the source; the owner's message is none;
+/// a sub-agent's report is what the bot was doing when it last gave that agent work, so the
+/// work a routine's report set off keeps its routine however many rounds it took.
 fn source_of(transcript: &[TranscriptItem]) -> Option<DeliverySource> {
-    for item in transcript.iter().rev() {
+    for (at, item) in transcript.iter().enumerate().rev() {
         match item {
             TranscriptItem::TaskEnd { .. } => return None,
             TranscriptItem::Message {
                 message: Message::User(_), mail, ..
             } => {
                 let mail = mail.as_ref()?;
-                let kind = match (&mail.routine_id, mail.kind) {
-                    (Some(_), _) => DeliverySourceKind::Routine,
-                    (None, MailKind::News) => DeliverySourceKind::Session,
+                return match (&mail.routine_id, mail.kind) {
+                    (Some(routine), _) => Some(DeliverySource {
+                        kind: DeliverySourceKind::Routine,
+                        id: routine.clone(),
+                        name: mail.from.name.clone(),
+                        run: Some(mail.from.id.clone()),
+                    }),
+                    (None, MailKind::News) => Some(DeliverySource {
+                        kind: DeliverySourceKind::Session,
+                        id: mail.from.id.clone(),
+                        name: mail.from.name.clone(),
+                        run: None,
+                    }),
+                    (None, MailKind::Report) => match given(&transcript[..at], &mail.from.id) {
+                        Some(given) => source_of(&transcript[..given]),
+                        // Its start is not in what is here: what came before it, then.
+                        None => continue,
+                    },
+                    // What an agent says while it works, or told the owner: not why the bot acts.
                     _ => continue,
                 };
-                return Some(DeliverySource {
-                    kind,
-                    id: mail.routine_id.clone().unwrap_or_else(|| mail.from.id.clone()),
-                    name: mail.from.name.clone(),
-                });
             }
             _ => {}
         }
     }
     None
+}
+
+/// The latest call that gave `agent` work, starting it or sending it a message: what the bot
+/// was doing then is what that work came from.
+fn given(transcript: &[TranscriptItem], agent: &str) -> Option<usize> {
+    transcript.iter().rposition(|item| {
+        let TranscriptItem::ToolResult { result, .. } = item else {
+            return false;
+        };
+        matches!(result.tool_name.as_str(), "spawn_agent" | "send_message")
+            && !result.is_error
+            && result
+                .details
+                .as_ref()
+                .and_then(|d| serde_json::from_str::<Value>(d.as_str()).ok())
+                .is_some_and(|d| d.get("agent_id").and_then(Value::as_str) == Some(agent))
+    })
+}
+
+/// The routine's run that wrote this content in the bot's folder, the latest.
+fn run_that_wrote(conn: &Connection, bot: &str, sha256: &str) -> rusqlite::Result<Option<DeliverySource>> {
+    conn.prepare_cached("SELECT routine_id, name, run_id FROM run_files WHERE bot_id = ?1 AND sha256 = ?2 ORDER BY at DESC, run_id DESC LIMIT 1")?
+        .query_row(params![bot, sha256], |row| {
+            Ok(DeliverySource {
+                kind: DeliverySourceKind::Routine,
+                id: row.get(0)?,
+                name: row.get(1)?,
+                run: Some(row.get(2)?),
+            })
+        })
+        .optional()
 }
 
 fn source_kind_text(kind: DeliverySourceKind) -> &'static str {
@@ -189,14 +257,20 @@ fn kind_of(text: &str) -> DeliveryKind {
     }
 }
 
-/// Writes a call's files, once however often it is asked.
+/// Writes a call's files, once however often it is asked. A file a routine's run wrote is the
+/// run's, whatever woke the bot to send it.
 fn record(conn: &Connection, sent: &Sent) -> rusqlite::Result<()> {
     let mut insert = conn.prepare_cached(
         "INSERT OR IGNORE INTO deliveries
-           (bot_id, session_id, call_id, idx, path, name, kind, size, width, height, sha256, snapshot, text, sent_at, source_kind, source_id, source_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+           (bot_id, session_id, call_id, idx, path, name, kind, size, width, height, sha256, snapshot, text, sent_at, source_kind, source_id, source_name, source_run)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
     )?;
     for (idx, f) in sent.files.iter().enumerate() {
+        let written = match &f.sha256 {
+            Some(sha256) => run_that_wrote(conn, &sent.bot, sha256)?,
+            None => None,
+        };
+        let source = written.as_ref().or(sent.source.as_ref());
         insert.execute(params![
             sent.bot,
             sent.session,
@@ -212,9 +286,10 @@ fn record(conn: &Connection, sent: &Sent) -> rusqlite::Result<()> {
             f.snapshot,
             sent.text,
             sent.at,
-            sent.source.as_ref().map(|s| source_kind_text(s.kind)),
-            sent.source.as_ref().map(|s| s.id.as_str()),
-            sent.source.as_ref().map(|s| s.name.as_str()),
+            source.map(|s| source_kind_text(s.kind)),
+            source.map(|s| s.id.as_str()),
+            source.map(|s| s.name.as_str()),
+            source.and_then(|s| s.run.as_deref()),
         ])?;
     }
     Ok(())
@@ -245,6 +320,7 @@ fn mark_seen(conn: &Connection, bot: &str, seq: u64) -> rusqlite::Result<()> {
 
 fn forget(conn: &Connection, bot: &str) -> rusqlite::Result<()> {
     conn.execute("DELETE FROM deliveries WHERE bot_id = ?1", params![bot])?;
+    conn.execute("DELETE FROM run_files WHERE bot_id = ?1", params![bot])?;
     conn.execute("DELETE FROM delivery_marks WHERE bot_id = ?1", params![bot])?;
     Ok(())
 }
@@ -286,11 +362,17 @@ fn list(conn: &Connection, p: &DeliveriesListParams) -> rusqlite::Result<Deliver
     let limit = p.limit.unwrap_or(PAGE).clamp(1, PAGE_MAX) as usize;
     let query = p.query.as_deref().map(str::trim).filter(|q| !q.is_empty()).map(pattern);
     let before = p.before.map(|seq| i64::try_from(seq).unwrap_or(i64::MAX));
-    // A file is its path; its name and kind are its latest send's (a bare column beside MAX is
-    // that row's).
+    let (source_kind, source_key) = match &p.source {
+        None => (None, None),
+        Some(DeliverySourceFilter::Conversation) => (Some("conversation"), None),
+        Some(DeliverySourceFilter::Routine { id }) => (Some("routine"), Some(id.as_str())),
+        Some(DeliverySourceFilter::Session { name }) => (Some("session"), Some(name.as_str())),
+    };
+    // A file is its path; its name, kind and source are its latest send's (a bare column beside
+    // MAX is that row's).
     let mut pages = conn.prepare_cached(
         r"SELECT path, name, kind, latest FROM (
-            SELECT path, name, kind, MAX(seq) AS latest FROM deliveries
+            SELECT path, name, kind, source_kind, source_id, source_name, MAX(seq) AS latest FROM deliveries
              WHERE bot_id = ?1
                AND (?2 IS NULL OR path IN (
                      SELECT path FROM deliveries
@@ -298,19 +380,24 @@ fn list(conn: &Connection, p: &DeliveriesListParams) -> rusqlite::Result<Deliver
              GROUP BY path)
            WHERE (?3 IS NULL OR latest < ?3) AND (?4 IS NULL OR kind = ?4)
              AND (?6 IS NULL OR (kind IN ('image', 'video', 'audio')) = ?6)
+             AND (?7 IS NULL
+                  OR (?7 = 'conversation' AND source_kind IS NULL)
+                  OR (?7 = 'routine' AND source_kind = 'routine' AND source_id = ?8)
+                  OR (?7 = 'session' AND source_kind = 'session' AND source_name = ?8))
            ORDER BY latest DESC LIMIT ?5",
     )?;
     let mut found: Vec<(String, String, String, i64)> = pages
-        .query_map(params![p.bot_id, query, before, p.kind.map(DeliveryKind::as_str), (limit + 1) as i64, p.media], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })?
+        .query_map(
+            params![p.bot_id, query, before, p.kind.map(DeliveryKind::as_str), (limit + 1) as i64, p.media, source_kind, source_key],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?
         .collect::<rusqlite::Result<_>>()?;
     let more = found.len() > limit;
     found.truncate(limit);
     let next = if more { found.last().map(|(.., latest)| *latest as u64) } else { None };
 
     let mut sends = conn.prepare_cached(
-        "SELECT seq, session_id, call_id, size, width, height, sha256, snapshot, text, sent_at, source_kind, source_id, source_name
+        "SELECT seq, session_id, call_id, size, width, height, sha256, snapshot, text, sent_at, source_kind, source_id, source_name, source_run
            FROM deliveries WHERE bot_id = ?1 AND path = ?2 ORDER BY seq DESC",
     )?;
     let mut files = Vec::with_capacity(found.len());
@@ -322,6 +409,7 @@ fn list(conn: &Connection, p: &DeliveriesListParams) -> rusqlite::Result<Deliver
                         kind: if kind == "routine" { DeliverySourceKind::Routine } else { DeliverySourceKind::Session },
                         id,
                         name,
+                        run: row.get(13)?,
                     }),
                     _ => None,
                 };
@@ -349,6 +437,82 @@ fn list(conn: &Connection, p: &DeliveriesListParams) -> rusqlite::Result<Deliver
     }
     let seen = conn.query_row("SELECT COALESCE((SELECT seen FROM delivery_marks WHERE bot_id = ?1), 0)", params![p.bot_id], |row| row.get::<_, i64>(0))?;
     Ok(DeliveriesListResult { files, seen: seen as u64, next })
+}
+
+/// Where a bot's files came from, by their latest sends, the latest first; a routine by the
+/// name it has now, if it was not deleted.
+fn sources(conn: &Connection, bot: &str) -> rusqlite::Result<DeliveriesSourcesResult> {
+    let mut found = conn.prepare_cached(
+        r"WITH files AS (
+            SELECT source_kind, source_id, source_name, kind, MAX(seq) AS latest FROM deliveries
+             WHERE bot_id = ?1 GROUP BY path)
+          SELECT source_kind, CASE source_kind WHEN 'session' THEN source_name ELSE source_id END AS key,
+                 source_name, COUNT(*), SUM(kind IN ('image', 'video', 'audio')), MAX(latest),
+                 (SELECT name FROM routines r WHERE r.id = files.source_id AND r.deleted_at IS NULL)
+            FROM files GROUP BY source_kind, key ORDER BY MAX(latest) DESC",
+    )?;
+    let sources = found
+        .query_map(params![bot], |row| {
+            let kind: Option<String> = row.get(0)?;
+            let key: Option<String> = row.get(1)?;
+            let heard: Option<String> = row.get(2)?;
+            let now: Option<String> = row.get(6)?;
+            let (filter, name, gone) = match (kind.as_deref(), key) {
+                (Some("routine"), Some(id)) => (DeliverySourceFilter::Routine { id }, now.clone().or(heard), now.is_none()),
+                (Some("session"), Some(name)) => (DeliverySourceFilter::Session { name: name.clone() }, Some(name), false),
+                _ => (DeliverySourceFilter::Conversation, None, false),
+            };
+            Ok(DeliverySourceCount {
+                filter,
+                name,
+                files: row.get::<_, i64>(3)? as u32,
+                media: row.get::<_, i64>(4)? as u32,
+                latest: row.get::<_, i64>(5)? as u64,
+                gone,
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let silent = conn.query_row(
+        "SELECT COUNT(*) FROM routines r WHERE r.bot_id = ?1 AND r.deleted_at IS NULL
+           AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.bot_id = ?1 AND d.source_kind = 'routine' AND d.source_id = r.id)",
+        params![bot],
+        |row| row.get::<_, i64>(0),
+    )? as u32;
+    Ok(DeliveriesSourcesResult { sources, silent })
+}
+
+/// A routine's run that ended, and what it wrote in its bot's folder.
+#[derive(Clone, Debug)]
+pub(crate) struct RunWrote {
+    pub(crate) bot: String,
+    pub(crate) routine: String,
+    pub(crate) name: String,
+    pub(crate) run: String,
+    /// When it started, as `stamp` writes it.
+    pub(crate) started: String,
+    pub(crate) files: Vec<(std::path::PathBuf, String)>,
+}
+
+/// Keeps what the run wrote, and makes the files the bot sent with that content since the run
+/// started the run's: the bot may have sent them before this is known, as the report reaches it
+/// before the run's end is saved.
+fn save_run_files(conn: &mut Connection, wrote: &RunWrote) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    {
+        let mut insert = tx.prepare_cached(
+            "INSERT OR REPLACE INTO run_files (run_id, routine_id, bot_id, name, path, sha256, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+        let mut claim = tx.prepare_cached(
+            "UPDATE deliveries SET source_kind = 'routine', source_id = ?2, source_name = ?3, source_run = ?4
+              WHERE bot_id = ?1 AND sha256 = ?5 AND sent_at >= ?6",
+        )?;
+        for (path, sha256) in &wrote.files {
+            let path = path.to_string_lossy();
+            insert.execute(params![wrote.run, wrote.routine, wrote.bot, wrote.name, path, sha256, wrote.started])?;
+            claim.execute(params![wrote.bot, wrote.routine, wrote.name, wrote.run, sha256, wrote.started])?;
+        }
+    }
+    tx.commit()
 }
 
 /// What `bots` sent in their conversations' logs that are still in `store` before `before` (ms),
@@ -553,6 +717,32 @@ impl Deliveries {
         self.push(Job::Backfill(jiff::Timestamp::now().as_millisecond()));
     }
 
+    /// A routine's run ended: what it wrote in the bot's folder `dir` is known as its. That is a
+    /// file changed there since `since` that its session's `log` names: the bot's conversation may
+    /// be writing there meanwhile, and a run that never started wrote nothing.
+    pub(crate) async fn run_ended(&self, dir: std::path::PathBuf, since: std::time::SystemTime, log: Option<std::path::PathBuf>, mut wrote: RunWrote) {
+        let Some(log) = log else {
+            return;
+        };
+        let found = tokio::task::spawn_blocking(move || {
+            let said = std::fs::read_to_string(&log).unwrap_or_default();
+            let mut files = her_core::bot::written_since(&dir, since);
+            files.retain(|(path, _)| path.file_name().and_then(|n| n.to_str()).is_some_and(|name| said.contains(name)));
+            files
+        });
+        match found.await {
+            Ok(files) if !files.is_empty() => wrote.files = files,
+            _ => return,
+        }
+        let Some(db) = self.routines.database_for_new().await else {
+            return;
+        };
+        let run = wrote.run.clone();
+        if let Err(err) = db.call(move |conn| save_run_files(conn, &wrote)).await {
+            tracing::warn!(run = %run, "what a run wrote was not kept: {err}");
+        }
+    }
+
     /// A bot was deleted: what it sent goes from the list with it.
     pub(crate) async fn bot_deleted(&self, bot: &str) {
         let Ok(Some(db)) = self.routines.database() else {
@@ -581,6 +771,15 @@ impl Server {
             });
         };
         db.call(move |conn| list(conn, &p)).await.map_err(unavailable)
+    }
+
+    /// `deliveries/sources`: none where there is no database.
+    pub async fn deliveries_sources(&self, p: DeliveriesSourcesParams) -> Result<DeliveriesSourcesResult, RpcError> {
+        self.bot_exists(&p.bot_id)?;
+        let Some(db) = self.0.routines.database().map_err(unavailable)? else {
+            return Ok(DeliveriesSourcesResult { sources: Vec::new(), silent: 0 });
+        };
+        db.call(move |conn| sources(conn, &p.bot_id)).await.map_err(unavailable)
     }
 
     /// `deliveries/seen`: the bot's row says so to every device.
@@ -640,6 +839,7 @@ mod tests {
             query: None,
             kind: None,
             media: None,
+            source: None,
         }
     }
 
@@ -704,7 +904,31 @@ mod tests {
         let session = source_of(&[report.clone(), news]).unwrap();
         assert_eq!((session.kind, session.id.as_str(), session.name.as_str()), (DeliverySourceKind::Session, "ses_9", "接口联调脚本"), "the latest");
         assert_eq!(source_of(&[report.clone(), said("u5", None)]), None, "until the owner speaks");
-        assert_eq!(source_of(&[report, ended]), None, "and until the task ends");
+        assert_eq!(source_of(&[report.clone(), ended.clone()]), None, "and until the task ends");
+        assert_eq!(routine.run.as_deref(), Some("run_1"), "and the run is known");
+
+        // The work a sub-agent did is for what the bot was doing when it gave the work.
+        let gave = |tool: &str, agent: &str| TranscriptItem::ToolResult {
+            call_id: "c".into(),
+            result: Arc::new(her_llm::ToolResultMessage {
+                call_id: "c".into(),
+                tool_name: tool.into(),
+                content: Vec::new(),
+                is_error: false,
+                details: Some(her_llm::JsonText::from_value(&json!({ "agent_id": agent, "background": true }))),
+                ts: 0,
+                duration_ms: None,
+            }),
+        };
+        let owner = said("u9", None);
+        let chain = [owner.clone(), ended.clone(), report.clone(), gave("spawn_agent", "a1"), ended.clone(), agent.clone()];
+        assert_eq!(source_of(&chain).map(|s| s.id), Some("rtn_1".into()), "a routine's work, done by a sub-agent in a later task");
+        let asked = [owner.clone(), gave("spawn_agent", "a1"), ended.clone(), report.clone(), ended.clone(), agent.clone()];
+        assert_eq!(source_of(&asked), None, "the owner's, though a report came between");
+        let again = [report.clone(), gave("spawn_agent", "a1"), ended.clone(), agent.clone(), ended.clone(), owner.clone(), gave("send_message", "a1"), ended.clone(), agent.clone()];
+        assert_eq!(source_of(&again), None, "the work given last: the owner asked for a change");
+        let other = [report.clone(), gave("spawn_agent", "a2"), agent.clone()];
+        assert_eq!(source_of(&other).map(|s| s.id), Some("rtn_1".into()), "another agent's start is not its");
     }
 
     #[tokio::test]
@@ -766,6 +990,7 @@ mod tests {
             kind: DeliverySourceKind::Routine,
             id: "rtn_1".into(),
             name: "每日晨报".into(),
+            run: None,
         });
         write(
             &db,
@@ -857,5 +1082,94 @@ mod tests {
         db.call(|conn| forget(conn, "b1")).await.unwrap();
         assert_eq!(count(&db, "b1").await, (0, 0), "a deleted bot's are gone");
         assert!(listed(&db, page("b1")).await.files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_file_a_routine_run_wrote_is_the_runs_whenever_it_is_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = db(&dir);
+        let ran = |run: &str, started: &str, files: &[(&str, &str)]| RunWrote {
+            bot: "b1".into(),
+            routine: "rtn_gh".into(),
+            name: "GitHub趋势早报".into(),
+            run: run.into(),
+            started: started.into(),
+            files: files.iter().map(|(p, sha)| (std::path::PathBuf::from(p), sha.to_string())).collect(),
+        };
+        let save = |wrote: RunWrote| {
+            let db = db.clone();
+            async move { db.call(move |conn| save_run_files(conn, &wrote)).await.unwrap() }
+        };
+        // Sent before the run's end was saved, as the report reaches the bot first.
+        write(&db, vec![sent("b1", "c1", "早报", &[("/f/brief.md", Some("g1"))]), sent("b1", "c", "旧的", &[("/f/old.md", Some("o1"))])]).await;
+        save(ran("run_1", "2026-11-16T10:00:02Z", &[("/f/brief.md", "g1"), ("/f/old.md", "o1")])).await;
+        // And after: the owner asked for it again later in the conversation.
+        save(ran("run_2", "2026-11-16T10:00:05Z", &[("/f/brief2.md", "g2")])).await;
+        write(&db, vec![sent("b1", "c4444", "今天的", &[("/f/brief2.md", Some("g2")), ("/f/mine.md", Some("m1"))])]).await;
+
+        let result = listed(&db, page("b1")).await;
+        let source = |name: &str| {
+            let file = result.files.iter().find(|f| f.name == name).unwrap();
+            file.versions[0].source.as_ref().map(|s| (s.id.clone(), s.name.clone(), s.run.clone()))
+        };
+        assert_eq!(source("brief.md"), Some(("rtn_gh".into(), "GitHub趋势早报".into(), Some("run_1".into()))));
+        assert_eq!(source("brief2.md"), Some(("rtn_gh".into(), "GitHub趋势早报".into(), Some("run_2".into()))));
+        assert_eq!(source("old.md"), None, "the same content sent before the run started is not its");
+        assert_eq!(source("mine.md"), None, "a file it did not write is not its, though sent with one");
+    }
+
+    #[tokio::test]
+    async fn the_list_shows_one_sources_files_and_says_which_sources_there_are() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = db(&dir);
+        let from = |mut sent: Sent, kind: DeliverySourceKind, id: &str, name: &str| {
+            sent.source = Some(DeliverySource { kind, id: id.into(), name: name.into(), run: None });
+            sent
+        };
+        db.call(|conn| {
+            for (id, name, deleted) in [("rtn_gh", "GitHub趋势早报", None), ("rtn_ph", "PH周报", Some("2026-11-16T00:00:00Z")), ("rtn_quiet", "补货提醒", None), ("rtn_x", "别人的", None)] {
+                let bot = if id == "rtn_x" { "b2" } else { "b1" };
+                conn.execute(
+                    "INSERT INTO routines (id, bot_id, name, prompt, schedule, when_text, enabled, created_at, updated_at, deleted_at) VALUES (?1, ?2, ?3, '', 'daily 08:00', '', 1, '', '', ?4)",
+                    params![id, bot, name, deleted],
+                )?;
+            }
+            Ok::<_, rusqlite::Error>(())
+        })
+        .await
+        .unwrap();
+        write(
+            &db,
+            vec![
+                from(sent("b1", "c1", "", &[("/f/ph.md", Some("p1"))]), DeliverySourceKind::Routine, "rtn_ph", "PH周报"),
+                sent("b1", "c2", "", &[("/f/plan.pdf", Some("x1"))]),
+                from(sent("b1", "c3", "", &[("/f/api.md", Some("a1"))]), DeliverySourceKind::Session, "ses_1", "Claude Code in repo"),
+                from(sent("b1", "c4", "", &[("/f/api2.md", Some("a2"))]), DeliverySourceKind::Session, "ses_2", "Claude Code in repo"),
+                from(sent("b1", "c5", "", &[("/f/gh.md", Some("g1")), ("/f/gh.png", Some("g2"))]), DeliverySourceKind::Routine, "rtn_gh", "旧名字"),
+                // The plan again, now from the routine: a file is its latest send's.
+                from(sent("b1", "c6", "", &[("/f/plan.pdf", Some("x2"))]), DeliverySourceKind::Routine, "rtn_gh", "旧名字"),
+            ],
+        )
+        .await;
+
+        let only = |source: DeliverySourceFilter| listed(&db, DeliveriesListParams { source: Some(source), ..page("b1") });
+        assert_eq!(names(&only(DeliverySourceFilter::Routine { id: "rtn_gh".into() }).await), ["plan.pdf", "gh.png", "gh.md"]);
+        assert_eq!(names(&only(DeliverySourceFilter::Conversation).await), Vec::<&str>::new(), "the plan is the routine's now");
+        assert_eq!(names(&only(DeliverySourceFilter::Session { name: "Claude Code in repo".into() }).await), ["api2.md", "api.md"], "sessions by their name");
+        let both = listed(&db, DeliveriesListParams { source: Some(DeliverySourceFilter::Routine { id: "rtn_gh".into() }), media: Some(true), ..page("b1") }).await;
+        assert_eq!(names(&both), ["gh.png"], "with the other filters");
+
+        let found = db.call(|conn| sources(conn, "b1")).await.unwrap();
+        let rows: Vec<_> = found.sources.iter().map(|s| (s.filter.clone(), s.name.as_deref(), s.files, s.media, s.gone)).collect();
+        assert_eq!(
+            rows,
+            [
+                (DeliverySourceFilter::Routine { id: "rtn_gh".into() }, Some("GitHub趋势早报"), 3, 1, false),
+                (DeliverySourceFilter::Session { name: "Claude Code in repo".into() }, Some("Claude Code in repo"), 2, 0, false),
+                (DeliverySourceFilter::Routine { id: "rtn_ph".into() }, Some("PH周报"), 1, 0, true),
+            ],
+            "the latest first; a routine by its name now; a deleted one stays; the conversation has none now"
+        );
+        assert_eq!(found.silent, 1, "the routine that sent nothing; another bot's is not counted");
     }
 }

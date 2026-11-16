@@ -299,6 +299,12 @@
       "$ref": "#/definitions/DeliveriesSeenParams"
     },
     {
+      "$ref": "#/definitions/DeliveriesSourcesParams"
+    },
+    {
+      "$ref": "#/definitions/DeliveriesSourcesResult"
+    },
+    {
       "$ref": "#/definitions/DesktopStatus"
     },
     {
@@ -8791,6 +8797,17 @@
             "string",
             "null"
           ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/DeliverySourceFilter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Only files whose latest send came from this (`deliveries/sources`)."
         }
       },
       "required": [
@@ -8845,6 +8862,39 @@
       "required": [
         "bot_id",
         "seq"
+      ],
+      "type": "object"
+    },
+    "DeliveriesSourcesParams": {
+      "properties": {
+        "bot_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "bot_id"
+      ],
+      "type": "object"
+    },
+    "DeliveriesSourcesResult": {
+      "description": "Result of `deliveries/sources`: where a bot's files came from, the latest first.",
+      "properties": {
+        "silent": {
+          "description": "The bot's routines that sent no file: not listed.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "sources": {
+          "items": {
+            "$ref": "#/definitions/DeliverySourceCount"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "silent",
+        "sources"
       ],
       "type": "object"
     },
@@ -8956,6 +9006,13 @@
         },
         "name": {
           "type": "string"
+        },
+        "run": {
+          "description": "A routine's run it came from (`bots/routine_run`), when known.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -8964,6 +9021,108 @@
         "name"
       ],
       "type": "object"
+    },
+    "DeliverySourceCount": {
+      "description": "A source of a bot's files: those whose latest send came from it.",
+      "properties": {
+        "files": {
+          "description": "How many files, and how many of them are pictures, video or audio.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "filter": {
+          "$ref": "#/definitions/DeliverySourceFilter",
+          "description": "What `deliveries/list` takes to show them."
+        },
+        "gone": {
+          "description": "A routine that was deleted: the files it sent stay.",
+          "type": "boolean"
+        },
+        "latest": {
+          "description": "Its latest send (`Delivery::seq`).",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "media": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "What it is called now: a routine's current name, a session's, or none for the conversation.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "files",
+        "filter",
+        "latest",
+        "media"
+      ],
+      "type": "object"
+    },
+    "DeliverySourceFilter": {
+      "description": "What a list of files keeps by where they came from.",
+      "oneOf": [
+        {
+          "description": "What the owner asked for in the conversation: no source.",
+          "properties": {
+            "kind": {
+              "enum": [
+                "conversation"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "A routine's, by its id, whatever it was called.",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "routine"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Coding sessions' of this name: a session goes when its work is done, its name stays.",
+          "properties": {
+            "kind": {
+              "enum": [
+                "session"
+              ],
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "type": "object"
+        }
+      ]
     },
     "DeliverySourceKind": {
       "oneOf": [
@@ -21579,6 +21738,10 @@
       "params": "DeliveriesSeenParams",
       "result": "Empty"
     },
+    "deliveries/sources": {
+      "params": "DeliveriesSourcesParams",
+      "result": "DeliveriesSourcesResult"
+    },
     "desktop/status": {
       "result": "DesktopStatus"
     },
@@ -21987,6 +22150,7 @@
       "deck/view": "stable",
       "deliveries/list": "stable",
       "deliveries/seen": "stable",
+      "deliveries/sources": "stable",
       "desktop/status": "experimental",
       "doc/apply": "experimental",
       "doc/autofill": "experimental",

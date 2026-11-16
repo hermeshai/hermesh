@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import type { DeliveriesListResult, DeliveryKind } from "@hermesh/her-protocol";
-import { deliveryDay, deliveryFile, deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries } from "./deliveries.ts";
+import type { DeliveriesListResult, DeliveriesSourcesResult, DeliveryKind, DeliverySourceFilter } from "@hermesh/her-protocol";
+import { deliveryDay, deliveryFile, deliveryQuote, fromSource, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries, sameSource, sourceCount, sourceGroups } from "./deliveries.ts";
 
 // The cases HermeshHer runs too, so both apps read the list the same way.
 type Case = {
@@ -16,6 +16,10 @@ type Case = {
   quotes: { file: string; version: number; quote: { ref: string; own: boolean; text: string; partial: boolean } }[];
   next_page: DeliveriesListResult;
   joined: string[];
+  sources: DeliveriesSourcesResult;
+  source_groups: { query: string; conversation: boolean; routines: string[]; sessions: string[] }[];
+  source_counts: { name: string; all: number; media: number; documents: number }[];
+  from_source: { filter: DeliverySourceFilter; files: string[] }[];
 };
 const shared = JSON.parse(readFileSync(new URL("../testdata/deliveries.json", import.meta.url), "utf8")) as Case;
 const now = Date.parse(shared.now);
@@ -64,4 +68,29 @@ test("pages join in order, a file once", () => {
   assert.deepEqual(joined.files.map((f) => f.name), shared.joined);
   assert.equal(joined.next, undefined, "the last page has none");
   assert.equal(joinDeliveries([shared.page]).next, 2);
+});
+
+test("the filter lists the sources by kind, the latest first, and a search keeps those it names", () => {
+  for (const c of shared.source_groups) {
+    const g = sourceGroups(shared.sources.sources, c.query);
+    assert.equal(!!g.conversation, c.conversation, c.query);
+    assert.deepEqual(g.routines.map((s) => s.name), c.routines, c.query);
+    assert.deepEqual(g.sessions.map((s) => s.name), c.sessions, c.query);
+  }
+});
+
+test("a source counts the files the tab shows", () => {
+  for (const c of shared.source_counts) {
+    const s = shared.sources.sources.find((s) => s.name === c.name)!;
+    assert.deepEqual([sourceCount(s, undefined), sourceCount(s, true), sourceCount(s, false)], [c.all, c.media, c.documents]);
+  }
+});
+
+test("a file came from a source by its latest send, and a filter is the same as itself", () => {
+  for (const c of shared.from_source) {
+    assert.deepEqual(shared.page.files.filter((f) => fromSource(f, c.filter)).map((f) => f.name), c.files, JSON.stringify(c.filter));
+    assert.ok(sameSource(c.filter, structuredClone(c.filter)));
+  }
+  assert.ok(!sameSource({ kind: "routine", id: "rtn_1" }, { kind: "routine", id: "rtn_2" }));
+  assert.ok(!sameSource({ kind: "conversation" }, null) && sameSource(null, undefined));
 });

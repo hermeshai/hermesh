@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 文件 · 按来源过滤 · 原型</title>
+<style>
+:root{--font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  --i-bg:#f2f2f7;--i-card:#fff;--i-l1:#000;--i-l2:rgba(60,60,67,.6);--i-l3:rgba(60,60,67,.3);--i-sep:rgba(60,60,67,.12);
+  --i-fill:rgba(118,118,128,.12);--i-tint:#3d5bff;--i-glass:rgba(255,255,255,.72);--i-glass-bd:rgba(255,255,255,.6);--i-glass-sh:0 0 0 .5px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.12);
+  --win:#fff;--side:#f4f4f7;--l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);
+  --accent:#3d5bff;--accent-bg:rgba(61,91,255,.10);--glass:rgba(255,255,255,.82);--glass-sh:0 0 0 .5px rgba(0,0,0,.12),0 10px 30px rgba(0,0,0,.16);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.2),0 24px 70px rgba(10,20,50,.3);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#1a1b20;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000;--i-card:#1c1c1e;--i-l1:#fff;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.3);--i-sep:rgba(84,84,88,.6);
+  --i-fill:rgba(118,118,128,.24);--i-tint:#6f87ff;--i-glass:rgba(44,44,48,.7);--i-glass-bd:rgba(255,255,255,.08);--i-glass-sh:0 0 0 .5px rgba(255,255,255,.1),0 6px 24px rgba(0,0,0,.5);
+  --win:#1e1e21;--side:#25252a;--l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);
+  --accent:#6f87ff;--accent-bg:rgba(91,121,255,.18);--glass:rgba(52,52,58,.88);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),0 10px 30px rgba(0,0,0,.5);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-mac);min-height:100vh;padding-bottom:70px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1400px;margin:0 auto;padding:20px 24px 4px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0}.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1400px;margin:0 auto;padding:10px 24px;display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.notes{width:380px;max-width:100%;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}.notes p{margin:0;color:var(--page-fg2)}.notes ol,.notes ul{margin:6px 0 0;padding-left:19px}.notes li{margin:4px 0}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--page-bd)}
+.notes b{font-weight:600}.notes i{font-style:normal;color:var(--page-fg2)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center}.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:3px 10px;border-radius:7px;background:var(--fill2)}.ctl button.on{background:var(--accent);color:#fff}
+.hide{display:none!important}
+
+/* file icon */
+.fi{position:relative;flex:none;width:34px;height:42px;border-radius:7px;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;font:700 8px/1 var(--font-ios);color:var(--k);background:color-mix(in srgb,var(--k) 14%,transparent);overflow:hidden}
+.fi::before{content:"";position:absolute;left:8px;right:8px;top:8px;height:2px;border-radius:1px;background:var(--k);opacity:.45;box-shadow:0 5px 0 var(--k),0 10px 0 var(--k)}
+.k-doc{--k:#2f6bff}.k-pdf{--k:#e5484d}.k-md{--k:#7a7f8c}.k-sheet{--k:#1a9d55}.k-image{--k:#7a7f8c}.k-slide{--k:#e8830c}
+
+/* ============ iPhone ============ */
+.phone{width:417px;height:876px;border-radius:58px;padding:12px;background:#111;box-shadow:0 30px 80px rgba(10,20,50,.35),inset 0 0 0 2px #333;flex:none}
+.scr{position:relative;width:100%;height:100%;border-radius:46px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);font:17px/1.3 var(--font-ios);letter-spacing:-.2px;user-select:none}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;justify-content:space-between;align-items:center;padding:6px 34px 0 44px;font-size:16px;font-weight:600;z-index:30;pointer-events:none}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:122px;height:35px;border-radius:20px;background:#000;z-index:31}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:134px;height:5px;border-radius:3px;background:var(--i-l1);opacity:.85;z-index:60}
+.gbtn{position:relative;width:44px;height:44px;border-radius:22px;background:var(--i-glass);backdrop-filter:blur(22px) saturate(1.8);-webkit-backdrop-filter:blur(22px) saturate(1.8);box-shadow:var(--i-glass-sh),inset 0 0 0 .5px var(--i-glass-bd);display:flex;align-items:center;justify-content:center;flex:none;transition:transform .15s,background .2s}
+.gbtn:active{transform:scale(.94)}
+.gbtn svg{width:20px;height:20px}
+.gbtn.on{background:color-mix(in srgb,var(--i-tint) 88%,transparent);color:#fff}
+.gbtn .dot{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:4px;background:var(--i-tint);box-shadow:0 0 0 2px var(--i-bg)}
+.nav{position:absolute;top:56px;left:16px;right:16px;height:44px;display:flex;align-items:center;justify-content:space-between;z-index:12}
+.nav b{position:absolute;left:0;right:0;text-align:center;font-weight:600;pointer-events:none}
+.ibody{position:absolute;inset:0;overflow-y:auto;scrollbar-width:none;padding:108px 0 40px}
+.ibody::-webkit-scrollbar{display:none}
+.search{margin:0 16px;height:38px;border-radius:12px;background:var(--i-fill);display:flex;align-items:center;gap:7px;padding:0 10px;color:var(--i-l2);font-size:16px}
+.search svg{width:16px;height:16px}
+.seg{margin:12px 16px 0;display:flex;padding:2px;border-radius:10px;background:var(--i-fill)}
+.seg button{flex:1;height:30px;border-radius:8px;font-size:14px;font-weight:500;color:var(--i-l1)}
+.seg button.on{background:var(--i-card);box-shadow:0 1px 3px rgba(0,0,0,.12);font-weight:600}
+.active{margin:12px 16px 0;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 12px;border-radius:14px;background:color-mix(in srgb,var(--i-tint) 12%,transparent);color:var(--i-tint);font-size:14px;font-weight:550;animation:pop .2s ease-out}
+.active svg{width:15px;height:15px;flex:none}.active span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.active small{font-weight:400;opacity:.8}
+.active button{width:26px;height:26px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--i-tint) 16%,transparent)}
+.active button svg{width:10px;height:10px}
+@keyframes pop{from{opacity:0;transform:translateY(-4px)}}
+.sec{margin:22px 16px 0}
+.sec h4{margin:0 0 6px 16px;font-size:13px;font-weight:400;color:var(--i-l2);text-transform:none}
+.sec h4 small{color:var(--i-l3);margin-left:4px}
+.card{background:var(--i-card);border-radius:14px;overflow:hidden}
+.row{display:flex;gap:12px;align-items:center;padding:10px 14px;position:relative}
+.row+.row::before{content:"";position:absolute;top:0;left:60px;right:0;height:.5px;background:var(--i-sep)}
+.row .k{flex:1;min-width:0}
+.l1,.l2{display:flex;align-items:baseline;gap:8px}
+.l1 .n{flex:1;min-width:0;display:flex;align-items:center;gap:6px;font-weight:500;font-size:16px}
+.l1 .n span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.new{flex:none;width:8px;height:8px;border-radius:4px;background:var(--i-tint)}
+.l1 time{font-size:13px;color:var(--i-l2);font-variant-numeric:tabular-nums}
+.l2{margin-top:2px}.l2 .s{flex:1;min-width:0;font-size:14px;color:var(--i-l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vb{flex:none;font-size:11.5px;font-weight:600;color:var(--i-tint);background:color-mix(in srgb,var(--i-tint) 12%,transparent);padding:1px 7px;border-radius:99px}
+.empty{margin:80px 32px;text-align:center;color:var(--i-l2);font-size:15px}.empty b{display:block;color:var(--i-l1);margin-bottom:6px}
+/* the layer */
+.scrim{position:absolute;inset:0;z-index:40}
+.pop{position:absolute;z-index:41;top:106px;right:14px;width:292px;max-height:560px;overflow-y:auto;border-radius:26px;background:var(--i-glass);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);box-shadow:var(--i-glass-sh),inset 0 0 0 .5px var(--i-glass-bd),0 20px 60px rgba(0,0,0,.18);padding:6px;transform-origin:top right;animation:open .26s cubic-bezier(.2,.9,.3,1.15)}
+@keyframes open{from{opacity:0;transform:scale(.6)}}
+.pop h5{margin:10px 12px 4px;font-size:12.5px;font-weight:600;color:var(--i-l2);display:flex;gap:6px;align-items:center}
+.pop h5 svg{width:13px;height:13px}
+.opt{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border-radius:16px;text-align:left;font-size:16px}
+.opt:hover,.opt:active{background:var(--i-fill)}
+.opt .ic{width:28px;height:28px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--i-fill);color:var(--i-l2)}
+.opt .ic svg{width:15px;height:15px}
+.opt .t{flex:1;min-width:0}.opt .t div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt .t small{display:block;font-size:12.5px;color:var(--i-l2)}
+.opt .c{font-size:14px;color:var(--i-l2);font-variant-numeric:tabular-nums}
+.opt .ck{width:18px;flex:none;color:var(--i-tint)}.opt .ck svg{width:16px;height:16px}
+.opt.on .ic{background:color-mix(in srgb,var(--i-tint) 16%,transparent);color:var(--i-tint)}
+.opt.off{opacity:.42;pointer-events:none}
+.pop .sep{height:.5px;background:var(--i-sep);margin:6px 12px}
+/* the drawer: a glass sheet from the bottom, half height, drag the grabber up for all */
+.dim{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.16);animation:fade .25s}
+@keyframes fade{from{opacity:0}}
+.sheet{position:absolute;z-index:41;left:8px;right:8px;bottom:8px;height:58%;display:flex;flex-direction:column;border-radius:38px;background:var(--i-glass);backdrop-filter:blur(34px) saturate(1.8);-webkit-backdrop-filter:blur(34px) saturate(1.8);box-shadow:var(--i-glass-sh),inset 0 0 0 .5px var(--i-glass-bd),0 -10px 50px rgba(0,0,0,.14);animation:rise .34s cubic-bezier(.2,.9,.25,1);transition:height .3s cubic-bezier(.2,.9,.25,1),left .3s,right .3s,bottom .3s,border-radius .3s}
+.sheet.large{height:calc(100% - 58px);left:0;right:0;bottom:0;border-radius:38px 38px 46px 46px}
+@keyframes rise{from{transform:translateY(105%)}}
+.grab{height:22px;display:flex;justify-content:center;align-items:center;cursor:grab;flex:none}
+.grab i{width:38px;height:5px;border-radius:3px;background:var(--i-l3)}
+.sh-head{position:relative;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;flex:none}
+.sh-head b{position:absolute;left:0;right:0;text-align:center;font-weight:600;pointer-events:none}
+.sh-head .txt{font-size:16px;color:var(--i-tint);padding:0 6px;height:44px}
+.sh-head .gbtn{width:38px;height:38px}.sh-head .gbtn svg{width:14px;height:14px}
+.sh-search{margin:6px 14px 4px;height:38px;border-radius:19px;background:var(--i-fill);display:flex;align-items:center;gap:7px;padding:0 12px;color:var(--i-l2);flex:none}
+.sh-search svg{width:16px;height:16px;flex:none}
+.sh-search input{flex:1;min-width:0;border:0;outline:0;background:none;font:16px var(--font-ios);color:var(--i-l1)}
+.sheet h5{margin:14px 12px 4px;font-size:12.5px;font-weight:600;color:var(--i-l2);display:flex;gap:6px;align-items:center}
+.sheet h5 svg{width:13px;height:13px}
+.sheet .sep{height:.5px;background:var(--i-sep);margin:6px 12px}
+.sh-list{flex:1;overflow-y:auto;padding:4px 6px 30px;scrollbar-width:none}
+.sh-list::-webkit-scrollbar{display:none}
+.foot{margin:10px 18px 0;font-size:12.5px;color:var(--i-l2);line-height:1.5}
+.del{font-size:11px;color:var(--i-l2);background:var(--i-fill);padding:1px 6px;border-radius:99px;margin-left:6px;font-weight:500;vertical-align:1px}
+.nomatch{margin:30px 20px;text-align:center;color:var(--i-l2);font-size:15px}
+.mpop .msearch{display:flex;align-items:center;gap:6px;margin:3px 4px 5px;height:26px;padding:0 8px;border-radius:7px;background:var(--fill2);color:var(--l3)}
+.mpop .msearch svg{width:13px;height:13px}.mpop .msearch input{flex:1;min-width:0;border:0;outline:0;background:none;font:13px var(--font-mac);color:var(--l1)}
+.mpop .foot{margin:6px 9px 4px;font-size:11.5px;color:var(--l2)}
+.mpop .del{background:var(--fill2);color:var(--l2)}
+
+/* ============ Mac ============ */
+.mac{width:900px;max-width:100%;height:700px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:flex;background:var(--win);color:var(--l1);font:13px/1.45 var(--font-mac);position:relative}
+.mconv{flex:1;border-right:.5px solid var(--sep);display:flex;align-items:center;justify-content:center;color:var(--l3);background:var(--win)}
+.mpanel{width:360px;flex:none;display:flex;flex-direction:column;position:relative}
+.mtop{height:46px;display:flex;align-items:center;gap:4px;padding:0 10px 0 16px}
+.mtop b{flex:1;font-size:14px}
+.tb{position:relative;height:28px;min-width:30px;padding:0 7px;border-radius:8px;display:flex;align-items:center;justify-content:center;gap:4px;color:var(--l2);font-size:12px}
+.tb:hover{background:var(--fill2);color:var(--l1)}
+.tb svg{width:15px;height:15px}
+.tb.glass{background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(20px)}
+.tb.on{background:var(--accent);color:#fff;box-shadow:none}
+.mt{padding:0 14px 6px;display:flex;flex-direction:column;gap:9px}
+.ms{height:28px;border-radius:8px;background:var(--fill2);display:flex;align-items:center;gap:6px;padding:0 9px;color:var(--l3)}
+.ms svg{width:14px;height:14px}
+.mseg{display:flex;padding:2px;border-radius:8px;background:var(--fill2)}
+.mseg button{flex:1;height:22px;border-radius:6px;font-size:12px;color:var(--l2)}
+.mseg button.on{background:var(--win);color:var(--l1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.mactive{display:flex;align-items:center;gap:6px;padding:5px 6px 5px 10px;border-radius:8px;background:var(--accent-bg);color:var(--accent);font-size:12px;font-weight:550;animation:pop .2s ease-out}
+.mactive span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mactive svg{width:13px;height:13px;flex:none}
+.mactive button{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center}.mactive button:hover{background:var(--accent-bg)}
+.mbody{flex:1;overflow-y:auto;padding:0 6px 16px}
+.mbody h4{margin:14px 10px 4px;font-size:11.5px;color:var(--l2)}.mbody h4 small{color:var(--l3);margin-left:4px;font-weight:400}
+.mrow{display:flex;gap:10px;align-items:center;padding:7px 10px;border-radius:8px}
+.mrow:hover{background:var(--fill)}
+.mrow .fi{width:30px;height:36px;font-size:7px}.mrow .fi::before{left:7px;right:7px;top:7px;box-shadow:0 4px 0 var(--k),0 8px 0 var(--k)}
+.mrow .k{flex:1;min-width:0}
+.mrow .l1 .n{font-size:13px;font-weight:550}.mrow .l1 time{font-size:11.5px;color:var(--l2)}
+.mrow .l2 .s{font-size:12px;color:var(--l2)}.mrow .new{width:7px;height:7px;background:var(--accent)}
+.mrow .vb{font-size:11px;color:var(--accent);background:var(--accent-bg)}
+.mpop{position:absolute;z-index:41;top:40px;right:42px;width:270px;max-height:520px;overflow-y:auto;border-radius:12px;padding:5px;background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(24px) saturate(1.6);transform-origin:top right;animation:open .2s cubic-bezier(.2,.9,.3,1.1)}
+.mpop h5{margin:8px 9px 3px;font-size:11px;font-weight:600;color:var(--l2);display:flex;gap:5px;align-items:center}.mpop h5 svg{width:12px;height:12px}
+.mopt{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;border-radius:7px;text-align:left;font-size:13px}
+.mopt:hover{background:var(--accent);color:#fff}.mopt:hover .c{color:#fff}
+.mopt .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mopt .c{font-size:12px;color:var(--l2)}.mopt .ck{width:14px;flex:none}.mopt .ck svg{width:12px;height:12px}
+.mopt.off{opacity:.4;pointer-events:none}
+.mpop .sep{height:.5px;background:var(--sep);margin:4px 8px}
+.mempty{margin:60px 24px;text-align:center;color:var(--l2)}.mempty b{display:block;color:var(--l1);margin-bottom:4px}
+</style>
+</head>
+<body>
+<div class="top"><h1>Her 文件 · 按来源过滤 · 原型</h1><span>右上角的玻璃按钮打开浮层；选一个来源，列表只看它的文件。可以点。</span></div>
+<div class="wrap"><div id="stage"></div><aside class="notes" id="notes"></aside></div>
+<div class="ctl" id="ctl"></div>
+<script>
+const ic=(d,w=2)=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const I={
+  back:ic('<path d="M15 5 8 12l7 7"/>',2.4),
+  filter:ic('<path d="M4 6h16M7 12h10M10 18h4"/>',2.2),
+  search:ic('<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>'),
+  clock:ic('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  code:ic('<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>'),
+  chat:ic('<path d="M20 11.5a7.5 7.5 0 0 1-10.6 6.8L4 20l1.6-4.6A7.5 7.5 0 1 1 20 11.5Z"/>'),
+  all:ic('<path d="M3 13.5 5.6 6a2 2 0 0 1 1.9-1.4h9A2 2 0 0 1 18.4 6L21 13.5"/><path d="M3 13.5h5l1 2.6h6l1-2.6h5v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  check:ic('<path d="m5 12.5 4.5 4.5L19 7.5"/>',2.6),
+  x:ic('<path d="M6 6l12 12M18 6 6 18"/>',3),
+  x2:ic('<path d="M6 6l12 12M18 6 6 18"/>',2.4),
+};
+// Her's sources, as the owner's real ones (her.db); the files are examples.
+const BASE=[
+  {key:"chat",kind:"chat",name:"对话里要的"},
+  {key:"r:gh",kind:"routine",name:"GitHub趋势早报"},
+  {key:"r:apple",kind:"routine",name:"苹果审核状态日报"},
+  {key:"r:usage",kind:"routine",name:"Hermesh用户用量周报"},
+  {key:"r:ph",kind:"routine",name:"Product Hunt创新产品周报"},
+  {key:"r:mc",kind:"routine",name:"MovieClaw PR巡检",gone:1},
+  {key:"r:dmit",kind:"routine",name:"DMIT东京Pro补货"},
+  {key:"s:cc",kind:"session",name:"Claude Code",sub:"yee-homebook/hermesh-cloud"},
+  {key:"s:cx",kind:"session",name:"Codex",sub:"yee-homebook/hermesh-cloud"},
+];
+// day: 0 today, -1 yesterday …
+const BASE_FILES=[
+  {n:"GitHub趋势早报-11-16.md",k:"md",src:"r:gh",day:0,t:"08:02",s:"今天上榜的 12 个项目，Rust 占了 5 个。",isNew:1},
+  {n:"苹果审核状态日报-11-16.md",k:"md",src:"r:apple",day:0,t:"09:00",s:"Hermesh 1.4 仍在审核中，已排队 31 小时。",isNew:1},
+  {n:"杭州出差行程.pdf",k:"pdf",src:"chat",day:0,t:"14:32",s:"行程排好了，三天的安排在 PDF 里。",isNew:1},
+  {n:"Q3 竞品分析.docx",k:"doc",src:"chat",day:0,t:"13:05",s:"加好了：最前面是一页结论摘要。",v:3},
+  {n:"接口联调报告.md",k:"md",src:"s:cc",day:-1,t:"17:20",s:"联调跑完了：42 个接口过了 40 个。"},
+  {n:"MovieClaw-PR巡检-11-15.md",k:"md",src:"r:mc",day:-1,t:"21:00",s:"3 个 PR 等你审，1 个 CI 失败。"},
+  {n:"GitHub趋势早报-11-15.md",k:"md",src:"r:gh",day:-1,t:"08:01",s:"今天上榜的 10 个项目，AI 代理占了 4 个。"},
+  {n:"苹果审核状态日报-11-15.md",k:"md",src:"r:apple",day:-1,t:"09:00",s:"Hermesh 1.4 已提交审核。"},
+  {n:"用量周报-第46周.xlsx",k:"sheet",src:"r:usage",day:-3,t:"10:00",s:"周活 1,284，环比 +9%。"},
+  {n:"用量趋势-第46周.png",k:"image",src:"r:usage",day:-3,t:"10:00",s:"周活 1,284，环比 +9%。"},
+  {n:"PH创新产品周报-第46周.md",k:"md",src:"r:ph",day:-4,t:"11:30",s:"本周 Top 10，有 3 个做 AI 笔记。"},
+  {n:"发布说明-0.1.5.md",k:"md",src:"s:cx",day:-5,t:"16:45",s:"整理好了，按功能分了四节。"},
+  {n:"融资路演.pptx",k:"slide",src:"chat",day:-9,t:"10:12",s:"市场规模和营收两页换成了 10 月的数据。"},
+  {n:"GitHub趋势早报-11-07.md",k:"md",src:"r:gh",day:-9,t:"08:00",s:"今天上榜的 11 个项目。"},
+];
+// "很多定时任务": 16 more, some never sent a file. [name, files, days ago of the latest, kind of file]
+const MORE=[["Stripe收入日报",4,0,"sheet"],["App Store评论日报",2,0,"md"],["竞品价格监控",3,-1,"sheet"],["小红书舆情",2,-1,"image"],
+  ["Hacker News精选",2,-2,"md"],["Sentry错误周报",1,-2,"md"],["云账单周报",1,-3,"sheet"],["依赖安全扫描",1,-4,"md"],
+  ["TestFlight反馈汇总",1,-6,"md"],["招聘渠道周报",1,-6,"sheet"],["周会纪要整理",1,-8,"doc"],["开源Star周报",1,-11,"image"],
+  ["域名与证书到期检查",0],["汇率提醒",0],["天气出行提醒",0],["服务器磁盘巡检",0]];
+const ext={md:"md",sheet:"xlsx",image:"png",doc:"docx"};
+const sources=()=>S.many?[...BASE,...MORE.map(([n],i)=>({key:"m:"+i,kind:"routine",name:n}))]:BASE;
+const files=()=>S.many?[...BASE_FILES,...MORE.flatMap(([n,c,d,k],i)=>Array.from({length:c},(_,j)=>({n:`${n}-${16+d-j*2}日.${ext[k]}`,k,src:"m:"+i,day:d-j*2,t:"07:30",s:`${n}：这一期的要点都在里面。`})))]:BASE_FILES;
+const MEDIA=new Set(["image"]);
+const S={plat:"phone",theme:"light",tab:"all",src:null,open:false,multi:false,sel:new Set(),many:true,sheet:true,large:false,q:""};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const dayKey=d=>d===0?"今天":d===-1?"昨天":d>=-7?"过去 7 天":"更早";
+const srcOf=k=>sources().find(s=>s.key===k);
+const chosen=()=>S.multi?[...S.sel]:(S.src?[S.src]:[]);
+const inTab=f=>S.tab==="all"||(MEDIA.has(f.k)===(S.tab==="media"));
+const shown=()=>{const c=chosen();return files().filter(f=>inTab(f)&&(!c.length||c.includes(f.src)))};
+const count=k=>files().filter(f=>f.src===k&&inTab(f)).length;
+const total=k=>files().filter(f=>f.src===k).length;
+const latest=k=>Math.max(...files().filter(f=>f.src===k).map(f=>f.day*1440+(+f.t.slice(0,2))*60+(+f.t.slice(3))));
+const iconOf=s=>s.kind==="routine"?I.clock:s.kind==="session"?I.code:I.chat;
+function groups(list){const m=new Map();for(const f of [...list].sort((a,b)=>b.day-a.day||b.t.localeCompare(a.t))){const k=dayKey(f.day);if(!m.has(k))m.set(k,[]);m.get(k).push(f)}return[...m]}
+const fi=f=>`<span class="fi k-${f.k==="md"?"md":f.k}">${f.n.split(".").pop().toUpperCase().slice(0,4)}</span>`;
+const when=f=>f.day>=-1?f.t:`11月${16+f.day}日`;
+function activeLabel(){const c=chosen();if(!c.length)return null;if(c.length===1){const s=srcOf(c[0]);return{icon:iconOf(s),text:s.name,n:count(c[0])}}return{icon:I.filter,text:`${c.length} 个来源`,n:shown().length}}
+
+// The sources to offer: only those that sent a file; the newest first; the search narrows them.
+function offered(){
+  const q=S.q.trim().toLowerCase(), hit=s=>!q||(s.name+(s.sub||"")).toLowerCase().includes(q);
+  const sent=sources().filter(s=>total(s.key)>0).sort((a,b)=>latest(b.key)-latest(a.key));
+  return{chat:sent.filter(s=>s.kind==="chat"&&hit(s)),routines:sent.filter(s=>s.kind==="routine"&&hit(s)),sessions:sent.filter(s=>s.kind==="session"&&hit(s)),
+    silent:sources().filter(s=>s.kind==="routine"&&!total(s.key)).length,q};
+}
+const searchable=()=>sources().length>8;
+function srcList(plat){
+  const o=offered(),c=chosen(),phone=plat==="phone";
+  const opt=s=>{const n=count(s.key),on=c.includes(s.key),gone=s.gone?`<span class="del">已删除</span>`:"";
+    return phone
+      ?`<button class="opt ${on?"on":""} ${n?"":"off"}" data-src="${s.key}"><span class="ic">${iconOf(s)}</span><span class="t"><div>${esc(s.name)}${gone}</div>${s.sub?`<small>${esc(s.sub)}</small>`:""}</span><span class="c">${n}</span><span class="ck">${on?I.check:""}</span></button>`
+      :`<button class="mopt ${n?"":"off"}" data-src="${s.key}"><span class="ck">${on?I.check:""}</span><span class="t">${esc(s.name)}${s.sub?` · ${esc(s.sub)}`:""}${gone}</span><span class="c">${n}</span></button>`;};
+  const h=(icon,t)=>`<h5>${icon}${t}</h5>`;
+  const n=files().filter(inTab).length;
+  let out="";
+  if(!o.q)out+=(phone
+    ?`<button class="opt ${c.length?"":"on"}" data-src=""><span class="ic">${I.all}</span><span class="t"><div>全部来源</div></span><span class="c">${n}</span><span class="ck">${c.length?"":I.check}</span></button>`
+    :`<button class="mopt" data-src=""><span class="ck">${c.length?"":I.check}</span><span class="t">全部来源</span><span class="c">${n}</span></button>`)+`<div class="sep"></div>`;
+  out+=o.chat.map(opt).join("");
+  if(o.routines.length)out+=h(I.clock,`定时任务 · ${o.routines.length}`)+o.routines.map(opt).join("");
+  if(o.sessions.length)out+=h(I.code,"编程会话")+o.sessions.map(opt).join("");
+  if(!o.chat.length&&!o.routines.length&&!o.sessions.length)out+=`<div class="nomatch">没有叫「${esc(S.q)}」的来源</div>`;
+  if(!o.q&&o.silent)out+=`<div class="foot">另有 ${o.silent} 个定时任务还没发过文件，这里不列。</div>`;
+  return out;
+}
+const searchBox=cls=>`<div class="${cls}">${I.search}<input id="srcq" placeholder="搜定时任务" value="${esc(S.q)}" autocomplete="off"></div>`;
+
+function phone(){
+  const list=shown(),a=activeLabel();
+  const rows=groups(list).map(([k,fs])=>`<div class="sec"><h4>${k}<small>${fs.length}</small></h4><div class="card">${fs.map(f=>`
+    <div class="row">${fi(f)}<div class="k"><div class="l1"><span class="n"><span>${esc(f.n)}</span>${f.isNew?'<i class="new"></i>':""}</span><time>${when(f)}</time></div>
+    <div class="l2"><span class="s">${esc(f.s)}</span>${f.v?`<span class="vb">${f.v} 个版本</span>`:""}</div></div></div>`).join("")}</div></div>`).join("");
+  const layer=!S.open?"":S.sheet
+    ?`<div class="dim" data-act="close"></div><div class="sheet ${S.large?"large":""}">
+        <div class="grab" data-act="detent" title="点一下展开 / 收起"><i></i></div>
+        <div class="sh-head">${chosen().length?`<button class="txt" data-act="clear">清除</button>`:"<span></span>"}<b>按来源看</b><button class="gbtn" data-act="close" aria-label="关闭">${I.x2}</button></div>
+        ${searchable()?searchBox("sh-search"):""}
+        <div class="sh-list" id="srcs"><div style="padding:0 2px">${srcList("phone")}</div></div></div>`
+    :`<div class="scrim" data-act="close"></div><div class="pop">${searchable()?searchBox("search").replace('class="search"','class="search" style="margin:6px 6px 4px"'):""}<div id="srcs">${srcList("phone")}</div></div>`;
+  return `<div class="phone"><div class="scr">
+    <div class="sb"><span>9:41</span><span style="width:26px;height:12px;border-radius:4px;background:currentColor;opacity:.9"></span></div><div class="island"></div>
+    <div class="nav"><button class="gbtn">${I.back}</button><b>文件</b><button class="gbtn ${a?"on":""}" data-act="toggle" aria-label="按来源过滤">${I.filter}</button></div>
+    <div class="ibody">
+      <div class="search">${I.search}搜文件名，或 Her 说过的话</div>
+      <div class="seg">${[["all","全部"],["docs","文档"],["media","媒体"]].map(([k,t])=>`<button class="${S.tab===k?"on":""}" data-tab="${k}">${t}</button>`).join("")}</div>
+      ${a?`<div class="active">${a.icon}<span>${esc(a.text)} <small>· ${a.n} 个文件</small></span><button data-act="clear" aria-label="清除">${I.x}</button></div>`:""}
+      ${list.length?rows:`<div class="empty"><b>没有文件</b>这个来源在「${S.tab==="media"?"媒体":"文档"}」里还没有文件。</div>`}
+    </div>
+    ${layer}
+    <div class="home"></div></div></div>`;
+}
+function mac(){
+  const list=shown(),a=activeLabel();
+  return `<div class="mac"><div class="mconv">（Her 的对话）</div><div class="mpanel">
+    <div class="mtop"><b>文件</b><button class="tb glass ${a?"on":""}" data-act="toggle" title="按来源过滤">${I.filter}${a&&chosen().length>1?`<span>${chosen().length}</span>`:""}</button><button class="tb">${I.x2}</button></div>
+    <div class="mt"><div class="ms">${I.search}搜文件名，或 Her 说过的话</div>
+      <div class="mseg">${[["all","全部"],["docs","文档"],["media","媒体"]].map(([k,t])=>`<button class="${S.tab===k?"on":""}" data-tab="${k}">${t}</button>`).join("")}</div>
+      ${a?`<div class="mactive">${a.icon}<span>${esc(a.text)} · ${a.n} 个文件</span><button data-act="clear" title="清除">${I.x}</button></div>`:""}</div>
+    <div class="mbody">${list.length?groups(list).map(([k,fs])=>`<h4>${k}<small>${fs.length}</small></h4>${fs.map(f=>`<div class="mrow">${fi(f)}<div class="k"><div class="l1"><span class="n"><span>${esc(f.n)}</span>${f.isNew?'<i class="new"></i>':""}</span><time>${when(f)}</time></div><div class="l2"><span class="s">${esc(f.s)}</span>${f.v?`<span class="vb">${f.v} 个版本</span>`:""}</div></div></div>`).join("")}`).join(""):`<div class="mempty"><b>没有文件</b>这个来源在这里还没有文件。</div>`}</div>
+    ${S.open?`<div class="scrim" data-act="close"></div><div class="mpop">${searchable()?searchBox("msearch"):""}<div id="srcs">${srcList("mac")}</div></div>`:""}
+  </div></div>`;
+}
+function notes(){
+  $("#notes").innerHTML=`<h3>任务多了怎么办</h3>
+  <p>入口不变：右上角一个玻璃按钮。变的是点开以后的东西。</p>
+  <ul>
+    <li><b>iPhone 用底部抽屉</b>（默认）：先开到半屏，拖上面的小横条（这里点一下）到全屏。手指够得着，地方够大，也是 iOS 里「筛选」常见的样子。右上角弹层在任务少时好看，十几个以后就是一条从屏幕顶上挂下来的长单子，单手够不着。底部可以切回「右上弹出」对比。</li>
+    <li><b>Mac 留下拉菜单</b>：鼠标点哪都一样近，菜单加个搜索框、限高滚动就够了。</li>
+    <li><b>来源多于 8 个出搜索框</b>，搜任务名。</li>
+    <li><b>最近发过文件的排前面</b>，不按名字排：每天的早报总在最上面，半年前跑过一次的沉到底。</li>
+    <li><b>没发过文件的任务不列</b>（改了上一版的建议）：任务一多，一排灰色只是干扰；底下一句「另有 4 个定时任务还没发过文件」交代清楚。</li>
+    <li><b>删掉的任务还列</b>，带「已删除」：它发过的文件还在。</li>
+  </ul>
+  <div class="blk"><h3>试试看</h3><ol><li>点右上角的过滤按钮，看半屏抽屉</li><li>点抽屉顶上的小横条，展开到全屏</li><li>在搜索框打「周报」</li><li>底部把「iPhone 样式」切到「右上弹出」对比</li></ol></div>
+  <div class="blk"><h3>怎么记准来源（先做）</h3><ol>
+    <li><b>看内容是谁写的</b>：每次定时任务运行结束，her 记下它在 Her 文件夹里新写或改过的文件和内容指纹。之后 Her 哪天发出同样内容的文件，都算这次运行的。</li>
+    <li><b>看这一轮是谁叫醒的</b>：发送时内核直接记下叫醒这一轮的报告，不再事后倒推。</li>
+    <li>都不符合：算「对话里要的」。</li></ol></div>`;
+}
+function ctl(){
+  const g=(l,k,o)=>`<div class="g"><b>${l}</b>${o.map(([v,t])=>`<button class="${String(S[k])===String(v)?"on":""}" data-set="${k}:${v}">${t}</button>`).join("")}</div>`;
+  $("#ctl").innerHTML=g("平台","plat",[["phone","iPhone"],["mac","Mac"]])+g("iPhone 样式","sheet",[[true,"底部抽屉"],[false,"右上弹出"]])+g("定时任务","many",[[false,"6 个"],[true,"22 个"]])+g("选择","multi",[[false,"单选"],[true,"多选"]])+g("外观","theme",[["light","浅色"],["dark","深色"]]);
+}
+function paint(){document.documentElement.dataset.theme=S.theme;$("#stage").innerHTML=S.plat==="phone"?phone():mac();notes();ctl()}
+document.addEventListener("input",e=>{if(e.target.id!=="srcq")return;S.q=e.target.value;const box=$("#srcs");const plat=S.plat;box.innerHTML=plat==="phone"&&S.sheet?`<div style="padding:0 2px">${srcList("phone")}</div>`:srcList(plat)});
+document.addEventListener("click",e=>{
+  const t=e.target.closest("[data-act],[data-tab],[data-src],[data-set]");if(!t)return;const d=t.dataset;
+  if(d.set){const[k,v]=d.set.split(":");S[k]=v==="true"?true:v==="false"?false:v;S.open=false;S.q="";if(k==="multi"||k==="many"){S.src=null;S.sel.clear()}return paint()}
+  if(d.act==="toggle"){S.open=!S.open;S.large=false;S.q=""}
+  else if(d.act==="close")S.open=false;
+  else if(d.act==="detent")S.large=!S.large;
+  else if(d.act==="clear"){S.src=null;S.sel.clear()}
+  else if(d.tab)S.tab=d.tab;
+  else if(d.src!==undefined){
+    if(!d.src){S.src=null;S.sel.clear();S.open=false}
+    else if(S.multi){S.sel.has(d.src)?S.sel.delete(d.src):S.sel.add(d.src)}
+    else{S.src=d.src;S.open=false}
+  }
+  paint();
+});
+const q=new URLSearchParams(location.search);for(const k of["plat","theme","tab","src"])if(q.get(k))S[k]=q.get(k);
+for(const k of["sheet","many","large"])if(q.get(k))S[k]=q.get(k)==="1";if(q.get("q"))S.q=q.get("q");if(q.get("open"))S.open=true;
+paint();
+</script>
+</body>
+</html>

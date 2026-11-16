@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { deliveryQuote, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries, readSent } from "@hermesh/her-client";
-import type { BotSummary, DeliveredFile, DeliveriesListResult, Delivery } from "@hermesh/her-protocol";
+import { deliveryQuote, fromSource, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries, readSent, sameSource, sourceCount, sourceGroups } from "@hermesh/her-client";
+import type { BotSummary, DeliveredFile, DeliveriesListResult, DeliveriesSourcesResult, Delivery, DeliverySourceCount, DeliverySourceFilter } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
 import { Dialog } from "../session/markdown/Dialog";
@@ -13,7 +13,7 @@ import { useHer } from "./context";
 import { replyInComposer, showMessage } from "./Conversation";
 import { reachable } from "./environments";
 import { momentText, sizeText } from "./format";
-import { MenuItem, menuKeys } from "./menus";
+import { MenuButton, MenuItem, menuKeys } from "./menus";
 import { PdfView } from "./preview/PdfView";
 import "./preview/preview.css";
 
@@ -23,6 +23,8 @@ import "./preview/preview.css";
 // and audio, as a grid). A file sent again from the same path is one row; its versions are switched where it opens. A file opens over the window,
 // from the copy her kept of it as it was sent, and is kept on this Mac by its hash once read, so it opens while the
 // machine is offline too. From a file: Show in Conversation, and Reply, which quotes it so Her goes on with it.
+// Where the files came from is not on their rows: the filter button by Close shows one source's, from a menu of the
+// routines and sessions that sent any, the latest first (§3.5).
 
 /** Which of the files show. */
 type Tab = "all" | "documents" | "media";
@@ -64,6 +66,8 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
   const [query, setQuery] = useState("");
   const [typed, setTyped] = useState("");
   const [tab, setTab] = useState<Tab>("all");
+  const [source, setSource] = useState<DeliverySourceFilter | null>(null);
+  const [sources, setSources] = useState<DeliveriesSourcesResult | null>(null);
   const [list, setList] = useState<DeliveriesListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lacks, setLacks] = useState(false);
@@ -78,17 +82,32 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
   }, [typed]);
   // The first page, asked for again when her says the list changed (the row's latest send) or the search does.
   const latest = bot.deliveries_latest ?? 0;
+  const media = tab === "all" ? undefined : tab === "media";
+  const filters = { ...(query ? { query } : {}), ...(media !== undefined ? { media } : {}), ...(source ? { source } : {}) };
   useEffect(() => {
     if (older || !online) return;
     let live = true;
-    her.call("deliveries/list", { bot_id: bot.id, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) }).then(
-      (r) => live && (setList(onlyDeliveries(r, tab === "all" ? undefined : tab === "media")), setError(null), setLacks(false)),
+    her.call("deliveries/list", { bot_id: bot.id, ...filters }).then(
+      (r) => live && (setList(onlyDeliveries(r, media)), setError(null), setLacks(false)),
       (e) => live && (setError(errorText(e)), setLacks(needsUpdate(e))),
     );
     return () => {
       live = false;
     };
-  }, [bot.id, latest, query, tab, online, older]);
+  }, [bot.id, latest, query, tab, source, online, older]);
+  // Where the files came from, for the filter: none from a her that cannot say, and then no filter.
+  useEffect(() => setSource(null), [bot.id]);
+  useEffect(() => {
+    if (older || !online) return;
+    let live = true;
+    her.call("deliveries/sources", { bot_id: bot.id }).then(
+      (r) => live && setSources(r),
+      () => live && setSources(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [bot.id, latest, online, older]);
 
   // Offline, or until her answers: the page this Mac keeps, searched and filtered here.
   const shownList = useMemo<DeliveriesListResult | null>(() => {
@@ -96,10 +115,10 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     if (!kept) return null;
     const q = query.toLowerCase();
     const files = kept.files.filter(
-      (f) => (tab === "all" || isMediaKind(f.kind) === (tab === "media")) && (!q || [f.name, ...f.versions.flatMap((v) => [v.text ?? "", v.source?.name ?? ""])].some((s) => s.toLowerCase().includes(q))),
+      (f) => (tab === "all" || isMediaKind(f.kind) === (tab === "media")) && (!source || fromSource(f, source)) && (!q || [f.name, ...f.versions.flatMap((v) => [v.text ?? "", v.source?.name ?? ""])].some((s) => s.toLowerCase().includes(q))),
     );
     return { files, seen: kept.seen };
-  }, [list, kept, query, tab]);
+  }, [list, kept, query, tab, source]);
 
   // Which files this Mac has, for while the machine is offline.
   const shaList = (shownList?.files ?? []).flatMap((f) => f.versions.flatMap((v) => (v.sha256 ? [[v.sha256, f.name] as [string, string]] : [])));
@@ -132,8 +151,8 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
     if (!list?.next || more) return;
     setMore(true);
     her
-      .call("deliveries/list", { bot_id: bot.id, before: list.next, ...(query ? { query } : {}), ...(tab !== "all" ? { media: tab === "media" } : {}) })
-      .then((r) => onlyDeliveries(r, tab === "all" ? undefined : tab === "media"))
+      .call("deliveries/list", { bot_id: bot.id, before: list.next, ...filters })
+      .then((r) => onlyDeliveries(r, media))
       .then((r) => setList((l) => (l ? joinDeliveries([l, r]) : r)), (e) => st.show(errorText(e)))
       .finally(() => setMore(false));
   };
@@ -171,11 +190,24 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
   };
 
   const groups = shownList ? groupDeliveries(shownList.files, now.getTime(), -now.getTimezoneOffset()) : [];
-  const searching = query !== "" || tab !== "all";
+  const searching = query !== "" || tab !== "all" || !!source;
+  const chosen = source && sources?.sources.find((s) => sameSource(s.filter, source));
   return (
     <aside className="her-panel rtn dlv" aria-label={t("files.title")}>
       <div className="her-panel-top drag rtn-top">
         <span className="rtn-tt">{t("files.title")}</span>
+        {sources && !older && (
+          <MenuButton
+            className={`tb dlv-src ${source ? "on" : ""}`}
+            title={t("files.sources.button")}
+            label={<Icon name="filter" />}
+            align="right"
+            below
+            disabled={!online}
+          >
+            {(close) => <SourceMenu sources={sources} source={source} media={media} onPick={(s) => (close(), setSource(s))} />}
+          </MenuButton>
+        )}
         <button className="tb" title={t("panel.close")} aria-label={t("panel.close")} onClick={onClose}>
           <Icon name="x" />
         </button>
@@ -201,6 +233,18 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
                 </button>
               ))}
             </div>
+            {source && (
+              <div className="dlv-source" data-testid="files-source">
+                <Icon name={sourceIcon(source)} className="sm" />
+                <span>
+                  {sourceName(source, chosen, t("files.sources.conversation"))}
+                  {chosen && <small> · {t("files.sources.count", { count: sourceCount(chosen, media) })}</small>}
+                </span>
+                <button title={t("files.sources.clear")} aria-label={t("files.sources.clear")} onClick={() => setSource(null)}>
+                  <Icon name="x" className="sm" />
+                </button>
+              </div>
+            )}
           </div>
           <div className="her-panel-body dlv-body">
             {!online && shownList && <div className="dlv-banner" role="status">{t("files.offline", { name: machine.machineName })}</div>}
@@ -270,6 +314,96 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
         />
       )}
     </aside>
+  );
+}
+
+/** A source's icon: a routine's clock, a session's code, the conversation's bubble. */
+const sourceIcon = (f: DeliverySourceFilter) => (f.kind === "routine" ? "clock" : f.kind === "session" ? "code" : "bubble");
+
+/** What a source is called: the conversation by what it is (`conversation`), the rest by their names as her says them now. */
+function sourceName(f: DeliverySourceFilter, s: DeliverySourceCount | null | undefined, conversation: string): string {
+  if (f.kind === "conversation") return conversation;
+  return s?.name ?? (f.kind === "session" ? f.name : f.id);
+}
+
+/** With more sources than this, the menu has a search. */
+const MANY_SOURCES = 8;
+
+/**
+ * The filter's menu: all sources; then the conversation, the routines and the sessions that sent files, the latest
+ * first, each with how many files the tab shows; one with none in the tab can't be chosen. A deleted routine stays
+ * (its files do); the routines that sent no file are a line at the end.
+ */
+function SourceMenu({ sources, source, media, onPick }: { sources: DeliveriesSourcesResult; source: DeliverySourceFilter | null; media: boolean | undefined; onPick: (s: DeliverySourceFilter | null) => void }) {
+  const { t } = useTranslation("her");
+  const [query, setQuery] = useState("");
+  const find = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const many = sources.sources.length > MANY_SOURCES;
+  const groups = sourceGroups(sources.sources, query);
+  const total = sources.sources.reduce((n, s) => n + sourceCount(s, media), 0);
+  useEffect(() => {
+    const menu = box.current?.closest<HTMLElement>("[role=menu]");
+    if (many && menu && document.activeElement === menu) find.current?.focus();
+  }, [many]);
+  const item = (s: DeliverySourceCount) => {
+    const n = sourceCount(s, media);
+    return (
+      <MenuItem
+        key={JSON.stringify(s.filter)}
+        checked={sameSource(s.filter, source)}
+        label={sourceName(s.filter, s, t("files.sources.conversation"))}
+        desc={s.gone ? t("files.sources.gone") : undefined}
+        value={String(n)}
+        disabled={n === 0}
+        onClick={() => onPick(s.filter)}
+      />
+    );
+  };
+  const none = !groups.conversation && groups.routines.length === 0 && groups.sessions.length === 0;
+  return (
+    <div className="mmodels dlv-srcmenu" ref={box}>
+      {many && (
+        <label className="mfind">
+          <Icon name="search" className="sm" />
+          <input
+            ref={find}
+            value={query}
+            placeholder={t("files.sources.find")}
+            aria-label={t("files.sources.find")}
+            spellCheck={false}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown" || e.key === "Escape" || e.key === "Tab") return;
+              e.stopPropagation();
+            }}
+          />
+        </label>
+      )}
+      <div className="mlist">
+        {!query.trim() && (
+          <>
+            <MenuItem checked={!source} label={t("files.sources.all")} value={String(total)} onClick={() => onPick(null)} />
+            <div className="msep" role="separator" />
+          </>
+        )}
+        {groups.conversation && item(groups.conversation)}
+        {groups.routines.length > 0 && (
+          <div role="group" aria-label={t("files.sources.routines")}>
+            <div className="mgh">{t("files.sources.routines")}</div>
+            {groups.routines.map(item)}
+          </div>
+        )}
+        {groups.sessions.length > 0 && (
+          <div role="group" aria-label={t("files.sources.sessions")}>
+            <div className="mgh">{t("files.sources.sessions")}</div>
+            {groups.sessions.map(item)}
+          </div>
+        )}
+        {none && <div className="mempty">{t("files.sources.noMatch", { query: query.trim() })}</div>}
+        {!query.trim() && sources.silent > 0 && <div className="mempty dlv-silent">{t("files.sources.silent", { count: sources.silent })}</div>}
+      </div>
+    </div>
   );
 }
 

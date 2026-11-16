@@ -11,12 +11,96 @@ public struct HerDeliverySource: Equatable, Hashable, Sendable {
     public var kind: Kind
     public var id: String
     public var name: String
+    /// The routine's run it came from, when known.
+    public var run: String?
 
     init?(_ j: JSON) {
         guard let kind = j["kind"].string.flatMap(Kind.init), let id = j["id"].string else { return nil }
         self.kind = kind
         self.id = id
         name = j["name"].string ?? ""
+        run = j["run"].string
+    }
+}
+
+/// Which source's files the list shows (deliveries/list's `source`): what the owner asked for in the conversation, a
+/// routine's by its id, or coding sessions' by their name.
+public enum HerSourceFilter: Hashable, Sendable {
+    case conversation
+    case routine(id: String)
+    case session(name: String)
+
+    init?(_ j: JSON) {
+        switch j["kind"].string {
+        case "conversation": self = .conversation
+        case "routine": guard let id = j["id"].string else { return nil }; self = .routine(id: id)
+        case "session": guard let name = j["name"].string else { return nil }; self = .session(name: name)
+        default: return nil
+        }
+    }
+
+    /// As deliveries/list takes it.
+    public var json: JSON {
+        switch self {
+        case .conversation: ["kind": "conversation"]
+        case .routine(let id): ["kind": "routine", "id": .string(id)]
+        case .session(let name): ["kind": "session", "name": .string(name)]
+        }
+    }
+}
+
+/// A source of Her's files, as deliveries/sources lists it: those whose latest send came from it.
+public struct HerDeliverySourceCount: Equatable, Sendable, Identifiable {
+    public var filter: HerSourceFilter
+    /// A routine's name now, or a session's; nil for the conversation.
+    public var name: String?
+    public var files: Int
+    public var media: Int
+    public var latest: Int
+    /// A deleted routine: the files it sent stay.
+    public var gone: Bool
+    public var id: HerSourceFilter { filter }
+
+    init?(_ j: JSON) {
+        guard let filter = HerSourceFilter(j["filter"]) else { return nil }
+        self.filter = filter
+        name = j["name"].string
+        files = j["files"].int ?? 0
+        media = j["media"].int ?? 0
+        latest = j["latest"].int ?? 0
+        gone = j["gone"].bool ?? false
+    }
+
+    /// How many of its files a tab shows: all (nil), only media, or only documents.
+    public func count(media only: Bool?) -> Int {
+        guard let only else { return files }
+        return only ? media : files - media
+    }
+}
+
+/// deliveries/sources: where Her's files came from, the latest first, and how many routines sent none.
+public struct HerDeliverySources: Equatable, Sendable {
+    public var sources: [HerDeliverySourceCount]
+    public var silent: Int
+
+    public init?(_ j: JSON) {
+        guard let sources = j["sources"].array else { return nil }
+        self.sources = sources.compactMap(HerDeliverySourceCount.init)
+        silent = j["silent"].int ?? 0
+    }
+
+    /// The source a filter names, when it is listed.
+    public func source(_ filter: HerSourceFilter) -> HerDeliverySourceCount? { sources.first { $0.filter == filter } }
+
+    /// As the filter lists them: each kind apart, the latest first; a search keeps those with it in their name.
+    public func groups(query: String) -> (conversation: HerDeliverySourceCount?, routines: [HerDeliverySourceCount], sessions: [HerDeliverySourceCount]) {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let kept = sources.filter { q.isEmpty || ($0.name ?? "").lowercased().contains(q) }
+        return (
+            kept.first { $0.filter == .conversation },
+            kept.filter { if case .routine = $0.filter { true } else { false } },
+            kept.filter { if case .session = $0.filter { true } else { false } }
+        )
     }
 }
 
@@ -79,6 +163,16 @@ public struct HerDeliveredFile: Equatable, Sendable, Identifiable {
 
     /// Sent since the owner last looked at the list.
     public func isNew(seen: Int) -> Bool { (latest?.seq ?? 0) > seen }
+
+    /// It came from that source: its latest send did (for the page kept offline).
+    public func from(_ filter: HerSourceFilter) -> Bool {
+        let s = latest?.source
+        switch filter {
+        case .conversation: return s == nil
+        case .routine(let id): return s?.kind == .routine && s?.id == id
+        case .session(let name): return s?.kind == .session && s?.name == name
+        }
+    }
 
     /// What to read of a version: its copy, as it was sent, when there is one; else where the file is.
     public func file(_ v: HerDelivery) -> HerFile {

@@ -73,3 +73,33 @@ private func expected(_ key: String) -> [JSON] { shared[key].array! }
     #expect(bot.newDeliveries == 2 && bot.deliveriesLatest == 9)
     #expect(HerBot(["id": "her"])!.newDeliveries == 0)
 }
+
+@Test func theFilterListsTheSourcesByKindTheLatestFirstAndASearchKeepsThoseItNames() {
+    let sources = HerDeliverySources(shared["sources"])!
+    #expect(sources.silent == 2)
+    for c in expected("source_groups") {
+        let g = sources.groups(query: c["query"].string!)
+        #expect((g.conversation != nil) == c["conversation"].bool!)
+        #expect(g.routines.map { $0.name ?? "" } == c["routines"].array!.map { $0.string! })
+        #expect(g.sessions.map { $0.name ?? "" } == c["sessions"].array!.map { $0.string! })
+    }
+    #expect(sources.source(.routine(id: "rtn_3"))?.gone == true && sources.source(.routine(id: "rtn_1"))?.gone == false)
+}
+
+@Test func aSourceCountsTheFilesTheTabShows() {
+    let sources = HerDeliverySources(shared["sources"])!
+    for c in expected("source_counts") {
+        let s = sources.sources.first { $0.name == c["name"].string! }!
+        let counts: [Int] = [s.count(media: nil), s.count(media: true), s.count(media: false)]
+        let want: [Int] = [c["all"].int!, c["media"].int!, c["documents"].int!]
+        #expect(counts == want)
+    }
+}
+
+@Test func aFileCameFromASourceByItsLatestSend() {
+    for c in expected("from_source") {
+        let filter = HerSourceFilter(c["filter"])!
+        #expect(page.files.filter { $0.from(filter) }.map(\.name) == c["files"].array!.map { $0.string! })
+        #expect(HerSourceFilter(filter.json) == filter)
+    }
+}

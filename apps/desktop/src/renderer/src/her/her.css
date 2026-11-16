@@ -526,6 +526,15 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
 .dlv-tabs{display:flex;gap:2px;padding:2px;border-radius:8px;background:var(--fill2)}
 .dlv-tabs button{flex:1;height:22px;border:0;border-radius:6px;background:none;color:var(--l2);font:inherit;font-size:12px;cursor:pointer}
 .dlv-tabs button.on{background:var(--win);color:var(--l1);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+/* Which source's files show (the filter by Close): its name and how many, and clearing it. */
+.dlv .tb.dlv-src.on{background:var(--accent);color:#fff}
+.dlv-source{display:flex;align-items:center;gap:6px;min-height:26px;padding:3px 4px 3px 10px;border-radius:8px;background:var(--accent-bg);color:var(--accent);font-size:12px;font-weight:550}
+.dlv-source span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlv-source small{font-size:12px;font-weight:400;opacity:.8}
+.dlv-source button{flex:none;width:20px;height:20px;border:0;border-radius:5px;background:none;color:inherit;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.dlv-source button:hover{background:var(--accent-bg)}
+.her-menu .dlv-srcmenu .mlist{max-height:min(420px,60vh)}
+.her-menu .dlv-silent{padding-top:8px;font-size:11.5px}
 .dlv-body{padding:0 6px 20px}
 .dlv-banner{margin:6px 8px 4px;padding:8px 10px;border-radius:9px;background:var(--fill2);font-size:12px;line-height:1.5;color:var(--l2)}
 .dlv-group .fhead{display:flex;align-items:baseline;gap:6px;margin:14px 10px 4px;font-size:11.5px}
