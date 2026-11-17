@@ -709,7 +709,7 @@ function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
     <button className="tb" aria-label={t("chat.copy")} title={t("chat.copy")} onClick={() => navigator.clipboard.writeText(text).then(() => (setDone(true), setTimeout(() => setDone(false), 1500)))}>
-      <Icon name={done ? "check" : "copy"} className="sm" />
+      <Icon name={done ? "check" : "copy"} className={done ? "sm tick-in" : "sm"} />
     </button>
   );
 }

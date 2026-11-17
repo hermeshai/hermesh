@@ -645,4 +645,15 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .pn-top .ttl{position:absolute;left:0;right:0;text-align:center;font-size:12.5px;font-weight:600;color:var(--l2);pointer-events:none}
 .pn-body{padding:6px 26px 22px}
 @keyframes slidein{from{opacity:0;transform:translateX(30px)}}
+/* Going (useLeaving, LEAVE_MS): what came in goes the way it came, quicker; it takes no more clicks. */
+.sheet.leaving,.sheet-scrim.leaving,.pal.leaving,.scrim.leaving,.toast.leaving{animation:fade-out .14s var(--ease-in) forwards;pointer-events:none}
+.sheet.leaving{animation-name:sheet-out}
+.toast.leaving{animation-name:toast-out}
+.pal.leaving{animation-name:pal-out}
+@keyframes fade-out{to{opacity:0}}
+@keyframes sheet-out{to{opacity:0;transform:translate(-50%,-6px)}}
+@keyframes toast-out{to{opacity:0;transform:translate(-50%,6px)}}
+@keyframes pal-out{to{opacity:0;transform:translateX(-50%) scale(.985)}}
+/* Copied: the check comes in. */
+.tick-in{animation:popin .2s var(--ease-out)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

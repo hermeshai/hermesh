@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { launch, sessionList } from "./app";
 
 // What moves on the main window, and that the page itself does no work for
@@ -106,5 +106,79 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   await page.locator(".sm2.cmd .hl").first().waitFor({ timeout: 4000 }).catch(() => {});
   await page.waitForTimeout(1000);
   for (const c of (await changes(page, 2200)).flat()) expect(c).toMatch(/^(el|insp-time|stime) characterData$/);
+  await app.close();
+});
+
+/** Watches for `sel` to start going (`.leaving`): its animations then, whether it takes input, and how long until it is gone. */
+async function watchLeaving(page: Page, sel: string) {
+  await page.evaluate((sel) => {
+    type Seen = { inert: boolean; anims: { name: string; props: string[] }[]; gone: number };
+    const w = window as unknown as { leaving?: Seen };
+    delete w.leaving;
+    let from = 0;
+    const mo = new MutationObserver(() => {
+      const el = document.querySelector<HTMLElement>(`${sel}.leaving`);
+      if (el && !w.leaving) {
+        from = performance.now();
+        w.leaving = {
+          inert: el.inert,
+          anims: el.getAnimations().map((a) => ({
+            name: (a as CSSAnimation).animationName,
+            props: [...new Set((a.effect as KeyframeEffect).getKeyframes().flatMap((k) => Object.keys(k)))].filter((p) => !["offset", "computedOffset", "easing", "composite"].includes(p)),
+          })),
+          gone: -1,
+        };
+      } else if (w.leaving && w.leaving.gone < 0 && !document.querySelector(sel)) {
+        w.leaving.gone = performance.now() - from;
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+  }, sel);
+}
+
+/** What watchLeaving saw, once `sel` is gone. */
+async function left(page: Page) {
+  type Seen = { inert: boolean; anims: { name: string; props: string[] }[]; gone: number };
+  await expect.poll(() => page.evaluate(() => (window as unknown as { leaving?: Seen }).leaving?.gone ?? -1)).toBeGreaterThan(0);
+  return page.evaluate(() => (window as unknown as { leaving: Seen }).leaving);
+}
+
+test("what comes in goes the way it came, quicker, and takes no input meanwhile: a sheet, a toast and the search", async () => {
+  const { app, page } = await launch();
+  await expect(await sessionList(page)).toBeVisible();
+  const command = (c: string) =>
+    (app as ElectronApplication).evaluate((_, c) => (globalThis as unknown as { hermeshTest: { mainWindow(): { webContents: { send(ch: string, c: string): void } } } }).hermeshTest.mainWindow().webContents.send("command", c), c);
+
+  // A sheet's copy brings a toast; it goes on its own after a while.
+  await command("addMachine");
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("group", { name: "安装方式" }).getByRole("button", { name: "终端命令" }).click();
+  await watchLeaving(page, ".toast");
+  await sheet.getByRole("button", { name: "拷贝" }).click();
+  await expect(page.locator(".toast")).toHaveText("已拷贝");
+  let seen = await left(page);
+  expect(seen.inert).toBe(true);
+  expect(seen.anims).toEqual([{ name: "toast-out", props: ["opacity", "transform"] }]);
+  expect(seen.gone).toBeGreaterThan(100);
+  expect(seen.gone).toBeLessThan(1000);
+
+  // The sheet, closed with Esc: it rises a little as it fades, as it came down; the scrim fades with it.
+  await watchLeaving(page, ".sheet");
+  await page.keyboard.press("Escape");
+  seen = await left(page);
+  expect(seen.inert).toBe(true);
+  expect(seen.anims).toEqual([{ name: "sheet-out", props: ["opacity", "transform"] }]);
+  await expect(page.locator(".sheet-scrim")).toHaveCount(0);
+
+  // The search, closed with Esc: it shrinks a little as it fades, as it grew in.
+  await page.locator(".side-top").getByRole("button", { name: "搜索" }).click();
+  await expect(page.getByRole("dialog", { name: "搜索任务" }).getByRole("textbox")).toBeFocused();
+  await watchLeaving(page, ".pal");
+  await page.keyboard.press("Escape");
+  seen = await left(page);
+  expect(seen.inert).toBe(true);
+  expect(seen.anims).toEqual([{ name: "pal-out", props: ["opacity", "transform"] }]);
+  await expect(page.locator(".scrim")).toHaveCount(0);
   await app.close();
 });

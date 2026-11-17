@@ -11,6 +11,7 @@ import { SheetHost } from "./Sheets";
 import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
+import { useLeaving } from "./components";
 import { Icon } from "./icons";
 import { layoutOf, setSidebar, usePeekEnd } from "./layout";
 import { platform } from "./platform";
@@ -74,6 +75,8 @@ export function MainWindow() {
     return () => document.removeEventListener("keydown", esc);
   }, [peeking, set]);
   const { sidebar } = layoutOf(st);
+  // The search, keyed by what it was opened for; closed, it fades out as it was.
+  const search = useLeaving(st.searching ? JSON.stringify(st.searchFor) : null);
   return (
     <div className={`mainwrap ${sidebar === "docked" ? "" : "railed"} ${sidebar === "over" ? "peek" : ""}`}>
       {/* The sidebar, or its rail (docs/her-team.md §14.9): asked for while there is no room, it shows over the rail. */}
@@ -93,7 +96,7 @@ export function MainWindow() {
         )}
         <RequestCards />
       </section>
-      {st.searching && <SearchPalette key={JSON.stringify(st.searchFor)} />}
+      {search.shown !== null && <SearchPalette key={search.shown} leaving={search.leaving} />}
       <SheetHost />
       <ToastView />
     </div>
@@ -122,10 +125,10 @@ export function AppMenuButton() {
 export function ToastView() {
   const st = useStore();
   const { t } = useTranslation("common");
-  if (!st.toast) return null;
-  const toast = st.toast;
+  const { shown: toast, leaving } = useLeaving(st.toast);
+  if (!toast) return null;
   return (
-    <div className="toast" role="status">
+    <div className={`toast ${leaving ? "leaving" : ""}`} inert={leaving} role="status">
       <Icon name="check" />
       <span>{toast.text}</span>
       {toast.undo && (

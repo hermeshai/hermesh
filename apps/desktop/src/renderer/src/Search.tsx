@@ -19,7 +19,7 @@ const actions = (): Action[] => [
 
 // The ⌘K search palette: find a session by its title, project, grant,
 // coding agent or machine, narrowed by its filters; or run an action.
-export function SearchPalette() {
+export function SearchPalette({ leaving = false }: { leaving?: boolean }) {
   const st = useStore();
   const { t } = useTranslation("common");
   const [query, setQuery] = useState("");
@@ -54,6 +54,8 @@ export function SearchPalette() {
   // method composes), from the frame it first shows in: an Escape pressed
   // at once closes it.
   useLayoutEffect(() => {
+    // Going (closed, fading out), it no longer takes keys.
+    if (leaving) return;
     const h = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       if (e.key === "Escape") close();
@@ -88,8 +90,8 @@ export function SearchPalette() {
 
   return (
     <>
-      <div className="scrim" onClick={close} />
-      <div className="pal" role="dialog" aria-label={t("search.title")}>
+      <div className={`scrim ${leaving ? "leaving" : ""}`} onClick={close} />
+      <div className={`pal ${leaving ? "leaving" : ""}`} inert={leaving} role="dialog" aria-label={t("search.title")}>
         <div className="pal-in">
           <Icon name="search" />
           <input
