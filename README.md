@@ -69,7 +69,7 @@ See which agent started each session, which machine is executing it, and a live 
 
 <img src="docs/assets/apps.jpg" width="100%" alt="The Hermesh desktop app's overview: Grok Bot and Muse connected through Hermesh to this Mac and a Mac mini and their projects, the sessions working now, and usage; in front of it, the same overview on an iPhone.">
 
-The desktop app runs on macOS and Windows, and the iPhone app is coming soon to the App Store. Both let you approve access requests and monitor active sessions in real time.
+The desktop app runs on macOS, Windows and Linux, and the iPhone app is coming soon to the App Store. Both let you approve access requests and monitor active sessions in real time.
 
 ## Get started
 
@@ -77,12 +77,13 @@ Setup takes three steps and about three minutes.
 
 ### 1. Install the app
 
-The app holds your owner key and displays your dashboard. On macOS and Windows, it also connects that computer as a machine that can run coding agents.
+The app holds your owner key and displays your dashboard. On macOS, Windows and Linux, it also connects that computer as a machine that can run coding agents.
 
 | Platform | Download | Requirements |
 |---|---|---|
 | **macOS** | [Apple silicon](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-arm64.dmg) · [Intel](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-x64.dmg) | macOS 14 or later |
 | **Windows** | [x64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-x64-setup.exe) · [ARM64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-arm64-setup.exe) | Windows 11 |
+| **Linux** | x64: [.deb](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-x64.deb) · [.rpm](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-x64.rpm) · ARM64: [.deb](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-arm64.deb) · [.rpm](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-arm64.rpm) | Ubuntu 24.04, Debian 13, Fedora 41 or later, with systemd and polkit |
 | **iPhone** | Coming to the App Store | iOS 26 or later |
 
 Open the app, click **Get Started**, and sign in at hermesh.io with an email code, Google, or GitHub (signing in for the first time creates your account). Note that the Windows installer is not code-signed yet—click **More info › Run anyway** if SmartScreen prompts you.
