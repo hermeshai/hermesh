@@ -1,5 +1,8 @@
 //! `her install` and `her upgrade` against a local release: a signed manifest and archives.
 
+// her's own releases have no build for Windows, where Hermesh brings what they would.
+#![cfg(unix)]
+
 mod common;
 
 use base64::Engine;

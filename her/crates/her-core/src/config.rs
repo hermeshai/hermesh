@@ -1646,7 +1646,8 @@ mod tests {
         // Arrays replace each other; the project's relative paths now name the project.
         assert_eq!(
             skills.paths,
-            vec![project_root.join("tools/skills").display().to_string(), "/abs".into(), "~/x".into()]
+            // A path from the root is one of the project's drive on Windows.
+            vec![project_root.join("tools/skills").display().to_string(), project_root.join("/abs").display().to_string(), "~/x".into()]
         );
         assert_eq!(
             skills.disabled,

@@ -1108,7 +1108,8 @@ mod tests {
     }
 
     fn targets_with(command: &str, cdpath: bool) -> Vec<String> {
-        let dirs = |cwds: &[PathBuf]| cwds.iter().map(|c| c.display().to_string()).collect::<Vec<_>>().join(",");
+        // As a POSIX shell names them, on Windows too.
+        let dirs = |cwds: &[PathBuf]| cwds.iter().map(|c| c.display().to_string().replace('\\', "/")).collect::<Vec<_>>().join(",");
         deletion_targets(&analyze_in(command, cdpath))
             .into_iter()
             .map(|t| match t {

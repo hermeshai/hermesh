@@ -995,7 +995,8 @@ mod tests {
         assert!(critical("rm -r .").contains("workspace"));
         assert!(critical("rm -r *").contains("workspace"));
         assert!(critical("rm -r ..").contains("workspace"));
-        assert!(critical(&format!("rmdir {}", dir.path().display())).contains("workspace"));
+        // As a shell takes it: a backslash there escapes what follows.
+        assert!(critical(&format!("rmdir {}", dir.path().display().to_string().replace('\\', "/"))).contains("workspace"));
         assert!(critical("bash -c 'rm -r ../..'").contains("workspace"));
         assert!(critical("rm -r \"$TARGET\"").contains("cannot be checked"));
         assert_eq!(critical("rm -r `pwd`"), "Deleting `…` cannot be checked before the command runs.");

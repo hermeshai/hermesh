@@ -356,7 +356,8 @@ mod tests {
         // A link out of the archive.
         let bad = archive(platform, Some((&format!("chrome-{platform}/evil"), "../../../etc/passwd")));
         let url = serve(bad.clone(), Some(md5_base64(&bad))).await;
-        assert!(install_from(&client, &url, dir.path(), |_, _| {}).await.unwrap_err().contains("link out"));
+        let err = install_from(&client, &url, dir.path(), |_, _| {}).await.unwrap_err();
+        assert!(err.contains("link out"), "{err}");
         assert!(!dir.path().join("chromium").exists());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0, "no leftovers");
 
