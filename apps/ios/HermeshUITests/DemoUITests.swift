@@ -74,7 +74,7 @@ final class DemoUITests: XCTestCase {
         tap("agent-codex")
         tap("test-agent")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Hello from the demo agent! This response is simulated.")).firstMatch.waitForExistence(timeout: 10))
-        tap("add-project")
+        reach("add-project"); tap("add-project")
         tap("browse-folders")
         tap("folder-Projects")
         tap("folder-playground")
@@ -144,6 +144,34 @@ final class DemoUITests: XCTestCase {
         tap("exit-demo")
     }
 
+    /// Management pages belong to Account and Devices, including their details and nested sheets.
+    func testAccountNavigation() {
+        tap("try-demo")
+        tap("menu"); tap("account")
+        reach("account-machines")
+        let machinesY = app.buttons["account-machines"].frame.minY
+        let appearance = app.staticTexts["account-appearance"]
+        XCTAssertTrue(appearance.exists)
+        XCTAssertLessThan(machinesY, appearance.frame.minY)
+        tap("account-machines")
+        tap("machine-Mac mini"); back(); back()
+        XCTAssertTrue(app.navigationBars["Account and Devices"].waitForExistence(timeout: 5))
+        tap("account-machines")
+        swipeMenuOut()
+        XCTAssertTrue(app.navigationBars["Account and Devices"].waitForExistence(timeout: 5), "swipe returns to settings")
+        tap("account-grants")
+        tap("grant-ChatGPT")
+        reach("change-scope"); tap("change-scope")
+        tap("close")
+        XCTAssertTrue(app.buttons["change-scope"].waitForExistence(timeout: 5), "nested sheet returns to the grant")
+        back(); swipeMenuOut()
+        XCTAssertTrue(app.navigationBars["Account and Devices"].waitForExistence(timeout: 5))
+        reach("appearance-light")
+        XCTAssertLessThan(app.buttons["appearance-light"].frame.minY, app.staticTexts["account-about"].frame.minY)
+        checkpoint("account-order-and-navigation")
+        tap("close"); tap("exit-demo")
+    }
+
     func testAccountAppearance() {
         tap("try-demo")
         tap("menu")
@@ -153,11 +181,13 @@ final class DemoUITests: XCTestCase {
         tap("close")
         checkpoint("demo-dark-workspace")
         tap("account")
+        reach("appearance-dark")
         XCTAssertTrue(app.buttons["appearance-dark"].isSelected)
         tap("close")
         tap("exit-demo")
         tap("try-demo")
         tap("menu"); tap("account")
+        reach("appearance-system")
         XCTAssertTrue(app.buttons["appearance-system"].isSelected)
         tap("close")
         tap("exit-demo")
@@ -352,8 +382,8 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["heat-tip"].waitForExistence(timeout: 5))
         app.otherElements["PopoverDismissRegion"].firstMatch.tap()
         // Machines, from the account; a machine's page from it.
-        place("Machines"); tap("machine-Mac mini"); back()
-        tap("menu"); tap("account"); reach("appearance-light")
+        place("Machines"); tap("machine-Mac mini"); back(); back()
+        reach("appearance-light")
         for theme in ["light", "dark", "system"] {
             tap("appearance-\(theme)"); XCTAssertTrue(app.buttons["appearance-\(theme)"].isSelected)
         }
@@ -564,10 +594,10 @@ final class DemoUITests: XCTestCase {
 
     /// A place: the overview, the sessions (the menu itself, open), and Machines and Grants, from the account.
     private func place(_ title: String) {
-        if app.descendants(matching: .any)["drawer-dim"].exists { tap("drawer-dim") }
+        if app.descendants(matching: .any)["drawer-dim"].isHittable { tap("drawer-dim") }
         backToOverview()
         // A tap while the page under it is still coming back (after Back or a delete) can be lost: again, once.
-        tap("menu")
+        if !app.descendants(matching: .any)["drawer-dim"].isHittable { tap("menu") }
         if !app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 3) { tap("menu") }
         switch title {
         case "Overview": tap("overview-place")
@@ -591,20 +621,20 @@ final class DemoUITests: XCTestCase {
         let item = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         // Down the page first, then back up: Work can open scrolled past what is near its top.
         for _ in 0..<6 {
-            if item.exists && item.isHittable { return }
+            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 75 { return }
             app.swipeUp()
         }
         for _ in 0..<10 {
-            if item.exists && item.isHittable { return }
+            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 75 { return }
             app.swipeDown()
         }
-        XCTAssertTrue(item.exists && item.isHittable, identifier)
+        XCTAssertTrue(item.exists && item.isHittable && item.frame.midY < app.frame.height - 75, "\(identifier): \(item.frame)")
     }
 
     private func backToOverview() {
         // A page may still be going (after a delete): until the menu's button or a Back shows.
         _ = app.buttons["menu"].waitForExistence(timeout: 5) || app.navigationBars.buttons.element(boundBy: 0).waitForExistence(timeout: 5)
-        while !app.buttons["menu"].exists {
+        while !app.buttons["menu"].isHittable && !app.descendants(matching: .any)["drawer-dim"].isHittable {
             let back = app.navigationBars.buttons.element(boundBy: 0)
             XCTAssertTrue(back.exists)
             back.tap()

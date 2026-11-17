@@ -62,10 +62,14 @@ async fn serve(pages: HashMap<&'static str, String>) -> String {
                 };
                 let kind = if path.ends_with(".txt") { "text/plain" } else { "text/html; charset=utf-8" };
                 let response = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n{extra}Connection: close\r\n\r\n",
                     body.len()
                 );
                 let _ = stream.write_all(response.as_bytes()).await;
+                if matches!(path.as_str(), "/slow-request" | "/slow-welcome") {
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+                let _ = stream.write_all(body.as_bytes()).await;
             });
         }
     });
@@ -86,6 +90,12 @@ fn pages() -> HashMap<&'static str, String> {
             .to_string(),
     );
     pages.insert("/welcome", "<title>Welcome</title><h1>Welcome back</h1><a href=\"/login\">Sign out</a>".to_string());
+    pages.insert("/slow-welcome", "<title>Welcome</title><h1>Welcome back</h1>".to_string());
+    pages.insert("/slow-request", "waiting".to_string());
+    pages.insert(
+        "/delayed-navigation",
+        r#"<title>Delayed navigation</title><button onclick="fetch('/slow-request'); setTimeout(() => location.href='/slow-welcome', 300)">Continue</button>"#.to_string(),
+    );
     pages.insert(
         "/covered",
         r#"<title>Covered</title>
@@ -152,11 +162,18 @@ impl NavigationGuard for TestGuard {
     }
 }
 
+// Each fixture starts a separate Chrome and its renderer processes. Keep those
+// starts serial on Windows runners; concurrent-session coverage stays in one fixture.
+#[cfg(windows)]
+static BROWSER_SLOT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+
 struct Fixture {
     pool: BrowserPool,
     config: BrowserConfig,
     base: String,
     dir: tempfile::TempDir,
+    #[cfg(windows)]
+    _browser_slot: tokio::sync::SemaphorePermit<'static>,
 }
 
 impl Fixture {
@@ -165,6 +182,8 @@ impl Fixture {
             eprintln!("no Chromium-family browser installed; skipping");
             return None;
         }
+        #[cfg(windows)]
+        let browser_slot = BROWSER_SLOT.acquire().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
         Some(Fixture {
             pool: BrowserPool::new(dir.path().join("browser"), false),
@@ -174,6 +193,8 @@ impl Fixture {
             },
             base: serve(pages()).await,
             dir,
+            #[cfg(windows)]
+            _browser_slot: browser_slot,
         })
     }
 
@@ -242,6 +263,16 @@ async fn login_form_end_to_end() {
     // Refs of the old document are stale, and say why.
     let stale = session.element(&email).await.unwrap_err();
     assert!(stale.to_string().contains("before the page navigated"), "{stale}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_navigation_started_while_requests_settle_finishes_before_the_snapshot() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+    let opened = session.navigate(None, &fx.url("/delayed-navigation"), false).await.unwrap();
+    let button = ref_of(&opened.text, "button \"Continue\"");
+    let clicked = act(&session, Action::Click, &button).await.unwrap();
+    assert!(clicked.contains("Welcome back"), "the new page must finish loading: {clicked}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

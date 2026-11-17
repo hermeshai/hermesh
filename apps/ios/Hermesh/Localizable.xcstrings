@@ -1144,6 +1144,16 @@
         }
       }
     },
+    "Actions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "操作"
+          }
+        }
+      }
+    },
     "Add %@ Key": {
       "localizations": {
         "zh-Hans": {
