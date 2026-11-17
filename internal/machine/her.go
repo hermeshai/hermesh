@@ -246,7 +246,7 @@ func (n *Machine) execHer(ctx context.Context, cmd *identityv1.AdminCommand) (st
 		}
 		return "connector " + cc.Name + " runs " + cc.Command, nil
 	}
-	return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
+	return "", errUnknownAdmin
 }
 
 // herService is HerService on the tunnel, for the owner's devices.

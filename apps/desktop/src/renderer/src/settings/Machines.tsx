@@ -112,7 +112,10 @@ function HerRow({ m }: { m: Machine }) {
   // The switch's new state while hermeshd and the signer work on it.
   const [pending, setPending] = useState<boolean | null>(null);
   const on = pending ?? m.her?.enabled ?? false;
-  const unsupported = m.her?.unsupported ?? "";
+  // What it says of Her while it answers (Machine.her is kept only once Her was on there); none in its status:
+  // its Hermesh is from before Her (docs/version-skew.md §6.7).
+  const beforeHer = !!m.status && !m.status.her;
+  const unsupported = beforeHer ? "" : ((m.status ? m.status.her?.unsupported : m.her?.unsupported) ?? "");
   // A PC whose Hermesh is from before her ran on Windows.
   const windows = unsupported === "windows";
   const set = async (v: boolean) => {
@@ -132,11 +135,11 @@ function HerRow({ m }: { m: Machine }) {
         done: t("machines.herErased", { name: m.machineName }),
       },
     });
-  const desc = windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : m.her?.enabled ? t("machines.herDesc") : <>{i18n.t("her:grant.runs")}<br />{i18n.t("her:grant.desc")}</>;
+  const desc = beforeHer ? t("machines.herNeedsUpdate") : windows ? t("machines.herWindows") : unsupported ? t("machines.herUnsupported", { reason: unsupported }) : m.her?.enabled ? t("machines.herDesc") : <>{i18n.t("her:grant.runs")}<br />{i18n.t("her:grant.desc")}</>;
   return (
     <>
       <SRow title={t("machines.herRun")} desc={desc}>
-        <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (windows || unsupported !== "")) || (!m.online && !m.local)} />
+        <Switch on={on} label={t("machines.herRun")} set={set} disabled={pending !== null || (!on && (beforeHer || windows || unsupported !== "")) || (!m.online && !m.local)} />
       </SRow>
       {/* Off, her data kept (docs/her-server.md §5.6): erased while the machine answers. */}
       {!on && herDataKept(m) && (

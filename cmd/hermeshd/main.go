@@ -155,7 +155,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 		her := herBin()
 		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
 			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost(), NewHerLink: herlink.New,
-			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS"))}
+			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS")), TestBeforeHer: os.Getenv("HERMESH_TEST_BEFORE_HER") == "1"}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 

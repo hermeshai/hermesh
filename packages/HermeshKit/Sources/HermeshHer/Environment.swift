@@ -197,6 +197,8 @@ public func herState(_ m: HerMachine) -> HerEnvState {
 public struct HerChoice: Equatable, Sendable {
     public enum Why: Equatable, Sendable {
         case windows, offline
+        /// Its hermeshd is from before Her: it answers, and its status has no Her (docs/version-skew.md §6.7).
+        case needsUpdate
         case unsupported(String)
     }
 
@@ -205,12 +207,15 @@ public struct HerChoice: Equatable, Sendable {
 }
 
 /// Where Her can run (docs/her-server.md §9.2): the owner's machines Her is
-/// not on for yet, those that can be chosen first. A PC whose Hermesh is
-/// from before her ran on Windows says so ("windows"), and shows, not to be
-/// chosen until it is updated; a machine offline can't be asked now.
+/// not on for yet, those that can be chosen first. A machine whose Hermesh is
+/// from before Her, or a PC's from before her ran on Windows ("windows"),
+/// shows, not to be chosen until it is updated; a machine offline can't be
+/// asked now. What a machine says of Her is in its status while it answers:
+/// Machine.her is kept only once Her was on there.
 public func herChoices(_ machines: [HerMachine]) -> [HerChoice] {
     machines.filter { !$0.her.enabled }.map { m -> HerChoice in
-        let unsupported = m.her.unsupported
+        if m.hasStatus && !m.status.hasHer { return HerChoice(machine: m, why: .needsUpdate) }
+        let unsupported = m.hasStatus ? m.status.her.unsupported : m.her.unsupported
         if unsupported == "windows" { return HerChoice(machine: m, why: .windows) }
         if !unsupported.isEmpty { return HerChoice(machine: m, why: .unsupported(unsupported)) }
         return HerChoice(machine: m, why: herReachable(m) ? nil : .offline)

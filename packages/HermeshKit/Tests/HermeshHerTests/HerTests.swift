@@ -166,14 +166,23 @@ import Testing
 }
 
 @Test func environmentsAndWhereHerCanRun() {
+    // As the core gives a machine: its status while it answers, with Her in it; Machine.her kept once she was on.
     func machine(_ id: String, _ name: String, online: Bool = true, platform: String = "darwin/arm64", her: (Hermesh_Machine_V1_HerStatus) -> Hermesh_Machine_V1_HerStatus = { $0 }) -> HerMachine {
-        .with { $0.machineID = id; $0.machineName = name; $0.online = online; $0.status.platform = platform; $0.her = her(.init()) }
+        .with {
+            $0.machineID = id; $0.machineName = name; $0.online = online
+            let h = her(.init())
+            if online { $0.status.platform = platform; $0.status.her = h }
+            if h.enabled { $0.her = h }
+        }
     }
     let on = machine("m1", "studio", her: { var h = $0; h.enabled = true; h.running = true; h.unread = 2; return h })
     let away = machine("m2", "cloud", online: false, her: { var h = $0; h.enabled = true; h.unread = 1; return h })
     let machines = [away, on, machine("m3", "pc", platform: "windows/amd64"), machine("m4", "old", her: { var h = $0; h.unsupported = "no her"; return h }),
                     machine("m5", "asleep", online: false), machine("m6", "box", platform: "linux/amd64"),
-                    machine("m10", "old-pc", platform: "windows/amd64", her: { var h = $0; h.unsupported = "windows"; return h })]
+                    machine("m10", "old-pc", platform: "windows/amd64", her: { var h = $0; h.unsupported = "windows"; return h }),
+                    // One from before Her: it answers, without Her in its status. One not read yet: unknown, so it may be chosen.
+                    .with { $0.machineID = "m11"; $0.machineName = "older"; $0.online = true; $0.status.platform = "linux/amd64" },
+                    .with { $0.machineID = "m12"; $0.machineName = "unread"; $0.online = true }]
     #expect(herEnvironments(machines).map(\.machineName) == ["cloud", "studio"])
     #expect(herUnread(machines) == 3)
     // Her's grant (docs/her-mesh.md §3.4): missing only while she is on and her machine keeps a key for her.
@@ -184,8 +193,8 @@ import Testing
     #expect(herPick(herEnvironments(machines), remembered: "m1")?.machineID == "m1" && herPick(herEnvironments(machines), remembered: "gone")?.machineID == "m2")
     #expect(herState(on) == .noModel && herState(away) == .offline(nil))
     #expect(herChoices(machines).map { "\($0.machine.machineName):\(String(describing: $0.why))" } ==
-            ["box:nil", "pc:nil", "asleep:Optional(HermeshHer.HerChoice.Why.offline)", "old:Optional(HermeshHer.HerChoice.Why.unsupported(\"no her\"))",
-             "old-pc:Optional(HermeshHer.HerChoice.Why.windows)"])
+            ["box:nil", "pc:nil", "unread:nil", "asleep:Optional(HermeshHer.HerChoice.Why.offline)", "old:Optional(HermeshHer.HerChoice.Why.unsupported(\"no her\"))",
+             "old-pc:Optional(HermeshHer.HerChoice.Why.windows)", "older:Optional(HermeshHer.HerChoice.Why.needsUpdate)"])
 
     var bots = [HerBot(["id": "b1", "name": "Her", "default": true])!, HerBot(["id": "b2", "name": "Other"])!]
     bots = mergeBots(bots, ["bots": [["id": "b1", "name": "Her", "default": true, "unread": 3]], "deleted": ["b2"]])

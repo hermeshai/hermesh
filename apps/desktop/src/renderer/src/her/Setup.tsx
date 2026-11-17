@@ -59,6 +59,7 @@ function ChoiceRow({ c, fresh, busy, onTurnOn }: { c: Choice<Machine>; fresh: bo
   const platform = m.status?.platform ?? "";
   const desc =
     c.why === "windows" ? t("setup.windows")
+    : c.why === "needsUpdate" ? t("setup.needsUpdate")
     : c.why === "offline" ? t("setup.offline")
     : c.why === "unsupported" ? t("setup.unsupported", { detail: c.detail })
     : fresh ? t("setup.paired")

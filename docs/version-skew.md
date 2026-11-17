@@ -184,6 +184,37 @@ SwiftUI cancels the tasks of the pages a pushed page covers, and those held
 it. Without its own, the memory page loaded only by winning a race with that
 cancellation, and never once her restarted.
 
+### 6.7 A machine from before Her
+
+The case: an iPhone turning Her on for a machine whose `hermeshd` was 0.1.4
+or older. Face ID signed `SetHer`, and the machine answered
+`invalid_argument` "unknown admin command", shown as it came. `SetHer` and
+`MachineStatus.her` both came in 0.1.5 (6093c626, a4422506), and every
+`hermeshd` since sends `her` in its status. So a machine that answered,
+without `her` in its status, can't run Her until it is updated. That comes
+from what it serves, not from its version number (§5.1).
+
+- **Where Her runs** (the iPhone's `herChoices`, the desktop's, and the
+  desktop's switch in Settings › Machines): such a machine stays listed,
+  saying "这台电脑上的 Hermesh 版本较旧，在那里更新后才能运行 Her", and can't
+  be chosen. What else a machine says of Her (`unsupported`) is read from its
+  status too: `Machine.her` is kept only once Her was on there, so a machine
+  Her was never on has none. Updated, its status has `her`, and the row offers
+  Her by itself. A machine whose status hasn't come yet is unknown, and may be
+  chosen, as §6.2 has it.
+- **Before Face ID:** turning Her on asks the machine for its status first
+  (`Owner.SetHer`). One from before Her answers `unimplemented`, and one that
+  can't be reached `unavailable`, with no signature asked for.
+- **The safety net:** a command a machine doesn't know is `unimplemented`
+  from now on. Machines up to 0.1.5 said `invalid_argument` "unknown admin
+  command"; the owner's devices take that answer as `unimplemented` too, so
+  §6.3's text shows in its place.
+- **Tests:** `HERMESH_TEST_BEFORE_HER=1` makes a `hermeshd` act as 0.1.4: no
+  `her` in its status, and her commands answered as 0.1.4 did.
+  `TestHerOnAMachineFromBeforeHer` (through LocalService),
+  `TestDesktopHerBeforeHer` (`her-before.spec.ts`) and the iPhone's
+  `testHerOnAMacFromBeforeHer` (`TestIPhone`, control route `before-her`).
+
 ## 7. Building it
 
 1. **Built:** her's `methods`, `HerStatus.methods`, and the gate answering

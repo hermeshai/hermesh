@@ -26,6 +26,12 @@ export type Fixture = {
   herWithout?: string;
   /** The her program this Mac runs, for the spec to restart it as an update does (TestDesktopHerOlder). */
   herBin?: string;
+  /**
+   * old-box, a machine from before Her (TestDesktopHerBeforeHer): the file that says so while it holds 1, and the
+   * start of its hermeshd's command line, for the spec to stop it so that it starts again as it is now.
+   */
+  beforeHer?: string;
+  beforeHerDaemon?: string;
 };
 
 /** Loaded first in every launch: the app's windows open without taking focus. */

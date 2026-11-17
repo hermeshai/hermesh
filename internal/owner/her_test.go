@@ -483,6 +483,9 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 
 	k, _ := identity.GenerateKey()
 	o.rootPub = k.Public()
+	o.herInfo = func(context.Context, string) (*machinev1.MachineStatus, error) {
+		return &machinev1.MachineStatus{Her: &machinev1.HerStatus{}}, nil
+	}
 	asked, stop := o.hub.watch(false)
 	defer stop()
 	connector := &identityv1.SetHerCommandConnector{Name: "github", Command: "npx", Args: []string{"-y", "server-github"}}
@@ -527,6 +530,49 @@ func TestHerAssistantModeAndSignedCommands(t *testing.T) {
 	}
 	if err := o.SetHerCommandConnector(ctx, "m_1", &identityv1.SetHerCommandConnector{Name: "x"}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a connector without a command: %v", err)
+	}
+}
+
+// Turning Her on asks the machine first, before Face ID: one from before
+// Her (no Her in its status) needs an update, said as unimplemented, which
+// the devices show as such (docs/version-skew.md §6.3); one that can't be
+// reached is unavailable. Neither asks the signer. An older machine's
+// answer to a command it doesn't know is unimplemented too.
+func TestHerOnBeforeHer(t *testing.T) {
+	_, o, _, _ := herOwner(t, &herSide{})
+	k, _ := identity.GenerateKey()
+	o.rootPub = k.Public()
+	asked, stop := o.hub.watch(false)
+	defer stop()
+	ctx := context.Background()
+	for _, c := range []struct {
+		name   string
+		status *machinev1.MachineStatus
+		err    error
+		want   connect.Code
+	}{
+		{"from before Her", &machinev1.MachineStatus{Name: "box"}, nil, connect.CodeUnimplemented},
+		{"unreachable", nil, connect.NewError(connect.CodeUnavailable, errors.New("box is offline")), connect.CodeUnavailable},
+	} {
+		o.herInfo = func(context.Context, string) (*machinev1.MachineStatus, error) { return c.status, c.err }
+		if err := o.SetHer(ctx, "m_1", true, false); connect.CodeOf(err) != c.want {
+			t.Errorf("%s: %v", c.name, err)
+		}
+		select {
+		case r := <-asked:
+			t.Fatalf("%s: the signer is asked for %s", c.name, r.Type)
+		default:
+		}
+	}
+
+	old := connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
+	if err := olderMachine(old); connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Fatalf("0.1.4's answer: %v", err)
+	}
+	for _, err := range []error{nil, connect.NewError(connect.CodeInvalidArgument, errors.New("her data is erased only with Her turned off")), errors.New("unknown admin command")} {
+		if got := olderMachine(err); got != err {
+			t.Errorf("%v became %v", err, got)
+		}
 	}
 }
 

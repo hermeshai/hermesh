@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -507,6 +508,16 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			w.owner.stop()
 			w.app.cancel()
 		}
+		reply(rw, map[string]string{})
+	})
+	// The Mac's hermeshd as one from before Her (POST), then updated (DELETE), restarted as an update does
+	// (testHerOnAMacFromBeforeHer; HERMESH_TEST_BEFORE_HER).
+	mux.HandleFunc("/before-her", func(rw http.ResponseWriter, r *http.Request) {
+		w.daemonEnv = slices.DeleteFunc(w.daemonEnv, func(kv string) bool { return strings.HasPrefix(kv, "HERMESH_TEST_BEFORE_HER=") })
+		if r.Method == http.MethodPost {
+			w.daemonEnv = append(w.daemonEnv, "HERMESH_TEST_BEFORE_HER=1")
+		}
+		w.restartOwner(false)
 		reply(rw, map[string]string{})
 	})
 	// The Mac's her as one older than the app, then updated (testHer's herOlder):

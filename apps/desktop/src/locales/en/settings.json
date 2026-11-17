@@ -205,6 +205,7 @@
     "herDesc_win": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires Windows Hello.",
     "herDesc_linux": "Her’s assistants, conversations and settings live on this machine. Turning Her off asks whether to keep them for next time or erase them. Turning it on or off requires your password.",
     "herWindows": "Update Hermesh on this PC to run Her.",
+    "herNeedsUpdate": "Hermesh on this computer is older. Update it there to run Her.",
     "herUnsupported": "Her can’t run here: {{reason}}",
     "herKept": "Her’s data is still on this machine; turned on again, she carries on.",
     "herErase": "Erase Data…",

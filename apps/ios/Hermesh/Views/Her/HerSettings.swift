@@ -591,9 +591,11 @@ struct HerChoices: View {
         let m = c.machine
         let detail: String = switch c.why {
         case .windows: String(localized: "Update Hermesh on this PC to run Her")
+        case .needsUpdate: String(localized: "Hermesh on this computer is older. Update it there to run Her")
         case .offline: m.hasLastSeen ? String(localized: "Offline · seen \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline")
         case .unsupported(let why): String(localized: "Can’t run Her: \(why)")
-        case nil: String(localized: "Online · \(platformText(m.status.platform))")
+        // Its operating system once it has answered.
+        case nil: m.hasStatus ? String(localized: "Online · \(platformText(m.status.platform))") : String(localized: "Online")
         }
         // In the largest text sizes the button goes under the machine, whose name then has the row's width.
         let layout = size.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))

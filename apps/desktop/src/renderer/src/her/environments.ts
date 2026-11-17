@@ -64,20 +64,24 @@ export function newServer<M extends Env & Pick<Machine, "status">>(machines: M[]
 }
 
 /** A machine the first run (and Add Environment) offers, and why it can't be chosen when it can't. */
-export type Choice<M> = { machine: M; why: null | "windows" | "offline" | "unsupported"; detail?: string };
+export type Choice<M> = { machine: M; why: null | "windows" | "needsUpdate" | "offline" | "unsupported"; detail?: string };
 
 /**
  * Where Her can run (docs/her-server.md §9.2): this Mac, then the other
- * machines of the owner, those online first. A PC whose Hermesh is from before
- * her ran on Windows says so ("windows"), and shows, not to be chosen until
- * it is updated; a machine offline can't be asked now. Those Her is on for
- * already are environments, not choices.
+ * machines of the owner, those online first. A machine whose Hermesh is from
+ * before Her (it answers, without Her in its status: "needsUpdate",
+ * docs/version-skew.md §6.7), or a PC's from before her ran on Windows
+ * ("windows"), shows, not to be chosen until it is updated; a machine offline
+ * can't be asked now. Those Her is on for already are environments, not
+ * choices. What a machine says of Her is in its status while it answers:
+ * Machine.her is kept only once Her was on there.
  */
 export function herChoices<M extends Env & Pick<Machine, "status">>(machines: M[]): Choice<M>[] {
   return machines
     .filter((m) => !m.her?.enabled)
     .map((m): Choice<M> => {
-      const unsupported = m.her?.unsupported ?? "";
+      if (m.status && !m.status.her) return { machine: m, why: "needsUpdate" };
+      const unsupported = (m.status ? m.status.her?.unsupported : m.her?.unsupported) ?? "";
       if (unsupported === "windows") return { machine: m, why: "windows" };
       if (unsupported !== "") return { machine: m, why: "unsupported", detail: unsupported };
       if (!reachable(m)) return { machine: m, why: "offline" };

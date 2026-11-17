@@ -58,6 +58,40 @@ func TestHerCommandsAreSignedOnly(t *testing.T) {
 	}
 }
 
+// A command this version doesn't know comes from a device newer than it:
+// unimplemented, which the devices show as "update Hermesh there"
+// (docs/version-skew.md §6.3). One acting as a hermeshd from before Her
+// (TestBeforeHer) has no Her in its status and answers her commands as
+// 0.1.4 did; the rest it runs.
+func TestUnknownAdminCommand(t *testing.T) {
+	ctx := context.Background()
+	n := openHerMachine(t, t.TempDir(), "")
+	if _, err := n.execAdmin(ctx, &identityv1.AdminCommand{}); connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Fatalf("an unknown command: %v", err)
+	}
+	n.Close()
+
+	n, err := Open(Config{DataDir: t.TempDir(), Providers: map[string]provider.Provider{}, TestBeforeHer: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer n.Close()
+	if st := n.Status(); st.Her != nil || n.statusFor(&Principal{Kind: PrincipalOwner}).Her != nil {
+		t.Fatalf("Her in the status of a machine from before her: %v", st.Her)
+	}
+	for _, cmd := range []*identityv1.AdminCommand{
+		setHer(true),
+		{Command: &identityv1.AdminCommand_SetHerAssistantMode{SetHerAssistantMode: &identityv1.SetHerAssistantMode{BotId: "b", PermissionMode: "bypass-permissions"}}},
+	} {
+		if _, err := n.execAdmin(ctx, cmd); connect.CodeOf(err) != connect.CodeInvalidArgument || err.Error() != "invalid_argument: unknown admin command" {
+			t.Errorf("%T: %v", cmd.Command, err)
+		}
+	}
+	if _, err := n.execAdmin(ctx, &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetPaused{SetPaused: &identityv1.SetPaused{Paused: true}}}); err != nil {
+		t.Fatalf("a command it knows: %v", err)
+	}
+}
+
 // Whether Her is on is kept across starts; a machine without her says why
 // it can't run it, while Her may be on all the same; agents never see Her's
 // status.

@@ -5,16 +5,20 @@ import { environments, envState, herChoices, herDataKept, lacksGrant, newServer,
 
 type Her = NonNullable<Machine["her"]>;
 
-/** A machine as Watch lists it: online unless said, Her as given (none when undefined). */
-function machine(id: string, name: string, o: { local?: boolean; online?: boolean; her?: Partial<Her>; platform?: string; seen?: number } = {}): Machine {
+/**
+ * A machine as Watch lists it: online unless said, Her as given (none when undefined). With a platform it has
+ * answered: its status has Her in it, as every hermeshd's since Her, unless it is from before Her (beforeHer).
+ */
+function machine(id: string, name: string, o: { local?: boolean; online?: boolean; her?: Partial<Her>; platform?: string; seen?: number; beforeHer?: boolean } = {}): Machine {
+  const her = (h: Partial<Her>) => ({ enabled: false, running: false, version: "", modelReady: false, unsupported: "", unread: 0, error: "", ...h }) as Her;
   return {
     machineId: id,
     machineName: name,
     local: o.local ?? false,
     online: o.online ?? true,
     lastSeen: o.seen === undefined ? undefined : { seconds: BigInt(o.seen), nanos: 0 },
-    status: o.platform ? { platform: o.platform } : undefined,
-    her: o.her ? ({ enabled: false, running: false, version: "", modelReady: false, unsupported: "", unread: 0, error: "", ...o.her } as Her) : undefined,
+    status: o.platform ? { platform: o.platform, her: o.beforeHer ? undefined : her(o.her ?? {}) } : undefined,
+    her: o.her ? her(o.her) : undefined,
   } as Machine;
 }
 
@@ -60,6 +64,9 @@ test("the first run offers this Mac first, then machines that can run Her, then 
     machine("l", "this", { local: true, platform: "darwin/arm64" }),
     machine("e", "already", { platform: "linux/amd64", her: ready }),
     machine("n", "nas", { platform: "linux/arm", her: { unsupported: "no her" } }),
+    // From before Her: it answers, without Her in its status. Not read yet: unknown, so it may be chosen.
+    machine("b", "homeserver", { platform: "linux/amd64", beforeHer: true }),
+    machine("u", "unread"),
   ]);
   assert.deepEqual(
     choices.map((c) => [c.machine.machineId, c.why, c.detail]),
@@ -67,11 +74,16 @@ test("the first run offers this Mac first, then machines that can run Her, then 
       ["l", null, undefined],
       ["c", null, undefined],
       ["w", null, undefined],
+      ["u", null, undefined],
+      ["b", "needsUpdate", undefined],
       ["n", "unsupported", "no her"],
       ["o", "offline", undefined],
       ["p", "windows", undefined],
     ],
   );
+  // Never on there, so Machine.her is not kept: what it says of Her is in its status.
+  const nas = machine("n", "nas", { platform: "linux/arm", her: { unsupported: "no her" } });
+  assert.equal(herChoices([{ ...nas, her: undefined }])[0].why, "unsupported");
   // A PC running the app: its own machine runs Her too.
   assert.equal(herChoices([machine("l", "this", { local: true, platform: "windows/amd64" })])[0].why, null);
   // A Hermesh from before her ran on Windows says it can't, whatever the platform says.

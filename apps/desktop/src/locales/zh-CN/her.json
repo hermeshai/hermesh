@@ -24,6 +24,7 @@
     "thisMacDesc_win": "这台电脑睡眠时 Her 也会离线",
     "windows": "需先更新这台电脑上的 Hermesh",
     "thisMacDesc_linux": "这台电脑睡眠时 Her 也会离线",
+    "needsUpdate": "这台电脑上的 Hermesh 版本较旧，在那里更新后才能运行 Her",
     "offline": "离线",
     "unsupported": "不能运行 Her：{{detail}}",
     "newServer": "新的服务器",

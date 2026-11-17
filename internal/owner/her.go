@@ -230,7 +230,16 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	msgs := []proto.Message{cmd}
 	var grant *identityv1.Grant
 	if enabled {
-		if grant = o.herGrant(ctx, machineID); grant != nil {
+		// Asked before Face ID, which would be for nothing on a machine
+		// that can't be reached, or is from before Her.
+		st, err := o.herMachineStatus(ctx, machineID)
+		if err != nil {
+			return err
+		}
+		if st.GetHer() == nil {
+			return errBeforeHer
+		}
+		if grant = herGrant(o.ownerID, machineID, st); grant != nil {
 			msgs = append(msgs, grant)
 		}
 	}
@@ -253,7 +262,7 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	res, err := remote.Admin.ApplyAdminCommand(ctx, &machinev1.ApplyAdminCommandRequest{Command: signed[0]})
 	if err != nil {
 		c.ForgetMachine(remote)
-		return err
+		return olderMachine(err)
 	}
 	if !enabled {
 		return o.herTurnedOff(ctx, machineID, erase, res.GetMessage())
@@ -304,23 +313,54 @@ func (o *Owner) herTurnedOff(ctx context.Context, machineID string, erase bool, 
 	}
 }
 
-// herGrant is the grant to sign for Her on a machine: nil when its hermeshd
-// keeps no key for her (it is older, or can't run her) or she holds one.
-func (o *Owner) herGrant(ctx context.Context, machineID string) *identityv1.Grant {
-	var st *machinev1.MachineStatus
-	if l := o.local(); l != nil && l.MachineID() == machineID {
-		st = l.Info().Status
-	} else if n, err := o.machineClient(ctx, machineID); err == nil {
-		if info, err := n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{}); err == nil {
-			st = info.Status
-		}
-	}
+// herGrant is the grant to sign for Her on a machine, from its status: nil
+// when its hermeshd keeps no key for her (it is older, or can't run her) or
+// she holds one.
+func herGrant(ownerID, machineID string, st *machinev1.MachineStatus) *identityv1.Grant {
 	her := st.GetHer()
 	if len(her.GetClientPublicKey()) == 0 || her.GetMesh() {
 		return nil
 	}
-	name := st.GetName()
-	return HerGrant(o.ownerID, machineID, name, her.ClientPublicKey)
+	return HerGrant(ownerID, machineID, st.GetName(), her.ClientPublicKey)
+}
+
+// herMachineStatus is a machine's status, asked of it end to end; this
+// device's own, in process.
+func (o *Owner) herMachineStatus(ctx context.Context, machineID string) (*machinev1.MachineStatus, error) {
+	if o.herInfo != nil {
+		return o.herInfo(ctx, machineID)
+	}
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return l.Info().Status, nil
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	info, err := n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return info.Status, nil
+}
+
+// errBeforeHer refuses Her on a machine whose hermeshd is from before Her
+// (its status has none): it needs an update, as unimplemented says to the
+// devices (docs/version-skew.md §6.3).
+var errBeforeHer = connect.NewError(connect.CodeUnimplemented, errors.New("Hermesh on this machine is from before Her: update it there, then turn Her on"))
+
+// olderMachine is a machine's answer to an admin command it doesn't know.
+// Those up to 0.1.5 said so with invalid_argument; that answer is made
+// unimplemented, as later ones give and the devices show as "update Hermesh
+// there" (docs/version-skew.md §6.3). Any other error is as it came.
+func olderMachine(err error) error {
+	if connect.CodeOf(err) == connect.CodeInvalidArgument {
+		var ce *connect.Error
+		if errors.As(err, &ce) && ce.Message() == "unknown admin command" {
+			return connect.NewError(connect.CodeUnimplemented, errors.New("Hermesh on this machine is older and doesn't know this command: update it there, then try again"))
+		}
+	}
+	return err
 }
 
 // HerGrant is Her's grant on a machine (docs/her-mesh.md §3.2): every
