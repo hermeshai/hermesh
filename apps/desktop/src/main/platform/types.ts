@@ -5,12 +5,12 @@ import type { LoginItem, TerminalCommand } from "../../shared/bridge";
 export type WindowKind = "main" | "onboarding" | "settings" | "auxiliary" | "panel";
 
 /**
- * What differs between the systems the app runs on (docs/windows.md §5.1):
+ * What differs between the systems the app runs on (docs/windows.md §5.1, docs/linux.md §7.1):
  * one implementation each, chosen once at start (platform/index.ts).
  */
 export interface Platform {
   /** The pages' data-platform token. */
-  token: "mac" | "win";
+  token: "mac" | "win" | "linux";
   /** The installed app runs hermeshd itself; development and test runs use a daemon of their own. */
   installed: boolean;
   /** The window's material shows through the sidebar: macOS's vibrancy, Windows 11's Mica. */

@@ -80,14 +80,21 @@ test("English plural forms come in pairs", () => {
   }
 });
 
-test("a Windows variant stands in for a key that exists, and takes its place on Windows", async () => {
-  const { windowsWords } = await import("./words.ts");
+test("a Windows or Linux variant stands in for a key that exists, and takes its place on that system", async () => {
+  const { systemWords } = await import("./words.ts");
   for (const { ns, file } of namespaces()) {
     const keys = texts(file("en"));
-    for (const key of keys.keys()) if (key.endsWith("_win")) assert.ok(keys.has(key.slice(0, -4)), `${ns}: ${key} has no ${key.slice(0, -4)}`);
+    for (const key of keys.keys()) {
+      if (key.endsWith("_win")) assert.ok(keys.has(key.slice(0, -4)), `${ns}: ${key} has no ${key.slice(0, -4)}`);
+      if (key.endsWith("_linux")) assert.ok(keys.has(key.slice(0, -6)), `${ns}: ${key} has no ${key.slice(0, -6)}`);
+      // What Windows words differently, Linux does too: neither is a Mac, nor the other.
+      if (key.endsWith("_win")) assert.ok(keys.has(`${key.slice(0, -4)}_linux`), `${ns}: ${key} has no Linux variant`);
+    }
+    for (const lang of ["en", "zh-CN"]) {
+      for (const [key, text] of texts(file(lang))) if (key.endsWith("_linux")) assert.doesNotMatch(String(text), /Windows|\bPC\b|Touch ID|\bMac\b|TPM/, `${ns} ${lang}: ${key}`);
+    }
   }
-  assert.deepEqual(windowsWords({ thisMac: "This Mac", thisMac_win: "This PC", n: { files_one: "a file", files_win_one: "a PC file", files_other: "files" } }), {
-    thisMac: "This PC",
-    n: { files_one: "a PC file", files_other: "files" },
-  });
+  const words = { thisMac: "This Mac", thisMac_win: "This PC", thisMac_linux: "This Computer", n: { files_one: "a file", files_win_one: "a PC file", files_other: "files" } };
+  assert.deepEqual(systemWords(words, "win"), { thisMac: "This PC", n: { files_one: "a PC file", files_other: "files" } });
+  assert.deepEqual(systemWords(words, "linux"), { thisMac: "This Computer", n: { files_one: "a file", files_other: "files" } });
 });

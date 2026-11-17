@@ -4,6 +4,7 @@
   "listSeparator": "、",
   "thisMac": "这台 Mac",
   "thisMac_win": "这台电脑",
+  "thisMac_linux": "这台电脑",
   "runningCount_other": "{{count}} 个运行中",
   "add": {
     "newGrant": "连接 agent…",
@@ -112,6 +113,7 @@
     "noExpiry": "不会到期",
     "here": "在这台 Mac",
     "here_win": "在这台电脑",
+    "here_linux": "在这台电脑",
     "seen_other": "今天 {{count}} 个任务 · 最近一次 {{ago}}",
     "revokeElsewhere": "撤销它的授权，要到你的可信设备上。"
   }

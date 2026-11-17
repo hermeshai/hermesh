@@ -76,9 +76,9 @@ html[data-platform=win] .nav-i,html[data-platform=win] .srow{border-radius:4px}
 /* The selected row's accent bar, as Windows 11's navigation marks it. */
 html[data-platform=win] .nav-i.sel,html[data-platform=win] .srow.sel{position:relative}
 html[data-platform=win] .nav-i.sel::before,html[data-platform=win] .srow.sel::before{content:"";position:absolute;left:0;top:50%;height:16px;margin-top:-8px;width:3px;border-radius:2px;background:var(--accent)}
-html[data-platform=win] .tl-room{display:none}
-html[data-platform=win] .side-top{padding-left:8px;justify-content:flex-start;gap:2px}
-html[data-platform=win] .side-top>:last-child{margin-left:auto}
+html[data-platform=win] .tl-room,html[data-platform=linux] .tl-room{display:none}
+html[data-platform=win] .side-top,html[data-platform=linux] .side-top{padding-left:8px;justify-content:flex-start;gap:2px}
+html[data-platform=win] .side-top>:last-child,html[data-platform=linux] .side-top>:last-child{margin-left:auto}
 html[data-platform=win] .ctool{padding-right:calc(var(--caption) + 8px)}
 input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
 :focus-visible{outline:2px solid var(--accent);outline-offset:1px}

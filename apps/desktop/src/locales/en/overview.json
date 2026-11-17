@@ -4,6 +4,7 @@
   "listSeparator": ", ",
   "thisMac": "This Mac",
   "thisMac_win": "This PC",
+  "thisMac_linux": "This Computer",
   "runningCount_one": "{{count}} running",
   "runningCount_other": "{{count}} running",
   "add": {
@@ -122,6 +123,7 @@
     "noExpiry": "Doesn’t expire",
     "here": "On this Mac",
     "here_win": "On this PC",
+    "here_linux": "On this computer",
     "seen_one": "{{count}} session today · last active {{ago}}",
     "seen_other": "{{count}} sessions today · last active {{ago}}",
     "revokeElsewhere": "To revoke its access, use one of your trusted devices."

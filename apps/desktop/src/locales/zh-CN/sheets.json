@@ -74,6 +74,7 @@
     "addDevice": "把「{{name}}」加为可信设备",
     "deviceNote": "它将和这台 Mac 一样，能批准机器、个人 agent 和新设备。只在那台设备就在你手上时批准；丢了可以在任意另一台设备上移除。",
     "deviceNote_win": "它将和这台电脑一样，能批准机器、个人 agent 和新设备。只在那台设备就在你手上时批准；丢了可以在任意另一台设备上移除。",
+    "deviceNote_linux": "它将和这台电脑一样，能批准机器、个人 agent 和新设备。只在那台设备就在你手上时批准；丢了可以在任意另一台设备上移除。",
     "nameMachine": "给这台机器起个名字",
     "machineName": "机器名",
     "machineNote": "agent 用“机器名/项目”找到项目。批准后，再在设置里给它添加项目，并在授权里勾选谁能用。",
@@ -81,8 +82,10 @@
     "quoted": "「{{name}}」",
     "signerDetail": "核对码和对方显示的一样就用 Touch ID 批准，不一样就拒绝。",
     "signerDetail_win": "核对码和对方显示的一样就用 Windows Hello 批准，不一样就拒绝。",
+    "signerDetail_linux": "核对码和对方显示的一样就用系统密码批准，不一样就拒绝。",
     "signerConfirmed": "用 Touch ID 批准。",
     "signerConfirmed_win": "用 Windows Hello 批准。",
+    "signerConfirmed_linux": "用系统密码批准。",
     "later": "以后再说",
     "addTrusted": "加为可信设备"
   },
@@ -125,8 +128,10 @@
     "titleChange": "修改「{{name}}」能用什么",
     "sub": "保存后会列出修改前后的对比，用 Touch ID 确认后，「{{name}}」按新设置工作，旧设置立即作废。",
     "sub_win": "保存后会列出修改前后的对比，用 Windows Hello 确认后，「{{name}}」按新设置工作，旧设置立即作废。",
+    "sub_linux": "保存后会列出修改前后的对比，用系统密码确认后，「{{name}}」按新设置工作，旧设置立即作废。",
     "signerDetail": "核对修改前后的对比，再用 Touch ID 确认。",
     "signerDetail_win": "核对修改前后的对比，再用 Windows Hello 确认。",
+    "signerDetail_linux": "核对修改前后的对比，再用系统密码确认。",
     "save": "保存并确认"
   },
   "newGrant": {
@@ -143,6 +148,7 @@
     "copyHint": "拷贝这段话，发给 {{name}}",
     "signerDetail": "核对码和 {{name}} 看到的一样，再用 Touch ID 确认。",
     "signerDetail_win": "核对码和 {{name}} 看到的一样，再用 Windows Hello 确认。",
+    "signerDetail_linux": "核对码和 {{name}} 看到的一样，再用系统密码确认。",
     "denied": "已拒绝。没核对上就不要批准",
     "waitingFor": "还在等你批准：",
     "another": "再连一个"
@@ -212,6 +218,7 @@
     "hostedDesc": "清除消息、新消息提醒和连接授权；所有浏览器退出登录",
     "thisMac": "这台 Mac",
     "thisMac_win": "这台电脑",
+    "thisMac_linux": "这台电脑",
     "laterDevice": "离线，下次打开时提示重置",
     "laterMachine": "离线，之后需要重新配对",
     "laterAgent": "下次使用时需要重新登录",
@@ -220,6 +227,7 @@
     "stayWorktrees": "有未提交改动的 worktree：挪到一边保留，清空后告知保存位置",
     "stayProfiles": "这台 Mac 上的其他账号",
     "stayProfiles_win": "这台电脑上的其他账号",
+    "stayProfiles_linux": "这台电脑上的其他账号",
     "stayAccount": "你的账号：用它重新登录即可全新开始",
     "stayOffline": "离线设备上的数据：保留至设备下次重置",
     "confirm": "清空后不能撤销。输入 <b>{{text}}</b> 以确认：",
@@ -236,6 +244,7 @@
     "last": "最后清空",
     "finishFailed": "这台 Mac 未能完成本机清空：{{error}}",
     "finishFailed_win": "这台电脑未能完成本机清空：{{error}}",
+    "finishFailed_linux": "这台电脑未能完成本机清空：{{error}}",
     "retry": "再试一次"
   },
   "herOff": {
@@ -247,6 +256,7 @@
     "buttonErase": "关闭并清空",
     "approve": "用 Touch ID 确认。",
     "approve_win": "用 Windows Hello 确认。",
+    "approve_linux": "用系统密码确认。",
     "done": "已在「{{name}}」上关闭 Her",
     "erased": "已在「{{name}}」上关闭 Her，并清空了她的数据",
     "offline": "「{{name}}」离线，Her 的数据会留在上面。"

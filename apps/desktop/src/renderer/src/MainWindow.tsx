@@ -106,10 +106,10 @@ export function MainWindow() {
   );
 }
 
-/** Windows: the app menu, under its button (there is no menu bar; main/menu.ts). */
+/** Windows and Linux: the app menu, under its button (there is no menu bar; main/menu.ts). */
 export function AppMenuButton() {
   const { t } = useTranslation("common");
-  if (platform !== "win") return null;
+  if (platform === "mac") return null;
   return (
     <button
       className="tb"

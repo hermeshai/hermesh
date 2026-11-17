@@ -12,6 +12,9 @@ test("shortcuts read as each system shows them", () => {
   assert.equal(keys(platformKeys.mac.toggleInspector, "mac"), "⌥⌘0");
   assert.equal(keys(platformKeys.win.toggleSidebar, "win"), "Ctrl+B");
   assert.equal(keys(platformKeys.win.toggleInspector, "win"), "Ctrl+Shift+I");
+  // Linux reads as Windows does.
+  assert.equal(keys("Shift+CmdOrCtrl+N", "linux"), "Ctrl+Shift+N");
+  assert.equal(keys(platformKeys.linux.toggleSidebar, "linux"), "Ctrl+B");
 });
 
 test("no Windows shortcut is a Ctrl+Alt one (AltGr types characters with it)", () => {

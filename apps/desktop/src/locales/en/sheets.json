@@ -74,6 +74,7 @@
     "addDevice": "Add “{{name}}” as a trusted device",
     "deviceNote": "Like this Mac, it will be able to approve machines, personal agents and new devices. Approve only when that device is in your hands; if it’s lost, remove it from any other device.",
     "deviceNote_win": "Like this PC, it will be able to approve machines, personal agents and new devices. Approve only when that device is in your hands; if it’s lost, remove it from any other device.",
+    "deviceNote_linux": "Like this computer, it will be able to approve machines, personal agents and new devices. Approve only when that device is in your hands; if it’s lost, remove it from any other device.",
     "nameMachine": "Name this machine",
     "machineName": "Machine name",
     "machineNote": "Agents find projects by “machine name/project”. After approving, add projects for it in Settings, and choose in access who can use them.",
@@ -81,8 +82,10 @@
     "quoted": "“{{name}}”",
     "signerDetail": "Approve with Touch ID if the verification code matches what the other side shows; if not, deny.",
     "signerDetail_win": "Approve with Windows Hello if the verification code matches what the other side shows; if not, deny.",
+    "signerDetail_linux": "Approve with your password if the verification code matches what the other side shows; if not, deny.",
     "signerConfirmed": "Approve with Touch ID.",
     "signerConfirmed_win": "Approve with Windows Hello.",
+    "signerConfirmed_linux": "Approve with your password.",
     "later": "Not Now",
     "addTrusted": "Add as Trusted Device"
   },
@@ -128,8 +131,10 @@
     "titleChange": "Change What “{{name}}” Can Use",
     "sub": "When you save, you’ll see a side-by-side summary of the changes. Once you confirm with Touch ID, “{{name}}” will use the new settings immediately.",
     "sub_win": "When you save, you’ll see a side-by-side summary of the changes. Once you confirm with Windows Hello, “{{name}}” will use the new settings immediately.",
+    "sub_linux": "When you save, you’ll see a side-by-side summary of the changes. Once you confirm with your password, “{{name}}” will use the new settings immediately.",
     "signerDetail": "Review the changes, then confirm with Touch ID.",
     "signerDetail_win": "Review the changes, then confirm with Windows Hello.",
+    "signerDetail_linux": "Review the changes, then confirm with your password.",
     "save": "Save and Confirm"
   },
   "newGrant": {
@@ -146,6 +151,7 @@
     "copyHint": "Copy this message and send it to {{name}}",
     "signerDetail": "Verify that the code matches what {{name}} shows, then confirm with Touch ID.",
     "signerDetail_win": "Verify that the code matches what {{name}} shows, then confirm with Windows Hello.",
+    "signerDetail_linux": "Verify that the code matches what {{name}} shows, then confirm with your password.",
     "denied": "Denied. Never approve if the codes don’t match",
     "waitingFor": "Waiting for your approval:",
     "another": "Connect Another"
@@ -215,6 +221,7 @@
     "hostedDesc": "Messages, wake webhooks, and connection grants removed; all browser sessions signed out",
     "thisMac": "This Mac",
     "thisMac_win": "This PC",
+    "thisMac_linux": "This Computer",
     "laterDevice": "offline: will prompt to reset when next opened",
     "laterMachine": "offline: must pair again when back online",
     "laterAgent": "must sign in again when next used",
@@ -223,6 +230,7 @@
     "stayWorktrees": "Worktrees with uncommitted changes (moved aside and preserved, with their paths shown afterward)",
     "stayProfiles": "Other accounts on this Mac",
     "stayProfiles_win": "Other accounts on this PC",
+    "stayProfiles_linux": "Other accounts on this computer",
     "stayAccount": "Your account (sign in again anytime for a fresh start)",
     "stayOffline": "Data on offline devices until each device is reset",
     "confirm": "This action cannot be undone. Type <b>{{text}}</b> to confirm:",
@@ -239,6 +247,7 @@
     "last": "Last",
     "finishFailed": "This Mac couldn’t finish erasing local data: {{error}}",
     "finishFailed_win": "This PC couldn’t finish erasing local data: {{error}}",
+    "finishFailed_linux": "This computer couldn’t finish erasing local data: {{error}}",
     "retry": "Try Again"
   },
   "herOff": {
@@ -250,6 +259,7 @@
     "buttonErase": "Turn Off and Erase",
     "approve": "Confirm with Touch ID.",
     "approve_win": "Confirm with Windows Hello.",
+    "approve_linux": "Confirm with your password.",
     "done": "Her is off on “{{name}}”",
     "erased": "Her is off on “{{name}}”, and her data is erased",
     "offline": "“{{name}}” is offline, so Her’s data stays on it."
