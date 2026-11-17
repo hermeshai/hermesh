@@ -49,6 +49,27 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "a question arrives as a notification and opens its session") { _ in try notification() }
     }
 
+    func testAccountSettingsLayout() throws {
+        try join()
+        openMenu(); tap("account")
+        reach("account-machines")
+        let machines = app.buttons["account-machines"], notifications = app.buttons["notifications"]
+        XCTAssertTrue(notifications.exists)
+        XCTAssertLessThan(machines.frame.minY, notifications.frame.minY)
+        tap("account-machines")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["account-grants"].waitForExistence(timeout: 5))
+        reach("erase-everything")
+        let appearance = app.staticTexts["account-appearance"], about = app.staticTexts["account-about"], actions = app.staticTexts["account-actions"]
+        XCTAssertTrue(appearance.exists && about.exists && actions.exists)
+        XCTAssertLessThan(appearance.frame.minY, about.frame.minY)
+        XCTAssertLessThan(about.frame.minY, actions.frame.minY, "account actions stay at the bottom")
+        XCTAssertLessThan(actions.frame.minY, app.buttons["erase-everything"].frame.minY)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "account-actions-at-bottom"; shot.lifetime = .keepAlways; add(shot)
+        tap("close")
+    }
+
     func testAntigravitySetup() throws {
         try join()
         try machine()

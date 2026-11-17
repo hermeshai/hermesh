@@ -5,8 +5,8 @@ import SwiftUI
 import UserNotifications
 
 /// The account, laid out as iOS Settings: the service this iPhone belongs
-/// to (its web console a tap away), usage, account actions, machines and
-/// agents, notifications, appearance and about.
+/// to (its web console a tap away), usage, machines and agents, notifications,
+/// appearance and about; account actions stay at the bottom.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -33,18 +33,6 @@ struct AccountSheet: View {
                         UsageSummary(usage: u)
                     } header: {
                         Text("Usage").accessibilityIdentifier("account-usage")
-                    }
-                }
-                // What ends: signing this iPhone out, and erasing everything (its own page).
-                if !model.isDemo {
-                    Section {
-                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
-                        if !model.status.removed {
-                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
-                                .accessibilityIdentifier("erase-everything")
-                        }
-                    } header: {
-                        Text("Actions").accessibilityIdentifier("account-actions")
                     }
                 }
                 // The machines and the agents connected to the owner, managed on pages of their own (the menu
@@ -94,6 +82,18 @@ struct AccountSheet: View {
                     LabeledContent("Version", value: model.status.version)
                 } header: {
                     Text("About").accessibilityIdentifier("account-about")
+                }
+                // What ends: signing this iPhone out, and erasing everything (its own page).
+                if !model.isDemo {
+                    Section {
+                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
+                        if !model.status.removed {
+                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
+                                .accessibilityIdentifier("erase-everything")
+                        }
+                    } header: {
+                        Text("Actions").accessibilityIdentifier("account-actions")
+                    }
                 }
             }
             .navigationDestination(for: Route.self) { routePage($0) }
