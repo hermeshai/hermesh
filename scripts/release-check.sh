@@ -4,7 +4,8 @@
 # release key, each hash matching), her for Linux and Windows and her console with
 # them, the version, install.sh and install.ps1
 # with the key, the Mac app with feeds naming this version's zip, and the
-# Windows app with signed feeds naming this version's package. The release
+# Windows app with signed feeds naming this version's package, and the Linux
+# app's packages with signed feeds naming them. The release
 # workflow runs it on the draft before publishing, and again on the
 # published files before promoting (docs/development.md, Releasing).
 #   scripts/release-check.sh <dir> <version, with or without v>
@@ -65,5 +66,18 @@ for arch in arm64 x64; do
   grep -q "\"currentRelease\": \"$VERSION\"" "$feed" || fail "RELEASES-win32-$arch.json is not for $VERSION"
   grep -q "/releases/download/v$VERSION/Hermesh-windows-$arch.nupkg\"" "$feed" || fail "RELEASES-win32-$arch.json names another package"
   grep -q "\"sha256\": \"$($sum "$DIR/Hermesh-windows-$arch.nupkg" | cut -d' ' -f1)\"" "$feed" || fail "Hermesh-windows-$arch.nupkg is not the package RELEASES-win32-$arch.json names"
+done
+for arch in arm64 x64; do
+  feed="$DIR/RELEASES-linux-$arch.json"
+  need "RELEASES-linux-$arch.json"
+  need "RELEASES-linux-$arch.json.sig"
+  need "Hermesh-linux-$arch.tar.gz"
+  openssl dgst -sha256 -verify "$PUB" -signature "$feed.sig" "$feed" >/dev/null 2>&1 || fail "RELEASES-linux-$arch.json is not signed by the release key"
+  grep -q "\"currentRelease\": \"$VERSION\"" "$feed" || fail "RELEASES-linux-$arch.json is not for $VERSION"
+  for kind in deb rpm; do
+    need "Hermesh-linux-$arch.$kind"
+    grep -q "/releases/download/v$VERSION/Hermesh-linux-$arch.$kind\"" "$feed" || fail "RELEASES-linux-$arch.json names another .$kind"
+    grep -q "\"sha256\": \"$($sum "$DIR/Hermesh-linux-$arch.$kind" | cut -d' ' -f1)\"" "$feed" || fail "Hermesh-linux-$arch.$kind is not the package RELEASES-linux-$arch.json names"
+  done
 done
 echo "✓ release v$VERSION is complete"
