@@ -27,8 +27,8 @@ test("the sidebar groups sessions by status: needs you, running, done; archived 
   await app.close();
 });
 
-// The sidebar reads calmly: Her and the overview a row apart, a hairline, the sessions' heading with the view
-// menu at its end; search and the toggle in the top band; 13px titles; a quiet foot, a dot only when something
+// The sidebar reads calmly: Her and the overview a row apart, no line under them, the sessions' heading with the
+// view menu at its end; search and the toggle in the top band; 13px titles; a quiet foot, a dot only when something
 // is wrong, and no count of machines.
 test("the sidebar keeps one rhythm, one heading per group and a quiet foot", async () => {
   const { app, page } = await launch();
@@ -46,7 +46,8 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   expect(Math.abs((await centre(search)) - hide)).toBeLessThanOrEqual(1);
   const side = await box(page.locator(".side"));
   expect(side.x + side.width - ((await box(search)).x + (await box(search)).width)).toBeLessThanOrEqual(10);
-  // The sessions' heading under the hairline, its view menu at its end.
+  // The sessions' heading under them, with no line between, its view menu at its end.
+  expect(await nav.evaluate((el) => getComputedStyle(el).borderBottomWidth)).toBe("0px");
   const heading = page.locator(".side-h");
   await expect(heading).toHaveText("任务");
   expect((await box(heading)).y).toBeGreaterThanOrEqual(overview.y + overview.height + 8);

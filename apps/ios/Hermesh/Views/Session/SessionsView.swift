@@ -181,7 +181,7 @@ struct ViewMenu: View {
             }
         } label: {
             // The menu's own glass, as its Search and Close beside it, a size smaller: in the text's colour, not the tint.
-            Image(systemName: "line.3.horizontal.decrease").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+            Image(systemName: "arrow.up.arrow.down").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(.circle)
