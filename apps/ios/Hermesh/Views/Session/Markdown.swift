@@ -367,7 +367,7 @@ private struct BlockView: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(notes.enumerated()), id: \.offset) { i, blocks in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(i + 1).").font(small.font).foregroundStyle(.tertiary).monospacedDigit().frame(minWidth: 14, alignment: .leading)
+                        Text(verbatim: "\(i + 1).").font(small.font).foregroundStyle(.tertiary).monospacedDigit().frame(minWidth: 14, alignment: .leading)
                         MarkdownBlocks(blocks: blocks, style: small, draft: draft)
                     }
                 }
