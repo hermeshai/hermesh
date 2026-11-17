@@ -58,6 +58,8 @@
 //! | `remember:LINE` | a bot noting LINE in its memory, the `MEMORY.md` its system prompt gives in `<memory path="…">`: a `write` of LINE when nothing is there yet, else an `edit` that puts LINE after the last line; then `记下了。` sent with `end_turn` |
 //! | `recall` | `记得：<what the system prompt's <memory> holds>` sent with `end_turn`, or `什么都不记得。` when it holds nothing |
 //!
+//! `HER_MOCK_SCRIPTS=FILE` plays a demo with no directive on show (see [`scripted`]).
+//!
 //! [`MockOptions`] adds a gateway's latency: a pause before the first chunk of every reply
 //! and between chunks.
 
@@ -485,6 +487,49 @@ fn directive(messages: &[Value]) -> (String, String, String, usize) {
         .filter(|m| m.get("role").and_then(Value::as_str) == Some("assistant"))
         .count();
     ("text".to_string(), String::new(), String::new(), step)
+}
+
+/// A demo's replies, for pictures of the apps where a directive would show: `HER_MOCK_SCRIPTS` names a JSON file of
+/// `{WORDS: [REPLY, …]}`. The latest user message that holds some WORDS (the longest, when it holds several) plays
+/// its replies, one for each request after it, as a directive's steps are counted; past the last, the last again.
+/// A REPLY is text (a string), or the calls it makes (`[{"name": …, "arguments": {…}}, …]`), where
+/// `{{session:TITLE}}` stands for the id of the session an earlier `session_start` titled TITLE gave.
+fn scripted(messages: &[Value]) -> Option<Step> {
+    static SCRIPTS: std::sync::OnceLock<HashMap<String, Vec<Value>>> = std::sync::OnceLock::new();
+    let scripts = SCRIPTS.get_or_init(|| {
+        let file = std::env::var("HER_MOCK_SCRIPTS").ok().and_then(|path| std::fs::read(path).ok());
+        file.and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
+    });
+    if scripts.is_empty() {
+        return None;
+    }
+    let role = |m: &Value, role: &str| m.get("role").and_then(Value::as_str) == Some(role);
+    let (at, replies) = messages.iter().enumerate().rev().filter(|(_, m)| role(m, "user")).find_map(|(i, m)| {
+        let text = content_text(m);
+        scripts.iter().filter(|(words, _)| text.contains(words.as_str())).max_by_key(|(words, _)| words.len()).map(|(_, replies)| (i, replies))
+    })?;
+    let step = messages[at + 1..].iter().filter(|m| role(m, "assistant")).count();
+    // The id in the result of the session_start that named TITLE.
+    let session = |title: &str| {
+        let result = messages.iter().filter(|m| role(m, "tool")).map(content_text).find(|text| text.contains(title))?;
+        let id = &result[result.find("session_id")?..];
+        let id = &id[id.find("s_")?..];
+        Some(id.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect::<String>())
+    };
+    let filled = |arguments: &Value| {
+        let mut text = arguments.to_string();
+        while let Some(start) = text.find("{{session:") {
+            let end = start + text[start..].find("}}")?;
+            let id = session(&text[start + 10..end])?;
+            text.replace_range(start..end + 2, &id);
+        }
+        serde_json::from_str::<Value>(&text).ok()
+    };
+    match replies.get(step).or(replies.last())? {
+        Value::String(text) => Some(Step::text(text.clone())),
+        Value::Array(calls) => Some(Step::calls(calls.iter().filter_map(|call| Some((call.get("name")?.as_str()?, filled(call.get("arguments")?)?))).collect())),
+        _ => None,
+    }
 }
 
 /// What `send` replies to the user messages after the last assistant message: each one's
@@ -1454,7 +1499,7 @@ async fn respond_chat(stream: &mut TcpStream, body: &[u8], shared: &Shared) -> i
             let messages = request.get("messages").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
             let (name, arg, prompt, step) = directive(messages);
             let bot = offers_tool(&request, "send_to_user");
-            let plan = match check_plan(&request, messages) {
+            let plan = match check_plan(&request, messages).or_else(|| scripted(messages).map(Plan::Step)) {
                 Some(plan) => plan,
                 // An assistant's conversation with no directive: it answers the latest message,
                 // as a model does, instead of writing text nobody sees.
