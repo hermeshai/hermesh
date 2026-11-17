@@ -23,7 +23,7 @@ import (
 func herServer(t *testing.T, env *herEnvironment) (daemon, data string, cli []string) {
 	t.Helper()
 	her, _ := herBinaries(t)
-	return filepath.Join(env.w.bin, "hermeshd"), filepath.Join(env.w.tmp, "her-server"),
+	return filepath.Join(env.w.bin, "hermeshd"+exe), filepath.Join(env.w.tmp, "her-server"),
 		[]string{"HERMESH_HER_BIN=" + her, "HER_HOME=" + env.home, "HER_CREDENTIAL_STORE=file"}
 }
 
