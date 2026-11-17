@@ -309,7 +309,7 @@ mod tests {
         let out = run(&WriteTool, json!({"path": "src/new.txt", "content": "hello"}), ctx.clone())
             .await
             .unwrap();
-        assert_eq!(out.content_text(), format!("Wrote 5 bytes to {}/src/new.txt (created).", dir.path().display()));
+        assert_eq!(out.content_text(), format!("Wrote 5 bytes to {} (created).", dir.path().join("src").join("new.txt").display()));
         // Its own file can be overwritten without reading it first.
         run(&WriteTool, json!({"path": "src/new.txt", "content": "again"}), ctx.clone())
             .await
@@ -468,7 +468,7 @@ mod tests {
         std::fs::write(&path, old).unwrap();
         mark_read(&ctx, &path);
         let out = run(&WriteTool, json!({"path": "f.txt", "content": new}), ctx).await.unwrap();
-        let text = out.content_text().replace(&format!("{}/", dir.path().display()), "");
+        let text = out.content_text().replace(&format!("{}{}", dir.path().display(), std::path::MAIN_SEPARATOR), "");
         (text, std::fs::read(&path).unwrap())
     }
 

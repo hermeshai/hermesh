@@ -329,6 +329,13 @@ mod tests {
         assert!(answers(&path));
         drop(served);
         drop(listener);
+        // Windows closes a pipe once its pending reads are cancelled, a moment later.
+        for _ in 0..100 {
+            if !answers(&path) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         assert!(!answers(&path));
     }
 }

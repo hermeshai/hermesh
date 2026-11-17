@@ -23,6 +23,7 @@ her-llm.workspace = true
 her-mcp.workspace = true
 her-protocol.workspace = true
 her-rpc.workspace = true
+her-tools.workspace = true
 jiff.workspace = true
 libc.workspace = true
 notify.workspace = true

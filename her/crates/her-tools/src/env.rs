@@ -107,7 +107,14 @@ pub fn file_url_path(raw: &str) -> Option<PathBuf> {
         return None;
     }
     let path = &path[..path.find(['?', '#']).unwrap_or(path.len())];
-    Some(path_from_bytes(percent_decode(path)))
+    let path = percent_decode(path);
+    // On Windows the path names its drive after the slash: file:///C:/Users/me.
+    #[cfg(windows)]
+    let path = match path.as_slice() {
+        [b'/', drive, b':', ..] if drive.is_ascii_alphabetic() => path[1..].to_vec(),
+        _ => path,
+    };
+    Some(path_from_bytes(path))
 }
 
 fn percent_decode(text: &str) -> Vec<u8> {
