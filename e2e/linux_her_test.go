@@ -102,7 +102,8 @@ func TestLinuxHer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := install.Wait(); err != nil || !strings.Contains(out.String(), "› downloading "+herAsset) || !strings.Contains(out.String(), "✓ Background service on") {
+	if err := install.Wait(); err != nil || !strings.Contains(out.String(), "› downloading "+herAsset) || !strings.Contains(out.String(), "✓ Background service on") ||
+		!strings.Contains(out.String(), "then talk to her there or here: hermeshd her") {
 		t.Fatalf("install: %v\n%s", err, out.String())
 	}
 	// her's PDF component (docs/linux.md §4), beside her and from her release.

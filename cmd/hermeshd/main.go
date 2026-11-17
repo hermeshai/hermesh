@@ -391,7 +391,12 @@ to that owner's devices by itself. Then it installs the background service.`,
 			if !ready {
 				fmt.Println("  Install one as this user and sign in once (run `claude`); `hermeshd doctor` checks again.")
 			}
-			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n  check it all    hermeshd doctor\n  its log         %s\n  every command   hermeshd --help\n",
+			fmt.Printf("\nNext\n  add a project   hermeshd project add ~/code/app   (or in the Hermesh app)\n")
+			// Her, when she is installed here: on in the app, then hers to talk to anywhere, here too.
+			if herBin() != "" {
+				fmt.Printf("  Her             turn Her on for this machine in the Hermesh app, then talk to her there or here: hermeshd her\n")
+			}
+			fmt.Printf("  check it all    hermeshd doctor\n  its log         %s\n  every command   hermeshd --help\n",
 				logHint(filepath.Join(dataDir, "logs", "hermeshd.log"), true))
 			if noServiceWhy != nil {
 				why, fix := noServiceWhy.Error(), "fix that, then run `hermeshd service install`"
