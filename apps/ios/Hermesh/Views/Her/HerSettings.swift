@@ -329,29 +329,60 @@ private struct HerTabs: View {
 
 /// The cards of a tab: panes of glass over a field of Her's own colours, which reaches past them.
 private struct HerEntryCards<Content: View>: View {
-    @Environment(\.colorScheme) private var scheme
     @ViewBuilder let content: Content
+    @State private var size: CGSize?
 
     var body: some View {
         VStack(spacing: 10) { content }
-            .background { field.padding(.horizontal, -8).padding(.vertical, -26).allowsHitTesting(false) }
+            .coordinateSpace(.named(HerCardTint.space))
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            .environment(\.herCardsSize, size)
             .padding(.top, 14)
     }
+}
 
-    /// Her's lilac, rose, sky and violet, blurred into one another.
-    private var field: some View {
+extension EnvironmentValues {
+    /// The size of the cards' area, which their colours are drawn across.
+    @Entry var herCardsSize: CGSize?
+}
+
+/// Her's colours behind a card's glass, and only there: the part of one field, drawn across the cards' area, that
+/// the card covers. The page around the cards, the gaps between them included, keeps its own background.
+private struct HerCardTint: ViewModifier {
+    static let space = "her-cards"
+    @Environment(\.herCardsSize) private var area
+
+    func body(content: Content) -> some View {
+        content.background {
+            if let area {
+                GeometryReader { g in
+                    let at = g.frame(in: .named(Self.space))
+                    HerCardField().frame(width: area.width, height: area.height).offset(x: -at.minX, y: -at.minY)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+/// Her's lilac, rose, sky and violet, blurred into one another.
+private struct HerCardField: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
         GeometryReader { g in
-            let w = g.size.width, h = g.size.height
+            let w = g.size.width, h = g.size.height, r = min(w, h * 1.6)
             ZStack {
-                blob(0x8f9bf0, x: w * 0.16, y: h * 0.16, r: w * 0.4)
-                blob(0xf29bc0, x: w * 0.84, y: h * 0.22, r: w * 0.36)
-                blob(0x7fc4ea, x: w * 0.56, y: h * 0.62, r: w * 0.42)
-                blob(0xb59cf2, x: w * 0.14, y: h * 0.9, r: w * 0.38)
+                blob(0x8f9bf0, x: w * 0.16, y: h * 0.16, r: r * 0.4)
+                blob(0xf29bc0, x: w * 0.84, y: h * 0.22, r: r * 0.36)
+                blob(0x7fc4ea, x: w * 0.56, y: h * 0.62, r: r * 0.42)
+                blob(0xb59cf2, x: w * 0.14, y: h * 0.9, r: r * 0.38)
             }
             .blur(radius: 40)
-            .opacity(scheme == .dark ? 0.8 : 0.62)
+            .opacity(scheme == .dark ? 0.85 : 0.75)
         }
-        .accessibilityHidden(true)
     }
 
     private func blob(_ rgb: Int, x: CGFloat, y: CGFloat, r: CGFloat) -> some View {
@@ -441,6 +472,7 @@ private struct HerEntryCard: View {
             .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(.rect(cornerRadius: 26))
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .modifier(HerCardTint())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
@@ -515,6 +547,7 @@ private struct HerConnectorTray: View {
         }
         .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .modifier(HerCardTint())
     }
 
     private func tile(name: String, @ViewBuilder icon: () -> some View) -> some View {
