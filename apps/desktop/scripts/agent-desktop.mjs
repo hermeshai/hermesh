@@ -18,13 +18,16 @@ export const agentDesktopRelease = {
 /** The program and the helper it starts, which must stay beside it, by the names they are installed under. */
 export const agentDesktopFiles = ["agent-desktop", "agent-desktop-macos-helper"];
 
+/** The same for Linux, where Hermesh's release carries them for her (docs/linux.md §5): the program and its clipboard helper. */
+export const agentDesktopLinuxFiles = ["agent-desktop", "agent-desktop-linux-clipboard-owner"];
+
 /** `sha512-…` of `file`, as npm writes integrity. */
 export function integrityOf(file) {
   return `sha512-${createHash("sha512").update(fs.readFileSync(file)).digest("base64")}`;
 }
 
 /**
- * The binaries for `arch` (arm64 or x64) and `system` (darwin, or win32, whose one program is
+ * The binaries for `arch` (arm64 or x64) and `system` (darwin, linux, or win32, whose one program is
  * agent-desktop.exe), name → path, from `cache`; fetched with `npm pack` (the user's registry;
  * the integrity makes any registry safe) when not there yet.
  */
@@ -47,7 +50,10 @@ export function agentDesktopBinaries(arch, cache, release = agentDesktopRelease,
       fs.rmSync(staging, { recursive: true, force: true });
     }
   }
-  const packed = system === "win32" ? { "agent-desktop.exe": `agent-desktop-win32-${arch}.exe` } : Object.fromEntries(agentDesktopFiles.map((name) => [name, `${name}-darwin-${arch}`]));
+  const packed =
+    system === "win32"
+      ? { "agent-desktop.exe": `agent-desktop-win32-${arch}.exe` }
+      : Object.fromEntries((system === "linux" ? agentDesktopLinuxFiles : agentDesktopFiles).map((name) => [name, `${name}-${system}-${arch}`]));
   const out = {};
   for (const [name, as] of Object.entries(packed)) {
     const file = path.join(bin, as);
@@ -64,4 +70,18 @@ function npmPack(spec, dir) {
   // On Windows npm is a script, which only a shell starts.
   const [packed] = JSON.parse(execFileSync("npm", ["pack", spec, "--json", "--pack-destination", dir], { cwd: dir, encoding: "utf8", shell: process.platform === "win32" }));
   return path.join(dir, packed.filename);
+}
+
+// `node agent-desktop.mjs linux <x64|arm64> <folder>`: the folder a Linux release carries as
+// her-computer-linux-<arch>.tar.gz (scripts/release.sh), its files programs whatever the umask.
+if (process.argv[1] && path.resolve(process.argv[1]) === import.meta.filename && process.argv[2] === "linux") {
+  const [arch, folder] = process.argv.slice(3);
+  if (!["x64", "arm64"].includes(arch) || !folder) throw new Error("usage: agent-desktop.mjs linux <x64|arm64> <folder>");
+  const cache = path.join(import.meta.dirname, "..", "node_modules", ".cache", "agent-desktop");
+  fs.mkdirSync(folder, { recursive: true });
+  fs.chmodSync(folder, 0o755);
+  for (const [name, file] of Object.entries(agentDesktopBinaries(arch, cache, agentDesktopRelease, npmPack, "linux"))) {
+    fs.copyFileSync(file, path.join(folder, name));
+    fs.chmodSync(path.join(folder, name), 0o755);
+  }
 }

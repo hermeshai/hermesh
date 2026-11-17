@@ -70,10 +70,26 @@ jobs:
             sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
           cp her/target/dist/her her-linux-${{ matrix.arch }}
           ./her-linux-${{ matrix.arch }} --version
+      # her's PDF worker (docs/linux.md §4): the static her cannot load PDFium, so
+      # this second program does, linked against glibc 2.28 with cargo-zigbuild,
+      # as her's own release builds it (her/tools/release/release.mjs).
+      - name: build her PDF worker
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' her/rust-toolchain.toml)"
+          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true "rust:$toolchain-bookworm" \
+            sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq python3-pip >/dev/null && pip3 install --quiet --break-system-packages cargo-zigbuild && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo zigbuild --profile dist --locked -p her-docs --bin her-doc-worker --target "$(uname -m)-unknown-linux-gnu.2.28"'
+          cp "her/target/$(uname -m)-unknown-linux-gnu/dist/her-doc-worker" her-doc-worker-linux-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
           name: her-linux-${{ matrix.arch }}
           path: her-linux-${{ matrix.arch }}
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: her-doc-worker-linux-${{ matrix.arch }}
+          path: her-doc-worker-linux-${{ matrix.arch }}
           if-no-files-found: error
   # her for Windows, which install.ps1 puts beside hermeshd on a PC that is
   # only a machine (the app carries its own): built as her's releases are,
@@ -161,6 +177,25 @@ jobs:
           pattern: hermesh-screen-linux-*
           path: ${{ runner.temp }}/screen
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: her-doc-worker-linux-*
+          path: ${{ runner.temp }}/pdf-worker
+          merge-multiple: true
+      # Her's PDF component for Linux (docs/linux.md §4): the worker, and the
+      # PDFium the Mac app pins, checked by its digest.
+      - name: her PDF component for Linux
+        run: |
+          for pair in amd64:x64 arm64:arm64; do
+            node apps/desktop/scripts/pdfium.mjs linux "${pair#*:}" "$RUNNER_TEMP/pdf/${pair%:*}"
+            install -m 0755 "$RUNNER_TEMP/pdf-worker/her-doc-worker-linux-${pair%:*}" "$RUNNER_TEMP/pdf/${pair%:*}/her-doc-worker"
+          done
+      # agent-desktop for Linux, which Her's computer use runs (docs/linux.md §5):
+      # the pinned npm package, checked by its integrity, as the Mac app's.
+      - name: agent-desktop for Linux
+        run: |
+          node apps/desktop/scripts/agent-desktop.mjs linux x64 "$RUNNER_TEMP/computer/amd64"
+          node apps/desktop/scripts/agent-desktop.mjs linux arm64 "$RUNNER_TEMP/computer/arm64"
       - name: build and sign
         env:
           RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
@@ -170,6 +205,8 @@ jobs:
           VERSION=${GITHUB_REF_NAME} RELEASE_SIGNING_KEY_FILE=/tmp/release.key \
             HER_LINUX_AMD64="$RUNNER_TEMP/her/her-linux-amd64" HER_LINUX_ARM64="$RUNNER_TEMP/her/her-linux-arm64" HER_CONSOLE=her/apps/console/dist \
             HER_WINDOWS_AMD64="$RUNNER_TEMP/her/her-windows-amd64.exe" HER_WINDOWS_ARM64="$RUNNER_TEMP/her/her-windows-arm64.exe" \
+            HER_PDF_LINUX_AMD64="$RUNNER_TEMP/pdf/amd64" HER_PDF_LINUX_ARM64="$RUNNER_TEMP/pdf/arm64" \
+            HER_COMPUTER_LINUX_AMD64="$RUNNER_TEMP/computer/amd64" HER_COMPUTER_LINUX_ARM64="$RUNNER_TEMP/computer/arm64" \
             SCREEN_LINUX_AMD64="$RUNNER_TEMP/screen/hermesh-screen-linux-amd64" SCREEN_LINUX_ARM64="$RUNNER_TEMP/screen/hermesh-screen-linux-arm64" ./scripts/release.sh
           rm -f /tmp/release.key
       - run: gh release upload "$TAG" dist/release/* --clobber

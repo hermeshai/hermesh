@@ -318,15 +318,22 @@ func (r *testReleases) installCommand(args string) string {
 // to run a shell script there.
 func startLinuxServer(t *testing.T, prefix, host string) (string, func(string) (string, error)) {
 	t.Helper()
-	build := exec.Command("docker", "build", "-t", "hermesh-e2e-linux-server:1", "-")
-	build.Stdin = strings.NewReader(linuxServerImage)
+	return startLinuxImage(t, "hermesh-e2e-linux-server:1", linuxServerImage, prefix, host)
+}
+
+// startLinuxImage is startLinuxServer for another image, built from
+// dockerfile under tag.
+func startLinuxImage(t *testing.T, tag, dockerfile, prefix, host string) (string, func(string) (string, error)) {
+	t.Helper()
+	build := exec.Command("docker", "build", "-t", tag, "-")
+	build.Stdin = strings.NewReader(dockerfile)
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("docker build: %v %s", err, out)
 	}
 	name := fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
 	if out, err := exec.Command("docker", "run", "-d", "--name", name, "--hostname", host, "--privileged", "--cgroupns=host",
 		"-v", "/sys/fs/cgroup:/sys/fs/cgroup:rw", "--tmpfs", "/run", "--tmpfs", "/run/lock",
-		"--add-host", "host.docker.internal:host-gateway", "hermesh-e2e-linux-server:1").CombinedOutput(); err != nil {
+		"--add-host", "host.docker.internal:host-gateway", tag).CombinedOutput(); err != nil {
 		t.Fatalf("docker run: %v %s", err, out)
 	}
 	sh := func(script string) (string, error) {

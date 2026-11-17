@@ -609,7 +609,10 @@ The protos are the contract; this is their outline.
   the Mac app's, and the console, `her-console.tar.gz`, all in the signed
   checksum list with the other programs. On a machine (not `--cli` or
   `--device`), `install.sh` puts her beside hermeshd in `~/.local/bin` and
-  the console in `her-console/` there, where hermeshd finds them.
+  the console in `her-console/` there, where hermeshd finds them. With them
+  goes `her-computer-linux-<arch>.tar.gz`, agent-desktop for Linux, into
+  `her-computer/`, where her finds it for computer use on a computer with a
+  desktop ([linux.md](linux.md) §5).
 - **One version.** hermeshd's self-update, `hermeshd update` and the
   background updater ([machine-updates.md](machine-updates.md)), replaces
   hermeshd, hermesh, her and the console together from one release, and
@@ -622,10 +625,15 @@ The protos are the contract; this is their outline.
   `hermeshd doctor` and `status` say whether her is installed, its version,
   and whether Her is on and running; `hermeshd uninstall` removes her and
   the console, and leaves `~/.her`.
-- **What a Linux server lacks.** Chrome and her's PDF component aren't
-  installed: Her works without them; only her's browser and PDF tools need
-  them. Where Chrome is installed and her runs as root, her starts it
-  without its sandbox (`--no-sandbox`), as Chrome refuses root otherwise.
+- **PDFs on Linux.** The static her cannot load PDFium, so a release also
+  carries `her-pdf-linux-<arch>.tar.gz`: her PDF worker, linked against
+  glibc, and PDFium, which `install.sh` puts in `her-pdf/` beside her and an
+  update replaces with her ([linux.md](linux.md) §4). Without glibc, as on
+  Alpine, Her works without PDFs.
+- **What a Linux server lacks.** Chrome isn't installed: Her works without
+  it; only her's browser tools need it. Where Chrome is installed and her
+  runs as root, her starts it without its sandbox (`--no-sandbox`), as
+  Chrome refuses root otherwise.
 - **The built-in browser.** A Chrome of Her's own, without the owner's
   sign-ins, is off on a Her Server until the owner turns it on in the
   console's Browser page (`browser.enabled = true`; turning it off removes
@@ -633,7 +641,11 @@ The protos are the contract; this is their outline.
   in `browser/status` which program it would start (`program`: one
   installed there, else her's own from `her browser install`) and whether
   with a window (`window`: there is a display); without a display, as on a
-  server, it runs headless. The page names the program, and where there is
+  server, it runs headless. On a Linux computer with a desktop, hermeshd
+  often starts before anyone logs in, and her with it, without a `DISPLAY`
+  of their own: her then takes the desktop session's from the user's
+  systemd (`systemctl --user show-environment`), each time it is asked, as
+  Computer Control's helper does (computer-control-linux.md §3.1). The page names the program, and where there is
   none says to install Google Chrome there, with the commands on Linux.
 - **The owner's own Chrome, on a Mac or a Linux machine.** While Her is on,
   hermeshd registers the her it ships as the Hermesh extension's native host
@@ -1026,8 +1038,6 @@ Test:
 - Environments talking to each other, sharing settings, or moving a
   conversation between them. Copying one environment's settings into a new
   one, secrets left out, may come later.
-- Computer use on Linux: her's desktop tools run where agent-desktop has
-  an accessibility API to read, on a Mac and on Windows.
 - Hermesh running Her for its users.
 - Sharing Her with other people, such as a family or a team.
 - The console from the internet without the app (§8).

@@ -378,3 +378,63 @@ func TestBackground(t *testing.T) {
 		t.Errorf("Line: %q", line)
 	}
 }
+
+// her-computer/ and her-pdf/, where the install command put agent-desktop
+// for Her's computer use and her PDF worker (docs/linux.md §4, §5), are
+// replaced whole with her from the same release, their programs still
+// programs; a machine without the folder gets none.
+func TestInstallHerFolders(t *testing.T) {
+	for _, folder := range []string{herComputer, herPDF} {
+		t.Run(folder, func(t *testing.T) { testInstallHerFolder(t, folder) })
+	}
+}
+
+func testInstallHerFolder(t *testing.T, folder string) {
+	r := newRelease(t)
+	r.publish("0.2.0")
+	var b bytes.Buffer
+	zw := gzip.NewWriter(&b)
+	tw := tar.NewWriter(zw)
+	tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: "./", Mode: 0o755})
+	for name, mode := range map[string]int64{"./program": 0o755, "./NOTICE": 0o644} {
+		tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: name, Mode: mode, Size: int64(len("0.2.0"))})
+		tw.Write([]byte("0.2.0"))
+	}
+	tw.Close()
+	zw.Close()
+	r.files[folders[folder]] = b.Bytes()
+	r.sign()
+	rel, _ := Latest(context.Background())
+
+	dir := programsAt(t, "0.1.0")
+	if names, err := Install(context.Background(), t.TempDir(), dir, rel); err != nil || slices.Contains(names, folder) {
+		t.Fatalf("a machine without the folder: %v %v", names, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, folder)); err == nil {
+		t.Fatal("the folder was made where there was none")
+	}
+
+	dir = programsAt(t, "0.1.0")
+	os.MkdirAll(filepath.Join(dir, folder), 0o755)
+	os.WriteFile(filepath.Join(dir, folder, "program"), []byte("0.1.0"), 0o755)
+	os.WriteFile(filepath.Join(dir, folder, "old-helper"), []byte("0.1.0"), 0o755)
+	if names, err := Install(context.Background(), t.TempDir(), dir, rel); err != nil || !slices.Contains(names, folder) {
+		t.Fatalf("%v %v", names, err)
+	}
+	program := filepath.Join(dir, folder, "program")
+	if b, _ := os.ReadFile(program); string(b) != "0.2.0" {
+		t.Errorf("the program is %q", b)
+	}
+	if st, err := os.Stat(program); runtime.GOOS != "windows" && (err != nil || st.Mode().Perm()&0o111 == 0) {
+		t.Errorf("the program is no program: %v %v", st, err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, folder, "NOTICE")); runtime.GOOS != "windows" && (err != nil || st.Mode().Perm()&0o111 != 0) {
+		t.Errorf("NOTICE became a program: %v %v", st, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, folder, "old-helper")); err == nil {
+		t.Error("the old folder's files are left in the new one")
+	}
+	if b, _ := os.ReadFile(filepath.Join(previousPath(dir, folder), "program")); string(b) != "0.1.0" {
+		t.Errorf("the previous the program is %q", b)
+	}
+}

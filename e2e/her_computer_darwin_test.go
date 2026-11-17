@@ -9,11 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
-	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 )
 
 // TestHerComputerUse: computer use on this Mac's Her (docs/her-server.md
@@ -79,56 +77,4 @@ func TestHerComputerUse(t *testing.T) {
 		!strings.Contains(read, "hermeshd when Hermesh runs her")) {
 		t.Fatalf("what to switch on, unsaid: %s", read)
 	}
-}
-
-// cua has an assistant run a desktop tool (her-mock's cua scenario, such as
-// "apps" or "snapshot:<app>") and returns what it sent: "cua done: " and the
-// tool's result.
-func cua(t *testing.T, c localv1connect.LocalServiceClient, machineID, botID, tool string) string {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	stream, _ := herOpen(t, ctx, c, machineID, herSetup("bots/open", map[string]string{"bot_id": botID}))
-	defer stream.Close()
-	if res, err := c.HerSend(ctx, &localv1.HerSendRequest{MachineId: machineID, BotId: botID, Text: "[[mock:cua:" + tool + "]] go"}); err != nil || !res.Delivered {
-		t.Fatalf("HerSend: %v %v", res, err)
-	}
-	for stream.Receive() {
-		if n := stream.Msg().GetNotification(); n != nil && n.Method == "session/event" {
-			if text, ok := firstString(n.Params, "cua done: "); ok {
-				return text
-			}
-		}
-	}
-	t.Fatalf("no result of cua_%s: %v", tool, stream.Err())
-	return ""
-}
-
-// firstString is the first string in a JSON document that starts with prefix.
-func firstString(doc []byte, prefix string) (string, bool) {
-	var walk func(v any) (string, bool)
-	walk = func(v any) (string, bool) {
-		switch v := v.(type) {
-		case string:
-			return v, strings.HasPrefix(v, prefix)
-		case map[string]any:
-			for _, x := range v {
-				if s, ok := walk(x); ok {
-					return s, true
-				}
-			}
-		case []any:
-			for _, x := range v {
-				if s, ok := walk(x); ok {
-					return s, true
-				}
-			}
-		}
-		return "", false
-	}
-	var v any
-	if json.Unmarshal(doc, &v) != nil {
-		return "", false
-	}
-	return walk(v)
 }
