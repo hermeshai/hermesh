@@ -78,7 +78,7 @@ jobs:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
           toolchain="$(sed -n 's/^channel = "\(.*\)"/\1/p' her/rust-toolchain.toml)"
-          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true "rust:$toolchain-bookworm" \
+          docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-gnu" "rust:$toolchain-bookworm" \
             sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq python3-pip >/dev/null && pip3 install --quiet --break-system-packages cargo-zigbuild && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo zigbuild --profile dist --locked -p her-docs --bin her-doc-worker --target "$(uname -m)-unknown-linux-gnu.2.28"'
           cp "her/target/$(uname -m)-unknown-linux-gnu/dist/her-doc-worker" her-doc-worker-linux-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
