@@ -131,7 +131,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" || name == "her-older" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage
+		if name == "packaged" || name == "update" || name == "her" || name == "her-chatgpt" || name == "her-older" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-long" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
