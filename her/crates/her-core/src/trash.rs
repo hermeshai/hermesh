@@ -53,7 +53,7 @@ impl Trash {
             target = self.files.join(format!("{name} {n}"));
             n += 1;
         }
-        std::fs::rename(path, &target)?;
+        her_tools::files::rename(path, &target)?;
         if let Some(info) = &self.info {
             std::fs::create_dir_all(info)?;
             let file_name = target.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

@@ -771,7 +771,7 @@ impl Server {
             // Ids are never reused, so its name there is free.
             let trash = home.root().join("trash").join("bots");
             std::fs::create_dir_all(&trash)?;
-            std::fs::rename(home.bot_dir(&dir_id), trash.join(&dir_id))
+            her_tools::files::rename(&home.bot_dir(&dir_id), &trash.join(&dir_id))
         })
         .await
         .map_err(|e| RpcError::internal(e.to_string()))?

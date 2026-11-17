@@ -977,13 +977,15 @@ mod tests {
     async fn scrubs_selected_variables() {
         let dir = tempfile::tempdir().unwrap();
         let env = LocalEnvironment::new(dir.path().to_path_buf())
-            .with_scrubbed_env(vec!["HOME".into()])
+            .with_scrubbed_env(vec!["HER_SECRET".into()])
             .with_env("HER_MARK", "1");
+        // SAFETY: no other test reads this variable.
+        unsafe { std::env::set_var("HER_SECRET", "key") };
         let out = env
-            .exec(request("echo \"home=${HOME:-unset} mark=$HER_MARK pager=$PAGER\"", dir.path()))
+            .exec(request("echo \"secret=${HER_SECRET:-unset} mark=$HER_MARK pager=$PAGER\"", dir.path()))
             .await
             .unwrap();
-        assert_eq!(out.output.head.trim(), "home=unset mark=1 pager=cat");
+        assert_eq!(out.output.head.trim(), "secret=unset mark=1 pager=cat");
     }
 
     #[tokio::test]

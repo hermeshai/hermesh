@@ -52,6 +52,14 @@ pub struct Journal {
     records: u64,
 }
 
+/// Cuts the file at `path` to `len` bytes. Through a handle of its own: Windows lets one that
+/// may only append change no length.
+fn cut(path: &Path, len: u64) -> io::Result<()> {
+    let file = OpenOptions::new().write(true).open(path)?;
+    file.set_len(len)?;
+    file.sync_all()
+}
+
 impl Journal {
     /// Opens the directory's log for appending, after reading what it holds.
     pub fn open(dir: &Path) -> io::Result<(Self, Recovered)> {
@@ -69,8 +77,7 @@ impl Journal {
         recovered.records = records.into_iter().filter(|(rev, _)| *rev > floor).collect();
         let log = OpenOptions::new().create(true).append(true).read(true).open(&path)?;
         if recovered.dropped_bytes > 0 {
-            log.set_len(good as u64)?;
-            log.sync_all()?;
+            cut(&path, good as u64)?;
         }
         Ok((Self { dir: dir.to_owned(), log, bytes: good as u64, records: count }, recovered))
     }
@@ -106,9 +113,11 @@ impl Journal {
         snapshot.extend_from_slice(&revision.to_le_bytes());
         snapshot.extend_from_slice(state);
         crate::atomic::write(&self.dir.join(SNAPSHOT), &snapshot)?;
-        File::open(&self.dir)?.sync_all().ok();
-        self.log.set_len(0)?;
-        self.log.sync_all()?;
+        // The folder's entry for the snapshot, where a folder opens as a file does.
+        if let Ok(dir) = File::open(&self.dir) {
+            dir.sync_all().ok();
+        }
+        cut(&self.dir.join(LOG), 0)?;
         self.bytes = 0;
         self.records = 0;
         Ok(())

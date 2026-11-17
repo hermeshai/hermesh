@@ -77,6 +77,22 @@ pub fn try_lock(file: &std::fs::File) -> Result<(), std::fs::TryLockError> {
     }
 }
 
+/// Renames a file or a folder. Windows refuses while any program has a file under it open,
+/// and its indexer and virus scanner open what was just written, for a moment: there the
+/// rename is tried again for two seconds.
+pub fn rename(from: &Path, to: &Path) -> std::io::Result<()> {
+    let mut tries = if cfg!(windows) { 40 } else { 0 };
+    loop {
+        match std::fs::rename(from, to) {
+            Err(err) if tries > 0 && err.kind() == std::io::ErrorKind::PermissionDenied => {
+                tries -= 1;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            done => return done,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum StaleReason {
     NotRead,
