@@ -192,6 +192,12 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(sessionCard).toContainText("Claude · owner-mac");
   await expect(sessionCard).toContainText("完成", { timeout: 60_000 });
   await snap(page, "her-session-card");
+  // The session's news wakes Her, and her-mock tells the owner of it: the card comes down under what she said,
+  // where the owner reads now (docs/her-team.md §4.4). One card a session.
+  const told = log.locator(".bm").filter({ hasText: "turn_done" });
+  await expect(told).toBeVisible({ timeout: 90_000 });
+  await expect.poll(async () => ((await sessionCard.boundingBox())?.y ?? 0) - ((b) => (b ? b.y + b.height : Infinity))(await told.boundingBox())).toBeGreaterThanOrEqual(0);
+  await expect(sessionCard).toHaveCount(1);
   await tag.click();
   await expect(team.getByRole("region", { name: "刚完成" })).toContainText("Her 派的活");
   await expect(team.getByRole("region", { name: "刚完成" })).toContainText("Her → Claude · demo");
