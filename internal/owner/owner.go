@@ -128,7 +128,9 @@ type Owner struct {
 	herMu   sync.Mutex
 	herSeen map[string]*machinev1.HerStatus
 	// herReach, when set, is how tests reach a machine's HerService.
-	herReach  func(ctx context.Context, machineID string) (herMachine, error)
+	herReach func(ctx context.Context, machineID string) (herMachine, error)
+	// herInfo, when set, is how tests read a machine's status for Her.
+	herInfo   func(ctx context.Context, machineID string) (*machinev1.MachineStatus, error)
 	consoleMu sync.Mutex
 	console   *herConsole // serving the consoles, once asked for one
 
@@ -1787,7 +1789,7 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	res, err := n.Admin.ApplyAdminCommand(ctx, req)
 	if err != nil {
 		c.ForgetMachine(n)
-		return "", err
+		return "", olderMachine(err)
 	}
 	return res.Message, nil
 }

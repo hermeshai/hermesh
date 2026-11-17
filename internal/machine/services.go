@@ -315,6 +315,12 @@ func (n *Machine) applyAdmin(ctx context.Context, cmd *identityv1.AdminCommand, 
 }
 
 func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
+	switch cmd.Command.(type) {
+	case *identityv1.AdminCommand_SetHer, *identityv1.AdminCommand_SetHerAssistantMode, *identityv1.AdminCommand_SetHerCommandConnector:
+		if n.cfg.TestBeforeHer {
+			return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command")) // as 0.1.4 answered
+		}
+	}
 	switch c := cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject:
 		p := c.AddProject
@@ -384,5 +390,9 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 	case *identityv1.AdminCommand_SetHerAssistantMode, *identityv1.AdminCommand_SetHerCommandConnector:
 		return n.execHer(ctx, cmd)
 	}
-	return "", connect.NewError(connect.CodeInvalidArgument, errors.New("unknown admin command"))
+	return "", errUnknownAdmin
 }
+
+// errUnknownAdmin answers a command this version doesn't know: one from a
+// device newer than this machine (docs/version-skew.md §6.3).
+var errUnknownAdmin = connect.NewError(connect.CodeUnimplemented, errors.New("unknown admin command"))

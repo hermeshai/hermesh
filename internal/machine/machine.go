@@ -65,6 +65,11 @@ type Config struct {
 	// NewHerLink makes Her's link to the mesh (internal/herlink, which is
 	// above this package); nil: Her has no mesh tools.
 	NewHerLink func(HerLinkConfig) HerLink
+	// TestBeforeHer makes this machine act as a hermeshd from before Her
+	// (before 0.1.5), for the end-to-end tests of an app newer than its
+	// machine (docs/version-skew.md §6.7): its status carries no Her, and
+	// Her's admin commands are unknown, answered as that version did.
+	TestBeforeHer bool
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -486,7 +491,9 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	n.mu.Unlock()
 	st.RunningSessions = uint32(n.sessions.Running())
 	st.Sessions = n.sessions.Counts()
-	st.Her = n.herStatus()
+	if !n.cfg.TestBeforeHer {
+		st.Her = n.herStatus()
+	}
 	st.Screen = n.screenStatus()
 	st.DirectAddrs = n.directAddresses()
 	return st

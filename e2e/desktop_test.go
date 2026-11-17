@@ -52,7 +52,12 @@ type desktopFixture struct {
 	// restart her as an update does (empty when none).
 	HerWithout string `json:"herWithout,omitempty"`
 	HerBin     string `json:"herBin,omitempty"`
-	owner      *ownerMac
+	// old-box, a machine from before Her (TestDesktopHerBeforeHer): the file
+	// that says so while it holds 1, and the start of its hermeshd's command
+	// line, for the spec to stop it so that it starts again as it is now.
+	BeforeHer       string `json:"beforeHer,omitempty"`
+	BeforeHerDaemon string `json:"beforeHerDaemon,omitempty"`
+	owner           *ownerMac
 }
 
 // freshOwner is an owner daemon not set up yet: its socket, a relay of its
@@ -320,6 +325,41 @@ func TestDesktopHerOlder(t *testing.T) {
 	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
 	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv,
 		HerWithout: without, HerBin: her, owner: w}, "her-older.spec.ts")
+}
+
+// TestDesktopHerBeforeHer runs apps/desktop/e2e/her-before.spec.ts: old-box,
+// a second Mac whose hermeshd is from before Her while a file says so
+// (HERMESH_TEST_BEFORE_HER, docs/version-skew.md §6.7). A loop starts it
+// again when the spec stops it, as an update does, as it is then.
+//
+//	go test ./e2e -run TestDesktopHerBeforeHer -v -timeout 30m
+func TestDesktopHerBeforeHer(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	w := newOwnerMac(t, herEnv(her, herConsole(t), herHome(t, mock.models), mock.base), &localv1.GrantSpec{})
+	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
+	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	flag := filepath.Join(t.TempDir(), "before-her")
+	if err := os.WriteFile(flag, []byte("1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sockDir, _ := os.MkdirTemp(shortTemp, "hm")
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	sock, data, bin := filepath.Join(sockDir, "o.sock"), filepath.Join(w.tmp, "old-box"), filepath.Join(w.bin, "hermeshd")
+	loop := `while :; do HERMESH_TEST_BEFORE_HER="$(cat "$1")" "$2" run --owner --data-dir "$3" --socket "$4"; sleep 0.2; done`
+	w.logs = append(w.logs, start(t, "owner old-box", herEnv(her, herConsole(t), t.TempDir(), mock.base), "/bin/sh", "-c", loop, "sh", flag, bin, data, sock))
+	w.joinTyped(localClient(t, sock), home, "old-box")
+	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv,
+		BeforeHer: flag, BeforeHerDaemon: bin + " run --owner --data-dir " + data, owner: w}, "her-before.spec.ts")
 }
 
 // herSpec builds the app and runs one of the Her entry's specs against f.

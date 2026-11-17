@@ -4168,6 +4168,16 @@
         }
       }
     },
+    "Hermesh on this computer is older. Update it there to run Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这台电脑上的 Hermesh 版本较旧，在那里更新后才能运行 Her"
+          }
+        }
+      }
+    },
     "Hermesh on this iPhone is erased too.": {
       "localizations": {
         "zh-Hans": {

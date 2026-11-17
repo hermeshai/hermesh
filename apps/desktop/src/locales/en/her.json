@@ -24,6 +24,7 @@
     "thisMacDesc_win": "Her goes offline while this PC sleeps",
     "windows": "Update Hermesh on this PC to run Her",
     "thisMacDesc_linux": "Her goes offline while this computer sleeps",
+    "needsUpdate": "Hermesh on this computer is older. Update it there to run Her",
     "offline": "Offline",
     "unsupported": "Can't run Her: {{detail}}",
     "newServer": "A New Server",
