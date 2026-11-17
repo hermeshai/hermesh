@@ -938,6 +938,7 @@ private struct AgentInfoSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
         }
+        .accessibilityIdentifier("progress-info-sheet")
         .presentationDetents([.medium, .large])
     }
 }
