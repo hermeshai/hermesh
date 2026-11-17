@@ -141,9 +141,10 @@ fn desktop_app(app: &str, action: Option<&str>, view: &SessionView) -> Verdict {
     }
 }
 
-/// Scripts: only with `browser.script_enabled`, never on a refused site; asked once per site
-/// and session in every mode, and that answer can keep scripts on the site allowed for the
-/// rest of the session, never in the configuration (§7.3, §7.6, D-175 revised).
+/// Scripts: only with `browser.script_enabled`, never on a refused site; bypass runs them
+/// without asking, in either browser. Other modes ask once per site and session, and that
+/// answer can keep scripts on the site allowed for the rest of the session, never in the
+/// configuration (§7.3, §7.6, D-175 revised).
 async fn script(origin: &str, view: &SessionView) -> Verdict {
     if !view.browser.script_enabled {
         return Verdict::Deny("running scripts is off (browser.script_enabled)".into());
@@ -156,10 +157,11 @@ async fn script(origin: &str, view: &SessionView) -> Verdict {
             return Verdict::Deny(format!("{origin} is a cloud metadata address"));
         }
     }
-    if view
-        .site_grants
-        .iter()
-        .any(|g| g.origin == origin && g.authority == GrantAuthority::Script)
+    if view.permission_mode == PermissionMode::BypassPermissions
+        || view
+            .site_grants
+            .iter()
+            .any(|g| g.origin == origin && g.authority == GrantAuthority::Script)
     {
         return Verdict::Allow;
     }
@@ -617,7 +619,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn scripts_ask_once_per_site_and_only_when_enabled() {
+    async fn scripts_ask_once_per_site_unless_bypass_and_only_when_enabled() {
         let dir = tempfile::tempdir().unwrap();
         let origin = "http://localhost:3000";
         let script = Authority::Script {
@@ -632,18 +634,30 @@ mod tests {
             ..SitePolicy::default()
         };
         let mode = |mode, grants| view(mode, grants, on.clone(), dir.path());
-        // Acting on the site does not cover its scripts: the first one asks, in every mode,
-        // and offers this site's scripts for the session.
-        for m in [PermissionMode::Manual, PermissionMode::BypassPermissions] {
-            let acting = mode(m, vec![grant(GrantAuthority::Act, origin), grant(GrantAuthority::Act, ANY_SITE)]);
-            assert_eq!(
-                asks(&evaluate(std::slice::from_ref(&script), &acting).await),
-                Some(vec![grant(GrantAuthority::Script, origin)]),
-                "{m:?}"
-            );
-            let scripts = mode(m, vec![grant(GrantAuthority::Script, origin)]);
-            assert_eq!(evaluate(std::slice::from_ref(&script), &scripts).await, Gate::Allow, "{m:?}: asked once");
-        }
+        // Acting on the site does not cover its scripts: the first one asks and offers this
+        // site's scripts for the session.
+        let acting = mode(PermissionMode::Manual, vec![grant(GrantAuthority::Act, origin), grant(GrantAuthority::Act, ANY_SITE)]);
+        assert_eq!(
+            asks(&evaluate(std::slice::from_ref(&script), &acting).await),
+            Some(vec![grant(GrantAuthority::Script, origin)])
+        );
+        let scripts = mode(PermissionMode::Manual, vec![grant(GrantAuthority::Script, origin)]);
+        assert_eq!(evaluate(std::slice::from_ref(&script), &scripts).await, Gate::Allow, "asked once");
+        // Bypass asks nothing, in the user's own browser too; a metadata address stays refused.
+        let bypass = mode(PermissionMode::BypassPermissions, vec![]);
+        assert_eq!(evaluate(std::slice::from_ref(&script), &bypass).await, Gate::Allow);
+        let own_script = Authority::Script {
+            origin: origin.into(),
+            target: page(),
+            own: true,
+        };
+        assert_eq!(evaluate(&[own_script], &bypass).await, Gate::Allow, "own browser");
+        let metadata = Authority::Script {
+            origin: "http://169.254.169.254".into(),
+            target: page(),
+            own: false,
+        };
+        assert!(matches!(evaluate(&[metadata], &bypass).await, Gate::Deny(_)));
         // Another site's grant does not carry over, and a script grant opens nothing.
         let other = mode(PermissionMode::Manual, vec![grant(GrantAuthority::Script, "http://localhost:4000")]);
         assert!(asks(&evaluate(std::slice::from_ref(&script), &other).await).is_some());
