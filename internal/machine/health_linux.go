@@ -2,6 +2,7 @@ package machine
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -12,16 +13,23 @@ import (
 // userProcesses counts what Linux's RLIMIT_NPROC counts: the user's
 // threads (tasks), not their processes; each zombie is one.
 func userProcesses() (procCount, error) {
-	var pc procCount
+	pc, err := userProcessesIn("/proc", uint32(os.Getuid()))
+	if err != nil {
+		return pc, err
+	}
 	var rl unix.Rlimit
 	if unix.Getrlimit(unix.RLIMIT_NPROC, &rl) == nil && rl.Cur != unix.RLIM_INFINITY {
 		pc.limit = rl.Cur
 	}
-	ents, err := os.ReadDir("/proc")
+	return pc, nil
+}
+
+func userProcessesIn(procDir string, uid uint32) (procCount, error) {
+	var pc procCount
+	ents, err := os.ReadDir(procDir)
 	if err != nil {
 		return pc, err
 	}
-	uid := uint32(os.Getuid())
 	names := map[int]string{}
 	zombies := map[int]uint32{}
 	for _, e := range ents {
@@ -29,15 +37,15 @@ func userProcesses() (procCount, error) {
 		if err != nil {
 			continue
 		}
-		st, err := os.Stat("/proc/" + e.Name())
+		st, err := os.Stat(filepath.Join(procDir, e.Name()))
 		if err != nil || st.Sys().(*syscall.Stat_t).Uid != uid {
 			continue
 		}
-		b, err := os.ReadFile("/proc/" + e.Name() + "/stat")
+		b, err := os.ReadFile(filepath.Join(procDir, e.Name(), "stat"))
 		if err != nil {
 			continue
 		}
-		if tasks, err := os.ReadDir("/proc/" + e.Name() + "/task"); err == nil && len(tasks) > 0 {
+		if tasks, err := os.ReadDir(filepath.Join(procDir, e.Name(), "task")); err == nil && len(tasks) > 0 {
 			pc.used += uint64(len(tasks))
 		} else {
 			pc.used++
