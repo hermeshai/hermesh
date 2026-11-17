@@ -238,7 +238,7 @@ async fn the_skills_command_lists_layers_shadows_and_problems() {
     // Reading the other apps' folders brings the copy in, behind the user's own.
     let output = env.her_in(&work, &["-c", "skills.other_apps=true", "skills", "--all"]).output().await.unwrap();
     let text = String::from_utf8_lossy(&output.stdout).replace('\\', "/");
-    assert!(text.contains(&format!("shadowed by {}", skill.join("SKILL.md").display())), "{text}");
+    assert!(text.contains(&format!("shadowed by {}", skill.join("SKILL.md").display().to_string().replace('\\', "/"))), "{text}");
     assert!(!text.contains("not read"), "{text}");
 
     // Turning the .claude skill on writes opt_in; it then joins the catalog.

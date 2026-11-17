@@ -445,6 +445,7 @@ her (her/, the kernel of Her: [her-server.md](her-server.md)) runs on Windows as
 - A PC that is only a machine gets her and her console from `install.ps1` (the release builds her for Windows on Windows, and the binaries job signs it with the rest), but neither agent-desktop nor PDFium: no computer use there, and no PDF.
 - Saved keys behind the user's Windows credentials (DPAPI), as the Mac's are behind the Keychain.
 - her's own releases (`her install`, her/tools/release) have no Windows target; the app brings what they would.
+- A file another program changes in place, keeping its size and modification time, is still written over unseen by `write` on Windows: the change time and identity read from its handle do not tell it apart there yet (her-tools' corpus test for it stays on Unix).
 
 ## Appendix: sources
 
