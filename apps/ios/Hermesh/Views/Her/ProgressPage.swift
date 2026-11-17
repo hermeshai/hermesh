@@ -625,19 +625,20 @@ func herStepVerb(_ tool: HerToolStep) -> String {
 
 // MARK: A sub-agent's record
 
-/// A sub-agent's post opened: its title and how it stands, how long, how many tokens and steps, what set it off,
-/// what Her asked of it, then everything it thought, said and called, in order, and how it ended. Its thoughts
-/// show whole; a call is a line that opens to its output. Rows are made as they scroll into view, and a long
-/// record's earlier part is read when asked for.
+/// A sub-agent's post opened, read as a session is (SessionView): what Her asked of it on the right, then its words
+/// across the page and what it did in between as grey lines, folded until opened, and how it ended. While it works,
+/// the bar at the bottom says so, with Stop; what it asks the owner is answered there. How it stands, how long, its
+/// tokens and steps, and what set it off are its info, a tap away. A long record's earlier part is read when asked for.
 struct ProgressAgentPage: View {
     @Environment(AppModel.self) private var model
     let agentID: String
-    /// Every call's output shows.
-    @State private var allOpen = false
-    /// The rows the owner opened or folded, by step.
-    @State private var chosen: [String: Bool] = [:]
     @State private var stopping = false
     @State private var source: Source?
+    @State private var info = false
+    /// What set it off was asked for from its info: shown once the info has gone.
+    @State private var sourceNext = false
+    @State private var atEnd = true
+    @State private var position = ScrollPosition(edge: .bottom)
 
     var body: some View {
         if let machine = herPick(herEnvironments(model.machines), remembered: model.her.machine) {
@@ -652,9 +653,19 @@ struct ProgressAgentPage: View {
                     ContentUnavailableView("This record is gone", systemImage: "tray")
                 }
             }
-            .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
             .herConnections(chat, machine: machine)
+            .sheet(isPresented: $info, onDismiss: {
+                if sourceNext, let found { source = Source(id: found.group.key) }
+                sourceNext = false
+            }) {
+                if let found, let agent = found.launch.agent {
+                    AgentInfoSheet(name: chat.bot?.name ?? "Her", group: found.group, launch: found.launch, agent: agent) {
+                        sourceNext = true
+                        info = false
+                    }
+                }
+            }
             .sheet(item: $source) { s in
                 SourceSheet(chat: chat, machineID: machine.machineID, key: s.id, here: found?.launch.callID) { task in
                     source = nil
@@ -675,59 +686,27 @@ struct ProgressAgentPage: View {
     }
 
     private func record(_ chat: HerChat, _ group: HerProgressGroup, _ launch: HerLaunch, _ agent: HerAgent) -> some View {
-        let state = herAgentState(launch)
-        let all = herSteps(agent.view)
-        // Its first message is the task, which shows as what Her asked.
-        let steps = { if case .said? = all.first?.kind { Array(all.dropFirst()) } else { all } }()
-        let report = state == .done ? steps.last { if case .text = $0.kind { true } else { false } }?.key : nil
+        let state = Stand(herAgentState(launch))
+        let rows = agentRows(herSteps(agent.view), running: agent.status == "running", failed: state == .failed)
         let asking = chat.live.flatMap(herPendingApproval)
+        let mine = asking?.agent?.id == agent.id
         let title = herAgentTitle(launch)
-        let calls = herAgentCalls(agent)
+        let name = chat.bot?.name ?? "Her"
+        let brief = herAgentBrief(launch)
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(title).font(.title2.bold()).multilineTextAlignment(.leading)
-                    HStack(spacing: 8) {
-                        HStack(spacing: 6) {
-                            if state == .running || state == .starting { ProgressView().controlSize(.mini) }
-                            Text(Stand(state).words)
-                        }
-                        .font(.footnote)
-                        .foregroundStyle(state == .waiting ? AnyShapeStyle(.orange) : state == .failed ? AnyShapeStyle(.red) : state == .running ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.secondary))
-                        .padding(.horizontal, 10).frame(height: 26).background(Color(.secondarySystemGroupedBackground), in: .capsule)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityIdentifier("progress-state")
-                        Text("Sub-agent").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.horizontal, 4)
-                Facts(agent: agent, calls: calls)
-                FromLine(group: group, tokens: 0) { source = Source(id: group.key) }
-                    .padding(.horizontal, 4)
-                let brief = herAgentBrief(launch)
+            VStack(alignment: .leading, spacing: 13) {
                 if !brief.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("What Her asked").font(.footnote).foregroundStyle(.secondary)
-                        Text(brief).font(.callout).textSelection(.enabled)
+                    PromptBubble(text: brief, sent: nil) {
+                        HStack(spacing: 5) {
+                            HerAvatar(size: 16)
+                            Text(name)
+                        }
+                        .font(.caption).foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
                     }
-                    .padding(.horizontal, 14).padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("progress-brief")
                 }
-                HStack {
-                    Text("Steps").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-                    Spacer()
-                    if calls > 0 {
-                        Button(allOpen ? "Thinking Only" : "Expand All Output") {
-                            allOpen.toggle()
-                            chosen = [:]
-                        }
-                        .font(.footnote)
-                    }
-                }
-                .padding(.horizontal, 4).padding(.top, 6).frame(minHeight: 30)
                 if chat.convUp, herAgentHistoryCursor(agent) != nil {
                     HStack {
                         Spacer()
@@ -738,91 +717,234 @@ struct ProgressAgentPage: View {
                     }
                     .frame(minHeight: 44)
                 }
-                ForEach(steps) { step in
-                    StepRow(step: step, report: step.key == report, open: Binding(
-                        get: { chosen[step.key] ?? opensByDefault(step) },
-                        set: { chosen[step.key] = $0 }))
-                }
+                ForEach(rows) { row in AgentRowView(row: row) }
                 switch state {
-                case .waiting where asking?.agent?.id != agent.id:
-                    Text("Another approval is ahead of this one; it shows here when its turn comes.").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+                case .waiting where !mine:
+                    TurnNote(text: String(localized: "Another approval is ahead of this one; it shows here when its turn comes."))
+                case .failed:
+                    FailedCard(headline: String(localized: "It failed, and stopped here"), hints: [], message: agent.error?.message ?? "") { EmptyView() }
                 case .stopped:
-                    Text("Stopped").font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
+                    TurnNote(text: String(localized: "Stopped"))
+                case .done:
+                    DoneLine(text: String(localized: "Done; its last words went back to \(name) as its report."))
+                        .accessibilityIdentifier("progress-done")
                 default:
                     EmptyView()
                 }
             }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
+            .padding(.horizontal, 20)
+            .padding(.top, 13).padding(.bottom, 21)
         }
         .accessibilityIdentifier("progress-record")
-        // While it works the page begins at what it does now.
-        .defaultScrollAnchor(agent.status == "running" ? .bottom : .top)
-        .navigationTitle(title)
-        .toolbar {
-            if agent.status == "running", chat.convUp {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Stop") {
-                        stopping = true
-                        Task {
-                            if await chat.op(["type": "agent_interrupt", "agent": .string(agent.id)]) { model.show(String(localized: "Asked “\(title)” to stop")) }
-                            stopping = false
-                        }
+        .followsEnd(atEnd: $atEnd, position: $position) {
+            // What it asks is answered here, as under Her's conversation.
+            if let asking, mine {
+                HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
+            } else if agent.status == "running", chat.convUp {
+                LiveBar(stop: "Stop", stopID: "progress-stop", disabled: stopping, action: {
+                    stopping = true
+                    Task {
+                        if await chat.op(["type": "agent_interrupt", "agent": .string(agent.id)]) { model.show(String(localized: "Asked “\(title)” to stop")) }
+                        stopping = false
                     }
-                    .disabled(stopping)
-                    .accessibilityIdentifier("progress-stop")
+                }) {
+                    Breathing { HerAvatar(size: 20) }
+                } words: {
+                    if state == .waiting {
+                        Text("Needs your approval").fontWeight(.semibold)
+                    } else {
+                        Text("The sub-agent is working").fontWeight(.semibold)
+                        Text(Date(timeIntervalSince1970: agent.since / 1000), style: .timer).monospacedDigit().foregroundStyle(.secondary)
+                    }
                 }
             }
         }
-        // What it asks is answered here, as under Her's conversation.
-        .safeAreaInset(edge: .bottom) {
-            if let asking, asking.agent?.id == agent.id {
-                HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text("Sub-agent · \(state.words)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        .accessibilityIdentifier("progress-state")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Sub-agent Info", systemImage: "info.circle") { info = true }
+                    .accessibilityIdentifier("progress-info")
             }
         }
-    }
-
-    /// A thought shows whole; a call's output, once all are asked for.
-    private func opensByDefault(_ s: HerStep) -> Bool {
-        if case .thinking = s.kind { return true }
-        return allOpen
+        .navigationTitle(title)
     }
 }
 
-/// How long, how many tokens, how many steps: three tiles.
-private struct Facts: View {
-    @Environment(AppModel.self) private var model
-    let agent: HerAgent
-    let calls: Int
+/// A row of a sub-agent's record, as a session's conversation has its rows: a message to it or its own words, how a
+/// task of its ended, or its thoughts and calls in a row, one group. end: the last words of a round.
+private enum AgentRow: Identifiable {
+    case step(HerStep)
+    case work(key: String, [HerStep])
+
+    var id: String {
+        switch self {
+        case .step(let s): s.key
+        case .work(let key, _): key
+        }
+    }
+}
+
+/// The rows of a sub-agent's record: its first message is the task, shown as what Her asked (herAgentBrief); a
+/// failure it stopped on is told once, under it all.
+private func agentRows(_ all: [HerStep], running: Bool, failed: Bool) -> [AgentRow] {
+    let steps = { if case .said? = all.first?.kind { Array(all.dropFirst()) } else { all } }()
+    let last = failed ? steps.lastIndex { if case .ended = $0.kind { true } else { false } } : nil
+    var out: [AgentRow] = []
+    for (i, s) in steps.enumerated() where i != last {
+        switch s.kind {
+        case .thinking, .tool:
+            if case .work(let key, let items) = out.last { out[out.count - 1] = .work(key: key, items + [s]) } else { out.append(.work(key: s.key, [s])) }
+        default:
+            out.append(.step(s))
+        }
+    }
+    return out
+}
+
+private struct AgentRowView: View {
+    let row: AgentRow
 
     var body: some View {
-        let running = agent.status == "running"
-        let took = herAgentElapsed(agent, now: model.now.timeIntervalSince1970 * 1000)
-        HStack(spacing: 8) {
-            tile(running ? "Running for" : "Took") {
-                if running { Text(Date(timeIntervalSince1970: agent.since / 1000), style: .timer) } else { Text(took > 0 ? tookText(took) : "—") }
+        switch row {
+        case .work(_, let items) where items.count == 1:
+            WorkLine(step: items[0])
+        case .work(_, let items):
+            ToolFold(summary: herWorkSummary(items), running: items.contains(where: atWorkNow), ids: items.map(\.key)) { key in
+                if let s = items.first(where: { $0.key == key }) { WorkLine(step: s, inCard: true) }
             }
-            tile("Tokens") { Text(verbatim: tokensText(UInt64(herAgentTokens(agent)))) }
-            tile("Steps") { Text(verbatim: "\(calls)") }
+        case .step(let s):
+            switch s.kind {
+            case .said(let text):
+                // What Her told it after it began: as what was sent to it.
+                PromptBubble(text: text, sent: nil) { EmptyView() }
+            case .text(let text):
+                MarkdownText(text: text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .contextMenu { CopyMenu(text: text, sent: nil) }
+                    .padding(.bottom, 8)
+            case .ended(let outcome, let error):
+                if outcome == "failed" {
+                    FailLine(title: String(localized: "It failed, and stopped here"), message: error?.message ?? "")
+                } else {
+                    TurnNote(text: String(localized: "This round was interrupted"))
+                }
+            default:
+                EmptyView()
+            }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("progress-facts")
-    }
-
-    private func tile(_ label: LocalizedStringKey, @ViewBuilder value: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            value().font(.title3.weight(.semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-/// A step of the record. report: the agent's last words, which are its report to Her.
+private func atWorkNow(_ s: HerStep) -> Bool {
+    if case .tool(let t) = s.kind { return t.state == .live }
+    return false
+}
+
+/// "Read 3 files · Ran 2 commands": a run of thoughts and calls in one line, as a session's group of calls says it.
+/// Calls only, if there are any.
+private func herWorkSummary(_ items: [HerStep]) -> String {
+    let tools = items.compactMap { if case .tool(let t) = $0.kind { t } else { nil } }
+    var order: [String] = []
+    var counts: [String: Int] = [:]
+    for k in tools.isEmpty ? items.map({ _ in "thinking" }) : tools.map({ $0.state == .denied ? "denied" : $0.category }) {
+        if counts[k] == nil { order.append(k) }
+        counts[k, default: 0] += 1
+    }
+    return order.map { k in
+        let n = counts[k]!
+        return switch k {
+        case "read": n == 1 ? String(localized: "Read 1 file") : String(localized: "Read \(n) files")
+        case "edit": n == 1 ? String(localized: "Edited 1 file") : String(localized: "Edited \(n) files")
+        case "delete": n == 1 ? String(localized: "Deleted 1 file") : String(localized: "Deleted \(n) files")
+        case "move": n == 1 ? String(localized: "Moved 1 file") : String(localized: "Moved \(n) files")
+        case "search": n == 1 ? String(localized: "Searched once") : String(localized: "Searched \(n) times")
+        case "execute": n == 1 ? String(localized: "Ran 1 command") : String(localized: "Ran \(n) commands")
+        case "fetch": n == 1 ? String(localized: "Fetched 1 page") : String(localized: "Fetched \(n) pages")
+        case "denied": n == 1 ? String(localized: "Denied 1 action") : String(localized: "Denied \(n) actions")
+        case "thinking": n == 1 ? String(localized: "Thought once") : String(localized: "Thought \(n) times")
+        default: n == 1 ? String(localized: "Called 1 tool") : String(localized: "Called \(n) tools")
+        }
+    }.joined(separator: String(localized: "step-summary-separator", defaultValue: " · ", comment: "Separates the parts of a step's summary, as a session's does"))
+}
+
+/// A thought or a call on its line (ToolLine): a thought opens to its words, a call to its output.
+private struct WorkLine: View {
+    let step: HerStep
+    var inCard = false
+    @State private var open = false
+
+    var body: some View {
+        switch step.kind {
+        case .thinking(let text, let redacted):
+            let words = redacted ? "" : text.trimmingCharacters(in: .whitespacesAndNewlines)
+            ToolLine(verb: String(localized: "Thought"), object: redacted ? String(localized: "The provider keeps this reasoning private") : firstLine(words),
+                     shell: false, running: false, failed: false, output: words, inCard: inCard, open: $open)
+        case .tool(let tool):
+            ToolLine(verb: herStepVerb(tool), object: tool.object, shell: tool.category == "execute", running: tool.state == .live,
+                     failed: tool.state == .failed || tool.state == .denied, output: tool.output, inCard: inCard, open: $open)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func firstLine(_ text: String) -> String {
+        text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.first { !$0.isEmpty } ?? ""
+    }
+}
+
+/// A sub-agent's info, as a session's is (SessionInfoSheet): who sent it out, how it stands, how long it has worked
+/// or took, its tokens and steps; and what set it off, which opens over the page.
+private struct AgentInfoSheet: View {
+    @Environment(AppModel.self) private var model
+    let name: String
+    let group: HerProgressGroup
+    let launch: HerLaunch
+    let agent: HerAgent
+    let source: () -> Void
+
+    var body: some View {
+        let state = Stand(herAgentState(launch))
+        let running = agent.status == "running"
+        let took = herAgentElapsed(agent, now: model.now.timeIntervalSince1970 * 1000)
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Sent out by", value: name)
+                    LabeledContent("Status") {
+                        HStack(spacing: 6) {
+                            StandMark(stand: state)
+                            Text(state.words)
+                        }
+                    }
+                    LabeledContent(running ? "Running for" : "Took") {
+                        if running { Text(Date(timeIntervalSince1970: agent.since / 1000), style: .timer).monospacedDigit() } else { Text(took > 0 ? tookText(took) : "—") }
+                    }
+                    LabeledContent("Tokens", value: tokensText(UInt64(herAgentTokens(agent))))
+                    LabeledContent("Steps", value: "\(herAgentCalls(agent))")
+                }
+                .accessibilityIdentifier("progress-facts")
+                Section("Set off by") {
+                    FromLine(group: group, tokens: 0, action: source)
+                }
+            }
+            .navigationTitle("Sub-agent Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { CloseButton() }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// A step of a routine's run.
 struct StepRow: View {
     let step: HerStep
-    let report: Bool
     @Binding var open: Bool
 
     var body: some View {
@@ -856,18 +978,7 @@ struct StepRow: View {
                 }
             }
         case .text(let text):
-            if report {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Its report to Her", systemImage: "checkmark").font(.footnote).foregroundStyle(.secondary).labelStyle(.titleAndIcon)
-                    MarkdownText(text: text)
-                }
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .accessibilityIdentifier("progress-report")
-            } else {
-                MarkdownText(text: text).padding(.horizontal, 4)
-            }
+            MarkdownText(text: text).padding(.horizontal, 4)
         case .said(let text):
             VStack(alignment: .leading, spacing: 4) {
                 Text("Her added").font(.footnote).foregroundStyle(.secondary)

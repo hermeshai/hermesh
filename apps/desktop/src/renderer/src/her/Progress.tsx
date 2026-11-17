@@ -1,14 +1,18 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import {
   agentBrief, agentCalls, agentElapsed, agentHistoryCursor, agentPost, agentState, agentTaskOf, agentTitles, agentTokens, messageBody, pendingApproval, progressGroups, stepsOf,
-  toolObject, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step,
+  toolObject, toolOutput, type AgentLaunch, type AgentPost, type AgentState, type AgentView, type ProgressGroup, type ProgressTask, type SessionView, type Step, type WorkItem,
 } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
-import { clockText, elapsedSeconds, listTime, tokensText } from "@hermesh/core";
+import { clockText, elapsedSeconds, listTime, tokensText, turnTimeLine } from "@hermesh/core";
 import { Icon } from "../icons";
+import { layoutOf, setCard } from "../layout";
+import { keys, ownKeys } from "../platform";
+import { AgentText, ChatFrame, ControlBar, DoneLine, FailCard, FailLine, TimeLine, ToolFold, ToolLine, UserBubble } from "../session/Chat";
 import { ContentScope } from "../session/scope";
-import { Markdown } from "../session/Markdown";
+import { useRowState } from "../session/useRowState";
+import type { VirtualRow } from "../session/useVirtualRows";
 import { useNow, useStore, type ProgressTaskRef } from "../store";
 import { Approval, type SendOp } from "./Approval";
 import { Cat } from "./Cat";
@@ -16,8 +20,7 @@ import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
 import { OfflineLine } from "./Conversation";
 import { envState } from "./environments";
-import { durationText, messageTime, toolVerb } from "./format";
-import { StepRow } from "./Process";
+import { durationText, messageTime, toolVerb, workText } from "./format";
 import "./progress.css";
 
 // Progress (docs/her-team.md §15): the work Her sent out to her sub-agents as a feed, one post a piece of work, with
@@ -70,7 +73,7 @@ export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv;
   const sourceGroup = source ? groups.find((g) => g.key === source) : undefined;
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
-      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} backToHer={task?.fromHer ? bot.name : undefined} /> : <Board bot={bot} posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
+      {open ? <TaskPage key={open.task.key} bot={bot} post={open} conv={conv} op={op} onSource={setSource} backToHer={task?.fromHer ? bot.name : undefined} /> : <Board bot={bot} posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
       {sourceGroup && <SourcePanel bot={bot} group={sourceGroup} posts={posts} here={open?.task.key} onClose={() => setSource(null)} />}
     </ContentScope>
   );
@@ -266,20 +269,6 @@ function Beat({ count }: { count: number }) {
   );
 }
 
-/** What set work off, as a capsule: "You 10:58 · …". */
-function FromCapsule({ group: g, onClick }: { group: ProgressGroup; onClick: () => void }) {
-  const { t } = useTranslation("her");
-  const now = useNow(60_000);
-  const p = g.parent;
-  const text = p.kind === "user" ? t("progress.fromYou", { time: messageTime(new Date(p.ts), now), text: p.text }) : p.kind === "routine" ? `${t("progress.routine", { name: p.name })} · ${messageTime(new Date(p.ts), now)}` : t("progress.earlier");
-  return (
-    <button className="pf-from" disabled={p.kind === "earlier"} onClick={onClick} title={p.kind === "user" ? p.text : undefined}>
-      <Icon name="q" />
-      <span>{text}</span>
-    </button>
-  );
-}
-
 /**
  * What set work off, shown whole over the page: what the owner said and when, what Her said back, and everything
  * it sent out, each as it stands; a click opens one. Esc or a click outside closes it.
@@ -343,11 +332,17 @@ function SourcePanel({ bot, group: g, posts, here, onClose }: { bot: BotSummary;
 
 // MARK: A post's page
 
-/** A post opened: back to the feed (or to her conversation, where it was opened from: `backToHer`, her name) and what set it off, then the record of that piece of work. */
-function TaskPage({ post: p, conv, op, onSource, backToHer }: { post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void; backToHer?: string }) {
-  const { t } = useTranslation("her");
+/**
+ * A post opened, as a session's page is (SessionPage): back to the feed (or to her conversation, where it was opened
+ * from: `backToHer`, her name), its title, and the info card's button; then its record, with the info card beside it.
+ */
+function TaskPage({ bot, post: p, conv, op, onSource, backToHer }: { bot: BotSummary; post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void; backToHer?: string }) {
+  const { t } = useTranslation(["her", "session"]);
   const go = useOpen();
-  const task = p.task;
+  const st = useStore();
+  const { card } = layoutOf(st);
+  const info = card !== "hidden";
+  const a = p.task.launch.agent;
   return (
     <>
       <div className="ctool drag pt-bar">
@@ -355,11 +350,26 @@ function TaskPage({ post: p, conv, op, onSource, backToHer }: { post: Post; conv
           <Icon name="chevL" />
           {backToHer ?? t("progress.back")}
         </button>
-        <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
-        <span className="pt-gap" />
+        <div className="ctitle">
+          <h2>{p.title}</h2>
+        </div>
+        <button
+          className={`tb ${info ? "on" : ""}`}
+          title={t(info ? "session:page.hideInfo" : "session:page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
+          aria-label={t("session:page.info")}
+          aria-pressed={info}
+          onClick={() => setCard(st, !info)}
+        >
+          <Icon name="infoCard" />
+        </button>
       </div>
-      {task.launch.agent ? (
-        <AgentRecord launch={task.launch} agent={task.launch.agent} title={p.title} conv={conv} op={op} />
+      {a ? (
+        <div className={`dwrap pt-rec ${card === "docked" ? "dock" : ""}`}>
+          <div className="dmain">
+            <AgentChat bot={bot} launch={p.task.launch} agent={a} title={p.title} conv={conv} op={op} />
+          </div>
+          {info && <AgentInspector bot={bot} post={p} agent={a} onSource={() => onSource(p.group.key)} />}
+        </div>
       ) : (
         <div className="pg-empty"><span>{t("progress.gone")}</span></div>
       )}
@@ -383,33 +393,126 @@ function SibMark({ stand }: { stand: Stand }) {
   }
 }
 
-/** How long and how much: "Running 4:12 · 55K tokens", "Took 13 min 7 s · 86K tokens". */
-function useFacts(a: AgentView | undefined): string {
-  const { t } = useTranslation("her");
-  const running = a?.status === "running";
-  const now = useNow(running ? 1000 : 3_600_000);
-  if (!a) return "";
-  const tokens = agentTokens(a);
+/**
+ * The info card of a sub-agent, as a session's is (Inspector): who sent it out, how it stands, how long it has
+ * worked or took, the tokens it used, its steps, and what set it off, which opens over the page.
+ */
+function AgentInspector({ bot, post: p, agent: a, onSource }: { bot: BotSummary; post: Post; agent: AgentView; onSource: () => void }) {
+  const { t } = useTranslation(["her", "session"]);
+  const running = a.status === "running";
+  const now = useNow(running ? 1000 : 60_000);
   const took = agentElapsed(a, now.getTime());
-  const time = running ? t("progress.ran", { time: clockText(elapsedSeconds(new Date(a.since), now)) }) : took > 0 ? t("progress.took", { time: durationText(took) }) : "";
-  return [time, tokens > 0 ? t("progress.tokens", { tokens: tokensText(tokens) }) : ""].filter(Boolean).join(" · ");
+  const tokens = agentTokens(a);
+  const g = p.group.parent;
+  const from = g.kind === "user" ? t("progress.fromYou", { time: messageTime(new Date(g.ts), now), text: g.text }) : g.kind === "routine" ? `${t("progress.routine", { name: g.name })} · ${messageTime(new Date(g.ts), now)}` : t("progress.earlier");
+  return (
+    <div className="insp-col">
+      <aside className="insp" aria-label={t("session:inspector.label")}>
+        <h3 className="insp-h">{t("progress.agent")}</h3>
+        <ul className="insp-facts">
+          <li>
+            <span className="insp-cat" aria-hidden="true"><Cat small /></span>
+            <span className="dim" title={bot.name}><Trans t={t} i18nKey="progress.sentBy" values={{ name: bot.name }} components={{ b: <b /> }} /></span>
+          </li>
+          <li>
+            <span className="insp-mark"><SibMark stand={p.stand} /></span>
+            <span>{t(`progress.state.${p.stand}`)}</span>
+          </li>
+          {(running || took > 0) && (
+            <li>
+              <Icon name="clock" />
+              <span className="pt-time">{running ? t("progress.ran", { time: clockText(elapsedSeconds(new Date(a.since), now)) }) : t("progress.took", { time: durationText(took) })}</span>
+            </li>
+          )}
+          {tokens > 0 && (
+            <li>
+              <Icon name="gauge" />
+              <span>{t("progress.tokens", { tokens: tokensText(tokens) })}</span>
+            </li>
+          )}
+          <li>
+            <Icon name="checklist" />
+            <span>{t("progress.steps", { count: agentCalls(a) })}</span>
+          </li>
+          <li>
+            {g.kind === "earlier" ? (
+              <>
+                <Icon name="q" />
+                <span className="dim">{from}</span>
+              </>
+            ) : (
+              <button className="insp-pick" aria-label={t("progress.why")} title={g.kind === "user" ? g.text : undefined} onClick={onSource}>
+                <Icon name="q" />
+                <span>{from}</span>
+              </button>
+            )}
+          </li>
+        </ul>
+      </aside>
+    </div>
+  );
+}
+
+/** A row of a sub-agent's record: a step of it, a time line before what it was told, or where earlier steps can be read. */
+type AgentRow = VirtualRow & ({ kind: "step"; step: Step; end: boolean } | { kind: "brief"; text: string; ts?: number } | { kind: "turn"; at: Date; previous?: Date } | { kind: "earlier" });
+
+/** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
+const agentRowHeights: Record<string, number> = { step: 60, brief: 64, turn: 30, earlier: 28 };
+
+/**
+ * The rows of a sub-agent's record, as a session's conversation has them: what Her asked of it first (`brief`; its
+ * first message is the task, shown so), then where earlier steps can be read (`more`), then what it thought, said
+ * and called, and what Her told it after it began, each with a time line before it after a pause. A text that ends
+ * a round is the end of its reply.
+ */
+function agentRows(all: Step[], brief: string, more: boolean, running: boolean, failed: boolean): AgentRow[] {
+  const steps = all[0]?.kind === "user" ? all.slice(1) : all;
+  const out: AgentRow[] = [];
+  let previous: Date | undefined;
+  const told = (key: string, ts: number | undefined) => {
+    if (!ts) return;
+    const at = new Date(ts);
+    if (turnTimeLine(at, previous, new Date()) !== null) out.push({ key: `${key}:at`, kind: "turn", at, previous });
+    previous = at;
+  };
+  const first = all[0]?.kind === "user" ? all[0].ts : undefined;
+  if (brief) {
+    told("brief", first);
+    out.push({ key: "brief", kind: "brief", text: brief, ts: first });
+  }
+  if (more) out.push({ key: "earlier", kind: "earlier" });
+  // The failure it stopped on is told once, under it all (FailCard); an earlier one in its line.
+  const last = failed ? steps.findLastIndex((s) => s.kind === "end") : -1;
+  steps.forEach((s, i) => {
+    if (i === last) return;
+    if (s.kind === "user" || s.kind === "agent_message") told(s.key, s.ts);
+    if (s.kind !== "text" && s.kind !== "work" && s.kind !== "user" && s.kind !== "agent_message" && !(s.kind === "end" && s.end.outcome !== "completed")) return;
+    const next = steps.slice(i + 1).find((x) => x.kind !== "work");
+    const end = s.kind === "text" && !s.live && (next ? next.kind === "end" || next.kind === "user" || next.kind === "agent_message" : !running);
+    out.push({ key: s.key, kind: "step", step: s, end });
+  });
+  return out;
 }
 
 /**
- * A sub-agent's record: what Her asked of it, then everything it thought, said and called, in order, and how it
- * ended. Its thoughts show whole; a call is a line that opens to its output. While it works the page follows what
- * it does, as long as the owner has not scrolled away from the end.
+ * A sub-agent's record, as a session's conversation is (ChatFrame): what Her asked of it on the right, then its words
+ * across the page and what it did in between as grey lines, folded until opened, and how it ended. While it works,
+ * the control bar at the bottom says so, with what it asks the owner above, and Stop.
  */
-function AgentRecord({ launch, agent: a, title, conv, op }: { launch: AgentLaunch; agent: AgentView; title: string; conv: Conv; op: SendOp }) {
+function AgentChat({ bot, launch, agent: a, title, conv, op }: { bot: BotSummary; launch: AgentLaunch; agent: AgentView; title: string; conv: Conv; op: SendOp }) {
   const { t } = useTranslation("her");
   const st = useStore();
   const stand = agentState(launch);
-  const facts = useFacts(a);
+  const running = a.status === "running";
   const all = stepsOf(a.view);
-  // Its first message is the task, which shows as what Her asked.
-  const steps = all[0]?.kind === "user" ? all.slice(1) : all;
-  const brief = (conv.view && agentTaskOf(conv.view, a)) || launch.task;
-  const [allOpen, setAllOpen] = useState(false);
+  const brief = agentBrief((conv.view && agentTaskOf(conv.view, a)) || launch.task);
+  const cursor = conv.rpc ? agentHistoryCursor(a) : undefined;
+  const rows = useMemo(() => agentRows(all, brief, !!cursor, running, stand === "failed"), [all, brief, !!cursor, running, stand]);
+  const [paging, setPaging] = useState(false);
+  const earlier = () => {
+    setPaging(true);
+    conv.loadAgentEarlier(a.id).finally(() => setPaging(false));
+  };
   const [busy, setBusy] = useState(false);
   const stop = async () => {
     setBusy(true);
@@ -417,123 +520,129 @@ function AgentRecord({ launch, agent: a, title, conv, op }: { launch: AgentLaunc
     setBusy(false);
   };
   const asking = conv.view && conv.rpc ? pendingApproval(conv.view) : null;
-  const scroller = useRef<HTMLDivElement>(null);
-  const atEnd = useRef(a.status === "running");
-  useLayoutEffect(() => {
-    const el = scroller.current;
-    if (el && atEnd.current) el.scrollTop = el.scrollHeight;
-  }, [all, asking]);
-  const cursor = conv.rpc ? agentHistoryCursor(a) : undefined;
-  const [paging, setPaging] = useState(false);
-  const earlier = () => {
-    const el = scroller.current;
-    const from = el ? el.scrollHeight - el.scrollTop : 0;
-    setPaging(true);
-    conv.loadAgentEarlier(a.id).finally(() => {
-      setPaging(false);
-      // What was on screen stays where it was.
-      requestAnimationFrame(() => el && (el.scrollTop = el.scrollHeight - from));
-    });
-  };
-  const calls = agentCalls(a);
-  const lastText = stand === "done" ? steps.findLastIndex((s) => s.kind === "text") : -1;
-  return (
-    <div className="dwrap pt-agent">
-      <div className="dmain">
-        <div className="cscroll" ref={scroller} onScroll={(e) => (atEnd.current = e.currentTarget.scrollHeight - e.currentTarget.scrollTop - e.currentTarget.clientHeight < 40)}>
-          <div className="pt">
-            <div className="pt-h">
-              <div className="pt-hm">
-                <h2>{title}</h2>
-                <div className="pt-meta">
-                  <span>{t("progress.agent")}</span>
-                  <span className={`pt-pill ${stand}`}>{t(`progress.state.${stand}`)}</span>
-                  <span className="pt-facts">{facts}</span>
-                </div>
-              </div>
-              {a.status === "running" && conv.rpc && (
-                <button className="btn" disabled={busy} onClick={() => void stop()}>
-                  {t("progress.stop")}
-                </button>
-              )}
-            </div>
-            {brief && (
-              <div className="pt-brief">
-                <span className="pt-brief-cat" aria-hidden="true"><Cat small /></span>
-                <div>
-                  <span>{t("progress.brief")}</span>
-                  <p className="sel-text">{agentBrief(brief)}</p>
-                </div>
-              </div>
-            )}
-            <div className="pt-steps-h">
-              <span>{t("progress.steps", { count: calls })}</span>
-              {calls > 0 && <button className="link" onClick={() => setAllOpen(!allOpen)}>{t(allOpen ? "progress.thinkingOnly" : "progress.expandAll")}</button>}
-            </div>
-            {cursor && (
-              <div className="pg-more">
-                {paging ? <span className="mini-spin" aria-label={t("progress.loadingEarlier")} /> : <button className="link" onClick={earlier}>{t("progress.earlierSteps")}</button>}
-              </div>
-            )}
-            <div className="pt-steps" role="log" aria-label={t("progress.steps", { count: calls })}>
-              {steps.map((s, i) => (
-                <StepView key={s.key} step={s} allOpen={allOpen} report={i === lastText} />
-              ))}
-            </div>
-            {stand === "waiting" && conv.view && asking?.agent?.id === a.id && (
-              <div className="pt-ask">
-                <Approval view={conv.view} op={op} />
-              </div>
-            )}
-            {stand === "waiting" && asking?.agent?.id !== a.id && <p className="pt-note">{t("progress.waitingBehind")}</p>}
-            {stand === "failed" && (
-              <div className="pt-end fail" role="status">
-                <span><i className="dot-f" aria-hidden="true" />{t("progress.failedHere")}</span>
-                <p className="sel-text">{a.error?.message ?? ""}</p>
-              </div>
-            )}
-            {stand === "stopped" && <p className="pt-note">{t("progress.state.stopped")}</p>}
+  const mine = asking?.agent?.id === a.id;
+  const row = (r: AgentRow): ReactNode => {
+    switch (r.kind) {
+      case "brief":
+        return <UserBubble text={r.text} at={r.ts ? new Date(r.ts) : undefined} />;
+      case "turn":
+        return <TimeLine at={r.at} previous={r.previous} />;
+      case "earlier":
+        return (
+          <div className="pg-more">
+            {paging ? <span className="mini-spin" aria-label={t("progress.loadingEarlier")} /> : <button className="link" onClick={earlier}>{t("progress.earlierSteps")}</button>}
           </div>
-        </div>
-      </div>
-    </div>
+        );
+      case "step":
+        return <AgentStep step={r.step} end={r.end} />;
+    }
+  };
+  return (
+    <ChatFrame
+      rows={rows}
+      initial={agentRowHeights}
+      label={t("progress.steps", { count: agentCalls(a) })}
+      follow={a.status}
+      row={row}
+      foot={
+        <>
+          {stand === "waiting" && !mine && <div className="tnote">{t("progress.waitingBehind")}</div>}
+          {stand === "failed" && <FailCard headline={t("progress.failedHere")} hints={[]} message={a.error?.message ?? ""} />}
+          {stand === "stopped" && <div className="tnote">{t("progress.state.stopped")}</div>}
+          {stand === "done" && <DoneLine text={t("progress.doneLine", { name: bot.name })} />}
+        </>
+      }
+      control={
+        running
+          ? (onHeight) => (
+              <ControlBar panel={mine && conv.view && <Approval key={asking!.approval.call_id} view={conv.view} op={op} />} onHeight={onHeight}>
+                <AgentLive agent={a} waiting={stand === "waiting"} />
+                {conv.rpc && (
+                  <>
+                    <span className="ctl-sep" />
+                    <button className="ctl-btn" disabled={busy} onClick={() => void stop()}>
+                      <Icon name="stop" />
+                      {t("progress.stop")}
+                    </button>
+                  </>
+                )}
+              </ControlBar>
+            )
+          : undefined
+      }
+    />
   );
 }
 
-/** A step of the record. report: the agent's last words, which are its report to Her. */
-function StepView({ step: s, allOpen, report }: { step: Step; allOpen: boolean; report: boolean }): ReactNode {
+/** What runs now, in the control bar: the sub-agent at work and for how long, or that it waits for the owner. */
+function AgentLive({ agent: a, waiting }: { agent: AgentView; waiting: boolean }) {
+  const { t } = useTranslation("her");
+  const now = useNow(1000);
+  if (waiting) {
+    return (
+      <>
+        <i className="dot-w" aria-hidden="true" />
+        <b>{t("progress.state.waiting")}</b>
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="live-logo pt-cat" aria-hidden="true"><Cat small /></span>
+      <b>{t("progress.working")}</b>
+      <span className="el">{clockText(elapsedSeconds(new Date(a.since), now))}</span>
+    </>
+  );
+}
+
+/** A step of the record, as a session's row of the same kind shows it. end: the last words of a round. */
+function AgentStep({ step: s, end }: { step: Step; end: boolean }): ReactNode {
   const { t } = useTranslation("her");
   switch (s.kind) {
     case "work":
-      return (
-        <div className="pt-work">
-          {s.items.map((it) => (
-            // Opened again as the choice changes: each row keeps its own state after that.
-            <StepRow key={`${it.key}:${allOpen}`} item={it} thinkingOpen outputOpen={allOpen} spin />
-          ))}
-        </div>
+      return s.items.length === 1 ? (
+        <WorkLine item={s.items[0]} />
+      ) : (
+        <ToolFold id={s.key} summary={workText(s.items)} running={s.items.some(atWorkNow)}>
+          {s.items.map((it) => <WorkLine key={it.key} item={it} />)}
+        </ToolFold>
       );
     case "text":
-      return report ? (
-        <div className="pt-end">
-          <span><Icon name="check" className="tm-ok sm" />{t("progress.report")}</span>
-          <div className="am"><Markdown text={s.text} /></div>
-        </div>
-      ) : (
-        <div className="am pt-say"><Markdown text={s.text} /></div>
-      );
-    // What Her told it after it began: as her words to it.
+      return <AgentText text={s.text} end={end} at={new Date(s.ts)} live={s.live} />;
+    // What Her told it after it began: as what was sent to it.
     case "user":
     case "agent_message":
-      return (
-        <div className="pt-again">
-          <span>{t("progress.again")}</span>
-          <p className="sel-text">{messageBody(s.text)}</p>
-        </div>
-      );
+      return <UserBubble text={messageBody(s.text)} at={new Date(s.ts)} />;
     case "end":
-      return s.end.outcome === "interrupted" ? <p className="pt-note">{t("progress.interrupted")}</p> : null;
+      return s.end.outcome === "interrupted" ? <div className="tnote">{t("progress.interrupted")}</div> : <FailLine id={s.key} title={t("progress.failedHere")} message={s.end.error?.message ?? ""} />;
     default:
       return null;
   }
+}
+
+const atWorkNow = (it: WorkItem) => (it.kind === "thinking" ? it.live : it.tool.state === "running" || it.tool.state === "pending" || it.tool.state === "streaming");
+
+/** A thought or a call on its line (ToolLine): a thought opens to its words, a call to its output. */
+function WorkLine({ item }: { item: WorkItem }) {
+  const { t } = useTranslation("her");
+  const [open, setOpen] = useRowState(`tool:${item.key}`, false);
+  if (item.kind === "thinking") {
+    const text = item.redacted ? "" : item.text.trim();
+    const gist = item.redacted ? t("steps.thinkingHidden") : (text.split("\n").find((l) => l.trim() !== "") ?? "");
+    return <ToolLine verb={t("steps.thought")} object={gist} title="" shell={false} running={item.live} failed={false} output={text} open={open} onToggle={() => setOpen(!open)} prose />;
+  }
+  const tool = item.tool;
+  return (
+    <ToolLine
+      verb={toolVerb(tool)}
+      object={toolObject(tool)}
+      title={tool.title}
+      shell={tool.category === "execute"}
+      running={atWorkNow(item)}
+      failed={tool.state === "failed" || tool.state === "denied"}
+      output={toolOutput(tool)}
+      open={open}
+      onToggle={() => setOpen(!open)}
+    />
+  );
 }

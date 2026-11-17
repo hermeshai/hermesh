@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Client, Machine } from "@hermesh/proto/local";
 import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
@@ -26,8 +26,7 @@ import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
 /**
  * The conversation, newest at the bottom, ending with the reply the agent is
  * still writing (draft); while a turn is live, the control area sits over
- * its bottom edge. Only the rows near what is in sight are drawn
- * (useVirtualRows, docs/desktop-performance.md §7).
+ * its bottom edge.
  */
 export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[]; draft: string }) {
   const { t } = useTranslation("session");
@@ -37,15 +36,6 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
   const items = useMemo(() => groupSteps(transcript(events, running)), [events, running]);
   const ends = useMemo(() => replyEnds(items, running), [items, running]);
   const live = isInterruptible(s);
-  const scroll = useRef<HTMLDivElement>(null);
-  // The scroller and the list as elements too, for the window (useVirtualRows): set once, by refs that do not change.
-  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [list, setList] = useState<HTMLDivElement | null>(null);
-  const scrollRef = useCallback((el: HTMLDivElement | null) => {
-    scroll.current = el;
-    setScroller(el);
-  }, []);
-  const [ctlHeight, setCtlHeight] = useState(0);
 
   // The session's current failure is told once, at the end; the rows leave it out.
   const failure = s.progress?.lastFailure;
@@ -56,7 +46,70 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
   const settled = useMemo(() => rowsOf(items, ends, current), [items, ends, current?.kind, current?.message]);
   const next = (events.at(-1)?.seq ?? 0n) + 1n;
   const rows = useMemo(() => (draft === "" ? settled : [...settled, draftRow(next, draft)]), [settled, draft, next]);
-  const virtual = useVirtualRows({ scroller, list, rows, initial: rowHeights });
+  // Nothing of a conversation that has events yet: they are still on their way, or can't come.
+  const unread = items.length === 0 && draft === "" && (s.progress?.lastEventSeq ?? 0n) > 0n;
+
+  return (
+    <ContentScope value={s.sessionId}>
+      <ChatFrame
+        rows={rows}
+        initial={rowHeights}
+        label={t("chat.log")}
+        follow={s.status}
+        unread={unread ? <Unread s={s} /> : undefined}
+        head={
+          s.status === SessionStatus.ARCHIVED && (
+            <div className="anote">
+              <Icon name="archive" className="sm" />
+              {t("chat.archived")}
+              <button className="link" onClick={() => unarchive(st, s)}>{t("chat.unarchive")}</button>
+            </div>
+          )
+        }
+        row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={s.sessionId} clients={st.clients} grant={grant} previous={r.previous} />}
+        foot={
+          <>
+            <Stale s={s} behind={(events.at(-1)?.seq ?? 0n) < (s.progress?.lastEventSeq ?? 0n)} />
+            {isFailed(s) && (failure || s.error !== "") && <Failed s={s} failure={failure} grant={grant} />}
+            {s.status === SessionStatus.IDLE && !isFailed(s) && !isInterruption(failure) && items.length > 0 && <DoneLine text={t("chat.turnDone", { grant })} />}
+          </>
+        }
+        control={live ? (onHeight) => <ControlArea s={s} grant={grant} events={events} onHeight={onHeight} /> : undefined}
+      />
+    </ContentScope>
+  );
+}
+
+/**
+ * A conversation's frame, as a session's page and a sub-agent's record (her/Progress.tsx) have it: its rows, newest
+ * at the bottom, only those near what is in sight drawn (useVirtualRows, docs/desktop-performance.md §7), between
+ * `head` and `foot`; `unread` in their place while there is nothing to show. It opens at its end and stays there as
+ * it grows (or `follow` changes) unless the person scrolled up; scrolled well up, a button takes them back down.
+ * `control`, while a turn is live, sits over its bottom edge.
+ */
+export function ChatFrame<R extends VirtualRow>({ rows, initial, label, row, head, foot, unread, control, follow }: {
+  rows: R[];
+  initial: Record<string, number>;
+  label: string;
+  row: (r: R) => ReactNode;
+  head?: ReactNode;
+  foot?: ReactNode;
+  unread?: ReactNode;
+  control?: (onHeight: (h: number) => void) => ReactNode;
+  follow?: unknown;
+}) {
+  const { t } = useTranslation("session");
+  const live = control !== undefined;
+  const scroll = useRef<HTMLDivElement>(null);
+  // The scroller and the list as elements too, for the window (useVirtualRows): set once, by refs that do not change.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const [list, setList] = useState<HTMLDivElement | null>(null);
+  const scrollRef = useCallback((el: HTMLDivElement | null) => {
+    scroll.current = el;
+    setScroller(el);
+  }, []);
+  const [ctlHeight, setCtlHeight] = useState(0);
+  const virtual = useVirtualRows({ scroller, list, rows, initial });
 
   // Follow the conversation: open at its end, and stay there as it grows unless the person scrolled up;
   // scrolled well up, a button takes them back down.
@@ -77,7 +130,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
     const el = scroll.current;
     if (el && atEnd.current) el.scrollTop = el.scrollHeight;
     if (el) lastTop.current = el.scrollTop;
-  }, [rows, ctlHeight, s.status]);
+  }, [rows, ctlHeight, follow]);
   // Fonts, formulas, diagrams and tables can resize without a new event. Reading above the end, the row at the top
   // of the view stays where it is; at the end, the end stays in view.
   const anchor = useRef<{ key: string; top: number } | null>(null);
@@ -93,8 +146,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
     const row = [...el.querySelectorAll<HTMLElement>("[data-step-key]")].find((node) => node.getBoundingClientRect().bottom > top);
     anchor.current = row ? { key: row.dataset.stepKey!, top: row.getBoundingClientRect().top - top } : null;
   };
-  // Nothing of a conversation that has events yet: they are still on their way, or can't come.
-  const unread = items.length === 0 && draft === "" && (s.progress?.lastEventSeq ?? 0n) > 0n;
+  const empty = unread !== undefined;
   useEffect(() => {
     const el = scroll.current;
     const body = el?.firstElementChild;
@@ -122,7 +174,7 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
       observer.disconnect();
       cancelAnimationFrame(frame);
     };
-  }, [unread]);
+  }, [empty]);
   const onScroll = () => {
     const el = scroll.current;
     if (!el) return;
@@ -149,38 +201,23 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
   useEffect(() => () => void (held.current >= HEAVY_ROWS && releaseAfterLeaving()), []);
 
   return (
-    <ContentScope value={s.sessionId}>
+    <>
       <div className="cscroll markdown-chat" ref={scrollRef} onScroll={onScroll} onWheel={touch} onTouchMove={touch} onKeyDown={touch} onPointerDown={hold}>
-        {unread ? <Unread s={s} /> : <div className="dbody" style={live ? { paddingBottom: ctlHeight + 40 } : undefined}>
-          {s.status === SessionStatus.ARCHIVED && (
-            <div className="anote">
-              <Icon name="archive" className="sm" />
-              {t("chat.archived")}
-              <button className="link" onClick={() => unarchive(st, s)}>{t("chat.unarchive")}</button>
-            </div>
-          )}
-          <div className="tr" role="log" aria-label={t("chat.log")} ref={setList} data-rows={rows.length}>
+        {empty ? unread : <div className="dbody" style={live ? { paddingBottom: ctlHeight + 40 } : undefined}>
+          {head}
+          <div className="tr" role="log" aria-label={label} ref={setList} data-rows={rows.length}>
             {/* One flat list of keyed rows and spaces: a row keeps its element (and what is selected in it) however the parts change. */}
             {virtual.parts.flatMap((part) =>
               "space" in part
                 ? [<div key={`space:${part.at}`} className="vspace" style={{ height: part.space }} aria-hidden="true" />]
                 : rows.slice(part.from, part.to).map((r) => (
                     <div key={r.key} className="vrow" data-step-key={r.key} ref={virtual.measure(r.key)}>
-                      <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={s.sessionId} clients={st.clients} grant={grant} previous={r.previous} />
+                      {row(r)}
                     </div>
                   )),
             )}
           </div>
-          <Stale s={s} behind={(events.at(-1)?.seq ?? 0n) < (s.progress?.lastEventSeq ?? 0n)} />
-          {isFailed(s) && (failure || s.error !== "") && (
-            <Failed s={s} failure={failure} grant={grant} />
-          )}
-          {s.status === SessionStatus.IDLE && !isFailed(s) && !isInterruption(failure) && items.length > 0 && (
-            <div className="livebar" style={{ justifyContent: "center", paddingTop: 18 }}>
-              <Icon name="check" className="sm" />
-              <span>{t("chat.turnDone", { grant })}</span>
-            </div>
-          )}
+          {foot}
         </div>}
       </div>
       <button
@@ -194,8 +231,18 @@ export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[];
       >
         <Icon name="arrowDown" />
       </button>
-      {live && <ControlArea s={s} grant={grant} events={events} onHeight={setCtlHeight} />}
-    </ContentScope>
+      {control?.(setCtlHeight)}
+    </>
+  );
+}
+
+/** Under a conversation whose last turn went well: a quiet line that says so. */
+export function DoneLine({ text }: { text: string }) {
+  return (
+    <div className="livebar" style={{ justifyContent: "center", paddingTop: 18 }}>
+      <Icon name="check" className="sm" />
+      <span>{text}</span>
+    </div>
   );
 }
 
@@ -354,20 +401,10 @@ function RowView({ it, rowKey, end, live, sessionId, clients, grant, previous }:
       return <TimeLine at={it.at} previous={previous} />;
     case "user":
       // The one who started the session speaks on the right; no name (the card says who).
-      return (
-        <div className="um">
-          <div className="bub sel-text">{it.text}</div>
-          <Copy text={it.text} at={it.at} />
-        </div>
-      );
+      return <UserBubble text={it.text} at={it.at} />;
     case "agent":
       // A turn's reply is one, however many times it writes: when it is over, its last words say when and Copy.
-      return (
-        <div className={end ? "am end" : "am"}>
-          <Markdown text={it.text} streaming={live} />
-          {end && <Copy text={it.text} at={it.at} />}
-        </div>
-      );
+      return <AgentText text={it.text} end={end} at={it.at} live={live} />;
     case "tools":
       return it.calls.length === 1 ? (
         <ToolRow id={String(it.calls[0].seq)} call={it.calls[0].call} result={it.calls[0].result} resultSeq={it.calls[0].resultSeq} running={it.calls[0].running} sessionId={sessionId} />
@@ -413,6 +450,26 @@ function RowView({ it, rowKey, end, live, sessionId, clients, grant, previous }:
   }
 }
 
+/** What was sent to the agent, on the right; no name (the info card says who). On hover, when it was sent, and Copy. */
+export function UserBubble({ text, at }: { text: string; at?: Date }) {
+  return (
+    <div className="um">
+      <div className="bub sel-text">{text}</div>
+      <Copy text={text} at={at} />
+    </div>
+  );
+}
+
+/** The agent's words across the page. end: the last of its reply, which says when on hover, and Copy. live: still being written. */
+export function AgentText({ text, end, at, live = false }: { text: string; end: boolean; at?: Date; live?: boolean }) {
+  return (
+    <div className={end ? "am end" : "am"}>
+      <Markdown text={text} streaming={live} />
+      {end && <Copy text={text} at={at} />}
+    </div>
+  );
+}
+
 /** A turn stopped on purpose: by you, by one of your agents, or by Hermesh. */
 function InterruptNote({ failure, clients, grant }: { failure: Failure | undefined; clients: Client[]; grant: string }) {
   const { t } = useTranslation("session");
@@ -423,7 +480,7 @@ function InterruptNote({ failure, clients, grant }: { failure: Failure | undefin
 }
 
 /** A time line before a turn, for the first one and after a pause. */
-function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | undefined }) {
+export function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | undefined }) {
   const now = useNow(60_000);
   const text = at ? turnTimeLine(at, previous, now) : null;
   return text ? <div className="tdiv">{text}</div> : null;
@@ -457,24 +514,27 @@ type Calls = Extract<Step, { kind: "tools" }>["calls"];
 
 /** Tool calls in a row as one grey line ("Read 3 files, ran 1 command"), opened to show each; folded until the owner opens it. */
 function ToolGroup({ id, calls, sessionId }: { id: string; calls: Calls; sessionId: string }) {
+  return (
+    <ToolFold id={id} summary={stepSummary(calls)} running={calls.some((c) => c.running)}>
+      {calls.map((c) => (
+        <ToolRow key={c.call.callId || String(c.seq)} id={String(c.seq)} call={c.call} result={c.result} resultSeq={c.resultSeq} running={c.running} sessionId={sessionId} />
+      ))}
+    </ToolFold>
+  );
+}
+
+/** Steps in a row as one grey line (`summary`), opened to show each (`children`); folded until opened, as it stays while its row is not drawn (useRowState). */
+export function ToolFold({ id, summary, running, children }: { id: string; summary: string; running: boolean; children: ReactNode }) {
   const { t } = useTranslation("session");
-  // Open or not outlives its row not being drawn (useRowState).
   const [open, setOpen] = useRowState(`group:${id}`, false);
-  const running = calls.some((c) => c.running);
   return (
     <div className={`tgroup ${open ? "open" : ""}`}>
       <button className="tg-h" aria-expanded={open} onClick={() => setOpen(!open)}>
         {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
-        <span>{stepSummary(calls)}</span>
+        <span>{summary}</span>
         <Icon name="caret" className="chev" />
       </button>
-      {open && (
-        <div className="tg-b">
-          {calls.map((c) => (
-            <ToolRow key={c.call.callId || String(c.seq)} id={String(c.seq)} call={c.call} result={c.result} resultSeq={c.resultSeq} running={c.running} sessionId={sessionId} />
-          ))}
-        </div>
-      )}
+      {open && <div className="tg-b">{children}</div>}
     </div>
   );
 }
@@ -494,16 +554,49 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
   const note = whole.failed ? t("chat.outputUnreadable") : result && !partialOutput(result) && result.truncated ? t("chat.truncated") : "";
   const output = denied ? call.reason : whole.text !== "" ? whole.text + (note ? `\n${note}` : "") : "";
   return (
-    <div className={`tool ${failed ? "err" : ""} ${open && output ? "open" : ""}`}>
-      <button className="th" onClick={() => output && setOpen(!open)} aria-expanded={output ? open : undefined}>
-        {(running || whole.reading) && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
-        <span className="vb">{toolVerb(call, running)}</span>
-        {call.kind === "shell" ? (
-          <code className="sm2 cmd" title={call.summary}>
-            <Code text={toolSummary(toolObject(call), sessionId)} lang="bash" />
+    <ToolLine
+      verb={toolVerb(call, running)}
+      object={toolSummary(toolObject(call), sessionId)}
+      title={call.summary}
+      shell={call.kind === "shell"}
+      running={running || whole.reading}
+      failed={failed}
+      output={output}
+      open={open}
+      onToggle={() => setOpen(!open)}
+    />
+  );
+}
+
+/**
+ * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it gave when
+ * opened (`output`; nothing to open without one). The one at work spins; a failed one is red. prose: its output is
+ * words, not a program's (a thought).
+ */
+export function ToolLine({ verb, object, title, shell, running, failed, output, open, onToggle, prose = false }: {
+  verb: string;
+  object: string;
+  title: string;
+  shell: boolean;
+  running: boolean;
+  failed: boolean;
+  output: string;
+  open: boolean;
+  onToggle: () => void;
+  prose?: boolean;
+}) {
+  const { t } = useTranslation("session");
+  return (
+    <div className={`tool ${failed ? "err" : ""} ${prose ? "thought" : ""} ${open && output ? "open" : ""}`}>
+      <button className="th" onClick={() => output && onToggle()} aria-expanded={output ? open : undefined}>
+        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
+        <span className="vb">{verb}</span>
+        {shell ? (
+          <code className="sm2 cmd" title={title}>
+            <Code text={object} lang="bash" />
           </code>
         ) : (
-          <span className="sm2" title={call.summary}>{toolSummary(toolObject(call), sessionId)}</span>
+          <span className="sm2" title={title}>{object}</span>
         )}
         {output && <Icon name="caret" className="chev" />}
       </button>
@@ -536,24 +629,36 @@ function sameFailure(a: Failure | undefined, b: Failure | undefined): boolean {
 function Failed({ s, failure, grant }: { s: Session; failure: Failure | undefined; grant: string }) {
   const { t } = useTranslation("session");
   const st = useStore();
-  const [open, setOpen] = useState(false);
   const message = failure?.message ?? s.error;
   const kind = failure?.kind ?? FailureKind.UNSPECIFIED;
   const advice = failure && !adviceResumes.has(kind) ? failureAdvice(failure) : "";
   return (
+    <FailCard
+      headline={failureHeadline(kind, codingAgentTitle(s.agent))}
+      hints={[advice, t("chat.resume", { grant: agentName(grant) })]}
+      message={message}
+      actions={isArchivable(s) && <button className="link" onClick={() => archive(st, s)}>{t("chat.archive")}</button>}
+    />
+  );
+}
+
+/** Where a conversation stopped on a failure: a quiet card with what happened, what to do (`hints`), then Details (`message`, folded) and `actions`. */
+export function FailCard({ headline, hints, message, actions }: { headline: string; hints: string[]; message: string; actions?: ReactNode }) {
+  const { t } = useTranslation("session");
+  const [open, setOpen] = useState(false);
+  return (
     <div className="qcard" role="alert">
       <Icon name="alert" className="qf-ic" />
       <div className="qf-main">
-        <b className="qf-title">{failureHeadline(kind, codingAgentTitle(s.agent))}</b>
-        {advice !== "" && <div className="qf-hint">{advice}</div>}
-        <div className="qf-hint">{t("chat.resume", { grant: agentName(grant) })}</div>
+        <b className="qf-title">{headline}</b>
+        {hints.filter((h) => h !== "").map((h) => <div key={h} className="qf-hint">{h}</div>)}
         <div className="qf-act">
           {message !== "" && (
             <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
               {t("chat.details")} <Icon name="chevR" className={`sm chev ${open ? "open" : ""}`} />
             </button>
           )}
-          {isArchivable(s) && <button className="link" onClick={() => archive(st, s)}>{t("chat.archive")}</button>}
+          {actions}
         </div>
         {open && <div className="qf-raw sel-text">{message}</div>}
       </div>
@@ -562,7 +667,7 @@ function Failed({ s, failure, grant }: { s: Session; failure: Failure | undefine
 }
 
 /** An earlier failure in the conversation: one red line, its words folded. */
-function FailLine({ id, title, message }: { id: string; title: string; message: string }) {
+export function FailLine({ id, title, message }: { id: string; title: string; message: string }) {
   const [open, setOpen] = useRowState(`failure:${id}`, false);
   return (
     <div className="qfail past">
@@ -580,8 +685,24 @@ function FailLine({ id, title, message }: { id: string; title: string; message: 
 function ControlArea({ s, grant, events, onHeight }: { s: Session; grant: string; events: SessionEvent[]; onHeight: (h: number) => void }) {
   const { t } = useTranslation("session");
   const st = useStore();
-  const ref = useRef<HTMLDivElement>(null);
   const q = pendingQuestion(s);
+  return (
+    <ControlBar panel={q && <QuestionPanel key={q.questionId} s={s} q={q} />} onHeight={onHeight}>
+      <LiveStatus s={s} grant={grant} events={events} />
+      <span className="ctl-sep" />
+      <button className="ctl-btn" title={t("control.interruptTitle", { keys: keys("CmdOrCtrl+.") })} onClick={() => interrupt(st, s)}>
+        <Icon name="stop" />
+        {t("control.interrupt")}
+        <span className="kbd">{keys("CmdOrCtrl+.")}</span>
+      </button>
+    </ControlBar>
+  );
+}
+
+/** The bottom of a live turn, over the conversation: what is asked (`panel`) above, the row of what runs now and how to stop it below. */
+export function ControlBar({ panel, onHeight, children }: { panel?: ReactNode; onHeight: (h: number) => void; children: ReactNode }) {
+  const { t } = useTranslation("session");
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -593,17 +714,9 @@ function ControlArea({ s, grant, events, onHeight }: { s: Session; grant: string
     };
   }, [onHeight]);
   return (
-    <div className={`cbar ${q ? "q" : ""}`} role="region" aria-label={t("control.label")} ref={ref}>
-      {q && <QuestionPanel key={q.questionId} s={s} q={q} />}
-      <div className="cbar-row">
-        <LiveStatus s={s} grant={grant} events={events} />
-        <span className="ctl-sep" />
-        <button className="ctl-btn" title={t("control.interruptTitle", { keys: keys("CmdOrCtrl+.") })} onClick={() => interrupt(st, s)}>
-          <Icon name="stop" />
-          {t("control.interrupt")}
-          <span className="kbd">{keys("CmdOrCtrl+.")}</span>
-        </button>
-      </div>
+    <div className={`cbar ${panel ? "q" : ""}`} role="region" aria-label={t("control.label")} ref={ref}>
+      {panel}
+      <div className="cbar-row">{children}</div>
     </div>
   );
 }

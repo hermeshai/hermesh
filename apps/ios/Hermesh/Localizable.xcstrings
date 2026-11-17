@@ -2000,6 +2000,26 @@
         }
       }
     },
+    "Called %lld tools": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调用了 %lld 个工具"
+          }
+        }
+      }
+    },
+    "Called 1 tool": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调用了 1 个工具"
+          }
+        }
+      }
+    },
     "Calling": {
       "localizations": {
         "zh-Hans": {
@@ -3004,6 +3024,26 @@
         }
       }
     },
+    "Deleted %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Deleted 1 file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除了 1 个文件"
+          }
+        }
+      }
+    },
     "Deleted Conversations": {
       "localizations": {
         "zh-Hans": {
@@ -3060,6 +3100,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已拒绝"
+          }
+        }
+      }
+    },
+    "Denied %lld actions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒绝了 %lld 个操作"
+          }
+        }
+      }
+    },
+    "Denied 1 action": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拒绝了 1 个操作"
           }
         }
       }
@@ -3244,6 +3304,16 @@
         }
       }
     },
+    "Done; its last words went back to %@ as its report.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已办完，最后这段话已交回给 %@"
+          }
+        }
+      }
+    },
     "Don’t Answer": {
       "localizations": {
         "zh-Hans": {
@@ -3356,6 +3426,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已修改"
+          }
+        }
+      }
+    },
+    "Edited %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Edited 1 file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修改了 1 个文件"
           }
         }
       }
@@ -3563,16 +3653,6 @@
         }
       }
     },
-    "Expand All Output": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "展开全部输出"
-          }
-        }
-      }
-    },
     "Expanded": {
       "localizations": {
         "zh-Hans": {
@@ -3665,6 +3745,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已访问"
+          }
+        }
+      }
+    },
+    "Fetched %lld pages": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "访问了 %lld 个网页"
+          }
+        }
+      }
+    },
+    "Fetched 1 page": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "访问了 1 个网页"
           }
         }
       }
@@ -4718,16 +4818,6 @@
         }
       }
     },
-    "Its report to Her": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "交回给 Her 的汇报"
-          }
-        }
-      }
-    },
     "Its scheduled task may have been deleted.": {
       "localizations": {
         "zh-Hans": {
@@ -5024,6 +5114,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已移动"
+          }
+        }
+      }
+    },
+    "Moved %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Moved 1 file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动了 1 个文件"
           }
         }
       }
@@ -5444,6 +5554,26 @@
         }
       }
     },
+    "Ran %lld commands": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行了 %lld 条命令"
+          }
+        }
+      }
+    },
+    "Ran 1 command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行了 1 条命令"
+          }
+        }
+      }
+    },
     "Ran for %@": {
       "localizations": {
         "zh-Hans": {
@@ -5460,6 +5590,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已读取"
+          }
+        }
+      }
+    },
+    "Read %lld files": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取了 %lld 个文件"
+          }
+        }
+      }
+    },
+    "Read 1 file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取了 1 个文件"
           }
         }
       }
@@ -5864,6 +6014,26 @@
         }
       }
     },
+    "Searched %lld times": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索了 %lld 次"
+          }
+        }
+      }
+    },
+    "Searched once": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索了 1 次"
+          }
+        }
+      }
+    },
     "Searching": {
       "localizations": {
         "zh-Hans": {
@@ -5880,6 +6050,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 派的活"
+          }
+        }
+      }
+    },
+    "Sent out by": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "派出"
           }
         }
       }
@@ -5910,6 +6090,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 %@ 的 ~/.her/models.toml 里设置，要移除请编辑该文件"
+          }
+        }
+      }
+    },
+    "Set off by": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自哪句话"
           }
         }
       }
@@ -6114,6 +6304,23 @@
         }
       }
     },
+    "step-summary-separator": {
+      "comment": "Separates the parts of a step's summary, as a session's does",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · "
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "、"
+          }
+        }
+      }
+    },
     "Steps": {
       "localizations": {
         "zh-Hans": {
@@ -6160,6 +6367,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "子智能体"
+          }
+        }
+      }
+    },
+    "Sub-agent Info": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子智能体信息"
           }
         }
       }
@@ -6334,6 +6551,16 @@
         }
       }
     },
+    "The sub-agent is working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子智能体正在工作"
+          }
+        }
+      }
+    },
     "The work Her sends out shows here once she runs on one of your machines.": {
       "localizations": {
         "zh-Hans": {
@@ -6400,16 +6627,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "思考"
-          }
-        }
-      }
-    },
-    "Thinking Only": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "只展开思考"
           }
         }
       }
@@ -6642,6 +6859,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "思考"
+          }
+        }
+      }
+    },
+    "Thought %lld times": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考了 %lld 次"
+          }
+        }
+      }
+    },
+    "Thought once": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考了 1 次"
           }
         }
       }
@@ -10638,16 +10875,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "每个助手记下的关于你和你工作的内容"
-          }
-        }
-      }
-    },
-    "What Her asked": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 派的活"
           }
         }
       }

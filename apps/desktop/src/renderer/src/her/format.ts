@@ -1,4 +1,4 @@
-import { hourMinute, isYesterday, modelName, monthDay, sameDay, weekday, withinWeek, type ToolView } from "@hermesh/her-client";
+import { hourMinute, isYesterday, modelName, monthDay, sameDay, weekday, withinWeek, workSummary, type ToolView, type WorkItem } from "@hermesh/her-client";
 import type { ModelSummary, ModelsListResult, PermissionMode, ThinkingLevel } from "@hermesh/her-protocol";
 import { i18n } from "../../../shared/i18n";
 
@@ -65,6 +65,11 @@ export function toolVerb(tool: ToolView): string {
   if (tool.state === "awaiting_approval") return t("steps.awaiting");
   const live = tool.state === "running" || tool.state === "pending" || tool.state === "streaming";
   return t(`steps.${tool.category}.${live ? "doing" : "done"}`);
+}
+
+/** What a run of steps did, in one line as a session's group of calls says it: "读取了 2 个文件、运行了 3 条命令". */
+export function workText(items: WorkItem[]): string {
+  return workSummary(items).map(({ kind, count }) => t(`steps.count.${kind}`, { count })).join(t("steps.separator"));
 }
 
 /** The verb for asking to do a step: "Run", "Edit". */

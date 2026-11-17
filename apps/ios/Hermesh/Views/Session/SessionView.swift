@@ -16,11 +16,6 @@ struct SessionView: View {
     @State private var draft = ""
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
-    /// Whether it was scrolled well up from its end, where a button brings it back.
-    @State private var away = false
-    @Environment(\.accessibilityReduceMotion) private var still
-    /// The owner is scrolling (dragging, or the list still moving from it).
-    @State private var scrolling = false
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var confirmInterrupt = false
     @State private var renaming = false
@@ -88,41 +83,17 @@ struct SessionView: View {
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
         }
-        // Open at the end, and stay there as it grows unless the owner scrolled
-        // up: each time it grows, it is scrolled to its end again. Anchoring
-        // the scroll at the bottom was not enough: a conversation read in one
-        // go grew from nothing to thousands of points and stayed at its top.
-        // Only the owner's scrolling moves it off the end (right after a batch
-        // the end is briefly out of view).
-        .scrollPosition($position)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-        .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
-            if scrolling { atEnd = end }
+        .followsEnd(atEnd: $atEnd, position: $position) {
+            if let q = s.pendingQuestion {
+                QuestionPanel(session: s, question: q).id(q.questionID)
+            } else if s.isInterruptible {
+                controlBar(s)
+            }
         }
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
-            if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
-        }
-        .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
         .overlay { // in the middle of the screen, not where the scroll ends
             if events.isEmpty && !caughtUp(s) { unread(s) }
         }
         .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .bottom) {
-            // A stack, there even with nothing in it, for the button back to the end to stand on.
-            VStack(spacing: 0) {
-                if let q = s.pendingQuestion {
-                    QuestionPanel(session: s, question: q).id(q.questionID)
-                } else if s.isInterruptible {
-                    controlBar(s)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .toEndButton(away) {
-                atEnd = true
-                withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
@@ -252,41 +223,24 @@ struct SessionView: View {
         if s.isFailed, failure != nil || !s.error.isEmpty {
             FailedView(session: s, failure: failure, grant: grant)
         } else if s.status == .idle, !isInterruption(failure), !steps.isEmpty {
-            Label("This turn is done. When \(grant) sends another message, it continues in this session.", systemImage: "checkmark")
-                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 5)
+            DoneLine(text: String(localized: "This turn is done. When \(grant) sends another message, it continues in this session."))
         }
     }
 
     /// The bottom of a live turn: the coding agent at work and how long, or
     /// what the session is doing, and Interrupt.
     private func controlBar(_ s: Session) -> some View {
-        HStack(spacing: 10) {
-            BreathingLogo(agent: s.agent)
-            Group {
-                if s.status == .running {
-                    Text("\(agentTitle(s.agent)) is working").fontWeight(.semibold)
-                    if let start = s.turnStartedDate { Text(start, style: .timer).monospacedDigit().foregroundStyle(.secondary) }
-                } else {
-                    Text(statusTitle(s.status)).fontWeight(.semibold)
-                    if phaseText(s) != statusTitle(s.status) { Text(phaseText(s)).foregroundStyle(.secondary) }
-                }
+        LiveBar(stop: "Interrupt", stopID: "interrupt", action: { confirmInterrupt = true }) {
+            Breathing { AgentLogo(id: s.agent, size: 20) }
+        } words: {
+            if s.status == .running {
+                Text("\(agentTitle(s.agent)) is working").fontWeight(.semibold)
+                if let start = s.turnStartedDate { Text(start, style: .timer).monospacedDigit().foregroundStyle(.secondary) }
+            } else {
+                Text(statusTitle(s.status)).fontWeight(.semibold)
+                if phaseText(s) != statusTitle(s.status) { Text(phaseText(s)).foregroundStyle(.secondary) }
             }
-            .lineLimit(1)
-            Spacer(minLength: 0)
-            Button {
-                confirmInterrupt = true
-            } label: {
-                Label("Interrupt", systemImage: "stop.fill")
-            }
-            .buttonStyle(.glass)
-            .accessibilityIdentifier("interrupt")
         }
-        .font(.subheadline)
-        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
-        .padding(.horizontal, 16).padding(.bottom, 4)
     }
 
     /// When the turn before step i started, for the time lines.
@@ -390,24 +344,12 @@ struct StepView: View {
         case .user(_, let text, let at, let asker):
             // Who asked for the turn speaks on the right, under their name: a session takes work from several
             // (the one who started it, Her, the owner), and none of it is a chat with Her.
-            VStack(alignment: .trailing, spacing: 5) {
-                sender(asker.isEmpty ? session.createdBy : asker)
-                Text(text)
-                    .lineSpacing(3)
-                    .foregroundStyle(Palette.bubbleText)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .contextMenu { copy(text, sent: at) }
-            }
-            .padding(.leading, 48)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.top, 8).padding(.bottom, 8)
+            PromptBubble(text: text, sent: at) { sender(asker.isEmpty ? session.createdBy : asker) }
         case .agent(_, let text):
             MarkdownText(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
-                .contextMenu { copy(text, sent: nil) }
+                .contextMenu { CopyMenu(text: text, sent: nil) }
                 .padding(.bottom, 8)
         case .message(_, let incoming, let name, let text, let queued):
             // A message between the session and another of the owner's agents: who, and what became of it.
@@ -469,23 +411,151 @@ struct StepView: View {
         let text = by == "owner" ? String(localized: "You interrupted this turn. The session stays; when \(grant) sends another message, it continues.")
             : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn. The session stays; when \(grant) sends another message, it continues.") }
             ?? String(localized: "This turn was interrupted. The session stays; when \(grant) sends another message, it continues.")
-        return Text(text)
-            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            .padding(.horizontal, 12).padding(.vertical, 5)
-            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .frame(maxWidth: .infinity)
-    }
-
-    /// The long-press menu of a message: Copy, and when the owner sent it.
-    @ViewBuilder private func copy(_ text: String, sent: Date?) -> some View {
-        Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
-        if let sent { Text("Sent \(agoText(sent, now: model.now))") }
+        return TurnNote(text: text)
     }
 
     private func asked(_ q: Question) -> AttributedString {
         var s = AttributedString(String(localized: "Agent asked:"))
         s.inlinePresentationIntent = .stronglyEmphasized
         return s + AttributedString(" " + q.items.map(\.text).joined(separator: " "))
+    }
+}
+
+/// What was sent to the agent, on the right in a blue bubble under who sent it; a long press copies it.
+struct PromptBubble<Sender: View>: View {
+    let text: String
+    let sent: Date?
+    @ViewBuilder let sender: () -> Sender
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 5) {
+            sender()
+            Text(text)
+                .lineSpacing(3)
+                .foregroundStyle(Palette.bubbleText)
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contextMenu { CopyMenu(text: text, sent: sent) }
+        }
+        .padding(.leading, 48)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.top, 8).padding(.bottom, 8)
+    }
+}
+
+/// The long-press menu of a message: Copy, and when the owner sent it.
+struct CopyMenu: View {
+    @Environment(AppModel.self) private var model
+    let text: String
+    let sent: Date?
+
+    var body: some View {
+        Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+        if let sent { Text("Sent \(agoText(sent, now: model.now))") }
+    }
+}
+
+/// A quiet note in the middle of the conversation: a turn stopped on purpose, and such.
+struct TurnNote: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(Palette.fill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .frame(maxWidth: .infinity)
+    }
+}
+
+/// Under a conversation whose last turn went well: a quiet line that says so.
+struct DoneLine: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "checkmark")
+            .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 5)
+    }
+}
+
+/// The bottom of a live turn, a glass capsule over the conversation: who is at work (`lead`), what it does and for
+/// how long (`words`), and how to stop it.
+struct LiveBar<Lead: View, Words: View>: View {
+    let stop: LocalizedStringKey
+    let stopID: String
+    var disabled = false
+    let action: () -> Void
+    @ViewBuilder let lead: () -> Lead
+    @ViewBuilder let words: () -> Words
+
+    var body: some View {
+        HStack(spacing: 10) {
+            lead()
+            Group { words() }.lineLimit(1)
+            Spacer(minLength: 0)
+            Button(action: action) {
+                Label(stop, systemImage: "stop.fill")
+            }
+            .buttonStyle(.glass)
+            .disabled(disabled)
+            .accessibilityIdentifier(stopID)
+        }
+        .font(.subheadline)
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
+        .glassEffect(.regular, in: .capsule)
+        .padding(.horizontal, 16).padding(.bottom, 4)
+    }
+}
+
+extension View {
+    /// A conversation's scrolling, as a session's page and a sub-agent's record have it: it opens at its end and
+    /// stays there as it grows unless the owner scrolled up; `bottom` stands over its bottom edge, and scrolled well
+    /// up, a button over that takes them back down.
+    func followsEnd<Bottom: View>(atEnd: Binding<Bool>, position: Binding<ScrollPosition>, @ViewBuilder bottom: @escaping () -> Bottom) -> some View {
+        modifier(FollowsEnd(atEnd: atEnd, position: position, bottom: bottom))
+    }
+}
+
+private struct FollowsEnd<Bottom: View>: ViewModifier {
+    @Binding var atEnd: Bool
+    @Binding var position: ScrollPosition
+    let bottom: () -> Bottom
+    /// Whether it was scrolled well up from its end, where a button brings it back.
+    @State private var away = false
+    /// The owner is scrolling (dragging, or the list still moving from it).
+    @State private var scrolling = false
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        content
+            // Open at the end, and stay there as it grows unless the owner scrolled
+            // up: each time it grows, it is scrolled to its end again. Anchoring
+            // the scroll at the bottom was not enough: a conversation read in one
+            // go grew from nothing to thousands of points and stayed at its top.
+            // Only the owner's scrolling moves it off the end (right after a batch
+            // the end is briefly out of view).
+            .scrollPosition($position)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
+            .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
+                if scrolling { atEnd = end }
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
+                if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
+            }
+            .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
+            .safeAreaInset(edge: .bottom) {
+                // A stack, there even with nothing in it, for the button back to the end to stand on.
+                VStack(spacing: 0) { bottom() }
+                    .frame(maxWidth: .infinity)
+                    .toEndButton(away) {
+                        atEnd = true
+                        withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
+                    }
+            }
     }
 }
 
@@ -503,20 +573,43 @@ struct FailedView: View {
     let session: Session
     let failure: Failure?
     let grant: String
+
+    var body: some View {
+        FailedCard(headline: failureHeadline(failure?.kind ?? .unspecified, agent: agentTitle(session.agent)),
+                   hints: [advice, String(localized: "When \(AgentLogo.name(grant)) sends another message, it picks up from here; the earlier changes are all still there.")],
+                   message: failure?.message ?? session.error) {
+            if session.isArchivable {
+                Button("Archive") { Task { await model.setArchived(session, true) } }
+            }
+        }
+        .accessibilityIdentifier("session-failed")
+    }
+
+    /// What to do, when it is the owner's to fix (the advice of the others
+    /// only says to send another message, which the card says anyway).
+    private var advice: String {
+        guard let failure, !adviceResumes.contains(failure.kind) else { return "" }
+        return failureAdvice(failure)
+    }
+}
+
+/// Where a conversation stopped on a failure: a quiet card with what happened, what to do (`hints`), then Details
+/// (`message`, folded) and `actions`.
+struct FailedCard<Actions: View>: View {
+    let headline: String
+    let hints: [String]
+    let message: String
+    @ViewBuilder let actions: () -> Actions
     @State private var open = false
 
     var body: some View {
-        let message = failure?.message ?? session.error
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: "exclamationmark.circle").foregroundStyle(.red)
             VStack(alignment: .leading, spacing: 3) {
-                Text(failureHeadline(failure?.kind ?? .unspecified, agent: agentTitle(session.agent)))
+                Text(headline)
                     .font(.subheadline.weight(.semibold))
-                Group {
-                    if !advice.isEmpty { Text(advice) }
-                    Text("When \(AgentLogo.name(grant)) sends another message, it picks up from here; the earlier changes are all still there.")
-                }
-                .font(.footnote).foregroundStyle(.secondary)
+                ForEach(hints.filter { !$0.isEmpty }, id: \.self) { Text($0) }
+                    .font(.footnote).foregroundStyle(.secondary)
                 HStack(spacing: 14) {
                     if !message.isEmpty {
                         Button { withAnimation(.snappy(duration: 0.25)) { open.toggle() } } label: {
@@ -527,9 +620,7 @@ struct FailedView: View {
                         }
                         .accessibilityIdentifier("failure-details")
                     }
-                    if session.isArchivable {
-                        Button("Archive") { Task { await model.setArchived(session, true) } }
-                    }
+                    actions()
                 }
                 .font(.footnote).foregroundStyle(.secondary).buttonStyle(.plain)
                 .padding(.top, 6)
@@ -542,14 +633,6 @@ struct FailedView: View {
         .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         .padding(.top, 6)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("session-failed")
-    }
-
-    /// What to do, when it is the owner's to fix (the advice of the others
-    /// only says to send another message, which the card says anyway).
-    private var advice: String {
-        guard let failure, !adviceResumes.contains(failure.kind) else { return "" }
-        return failureAdvice(failure)
     }
 }
 
@@ -594,14 +677,14 @@ private struct RawMessage: View {
     }
 }
 
-/// The coding agent at work: its own logo, breathing.
-private struct BreathingLogo: View {
-    let agent: String
+/// Who is at work, breathing: a coding agent's logo, Her's mark.
+struct Breathing<Content: View>: View {
+    @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dim = false
 
     var body: some View {
-        AgentLogo(id: agent, size: 20)
+        content()
             .opacity(dim ? 0.45 : 1)
             .onAppear {
                 guard !reduceMotion else { return }

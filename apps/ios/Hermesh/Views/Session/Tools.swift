@@ -9,6 +9,21 @@ import UIKit
 struct ToolGroup: View {
     let calls: [ToolItem]
     let sessionID: String
+
+    var body: some View {
+        ToolFold(summary: stepSummary(calls), running: calls.contains(where: \.running), ids: calls.map(\.seq)) { seq in
+            if let c = calls.first(where: { $0.seq == seq }) { ToolRow(item: c, sessionID: sessionID, inCard: true) }
+        }
+    }
+}
+
+/// Steps in a row as one grey line (`summary`), opened to a hairline card with a row for each (`row`, in the card's
+/// size); folded until the owner opens it. A session's tool calls, and a sub-agent's thoughts and calls, are shown so.
+struct ToolFold<ID: Hashable, Row: View>: View {
+    let summary: String
+    let running: Bool
+    let ids: [ID]
+    @ViewBuilder let row: (ID) -> Row
     @State private var open = false
 
     var body: some View {
@@ -17,8 +32,8 @@ struct ToolGroup: View {
                 withAnimation(.snappy(duration: 0.25)) { open.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    if calls.contains(where: \.running) { Spinner() }
-                    Text(stepSummary(calls)).lineLimit(1)
+                    if running { Spinner() }
+                    Text(summary).lineLimit(1)
                     Caret(open: open)
                 }
                 .font(.subheadline).foregroundStyle(.secondary)
@@ -28,9 +43,9 @@ struct ToolGroup: View {
             .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
             if open {
                 VStack(spacing: 0) {
-                    ForEach(Array(calls.enumerated()), id: \.element.seq) { i, c in
+                    ForEach(Array(ids.enumerated()), id: \.element) { i, id in
                         if i > 0 { Rectangle().fill(Palette.separator).frame(height: 0.5) }
-                        ToolRow(item: c, sessionID: sessionID, inCard: true)
+                        row(id)
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -56,41 +71,9 @@ struct ToolRow: View {
         let call = item.call
         let denied = call.decision == "deny"
         let failed = denied || item.result?.isError == true
-        let out = output(denied: denied)
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                if !out.isEmpty { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
-            } label: {
-                HStack(spacing: 5) {
-                    if item.running || reading { Spinner() }
-                    Text(toolVerb(call, running: item.running)).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
-                        .layoutPriority(1)
-                    let summary = toolSummary(toolObject(call), sessionID: sessionID)
-                    if call.kind == "shell" {
-                        CodeText(text: summary, lang: "bash").font(inCard ? .caption.monospaced() : .footnote.monospaced()).opacity(0.9)
-                    } else {
-                        Text(summary).foregroundStyle(.secondary)
-                    }
-                    if !out.isEmpty { Caret(open: open) }
-                }
-                .lineLimit(1)
-                .font(inCard ? .footnote : .subheadline)
-                .padding(.vertical, inCard ? 8 : 2).padding(.horizontal, inCard ? 13 : 0)
-                .frame(maxWidth: inCard ? .infinity : nil, alignment: .leading)
-                .background(inCard && open ? Palette.fill : .clear)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(out.isEmpty ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
-            if open, !out.isEmpty {
-                OutputText(text: out)
-                    .padding(.horizontal, inCard ? 13 : 10).padding(.top, inCard ? 0 : 8).padding(.bottom, inCard ? 10 : 8)
-                    .background(inCard ? Palette.fill : Palette.code, in: RoundedRectangle(cornerRadius: inCard ? 0 : 8, style: .continuous))
-                    .padding(.top, inCard ? 0 : 4).padding(.bottom, inCard ? 0 : 6)
-                    .accessibilityIdentifier("tool-output")
-            }
-        }
-        .task(id: open) { if open { await readWhole() } }
+        ToolLine(verb: toolVerb(call, running: item.running), object: toolSummary(toolObject(call), sessionID: sessionID), shell: call.kind == "shell",
+                 running: item.running || reading, failed: failed, output: output(denied: denied), inCard: inCard, open: $open)
+            .task(id: open) { if open { await readWhole() } }
     }
 
     private var partial: Bool { item.result.map(partialOutput) ?? false }
@@ -125,6 +108,55 @@ struct ToolRow: View {
             whole = ToolOutput(text: text, done: true, failed: false)
         } catch {
             if !Task.isCancelled { whole = ToolOutput(text: "", done: false, failed: true) }
+        }
+    }
+}
+
+/// A step on its line: its verb, what it acted on (a command as code), and what it gave when opened (`output`;
+/// nothing to open without one). The one at work spins; a failed one is red. In an opened group's card (`inCard`): a
+/// size down, its output on the card's ground.
+struct ToolLine: View {
+    let verb: String
+    let object: String
+    let shell: Bool
+    let running: Bool
+    let failed: Bool
+    let output: String
+    var inCard = false
+    @Binding var open: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                if !output.isEmpty { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
+            } label: {
+                HStack(spacing: 5) {
+                    if running { Spinner() }
+                    Text(verb).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .layoutPriority(1)
+                    if shell {
+                        CodeText(text: object, lang: "bash").font(inCard ? .caption.monospaced() : .footnote.monospaced()).opacity(0.9)
+                    } else {
+                        Text(object).foregroundStyle(.secondary)
+                    }
+                    if !output.isEmpty { Caret(open: open) }
+                }
+                .lineLimit(1)
+                .font(inCard ? .footnote : .subheadline)
+                .padding(.vertical, inCard ? 8 : 2).padding(.horizontal, inCard ? 13 : 0)
+                .frame(maxWidth: inCard ? .infinity : nil, alignment: .leading)
+                .background(inCard && open ? Palette.fill : .clear)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(output.isEmpty ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
+            if open, !output.isEmpty {
+                OutputText(text: output)
+                    .padding(.horizontal, inCard ? 13 : 10).padding(.top, inCard ? 0 : 8).padding(.bottom, inCard ? 10 : 8)
+                    .background(inCard ? Palette.fill : Palette.code, in: RoundedRectangle(cornerRadius: inCard ? 0 : 8, style: .continuous))
+                    .padding(.top, inCard ? 0 : 4).padding(.bottom, inCard ? 0 : 6)
+                    .accessibilityIdentifier("tool-output")
+            }
         }
     }
 }
