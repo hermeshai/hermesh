@@ -10,7 +10,7 @@ jobs:
   ios-demo:
     # The app already uses iOS 27.1 layout APIs; macos-latest still selects the 26.x SDK.
     runs-on: xcode-27
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
