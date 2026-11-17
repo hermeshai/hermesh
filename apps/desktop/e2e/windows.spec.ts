@@ -18,11 +18,11 @@ test("a PC's words, type and corners, and Ctrl shortcuts, the menu button, the n
   await expect(page.locator("html")).toHaveAttribute("data-platform", "win");
   const map = page.getByRole("region", { name: "链路" });
   await expect(map.getByRole("button", { name: "这台电脑", exact: true })).toBeVisible();
-  // Work's row shows what waits and runs in place of its shortcut while there is some; Search's shows Ctrl.
-  await expect(page.getByRole("button", { name: /^搜索/ })).toContainText("Ctrl+K");
+  // Search, in the sidebar's top band, says its shortcut with Ctrl.
+  await expect(page.locator(".side-top").getByRole("button", { name: "搜索" })).toHaveAttribute("title", "搜索 Ctrl+K");
   await expect(page.getByRole("button", { name: "菜单" })).toBeVisible();
   // Windows 11's type and corners, and its accent bar on the selected row.
-  const overview = page.getByRole("button", { name: /工作/ });
+  const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
   expect(await page.evaluate(() => getComputedStyle(document.body).fontSize)).toBe("14px");
   expect(await overview.evaluate((e) => getComputedStyle(e).borderRadius)).toBe("4px");
   expect(await overview.evaluate((e) => getComputedStyle(e, "::before").width)).toBe("3px");

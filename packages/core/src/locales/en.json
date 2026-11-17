@@ -44,7 +44,7 @@
     "invalidRequest": "Request rejected",
     "refused": "Model refused",
     "limitReached": "Step limit reached",
-    "resumeRejected": "Can’t resume session",
+    "resumeRejected": "Can’t resume task",
     "agentCrashed": "Agent process quit unexpectedly",
     "stalled": "No progress for a long time",
     "timeout": "Time limit exceeded",
@@ -57,11 +57,11 @@
     "quota": "Try again when the quota resets, or switch agents or models.",
     "transient": "Temporary issue. Try sending the message again in a moment.",
     "newContext": "Send another message to continue in a fresh context. Your worktree changes are preserved.",
-    "modelUnavailable": "Start a new session with another model.",
+    "modelUnavailable": "Start a new task with another model.",
     "limitReached": "Send “continue” to keep going.",
-    "resume": "Send another message to resume the session.",
+    "resume": "Send another message to resume the task.",
     "startFailed": "Open that machine’s page in Hermesh Settings to check why it can’t start agents.",
-    "baseRefUnavailable": "Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this session to retry the original task."
+    "baseRefUnavailable": "Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this task to retry the original request."
   },
   "headline": {
     "auth": "{{agent}} isn’t signed in",

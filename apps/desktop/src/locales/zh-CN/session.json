@@ -14,11 +14,11 @@
     "log": "对话",
     "failed": "出错了",
     "failedWith": "出错了：{{title}}",
-    "turnDone": "这一轮做完了。{{grant}} 再发消息时，会在这个会话里接着做。",
+    "turnDone": "这一轮做完了。{{grant}} 再发消息时，会在这个任务里接着做。",
     "agentAsked": "agent 提问：",
-    "interruptedByYou": "你打断了这一轮。会话还在，{{grant}} 再发消息就会接着做。",
-    "interrupted": "这一轮被打断了。会话还在，{{grant}} 再发消息就会接着做。",
-    "interruptedBy": "{{name}} 打断了这一轮。会话还在，{{grant}} 再发消息就会接着做。",
+    "interruptedByYou": "你打断了这一轮。任务还在，{{grant}} 再发消息就会接着做。",
+    "interrupted": "这一轮被打断了。任务还在，{{grant}} 再发消息就会接着做。",
+    "interruptedBy": "{{name}} 打断了这一轮。任务还在，{{grant}} 再发消息就会接着做。",
     "turnFailed": "第 {{turn}} 轮出错：{{title}}",
     "copy": "拷贝",
     "inProgress": "进行中",
@@ -32,14 +32,14 @@
     "messageQueued": "将在下一轮处理",
     "unread": {
       "offline": "{{name}} 离线了",
-      "offlineDetail": "这个会话的内容保存在那台机器上，连上后会自动显示。",
-      "offlineSeen": "这个会话的内容保存在那台机器上，连上后会自动显示。{{ago}}还在线。",
+      "offlineDetail": "这个任务的内容保存在那台机器上，连上后会自动显示。",
+      "offlineSeen": "这个任务的内容保存在那台机器上，连上后会自动显示。{{ago}}还在线。",
       "notConnected": "暂时连不上 Hermesh",
-      "notConnectedDetail": "这个会话的内容保存在 {{name}} 上，这台 Mac 连上后会自动显示。",
-      "notConnectedDetail_win": "这个会话的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
-      "notConnectedDetail_linux": "这个会话的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
+      "notConnectedDetail": "这个任务的内容保存在 {{name}} 上，这台 Mac 连上后会自动显示。",
+      "notConnectedDetail_win": "这个任务的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
+      "notConnectedDetail_linux": "这个任务的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
       "noAnswer": "{{name}} 暂时没有回应",
-      "noAnswerDetail": "这个会话的内容保存在那台机器上。正在重试，读到后会自动显示。"
+      "noAnswerDetail": "这个任务的内容保存在那台机器上。正在重试，读到后会自动显示。"
     },
     "stale": {
       "notConnected": "暂时连不上 Hermesh，这里是上次读到的内容。",
@@ -57,7 +57,7 @@
   },
   "actions": {
     "interrupted": "已打断「{{title}}」",
-    "copiedId": "已拷贝会话 ID"
+    "copiedId": "已拷贝任务 ID"
   },
   "question": {
     "label": "问题",
@@ -76,7 +76,7 @@
     "countdown": "没人回答的话，到时它会自行判断"
   },
   "inspector": {
-    "label": "会话信息",
+    "label": "任务信息",
     "title": "环境",
     "startedBy": "<b>{{grant}}</b> 发起",
     "runBy": "<b>{{agent}}</b> 执行",

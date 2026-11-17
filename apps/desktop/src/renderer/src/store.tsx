@@ -25,14 +25,12 @@ export type Data = {
 };
 
 /**
- * her: the Her entry, at an environment (a machine id) when one was chosen. list: the session list's column with no
- * session chosen; a session shows beside it (docs/her-team.md §14.2). progress: the work Her sent out, in the
+ * her: the Her entry, at an environment (a machine id) when one was chosen. progress: the work Her sent out, in the
  * environment the Her entry shows, or one of its cards opened (docs/her-team.md §15).
  */
 export type Selection =
   | { kind: "overview" }
   | { kind: "session"; id: string }
-  | { kind: "list" }
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 
@@ -65,11 +63,8 @@ export type Sheet =
 
 export type Toast = { text: string; undo?: () => void; id: number };
 
-/** A row of the team's map, chosen (docs/her-team.md §14.2). */
-export type ListFilter = { kind: "machine"; machine: string } | { kind: "agent"; machine: string; agent: string } | { kind: "client"; client: string };
-
-/** The list by who sent the work, until the owner picks a view. */
-export const defaultView = () => sessionView({ group: "sender" });
+/** The list by status, titles alone, until the owner picks a view (docs/her-team.md §16). */
+export const defaultView = () => sessionView({ metadata: false });
 
 type UI = {
   selection: Selection;
@@ -79,10 +74,8 @@ type UI = {
   peek: Peek;
   /** How the session list is laid out, and whether it shows archived sessions. */
   view: SessionView;
-  /** The owner picked the view in its menu: otherwise the list is by who sent the work (docs/her-team.md §14.2). */
+  /** The owner picked the view in its menu: otherwise the list is the default one. */
   viewChosen: boolean;
-  /** What the session list shows: a machine, a coding agent on it, or a connected agent; null, all sessions. */
-  listFilter: ListFilter | null;
   archived: boolean;
   /** The list's collapsed groups, as "grouping:key" (each grouping keeps its own). */
   collapsed: string[];
@@ -166,7 +159,9 @@ function savedView(): Partial<SavedView> {
   try {
     const v: Partial<SavedView> = JSON.parse(localStorage.getItem("main-view") ?? "{}");
     const chosen = v.viewChosen === true;
-    return { selection: v.selection, sidebar: v.sidebar, view: chosen ? sessionView(v.view) : undefined, viewChosen: chosen, archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
+    // The list's column of earlier versions is gone: its place is the sidebar.
+    const selection = (v.selection?.kind as string) === "list" ? undefined : v.selection;
+    return { selection, sidebar: v.sidebar, view: chosen ? sessionView(v.view) : undefined, viewChosen: chosen, archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
   } catch {
     return {};
   }
@@ -189,7 +184,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     peek: null,
     view: defaultView(),
     viewChosen: false,
-    listFilter: null,
     archived: false,
     collapsed: [],
     searching: false,

@@ -1,25 +1,20 @@
 import { useEffect } from "react";
-import type { Selection, Store } from "./store";
+import type { Store } from "./store";
 
 // How the window lays itself out as it narrows. The conversation keeps at
-// least `conversationMin`, and the session list's column its width while it
-// shows (docs/her-team.md §14.2); what is beside them gives way, the right
-// side first: the info card goes (its room is kept no longer), then the
-// sidebar shrinks to its rail of icons (§14.9; it is never hidden), then the
-// list beside a session (alone, the list is the page). Whether the sidebar
-// is expanded or its rail is the person's choice, kept as pages change
-// (docs/her-team.md §14.9): only a window too narrow changes it. What gave way can
+// least `conversationMin`; what is beside it gives way, the right side
+// first: the info card goes (its room is kept no longer), then the sidebar
+// shrinks to its rail of icons (docs/her-team.md §14.9; it is never hidden).
+// Whether the sidebar is expanded or its rail is the person's choice, kept
+// as pages change: only a window too narrow changes it. What gave way can
 // still be asked for: it then shows over the conversation instead of beside
 // it (a peek) until it is put away, or the selection changes.
 
-/** Widths (px): the sidebar's column and its rail, the session list's, the room the info card keeps on the conversation's right. */
+/** Widths (px): the sidebar's column and its rail, the room the info card keeps on the conversation's right. */
 export const sidebarWidth = 272;
 export const railWidth = 74;
-export const listWidth = 300;
 export const cardRoom = 270;
 
-/** The session list's column shows beside a session, or alone with none chosen yet. */
-export const listShown = (sel: Selection | undefined) => sel?.kind === "session" || sel?.kind === "list";
 /** The least a conversation needs: a composer with its controls, and a message column that still reads as one. */
 export const conversationMin = 560;
 
@@ -31,25 +26,18 @@ export type Layout = {
   sidebar: "docked" | "rail" | "over";
   /** The info card: beside the conversation, over it, or not shown. */
   card: "docked" | "over" | "hidden";
-  /** The session list's column: beside the session (or alone), or not shown. */
-  list: "docked" | "hidden";
 };
 
 /** The layout at the window's width, as the person's choices and the peek have it. */
-export function layoutOf(st: Pick<Store, "sidebar" | "inspector" | "peek" | "width"> & { selection?: Selection }): Layout {
+export function layoutOf(st: Pick<Store, "sidebar" | "inspector" | "peek" | "width">): Layout {
   const width = st.width;
-  const wanted = listShown(st.selection);
-  const sidebarFits = width >= sidebarWidth + (wanted ? listWidth : 0) + conversationMin;
+  const sidebarFits = width >= sidebarWidth + conversationMin;
   const sidebar = sidebarFits ? (st.sidebar ? "docked" : "rail") : st.peek === "sidebar" ? "over" : "rail";
-  const side = sidebar === "docked" ? sidebarWidth : railWidth;
-  const listFits = st.selection?.kind === "list" || width - side >= listWidth + conversationMin;
-  const list = wanted && listFits ? listWidth : 0;
-  const content = width - side - list;
-  // The card gives way first: where the sidebar has, the card has too (its room alone, 830, is under the sidebar's 832).
+  const content = width - (sidebar === "docked" ? sidebarWidth : railWidth);
   // The card gives way first: where the expanded sidebar has room, the card has too.
   const cardFits = sidebarFits && content >= conversationMin + cardRoom;
   const card = cardFits ? (st.inspector ? "docked" : "hidden") : st.peek === "card" ? "over" : "hidden";
-  return { sidebar, card, list: list ? "docked" : "hidden" };
+  return { sidebar, card };
 }
 
 /** Ends a peek once what it showed fits beside the conversation again (where the person's own choice then holds). */

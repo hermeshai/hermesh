@@ -129,10 +129,16 @@
     },
     "%@ interrupted this turn. The session stays; when %@ sends another message, it continues.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ interrupted this turn. The task stays; when %@ sends another message, it continues."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$@ 打断了这一轮。会话还在，%2$@ 再发消息就会接着做。"
+            "value": "%1$@ 打断了这一轮。任务还在，%2$@ 再发消息就会接着做。"
           }
         }
       }
@@ -219,10 +225,16 @@
     },
     "%@ keeps its key, can act for it, and sees the sessions it reaches.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ keeps its key, can act for it, and sees the tasks it reaches."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 保管该 Agent 的密钥，可代其执行操作，并查看其参与的会话。"
+            "value": "%@ 保管该 Agent 的密钥，可代其执行操作，并查看其参与的任务。"
           }
         }
       }
@@ -233,16 +245,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "晚了 %@"
-          }
-        }
-      }
-    },
-    "%@ on %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%2$@ 上的 %1$@"
           }
         }
       }
@@ -683,10 +685,16 @@
     },
     "%lld sessions worked": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tasks worked"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld 个会话运行过"
+            "value": "%lld 个任务运行过"
           }
         }
       }
@@ -771,30 +779,48 @@
     },
     "**%@ is offline**; its sessions can’t be shown for now": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%@ is offline**; its tasks can’t be shown for now"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%@ 当前离线**，该机器上的会话暂时无法显示"
+            "value": "**%@ 当前离线**，该机器上的任务暂时无法显示"
           }
         }
       }
     },
     "**%@ isn’t responding**; its sessions may be missing": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%@ isn’t responding**; its tasks may be missing"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%@ 暂无响应**，该机器上的会话可能未完全显示"
+            "value": "**%@ 暂无响应**，该机器上的任务可能未完全显示"
           }
         }
       }
     },
     "**%lld machines can’t be reached**; their sessions can’t be shown for now": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "**%lld machines can’t be reached**; their tasks can’t be shown for now"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "**%lld 台机器无法连接**，这些机器上的会话暂时无法显示"
+            "value": "**%lld 台机器无法连接**，这些机器上的任务暂时无法显示"
           }
         }
       }
@@ -1064,10 +1090,16 @@
     },
     "Accept New Sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accept New Tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "接受新会话"
+            "value": "接受新任务"
           }
         }
       }
@@ -1378,16 +1410,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "全部"
-          }
-        }
-      }
-    },
-    "All Sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "全部会话"
           }
         }
       }
@@ -1744,10 +1766,16 @@
     },
     "As soon as it starts working, its session opens here.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As soon as it starts working, its task opens here."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开始运行后，会话会自动在这里打开。"
+            "value": "开始运行后，任务会自动在这里打开。"
           }
         }
       }
@@ -2124,10 +2152,16 @@
     },
     "ChatGPT started a session": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ChatGPT started a task"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "ChatGPT 开始了新会话"
+            "value": "ChatGPT 开始了新任务"
           }
         }
       }
@@ -2354,10 +2388,16 @@
     },
     "Coding Sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coding Tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "编程会话"
+            "value": "编程任务"
           }
         }
       }
@@ -2634,10 +2674,16 @@
     },
     "Copied the session ID": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copied the task ID"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "已拷贝会话 ID"
+            "value": "已拷贝任务 ID"
           }
         }
       }
@@ -2704,10 +2750,16 @@
     },
     "Copy Session ID": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Task ID"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "拷贝会话 ID"
+            "value": "拷贝任务 ID"
           }
         }
       }
@@ -3214,10 +3266,16 @@
     },
     "Each session gets its own branch; the files you’re changing are left alone": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each task gets its own branch; the files you’re changing are left alone"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "每个会话一个分支，不碰你正在改的文件"
+            "value": "每个任务一个分支，不碰你正在改的文件"
           }
         }
       }
@@ -3557,10 +3615,16 @@
     },
     "Failed sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话出错"
+            "value": "任务出错"
           }
         }
       }
@@ -3845,6 +3909,22 @@
         }
       }
     },
+    "Give Her something to do. The sessions she sends to agents show up here.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give Her something to do. The tasks she sends to agents show up here."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交给 Her 一件事，她派给 Agent 的任务会显示在这里。"
+          }
+        }
+      }
+    },
     "Give Her something to do: each part she sends out shows up here.": {
       "localizations": {
         "zh-Hans": {
@@ -3921,16 +4001,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her 又交代"
-          }
-        }
-      }
-    },
-    "Her is here": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 在这里"
           }
         }
       }
@@ -5078,6 +5148,22 @@
         }
       }
     },
+    "No sessions yet": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No tasks yet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有任务"
+          }
+        }
+      }
+    },
     "No skills of your own yet": {
       "localizations": {
         "zh-Hans": {
@@ -5104,6 +5190,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "还没有派出去的活"
+          }
+        }
+      }
+    },
+    "None right now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时没有"
           }
         }
       }
@@ -5224,6 +5320,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "额度用完了"
+          }
+        }
+      }
+    },
+    "Overview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "概览"
           }
         }
       }
@@ -6390,10 +6496,16 @@
     },
     "This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This machine will disconnect immediately and running tasks will stop. You will need to pair it again to reconnect."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这台机器会立即断开，正在运行的会话会停止。之后需要重新配对才能加入。"
+            "value": "这台机器会立即断开，正在运行的任务会停止。之后需要重新配对才能加入。"
           }
         }
       }
@@ -6420,10 +6532,16 @@
     },
     "Access will be revoked immediately and running sessions will stop. Past session history is kept. You will need to pair again to reconnect.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Access will be revoked immediately and running tasks will stop. Past task history is kept. You will need to pair again to reconnect."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "访问权限将立即撤销，正在运行的会话会停止，历史会话记录会保留。如需再次使用，请重新配对连接。"
+            "value": "访问权限将立即撤销，正在运行的任务会停止，历史任务记录会保留。如需再次使用，请重新配对连接。"
           }
         }
       }
@@ -6530,10 +6648,16 @@
     },
     "Today · %lld sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today · %lld tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "今天 %lld 个会话"
+            "value": "今天 %lld 个任务"
           }
         }
       }
@@ -6803,7 +6927,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话记录和对话会被永久删除，无法恢复。"
+            "value": "任务记录和对话会被永久删除，无法恢复。"
           }
         }
       }
@@ -6813,7 +6937,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支 %@ 上。"
+            "value": "任务记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支 %@ 上。"
           }
         }
       }
@@ -7019,10 +7143,16 @@
     },
     "Loading earlier sessions…": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading earlier tasks…"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在读取更早的会话…"
+            "value": "正在读取更早的任务…"
           }
         }
       }
@@ -7328,10 +7458,16 @@
     },
     "New sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "新会话"
+            "value": "新任务"
           }
         }
       }
@@ -7408,20 +7544,32 @@
     },
     "No earlier sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No earlier tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有更早的会话了"
+            "value": "没有更早的任务了"
           }
         }
       }
     },
     "No earlier sessions ·": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No earlier tasks ·"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "没有更早的会话了 ·"
+            "value": "没有更早的任务了 ·"
           }
         }
       }
@@ -7496,26 +7644,6 @@
         }
       }
     },
-    "No sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "没有会话"
-          }
-        }
-      }
-    },
-    "No sessions yet. Once an agent connects, its sessions will appear here.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "尚无会话。Agent 连接后，发起的会话会显示在这里。"
-          }
-        }
-      }
-    },
     "None yet": {
       "localizations": {
         "zh-Hans": {
@@ -7558,10 +7686,16 @@
     },
     "Not encrypted (HTTP). Your sessions stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not encrypted (HTTP). Your tasks stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "未加密（HTTP）。会话内容仍然端到端加密，但认领码、哪些机器在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。"
+            "value": "未加密（HTTP）。任务内容仍然端到端加密，但认领码、哪些机器在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。"
           }
         }
       }
@@ -7848,10 +7982,16 @@
     },
     "Disconnecting revokes access immediately and stops any running sessions. Past session history is kept.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnecting revokes access immediately and stops any running tasks. Past task history is kept."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "断开后将立即撤销访问权限并停止正在运行的会话，历史会话记录会保留。"
+            "value": "断开后将立即撤销访问权限并停止正在运行的任务，历史任务记录会保留。"
           }
         }
       }
@@ -7888,10 +8028,16 @@
     },
     "One short turn, in a folder of its own, to show %@ works on %@. It keeps no session.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One short turn, in a folder of its own, to show %@ works on %@. It leaves no task behind."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在单独的文件夹里跑一轮简短的对话，确认 %1$@ 在 %2$@ 上能用。不会留下会话。"
+            "value": "在单独的文件夹里跑一轮简短的对话，确认 %1$@ 在 %2$@ 上能用。不会留下任务。"
           }
         }
       }
@@ -8198,10 +8344,16 @@
     },
     "Reading the session…": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading the task…"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在读取会话…"
+            "value": "正在读取任务…"
           }
         }
       }
@@ -8228,10 +8380,16 @@
     },
     "Reading your sessions…": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading your tasks…"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在读取你的会话…"
+            "value": "正在读取你的任务…"
           }
         }
       }
@@ -8368,10 +8526,16 @@
     },
     "Rename Session": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Task"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "重命名会话"
+            "value": "重命名任务"
           }
         }
       }
@@ -8528,10 +8692,16 @@
     },
     "Running sessions go on; no new ones start here.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Running tasks go on; no new ones start here."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在运行的会话会继续，但不再接收新会话。"
+            "value": "正在运行的任务会继续，但不再接收新任务。"
           }
         }
       }
@@ -8678,10 +8848,16 @@
     },
     "Search sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "搜索会话"
+            "value": "搜索任务"
           }
         }
       }
@@ -8758,10 +8934,16 @@
     },
     "Separate Worktree: Each Session on Its Own Branch": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Separate Worktree: Each Task on Its Own Branch"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "独立 worktree：每个会话在自己的分支里"
+            "value": "独立 worktree：每个任务在自己的分支里"
           }
         }
       }
@@ -8788,50 +8970,64 @@
     },
     "Session Info": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Task Info"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话信息"
+            "value": "任务信息"
           }
         }
       }
     },
     "Session title": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Task title"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话标题"
+            "value": "任务标题"
           }
         }
       }
     },
     "Sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话"
+            "value": "任务"
           }
         }
       }
     },
     "Sessions an agent starts here without naming a model use these. %@’s own settings stay as they are.": {
       "localizations": {
-        "zh-Hans": {
+        "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Agent 在这里开会话、没指定模型时用这些；不改 %@ 自己的配置。"
+            "value": "Tasks an agent starts here without naming a model use these. %@’s own settings stay as they are."
           }
-        }
-      }
-    },
-    "Sessions on %@": {
-      "localizations": {
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ 上的会话"
+            "value": "Agent 在这里开任务、没指定模型时用这些；不改 %@ 自己的配置。"
           }
         }
       }
@@ -8986,10 +9182,16 @@
     },
     "Signed out; their owner keys, sessions and settings erased, and, for one that also runs tasks, its projects list and worktrees": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signed out; their owner keys, tasks and settings erased, and, for one that also runs tasks, its projects list and worktrees"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "退出登录，删除管理密钥、会话记录和设置；同时作为执行机器的，还会删除项目列表和 worktree"
+            "value": "退出登录，删除管理密钥、任务记录和设置；同时作为执行机器的，还会删除项目列表和 worktree"
           }
         }
       }
@@ -9306,10 +9508,16 @@
     },
     "The changes are on the session’s own branch and worktree; your own files are left alone.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The changes are on the task’s own branch and worktree; your own files are left alone."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "改动在会话自己的分支和 worktree 里，不碰你正在改的文件。"
+            "value": "改动在任务自己的分支和 worktree 里，不碰你正在改的文件。"
           }
         }
       }
@@ -9336,10 +9544,16 @@
     },
     "The directory itself isn’t deleted; agents can no longer start sessions there.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The directory itself isn’t deleted; agents can no longer start tasks there."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "目录本身不会被删除；agent 不能再在这里开新会话。"
+            "value": "目录本身不会被删除；agent 不能再在这里开新任务。"
           }
         }
       }
@@ -9416,10 +9630,16 @@
     },
     "The session stays; when %@ sends another message, it continues.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The task stays; when %@ sends another message, it continues."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "会话还在，%@ 再发消息就会接着做。"
+            "value": "任务还在，%@ 再发消息就会接着做。"
           }
         }
       }
@@ -9489,7 +9709,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个会话的内容保存在 %@ 上，这台 iPhone 连上后会自动显示。"
+            "value": "这个任务的内容保存在 %@ 上，这台 iPhone 连上后会自动显示。"
           }
         }
       }
@@ -9499,7 +9719,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个会话的内容保存在那台机器上。正在重试，读到后会自动显示。"
+            "value": "这个任务的内容保存在那台机器上。正在重试，读到后会自动显示。"
           }
         }
       }
@@ -9509,7 +9729,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个会话的内容保存在那台机器上，连上后会自动显示。"
+            "value": "这个任务的内容保存在那台机器上，连上后会自动显示。"
           }
         }
       }
@@ -9519,7 +9739,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这个会话的内容保存在那台机器上，连上后会自动显示。%@还在线。"
+            "value": "这个任务的内容保存在那台机器上，连上后会自动显示。%@还在线。"
           }
         }
       }
@@ -9616,20 +9836,32 @@
     },
     "This turn is done. When %@ sends another message, it continues in this session.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This turn is done. When %@ sends another message, it continues in this task."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这一轮做完了。%@ 再发消息时，会在这个会话里接着做。"
+            "value": "这一轮做完了。%@ 再发消息时，会在这个任务里接着做。"
           }
         }
       }
     },
     "This turn was interrupted. The session stays; when %@ sends another message, it continues.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This turn was interrupted. The task stays; when %@ sends another message, it continues."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "这一轮被打断了。会话还在，%@ 再发消息就会接着做。"
+            "value": "这一轮被打断了。任务还在，%@ 再发消息就会接着做。"
           }
         }
       }
@@ -9976,10 +10208,16 @@
     },
     "Unpaired; their projects lists, sessions and the worktrees Hermesh made erased": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpaired; their projects lists, tasks and the worktrees Hermesh made erased"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "解除配对，删除项目列表、会话记录和 Hermesh 建的 worktree"
+            "value": "解除配对，删除项目列表、任务记录和 Hermesh 建的 worktree"
           }
         }
       }
@@ -10699,10 +10937,16 @@
     },
     "You interrupted this turn. The session stays; when %@ sends another message, it continues.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You interrupted this turn. The task stays; when %@ sends another message, it continues."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "你打断了这一轮。会话还在，%@ 再发消息就会接着做。"
+            "value": "你打断了这一轮。任务还在，%@ 再发消息就会接着做。"
           }
         }
       }
@@ -10916,30 +11160,48 @@
     },
     "sessions in %lld days": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tasks in %lld days"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个会话（%lld 天内）"
+            "value": "个任务（%lld 天内）"
           }
         }
       }
     },
     "sessions today": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tasks today"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个会话（今天）"
+            "value": "个任务（今天）"
           }
         }
       }
     },
     "sessions worked": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "tasks worked"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "个会话运行过"
+            "value": "个任务运行过"
           }
         }
       }
@@ -10949,16 +11211,6 @@
     },
     "·": {
       "shouldTranslate": false
-    },
-    "“%@” Sessions": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」的会话"
-          }
-        }
-      }
     },
     "“%@” is already a project for %@.": {
       "localizations": {
@@ -11012,20 +11264,32 @@
     },
     "“%@” takes new sessions again": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” takes new tasks again"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」恢复接受新会话"
+            "value": "「%@」恢复接受新任务"
           }
         }
       }
     },
     "“%@” takes no new sessions": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“%@” takes no new tasks"
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「%@」暂停接受新会话"
+            "value": "「%@」暂停接受新任务"
           }
         }
       }
@@ -11275,10 +11539,16 @@
     },
     "The sample page now says “%@”. Both example tests passed. Open Session Info to inspect the changes. This is a simulated result; no code was run.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sample page now says “%@”. Both example tests passed. Open Task Info to inspect the changes. This is a simulated result; no code was run."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "示例页面现在显示“%@”。两项示例测试均通过。打开会话信息可查看改动。这是模拟结果，没有执行真实代码。"
+            "value": "示例页面现在显示“%@”。两项示例测试均通过。打开任务信息可查看改动。这是模拟结果，没有执行真实代码。"
           }
         }
       }
@@ -11415,10 +11685,16 @@
     },
     "Hermesh calls its routine to wake it when a session it started finishes or another agent writes to it. For another bot on this connection, ask that bot.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesh calls its routine to wake it when a task it started finishes or another agent writes to it. For another bot on this connection, ask that bot."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "它开的会话做完了、或者别的 agent 找它，Hermesh 就调用它的定时任务叫醒它。同一连接下的其他 bot 想被叫醒，跟那个 bot 说一句就行。"
+            "value": "它开的任务做完了、或者别的 agent 找它，Hermesh 就调用它的定时任务叫醒它。同一连接下的其他 bot 想被叫醒，跟那个 bot 说一句就行。"
           }
         }
       }
@@ -13038,10 +13314,16 @@
     },
     "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.": {
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her can use all your computers: start coding agents in any project, read their tasks and answer them. This doesn’t expire. Turn Her off to end it."
+          }
+        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的会话。这项授权不会到期，关闭 Her 即结束。"
+            "value": "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的任务。这项授权不会到期，关闭 Her 即结束。"
           }
         }
       }
@@ -13442,16 +13724,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "展开菜单"
-          }
-        }
-      }
-    },
-    "Choose a session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "选择一个会话"
           }
         }
       }

@@ -63,17 +63,14 @@ extension HermeshUITests {
         shot("her first run")
         tap("her-not-now")
 
-        // Work and the team, before Her.
+        // The overview and the menu with the sessions, before Her.
         sleep(5)
-        shot("work")
+        shot("overview")
         app.swipeUp()
-        shot("work, further down")
-        if visit("all-sessions") {
-            shot("all sessions")
-            if go("view-options") { shot("all sessions, view menu"); dismiss() }
-        }
+        shot("overview, further down")
         openMenu()
         shot("menu")
+        if go("view-options") { shot("menu, view menu"); dismiss() }
         if go("search") {
             shot("search")
             cancelSearch()
@@ -92,7 +89,7 @@ extension HermeshUITests {
         sleep(3)
         shot("session, question")
         openMenu()
-        if go("menu-machines") {
+        if go("account"), go("account-machines") {
             shot("machines")
             if go("machine-owner-mac") {
                 sleep(2)
@@ -103,12 +100,12 @@ extension HermeshUITests {
             }
         }
         openMenu()
-        if go("menu-grants") {
+        if go("account"), go("account-grants") {
             shot("grants")
             let grant = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'grant-'")).firstMatch
             if grant.waitForExistence(timeout: 10) { press(grant); sleep(2); shot("grant"); app.swipeUp(); shot("grant, further down") }
         }
-        showWork()
+        showOverview()
         if go("new") {
             shot("new menu")
             if go(app.buttons["添加机器…"]) { sleep(1); shot("add machine"); dismiss() } else { dismiss() }
@@ -240,7 +237,7 @@ extension HermeshUITests {
             }
             openMenu()
             shot("menu, dark")
-            tap("work-place")
+            tap("overview-place")
             sleep(2)
             shot("work, dark")
         }
@@ -258,15 +255,6 @@ extension HermeshUITests {
 
     private func go(_ e: XCUIElement) -> Bool {
         guard e.waitForExistence(timeout: 8) else { return false }
-        press(e)
-        return true
-    }
-
-    /// Scrolls to what id names, then taps it.
-    private func visit(_ id: String) -> Bool {
-        let e = app.descendants(matching: .any)[id].firstMatch
-        guard e.waitForExistence(timeout: 8) else { return false }
-        for _ in 0..<6 where !e.isHittable { app.swipeUp() }
         press(e)
         return true
     }

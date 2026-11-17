@@ -52,6 +52,20 @@ describe("session list", () => {
     expect(ids(oldest[0].sessions)).toEqual(["w", "crash"]);
   });
 
+  test("by status, the sidebar keeps the running section while nothing runs, empty; with no session, none", () => {
+    const done = session("d", SessionStatus.IDLE);
+    const waiting = session("w", SessionStatus.WAITING_INPUT);
+    ask(waiting);
+    const keep = (list: Session[], view = sessionView()) => sessionSections(list, view, { archived: true, now, alwaysActive: true }).map((s) => [s.key, ids(s.sessions)]);
+    expect(keep([done])).toEqual([["active", []], ["done", ["d"]]]);
+    expect(keep([waiting, done])).toEqual([["attention", ["w"]], ["active", []], ["done", ["d"]]]);
+    expect(keep([])).toEqual([]);
+    expect(keep([session("a", SessionStatus.ARCHIVED)])).toEqual([["archived", ["a"]]]);
+    // Other groupings, and without the option, have no empty section.
+    expect(keep([done], sessionView({ group: "agent" }))).toEqual([["claude", ["d"]]]);
+    expect(sessionSections([done], sessionView(), { archived: false, now }).map((s) => s.key)).toEqual(["done"]);
+  });
+
   test("by date, the days follow the sort", () => {
     const all = [
       session("today", SessionStatus.IDLE, { updated: -3600 }),

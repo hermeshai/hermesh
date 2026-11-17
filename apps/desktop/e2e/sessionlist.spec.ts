@@ -40,7 +40,7 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
   });
   const shown = await list.getByText(/^批量 \d\d$/).allTextContents();
   expect(shown.sort()).toEqual(first.filter((t) => /^批量 \d\d$/.test(t)).sort());
-  await expect(list.getByText("正在读取更早的会话…")).toBeAttached();
+  await expect(list.getByText("正在读取更早的任务…")).toBeAttached();
   await snap(page, "sessions-first-page");
 
   await list.hover();
@@ -53,8 +53,8 @@ test("the sidebar shows the newest page, and scrolling to its end loads older se
     return titles.filter((t) => !shown.some((r) => r.startsWith(t)));
   }, { message: "sessions missing after the older page" }).toEqual([]);
   await expect(rows).toHaveCount(60);
-  await expect(list.getByText("没有更早的会话了")).toBeVisible();
-  await expect(list.getByText("正在读取更早的会话…")).toHaveCount(0);
+  await expect(list.getByText("没有更早的任务了")).toBeVisible();
+  await expect(list.getByText("正在读取更早的任务…")).toHaveCount(0);
   await snap(page, "sessions-all");
   await app.close();
 });
@@ -67,9 +67,10 @@ test("a session started by an agent shows up at once, and so do its changes", as
   await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "新来的", "--prompt", "shell sleep 3\nsay 好了");
   const row = list.getByRole("listitem").filter({ hasText: "新来的" });
   await expect(row).toBeVisible({ timeout: 1500 });
-  // Under who sent it (docs/her-team.md §14.2), its title shimmering while it runs, then still once it finishes.
-  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("新来的");
-  await expect(row.locator(".stitle.run")).toHaveCount(1);
-  await expect(row.locator(".stitle.run")).toHaveCount(0, { timeout: 30_000 });
+  // In progress with a ring while it runs (docs/her-team.md §16), then done, with no mark, once it finishes.
+  await expect(list.getByRole("group", { name: "进行中" })).toContainText("新来的");
+  await expect(row.getByRole("img", { name: "运行中" })).toBeVisible();
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("新来的", { timeout: 30_000 });
+  await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
   await app.close();
 });

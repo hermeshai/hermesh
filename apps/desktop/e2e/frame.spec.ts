@@ -4,20 +4,20 @@ import os from "node:os";
 import path from "node:path";
 import { cli, fixture, launch, onMac, snap, sessionList, navTo } from "./app";
 
-// The main window's frame: the sidebar lists sessions as the owner chose to
-// view them by status when they choose it (by who sent the work otherwise, docs/her-team.md §14.2).
+// The main window's frame (docs/her-team.md §16): the sidebar is Her, the overview, and every session as the owner
+// views them: by status, titles alone, until they choose otherwise.
 test("the sidebar groups sessions by status: needs you, running, done; archived only on request", async () => {
-  const { app, page } = await launch();
+  const { app, page } = await launch(fixture.socket, { profile: fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")) });
   const list = (await sessionList(page));
-  await page.getByRole("button", { name: "视图选项" }).click();
-  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /分组/ }).hover();
-  await page.getByRole("menu", { name: "分组" }).getByRole("menuitemradio", { name: "按状态" }).click();
   const group = (name: string) => list.getByRole("group", { name });
+  await expect(list.locator(".grp-h")).toHaveText(["需要处理", "进行中", "已结束"]);
   await expect(group("需要处理")).toContainText("选颜色");
   await expect(group("需要处理")).toContainText("限流");
   await expect(group("需要处理")).toContainText("崩溃");
   await expect(group("进行中")).toContainText("跑很久");
   await expect(group("已结束")).toContainText("写 hello");
+  // Titles alone: no second line.
+  await expect(list.locator(".sl2")).toHaveCount(0);
   await expect(list).not.toContainText("归档的");
   await snap(page, "main-sidebar");
   await page.getByRole("button", { name: "显示已归档" }).click();
@@ -27,58 +27,50 @@ test("the sidebar groups sessions by status: needs you, running, done; archived 
   await app.close();
 });
 
-// The sidebar reads calmly: one 34px rhythm for its buttons and rows, 14px
-// titles, room before each group, one heading per group (the view options
-// sit in the top bar, by the toggle), and a quiet foot with a dot only when
-// something is wrong.
+// The sidebar reads calmly: Her and the overview a row apart, a hairline, the sessions' heading with the view
+// menu at its end; search and the toggle in the top band; 13px titles; a quiet foot, a dot only when something
+// is wrong, and no count of machines.
 test("the sidebar keeps one rhythm, one heading per group and a quiet foot", async () => {
   const { app, page } = await launch();
   const box = async (l: ReturnType<typeof page.locator>) => (await l.boundingBox())!;
   const centre = async (l: ReturnType<typeof page.locator>) => ((b) => b.y + b.height / 2)(await box(l));
-  // On Work, where the sidebar is expanded (beside sessions it is its rail, docs/her-team.md §14.9).
   const hide = await centre(page.getByRole("button", { name: "收成窄栏" }));
-
-  // Her, Work, Search (docs/her-team.md §14.2), a row apart.
   const nav = page.locator(".side-nav");
+  await expect(nav.getByRole("button")).toHaveText([/^Her/, /^概览/]);
   const her = await box(nav.getByRole("button", { name: /^Her/ }));
-  const overview = await box(nav.getByRole("button", { name: /^工作/ }));
-  const search = await box(nav.getByRole("button", { name: /^搜索/ }));
+  const overview = await box(nav.getByRole("button", { name: /^概览/ }));
   expect(overview.height).toBe(32);
   expect(overview.y - her.y).toBe(34);
-  expect(search.y - overview.y).toBe(34);
-  // The first heading, the team's map's, has its text a row and a little (~10px) below the last button.
-  const heading = page.getByRole("group", { name: "团队" }).locator(".grp-h");
-  const text = await heading.evaluate((el) => {
-    const r = document.createRange();
-    r.selectNodeContents(el.firstChild!);
-    const b = r.getBoundingClientRect();
-    return b.y + b.height / 2;
-  });
-  const gap = text - (search.y + search.height / 2);
-  expect(gap).toBeGreaterThanOrEqual(40);
-  expect(gap).toBeLessThanOrEqual(46);
+  // Search shares the top band with the toggle, at its end.
+  const search = page.locator(".side-top").getByRole("button", { name: "搜索" });
+  expect(Math.abs((await centre(search)) - hide)).toBeLessThanOrEqual(1);
+  const side = await box(page.locator(".side"));
+  expect(side.x + side.width - ((await box(search)).x + (await box(search)).width)).toBeLessThanOrEqual(10);
+  // The sessions' heading under the hairline, its view menu at its end.
+  const heading = page.locator(".side-h");
+  await expect(heading).toHaveText("任务");
+  expect((await box(heading)).y).toBeGreaterThanOrEqual(overview.y + overview.height + 8);
+  const view = heading.getByRole("button", { name: "视图选项" });
+  expect(Math.abs((await centre(view)) - (await centre(heading)))).toBeLessThanOrEqual(1);
 
   const list = await sessionList(page);
-  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
-
   const title = list.getByRole("listitem").first().locator(".stitle");
-  expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14px", "18px"]);
-  // The list's view options share the window's top line: the sidebar's toggle's, the traffic lights'.
-  expect(Math.abs((await centre(page.getByRole("button", { name: "视图选项" }))) - hide)).toBeLessThanOrEqual(1);
-  expect((await box(page.getByRole("button", { name: "视图选项" }))).y).toBeLessThan(overview.y);
+  expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["13px", "18px"]);
+  // No numbers: the group headings are their names alone.
+  for (const h of await list.locator(".grp-h").allInnerTexts()) expect(h).not.toMatch(/\d/);
 
   const foot = page.getByRole("button", { name: "账号与设置" });
+  await expect(foot).not.toContainText("在线");
   await expect(foot.locator(".dotc")).toHaveCount((await foot.innerText()).includes("未连接") ? 1 : 0);
   await page.emulateMedia({ colorScheme: "dark" });
   await snap(page, "sidebar-rhythm");
   await app.close();
 });
 
-// The status dot sits with the status text on the right, so titles start at
-// the same edge as the group headings; a title too long for the row is cut
-// with an ellipsis and never pushes the status out. A running session has no
-// dot: its title shimmers.
-test("long titles are cut, the status dot sits by its text, a running title shimmers, and the left edge is flush", async () => {
+// A row is the coding agent's logo, the title and one mark after it: an orange dot while it waits for the owner, a
+// red one when it failed, a ring while it runs, none when it is done. A title too long for the row is cut with an
+// ellipsis and never pushes the mark out.
+test("long titles are cut, each row is the agent's logo, its title and one mark, and the left edge is flush", async () => {
   const { app, page } = await launch();
   const long = [
     "重构登录模块并补全单元测试，同时把旧的会话迁移脚本改成幂等的，最后更新文档和变更说明",
@@ -92,7 +84,7 @@ test("long titles are cut, the status dot sits by its text, a running title shim
   const running = list.getByRole("listitem").filter({ hasText: "一个正在运行" });
   await expect(running).toBeVisible();
 
-  // Hovering a row replaces its metadata with actions. Measure the resting layout.
+  // Hovering a row replaces its mark with ⋯. Measure the resting layout.
   await page.mouse.move(0, 0);
   const box = async (l: ReturnType<typeof page.locator>) => (await l.boundingBox())!;
   for (const row of await list.getByRole("listitem").all()) {
@@ -100,34 +92,38 @@ test("long titles are cut, the status dot sits by its text, a running title shim
     const meta = row.locator(".smeta");
     const r = await box(row);
     const m = await box(meta);
-    // The title is cut when it needs more room than it has, and the status stays inside the row.
+    // The title is cut when it needs more room than it has, and the mark stays inside the row, after the title.
     if (await title.evaluate((e) => e.scrollWidth > e.clientWidth)) expect(await title.evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
     expect(m.x + m.width).toBeLessThanOrEqual(r.x + r.width);
-    // A dot, when there is one, is in the status, after the title; nothing sits left of the title.
-    if (await meta.locator(".sdot").count()) expect((await box(meta.locator(".sdot"))).x).toBeGreaterThan((await box(title)).x + 40);
+    // The agent's logo starts the row, left of the title.
+    expect((await box(row.locator(".slogo"))).x + 16).toBeLessThanOrEqual((await box(title)).x);
   }
-  // Only what needs you has a dot: a waiting session does; a running one has none, its title shimmers instead.
-  await expect(list.getByRole("listitem").filter({ hasText: "选颜色" }).locator(".sdot")).toHaveCount(1);
-  await expect(running.locator(".sdot")).toHaveCount(0);
-  expect(await running.locator(".stitle .shine").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
-  // The copies that draw it are translucent, as the title is, so the band fades into any row's background.
-  for (const c of await running.locator(".stitle .shine").evaluateAll((es) => es.map((e) => getComputedStyle(e, "::before").color)))
-    expect(c).toMatch(/^rgba\(.*, 0?\.\d+\)$/);
-  // The band's copy of the title is drawn, not text: the title reads once.
+  const mark = (title: string) => list.getByRole("listitem").filter({ hasText: title }).locator(".smeta [role=img]");
+  await expect(mark("选颜色")).toHaveAccessibleName("等回答");
+  await expect(mark("选颜色")).toHaveClass("dot-w");
+  await expect(mark("限流")).toHaveClass("dot-r");
+  await expect(mark("崩溃")).toHaveAccessibleName("已崩溃");
+  await expect(running.locator(".smeta .busy")).toHaveAccessibleName("运行中");
+  await expect(mark("写 hello")).toHaveCount(0);
+  // No shimmer: the title reads as written.
   await expect(running.locator(".stitle")).toHaveText((await running.locator(".stitle").getAttribute("title"))!);
-  const idle = list.getByRole("listitem").filter({ hasText: "写 hello" });
-  await expect(idle.locator(".sdot")).toHaveCount(0);
-  await expect(idle.locator(".shine")).toHaveCount(0);
-  // Flush left: a title starts where its group's heading does.
-  const heading = await box(list.getByRole("group", { name: "bot 派的" }).locator(".grp-h"));
-  expect(Math.abs((await box(running.locator(".stitle"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);
+  // Flush left: a row's logo starts where its group's heading does.
+  const heading = await box(list.getByRole("group", { name: "进行中" }).locator(".grp-h"));
+  expect(Math.abs((await box(running.locator(".slogo"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);
+  await snap(page, "sidebar-long-titles");
+
+  // With the metadata, the second line starts under the title, the time at its end under the mark.
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /显示/ }).hover();
+  await page.getByRole("menu", { name: "显示" }).getByRole("menuitemcheckbox", { name: "元数据" }).click();
+  await page.mouse.move(0, 0);
   expect(Math.abs((await box(running.locator(".sl2"))).x - (await box(running.locator(".stitle"))).x)).toBeLessThanOrEqual(1);
-  // The time ends the second line, under the status: the clock for a running turn, else when it last changed.
   await expect(running.locator(".stime")).toHaveText(/^\d+:\d\d$/);
   const edge = async (l: ReturnType<typeof page.locator>) => (await box(l)).x + (await box(l)).width;
   expect(Math.abs((await edge(running.locator(".stime"))) - (await edge(running.locator(".smeta"))))).toBeLessThanOrEqual(1);
   await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".stime")).toHaveText(/^(刚刚|\d+ 分钟前|\d+ 小时前)$/);
-  await snap(page, "sidebar-long-titles");
+  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" })).toContainText("bot → Gemini · demo");
+  await snap(page, "sidebar-metadata");
   await app.close();
 });
 
@@ -138,7 +134,7 @@ test("long titles are cut, the status dot sits by its text, a running title shim
 test("the sidebar shows the window's material; the toggle sits after the traffic lights", async () => {
   test.skip(process.platform !== "darwin", "macOS only");
   const { app, page } = await launch();
-  await expect(page.getByRole("heading", { name: "工作" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible();
   expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor())).toMatch(/^#0{6}(00)?$|^#00000000$/i);
   const bg = (sel: string) => page.locator(sel).first().evaluate((e) => getComputedStyle(e).backgroundColor);
   expect(await bg("body")).toBe("rgba(0, 0, 0, 0)");
@@ -155,7 +151,7 @@ test("the sidebar shows the window's material; the toggle sits after the traffic
   // On the lights' line: 14 high from y 15.
   expect(Math.abs(toggle.y + toggle.height / 2 - 22)).toBeLessThanOrEqual(1);
   await page.getByRole("button", { name: "收成窄栏" }).click();
-  // Collapsed, the sidebar is its rail (docs/her-team.md §14.9): 74 wide, the window's material through it, the
+  // Collapsed, the sidebar is its rail (docs/her-team.md §16): 74 wide, the window's material through it, the
   // lights in its top band, and the button that expands it again at its foot.
   const rail = page.getByRole("complementary", { name: "窄栏" });
   await expect.poll(async () => Math.round((await rail.boundingBox())!.width)).toBe(74);
@@ -200,7 +196,7 @@ test("the avatar opens the account menu above it, opaque, by mouse and keyboard"
 
   // A click elsewhere closes it; so does Esc, back to the avatar.
   await avatar.click();
-  await page.getByRole("heading", { name: "工作", level: 1 }).click();
+  await page.getByRole("heading", { name: "概览", level: 1 }).click();
   await expect(menu).toHaveCount(0);
   await avatar.click();
   await page.keyboard.press("Escape");
@@ -232,9 +228,9 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
 
   // Each row of the menu says what it is set to.
   await button.click();
-  await expect(menu.getByRole("menuitem")).toHaveText(["分组按派活的人", "排序最新在前", "显示元数据"]);
-  // It opens leftward from its button, over the list's column.
-  const [m, b, side] = await Promise.all([menu.boundingBox(), button.boundingBox(), page.locator(".slist").boundingBox()]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["分组按状态", "排序最新在前", "显示仅标题"]);
+  // It opens leftward from its button, over the sidebar.
+  const [m, b, side] = await Promise.all([menu.boundingBox(), button.boundingBox(), page.locator(".side").boundingBox()]);
   expect(Math.abs(m!.x + m!.width - (b!.x + b!.width))).toBeLessThanOrEqual(1);
   expect(m!.x).toBeGreaterThanOrEqual(side!.x);
   const background = await menu.evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -242,10 +238,14 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   await menu.getByRole("menuitem", { name: /分组/ }).hover();
   const group = page.getByRole("menu", { name: "分组" });
   await expect(group.getByRole("menuitemradio")).toHaveText(["按派活的人", "按状态", "按日期", "按项目", "按 Agent", "按机器"]);
-  // By who sent the work, until the owner picks a view (docs/her-team.md §14.2).
-  await expect(group.getByRole("menuitemradio", { name: "按派活的人" })).toHaveAttribute("aria-checked", "true");
-  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
+  // By status, until the owner picks a view (docs/her-team.md §16).
+  await expect(group.getByRole("menuitemradio", { name: "按状态" })).toHaveAttribute("aria-checked", "true");
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("写 hello");
   await snap(page, "view-menu");
+  await group.getByRole("menuitemradio", { name: "按派活的人" }).click();
+  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
+  await button.click();
+  await menu.getByRole("menuitem", { name: /分组/ }).hover();
   await group.getByRole("menuitemradio", { name: "按 Agent" }).click();
   await expect(menu).toHaveCount(0);
   await expect(list.getByRole("group", { name: "Gemini CLI" })).toContainText("写 hello");
@@ -279,23 +279,22 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   await sort.getByRole("menuitemradio", { name: "最早在前" }).click();
   await expect(today.last()).toHaveText(newest);
 
-  // Without the metadata, rows are their titles and status alone.
-  await expect(list).toContainText("bot → Gemini · demo");
+  // With the metadata, each row says who sent the work to which agent, and the project.
+  await expect(list).not.toContainText("bot → Gemini · demo");
   await button.click();
   await menu.getByRole("menuitem", { name: /显示/ }).hover();
   await page.getByRole("menu", { name: "显示" }).getByRole("menuitemcheckbox", { name: "元数据" }).click();
-  await expect(list).not.toContainText("bot → Gemini · demo");
-  await expect(list).toContainText("写 hello");
-  await snap(page, "view-title-only");
+  await expect(list).toContainText("bot → Gemini · demo");
+  await snap(page, "view-metadata");
 
   // The view stays as it was left.
   await app.close();
   ({ app, page } = await launch(fixture.socket, { profile }));
   await expect((await sessionList(page))).toContainText("写 hello");
   expect((await groups(page)).at(-1)).toBe("今天");
-  await expect((await sessionList(page))).not.toContainText("bot → Gemini · demo");
+  await expect((await sessionList(page))).toContainText("bot → Gemini · demo");
   await page.getByRole("button", { name: "视图选项" }).click();
-  await expect(page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem")).toHaveText(["分组按日期", "排序最早在前", "显示仅标题"]);
+  await expect(page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem")).toHaveText(["分组按日期", "排序最早在前", "显示元数据"]);
   await app.close();
 });
 
@@ -358,7 +357,7 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
   // Rename in place: Esc keeps the title, ↩ saves the new one.
   menu = await more("改个名字");
   await menu.getByRole("menuitem", { name: "重命名" }).click();
-  const field = list.getByRole("textbox", { name: "会话标题" });
+  const field = list.getByRole("textbox", { name: "任务标题" });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("改个名字");
   await field.fill("不要这个");
@@ -377,7 +376,7 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
   menu = await more("新的名字");
   await menu.getByRole("menuitem", { name: "删除…" }).click();
   const dialog = page.getByRole("dialog", { name: "删除「新的名字」？" });
-  await expect(dialog).toContainText("会话记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支");
+  await expect(dialog).toContainText("任务记录、对话和工作区会被永久删除，无法恢复。agent 做的改动仍保留在分支");
   await snap(page, "row-delete-confirm");
   await dialog.getByRole("button", { name: "取消" }).click();
   await expect(row("新的名字")).toBeVisible();
@@ -401,11 +400,11 @@ test("a row's ⋯ menu renames in place, archives, and deletes once confirmed, i
 });
 
 // Narrowing the window, what is beside the conversation gives way, the right
-// side first: the info card, then the sidebar, until the conversation is
+// side first: the info card, then the sidebar shrinks to its rail, until the conversation is
 // alone. What gave way can still be asked for: it shows over the conversation
 // for now, and goes with Esc, a click beside it or another choice. Widened
 // again, both are back as the owner had them.
-test("a narrow window hides the info card, then the sidebar shrinks to its rail, then the list; asked for, they show over", async () => {
+test("a narrow window hides the info card, then the sidebar shrinks to its rail; asked for, they show over", async () => {
   const { app, page } = await launch();
   const resize = async (width: number) => {
     // Native window sizes can be clamped to the runner's display; exercise the layout at each viewport width.
@@ -415,85 +414,77 @@ test("a narrow window hides the info card, then the sidebar shrinks to its rail,
   const main = page.locator(".mainwrap");
   const sidebar = page.getByRole("complementary", { name: "边栏" });
   const rail = page.getByRole("complementary", { name: "窄栏" });
-  const card = page.getByRole("complementary", { name: "会话信息" });
+  const card = page.getByRole("complementary", { name: "任务信息" });
   const info = page.getByRole("button", { name: "信息面板", exact: true });
   const showSidebar = rail.getByRole("button", { name: "展开边栏" });
   const conversation = page.locator(".dmain");
-  const column = page.locator(".slist");
   const docked = async () => ({ sidebar: !/\brailed\b/.test((await main.getAttribute("class"))!), card: await page.locator(".dwrap.dock").count() === 1 });
 
-  // 1440: the sidebar, the list, the session and its card.
+  // 1440: the sidebar, the session and its card; two columns and the card, no list column.
   await resize(1440);
   await (await sessionList(page)).getByText("写 hello", { exact: true }).click();
   await expect(card).toBeVisible();
   expect(await docked()).toEqual({ sidebar: true, card: true });
+  await expect(page.locator(".slist")).toHaveCount(0);
 
-  // 1300: no room for the card beside the conversation; the sidebar and the list stay.
-  await resize(1300);
+  // 1000: no room for the card beside the conversation; the sidebar stays.
+  await resize(1000);
   await expect(card).toHaveCount(0);
   await expect(info).toHaveAttribute("aria-pressed", "false");
   expect(await docked()).toEqual({ sidebar: true, card: false });
-  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(1300 - 272 - 300);
-  await snap(page, "layout-1300");
+  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(1000 - 272);
+  await snap(page, "layout-1000");
   // Asked for, the card shows over the conversation, which keeps its width; Esc puts it away.
   await info.click();
   await expect(card).toBeVisible();
   await expect(info).toHaveAttribute("aria-pressed", "true");
   expect(await docked()).toEqual({ sidebar: true, card: false });
-  await snap(page, "layout-1300-card-over");
+  await snap(page, "layout-1000-card-over");
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
-  // 1000: the sidebar shrinks to its rail (docs/her-team.md §14.9); the list and the conversation have the rest.
-  await resize(1000);
+  // 800: the sidebar shrinks to its rail; the conversation has the rest.
+  await resize(800);
   await expect(rail).toBeVisible();
   expect(await docked()).toEqual({ sidebar: false, card: false });
-  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(1000 - 74 - 300);
-  await snap(page, "layout-1000");
-  // Asked for, the sidebar shows over the sessions, which stay where they are; a click beside it puts it away.
+  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(800 - 74);
+  await snap(page, "layout-800");
+  // Asked for, the sidebar shows over the session, which stays where it is; a click beside it puts it away.
   await showSidebar.click();
   await expect(main).toHaveClass(/\bpeek\b/);
   await expect.poll(async () => Math.round((await sidebar.boundingBox())!.width)).toBe(272);
-  expect(Math.round((await conversation.boundingBox())!.width)).toBe(1000 - 74 - 300);
-  await snap(page, "layout-1000-sidebar-over");
-  await page.locator(".peek-scrim").click({ position: { x: 800, y: 400 } });
+  expect(Math.round((await conversation.boundingBox())!.width)).toBe(800 - 74);
+  await snap(page, "layout-800-sidebar-over");
+  await page.locator(".peek-scrim").click({ position: { x: 700, y: 400 } });
   await expect(main).not.toHaveClass(/\bpeek\b/);
-  // Choosing a page from it puts it away too: Work, without the list, has room for the sidebar beside it.
+  // Choosing from it puts it away too: a page, or a session.
   await showSidebar.click();
-  await sidebar.getByRole("button", { name: /^工作/ }).click();
+  await sidebar.getByRole("button", { name: /^概览/ }).click();
   await expect(main).not.toHaveClass(/\bpeek\b/);
   await expect(page.locator(".peek-scrim")).toHaveCount(0);
-  expect((await docked()).sidebar).toBe(true);
-  await (await sessionList(page)).getByText("写 hello", { exact: true }).click();
   await expect(rail).toBeVisible();
-
-  // 900: the list gives way beside the session (rail, list and conversation need 934); the session has the rest.
-  await resize(900);
-  await expect(column).toHaveCount(0);
-  await expect.poll(async () => Math.round((await conversation.boundingBox())!.width)).toBe(900 - 74);
+  await (await sessionList(page)).getByText("写 hello", { exact: true }).click();
+  await expect(main).not.toHaveClass(/\bpeek\b/);
+  await expect(page.getByRole("heading", { name: "写 hello" })).toBeVisible();
   // The card, asked for here, shows over the conversation too.
   await info.click();
   await expect(card).toBeVisible();
-  await snap(page, "layout-900-card-over");
+  await snap(page, "layout-800-card-over");
   await page.keyboard.press("Escape");
 
-  // Wide again, all are back beside it as they were.
+  // Wide again, both are back beside it as they were.
   await resize(1440);
-  await expect(column).toBeVisible();
   await expect(card).toBeVisible();
   expect(await docked()).toEqual({ sidebar: true, card: true });
 
-  // Shrunk to its rail by the owner, it stays a rail from page to page; the card has the room it left (1204).
+  // Shrunk to its rail by the owner, it stays a rail from page to page; the card keeps its place.
   await sidebar.getByRole("button", { name: "收成窄栏" }).click();
   await resize(1240);
   await expect(card).toBeVisible();
   expect(await docked()).toEqual({ sidebar: false, card: true });
-  await navTo(page, /^工作/);
-  await expect(rail).toBeVisible();
-  await (await sessionList(page)).getByText("写 hello", { exact: true }).click();
+  await navTo(page, /^概览/);
   await expect(rail).toBeVisible();
   await showSidebar.click();
-  await expect(card).toHaveCount(0);
   expect(await docked()).toEqual({ sidebar: true, card: false });
 
   // The window goes no narrower than the conversation alone.
@@ -503,7 +494,7 @@ test("a narrow window hides the info card, then the sidebar shrinks to its rail,
   await snap(page, "layout-480");
   // The overview fits it too: nothing wider than the window.
   await showSidebar.click();
-  await sidebar.getByRole("button", { name: /^工作/ }).click();
+  await sidebar.getByRole("button", { name: /^概览/ }).click();
   await expect(main).not.toHaveClass(/\bpeek\b/);
   // The map scales to its measured width in ResizeObserver, after the page mounts.
   await expect.poll(() => page.evaluate(() => [...document.querySelectorAll(".content *")]

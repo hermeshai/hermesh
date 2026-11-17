@@ -1,8 +1,8 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  agoText, bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
@@ -10,20 +10,19 @@ import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
 import { local } from "./api";
 import { AppMenuButton } from "./MainWindow";
-import { GrantAvatar, StatusDot } from "./components";
 import { Icon } from "./icons";
-import { listShown, setSidebar } from "./layout";
+import { setSidebar } from "./layout";
 import { unreadCount } from "./her/environments";
 import { expiringClients } from "./overview/Attention";
 import { keys, ownKeys } from "./platform";
-import { useNow, useStore, type ListFilter, type Store } from "./store";
+import { useNow, useStore, type Store } from "./store";
 
 export function grantLabel(st: Store, s: Session): string {
   return st.clients.find((c) => c.clientId === s.createdBy)?.label ?? i18n.t("common:sidebar.disconnectedGrant");
 }
 
 /** Her's own grants: the clients that carry her_machine_id. */
-export function herClients(st: Store): string[] {
+export function herClients(st: Pick<Store, "clients">): string[] {
   return st.clients.filter((c) => c.herMachineId !== "").map((c) => c.clientId);
 }
 
@@ -37,13 +36,6 @@ export function senderName(st: Store, clientId: string): string {
 /** A session's second line in lists: who sent the work to which coding agent, and the project. */
 export function senderLine(st: Store, s: Session): string {
   return `${senderName(st, s.createdBy)} → ${codingAgentShort(s.agent)} · ${s.projectId}`;
-}
-
-/** Whether a session is one the team's map chose. */
-export function inFilter(f: ListFilter | null, s: Session): boolean {
-  if (!f) return true;
-  if (f.kind === "client") return s.createdBy === f.client;
-  return s.machineId === f.machine && (f.kind === "machine" || s.agent === f.agent);
 }
 
 export function machineName(st: Store, id: string): string {
@@ -79,10 +71,13 @@ export function confirmDelete(st: Store, s: Session) {
   });
 }
 
-/** The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. */
-export function listSections(st: Store, now: Date): SessionSection[] {
+/**
+ * The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. By status, the
+ * running group stays while nothing runs, empty, so it is always there to look at (docs/her-team.md §16).
+ */
+export function listSections(st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients">, now: Date): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
-  return sessionSections(st.sessions.filter((s) => inFilter(st.listFilter, s)), st.view, { archived: st.archived, now, machines, her: herClients(st) });
+  return sessionSections(st.sessions, st.view, { archived: st.archived, now, machines, her: herClients(st), alwaysActive: true });
 }
 
 export function sectionTitle(st: Store, sec: SessionSection): string {
@@ -104,51 +99,29 @@ export function Sidebar() {
         <button className="tb" onClick={() => setSidebar(st, false)} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
+        <button className="tb side-search" onClick={() => st.set({ searching: true })} title={`${t("sidebar.search")} ${keys("CmdOrCtrl+K")}`} aria-label={t("sidebar.search")}>
+          <Icon name="search" />
+        </button>
       </div>
-      {/* Navigation only (docs/her-team.md §14.2): the pages, then the team, whose rows open the session list. */}
+      {/* Her and the overview, then every session, as the view lays them out (docs/her-team.md §16). */}
       <nav className="side-nav">
         {!st.status?.machineOnly && <HerItem />}
-        <WorkItem now={now} />
-        <button className="nav-i" onClick={() => st.set({ searching: true })}>
-          <Icon name="search" />
-          <span>{t("sidebar.search")}</span>
-          <span className="kbd">{keys("CmdOrCtrl+K")}</span>
-        </button>
-        {st.status?.machineOnly && <AllSessionsItem className="nav-i" />}
+        <OverviewItem now={now} />
       </nav>
-      <div className="side-list">{!st.status?.machineOnly && <TeamMap />}</div>
+      <div className="side-h">
+        <span>{t("sidebar.sessions")}</span>
+        <ListViewMenu />
+      </div>
+      <Sessions now={now} />
       <UpdateReminder />
       <AccountMenu />
     </aside>
   );
 }
 
-/** The list's column, showing what the filter chose; a session it shows stays chosen, another one is let go. */
-export function openList(st: Store, f: ListFilter | null) {
-  const sel = st.selection;
-  const s = sel.kind === "session" ? st.sessions.find((x) => x.sessionId === sel.id) : undefined;
-  st.set({ listFilter: f, selection: s && inFilter(f, s) ? sel : { kind: "list" } });
-}
-
-/** All Sessions: the list's column, unfiltered, with how many there are (archived ones aside); the team's first row. */
-function AllSessionsItem({ className }: { className: string }) {
-  const st = useStore();
-  const { t } = useTranslation("common");
-  const count = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED).length;
-  const sel = listShown(st.selection) && st.listFilter === null;
-  return (
-    <button className={`${className} ${sel ? "sel" : ""}`} aria-current={sel || undefined} onClick={() => openList(st, null)}>
-      <Icon name="menu" />
-      <span>{t("sidebar.allSessions")}</span>
-      <span className="cnt">{count}</span>
-    </button>
-  );
-}
-
 /**
- * The Her entry (docs/her-server.md §9.1): what its assistants sent the owner and they have not read, over
- * every environment, as Watch brings each machine's Her; the page opens Her's connections itself. "Off" while
- * she runs nowhere (docs/her-team.md §14.2).
+ * The Her entry (docs/her-server.md §9.1): a dot while what its assistants sent the owner is unread, over every
+ * environment, as Watch brings each machine's Her; "Off" while she runs nowhere. The page opens Her's connections itself.
  */
 function HerItem() {
   const st = useStore();
@@ -160,133 +133,114 @@ function HerItem() {
     <button className={`nav-i ${sel ? "sel" : ""}`} onClick={() => st.selection.kind !== "her" && st.set({ selection: { kind: "her" } })}>
       <Icon name="her" />
       <span>{t("sidebar.her")}</span>
-      {!on ? <span className="cnt">{t("sidebar.herOff")}</span> : unread > 0 && <span className="cnt" aria-label={t("sidebar.herUnread", { count: unread })}>{unread}</span>}
+      {!on ? <span className="cnt">{t("sidebar.herOff")}</span> : unread > 0 && <span className="nav-marks"><span className="dot-u" role="img" aria-label={t("sidebar.herUnread", { count: unread })} /></span>}
     </button>
   );
 }
 
-/** Work (the overview, docs/her-team.md §14.2): an orange dot when something needs the owner, and what runs. */
-export function workMarks(st: Store, now: Date) {
+/** What the overview's marks say: something needs the owner, and how many sessions run. */
+export function overviewMarks(st: Store, now: Date) {
   const team = teamState(st.sessions, st.pairings.length);
   return { waits: team.waiting.length + st.pairings.length + expiringClients(st, now).length, running: team.running.length };
 }
 
-function WorkItem({ now }: { now: Date }) {
+/** The overview (⌘1): an orange dot when something needs the owner, a ring while anything runs. */
+function OverviewItem({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { waits, running } = workMarks(st, now);
+  const { waits, running } = overviewMarks(st, now);
   return (
     <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
       <Icon name="grid" />
-      <span>{t("sidebar.work")}</span>
+      <span>{t("sidebar.overview")}</span>
       <span className="nav-marks">
         {waits > 0 && <span className="dot-w" role="img" aria-label={t("sidebar.attention", { count: waits })} />}
-        {running > 0 && <Busy count={running} label={t("sidebar.running", { count: running })} />}
+        {running > 0 && <Ring label={t("sidebar.running", { count: running })} />}
         {waits === 0 && running === 0 && <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
       </span>
     </button>
   );
 }
 
-/** A small ring that turns, and how many run. */
-function Busy({ count, label }: { count: number; label: string }) {
+/** A small ring that turns: something is at work. */
+export function Ring({ label }: { label: string }) {
   return (
     <span className="busy" role="img" aria-label={label}>
       <i aria-hidden="true" />
-      <span aria-hidden="true">{count}</span>
     </span>
   );
 }
 
-/** What a filter of the list is called, at the head of its column. */
-export function filterName(st: Store, f: ListFilter): string {
-  if (f.kind === "client") return senderName(st, f.client);
-  const m = st.machines.find((x) => x.machineId === f.machine)?.local ? i18n.t("common:sidebar.thisMac") : machineName(st, f.machine);
-  return f.kind === "machine" ? m : i18n.t("common:sidebar.agentOn", { agent: codingAgentShort(f.agent), machine: m });
-}
-
 /**
- * The team's map (docs/her-team.md §14.2): the machines, this Mac first, each with its coding agents; the agents
- * connected to the owner, Her apart; requests to connect that wait. A row narrows the list below to its sessions;
- * the heading folds the map.
+ * Every session, as the view lays them out (docs/her-team.md §16): grouped, each group collapsible, older ones
+ * loaded as the end comes into view; archived ones on request.
  */
-function TeamMap() {
+function Sessions({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const now = useNow(60_000);
-  const open = !st.collapsed.includes("team");
-  const live = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED);
-  const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName));
-  const her = herClients(st);
-  const clients = st.clients.filter((c) => !c.revoked && !her.includes(c.clientId));
-  const same = (f: ListFilter) => listShown(st.selection) && JSON.stringify(st.listFilter) === JSON.stringify(f);
-  const pick = (f: ListFilter) => openList(st, f);
-  const marks = (mine: Session[]) => {
-    const waiting = mine.some((s) => s.status === SessionStatus.WAITING_INPUT);
-    const running = mine.filter(isActive).length;
-    return (
-      <span className="map-marks">
-        {waiting && <span className="dot-w" role="img" aria-label={t("sidebar.waits")} />}
-        {running > 0 && <Busy count={running} label={t("sidebar.running", { count: running })} />}
-      </span>
-    );
-  };
+  const { sessions, view, archived, machines, clients } = st;
+  const sections = useMemo(() => listSections({ sessions, view, archived, machines, clients }, now), [sessions, view, archived, machines, clients, now]);
+  const total = sections.reduce((n, x) => n + x.sessions.length, 0);
+  const list = useRef<HTMLDivElement>(null);
+  const end = useRef<HTMLDivElement>(null);
+  // The rows get the store as of a click, so a change elsewhere doesn't render them again.
+  const latest = useRef(st);
+  latest.current = st;
+  // Older sessions load as the end of the list comes into view (again after each page, until the list is full or there are no more).
+  const { moreSessions, loadOlderSessions } = st;
+  useEffect(() => {
+    if (!moreSessions || !end.current) return;
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadOlderSessions(), { root: list.current, rootMargin: "200px" });
+    io.observe(end.current);
+    return () => io.disconnect();
+  }, [moreSessions, loadOlderSessions, sessions]);
+  const sel = st.selection;
   return (
-    <div role="group" aria-label={t("sidebar.team")} className="team-map">
-      <button className={`grp-h ${open ? "" : "shut"}`} aria-expanded={open} onClick={() => st.set({ collapsed: open ? [...st.collapsed, "team"] : st.collapsed.filter((c) => c !== "team") })}>
-        {t("sidebar.team")}
-        <Icon name="caret" className="sm" />
-      </button>
-      <AllSessionsItem className="map-row" />
-      {open && (
-        <>
-          {machines.map((m) => {
-            const f: ListFilter = { kind: "machine", machine: m.machineId };
-            const seen = dateOf(m.lastSeen);
-            const where = m.local ? t("sidebar.thisMac") : m.machineName;
-            const sub = !(m.local || m.online) ? (seen ? t("sidebar.offlineSince", { ago: agoText(seen, now) }) : t("sidebar.offline")) : m.her?.enabled ? t("sidebar.herHere") : "";
-            const agents = (m.status?.agents ?? []).filter((a) => a.available);
-            return (
-              <div key={m.machineId} className="map-m">
-                <button className={`map-row map-mach ${m.local || m.online ? "" : "off"} ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
-                  <span className="map-n">{where}</span>
-                  {sub && <span className="map-sub">{sub}</span>}
-                  {marks(live.filter((s) => s.machineId === m.machineId && !agents.some((a) => a.name === s.agent)))}
-                  <Icon name="chevR" className="sm map-go" />
-                </button>
-                {agents.map((a) => {
-                  const fa: ListFilter = { kind: "agent", machine: m.machineId, agent: a.name };
-                  return (
-                    <button key={a.name} className={`map-row ${same(fa) ? "sel" : ""}`} aria-current={same(fa) || undefined} onClick={() => pick(fa)}>
-                      <AgentLogo agent={a.name} size={16} />
-                      <span className="map-n">{codingAgentTitle(a.name)}</span>
-                      {marks(live.filter((s) => s.machineId === m.machineId && s.agent === a.name))}
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
-          {(clients.length > 0 || st.pairings.length > 0) && <div className="map-h">{t("sidebar.connectedAgents")}</div>}
-          {st.pairings.map((p) => (
-            <button key={p.code} className="map-row" onClick={() => st.set({ sheet: { kind: "pairing", code: p.code } })}>
-              <Icon name="link" />
-              <span className="map-n">{p.label || t("sidebar.pairing")}</span>
-              <span className="map-marks"><span className="dot-w" role="img" aria-label={t("sidebar.pairingWaits")} /></span>
-            </button>
-          ))}
-          {clients.map((c) => {
-            const f: ListFilter = { kind: "client", client: c.clientId };
-            return (
-              <button key={c.clientId} className={`map-row ${same(f) ? "sel" : ""}`} aria-current={same(f) || undefined} onClick={() => pick(f)}>
-                <GrantAvatar c={c} size="sm" />
-                <span className="map-n">{c.label}</span>
-                {marks(live.filter((s) => s.createdBy === c.clientId))}
+    <div className="side-list" ref={list}>
+      <div className="side-sessions" role="list" aria-label={t("sidebar.sessions")}>
+        {sections.map((sec) => {
+          const id = `${sec.grouping}:${sec.key}`;
+          const open = !st.collapsed.includes(id);
+          return (
+            <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
+              <button
+                className={`grp-h ${open ? "" : "shut"}`}
+                aria-expanded={open}
+                onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
+              >
+                {sectionTitle(st, sec)}
+                <Icon name="caret" className="sm" />
               </button>
-            );
-          })}
-        </>
-      )}
+              {open && sec.sessions.length === 0 && <div className="side-none">{t("sidebar.noneNow")}</div>}
+              {open && sec.sessions.map((s) => (
+                <SessionRow
+                  key={s.sessionId}
+                  s={s}
+                  sel={sel.kind === "session" && sel.id === s.sessionId}
+                  sender={senderName(st, s.createdBy)}
+                  meta={view.metadata}
+                  renaming={st.renaming === s.sessionId}
+                  store={latest}
+                />
+              ))}
+            </div>
+          );
+        })}
+        {!st.sessionsLoaded ? null : moreSessions ? (
+          <div className="endrow" ref={end}>{t("sidebar.loadingOlder")}</div>
+        ) : total === 0 ? (
+          <div className="side-empty">
+            <b>{t("sidebar.emptyTitle")}</b>
+            {t(st.status?.machineOnly ? "sidebar.emptyMachine" : "sidebar.emptyBody")}
+          </div>
+        ) : (
+          <div className="endrow">
+            {t("sidebar.noOlder")}
+            {" · "}
+            <button className="link" onClick={() => st.set({ archived: !st.archived })}>{t(st.archived ? "sidebar.hideArchived" : "sidebar.showArchived")}</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -305,7 +259,6 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const foot = useRef<HTMLButtonElement>(null);
-  const online = st.machines.filter((m) => m.online).length;
   // A machine only adds nothing to the owner's (null: a separator).
   const items: AccountItem[] = st.status?.machineOnly
     ? [
@@ -381,7 +334,7 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
           <span>
             {/* A dot only when it is worth noticing: not connected. */}
             {!st.status?.relayConnected && <i className="dotc" />}
-            {st.status?.relayConnected ? t("sidebar.connected", { count: online }) : t("sidebar.notConnected")}
+            {st.status?.relayConnected ? t("sidebar.connected") : t("sidebar.notConnected")}
           </span>
         </span>
         <Icon name="chevD" className="sm chev" />
@@ -391,8 +344,13 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renaming, store }: {
-  s: Session; sel: boolean; grant: string; meta: boolean; renaming: boolean; store: RefObject<Store>;
+/**
+ * A session in the sidebar (docs/her-team.md §16): the coding agent's logo, the title, and one mark (an orange dot
+ * while it waits for the owner, a red one when it failed, a ring while it runs); with metadata, who sent the work
+ * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
+ */
+export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store }: {
+  s: Session; sel: boolean; sender: string; meta: boolean; renaming: boolean; store: RefObject<Store>;
 }) {
   const { t } = useTranslation("common");
   const archived = s.status === SessionStatus.ARCHIVED;
@@ -411,26 +369,11 @@ export const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renami
         sessionMenu(store.current, s);
       }}
     >
+      <span className="slogo"><AgentLogo agent={s.agent} size={16} /></span>
       <div className="smain">
         <div className="sl1">
-          {/* A running session's title shimmers; waiting and failed ones have a dot instead, an idle or archived one neither. */}
-          {renaming ? (
-            <RenameField s={s} store={store} />
-          ) : (
-            <span className={`stitle ${isActive(s) && !needsAttention(s) ? "run" : ""}`} title={displayTitle(s)}>
-              {displayTitle(s)}
-              {isActive(s) && !needsAttention(s) && (
-                <>
-                  <span className="shine" data-t={displayTitle(s)} aria-hidden="true" />
-                  <span className="shine band" data-t={displayTitle(s)} aria-hidden="true" />
-                </>
-              )}
-            </span>
-          )}
-          <span className="smeta">
-            {needsAttention(s) && <StatusDot s={s} />}
-            <RowStatus s={s} />
-          </span>
+          {renaming ? <RenameField s={s} store={store} /> : <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>}
+          <span className="smeta"><RowMark s={s} /></span>
           <button
             className="rowact"
             title={t("sessionMenu.more")}
@@ -449,7 +392,7 @@ export const SessionRow = memo(function SessionRow({ s, sel, grant, meta, renami
         </div>
         {meta && (
           <div className="sl2">
-            <span className="sl2t">{grant} → {codingAgentShort(s.agent)} · {s.projectId}</span>
+            <span className="sl2t">{sender} → {codingAgentShort(s.agent)} · {s.projectId}</span>
             <RowTime s={s} />
           </div>
         )}
@@ -590,24 +533,15 @@ function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
   );
 }
 
-/** The status in words, beside its dot: only what needs saying (a running session shimmers, an idle one says nothing). */
-function RowStatus({ s }: { s: Session }) {
+/** A row's one mark, its state in words for screen readers; an idle or archived session has none. */
+export function RowMark({ s }: { s: Session }) {
   const { t } = useTranslation("common");
-  if (s.status !== SessionStatus.CRASHED && s.status !== SessionStatus.WAITING_INPUT && isFailed(s)) return <>{t("status.failed")}</>;
-  switch (s.status) {
-    case SessionStatus.WAITING_INPUT:
-      return <>{t("status.waiting")}</>;
-    case SessionStatus.CRASHED:
-      return <>{t("status.crashed")}</>;
-    case SessionStatus.PREPARING:
-      return <>{t("status.preparing")}</>;
-    case SessionStatus.QUEUED:
-      return <>{t("status.queued")}</>;
-    case SessionStatus.UNSPECIFIED: // its machine cannot be read now
-      return <>{statusTitle(s.status)}</>;
-    default:
-      return null;
-  }
+  if (s.status === SessionStatus.WAITING_INPUT) return <span className="dot-w" role="img" aria-label={t("status.waiting")} />;
+  if (isFailed(s)) return <span className="dot-r" role="img" aria-label={t(s.status === SessionStatus.CRASHED ? "status.crashed" : "status.failed")} />;
+  if (isActive(s)) return <Ring label={t(s.status === SessionStatus.QUEUED ? "status.queued" : s.status === SessionStatus.PREPARING ? "status.preparing" : "status.running")} />;
+  // Its machine cannot be read now: say so, there is no mark for it.
+  if (s.status === SessionStatus.UNSPECIFIED) return <>{statusTitle(s.status)}</>;
+  return null;
 }
 
 /** The second line's right end, under the status: how long a running turn has run, else when the session last changed. */

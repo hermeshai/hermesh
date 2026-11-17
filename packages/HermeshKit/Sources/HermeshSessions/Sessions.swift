@@ -158,9 +158,10 @@ public enum SessionGrouping: String, CaseIterable, Codable, Sendable {
 public struct SessionListLayout: Equatable, Codable, Sendable {
     public var group: SessionGrouping = .status
     public var newestFirst = true
-    public var metadata = true
+    public var metadata = false
 
-    public init(group: SessionGrouping = .status, newestFirst: Bool = true, metadata: Bool = true) {
+    /// By status, newest first, titles alone, until the owner picks a view (docs/her-team.md §16).
+    public init(group: SessionGrouping = .status, newestFirst: Bool = true, metadata: Bool = false) {
         self.group = group
         self.newestFirst = newestFirst
         self.metadata = metadata
@@ -233,16 +234,17 @@ public struct SessionSection: Identifiable {
     public let key: String
     public let sessions: [Session]
     public var id: String { "\(grouping?.rawValue ?? "archived"):\(key)" }
-    /// What needs the owner and what runs show how many they hold.
-    public var counted: Bool { grouping == .status && (key == SessionBucket.attention.rawValue || key == SessionBucket.active.rawValue) }
 }
 
 /// The list as the view lays it out, each section sorted by last activity.
 /// States keep their order (needs you, running, done); days follow the sort;
 /// projects and coding agents go by name, machines in the order given
 /// (unknown ones last). Archived sessions, when shown, are a section of their own at the end.
+///
+/// alwaysActive: by status, the running section stays while nothing runs, empty, so the menu always shows it
+/// (docs/her-team.md §16); not while there is no session at all.
 public func sessionSections(_ sessions: [Session], view: SessionListLayout, archived: Bool, now: Date, machines: [String] = [],
-                            calendar: Calendar = .current) -> [SessionSection] {
+                            alwaysActive: Bool = false, calendar: Calendar = .current) -> [SessionSection] {
     var by: [String: [Session]] = [:]
     var gone: [Session] = []
     for s in sessions {
@@ -270,7 +272,9 @@ public func sessionSections(_ sessions: [Session], view: SessionListLayout, arch
     func sorted(_ list: [Session]) -> [Session] {
         list.sorted { view.newestFirst ? $0.updatedDate > $1.updatedDate : $0.updatedDate < $1.updatedDate }
     }
-    var out = order.compactMap { k in by[k].map { SessionSection(grouping: view.group, key: k, sessions: sorted($0)) } }
+    let active = SessionBucket.active.rawValue
+    let keep = alwaysActive && view.group == .status && !by.isEmpty
+    var out = order.compactMap { k in by[k].map { SessionSection(grouping: view.group, key: k, sessions: sorted($0)) } ?? (keep && k == active ? SessionSection(grouping: .status, key: k, sessions: []) : nil) }
     if !gone.isEmpty { out.append(SessionSection(grouping: nil, key: SessionBucket.archived.rawValue, sessions: sorted(gone))) }
     return out
 }

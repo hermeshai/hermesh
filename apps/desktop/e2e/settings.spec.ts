@@ -37,7 +37,7 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(nav(settings, "通用")).toHaveAttribute("aria-current", "page");
   const general = page_(settings, "通用");
   await expect(general.getByRole("switch", { name: "连接请求" })).toHaveAttribute("aria-checked", "true");
-  await expect(general.getByRole("switch", { name: "新会话" })).toHaveAttribute("aria-checked", "true");
+  await expect(general.getByRole("switch", { name: "新任务" })).toHaveAttribute("aria-checked", "true");
   const login = general.getByRole("switch", { name: "登录时打开 Hermesh" });
   await expect(login).toHaveAttribute("aria-checked", "false");
   await login.click();
@@ -96,7 +96,7 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   // The main window's search, narrowed to this grant.
   await grants.getByRole("button", { name: "更多" }).click();
   await grants.getByRole("button", { name: "在主窗口里查看" }).click();
-  const palette = page.getByRole("dialog", { name: "搜索会话" });
+  const palette = page.getByRole("dialog", { name: "搜索任务" });
   await expect(palette.getByRole("combobox", { name: "授权" })).toHaveValue(/.+/);
   await expect(palette.getByRole("combobox", { name: "授权" }).locator("option:checked")).toHaveText("bot");
   await expect(palette.getByRole("listbox", { name: "搜索结果" }).getByRole("option").first()).toBeVisible();
@@ -393,10 +393,10 @@ test("settings 机器 opens this Mac: its sharing, its agents each opening a pag
   await rename("owner-mac", "studio-mac");
   await rename("studio-mac", "owner-mac");
 
-  const pause = panel.getByRole("switch", { name: "暂停接受新会话" });
+  const pause = panel.getByRole("switch", { name: "暂停接受新任务" });
   await pause.click();
   await expect(pause).toHaveAttribute("aria-checked", "true");
-  await expect(settings.getByRole("status")).toContainText("「owner-mac」暂停接受新会话");
+  await expect(settings.getByRole("status")).toContainText("「owner-mac」暂停接受新任务");
   await snap(settings, "settings-machines-paused");
   await settings.getByRole("button", { name: "返回机器" }).click();
   await expect(mac).toContainText("已暂停");

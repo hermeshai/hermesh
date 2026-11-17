@@ -30,14 +30,14 @@
       "copy": "拷贝",
       "paste": "粘贴",
       "selectAll": "全选",
-      "find": "查找会话…",
+      "find": "查找任务…",
       "search": "搜索"
     },
     "view": {
       "title": "显示",
-      "overview": "工作",
-      "nextAttention": "下一个需要处理的会话",
-      "nextActive": "下一个进行中的会话",
+      "overview": "概览",
+      "nextAttention": "下一个需要处理的任务",
+      "nextActive": "下一个进行中的任务",
       "showInspector": "显示信息面板",
       "hideInspector": "隐藏信息面板",
       "showSidebar": "展开边栏",
@@ -45,10 +45,10 @@
       "fullScreen": "进入全屏幕"
     },
     "session": {
-      "title": "会话",
+      "title": "任务",
       "answer": "回答问题",
       "interrupt": "打断这一轮",
-      "copyId": "拷贝会话 ID",
+      "copyId": "拷贝任务 ID",
       "archive": "归档",
       "unarchive": "取消归档"
     },

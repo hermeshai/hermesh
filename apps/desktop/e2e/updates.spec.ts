@@ -43,7 +43,7 @@ test("background discovery stays quiet; details, snooze and automatic download s
   const app = await installer(true, "success", { autoDownload: false });
   const main = await app.firstWindow();
   await expect((await sessionList(main))).toContainText("写 hello");
-  // Work leaves room for the sidebar reminder even on CI's small display.
+  // The overview leaves room for the sidebar reminder even on CI's small display.
   await clickMenu(app, "overview");
   expect(await requests(app)).toBe(0);
   await app.evaluate(() => { (globalThis as unknown as Hook).installTest.latest = "1.2.0"; });

@@ -2,14 +2,13 @@ import HermeshHer
 import HermeshSessions
 import SwiftUI
 
-/// The side menu, a map of the team (docs/her-team.md §4.5): search at the
-/// top, Her and Work, then the machines with their coding agents and the
-/// connected agents, and at the bottom the account, its picture alone. It
-/// lists no session: Work does.
+/// The side menu (docs/her-team.md §16), as the Mac's sidebar: search at the top, Her and the overview, then
+/// every session as the view lays them out (grouped, each group collapsible, the view menu by the heading), and
+/// at the bottom the account, its picture alone. A row opens its session; swipe or long-press it to rename,
+/// archive or delete it.
 struct DrawerView: View {
     @Environment(AppModel.self) private var model
-    /// The size of the menu's buttons: the system's toolbar buttons, and the
-    /// smallest target the HIG asks for.
+    /// The size of the menu's buttons: the system's toolbar buttons, and the smallest target the HIG asks for.
     private let button: CGFloat = 44
 
     /// Where the system stands the bars on the side (iPhone Duo closed), the menu takes the page's place and the
@@ -37,47 +36,22 @@ struct DrawerView: View {
 
     private var menu: some View {
         ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        if model.menuBeside {
-                            // Where the rail's button expands it again. Over the page, it puts the menu away.
-                            Button {
-                                if model.drawerOpen { model.drawerOpen = false } else { model.menuRail = true }
-                            } label: {
-                                Image(systemName: "sidebar.left").font(.body.weight(.medium)).frame(width: button, height: button)
-                                    .glassEffect(.regular.interactive(), in: .circle)
-                                    .contentShape(.circle)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Collapse the menu")
-                            .accessibilityIdentifier("menu-hide")
-                        }
-                        Wordmark()
-                        Spacer()
-                        if !sideBars {
-                            Button {
-                                model.sheet = .search
-                            } label: {
-                                // The button's size itself: the .glass button style pads its label.
-                                Image(systemName: "magnifyingglass").font(.body.weight(.medium)).frame(width: button, height: button)
-                                    .glassEffect(.regular.interactive(), in: .circle)
-                                    .contentShape(.circle)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Search")
-                            .accessibilityIdentifier("search")
-                        }
-                    }
-                    .frame(minHeight: button)
-                    .padding(.leading, model.menuBeside ? 16 : 24).padding(.trailing, 16).padding(.bottom, 14)
-                    places
-                    lists
+            VStack(spacing: 0) {
+                // The top stays: search and the menu's own button whatever the list's length.
+                top
+                List {
+                    herPlace.plainRow()
+                    overviewPlace.plainRow()
+                    Divider().padding(.horizontal, 26).padding(.top, 8).plainRow()
+                    sessionsHeading.plainRow()
+                    MenuSessions()
+                    Color.clear.frame(height: 90).plainRow() // room under the account's button
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 110)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             bottomBar
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,28 +60,42 @@ struct DrawerView: View {
         .accessibilityIdentifier("drawer")
     }
 
-    private var places: some View {
-        VStack(spacing: 2) {
-            herPlace
-            workPlace
-        }
-    }
-
-    /// All Sessions, as in the Mac's sidebar: the list, with how many there are; the team's first row.
-    private var sessionsPlace: some View {
-        item(.sessions, id: "sessions-place") {
-            HStack(spacing: 12) {
-                Image(systemName: "list.bullet").frame(width: 28)
-                Text("All Sessions")
-                Spacer(minLength: 0)
-                Text("\(model.sessions.filter { $0.status != .archived }.count)").font(.footnote).monospacedDigit().foregroundStyle(.secondary)
+    private var top: some View {
+        HStack {
+            if model.menuBeside {
+                // Where the rail's button expands it again. Over the page, it puts the menu away.
+                Button {
+                    if model.drawerOpen { model.drawerOpen = false } else { model.menuRail = true }
+                } label: {
+                    Image(systemName: "sidebar.left").font(.body.weight(.medium)).frame(width: button, height: button)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Collapse the menu")
+                .accessibilityIdentifier("menu-hide")
             }
-            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16).frame(height: 48)
+            Wordmark()
+            Spacer()
+            if !sideBars {
+                Button {
+                    model.sheet = .search
+                } label: {
+                    // The button's size itself: the .glass button style pads its label.
+                    Image(systemName: "magnifyingglass").font(.body.weight(.medium)).frame(width: button, height: button)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Search")
+                .accessibilityIdentifier("search")
+            }
         }
+        .frame(minHeight: button)
+        .padding(.leading, model.menuBeside ? 16 : 24).padding(.trailing, 16).padding(.top, 8).padding(.bottom, 14)
     }
 
-    /// Her, first, as on the Mac: the Mac's robot, what she sent that is unread, and "Off" while she runs nowhere.
+    /// Her, first, as on the Mac: a dot while what she sent is unread, and "Off" while she runs nowhere.
     private var herPlace: some View {
         let unread = herUnread(model.machines)
         let off = herEnvironments(model.machines).isEmpty
@@ -123,151 +111,52 @@ struct DrawerView: View {
                 if off {
                     Text("Not on").font(.footnote).foregroundStyle(.secondary)
                 } else if unread > 0 {
-                    Text("\(unread)").font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(.white)
-                        .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
-                        .background(Color.accentColor, in: .capsule)
+                    Circle().fill(Color.accentColor).frame(width: 9, height: 9).accessibilityHidden(true)
                 }
             }
             .font(.body).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).frame(height: 48)
         }
-        .buttonStyle(RowStyle(selected: model.root == .her))
+        .buttonStyle(RowStyle(selected: model.root == .her && model.path.isEmpty))
         .padding(.horizontal, 10)
         .accessibilityLabel(off ? Text("Her, not on") : unread > 0 ? Text("Her, \(unread) unread") : Text("Her"))
         .accessibilityIdentifier("her-place")
     }
 
-    /// Work: marked while something needs the owner, with how many sessions run.
-    private var workPlace: some View {
+    /// The overview: an orange dot while something needs the owner, a ring while anything runs. No numbers.
+    private var overviewPlace: some View {
         let team = teamState(model.sessions, requests: model.pairings.count)
+        let waits = !team.waiting.isEmpty || team.requests > 0
         return Button {
             model.open(.overview)
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "square.grid.2x2").frame(width: 28)
-                Text("Work")
+                Text("Overview")
                 Spacer(minLength: 0)
-                marks(waiting: !team.waiting.isEmpty || team.requests > 0, failed: !team.failed.isEmpty, running: team.running.count, counted: true)
+                HStack(spacing: 6) {
+                    if waits { Circle().fill(.orange).frame(width: 9, height: 9) }
+                    if !team.running.isEmpty { BusyRing() }
+                }
+                .accessibilityHidden(true)
             }
             .font(.body).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).frame(height: 48)
         }
         .buttonStyle(RowStyle(selected: model.root == .overview && model.path.isEmpty))
         .padding(.horizontal, 10)
-        .accessibilityIdentifier("work-place")
+        .accessibilityLabel(Text([String(localized: "Overview"), waits ? String(localized: "\(team.waiting.count + team.requests) need you") : "", team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")))
+        .accessibilityIdentifier("overview-place")
     }
 
-    /// What a row's sessions are up to: a dot while one waits for the owner (orange) or failed (red), a ring
-    /// while any runs, with their number where the row counts them.
-    private func marks(waiting: Bool, failed: Bool, running: Int, counted: Bool = false) -> some View {
-        HStack(spacing: 6) {
-            if waiting || failed { Circle().fill(waiting ? .orange : .red).frame(width: 9, height: 9) }
-            if running > 0 {
-                // Turning only while the menu shows.
-                if model.drawerOpen || model.menuInView {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 12, height: 12)
-                }
-                if counted { Text("\(running)").font(.footnote).monospacedDigit().foregroundStyle(.secondary) }
-            }
+    /// "Sessions", and the view menu at its end.
+    private var sessionsHeading: some View {
+        HStack {
+            Text("Sessions").font(.footnote).foregroundStyle(.secondary)
+            Spacer()
+            ViewMenu().frame(width: button, height: button)
         }
-        .accessibilityHidden(true)
-    }
-
-    /// The team (docs/her-team.md §4.5), as the Mac's sidebar lists it: All Sessions first, the machines, each
-    /// with its coding agents flush under it, and the connected agents. A row opens its sessions; a heading opens
-    /// the page that manages them.
-    @ViewBuilder private var lists: some View {
-        let sessions = model.sessions.filter { $0.status != .archived }
-        let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }
-        heading("Machines", opens: .machines)
-        sessionsPlace
-        ForEach(machines, id: \.machineID) { m in
-            machineRow(m)
-            ForEach(sortedAgents(m.status.agents).installed, id: \.name) { a in
-                agentRow(a.name, on: m, sessions: sessions.filter { $0.machineID == m.machineID && $0.agent == a.name })
-            }
-        }
-        heading("Connected Agents", opens: .grants)
-        ForEach(model.pairings.filter { $0.kind != .device && $0.kind != .machine }, id: \.code) { p in
-            Button {
-                model.drawerOpen = false
-                model.sheet = .pairing(p.code)
-            } label: {
-                row { AgentLogo(id: p.label, size: 24) } title: { Text(PairingText.title(p)) } trailing: { Circle().fill(.orange).frame(width: 9, height: 9) }
-            }
-            .buttonStyle(RowStyle(selected: false))
-            .padding(.horizontal, 10)
-        }
-        ForEach(model.clients.filter { !$0.revoked && $0.herMachineID.isEmpty }.sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }, id: \.grantID) { c in
-            let mine = sessions.filter { $0.createdBy == c.clientID }
-            item(.grantSessions(c.clientID), id: "menu-agent-\(c.label)") {
-                row { GrantAvatar(client: c, size: 24) } title: { Text(c.label) } trailing: { marks(mine) }
-            }
-        }
-    }
-
-    private func heading(_ title: LocalizedStringKey, opens root: Root) -> some View {
-        Button {
-            model.open(root)
-        } label: {
-            HStack(spacing: 4) {
-                Text(title)
-                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .font(.footnote).foregroundStyle(model.root == root ? .primary : .secondary)
-            .padding(.horizontal, 26).padding(.top, 12).padding(.bottom, 4)
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(root == .machines ? "menu-machines" : "menu-grants")
-    }
-
-    private func marks(_ sessions: [Session]) -> some View {
-        marks(waiting: sessions.contains { $0.status == .waitingInput }, failed: sessions.contains(where: \.isFailed), running: sessions.filter(\.isActive).count)
-    }
-
-    private func machineRow(_ m: Machine) -> some View {
-        let note: String? = !m.online ? (m.hasLastSeen ? String(localized: "Offline · \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline"))
-            : m.her.enabled ? String(localized: "Her is here") : nil
-        // The machine heads its coding agents: its name alone, no picture, and a chevron saying the row opens.
-        return item(.machineSessions(m.machineID), id: "menu-machine-\(m.machineName)") {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(m.machineName).fontWeight(.semibold).foregroundStyle(m.online ? .primary : .secondary)
-                    if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
-                }
-                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary).accessibilityHidden(true)
-            }
-            .padding(.horizontal, 16).frame(minHeight: 44)
-        }
-        .padding(.top, 8)
-    }
-
-    private func agentRow(_ agent: String, on m: Machine, sessions: [Session]) -> some View {
-        item(.agentSessions(m.machineID, agent), id: "menu-agent-\(m.machineName)-\(agent)") {
-            row { AgentLogo(id: agent, size: 22) } title: { Text(agentTitle(agent)).font(.callout) } trailing: { marks(sessions) }
-        }
-    }
-
-    /// A row that opens a page of Work's.
-    private func item(_ route: Route, id: String, @ViewBuilder label: () -> some View) -> some View {
-        Button { model.open(underWork: route) } label: { label() }
-            .buttonStyle(RowStyle(selected: model.shows(route)))
-            .padding(.horizontal, 10)
-            .accessibilityIdentifier(id)
-    }
-
-    /// A row's layout: its picture in the places' column, its name, and its marks at the end.
-    private func row(@ViewBuilder icon: () -> some View, @ViewBuilder title: () -> some View, @ViewBuilder trailing: () -> some View) -> some View {
-        HStack(spacing: 12) {
-            icon().frame(width: 28)
-            title().lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-            trailing()
-        }
-        .padding(.horizontal, 16).frame(minHeight: 44)
+        .padding(.leading, 26).padding(.trailing, 14)
     }
 
     private var bottomBar: some View {
@@ -291,6 +180,110 @@ struct DrawerView: View {
     }
 }
 
+/// Every session, as the view lays them out (docs/her-team.md §16): by status, In Progress stays while nothing
+/// runs, saying so; with no session at all, what will show here. Older ones load as the end comes into view;
+/// archived ones on request.
+private struct MenuSessions: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
+        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
+        ForEach(sections) { section in
+            let open = !model.collapsed.contains(section.id)
+            heading(section, open: open).plainRow()
+            if open {
+                if section.sessions.isEmpty {
+                    Text("None right now").font(.subheadline).foregroundStyle(.tertiary)
+                        .padding(.leading, 66).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                        .plainRow()
+                        .accessibilityIdentifier("none-now")
+                }
+                ForEach(section.sessions, id: \.sessionID) { s in SessionListRow(session: s) }
+            }
+        }
+        Group {
+            if !model.hasWorld {
+                InlineLoader(text: "Reading your sessions…")
+            } else if !model.noOlder {
+                InlineLoader(text: "Loading earlier sessions…")
+                    .task(id: model.olderKey) { await model.loadOlder() }
+            } else if sections.isEmpty {
+                VStack(spacing: 4) {
+                    Text("No sessions yet").font(.callout.weight(.semibold)).foregroundStyle(.secondary)
+                    Text("Give Her something to do. The sessions she sends to agents show up here.")
+                        .font(.subheadline).foregroundStyle(.tertiary)
+                }
+                .multilineTextAlignment(.center).padding(.horizontal, 34).padding(.top, 40)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("no-sessions")
+            } else {
+                HStack(spacing: 4) {
+                    Text("No earlier sessions ·")
+                    Button(model.showArchived ? "Hide Archived" : "Show Archived") { model.showArchived.toggle() }
+                        .foregroundStyle(.tint)
+                        .accessibilityIdentifier("toggle-archived")
+                }
+                .font(.footnote).foregroundStyle(.secondary)
+                .padding(.top, 14)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .plainRow()
+    }
+
+    /// A group's heading: its title and ▾ (▸ when collapsed), a row of its own; a tap collapses or opens it.
+    private func heading(_ section: SessionSection, open: Bool) -> some View {
+        Button {
+            withAnimation(.snappy) {
+                if open { model.collapsed.insert(section.id) } else { model.collapsed.remove(section.id) }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text(title(section))
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(open ? 0 : -90))
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.horizontal, 26).padding(.top, 14).padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
+        .accessibilityIdentifier("group-\(title(section))")
+    }
+
+    private func title(_ s: SessionSection) -> String {
+        switch s.grouping {
+        case .project: s.key
+        case .agent: agentTitle(s.key)
+        case .machine: model.machineName(s.key)
+        default: SessionBucket(rawValue: s.key)?.title ?? s.key
+        }
+    }
+}
+
+/// A ring that turns while the menu shows, and rests while it does not.
+struct BusyRing: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if model.drawerOpen || model.menuInView {
+            ProgressView().controlSize(.mini)
+        } else {
+            Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 12, height: 12)
+        }
+    }
+}
+
+extension View {
+    /// A row of the menu's list drawn as the view itself: no insets, separator or background of the list's.
+    func plainRow() -> some View {
+        listRowInsets(EdgeInsets()).listRowSeparator(.hidden).listRowBackground(Color.clear)
+    }
+}
 
 /// A row of the menu and of the session lists: highlighted while selected,
 /// and under the finger from the moment it touches down.

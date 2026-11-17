@@ -87,7 +87,7 @@ public func failureTitle(_ k: FailureKind) -> String {
     case .invalidRequest: String(localized: "Request rejected", bundle: .module)
     case .refused: String(localized: "The model refused", bundle: .module)
     case .limitReached: String(localized: "Step limit reached", bundle: .module)
-    case .resumeRejected: String(localized: "Can’t resume the session", bundle: .module)
+    case .resumeRejected: String(localized: "Can’t resume the task", bundle: .module)
     case .agentCrashed: String(localized: "The agent quit unexpectedly", bundle: .module)
     case .stalled: String(localized: "No progress for a long time", bundle: .module)
     case .timeout: String(localized: "Took too long", bundle: .module)
@@ -128,11 +128,11 @@ public func failureAdvice(_ f: Failure) -> String {
     case .quota: String(localized: "Try again once the quota resets, or use another agent or model.", bundle: .module)
     case .rateLimit, .providerError, .network: String(localized: "A temporary problem: sending another message later will do.", bundle: .module)
     case .contextOverflow, .resumeRejected: String(localized: "The next message continues in a new context; the changes in the worktree are all there.", bundle: .module)
-    case .modelUnavailable: String(localized: "Start a new session with another model.", bundle: .module)
+    case .modelUnavailable: String(localized: "Start a new task with another model.", bundle: .module)
     case .limitReached: String(localized: "Say “continue” to let it go on.", bundle: .module)
-    case .agentCrashed, .stalled: String(localized: "The next message resumes the session.", bundle: .module)
+    case .agentCrashed, .stalled: String(localized: "The next message resumes the task.", bundle: .module)
     case .startFailed: String(localized: "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents.", bundle: .module)
-    case .baseRefUnavailable: f.message + " " + String(localized: "Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this session to retry the original task.", bundle: .module)
+    case .baseRefUnavailable: f.message + " " + String(localized: "Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this task to retry the original request.", bundle: .module)
     default: f.hint
     }
 }

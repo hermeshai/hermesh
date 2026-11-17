@@ -320,7 +320,7 @@ private struct TeamPanel: View {
                     model.open(.overview)
                 } label: {
                     HStack(spacing: 3) {
-                        if let today { Text("Today · \(today) sessions") } else { Text("Work") }
+                        if let today { Text("Today · \(today) sessions") } else { Text("Overview") }
                         Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
                     }
                     .font(.subheadline).foregroundStyle(.secondary)

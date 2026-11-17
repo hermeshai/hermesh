@@ -30,14 +30,14 @@
       "copy": "Copy",
       "paste": "Paste",
       "selectAll": "Select All",
-      "find": "Find Session…",
+      "find": "Find Task…",
       "search": "Search"
     },
     "view": {
       "title": "View",
-      "overview": "Work",
-      "nextAttention": "Next Session That Needs You",
-      "nextActive": "Next Session in Progress",
+      "overview": "Overview",
+      "nextAttention": "Next Task That Needs You",
+      "nextActive": "Next Task in Progress",
       "showInspector": "Show Info Panel",
       "hideInspector": "Hide Info Panel",
       "showSidebar": "Expand Sidebar",
@@ -45,10 +45,10 @@
       "fullScreen": "Enter Full Screen"
     },
     "session": {
-      "title": "Session",
+      "title": "Task",
       "answer": "Answer Question",
       "interrupt": "Interrupt This Turn",
-      "copyId": "Copy Session ID",
+      "copyId": "Copy Task ID",
       "archive": "Archive",
       "unarchive": "Unarchive"
     },

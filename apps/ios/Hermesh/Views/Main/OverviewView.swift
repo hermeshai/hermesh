@@ -15,11 +15,10 @@ enum PairingText {
     }
 }
 
-/// Work (docs/her-team.md §4.6): what waits for the owner beyond the
+/// The overview (docs/her-team.md §4.6): what waits for the owner beyond the
 /// sessions (requests to connect, grants that end); then the work: today's
 /// sessions hour by hour, who sent work to which coding agent, the sessions
-/// that need the owner, run and ended last, the way to all of them, and
-/// each coding agent's day.
+/// that need the owner, run and ended last, and each coding agent's day.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
@@ -52,7 +51,7 @@ struct OverviewView: View {
         }
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("Work")
+        .navigationTitle("Overview")
         .navigationBarTitleDisplayMode(.inline) // in the bar: the range picker is the page's top
         .rootToolbar()
         .toolbar {
@@ -235,18 +234,6 @@ struct OverviewView: View {
                 FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
             }
             TeamLists(team: teamState(model.sessions, requests: 0))
-            Button { model.path.append(.sessions) } label: {
-                HStack {
-                    Text("All Sessions").frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 16).frame(minHeight: 50)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
-            .accessibilityIdentifier("all-sessions")
             if !agents.isEmpty || reading {
                 HStack {
                     Text("Agents")

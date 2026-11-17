@@ -45,7 +45,6 @@ test("the overview's motion is all the compositor's: comets ride the running ses
   );
   for (const a of animated) expect(a.props.every((p) => p === "transform" || p === "opacity"), `${a.name}: ${a.props}`).toBe(true);
   const names = new Set(animated.map((a) => a.name));
-  // (A running session's title shimmers in the session list's column, which Work does not show: docs/her-team.md §14.2.)
   for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping"]) expect(names, n).toContain(n);
 
   // Each dot where the link puts it: u of the way along (the document's time over the comet's
@@ -83,7 +82,11 @@ test("while nothing happens, the page changes only its clocks, all in the same f
   let batches = await changes(page, 3200);
   expect(batches.flat().length).toBeGreaterThan(0);
   for (const c of batches.flat()) expect(c).toMatch(/^wc-time characterData$/);
-  // Beside the session list's column (docs/her-team.md §14.2), the card's clock and the list row's tick together.
+  // The sidebar beside it has no clock while its rows are titles alone (docs/her-team.md §16). With their
+  // metadata, a running row's clock ticks with the card's.
+  await page.getByRole("button", { name: "视图选项" }).click();
+  await page.getByRole("menu", { name: "视图选项" }).getByRole("menuitem", { name: /显示/ }).hover();
+  await page.getByRole("menu", { name: "显示" }).getByRole("menuitemcheckbox", { name: "元数据" }).click();
   const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "跑很久" });
   await row.click();
   await expect(row.locator(".stime")).toHaveText(/^\d+:\d\d$/);

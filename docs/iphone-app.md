@@ -37,25 +37,15 @@ gives an iPhone app those sizes):
 |---|---|
 | Compact width, bars along the top (an iPhone), or regular width upright (iPhone Duo open, upright) | The page slides aside by the menu's width and stays in view, a dimmed card that closes the menu |
 | Compact width, bars on the side (iPhone Duo closed: `verticalBarEdge`) | That strip of the screen is the bars' in every state, so a page beside the menu would lie under them: the menu takes the whole page's place. It has the bar then, Close at its top, where the page has the menu button, and Search under it (its own Search button goes) |
-| Regular width, wider than tall (iPhone Duo open, on its side) | Side by side, a hairline between them, as the Mac's window ([her-team.md](her-team.md) §14.2, §14.9). The menu is expanded or its rail of icons (74 pt, `RailView`: Expand, Her, Work, Search, All Sessions, the machines with their coding agents, the connected agents, the account; the current place has the menu's fill and an accent bar), never hidden, and no page has a menu button. The menu's sidebar button, or a swipe left on it, shrinks it; the rail's first button, or a swipe right on it, expands it. The hairline drags the menu between 240 and 400 pt wide. Rail or expanded, and the width, are kept on the iPhone |
+| Regular width, wider than tall (iPhone Duo open, on its side) | Side by side, a hairline between them, as the Mac's window ([her-team.md](her-team.md) §16). The menu is expanded or its rail of icons (74 pt, `RailView`: Expand, Her, Overview, Search, the coding agents at work, the account; the current place has the menu's fill and an accent bar), never hidden, and no page has a menu button. The menu's sidebar button, or a swipe left on it, shrinks it; the rail's first button, or a swipe right on it, expands it. The hairline drags the menu between 240 and 400 pt wide. Rail or expanded, and the width, are kept on the iPhone |
 
-On that wide screen a session list (All Sessions, a machine's, a coding
-agent's, a connected agent's) is a column of its own, 320 pt, and what it
-leads to shows beside it: "Choose a session", then the session chosen, its
-row marked; another row takes its place. The path of pages is the same one,
-so upright again the session is a page over its list. The page keeps 400 pt,
-and what is beside it gives way in the Mac's order (`wideLayout` in
-`HermeshSessions/Layout.swift`): the menu to its rail, though the owner left
-it expanded (it comes back when the list goes); then the list beside a
-session, which is a page again. Where the expanded menu has no room, the
-rail's button shows it over the page, shaded, until the shade is tapped or a
-place is chosen. A session opened from elsewhere (Her's card, Work, a
-notification) is a page as before, with Back; the Mac shows the list beside
-it. As the Mac's sidebar does since its team group was tightened, the menu
-lists All Sessions as the team's first row, under Machines, on every
-screen, and the rail puts it first among the machines; a machine's coding
-agents are flush with it, not indented, and the team's headings sit closer
-to the rows around them.
+The menu lists the sessions itself ([her-team.md](her-team.md) §16): Her
+and the overview, then every session as the view lays them out. On that
+wide screen a session chosen in it shows beside the menu, its row marked;
+another row takes its place. The page keeps 400 pt (`wideLayout` in
+`HermeshSessions/Layout.swift`): with less, the menu is its rail, though
+the owner left it expanded, and the rail's button shows it over the page,
+shaded, until the shade is tapped or a place or a session is chosen.
 
 Changing from one to another (the device opened, closed or turned) leaves the
 menu closed. Covering, a finger drags a picture of the page, and the menu
@@ -278,9 +268,9 @@ as the Mac signer does (docs/desktop-app.md §6.6).
   TestIPhone's world kept up with `HERMESH_IPHONE_PREVIEW`: the app joined,
   a question, and Her's page with a conversation. Run on the iPhone Duo
   Simulator closed (2026-11-11); open and half-folded are not yet run.
-- `WideUITests` (the demo world): the wide screen's menu and rail, the
-  list's column with the chosen session beside it, the menu over the page,
-  and one column again upright. An iPhone app is upright but on iPhone
+- `WideUITests` (the demo world): the wide screen's menu with its sessions
+  and a session beside it, the rail with the agents at work, the menu over
+  the page, and one column again upright. An iPhone app is upright but on iPhone
   Duo's inner display, so the test launches with `-HermeshTestTurns YES`,
   which lets every page turn, and runs on an iPhone Pro Max Simulator
   (regular width on its side); `HERMESH_WIDE_SHOTS=<dir>` keeps the

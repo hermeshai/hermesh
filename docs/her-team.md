@@ -215,6 +215,9 @@ The other tools make none.
 
 ### 4.5 The menu
 
+Superseded by §16 (2026-11-17): the menu is Her, the overview and every
+session; machines and connected agents are reached from the account.
+
 | Row | Opens | Marks |
 |---|---|---|
 | Search (top) | The search sheet, as today | |
@@ -777,6 +780,9 @@ desktop needs that the phone does not: the session list one click away.
 
 ### 14.2 The sidebar
 
+Superseded by §16 (2026-11-17): no team map and no list column; the
+sidebar lists the sessions itself.
+
 | Part | Rows | Opens | Marks |
 |---|---|---|---|
 | Top | Her | Her | Unread count, as today; "Off" while she runs nowhere |
@@ -919,6 +925,9 @@ Passed, 2026-11-15:
 Not done: walking every control by hand in light and dark.
 
 ### 14.9 The rail
+
+What it holds and the narrow-window order are superseded by §16
+(2026-11-17); its two states, kept as the owner left them, stand.
 
 Decided by the owner on 2026-11-15, on the demo's board A2.
 
@@ -1130,3 +1139,100 @@ opening its record, then "See All in Progress".
 It is read from the task's live state and its sub-agents' alone
 (her-client's `busyBubble`, HermeshHer's `herBusyBubble`): who, not their
 calls; nothing more is asked of her, nor kept.
+
+## 16. The sidebar, again
+
+Decided by the owner on 2026-11-17, on `docs/sidebar-b-demo.html` (plan B
+of `docs/sidebar-demo.html`). The product is two things: Her, who drives
+the work, and the mesh, which the owner watches. The sidebar says where to
+go and how things stand; it manages nothing. It looks the same with one
+agent on one machine as with twenty.
+
+**Words** (decided 2026-11-17): what the list holds is a **task**
+(任务), everywhere the owner reads it, on the Mac and the iPhone, in
+Chinese and English; "session" stays the name in code, the protocol and
+the CLI. A task is what Her (or another agent) sent a coding agent; its
+back-and-forth is its conversation (对话). Work (工作) is now **Overview**
+(概览). On the iPhone the catalog's English keys still say "session" and
+carry the English "Task" text as their `en` value. Below, "session" is the
+code's word.
+
+### 16.1 What it holds
+
+| Part | Rows | Marks |
+|---|---|---|
+| Top band (Mac) | The sidebar toggle after the traffic lights; Search (⌘K) at its end | |
+| Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner, a ring while anything runs |
+| Sessions | The heading "Sessions" with the view menu at its end; every session, as the view lays them out | Per row, below |
+| Foot | The account (Mac: "Connected", no count of machines) | A dot only when not connected |
+
+**No numbers** anywhere in it: no unread count, no count of sessions, of
+groups or of machines. Counts are on the overview.
+
+**A row** is the coding agent's logo, the title (one line, cut), and one
+mark: orange, it waits for the owner; red, it failed; a ring, it runs;
+nothing, it is done. The state in words is for screen readers. With the
+view's metadata on, a second line says who sent the work to which agent,
+the project and the time. A click (tap) opens the session; hovering shows
+⋯ in the mark's place; right-click (Mac) or long-press (iPhone) for
+rename, archive and delete. The iPhone's rows have no swipe actions: in
+the menu a swipe left is the menu's own, to close it.
+
+**The view menu** is the list's, unchanged: group (Mac: by who sent the
+work, status, date, project, agent, machine; iPhone: the same but who sent
+it), sort, show. Until the owner picks a view the list is **by status,
+titles alone**. Group headings collapse, as before, and carry no count.
+
+**Empty.** With no session at all the list says "No sessions yet" and
+"Give Her something to do. The sessions she sends to agents show up here."
+(a machine alone, which has no Her: "When your agents connect, their
+sessions show up here."). By status, **In Progress stays** while nothing
+runs, with "None right now" under it (`alwaysActive` in
+`sessionSections`); Needs You shows only when something does. Archived
+sessions on request, older ones loaded at the end, as before.
+
+Gone: the team map (machines, their coding agents, connected agents,
+requests to connect), All Sessions, the list's column beside a session
+(the window is two columns again), the scoped lists, and the overview's
+All Sessions link on the iPhone. A request to connect, a grant that ends
+and a machine offline are on the overview, as before.
+
+### 16.2 Machines and agents
+
+Their settings are where settings are: on the Mac, Settings › Machines and
+Grants, from the account menu; on the iPhone, Account and Devices has
+Machines and Connected Agents, which open those pages. Their pages show a
+machine's or an agent's session count as a value, no longer a link.
+
+### 16.3 The rail
+
+Two states, as §14.9: expanded or the rail, the owner's choice. The rail
+holds Her and the overview, then one logo for each coding agent with
+sessions at hand (waiting, failed, at work; `liveByAgent`), what waits
+first: the rail says who is at work, the sidebar on what. One session:
+the logo opens it. More: a menu beside it names the agent and lists each
+session's title and mark; one click opens it (the keyboard as in a native
+menu). The logo's tooltip says how its sessions stand ("Codex · 1 waiting
+for you · 1 working"). Search and Expand are at its foot (the iPhone's
+rail keeps Expand at its top and Search among the places).
+
+### 16.4 The narrow window (Mac)
+
+The card gives way first, then the sidebar shrinks to its rail; asked for
+there, the sidebar shows over the conversation until it is put away, a
+page or a session is chosen, or the selection changes. With the card:
+1102 px (the expanded sidebar, the conversation's 560 and the card's 270);
+the expanded sidebar alone 832 px.
+
+### 16.5 Tests
+
+- Units: `liveByAgent` and `alwaysActive` in `@hermesh/core` and
+  HermeshSessions; the layouts (`layout.test.ts`, `LayoutTests`).
+- Mac (`apps/desktop/e2e`): `frame.spec.ts` (groups, rhythm, rows and
+  marks, view menu, collapse, row menu, narrow window), `team.spec.ts`
+  (places, marks, no map, the rail and its agent menu),
+  `sessionlist.spec.ts`, `onboarding.spec.ts` (both empty states).
+- iPhone (`HermeshUITests`): `menu()` and `viewMenu()` in
+  `testTheIPhoneApp`, `DemoUITests.testReviewHerAndHerTeam`,
+  `WideUITests.testTheMenuBesideThePage`.
+

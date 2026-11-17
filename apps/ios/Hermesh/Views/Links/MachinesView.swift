@@ -272,9 +272,7 @@ struct MachineView: View {
                     Toggle("Accept New Sessions", isOn: Binding(get: { !m.status.paused }, set: { on in Task { await model.setPaused(m, !on) } }))
                         .accessibilityIdentifier("accept-sessions")
                 }
-                NavigationLink(value: Route.machineSessions(m.machineID)) {
-                    LabeledContent("Sessions", value: "\(model.sessions.filter { $0.machineID == m.machineID }.count)")
-                }
+                LabeledContent("Sessions", value: "\(model.sessions.filter { $0.machineID == m.machineID }.count)")
             } footer: {
                 if m.online && m.status.paused { Text("Running sessions go on; no new ones start here.") }
             }

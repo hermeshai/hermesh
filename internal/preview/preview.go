@@ -178,7 +178,7 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool, w words) (Card, erro
 			return Card{}, err
 		}
 		return Card{Title: w.f("Erase everything in your Hermesh"), Lines: []string{w.f("Owner identity ID: %s", m.OwnerId), w.f("Erase ID: %s", m.EraseId)},
-			Why:     w.f("Hermesh on all your trusted devices and machines, this computer included, erases its keys, sessions and settings, and your agents are disconnected. This can't be undone."),
+			Why:     w.f("Hermesh on all your trusted devices and machines, this computer included, erases its keys, tasks and settings, and your agents are disconnected. This can't be undone."),
 			Warning: w.f("Approve only if you started erasing everything yourself.")}, nil
 	}
 	return Card{}, &Refused{r.Type, "Hermesh doesn't know this kind of request"}
@@ -269,7 +269,7 @@ func machineCard(m *identityv1.MachineCert, h Hints, reissue, confirmed bool, w 
 			Why: w.f("Agents you grant access can use the coding agents on this computer, over end-to-end encrypted connections. You can turn this off in Settings at any time."), Own: true}
 	}
 	c := Card{Title: w.f("Approve a new machine"), Lines: []string{id, w.f("Fingerprint: %s", identity.ShortFingerprint(m.MachinePublicKey))},
-		Why:     w.f("This machine becomes yours, and agents you grant access can start sessions and run commands on it."),
+		Why:     w.f("This machine becomes yours, and agents you grant access can start tasks and run commands on it."),
 		Warning: w.f("Approve only if you know this machine.")}
 	if !confirmed {
 		c.Code = identity.VerificationCode(identityv1.PairingKind_PAIRING_KIND_MACHINE, m.MachinePublicKey, m.OwnerId)
@@ -289,10 +289,10 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 		w.f("Expires: %s", g.ExpiresAt.AsTime().Local().Format(w.f(time.DateOnly))),
 	}
 	if g.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL {
-		lines = append(lines, w.f("Also sees other agents’ sessions in these projects"))
+		lines = append(lines, w.f("Also sees other agents’ tasks in these projects"))
 	}
 	if g.MaxConcurrentSessions > 0 {
-		lines = append(lines, w.f("Sessions at once: up to %d", g.MaxConcurrentSessions))
+		lines = append(lines, w.f("Tasks at once: up to %d", g.MaxConcurrentSessions))
 	}
 	if g.Custodian != "" {
 		lines = append(lines, w.f("Connects through %s, which holds its key", g.Custodian))
@@ -330,7 +330,7 @@ func herCard(g *identityv1.Grant, h Hints, lines []string, w words) Card {
 		}
 	}
 	return Card{Title: w.f("Let Her on %s use your computers", cmpOr(h.MachineNames[g.HerMachineId], g.HerMachineId)), Lines: lines,
-		Why:     w.f("Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there."),
+		Why:     w.f("Her becomes one of your agents: she can start coding agents in your projects, read their tasks and answer them. It ends when you turn Her off there."),
 		Warning: w.f("Full trust: on these machines, a coding agent she starts can do anything you can.")}
 }
 
@@ -344,15 +344,15 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 			lines = append(lines, w.f("In place: agents change the directory's files directly"))
 		}
 		return Card{Title: w.f("Add project “%s” to %s", p.ProjectId, target), Lines: lines,
-			Why: w.f("Agents with access can start sessions there and read and write its files.")}, nil
+			Why: w.f("Agents with access can start tasks there and read and write its files.")}, nil
 	case *identityv1.AdminCommand_RemoveProject:
 		return Card{Title: w.f("Remove project “%s” from %s", x.RemoveProject.ProjectId, target),
-			Why: w.f("Agents can no longer start sessions there; its files stay.")}, nil
+			Why: w.f("Agents can no longer start tasks there; its files stay.")}, nil
 	case *identityv1.AdminCommand_SetPaused:
 		if x.SetPaused.Paused {
-			return Card{Title: w.f("Pause %s", target), Why: w.f("It takes no new sessions until resumed.")}, nil
+			return Card{Title: w.f("Pause %s", target), Why: w.f("It takes no new tasks until resumed.")}, nil
 		}
-		return Card{Title: w.f("Resume %s", target), Why: w.f("It takes new sessions again.")}, nil
+		return Card{Title: w.f("Resume %s", target), Why: w.f("It takes new tasks again.")}, nil
 	case *identityv1.AdminCommand_SetName:
 		return Card{Title: w.f("Rename %s to “%s”", target, x.SetName.Name)}, nil
 	case *identityv1.AdminCommand_SetAgentDefaults:

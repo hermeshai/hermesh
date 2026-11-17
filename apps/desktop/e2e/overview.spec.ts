@@ -4,7 +4,7 @@ import { launch, mapHeight, snap, thisComputer, sessionList, navTo } from "./app
 test("map height waits for the first resize delivery after navigation", async () => {
   const { app, page } = await launch();
   try {
-    await sessionList(page); // Unmount Work before observing its next first layout.
+    await (await sessionList(page)).getByRole("listitem").first().click(); // Unmount the overview before observing its next first layout.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1009, 800));
     await page.evaluate(() => {
       const real = window.ResizeObserver;
@@ -20,7 +20,7 @@ test("map height waits for the first resize delivery after navigation", async ()
         }
       };
     });
-    await navTo(page, /^工作/);
+    await navTo(page, /^概览/);
     const map = page.getByRole("region", { name: "链路" });
     await expect(map).toBeVisible();
     const stage = map.locator(".lmap-stage");
@@ -58,14 +58,14 @@ test("正在运行 is a card per live session: status, time worked, who started 
   // What is not asked for is not there: no coding-agent counts, no tool phase.
   await expect(work).not.toContainText("Gemini CLI");
   await expect(work).not.toContainText("sleep 1800");
-  // The question and the failures wait under 需要你处理 too (docs/her-team.md §14.4), and Work's row says so with a dot.
+  // The question and the failures wait under 需要你处理 too (docs/her-team.md §14.4), and the overview's row says so with a dot.
   const needs = page.getByRole("region", { name: "需要你处理" });
   for (const title of ["选颜色", "限流", "崩溃"]) await expect(needs).toContainText(title);
-  await expect(page.getByRole("button", { name: /^工作/ }).getByRole("img", { name: /项需要处理/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^概览/ }).getByRole("img", { name: /项需要处理/ })).toBeVisible();
   await snap(page, "overview");
   await cards.first().click();
   await expect(page.getByRole("heading", { name: "选颜色" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "工作" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "概览" })).toHaveCount(0);
   await app.close();
 });
 
@@ -75,10 +75,10 @@ test("pointers are macOS's: the hand on text links only, the arrow on the map's 
   const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
   for (const name of ["bot", thisComputer, "demo", "+ 连接更多", "+ 添加机器"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
   expect(await cursor(page.getByRole("button", { name: "管理授权…" }))).toBe("pointer");
-  // The session list's column: a heading the arrow, a text link the hand; then back to Work.
-  expect(await cursor((await sessionList(page)).getByRole("button", { name: /^bot 派的/ }))).toBe("default");
+  // The session list: a heading the arrow, a text link the hand; then back to the overview.
+  expect(await cursor((await sessionList(page)).getByRole("button", { name: /^已结束/ }))).toBe("default");
   expect(await cursor(page.getByRole("button", { name: "显示已归档" }))).toBe("pointer");
-  await navTo(page, /^工作/);
+  await navTo(page, /^概览/);
   const icon = map.locator(".lmap-icon");
   expect(await icon.evaluate((el) => (el as HTMLElement).offsetWidth)).toBe(72); // before scaling to the window
   const look = () => icon.evaluate((el) => getComputedStyle(el).backgroundImage + getComputedStyle(el.querySelector(".hm-beam")!).mixBlendMode);
@@ -100,7 +100,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   const map = page.getByRole("region", { name: "链路" });
   // The headline: today's sessions, how they ended, and today's tokens (the same as 用量's 今天).
   const today = map.getByRole("status", { name: "今天" });
-  await expect(today).toHaveText(/^今天 6 个会话 · 完成 2 · 出错 2 · \d+ tokens$/);
+  await expect(today).toHaveText(/^今天 6 个任务 · 完成 2 · 出错 2 · \d+ tokens$/);
   const tokens = (await today.textContent())!.match(/(\d+) tokens/)![1];
   await expect(page.getByRole("region", { name: "用量" }).locator(".u-kpi").first()).toContainText(tokens);
   const bot = map.getByRole("button", { name: "bot", exact: true });
@@ -117,9 +117,9 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   const cards = work.getByRole("listitem");
 
   for (const [name, text, mark] of [
-    ["bot", "bot 发起的会话", "bot"],
-    [thisComputer, `${thisComputer} 上的会话`, thisComputer],
-    ["demo", "demo 项目的会话", "demo"],
+    ["bot", "bot 发起的任务", "bot"],
+    [thisComputer, `${thisComputer} 上的任务`, thisComputer],
+    ["demo", "demo 项目的任务", "demo"],
   ]) {
     const node = map.getByRole("button", { name, exact: true });
     await node.click();
@@ -161,7 +161,7 @@ test("用量 shows a year of tokens with today's turns", async () => {
   await expect(usage).toContainText("Gemini 100%");
   await expect(usage).toContainText("连续使用1 天");
   await usage.locator(".u-cells .today").hover();
-  await expect(usage).toContainText(/\d+ tokens · \d+ 个会话/);
+  await expect(usage).toContainText(/\d+ tokens · \d+ 个任务/);
   await snap(page, "overview-usage");
   await app.close();
 });
@@ -174,7 +174,7 @@ test("the overview's title and the sidebar's first button share a centre line", 
     const b = (await l.boundingBox())!;
     return b.y + b.height / 2;
   };
-  const title = await centre(page.getByRole("heading", { name: "工作", level: 1 }));
+  const title = await centre(page.getByRole("heading", { name: "概览", level: 1 }));
   const first = await centre(page.locator(".side-nav .nav-i").first());
   console.log("centres", { title, first });
   expect(Math.abs(title - first)).toBeLessThanOrEqual(1);
@@ -185,7 +185,7 @@ test("the overview's title and the sidebar's first button share a centre line", 
 test("the overview stays centered when resizing the window or hiding the sidebar", async () => {
   const { app, page } = await launch();
   try {
-    await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
     for (const width of [980, 1360]) {
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 900), width);
       for (const sidebar of [true, false]) {
