@@ -14,11 +14,12 @@ import (
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 )
 
-// noHerHere skips a test of what only a machine running her does (links,
-// private folders) on Windows, where her does not run.
+// noHerHere skips a test of links and private folders on Windows, where
+// making a link takes a privilege and a folder is private by its ACL, not
+// its mode.
 func noHerHere(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("her does not run on Windows")
+		t.Skip("links and folder modes are Unix's")
 	}
 }
 
