@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !linux
 
 package main
 
@@ -8,6 +8,6 @@ import (
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "hermesh-signer is the signer of a Windows trusted device: macOS has Hermesh Signer.app, and a Linux trusted device signs in hermeshd's terminal")
+	fmt.Fprintln(os.Stderr, "hermesh-signer is the signer of a Windows or Linux trusted device: macOS has Hermesh Signer.app")
 	os.Exit(2)
 }
