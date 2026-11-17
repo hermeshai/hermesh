@@ -110,7 +110,7 @@ func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock, herVar
 		t.Fatal(err)
 	}
 	c := w.app.client
-	daemon := filepath.Join(w.bin, "hermeshd")
+	daemon := filepath.Join(w.bin, "hermeshd"+exe)
 	data := filepath.Join(w.tmp, "her-server")
 	pair := start(t, "pair her-server", nil, daemon, "pair", w.addr, "--name", "her-server", "--no-service", "--data-dir", data)
 	approved, err := c.ApproveMachinePairing(context.Background(), &localv1.ApproveMachinePairingRequest{Code: pair.pairingCode(t), MachineName: "her-server"})
@@ -120,7 +120,10 @@ func startHerServer(t *testing.T, w *ownerMac, her string, mock *herMock, herVar
 	if code := pair.wait(t, 30*time.Second); code != 0 {
 		t.Fatalf("pair: %s", pair.output())
 	}
-	server := start(t, "her-server", append(herEnv(her, herConsole(t), home, mock.base), herVars...), daemon, "run", "--data-dir", data)
+	// The scripted coding agents here too: the sessions Her starts on her own
+	// machine follow their scripts, whatever this computer has installed.
+	vars := append(herEnv(her, herConsole(t), home, mock.base), "HERMESH_FAKE_PROVIDERS=1")
+	server := start(t, "her-server", append(vars, herVars...), daemon, "run", "--data-dir", data)
 	w.logs = append(w.logs, server)
 	// Stopped as a service is, so that it stops her: killed, it would leave
 	// her running, in a process group of its own.
