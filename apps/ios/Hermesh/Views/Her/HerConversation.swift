@@ -22,6 +22,10 @@ struct HerConversation: View {
     @State private var far = HerFar()
     /// The top shows, where earlier messages are read.
     @State private var topSeen = false
+    /// The top is less than two screens away: earlier messages are read before it shows (as on the Mac).
+    @State private var nearTop = false
+    /// The conversation's scroll view, to keep what is in sight where it is as earlier messages are put above it.
+    @State private var scrollView = HerScrollBox()
     @Environment(\.accessibilityReduceMotion) private var still
     /// A file Her sent, brought here for Quick Look to preview and save.
     @State private var preview: URL?
@@ -52,13 +56,10 @@ struct HerConversation: View {
                 HerRows(chat: chat, rows: rows, earlier: chat.live?.before != nil, busy: busy, machine: machine, marked: marked,
                         topSeen: $topSeen, preview: $preview, page: $page, selecting: $selecting)
                     .equatable()
+                    .background(HerScrollFinder(box: scrollView))
             }
-            // Earlier messages put above what was first: it stays where it was, unless the end is followed.
-            .onChange(of: said.first?.key) { old, _ in
-                if let old, !atEnd, said.contains(where: { $0.key == old }) { proxy.scrollTo(old, anchor: .top) }
-            }
-            // A page read while the top still shows: the next one.
-            .onChange(of: chat.live?.before) { if topSeen { Task { await chat.earlier() } } }
+            // A page read while the top is still near: the next one.
+            .onChange(of: chat.live?.before) { if topSeen || nearTop { Task { await chat.earlier() } } }
             // A run's message, asked for from its page: brought into view and marked a moment.
             .onChange(of: chat.revealRun, initial: true) {
                 guard let run = chat.revealRun else { return }
@@ -78,6 +79,22 @@ struct HerConversation: View {
         // As a session's page: open at the end, and stay there as it grows unless the owner scrolled up.
         .scrollPosition($position)
         .defaultScrollAnchor(.bottom, for: .initialOffset)
+        // Earlier messages are read while the top is still two screens away (read only once the top showed, the
+        // page was at its very top, pulled past it even, and stayed there, showing the page just read and reading the
+        // next, to the first message).
+        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top < 2 * $0.containerSize.height } action: { _, near in
+            nearTop = near
+            if near { Task { await chat.earlier() } }
+        }
+        // Put above what was first, they push what is in sight down by as much as they take: unless the end is
+        // followed, it is scrolled as far again, in the layout that puts them there. On the scroll view itself: that takes it while the finger is
+        // still on the page or it is still gliding, where a scroll asked of SwiftUI then (ScrollPosition, a
+        // ScrollViewReader's) was dropped, and what was in sight went a page away.
+        .onScrollGeometryChange(for: HerGrowth.self) { HerGrowth(first: said.first?.key, height: $0.contentSize.height) } action: { was, now in
+            guard !atEnd, was.first != now.first, let first = was.first, said.contains(where: { $0.key == first }), now.height > was.height,
+                  let view = scrollView.view else { return }
+            view.contentOffset.y += now.height - was.height
+        }
         .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
         .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
             if scrolling { atEnd = end }
@@ -160,6 +177,41 @@ extension HerConversation {
             withAnimation(.easeOut(duration: 0.2)) { marked = key }
             try? await Task.sleep(for: .seconds(1.6))
             withAnimation(.easeOut(duration: 0.6)) { if marked == key { marked = nil } }
+        }
+    }
+}
+
+/// The conversation's first message and how tall it is: earlier messages put above it.
+private struct HerGrowth: Equatable {
+    let first: String?
+    let height: CGFloat
+}
+
+/// The UIScrollView under a SwiftUI ScrollView, once its content is in it.
+private final class HerScrollBox {
+    weak var view: UIScrollView?
+}
+
+/// Finds the scroll view its content is in, for HerScrollBox.
+private struct HerScrollFinder: UIViewRepresentable {
+    let box: HerScrollBox
+
+    func makeUIView(context: Context) -> UIView { Finder(box: box) }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    private final class Finder: UIView {
+        let box: HerScrollBox
+        init(box: HerScrollBox) {
+            self.box = box
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var v = superview
+            while let view = v, !(view is UIScrollView) { v = view.superview }
+            box.view = v as? UIScrollView
         }
     }
 }
