@@ -368,9 +368,54 @@ jobs:
         run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
       - shell: bash
         run: gh release upload "$TAG" dist/Hermesh-windows-${{ matrix.arch }}-setup.exe dist/Hermesh-windows-${{ matrix.arch }}.nupkg dist/RELEASES-win32-${{ matrix.arch }}.json dist/RELEASES-win32-${{ matrix.arch }}.json.sig dist/Hermesh.ico --clobber
+  # The Linux app (docs/linux.md §7.2): .deb, .rpm and .tar.gz, and its signed
+  # feed, on a runner of each architecture, with Her's programs the her job built.
+  linux-app:
+    needs: [notes, her]
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            go: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            go: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: corepack enable && pnpm install --frozen-lockfile && pnpm --dir her/apps/console build
+      - uses: actions/download-artifact@v4
+        with:
+          name: her-linux-${{ matrix.go }}
+          path: ${{ runner.temp }}/her
+      - uses: actions/download-artifact@v4
+        with:
+          name: her-doc-worker-linux-${{ matrix.go }}
+          path: ${{ runner.temp }}/pdf-worker
+      - name: build the packages, and sign the feed
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          node apps/desktop/scripts/pdfium.mjs linux ${{ matrix.arch }} "$RUNNER_TEMP/pdf"
+          install -m 0755 "$RUNNER_TEMP/pdf-worker/her-doc-worker-linux-${{ matrix.go }}" "$RUNNER_TEMP/pdf/her-doc-worker"
+          umask 077
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/release.key"
+          umask 022
+          VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} HER="$RUNNER_TEMP/her/her-linux-${{ matrix.go }}" HER_PDF="$RUNNER_TEMP/pdf" \
+            RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/release.key" node apps/desktop/scripts/package-linux.mjs
+          rm -f "$RUNNER_TEMP/release.key"
+      - run: gh release upload "$TAG" dist/Hermesh-linux-${{ matrix.arch }}.deb dist/Hermesh-linux-${{ matrix.arch }}.rpm dist/Hermesh-linux-${{ matrix.arch }}.tar.gz dist/RELEASES-linux-${{ matrix.arch }}.json dist/RELEASES-linux-${{ matrix.arch }}.json.sig --clobber
   # Every file there and right, then a prerelease.
   publish:
-    needs: [binaries, relay-image, mac-app, windows-app]
+    needs: [binaries, relay-image, mac-app, windows-app, linux-app]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
