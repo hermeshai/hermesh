@@ -724,10 +724,6 @@ console.log("fixture at " + f.base);`, fixture)
 	return at[1]
 }
 
-func TestChatGPTFixtureStartup(t *testing.T) {
-	chatGPTFixture(t)
-}
-
 // TestHerChatGPTSignIn: signing in to ChatGPT from this Mac, for the
 // environment: her makes the authorization request on the Her Server, the
 // browser here signs in and comes back to this Mac's hermeshd, and the
