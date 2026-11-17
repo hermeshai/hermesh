@@ -49,7 +49,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { agentDesktopBinaries, agentDesktopFiles, agentDesktopRelease } from "./agent-desktop.mjs";
-import { pdfiumFor, pdfiumLibrary, pdfiumRelease } from "./pdfium.mjs";
+import { minimalPdf, pdfiumFor, pdfiumLibrary, pdfiumRelease } from "./pdfium.mjs";
 import { releaseCatalog, releaseFeed } from "../src/shared/update.ts";
 import enNotes from "../src/locales/en/releases.json" with { type: "json" };
 import zhNotes from "../src/locales/zh-CN/releases.json" with { type: "json" };
@@ -328,20 +328,6 @@ function fat(files, to) {
   const want = archs.map((a) => ({ arm64: "arm64", x64: "x86_64" })[a]).sort().join(" ");
   const got = out("lipo", ["-archs", to]).split(/\s+/).sort().join(" ");
   if (got !== want) throw new Error(`${to} holds ${got}, not ${want}`);
-}
-
-/** A one-page PDF, for checking the bundle's PDFium. */
-function minimalPdf() {
-  const objects = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>", "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>"];
-  let pdf = "%PDF-1.4\n";
-  const offsets = objects.map((o, i) => {
-    const at = pdf.length;
-    pdf += `${i + 1} 0 obj\n${o}\nendobj\n`;
-    return at;
-  });
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
-  return pdf + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
 }
 
 /** dmgbuild (build/dmg/requirements.txt, pinned with hashes) in a virtual environment of its own, kept between builds. */

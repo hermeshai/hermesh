@@ -13,9 +13,16 @@
 //   bin\hermeshdw.exe                  windowless; the daemon's logon task
 //   bin\hermesh.exe                    the agents' CLI
 //   bin\hermesh-signer.exe             copied into Program Files when this PC becomes a trusted device
-// The app copies bin's first three where they stay across updates, on PATH (main/platform/win.ts).
+//   bin\her.exe                        Her's kernel (her/), which hermeshd runs from beside itself (docs/her-server.md §6.4)
+//   bin\her-console\                   Her's console (her/apps/console), which hermeshd serves
+//   bin\agent-desktop.exe              desktop control, which her's desktop tools find beside her (scripts/agent-desktop.mjs)
+//   bin\pdfium.dll                     PDFium, which her's document worker finds beside her (scripts/pdfium.mjs)
+//   resources\model-connection-licenses, resources\third-party-licenses   notices, as in the Mac app
+// The app copies bin's first three, and her with what is hers, where they stay across updates, on PATH
+// (main/platform/win.ts). her carries the Hermesh extension itself, and writes it where hermeshd says.
 //
-// Needs Go and Node, on any system; the installer needs Windows.
+// Needs Go and Node, on any system; her and the installer need Windows (Rust builds for Windows there),
+// so the files made elsewhere are an app without Her.
 //
 // Environment:
 //   VERSION                     version (default: package.json's)
@@ -25,6 +32,8 @@
 //   RELEASE_SIGNING_KEY_FILE    the release key (ECDSA P-256, PEM), to sign the feed
 //   HERMESH_UPDATE_FEED         test builds only: where the app looks for updates (default: the latest GitHub release)
 //   HERMESH_RELEASE_PUBKEY_FILE test builds only: the key the app checks the feed with (default: scripts/release-pubkey.pem)
+//   HERMESH_HER_PROFILE         test builds only: the cargo profile her is built with (default: dist, as her's releases)
+//   HER_GITHUB_OAUTH_CLIENT_SECRET   the secret of her's GitHub OAuth app, built into her, as for the Mac app (build-app.mjs)
 import { packager } from "@electron/packager";
 import { flipFuses, FuseV1Options, FuseVersion } from "@electron/fuses";
 import { execFileSync } from "node:child_process";
@@ -35,6 +44,8 @@ import { createWindowsInstaller } from "electron-winstaller";
 import { releaseCatalog } from "../src/shared/update.ts";
 import enNotes from "../src/locales/en/releases.json" with { type: "json" };
 import zhNotes from "../src/locales/zh-CN/releases.json" with { type: "json" };
+import { agentDesktopBinaries, agentDesktopRelease } from "./agent-desktop.mjs";
+import { minimalPdf, pdfiumFor, pdfiumLibraryIn, pdfiumRelease } from "./pdfium.mjs";
 import { windowsIcons } from "./windows-icons.mjs";
 import { installSplash } from "./windows-splash.mjs";
 
@@ -74,6 +85,38 @@ for (const [name, cmd, flags] of [
   ["hermesh-signer.exe", "./cmd/hermesh-signer", `-s -w -X main.version=${version} -H windowsgui`],
 ]) {
   sh("go", ["build", "-trimpath", "-ldflags", flags, "-o", path.join(bin, name), cmd], { cwd: root, env: goEnv });
+}
+
+// her as her's own releases build it (her/tools/release): the dist profile, and without
+// local-accounts, which borrows other apps' sign-ins on this computer.
+const herRoot = path.join(root, "her");
+const cache = path.join(desktop, "node_modules/.cache");
+let pdfium = null;
+if (onWindows) {
+  const triple = { x64: "x86_64-pc-windows-msvc", arm64: "aarch64-pc-windows-msvc" }[arch];
+  const profile = process.env.HERMESH_HER_PROFILE || "dist";
+  step(`building her (${arch})`);
+  const githubSecret = process.env.HER_GITHUB_OAUTH_CLIENT_SECRET || "";
+  if (!githubSecret) console.warn("⚠️  no HER_GITHUB_OAUTH_CLIENT_SECRET: this her signs in to GitHub with a token only.");
+  sh("rustup", ["target", "add", triple], { cwd: herRoot });
+  sh("cargo", ["build", "--profile", profile, "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triple], {
+    cwd: herRoot,
+    env: { ...process.env, HER_GITHUB_OAUTH_CLIENT_SECRET: githubSecret },
+  });
+  fs.copyFileSync(path.join(herRoot, "target", triple, profile, "her.exe"), path.join(bin, "her.exe"));
+
+  step(`fetching PDFium ${pdfiumRelease.tag} and agent-desktop ${agentDesktopRelease.version}`);
+  pdfium = pdfiumFor(arch, path.join(cache, "pdfium"), pdfiumRelease, undefined, "win");
+  fs.copyFileSync(path.join(pdfium, pdfiumLibraryIn.win), path.join(bin, "pdfium.dll"));
+  for (const [name, file] of Object.entries(agentDesktopBinaries(arch, path.join(cache, "agent-desktop"), agentDesktopRelease, undefined, "win32"))) {
+    fs.copyFileSync(file, path.join(bin, name));
+  }
+
+  step("building Her's console");
+  sh("pnpm", ["--dir", path.join(herRoot, "apps/console"), "build"], { shell: true });
+  fs.cpSync(path.join(herRoot, "apps/console/dist"), path.join(bin, "her-console"), { recursive: true });
+} else {
+  console.warn("⚠️  her is built on Windows only: these files are an app without Her.");
 }
 
 step("drawing the icons");
@@ -117,6 +160,28 @@ await flipFuses(path.join(layout, "Hermesh.exe"), {
 
 step("adding the programs");
 fs.cpSync(bin, path.join(layout, "bin"), { recursive: true });
+if (pdfium) {
+  // The notices of what her carries, as in the Mac app (build-app.mjs).
+  fs.cpSync(path.join(herRoot, "crates/her-connections/licenses"), path.join(layout, "resources/model-connection-licenses"), { recursive: true });
+  const licenses = path.join(layout, "resources/third-party-licenses");
+  fs.cpSync(path.join(herRoot, "crates/her-slide/licenses"), licenses, { recursive: true });
+  for (const name of ["OFL-Carlito.txt", "OFL-Caladea.txt"]) fs.copyFileSync(path.join(herRoot, "crates/her-slide/fonts", name), path.join(licenses, name));
+  fs.cpSync(path.join(pdfium, "licenses"), path.join(licenses, "PDFium"), { recursive: true });
+  fs.copyFileSync(path.join(pdfium, "LICENSE"), path.join(licenses, "PDFium/pdfium-binaries.txt"));
+  // As packaged, where this PC can run them: her opens a PDF with the app's PDFium (no HER_PDFIUM,
+  // a home without one), and agent-desktop answers.
+  if (arch === process.arch) {
+    const home = fs.mkdtempSync(path.join(tmp, "home-"));
+    const { HER_PDFIUM: _, ...env } = { ...process.env, USERPROFILE: home, HER_HOME: path.join(home, ".her") };
+    const her = path.join(layout, "bin/her.exe");
+    step(`checking ${execFileSync(her, ["--version"], { env, encoding: "utf8" }).trim()}, PDFium and agent-desktop`);
+    fs.writeFileSync(path.join(home, "check.pdf"), minimalPdf());
+    const opened = JSON.parse(execFileSync(her, ["doc-worker"], { input: JSON.stringify({ op: "open", handle: 1, path: path.join(home, "check.pdf") }) + "\n", env, cwd: home, encoding: "utf8" }).split("\n")[0]);
+    if (opened.ok?.pages !== 1) throw new Error(`the packaged her cannot open a PDF: ${JSON.stringify(opened)}`);
+    const said = execFileSync(path.join(layout, "bin/agent-desktop.exe"), ["--version"], { encoding: "utf8" }).trim();
+    if (said !== `agent-desktop ${agentDesktopRelease.version}`) throw new Error(`the packaged agent-desktop says ${JSON.stringify(said)}, not ${agentDesktopRelease.version}`);
+  }
+}
 console.log(`✓ ${layout}`);
 
 if (onWindows) {

@@ -24,10 +24,11 @@ export function integrityOf(file) {
 }
 
 /**
- * The binaries for `arch` (arm64 or x64), name → path, from `cache`; fetched with `npm pack`
- * (the user's registry; the integrity makes any registry safe) when not there yet.
+ * The binaries for `arch` (arm64 or x64) and `system` (darwin, or win32, whose one program is
+ * agent-desktop.exe), name → path, from `cache`; fetched with `npm pack` (the user's registry;
+ * the integrity makes any registry safe) when not there yet.
  */
-export function agentDesktopBinaries(arch, cache, release = agentDesktopRelease, pack = npmPack) {
+export function agentDesktopBinaries(arch, cache, release = agentDesktopRelease, pack = npmPack, system = "darwin") {
   const dir = path.join(cache, release.version);
   const bin = path.join(dir, "package", "bin");
   if (!fs.existsSync(path.join(dir, "integrity")) || fs.readFileSync(path.join(dir, "integrity"), "utf8") !== release.integrity) {
@@ -37,16 +38,19 @@ export function agentDesktopBinaries(arch, cache, release = agentDesktopRelease,
       const tarball = pack(`agent-desktop@${release.version}`, staging);
       const got = integrityOf(tarball);
       if (got !== release.integrity) throw new Error(`agent-desktop ${release.version}: the package's integrity is ${got}, expected ${release.integrity}`);
-      fs.mkdirSync(dir, { recursive: true });
-      execFileSync("tar", ["-xzf", tarball, "-C", dir]);
+      // By names in the staging folder: a tar that takes "C:" for a host never sees one.
+      fs.mkdirSync(path.join(staging, "out"));
+      execFileSync("tar", ["-xzf", path.relative(staging, tarball), "-C", "out"], { cwd: staging });
+      fs.cpSync(path.join(staging, "out"), dir, { recursive: true });
       fs.writeFileSync(path.join(dir, "integrity"), release.integrity);
     } finally {
       fs.rmSync(staging, { recursive: true, force: true });
     }
   }
+  const packed = system === "win32" ? { "agent-desktop.exe": `agent-desktop-win32-${arch}.exe` } : Object.fromEntries(agentDesktopFiles.map((name) => [name, `${name}-darwin-${arch}`]));
   const out = {};
-  for (const name of agentDesktopFiles) {
-    const file = path.join(bin, `${name}-darwin-${arch}`);
+  for (const [name, as] of Object.entries(packed)) {
+    const file = path.join(bin, as);
     const expected = fs.readFileSync(`${file}.sha256`, "utf8").trim().split(/\s+/)[0].toLowerCase();
     const actual = createHash("sha256").update(fs.readFileSync(file)).digest("hex");
     if (actual !== expected) throw new Error(`${path.basename(file)}: sha256 ${actual}, the package says ${expected}`);
@@ -57,6 +61,7 @@ export function agentDesktopBinaries(arch, cache, release = agentDesktopRelease,
 
 /** `npm pack <spec>` into `dir`; the tarball's path. */
 function npmPack(spec, dir) {
-  const [packed] = JSON.parse(execFileSync("npm", ["pack", spec, "--json", "--pack-destination", dir], { cwd: dir, encoding: "utf8" }));
+  // On Windows npm is a script, which only a shell starts.
+  const [packed] = JSON.parse(execFileSync("npm", ["pack", spec, "--json", "--pack-destination", dir], { cwd: dir, encoding: "utf8", shell: process.platform === "win32" }));
   return path.join(dir, packed.filename);
 }

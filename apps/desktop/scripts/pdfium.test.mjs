@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { pdfiumFor, pdfiumLibrary } from "./pdfium.mjs";
+import { pdfiumFor, pdfiumLibrary, pdfiumLibraryIn } from "./pdfium.mjs";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "hermesh-pdfium-"));
 
@@ -40,4 +40,18 @@ test("an archive that is not the pinned one is refused, and nothing is kept", ()
   assert.throws(() => pdfiumFor("arm64", cache, { tag: "chromium/1", sha256: { arm64: "0".repeat(64) } }, (_url, to) => fs.copyFileSync(archive, to)), /sha256/);
   assert.deepEqual(fs.readdirSync(cache), []);
   assert.throws(() => pdfiumFor("x64", cache, { tag: "chromium/1", sha256: { arm64: "0".repeat(64) } }), /no archive for x64/);
+});
+
+test("Windows' archive has its own name, digest and library", () => {
+  const root = tmp();
+  fs.mkdirSync(path.join(root, "bin"));
+  fs.writeFileSync(path.join(root, "bin", "pdfium.dll"), "library");
+  const archive = path.join(tmp(), "pdfium.tgz");
+  execFileSync("tar", ["-czf", "pdfium.tgz", "-C", path.relative(path.dirname(archive), root), "bin"], { cwd: path.dirname(archive) });
+  const release = { tag: "chromium/1", sha256: { arm64: "0".repeat(64), "win-arm64": createHash("sha256").update(fs.readFileSync(archive)).digest("hex") } };
+  const urls = [];
+  const dir = pdfiumFor("arm64", tmp(), release, (url, to) => (urls.push(url), fs.copyFileSync(archive, to)), "win");
+  assert.equal(fs.readFileSync(path.join(dir, pdfiumLibraryIn.win), "utf8"), "library");
+  assert.deepEqual(urls, ["https://github.com/bblanchon/pdfium-binaries/releases/download/chromium/1/pdfium-win-arm64.tgz"]);
+  assert.throws(() => pdfiumFor("x64", tmp(), release, () => {}, "win"), /no archive for win-x64/);
 });
