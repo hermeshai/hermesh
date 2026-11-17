@@ -522,26 +522,26 @@ public func herBusy(_ v: HerSession) -> Bool {
     (v.live.map { $0.approvals.isEmpty } ?? false) || v.agents.contains { $0.status == "running" }
 }
 
-/// What the busy bubble shows (her-client's busyBubble, docs/her-team.md §15.6): the call she is on, as Progress says
-/// a step, else the dots alone; once she has answered, while a sub-agent of hers is still at work, that sub-agent
-/// (`agent`, as it is called) and the call it is on.
+/// Who the busy bubble names (her-client's busyBubble, docs/her-team.md §15.6): Her, while she answers, and her
+/// sub-agents at work that wait for nobody, the one that started last first. Only who, never what they are doing.
 public struct HerBusyBubble: Equatable, Sendable {
-    public var now: HerToolStep?
-    public var agent: String?
+    public struct Agent: Equatable, Sendable {
+        /// Its id, to open its record.
+        public var id: String
+        /// What it is called, as an approval names it.
+        public var name: String
+    }
+    public var her: Bool
+    public var agents: [Agent]
 }
 
-/// Nil when nothing is at work, and while what is waits for the owner: an approval in the composer's place says so.
+/// Nil when nothing is at work, and while Her waits for the owner: an approval in the composer's place says so.
 public func herBusyBubble(_ v: HerSession) -> HerBusyBubble? {
-    if let live = v.live { return live.approvals.isEmpty ? HerBusyBubble(now: herStepOf(v)) : nil }
-    // The one that started last, of those not waiting for the owner.
-    let a = v.agents.filter { $0.status == "running" && ($0.view.live?.approvals.isEmpty ?? true) }.max { $0.since < $1.since }
-    return a.map { HerBusyBubble(now: herStepOf($0.view), agent: $0.description.isEmpty ? $0.name : $0.description) }
-}
-
-/// The call a task is on: not its words (send_to_user), nor a sub-agent it starts, which show as themselves.
-private func herStepOf(_ v: HerSession) -> HerToolStep? {
-    let t = v.live?.tools.last { ($0.phase == .running || $0.phase == .pending) && $0.name != sendToUser && $0.name != "spawn_agent" }
-    return t.map { HerToolStep(callID: $0.callID, name: $0.name, category: $0.category, title: $0.title, state: .live, output: "") }
+    if let live = v.live, !live.approvals.isEmpty { return nil }
+    let agents = v.agents.filter { $0.status == "running" && ($0.view.live?.approvals.isEmpty ?? true) }
+        .sorted { $0.since > $1.since }
+        .map { HerBusyBubble.Agent(id: $0.id, name: $0.description.isEmpty ? $0.name : $0.description) }
+    return v.live != nil || !agents.isEmpty ? HerBusyBubble(her: v.live != nil, agents: agents) : nil
 }
 
 /// The op that answers an approval: Her's own, or a sub-agent's.

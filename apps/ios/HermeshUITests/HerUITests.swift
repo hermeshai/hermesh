@@ -1062,13 +1062,17 @@ extension HermeshUITests {
         XCTAssertFalse(text("需要你").exists, "nothing needs the owner now")
         herShot("Progress: ended")
 
-        // Another, allowed: it works on in the background; her conversation's dots stay, saying which and what it
-        // does, and Progress says one is at work.
+        // Another, allowed: it works on in the background. Her conversation's busy line stays, naming it, never what it
+        // does; it opens its record, whose way back is her conversation. Progress says one is at work.
         herBackToConversation()
         herSend("[[mock:relay_slow:60]] 再写一篇")
         tap("her-allow-once", timeout: 60)
-        try waitFor("the dots say her sub-agent and its call (\(typing.exists ? typing.label : "none"))", timeout: 30) { typing.exists && typing.label.contains("写长文 · 正在运行 sleep 60") ? true : nil }
-        herShot("Her: a sub-agent at work, in the busy bubble")
+        try waitFor("the line names her sub-agent (\(typing.exists ? typing.label : "none"))", timeout: 30) { typing.exists && typing.label == "子智能体 · 写长文，正在工作" ? true : nil }
+        herShot("Her: a sub-agent at work, in the busy line")
+        typing.tap()
+        XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "its record")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(typing.waitForExistence(timeout: 10), "back in her conversation")
         try waitFor("Progress says one is at work (\(entry.label))", timeout: 60) { entry.label.contains("1 个进行中") ? true : nil }
         herShot("Her: Progress, one at work")
         entry.tap()
@@ -1077,11 +1081,34 @@ extension HermeshUITests {
         herShot("Progress: one at work")
         herBackToConversation()
 
-        // While Her herself is on a call, her bubble says what it does, in the words Progress says a step in.
+        // A third while it works: the two take turns in the line, which ends with their number; it opens the system's
+        // menu of them, each opening its record, and Progress.
+        herSend("[[mock:relay_slow:60]] 第三篇")
+        tap("her-allow-once", timeout: 60)
+        try waitFor("two at work (\(typing.exists ? typing.label : "none"))", timeout: 30) { typing.exists && typing.label.hasPrefix("2 个子智能体正在工作") ? true : nil }
+        herShot("Her: two sub-agents at work")
+        typing.tap()
+        let all = app.buttons["在「进展」中查看全部"]
+        XCTAssertTrue(all.waitForExistence(timeout: 10), "the menu")
+        let named = app.buttons.matching(NSPredicate(format: "label == %@", "写长文"))
+        XCTAssertEqual(named.count, 2, "each at work")
+        herShot("Her: the menu of who is at work")
+        named.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "its record")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(typing.waitForExistence(timeout: 10))
+        typing.tap()
+        XCTAssertTrue(all.waitForExistence(timeout: 10))
+        all.tap()
+        XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10), "Progress")
+        herBackToConversation()
+
+        // While Her herself answers, she leads the line; on a call too, it says only that she is at it.
         herSend("[[mock:bash:sleep 8]] 看看")
         tap("her-allow-once", timeout: 60)
-        try waitFor("the bubble says her step (\(typing.firstMatch.label))", timeout: 30) { typing.firstMatch.label == "正在运行 sleep 8" ? true : nil }
-        herShot("Her: on a call")
+        try waitFor("Her leads the line (\(typing.firstMatch.label))", timeout: 30) { typing.firstMatch.label.hasPrefix("正在输入…，") ? true : nil }
+        XCTAssertFalse(typing.firstMatch.label.contains("sleep"), "never what she does")
+        herShot("Her: at work herself")
     }
 
     /// A conversation longer than the page, then a sub-agent's question in the composer's place (the keyboard up as

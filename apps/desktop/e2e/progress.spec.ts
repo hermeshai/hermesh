@@ -5,9 +5,9 @@ import { fixture, launch, navTo, snap } from "./app";
 // TestDesktopHerProgress, which needs her built. One story: Her is turned on here; nothing is sent out yet; she
 // hands a piece of work to a sub-agent, a post of its own under what needs the owner, with what the owner said at
 // its foot; it asks for the owner's approval, works and ends; its record shows what Her asked, what it called and
-// what it reported. Her busy bubble says the call she is on; once she answered, while a sub-agent of hers works on
-// (and waits for nobody), it stays, saying which and its call. A coding session she starts is no post: its own page
-// holds it.
+// what it reported. Her busy line says who is at work, never what: Her while she answers, her sub-agents at work by
+// name, one opening its record, several a menu of them. A coding session she starts is no post: its own page holds
+// it.
 
 test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's record", async () => {
   test.setTimeout(300_000);
@@ -99,26 +99,50 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   await expect(list.getByRole("listitem", { name: "需要你" })).toHaveCount(0);
   await expect(post.getByRole("button", { name: /^写长文 · 已完成/ })).toBeVisible();
 
-  // Another, allowed: it works on in the background; Progress says one is at work, and her conversation's dots stay,
-  // saying which and what it does.
+  // Another, allowed: it works on in the background; Progress says one is at work, and her conversation's busy line
+  // stays, naming it, never what it does; it opens its record, whose way back is to her conversation.
   await navTo(page, /^Her/);
   await send("[[mock:relay_slow:60]] 再写一篇");
   const asking = page.getByRole("region", { name: "等你批准" });
   await expect(asking).toContainText("sleep 60", { timeout: 60_000 });
   await asking.getByRole("button", { name: /^允许/ }).first().click();
   await expect(button).toHaveAttribute("aria-label", "进展 · 1 个进行中", { timeout: 60_000 });
-  await expect(log.locator(".bm.working")).toContainText("写长文 · 正在运行 sleep 60", { timeout: 30_000 });
+  const busy = log.locator(".bm.working");
+  const one = busy.getByRole("button", { name: "子智能体 · 写长文，正在工作" });
+  await expect(one).toHaveText("写长文", { timeout: 30_000 });
   await snap(page, "busy-agent");
-  await progress();
-  await expect(list.getByRole("listitem", { name: "现在" }).getByRole("article", { name: "写长文" })).toBeVisible();
+  await one.click();
+  await expect(page.getByRole("heading", { name: "写长文", level: 2 })).toBeVisible();
+  await page.locator(".pt-back").click();
+  await expect(composer).toBeVisible();
 
-  // While Her herself is on a call, her bubble says what it does, in the words Progress says a step in.
+  // A third while it works: the two take turns in the line, which ends with their number and a chevron; it opens a
+  // menu of them, each opening its record, and Progress.
+  await send("[[mock:relay_slow:60]] 第三篇");
+  await expect(asking).toContainText("sleep 60", { timeout: 60_000 });
+  await asking.getByRole("button", { name: /^允许/ }).first().click();
+  await expect(button).toHaveAttribute("aria-label", "进展 · 2 个进行中", { timeout: 60_000 });
+  const two = busy.getByRole("button", { name: /^2 个子智能体正在工作/ });
+  await expect(two.locator(".wb-pop")).toHaveText("2", { timeout: 30_000 });
+  await two.click();
+  const menu = page.getByRole("menu", { name: /^2 个子智能体正在工作/ });
+  await expect(menu.getByRole("menuitem")).toHaveText(["写长文", "写长文", "在「进展」中查看全部"]);
+  await snap(page, "busy-menu");
+  await menu.getByRole("menuitem").first().click();
+  await expect(page.getByRole("heading", { name: "写长文", level: 2 })).toBeVisible();
+  await page.locator(".pt-back").click();
+  await two.click();
+  await menu.getByRole("menuitem", { name: "在「进展」中查看全部" }).click();
+  await expect(list.getByRole("listitem", { name: "现在" }).getByRole("article", { name: "写长文" })).toHaveCount(2);
+
+  // While Her herself answers, she leads the line; on a call too, it says only that she is at it.
   await navTo(page, /^Her/);
   await send("[[mock:bash:sleep 8]] 看看");
   await expect(asking).toContainText("sleep 8", { timeout: 60_000 });
   await asking.getByRole("button", { name: /^允许/ }).first().click();
-  await expect(log.locator(".bm.working")).toContainText("正在运行 sleep 8", { timeout: 30_000 });
-  await snap(page, "busy-step");
+  await expect(busy.locator(".wb-w")).toContainText("正在输入…", { timeout: 30_000 });
+  await expect(busy).not.toContainText("sleep 8");
+  await snap(page, "busy-her");
 
   // A coding session she starts on this Mac, asked first, is a card in her conversation, and no post of Progress.
   await send(`[[mock:mesh:session_start:${JSON.stringify({ project: "owner-mac/demo", prompt: "say 做完了", title: "Her 派的活" })}]] 开工`);
@@ -126,7 +150,7 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   await asking.getByRole("button", { name: /^允许/ }).first().click();
   await expect(log.getByRole("button", { name: "Her 派的活" })).toBeVisible({ timeout: 60_000 });
   await progress();
-  await expect(list.getByRole("article", { name: "写长文" })).toHaveCount(2);
+  await expect(list.getByRole("article", { name: "写长文" })).toHaveCount(3);
   await expect(list.getByRole("article", { name: "Her 派的活" })).toHaveCount(0);
   await snap(page, "progress-board");
   // From what set it off, back to what Her said.

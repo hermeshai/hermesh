@@ -39,7 +39,10 @@
   },
   "line": {
     "typing": "Typing…",
-    "agentWorking": "Working"
+    "agentAtWork": "Sub-agent · {{name}}, at work",
+    "agentsWorking_one": "{{count}} sub-agent at work",
+    "agentsWorking_other": "{{count}} sub-agents at work",
+    "allInProgress": "See All in Progress"
   },
   "head": {
     "settings": "Assistant Settings",

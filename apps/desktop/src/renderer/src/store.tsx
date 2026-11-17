@@ -36,8 +36,8 @@ export type Selection =
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 
-/** A card of the Progress page: a sub-agent of Her's, by its id. */
-export type ProgressTaskRef = { agent: string };
+/** A card of the Progress page: a sub-agent of Her's, by its id; opened from her conversation's busy bubble, its way back goes there. */
+export type ProgressTaskRef = { agent: string; fromHer?: boolean };
 
 export type Sheet =
   | { kind: "newGrant" }
