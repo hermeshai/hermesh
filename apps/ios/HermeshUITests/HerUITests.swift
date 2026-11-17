@@ -1060,11 +1060,12 @@ extension HermeshUITests {
         herShot("Progress: a record that ended")
         // Its info, as a session's: how long, how many tokens and steps, who sent it out.
         tap("progress-info")
-        XCTAssertTrue(text("子智能体信息").waitForExistence(timeout: 10), "its info")
+        let info = app.descendants(matching: .any)["progress-info-sheet"].firstMatch
+        XCTAssertTrue(info.waitForExistence(timeout: 10), "its info")
         for word in ["用时", "Tokens", "步骤", "派出"] { XCTAssertTrue(text(word).exists, word) }
         herShot("Progress: a record's info")
         app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch.tap()
-        XCTAssertTrue(waitUntil { !text("子智能体信息").exists }, "the info closes")
+        XCTAssertTrue(waitUntil { !info.exists }, "the info closes")
 
         // Back in the feed it is among the earlier ones, and says how it ended.
         app.navigationBars.buttons.element(boundBy: 0).tap()
