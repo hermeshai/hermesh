@@ -1,7 +1,7 @@
 #!/bin/sh
 # Checks that a release's files are all there and right, before anyone can
 # install them: every program in the signed checksum list (signed by the
-# release key, each hash matching), her for Linux and her console with
+# release key, each hash matching), her for Linux and Windows and her console with
 # them, the version, install.sh and install.ps1
 # with the key, the Mac app with feeds naming this version's zip, and the
 # Windows app with signed feeds naming this version's package. The release
@@ -31,7 +31,7 @@ for os in darwin linux; do
     done
   done
 done
-for f in her-linux-arm64 her-linux-amd64 her-console.tar.gz; do
+for f in her-linux-arm64 her-linux-amd64 her-windows-arm64.exe her-windows-amd64.exe her-console.tar.gz; do
   need "$f"
   grep -q "  $f\$" "$DIR/checksums.txt" || fail "$f is not in checksums.txt"
 done
