@@ -627,7 +627,7 @@ Hermesh also updates itself when no session is running, unless
 			return shellenv.OnUserPath(args[1], args[0] == "add")
 		}}
 	root.AddCommand(deviceCommands(&dataDir)...)
-	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine))
+	root.AddCommand(eraseCommand(&dataDir), uninstallCommand(&dataDir), screenCommand(&dataDir, openMachine), herCommand(&dataDir))
 	root.AddCommand(run, pair, doctor, status, audit, svc, upd, helper, messageMCP, userPath, projects,
 		&cobra.Command{Use: "version", Short: "Print the version", Args: cobra.NoArgs, Run: func(*cobra.Command, []string) { fmt.Println(machine.Version) }})
 	return root
