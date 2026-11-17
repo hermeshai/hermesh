@@ -7,9 +7,9 @@ import { baseName } from "./text.ts";
 // the owner's messages, each message the bot sent with send_to_user (words,
 // files, a question, §3.12, or a secure card), what its sub-agents told the
 // owner, which reads the same (agent-messaging-design §17), a card for each
-// coding session it started and for the team's work it counted
-// (docs/her-team.md §4.4, §6.3, §14.3), and failures, in the order they were
-// sent.
+// coding session it started or worked on, where it last did, and for the
+// team's work it counted (docs/her-team.md §4.4, §6.3, §14.3), and failures,
+// in the order they were sent.
 // What the bot did and wrote for itself does not show. An approval is no part of it:
 // it pops up above the composer, as on a session's page.
 
@@ -17,9 +17,11 @@ export const SEND_TO_USER = "send_to_user";
 export const MANAGE_ROUTINE = "manage_routine";
 /** The mesh tools whose results the chat shows as cards (docs/her-mesh.md §4.2). */
 export const SESSION_START = "session_start";
+/** The mesh tools that ask more of a session the bot started or works on: its card follows them. */
+const SESSION_ASKS = new Set(["session_send", "session_answer"]);
 export const WORK_SUMMARY = "work_summary";
 
-/** A coding session the bot started, as its session_start call's result names it: enough to find the session, and to name it when the app holds it no more. */
+/** A coding session the bot started or works on, as its session_start call's result names it: enough to find the session, and to name it when the app holds it no more. */
 export interface StartedSession {
   session_id: string;
   title: string;
@@ -72,7 +74,7 @@ export type BotItem =
   | { kind: "question"; key: string; text: string; options: string[]; open: boolean; ts: number; source?: RoutineSource }
   /** A secure card her made for the owner to answer (docs/her-secure-cards.md), with the bot's words if it had any; `card` is the result's, validated where it is shown. */
   | { kind: "card"; key: string; card: unknown; text?: string; ts: number; source?: RoutineSource }
-  /** A coding session the bot started, where it started it. */
+  /** A coding session the bot started or works on, where it last had to do with it: one row a session, its key `session:<id>` wherever it stands. */
   | { kind: "session"; key: string; started: StartedSession; ts: number }
   /** The team's work the bot counted for the owner. */
   | { kind: "work"; key: string; work: TeamWork; ts: number }
@@ -114,7 +116,7 @@ function sendTimes(v: SessionView): Map<string, number> {
     for (const c of e.message.content) {
       if (c.type !== "tool_call") continue;
       const target = callTarget(c.name, c.arguments).name;
-      if (c.name === SEND_TO_USER || c.name === MANAGE_ROUTINE || target === SESSION_START || target === WORK_SUMMARY) at.set(c.id, done);
+      if (c.name === SEND_TO_USER || c.name === MANAGE_ROUTINE || target === SESSION_START || SESSION_ASKS.has(target) || target === WORK_SUMMARY) at.set(c.id, done);
     }
   }
   return at;
@@ -198,9 +200,14 @@ const record = (v: unknown): Record<string, unknown> | null => (v && typeof v ==
  */
 export function startedSession(item: WorkItem): StartedSession | null {
   if (item.kind !== "tool" || item.tool.state !== "done" || callTarget(item.tool.name, item.tool.args).name !== SESSION_START) return null;
-  let s = record(detailsOf(item.tool.result).session);
-  if (!s && !("session" in detailsOf(item.tool.result))) {
-    const text = (item.tool.result?.content ?? []).flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n");
+  return namedSession(item.tool);
+}
+
+/** The session a mesh call's result names: its details' session, or else its text's. */
+function namedSession(tool: ToolView): StartedSession | null {
+  let s = record(detailsOf(tool.result).session);
+  if (!s && !("session" in detailsOf(tool.result))) {
+    const text = (tool.result?.content ?? []).flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n");
     try {
       const doc = record(JSON.parse(text));
       if (doc?.ok === true) s = record(doc.session);
@@ -210,6 +217,50 @@ export function startedSession(item: WorkItem): StartedSession | null {
   }
   const id = str(s?.session_id);
   return s && id !== "" ? { session_id: id, title: str(s.title), agent: str(s.agent), machine: str(s.machine) } : null;
+}
+
+/** The session a session_send or session_answer call that went through asked more of (its `session_id`), itself or through call_tool. */
+function askedSession(item: WorkItem): string | null {
+  if (item.kind !== "tool" || item.tool.state !== "done") return null;
+  const target = callTarget(item.tool.name, item.tool.args);
+  return SESSION_ASKS.has(target.name) && typeof target.args.session_id === "string" ? target.args.session_id : null;
+}
+
+/**
+ * The session news is of (docs/her-mesh.md §6.2), from its first line: `<session_news … session="…" title="…"
+ * agent="…" project="machine/project" …>`, each value as Go quotes it. Null for any other text.
+ */
+function newsSession(text: string): StartedSession | null {
+  if (!text.startsWith("<session_news ")) return null;
+  const head = text.split("\n", 1)[0];
+  const attr = (name: string) => (new RegExp(` ${name}="((?:[^"\\\\]|\\\\.)*)"`).exec(head)?.[1] ?? "").replace(/\\(.)/g, "$1");
+  const id = attr("session");
+  return id !== "" ? { session_id: id, title: attr("title"), agent: attr("agent"), machine: attr("project").split("/")[0] } : null;
+}
+
+/**
+ * News of coding sessions, which comes from its session (hermeshd's herNews): each news's words, by its message,
+ * and for each message the bot then sent the owner, the sessions whose news the task under way had brought. The
+ * task's end and the owner's next message end it.
+ */
+function sessionNews(v: SessionView): { words: Map<string, string>; told: Map<string, string[]> } {
+  const words = new Map<string, string>();
+  const told = new Map<string, string[]>();
+  let news: string[] = [];
+  for (const e of v.entries) {
+    if (e.type === "task_end") news = [];
+    if (e.type !== "message") continue;
+    const m = e.message;
+    if (m.role === "user" && e.mail?.kind === "news") {
+      words.set(e.message_id, m.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("\n"));
+      if (!news.includes(e.mail.from.id)) news = [...news, e.mail.from.id];
+    } else if (m.role === "user" && !e.mail) {
+      news = [];
+    } else if (m.role === "assistant" && news.length > 0) {
+      for (const c of m.content) if (c.type === "tool_call" && c.name === SEND_TO_USER) told.set(c.id, news);
+    }
+  }
+  return { words, told };
 }
 
 /** The counts of a work_summary call that succeeded, itself or through call_tool. */
@@ -247,6 +298,21 @@ export function botChat(v: SessionView): BotItem[] {
   let since: number | undefined;
   // The run whose report this task passes on.
   let source: RoutineSource | undefined;
+  // Each session as it was last named, and one card a session, the last (docs/her-team.md §4.4): those a later one
+  // took the place of go. Its key stays the same, so the card moves rather than is made again.
+  const news = sessionNews(v);
+  const named = new Map<string, StartedSession>();
+  const cards = new Map<string, BotItem>();
+  const gone = new Set<BotItem>();
+  const card = (id: string, ts: number) => {
+    const started = named.get(id);
+    const was = cards.get(id);
+    if (!started || (was && ts < was.ts)) return;
+    if (was) gone.add(was);
+    const item: BotItem = { kind: "session", key: `session:${id}`, started, ts };
+    cards.set(id, item);
+    out.push(item);
+  };
   for (const s of conversation(v)) {
     switch (s.kind) {
       case "user":
@@ -263,13 +329,25 @@ export function botChat(v: SessionView): BotItem[] {
             const change = routineChange(item);
             if (change) out.push({ kind: "routine", key: `routine:${item.key}`, ts: times.get(item.key) ?? since ?? Date.now(), ...change });
             const started = startedSession(item);
-            if (started) out.push({ kind: "session", key: item.key, started, ts: times.get(item.key) ?? since ?? Date.now() });
+            if (started) {
+              named.set(started.session_id, started);
+              card(started.session_id, times.get(item.key) ?? since ?? Date.now());
+            }
+            const asked = askedSession(item);
+            if (asked !== null && item.kind === "tool") {
+              // More asked of a session: its card comes down here. The result is read only to name one not named yet.
+              const session = named.has(asked) ? null : namedSession(item.tool);
+              if (session?.session_id === asked) named.set(asked, session);
+              card(asked, times.get(item.key) ?? since ?? Date.now());
+            }
             const work = teamWork(item);
             if (work) out.push({ kind: "work", key: item.key, work, ts: times.get(item.key) ?? since ?? Date.now() });
             continue;
           }
           const ts = times.get(item.key) ?? since ?? Date.now();
           out.push({ ...sent, key: item.key, ts, source });
+          // What it tells the owner of news: the card of its session under it.
+          for (const id of news.told.get(item.key) ?? []) card(id, ts);
           since = ts;
         }
         break;
@@ -277,6 +355,11 @@ export function botChat(v: SessionView): BotItem[] {
         if (s.routine) {
           source = { routine_id: s.routine.id, run_id: s.routine.run, name: s.name, at: s.ts };
           since ??= s.ts;
+        }
+        // News's words are read only to name a session not named yet.
+        if (news.words.has(s.key) && !named.has(s.agent_id)) {
+          const session = newsSession(news.words.get(s.key)!);
+          if (session?.session_id === s.agent_id) named.set(s.agent_id, session);
         }
         break;
       case "agent_message":
@@ -314,7 +397,7 @@ export function botChat(v: SessionView): BotItem[] {
     out.push({ kind: "user", key: q.id, text, images, files, skills: [], ts: q.message.ts, queued: true, ...(reply && { reply }) });
   }
   // In the order things were sent; the same time keeps the history's order.
-  const sorted = out.map((item, i) => ({ item, i })).sort((a, b) => a.item.ts - b.item.ts || a.i - b.i).map((x) => x.item);
+  const sorted = out.filter((item) => !gone.has(item)).map((item, i) => ({ item, i })).sort((a, b) => a.item.ts - b.item.ts || a.i - b.i).map((x) => x.item);
   // The latest question can be answered until the owner says anything.
   for (let i = sorted.length - 1; i >= 0; i--) {
     const item = sorted[i];
