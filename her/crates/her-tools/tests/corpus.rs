@@ -1421,9 +1421,7 @@ mod flows {
     }
 
     /// A change by another program between read and write is caught at every size of file, in
-    /// the streaming and the indexed read alike. One that keeps the size and the time is not
-    /// on Windows, which gives no change time or file identity to tell by (docs/windows.md §15).
-    #[cfg(unix)]
+    /// the streaming and the indexed read alike.
     #[tokio::test]
     async fn outside_changes_between_read_and_write_are_caught() {
         let s = Session::new();

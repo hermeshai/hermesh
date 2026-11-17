@@ -177,12 +177,12 @@ fn state(path: &Path) -> Option<(Vec<u8>, FileStamp)> {
     if !meta.is_file() {
         return None;
     }
-    Some((std::fs::read(path).ok()?, FileStamp::of(&meta)))
+    Some((std::fs::read(path).ok()?, FileStamp::of_path(path).ok()?))
 }
 
 /// The stamp of a file, as the environment computes it.
 pub fn stamp(path: &Path) -> FileStamp {
-    FileStamp::of(&std::fs::metadata(path).unwrap())
+    FileStamp::of_path(path).unwrap()
 }
 
 /// The text of a result that holds only text.

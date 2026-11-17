@@ -274,7 +274,7 @@ mod tests {
 
     /// Records the file as read, as `read` would, without depending on how `read` shows it.
     fn mark_read(ctx: &ToolCtx, path: &Path) {
-        ctx.files.record(path, FileStamp::of(&std::fs::metadata(path).unwrap()));
+        ctx.files.record(path, FileStamp::of_path(path).unwrap());
     }
 
     /// Every path under `dir`, with the bytes of files: equal snapshots mean nothing changed.

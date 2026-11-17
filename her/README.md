@@ -6,7 +6,7 @@ An AI agent for your terminal, your editor and your programs. It reads and chang
 
 ## Install
 
-her is not released yet. Build it in this folder, on macOS or Linux:
+her is not released yet. Build it in this folder, on macOS, Linux or Windows:
 
 ```bash
 cargo build --release -p her-cli

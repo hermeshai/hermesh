@@ -1,6 +1,6 @@
 # Hermesh on Windows
 
-Status: accepted 2026-10-30, with the owner's decisions in §12; phases W0 to W3 are built, and §14 lists what is checked on a real PC next and what is left. It replaces [desktop-app.md](desktop-app.md) §9 for Windows. Windows goes into [technical-design.md](technical-design.md) §6.1 and [hermeshd.md](hermeshd.md) as it is built.
+Status: accepted 2026-10-30, with the owner's decisions in §12; phases W0 to W3 are built, and §14 lists what is checked on a real PC next and what is left. Her on a PC is §15 (2026-11-17). It replaces [desktop-app.md](desktop-app.md) §9 for Windows. Windows goes into [technical-design.md](technical-design.md) §6.1 and [hermeshd.md](hermeshd.md) as it is built.
 
 ## 1. Goal
 
@@ -407,6 +407,44 @@ Left for later, each its own change:
 
 - Administrator protection (Windows 11 24H2 and later, where Microsoft offers it) asks for Windows Hello at every elevation, which closes the UAC-bypass row of §7.4: recommended to owners here. The app says nothing of it yet: whether a PC has it, and where it is turned on, isn't settled enough to point at. It does warn, in Account & Devices, when User Account Control is off or set to Never notify.
 - The Mac's desktop specs that stay off Windows: their menu bar, Touch ID, moving to Applications, the process limit (health), and tests whose mechanics are Unix's (a proxy on a Unix socket, stopping a machine by its process group, a Codex that is a shell script). Nine specs run there (`windowsSpecs`, e2e/desktop_test.go).
+
+## 15. Her on a PC
+
+her (her/, the kernel of Her: [her-server.md](her-server.md)) runs on Windows as on a Mac: hermeshd starts it while Her is on for the PC, and the apps offer the PC as a place for Her. Its differences sit behind seams of its own, as hermeshd's do (§4). A PC whose Hermesh is from before says `windows` for why it can't run Her, and the apps then say to update it.
+
+| Seam | On Unix | On Windows | Where |
+|---|---|---|---|
+| The service's endpoint | A socket in a private folder, the peer's uid checked | A named pipe only this user's SID opens, its name random and written into the file at the socket's path, as `internal/localipc` does (§4.2): hermeshd dials both the same way | `her-server/src/endpoint.rs`, `internal/herhost/rpc.go` |
+| Process trees (a command, an MCP server) | A process group; SIGTERM, then SIGKILL | A job object the process joins before it runs; ended at once, since nothing asks a process without a window to stop. Closing the job ends nothing: an app a command opened stays, as on a Mac | `her-tools/src/proctree.rs` |
+| The shell of `bash` | `/bin/bash`, else `/bin/sh` | Git for Windows' `bash.exe` where it is installed (never `bash.exe` from PATH: System32's starts WSL), else PowerShell 7, else Windows PowerShell. PowerShell gets the command encoded (no quoting on the way), writes UTF-8, and answers the exit code of the program that failed. The prompt's `shell:` line tells the model which it has | `her-tools/src/local_env.rs` |
+| Stopping her | SIGTERM: sessions close, logs are saved | hermeshd asks on her's endpoint (`server/shutdown`), then its job ends what is left; a her of an earlier hermeshd can't be left running, since it was in that hermeshd's job (§4.3) | `internal/herhost/stale_windows.go` |
+| The managed browser's DevTools pipe | Descriptors 3 and 4 | Two named pipes whose browser ends are inherited handles, named in `--remote-debugging-io-pipes` | `her-browser/src/launch.rs` |
+| The Hermesh extension's host | A launcher script, and a manifest in each browser's folder | The registry: Chrome's, Chromium's and Edge's `NativeMessagingHosts\com.hermesh.browser` name the home's manifest, whose program is her itself; Chrome starts it with Chrome's own arguments and none of our environment, so the home and the service's endpoint are under `HKCU\Software\Hermesh\Her\NativeHost` | `her-cli/src/native_host_windows.rs` |
+| Computer use | agent-desktop on macOS's Accessibility API, with two permissions to grant | The same agent-desktop release's Windows program on UI Automation; Windows asks for no permission for apps at her's integrity level, so `desktop/status` reports none missing. Text is pasted with Ctrl-V | `her-core/src/desktop.rs`, `her-server/src/desktop_status.rs` |
+| Removed skills | `~/.Trash`, the freedesktop trash | The Recycle Bin, through the shell | `her-core/src/trash.rs` |
+| Whether a file changed since her read it | Size, times and the file's identity, from its metadata | The same, the change time and the identity asked of the file's handle: Windows' metadata has neither | `her-tools/src/files.rs` |
+| Paths | As the system gives them | Without the `\\?\` prefix canonical paths get (dunce): a shell does not take it, and a path as written does not equal it | every `canonicalize` |
+| Variables an MCP server starts with | A base set, by name | Also the ones Windows programs do not start without (`SystemRoot`, `TEMP`, `USERPROFILE` and the like), whatever their case | `her-mcp/src/env.rs` |
+| Saved keys | The Keychain on a Mac; a file only the user reads on Linux | The file, in the user's profile, as on Linux | `her-llm/src/credentials.rs` |
+
+**The app** carries her as the Mac's does (§6.1): `bin\her.exe` with `her-console\`, `agent-desktop.exe` and `pdfium.dll` beside it, which the app places beside hermeshd, where hermeshd runs her from. her writes the Hermesh extension itself, where the console's guide has the owner load it from (`%LOCALAPPDATA%\Hermesh\Chrome Extension`). Rust builds for Windows on Windows only, so `make app-windows` elsewhere makes an app without Her.
+
+**Checked on `windows-latest`** (2026-11-17), by jobs that do not fail the run while this is ported:
+
+| What | By |
+|---|---|
+| her builds with MSVC, and its own tests run: the endpoint (two clients at once, the client's process, a client gone), commands in Git for Windows' bash and in PowerShell (exit codes, UTF-8, a tree ended at its time), an MCP server's tree ended with it, session logs written, read while written and cut, the managed browser in a real Chrome over its inherited pipes, the extension host's registry entries | her-ci.yml's `windows` |
+| hermeshd starts her; Her is turned on by a signed command, talks, takes and sends files both ways, remembers across a cleared conversation, installs a skill and sends one to the Recycle Bin, signs in to ChatGPT through this computer, lists what she sent; her stops with hermeshd | ci.yml's `windows-e2e`, with her built there |
+| Setup.exe carries her: the packaged her starts and opens a PDF with the app's PDFium, agent-desktop answers with the pinned version, and installed, her is beside hermeshd with her console | ci.yml's `windows-app` (package-win.mjs, check-windows-setup.ps1) |
+
+**Left**, each its own change:
+
+- Tests still failing there: the last step of `TestHerMesh` (a session on Her's own machine while the relay is away), the file panel's notice of a change (`e2e_files`), and those of her's tests that write a PC's paths the Unix way (a path in JSON, `~` for a folder under the home, a script named with `/`, names the corpus gives its files).
+- What only a real PC shows: the owner's own Chrome through the extension, computer use on real apps, and PowerShell as the shell on a PC without Git for Windows.
+- The rules that tell a destructive command read a POSIX shell's words. In PowerShell (`Remove-Item -Recurse`) they recognize nothing, so the approval a deletion gets in bash is not asked there.
+- `install.ps1` and the release carry no her yet: a PC that is only a machine, set up without the app, says `no her`. The release's checksums are made on Linux, and her for Windows is built on Windows, so the release's jobs change order.
+- Saved keys behind the user's Windows credentials (DPAPI), as the Mac's are behind the Keychain.
+- her's own releases (`her install`, her/tools/release) have no Windows target; the app brings what they would.
 
 ## Appendix: sources
 

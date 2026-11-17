@@ -40,6 +40,55 @@ impl FileStamp {
         }
         stamp
     }
+
+    /// The stamp of an open file. Windows' metadata has neither a change time nor an identity:
+    /// there they are asked of the file's handle.
+    pub fn of_file(file: &std::fs::File) -> std::io::Result<Self> {
+        #[cfg_attr(not(windows), allow(unused_mut))]
+        let mut stamp = Self::of(&file.metadata()?);
+        #[cfg(windows)]
+        {
+            use std::os::windows::io::AsRawHandle;
+            use std::time::Duration;
+            use windows_sys::Win32::Foundation::HANDLE;
+            use windows_sys::Win32::Storage::FileSystem::BY_HANDLE_FILE_INFORMATION;
+            use windows_sys::Win32::Storage::FileSystem::FILE_BASIC_INFO;
+            use windows_sys::Win32::Storage::FileSystem::FileBasicInfo;
+            use windows_sys::Win32::Storage::FileSystem::GetFileInformationByHandle;
+            use windows_sys::Win32::Storage::FileSystem::GetFileInformationByHandleEx;
+
+            let handle = file.as_raw_handle() as HANDLE;
+            // SAFETY: zeroes are a valid value of these plain C structs, which the calls fill
+            // for a handle the caller keeps open.
+            unsafe {
+                let mut info: BY_HANDLE_FILE_INFORMATION = std::mem::zeroed();
+                if GetFileInformationByHandle(handle, &mut info) == 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                stamp.dev = u64::from(info.dwVolumeSerialNumber);
+                stamp.ino = u64::from(info.nFileIndexHigh) << 32 | u64::from(info.nFileIndexLow);
+                let mut basic: FILE_BASIC_INFO = std::mem::zeroed();
+                if GetFileInformationByHandleEx(handle, FileBasicInfo, (&raw mut basic).cast(), size_of::<FILE_BASIC_INFO>() as u32) == 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // 100 ns since 1601, which nobody sets with a file's other times.
+                let ticks = u64::try_from(basic.ChangeTime).unwrap_or_default();
+                let since_1601 = Duration::new(ticks / 10_000_000, (ticks % 10_000_000) as u32 * 100);
+                stamp.ctime = (SystemTime::UNIX_EPOCH + since_1601).checked_sub(Duration::from_secs(11_644_473_600));
+            }
+        }
+        Ok(stamp)
+    }
+
+    /// The stamp of what is at `path`, as [`of_file`](Self::of_file) gives it for a file.
+    pub fn of_path(path: &Path) -> std::io::Result<Self> {
+        // A folder does not open as a file on Windows: its metadata is all there is.
+        #[cfg(windows)]
+        if let Ok(file) = std::fs::File::open(path) {
+            return Self::of_file(&file);
+        }
+        Ok(Self::of(&std::fs::metadata(path)?))
+    }
 }
 
 /// Takes the exclusive lock of a file that others read meanwhile (a session's log, a service's
@@ -191,20 +240,18 @@ mod tests {
         assert_eq!(tracker.verify(path, replaced), Err(StaleReason::Changed));
     }
 
-    // Windows gives no change time or file identity to tell by (docs/windows.md §15).
-    #[cfg(unix)]
     #[test]
     fn a_kept_mtime_still_shows_as_a_change() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("f.txt");
         std::fs::write(&path, "one").unwrap();
-        let before = FileStamp::of(&std::fs::metadata(&path).unwrap());
+        let before = FileStamp::of_path(&path).unwrap();
         // Same size, and the mtime is put back as `cp -p` would.
         std::thread::sleep(Duration::from_millis(20));
         std::fs::write(&path, "two").unwrap();
         let file = std::fs::File::options().write(true).open(&path).unwrap();
         file.set_modified(before.mtime.unwrap()).unwrap();
-        let after = FileStamp::of(&std::fs::metadata(&path).unwrap());
+        let after = FileStamp::of_path(&path).unwrap();
         assert_eq!(after.size, before.size);
         assert_eq!(after.mtime, before.mtime);
         assert_ne!(after, before);
