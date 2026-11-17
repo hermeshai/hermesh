@@ -112,11 +112,9 @@ jobs:
         env:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
-          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
-            echo "::error::NIMBLEOFFICE_TOKEN is required to build her"
-            exit 1
+          if [ -n "$NIMBLEOFFICE_TOKEN" ]; then
+            git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           fi
-          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
       - name: build her
         working-directory: her
