@@ -42,7 +42,6 @@ struct DrawerView: View {
                 List {
                     herPlace.plainRow()
                     overviewPlace.plainRow()
-                    Divider().padding(.horizontal, 26).padding(.top, 8).plainRow()
                     sessionsHeading.plainRow()
                     MenuSessions()
                     Color.clear.frame(height: 90).plainRow() // room under the account's button
@@ -195,7 +194,7 @@ private struct MenuSessions: View {
             if open {
                 if section.sessions.isEmpty {
                     Text("None right now").font(.subheadline).foregroundStyle(.tertiary)
-                        .padding(.leading, 66).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, 26).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
                         .plainRow()
                         .accessibilityIdentifier("none-now")
                 }
