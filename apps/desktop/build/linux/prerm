@@ -1,0 +1,12 @@
+#!/bin/sh
+# Before the Hermesh package is removed (not upgraded): the signer stops. Its keys stay in
+# /var/lib/hermesh-signer, as a Mac's stay in its Secure Enclave, until the package is purged.
+set -e
+case "$1" in
+  remove|0)
+    if [ -d /run/systemd/system ]; then
+      systemctl disable --now hermesh-signer.socket >/dev/null 2>&1 || true
+      systemctl stop hermesh-signer.service || true
+    fi ;;
+esac
+exit 0

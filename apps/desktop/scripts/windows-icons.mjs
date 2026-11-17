@@ -143,3 +143,9 @@ export function windowsIcons(icoPath) {
   const icon = master(mark);
   fs.writeFileSync(icoPath, ico([16, 24, 32, 48, 64, 128, 256].map((size) => ({ size, png: scaled(icon, size) }))));
 }
+
+/** The same icon as a PNG of size pixels, for Linux's icon theme (package-linux.mjs). */
+export function appIconPNG(size) {
+  const mark = readPNG(fs.readFileSync(path.join(desktop, "build/AppIcon.icon/Assets/mark.png")));
+  return scaled(master(mark), size);
+}
