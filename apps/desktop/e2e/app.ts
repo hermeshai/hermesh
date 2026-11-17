@@ -85,7 +85,8 @@ export async function cli(...args: string[]): Promise<string> {
 
 /** Windows' words for this computer, where the app runs on a PC (src/shared/words.ts). */
 export const onWindows = process.platform === "win32";
-export const thisComputer = onWindows ? "这台电脑" : "这台 Mac";
+export const onMac = process.platform === "darwin";
+export const thisComputer = onMac ? "这台 Mac" : "这台电脑";
 
 /** With HERMESH_SCREENS=<dir>, saves a screenshot of the page there (for looking at against the design). */
 export async function snap(page: Page, name: string): Promise<void> {

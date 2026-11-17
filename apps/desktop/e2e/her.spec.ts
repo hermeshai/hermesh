@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, navTo } from "./app";
+import { fixture, launch, snap, navTo, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -84,7 +84,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(choices.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" })).toBeVisible({ timeout: 60_000 });
   await snap(page, "her-first-run");
   // This Mac: the test's signer signs SetHer, as Touch ID would. Her runs there with the mock's model, and greets.
-  await choices.getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click();
+  await choices.getByRole("listitem").filter({ hasText: thisComputer }).getByRole("button", { name: "开启 Her" }).click();
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
   // The page is the conversation with Her alone: its name at the top, no list of assistants, no environments in
   // its ⋯ menu while there is one.

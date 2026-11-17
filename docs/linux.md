@@ -1,6 +1,6 @@
 # Her on Linux
 
-Status: accepted 2026-11-17, with the owner's decisions in §10, after a cold-start test of Her on two fresh Linux computers (§2). §3 to §6 are built on the branch `her-linux`; §7 and §8 are designs. It takes up [desktop-app.md](desktop-app.md) §9 and the "Later" row of [windows.md](windows.md) §9 for Linux, and [her-server.md](her-server.md) §12 for computer use.
+Status: accepted 2026-11-17, with the owner's decisions in §10, after a cold-start test of Her on two fresh Linux computers (§2). §3 to §6 are built on the branch `her-linux`, and §7.1 is begun; the rest of §7 and §8 are designs. It takes up [desktop-app.md](desktop-app.md) §9 and the "Later" row of [windows.md](windows.md) §9 for Linux, and [her-server.md](her-server.md) §12 for computer use.
 
 ## 1. Goal
 
@@ -101,6 +101,10 @@ The Electron app already has one module per system (`src/main/platform/{mac,win}
 
 Her's panel, the console window and sign-ins are the page's and the daemon's: nothing of Her's changes.
 
+**Built so far.** `platform/linux.ts` with the table above but the notification area, which is Electron's as on Windows and untried on a real desktop; the words, with a `key_linux` variant beside every `key_win`; the shortcut labels and the app menu's button as on Windows. A development build runs against a daemon of its own under Xvfb: of `TestDesktop`'s specs, shell, motion, search, overview, sheets, settings, session, sessionlist, conversation and model-catalogs pass on Linux (`linuxSpecs`), and `TestDesktopHer` passes there with her for Linux: the first run on this computer, a chat, a secure card, the console, a second environment and one gone offline.
+
+**Left.** The specs that are the Mac's still: onboarding, language, menus, frame, health and team, whose words and menu bar the Linux app answers differently; the notification area on GNOME and Plasma; and §7.2's packages, without which the app is no installed one (no daemon of its own, no updates).
+
 ### 7.2 Packages and updates
 
 | | Installs as | Chromium's sandbox | A protected signer (§7.3) | Updates |
@@ -136,7 +140,7 @@ On a server, `her` in the terminal is a conversation of its own, not the assista
 | L1. Small ones (built, but for the last) | §3; §6's messages; the console's timeout in the person's language; the install's last lines name Her | S | Their tests |
 | L2. PDFs (built) | §4 | M | `TestLinuxHer` with `her-pdf` passes; a PDF read on Linux |
 | L3. Computer use (built) | §5 | M | The Docker e2e passes; the VM by hand is left |
-| L4. The app | §7.1, §7.2 | L | `TestDesktop` on Linux; the package test |
+| L4. The app (begun) | §7.1, §7.2 | L | `TestDesktop` on Linux; the package test |
 | L5. A trusted device | §7.3 | L | The signer's e2e; the VM checklist |
 | L6. The terminal | §8 | M | A pseudo-terminal e2e |
 

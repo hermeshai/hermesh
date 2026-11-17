@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cli, fixture, launch, onWindows, snap, thisComputer, sessionList } from "./app";
+import { cli, fixture, launch, onMac, onWindows, snap, thisComputer, sessionList } from "./app";
 
 // The session page: the conversation, the changes, the info panel, and the
 // control area where the owner answers the agent or stops it.
@@ -192,7 +192,7 @@ test("the session card floats over the conversation with what a glance needs, an
   // The project and the branch open a menu of what to do with them; this Mac's project can open its folder too.
   await card.getByRole("button", { name: "demo" }).click();
   const menu = page.getByRole("menu", { name: "项目" });
-  await expect(menu.getByRole("menuitem")).toHaveText(["拷贝项目路径", onWindows ? "在文件资源管理器中打开" : "在访达中打开", "在终端中打开"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(["拷贝项目路径", onWindows ? "在文件资源管理器中打开" : onMac ? "在访达中打开" : "在文件管理器中打开", "在终端中打开"]);
   // Right under the project, from its left edge, inside the window.
   await menu.evaluate((el) => Promise.all(el.getAnimations().map((x) => x.finished))); // it rises into place
   const anchor =(await card.getByRole("button", { name: "demo" }).boundingBox())!;
