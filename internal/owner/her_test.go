@@ -855,7 +855,7 @@ func TestHerSigninGivesUp(t *testing.T) {
 	_, o, _, _ := herOwner(t, &herSide{})
 	s := newSignins(t, o)
 	id, redirect := s.start("/auth/callback")
-	if code, got := s.poll(id); code != 200 || !strings.Contains(fmt.Sprint(got["error"]), "in time") {
+	if code, got := s.poll(id); code != 200 || got["error"] != "signin_timeout" || !strings.Contains(fmt.Sprint(got["error_description"]), "in time") {
 		t.Fatalf("gave up: %d %v", code, got)
 	}
 	if resp, err := http.Get(redirect); err == nil {

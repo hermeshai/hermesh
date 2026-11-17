@@ -20,6 +20,9 @@ export type SignIn<T> = {
   signal?: AbortSignal;
 };
 
+/** The catcher on the owner's device gave up: nobody came back from the browser in time. */
+export class SignInTimedOut extends Error {}
+
 /**
  * A sign-in that ends on the owner's device (docs/her-server.md §5.4): a catcher there takes
  * the browser's redirect; her makes the authorization request for it and keeps the PKCE
@@ -40,6 +43,7 @@ export async function signInRemotely<T>(s: SignIn<T>): Promise<T> {
   }
   if ("error" in got) {
     await s.cancel(started.login_id).catch(() => {});
+    if (got.error === "signin_timeout") throw new SignInTimedOut(got.error_description || got.error);
     throw new Error(got.error_description || got.error);
   }
   return s.complete(started.login_id, got);

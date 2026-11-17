@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { catchRedirect, caught, signCommandConnector, upload } from "./routes.ts";
-import { signInRemotely } from "./signin.ts";
+import { SignInTimedOut, signInRemotely } from "./signin.ts";
 
 // The console's own routes, against fetch as the test plays hermeshd (the machine's for
 // upload, the owner's device's for signin and command-connector).
@@ -96,6 +96,12 @@ test("a sign-in the provider refused, or that was stopped, is cancelled on her's
   fakeFetch((a) => (a.method === "POST" ? json({ id: "s1", redirect_uri: "http://127.0.0.1:53682/callback" }) : json({ error: "access_denied", error_description: "The person said no" })));
   let h = her();
   await assert.rejects(signInRemotely({ path: "/callback", start: h.start, open: () => {}, complete: h.complete, cancel: h.cancel }), /^Error: The person said no$/);
+  assert.deepEqual(h.calls.slice(1), ["cancel L1"]);
+
+  // Nobody came back in time: an error of its own, which the pages word in the person's language.
+  fakeFetch((a) => (a.method === "POST" ? json({ id: "s1", redirect_uri: "http://127.0.0.1:53682/callback" }) : json({ error: "signin_timeout", error_description: "no sign-in came back in time" })));
+  h = her();
+  await assert.rejects(signInRemotely({ path: "/callback", start: h.start, open: () => {}, complete: h.complete, cancel: h.cancel }), SignInTimedOut);
   assert.deepEqual(h.calls.slice(1), ["cancel L1"]);
 
   fakeFetch((a) => (a.method === "POST" ? json({ id: "s1", redirect_uri: "http://127.0.0.1:53682/callback" }) : pending()));

@@ -76,6 +76,6 @@
     "window": "会显示窗口",
     "noWindow": "不显示窗口",
     "missing": "Her 所在的 {{computer}}上没有 Chrome。在那台电脑上装好 Google Chrome，Her 会自己找到。",
-    "linuxInstall": "Ubuntu 或 Debian（x86-64）上，在那台电脑的终端里运行："
+    "linuxInstall": "Ubuntu 或 Debian 上，在那台电脑的终端里运行："
   }
 }

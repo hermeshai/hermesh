@@ -1,6 +1,7 @@
 import { RpcError } from "@hermesh/her-client";
 import type { ModelPrice } from "@hermesh/her-protocol";
 import { i18n } from "./i18n.ts";
+import { SignInTimedOut } from "./signin.ts";
 
 // Times, sizes and prices as the pages say them, and her's errors in words.
 
@@ -51,6 +52,7 @@ export function priceText(cost: ModelPrice): string {
  */
 export function errorText(e: unknown): string {
   if (e instanceof RpcError && e.kind === "disconnected") return t("error.disconnected");
+  if (e instanceof SignInTimedOut) return t("error.signinTimedOut");
   const message = e instanceof Error ? e.message : String(e);
   const refused = /^[\w/-]+: (HTTP \d{3})(?: ([\s\S]+))?$/.exec(message);
   return refused ? (refused[2] ?? refused[1]) : message;

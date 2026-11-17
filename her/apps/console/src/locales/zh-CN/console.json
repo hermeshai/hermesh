@@ -19,7 +19,8 @@
   "close": "关闭",
   "error": {
     "disconnected": "和 Her 的连接断开了",
-    "notConnected": "还没有连上 Her"
+    "notConnected": "还没有连上 Her",
+    "signinTimedOut": "10 分钟内没有完成登录，请重新登录"
   },
   "time": {
     "justNow": "刚刚",
