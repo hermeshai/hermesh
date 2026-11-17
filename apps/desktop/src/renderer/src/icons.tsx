@@ -56,6 +56,8 @@ const paths: Record<string, string> = {
   user: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><circle cx=\"8\" cy=\"6.8\" r=\"2\"/><path d=\"M4.4 12.2c.8-1.4 2-2.1 3.6-2.1s2.8.7 3.6 2.1\"/>",
   wifi: "<path d=\"M1.8 6.2a9 9 0 0 1 12.4 0M4 8.6a5.8 5.8 0 0 1 8 0M6.2 11a2.6 2.6 0 0 1 3.6 0\"/><circle cx=\"8\" cy=\"13\" r=\".5\"/>",
   filter: "<path d=\"M2.5 4.2h11M4.6 8h6.8M6.7 11.8h2.6\"/>",
+  // An arrow up beside an arrow down: how the list is grouped and sorted.
+  sort: "<path d=\"M5 12.8V3.2M2.4 5.8L5 3.2l2.6 2.6M11 3.2v9.6M8.4 10.2l2.6 2.6 2.6-2.6\"/>",
   chip: "<rect x=\"3.8\" y=\"3.8\" width=\"8.4\" height=\"8.4\" rx=\"1.8\"/><rect x=\"6.4\" y=\"6.4\" width=\"3.2\" height=\"3.2\" rx=\".6\"/><path d=\"M6.2 1.8v2M9.8 1.8v2M6.2 12.2v2M9.8 12.2v2M1.8 6.2h2M1.8 9.8h2M12.2 6.2h2M12.2 9.8h2\"/>",
   gauge: "<path d=\"M2.4 11.6a5.9 5.9 0 1 1 11.2 0\"/><path d=\"M8 10.4l2.8-3.8\"/><circle cx=\"8\" cy=\"10.4\" r=\"1.1\"/>",
   link: "<path d=\"M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2.2-2.2a2.6 2.6 0 0 0-3.7-3.7l-.8.8M9.2 6.8a2.6 2.6 0 0 0-3.7 0L3.3 9a2.6 2.6 0 0 0 3.7 3.7l.8-.8\"/>",

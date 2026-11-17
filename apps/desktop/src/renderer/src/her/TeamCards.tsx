@@ -12,7 +12,7 @@ import { useNow, useStore } from "../store";
 // conversation's width.
 
 /**
- * A coding session Her started, where she started it: the agent, the title, where it runs, and how it stands now,
+ * A coding session Her started or works on, where she last did: the agent, the title, where it runs, and how it stands now,
  * kept current from the sessions the window holds; it opens the session. One the window holds no more shows as the
  * call named it, without a state. It answers no question: news of her own sessions goes to Her first.
  */

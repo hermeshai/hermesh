@@ -662,7 +662,7 @@ export function ListViewMenu() {
   return (
     <>
       <button ref={btn} className={`tb ${open ? "on" : ""}`} title={t("listView.title")} aria-label={t("listView.title")} aria-haspopup="menu" aria-expanded={!!open} onClick={toggle}>
-        <Icon name="filter" />
+        <Icon name="sort" />
       </button>
       {open && (
         <div className="vmenu" role="menu" aria-label={t("listView.title")} tabIndex={-1} ref={menu} style={{ right: at.x, top: at.y }} onKeyDown={onMenuKey}>
