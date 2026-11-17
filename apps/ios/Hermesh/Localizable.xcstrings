@@ -15070,6 +15070,16 @@
           }
         }
       }
+    },
+    "Working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在工作"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

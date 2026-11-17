@@ -38,7 +38,8 @@
     "allow": "Let Her use your computers"
   },
   "line": {
-    "typing": "Typing…"
+    "typing": "Typing…",
+    "agentWorking": "Working"
   },
   "head": {
     "settings": "Assistant Settings",

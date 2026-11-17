@@ -177,7 +177,7 @@ test("a failed, refused or cancelled send shows nothing; an approval is no part 
   assert.ok(failure.kind === "failure" && failure.last && failure.error.kind === "rate_limited");
 });
 
-test("the busy bubble says the call the bot is on; a sub-agent at work after it answered is no part of it", () => {
+test("the busy bubble says the call the bot is on, then, once it answered, a sub-agent's while one is at work", () => {
   const working = play([
     { type: "task_started", task_id: "t1" },
     user("u1", "看看磁盘还剩多少", 10_000),
@@ -205,7 +205,20 @@ test("the busy bubble says the call the bot is on; a sub-agent at work after it 
     { seq: 22, ts: 0, ...done("c2") } as Event,
     { seq: 23, ts: 0, type: "task_completed", task_id: "t1", usage: { per_model: {} }, reason: "done" } as Event,
   ]);
-  assert.equal(busyBubble(after), null, "she answered: the sub-agent's work is Progress's");
+  assert.deepEqual(busyBubble(after), { now: null, agent: "调研更新方案" }, "she answered: the sub-agent at work, by its name");
+  const stepping = applyEvents(after, [
+    { seq: 24, ts: 0, type: "agent_event", agent_id: "g1", event: { seq: 1, ts: 0, type: "task_started", task_id: "g-t1" } } as Event,
+    { seq: 25, ts: 0, type: "agent_event", agent_id: "g1", event: { seq: 2, ts: 0, type: "tool_started", call_id: "g-c1", name: "read", args: { path: "notes.md" }, category: "read", title: "notes.md" } } as Event,
+  ]);
+  const busy2 = busyBubble(stepping);
+  assert.equal(busy2?.agent, "调研更新方案");
+  assert.equal(busy2?.now?.call_id, "g-c1", "and the call it is on");
+  const asking = applyEvents(stepping, [
+    { seq: 26, ts: 0, type: "agent_event", agent_id: "g1", event: { seq: 3, ts: 0, type: "approval_requested", call_id: "g-c2", tool: "bash", args: { command: "rm -rf build" } } } as Event,
+  ]);
+  assert.equal(busyBubble(asking), null, "waiting for the owner is not being at work");
+  const over = applyEvents(stepping, [{ seq: 26, ts: 1, type: "agent_status", agent_id: "g1", status: "completed", summary: "查完了" } as Event]);
+  assert.equal(busyBubble(over), null, "nothing at work, no bubble");
 });
 
 // ---- message types (bot-design §3.12) ----

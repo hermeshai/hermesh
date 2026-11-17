@@ -216,7 +216,7 @@ private struct HerRows: View, Equatable {
             ForEach(Array(rows.enumerated()), id: \.element.key) { i, row in
                 HerRow(chat: chat, row: row, previous: i > 0 ? rows[i - 1] : nil, machine: machine, preview: $preview, page: $page, selecting: $selecting, marked: marked == row.key)
             }
-            if let busy { HerTyping(now: busy.now).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
+            if let busy { HerTyping(now: busy.now, agent: busy.agent).padding(.top, rows.isEmpty ? 0 : herGap(joined: rows.last?.side == .her)) }
         }
         // As wide as the page with nothing in it too: the scroll view is as wide as this, and what shows over it
         // while the conversation is empty (her greeting) was laid out 40 points wide.
@@ -842,13 +842,16 @@ struct HerPill: ButtonStyle {
 
 /// The last thing while Her answers (the Mac's BusyBubble): three dots, in her bubble. While she is on a call, the
 /// dots quieten and what the call does follows them, shimmering, in the words Progress says a step in. Her sub-agents
-/// at work are Progress's to show: the bubble is gone once she has answered (docs/her-team.md §15).
+/// at work once she has answered keep it, named, with what they do (docs/her-team.md §15.6).
 struct HerTyping: View {
     var now: HerToolStep? = nil
+    /// A sub-agent at work once Her has answered: it, then what it does (docs/her-team.md §15.6).
+    var agent: String? = nil
     @Environment(\.accessibilityReduceMotion) private var still
 
     var body: some View {
-        let step = now.map { "\(herStepVerb($0)) \($0.object)" }
+        let own = now.map { "\(herStepVerb($0)) \($0.object)" }
+        let step = agent.map { "\($0) · \(own ?? String(localized: "Working"))" } ?? own
         HStack(spacing: 7) {
             dots
             if let step {
@@ -865,7 +868,7 @@ struct HerTyping: View {
 
     /// The dots, smaller and fainter once words follow them.
     private var dots: some View {
-        let quiet = now != nil
+        let quiet = now != nil || agent != nil
         return TimelineView(.animation(paused: still)) { t in
             let phase = t.date.timeIntervalSinceReferenceDate * 2.4
             HStack(spacing: quiet ? 3 : 4) {
