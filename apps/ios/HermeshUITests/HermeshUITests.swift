@@ -71,7 +71,8 @@ final class HermeshUITests: XCTestCase {
 
     // MARK: Steps
 
-    func join() throws {
+    /// `herRuns`: Her runs on the owner's Mac already, so her conversation is the first page.
+    func join(herRuns: Bool = false) throws {
         let address = try control("address")["address"] as! String
         tap("own-server")
         let field = app.textFields["connection-address"]
@@ -99,6 +100,7 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(finish.waitForExistence(timeout: 30), "joined")
         XCTAssertTrue(text("打开通知").exists)
         allowNotifications(after: finish)
+        if herRuns { return }
         // Her's page is the first one; she runs nowhere yet, so it asks where she should, and Not Now leads to
         // Work, which is then the first page.
         tap("her-not-now", timeout: 30)
