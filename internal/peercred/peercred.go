@@ -7,9 +7,12 @@ package peercred
 import (
 	"net"
 	"os"
+	"runtime"
 )
 
-// SameUserListener drops connections from other users.
+// SameUserListener drops connections from other users. On Linux it also
+// takes root's: a Linux trusted device's protected signer runs as root
+// (docs/linux.md §7.3), and root reads the user's files anyway.
 type SameUserListener struct {
 	*net.UnixListener
 }
@@ -21,12 +24,17 @@ func (l *SameUserListener) Accept() (net.Conn, error) {
 			return nil, err
 		}
 		uid, err := PeerUID(c)
-		if err != nil || uid != os.Getuid() {
+		if err != nil || !admitted(uid) {
 			c.Close()
 			continue
 		}
 		return c, nil
 	}
+}
+
+// admitted: this user, and on Linux root.
+func admitted(uid int) bool {
+	return uid == os.Getuid() || runtime.GOOS == "linux" && uid == 0
 }
 
 // Process describes the local process at the other end of a connection: a

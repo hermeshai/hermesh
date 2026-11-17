@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- The Hermesh signer asks the user before each signature with their owner key
+     (docs/linux.md §7.3): their own authentication, every time, at the computer. -->
+<policyconfig>
+  <vendor>Hermesh</vendor>
+  <vendor_url>https://hermesh.io</vendor_url>
+  <action id="io.hermesh.signer.sign">
+    <description>Sign as your Hermesh trusted device</description>
+    <description xml:lang="zh_CN">以你的 Hermesh 可信设备签名</description>
+    <message>Hermesh asks to sign as your trusted device</message>
+    <message xml:lang="zh_CN">Hermesh 请求以你的可信设备签名</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

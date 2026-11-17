@@ -1,0 +1,9 @@
+[Unit]
+Description=Hermesh signer: where each user's Hermesh app asks it to watch
+
+[Socket]
+ListenStream=/run/hermesh-signer.sock
+SocketMode=0666
+
+[Install]
+WantedBy=sockets.target
