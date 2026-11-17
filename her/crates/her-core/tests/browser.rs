@@ -536,7 +536,7 @@ async fn a_batch_runs_its_steps_and_stops_where_approval_is_needed() {
 }
 
 #[tokio::test]
-async fn scripts_run_only_when_enabled_and_ask_once_per_site() {
+async fn scripts_run_only_when_enabled_and_ask_once_per_site_unless_bypass() {
     let Some(mut h) = harness_with(PermissionMode::BypassPermissions, true, &[], "script_enabled = false").await else {
         return;
     };
@@ -550,7 +550,7 @@ async fn scripts_run_only_when_enabled_and_ask_once_per_site() {
     assert!(last_results(&h.api).pop().unwrap().contains("Unknown tool"), "turned off: not even listed");
     h.kernel.shutdown().await;
 
-    // On by default (browser-design §10.1), and asked about once per site, even in bypass.
+    // On by default (browser-design §10.1); bypass runs scripts without asking.
     let Some(mut h) = harness(PermissionMode::BypassPermissions, true, &[]).await else {
         return;
     };
@@ -565,15 +565,31 @@ async fn scripts_run_only_when_enabled_and_ask_once_per_site() {
     ));
     h.api.push(Script::text("ran"));
     h.kernel.submit(Op::prompt("eval")).await.unwrap();
-    let events = until(&mut h.kernel, |m| matches!(m, EventMsg::ApprovalRequested { .. })).await;
-    let (call_id, summary, grants) = approval(&events);
-    assert_eq!(summary, format!("run a script on {}", h.origin), "asked even in bypass");
-    assert_eq!(grants, vec![SiteGrant { authority: GrantAuthority::Script, origin: h.origin.clone() }]);
-    approve(&mut h.kernel, call_id, ApprovalDecision::ApproveForSession { grant: Some(0), persist: true }).await;
-    until(&mut h.kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    let events = until(&mut h.kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    assert!(!events.iter().any(|e| matches!(e.msg, EventMsg::ApprovalRequested { .. })), "bypass does not ask");
     let text = last_results(&h.api).pop().unwrap();
     assert!(text.contains("\"n\": 42") && text.contains("\"title\": \"Other\""), "{text}");
     assert!(text.contains("Changed"), "the change shows: {text}");
+    h.kernel.shutdown().await;
+
+    // Other modes ask once per site, even where the site is allowed to act.
+    let Some(mut h) = harness(PermissionMode::Manual, true, &[("ORIGIN", "act")]).await else {
+        return;
+    };
+    let other = format!("{}/other", h.origin);
+    h.api.push(Script::tool_call("c1", "browser_navigate", json!({ "url": other })));
+    h.api.push(Script::text("opened"));
+    run(&mut h.kernel, "open").await;
+    h.api.push(Script::tool_call("c2", "browser_eval", json!({ "expression": "6 * 7" })));
+    h.api.push(Script::text("ran"));
+    h.kernel.submit(Op::prompt("eval")).await.unwrap();
+    let events = until(&mut h.kernel, |m| matches!(m, EventMsg::ApprovalRequested { .. })).await;
+    let (call_id, summary, grants) = approval(&events);
+    assert_eq!(summary, format!("run a script on {}", h.origin));
+    assert_eq!(grants, vec![SiteGrant { authority: GrantAuthority::Script, origin: h.origin.clone() }]);
+    approve(&mut h.kernel, call_id, ApprovalDecision::ApproveForSession { grant: Some(0), persist: true }).await;
+    until(&mut h.kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+    assert!(last_results(&h.api).pop().unwrap().contains("42"));
     // The site's next script runs without a question; nothing went into the configuration.
     h.api.push(Script::tool_call("c3", "browser_eval", json!({ "expression": "6 * 7" })));
     h.api.push(Script::text("ran again"));
