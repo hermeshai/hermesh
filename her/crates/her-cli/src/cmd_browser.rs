@@ -178,7 +178,7 @@ async fn serve_once(
     let stream = her_server::endpoint::connect(socket)
         .await
         .map_err(|_| anyhow::anyhow!("Hermesh is not running"))?;
-    let (read, mut write) = tokio::io::split(stream);
+    let (read, mut write) = her_server::endpoint::split_client(stream);
     let mut lines = tokio::io::BufReader::new(read).lines();
     let line = |value: Value| format!("{value}\n").into_bytes();
     write
