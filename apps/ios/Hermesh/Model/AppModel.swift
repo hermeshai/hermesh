@@ -22,8 +22,9 @@ enum Root: Hashable {
     }
 }
 
-/// Pages pushed onto the main stack.
+/// Pages pushed onto the main or account navigation stack.
 enum Route: Hashable {
+    case machines, grants
     case session(String)
     case grant(String) // grant id
     case machine(String) // machine id
@@ -222,6 +223,8 @@ final class AppModel {
         guard path.isEmpty, case .session(let id) = root else { return nil }
         return id
     }
+    var accountPresented = false { didSet { if !accountPresented { accountPath = [] } } }
+    var accountPath: [Route] = []
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
@@ -471,6 +474,7 @@ final class AppModel {
 
     /// Forgets the world: another owner, or none.
     private func forgetWorld() {
+        accountPresented = false
         saveTask?.cancel()
         heldSessions = []
         machines = []
@@ -780,12 +784,14 @@ final class AppModel {
     // MARK: Navigation
 
     func open(_ r: Root) {
+        accountPresented = false
         root = r
         path = []
         drawerOpen = false
     }
 
     func openSession(_ id: String) {
+        accountPresented = false
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }
         path.append(.session(id))

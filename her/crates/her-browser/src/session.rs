@@ -599,6 +599,10 @@ impl BrowserSession {
         }
         self.wait_for(tab, Duration::from_millis(1500), |state| state.requests_done_since(since))
             .await;
+        // A request can start a navigation after the first loading check. Its document
+        // must finish even when it outlasts the shorter request-settling window.
+        self.wait_for(tab, self.options.navigation_timeout, |state| !state.loading)
+            .await;
     }
 
     /// Waits until `done` holds for the tab's state, or the time is up, or the tab closed.
