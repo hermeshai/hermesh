@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, navTo, thisComputer } from "./app";
+import { fixture, launch, snap, navTo, sys, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -276,7 +276,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(preview.locator(".dcp-page")).toContainText("/ 2", { timeout: 30_000 });
   await expect(preview.locator(".pdfViewer .page")).toHaveCount(2);
   await expect(preview.locator(".textLayer").first()).toContainText("Hermesh preview page one", { timeout: 30_000 });
-  await preview.getByRole("button", { name: "在文档中搜索（⌘F）" }).click();
+  await preview.getByRole("button", { name: sys("在文档中搜索（⌘F）", "在文档中搜索（Ctrl+F）") }).click();
   await preview.getByPlaceholder("搜索文档").fill("hello");
   await preview.getByPlaceholder("搜索文档").press("Enter");
   await expect(preview.locator(".dcp-count")).toHaveText("1/1");
