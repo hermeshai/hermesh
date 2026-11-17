@@ -17,11 +17,7 @@ use crate::server::Server;
 
 /// Serves one client on stdin and stdout. When stdin closes, every session is closed.
 pub async fn serve_stdio(server: Server, protocol: Arc<dyn Protocol>) {
-    let stopped = server.shutdown_token();
-    tokio::select! {
-        _ = run_connection(server.clone(), tokio::io::stdin(), tokio::io::stdout(), protocol) => {}
-        _ = stopped.cancelled() => {}
-    }
+    run_connection(server.clone(), tokio::io::stdin(), tokio::io::stdout(), protocol).await;
     server.close_all().await;
 }
 
@@ -98,6 +94,7 @@ pub async fn serve_unix(
 
     let protocol = Arc::new(protocol);
     let active = Arc::new(AtomicUsize::new(0));
+    let mut connections = tokio::task::JoinSet::new();
     let stopped = server.shutdown_token();
     let mut idle_since = tokio::time::Instant::now();
     let mut tick = tokio::time::interval(Duration::from_millis(250));
@@ -117,12 +114,13 @@ pub async fn serve_unix(
                 let protocol = (protocol)();
                 let active = active.clone();
                 active.fetch_add(1, Ordering::Relaxed);
-                tokio::spawn(async move {
+                connections.spawn(async move {
                     let (read, write) = endpoint::split(stream);
                     crate::conn::run_peer_connection(server, read, write, protocol, peer_pid).await;
                     active.fetch_sub(1, Ordering::Relaxed);
                 });
             }
+            _ = connections.join_next(), if !connections.is_empty() => {}
             _ = stopped.cancelled() => break,
             _ = tick.tick(), if service.idle_exit.is_some() => {
                 // An extension's host only waits for the service: it keeps nothing running.
@@ -138,7 +136,9 @@ pub async fn serve_unix(
     }
     drop(listener);
     let _ = std::fs::remove_file(&path);
+    server.request_shutdown();
     server.close_all().await;
+    while connections.join_next().await.is_some() {}
     drop(lock);
     let _ = std::fs::remove_file(&lock_path);
     Ok(())

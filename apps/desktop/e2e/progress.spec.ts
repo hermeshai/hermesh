@@ -12,6 +12,8 @@ import { fixture, launch, navTo, snap } from "./app";
 test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's record", async () => {
   test.setTimeout(300_000);
   const { app, page } = await launch(fixture.socket, {});
+  // The info card docks beside the record only when the window has room for it.
+  await page.setViewportSize({ width: 1440, height: 800 });
   const log = page.getByRole("log", { name: "对话" });
   const composer = page.getByRole("textbox", { name: "消息" });
   const send = async (text: string) => {
