@@ -124,17 +124,17 @@ import HermeshProto
         agentSeq = 0
         emit(["type": "message_completed", "message_id": .string(id), "message": ["role": "user", "ts": now, "content": [["type": "text", "text": .string(text)]]]])
         emit(["type": "task_started", "task_id": .string("task-\(round)")])
-        let args: JSON = ["name": .string(sessionStart), "arguments": ["machine": "demo-mac", "project": "hello-world", "agent": "codex", "prompt": "Update the sample welcome page", "title": "Her sample task"]]
+        let args: JSON = ["name": .string(sessionStart), "arguments": ["machine": "demo-linux", "project": "hello-world", "agent": "codex", "prompt": "Update the sample welcome page", "title": "Her sample task"]]
         assistant(codingCall, name: "call_tool", args: args)
         emit(["type": "tool_started", "call_id": .string(codingCall), "name": "call_tool", "category": "execute", "title": "Start a sample coding task"])
         pending = codingCall
         emit(["type": "approval_requested", "call_id": .string(codingCall), "name": "call_tool", "args": args,
-              "summary": .string(String(localized: "Start a sample coding task?\nCodex · Mac mini · hello-world\nSimulated only; no computer or agent will be contacted.", bundle: .module))])
+              "summary": .string(String(localized: "Start a sample coding task?\nCodex · Linux Studio · hello-world\nSimulated only; no computer or agent will be contacted.", bundle: .module))])
     }
 
     private func begin() {
         emit(["type": "tool_running", "call_id": .string(codingCall)])
-        result(codingCall, name: "call_tool", details: ["session": ["session_id": .string(Self.codingID), "title": "Her sample task", "agent": "codex", "machine": "Mac mini"]])
+        result(codingCall, name: "call_tool", details: ["session": ["session_id": .string(Self.codingID), "title": "Her sample task", "agent": "codex", "machine": "Linux Studio"]])
         assistant("spawn-\(round)", name: "spawn_agent", args: ["name": "reviewer", "description": "Check sample change", "task": "Inspect the sample diff and test results."])
         result("spawn-\(round)", name: "spawn_agent", details: ["agent_id": .string(agentID), "name": "reviewer"])
         emit(["type": "agent_started", "agent_id": .string(agentID), "call_id": .string("spawn-\(round)"), "name": "reviewer", "description": "Check sample change"])

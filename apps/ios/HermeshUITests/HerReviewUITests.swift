@@ -41,6 +41,7 @@ final class HerReviewUITests: XCTestCase {
         tap("her-session-Her sample task")
         XCTAssertTrue(words("Welcome from Her!").waitForExistence(timeout: 15))
         tap("session-info")
+        XCTAssertTrue(words("Linux Studio").waitForExistence(timeout: 10), "Her's Mac delegated to the sample Linux computer")
         let file = app.staticTexts["src/welcome.ts"]
         for _ in 0..<4 where !file.isHittable { app.swipeUp() }
         file.tap()
