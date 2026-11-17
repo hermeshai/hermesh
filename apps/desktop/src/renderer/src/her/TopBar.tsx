@@ -13,8 +13,9 @@ import { useStore } from "../store";
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
  * its name on a capsule over the avatar's lower edge, and the conversation scrolling under them. A click on the avatar
  * opens her page beside the conversation (docs/her-panel-demo.html), where her work, her abilities and her settings
- * are; the avatar is marked while something of hers waits for the owner. The capsule is the team's: it opens the team
- * panel. On the right, ⋯: the environments, the environment's console, and another environment.
+ * are; the avatar is marked while a scheduled task's last run failed. The capsule is the team's: it opens the team
+ * panel. On the right Progress, looked at often, marked while her work waits or runs; then ⋯: the environments, the
+ * environment's console, and another environment.
  */
 export function TopBar() {
   const { t } = useTranslation("her");
@@ -29,8 +30,8 @@ export function TopBar() {
     setTeamOpen(false);
     capsule.current?.focus();
   }, []);
-  // A sub-agent of hers waits for the owner, or a scheduled task's last run failed.
-  const waits = (st.herAgents?.waits ?? 0) > 0 || (bot ? routineDot(bot.routines) === "failed" : false);
+  // A scheduled task's last run failed, which her page's card says; what waits in Progress, its button does.
+  const waits = bot ? routineDot(bot.routines) === "failed" : false;
   const label = waits ? `${t("head.settings")} · ${t("head.waiting")}` : t("head.settings");
   return (
     <div className="ctool drag her-head">
@@ -51,8 +52,26 @@ export function TopBar() {
       </div>
       {teamOpen && <TeamPanel onClose={closeTeam} />}
       <span className="bhead-gap" />
+      {bot && <ProgressButton />}
       <MoreMenu />
     </div>
+  );
+}
+
+/** Progress (docs/her-team.md §15): marked orange while a sub-agent of hers waits for the owner, else blue while one is at work. */
+function ProgressButton() {
+  const { t } = useTranslation("her");
+  const st = useStore();
+  const her = useHer();
+  const { waits, running } = st.herAgents ?? { waits: 0, running: 0 };
+  const label = waits > 0 ? `${t("progress.title")} · ${t("progress.waiting", { count: waits })}`
+    : running > 0 ? `${t("progress.title")} · ${t("progress.atWork", { count: running })}`
+    : t("progress.title");
+  return (
+    <button className="tb rtn-btn" title={label} aria-label={label} data-testid="her-progress" onClick={() => st.set({ selection: { kind: "progress", machine: her.machine.machineId } })}>
+      <Icon name="pulse" />
+      {(waits > 0 || running > 0) && <i className={`rtn-dot ${waits > 0 ? "" : "run"}`} />}
+    </button>
   );
 }
 

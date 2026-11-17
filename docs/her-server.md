@@ -832,14 +832,14 @@ What changes, because Her may run on another computer than the app:
   them, the built-in browser (Her browses on its Her Server), and the
   document panels beside the conversation.
 
-The top bar is Her alone (her avatar and name tag), with ⋯ on the Mac, which
-holds the environments and "Manage this environment" (the console). Her avatar
+The top bar is Her (her avatar and name tag) and Progress (docs/her-team.md
+§15.1), looked at often, with ⋯ on the Mac, which holds the environments and
+"Manage this environment" (the console). Her avatar
 opens **her page** (docs/her-panel-demo.html): on the Mac beside the
 conversation, on the iPhone a page of its own, with Remote Desktop as a glass
 button at its top right. Under her name, three tabs, one kind of thing in each:
 
-- **Work**: Progress (docs/her-team.md §15), the files she sent and her
-  scheduled tasks.
+- **Work**: the files she sent and her scheduled tasks.
 - **Abilities**: her memory, her skills, the connectors as themselves, web
   search and the browsers.
 - **Settings**: her model (with the environment's model sign-ins and

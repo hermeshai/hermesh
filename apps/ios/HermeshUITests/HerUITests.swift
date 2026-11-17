@@ -563,15 +563,17 @@ extension HermeshUITests {
     }
 
     func herSettings() throws {
-        // Her's mark and name tag over the conversation, which scrolls under them; no button beside them: her work is
-        // on her page, which her mark opens (the tag, the team panel: herTeam).
+        // Her's mark and name tag over the conversation, which scrolls under them; beside them Progress alone, looked at
+        // often: the rest of her work is on her page, which her mark opens (the tag, the team panel: herTeam).
         let name = app.buttons["her-avatar"]
         XCTAssertTrue(name.exists && name.label.contains("Her") && app.buttons["her-tag"].exists, name.label)
-        for id in ["her-settings", "her-files", "her-progress", "her-routines"] { XCTAssertFalse(app.buttons[id].exists, "no \(id) beside them") }
+        XCTAssertTrue(app.buttons["her-progress"].exists, "Progress beside them")
+        for id in ["her-settings", "her-files", "her-routines"] { XCTAssertFalse(app.buttons[id].exists, "no \(id) beside them") }
         name.tap()
         // Her page: three tabs, Work first, each card a way in.
         XCTAssertTrue(app.buttons["her-tab-work"].waitForExistence(timeout: 10), "her page")
-        for id in ["her-progress", "her-files", "her-routines"] { XCTAssertTrue(app.buttons[id].exists, "\(id) under Work") }
+        for id in ["her-files", "her-routines"] { XCTAssertTrue(app.buttons[id].exists, "\(id) under Work") }
+        XCTAssertFalse(app.buttons["her-progress"].exists, "no Progress card: it is over the conversation")
         herShot("Her: her page, Work")
         tap("her-tab-abilities")
         let memory = app.buttons["her-memory"]
@@ -984,39 +986,35 @@ extension HermeshUITests {
         XCTAssertTrue(text("开始之前，我需要接上一个模型").waitForExistence(timeout: 180), "a new Her, asking for a model")
     }
 
-    /// Progress: the first card of Her's page, empty until she sends work out, marked while her work waits; a sub-agent she starts is a post of its own,
+    /// Progress: a button over Her's conversation, empty until she sends work out, marked while her work waits; a sub-agent she starts is a post of its own,
     /// which says that it asks, and shows what set it off in a sheet from its ⓘ; its record shows what Her
     /// asked of it, answers its question there, then shows its call, its report, and how long and how many tokens it
     /// took; ended, its post is among the earlier ones.
     func herProgress() throws {
-        // Progress is Her's: not in the menu, but the first card of her page.
+        // Progress is Her's: not in the menu, but a button over her conversation, at its top right.
         openMenu()
         let drawer = app.descendants(matching: .any)["drawer"]
         XCTAssertTrue(drawer.buttons["her-place"].waitForExistence(timeout: 10))
         XCTAssertFalse(drawer.buttons["progress-place"].exists, "not in the menu")
         tap("her-place")
-        let mark = app.buttons["her-avatar"]
-        herPage("work")
         let entry = app.buttons["her-progress"]
-        XCTAssertTrue(entry.waitForExistence(timeout: 10), "on her page")
+        XCTAssertTrue(entry.waitForExistence(timeout: 10), "over her conversation")
+        XCTAssertGreaterThan(entry.frame.minX, app.windows.firstMatch.frame.midX, "at its top right")
         entry.tap()
         XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any)["progress-empty"].firstMatch.waitForExistence(timeout: 30), "nothing sent out yet")
         herShot("Progress: nothing sent out yet")
         herBackToConversation()
 
-        // Her hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command); her mark is
-        // marked while it waits for the owner, and on her page Progress says so.
+        // Her hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command); Progress is
+        // marked while it waits for the owner.
         herSend("[[mock:relay_slow:3]] 写一篇长文")
         XCTAssertTrue(text("好，这个要一会儿，写好发你。").waitForExistence(timeout: 60), "Her's words")
         // She has answered, and her sub-agent waits for the owner: no dots, the question is Progress's (docs/her-team.md
         // §15.6).
         let typing = app.descendants(matching: .any)["her-typing"]
         XCTAssertTrue(waitUntil(timeout: 30) { !typing.exists }, "no busy bubble while what is at work waits for the owner")
-        try waitFor("her mark is marked (\(mark.label))", timeout: 60) { mark.label.contains("有事在等你") ? true : nil }
-        herShot("Her: her mark marked")
-        herPage("work")
-        try waitFor("Progress is marked (\(entry.label))", timeout: 30) { entry.label.contains("在等你") ? true : nil }
+        try waitFor("Progress is marked (\(entry.label))", timeout: 60) { entry.label.contains("在等你") ? true : nil }
         herShot("Her: Progress marked")
         entry.tap()
         let card = app.descendants(matching: .any)["progress-card-写长文"].firstMatch
@@ -1071,7 +1069,6 @@ extension HermeshUITests {
         tap("her-allow-once", timeout: 60)
         try waitFor("the dots say her sub-agent and its call (\(typing.exists ? typing.label : "none"))", timeout: 30) { typing.exists && typing.label.contains("写长文 · 正在运行 sleep 60") ? true : nil }
         herShot("Her: a sub-agent at work, in the busy bubble")
-        herPage("work")
         try waitFor("Progress says one is at work (\(entry.label))", timeout: 60) { entry.label.contains("1 个进行中") ? true : nil }
         herShot("Her: Progress, one at work")
         entry.tap()

@@ -973,7 +973,8 @@ that opens the session (§4.4); its question is All Sessions' to ask.
   her page, on the iPhone a glass circle across from the menu button (where
   the system stands the bars on the side, iPhone Duo, in that bar with the
   menu button, as a page that draws its own top leaves its buttons there),
-  on the Mac before her routines and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
+  on the Mac before ⋯. It stays there, not a card of her page beside her
+  files and routines: it is looked at often (decided 2026-11-17). It opens Progress over her conversation (pushed on the iPhone, in
   her page's place on the Mac, whose sidebar keeps Her current), with a
   way back to her. Its mark is an orange dot while a sub-agent of hers
   waits for the owner, else a blue one while one is at work (2026-11-16),

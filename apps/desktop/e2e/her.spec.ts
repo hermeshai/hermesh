@@ -111,11 +111,14 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(avatar.locator(".bav.cat-av")).toBeVisible();
   await expect(page.locator(".her-head").getByRole("button", { name: "助手设置" })).toHaveCount(1);
   for (const el of [avatar, tag]) expect(await el.evaluate((e) => getComputedStyle(e).cursor)).toBe("pointer");
-  await expect(page.locator(".her-head").getByRole("button", { name: /^(进展|文件|定时任务)/ })).toHaveCount(0);
+  // Progress, looked at often, is a button of her top; her files and scheduled tasks are on her page.
+  await expect(page.locator(".her-head").getByRole("button", { name: /^进展/ })).toHaveCount(1);
+  await expect(page.locator(".her-head").getByRole("button", { name: /^(文件|定时任务)/ })).toHaveCount(0);
   await avatar.click();
   const settings = page.getByRole("complementary", { name: "助手设置" });
   await expect(settings.getByRole("tab", { name: "工作" })).toHaveAttribute("aria-selected", "true");
-  for (const id of ["her-progress", "her-files", "her-routines"]) await expect(settings.getByTestId(id)).toBeVisible();
+  for (const id of ["her-files", "her-routines"]) await expect(settings.getByTestId(id)).toBeVisible();
+  await expect(settings.getByTestId("her-progress")).toHaveCount(0);
   await snap(page, "her-page-work");
   await settings.getByRole("tab", { name: "能力" }).click();
   await expect(settings.getByTestId("her-memory")).toHaveAttribute("aria-label", "记忆，还没有", { timeout: 30_000 });

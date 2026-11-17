@@ -457,16 +457,6 @@
     "%lld": {
       "shouldTranslate": false
     },
-    "%lld at work": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个进行中"
-          }
-        }
-      }
-    },
     "%lld chosen": {
       "localizations": {
         "zh-Hans": {

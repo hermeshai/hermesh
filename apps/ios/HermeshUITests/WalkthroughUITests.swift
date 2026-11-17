@@ -192,11 +192,12 @@ extension HermeshUITests {
             shot("her team panel")
             closeTeam()
         }
+        // Progress, over her conversation.
+        if go("her-progress") { sleep(2); shot("progress"); back() }
         // Her's page: each tab, and the pages its cards open.
         if go("her-avatar") {
             sleep(2)
             shot("her page, work")
-            if go("her-progress") { sleep(2); shot("progress"); back() }
             if go("her-files") { sleep(2); shot("files"); back() }
             if go("her-routines") { sleep(2); shot("routines"); back() }
             if go("her-tab-abilities") {
