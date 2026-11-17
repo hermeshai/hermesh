@@ -204,6 +204,8 @@ final class DuoUITests: XCTestCase {
     /// button (regular width, on its side), in the page's place with its own Close in the bar on the side (iPhone Duo closed),
     /// or with the page a card beside it that closes it (an iPhone, iPhone Duo open and upright).
     private func openMenu() {
+        while app.navigationBars.buttons["BackButton"].exists { back() }
+        if app.buttons["close"].isHittable { tap("close") }
         let menu = app.buttons["menu"], drawer = app.descendants(matching: .any)["drawer"]
         let frame = app.frame
         let dim = app.descendants(matching: .any)["drawer-dim"]

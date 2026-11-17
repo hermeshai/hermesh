@@ -7,6 +7,7 @@ import SwiftUI
 /// trusted devices too; then the other trusted devices (which approve but
 /// run nothing, as this iPhone).
 struct MachinesView: View {
+    var isRoot = true
     @Environment(AppModel.self) private var model
     @State private var removing: Device?
 
@@ -66,7 +67,7 @@ struct MachinesView: View {
             Text("This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
         }
         .navigationTitle("Machines")
-        .rootToolbar()
+        .rootToolbar(enabled: isRoot)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Add a Machine", systemImage: "plus") { model.sheet = .addMachine }

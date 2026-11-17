@@ -726,7 +726,8 @@ struct MachineJoining: View {
                 Text("Add projects to it on its page.").font(.subheadline).foregroundStyle(.secondary).padding(.top, 4)
                 CardButton(title: "Open \(name)") {
                     close()
-                    model.path.append(.machine(machineID))
+                    if model.accountPresented { model.accountPath.append(.machine(machineID)) }
+                    else { model.path.append(.machine(machineID)) }
                 }
                 .accessibilityIdentifier("open-machine")
                 .padding(.top, 26)

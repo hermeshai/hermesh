@@ -7,7 +7,7 @@ import XCTest
 /// (TestIPhone's her waits while the test says so, POST /her-slow), her page is the whole screen: her mark at the top,
 /// the team panel down from there over a dimmed page; past the usual while, it says so and offers her settings or
 /// another machine, and so does it when she couldn't start. Running: the panel stops short of the composer, and her
-/// mark over it closes it; while the keyboard is up her mark is small in the row of buttons, and the conversation
+/// mark over it closes it; while the keyboard is up her header stays in place, and the conversation
 /// fades as it reaches the top instead of reading under the clock.
 ///
 ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerPage go test ./e2e -run 'TestIPhone$' -v -timeout 40m
@@ -32,7 +32,7 @@ extension HermeshUITests {
         }
         try herOnboarding()
         try XCTContext.runActivity(named: "the panel stops short of the composer; her mark closes it") { _ in try herPanelRoom() }
-        try XCTContext.runActivity(named: "typing: her mark small in the row, the conversation fading at the top") { _ in try herTypingRoom() }
+        try XCTContext.runActivity(named: "typing: the header stays in place, the conversation fading at the top") { _ in try herTypingRoom() }
     }
 
     /// Relaunched, the app has read its machines (Work's banner says Her is off): the menu opened now stays open.
@@ -139,18 +139,20 @@ extension HermeshUITests {
         let avatar = app.buttons["her-avatar"]
         let tag = app.buttons["her-tag"]
         XCTAssertGreaterThan(avatar.frame.height, 60, "her mark large: \(avatar.frame)")
+        let avatarFrame = avatar.frame
+        let tagFrame = tag.frame
         // The owner's long message, then replies long enough to scroll it away.
         let mine = "我的这条消息很长，蓝色的气泡要占好几行，滚到顶上的时候正好在时钟下面，看它会不会和时钟叠在一起读不清。"
         herSend("[[mock:send:收到]] " + mine)
         XCTAssertTrue(app.staticTexts["收到"].waitForExistence(timeout: 60), "her reply")
         for i in 1...3 { herSend("[[mock:send:第 \(i) 段回复，写得长一些，好让对话长过一屏，往上滚的时候能看到顶部怎么处理。第 \(i) 段回复，写得长一些，再长一些。]] 第 \(i) 条") }
         XCTAssertTrue(text("第 3 段回复").waitForExistence(timeout: 60), "the last reply")
-        // Typing: her mark small in the row of buttons, the tag beside it saying the same.
+        // Typing does not resize or move the header.
         XCTAssertTrue(app.keyboards.count > 0, "the keyboard up")
-        XCTAssertTrue(waitUntil { avatar.frame.height < 48 }, "her mark small: \(avatar.frame)")
+        XCTAssertEqual(avatar.frame.height, avatarFrame.height, accuracy: 1)
+        XCTAssertEqual(avatar.frame.midY, avatarFrame.midY, accuracy: 1)
+        XCTAssertEqual(tag.frame.midY, tagFrame.midY, accuracy: 1)
         let menu = app.buttons["menu"]
-        XCTAssertEqual(avatar.frame.midY, menu.frame.midY, accuracy: 3, "in the row of buttons")
-        XCTAssertEqual(tag.frame.midY, menu.frame.midY, accuracy: 3, "the tag beside it")
         XCTAssertTrue(tag.isHittable && tag.label.hasPrefix("Her"), tag.label)
         herShot("Her: typing")
         // The owner's message scrolled up under the clock: gone there, not read over it.
@@ -171,10 +173,10 @@ extension HermeshUITests {
         let blue = blueShare(shot.image, in: under)
         herShot("Her: the conversation under the clock and the buttons, \(Int(blue * 100))% blue")
         XCTAssertLessThan(blue, 0.05, "the bubble gone under the clock and the buttons: \(Int(blue * 100))% of it reads blue there")
-        // The keyboard down (dragged down with the conversation, into it), her mark large again, the tag under it.
+        // Dismissing the keyboard also leaves the header in place.
         middle.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: 600, thenHoldForDuration: 0.2)
         XCTAssertTrue(waitUntil { self.app.keyboards.count == 0 }, "the keyboard down")
-        XCTAssertTrue(waitUntil { avatar.frame.height > 60 }, "her mark large again: \(avatar.frame)")
+        XCTAssertEqual(avatar.frame.height, avatarFrame.height, accuracy: 1)
         XCTAssertGreaterThan(tag.frame.midY, avatar.frame.midY, "the tag under her mark")
     }
 

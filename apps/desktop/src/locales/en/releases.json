@@ -12,6 +12,7 @@
       "Linux has desktop packages for Debian/Ubuntu and RPM-based distributions, plus a tar archive. Her supports computer use, PDFs and sign-ins over SSH; hermeshd her lets you talk to her from the machine’s terminal."
     ],
     "fixes": [
+      "iPhone: focusing Her’s composer keeps the header in place without a collapse animation. Machines and connected agents return to Account & Devices; frequently used settings appear earlier, with appearance above About.",
       "Long conversations keep their place when earlier messages load. On Mac, scrolling no longer jumps or shows blank frames, and works over code blocks; on iPhone, quick swipes and following new messages are smoother.",
       "iPhone: Markdown tables wrap without overlapping, footnotes display correctly, and headings reflect their level. Her’s pages fit smaller screens and open more promptly.",
       "Her no longer leaves accepted messages stuck on “Sending…”. Browser sessions recover when their earlier tabs have been closed.",
