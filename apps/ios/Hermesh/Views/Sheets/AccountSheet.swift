@@ -5,8 +5,8 @@ import SwiftUI
 import UserNotifications
 
 /// The account, laid out as iOS Settings: the service this iPhone belongs
-/// to (its web console a tap away), usage (the days in a grid), appearance,
-/// notifications and about; signing out and erasing everything last. The trusted devices are on the Machines page.
+/// to (its web console a tap away), usage, account actions, machines and
+/// agents, notifications, appearance and about.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -24,25 +24,36 @@ struct AccountSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        @Bindable var model = model
+        NavigationStack(path: $model.accountPath) {
             List {
                 Section { service }
                 if let u = model.usage {
                     Section {
                         UsageSummary(usage: u)
                     } header: {
-                        Text("Usage")
+                        Text("Usage").accessibilityIdentifier("account-usage")
                     }
                 }
-                Section {
-                    HStack(spacing: 0) {
-                        AppearanceOption(tag: "system", title: "System", selection: appearanceSelection)
-                        AppearanceOption(tag: "light", title: "Light", selection: appearanceSelection)
-                        AppearanceOption(tag: "dark", title: "Dark", selection: appearanceSelection)
+                // What ends: signing this iPhone out, and erasing everything (its own page).
+                if !model.isDemo {
+                    Section {
+                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
+                        if !model.status.removed {
+                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
+                                .accessibilityIdentifier("erase-everything")
+                        }
+                    } header: {
+                        Text("Actions").accessibilityIdentifier("account-actions")
                     }
-                    .padding(.vertical, 8)
+                }
+                // The machines and the agents connected to the owner, managed on pages of their own (the menu
+                // lists sessions only, docs/her-team.md §16).
+                Section {
+                    manage("Machines", symbol: "desktopcomputer", color: .blue, opens: .machines, id: "account-machines")
+                    manage("Connected Agents", symbol: "link", color: .indigo, opens: .grants, id: "account-grants")
                 } header: {
-                    Text("Appearance")
+                    Text("Settings").accessibilityIdentifier("account-settings")
                 }
                 if !model.isDemo {
                     Section {
@@ -58,11 +69,15 @@ struct AccountSheet: View {
                         .accessibilityIdentifier("notifications")
                     }
                 }
-                // The machines and the agents connected to the owner, managed on pages of their own (the menu
-                // lists sessions only, docs/her-team.md §16).
                 Section {
-                    manage("Machines", symbol: "desktopcomputer", color: .blue, opens: .machines, id: "account-machines")
-                    manage("Connected Agents", symbol: "link", color: .indigo, opens: .grants, id: "account-grants")
+                    HStack(spacing: 0) {
+                        AppearanceOption(tag: "system", title: "System", selection: appearanceSelection)
+                        AppearanceOption(tag: "light", title: "Light", selection: appearanceSelection)
+                        AppearanceOption(tag: "dark", title: "Dark", selection: appearanceSelection)
+                    }
+                    .padding(.vertical, 8)
+                } header: {
+                    Text("Appearance").accessibilityIdentifier("account-appearance")
                 }
                 Section {
                     // The official service shows no connection address: agents
@@ -78,19 +93,10 @@ struct AccountSheet: View {
                     }
                     LabeledContent("Version", value: model.status.version)
                 } header: {
-                    Text("About")
-                }
-                // What ends: signing this iPhone out, and erasing everything (its own page).
-                if !model.isDemo {
-                    Section {
-                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
-                        if !model.status.removed {
-                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
-                                .accessibilityIdentifier("erase-everything")
-                        }
-                    }
+                    Text("About").accessibilityIdentifier("account-about")
                 }
             }
+            .navigationDestination(for: Route.self) { routePage($0) }
             .navigationDestination(isPresented: $erasing) { EraseView() }
             .alert("Open the web console?", isPresented: Binding(get: { console != nil }, set: { if !$0 { console = nil } }), presenting: console) { url in
                 Button("Cancel", role: .cancel) {}
@@ -126,20 +132,11 @@ struct AccountSheet: View {
         }
     }
 
-    /// A row that opens a page of the app's for what it names, the sheet put away.
-    private func manage(_ title: LocalizedStringKey, symbol: String, color: Color, opens root: Root, id: String) -> some View {
-        Button {
-            model.sheet = nil
-            model.open(root)
-        } label: {
-            HStack {
-                Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
-                Spacer()
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .contentShape(.rect)
+    /// Management stays in the account's stack, including its detail pages.
+    private func manage(_ title: LocalizedStringKey, symbol: String, color: Color, opens route: Route, id: String) -> some View {
+        NavigationLink(value: route) {
+            Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
         }
-        .foregroundStyle(.primary)
         .accessibilityIdentifier(id)
     }
 

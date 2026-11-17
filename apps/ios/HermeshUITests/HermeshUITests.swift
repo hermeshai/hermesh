@@ -625,8 +625,7 @@ final class HermeshUITests: XCTestCase {
         tap("account")
         // Three small phones, as Display & Brightness has them.
         let system = app.buttons["appearance-system"], dark = app.buttons["appearance-dark"]
-        XCTAssertTrue(system.waitForExistence(timeout: 20))
-        reach(system)
+        reach("appearance-system")
         XCTAssertTrue(system.isSelected && system.label == "跟随系统", system.label)
         XCTAssertLessThan(system.frame.height, 140, "kept low")
         XCTAssertFalse(app.buttons["web-console"].exists, "a server of one's own has no web console")
@@ -638,8 +637,8 @@ final class HermeshUITests: XCTestCase {
         try waitFor("dark chosen") { dark.isSelected && !system.isSelected ? true : nil }
         press(system)
         try waitFor("the system's again") { system.isSelected && !dark.isSelected ? true : nil }
-        // Notifications are a page of their own, further down.
-        app.swipeUp()
+        // Notifications are a page of their own, above appearance.
+        reach("notifications")
         tap("notifications")
         XCTAssertTrue(app.switches["notify-questions"].waitForExistence(timeout: 10), "the notification settings")
         XCTAssertTrue(app.switches["notify-turns"].exists && text("连接请求").exists)
@@ -1105,11 +1104,14 @@ final class HermeshUITests: XCTestCase {
 
     func openMenu() {
         // Open already (a sheet opened from it was closed): the page behind is dimmed.
-        if app.descendants(matching: .any)["drawer-dim"].exists { return }
-        // Back to a root page first.
-        while app.navigationBars.buttons["BackButton"].exists { app.navigationBars.buttons["BackButton"].tap() }
-        let back = app.navigationBars.buttons.element(boundBy: 0)
-        if !app.buttons["menu"].exists && back.exists { back.tap() }
+        if app.descendants(matching: .any)["drawer-dim"].isHittable { return }
+        // Unwind the account's navigation stack and dismiss its sheet before opening the menu.
+        for _ in 0..<10 where !app.buttons["menu"].isHittable && !app.descendants(matching: .any)["drawer-dim"].isHittable {
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            guard back.exists else { break }
+            back.tap()
+        }
+        if app.descendants(matching: .any)["drawer-dim"].isHittable { return }
         tap("menu")
         XCTAssertTrue(app.descendants(matching: .any)["drawer"].waitForExistence(timeout: 5))
         sleep(1) // until it has slid in
@@ -1142,7 +1144,7 @@ final class HermeshUITests: XCTestCase {
         tap("account")
         reach(id)
         tap(id)
-        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the sheet and the menu closed")
+        XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists, "management has a way back to settings")
     }
 
     func openMachines() { openManaged("account-machines") }

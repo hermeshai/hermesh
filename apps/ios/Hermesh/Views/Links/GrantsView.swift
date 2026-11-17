@@ -6,6 +6,7 @@ import SwiftUI
 /// The grants: which agents can use which projects, machines and coding
 /// agents, and for how long.
 struct GrantsView: View {
+    var isRoot = true
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -24,7 +25,7 @@ struct GrantsView: View {
             }
         }
         .navigationTitle("Grants")
-        .rootToolbar()
+        .rootToolbar(enabled: isRoot)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Connect an Agent", systemImage: "plus") { model.sheet = .connectAgent }
