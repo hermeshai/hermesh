@@ -1,0 +1,16 @@
+name: fixture diagnostic
+on:
+  push:
+    branches: [codex/windows-fixture-startup]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: node --version
+      - run: go test ./e2e -run '^TestChatGPTFixtureStartup$' -count=20 -v -timeout 8m
