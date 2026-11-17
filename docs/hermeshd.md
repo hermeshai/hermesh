@@ -92,6 +92,7 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
 |---|---|
 | `hermeshd doctor` | Checks the pairing, the coding agents, the service and the relay, and says what to fix (exit 1 when something is wrong); and how Her is |
 | `hermeshd status` | The machine, whether it is connected, the service, updates, Her (installed, which version, on, running), Computer Control and the projects |
+| `hermeshd her` | Talk to Her in this terminal: the Her this machine runs once Her is on for it ([linux.md](linux.md) §8) |
 | `hermeshd screen` | Whether the owner's devices can see and operate this screen, which way, who is in control ([computer-control-linux.md](computer-control-linux.md) §6) |
 | `hermeshd screen stop`, `screen off`, `screen on` | Ends the session under way; refuses every device until `on` |
 | `hermeshd screen allow` | On Plasma: lets Hermesh show the screen without its dialog |

@@ -77,12 +77,13 @@ Grok Bot 和 Muse 全天候连接着 GitHub 和 X。当有新需求或 Issue 时
 
 ### 1. 安装客户端
 
-客户端负责保管你的管理密钥并展示全局看板。在 Mac 或 Windows 上，客户端还会同时把这台电脑作为执行机器接入网络。
+客户端负责保管你的管理密钥并展示全局看板。在 Mac、Windows 或 Linux 上，客户端还会同时把这台电脑作为执行机器接入网络。
 
 | 平台 | 下载 | 系统要求 |
 |---|---|---|
 | **macOS** | [Apple 芯片 (arm64)](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-arm64.dmg) · [Intel (x64)](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-macos-x64.dmg) | macOS 14 及以上 |
 | **Windows** | [x64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-x64-setup.exe) · [ARM64](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-windows-arm64-setup.exe) | Windows 11 |
+| **Linux** | x64：[.deb](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-x64.deb) · [.rpm](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-x64.rpm) · ARM64：[.deb](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-arm64.deb) · [.rpm](https://github.com/hermeshai/hermesh/releases/latest/download/Hermesh-linux-arm64.rpm) | Ubuntu 24.04、Debian 13、Fedora 41 及以上，需 systemd 和 polkit |
 | **iPhone** | 即将上架 App Store | iOS 26 及以上 |
 
 打开应用，点击 **立即开始**（Get Started），在浏览器中通过邮箱验证码、Google 或 GitHub 登录 hermesh.io（首次登录会自动创建账号）。Windows 安装包目前尚未进行代码签名，若弹出 SmartScreen 提示，点击 **更多信息 › 仍要运行** 即可完成安装。

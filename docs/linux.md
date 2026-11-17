@@ -1,6 +1,6 @@
 # Her on Linux
 
-Status: accepted 2026-11-17, with the owner's decisions in §10, after a cold-start test of Her on two fresh Linux computers (§2). §3 to §6 are built on the branch `her-linux`, and §7.1 is begun; the rest of §7 and §8 are designs. It takes up [desktop-app.md](desktop-app.md) §9 and the "Later" row of [windows.md](windows.md) §9 for Linux, and [her-server.md](her-server.md) §12 for computer use.
+Status: accepted 2026-11-17, with the owner's decisions in §10, after a cold-start test of Her on two fresh Linux computers (§2). §3 to §8 are built on the branch `her-linux`; §9 says how each was checked and what is left. It takes up [desktop-app.md](desktop-app.md) §9 and the "Later" row of [windows.md](windows.md) §9 for Linux, and [her-server.md](her-server.md) §12 for computer use.
 
 ## 1. Goal
 
@@ -101,9 +101,9 @@ The Electron app already has one module per system (`src/main/platform/{mac,win}
 
 Her's panel, the console window and sign-ins are the page's and the daemon's: nothing of Her's changes.
 
-**Built so far.** `platform/linux.ts` with the table above but the notification area, which is Electron's as on Windows and untried on a real desktop; the words, with a `key_linux` variant beside every `key_win`; the shortcut labels and the app menu's button as on Windows. A development build runs against a daemon of its own under Xvfb: of `TestDesktop`'s specs, shell, motion, search, overview, sheets, settings, session, sessionlist, conversation and model-catalogs pass on Linux (`linuxSpecs`), and `TestDesktopHer` passes there with her for Linux: the first run on this computer, a chat, a secure card, the console, a second environment and one gone offline.
+**Built.** `platform/linux.ts` as in the table; the words, with a `key_linux` variant beside every `key_win`; the shortcut labels and the app menu's button as on Windows; hermeshd installed as the user's service only when it doesn't answer. Of `TestDesktop`'s specs, all but the Mac's own (install, packaged, update, windows) pass on Linux under Xvfb (`linuxSpecs`), the first run among them: a relay of one's own, the browser sign-in, joining an owner, a machine only, erasing. `TestDesktopHer` passes there with her for Linux.
 
-**Left.** The specs that are the Mac's still: onboarding, language, menus, frame, health and team, whose words and menu bar the Linux app answers differently; the notification area on GNOME and Plasma; and §7.2's packages, without which the app is no installed one (no daemon of its own, no updates).
+**Found on a real desktop** (KDE Plasma 6 on Wayland, Ubuntu 26.04, in the Lima VM): Electron's cookie encryption takes its key from the desktop keyring, and where none is unlocked (a desktop logged in without a password, a KDE wallet never made) the app's first request waited on it for good. The app keeps nothing in cookies, so the Linux package leaves that fuse off.
 
 ### 7.2 Packages and updates
 
@@ -112,7 +112,11 @@ Her's panel, the console window and sign-ins are the page's and the daemon's: no
 | **A. `.deb` and `.rpm`** | root, once | kept (setuid helper, AppArmor profile) | possible | the package manager, from a repository Hermesh signs; the app says when one waits |
 | B. AppImage or a folder in the home | the user | lost on Ubuntu 24.04, whose AppArmor refuses user namespaces to unknown programs | not possible | the app replaces itself, as on Windows |
 
-**Choice: A**, with a `.tar.gz` of the same folder for other distributions. The package carries hermeshd, hermesh, her with its console, PDF component and agent-desktop, and hermesh-screen; hermeshd's own updater is off there, as in the Mac app.
+**Choice: A**, with a `.tar.gz` of the same folder for other distributions. The package carries hermeshd, hermesh, hermesh-signer, her with its console, PDF component and agent-desktop, and hermesh-screen; hermeshd's own updater is off there, as in the Mac app.
+
+**Built.** `apps/desktop/scripts/package-linux.mjs` makes `/opt/Hermesh` (everyone's to read, Chromium's sandbox helper root's and setuid), `/usr/bin/hermesh` and `hermeshd`, the desktop entry that takes `hermesh:` links, the icon, the signer's units and polkit action, and maintainer scripts that start the signer and keep its keys until a purge; `.deb` with dpkg-deb, `.rpm` with rpmbuild, `.tar.gz`. The release workflow builds them on a runner of each architecture (`linux-app`), and `release-check.sh` checks them.
+
+**Updates**, until there is a repository: the app reads a feed signed with the release key, `RELEASES-linux-<arch>.json`, which names the `.deb` and the `.rpm` by their hashes; it downloads this system's, and on Restart to Update the package manager installs it with the administrator's consent (`pkexec`), and the app starts again.
 
 ### 7.3 A trusted device
 
@@ -124,27 +128,31 @@ Today a Linux trusted device runs no coding agents ([onboarding.md](onboarding.m
 | B. A protected signer | a file (or a TPM key) of a system service, per user | only the service, which the package installs as root | the summary the service gives polkit, shown by the desktop's own password dialog, then the password or fingerprint | the Mac's promise against programs of the user on Wayland; weaker on X11, where they can read the keyboard; none where the user has sudo without a password |
 | C. No trusted device on Linux | | | | a Linux-only person cannot use the app |
 
-**Choice: B**, as option C was on Windows: `hermesh-signerd`, a system service the package installs. It knows the caller's user (peer credentials), keeps one key per user where only it reads, computes what is signed (`internal/preview`), and asks polkit for the user's authentication with that summary as the dialog's message; the app shows the full panel beside it. The signature format does not change; the key's label says "Linux · protected" and whether the session is X11. It refuses where sudo asks no password, as the Windows signer refuses with UAC off. A server keeps `hermeshd approve` and today's rule.
+**Choice: B**, as option C was on Windows.
 
-**Tests.** The desktop e2e suite under Xvfb in Docker, with the test signer; the package installed in a fresh container, finding the daemon, the links and the service; the signer's refusals; and by hand in the Lima VM: GNOME on Wayland, a real polkit dialog, a program of the user that tries to read the key and to click the dialog.
+**Built: `hermesh-signer serve`** (`cmd/hermesh-signer`, Linux), a system service the package installs as root, started on its socket (`/run/hermesh-signer.sock`). A user's app asks it, at each start and before it needs a root key, to watch that user's hermeshd: the socket must be the asking user's own (peer credentials, `lstat`). It answers hermeshd's signing requests with the signer core the Windows signer and `hermeshd approve` share (`internal/signer`), keeps each user's root keys in `/var/lib/hermesh-signer/<uid>` where only root reads, and before each signature runs `pkcheck` so that polkit asks the user in the desktop's own dialog, which shows what is signed (`polkit.message`, computed by `internal/preview` from the bytes), with their own password every time (`auth_self`, never kept). The subject polkit asks for is the app's own process, in the desktop session. The two digits of a join come in a notification, polkit's dialog being gone by then. It refuses a user whose sudo asks nothing (any program of theirs could become root and take the key), and a computer without polkit; the app words each refusal. hermeshd's local API takes root's connections on Linux for it. The signature format doesn't change. A server keeps `hermeshd approve` and today's rule.
+
+**Tests.** `TestLinuxSigner`: the real polkit on a fresh Debian computer, `pkttyagent` standing in for the desktop's dialog (it prints what polkit shows) and a rule for the seat a container lacks: the owner set up and a machine added, each signature asked and the dialog saying what is signed; a wrong password signs nothing; the user can't read her key; another's socket and an open sudo are refused. `TestLinuxPackage`: the same with the installed package, then removing it (the key stays) and purging it (the key goes). In the Lima VM, the installed app's first run on a user whose sudo asks nothing shows the refusal in words.
+
+**Not checked:** the dialog of a real desktop's polkit agent (GNOME's, Plasma's) answered by a person: the VM's user has sudo without a password, which the signer rightly refuses, and changing that account is the owner's to allow.
 
 ## 8. Her from a server's terminal
 
-On a server, `her` in the terminal is a conversation of its own, not the assistant the apps talk to. `hermeshd her` opens Her's own conversation there: it connects to the her that hermeshd runs (its socket) and shows `bots/open`'s conversation in her's terminal interface. Turning Her on still takes a trusted device's signature; a Linux-only person has the app of §7 on their desktop for that.
+On a server, `her` in the terminal is a conversation of its own, not the assistant the apps talk to. **Built: `hermeshd her`** talks to Her where she runs: the her this user's hermeshd runs, found on the machine's socket or the app's current profile's. What she sends shows as it comes, what she is doing as a line, and an approval she asks for is asked there, y or n. The install's last lines say so where Her is installed. Turning Her on still takes a trusted device's signature. Tests: `TestTalk` with a real her and her-mock (a message and its answer, an approval answered in the terminal); by hand in the VM, against the Her of the installed app's daemon.
 
-## 9. Plan
+## 9. Plan, and how each part was checked
 
-| Phase | Work | Size | Done when |
+| Phase | Work | State | Checked |
 |---|---|---|---|
-| L0. A real conversation | The owner signs in on the two computers of §2; Her answers and uses each tool with a real model | S | A table of what works, tool by tool |
-| L1. Small ones (built, but for the last) | §3; §6's messages; the console's timeout in the person's language; the install's last lines name Her | S | Their tests |
-| L2. PDFs (built) | §4 | M | `TestLinuxHer` with `her-pdf` passes; a PDF read on Linux |
-| L3. Computer use (built) | §5 | M | The Docker e2e passes; the VM by hand is left |
-| L4. The app (begun) | §7.1, §7.2 | L | `TestDesktop` on Linux; the package test |
-| L5. A trusted device | §7.3 | L | The signer's e2e; the VM checklist |
-| L6. The terminal | §8 | M | A pseudo-terminal e2e |
+| L0. A real conversation | Her with a real model, each tool | **left**: needs the owner's ChatGPT sign-in | — |
+| L1. Small ones | §3, §6, the console's timeout in the person's language, the install naming Her | built | unit and pseudo-terminal tests, `TestLinuxHer` |
+| L2. PDFs | §4 | built | `TestLinuxHer`, `TestLinuxHerPDF`, the VM |
+| L3. Computer use | §5 | built | `TestLinuxHerComputer`; the VM (Plasma, Wayland): Her lists the apps and reads a window, after asking |
+| L4. The app | §7.1, §7.2 | built | `TestDesktop` and `TestDesktopHer` on Linux; `TestLinuxPackage`; the VM: installed with apt, its first run, joined as a machine, Her on, chat, computer use, PDF |
+| L5. A trusted device | §7.3 | built | `TestLinuxSigner`, `TestLinuxPackage`; the VM: the refusal |
+| L6. The terminal | §8 | built | `TestTalk`; the VM |
 
-L0 to L3 need no decision and no new program: they make a Linux Her Server equal to a Mac's. L4 and L5 are the size of windows.md's W2 and W3.
+**Left:** a real model (L0); the desktop's own polkit dialog answered by a person (§7.3); x86_64 (every check here ran on arm64); GNOME (the VM's desktop is Plasma); the release workflow's new jobs, which run only on GitHub; the in-app update's install step (pkexec), tried by no test; a repository for updates instead of the app's own (§10).
 
 ## 10. Decisions
 
@@ -153,18 +161,17 @@ Taken by the owner on 2026-11-17.
 | # | Decision | Decided |
 |---|---|---|
 | 1 | The trusted device on a Linux desktop (§7.3) | B, the protected signer, with coding agents allowed on the same computer; the risk that remains on X11 is each owner's to accept |
-| 2 | Packages (§7.2) | `.deb` and `.rpm`, updated from a repository Hermesh signs, and a `.tar.gz` for other distributions |
+| 2 | Packages (§7.2) | `.deb` and `.rpm`, updated from a repository Hermesh signs, and a `.tar.gz` for other distributions; until the repository, the app updates itself from its signed feed |
 
 Open, with what is proposed:
 
 | # | Decision | Proposed |
 |---|---|---|
-| 3 | Which desktops | GNOME first, Wayland and X11; Plasma second |
-| 4 | Her from a server's terminal (§8) | After L5 |
+| 3 | Which desktops | GNOME and Plasma, Wayland and X11 |
 
 ## 11. Costs and risks
 
 - **Wayland limits computer use** (§5): pointer gestures are not there. It is the compositor's rule, not ours to lift.
 - **agent-desktop measures GNOME on Ubuntu 24.04.** Other desktops and older accessibility bridges may read less; the VM checklist says which.
-- **The protected signer is new security code**, checked only on real desktops. Until L5 a Linux-only person approves from a second Linux user or computer, as today.
+- **The protected signer is new security code**: reviewed, tested with the real polkit, not yet answered by a person in a desktop's own dialog.
 - **Two more Linux release files per architecture** (PDF about 6 MB, agent-desktop about 7 MB) and one more build (the glibc worker) in the release workflow, which cannot be tried outside GitHub.
