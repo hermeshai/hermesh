@@ -58,16 +58,13 @@ func TestHerCommandsAreSignedOnly(t *testing.T) {
 	}
 }
 
-// Whether Her is on is kept across starts; a machine without her (or on
-// Windows) says why it can't run it, while Her may be on all the same; agents
-// never see Her's status.
+// Whether Her is on is kept across starts; a machine without her says why
+// it can't run it, while Her may be on all the same; agents never see Her's
+// status.
 func TestHerSetting(t *testing.T) {
 	dir := t.TempDir()
 	n := openHerMachine(t, dir, "")
 	why := "no her"
-	if runtime.GOOS == "windows" {
-		why = "windows"
-	}
 	if st := n.Status().Her; st.Enabled || st.Unsupported != why {
 		t.Fatalf("status %v", st)
 	}
@@ -200,7 +197,7 @@ func TestHerOffOnARemovedMachine(t *testing.T) {
 // machine (hermeshd stopping) leaves it.
 func TestHerExtensionHost(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("her does not run on Windows")
+		t.Skip("the fake her is a shell script")
 	}
 	bin, calls := hertest.Fake(t)
 	t.Setenv("HER_HOME", "/hers")
@@ -239,9 +236,6 @@ func TestHerExtensionHost(t *testing.T) {
 // status follows, the root-signed commands reach her, the console answers,
 // and closing the machine stops her.
 func TestHerInProcess(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("her does not run on Windows")
-	}
 	bin := hertest.Bin(t)
 	home := hertest.Home(t, bin)
 	dir := t.TempDir()

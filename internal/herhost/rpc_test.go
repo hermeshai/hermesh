@@ -14,6 +14,7 @@ import (
 	"time"
 
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
+	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
 // fakeHer listens on a socket like her: each connection answers initialize,
@@ -25,7 +26,7 @@ func fakeHer(t *testing.T, handle func(req map[string]any, c net.Conn)) string {
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "her.sock")
-	l, err := net.Listen("unix", sock)
+	l, err := localipc.Listen(sock)
 	if err != nil {
 		t.Fatal(err)
 	}
