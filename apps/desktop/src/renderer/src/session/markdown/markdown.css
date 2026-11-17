@@ -34,7 +34,7 @@
 .md code{font-weight:400;font-variation-settings:normal;font-size:.9em;box-decoration-break:clone;-webkit-box-decoration-break:clone;overflow-wrap:anywhere}
 .md pre code{font-size:var(--md-code-size);line-height:1.6;overflow-wrap:normal}
 .md pre{tab-size:4}
-.md .cblock pre{max-height:520px;overscroll-behavior:contain}
+.md .cblock pre{max-height:520px;overscroll-behavior-x:contain}
 .md-color{display:inline-block;width:.75em;height:.75em;margin-inline-end:.35em;border-radius:2px;box-shadow:0 0 0 1px var(--field-bd)}
 .md-details{border:1px solid var(--sep);border-radius:var(--r-md);padding:10px 14px}
 .md-details>summary{font-weight:600;color:var(--md-link)}

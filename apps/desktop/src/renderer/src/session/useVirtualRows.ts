@@ -72,6 +72,12 @@ export function useVirtualRows({ scroller, list, rows, initial }: {
   /** Rows kept drawn wherever the window is: the selection's, the focused one's, one being brought into view. */
   const [pins, setPins] = useState<Readonly<Record<string, Range>>>({});
 
+  /** A row's height as the page has it now. */
+  const measured = (key: string, height: number) => {
+    kept.measured.set(key, height);
+    const i = latest.current.index.get(key);
+    if (i !== undefined) kept.means.set(key, latest.current.rows[i].kind, height);
+  };
   const heightOf = (r: VirtualRow) => kept.measured.get(r.key) ?? kept.guesses.get(r.kind) ?? latest.current.initial[r.kind] ?? ROW;
 
   // The window this render draws: the one placed last, else the last rows.
@@ -103,6 +109,10 @@ export function useVirtualRows({ scroller, list, rows, initial }: {
     // What is in sight, in the list's own terms.
     const top = scroller.getBoundingClientRect().top + scroller.clientTop - list.getBoundingClientRect().top;
     const bottom = top + view;
+    // Rows drawn since the observer last reported are on the page at their own size already. A scroll right
+    // after they were drawn (the browser keeping the place as they replace a space) comes before the observer
+    // does: guessed sizes for them would put what is in sight rows away, and the window would land off it.
+    for (const [key, el] of kept.elements) if (!kept.measured.has(key)) measured(key, el.getBoundingClientRect().height);
     const P = positions(rows.map(heightOf), g);
     const [df, de] = kept.drawn;
     if (de > df && de <= n) {
@@ -193,9 +203,7 @@ export function useVirtualRows({ scroller, list, rows, initial }: {
           if (key === undefined) continue;
           const height = e.borderBoxSize?.[0]?.blockSize ?? e.target.getBoundingClientRect().height;
           if (kept.measured.get(key) === height) continue;
-          kept.measured.set(key, height);
-          const i = latest.current.index.get(key);
-          if (i !== undefined) kept.means.set(key, latest.current.rows[i].kind, height);
+          measured(key, height);
           changed = true;
         }
         if (changed) schedule();
