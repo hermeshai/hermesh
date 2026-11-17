@@ -27,6 +27,13 @@ test("Her: a reply from a message's buttons, from words selected in it, and what
   // From a message's buttons: what the next message replies to shows above the composer's text, and goes with Esc.
   const hers = log.locator(".bm").filter({ hasText: "酒店有两家" }).first();
   const bar = page.getByTestId("her-reply-bar");
+  // Copied, the check comes in where the copy icon was.
+  await hers.hover();
+  await hers.getByRole("button", { name: "拷贝" }).click();
+  const tick = hers.getByRole("button", { name: "拷贝" }).locator("svg.tick-in");
+  await expect(tick).toBeVisible();
+  expect(await tick.evaluate((el) => getComputedStyle(el).animationName)).toBe("popin");
+  await expect(tick).toHaveCount(0);
   await hers.hover();
   await hers.getByRole("button", { name: "回复" }).click();
   await expect(bar).toContainText("回复 Her");

@@ -7,6 +7,25 @@ import { useTranslation } from "react-i18next";
 import { Cat } from "./her/Cat";
 import { Icon } from "./icons";
 
+/** How long a sheet, the search or a toast takes to go (`.leaving` in app.css), drawn as it was. */
+export const LEAVE_MS = 140;
+
+/**
+ * `value` while it is there, and its last value for LEAVE_MS more once it goes (`leaving`),
+ * for what shows it to fade out instead of vanishing. A new value shows at once.
+ */
+export function useLeaving<T>(value: T | null | undefined): { shown: T | null; leaving: boolean } {
+  const [last, setLast] = useState<T | null>(value ?? null);
+  if (value != null && value !== last) setLast(value);
+  const leaving = value == null && last !== null;
+  useEffect(() => {
+    if (!leaving) return;
+    const id = setTimeout(() => setLast(null), LEAVE_MS);
+    return () => clearTimeout(id);
+  }, [leaving]);
+  return { shown: value ?? last, leaving };
+}
+
 /** The session's state as a small dot: orange waits on you, red failed, green runs. */
 export function StatusDot({ s }: { s: Session }) {
   const { t } = useTranslation("common");

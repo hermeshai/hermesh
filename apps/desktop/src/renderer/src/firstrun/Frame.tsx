@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { useLeaving } from "../components";
 import { Icon } from "../icons";
 import { useStore } from "../store";
 import "./firstrun.css";
@@ -10,6 +11,7 @@ import "./firstrun.css";
  */
 export function Frame({ children, foot, sheet, className }: { children: ReactNode; foot?: ReactNode; sheet?: ReactNode; className?: string }) {
   const st = useStore();
+  const toast = useLeaving(st.toast);
   // Return goes on: the page's first enabled primary button (fields and buttons handle it themselves).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -30,10 +32,10 @@ export function Frame({ children, foot, sheet, className }: { children: ReactNod
       <div className={className ? `ob-body ${className}` : "ob-body"}>{children}</div>
       {foot && <div className="ob-foot">{foot}</div>}
       {sheet}
-      {st.toast && (
-        <div className="toast" role="status">
+      {toast.shown && (
+        <div className={`toast ${toast.leaving ? "leaving" : ""}`} inert={toast.leaving} role="status">
           <Icon name="check" />
-          <span>{st.toast.text}</span>
+          <span>{toast.shown.text}</span>
         </div>
       )}
     </div>

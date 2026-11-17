@@ -7,6 +7,7 @@ import { NewGrantSheet } from "./sheets/NewGrant";
 import { EnterCodeSheet, PairingSheet } from "./sheets/Pairing";
 import { ScopeSheet } from "./sheets/Scope";
 import { WakeSheet } from "./sheets/Wake";
+import { useLeaving } from "./components";
 import { useStore, type Sheet } from "./store";
 import "./sheets/sheets.css";
 
@@ -27,12 +28,14 @@ export function SheetHost() {
     window.addEventListener("keydown", esc);
     return () => window.removeEventListener("keydown", esc);
   }, [sheet, set]);
-  if (!sheet) return null;
+  // Closed, it fades out as it was.
+  const { shown, leaving } = useLeaving(sheet);
+  if (!shown) return null;
   return (
     <>
-      <div className="sheet-scrim" />
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" style={{ width: widths[sheet.kind] }}>
-        <Body key={sheet.kind === "pairing" ? `pairing:${sheet.code}` : sheet.kind} sheet={sheet} />
+      <div className={`sheet-scrim ${leaving ? "leaving" : ""}`} />
+      <div className={`sheet ${leaving ? "leaving" : ""}`} inert={leaving} role="dialog" aria-modal="true" aria-labelledby="sheet-title" style={{ width: widths[shown.kind] }}>
+        <Body key={shown.kind === "pairing" ? `pairing:${shown.code}` : shown.kind} sheet={shown} />
       </div>
     </>
   );
