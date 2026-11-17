@@ -325,7 +325,7 @@ struct HerChoices: View {
     private func row(_ c: HerChoice) -> some View {
         let m = c.machine
         let detail: String = switch c.why {
-        case .windows: String(localized: "Windows isn’t supported yet")
+        case .windows: String(localized: "Update Hermesh on this PC to run Her")
         case .offline: m.hasLastSeen ? String(localized: "Offline · seen \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline")
         case .unsupported(let why): String(localized: "Can’t run Her: \(why)")
         case nil: String(localized: "Online · \(platformText(m.status.platform))")

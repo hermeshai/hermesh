@@ -82,11 +82,11 @@ async fn bot(name: &str, mode: PermissionMode, scripts: Vec<Script>) -> Harness 
 /// The same, with its log in `store` instead of the usual file.
 async fn bot_on(store: Option<Arc<dyn SessionStore>>, name: &str, mode: PermissionMode, scripts: Vec<Script>) -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let home = HerHome::new(dir.path().canonicalize().unwrap().join("home"));
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
     home.ensure().unwrap();
     let folder = home.bot_files_dir("b1");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let api = ScriptedApi::new();
     for script in scripts {
         api.push(script);
@@ -1350,7 +1350,7 @@ async fn a_sent_file_is_kept_as_it_was_when_sent() {
 #[tokio::test]
 async fn a_file_outside_the_folder_is_kept_too() {
     let outside = tempfile::tempdir().unwrap();
-    let file = outside.path().canonicalize().unwrap().join("合同.pdf");
+    let file = dunce::canonicalize(outside.path()).unwrap().join("合同.pdf");
     std::fs::write(&file, b"%PDF-1.7 outside").unwrap();
     let mut h = bot("Her", PermissionMode::Manual, vec![attach("c1", &[file.to_str().unwrap()])]).await;
     let sent = details(&h.kernel.run(prompt("发我")).await.unwrap().events)[0]["files"][0].clone();

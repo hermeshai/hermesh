@@ -115,11 +115,11 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome) -> KernelDeps {
 /// (`connect NAME`, or `connect NAME URL`), shows the card, and passes on how it ended.
 async fn her() -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let home = HerHome::new(dir.path().canonicalize().unwrap().join("home"));
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
     home.ensure().unwrap();
     let folder = home.bot_files_dir("b1");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let api = ScriptedApi::new();
     api.respond_with(model);
     let options = StartOptions {

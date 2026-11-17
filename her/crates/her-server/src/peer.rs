@@ -9,7 +9,7 @@ pub(crate) fn is_this_program(pid: Option<u32>) -> Result<(), String> {
     let pid = pid.ok_or("the system did not say which process connected")?;
     let theirs = executable_of(pid).ok_or_else(|| format!("cannot find the program of process {pid}"))?;
     let ours = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
-    let same = |path: &PathBuf| std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
+    let same = |path: &PathBuf| dunce::canonicalize(path).unwrap_or_else(|_| path.clone());
     if same(&theirs) == same(&ours) {
         Ok(())
     } else {

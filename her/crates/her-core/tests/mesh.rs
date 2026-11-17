@@ -144,11 +144,11 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome, host: &Arc<Host>) -
 /// Her's conversation with the host's group, when `offered`.
 async fn her(mode: PermissionMode, offered: bool) -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let home = HerHome::new(dir.path().canonicalize().unwrap().join("home"));
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
     home.ensure().unwrap();
     let folder = home.bot_files_dir("b1");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     let api = ScriptedApi::new();
     let host = Arc::new(Host::default());
     if offered {

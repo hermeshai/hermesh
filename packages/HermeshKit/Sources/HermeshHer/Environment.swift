@@ -205,12 +205,13 @@ public struct HerChoice: Equatable, Sendable {
 }
 
 /// Where Her can run (docs/her-server.md §9.2): the owner's machines Her is
-/// not on for yet, those that can be chosen first. Windows machines show,
-/// not to be chosen yet; a machine offline can't be asked now.
+/// not on for yet, those that can be chosen first. A PC whose Hermesh is
+/// from before her ran on Windows says so ("windows"), and shows, not to be
+/// chosen until it is updated; a machine offline can't be asked now.
 public func herChoices(_ machines: [HerMachine]) -> [HerChoice] {
     machines.filter { !$0.her.enabled }.map { m -> HerChoice in
         let unsupported = m.her.unsupported
-        if unsupported == "windows" || m.status.platform.hasPrefix("windows") { return HerChoice(machine: m, why: .windows) }
+        if unsupported == "windows" { return HerChoice(machine: m, why: .windows) }
         if !unsupported.isEmpty { return HerChoice(machine: m, why: .unsupported(unsupported)) }
         return HerChoice(machine: m, why: herReachable(m) ? nil : .offline)
     }

@@ -68,8 +68,9 @@ export type Choice<M> = { machine: M; why: null | "windows" | "offline" | "unsup
 
 /**
  * Where Her can run (docs/her-server.md §9.2): this Mac, then the other
- * machines of the owner, those online first. Windows machines show, not to be
- * chosen yet; a machine offline can't be asked now. Those Her is on for
+ * machines of the owner, those online first. A PC whose Hermesh is from before
+ * her ran on Windows says so ("windows"), and shows, not to be chosen until
+ * it is updated; a machine offline can't be asked now. Those Her is on for
  * already are environments, not choices.
  */
 export function herChoices<M extends Env & Pick<Machine, "status">>(machines: M[]): Choice<M>[] {
@@ -77,7 +78,7 @@ export function herChoices<M extends Env & Pick<Machine, "status">>(machines: M[
     .filter((m) => !m.her?.enabled)
     .map((m): Choice<M> => {
       const unsupported = m.her?.unsupported ?? "";
-      if (unsupported === "windows" || (m.status?.platform ?? "").split("/")[0] === "windows") return { machine: m, why: "windows" };
+      if (unsupported === "windows") return { machine: m, why: "windows" };
       if (unsupported !== "") return { machine: m, why: "unsupported", detail: unsupported };
       if (!reachable(m)) return { machine: m, why: "offline" };
       return { machine: m, why: null };

@@ -222,7 +222,7 @@ impl HerHome {
 
 /// `dir` canonical when it exists, as sessions keep their folders.
 fn canonical(dir: PathBuf) -> PathBuf {
-    std::fs::canonicalize(&dir).unwrap_or(dir)
+    dunce::canonicalize(&dir).unwrap_or(dir)
 }
 
 /// `<name>-<8 hex digits>`: the directory's name, made safe and at most 40 characters, and the
@@ -275,20 +275,20 @@ mod tests {
     #[test]
     fn private_folders_are_a_sessions_own_folder_in_the_data_directory() {
         let dir = tempfile::tempdir().unwrap();
-        let home = HerHome::new(dir.path().canonicalize().unwrap());
-        let chat = home.new_chat_dir().unwrap().canonicalize().unwrap();
+        let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap());
+        let chat = dunce::canonicalize(home.new_chat_dir().unwrap()).unwrap();
         let bot = home.bot_files_dir("b1");
         std::fs::create_dir_all(&bot).unwrap();
-        let bot = bot.canonicalize().unwrap();
+        let bot = dunce::canonicalize(bot).unwrap();
         for own in [&chat, &bot] {
             assert!(home.has_no_project(own));
             assert_eq!(home.private_folder(own).as_deref(), Some(own.as_path()));
         }
         // The folder that holds the chats has no project either, but is nobody's own folder.
-        let chats = home.chats_dir().canonicalize().unwrap();
+        let chats = dunce::canonicalize(home.chats_dir()).unwrap();
         assert!(home.has_no_project(&chats));
         assert_eq!(home.private_folder(&chats), None);
-        for other in [home.root().to_path_buf(), home.bot_dir("b1").canonicalize().unwrap(), chat.join("sub")] {
+        for other in [home.root().to_path_buf(), dunce::canonicalize(home.bot_dir("b1")).unwrap(), chat.join("sub")] {
             assert!(!home.has_no_project(&other), "{}", other.display());
             assert_eq!(home.private_folder(&other), None, "{}", other.display());
         }

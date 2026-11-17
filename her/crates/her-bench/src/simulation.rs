@@ -256,7 +256,7 @@ impl Env {
     fn workspace(&self, name: &str) -> Result<PathBuf> {
         let p = self.work.join(name);
         std::fs::create_dir_all(&p)?;
-        Ok(std::fs::canonicalize(p)?)
+        Ok(dunce::canonicalize(p)?)
     }
 }
 
@@ -993,7 +993,7 @@ fn gates(args: &Args, report: &Value) -> Result<Vec<String>> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 8)]
 async fn main() -> Result<()> {
     let mut args = Args::parse();
-    args.her = std::fs::canonicalize(&args.her)?;
+    args.her = dunce::canonicalize(&args.her)?;
     ensure!(
         args.sessions > 0 && args.concurrency > 0 && args.repeats > 0 && args.timeout_secs > 0,
         "counts and timeout must be positive"

@@ -58,8 +58,8 @@ struct Watched {
 /// How `path` is watched: a folder itself, else the folder holding the file (an editor that
 /// saves by renaming over the file would leave a watch on the file itself behind).
 fn watched(path: &Path) -> Watched {
-    let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-    let real = match (std::fs::canonicalize(path), path.parent(), path.file_name()) {
+    let canonical = |p: &Path| dunce::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let real = match (dunce::canonicalize(path), path.parent(), path.file_name()) {
         (Ok(real), _, _) => real,
         (Err(_), Some(dir), Some(name)) => canonical(dir).join(name),
         _ => path.to_path_buf(),

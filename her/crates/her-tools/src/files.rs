@@ -80,7 +80,7 @@ impl FileTracker {
 }
 
 fn key(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 /// One lock per file, shared by every session that works in the same files (a session and

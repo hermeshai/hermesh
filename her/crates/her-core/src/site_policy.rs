@@ -659,7 +659,7 @@ mod tests {
     #[tokio::test]
     async fn files_and_uploads() {
         let dir = tempfile::tempdir().unwrap();
-        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let root = dunce::canonicalize(dir.path()).unwrap();
         std::fs::write(root.join("index.html"), "<p>hi</p>").unwrap();
         let manual = view(PermissionMode::Manual, vec![], SitePolicy::default(), &root);
         let inside_url = Url::from_file_path(root.join("index.html")).unwrap().to_string();

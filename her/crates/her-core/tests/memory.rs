@@ -145,11 +145,11 @@ fn deps(api: &Arc<ScriptedApi>, work: &Path, home: &HerHome) -> KernelDeps {
 /// without the file and without the folder.
 async fn bot_with(mode: PermissionMode, memory: Option<&str>, scripts: Vec<Script>) -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let home = HerHome::new(dir.path().canonicalize().unwrap().join("home"));
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
     home.ensure().unwrap();
     let folder = home.bot_files_dir("b1");
     std::fs::create_dir_all(&folder).unwrap();
-    let folder = folder.canonicalize().unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
     if let Some(text) = memory {
         std::fs::create_dir_all(home.bot_memory_dir("b1")).unwrap();
         std::fs::write(home.bot_memory_dir("b1").join("MEMORY.md"), text).unwrap();

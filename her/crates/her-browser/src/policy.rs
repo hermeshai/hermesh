@@ -212,9 +212,9 @@ pub fn normalize_origin(text: &str) -> Option<String> {
 
 /// Whether `path` lies inside one of `roots` (both canonical when they exist).
 pub fn inside(path: &Path, roots: &[PathBuf]) -> bool {
-    let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     roots.iter().any(|root| {
-        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.clone());
+        let root = dunce::canonicalize(root).unwrap_or_else(|_| root.clone());
         path.starts_with(root)
     })
 }

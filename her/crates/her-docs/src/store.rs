@@ -277,7 +277,7 @@ impl DocStore {
 
     /// The open document of a file, if any.
     pub fn by_path(&self, path: &Path) -> Option<Arc<Doc>> {
-        let canonical = std::fs::canonicalize(path).ok()?;
+        let canonical = dunce::canonicalize(path).ok()?;
         self.docs.lock().get(&doc_id(&canonical)).cloned()
     }
 
@@ -298,7 +298,7 @@ impl DocStore {
     /// Returns the document and the session's token for its bytes.
     pub async fn open(&self, path: &Path, password: Option<String>, session: &str) -> Result<(Arc<Doc>, String), DocError> {
         let _one = self.opening.lock().await;
-        let canonical = std::fs::canonicalize(path).map_err(|_| DocError::NotFound(path.display().to_string()))?;
+        let canonical = dunce::canonicalize(path).map_err(|_| DocError::NotFound(path.display().to_string()))?;
         let meta = std::fs::metadata(&canonical)?;
         if !meta.is_file() {
             return Err(DocError::NotFound(path.display().to_string()));

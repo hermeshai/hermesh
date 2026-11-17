@@ -146,7 +146,7 @@ async fn a_session_drives_the_users_chrome_through_the_extension() {
     let _child = launched.child;
     let extension = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../apps/chrome-extension");
     let loaded = chrome
-        .send(None, "Extensions.loadUnpacked", json!({"path": std::fs::canonicalize(extension).unwrap()}))
+        .send(None, "Extensions.loadUnpacked", json!({"path": dunce::canonicalize(extension).unwrap()}))
         .await
         .expect("the extension loads");
     assert_eq!(loaded["id"], EXTENSION_ID, "the key in manifest.json fixes the ID");
@@ -582,7 +582,7 @@ async fn chrome_with_folder(env: &TestEnv, profile: &Path, chrome_exe: &Path, fo
         .expect("Chrome starts");
     let loaded = launched
         .conn
-        .send(None, "Extensions.loadUnpacked", json!({"path": std::fs::canonicalize(folder).unwrap()}))
+        .send(None, "Extensions.loadUnpacked", json!({"path": dunce::canonicalize(folder).unwrap()}))
         .await
         .expect("the extension loads");
     assert_eq!(loaded["id"], EXTENSION_ID);

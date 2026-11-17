@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,6 +22,7 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
 )
 
@@ -362,7 +362,7 @@ func TestHerOnThisMac(t *testing.T) {
 	cur, _ := os.ReadFile(filepath.Join(w.tmp, "owner-mac", "owner", "current"))
 	sock := paths.Her(filepath.Join(w.tmp, "owner-mac", "owner", "profiles", string(cur), "machine"))
 	answers := func() bool {
-		conn, err := net.Dial("unix", sock)
+		conn, err := localipc.Dial(context.Background(), sock)
 		if err == nil {
 			conn.Close()
 		}
@@ -690,7 +690,9 @@ func restartHerWithout(w *ownerMac, methods []string) error {
 	if sock == "" {
 		return fmt.Errorf("no her serving")
 	}
-	c, err := net.DialTimeout("unix", sock, 5*time.Second)
+	dctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	c, err := localipc.Dial(dctx, sock)
+	cancel()
 	if err != nil {
 		return err
 	}

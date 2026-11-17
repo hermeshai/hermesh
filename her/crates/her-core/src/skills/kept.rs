@@ -92,7 +92,7 @@ pub(crate) fn skill_files_read(call: &ToolCall) -> Vec<String> {
 /// The session's skills behind `used` (from [`used_files`]), most recent first, then the ones
 /// the last compaction kept, which were used before.
 pub(crate) fn in_use(used: &[PathBuf], previous: &[SkillText], skills: &[SkillRef]) -> Vec<InUse> {
-    let real = |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let real = |path: &Path| dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let by_path: HashMap<PathBuf, &SkillRef> = skills.iter().map(|skill| (real(&skill.path), skill)).collect();
     let mut seen = HashSet::new();
     let mut out = Vec::new();
@@ -274,7 +274,7 @@ mod tests {
     #[test]
     fn reads_invocations_and_previous_ones_count_most_recent_first() {
         let dir = tempfile::tempdir().unwrap();
-        let base = std::fs::canonicalize(dir.path()).unwrap();
+        let base = dunce::canonicalize(dir.path()).unwrap();
         let skills = vec![
             skill(&base, "alpha"),
             skill(&base, "beta"),

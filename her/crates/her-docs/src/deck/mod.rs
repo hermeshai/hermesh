@@ -209,7 +209,7 @@ impl DeckStore {
 
     /// The open entry of a file, if any.
     pub fn by_path(&self, path: &Path) -> Option<Arc<DeckEntry>> {
-        let canonical = std::fs::canonicalize(path).ok()?;
+        let canonical = dunce::canonicalize(path).ok()?;
         self.decks.lock().get(&crate::store::doc_id(&canonical)).cloned()
     }
 
@@ -218,7 +218,7 @@ impl DeckStore {
     /// file changed on disk meanwhile, the entry is in conflict.
     pub async fn open(&self, path: &Path, session: &str, replica: bool) -> Result<OpenedDeck, DeckError> {
         let _one = self.opening.lock().await;
-        let canonical = std::fs::canonicalize(path).map_err(|_| DeckError::NotFound(path.display().to_string()))?;
+        let canonical = dunce::canonicalize(path).map_err(|_| DeckError::NotFound(path.display().to_string()))?;
         let id = crate::store::doc_id(&canonical);
         let joined = self.decks.lock().get(&id).cloned();
         if let Some(entry) = joined {
@@ -437,7 +437,7 @@ impl DeckStore {
 
     /// Drops a file's unsaved edits, open or left by an earlier run: the next open reads it anew.
     pub async fn discard_path(&self, path: &Path) -> Result<(), DeckError> {
-        let canonical = std::fs::canonicalize(path).map_err(|_| DeckError::NotFound(path.display().to_string()))?;
+        let canonical = dunce::canonicalize(path).map_err(|_| DeckError::NotFound(path.display().to_string()))?;
         let id = crate::store::doc_id(&canonical);
         if self.decks.lock().contains_key(&id) {
             return self.discard(&id).await;

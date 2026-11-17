@@ -96,7 +96,7 @@ struct TrustedFile {
 }
 
 fn canonical(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    dunce::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 pub fn is_trusted(home: &HerHome, project_dir: &Path) -> bool {
