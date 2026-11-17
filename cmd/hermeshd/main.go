@@ -694,7 +694,12 @@ func askDiagnostics(ctx context.Context, sock string) (string, error) {
 // them with a scripted fake (tests only; it can only be set locally).
 func providers() map[string]provider.Provider {
 	if os.Getenv("HERMESH_FAKE_PROVIDERS") == "1" {
-		return map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}
+		ps := map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}
+		// HERMESH_FAKE_AGENTS=gemini,opencode: more agents played by the same fake (the README's demo).
+		for _, name := range strings.FieldsFunc(os.Getenv("HERMESH_FAKE_AGENTS"), func(r rune) bool { return r == ',' }) {
+			ps[name] = fake.Provider{}
+		}
+		return ps
 	}
 	ps := machine.DefaultProviders()
 	if b := os.Getenv("HERMESH_CODEX_BIN"); b != "" {
