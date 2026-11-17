@@ -12,6 +12,8 @@ extension DemoService {
     /// Launched with -HerDemo (its number of turns; 0, a conversation with nothing said yet).
     static var herDemoOn: Bool { UserDefaults.standard.object(forKey: "HerDemo") != nil }
     static var herDemoTurns: Int { UserDefaults.standard.integer(forKey: "HerDemo") }
+    /// Launched with -HerDemoMarkdown YES as well: her replies are DemoMarkdown.swift's, one to a turn.
+    static var herDemoMarkdown: Bool { UserDefaults.standard.bool(forKey: "HerDemoMarkdown") }
 
     /// The machine as one of Her's environments, where she runs with a model. Nothing answers her connections in the
     /// demo, so what was said is what this iPhone keeps, and what is written waits here.
@@ -54,9 +56,11 @@ private func herDemoSnapshot(turns: Int) -> JSON {
     for i in 0 ..< turns {
         // A turn every seven minutes, and a pause of some hours every tenth, where a time line shows.
         let ts = end - Double(turns - i) * 420_000 - Double((turns - i) / 10) * 14_400_000
-        let reply = herDemoReplies[i % herDemoReplies.count]
+        let gallery = DemoService.herDemoMarkdown ? herMarkdownGallery[i % herMarkdownGallery.count] : nil
+        let reply = gallery.map { (tool: $0.tool, args: $0.args, details: $0.details) } ?? herDemoReplies[i % herDemoReplies.count]
+        let ask = gallery?.ask ?? herDemoAsks[i % herDemoAsks.count]
         items.append(["type": "message", "message_id": .string("u\(i)"),
-                      "message": ["role": "user", "ts": .number(ts), "content": [["type": "text", "text": .string("\(herDemoAsks[i % herDemoAsks.count]) #\(i + 1)")]]]])
+                      "message": ["role": "user", "ts": .number(ts), "content": [["type": "text", "text": .string("\(ask) #\(i + 1)")]]]])
         items.append(["type": "message", "message_id": .string("a\(i)"),
                       "message": ["role": "assistant", "ts": .number(ts + 1000), "duration_ms": 4000,
                                   "content": [["type": "tool_call", "id": .string("c\(i)"), "name": .string(reply.tool), "arguments": reply.args]]]])

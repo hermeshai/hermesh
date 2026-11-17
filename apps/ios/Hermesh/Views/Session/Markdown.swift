@@ -66,12 +66,15 @@ indirect enum MarkdownBlock {
     case list(ordered: Bool, start: Int, items: [MarkdownItem])
     case code(lang: String, text: String)
     case quote([MarkdownBlock])
-    case table(head: [AttributedString], rows: [[AttributedString]])
+    /// Its rows as wide as its head, each column set as its delimiter row says.
+    case table(head: [AttributedString], rows: [[AttributedString]], align: [Markdown.Table.ColumnAlignment?])
     case rule
     /// Math set apart from the text: its TeX.
     case math(String)
     /// A Mermaid diagram: its source.
     case diagram(String)
+    /// The notes its references point to, in their order, after the reply (HermeshSessions' Footnotes.swift).
+    case footnotes([[MarkdownBlock]])
 }
 
 struct MarkdownItem {
@@ -85,12 +88,19 @@ struct MarkdownItem {
 
 @MainActor private func parsed(_ text: String) -> [MarkdownBlock] {
     if let hit = parsedReplies[text] { return hit }
-    // Math comes out of the source before Markdown reads it, and goes back in after (HermeshSessions' Math.swift).
-    let lifted = liftMath(text)
-    let blocks = Array(Document(parsing: lifted.text).blockChildren.compactMap(block)).flatMap { withMath($0, lifted.spans) }
+    // Footnotes come out of the source before Markdown reads it, which has none of its own, and show after it.
+    let notes = liftFootnotes(text)
+    var blocks = markdownBlocks(notes.text)
+    if !notes.notes.isEmpty { blocks.append(.footnotes(notes.notes.map(markdownBlocks))) }
     if parsedReplies.count > 400 { parsedReplies.removeAll() }
     parsedReplies[text] = blocks
     return blocks
+}
+
+private func markdownBlocks(_ text: String) -> [MarkdownBlock] {
+    // Math comes out of the source before Markdown reads it, and goes back in after (HermeshSessions' Math.swift).
+    let lifted = liftMath(text)
+    return Array(Document(parsing: lifted.text).blockChildren.compactMap(block)).flatMap { withMath($0, lifted.spans) }
 }
 
 private func block(_ m: Markup) -> MarkdownBlock? {
@@ -102,7 +112,10 @@ private func block(_ m: Markup) -> MarkdownBlock? {
     case let c as Markdown.CodeBlock: return .code(lang: c.language ?? "", text: c.code.hasSuffix("\n") ? String(c.code.dropLast()) : c.code)
     case let q as BlockQuote: return .quote(Array(q.blockChildren.compactMap(block)))
     case let t as Markdown.Table:
-        return .table(head: Array(t.head.cells.map(inlines)), rows: t.body.rows.map { Array($0.cells.map(inlines)) })
+        let head = Array(t.head.cells.map(inlines))
+        // A row short of cells is filled out; cells past the head's are not shown, as GitHub does.
+        let rows: [[AttributedString]] = t.body.rows.map { r in (Array(r.cells.map(inlines)) + Array(repeating: AttributedString(), count: head.count)).prefix(head.count).map { $0 } }
+        return .table(head: head, rows: rows, align: (0 ..< head.count).map { $0 < t.columnAlignments.count ? t.columnAlignments[$0] : nil })
     case is ThematicBreak: return .rule
     case let h as HTMLBlock: return .paragraph(AttributedString(h.rawHTML.trimmingCharacters(in: .newlines)))
     default: return nil
@@ -142,8 +155,8 @@ private func withMath(_ block: MarkdownBlock, _ spans: [MathSpan]) -> [MarkdownB
         default: return [.code(lang: lang, text: source)]
         }
     case .quote(let blocks): return [.quote(blocks.flatMap { withMath($0, spans) })]
-    case .table(let head, let rows): return [.table(head: head.map { withMath($0, spans) }, rows: rows.map { $0.map { withMath($0, spans) } })]
-    case .rule, .math, .diagram: return [block]
+    case .table(let head, let rows, let align): return [.table(head: head.map { withMath($0, spans) }, rows: rows.map { $0.map { withMath($0, spans) } }, align: align)]
+    case .rule, .math, .diagram, .footnotes: return [block]
     }
 }
 
@@ -292,7 +305,14 @@ private struct BlockView: View {
         case .paragraph(let s):
             text(s, style.size).font(style.font).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
         case .heading(let level, let s):
-            text(s, level == 1 ? .title3 : .headline).font(level == 1 ? .title3.weight(.semibold) : .headline).fixedSize(horizontal: false, vertical: true)
+            // A step down each level, as the Mac's 20, 18, 16 and 14 beside its 15: the last three under the text's size.
+            let (size, font): (UIFont.TextStyle, Font) = switch level {
+            case 1: (.title2, .title2.weight(.semibold))
+            case 2: (.title3, .title3.weight(.semibold))
+            case 3: (.headline, .headline)
+            default: (.subheadline, .subheadline.weight(.semibold))
+            }
+            text(s, size).font(font).fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
         case .list(let ordered, let start, let items):
             VStack(alignment: .leading, spacing: 4) {
@@ -313,22 +333,23 @@ private struct BlockView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 12)
                 .overlay(alignment: .leading) { Rectangle().fill(Palette.fill3).frame(width: 2) }
-        case .table(let head, let rows):
-            // In a box with its header shaded and its numbers in columns, as on the Mac; as wide as it is, and
-            // scrolling sideways once wider than the page.
-            let table = Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
-                GridRow { ForEach(Array(head.enumerated()), id: \.offset) { _, c in cell(c, last: rows.isEmpty).fontWeight(.semibold).background(Palette.fill) } }
+        case .table(let head, let rows, let align):
+            // In a box with its header shaded and its numbers in columns, as on the Mac; as wide as it is, its text
+            // wrapping to fit the page, and scrolling sideways once its columns are as narrow as they go.
+            let table = TableLayout(columns: head.count, unwrapped: Set(align.indices.filter { align[$0] == .right })) {
+                ForEach(Array(head.enumerated()), id: \.offset) { c, s in cell(s, align[c], head: true, last: rows.isEmpty).background(Palette.fill, in: Rectangle()) }
                 ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
-                    GridRow { ForEach(Array(r.enumerated()), id: \.offset) { _, c in cell(c, last: i == rows.count - 1) } }
+                    ForEach(Array(r.enumerated()), id: \.offset) { c, s in cell(s, align[c], last: i == rows.count - 1) }
                 }
             }
             .font(style.table).monospacedDigit()
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
+            // The box is the page's part the table shows in, as on the Mac: a table scrolled sideways keeps both its edges.
             ViewThatFits(in: .horizontal) {
                 table
                 ScrollView(.horizontal, showsIndicators: false) { table }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 0.5))
         case .rule:
             Rectangle().fill(Palette.separator).frame(height: 0.5)
         case .math(let tex):
@@ -339,6 +360,24 @@ private struct BlockView: View {
             } else {
                 DiagramBlock(source: source, style: style)
             }
+        case .footnotes(let notes):
+            // As on the Mac: a size down and muted, under a hairline, each by its number.
+            let small = MarkdownStyle(font: .subheadline, code: .footnote.monospaced(), table: .footnote, gap: 6, codeGround: style.codeGround,
+                                      size: .subheadline, tableSize: .footnote)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(notes.enumerated()), id: \.offset) { i, blocks in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(i + 1).").font(small.font).foregroundStyle(.tertiary).monospacedDigit().frame(minWidth: 14, alignment: .leading)
+                        MarkdownBlocks(blocks: blocks, style: small, draft: draft)
+                    }
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.top, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) { Rectangle().fill(Palette.separator).frame(height: 0.5) }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("footnotes")
         }
     }
 
@@ -361,12 +400,23 @@ private struct BlockView: View {
         }
     }
 
-    /// A cell of a table, a hairline under it but in the last row.
-    private func cell(_ s: AttributedString, last: Bool) -> some View {
-        text(s, style.tableSize).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+    /// A cell of a table, filling its place in the row, a hairline under it but in the last row.
+    private func cell(_ s: AttributedString, _ align: Markdown.Table.ColumnAlignment?, head: Bool = false, last: Bool) -> some View {
+        text(s, style.tableSize).fontWeight(head ? .semibold : nil).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(align == .right ? .trailing : align == .center ? .center : .leading)
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .frame(maxWidth: 320, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: align == .right ? .topTrailing : align == .center ? .top : .topLeading)
             .overlay(alignment: .bottom) { if !last { Rectangle().fill(Palette.separator).frame(height: 0.5) } }
+            .layoutValue(key: LongestWord.self, value: longestWord(s, head: head) + 24)
+    }
+
+    /// How wide the cell's longest word is in the table's type: a run of letters between spaces, or a single Chinese
+    /// character (a line may break after any).
+    private func longestWord(_ s: AttributedString, head: Bool) -> CGFloat {
+        var font = UIFont.preferredFont(forTextStyle: style.tableSize)
+        if head, let bold = font.fontDescriptor.withSymbolicTraits(.traitBold) { font = UIFont(descriptor: bold, size: 0) }
+        let words = String(s.characters).split { c in c.isWhitespace || c.unicodeScalars.contains { (0x3000 ... 0x9FFF).contains($0.value) || (0xFF00 ... 0xFFEF).contains($0.value) } }
+        return words.map { ceil(String($0).size(withAttributes: [.font: font]).width) }.max() ?? 0
     }
 
     /// Inline code in the code face, on a grey ground.
@@ -378,6 +428,66 @@ private struct BlockView: View {
         }
         return out
     }
+}
+
+/// A table's cells, a row at a time, laid out as a browser lays out the Mac's: each column as wide as its widest
+/// cell when the table fits the page; else each narrowed, the most where there is most to wrap, but none under its
+/// floor; and with no width to fit (scrolling sideways), every column at its floor. A row is as tall as its tallest
+/// cell, so no cell's lines run into the next row.
+private struct TableLayout: Layout {
+    let columns: Int
+    /// The columns that never wrap (numbers, set to the right): their floor is their whole width.
+    let unwrapped: Set<Int>
+    /// How narrow a column that wraps may get (the Mac's 104px), unless a word in it is wider, up to `widestWord`.
+    static let narrowest: CGFloat = 104
+    /// A word wider than this (a hash, a long link) breaks rather than widen its column.
+    static let widestWord: CGFloat = 180
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let (widths, heights) = measure(proposal.width, subviews)
+        return CGSize(width: widths.reduce(0, +), height: heights.reduce(0, +))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let (widths, heights) = measure(bounds.width, subviews)
+        var y = bounds.minY
+        for (r, height) in heights.enumerated() {
+            var x = bounds.minX
+            for (c, width) in widths.enumerated() {
+                subviews[r * columns + c].place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(width: width, height: height))
+                x += width
+            }
+            y += height
+        }
+    }
+
+    private func measure(_ width: CGFloat?, _ subviews: Subviews) -> (widths: [CGFloat], heights: [CGFloat]) {
+        let rows = subviews.count / max(columns, 1)
+        var most = [CGFloat](repeating: 0, count: columns)
+        var word = [CGFloat](repeating: 0, count: columns)
+        for (i, cell) in subviews.enumerated() {
+            most[i % columns] = max(most[i % columns], ceil(cell.sizeThatFits(.unspecified).width))
+            word[i % columns] = max(word[i % columns], cell[LongestWord.self])
+        }
+        let least = most.indices.map { unwrapped.contains($0) ? most[$0] : min(most[$0], max(Self.narrowest, min(word[$0], Self.widestWord))) }
+        var widths = least
+        let room = (width ?? 0) - least.reduce(0, +)
+        let give = zip(most, least).map { $0 - $1 }
+        let wanted = give.reduce(0, +)
+        if room > 0, wanted > 0 {
+            // Not rounded: laid out at the width this gives, the table gets these same widths again.
+            widths = widths.indices.map { least[$0] + give[$0] * min(1, room / wanted) }
+        }
+        let heights = (0 ..< rows).map { r in
+            (0 ..< columns).map { c in ceil(subviews[r * columns + c].sizeThatFits(ProposedViewSize(width: widths[c], height: nil)).height) }.max() ?? 0
+        }
+        return (widths, heights)
+    }
+}
+
+/// A table cell's longest word, with the cell's padding.
+nonisolated private struct LongestWord: LayoutValueKey {
+    static let defaultValue: CGFloat = 0
 }
 
 /// A fenced block, as on the Mac: a bar with its language (a shell's with a
