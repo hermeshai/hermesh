@@ -87,12 +87,12 @@ private struct HerPageBody: View {
         .animation(.snappy(duration: 0.28), value: tab)
         .modifier(HerLoadsConnectors(state: connectors))
         .onAppear { shown += 1 }
-        .task(id: "\(chat.envUp) \(chat.settingsChanged) \(tab == .abilities) \(shown)") {
-            guard chat.envUp, tab == .abilities else { return }
-            let calls = HerAbilityCalls { [chat] m, p in try await chat.call(m, p) }
-            if let bot = chat.bot, herAnswers(machine.her, "bots/memory") != false { memoryEmpty = (try? await HerMemory.load(chat, bot: bot.id))?.isEmpty }
-            if herAnswers(machine.her, "web_search/status") != false { searching = (try? await calls.search())?.enabled }
-            if herAnswers(machine.her, "browser/status") != false { browsing = (try? await calls.browser())?.controlling }
+        .task(id: "\(herReachable(machine)) \(chat.envUp) \(chat.settingsChanged) \(tab == .abilities) \(shown)") {
+            guard herReachable(machine), tab == .abilities else { return }
+            // Web search and the browsers at once, on requests of their own; her memory on her connection, as its page reads it.
+            if herAnswers(machine.her, "web_search/status") != false { searching = (try? await chat.abilities.search())?.enabled }
+            if herAnswers(machine.her, "browser/status") != false { browsing = (try? await chat.abilities.browser())?.controlling }
+            if chat.envUp, let bot = chat.bot, herAnswers(machine.her, "bots/memory") != false { memoryEmpty = (try? await HerMemory.load(chat, bot: bot.id))?.isEmpty }
         }
         .confirmationDialog("Clear your chat with “\(chat.bot?.name ?? "Her")”?", isPresented: $clearing, titleVisibility: .visible) {
             Button("Clear", role: .destructive) { clear() }
@@ -192,7 +192,7 @@ private struct HerPageBody: View {
                     HerRowLabel {
                         Toggle("Notifications", isOn: Binding(get: { !bot.muted }, set: { on in
                             Task {
-                                do { _ = try await chat.call("bots/update", ["bot_id": .string(bot.id), "muted": .bool(!on)]) } catch { model.show(error.localizedDescription) }
+                                do { _ = try await chat.callAlone("bots/update", ["bot_id": .string(bot.id), "muted": .bool(!on)]) } catch { model.show(error.localizedDescription) }
                             }
                         }))
                         .accessibilityIdentifier("her-notifications")
@@ -234,7 +234,7 @@ private struct HerPageBody: View {
         guard let bot = chat.bot else { return }
         Task {
             do {
-                _ = try await chat.call("bots/clear", ["bot_id": .string(bot.id)])
+                _ = try await chat.callAlone("bots/clear", ["bot_id": .string(bot.id)])
                 model.show(String(localized: "Chat cleared"))
             } catch { model.show(error.localizedDescription) }
         }
@@ -344,7 +344,9 @@ extension EnvironmentValues {
 }
 
 /// Her's colours behind a card's glass, and only there: the part of one field, drawn across the cards' area, that
-/// the card covers. The page around the cards, the gaps between them included, keeps its own background.
+/// the card covers. The page around the cards, the gaps between them included, keeps its own background. Drawn on a
+/// canvas the card's size, so nothing of it reaches past the card (a larger view would widen the card's frame for
+/// VoiceOver, and where a tap on it lands).
 private struct HerCardTint: ViewModifier {
     static let space = "her-cards"
     @Environment(\.herCardsSize) private var area
@@ -352,39 +354,33 @@ private struct HerCardTint: ViewModifier {
     func body(content: Content) -> some View {
         content.background {
             if let area {
-                GeometryReader { g in
-                    let at = g.frame(in: .named(Self.space))
-                    HerCardField().frame(width: area.width, height: area.height).offset(x: -at.minX, y: -at.minY)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                GeometryReader { g in HerCardField(area: area, at: g.frame(in: .named(Self.space)).origin) }
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
             }
         }
     }
 }
 
-/// Her's lilac, rose, sky and violet, blurred into one another.
+/// Her's lilac, rose, sky and violet, blurred into one another across `area`, as seen from `at` in it.
 private struct HerCardField: View {
     @Environment(\.colorScheme) private var scheme
+    let area: CGSize
+    let at: CGPoint
 
     var body: some View {
-        GeometryReader { g in
-            let w = g.size.width, h = g.size.height, r = min(w, h * 1.6)
-            ZStack {
-                blob(0x8f9bf0, x: w * 0.16, y: h * 0.16, r: r * 0.4)
-                blob(0xf29bc0, x: w * 0.84, y: h * 0.22, r: r * 0.36)
-                blob(0x7fc4ea, x: w * 0.56, y: h * 0.62, r: r * 0.42)
-                blob(0xb59cf2, x: w * 0.14, y: h * 0.9, r: r * 0.38)
+        Canvas { ctx, _ in
+            let w = area.width, h = area.height, r = min(w, h * 1.6)
+            ctx.opacity = scheme == .dark ? 0.85 : 0.75
+            ctx.addFilter(.blur(radius: 40))
+            ctx.translateBy(x: -at.x, y: -at.y)
+            for (rgb, x, y, k) in [(0x8f9bf0, 0.16, 0.16, 0.4), (0xf29bc0, 0.84, 0.22, 0.36), (0x7fc4ea, 0.56, 0.62, 0.42), (0xb59cf2, 0.14, 0.9, 0.38)] {
+                let radius = r * k
+                let color = Color(red: Double(rgb >> 16 & 0xff) / 255, green: Double(rgb >> 8 & 0xff) / 255, blue: Double(rgb & 0xff) / 255)
+                ctx.fill(Path(ellipseIn: CGRect(x: w * x - radius, y: h * y - radius, width: radius * 2, height: radius * 2)), with: .color(color))
             }
-            .blur(radius: 40)
-            .opacity(scheme == .dark ? 0.85 : 0.75)
         }
-    }
-
-    private func blob(_ rgb: Int, x: CGFloat, y: CGFloat, r: CGFloat) -> some View {
-        Circle().fill(Color(red: Double(rgb >> 16 & 0xff) / 255, green: Double(rgb >> 8 & 0xff) / 255, blue: Double(rgb & 0xff) / 255))
-            .frame(width: r * 2, height: r * 2).position(x: x, y: y)
     }
 }
 

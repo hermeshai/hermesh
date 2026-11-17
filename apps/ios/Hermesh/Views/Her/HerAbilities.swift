@@ -155,7 +155,7 @@ private struct HerSkillsList: View {
             }
         }
         .listSectionSpacing(.compact)
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") { if chat.envUp { await state.load() } }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") { if herReachable(machine) { await state.load() } }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.zip, UTType(filenameExtension: "skill") ?? .data]) { r in
             if case .success(let url) = r { read(url) }
         }
@@ -368,8 +368,8 @@ private struct HerSkillView: View {
         }
         .listSectionSpacing(.compact)
         .navigationTitle(skill?.name ?? "")
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") {
-            guard chat.envUp else { return }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") {
+            guard herReachable(machine) else { return }
             await state.load()
             if files == nil, let s = state.skills?.skills.first(where: { $0.dir == dir }) {
                 do { files = try await chat.abilities.skillFiles(s) } catch { filesFailed = error.localizedDescription }
@@ -519,7 +519,7 @@ private struct HerSearchList: View {
         }
         .listSectionSpacing(.compact)
         .environment(\.editMode, $editing)
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") { await load() }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") { await load() }
         .sheet(item: $keyFor) { src in
             HerSearchKeySheet(chat: chat, machine: machine, source: src) { said in
                 model.show(said)
@@ -587,7 +587,7 @@ private struct HerSearchList: View {
     }
 
     private func load() async {
-        guard chat.envUp else { return }
+        guard herReachable(machine) else { return }
         do {
             search = try await chat.abilities.search()
             failed = nil
@@ -823,7 +823,7 @@ private struct HerBrowserList: View {
             }
         }
         .listSectionSpacing(.compact)
-        .task(id: "\(chat.envUp) \(chat.settingsChanged)") { await load() }
+        .task(id: "\(herReachable(machine)) \(chat.settingsChanged)") { await load() }
     }
 
     private func badge(_ y: HerBrowsers.Yours) -> String {
@@ -860,7 +860,7 @@ private struct HerBrowserList: View {
     }
 
     private func load() async {
-        guard chat.envUp else { return }
+        guard herReachable(machine) else { return }
         do {
             browser = try await chat.abilities.browser()
             failed = nil

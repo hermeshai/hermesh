@@ -49,6 +49,9 @@ final class HerPageTabsUITests: XCTestCase {
             XCTAssertTrue(app.buttons["her-tab-\(tab)"].isSelected, tab)
             shot("her page, \(tab)")
             for card in cards {
+                // A card is as big as it looks: what it draws behind its glass widens it for no one (VoiceOver, a tap).
+                let frame = app.buttons[card.id].frame
+                XCTAssertTrue(screen.contains(frame) && frame.width < screen.width, "\(card.id) within the page: \(frame)")
                 tap(card.id)
                 XCTAssertTrue(app.navigationBars[card.title].waitForExistence(timeout: 10), "\(card.id) opens \(card.title)")
                 shot(card.title)
