@@ -155,7 +155,7 @@ extension HermeshUITests {
         let drawer = app.descendants(matching: .any)["drawer"]
         let place = drawer.buttons["her-place"]
         XCTAssertTrue(place.waitForExistence(timeout: 5))
-        XCTAssertLessThan(place.frame.minY, drawer.buttons["work-place"].frame.minY, "first, above Work")
+        XCTAssertLessThan(place.frame.minY, drawer.buttons["overview-place"].frame.minY, "first, above Work")
         place.tap()
         // Her runs nowhere yet: where should she?
         XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 10))
@@ -806,7 +806,7 @@ extension HermeshUITests {
         try waitFor("the tag no longer says it waits") { !tag.label.contains("在等你") ? true : nil }
         tag.tap()
         tap("team-work")
-        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10), "the panel's count opens Work")
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 10), "the panel's count opens Work")
         XCTAssertFalse(app.buttons["quick-answer-蓝"].exists, "Work no longer offers the answered question")
         openMenu()
         tap("her-place")
@@ -843,13 +843,13 @@ extension HermeshUITests {
         herSend("[[mock:mesh:work_summary:{}]] 今天团队干了什么")
         let work = app.descendants(matching: .any)["her-work"].firstMatch
         XCTAssertTrue(work.waitForExistence(timeout: 60), "the card of the team's work")
-        XCTAssertTrue(work.label.contains("个会话（今天）"), work.label)
+        XCTAssertTrue(work.label.contains("个任务（今天）"), work.label)
         if app.buttons["to-end"].exists { tap("to-end") }
         for _ in 0..<12 where !work.isHittable { app.swipeDown() }
         XCTAssertTrue(waitUntil { work.isHittable }, "the work card is in view before opening it")
         herShot("Her: the team's work today")
         press(work)
-        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 10), "the work card opens Work")
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 10), "the work card opens Work")
         openMenu()
         tap("her-place")
         XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
@@ -861,6 +861,7 @@ extension HermeshUITests {
         XCTAssertTrue(app.buttons["her-tag"].waitForExistence(timeout: 30), "Her is the start page once enabled")
         openMenu()
         tap("account")
+        reach("appearance-dark")
         tap("appearance-dark")
         tap("close")
         tap("her-place")
@@ -951,8 +952,7 @@ extension HermeshUITests {
         XCTAssertTrue(text("上次的数据还在").waitForExistence(timeout: 30), "her data kept, on the card")
         herShot("Her: off, her data kept")
         // Removing the machine could erase it too, while the machine answers; owner-mac stays here.
-        openMenu()
-        tap("menu-machines")
+        openMachines()
         tap("machine-owner-mac", timeout: 20)
         tap("machine-menu")
         tap("移除…")

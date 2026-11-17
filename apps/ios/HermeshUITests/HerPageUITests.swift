@@ -43,8 +43,7 @@ extension HermeshUITests {
 
     func herLargeText() throws {
         // Machines (one element to VoiceOver, so seen in the picture: the state under the name, which has the row).
-        openMenu()
-        tap("menu-machines")
+        openMachines()
         XCTAssertTrue(app.descendants(matching: .any)["machine-owner-mac"].firstMatch.waitForExistence(timeout: 20), "the machine's row")
         herShot("Large text: Machines")
         // Where Her runs: Turn On under the machine.

@@ -1,10 +1,10 @@
 import XCTest
 
 /// A wide screen (regular width, wider than tall: an iPhone Pro Max or iPhone Duo open, on its side), in the
-/// demo world: the menu beside the page expanded or as its rail, the session list as a column with the chosen
-/// session beside it, the menu over the page where there is no room for it, and one column again upright
-/// (docs/iphone-app.md). An iPhone app is upright but on iPhone Duo's inner display, so the test asks the app to
-/// turn on any (-HermeshTestTurns). HERMESH_WIDE_SHOTS names a folder for the screenshots.
+/// demo world: the menu, with the sessions in it, beside the page expanded or as its rail (docs/her-team.md §16),
+/// the rail's logos of the agents at work, the menu over the page where there is no room for it, and one column
+/// again upright (docs/iphone-app.md). An iPhone app is upright but on iPhone Duo's inner display, so the test
+/// asks the app to turn on any (-HermeshTestTurns). HERMESH_WIDE_SHOTS names a folder for the screenshots.
 final class WideUITests: XCTestCase {
     let app = XCUIApplication()
 
@@ -17,88 +17,83 @@ final class WideUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
     }
 
-    func testThreeColumns() throws {
+    func testTheMenuBesideThePage() throws {
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         tap("try-demo")
         XCTAssertTrue(app.buttons["run-demo-task"].waitForExistence(timeout: 20))
         XCUIDevice.shared.orientation = .landscapeLeft
         sleep(2)
-        let drawer = element("drawer"), rail = element("rail"), list = element("list-column"), scrim = element("menu-scrim")
+        let drawer = element("drawer"), rail = element("rail"), scrim = element("menu-scrim")
         shot("0-side")
         guard drawer.waitForExistence(timeout: 5) else { throw XCTSkip("no regular width on its side here") }
-        let width = app.frame.width, menuWidth = drawer.frame.width
 
-        // The menu beside the page: expanded, or its rail; never hidden, and no menu button.
+        // The menu beside the page, the sessions in it: expanded, or its rail; never hidden, and no menu button.
         XCTAssertFalse(app.buttons["menu"].exists, "no menu button beside the menu")
         XCTAssertFalse(rail.exists)
-        shot("1-work-expanded")
+        XCTAssertFalse(element("list-column").exists, "no list column: the menu is the list")
+        let rows = drawer.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 10), "the demo's sessions in the menu")
+        shot("1-overview-expanded")
+
+        // A session opens beside the menu, which stays, its row the current one; another takes its place.
+        rows.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "the session")
+        XCTAssertTrue(drawer.exists, "beside the menu")
+        XCTAssertGreaterThan(app.buttons["session-info"].frame.minX, drawer.frame.maxX, "to the menu's right")
+        XCTAssertTrue(rows.element(boundBy: 0).isSelected, "its row the current one")
+        shot("2-session")
+        rows.element(boundBy: 1).tap()
+        sleep(1)
+        XCTAssertEqual(app.buttons.matching(identifier: "session-info").count, 1, "in the first's place, not over it")
+
+        // Its rail: Her, the overview, search, and the agents at work.
         tap("menu-hide")
         XCTAssertTrue(rail.waitForExistence(timeout: 5), "the rail")
         XCTAssertTrue(drawer.waitForNonExistence(timeout: 5), "in the menu's place")
         XCTAssertLessThan(rail.frame.width, 160)
         XCTAssertFalse(app.buttons["menu"].exists, "the rail expands it, not a menu button")
-        shot("2-work-rail")
+        for id in ["rail-her", "rail-overview", "rail-search"] { XCTAssertTrue(element(id).exists, id) }
+        XCTAssertFalse(element("rail-sessions").exists || element("rail-work").exists, "no places of the old map")
+        shot("3-rail")
+        tap("rail-overview")
+        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 5))
+        XCTAssertTrue(rail.exists, "the rail stays from page to page")
         tap("rail-expand")
         XCTAssertTrue(drawer.waitForExistence(timeout: 5), "expanded again")
         XCTAssertTrue(rail.waitForNonExistence(timeout: 5))
+        sleep(1) // until it has slid in
 
-        // All Sessions: the list as a column, nothing chosen yet.
-        tap("sessions-place")
-        XCTAssertTrue(list.waitForExistence(timeout: 5), "the list's column")
-        XCTAssertTrue(element("no-session").exists, "nothing chosen yet")
-        let narrow = width < menuWidth + 320 + 400
-        if narrow {
-            // No room for the expanded menu beside the list: its rail, though the owner left it expanded.
-            XCTAssertTrue(rail.waitForExistence(timeout: 5), "the menu gives way to its rail")
-            XCTAssertEqual(element("rail-sessions").isSelected, true, "the rail marks where you are")
-        }
-        shot("3-list")
-
-        // A session shows beside the list, which stays; another takes its place.
-        let rows = list.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-"))
-        XCTAssertGreaterThan(rows.count, 1, "the demo's sessions")
-        rows.element(boundBy: 0).tap()
-        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "the session")
-        XCTAssertTrue(list.exists, "beside its list")
-        XCTAssertGreaterThan(app.buttons["session-info"].frame.minX, list.frame.maxX, "to the list's right")
-        shot("4-list-session")
-        rows.element(boundBy: 1).tap()
-        sleep(1)
-        XCTAssertTrue(list.exists && app.buttons["session-info"].exists)
-        XCTAssertEqual(app.buttons.matching(identifier: "session-info").count, 1, "in the first's place, not over it")
-        shot("5-list-other-session")
-
-        if narrow {
-            // Asked for from the rail, the menu shows over the page; the page's shade or a place puts it away.
-            tap("rail-expand")
-            XCTAssertTrue(drawer.waitForExistence(timeout: 5), "the menu over the page")
+        if app.frame.width < drawer.frame.width + 400 {
+            // No room for the expanded menu: asked for from the rail, it shows over the page; the shade or a row puts it away.
             XCTAssertTrue(scrim.isHittable, "the page shaded under it")
-            XCTAssertTrue(list.exists, "the columns keep their place")
-            shot("6-menu-over")
+            shot("4-menu-over")
             scrim.tap()
             XCTAssertTrue(drawer.waitForNonExistence(timeout: 5), "put away")
-            XCTAssertTrue(rail.exists && app.buttons["session-info"].exists)
             tap("rail-expand")
             XCTAssertTrue(drawer.waitForExistence(timeout: 5))
-            tap("work-place")
-            XCTAssertTrue(list.waitForNonExistence(timeout: 5), "Work has no list")
-            XCTAssertTrue(drawer.waitForExistence(timeout: 5) && !scrim.exists, "and the menu is beside it again, as the owner left it")
-            shot("7-work-again")
-            tap("sessions-place")
-            rows.element(boundBy: 0).tap()
-            XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
+            visibleRow(rows).tap()
+            XCTAssertTrue(drawer.waitForNonExistence(timeout: 5), "a row chosen puts it away")
+        } else {
+            visibleRow(rows).tap()
         }
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10))
 
-        // Upright: one column, the same pages; Back leads to the list.
+        // Upright: one column, the session in front, the menu behind its button.
         XCUIDevice.shared.orientation = .portrait
         sleep(2)
         XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "the session still")
-        XCTAssertFalse(list.exists || rail.exists || drawer.exists, "alone")
-        shot("8-upright-session")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.navigationBars["All Sessions"].waitForExistence(timeout: 5), "back to the list, a page")
-        shot("9-upright-list")
+        XCTAssertFalse(rail.exists || drawer.exists, "alone")
+        XCTAssertTrue(app.buttons["menu"].exists, "the menu behind its button")
+        shot("5-upright-session")
+    }
+
+    /// A session row the list shows whole (it scrolls under the menu's top band, and keeps where it was left).
+    private func visibleRow(_ rows: XCUIElementQuery) -> XCUIElement {
+        let band = element("menu-hide").frame.maxY + 16
+        let row = rows.allElementsBoundByIndex.first { $0.isHittable && $0.frame.minY >= band }
+        XCTAssertNotNil(row, "a session row in view")
+        return row ?? rows.firstMatch
     }
 
     private func element(_ identifier: String) -> XCUIElement {

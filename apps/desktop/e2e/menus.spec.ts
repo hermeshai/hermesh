@@ -40,14 +40,14 @@ test("the app menu drives the main window", async () => {
 
   // 显示 → 概览 (⌘1)
   await clickMenu(app, "overview");
-  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect.poll(() => menuItem(app, "overview")).toMatchObject({ checked: true });
 
   // ⌘K: the search palette
   await clickMenu(app, "search");
-  await expect(page.getByRole("dialog", { name: "搜索会话" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "搜索任务" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "搜索会话" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "搜索任务" })).toHaveCount(0);
 
   // 显示 → 收成窄栏 / 展开边栏 (⌃⌘S)
   await clickMenu(app, "toggleSidebar");

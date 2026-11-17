@@ -12,53 +12,31 @@ struct MainView: View {
 
     var body: some View {
         @Bindable var model = model
-        SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.atMenuPlace)
+        SideMenu(model: model, open: $model.drawerOpen, panAnywhere: model.path.isEmpty)
             .ignoresSafeArea(edges: model.isDemo ? [.top, .horizontal] : .all)
+            // Over the menu and the page alike: a session archived from the menu says so where it can be seen.
+            .overlay(alignment: .bottom) {
+                if let t = model.toast {
+                    ToastView(toast: t) { model.toast = nil }
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.smooth(duration: 0.35), value: model.toast)
             .sheet(item: $model.sheet) { sheet in
                 SheetHost(kind: sheet).environment(model)
             }
     }
 }
 
-/// The page under the menu: the navigation stack, and the toast over it. On a wide screen a session list
-/// stands as a column of its own (docs/her-team.md §14.2, as on the Mac): the list, and beside it what it leads
-/// to, the session chosen in it first. The path is one, so the pages are the same when the screen changes.
+/// The page under the menu: the navigation stack.
 private struct PageView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        Group {
-            if let i = model.listAt {
-                HStack(spacing: 0) {
-                    NavigationStack { page(model.path[i]) }
-                        .frame(width: WideLayout.listWidth)
-                        .accessibilityElement(children: .contain)
-                        .accessibilityIdentifier("list-column")
-                    Divider().ignoresSafeArea()
-                    NavigationStack(path: Binding { Array(model.path.dropFirst(i + 2)) } set: { model.path = Array(model.path.prefix(i + 2)) + $0 }) {
-                        Group {
-                            if model.path.count > i + 1 {
-                                page(model.path[i + 1]).id(model.path[i + 1]) // a page of its own, as the menu's
-                            } else {
-                                Text("Choose a session").foregroundStyle(.secondary).accessibilityIdentifier("no-session")
-                            }
-                        }
-                        .navigationDestination(for: Route.self) { page($0) }
-                    }
-                }
-            } else {
-                NavigationStack(path: $model.path) {
-                    rootPage.navigationDestination(for: Route.self) { route in
-                        // The page the menu opened: the menu's button in place of Back (and of its swipe).
-                        if model.menuPage == route && model.path.first == route {
-                            page(route).navigationBarBackButtonHidden().toolbar { MenuToolbarItem() }
-                        } else {
-                            page(route)
-                        }
-                    }
-                }
-            }
+        NavigationStack(path: $model.path) {
+            rootPage.navigationDestination(for: Route.self) { page($0) }
         }
         .overlay(alignment: .top) { // in the middle of a root page's bar while its title is large
             if model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
@@ -66,14 +44,6 @@ private struct PageView: View {
             }
         }
         .task(id: model.sync) { await model.showSync(model.sync) }
-        .overlay(alignment: .bottom) {
-            if let t = model.toast {
-                ToastView(toast: t) { model.toast = nil }
-                    .padding(.bottom, 8)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.smooth(duration: 0.35), value: model.toast)
     }
 
     @ViewBuilder private func page(_ route: Route) -> some View {
@@ -82,11 +52,6 @@ private struct PageView: View {
         case .grant(let id): GrantView(id: id).syncSubtitle()
         case .machine(let id): MachineView(id: id).syncSubtitle()
         case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
-        case .grantSessions(let id): ScopedSessionsView(filter: SessionFilter(grant: id), title: String(localized: "“\(model.clients.first { $0.clientID == id }?.label ?? "")” Sessions"), about: model.clients.first { $0.clientID == id }.map { .grant($0.grantID) }).syncSubtitle()
-        case .machineSessions(let id): ScopedSessionsView(filter: SessionFilter(machine: id), title: String(localized: "Sessions on \(model.machineName(id))"), about: .machine(id)).syncSubtitle()
-        case .agentSessions(let machine, let agent):
-            ScopedSessionsView(filter: SessionFilter(agent: agent, machine: machine), title: String(localized: "\(agentTitle(agent)) on \(model.machineName(machine))"), about: .machineAgent(machine, agent)).syncSubtitle()
-        case .sessions: SessionsView().syncSubtitle()
         case .herSettings: HerSettings()
         case .herConnectors: HerConnectorsPage()
         case .herConnector(let name): HerConnectorPage(name: name)
@@ -146,7 +111,7 @@ private struct SideMenu: UIViewControllerRepresentable {
         c.onRail = { model.menuRail = $0 }
         c.onWidth = { model.menuWidth = $0 }
         c.set(width: model.menuWidth)
-        c.set(rail: model.menuRail, list: model.path.contains(where: \.isList))
+        c.set(rail: model.menuRail)
         c.set(open: open)
     }
 }
@@ -182,11 +147,10 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
     private let divider = UIView() // between the menu and the page, side by side
     private let grip = UIView() // over the divider: drags the menu wider or narrower
     private let scrim = UIView() // fades the page back under the menu shown over it; a tap puts the menu away
-    /// The menu's width beside the page; whether the owner shrank it to its rail there; whether a session list
-    /// is among the pages; and how the screen is shared, as last worked out.
+    /// The menu's width beside the page; whether the owner shrank it to its rail there; and how the screen is
+    /// shared, as last worked out.
     private var besideWidth: CGFloat = 322
     private var railChosen = false
-    private var listWanted = false
     private var layout: WideLayout?
     /// The menu shows over the page, from the rail, where there is no room for it beside the page.
     private var peek = false
@@ -303,7 +267,7 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         travel = arrangement == .cover ? b.width + 24 : width
         // The rail keeps its width clear of the screen's leading safe area (the island, on its side).
         let railFull = railWidth + view.safeAreaInsets.left
-        let wide = arrangement == .beside ? wideLayout(width: b.width, menu: besideWidth, rail: railFull, expanded: !railChosen, list: listWanted) : nil
+        let wide = arrangement == .beside ? wideLayout(width: b.width, menu: besideWidth, expanded: !railChosen) : nil
         let railed = wide?.rail == true
         if !railed { peek = false }
         let pageX = wide == nil ? 0 : railed ? railFull : besideWidth
@@ -389,12 +353,10 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         animate(open: open, velocity: 0)
     }
 
-    /// The owner's choice of the menu beside the page, expanded or its rail, and whether a session list is
-    /// among the pages: the page slides to its new place.
-    func set(rail: Bool, list: Bool) {
-        guard rail != railChosen || list != listWanted else { return }
+    /// The owner's choice of the menu beside the page, expanded or its rail: the page slides to its new place.
+    func set(rail: Bool) {
+        guard rail != railChosen else { return }
         railChosen = rail
-        listWanted = list
         slide()
     }
 

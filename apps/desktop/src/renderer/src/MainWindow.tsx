@@ -6,7 +6,6 @@ import { local } from "./api";
 import { Overview } from "./Overview";
 import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
-import { NoSession, SessionList } from "./SessionList";
 import { SessionPage } from "./SessionPage";
 import { SheetHost } from "./Sheets";
 import { Rail } from "./Rail";
@@ -30,11 +29,11 @@ export function MainWindow() {
     return () => document.documentElement.classList.remove("vibrant");
   }, []);
   const session = st.selection.kind === "session" ? st.sessions.find((s) => s.sessionId === (st.selection as { id: string }).id) : undefined;
-  // A selected session that is gone (e.g. its machine forgot it, or it was deleted): the list, with none chosen.
+  // A selected session that is gone (e.g. its machine forgot it, or it was deleted): the overview.
   useEffect(() => {
     if (st.selection.kind !== "session" || !st.sessionsLoaded || session) return;
     if (st.moreSessions) st.loadOlderSessions();
-    else st.set({ selection: { kind: "list" } });
+    else st.set({ selection: { kind: "overview" } });
   }, [st, session]);
   // "Show in Main Window" in the settings window: the search palette, narrowed to a grant or a machine.
   const { set } = st;
@@ -74,22 +73,17 @@ export function MainWindow() {
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [peeking, set]);
-  const { sidebar, list: listColumn } = layoutOf(st);
-  const list = listColumn === "docked";
+  const { sidebar } = layoutOf(st);
   return (
-    <div className={`mainwrap ${list ? "withlist" : ""} ${sidebar === "docked" ? "" : "railed"} ${sidebar === "over" ? "peek" : ""}`}>
+    <div className={`mainwrap ${sidebar === "docked" ? "" : "railed"} ${sidebar === "over" ? "peek" : ""}`}>
       {/* The sidebar, or its rail (docs/her-team.md §14.9): asked for while there is no room, it shows over the rail. */}
       {sidebar === "docked" ? <Sidebar /> : <Rail />}
       {sidebar === "over" && <Sidebar />}
       {/* Over the conversation, the sidebar goes again with a click beside it. */}
       {sidebar === "over" && <div className="peek-scrim" onClick={() => setSidebar(st, false)} />}
-      {/* Three columns while sessions show (docs/her-team.md §14.2): the sidebar, their list, the one chosen. */}
-      {list && <SessionList />}
       <section className="content">
         {session ? (
           <SessionPage s={session} />
-        ) : st.selection.kind === "list" ? (
-          <NoSession />
         ) : (st.selection.kind === "her" || st.selection.kind === "progress") && !st.status?.machineOnly ? (
           <Suspense fallback={<div className="ctool drag" />}>
             <HerPage />

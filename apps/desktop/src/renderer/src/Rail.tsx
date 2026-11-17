@@ -1,30 +1,33 @@
-import { useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { agoText, codingAgentTitle, dateOf, isActive } from "@hermesh/core";
+import { codingAgentTitle, displayTitle, isActive, isFailed, liveByAgent, teamState } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
-import { GrantAvatar } from "./components";
 import { Cat } from "./her/Cat";
 import { unreadCount } from "./her/environments";
 import { Icon } from "./icons";
-import { listShown, setSidebar } from "./layout";
+import { setSidebar } from "./layout";
 import { AppMenuButton } from "./MainWindow";
 import { keys, ownKeys } from "./platform";
-import { AccountMenu, herClients, openList, workMarks } from "./Sidebar";
-import { useNow, useStore, type ListFilter } from "./store";
+import { AccountMenu, overviewMarks, RowMark } from "./Sidebar";
+import { useNow, useStore } from "./store";
 
-// The sidebar's rail (docs/her-team.md §14.9): the same places as the sidebar, as icons, 74 px wide. Her, Work,
-// Search and All Sessions; the machines, each with its coding agents under it; the connected agents; the account.
-// Each says on hover (or focus) what it is and how it stands; the list's column, beside, says where you are.
+// The sidebar's rail (docs/her-team.md §16): Her and the overview, then one logo for each coding agent with
+// sessions at hand (waiting for the owner, failed, at work), 74 px wide. The rail says who is at work; the
+// sidebar, expanded, says on what. Each button says on hover (or focus) what it is and how it stands.
 
 /** What a rail button says beside it while the pointer or the focus is on it. */
 type Tip = { text: string; top: number } | null;
+
+/** An agent's menu of its sessions, open beside its logo; key: opened from the keyboard. */
+type AgentMenuAt = { agent: string; top: number; key: boolean; anchor: HTMLElement };
 
 export function Rail() {
   const st = useStore();
   const { t } = useTranslation("common");
   const now = useNow(30_000);
   const [tip, setTip] = useState<Tip>(null);
+  const [menu, setMenu] = useState<AgentMenuAt | null>(null);
   const show = (text: string) => ({
     onMouseEnter: (e: MouseEvent<HTMLElement>) => setTip({ text, top: e.currentTarget.getBoundingClientRect().top + e.currentTarget.offsetHeight / 2 }),
     onFocus: (e: FocusEvent<HTMLElement>) => setTip({ text, top: e.currentTarget.getBoundingClientRect().top + e.currentTarget.offsetHeight / 2 }),
@@ -32,138 +35,92 @@ export function Rail() {
     onBlur: () => setTip(null),
   });
   const sel = st.selection;
-  const inList = listShown(sel);
-  const same = (f: ListFilter | null) => inList && JSON.stringify(st.listFilter) === JSON.stringify(f);
-  const live = st.sessions.filter((s) => s.status !== SessionStatus.ARCHIVED);
-  const her = herClients(st);
+  const chosen = sel.kind === "session" ? sel.id : "";
   const owner = !st.status?.machineOnly;
   const unread = unreadCount(st.machines);
   const herOn = st.machines.some((m) => m.her?.enabled);
-  const work = workMarks(st, now);
-  const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName));
-  const clients = st.clients.filter((c) => !c.revoked && !her.includes(c.clientId));
-  const state = (mine: Session[]) => {
-    const waiting = mine.filter((s) => s.status === SessionStatus.WAITING_INPUT).length;
-    const running = mine.filter(isActive).length;
-    return { waiting, running, words: [waiting ? t("rail.waiting", { count: waiting }) : "", running ? t("sidebar.running", { count: running }) : ""].filter(Boolean) };
-  };
-  const button = (o: { label: string; current: boolean; onClick: () => void; small?: boolean; children: ReactNode; marks?: ReactNode }) => (
-    <button className={`rb ${o.small ? "small" : ""} ${o.current ? "sel" : ""}`} aria-label={o.label} aria-current={o.current || undefined} onClick={o.onClick} {...show(o.label)}>
+  const marks = overviewMarks(st, now);
+  const groups = useMemo(() => liveByAgent(teamState(st.sessions, 0)), [st.sessions]);
+  const button = (o: { label: string; current: boolean; onClick: (e: MouseEvent<HTMLButtonElement>) => void; small?: boolean; open?: boolean; children: ReactNode; marks?: ReactNode }) => (
+    <button
+      className={`rb ${o.small ? "small" : ""} ${o.current ? "sel" : ""} ${o.open ? "open" : ""}`}
+      aria-label={o.label}
+      aria-current={o.current || undefined}
+      aria-haspopup={o.open === undefined ? undefined : "menu"}
+      aria-expanded={o.open}
+      onClick={o.onClick}
+      {...show(o.label)}
+    >
       {o.children}
       {o.marks}
     </button>
   );
-  const marks = (m: { waiting: number; running: number }) => (
-    <>
-      {m.waiting > 0 && <i className="rb-dot" aria-hidden="true" />}
-      {m.running > 0 && <span className="rb-busy" aria-hidden="true"><i /></span>}
-    </>
-  );
+  /** How an agent's sessions stand, in words: waiting, failed, at work. */
+  const words = (list: Session[]) => {
+    const waiting = list.filter((s) => s.status === SessionStatus.WAITING_INPUT).length;
+    const failed = list.filter(isFailed).length;
+    const running = list.filter(isActive).length;
+    return [waiting ? t("rail.waiting", { count: waiting }) : "", failed ? t("rail.failed", { count: failed }) : "", running ? t("sidebar.running", { count: running }) : ""].filter(Boolean);
+  };
   const herLabel = !herOn ? t("rail.herOff") : unread > 0 ? t("sidebar.herUnread", { count: unread }) : "Her";
-  const workLabel = [t("sidebar.work"), work.waits ? t("sidebar.attention", { count: work.waits }) : "", work.running ? t("sidebar.running", { count: work.running }) : ""].filter(Boolean).join(" · ");
-  const allLabel = `${t("sidebar.allSessions")} · ${live.length}`;
-  const allButton = button({ label: allLabel, current: same(null), onClick: () => openList(st, null), children: <Icon name="menu" /> });
+  const overviewLabel = [t("sidebar.overview"), marks.waits ? t("sidebar.attention", { count: marks.waits }) : "", marks.running ? t("sidebar.running", { count: marks.running }) : ""].filter(Boolean).join(" · ");
+  const open = menu && groups.find((g) => g.agent === menu.agent);
   return (
     <aside className="rail" aria-label={t("rail.label")}>
       <div className="rail-top drag">
         <AppMenuButton />
       </div>
-      <nav className="rail-nav" onScroll={() => setTip(null)}>
+      <nav className="rail-nav" onScroll={() => (setTip(null), setMenu(null))}>
         {owner &&
           button({
             label: herLabel,
             current: sel.kind === "her" || sel.kind === "progress",
             onClick: () => sel.kind !== "her" && st.set({ selection: { kind: "her" } }),
             children: <span className="rb-cat" aria-hidden="true"><Cat small /></span>,
-            marks: herOn ? unread > 0 && <span className="rb-badge" aria-hidden="true">{unread}</span> : <span className="rb-off" aria-hidden="true" />,
+            marks: herOn ? unread > 0 && <i className="rb-dot u" aria-hidden="true" /> : <span className="rb-off" aria-hidden="true" />,
           })}
         {button({
-          label: workLabel,
+          label: overviewLabel,
           current: sel.kind === "overview",
           onClick: () => st.set({ selection: { kind: "overview" } }),
           children: <Icon name="grid" />,
           marks: (
             <>
-              {work.waits > 0 && <i className="rb-dot" aria-hidden="true" />}
-              {work.running > 0 && <span className="rb-busy" aria-hidden="true"><i />{work.running}</span>}
+              {marks.waits > 0 && <i className="rb-dot" aria-hidden="true" />}
+              {marks.running > 0 && <span className="rb-busy" aria-hidden="true"><i /></span>}
             </>
           ),
         })}
-        {button({ label: `${t("sidebar.search")} ${keys("CmdOrCtrl+K")}`, current: false, onClick: () => st.set({ searching: true }), children: <Icon name="search" /> })}
-        {!owner && allButton}
-        {owner && (
-          <>
-            <div className="rail-sep" role="separator" aria-label={t("sidebar.team")} />
-            {allButton}
-            {machines.map((m) => {
-              const f: ListFilter = { kind: "machine", machine: m.machineId };
-              const seen = dateOf(m.lastSeen);
-              const name = m.local ? t("sidebar.thisMac") : m.machineName;
-              const where = !(m.local || m.online) ? (seen ? t("sidebar.offlineSince", { ago: agoText(seen, now) }) : t("sidebar.offline")) : m.her?.enabled ? t("sidebar.herHere") : t("rail.online");
-              const agents = (m.status?.agents ?? []).filter((a) => a.available);
-              return (
-                <div key={m.machineId} className="rail-m">
-                  {button({
-                    label: `${name} · ${where}`,
-                    current: same(f),
-                    onClick: () => openList(st, f),
-                    children: (
-                      <span className="rb-tile">
-                        <Icon name={m.local ? "laptop" : "server"} />
-                        <i className={`dotc ${m.local || m.online ? "on" : ""}`} aria-hidden="true" />
-                      </span>
-                    ),
-                  })}
-                  {agents.map((a) => {
-                    const fa: ListFilter = { kind: "agent", machine: m.machineId, agent: a.name };
-                    const w = state(live.filter((s) => s.machineId === m.machineId && s.agent === a.name));
-                    return (
-                      <div key={a.name}>
-                        {button({
-                          label: [t("sidebar.agentOn", { agent: codingAgentTitle(a.name), machine: name }), ...w.words].join(" · "),
-                          current: same(fa),
-                          small: true,
-                          onClick: () => openList(st, fa),
-                          children: <AgentLogo agent={a.name} size={22} />,
-                          marks: marks(w),
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
+        {groups.length > 0 && <div className="rail-sep" role="separator" />}
+        {groups.map((g) => (
+          <div key={g.agent}>
+            {button({
+              label: [codingAgentTitle(g.agent), ...words(g.sessions)].join(" · "),
+              current: g.sessions.some((s) => s.sessionId === chosen),
+              small: true,
+              open: g.sessions.length > 1 ? menu?.agent === g.agent : undefined,
+              // One session: it opens. More: a menu of them beside the logo.
+              onClick: (e) => {
+                if (g.sessions.length === 1) return (setMenu(null), st.select(g.sessions[0].sessionId));
+                const anchor = e.currentTarget;
+                setTip(null);
+                setMenu(menu?.agent === g.agent ? null : { agent: g.agent, top: anchor.getBoundingClientRect().top, key: e.detail === 0, anchor });
+              },
+              children: <AgentLogo agent={g.agent} size={22} />,
+              marks: (
+                <>
+                  {g.sessions.some((s) => s.status === SessionStatus.WAITING_INPUT) ? <i className="rb-dot" aria-hidden="true" /> : g.sessions.some(isFailed) && <i className="rb-dot r" aria-hidden="true" />}
+                  {g.sessions.some(isActive) && <span className="rb-busy" aria-hidden="true"><i /></span>}
+                </>
+              ),
             })}
-            {(clients.length > 0 || st.pairings.length > 0) && <div className="rail-sep" role="separator" aria-label={t("sidebar.connectedAgents")} />}
-            {st.pairings.map((p) =>
-              <div key={p.code}>
-                {button({
-                  label: `${p.label || t("sidebar.pairing")} · ${t("sidebar.pairingWaits")}`,
-                  current: false,
-                  onClick: () => st.set({ sheet: { kind: "pairing", code: p.code } }),
-                  children: <Icon name="link" />,
-                  marks: <i className="rb-dot" aria-hidden="true" />,
-                })}
-              </div>,
-            )}
-            {clients.map((c) => {
-              const f: ListFilter = { kind: "client", client: c.clientId };
-              const w = state(live.filter((s) => s.createdBy === c.clientId));
-              return (
-                <div key={c.clientId}>
-                  {button({
-                    label: [c.label, ...w.words].join(" · "),
-                    current: same(f),
-                    onClick: () => openList(st, f),
-                    children: <GrantAvatar c={c} size="md" />,
-                    marks: marks(w),
-                  })}
-                </div>
-              );
-            })}
-          </>
-        )}
+          </div>
+        ))}
       </nav>
       <div className="rail-foot">
+        <button className="rb" aria-label={t("sidebar.search")} onClick={() => st.set({ searching: true })} {...show(`${t("sidebar.search")} ${keys("CmdOrCtrl+K")}`)}>
+          <Icon name="search" />
+        </button>
         <button className="rb" aria-label={t("rail.expand")} onClick={() => setSidebar(st, true)} {...show(`${t("rail.expand")} ${keys(ownKeys.toggleSidebar)}`)}>
           <Icon name="sidebar" />
         </button>
@@ -174,6 +131,59 @@ export function Rail() {
           {tip.text}
         </div>
       )}
+      {menu && open && <AgentMenu at={menu} sessions={open.sessions} onClose={(back) => (setMenu(null), back && menu.anchor.focus())} />}
     </aside>
+  );
+}
+
+/**
+ * An agent's sessions at hand, beside its logo in the rail: its name, then each session's title and mark; a click
+ * opens one. The keyboard works as in a native menu (arrows move, Esc closes back to the logo).
+ */
+function AgentMenu({ at, sessions, onClose }: { at: AgentMenuAt; sessions: Session[]; onClose: (back: boolean) => void }) {
+  const st = useStore();
+  const ref = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState(at.top);
+  // Kept inside the window: up from the logo when there is no room under it.
+  useLayoutEffect(() => {
+    const h = ref.current!.offsetHeight;
+    setTop(Math.max(8, Math.min(at.top, innerHeight - 8 - h)));
+  }, [at.top, sessions.length]);
+  useEffect(() => {
+    (at.key ? ref.current?.querySelector<HTMLElement>("[role=menuitem]") : ref.current)?.focus();
+    // A click on the logo itself is its own: it closes the menu.
+    const outside = (e: globalThis.MouseEvent) => !ref.current?.contains(e.target as Node) && !at.anchor.contains(e.target as Node) && onClose(false);
+    const blur = () => onClose(false);
+    document.addEventListener("mousedown", outside);
+    window.addEventListener("blur", blur);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      window.removeEventListener("blur", blur);
+    };
+  }, [at]);
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    const all = [...(ref.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    const go = { ArrowDown: (i + 1) % all.length, ArrowUp: i <= 0 ? all.length - 1 : i - 1, Home: 0, End: all.length - 1 }[e.key];
+    if (go !== undefined) {
+      e.preventDefault();
+      all[go]?.focus();
+    } else if (e.key === "Escape" || e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose(true);
+    }
+  };
+  const name = codingAgentTitle(at.agent);
+  return (
+    <div className="vmenu rmenu" role="menu" aria-label={name} tabIndex={-1} ref={ref} style={{ top }} onKeyDown={onKeyDown}>
+      <div className="rmenu-h" aria-hidden="true">{name}</div>
+      {sessions.map((s) => (
+        <button key={s.sessionId} className="mi" role="menuitem" tabIndex={-1} onMouseMove={(e) => e.currentTarget.focus()} onClick={() => (onClose(false), st.select(s.sessionId))}>
+          <span className="rmenu-t">{displayTitle(s)}</span>
+          <RowMark s={s} />
+        </button>
+      ))}
+    </div>
   );
 }

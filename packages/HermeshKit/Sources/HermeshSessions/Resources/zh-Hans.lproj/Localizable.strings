@@ -17,7 +17,7 @@
 "Called %lld tools" = "调用了 %lld 个工具";
 "Called 1 tool" = "调用了 1 个工具";
 "Calling" = "正在调用";
-"Can’t resume the session" = "无法恢复会话";
+"Can’t resume the task" = "无法恢复任务";
 "Context is full" = "上下文已满";
 "Couldn’t start the agent" = "无法启动 agent";
 "Crashed" = "已崩溃";
@@ -62,7 +62,7 @@
 "Open that machine’s page in Hermesh Settings to see what keeps it from starting agents." = "请在 Hermesh 设置中打开该机器的详情页，排查无法启动 Agent 的原因。";
 "Base ref not found" = "找不到基准引用";
 "The worktree’s base ref was not found" = "无法创建工作目录：找不到基准引用";
-"Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this session to retry the original task." = "请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（机器会从那里拉取），再在本会话发送一条消息重试原始任务。";
+"Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this task to retry the original request." = "请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（机器会从那里拉取），再在这个任务里发一条消息，重试原来的请求。";
 "Running" = "运行中";
 "Running %@" = "执行 %@";
 "Say “continue” to let it go on." = "发送“继续”即可接着执行。";
@@ -71,13 +71,13 @@
 "Searched once" = "搜索了 1 次";
 "Searching" = "正在搜索";
 "Sign in by running the coding agent’s CLI once on that machine, as the same user." = "请在该机器上以同一系统用户运行一次对应的 CLI 完成登录。";
-"Start a new session with another model." = "请更换模型并开启新会话。";
+"Start a new task with another model." = "请更换模型并开启新任务。";
 "State unknown" = "状态未知";
 "Step limit reached" = "达到步数上限";
 "The agent quit unexpectedly" = "Agent 进程意外退出";
 "The model refused" = "模型拒绝执行";
 "The next message continues in a new context; the changes in the worktree are all there." = "再次发送消息将在新上下文中继续，工作区中的代码改动将会保留。";
-"The next message resumes the session." = "再次发送消息即可恢复会话。";
+"The next message resumes the task." = "再次发送消息即可恢复任务。";
 "The question was withdrawn" = "问题已撤回";
 "Thinking" = "思考中";
 "Today" = "今天";

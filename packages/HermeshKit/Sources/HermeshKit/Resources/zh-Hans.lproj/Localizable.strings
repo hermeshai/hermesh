@@ -11,7 +11,7 @@
 "(What applies before the change comes from Hermesh’s current list; what applies after it comes from what will be signed.)" = "（“修改前”取自 Hermesh 当前的列表；“修改后”来自要签名的内容。）";
 /* Separates the items of a list */
 ", " = "、";
-"A separate git worktree for each session; the directory itself is left alone" = "每个会话用独立的 git worktree，不动原目录";
+"A separate git worktree for each task; the directory itself is left alone" = "每个任务用独立的 git worktree，不动原目录";
 "Add project “%@” to %@" = "在%2$@上添加项目「%1$@」";
 "Add this Mac to your Hermesh" = "让这台 Mac 加入你的 Hermesh";
 "Add this iPhone to your Hermesh" = "让这台 iPhone 加入你的 Hermesh";
@@ -29,7 +29,7 @@
 "Assistant ID: %@" = "助手 ID：%@";
 "Available coding agents: %@" = "可用的编码 Agent：%@";
 "Base branch: %@" = "基准分支：%@";
-"Can also see other personal agents’ sessions in these projects" = "还能看到这些项目里其他个人 agent 的会话";
+"Can also see other personal agents’ tasks in these projects" = "还能看到这些项目里其他个人 agent 的任务";
 "Change files without asking; ask before other commands" = "修改文件无需询问；运行其他命令前先询问";
 "Change the access of personal agent “%@”" = "修改个人 agent「%@」的权限";
 "Coding agents" = "编码 Agent";
@@ -80,26 +80,26 @@
 "Once approved, Her runs this command on the machine as its user whenever her assistants use the connector. It can do anything that user can: read and change files, run programs and reach the network." = "批准后，每当 Her 的助手用到这个连接器，Her 都会以这台机器的用户身份运行这条命令。它能做这个用户能做的一切：读写文件、运行程序、访问网络。";
 "Once approved, Her stops on the machine, and her assistants, conversations, memory, routines, files, connectors and model logins there are deleted. This can’t be undone." = "批准后，Her 将在这台机器上停止运行，她在那里的助手、对话、记忆、定时任务、文件、连接器和模型登录都会被删除。此操作无法撤销。";
 "Once approved, Her stops on the machine; her conversations, settings and logins stay there." = "批准后，Her 将在这台机器上停止运行；对话、设置和登录信息仍保存在这台机器上。";
-"Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 Mac）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
-"Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 iPhone）上的 Hermesh 都将清除密钥、会话和设置，所有 Agent 也会断开连接。此操作无法撤销。";
-"Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后，这台 Mac 上的 Hermesh 将使用该证书与你的各台机器建立端到端加密连接，用于查看和管理会话与机器。";
-"Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines." = "批准后，这台 iPhone 上的 Hermesh 将使用该证书与你的各台机器建立端到端加密连接，用于查看和管理会话与机器。";
-"Once approved, agents can no longer start sessions in this project; the files in the directory are not deleted." = "批准后，Agent 将无法再在此项目中发起新会话，目录中的文件不会被删除。";
+"Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, tasks and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 Mac）上的 Hermesh 都将清除密钥、任务和设置，所有 Agent 也会断开连接。此操作无法撤销。";
+"Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, tasks and settings, and your agents are disconnected. This can’t be undone." = "批准后，你所有可信设备和机器（包括这台 iPhone）上的 Hermesh 都将清除密钥、任务和设置，所有 Agent 也会断开连接。此操作无法撤销。";
+"Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your tasks and machines." = "批准后，这台 Mac 上的 Hermesh 将使用该证书与你的各台机器建立端到端加密连接，用于查看和管理任务与机器。";
+"Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your tasks and machines." = "批准后，这台 iPhone 上的 Hermesh 将使用该证书与你的各台机器建立端到端加密连接，用于查看和管理任务与机器。";
+"Once approved, agents can no longer start tasks in this project; the files in the directory are not deleted." = "批准后，Agent 将无法再在此项目中发起新任务，目录中的文件不会被删除。";
 "Once approved, it can no longer approve anything, and its own machine is removed with it; this Mac reissues the machine and personal agent credentials it signed." = "批准后，该设备将立即失去批准权限，其关联的执行机器也会一并移除；此前由该设备签发的机器和个人 Agent 凭证将改由这台 Mac 重新签发。";
 "Once approved, it can no longer approve anything, and its own machine is removed with it; this iPhone reissues the machine and personal agent credentials it signed." = "批准后，该设备将立即失去批准权限，其关联的执行机器也会一并移除；此前由该设备签发的机器和个人 Agent 凭证将改由这台 iPhone 重新签发。";
 "Once approved, it keeps the same access, now signed by this Mac; the old version stops working." = "批准后，原有权限保持不变，改由这台 Mac 重新签名，旧版本随即失效。";
 "Once approved, it keeps the same access, now signed by this iPhone; the old version stops working." = "批准后，原有权限保持不变，改由这台 iPhone 重新签名，旧版本随即失效。";
 "Once approved, it runs any command and changes any file on the machine without asking, protected paths included; only deny rules and deleting a critical path still stop it." = "批准后，它在这台机器上运行任何命令、修改任何文件都不再询问，受保护的路径也不例外；只有禁止规则和删除关键路径仍会拦住它。";
-"Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed." = "批准后，该机器上未指定模型的会话将默认使用这些设置，不会改动 Agent 自身的配置。";
+"Once approved, its tasks there that name no model run with these; the agent’s own configuration is not changed." = "批准后，该机器上未指定模型的任务将默认使用这些设置，不会改动 Agent 自身的配置。";
 "Once approved, the assistant works in this approval mode from its next step." = "批准后，这个助手从下一步起按这种审批方式工作。";
 "Once approved, the list above becomes your trusted devices." = "批准后，你的可信设备将按上方列表生效。";
-"Once approved, the machine accepts new sessions again." = "批准后，这台机器将恢复接收新会话。";
-"Once approved, the machine accepts no new sessions until you resume it, which you can do at any time." = "批准后，这台机器将暂停接收新会话，你可以随时恢复。";
-"Once approved, the machine registers the directory as a project, where personal agents with access can start sessions and read and write files." = "批准后，这台机器会将该目录登记为项目，获授权的个人 Agent 即可在其中发起会话并读写文件。";
+"Once approved, the machine accepts new tasks again." = "批准后，这台机器将恢复接收新任务。";
+"Once approved, the machine accepts no new tasks until you resume it, which you can do at any time." = "批准后，这台机器将暂停接收新任务，你可以随时恢复。";
+"Once approved, the machine registers the directory as a project, where personal agents with access can start tasks and read and write files." = "批准后，这台机器会将该目录登记为项目，获授权的个人 Agent 即可在其中发起任务并读写文件。";
 "Once approved, the new settings take effect at once (version %lld) and the old ones stop working; from then on it can act only within the new settings." = "批准后，新设置将立即生效（第 %lld 版），旧设置同时作废；此后该 Agent 仅能在新权限范围内操作。";
 "Once approved, this Mac becomes your first trusted device; any device that joins later must be approved by a trusted device." = "批准后，这台 Mac 将成为你的第一台可信设备；后续加入的设备都需由可信设备批准。";
 "Once approved, this iPhone becomes your first trusted device; any device that joins later must be approved by a trusted device." = "批准后，这台 iPhone 将成为你的第一台可信设备；后续加入的设备都需由可信设备批准。";
-"Once approved, this machine becomes yours, and agents you grant access can start sessions and run commands on it. Approve only if you know this machine; you can remove it later from the machine list." = "批准后，这台机器将成为你的执行机器，获授权的 Agent 可在其上发起会话并运行命令。请确认你认识这台机器；后续可随时在机器列表中移除。";
+"Once approved, this machine becomes yours, and agents you grant access can start tasks and run commands on it. Approve only if you know this machine; you can remove it later from the machine list." = "批准后，这台机器将成为你的执行机器，获授权的 Agent 可在其上发起任务并运行命令。请确认你认识这台机器；后续可随时在机器列表中移除。";
 "Once approved, this machine stays yours, unchanged, now signed by this Mac." = "批准后，这台机器的归属与配置保持不变，改由这台 Mac 重新签名。";
 "Once approved, this machine stays yours, unchanged, now signed by this iPhone." = "批准后，这台机器的归属与配置保持不变，改由这台 iPhone 重新签名。";
 "Once approved, this machine stays yours." = "批准后，这台机器将继续归属于你。";
@@ -128,7 +128,7 @@
 "Same access: %@; %@; expires %@" = "权限范围不变：%1$@；%2$@；有效期至 %3$@";
 "Same as %@" = "跟随 %@";
 "Separate worktrees for git repositories; other directories in place" = "git 仓库用独立 worktree，其他目录原地工作";
-"Sessions at once: up to %lld" = "最多同时运行 %lld 个会话";
+"Tasks at once: up to %lld" = "最多同时运行 %lld 个任务";
 "Set how an assistant of Her acts on %@" = "设置 Her 在%@上的一个助手的审批方式";
 "Set the model %@ runs with on %@" = "设置%2$@上 %1$@ 用的模型";
 "Share the agents on this Mac" = "共享这台 Mac 上的 agent";
@@ -147,7 +147,7 @@
 "Unnamed device" = "未命名设备";
 "Until %@" = "至 %@";
 "Update your list of trusted devices" = "更新你的可信设备列表";
-"Uses your owner key to issue it a connection grant, which you can revoke at any time. %@ holds this agent’s key: it can act as the agent within this access, and sees the sessions it reaches." = "使用你的管理密钥为其签发连接授权，你可以随时撤销。该 Agent 的密钥由 %@ 保管，可在授权范围内代表该 Agent 操作并查看相关会话。";
+"Uses your owner key to issue it a connection grant, which you can revoke at any time. %@ holds this agent’s key: it can act as the agent within this access, and sees the tasks it reaches." = "使用你的管理密钥为其签发连接授权，你可以随时撤销。该 Agent 的密钥由 %@ 保管，可在授权范围内代表该 Agent 操作并查看相关任务。";
 "Uses your owner key to issue it an end-to-end connection grant, which you can revoke at any time." = "使用你的管理密钥为其签发端到端连接授权，你可以随时撤销。";
 "Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices just like this Mac." = "使用你的管理密钥将其设为可信设备，使其能像这台 Mac 一样批准 Agent、机器和新设备。";
 "Uses your owner key to make it a trusted device too, able to approve agents, machines and new devices just like this iPhone." = "使用你的管理密钥将其设为可信设备，使其能像这台 iPhone 一样批准 Agent、机器和新设备。";
@@ -164,7 +164,7 @@
 /* Used within a sentence */
 "machine “%@”" = "机器「%@」";
 "Let Her on %@ use your computers" = "允许 %@ 上的 Her 使用你的电脑";
-"Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there." = "Her 成为你的一个 agent：她可以在你的项目里启动编程 agent，查看并回复它们的会话。在那台机器上关闭 Her 即结束。";
+"Her becomes one of your agents: she can start coding agents in your projects, read their tasks and answer them. It ends when you turn Her off there." = "Her 成为你的一个 agent：她可以在你的项目里启动编程 agent，查看并回复它们的任务。在那台机器上关闭 Her 即结束。";
 "Full trust: on these machines, a coding agent she starts can do anything you can." = "完全信任：在这些机器上，她启动的编程 agent 能做你本人能做的一切。";
 "Doesn’t expire" = "不会到期";
 

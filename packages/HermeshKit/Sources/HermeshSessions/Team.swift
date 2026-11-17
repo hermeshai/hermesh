@@ -54,6 +54,17 @@ public func teamState(_ sessions: [Session], requests: Int) -> TeamState {
         finished: visible.filter { !$0.isActive && !$0.needsAttention }.sorted { $0.updatedDate > $1.updatedDate })
 }
 
+/// The sessions at hand by coding agent, as the menu's rail shows them (docs/her-team.md §16): those waiting for
+/// the owner, then those that failed, then those at work, each kind in teamState's order; each agent once, in the
+/// order of its first session, with its sessions in that order. The same as @hermesh/core's liveByAgent.
+public func liveByAgent(_ team: TeamState) -> [(agent: String, sessions: [Session])] {
+    var out: [(agent: String, sessions: [Session])] = []
+    for s in team.waiting + team.failed + team.running {
+        if let i = out.firstIndex(where: { $0.agent == s.agent }) { out[i].sessions.append(s) } else { out.append((s.agent, [s])) }
+    }
+    return out
+}
+
 /// The item one tap can answer: a single, non-secret choice, with any other items optional.
 /// Return the item as well as its options so a preceding optional field cannot receive the answer.
 public func quickChoice(_ q: Question) -> Hermesh_Session_V1_QuestionItem? {

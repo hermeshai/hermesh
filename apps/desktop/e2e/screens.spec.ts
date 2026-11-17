@@ -24,7 +24,7 @@ test("the download page's screenshots", async () => {
   type Main = { hermeshTest: { mainWindow(): { webContents: { send(channel: string, ...args: unknown[]): void } } } };
   // As a window in front: the tests' windows never take focus (background.cjs).
   const front = () => app.evaluate(() => (globalThis as unknown as Main).hermeshTest.mainWindow().webContents.send("window-focus", true));
-  const sessions = page.getByRole("list", { name: t("会话", "Sessions") });
+  const sessions = page.getByRole("list", { name: t("任务", "Tasks") });
   const open = async (title: string) => {
     await sessions.getByText(title, { exact: true }).click();
     await expect(page.getByRole("heading", { name: title })).toBeVisible();

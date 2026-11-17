@@ -1,6 +1,8 @@
 {
   "unreleased": {
-    "improvements": [],
+    "improvements": [
+      "A new sidebar: Her and the overview at the top, then every task, grouped by status by default, with grouping, sort and what to show in View Options; one row per task, with the agent’s logo, its title and one status mark. Collapsed, the rail shows the agents at work. Sessions are now called tasks, and Work is now Overview; machines and connected agents are managed in Settings (on iPhone, in Account and Devices)."
+    ],
     "fixes": []
   },
   "0.1.5": {

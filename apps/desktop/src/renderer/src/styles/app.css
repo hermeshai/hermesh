@@ -166,47 +166,41 @@ button{font:inherit;color:inherit}
 /* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
 @media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
 .mainwrap>.content{grid-column:2}
-/* While sessions show, their list is a column of its own between the sidebar and the session (docs/her-team.md §14.2). */
-.mainwrap.withlist{grid-template-columns:272px 300px minmax(0,1fr)}
-.mainwrap.withlist.railed{grid-template-columns:74px 300px minmax(0,1fr)}
-.mainwrap.withlist>.content{grid-column:3}
-.slist{grid-column:2;display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--win);border-right:.5px solid var(--sep)}
-.slist-head{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px 0 18px}
-.slist-head h2{margin:0;flex:1;min-width:0;font-size:14px;font-weight:var(--font-weight-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.slist-head .n{font-size:12px;color:var(--l2);font-variant-numeric:tabular-nums}
-/* The sidebar's rail (docs/her-team.md §14.9): its places as icons, 74 px wide; the traffic lights in its top band. */
+/* The sidebar's rail (docs/her-team.md §16): Her, the overview and the agents at work as icons, 74 px wide; the traffic lights in its top band. */
 .rail{grid-column:1;position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;min-height:0;background:var(--side);border-right:.5px solid var(--sep)}
 html.vibrant .rail{background:var(--side-tint)}
 .rail-top{height:44px;width:100%;flex:none;display:flex;align-items:center;justify-content:center}
 .rail-nav{flex:1;min-height:0;width:100%;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0 8px}
 .rail-nav>div{display:flex;flex-direction:column;align-items:center;gap:2px}
 .rail-sep{width:28px;height:.5px;background:var(--l4);margin:6px 0;flex:none}
-.rail-m{margin-bottom:6px}
 .rb{position:relative;width:44px;height:40px;flex:none;border:0;border-radius:10px;background:none;display:flex;align-items:center;justify-content:center;color:var(--l1)}
 .rb:hover{background:var(--fill)}
 .rb.sel{background:var(--side-sel)}
 .rb.sel::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent)}
 .rb.small{height:34px}
+.rb.open{background:var(--fill2)}
 .rb>.ic{width:19px;height:19px}
 .rb-cat{width:26px;height:26px;display:flex}
 .rb-cat>svg{width:100%;height:100%}
-.rb-badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--fill3);font-size:10px;font-weight:var(--font-weight-bold);line-height:16px;text-align:center;font-variant-numeric:tabular-nums}
 .rb-off{position:absolute;right:7px;bottom:7px;width:8px;height:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--l3);background:var(--side)}
 .rb-dot{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--side)}
+.rb-dot.u{background:var(--accent)}
+.rb-dot.r{background:var(--red)}
 .rb-busy{position:absolute;bottom:2px;right:2px;display:inline-flex;align-items:center;gap:2px;height:14px;padding:0 3px;border-radius:7px;background:var(--side);font-size:10px;color:var(--l2);font-variant-numeric:tabular-nums}
 .rb-busy>i{width:8px;height:8px;border-radius:50%;border:1.2px solid var(--l4);border-top-color:var(--l2);animation:busy-turn 1s linear infinite}
 @media (prefers-reduced-motion:reduce){.rb-busy>i{animation:none}}
-.rb-tile{position:relative;width:32px;height:32px;border-radius:9px;background:var(--fill2);display:flex;align-items:center;justify-content:center}
-.rb-tile>.ic{width:17px;height:17px;color:var(--l2)}
-.rb-tile>.dotc{position:absolute;right:-2px;bottom:-2px;width:9px;height:9px;box-shadow:0 0 0 2px var(--side)}
 .rail-foot{flex:none;width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0 10px;border-top:.5px solid var(--sep)}
+/* An agent's sessions at hand, beside its logo in the rail. */
+.rmenu{left:80px;width:264px}
+.rmenu-h{font-size:11.5px;color:var(--l2);padding:5px 9px 4px}
+.rmenu .mi{gap:8px}
+.rmenu-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .rail-tip{position:fixed;left:80px;z-index:40;transform:translateY(-50%);max-width:320px;padding:5px 9px;border-radius:7px;background:var(--menu-solid);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.18);font-size:12px;line-height:1.3;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* The account, at the rail's foot: the avatar alone; its menu opens beside the rail. */
 .acct.compact{border-top:0;padding-top:0}
 .acct.compact .side-foot{width:44px;height:44px;margin:0;padding:0;justify-content:center;position:relative}
 .acct.compact .side-foot>.dotc{position:absolute;right:6px;bottom:6px}
 .acct.compact .acct-menu{left:calc(100% + 4px);right:auto;bottom:0;width:240px;transform-origin:0 100%}
-.nosession{flex:1;display:flex;align-items:center;justify-content:center;color:var(--l2);font-size:var(--fs-text-l)}
 /* No room for the sidebar beside the conversation, but asked for: over it, opaque, until a click beside it (layout.ts). */
 .mainwrap.peek .side{position:absolute;top:0;left:0;bottom:0;z-index:20;width:272px;opacity:1;pointer-events:auto;background:var(--side);
   box-shadow:10px 0 30px rgba(0,0,0,.14);animation:peek-in .22s cubic-bezier(.2,0,0,1)}
@@ -214,13 +208,14 @@ html.vibrant .rail{background:var(--side-tint)}
 @keyframes scrim-in{from{opacity:0}}
 @keyframes peek-in{from{transform:translateX(-24px);opacity:0}}
 @media (prefers-reduced-motion:reduce){.mainwrap.peek .side{animation:none}}
-/* The sidebar toggle sits a step after the traffic lights (which end at x 72), as in Codex and Mail; hidden, the toolbar keeps it there. The list's view options end the row. */
-.side-top{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px 0 79px;flex:none}
+/* The sidebar toggle sits a step after the traffic lights (which end at x 72), as in Codex and Mail; hidden, the toolbar keeps it there. Search ends the row. */
+.side-top{height:44px;display:flex;align-items:center;padding:0 8px 0 79px;flex:none}
+.side-search{margin-left:auto}
 .tb{height:28px;min-width:28px;border:0;background:transparent;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--l2);gap:5px;padding:0 6px}
 .tb:hover{background:var(--fill2);color:var(--l1)}
 .tb.on{background:var(--fill2);color:var(--l1)}
-/* One rhythm with the list: rows 32 high, 34 apart. */
-.side-nav{padding:0 8px 6px;display:flex;flex-direction:column;gap:2px;flex:none}
+/* Her and the overview, rows 32 high, 34 apart; a hairline under them, then the sessions. */
+.side-nav{padding:0 8px 8px;display:flex;flex-direction:column;gap:2px;flex:none;border-bottom:.5px solid var(--sep)}
 .nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;border:0;background:none;width:100%;text-align:left}
 .nav-i .ic{width:18px;height:18px;color:var(--l1)}
 /* The shortcut shows on hover only: the menus say it too. */
@@ -228,41 +223,35 @@ html.vibrant .rail{background:var(--side-tint)}
 .nav-i:hover .kbd,.nav-i:focus-visible .kbd{opacity:1}
 .nav-i:hover{background:var(--fill)}
 .nav-i.sel{background:var(--side-sel)}
-.nav-i .cnt,.map-row .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
-/* The team (docs/her-team.md §14.2): Work's marks, the map over the list, and the list's filter. */
-.nav-marks,.map-marks{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
+.nav-i .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
+/* Marks (docs/her-team.md §16): orange, the owner is needed; red, it failed; blue, Her has something unread; a ring, at work. No numbers. */
+.nav-marks{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
 .dot-w{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:none;display:inline-block}
+.dot-r{width:7px;height:7px;border-radius:50%;background:var(--red);flex:none;display:inline-block}
+.dot-u{width:7px;height:7px;border-radius:50%;background:var(--accent);flex:none;display:inline-block}
 .busy{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
 .busy>i{width:10px;height:10px;border-radius:50%;border:1.5px solid var(--l4);border-top-color:var(--l2);animation:busy-turn 1s linear infinite}
 @keyframes busy-turn{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.busy>i{animation:none}}
-.team-map{display:flex;flex-direction:column;gap:1px}
-.team-map .grp-h{position:static;padding:12px 10px 4px;margin-bottom:0}
-.map-row{display:flex;align-items:center;gap:8px;min-height:28px;padding:3px 9px;border:0;border-radius:8px;background:none;width:100%;text-align:left;font-size:13px;color:var(--l1)}
-.map-row:hover{background:var(--fill)}
-.map-row.sel{background:var(--accent-bg);color:var(--accent-t)}
-.map-row>.ic{color:var(--l2)}
-.map-n{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.map-sub{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-.map-h{font-size:11.5px;color:var(--l2);padding:10px 10px 3px}
-.map-mach{margin-top:6px}
-.map-mach .map-n{font-weight:600}
-.map-mach.off:not(.sel) .map-n{color:var(--l2)}
-.map-go{color:var(--l3)}
-.map-row.sel .map-go{color:inherit}
+/* The sessions' heading, with the view menu at its end. */
+.side-h{height:34px;flex:none;display:flex;align-items:center;padding:0 8px 0 18px;font-size:12px;color:var(--l2)}
+.side-h .tb{margin-left:auto}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
-.side-sessions>[role=group]{display:flex;flex-direction:column;gap:2px}
-/* A group's heading: its title, its count, and ▾ (▸ when collapsed); a click collapses or opens it. */
-.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:24px 10px 6px;margin-bottom:2px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
-.side-sessions>[role=group]:first-child .grp-h{padding-top:10px}
+.side-sessions>[role=group]{display:flex;flex-direction:column;gap:1px}
+.side-none{font-size:12.5px;color:var(--l3);padding:5px 9px 8px 33px}
+.side-empty{display:flex;flex-direction:column;gap:3px;text-align:center;padding:60px 14px;color:var(--l3);font-size:12.5px;line-height:1.6}
+.side-empty b{color:var(--l2);font-weight:var(--font-weight-medium);font-size:var(--fs-text)}
+/* A group's heading: its title and ▾ (▸ when collapsed); a click collapses or opens it. */
+.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:14px 10px 5px;margin-bottom:1px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
+.side-sessions>[role=group]:first-child .grp-h{padding-top:6px}
 .grp-h:hover{color:var(--l1)}
-.grp-h .n{font-weight:500;color:var(--l3)}
 .grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
 .grp-h.shut .ic{transform:rotate(-90deg)}
-.srow{display:flex;padding:7px 10px;border-radius:var(--r-box);align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px}
+/* A session: its agent's logo, the title, one mark; 30 high. */
+.srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:13px}
+.slogo{display:flex;flex:none;margin-top:1px}
 .srow:hover{background:var(--fill)}
 .srow.sel{background:var(--side-sel)}
-.srow .sdot{width:6px;height:6px}
 .srow.arch .stitle{color:var(--l2)}
 .rowact{display:none;border:0;background:none;width:20px;height:18px;border-radius:5px;align-items:center;justify-content:center;color:var(--l2);padding:0;flex:none;margin:-2px -4px -2px 0}
 .rowact:hover{background:var(--fill2);color:var(--l1)}
@@ -270,7 +259,7 @@ html.vibrant .rail{background:var(--side-tint)}
 .srow.has-act:hover .rowact{display:flex}
 .srow.menu-open .smeta{display:none}
 .srow.menu-open .rowact{display:flex;background:var(--fill2);color:var(--l1)}
-.srename{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
+.srename{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
 .psel{appearance:none;-webkit-appearance:none;border:0;background-color:var(--fill2);color:var(--l1);height:24px;border-radius:var(--r-ctl);padding:0 24px 0 9px;font:inherit;font-size:12px;width:100%;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 10px,calc(100% - 9px) 10px;background-size:4px 4px;background-repeat:no-repeat}
 .psel.on{background-color:var(--accent-bg);color:var(--accent-t)}
 .anote{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:var(--r-box);padding:8px 12px;margin-bottom:16px}
@@ -278,19 +267,6 @@ html.vibrant .rail{background:var(--side-tint)}
 .smain{min-width:0;flex:1}
 .sl1{display:flex;gap:8px;align-items:center;line-height:18px}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Running: a faded band crosses the title left to right in 3s, then rests 1.2s. The title itself is
-   transparent (it keeps the row's layout and its words); two copies draw it, one in its colour seen
-   through a mask with a soft hole, one in --l3 seen only through that hole. The masks (three titles wide)
-   slide across while the copies slide back by as much, so the copies stay on the title: transforms only,
-   which the compositor runs, and translucent colours, so the band fades into any background. */
-.stitle.run{position:relative;color:transparent}
-.stitle .shine{position:absolute;top:0;bottom:0;left:-100%;width:300%;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);animation:stitle-run 4.2s ease-in-out infinite}
-.stitle .shine.band{-webkit-mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%);mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%)}
-.stitle .shine::before{content:attr(data-t);position:absolute;top:0;bottom:0;left:calc(100% / 3);width:calc(100% / 3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--l1);animation:stitle-run-back 4.2s ease-in-out infinite}
-.stitle .shine.band::before{color:var(--l3)}
-@keyframes stitle-run{0%{transform:translateX(-33.3333%)}71%,100%{transform:translateX(33.3333%)}}
-@keyframes stitle-run-back{0%{transform:translateX(100%)}71%,100%{transform:translateX(-100%)}}
-@media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
 .sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

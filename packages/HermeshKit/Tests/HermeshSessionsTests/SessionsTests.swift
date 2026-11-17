@@ -41,11 +41,33 @@ func ask(_ s: inout Session) {
     let secs = sessionSections(all, view: SessionListLayout(), archived: false, now: now, calendar: utc)
     #expect(secs.map(\.key) == ["attention", "active", "done"])
     #expect(secs[0].sessions.map(\.sessionID) == ["crash", "w"]) // by last activity
-    #expect(secs[0].counted && secs[1].counted && !secs[2].counted)
+    #expect(!SessionListLayout().metadata, "titles alone until the owner shows the metadata")
     let shown = sessionSections(all, view: SessionListLayout(), archived: true, now: now, calendar: utc)
     #expect(shown.last?.grouping == nil && shown.last?.sessions.map(\.sessionID) == ["arch"])
     let oldest = sessionSections(all, view: SessionListLayout(newestFirst: false), archived: false, now: now, calendar: utc)
     #expect(oldest.map(\.key) == ["attention", "active", "done"] && oldest[0].sessions.map(\.sessionID) == ["w", "crash"])
+}
+
+@Test func theMenuKeepsTheRunningSectionWhileNothingRuns() {
+    var waiting = session("w", .waitingInput)
+    ask(&waiting)
+    let done = session("d", .idle)
+    func keep(_ list: [Session], _ view: SessionListLayout = SessionListLayout()) -> [String] {
+        sessionSections(list, view: view, archived: true, now: now, alwaysActive: true, calendar: utc).map { "\($0.key):\($0.sessions.map(\.sessionID).joined(separator: ","))" }
+    }
+    #expect(keep([done]) == ["active:", "done:d"])
+    #expect(keep([waiting, done]) == ["attention:w", "active:", "done:d"])
+    #expect(keep([]).isEmpty, "no session at all: no section")
+    #expect(keep([session("a", .archived)]) == ["archived:a"])
+    #expect(keep([done], SessionListLayout(group: .agent)) == ["claude:d"])
+    #expect(sessionSections([done], view: SessionListLayout(), archived: false, now: now, calendar: utc).map(\.key) == ["done"])
+}
+
+@Test func theRailListsTheAgentsAtWork() {
+    var w = session("w", .waitingInput, agent: "codex")
+    ask(&w)
+    let team = teamState([session("r1", .running, agent: "claude"), w, session("r2", .running, agent: "codex"), session("d", .idle, agent: "gemini")], requests: 0)
+    #expect(liveByAgent(team).map { "\($0.agent):\($0.sessions.map(\.sessionID).joined(separator: ","))" } == ["codex:w,r2", "claude:r1"])
 }
 
 @Test func byDateTheDaysFollowTheSort() {
@@ -251,7 +273,7 @@ func ask(_ s: inout Session) {
     failure.kind = .baseRefUnavailable
     failure.message = "Project movieclaw: base ref ios-v0.12.2 unavailable."
     #expect(failureHeadline(failure.kind, agent: "Codex") == "The worktree’s base ref was not found")
-    #expect(failureAdvice(failure) == failure.message + " Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this session to retry the original task.")
+    #expect(failureAdvice(failure) == failure.message + " Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this task to retry the original request.")
 }
 
 @Test func modelsReadAsTheirAgentNamesThem() {

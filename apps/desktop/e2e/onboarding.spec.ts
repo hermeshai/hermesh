@@ -62,7 +62,7 @@ test("a relay of one's own: welcome, authorize, set up this Mac, add a project, 
   await expect(page.getByRole("button", { name: "hermesh.io", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "更改" })).toHaveCount(0);
   // The promise of an untrusted center.
-  await expect(page.getByText("即使服务器被攻破，攻击者也访问不了你的电脑。会话端到端加密，服务器看不到内容。")).toBeVisible();
+  await expect(page.getByText("即使服务器被攻破，攻击者也访问不了你的电脑。任务内容端到端加密，服务器看不到内容。")).toBeVisible();
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width)).toBe(720);
   await snap(page, "first-01-welcome");
 
@@ -360,14 +360,18 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await expect(page.getByText("检查 README").first()).toBeVisible();
   await snap(page, "first-12-main");
   // The overview has no setup checklist.
-  await page.getByRole("button", { name: "工作" }).click();
-  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: /^概览/ }).click();
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
   // Once the first session is done, 正在运行 rests: the mark, what runs (nothing), and what will show there.
   const working = page.getByRole("region", { name: "正在运行" });
-  await expect(working.getByRole("status")).toContainText("当前没有运行中的会话", { timeout: 30_000 });
-  await expect(working.getByRole("status")).toContainText("Agent 开始工作后，会话会显示在这里，链路图也会同步点亮。");
+  await expect(working.getByRole("status")).toContainText("当前没有运行中的任务", { timeout: 30_000 });
+  await expect(working.getByRole("status")).toContainText("Agent 开始工作后，任务会显示在这里，链路图也会同步点亮。");
   await expect(working.locator(".hm-mark")).toBeVisible();
+  // The sidebar's 进行中 stays, saying it is empty for now; the session is under 已结束.
+  const sessions = page.getByRole("list", { name: "任务" });
+  await expect(sessions.getByRole("group", { name: "进行中" })).toHaveText(/^进行中\s*暂时没有$/);
+  await expect(sessions.getByRole("group", { name: "已结束" })).toContainText("检查 README");
   await snap(page, "first-13-resting");
   // With nothing live, hovering an agent marks what it can reach on the map, which doesn't grow.
   const map = page.getByRole("region", { name: "链路" });
@@ -555,11 +559,11 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   // The main window, as on a trusted device: its sessions in the sidebar, and
   // the overview, its links this Mac's own; nothing to approve.
   await expectMainWindow(app, page);
-  await expect(page.getByRole("heading", { name: "工作" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
   const map = page.getByRole("region", { name: "链路" });
   await expect(map).toContainText(sys("这台 Mac"));
   // Online: connected to the relay, which the agent's session needs.
-  await expect(map).toContainText("接新会话", { timeout: 30_000 });
+  await expect(map).toContainText("接新任务", { timeout: 30_000 });
   await expect(map.getByRole("button", { name: "+ 连接更多" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "需要你处理" })).toHaveCount(0);
 
@@ -610,7 +614,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await Promise.all([settings.waitForEvent("close"), account.getByRole("button", { name: sys("让这台 Mac 也能批准…") }).click()]);
   await expect(page.getByRole("heading", { name: "在你已有的设备上批准" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "取消" }).click();
-  await expect(page.getByRole("heading", { name: "工作" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
 
   // An agent of the owner, granted all machines: before it comes, the map
   // has it as one that may start sessions here, faint.
@@ -622,22 +626,24 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await home.approveClientPairing({ code: (await clientRequest())!.code, spec: { agents: ["gemini"] } });
   expect(await loggedIn).toBe(0);
   const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
-  await expect(grok).toContainText("尚无会话", { timeout: 30_000 });
-  await expect(map).toContainText("尚无会话");
+  await expect(grok).toContainText("尚无任务", { timeout: 30_000 });
+  await expect(map).toContainText("尚无任务");
   // Nothing has run here yet: 正在运行 rests, with no prompt to send.
   const working = page.getByRole("region", { name: "正在运行" });
-  await expect(working.getByRole("status")).toContainText("当前没有运行中的会话");
+  await expect(working.getByRole("status")).toContainText("当前没有运行中的任务");
   await expect(working).not.toContainText("发一句试试");
+  // No session at all: the sidebar says what will show there (a machine alone has no Her to ask).
+  await expect(page.getByRole("list", { name: "任务" })).toHaveText(/^还没有任务\s*Agent 连接后，发起的任务会显示在这里。$/);
   await snap(page, "machine-03-window");
 
-  // It runs a session there: the work Mac lists it under the agent's name,
+  // It runs a session there: the work Mac lists it, the agent's name in its metadata,
   // the map runs it from the agent to the project, and the agent's card says
   // what it may do here.
   execFileSync(fixture.cli, ["session", "start", "--project", "billing", "--agent", "gemini", "--title", "修账单导出", "--prompt", "shell sleep 1800"], { env });
   const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "修账单导出" });
-  await expect(row).toContainText("Grok Bot", { timeout: 30_000 });
-  await navTo(page, /^工作/);
-  await expect(grok).not.toContainText("尚无会话", { timeout: 30_000 });
+  await expect(row).toBeVisible({ timeout: 30_000 });
+  await navTo(page, /^概览/);
+  await expect(grok).not.toContainText("尚无任务", { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
   // Resting on it shows its card, over the map, which keeps its height.
   const height = await mapHeight(map);
@@ -655,7 +661,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(card).toContainText("编码 agentGemini CLI");
   await expect(card).toContainText(/有效期还剩 \d+ 天/);
   await expect(card).toContainText(sys("在这台 Mac今天 1 个任务 · 最近一次"));
-  await expect(page.getByRole("status").filter({ hasText: "Grok Bot 发起的会话" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Grok Bot 发起的任务" })).toBeVisible();
   await snap(page, "machine-08-card");
   await page.mouse.move(0, 0);
   await expect(card).toBeVisible();

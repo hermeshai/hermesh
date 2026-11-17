@@ -25,7 +25,7 @@ extension HermeshUITests {
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "account-without-demo"; shot.lifetime = .keepAlways; add(shot)
             tap("close")
-            tap("work-place")
+            tap("overview-place")
         }
         try XCTContext.runActivity(named: "erases everything, and opens on its first run saying what was done") { _ in
             try eraseEverything(URL(string: world["relay"] as! String)!)
@@ -68,7 +68,7 @@ extension HermeshUITests {
     func putOff() throws {
         tap("set-up-later")
         // No machine yet, so nowhere Her could run: Work is the first page, with the way to a first machine.
-        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 30), "Work")
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "Work")
         XCTAssertTrue(step(0).waitForExistence(timeout: 30), "Get Started, with what the guide left")
         XCTAssertTrue(text("连上你的电脑").exists)
         // No machine yet, so no second-device row.
@@ -135,7 +135,7 @@ extension HermeshUITests {
         XCTAssertTrue(session.waitForExistence(timeout: 60), "its session")
         try waitFor("its answer") { session.label.contains("你好") ? true : nil }
         tap("guide-done", timeout: 60)
-        XCTAssertTrue(app.navigationBars["工作"].waitForExistence(timeout: 30), "Work")
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "Work")
         XCTAssertFalse(app.descendants(matching: .any)["get-started"].firstMatch.exists, "Get Started is done")
     }
 
@@ -150,18 +150,18 @@ extension HermeshUITests {
     /// While vps-1 is away its coding agent is not ready, and when it is
     /// back it reports it a moment later: Get Started, done, stays away.
     func reconnect() throws {
-        // The menu lists the machines; Work shows behind it.
-        openMenu()
-        let row = app.descendants(matching: .any)["menu-machine-vps-1"].firstMatch
+        // Machines lists vps-1 and how it stands.
+        openMachines()
+        let row = app.descendants(matching: .any)["machine-vps-1"].firstMatch
         let card = app.descendants(matching: .any)["get-started"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "vps-1 in the menu")
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "vps-1 in Machines")
         _ = try control("vps?state=down", method: "POST")
         try waitFor("vps-1 offline") { row.label.contains("离线") ? true : nil }
         XCTAssertFalse(card.waitForExistence(timeout: 3), "Get Started stays away while vps-1 is offline")
         _ = try control("vps?state=up", method: "POST")
         try waitFor("vps-1 back") { !row.label.contains("离线") ? true : nil }
         XCTAssertFalse(card.waitForExistence(timeout: 3), "Get Started stays away once vps-1 is back")
-        tap("work-place")
+        showOverview()
     }
 
     func eraseEverything(_ relay: URL) throws {

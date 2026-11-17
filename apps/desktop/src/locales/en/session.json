@@ -14,11 +14,11 @@
     "log": "Conversation",
     "failed": "Failed",
     "failedWith": "Failed: {{title}}",
-    "turnDone": "This turn is complete. Send another message from {{grant}} to continue in this session.",
+    "turnDone": "This turn is complete. Send another message from {{grant}} to continue in this task.",
     "agentAsked": "Agent asked:",
-    "interruptedByYou": "You interrupted this turn. The session remains open, and {{grant}} can send another message to continue.",
-    "interrupted": "This turn was interrupted. The session remains open, and {{grant}} can send another message to continue.",
-    "interruptedBy": "{{name}} interrupted this turn. The session remains open, and {{grant}} can send another message to continue.",
+    "interruptedByYou": "You interrupted this turn. The task remains open, and {{grant}} can send another message to continue.",
+    "interrupted": "This turn was interrupted. The task remains open, and {{grant}} can send another message to continue.",
+    "interruptedBy": "{{name}} interrupted this turn. The task remains open, and {{grant}} can send another message to continue.",
     "turnFailed": "Turn {{turn}} failed: {{title}}",
     "copy": "Copy",
     "inProgress": "In progress",
@@ -57,7 +57,7 @@
   },
   "actions": {
     "interrupted": "Interrupted “{{title}}”",
-    "copiedId": "Copied session ID"
+    "copiedId": "Copied task ID"
   },
   "question": {
     "label": "Question",
@@ -76,7 +76,7 @@
     "countdown": "If unanswered, the agent will decide automatically when time runs out"
   },
   "inspector": {
-    "label": "Session Info",
+    "label": "Task Info",
     "title": "Environment",
     "startedBy": "Started by <b>{{grant}}</b>",
     "runBy": "Run by <b>{{agent}}</b>",

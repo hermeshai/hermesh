@@ -28,10 +28,6 @@ enum Route: Hashable {
     case grant(String) // grant id
     case machine(String) // machine id
     case machineAgent(String, String) // machine id, coding agent
-    case grantSessions(String) // client id
-    case machineSessions(String) // machine id
-    case agentSessions(String, String) // machine id, coding agent
-    case sessions // all of them, from Work
     case herSettings // the environment's Her shown
     case herConnectors // the environment's connectors (docs/her-connectors-v2-demo.html)
     case herConnector(String) // one of them, by name
@@ -53,14 +49,6 @@ enum Route: Hashable {
     case herSkill(String) // one of them, by its folder
     case herSearch // web search
     case herBrowser // the browsers she uses
-
-    /// A list of sessions: on a wide screen it stands as a column, what it leads to beside it.
-    var isList: Bool {
-        switch self {
-        case .sessions, .grantSessions, .machineSessions, .agentSessions: true
-        default: false
-        }
-    }
 }
 
 /// Sheets over everything.
@@ -214,15 +202,12 @@ final class AppModel {
     @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
     var herLater = false { didSet { save(herLater, "herLater") } }
-    var path: [Route] = [] { didSet { if path.first != menuPage { menuPage = nil } } }
-    /// The page the menu opened on Work's stack, while it is still the first: a place of the menu's, as a root
-    /// page is (the menu's button in its bar, a swipe right brings the menu out), not a page pushed onto Work.
-    private(set) var menuPage: Route?
+    var path: [Route] = []
     /// The root page scrolled far enough that its title is small.
     var rootTitleSmall = false
     var drawerOpen = false
     /// How a wide screen is shared (regular width, wider than tall): the menu stands beside the page, expanded
-    /// or as its rail, and a session list as a column of its own (docs/iphone-app.md). Nil on any other screen.
+    /// or as its rail (docs/iphone-app.md). Nil on any other screen.
     var wide: WideLayout?
     /// The menu stands beside the page, or its rail does: no menu button then.
     var menuBeside: Bool { wide != nil }
@@ -232,11 +217,9 @@ final class AppModel {
     var menuWidth: Double = 322 { didSet { save(menuWidth, "menuWidth") } }
     /// The expanded menu in view beside the page.
     var menuInView: Bool { wide.map { !$0.rail } ?? false }
-    /// Where in the path the list that stands as a column is, while one does.
-    var listAt: Int? { wide?.list == true ? path.lastIndex(where: \.isList) : nil }
-    /// The session chosen in the list's column, shown beside it.
+    /// The session the menu opened, while its page is in front: its row is the current one.
     var chosenSession: String? {
-        guard let i = listAt, path.count > i + 1, case .session(let id) = path[i + 1] else { return nil }
+        guard path.isEmpty, case .session(let id) = root else { return nil }
         return id
     }
     var sheet: SheetKind?
@@ -802,32 +785,10 @@ final class AppModel {
         drawerOpen = false
     }
 
-    /// A page of Work's, from the menu (a machine's sessions, an agent's, all of them): a place of the menu's,
-    /// whose swipe right brings the menu back, as a root page's does.
-    func open(underWork route: Route) {
-        root = .overview
-        path = [route]
-        menuPage = route
-        drawerOpen = false
-    }
-
-    /// The page in front is a place of the menu's: the root page, or the one the menu opened.
-    var atMenuPlace: Bool { path.isEmpty || (path.count == 1 && menuPage != nil) }
-
-    /// A page of Work's is the one the menu led to: its row is the current one.
-    func shows(_ route: Route) -> Bool { root == .overview && path.first == route }
-
     func openSession(_ id: String) {
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }
         path.append(.session(id))
-    }
-
-    /// A session chosen in a list: it takes the place of what the list led to before (beside the list, where
-    /// the list stands as a column).
-    func chooseSession(_ id: String) {
-        guard let i = path.lastIndex(where: \.isList) else { return openSession(id) }
-        path = Array(path[...i]) + [.session(id)]
     }
 
     func show(_ text: String, undo: (@MainActor () -> Void)? = nil) {

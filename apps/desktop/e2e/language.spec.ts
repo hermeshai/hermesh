@@ -17,8 +17,8 @@ const menus = (app: ElectronApplication) => app.evaluate(({ Menu }) => Menu.getA
 test("on an English system the app is in English, menus and pages", async () => {
   const { app, page } = await launch(undefined, { systemLanguages: ["en-GB", "zh-Hans"] });
   await expect.poll(() => lang(page)).toBe("en");
-  await expect.poll(() => menus(app)).toEqual([...appMenu, "File", "Edit", "View", "Session", "Window", "Help"]);
-  await expect(page.getByRole("heading", { name: "Work", level: 1 })).toBeVisible();
+  await expect.poll(() => menus(app)).toEqual([...appMenu, "File", "Edit", "View", "Task", "Window", "Help"]);
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
   await expect((await sessionList(page))).toContainText("写 hello"); // a session's title stays as written
   await app.close();
 });

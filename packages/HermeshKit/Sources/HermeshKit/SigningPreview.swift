@@ -228,8 +228,8 @@ public enum SigningPreview {
             let m = try strict(r, Hermesh_Identity_V1_OwnerDeviceCert.self)
             return Card(type: r.type, title: on(String(localized: "Issue this Mac a certificate for end-to-end connections", bundle: .module),
                            String(localized: "Issue this iPhone a certificate for end-to-end connections", bundle: .module)), who: "", lines: [],
-                        why: on(String(localized: "Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines.", bundle: .module),
-                           String(localized: "Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your sessions and machines.", bundle: .module)),
+                        why: on(String(localized: "Once approved, Hermesh on this Mac uses it for end-to-end encrypted connections to your machines, to view and manage your tasks and machines.", bundle: .module),
+                           String(localized: "Once approved, Hermesh on this iPhone uses it for end-to-end encrypted connections to your machines, to view and manage your tasks and machines.", bundle: .module)),
                         ids: [String(localized: "Device name: \(m.label)", bundle: .module), String(localized: "Fingerprint: \(fingerprint(m.devicePublicKey))", bundle: .module)])
         case rootCert:
             var c = describeRoot(try strict(r, Hermesh_Identity_V1_RootCert.self), hints)
@@ -264,8 +264,8 @@ public enum SigningPreview {
         case eraseOrder:
             let e = try strict(r, Hermesh_Identity_V1_EraseOrder.self)
             return Card(type: r.type, title: String(localized: "Erase everything in your Hermesh", bundle: .module), who: "", lines: [],
-                        why: on(String(localized: "Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone.", bundle: .module),
-                           String(localized: "Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, sessions and settings, and your agents are disconnected. This can’t be undone.", bundle: .module)),
+                        why: on(String(localized: "Once approved, Hermesh on all your trusted devices and machines, this Mac included, erases its keys, tasks and settings, and your agents are disconnected. This can’t be undone.", bundle: .module),
+                           String(localized: "Once approved, Hermesh on all your trusted devices and machines, this iPhone included, erases its keys, tasks and settings, and your agents are disconnected. This can’t be undone.", bundle: .module)),
                         warning: String(localized: "Approve only if you started erasing everything yourself.", bundle: .module),
                         ids: [String(localized: "Owner identity ID: \(e.ownerID)", bundle: .module), String(localized: "Erase ID: \(e.eraseID)", bundle: .module)])
         default:
@@ -329,7 +329,7 @@ public enum SigningPreview {
         return Card(type: type, title: String(localized: "Approve a new machine", bundle: .module), who: String(localized: "Machine ID \(String(m.machineID.prefix(12)))…", bundle: .module),
                     code: verificationCode(.machine, m.machinePublicKey, m.ownerID),
                     lines: [id, String(localized: "Fingerprint: \(fingerprint(m.machinePublicKey))", bundle: .module)],
-                    why: String(localized: "Once approved, this machine becomes yours, and agents you grant access can start sessions and run commands on it. Approve only if you know this machine; you can remove it later from the machine list.", bundle: .module),
+                    why: String(localized: "Once approved, this machine becomes yours, and agents you grant access can start tasks and run commands on it. Approve only if you know this machine; you can remove it later from the machine list.", bundle: .module),
                     warning: String(localized: "If the verification code doesn’t match, this isn’t the machine in front of you.", bundle: .module))
     }
 
@@ -346,8 +346,8 @@ public enum SigningPreview {
         let id = String(localized: "Fingerprint: \(fingerprint(g.clientPublicKey))", bundle: .module)
         // Limits beyond the defaults are part of the scope too.
         var limits: [String] = []
-        if g.taskVisibility == .all { limits.append(String(localized: "Can also see other personal agents’ sessions in these projects", bundle: .module)) }
-        if g.maxConcurrentSessions > 0 { limits.append(String(localized: "Sessions at once: up to \(Int(g.maxConcurrentSessions))", bundle: .module)) }
+        if g.taskVisibility == .all { limits.append(String(localized: "Can also see other personal agents’ tasks in these projects", bundle: .module)) }
+        if g.maxConcurrentSessions > 0 { limits.append(String(localized: "Tasks at once: up to \(Int(g.maxConcurrentSessions))", bundle: .module)) }
         var rows = [CardRow(kind: .project, value: projects), CardRow(kind: .codingAgent, value: agents),
                     CardRow(kind: .expires, value: String(localized: "Until \(day)", bundle: .module))]
         if !isAll(g.machineIds) { rows.insert(CardRow(kind: .machine, value: machines), at: 1) }
@@ -373,7 +373,7 @@ public enum SigningPreview {
                                 String(localized: "Coding agents it can run: \(agents)", bundle: .module)] + limits
                             + [noExpiry ? until : String(localized: "Expires: \(when)", bundle: .module), id],
                         rows: rows,
-                        why: String(localized: "Her becomes one of your agents: she can start coding agents in your projects, read their sessions and answer them. It ends when you turn Her off there.", bundle: .module),
+                        why: String(localized: "Her becomes one of your agents: she can start coding agents in your projects, read their tasks and answer them. It ends when you turn Her off there.", bundle: .module),
                         warning: String(localized: "Full trust: on these machines, a coding agent she starts can do anything you can.", bundle: .module))
         }
         if g.version <= 1 {
@@ -385,7 +385,7 @@ public enum SigningPreview {
                         rows: rows,
                         why: custodian.isEmpty
                             ? String(localized: "Uses your owner key to issue it an end-to-end connection grant, which you can revoke at any time.", bundle: .module)
-                            : String(localized: "Uses your owner key to issue it a connection grant, which you can revoke at any time. \(custodian) holds this agent’s key: it can act as the agent within this access, and sees the sessions it reaches.", bundle: .module),
+                            : String(localized: "Uses your owner key to issue it a connection grant, which you can revoke at any time. \(custodian) holds this agent’s key: it can act as the agent within this access, and sees the tasks it reaches.", bundle: .module),
                         warning: String(localized: "Full trust: in the chosen projects, it can do anything you can.", bundle: .module))
         }
         let cur = hints.clients[g.grantID]
@@ -427,7 +427,7 @@ public enum SigningPreview {
             let mode: String
             switch p.workspace {
             case .inPlace: mode = String(localized: "In place: agents change the files in this directory directly", bundle: .module)
-            case .worktree: mode = String(localized: "A separate git worktree for each session; the directory itself is left alone", bundle: .module)
+            case .worktree: mode = String(localized: "A separate git worktree for each task; the directory itself is left alone", bundle: .module)
             case .unspecified: mode = String(localized: "Separate worktrees for git repositories; other directories in place", bundle: .module)
             case .UNRECOGNIZED: throw Refusal.unsupported(type)
             }
@@ -437,17 +437,17 @@ public enum SigningPreview {
             if !p.description_p.isEmpty { lines.append(String(localized: "Description: \(p.description_p)", bundle: .module)) }
             lines.append(String(localized: "Available coding agents: \(scope(p.agents.map(codingAgentTitle)))", bundle: .module))
             return Card(type: type, title: String(localized: "Add project “\(p.projectID)” to \(target)", bundle: .module), who: who, lines: lines,
-                        why: String(localized: "Once approved, the machine registers the directory as a project, where personal agents with access can start sessions and read and write files.", bundle: .module))
+                        why: String(localized: "Once approved, the machine registers the directory as a project, where personal agents with access can start tasks and read and write files.", bundle: .module))
         case .removeProject(let p):
             return Card(type: type, title: String(localized: "Remove project “\(p.projectID)” from \(target)", bundle: .module), who: who,
                         lines: [String(localized: "Project: \(p.projectID)", bundle: .module)],
-                        why: String(localized: "Once approved, agents can no longer start sessions in this project; the files in the directory are not deleted.", bundle: .module))
+                        why: String(localized: "Once approved, agents can no longer start tasks in this project; the files in the directory are not deleted.", bundle: .module))
         case .setPaused(let p):
             return p.paused
                 ? Card(type: type, title: String(localized: "Pause \(target)", bundle: .module), who: who, lines: [],
-                       why: String(localized: "Once approved, the machine accepts no new sessions until you resume it, which you can do at any time.", bundle: .module))
+                       why: String(localized: "Once approved, the machine accepts no new tasks until you resume it, which you can do at any time.", bundle: .module))
                 : Card(type: type, title: String(localized: "Resume \(target)", bundle: .module), who: who, lines: [],
-                       why: String(localized: "Once approved, the machine accepts new sessions again.", bundle: .module))
+                       why: String(localized: "Once approved, the machine accepts new tasks again.", bundle: .module))
         case .setName(let n):
             return Card(type: type, title: String(localized: "Rename \(target) to “\(n.name)”", bundle: .module), who: who, lines: [],
                         why: String(localized: "The machine takes the new name; its projects and access stay the same.", bundle: .module))
@@ -463,7 +463,7 @@ public enum SigningPreview {
             case .UNRECOGNIZED: throw Refusal.unsupported(type)
             }
             return Card(type: type, title: String(localized: "Set the model \(agent) runs with on \(target)", bundle: .module), who: who, lines: lines,
-                        why: String(localized: "Once approved, its sessions there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
+                        why: String(localized: "Once approved, its tasks there that name no model run with these; the agent’s own configuration is not changed.", bundle: .module))
         case .setHer(let h):
             if h.enabled && h.erase { throw Refusal.unsupported(type) }
             if h.erase {

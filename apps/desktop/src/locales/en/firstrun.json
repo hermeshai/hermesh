@@ -11,7 +11,7 @@
     "lede": "Let Grok Bot and Muse in the cloud use Claude Code and Codex on your computer,<br/>and give specialist tasks to specialist agents.",
     "start": "Get Started",
     "selfHosted": "Use Your Own Server…",
-    "promise": "Even if the server is breached, attackers can’t reach your computer. Sessions are end-to-end encrypted, so the server never sees your content."
+    "promise": "Even if the server is breached, attackers can’t reach your computer. Tasks are end-to-end encrypted, so the server never sees your content."
   },
   "browser": {
     "title": "Complete Sign-In in Your Browser",
@@ -23,7 +23,7 @@
     "body": "Enter the address of the Hermesh server you deployed, along with the claim code shown when it first started.",
     "address": "Server address",
     "claim": "Claim code",
-    "plain": "Not encrypted (HTTP). Your sessions remain end-to-end encrypted, but the claim code and online machine status travel in plain text. Anyone on the network could read them or claim this server before you do, and Claude and ChatGPT won't be able to connect. This is fine for testing on a trusted network, but add a domain with HTTPS for ongoing use.",
+    "plain": "Not encrypted (HTTP). Your tasks remain end-to-end encrypted, but the claim code and online machine status travel in plain text. Anyone on the network could read them or claim this server before you do, and Claude and ChatGPT won't be able to connect. This is fine for testing on a trusted network, but add a domain with HTTPS for ongoing use.",
     "join": "Already using Hermesh on another device? <join>Join it…</join>"
   },
   "joinAddress": {
@@ -65,12 +65,12 @@
     "shareBodyMachine_win": "Hermesh runs Claude Code and Codex from the command line just as you do. It never reads API keys or tokens, or touches your agent sign-ins.",
     "shareBodyMachine_linux": "Hermesh runs Claude Code and Codex from the command line just as you do. It never reads API keys or tokens, or touches your agent sign-ins.",
     "remind": "Remind me when something comes up",
-    "remindBody": "Open Hermesh at login in the menu bar and notify me of connection requests, agent questions, and failed sessions.",
-    "remindBody_win": "Open Hermesh at login in the notification area and notify me of connection requests, agent questions, and failed sessions.",
-    "remindBody_linux": "Open Hermesh at login in the system tray and notify me of connection requests, agent questions, and failed sessions.",
-    "remindBodyMachine": "Open Hermesh at login in the menu bar and notify me when a session fails.",
-    "remindBodyMachine_win": "Open Hermesh at login in the notification area and notify me when a session fails.",
-    "remindBodyMachine_linux": "Open Hermesh at login in the system tray and notify me when a session fails.",
+    "remindBody": "Open Hermesh at login in the menu bar and notify me of connection requests, agent questions, and failed tasks.",
+    "remindBody_win": "Open Hermesh at login in the notification area and notify me of connection requests, agent questions, and failed tasks.",
+    "remindBody_linux": "Open Hermesh at login in the system tray and notify me of connection requests, agent questions, and failed tasks.",
+    "remindBodyMachine": "Open Hermesh at login in the menu bar and notify me when a task fails.",
+    "remindBodyMachine_win": "Open Hermesh at login in the notification area and notify me when a task fails.",
+    "remindBodyMachine_linux": "Open Hermesh at login in the system tray and notify me when a task fails.",
     "failed": "Couldn’t Finish Setting Up"
   },
   "join": {
@@ -134,8 +134,8 @@
     "enter": "Continue to Hermesh",
     "title": "“{{name}}” Is Connected",
     "tryIt": "Try sending this to {{name}}:",
-    "started": "{{name}} has started. Opening session…",
-    "waiting": "As soon as it starts working, its session will open here.",
+    "started": "{{name}} has started. Opening task…",
+    "waiting": "As soon as it starts working, its task will open here.",
     "codingAgent": "a coding agent",
     "promptInProject": "Use Hermesh to have {{agent}} say hello to me in the {{project}} project.",
     "prompt": "Use Hermesh to have {{agent}} say hello to me."
@@ -152,7 +152,7 @@
     "catalogState": {
       "known": "Observed",
       "unknown": "Unknown",
-      "session_required": "Unknown until a normal session reports its choices",
+      "session_required": "Unknown until a normal task reports its choices",
       "auth_required": "Authentication required",
       "timeout": "Discovery timed out",
       "error": "Discovery failed"
@@ -183,7 +183,7 @@
     "otherProjects": "Other projects · for agents not installed",
     "allProjects": "Projects",
     "alsoFor": "“{{project}}” is now enabled for {{agent}} too",
-    "worktreeItem": "Separate Worktree: Each Session on Its Own Branch",
+    "worktreeItem": "Separate Worktree: Each Task on Its Own Branch",
     "inPlaceItem": "In Place: Change This Folder Directly",
     "removeItem": "Stop Using with {{agent}}",
     "worktree": "Separate worktree",
@@ -193,7 +193,7 @@
     "effort": "Reasoning Effort",
     "speed": "Speed",
     "defaultsHead": "Default Model",
-    "defaultsNote": "Used when an agent starts a session here without specifying a model. {{agent}}’s own settings remain unchanged.",
+    "defaultsNote": "Used when an agent starts a task here without specifying a model. {{agent}}’s own settings remain unchanged.",
     "sameAs": "Same as {{agent}}",
     "sameAsValue": "Same as {{agent}} ({{value}})",
     "standard": "Standard",

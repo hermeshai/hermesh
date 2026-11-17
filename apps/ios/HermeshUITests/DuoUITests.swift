@@ -101,8 +101,8 @@ final class DuoUITests: XCTestCase {
         shot("menu" + suffix)
         closeMenu()
         openMenu()
-        app.buttons["work-place"].firstMatch.tap() // Work lists the sessions; the menu, none
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-")).firstMatch.tap()
+        // The menu lists the sessions (docs/her-team.md §16).
+        app.descendants(matching: .any)["drawer"].buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "session-")).firstMatch.tap()
         sleep(2)
         shot("session" + suffix)
         tap("session-info")
@@ -110,7 +110,9 @@ final class DuoUITests: XCTestCase {
         shot("session-info" + suffix)
         tap("close")
         openMenu()
-        app.buttons["menu-machines"].firstMatch.tap()
+        tap("account")
+        for _ in 0..<4 where !app.buttons["account-machines"].isHittable { app.swipeUp() }
+        tap("account-machines")
         sleep(1)
         shot("machines" + suffix)
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "machine-")).firstMatch.tap()
@@ -118,7 +120,9 @@ final class DuoUITests: XCTestCase {
         shot("machine" + suffix)
         back()
         openMenu()
-        app.buttons["menu-grants"].firstMatch.tap()
+        tap("account")
+        for _ in 0..<4 where !app.buttons["account-grants"].isHittable { app.swipeUp() }
+        tap("account-grants")
         sleep(1)
         shot("grants" + suffix)
         openMenu()
@@ -136,7 +140,7 @@ final class DuoUITests: XCTestCase {
         sleep(1)
         shot("her" + suffix)
         openMenu()
-        app.buttons["work-place"].firstMatch.tap()
+        app.buttons["overview-place"].firstMatch.tap()
         tap("new")
         sleep(1)
         shot("new" + suffix)

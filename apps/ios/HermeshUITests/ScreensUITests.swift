@@ -49,7 +49,7 @@ final class ScreensUITests: XCTestCase {
         sleep(1)
         shot("iphone-menu")
         // Work lists the sessions (the menu, none): the finished one is among those that ended last.
-        tap("work-place")
+        tap("overview-place")
         tap("session-\(env["HERMESH_SCREENS_SESSION"] ?? "")")
         sleep(3)
         shot("iphone-session")
@@ -59,7 +59,7 @@ final class ScreensUITests: XCTestCase {
         if !app.buttons["menu"].exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
         tap("menu")
         sleep(1)
-        app.buttons["work-place"].tap()
+        app.buttons["overview-place"].tap()
         _ = try post(control, "agent")
         let verify = app.buttons["verify-pairing"]
         XCTAssertTrue(verify.waitForExistence(timeout: 30), "the request on the overview")

@@ -175,11 +175,6 @@ export interface SessionSection {
   sessions: Session[];
 }
 
-/** Sections that show how many they hold: what needs the owner and what runs. */
-export function sectionCounted(sec: SessionSection): boolean {
-  return sec.grouping === "status" && (sec.key === "attention" || sec.key === "active");
-}
-
 /**
  * The list as the view lays it out, each section sorted by last activity.
  * States keep their order (needs you, running, done); days follow the sort;
@@ -188,7 +183,7 @@ export function sectionCounted(sec: SessionSection): boolean {
  * ids in `her`), then the agents by their latest session, then the owner.
  * Archived sessions, when shown, are a section of their own at the end.
  */
-export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[]; her?: string[] }): SessionSection[] {
+export function sessionSections(sessions: Session[], view: SessionView, o: { archived: boolean; now: Date; machines?: string[]; her?: string[]; alwaysActive?: boolean }): SessionSection[] {
   const by = new Map<string, Session[]>();
   const archived: Session[] = [];
   for (const s of sessions) {
@@ -217,7 +212,9 @@ export function sessionSections(sessions: Session[], view: SessionView, o: { arc
     : view.group === "agent" ? keys.sort((a, b) => codingAgentTitle(a).localeCompare(codingAgentTitle(b)))
     : keys.sort((a, b) => at(a) - at(b) || a.localeCompare(b));
   const sorted = (list: Session[]) => list.sort((a, c) => (view.newestFirst ? 1 : -1) * byNewest(updatedDate(a), updatedDate(c)));
-  const out: SessionSection[] = order.filter((k) => by.has(k)).map((k) => ({ grouping: view.group, key: k, sessions: sorted(by.get(k)!) }));
+  // By status, the running section stays while nothing runs, empty, so the sidebar always shows it (docs/her-team.md §16).
+  const keep = o.alwaysActive && view.group === "status" && by.size > 0;
+  const out: SessionSection[] = order.filter((k) => by.has(k) || (keep && k === "active")).map((k) => ({ grouping: view.group, key: k, sessions: sorted(by.get(k) ?? []) }));
   if (archived.length) out.push({ grouping: "archived", key: "archived", sessions: sorted(archived) });
   return out;
 }

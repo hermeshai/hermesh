@@ -11,7 +11,7 @@
     "lede": "让 Grok Bot、Muse 在云端使用你电脑上的 Claude Code、Codex，<br/>把专业的任务分派给专业的 Agent。",
     "start": "立即开始",
     "selfHosted": "使用自己的服务器…",
-    "promise": "即使服务器被攻破，攻击者也访问不了你的电脑。会话端到端加密，服务器看不到内容。"
+    "promise": "即使服务器被攻破，攻击者也访问不了你的电脑。任务内容端到端加密，服务器看不到内容。"
   },
   "browser": {
     "title": "请在浏览器里完成登录",
@@ -23,7 +23,7 @@
     "body": "填入你部署的 Hermesh 服务器地址，和它第一次启动时给出的认领码。",
     "address": "服务器地址",
     "claim": "认领码",
-    "plain": "未加密（HTTP）。会话内容仍然端到端加密，但认领码、哪些机器在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。",
+    "plain": "未加密（HTTP）。任务内容仍然端到端加密，但认领码、哪些机器在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。",
     "join": "已经在别的设备上用 Hermesh？ <join>加入它…</join>"
   },
   "joinAddress": {
@@ -65,12 +65,12 @@
     "shareBodyMachine_win": "Hermesh 像你自己一样，用命令行调用这台电脑上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。",
     "shareBodyMachine_linux": "Hermesh 像你自己一样，用命令行调用这台电脑上的 Claude Code、Codex。不读取 API Key 和 Token，也不碰这些 agent 的登录授权。",
     "remind": "有事时提醒我",
-    "remindBody": "登录时打开 Hermesh（只在菜单栏）。有连接请求、agent 提问、会话出错时发通知。",
-    "remindBody_win": "登录时打开 Hermesh（只在通知区域）。有连接请求、agent 提问、会话出错时发通知。",
-    "remindBody_linux": "登录时打开 Hermesh（只在系统托盘）。有连接请求、agent 提问、会话出错时发通知。",
-    "remindBodyMachine": "登录时打开 Hermesh（只在菜单栏）。会话出错时发通知。",
-    "remindBodyMachine_win": "登录时打开 Hermesh（只在通知区域）。会话出错时发通知。",
-    "remindBodyMachine_linux": "登录时打开 Hermesh（只在系统托盘）。会话出错时发通知。",
+    "remindBody": "登录时打开 Hermesh（只在菜单栏）。有连接请求、agent 提问、任务出错时发通知。",
+    "remindBody_win": "登录时打开 Hermesh（只在通知区域）。有连接请求、agent 提问、任务出错时发通知。",
+    "remindBody_linux": "登录时打开 Hermesh（只在系统托盘）。有连接请求、agent 提问、任务出错时发通知。",
+    "remindBodyMachine": "登录时打开 Hermesh（只在菜单栏）。任务出错时发通知。",
+    "remindBodyMachine_win": "登录时打开 Hermesh（只在通知区域）。任务出错时发通知。",
+    "remindBodyMachine_linux": "登录时打开 Hermesh（只在系统托盘）。任务出错时发通知。",
     "failed": "没能完成设置"
   },
   "join": {
@@ -120,9 +120,9 @@
     "upgrade_linux": "让这台电脑也能批准…",
     "leave": "离开你的 Hermesh…",
     "leaveTitle": "离开你的 Hermesh？",
-    "leaveMessage": "这台 Mac 将立即停止接收任务，正在进行的会话会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
-    "leaveMessage_win": "这台电脑将立即停止接收任务，正在进行的会话会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
-    "leaveMessage_linux": "这台电脑将立即停止接收任务，正在进行的会话会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
+    "leaveMessage": "这台 Mac 将立即停止接收任务，正在进行的任务会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
+    "leaveMessage_win": "这台电脑将立即停止接收任务，正在进行的任务会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
+    "leaveMessage_linux": "这台电脑将立即停止接收任务，正在进行的任务会被中断，并从你的机器列表中移除（若当前无法连接服务器，请在可信设备上将其移除）。项目设置仍保留在本机。",
     "leaveButton": "离开"
   },
   "connect": {
@@ -134,8 +134,8 @@
     "enter": "进入 Hermesh",
     "title": "「{{name}}」已连接",
     "tryIt": "去 {{name}} 里试一下，把这句话发给它：",
-    "started": "{{name}} 已启动，正在打开会话…",
-    "waiting": "Agent 开始运行后，这里会自动打开会话。",
+    "started": "{{name}} 已启动，正在打开任务…",
+    "waiting": "Agent 开始运行后，这里会自动打开任务。",
     "codingAgent": "编码 Agent",
     "promptInProject": "用 Hermesh 在 {{project}} 项目里，让 {{agent}} 跟我打个招呼。",
     "prompt": "用 Hermesh 让 {{agent}} 跟我打个招呼。"
@@ -152,7 +152,7 @@
     "catalogState": {
       "known": "已观察",
       "unknown": "未知",
-      "session_required": "未知，等待正常会话返回模型选项",
+      "session_required": "未知，等待一次正常任务返回模型选项",
       "auth_required": "需要认证",
       "timeout": "模型发现超时",
       "error": "模型发现失败"
@@ -182,7 +182,7 @@
     "otherProjects": "其他项目 · 给没有安装的 agent",
     "allProjects": "项目",
     "alsoFor": "「{{project}}」也给 {{agent}} 用了",
-    "worktreeItem": "独立 worktree：每个会话在自己的分支里",
+    "worktreeItem": "独立 worktree：每个任务在自己的分支里",
     "inPlaceItem": "原地：直接改这个目录",
     "removeItem": "不再给 {{agent}} 用",
     "worktree": "独立 worktree",
@@ -192,7 +192,7 @@
     "effort": "推理强度",
     "speed": "速度",
     "defaultsHead": "默认模型",
-    "defaultsNote": "Agent 在这里开会话、没指定模型时用这些；不改 {{agent}} 自己的配置。",
+    "defaultsNote": "Agent 在这里开任务、没指定模型时用这些；不改 {{agent}} 自己的配置。",
     "sameAs": "跟随 {{agent}}",
     "sameAsValue": "跟随 {{agent}}（{{value}}）",
     "standard": "标准",

@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { FailureKind, FailureSchema, QuestionItemSchema, QuestionSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
 import { sessionSections, sessionView } from "./sessions";
-import { quickChoice, teamState } from "./team";
+import { liveByAgent, quickChoice, teamState } from "./team";
 import { ask, now, progressOf, session } from "./testing";
 
 const ids = (list: Session[]) => list.map((s) => s.sessionId);
@@ -33,6 +33,19 @@ describe("the team's state", () => {
     );
     expect([ids(t.waiting), ids(t.failed), ids(t.running), ids(t.finished)]).toEqual([["w2", "w1"], ["f1"], ["r2", "r1"], ["d2", "d1"]]);
     expect(t.requests).toBe(1);
+  });
+
+  test("the sessions at hand by coding agent: what waits, then what failed, then what runs; finished and archived ones none of it", () => {
+    const t = teamState(
+      [
+        running("r1", -400, "claude"), running("r2", -100, "gemini"), waiting("w1", -50, "codex"), waiting("w2", -10, "claude"),
+        failed("f1", -30), session("d1", SessionStatus.IDLE, { updated: -20, agent: "cursor" }), session("gone", SessionStatus.ARCHIVED, { agent: "kimi" }),
+      ],
+      0,
+    );
+    // failed() makes a "claude" session (the fixture's default agent).
+    expect(liveByAgent(t).map((g) => [g.agent, ids(g.sessions)])).toEqual([["claude", ["w2", "f1", "r1"]], ["codex", ["w1"]], ["gemini", ["r2"]]]);
+    expect(liveByAgent(teamState([session("d", SessionStatus.IDLE)], 0))).toEqual([]);
   });
 
   test("the name tag says the first that holds", () => {

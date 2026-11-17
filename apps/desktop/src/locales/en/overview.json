@@ -1,5 +1,5 @@
 {
-  "title": "Work",
+  "title": "Overview",
   "day": "{{weekday}}, {{date}}",
   "listSeparator": ", ",
   "thisMac": "This Mac",
@@ -14,9 +14,9 @@
     "enterCode": "Enter Pairing Code…"
   },
   "unreachable": {
-    "offline": "<b>{{name}} is offline</b>; its sessions can’t be shown for now",
-    "notResponding": "<b>{{name}} isn’t responding</b>; its sessions may be missing",
-    "many": "<b>{{count}} machines can’t be reached</b>; their sessions can’t be shown for now",
+    "offline": "<b>{{name}} is offline</b>; its tasks can’t be shown for now",
+    "notResponding": "<b>{{name}} isn’t responding</b>; its tasks may be missing",
+    "many": "<b>{{count}} machines can’t be reached</b>; their tasks can’t be shown for now",
     "retrying": "Retrying",
     "lastOnline": "Last online {{ago}} · they’ll appear once it reconnects",
     "reconnect": "They’ll appear once it reconnects"
@@ -28,7 +28,7 @@
     "review": "Review",
     "expires_one": "Access for “{{label}}” expires in {{count}} day",
     "expires_other": "Access for “{{label}}” expires in {{count}} days",
-    "expiresDetail": "After that it can’t use your machines, and its running sessions will be interrupted",
+    "expiresDetail": "After that it can’t use your machines, and its running tasks will be interrupted",
     "renew": "Renew…",
     "pairingDevice": "“{{label}}” wants to become your trusted device",
     "pairingClient": "“{{label}}” wants to connect to your computer",
@@ -49,7 +49,7 @@
     "moreProjects_other": "{{count}} more projects",
     "connectMore": "Connect More",
     "addMachine": "Add Machine",
-    "backToAll": "Back to all sessions",
+    "backToAll": "Back to all tasks",
     "encrypted": "End-to-end encrypted",
     "notSignedIn": "Not signed in",
     "paused": "Paused",
@@ -58,36 +58,36 @@
     "waiting": "Waiting for you",
     "failed": "Failed",
     "hintPicked": "Click again, or click the center icon, to show all",
-    "hintPick": "Click any node to filter sessions through it",
+    "hintPick": "Click any node to filter tasks through it",
     "today": "Today",
-    "todayStats_one": "Today <b>{{count}}</b> session · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
-    "todayStats_other": "Today <b>{{count}}</b> sessions · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
+    "todayStats_one": "Today <b>{{count}}</b> task · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
+    "todayStats_other": "Today <b>{{count}}</b> tasks · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
     "personalAgent": "Personal agent",
     "expiresToday": "Expires today",
     "expiresIn_one": "Expires in {{count}} day",
     "expiresIn_other": "Expires in {{count}} days",
     "machineSettings": "Machine Settings…",
-    "notYet": "No sessions yet",
-    "accepting": "Taking new sessions"
+    "notYet": "No tasks yet",
+    "accepting": "Taking new tasks"
   },
   "working": {
     "title": "Active Now",
     "manageAccess": "Manage Access…",
-    "noneThrough": "No sessions pass through here.",
+    "noneThrough": "No tasks pass through here.",
     "matches": "· {{count}}",
     "showAll": "Show All",
     "disconnected": "Disconnected agent",
-    "byGrant": "Sessions started by {{label}}",
-    "onMachine": "Sessions on {{machine}}",
-    "inProject": "Sessions in project {{project}}",
+    "byGrant": "Tasks started by {{label}}",
+    "onMachine": "Tasks on {{machine}}",
+    "inProject": "Tasks in project {{project}}",
     "running": "Running",
     "waiting": "Waiting for you",
     "crashed": "Crashed",
     "failed": "Failed",
     "preparing": "Preparing",
     "queued": "Queued",
-    "nothingRuns": "No active sessions",
-    "nothingRunsHint": "When an agent starts working, its sessions appear here and the connection map lights up."
+    "nothingRuns": "No active tasks",
+    "nothingRunsHint": "When an agent starts working, its tasks appear here and the connection map lights up."
   },
   "usage": {
     "title": "Usage",
@@ -104,8 +104,8 @@
     "less": "Less",
     "more": "More",
     "noUsage": "No usage",
-    "sessions_one": " · {{count}} session",
-    "sessions_other": " · {{count}} sessions",
+    "sessions_one": " · {{count}} task",
+    "sessions_other": " · {{count}} tasks",
     "syncing": "Syncing {{machines}}’s work…",
     "behind": "{{machines}} counted up to {{time}}"
   },
@@ -124,8 +124,8 @@
     "here": "On this Mac",
     "here_win": "On this PC",
     "here_linux": "On this computer",
-    "seen_one": "{{count}} session today · last active {{ago}}",
-    "seen_other": "{{count}} sessions today · last active {{ago}}",
+    "seen_one": "{{count}} task today · last active {{ago}}",
+    "seen_other": "{{count}} tasks today · last active {{ago}}",
     "revokeElsewhere": "To revoke its access, use one of your trusted devices."
   }
 }

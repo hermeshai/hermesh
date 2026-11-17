@@ -2,131 +2,10 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// Every session, reached from Work, laid out as the Mac's sidebar and drawn
-/// as the menu's rows: grouped, sorted by last activity, with or without each row's
-/// metadata (the view menu), each group collapsible; archived sessions on
-/// request. Swipe or long-press a row to rename, archive or delete it.
-struct SessionsView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
-        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines)
-        List {
-            ForEach(sections) { section in
-                let open = !model.collapsed.contains(section.id)
-                // The heading is a row, not a section header: it scrolls away as the menu's do.
-                Section {
-                    Button {
-                        withAnimation(.snappy) {
-                            if open { model.collapsed.insert(section.id) } else { model.collapsed.remove(section.id) }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(title(section))
-                            if section.counted { Text("\(section.sessions.count)").foregroundStyle(.tertiary) }
-                            Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(open ? 0 : -90))
-                        }
-                        .font(.footnote).foregroundStyle(.secondary)
-                        .padding(.horizontal, 26).padding(.top, 20).padding(.bottom, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
-                    .accessibilityIdentifier("group-\(title(section))")
-                    if open {
-                        ForEach(section.sessions, id: \.sessionID) { s in SessionListRow(session: s) }
-                    }
-                }
-            }
-            Section {
-                Group {
-                    if !model.hasWorld {
-                        PageLoader(text: "Reading your sessions…")
-                    } else if model.noOlder {
-                        if model.sessions.isEmpty {
-                            Text("No sessions yet. Once an agent connects, its sessions will appear here.")
-                        } else {
-                            HStack(spacing: 4) {
-                                Text("No earlier sessions ·")
-                                Button(model.showArchived ? "Hide Archived" : "Show Archived") { model.showArchived.toggle() }
-                                    .foregroundStyle(.tint)
-                                    .accessibilityIdentifier("toggle-archived")
-                            }
-                        }
-                    } else {
-                        InlineLoader(text: "Loading earlier sessions…")
-                            .task(id: model.olderKey) { await model.loadOlder() }
-                    }
-                }
-                .font(.footnote).foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                .padding(.top, 14)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-            }
-        }
-        .listStyle(.plain)
-        .listSectionSpacing(0)
-        .navigationTitle("All Sessions")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ViewMenu() }
-        }
-    }
-
-    private func title(_ s: SessionSection) -> String {
-        switch s.grouping {
-        case .project: s.key
-        case .agent: agentTitle(s.key)
-        case .machine: model.machineName(s.key)
-        default: SessionBucket(rawValue: s.key)?.title ?? s.key
-        }
-    }
-}
-
-/// The sessions of one grant, one machine or one coding agent on a machine,
-/// newest first: where the menu, Grants and Machines lead. Its own page; the
-/// full list stays as the owner laid it out. about: the page of what it
-/// lists (the machine's, the agent's, the grant's), a button in the bar
-/// unless the list was opened from that page.
-struct ScopedSessionsView: View {
-    @Environment(AppModel.self) private var model
-    let filter: SessionFilter
-    let title: String
-    var about: Route?
-
-    var body: some View {
-        let list = model.sessions.filter { filter.matches($0) && $0.status != .archived }.sorted { $0.updatedDate > $1.updatedDate }
-        List {
-            if list.isEmpty {
-                Text("No sessions").foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
-            }
-            ForEach(list, id: \.sessionID) { s in SessionListRow(session: s) }
-        }
-        .listStyle(.plain)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let about, !model.path.contains(about) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Details", systemImage: "info.circle") { model.path.append(about) }
-                        .accessibilityIdentifier("scope-details")
-                }
-            }
-        }
-    }
-}
-
-/// A session in a list, drawn as the menu's rows (no card, no lines, a
-/// capsule under the finger): opens it; swipe for Archive and Delete,
-/// long-press for Rename, Archive and Delete (the Mac's ⋯ menu).
+/// A session in the menu (docs/her-team.md §16): the coding agent's logo, the title, one mark (an orange dot
+/// while it waits for the owner, a red one when it failed, a ring while it runs); with the metadata, who sent the
+/// work to which agent, the project and the time. A tap opens it; long-press for Rename, Archive and Delete (the
+/// Mac's ⋯ menu). No swipe: in the menu a swipe left is the menu's own, to close it.
 struct SessionListRow: View {
     @Environment(AppModel.self) private var model
     let session: Session
@@ -134,22 +13,77 @@ struct SessionListRow: View {
     @State private var deleting = false
 
     var body: some View {
-        Button { model.chooseSession(session.sessionID) } label: { SessionRow(session: session, metadata: model.listView.metadata) }
+        Button { model.open(.session(session.sessionID)) } label: { MenuSessionRow(session: session, metadata: model.listView.metadata) }
             .buttonStyle(RowStyle(selected: model.chosenSession == session.sessionID))
+            .accessibilityAddTraits(model.chosenSession == session.sessionID ? .isSelected : [])
             .listRowInsets(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 10))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
-            .swipeActions(edge: .trailing) {
-                // Not role: .destructive, which takes the row away before the confirmation shows.
-                Button("Delete", systemImage: "trash") { deleting = true }.tint(.red)
-                if session.isArchivable {
-                    Button("Archive", systemImage: "archivebox") { Task { await model.setArchived(session, true) } }.tint(.gray)
-                } else if session.status == .archived {
-                    Button("Unarchive", systemImage: "tray.and.arrow.up") { Task { await model.setArchived(session, false) } }.tint(.gray)
-                }
-            }
             .contextMenu { SessionActions(session: session, renaming: $renaming, deleting: $deleting) }
             .sessionDialogs(session, renaming: $renaming, deleting: $deleting)
+    }
+}
+
+/// What a menu row shows: the logo, the title and the mark; the metadata line when the view asks for it.
+struct MenuSessionRow: View {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    var metadata = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            AgentLogo(id: session.agent, size: 22).frame(width: 28, height: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(session.displayTitle)
+                        .foregroundStyle(session.status == .archived ? .secondary : .primary)
+                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                    mark
+                }
+                if metadata {
+                    HStack(spacing: 8) {
+                        Text(model.senderLine(session)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        time.monospacedDigit()
+                    }
+                    .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, metadata ? 8 : 11)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(state.map { Text($0) } ?? Text(""))
+        .accessibilityIdentifier("session-\(session.displayTitle)")
+    }
+
+    /// One mark: orange, it waits for the owner; red, it failed; a ring, it runs; nothing, it is done.
+    @ViewBuilder private var mark: some View {
+        if session.status == .waitingInput || session.isFailed {
+            Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 9, height: 9).accessibilityHidden(true)
+        } else if session.isActive {
+            BusyRing().accessibilityHidden(true)
+        } else if session.status == .unspecified {
+            Text(statusTitle(session.status)).font(.footnote).foregroundStyle(.secondary) // its machine cannot be read now
+        }
+    }
+
+    /// The mark in words, for VoiceOver.
+    private var state: String? {
+        if session.isFailed && session.status != .crashed && session.status != .waitingInput { return String(localized: "Failed") }
+        switch session.status {
+        case .waitingInput, .crashed, .preparing, .queued, .running: return statusTitle(session.status)
+        default: return nil
+        }
+    }
+
+    /// How long a running turn has run, else when the session last changed.
+    @ViewBuilder private var time: some View {
+        if session.status == .running, let start = session.turnStartedDate {
+            Text(start, style: .timer)
+        } else {
+            Text(listTime(session.updatedDate, now: model.now))
+        }
     }
 }
 
@@ -246,8 +180,13 @@ struct ViewMenu: View {
                 Text(model.listView.metadata ? "Metadata" : "Title Only")
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease")
+            // The menu's own glass, as its Search and Close beside it, a size smaller: in the text's colour, not the tint.
+            Image(systemName: "line.3.horizontal.decrease").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(.circle)
         }
+        .buttonStyle(.plain)
         .accessibilityLabel("View Options")
         .accessibilityIdentifier("view-options")
     }

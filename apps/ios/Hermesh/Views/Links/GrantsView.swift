@@ -134,12 +134,7 @@ struct GrantView: View {
                 if !c.custodian.isEmpty {
                     LabeledContent("Connects", value: String(localized: "Through \(URL(string: c.custodian)?.host ?? c.custodian), which keeps its key"))
                 }
-                Button {
-                    model.path.append(.grantSessions(c.clientID))
-                } label: {
-                    LabeledContent("Sessions", value: String(localized: "\(sessions.filter { Calendar.current.isDateInToday($0.updatedDate) }.count) today · \(sessions.count) in all"))
-                }
-                .foregroundStyle(.primary)
+                LabeledContent("Sessions", value: String(localized: "\(sessions.filter { Calendar.current.isDateInToday($0.updatedDate) }.count) today · \(sessions.count) in all"))
                 LabeledContent("Last online", value: c.online ? String(localized: "Now") : (c.hasLastSeen ? agoText(c.lastSeen.date, now: model.now) : "—"))
                 LabeledContent("Fingerprint", value: c.fingerprint).font(.body.monospaced())
             }

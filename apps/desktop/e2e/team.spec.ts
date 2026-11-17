@@ -2,16 +2,16 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap, thisComputer, sessionList, navTo } from "./app";
+import { launch, snap, sessionList, navTo } from "./app";
 
 // Her and her team on the Mac (docs/her-team.md §14), on the fixture's world: this Mac with sessions in every
 // state, all sent by the agent "bot", and Her on nowhere.
 
-test("the window opens on Her's first run while she runs nowhere; Not Now makes Work the start page, which brings her first run back", async () => {
+test("the window opens on Her's first run while she runs nowhere; Not Now makes the overview the start page, which brings her first run back", async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   let { app, page } = await launch(undefined, { profile, start: true });
   const firstRun = () => page.getByRole("heading", { name: "选择 Her 在哪里运行" });
-  const work = () => page.getByRole("heading", { name: "工作", level: 1 });
+  const work = () => page.getByRole("heading", { name: "概览", level: 1 });
   await expect(firstRun()).toBeVisible({ timeout: 30_000 });
   await expect(page.locator(".side-nav").getByRole("button", { name: /^Her/ })).toContainText("未启用");
   await page.getByRole("button", { name: "以后再说" }).click();
@@ -19,9 +19,9 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
   await expect(page.getByRole("status").filter({ hasText: "Her 还没启用" })).toBeVisible();
   await app.close();
 
-  // Next time, Work: Not Now is kept on this Mac.
+  // Next time, the overview: Not Now is kept on this Mac.
   ({ app, page } = await launch(undefined, { profile, start: true }));
-  // The start page is picked once the owner's world is in: its sessions are counted, and it is still Work.
+  // The start page is picked once the owner's world is in: its sessions are counted, and it is still the overview.
   await expect(page.getByRole("region", { name: "需要你处理" })).toContainText("选颜色", { timeout: 30_000 });
   await expect(work()).toBeVisible();
   await page.getByRole("button", { name: "选择她在哪里运行…" }).click();
@@ -29,96 +29,68 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
   await app.close();
 });
 
-test("the sidebar is navigation only: its pages and the team, All Sessions first, whose rows open the list's column beside the session", async () => {
+test("the sidebar is Her, the overview and every session; collapsed, its rail shows the agents at work, each a menu of its sessions", async () => {
   const { app, page } = await launch();
-  // This test checks all three columns; native windows are clamped to CI's display.
   await page.setViewportSize({ width: 1240, height: 800 });
-  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^Her/, /^工作/, /^搜索/]);
-  // No session in the sidebar: the list is a column of its own, opened from it.
-  await expect(page.getByRole("complementary", { name: "边栏" })).not.toContainText("写 hello");
-  // Work's row: a dot while something waits on the owner, and a ring with what runs.
-  const workRow = page.locator(".side-nav").getByRole("button", { name: /^工作/ });
-  await expect(workRow.getByRole("img", { name: /项需要处理/ })).toBeVisible();
-  await expect(workRow.getByRole("img", { name: "1 个在忙" })).toBeVisible();
+  const sidebar = page.getByRole("complementary", { name: "边栏" });
+  await expect(page.locator(".side-nav .nav-i")).toHaveText([/^Her/, /^概览/]);
+  // The overview's row: a dot while something waits on the owner, and a ring while anything runs; no numbers.
+  const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
+  await expect(overview.getByRole("img", { name: /项需要处理/ })).toBeVisible();
+  await expect(overview.getByRole("img", { name: /个在忙/ })).toBeVisible();
+  await expect(overview).not.toContainText(/\d/);
+  // No map of machines and agents: their settings are in Settings.
+  await expect(page.getByRole("group", { name: "团队" })).toHaveCount(0);
+  await expect(sidebar).not.toContainText("连接的 Agent");
 
-  // The map: this Mac, its coding agents, the agents connected to the owner.
-  const map = page.getByRole("group", { name: "团队" });
-  const mac = map.getByRole("button", { name: new RegExp(`^${thisComputer}`) });
-  const gemini = map.getByRole("button", { name: /^Gemini CLI/ });
-  await expect(gemini.getByRole("img", { name: "在等你" })).toBeVisible();
-  await expect(gemini.getByRole("img", { name: "1 个在忙" })).toBeVisible();
-  await expect(map).toContainText("连接的 Agent");
-  // All Sessions is the map's first row: the list unfiltered, before its filters.
-  const all = map.getByRole("button", { name: /^全部会话/ });
-  await expect(map.locator(".map-row").first()).toHaveText(/^全部会话\d+$/);
-  // The rows are flush: an agent's logo under its machine's name, no indent.
-  const left = async (l: typeof mac) => (await l.locator(":scope > *").first().boundingBox())!.x;
-  expect(await left(gemini)).toBe(await left(mac));
-  // A machine's row is its name alone, no icon and no dot, and a chevron at its end saying it opens.
-  await expect(mac.locator(":scope > *").first()).toHaveText(thisComputer);
-  await expect(mac.locator(".dotc")).toHaveCount(0);
-  const go = (await mac.locator(".map-go").boundingBox())!, row = (await mac.boundingBox())!;
-  expect(row.x + row.width - (go.x + go.width)).toBeLessThan(12);
-
-  // All Sessions: the column, by who sent the work, each row saying who sent it to whom; none chosen yet.
-  await all.click();
-  const column = page.getByRole("region", { name: "全部会话" });
-  const list = page.getByRole("list", { name: "会话" });
-  await expect(list.getByRole("group", { name: "bot 派的" })).toContainText("写 hello");
-  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" })).toContainText("bot → Gemini · demo");
-  await expect(page.getByText("选一个会话")).toBeVisible();
-  const rows = await list.getByRole("listitem").count();
-  // A session chosen in it shows beside it, the list staying.
-  await list.getByRole("listitem").filter({ hasText: "写 hello" }).click();
+  // The sessions are in the sidebar itself; one chosen shows beside it, marked in it.
+  const list = page.getByRole("list", { name: "任务" });
+  await expect(sidebar.getByRole("list", { name: "任务" })).toContainText("写 hello");
+  const hello = list.getByRole("listitem").filter({ hasText: "写 hello" });
+  await hello.click();
   await expect(page.getByRole("heading", { name: "写 hello" })).toBeVisible();
-  await expect(column).toBeVisible();
-  // The sidebar stays as it was (docs/her-team.md §14.9), the place chosen marked in it.
-  await expect(page.getByRole("complementary", { name: "边栏" })).toBeVisible();
-  await expect(all).toHaveAttribute("aria-current", "true");
-  await snap(page, "team-three-columns");
+  await expect(hello).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".slist")).toHaveCount(0);
+  await snap(page, "sidebar-session");
 
-  // A row of the map is the list of its sessions, under its name; the chosen session stays when it is one of them.
-  await gemini.click();
-  await expect(gemini).toHaveAttribute("aria-current", "true");
-  await expect(page.getByRole("region", { name: `${thisComputer} 上的 Gemini` })).toBeVisible();
-  await expect(list.getByRole("listitem")).toHaveCount(rows);
-  await expect(page.getByRole("heading", { name: "写 hello" })).toBeVisible();
-  await mac.click();
-  await expect(page.getByRole("region", { name: thisComputer })).toBeVisible();
-  await map.getByRole("button", { name: /^bot/ }).click();
-  await expect(page.getByRole("region", { name: "bot 派的" })).toBeVisible();
-  await expect(gemini).not.toHaveAttribute("aria-current", "true");
-
-  // Collapsed, the sidebar is its rail, and stays so from page to page: the same places, as icons, each saying on
-  // hover what it is and how it stands.
+  // Collapsed, the sidebar is its rail, and stays so from page to page: Her, the overview, then one logo for each
+  // coding agent with sessions at hand, saying on hover how they stand.
   await page.getByRole("button", { name: "收成窄栏" }).click();
   const rail = page.getByRole("complementary", { name: "窄栏" });
-  await expect(rail.getByRole("button", { name: /^bot/ })).toHaveAttribute("aria-current", "true");
-  const railGemini = rail.getByRole("button", { name: new RegExp(`^${thisComputer} 上的 Gemini CLI · 1 个在等你 · 1 个在忙$`) });
-  await railGemini.click();
-  await expect(page.getByRole("region", { name: `${thisComputer} 上的 Gemini` })).toBeVisible();
-  await railGemini.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(`${thisComputer} 上的 Gemini CLI · 1 个在等你 · 1 个在忙`);
-  await snap(page, "team-rail");
-  await navTo(page, /^工作/);
-  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
-  await expect(list).toHaveCount(0);
+  await expect(rail.getByRole("button", { name: /^Her/ })).toBeVisible();
+  await expect(rail.getByRole("button", { name: /^概览/ })).toBeVisible();
+  const gemini = rail.getByRole("button", { name: /^Gemini CLI · \d+ 个在等你 · \d+ 个出错 · \d+ 个在忙$/ });
+  await gemini.hover();
+  await expect(page.getByRole("tooltip")).toHaveText(/^Gemini CLI · \d+ 个在等你 · \d+ 个出错 · \d+ 个在忙$/);
+  // Its sessions at hand are a menu beside it, what waits first; a click opens one, the rail staying.
+  await gemini.click();
+  const menu = page.getByRole("menu", { name: "Gemini CLI" });
+  await expect(menu.getByRole("menuitem").first()).toContainText("选颜色");
+  await expect(menu).toContainText("跑很久");
+  await expect(menu).not.toContainText("写 hello");
+  await snap(page, "rail-agent-menu");
+  await menu.getByRole("menuitem", { name: /跑很久/ }).click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "跑很久" })).toBeVisible();
+  await expect(gemini).toHaveAttribute("aria-current", "true");
+  // From the keyboard: the first is chosen at once; Esc closes back to the logo.
+  await gemini.focus();
+  await page.keyboard.press("Enter");
+  await expect(menu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(gemini).toBeFocused();
+  await navTo(page, /^概览/);
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(rail).toBeVisible();
   await rail.getByRole("button", { name: "展开边栏" }).click();
-  await expect(page.getByRole("complementary", { name: "边栏" })).toBeVisible();
-
-  // The map folds.
-  await map.getByRole("button", { name: /^团队/ }).click();
-  await expect(mac).toHaveCount(0);
-  await expect(all).toBeVisible();
-  await map.getByRole("button", { name: /^团队/ }).click();
-  await expect(mac).toBeVisible();
+  await expect(sidebar).toBeVisible();
   await app.close();
 });
 
-test("Work: what waits is listed and one click answers a simple question; recently finished; the link map stays", async () => {
+test("The overview: what waits is listed and one click answers a simple question; recently finished; the link map stays", async () => {
   const { app, page } = await launch();
-  await expect(page.getByRole("heading", { name: "工作", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "链路" })).toBeVisible();
   const needs = page.getByRole("region", { name: "需要你处理" });
   const question = needs.getByRole("listitem").filter({ hasText: "选颜色" });

@@ -32,7 +32,7 @@ for (const language of ["zh-Hans", "en"]) {
       await expect(failure).toContainText('project "demo"');
       await expect(failure).toContainText('base ref "ios-v0.12.2"');
       await expect(failure).toContainText(language === "en" ? "is on the project’s remote" : "项目的远端仓库里有这个分支或 tag");
-      await expect(failure).toContainText(language === "en" ? "in this session to retry the original task" : "在本会话发送一条消息重试原始任务");
+      await expect(failure).toContainText(language === "en" ? "in this task to retry the original request" : "再在这个任务里发一条消息，重试原来的请求");
       await expect(failure).not.toContainText(language === "en" ? "Hermesh Settings" : "Hermesh 设置");
       await expect(failure).not.toContainText("git branch");
     } finally {
@@ -72,7 +72,7 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(log).toContainText("改好了");
   // A turn that went well ends without a line of its own.
   await expect(log).not.toContainText("轮完成");
-  await expect(page.getByText("这一轮做完了。bot 再发消息时，会在这个会话里接着做。")).toBeVisible();
+  await expect(page.getByText("这一轮做完了。bot 再发消息时，会在这个任务里接着做。")).toBeVisible();
   await expect(page.getByRole("region", { name: "这一轮" })).toHaveCount(0);
   await snap(page, "session-chat");
 
@@ -156,7 +156,7 @@ test("the session card floats over the conversation with what a glance needs, an
   // The card docks only when there is room beside the conversation, regardless of the runner's display size.
   await page.setViewportSize({ width: 1440, height: 800 });
   await open(page, "写 hello");
-  const card = page.getByRole("complementary", { name: "会话信息" });
+  const card = page.getByRole("complementary", { name: "任务信息" });
   const toggle = page.getByRole("button", { name: "信息面板", exact: true });
   await expect(card).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -320,7 +320,7 @@ test("a question waits in the control area; the owner picks an option by key and
 test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
-  const card = page.getByRole("complementary", { name: "会话信息" });
+  const card = page.getByRole("complementary", { name: "任务信息" });
   await open(page, "就地");
   await expect(card.getByRole("listitem")).toHaveText([/bot 发起$/, "Gemini CLI 执行", thisComputer, "live", "feature/card"]);
   await open(page, "不在仓库里");
@@ -343,7 +343,7 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
   const ctl = page.getByRole("region", { name: "这一轮" });
   await expect(ctl).toContainText("Gemini CLI 正在工作");
   // A live one: the card is its environment alone; the bar below says what runs.
-  const card = page.getByRole("complementary", { name: "会话信息" });
+  const card = page.getByRole("complementary", { name: "任务信息" });
   await expect(card).toContainText("Gemini CLI");
   await expect(card).not.toContainText("运行中");
   // Neither its model nor its effort known (the agent tells neither): no context card.
@@ -362,7 +362,7 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
   await expect(page.getByRole("status")).toContainText("已打断「跑很久」");
   await expect(ctl).toHaveCount(0);
   await expect.poll(() => status("跑很久")).not.toBe("running");
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("你打断了这一轮。会话还在，bot 再发消息就会接着做。");
+  await expect(page.getByRole("log", { name: "对话" })).toContainText("你打断了这一轮。任务还在，bot 再发消息就会接着做。");
   await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
   await expect(page.getByText("这一轮做完了。", { exact: false })).toHaveCount(0);
   await snap(page, "session-interrupted");
@@ -378,7 +378,7 @@ test("a session its agent stops as it starts says the agent interrupted it, not 
   try {
     await (await sessionList(page)).getByText(title, { exact: true }).click();
     const log = page.getByRole("log", { name: "对话" });
-    await expect(log).toContainText("bot 打断了这一轮。会话还在，bot 再发消息就会接着做。");
+    await expect(log).toContainText("bot 打断了这一轮。任务还在，bot 再发消息就会接着做。");
     await expect(log).not.toContainText("出错了");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
@@ -662,12 +662,12 @@ test("a conversation on a machine gone offline says why: one read before shows w
   // Never read: the page says why it is empty, not a blank page or a wait for good.
   await open(page, "也在另一台 Mac 上");
   await expect(page.getByText("work-mac 离线了", { exact: true })).toBeVisible();
-  await expect(page.getByText(/^这个会话的内容保存在那台机器上，连上后会自动显示。.*还在线。$/)).toBeVisible();
+  await expect(page.getByText(/^这个任务的内容保存在那台机器上，连上后会自动显示。.*还在线。$/)).toBeVisible();
   await snap(page, "session-machine-offline");
   // The overview says it as the iPhone does: offline, when it was last seen, no raw error.
-  await page.getByRole("button", { name: /^工作/ }).click();
+  await page.getByRole("button", { name: /^概览/ }).click();
   const warn = page.locator(".ov-warn");
-  await expect(warn).toContainText("work-mac 离线了，它上面的会话暂时看不到");
+  await expect(warn).toContainText("work-mac 离线了，它上面的任务暂时看不到");
   await expect(warn).toContainText("还在线 · 连上后会自动补上");
   await app.close();
 });

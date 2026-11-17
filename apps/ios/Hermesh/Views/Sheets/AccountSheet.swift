@@ -58,6 +58,12 @@ struct AccountSheet: View {
                         .accessibilityIdentifier("notifications")
                     }
                 }
+                // The machines and the agents connected to the owner, managed on pages of their own (the menu
+                // lists sessions only, docs/her-team.md §16).
+                Section {
+                    manage("Machines", symbol: "desktopcomputer", color: .blue, opens: .machines, id: "account-machines")
+                    manage("Connected Agents", symbol: "link", color: .indigo, opens: .grants, id: "account-grants")
+                }
                 Section {
                     // The official service shows no connection address: agents
                     // pair by a link, machines by the Add a Machine command.
@@ -118,6 +124,23 @@ struct AccountSheet: View {
                 }
             }
         }
+    }
+
+    /// A row that opens a page of the app's for what it names, the sheet put away.
+    private func manage(_ title: LocalizedStringKey, symbol: String, color: Color, opens root: Root, id: String) -> some View {
+        Button {
+            model.sheet = nil
+            model.open(root)
+        } label: {
+            HStack {
+                Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
+                Spacer()
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(.rect)
+        }
+        .foregroundStyle(.primary)
+        .accessibilityIdentifier(id)
     }
 
     /// The service this iPhone belongs to, as Settings shows the account at

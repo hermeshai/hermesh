@@ -37,7 +37,7 @@
   },
   "grant": {
     "runs": "Her runs on this computer and works whenever it is on.",
-    "desc": "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn't expire. Turn Her off to end it.",
+    "desc": "Her can use all your computers: start coding agents in any project, read their tasks and answer them. This doesn't expire. Turn Her off to end it.",
     "allow": "Let Her use your computers"
   },
   "line": {
@@ -224,7 +224,7 @@
       "all": "All Sources",
       "conversation": "Asked in the Conversation",
       "routines": "Routines",
-      "sessions": "Coding Sessions",
+      "sessions": "Coding Tasks",
       "find": "Search routines",
       "noMatch": "No source named “{{query}}”",
       "silent_one": "{{count}} more routine hasn't sent a file, so it isn't listed.",
