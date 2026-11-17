@@ -696,7 +696,8 @@ fn short_path(path: &Path, cwd: &Path, home: Option<&Path>) -> String {
         return rel.display().to_string();
     }
     match home.and_then(|home| path.strip_prefix(home).ok()) {
-        Some(rel) => format!("~/{}", rel.display()),
+        // With the system's separator: ~\.claude\skills on Windows.
+        Some(rel) => format!("~{}{}", std::path::MAIN_SEPARATOR, rel.display()),
         None => path.display().to_string(),
     }
 }
