@@ -621,14 +621,14 @@ final class DemoUITests: XCTestCase {
         let item = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
         // Down the page first, then back up: Work can open scrolled past what is near its top.
         for _ in 0..<6 {
-            if item.exists && item.isHittable && item.frame.maxY < app.frame.height - 120 { return }
+            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 75 { return }
             app.swipeUp()
         }
         for _ in 0..<10 {
-            if item.exists && item.isHittable && item.frame.maxY < app.frame.height - 120 { return }
+            if item.exists && item.isHittable && item.frame.midY < app.frame.height - 75 { return }
             app.swipeDown()
         }
-        XCTAssertTrue(item.exists && item.isHittable, identifier)
+        XCTAssertTrue(item.exists && item.isHittable && item.frame.midY < app.frame.height - 75, "\(identifier): \(item.frame)")
     }
 
     private func backToOverview() {
