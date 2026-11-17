@@ -561,10 +561,11 @@ pub fn samples(seed: u64) -> Vec<Sample> {
         ("nul-8191-large", 8 * KIB - 1, 100 * KIB),
         ("nul-8192-large", 8 * KIB, 100 * KIB),
     ] {
-        out.push(Sample::new(format!("nul/{name}.txt"), piece_at(rng, at, b"\0", size, Breaks::Lf)));
+        // Not `nul/`: Windows keeps that name for a device.
+        out.push(Sample::new(format!("nuls/{name}.txt"), piece_at(rng, at, b"\0", size, Breaks::Lf)));
     }
     let utf16 = encode(&format!("{}\n", mixed_text(rng, 9 * KIB, Breaks::Crlf)), Encoding::Utf16Le, rng);
-    out.push(Sample::new("nul/utf16-has-nuls.txt", utf16));
+    out.push(Sample::new("nuls/utf16-has-nuls.txt", utf16));
 
     // Long lines: at the 2000-character limit, around the bytes kept of a cut line (2001 * 4),
     // made of wide characters, and megabytes of minified code.

@@ -151,7 +151,7 @@ fn git_pointer_target(root: &Path) -> Option<PathBuf> {
 /// or one of their ancestors.
 pub(crate) fn critical(path: &Path, view: &SessionView) -> Option<&'static str> {
     let forms = [path.to_path_buf(), canonical_lossy(path)];
-    let home = dirs::home_dir();
+    let home = std::env::home_dir();
     let anchors: Vec<PathBuf> = view
         .env
         .workspace_roots()
@@ -397,7 +397,7 @@ mod tests {
         let view = view_for(&workspace, &dir.path().join("her-home"));
         assert_eq!(critical(Path::new("/"), &view), Some("the file system root"));
         assert_eq!(critical(Path::new("/usr"), &view), Some("a top-level directory"));
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = std::env::home_dir() {
             assert_eq!(critical(&home, &view), Some("the home directory"));
         }
         assert!(critical(&workspace, &view).is_some());

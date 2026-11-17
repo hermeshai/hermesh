@@ -23,7 +23,7 @@ impl Trash {
         if cfg!(windows) {
             return Ok(Self { files: PathBuf::new(), info: None, recycle_bin: true });
         }
-        let home = dirs::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no home directory"))?;
+        let home = std::env::home_dir().ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no home directory"))?;
         if cfg!(target_os = "macos") {
             return Ok(Self { files: home.join(".Trash"), info: None, recycle_bin: false });
         }

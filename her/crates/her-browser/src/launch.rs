@@ -115,7 +115,7 @@ fn candidates() -> Vec<PathBuf> {
             "Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
         ];
         let mut roots = vec![PathBuf::from("/Applications")];
-        if let Some(home) = dirs::home_dir() {
+        if let Some(home) = std::env::home_dir() {
             roots.push(home.join("Applications"));
         }
         for root in roots {

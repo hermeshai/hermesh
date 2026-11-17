@@ -75,7 +75,7 @@ impl DesktopError {
 /// `Contents/MacOS`), else her's own copy in `$HER_HOME/desktop/bin`, else `PATH`.
 pub fn locate(configured: Option<&Path>) -> Result<PathBuf, DesktopError> {
     let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
-    let home = std::env::var_os("HER_HOME").filter(|home| !home.is_empty()).map(PathBuf::from).or_else(|| dirs::home_dir().map(|home| home.join(".her")));
+    let home = std::env::var_os("HER_HOME").filter(|home| !home.is_empty()).map(PathBuf::from).or_else(|| std::env::home_dir().map(|home| home.join(".her")));
     locate_in(configured, beside.as_deref(), home.as_deref(), std::env::var_os("PATH"))
 }
 

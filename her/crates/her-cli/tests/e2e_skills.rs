@@ -108,15 +108,16 @@ async fn exec_follows_a_skill_from_the_catalog() {
     let started = of_type(&events, "tool_started");
     let calls: Vec<(String, String)> = started
         .iter()
-        .map(|e| (e["name"].as_str().unwrap().to_string(), e["args"].to_string()))
+        // Paths with forward slashes, as a PC's backslashes come in the JSON too.
+        .map(|e| (e["name"].as_str().unwrap().to_string(), e["args"].to_string().replace("\\\\", "/")))
         .collect();
     assert_eq!(calls.len(), 3, "{calls:?}");
     assert_eq!(calls[0].0, "read");
-    assert!(calls[0].1.contains(&skill.join("SKILL.md").display().to_string()), "{calls:?}");
+    assert!(calls[0].1.contains(&slashed(&skill.join("SKILL.md"))), "{calls:?}");
     assert_eq!(calls[1].0, "read");
     assert!(calls[1].1.contains("references/format.md"));
     assert_eq!(calls[2].0, "bash");
-    assert!(calls[2].1.contains(&skill.join("scripts/gen.sh").display().to_string()), "{calls:?}");
+    assert!(calls[2].1.contains(&slashed(&skill.join("scripts/gen.sh"))), "{calls:?}");
     assert_eq!(approvals.len(), 1);
     assert_eq!(approvals[0]["call_id"], started[2]["call_id"], "the script asked, the reads did not");
     let results = of_type(&events, "tool_completed");
@@ -213,7 +214,7 @@ async fn the_skills_command_lists_layers_shadows_and_problems() {
     );
     assert_eq!(report["skills"][1]["default_enabled"], false, "the project's .claude is off by default");
     assert_eq!(report["skills"][0]["default_enabled"], true);
-    assert_eq!(report["not_read"], json!([env.user_home().join(".claude/skills")]));
+    assert_eq!(report["not_read"], json!([env.user_home().join(".claude").join("skills")]));
     assert_eq!(report["catalog"]["listed"], 2);
     assert!(report["catalog"]["tokens"].as_u64().unwrap() > 0);
     assert_eq!(report["catalog"]["budget"], 4000, "2% of the mock model's 200,000-token window");
@@ -279,13 +280,14 @@ async fn exec_runs_a_skill_the_user_mentions() {
     // The instructions came with the message: no read of SKILL.md, straight to the steps.
     let calls: Vec<(String, String)> = of_type(&events, "tool_started")
         .iter()
-        .map(|e| (e["name"].as_str().unwrap().to_string(), e["args"].to_string()))
+        // Paths with forward slashes, as a PC's backslashes come in the JSON too.
+        .map(|e| (e["name"].as_str().unwrap().to_string(), e["args"].to_string().replace("\\\\", "/")))
         .collect();
     assert_eq!(calls.len(), 2, "{calls:?}");
     assert_eq!(calls[0].0, "read");
-    assert!(calls[0].1.contains(&skill.join("references/format.md").display().to_string()), "{calls:?}");
+    assert!(calls[0].1.contains(&slashed(&skill.join("references/format.md"))), "{calls:?}");
     assert_eq!(calls[1].0, "bash");
-    assert!(calls[1].1.contains(&skill.join("scripts/gen.sh").display().to_string()), "{calls:?}");
+    assert!(calls[1].1.contains(&slashed(&skill.join("scripts/gen.sh"))), "{calls:?}");
     assert_eq!(approvals.len(), 1, "only the script asks");
     assert_eq!(std::fs::read_to_string(work.join("report.md")).unwrap(), "WEEKLY-REPORT from the skill\n");
     assert_eq!(of_type(&events, "task_completed")[0]["last_message"], "invoked done");
@@ -371,4 +373,9 @@ async fn slash_compact_ends_even_with_nothing_to_compact() {
     let warnings: Vec<&str> = of_type(&events, "warning").iter().filter_map(|w| w["message"].as_str()).collect();
     assert_eq!(warnings, vec!["nothing to compact"]);
     assert_eq!(env.mock.stats().requests.load(std::sync::atomic::Ordering::Relaxed), 0);
+}
+
+/// `path` with forward slashes, as the calls are compared.
+fn slashed(path: &std::path::Path) -> String {
+    path.display().to_string().replace('\\', "/")
 }

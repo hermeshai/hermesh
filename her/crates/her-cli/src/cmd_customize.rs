@@ -90,7 +90,9 @@ pub fn skills_remove(name_or_path: &str) -> anyhow::Result<u8> {
     };
     let trash = Trash::system()?;
     let gone = install::remove(&dir, &home.skills_dir(), &trash)?;
-    println!("moved {} to {}", shorten(&home, &dir), shorten(&home, &gone));
+    // The Recycle Bin names no place.
+    let place = if cfg!(windows) { "the Recycle Bin".to_string() } else { shorten(&home, &gone) };
+    println!("moved {} to {place}", shorten(&home, &dir));
     Ok(0)
 }
 

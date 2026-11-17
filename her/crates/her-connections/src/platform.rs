@@ -71,7 +71,7 @@ impl System {
     }
     fn auth_path(&self) -> Result<PathBuf> {
         if self.product == "qoder" {
-            Ok(dirs::home_dir()
+            Ok(std::env::home_dir()
                 .ok_or_else(ConnectionError::unsupported)?
                 .join("Library/Application Support/com.qoder.app.stable/auth.v1.dat"))
         } else {
@@ -182,7 +182,7 @@ fn login_file_error(e: std::io::Error) -> ConnectionError {
 }
 
 fn auth_path() -> Result<PathBuf> {
-    Ok(dirs::home_dir()
+    Ok(std::env::home_dir()
         .ok_or_else(|| ConnectionError::new("unsupported", "无法定位用户目录"))?
         .join("Library/Application Support/QwenWorkCN/auth-v2.dat"))
 }

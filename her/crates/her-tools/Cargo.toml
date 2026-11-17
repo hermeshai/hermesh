@@ -9,7 +9,6 @@ publish.workspace = true
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true
-dirs.workspace = true
 dunce.workspace = true
 her-llm.workspace = true
 libc.workspace = true

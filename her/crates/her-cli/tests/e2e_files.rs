@@ -22,7 +22,8 @@ async fn changed(rx: &mut IncomingRx, path: &Path) -> Value {
         let incoming = tokio::time::timeout_at(deadline, rx.recv()).await.unwrap_or_else(|_| panic!("no files/changed for {}", path.display())).expect("connection closed");
         if let Incoming::Notification { method, params, .. } = incoming
             && method == "files/changed"
-            && params["paths"].as_array().is_some_and(|p| p.iter().any(|x| x.as_str() == path.to_str()))
+            // As paths: her names them with the system's separator.
+            && params["paths"].as_array().is_some_and(|p| p.iter().any(|x| x.as_str().is_some_and(|x| Path::new(x) == path)))
         {
             return params;
         }

@@ -146,10 +146,17 @@ fn default_shell() -> String {
     }
 }
 
+/// Whether `shell` is PowerShell (Windows PowerShell or PowerShell 7), whose words are not a
+/// POSIX shell's.
+pub fn is_powershell(shell: &str) -> bool {
+    // Either separator: a Windows path is one wherever it is read.
+    let name = shell.rsplit(['/', '\\']).next().unwrap_or(shell).to_ascii_lowercase();
+    matches!(name.strip_suffix(".exe").unwrap_or(&name), "powershell" | "pwsh")
+}
+
 /// The arguments `shell` runs `command` with: `-c` for a POSIX shell, and PowerShell's own.
 fn shell_arguments(shell: &str, command: &str) -> Vec<String> {
-    let name = Path::new(shell).file_stem().map(|stem| stem.to_string_lossy().to_ascii_lowercase());
-    if !matches!(name.as_deref(), Some("powershell" | "pwsh")) {
+    if !is_powershell(shell) {
         return vec!["-c".to_string(), command.to_string()];
     }
     // Output as UTF-8 whatever the console's code page, no progress records among it, and the

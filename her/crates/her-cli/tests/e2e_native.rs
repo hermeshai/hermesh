@@ -420,7 +420,7 @@ fn names(list: &Value, field: &str) -> Vec<String> {
 async fn skills_list_reports_a_session_and_a_directory() {
     let env = TestEnv::new("manual", "").await;
     let schema = SchemaCheck::new(&["SkillsListResult", "ContextReport"]);
-    let report = env.home.path().join("skills/gen-report/SKILL.md");
+    let report = env.home.path().join("skills").join("gen-report").join("SKILL.md");
     write_file(&report, "---\nname: gen-report\ndescription: Weekly report.\nargument-hint: \"[week]\"\n---\nbody\n");
     write_file(&env.home.path().join("skills/broken/SKILL.md"), "no header\n");
     let work = env.workspace("skills");

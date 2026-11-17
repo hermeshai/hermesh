@@ -38,6 +38,23 @@ pub struct BashArgs {
     pub timeout: Option<u64>,
 }
 
+const COMMON: [&str; 2] = [
+    "Use bash for builds, tests, git and other commands. Commands run non-interactively with a timeout; do not start long-running servers or interactive programs.",
+    "Files from others (downloads, archives, attachments) can carry code: run nothing from inside their folder and keep your scripts out of it; pass their paths as arguments.",
+];
+
+#[cfg(not(windows))]
+const GUIDELINES: &[&str] = &COMMON;
+
+/// On Windows the shell is Git for Windows' bash or PowerShell, as the environment's `shell:`
+/// says, and paths have backslashes that bash takes for escapes.
+#[cfg(windows)]
+const GUIDELINES: &[&str] = &[
+    COMMON[0],
+    COMMON[1],
+    "This computer runs Windows. The command runs in the shell the environment names. In bash (Git for Windows) write a path with forward slashes (C:/Users/me/file.txt) or in single quotes: a backslash outside quotes escapes the next character and is lost. In PowerShell use its own commands and quote paths.",
+];
+
 #[async_trait]
 impl TypedTool for BashTool {
     type Args = BashArgs;
@@ -51,10 +68,7 @@ impl TypedTool for BashTool {
     }
 
     fn guidelines(&self) -> &[&'static str] {
-        &[
-            "Use bash for builds, tests, git and other commands. Commands run non-interactively with a timeout; do not start long-running servers or interactive programs.",
-            "Files from others (downloads, archives, attachments) can carry code: run nothing from inside their folder and keep your scripts out of it; pass their paths as arguments.",
-        ]
+        GUIDELINES
     }
 
     fn describe(&self, args: &serde_json::Value, _env: &dyn crate::env::Environment) -> crate::tool::ToolDescription {

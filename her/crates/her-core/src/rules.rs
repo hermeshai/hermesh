@@ -302,12 +302,27 @@ impl Cwds {
 /// `raw` as a shell in `cwd` sees it: `~` expanded, relative paths joined to `cwd`, `.` and
 /// `..` removed lexically.
 pub fn resolve_in(cwd: &Path, raw: &str, home: Option<&Path>) -> PathBuf {
+    // Git for Windows' bash names a drive /c: /c/Users is C:/Users.
+    #[cfg(windows)]
+    let drive = msys_drive(raw);
+    #[cfg(windows)]
+    let raw = drive.as_deref().unwrap_or(raw);
     let expanded = match home {
         Some(home) if raw == "~" => home.to_path_buf(),
         Some(home) if raw.starts_with("~/") => home.join(&raw[2..]),
         _ => PathBuf::from(raw),
     };
     normalize_lexically(&cwd.join(expanded))
+}
+
+/// `/c/rest` as Windows names it, `C:/rest`; `None` for any other path.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn msys_drive(raw: &str) -> Option<String> {
+    let rest = raw.strip_prefix('/')?;
+    let mut chars = rest.chars();
+    let drive = chars.next().filter(char::is_ascii_alphabetic)?;
+    let after = chars.as_str();
+    (after.is_empty() || after.starts_with('/')).then(|| format!("{}:/{}", drive.to_ascii_uppercase(), after.trim_start_matches('/')))
 }
 
 /// The word itself when the shell does not change it: no `$`, backticks or `~user`.
@@ -1186,6 +1201,16 @@ mod tests {
             nested_find = format!("find . -exec {nested_find} ;");
         }
         assert!(analyze_in(&nested_find, false).too_deep);
+    }
+
+    #[test]
+    fn a_drive_as_git_bash_names_it() {
+        assert_eq!(msys_drive("/c/Users/me").as_deref(), Some("C:/Users/me"));
+        assert_eq!(msys_drive("/d").as_deref(), Some("D:/"));
+        assert_eq!(msys_drive("/usr/bin"), None);
+        assert_eq!(msys_drive("c/x"), None);
+        #[cfg(windows)]
+        assert_eq!(resolve_in(Path::new("C:/work"), "/c/Users/me", None), PathBuf::from("C:/Users/me"));
     }
 
     fn shell_quote(s: &str) -> String {

@@ -255,7 +255,7 @@ fn reading_model(ctx: &Context) -> Option<Script> {
                 return Some(Script::text("DONE"));
             }
             let to = (from + CHUNK - 1).min(*end);
-            Some(Script::tool_call(id, "bash", json!({"command": format!("head -c {to} {path} | tail -c +{from}")})))
+            Some(Script::tool_call(id, "bash", json!({"command": format!("head -c {to} '{path}' | tail -c +{from}")})))
         }
     }
 }
@@ -430,7 +430,8 @@ async fn reused_call_ids_keep_separate_files() {
             other => panic!("{other:?}"),
         })
         .collect();
-    assert!(paths[0].ends_with("/call_0.txt") && paths[1].ends_with("/call_0-1.txt"), "{paths:?}");
+    let name = |path: &str| std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned());
+    assert!(name(&paths[0]).as_deref() == Some("call_0.txt") && name(&paths[1]).as_deref() == Some("call_0-1.txt"), "{paths:?}");
     let first: String = (1..=3000).map(|n| format!("{n}\n")).collect();
     let second: String = (5001..=8000).map(|n| format!("{n}\n")).collect();
     assert_eq!(std::fs::read_to_string(&paths[0]).unwrap(), first);

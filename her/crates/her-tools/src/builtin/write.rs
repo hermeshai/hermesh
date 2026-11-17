@@ -351,20 +351,21 @@ mod tests {
         std::fs::write(&seen, "version two").unwrap();
         let before = snapshot(dir.path());
 
-        let root = dir.path().display();
+        // As the tools name a file: its parts joined by the system's separator.
+        let at = |name: &str| name.split('/').fold(dir.path().to_path_buf(), |path, part| path.join(part)).display().to_string();
         let cases = [
-            ("sub", format!("{root}/sub is a directory.")),
+            ("sub", format!("{} is a directory.", at("sub"))),
             (
                 "unread.txt/new/x.md",
-                format!("Cannot create {root}/unread.txt/new/x.md: {root}/unread.txt is not a directory."),
+                format!("Cannot create {}: {} is not a directory.", at("unread.txt/new/x.md"), at("unread.txt")),
             ),
             (
                 "unread.txt",
-                format!("{root}/unread.txt already exists and has not been read in this session."),
+                format!("{} already exists and has not been read in this session.", at("unread.txt")),
             ),
             (
                 "seen.txt",
-                format!("{root}/seen.txt changed since it was last read, possibly by another agent or the user."),
+                format!("{} changed since it was last read, possibly by another agent or the user.", at("seen.txt")),
             ),
         ];
         for (path, expected) in cases {

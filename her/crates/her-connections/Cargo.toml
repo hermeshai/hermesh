@@ -17,7 +17,6 @@ her-llm.workspace = true
 her-protocol.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
-dirs.workspace = true
 parking_lot.workspace = true
 reqwest.workspace = true
 serde.workspace = true

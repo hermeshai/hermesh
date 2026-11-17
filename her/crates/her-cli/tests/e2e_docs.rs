@@ -52,6 +52,8 @@ fn run(env: &TestEnv, path: &str, cwd: &Path, page: &str, command: &str) {
         .env_remove("AI_AGENT")
         .env("HER_HOME", env.home.path())
         .env("HOME", env.user_home())
+        // Where her finds the home on Windows.
+        .env("USERPROFILE", env.user_home())
         .env("HER_CREDENTIAL_STORE", "file")
         .env("HER_NO_BROWSER", "1")
         .output()

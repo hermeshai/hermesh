@@ -31,7 +31,7 @@ impl HerHome {
 
     /// `HER_HOME`, or `~/.her`; the user home is the home directory.
     pub fn from_env() -> io::Result<Self> {
-        let user_home = dirs::home_dir();
+        let user_home = std::env::home_dir();
         let home = match std::env::var("HER_HOME") {
             Ok(value) if !value.trim().is_empty() => Self::new(value),
             _ => user_home
