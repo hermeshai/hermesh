@@ -88,6 +88,15 @@ export const onWindows = process.platform === "win32";
 export const onMac = process.platform === "darwin";
 export const thisComputer = onMac ? "这台 Mac" : "这台电脑";
 
+/**
+ * A Mac's words as the app says them on this system: elsewhere "this computer" where a Mac's say "this Mac"
+ * (the _linux and _win variants of src/locales), or `elsewhere` for a sentence that differs more.
+ */
+export function sys(mac: string, elsewhere?: string): string {
+  if (onMac) return mac;
+  return elsewhere ?? mac.replaceAll("这台 Mac ", "这台电脑").replaceAll("这台 Mac", "这台电脑").replaceAll("公司的 Mac", "公司的电脑");
+}
+
 /** With HERMESH_SCREENS=<dir>, saves a screenshot of the page there (for looking at against the design). */
 export async function snap(page: Page, name: string): Promise<void> {
   const dir = process.env.HERMESH_SCREENS;

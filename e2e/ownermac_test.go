@@ -170,7 +170,7 @@ func (w *ownerMac) startOwner() {
 	}
 	if w.nproc > 0 {
 		args = append([]string{"-c", fmt.Sprintf(`ulimit -u %d && exec "$0" "$@"`, w.nproc), bin}, args...)
-		bin = "/bin/sh"
+		bin = "/bin/bash" // ulimit -u: not every sh has it (dash)
 	}
 	w.owner = start(w.t, "owner", w.daemonEnv, bin, args...)
 	w.logs = append(w.logs, w.owner)

@@ -88,7 +88,11 @@
     "uacOff": "用户帐户控制已关闭，任何程序都能拿到密钥。打开它后，才能让这台电脑成为可信设备。",
     "noTPM": "这台电脑没有可以保管管理密钥的 TPM 2.0。",
     "failed": "Hermesh 签名器没能安装（错误 {{code}}）。",
-    "notRunning": "Hermesh 签名器没有启动，请重试。"
+    "notRunning": "Hermesh 签名器没有启动，请重试。",
+    "noService": "这台电脑没有安装 Hermesh 签名服务。用安装包（.deb 或 .rpm）安装 Hermesh 后才能成为可信设备，或者只作为执行机器加入。",
+    "openSudo": "你的账号运行 sudo 不需要密码（NOPASSWD），其他程序就能拿到你的密钥。把 sudo 改为需要密码后，这台电脑才能成为可信设备。",
+    "noPolkit": "这台电脑没有 polkit，无法向你确认密码。安装 polkit 后，这台电脑才能成为可信设备。",
+    "notYours": "Hermesh 签名服务不能接管这个 Hermesh：它的接口不属于你。"
   },
   "herConsole": "Her 控制台 — {{name}}",
   "herConsoleBad": "控制台的地址不是 Hermesh 会打开的地址。"

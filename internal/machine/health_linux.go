@@ -9,6 +9,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// userProcesses counts what Linux's RLIMIT_NPROC counts: the user's
+// threads (tasks), not their processes; each zombie is one.
 func userProcesses() (procCount, error) {
 	var pc procCount
 	var rl unix.Rlimit
@@ -35,7 +37,11 @@ func userProcesses() (procCount, error) {
 		if err != nil {
 			continue
 		}
-		pc.used++
+		if tasks, err := os.ReadDir("/proc/" + e.Name() + "/task"); err == nil && len(tasks) > 0 {
+			pc.used += uint64(len(tasks))
+		} else {
+			pc.used++
+		}
 		// "pid (comm) state ppid …"; comm may hold spaces and parentheses.
 		s := string(b)
 		open, end := strings.IndexByte(s, '('), strings.LastIndexByte(s, ')')

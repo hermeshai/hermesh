@@ -1,11 +1,17 @@
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-node";
+import { language } from "@hermesh/core";
+import { LocalService } from "@hermesh/proto/local";
 import { app, nativeTheme, shell } from "electron";
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
-import { testDataDir } from "../paths";
+import { i18n } from "../../shared/i18n";
+import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
 // The installed app (a package, docs/linux.md §7.2) runs hermeshd as the
@@ -18,6 +24,50 @@ const bundled = (name: string) => path.join(process.resourcesPath, "..", "bin", 
 // What opens the app at login, where the desktops look for it.
 const autostart = () => path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "autostart", "hermesh.desktop");
 let devLoginItem = false;
+
+// The protected signer (docs/linux.md §7.3), a service of the system's the package installs; test runs name one of their own.
+const signerSocket = () => (!app.isPackaged && process.env.HERMESH_TEST_SIGNER_SOCKET) || "/run/hermesh-signer.sock";
+// The signer's refusals (cmd/hermesh-signer serve_linux.go), in the app's words.
+const signerRefusals = { open_sudo: "main:signer.openSudo", no_polkit: "main:signer.noPolkit", not_yours: "main:signer.notYours" } as const;
+
+/**
+ * Asks the signer to watch this hermeshd's signing requests, and to ask this app's process, in the desktop's session,
+ * when one waits for the owner; again at each start, as the process is another one.
+ */
+function askSigner(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const c = net.connect(signerSocket());
+    let answer = "";
+    c.setTimeout(15_000, () => c.destroy(new Error(i18n.t("main:signer.notRunning"))));
+    c.on("connect", () => c.write(`${JSON.stringify({ socket: socketPath(), language: language() })}\n`));
+    c.on("data", (d) => (answer += d.toString()));
+    c.on("error", (e: NodeJS.ErrnoException) => reject(new Error(i18n.t(e.code === "ENOENT" || e.code === "ECONNREFUSED" ? "main:signer.noService" : "main:signer.notRunning"))));
+    c.on("end", () => {
+      try {
+        const r = JSON.parse(answer) as { ok?: boolean; error?: string; message?: string };
+        if (r.ok) return resolve();
+        const refusal = r.error && r.error in signerRefusals ? signerRefusals[r.error as keyof typeof signerRefusals] : undefined;
+        reject(new Error(refusal ? i18n.t(refusal) : (r.message ?? i18n.t("main:signer.notRunning"))));
+      } catch {
+        reject(new Error(i18n.t("main:signer.notRunning")));
+      }
+    });
+  });
+}
+
+/** Whether a signer watches hermeshd's requests, within wait ms. */
+async function signerWatching(wait: number): Promise<boolean> {
+  const local = createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
+  for (const end = Date.now() + wait; ; ) {
+    try {
+      if ((await local.getStatus({})).signer?.connected) return true;
+    } catch {
+      // hermeshd not answering yet
+    }
+    if (Date.now() > end) return false;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
 
 /** Starts the first of `programs` there is, each with its own arguments; the next when one is not installed. */
 function first(programs: [string, string[]][], cwd?: string) {
@@ -96,7 +146,18 @@ export const linux: Platform = {
   signer() {
     return undefined;
   },
-  async readySigner() {},
+  /** The signer watches this hermeshd, and asks this process: always asked again, as the app may be a new process. */
+  async readySigner() {
+    try {
+      await askSigner();
+    } catch (e) {
+      // Another signer watches already (a test's, or `hermeshd approve` in a terminal): it answers instead.
+      if (await signerWatching(1000)) return;
+      throw e;
+    }
+    if (!(await signerWatching(20_000))) throw new Error(i18n.t("main:signer.notRunning"));
+  },
+  // The package updates the signer with the app.
   async signerUpdate() {
     return undefined;
   },

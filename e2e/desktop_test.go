@@ -74,10 +74,9 @@ type freshOwner struct {
 var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
 
 // linuxSpecs are the specs that run on Linux too (docs/linux.md §7.1), under
-// a display such as Xvfb's; the others are the Mac's still (its menu bar,
-// its first run's words, Touch ID).
+// a display such as Xvfb's and an init that reaps orphans (docker --init).
 var linuxSpecs = map[string]bool{"shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true,
-	"conversation": true, "model-catalogs": true}
+	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true}
 
 // These specs read back what they copied. The clipboard is the whole
 // computer's, so they run one at a time, before the specs that run side by
@@ -439,6 +438,9 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	f := desktopFixture{Socket: w.sock, Sessions: desktopSessions(t, w), CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, owner: w}
 	if limited {
 		w.nproc = userProcesses(t) + 80
+		if runtime.GOOS == "linux" { // the limit counts threads there, hermeshd's own among them
+			w.nproc += 220
+		}
 		w.restartOwner(false)
 	}
 	for i := 0; fresh && i < 12; i++ {

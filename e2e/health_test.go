@@ -19,7 +19,11 @@ import (
 // userProcesses counts this user's processes, as the system limits them.
 func userProcesses(t *testing.T) int {
 	t.Helper()
-	out, err := exec.Command("ps", "-U", strconv.Itoa(os.Getuid()), "-o", "pid=").Output()
+	args := []string{"-U", strconv.Itoa(os.Getuid()), "-o", "pid="}
+	if runtime.GOOS == "linux" { // Linux's limit counts threads: one line each
+		args = []string{"-L", "-U", strconv.Itoa(os.Getuid()), "-o", "lwp="}
+	}
+	out, err := exec.Command("ps", args...).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
