@@ -1,5 +1,6 @@
 import { SessionStatus } from "@hermesh/proto/session";
 import { app, autoUpdater, BrowserWindow, net, powerMonitor } from "electron";
+import { execFile } from "node:child_process";
 import { createHash, verify } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -18,8 +19,12 @@ import { showUpdates } from "./windows";
 // Windows app is unsigned: its feed is signed with the release key, and names
 // the package's hash; the app checks both, and Squirrel.Windows installs the
 // package from a folder of the app's beside the running version, which the
-// next start runs (docs/windows.md §6.2). All checks are quiet; opening the
-// update window is always a deliberate user action.
+// next start runs (docs/windows.md §6.2). The Linux app is a package: its
+// feed, signed the same way, names a .deb and an .rpm with their hashes; the
+// app downloads the system's and, on Restart to Update, the package manager
+// installs it, with the administrator's consent (pkexec), and the app starts
+// again (docs/linux.md §7.2). All checks are quiet; opening the update window
+// is always a deliberate user action.
 declare const __HERMESH_UPDATE_FEED__: string;
 declare const __HERMESH_RELEASE_VERSION__: string;
 declare const __HERMESH_RELEASE_PUBKEY__: string;
@@ -29,6 +34,10 @@ const supported = app.isPackaged && (platform.token === "mac" || platform.instal
 /** The Windows feed's package: where, its SHA-256, and Squirrel's RELEASES line for it. */
 type WindowsPackage = { url: string; sha256: string; releases: string };
 let windowsPackage: WindowsPackage | undefined;
+/** The Linux feed's packages, by kind, and the one downloaded. */
+type LinuxPackage = { url: string; sha256: string };
+let linuxPackages: { deb?: LinuxPackage; rpm?: LinuxPackage } | undefined;
+let linuxDownloaded: { file: string; kind: "deb" | "rpm" } | undefined;
 let update: Update = { state: supported ? "idle" : "unsupported" };
 export const updateListeners = new Set<() => void>();
 const bundled = releaseCatalog(enNotes, zhNotes, __HERMESH_RELEASE_VERSION__);
@@ -170,10 +179,11 @@ export async function check() {
     const res = await net.fetch(feedURL, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
     if (!res.ok && res.status !== 404) throw new Error(`${feedURL}: HTTP ${res.status}`);
     const body = res.status === 404 ? "" : await res.text();
-    if (body && platform.token === "win") await verifyFeed(body);
+    if (body && platform.token !== "mac") await verifyFeed(body);
     const feed = body ? JSON.parse(body) : { currentRelease: "" };
     if (typeof feed.currentRelease !== "string") throw new Error("Invalid update feed: currentRelease is missing");
     if (platform.token === "win") windowsPackage = feed.package;
+    if (platform.token === "linux") linuxPackages = feed.packages;
     const remoteNotes = feedNotes(feed.hermeshNotes);
     notes = [...remoteNotes, ...bundled.filter((n) => !remoteNotes.some((r) => r.version === n.version))];
     prefs().checkedAt = Date.now();
@@ -194,10 +204,54 @@ function startDownload() {
     catch (e) { fail(e); }
     return;
   }
+  if (platform.token === "linux") {
+    const version = "version" in update ? update.version : "";
+    void downloadLinuxPackage().then(() => {
+      prefs().failures = 0;
+      save();
+      apply({ type: "downloaded", version });
+      clearTimeout(timer);
+    }).catch(fail);
+    return;
+  }
   void downloadPackage().then((dir) => {
     autoUpdater.setFeedURL({ url: dir });
     autoUpdater.checkForUpdates();
   }).catch(fail);
+}
+
+/** The package manager here: Debian's (dpkg), else an .rpm one. */
+const linuxKind = (): "deb" | "rpm" => (fs.existsSync("/usr/bin/dpkg") ? "deb" : "rpm");
+
+/** Downloads this system's package of the Linux feed; its hash must be the feed's. */
+async function downloadLinuxPackage() {
+  const kind = linuxKind();
+  const p = linuxPackages?.[kind];
+  if (!p || !/^[0-9a-f]{64}$/.test(p.sha256)) throw new Error(`Invalid update feed: no .${kind} package`);
+  const dir = path.join(app.getPath("userData"), "update");
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `Hermesh.${kind}`);
+  const res = await net.fetch(p.url, { cache: "no-store" });
+  if (!res.ok || !res.body) throw new Error(`${p.url}: HTTP ${res.status}`);
+  const hash = createHash("sha256");
+  const body = Readable.fromWeb(res.body as import("node:stream/web").ReadableStream);
+  body.on("data", (chunk: Buffer) => hash.update(chunk));
+  await pipeline(body, fs.createWriteStream(file));
+  if (hash.digest("hex") !== p.sha256) throw new Error(`${p.url}: not the package the feed names`);
+  linuxDownloaded = { file, kind };
+}
+
+/** Installs the downloaded package with the administrator's consent, then starts the new app. */
+function installLinuxPackage() {
+  const d = linuxDownloaded;
+  if (!d) return;
+  const manager = d.kind === "deb" ? ["apt-get", "install", "-y", "--allow-downgrades", d.file] : fs.existsSync("/usr/bin/dnf") ? ["dnf", "install", "-y", d.file] : ["zypper", "--non-interactive", "install", "--allow-unsigned-rpm", d.file];
+  execFile("pkexec", manager, (err, _out, stderr) => {
+    if (err) return failed("download", stderr.trim() || err.message);
+    app.relaunch();
+    app.exit(0);
+  });
 }
 
 /** The Windows feed, signed by the release key (.sig: openssl's DER signature), or an error. */
@@ -249,6 +303,7 @@ export function returnToApproval() {
 export function install() {
   if (update.state !== "ready") return;
   if (updateInfo().approvalPending) { showUpdates(); changed(); return; }
+  if (platform.token === "linux") return installLinuxPackage();
   autoUpdater.quitAndInstall();
 }
 

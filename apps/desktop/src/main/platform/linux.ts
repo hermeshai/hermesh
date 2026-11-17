@@ -55,6 +55,20 @@ function askSigner(): Promise<void> {
   });
 }
 
+/** Whether hermeshd answers on its socket now. */
+function answers(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const c = net.connect(socketPath());
+    const done = (ok: boolean) => {
+      c.destroy();
+      resolve(ok);
+    };
+    c.once("connect", () => done(true));
+    c.once("error", () => done(false));
+    c.setTimeout(2000, () => done(false));
+  });
+}
+
 /** Whether a signer watches hermeshd's requests, within wait ms. */
 async function signerWatching(wait: number): Promise<boolean> {
   const local = createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
@@ -106,8 +120,10 @@ export const linux: Platform = {
     if (app.isPackaged) app.setAsDefaultProtocolClient("hermesh");
   },
 
+  /** hermeshd as this user's systemd service, the owner's and this computer's machine: installed, and started, unless it answers. */
   registerDaemon() {
-    if (installed) execFile(bundled("hermeshd"), ["service", "install", "--owner"], (err) => err && console.warn("registering hermeshd:", err));
+    if (!installed) return;
+    void answers().then((ok) => ok || execFile(bundled("hermeshd"), ["service", "install", "--owner"], (err) => err && console.warn("registering hermeshd:", err)));
   },
 
   restartDaemon(why) {

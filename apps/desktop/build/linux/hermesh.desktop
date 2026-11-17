@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Hermesh
+Comment=Let your agents talk to each other
+Comment[zh_CN]=让你的 Agent 互相连接
+Exec=/opt/Hermesh/Hermesh %U
+Icon=hermesh
+Terminal=false
+Categories=Development;Network;
+MimeType=x-scheme-handler/hermesh;
+StartupWMClass=Hermesh

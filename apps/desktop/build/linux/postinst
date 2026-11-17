@@ -1,0 +1,17 @@
+#!/bin/sh
+# After the Hermesh package is installed or upgraded (docs/linux.md §7.2).
+set -e
+# Chromium's sandbox helper, root's and setuid: Ubuntu 24.04 refuses unknown programs user namespaces.
+chown root:root /opt/Hermesh/chrome-sandbox
+chmod 4755 /opt/Hermesh/chrome-sandbox
+if [ -d /run/systemd/system ]; then
+  systemctl daemon-reload || true
+  # The signer: started on its socket, restarted on the new program.
+  systemctl enable hermesh-signer.socket >/dev/null 2>&1 || true
+  systemctl start hermesh-signer.socket || true
+  systemctl try-restart hermesh-signer.service || true
+fi
+# polkit learns of the signer's action; the desktop of the app and its links.
+command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+command -v gtk-update-icon-cache >/dev/null && gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+exit 0
