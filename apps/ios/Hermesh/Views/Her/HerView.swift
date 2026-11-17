@@ -41,6 +41,10 @@ private struct HerPage: View {
     @State private var typing = false
     /// How tall the status bar is, where the conversation fades out.
     @State private var statusBar: CGFloat = 0
+    /// How tall the bar under it is (the buttons, her mark and the tag), where the conversation fades out.
+    @State private var barHeight: CGFloat = 0
+    /// How tall the band where the conversation fades out is.
+    private let fade: CGFloat = 20
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
@@ -55,12 +59,13 @@ private struct HerPage: View {
         // The whole page whatever shows: her mark at the top and the panel's dim over all of it, not around a
         // status as tall as its words.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Scrolled up, the conversation fades out under her mark and the buttons (the bar's own edge blurs it there)
-        // and is gone by the status bar: the clock is never read over a message.
+        // Scrolled up, the conversation fades out in a short band at the bar's lower edge and is gone under her mark,
+        // the buttons and the clock: no blurred message reads behind them, and no line where a blur would stop.
+        .scrollEdgeEffectHidden(true, for: .top)
         .mask {
             VStack(spacing: 0) {
-                Color.clear.frame(height: statusBar)
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 28)
+                Color.clear.frame(height: max(statusBar + barHeight - fade, statusBar))
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: fade)
                 Color.black
             }
             .ignoresSafeArea()
@@ -129,6 +134,7 @@ private struct HerPage: View {
         // The tag's words grow with the text size, up to what the top has room for.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 16).padding(.bottom, 4)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
         .animation(still ? nil : .snappy(duration: 0.3), value: small)
     }
 
