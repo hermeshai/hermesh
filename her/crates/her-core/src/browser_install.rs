@@ -64,8 +64,10 @@ async fn install_from(
     browser_dir: &Path,
     progress: impl Fn(u64, Option<u64>),
 ) -> Result<Installed, String> {
-    let platform = testing_platform().ok_or("Chrome for Testing has no build for this platform")?;
-    let relative = testing_executable(platform).ok_or("Chrome for Testing has no build for this platform")?;
+    // Linux on arm64 among them: Google Chrome has a package there, and a distribution its chromium.
+    const NONE: &str = "Chrome for Testing has no build for this platform; install Google Chrome or Chromium here, and her finds it";
+    let platform = testing_platform().ok_or(NONE)?;
+    let relative = testing_executable(platform).ok_or(NONE)?;
     let manifest: serde_json::Value = client
         .get(manifest_url)
         .send()

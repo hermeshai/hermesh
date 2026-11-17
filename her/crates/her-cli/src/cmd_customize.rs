@@ -226,6 +226,65 @@ pub(crate) fn open_browser(url: &str) {
     }
 }
 
+/// A line typed into the terminal by now, without waiting for one.
+#[cfg(unix)]
+fn typed_line() -> Option<String> {
+    use std::io::BufRead as _;
+    let mut ready = libc::pollfd { fd: libc::STDIN_FILENO, events: libc::POLLIN, revents: 0 };
+    // SAFETY: one pollfd that lives through the call, which does not wait.
+    if unsafe { libc::poll(&mut ready, 1, 0) } <= 0 {
+        return None;
+    }
+    let mut line = String::new();
+    let read = std::io::stdin().lock().read_line(&mut line).ok()?;
+    (read > 0).then(|| line.trim().to_string())
+}
+
+#[cfg(not(unix))]
+fn typed_line() -> Option<String> {
+    None
+}
+
+/// Opens `pasted` on this computer when it is where the sign-in's browser was sent back to.
+async fn open_redirect(redirect: &url::Url, pasted: &str) -> Result<(), String> {
+    use tokio::io::AsyncReadExt as _;
+    use tokio::io::AsyncWriteExt as _;
+    let came = url::Url::parse(pasted).ok().filter(|u| u.origin() == redirect.origin() && u.path() == redirect.path());
+    let (Some(came), Some(port)) = (came, redirect.port_or_known_default()) else {
+        return Err(format!("that is not the address the browser ended on: it starts with {redirect}"));
+    };
+    let unreachable = |e: std::io::Error| format!("the sign-in no longer waits at {redirect}: {e}");
+    let mut stream = tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, port)).await.map_err(unreachable)?;
+    let request = format!("GET {}?{} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n", came.path(), came.query().unwrap_or_default());
+    stream.write_all(request.as_bytes()).await.map_err(unreachable)?;
+    let mut answer = Vec::new();
+    let _ = stream.read_to_end(&mut answer).await;
+    Ok(())
+}
+
+/// For a sign-in whose browser is on another computer, as with a server reached over ssh: the
+/// browser is sent back to an address on this computer, which it cannot open there. Says so,
+/// and opens here the address the person pastes into the terminal. Runs until dropped; without
+/// a terminal, or a loopback address to come back to, it only waits.
+pub(crate) async fn take_pasted_redirect(authorize_url: &str) {
+    use std::io::IsTerminal as _;
+    let redirect = url::Url::parse(authorize_url)
+        .ok()
+        .and_then(|u| u.query_pairs().find(|(name, _)| name == "redirect_uri").and_then(|(_, value)| url::Url::parse(&value).ok()))
+        .filter(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1") && std::io::stdin().is_terminal());
+    let Some(redirect) = redirect else {
+        return std::future::pending().await;
+    };
+    eprintln!("Is the browser on another computer? It ends on an address it cannot open, starting with {redirect}\nPaste that address here and press Enter.");
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let Some(pasted) = typed_line().filter(|line| !line.is_empty()) else { continue };
+        if let Err(why) = open_redirect(&redirect, &pasted).await {
+            eprintln!("{why}");
+        }
+    }
+}
+
 /// Signs `name` in at `config`'s address, printing the address for the browser and waiting.
 async fn sign_in(home: &HerHome, ws: &Workspace, name: &str, config: &her_protocol::McpServerConfig) -> anyhow::Result<()> {
     let url = config.url.clone().with_context(|| format!("{name} is not a remote server"))?;
@@ -265,7 +324,14 @@ async fn sign_in(home: &HerHome, ws: &Workspace, name: &str, config: &her_protoc
     println!("{}", pending.authorize_url);
     open_browser(&pending.authorize_url);
     println!("waiting for the browser (up to 5 minutes)…");
-    pending.wait(std::time::Duration::from_secs(300)).await.map_err(|e| anyhow::anyhow!("signing in to {name} failed: {e}"))?;
+    let authorize_url = pending.authorize_url.clone();
+    let wait = pending.wait(std::time::Duration::from_secs(300));
+    tokio::pin!(wait);
+    let signed_in = tokio::select! {
+        result = &mut wait => result,
+        () = take_pasted_redirect(&authorize_url) => wait.await,
+    };
+    signed_in.map_err(|e| anyhow::anyhow!("signing in to {name} failed: {e}"))?;
     println!("signed in to {name} (the token is in the {})", her_llm::credentials::store_name().unwrap_or("credential store"));
     Ok(())
 }

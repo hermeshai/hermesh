@@ -410,3 +410,61 @@ async fn typing_in_a_script_is_refused_and_slips_are_caught() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("her exec"));
 }
+
+/// What `address` answers with, and where it sends the browser on, without going there.
+fn browse_one_step(address: &str) -> (String, Option<String>) {
+    let url = url::Url::parse(address).unwrap();
+    let mut stream = std::net::TcpStream::connect((url.host_str().unwrap(), url.port().unwrap())).unwrap();
+    let target = &address[address.find(url.path()).unwrap()..];
+    write!(stream, "GET {target} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", url.authority()).unwrap();
+    // The head only: the server may keep the connection.
+    let mut answer = String::new();
+    let mut byte = [0];
+    while !answer.ends_with("\r\n\r\n") && stream.read(&mut byte).unwrap() == 1 {
+        answer.push(byte[0] as char);
+    }
+    let location = answer.lines().find_map(|line| line.split_once(": ").filter(|(name, _)| name.eq_ignore_ascii_case("location")).map(|(_, to)| to.trim().to_string()));
+    (answer, location)
+}
+
+/// A sign-in on a server reached over ssh: the browser is on the person's own computer, which
+/// cannot open the address on the server it is sent back to. Pasted into the terminal, that
+/// address ends the sign-in, as the browser would have here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sign_in_takes_the_address_a_browser_elsewhere_ended_on() {
+    use her_mock::mcp::McpTestOptions;
+    use her_mock::mcp_auth::McpTestAuth;
+    use her_mock::mcp_auth::OAuthOptions;
+    let env = TestEnv::new("manual", QUIET).await;
+    let auth = McpTestAuth::OAuth(OAuthOptions { metadata_document: false, registration: true, token_ttl_secs: 3600 });
+    let mock = her_mock::mcp::serve_http("127.0.0.1:0", McpTestOptions { auth, ..Default::default() }).await.unwrap();
+    let added = env.her(&["mcp", "add", "tracker", "--url", &mock.url(), "--no-login"]).output().await.unwrap();
+    assert!(added.status.success(), "{}", String::from_utf8_lossy(&added.stderr));
+
+    let mut pty = Pty::start(&env, &["mcp", "login", "tracker"]);
+    let hint = pty.wait_for("Paste that address here and press Enter.");
+    let seen = pty.seen();
+    let authorize = seen.lines().find(|line| line.starts_with("http://")).expect("the address to sign in at").trim().to_string();
+    let redirect = url::Url::parse(&authorize).unwrap().query_pairs().find(|(name, _)| name == "redirect_uri").unwrap().1.into_owned();
+    assert!(seen.contains(&format!("starting with {redirect}")), "{seen}");
+
+    // The browser, on another computer: it signs in, and is sent to the server's own address.
+    let mut at = authorize;
+    let ended = loop {
+        let (answer, next) = browse_one_step(&at);
+        let next = next.unwrap_or_else(|| panic!("the sign-in page sent the browser nowhere: {answer}"));
+        if next.starts_with(&redirect) {
+            break next;
+        }
+        at = next;
+    };
+
+    // Another address is not taken; the one the browser ended on is.
+    pty.type_text("http://127.0.0.1:9/elsewhere?code=1\r");
+    let refused = pty.wait_for_after(hint, "that is not the address the browser ended on");
+    pty.type_text(&format!("{ended}\r"));
+    pty.wait_for_after(refused, "signed in to tracker");
+    assert_eq!(pty.wait_exit(), 0, "{}", pty.seen());
+    let credentials = std::fs::read_to_string(env.home.path().join("credentials.toml")).unwrap_or_default();
+    assert!(credentials.contains("mcp-oauth.tracker"), "{credentials}");
+}

@@ -607,8 +607,8 @@ pub(crate) enum ActAction {
     Focus,
     /// Scrolls the element; `direction` and `amount`.
     Scroll,
-    /// Presses the key combo in `text` (return, escape, cmd+s; ctrl+s on Windows) in the app;
-    /// needs no ref.
+    /// Presses the key combo in `text` (return, escape, cmd+s; ctrl+s where the computer is not
+    /// a Mac) in the app; needs no ref.
     Press,
     /// Clicks at `x`, `y` of screenshot `shot`.
     ClickAt,
@@ -1073,7 +1073,7 @@ impl Saved {
 }
 
 /// The system's key combo for pasting.
-const PASTE: &str = if cfg!(windows) { "ctrl+v" } else { "cmd+v" };
+const PASTE: &str = if cfg!(target_os = "macos") { "cmd+v" } else { "ctrl+v" };
 
 /// `text` typed where `key`'s focus is, by pasting it: any language and any length, as one
 /// edit. The user's clipboard is put back afterwards: text, an image or files (emptied, when it
@@ -1560,7 +1560,7 @@ esac
             "focus-window --window-id w-1 --headed",
             "clipboard-get --format auto",
             "clipboard-set -- 你好",
-            "press cmd+v --app com.example.chat --headed",
+            &format!("press {PASTE} --app com.example.chat --headed"),
             "clipboard-set -- mine",
         ];
         assert_eq!(acting(&fake.calls()), pasted);
@@ -1606,7 +1606,7 @@ esac
             "focus-window --window-id w-1 --headed",
             "clipboard-get --format auto",
             "clipboard-set -- hi",
-            "press cmd+v --app com.example.chat --headed",
+            &format!("press {PASTE} --app com.example.chat --headed"),
             "clipboard-set -- mine",
         ];
         let calls = fake.calls();

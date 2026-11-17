@@ -37,6 +37,7 @@ async fn open_extensions_page() -> Result<(), RpcError> {
     // A browser that was not running stays open: it is started, not waited for.
     Command::new(&program)
         .arg(EXTENSIONS_PAGE)
+        .envs(her_browser::pool::session_display())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -76,7 +77,7 @@ async fn show_extension_folder() -> Result<(), RpcError> {
         // Explorer answers 1 whatever it did: its window is all there is to wait for.
         Command::new("explorer").arg(&folder).stdin(Stdio::null()).spawn().map(drop).map_err(|e| RpcError::internal(format!("cannot run explorer: {e}")))
     } else {
-        run(Command::new("xdg-open").arg(&folder)).await
+        run(Command::new("xdg-open").arg(&folder).envs(her_browser::pool::session_display())).await
     }
 }
 

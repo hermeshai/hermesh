@@ -30,7 +30,7 @@ impl Launcher {
     /// The `pdf` component's worker where it has one (static builds cannot load the library
     /// themselves), otherwise this program, run as `<exe> doc-worker`.
     pub fn this_program() -> Self {
-        if let Some(worker) = crate::pdf_addon_dir().map(|dir| dir.join("her-doc-worker")).filter(|path| path.is_file()) {
+        if let Some(worker) = crate::pdf_dirs().into_iter().map(|dir| dir.join("her-doc-worker")).find(|path| path.is_file()) {
             return Launcher::Process { program: worker, args: Vec::new() };
         }
         let program = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("her"));

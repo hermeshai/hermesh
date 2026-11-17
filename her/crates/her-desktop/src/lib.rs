@@ -72,7 +72,8 @@ impl DesktopError {
 }
 
 /// Where the CLI is: `configured`, else the copy beside her (Hermesh.app's
-/// `Contents/MacOS`), else her's own copy in `$HER_HOME/desktop/bin`, else `PATH`.
+/// `Contents/MacOS`; on Linux in `her-computer/` there, where Hermesh's install puts it), else
+/// her's own copy in `$HER_HOME/desktop/bin`, else `PATH`.
 pub fn locate(configured: Option<&Path>) -> Result<PathBuf, DesktopError> {
     let beside = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
     let home = std::env::var_os("HER_HOME").filter(|home| !home.is_empty()).map(PathBuf::from).or_else(|| std::env::home_dir().map(|home| home.join(".her")));
@@ -88,13 +89,13 @@ fn locate_in(
     if let Some(path) = configured {
         return if path.is_file() { Ok(path.to_path_buf()) } else { Err(DesktopError::NotInstalled) };
     }
-    let bundled = beside.map(|dir| dir.join(PROGRAM));
+    let bundled = beside.into_iter().flat_map(|dir| [dir.join(PROGRAM), dir.join("her-computer").join(PROGRAM)]);
     let own = home.map(|home| home.join("desktop/bin").join(PROGRAM));
     let on_path = path_var
         .into_iter()
         .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
         .map(|dir| dir.join(PROGRAM));
-    bundled.into_iter().chain(own).chain(on_path).find(|p| p.is_file()).ok_or(DesktopError::NotInstalled)
+    bundled.chain(own).chain(on_path).find(|p| p.is_file()).ok_or(DesktopError::NotInstalled)
 }
 
 /// The CLI for one her session: its snapshots and refs live in their own namespace, so two
@@ -120,6 +121,8 @@ impl Cli {
             .args(["--session", &self.namespace])
             .arg(command)
             .args(args)
+            // On Linux the apps are in the desktop's session, which a her started at boot is not.
+            .envs(her_browser::pool::session_display())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -178,6 +181,7 @@ pub struct Permissions {
 pub async fn permissions(program: &Path) -> Result<Permissions, DesktopError> {
     let run = Command::new(program)
         .args(["--session", &namespace("status"), "permissions"])
+        .envs(her_browser::pool::session_display())
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true)
@@ -866,6 +870,9 @@ mod tests {
         let on_path = put("bin");
         let path_var = || Some(bin.clone().into_os_string());
         assert_eq!(locate_in(None, Some(&app), Some(&home), path_var()).unwrap(), own, "nothing beside her");
+        let installed = put("MacOS/her-computer");
+        assert_eq!(locate_in(None, Some(&app), Some(&home), path_var()).unwrap(), installed, "in her-computer/ beside her");
+        std::fs::remove_file(&installed).unwrap();
         let bundled = put("MacOS");
         assert_eq!(locate_in(None, Some(&app), Some(&home), path_var()).unwrap(), bundled);
         assert_eq!(locate_in(Some(&on_path), Some(&app), Some(&home), path_var()).unwrap(), on_path, "configured wins");

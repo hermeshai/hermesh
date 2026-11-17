@@ -83,10 +83,10 @@ pub fn builtin(config: &Config) -> Vec<ToolEntry> {
         crate::browser::one_browser_with_scripts(),
         "browser.script_enabled = true",
     );
-    let desktop = if cfg!(target_os = "macos") {
+    let desktop = if cfg!(any(target_os = "macos", target_os = "linux")) {
         "desktop.enabled = true"
     } else {
-        "macOS"
+        "macOS or Linux"
     };
     off("cua", crate::desktop::desktop_tools(), desktop);
     list
