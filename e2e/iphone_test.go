@@ -164,6 +164,11 @@ func iphoneHerEnv(t *testing.T) []string {
 	if err := os.WriteFile(filepath.Join(home, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// .her-home: her marks a home she makes as hers alone (her-core paths.rs), as she would have made this one,
+	// so erasing her data (herTurnOff) may delete it.
+	if err := os.WriteFile(filepath.Join(home, ".her-home"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	// What her acts as if it lacked from its next start, for herOlder (restartHerWithout); nothing yet.
 	without := filepath.Join(t.TempDir(), "her-without")
 	if err := os.WriteFile(without, nil, 0o600); err != nil {

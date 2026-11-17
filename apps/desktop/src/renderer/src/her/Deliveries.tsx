@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { deliveryQuote, fromSource, groupDeliveries, isMediaKind, isNewDelivery, joinDeliveries, onlyDeliveries, readSent, sameSource, sourceCount, sourceGroups } from "@hermesh/her-client";
@@ -54,7 +54,7 @@ function readVersion(machineId: string, botId: string, f: DeliveredFile, v: Deli
 }
 
 /** The panel: `kept` is the first page as this Mac keeps it, shown until her answers and while the machine is offline. */
-export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept: DeliveriesListResult | null; onClose: () => void }) {
+export function DeliveriesPanel({ bot, kept, onBack, onClose }: { bot: BotSummary; kept: DeliveriesListResult | null; onBack: () => void; onClose: () => void }) {
   const { t } = useTranslation("her");
   const { t: tc } = useTranslation("common");
   const her = useHer();
@@ -194,7 +194,10 @@ export function DeliveriesPanel({ bot, kept, onClose }: { bot: BotSummary; kept:
   const chosen = source && sources?.sources.find((s) => sameSource(s.filter, source));
   return (
     <aside className="her-panel rtn dlv" aria-label={t("files.title")}>
-      <div className="her-panel-top drag rtn-top">
+      <div className="her-panel-top drag rtn-top rtn-sub">
+        <button className="tb" title={t("routines.back")} aria-label={t("routines.back")} onClick={onBack}>
+          <Icon name="chevL" />
+        </button>
         <span className="rtn-tt">{t("files.title")}</span>
         {sources && !older && (
           <MenuButton
@@ -643,19 +646,3 @@ function DeliveryPreview({ bot, file, version, now, canOpen, onVersion, act, onC
   );
 }
 
-/** The button at the top: the files Her sent, with how many are new while the panel is closed. */
-export function DeliveriesButton({ bot, open, onClick }: { bot: BotSummary; open: boolean; onClick: () => void }) {
-  const { t } = useTranslation("her");
-  const { t: tc } = useTranslation("common");
-  const her = useHer();
-  const older = herAnswers(her.machine, "deliveries/list") === false;
-  const count = open ? 0 : (bot.new_deliveries ?? 0);
-  const label = older ? `${t("files.button")} · ${tc("needsUpdate.mark")}` : count > 0 ? t("files.buttonNew", { count }) : t("files.button");
-  return (
-    <button className={`tb rtn-btn dlv-btn ${open ? "on" : ""}`} title={label} aria-label={label} aria-pressed={open} data-testid="her-files" onClick={onClick}>
-      <Icon name="tray" />
-      {count > 0 && !older && <span className="dlv-badge" style={{ "--n": String(count).length } as CSSProperties}>{count > 99 ? "99+" : count}</span>}
-      {older && <i className="rtn-dot" />}
-    </button>
-  );
-}

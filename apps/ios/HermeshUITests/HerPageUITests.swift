@@ -130,10 +130,10 @@ extension HermeshUITests {
         sleep(1)
         XCTAssertLessThanOrEqual(panel.frame.maxY, attach.frame.minY + 1, "short of the composer: \(panel.frame), \(attach.frame)")
         herShot("Her: the team panel, short of the composer")
-        // Her mark, over it, closes it; her settings stay shut.
+        // Her mark, over it, closes it; her page stays shut.
         tap("her-avatar")
         XCTAssertTrue(panel.waitForNonExistence(timeout: 5), "her mark closes the panel")
-        XCTAssertFalse(text("运行在").exists, "not her settings")
+        XCTAssertFalse(app.buttons["her-tab-work"].exists, "not her page")
     }
 
     func herTypingRoom() throws {
@@ -164,13 +164,14 @@ extension HermeshUITests {
             middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: by)), withVelocity: 200, thenHoldForDuration: 0.5)
             sleep(1)
         }
-        // The status bar: above the row of buttons.
-        let under = CGRect(x: max(bubble.frame.minX, 0), y: 2, width: bubble.frame.width, height: menu.frame.minY - 8)
-        XCTAssertTrue(bubble.frame.minY < under.minY && bubble.frame.maxY > under.maxY, "the message under the clock: \(bubble.frame), \(under)")
+        // The status bar and the row of buttons, down to their middle (the conversation fades out below that, at the
+        // bar's edge), as far as the message reaches.
+        let under = CGRect(x: max(bubble.frame.minX, 0), y: 2, width: bubble.frame.width, height: min(menu.frame.midY, bubble.frame.maxY - 1) - 2)
+        XCTAssertTrue(bubble.frame.minY < under.minY && under.maxY > menu.frame.minY, "the message under the clock and the buttons: \(bubble.frame), \(under)")
         let shot = XCUIScreen.main.screenshot()
         let blue = blueShare(shot.image, in: under)
-        herShot("Her: the conversation under the clock, \(Int(blue * 100))% blue")
-        XCTAssertLessThan(blue, 0.05, "the bubble gone under the clock: \(Int(blue * 100))% of it reads blue there")
+        herShot("Her: the conversation under the clock and the buttons, \(Int(blue * 100))% blue")
+        XCTAssertLessThan(blue, 0.05, "the bubble gone under the clock and the buttons: \(Int(blue * 100))% of it reads blue there")
         // The keyboard down (dragged down with the conversation, into it), her mark large again, the tag under it.
         middle.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)), withVelocity: 600, thenHoldForDuration: 0.2)
         XCTAssertTrue(waitUntil { self.app.keyboards.count == 0 }, "the keyboard down")

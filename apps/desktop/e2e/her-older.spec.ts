@@ -51,22 +51,20 @@ test("Her: a Mac older than the app says it needs an update, and the page recove
   // A her that lists nothing: the row can't tell, and the page says what her's answer meant.
   const settings = page.getByRole("complementary", { name: "助手设置" });
   const memory = page.getByRole("complementary", { name: "记忆" });
-  const row = settings.getByRole("button", { name: /^记住的事/ });
+  const row = settings.getByTestId("her-memory");
   await page.getByRole("button", { name: "助手设置", exact: true }).click();
+  await settings.getByRole("tab", { name: "能力" }).click();
   await row.click();
   await expect(memory.getByTestId("needs-update")).toContainText("需要更新 Hermesh", { timeout: 30_000 });
   await expect(memory).toContainText("上的 Hermesh 版本较旧，还没有这项功能");
   await expect(memory).not.toContainText("unknown method");
   await snap(page, "her-older-memory");
 
-  // One that lists its methods, without bots/memory: the row says so, and clearing the memory explains instead of failing.
+  // One that lists its methods, without bots/memory: the Memory card says so before it is opened.
   await memory.getByRole("button", { name: "返回" }).click();
   await restartHer("bots/memory\n");
-  await expect(row).toHaveText(/需更新/, { timeout: 60_000 });
+  await expect(row).toHaveAttribute("aria-label", /需更新/, { timeout: 60_000 });
   await snap(page, "her-older-row");
-  await settings.getByRole("button", { name: "清空记忆" }).click();
-  await expect(page.getByText("那台电脑上的 Hermesh 版本较旧，还没有这项功能。在那台电脑上更新 Hermesh 后再试。")).toBeVisible();
-  await expect(page.getByRole("dialog", { name: /^清空「.+」记住的事？$/ })).toHaveCount(0);
 
   // Updated: the open page loads the memory by itself.
   await row.click();
@@ -75,6 +73,6 @@ test("Her: a Mac older than the app says it needs an update, and the page recove
   await expect(memory).toContainText("还没有记下什么", { timeout: 60_000 });
   await expect(memory.getByTestId("needs-update")).toHaveCount(0);
   await memory.getByRole("button", { name: "返回" }).click();
-  await expect(row).toHaveText("记住的事还没有");
+  await expect(row).toHaveAttribute("aria-label", "记忆，还没有");
   await app.close();
 });

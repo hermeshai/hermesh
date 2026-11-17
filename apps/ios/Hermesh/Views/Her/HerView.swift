@@ -22,11 +22,12 @@ struct HerView: View {
     }
 }
 
-/// One environment's Her: the menu button, her mark large in the middle with her name tag over its lower edge,
-/// Progress at the right (the work she sent out, docs/her-team.md §15), and the conversation scrolling under them,
-/// fading as it reaches them. The tag says what the team is doing (docs/her-team.md §4.2) and opens the team panel;
-/// her mark opens her settings, or closes the panel while it shows. While the keyboard is up her mark is small, in
-/// the row of buttons beside a short tag, and the conversation has the room (docs/her-server.md §9).
+/// One environment's Her: the menu button, her mark large in the middle with her name tag over its lower edge, and
+/// the conversation scrolling under them, fading as it reaches them. The tag says what the team is doing
+/// (docs/her-team.md §4.2) and opens the team panel; her mark opens her page (docs/her-panel-demo.html), where her
+/// work, her abilities and her settings are, or closes the panel while it shows; it is marked while something of hers
+/// waits for the owner. While the keyboard is up her mark is small, in the row beside a short tag, and the
+/// conversation has the room (docs/her-server.md §9).
 private struct HerPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
@@ -40,6 +41,10 @@ private struct HerPage: View {
     @State private var typing = false
     /// How tall the status bar is, where the conversation fades out.
     @State private var statusBar: CGFloat = 0
+    /// How tall the bar under it is (the buttons, her mark and the tag), where the conversation fades out.
+    @State private var barHeight: CGFloat = 0
+    /// How tall the band where the conversation fades out is.
+    private let fade: CGFloat = 20
 
     var body: some View {
         let chat = model.her.chat(machine.machineID, model: model)
@@ -54,12 +59,13 @@ private struct HerPage: View {
         // The whole page whatever shows: her mark at the top and the panel's dim over all of it, not around a
         // status as tall as its words.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Scrolled up, the conversation fades out under her mark and the buttons (the bar's own edge blurs it there)
-        // and is gone by the status bar: the clock is never read over a message.
+        // Scrolled up, the conversation fades out in a short band at the bar's lower edge and is gone under her mark,
+        // the buttons and the clock: no blurred message reads behind them, and no line where a blur would stop.
+        .scrollEdgeEffectHidden(true, for: .top)
         .mask {
             VStack(spacing: 0) {
-                Color.clear.frame(height: statusBar)
-                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 28)
+                Color.clear.frame(height: max(statusBar + barHeight - fade, statusBar))
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: fade)
                 Color.black
             }
             .ignoresSafeArea()
@@ -83,15 +89,11 @@ private struct HerPage: View {
             }
         }
         .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
-        // With the bars on the side (iPhone Duo), Progress is in the system's bar too.
+        // With the bars on the side (iPhone Duo), the menu button and Progress are in the system's bar.
         .toolbar {
             if sideBars {
                 MenuToolbarItem()
-                if let bot = chat.bot {
-                    ToolbarItem(placement: .topBarTrailing) { HerFilesButton(new: bot.newDeliveries, older: herAnswers(machine.her, "deliveries/list") == false, inBar: true) }
-                    ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) }
-                    ToolbarItem(placement: .topBarTrailing) { HerRoutinesButton(dot: herRoutineDot(bot.routines), inBar: true) }
-                }
+                if chat.bot != nil { ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) } }
             }
         }
         .safeAreaBar(edge: .top) { header(chat) }
@@ -115,16 +117,9 @@ private struct HerPage: View {
         return ZStack(alignment: .top) {
             HStack(spacing: 8) {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
-                // The files Her sent (docs/her-deliverables.md §3.3): beside the menu, so each side has two buttons
-                // and Her's mark stays clear of them.
-                if let bot = chat.bot, !sideBars {
-                    HerFilesButton(new: bot.newDeliveries, older: herAnswers(machine.her, "deliveries/list") == false)
-                }
                 Spacer()
-                if let bot = chat.bot, !sideBars {
-                    HerProgressButton(marks: herProgressMarks(chat))
-                    HerRoutinesButton(dot: herRoutineDot(bot.routines))
-                }
+                // Progress, looked at often: a button of its own, not a card of her page (docs/her-team.md §15).
+                if chat.bot != nil, !sideBars { HerProgressButton(marks: herProgressMarks(chat)) }
             }
             if small {
                 // In the row, between the buttons and clear of them (as wide a margin each side, so in the middle).
@@ -144,19 +139,30 @@ private struct HerPage: View {
         // The tag's words grow with the text size, up to what the top has room for.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 16).padding(.bottom, 4)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { barHeight = $0 }
         .animation(still ? nil : .snappy(duration: 0.3), value: small)
     }
 
     private func avatar(_ chat: HerChat, size: CGFloat) -> some View {
-        Button {
-            // Over the panel, it closes it: the settings would open from under it.
+        // A scheduled task whose last run failed, which her page's card says; what waits in Progress, its button does.
+        let waits = herRoutineDot(chat.bot?.routines ?? []) == .failed
+        return Button {
+            // Over the panel, it closes it: her page would open from under it.
             if team { showTeam(false) } else { model.path.append(.herSettings) }
         } label: {
             HerAvatar(size: size, busy: chat.live.map(herBusy) ?? false)
+                .overlay(alignment: .topTrailing) {
+                    if waits {
+                        Circle().fill(.orange).frame(width: size * 0.17, height: size * 0.17)
+                            .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2.5))
+                            .offset(x: -size * 0.03, y: size * 0.05)
+                            .accessibilityHidden(true)
+                    }
+                }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(chat.bot?.name ?? "Her"))
-        .accessibilityHint(team ? Text("Closes the team panel") : Text("Opens Her’s settings"))
+        .accessibilityLabel(waits ? Text("\(chat.bot?.name ?? "Her"), something is waiting for you") : Text(chat.bot?.name ?? "Her"))
+        .accessibilityHint(team ? Text("Closes the team panel") : Text("Opens Her’s page"))
         .accessibilityIdentifier("her-avatar")
         .matchedGeometryEffect(id: "avatar", in: top)
     }
@@ -362,8 +368,8 @@ extension View {
     func herConnections(_ chat: HerChat, machine: HerMachine) -> some View { modifier(HerConnections(chat: chat, machine: machine)) }
 }
 
-/// Progress, at the top right of Her's page, or in the system's bar where it stands on the side (inBar): the work
-/// she sent out to her sub-agents (docs/her-team.md §15), marked orange while one waits for the owner, else blue
+/// Progress, at the top right of Her's conversation, or in the system's bar where it stands on the side (inBar): the
+/// work she sent out to her sub-agents (docs/her-team.md §15), marked orange while one waits for the owner, else blue
 /// while one is at work.
 private struct HerProgressButton: View {
     @Environment(AppModel.self) private var model
@@ -398,78 +404,6 @@ private struct HerProgressButton: View {
     }
 
     private var dot: Color? { marks.waiting > 0 ? .orange : marks.running > 0 ? .accentColor : nil }
-}
-
-/// The files Her sent, beside the menu: how many are new since the owner last looked at them, or a mark while her
-/// machine is too old to list them.
-private struct HerFilesButton: View {
-    @Environment(AppModel.self) private var model
-    let new: Int
-    let older: Bool
-    var inBar = false
-
-    var body: some View {
-        Group {
-            if inBar {
-                Button { model.path.append(.herFiles) } label: {
-                    Image(systemName: "tray").overlay(alignment: .topTrailing) { badge.offset(x: 8, y: -6) }
-                }
-            } else {
-                Button { model.path.append(.herFiles) } label: {
-                    Image(systemName: "tray").font(.body.weight(.medium)).frame(width: 44, height: 44)
-                        .overlay(alignment: .topTrailing) { badge.offset(x: 2, y: -2) }
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .accessibilityLabel(older ? Text("Files, needs an update") : new > 0 ? Text("Files, \(new) new") : Text("Files"))
-        .accessibilityIdentifier("her-files")
-    }
-
-    @ViewBuilder private var badge: some View {
-        if older {
-            Circle().fill(.orange).frame(width: 8, height: 8)
-        } else if new > 0 {
-            Text(verbatim: new > 99 ? "99+" : "\(new)")
-                .font(.caption2.weight(.bold)).monospacedDigit().foregroundStyle(.white)
-                .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
-                .background(Color.accentColor, in: .capsule)
-                .accessibilityHidden(true)
-        }
-    }
-}
-
-/// Her's scheduled tasks, beside Progress: marked while one's last run failed (orange) or one runs (blue).
-private struct HerRoutinesButton: View {
-    @Environment(AppModel.self) private var model
-    let dot: HerRoutineDot?
-    var inBar = false
-
-    var body: some View {
-        Group {
-            if inBar {
-                Button { model.path.append(.routines) } label: {
-                    Image(systemName: "clock").overlay(alignment: .topTrailing) { mark.offset(x: 5, y: -4) }
-                }
-            } else {
-                Button { model.path.append(.routines) } label: {
-                    Image(systemName: "clock").font(.body.weight(.medium)).frame(width: 44, height: 44)
-                        .overlay(alignment: .topTrailing) { mark.offset(x: -9, y: 11) }
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .accessibilityLabel(dot == .failed ? Text("Scheduled Tasks, a last run failed") : dot == .running ? Text("Scheduled Tasks, one running") : Text("Scheduled Tasks"))
-        .accessibilityIdentifier("her-routines")
-    }
-
-    @ViewBuilder private var mark: some View {
-        if let dot { Circle().fill(dot == .failed ? Color.orange : Color.accentColor).frame(width: 8, height: 8) }
-    }
 }
 
 /// The menu button, as root pages have it in their bar: Her's page draws its own top.

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { BotMemoryPage, BotMemoryResult, BotSummary } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { Markdown } from "../session/Markdown";
-import { errorText } from "../store";
+import { errorText, useStore } from "../store";
 import { herAnswers, needsUpdate } from "../skew";
 import { Tile } from "./Composer";
 import { useHer } from "./context";
@@ -49,8 +49,22 @@ export const isEmpty = (m: BotMemoryResult) => m.text.trim() === "" && (m.pages 
 export function MemoryPage({ bot, files, onBack, onClose }: { bot: BotSummary; files: FileScope; onBack: () => void; onClose: () => void }) {
   const { t } = useTranslation("her");
   const { t: tc } = useTranslation("common");
-  const { memory, error, older } = useMemory(bot);
+  const { memory, error, older, reload } = useMemory(bot);
   const her = useHer();
+  const st = useStore();
+  // The memory goes to the trash, and the assistant stops remembering at once; the chat stays. At the page's foot,
+  // with what it clears.
+  const clear = () =>
+    st.set({
+      sheet: {
+        kind: "confirm",
+        title: t("memoryClear.title", { name: bot.name }),
+        message: t("memoryClear.message"),
+        button: t("memoryClear.button"),
+        run: () => her.call("bots/memory_clear", { bot_id: bot.id }).then(reload),
+        done: t("memoryClear.done"),
+      },
+    });
   return (
     <aside className="her-panel rtn mem" aria-label={t("memory.title")}>
       <div className="her-panel-top drag rtn-top rtn-sub">
@@ -85,6 +99,11 @@ export function MemoryPage({ bot, files, onBack, onClose }: { bot: BotSummary; f
             )}
             {(memory.pages ?? []).length > 0 && <Pages bot={bot} files={files} pages={memory.pages ?? []} />}
             <p className="set-note">{t("memory.note")}</p>
+            <section className="fgroup">
+              <button className="frow bpn-end" data-testid="her-clear-memory" onClick={clear}>
+                {t("panel.clearMemory")}
+              </button>
+            </section>
           </div>
         )}
       </div>

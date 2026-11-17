@@ -832,14 +832,33 @@ What changes, because Her may run on another computer than the app:
   them, the built-in browser (Her browses on its Her Server), and the
   document panels beside the conversation.
 
-On the right of the top bar: Her's routines, Her's settings and ⋯, which
-holds "Manage this environment" (the console). Her's settings panel holds its name, avatar, model, thinking level and
-approval mode, whether it notifies, and lets the owner clear its
-conversation or turn Her off there (§5.6). Environment-wide settings are in the console.
+The top bar is Her (her avatar and name tag) and Progress (docs/her-team.md
+§15.1), looked at often, with ⋯ on the Mac, which holds the environments and
+"Manage this environment" (the console). Her avatar
+opens **her page** (docs/her-panel-demo.html): on the Mac beside the
+conversation, on the iPhone a page of its own, with Remote Desktop as a glass
+button at its top right. Under her name, three tabs, one kind of thing in each:
+
+- **Work**: the files she sent and her scheduled tasks.
+- **Abilities**: her memory, her skills, the connectors as themselves, web
+  search and the browsers.
+- **Settings**: her model (with the environment's model sign-ins and
+  providers, as the console's Models page has them), how freely she acts,
+  whether she notifies, her environment (where she runs, another machine, the
+  storage of her data, the console, turning her off there, §5.6), and
+  clearing her conversation.
+
+Each card is only a way in, with at most a word of how its page stands; the
+avatar is marked while something of hers waits for the owner. The pages for
+what the console manages (skills, web search, the browsers, the models,
+storage) read and write what the console does, from the same answers; on the
+Mac, adding a key, uploading a skill or connecting the owner's Chrome opens
+the console at that page; on the iPhone a key or a skill is added in the app,
+and the owner's Chrome, connected on its own computer, shows how it stands.
 
 **Connectors** (docs/her-connectors-demo.html) are the environment's, shared
-by its assistants, and Her's settings lead to them. On the Mac, a row in the
-settings panel opens the console's Connectors page. The iPhone has
+by its assistants, and Her's page leads to them. On the Mac, the tray opens
+the console's Connectors page. The iPhone has
 its own page: what is added (on or off, signing in again, retrying), Discover,
 a connector's page with its tools, and adding one by its address, an account
 signed in to in the iPhone's browser while its tokens stay on the Her Server;

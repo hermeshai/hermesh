@@ -245,6 +245,23 @@ func TestDesktopHerDeliveries(t *testing.T) {
 	herSpec(t, desktopHerWorld(t), "her-deliveries.spec.ts")
 }
 
+// TestDesktopHerPage runs Her's page (apps/desktop/e2e/her-page.spec.ts,
+// docs/her-panel-demo.html) in the same world: her tabs, and the pages her
+// cards and rows open beside the conversation (skills, web search, the
+// browsers, her model, her environment and its storage), read and changed
+// against her itself.
+//
+//	go test ./e2e -run TestDesktopHerPage -v -timeout 30m
+func TestDesktopHerPage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	if _, err := exec.LookPath("pnpm"); err != nil {
+		t.Skip("pnpm not installed")
+	}
+	herSpec(t, desktopHerWorld(t), "her-page.spec.ts")
+}
+
 // TestDesktopHerChatGPT runs apps/desktop/e2e/her-chatgpt.spec.ts: on this
 // Mac, whose her has no model yet, Her's onboarding signs in to ChatGPT all
 // the way. her's ChatGPT fixture stands in for OpenAI, as in

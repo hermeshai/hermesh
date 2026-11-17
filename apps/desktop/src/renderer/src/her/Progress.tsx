@@ -70,7 +70,7 @@ export function Progress({ bot, conv, op, task }: { bot: BotSummary; conv: Conv;
   const sourceGroup = source ? groups.find((g) => g.key === source) : undefined;
   return (
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
-      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} /> : <Board bot={bot} posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
+      {open ? <TaskPage key={open.task.key} post={open} conv={conv} op={op} onSource={setSource} backToHer={task?.fromHer ? bot.name : undefined} /> : <Board bot={bot} posts={posts} conv={conv} missing={!!task} onSource={setSource} />}
       {sourceGroup && <SourcePanel bot={bot} group={sourceGroup} posts={posts} here={open?.task.key} onClose={() => setSource(null)} />}
     </ContentScope>
   );
@@ -343,17 +343,17 @@ function SourcePanel({ bot, group: g, posts, here, onClose }: { bot: BotSummary;
 
 // MARK: A post's page
 
-/** A post opened: back to the feed and what set it off, then the record of that piece of work. */
-function TaskPage({ post: p, conv, op, onSource }: { post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void }) {
+/** A post opened: back to the feed (or to her conversation, where it was opened from: `backToHer`, her name) and what set it off, then the record of that piece of work. */
+function TaskPage({ post: p, conv, op, onSource, backToHer }: { post: Post; conv: Conv; op: SendOp; onSource: (key: string) => void; backToHer?: string }) {
   const { t } = useTranslation("her");
   const go = useOpen();
   const task = p.task;
   return (
     <>
       <div className="ctool drag pt-bar">
-        <button className="btn pt-back" onClick={go.board}>
+        <button className="btn pt-back" onClick={backToHer ? go.chat : go.board}>
           <Icon name="chevL" />
-          {t("progress.back")}
+          {backToHer ?? t("progress.back")}
         </button>
         <FromCapsule group={p.group} onClick={() => onSource(p.group.key)} />
         <span className="pt-gap" />

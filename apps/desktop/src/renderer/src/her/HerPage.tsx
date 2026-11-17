@@ -15,6 +15,7 @@ import { DeliveriesPanel } from "./Deliveries";
 import { Progress } from "./Progress";
 import { environments, envState, pickEnvironment } from "./environments";
 import { RoutinesPanel } from "./RoutinesPanel";
+import { BrowserPage, EnvironmentPage, ModelPage, ProviderPage, SearchPage, SkillPage, SkillsPage, StoragePage } from "./HerPages";
 import { FirstRun, Setup } from "./Setup";
 import { AccessSheet, HerDialog } from "./sheets";
 import { TopBar } from "./TopBar";
@@ -136,6 +137,8 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
   const sel = st.selection;
   const progress = sel.kind === "progress" && !!bot;
   const shown = bot && !progress ? panel : null;
+  // Back to Her's page, from a page it opened.
+  const home = () => setPanel({ kind: "settings" });
   return (
     <HerContext.Provider value={her}>
       <div className={`her ${shown ? "bgopen" : ""}`}>
@@ -162,10 +165,19 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
               putInComposer(id, text);
             }}
             onShowBubble={(runId) => showRun(id, runId)}
+            onBack={home}
             onClose={() => setPanel(null)}
           />
         )}
-        {bot && shown?.kind === "files" && <DeliveriesPanel bot={bot} kept={kept?.deliveries ?? null} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "files" && <DeliveriesPanel bot={bot} kept={kept?.deliveries ?? null} onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "skills" && <SkillsPage onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "skill" && <SkillPage key={shown.dir} dir={shown.dir} onBack={() => setPanel({ kind: "skills" })} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "search" && <SearchPage onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "browser" && <BrowserPage onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "model" && <ModelPage view={conv.view} op={op} onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "provider" && <ProviderPage key={shown.id} id={shown.id} onBack={() => setPanel({ kind: "model" })} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "environment" && <EnvironmentPage onBack={home} onClose={() => setPanel(null)} />}
+        {bot && shown?.kind === "storage" && <StoragePage onBack={() => setPanel({ kind: "environment" })} onClose={() => setPanel(null)} />}
         {sheet?.kind === "access" && <AccessSheet bot={sheet.bot} />}
         {sheet?.kind === "add" && <AddEnvironmentSheet />}
       </div>
