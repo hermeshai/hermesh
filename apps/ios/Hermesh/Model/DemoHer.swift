@@ -4,22 +4,14 @@ import HermeshHer
 import HermeshProto
 import SwiftProtobuf
 
-/// A conversation with Her in the demo, for a debug build launched with -HerDemo <turns> (HerScrollUITests, and to
-/// feel how the conversation scrolls by hand): the Mac mini is one of her environments, and this iPhone keeps what was
-/// said there, as the core does for a real one. What is written to her waits here, as it would. The demo itself has
-/// no Her.
+/// The DEBUG-only scrolling gallery (-HerDemo <turns>), separate from the public Release reviewer scenario
+/// in HerReviewDemo. Its kept conversation does not open a live transport; messages wait in memory.
 extension DemoService {
     /// Launched with -HerDemo (its number of turns; 0, a conversation with nothing said yet).
     static var herDemoOn: Bool { UserDefaults.standard.object(forKey: "HerDemo") != nil }
     static var herDemoTurns: Int { UserDefaults.standard.integer(forKey: "HerDemo") }
     /// Launched with -HerDemoMarkdown YES as well: her replies are DemoMarkdown.swift's, one to a turn.
     static var herDemoMarkdown: Bool { UserDefaults.standard.bool(forKey: "HerDemoMarkdown") }
-
-    /// The machine as one of Her's environments, where she runs with a model. Nothing answers her connections in the
-    /// demo, so what was said is what this iPhone keeps, and what is written waits here.
-    static func herDemo(_ machine: inout Hermesh_Local_V1_Machine) {
-        machine.her = .with { $0.enabled = true; $0.running = true; $0.modelReady = true }
-    }
 
     /// Her's calls of the core's, answered from what the demo keeps; nil for any other.
     func herDemo(_ method: String, _ r: [String: Any]) throws -> Data? {

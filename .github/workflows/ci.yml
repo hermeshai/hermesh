@@ -7,6 +7,28 @@ on:
   # before it reaches main (docs/windows.md).
   workflow_dispatch:
 jobs:
+  ios-demo:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - name: Release reviewer demo, offline state tests and preference isolation
+        run: apps/ios/scripts/test-demo.sh "$RUNNER_TEMP/ios-demo"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-demo-release
+          path: |
+            ${{ runner.temp }}/ios-demo/*.log
+            ${{ runner.temp }}/ios-demo/review.xcresult
+          if-no-files-found: ignore
   go:
     strategy:
       matrix:
