@@ -372,6 +372,10 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   const sessions = page.getByRole("list", { name: "任务" });
   await expect(sessions.getByRole("group", { name: "进行中" })).toHaveText(/^进行中\s*暂时没有$/);
   await expect(sessions.getByRole("group", { name: "已结束" })).toContainText("检查 README");
+  // Its line starts where the sessions' logos do, not indented past them.
+  const none = await sessions.getByText("暂时没有", { exact: true }).evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().x; });
+  const logo = (await sessions.getByRole("group", { name: "已结束" }).locator(".slogo").first().boundingBox())!;
+  expect(Math.abs(none - logo.x)).toBeLessThanOrEqual(1);
   await snap(page, "first-13-resting");
   // With nothing live, hovering an agent marks what it can reach on the map, which doesn't grow.
   const map = page.getByRole("region", { name: "链路" });

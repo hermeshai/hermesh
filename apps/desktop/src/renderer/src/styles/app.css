@@ -238,7 +238,8 @@ html.vibrant .rail{background:var(--side-tint)}
 .side-h .tb{margin-left:auto}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-sessions>[role=group]{display:flex;flex-direction:column;gap:1px}
-.side-none{font-size:12.5px;color:var(--l3);padding:5px 9px 8px 33px}
+/* An empty group's line starts where its sessions' logos would. */
+.side-none{font-size:12.5px;color:var(--l3);padding:5px 9px 8px}
 .side-empty{display:flex;flex-direction:column;gap:3px;text-align:center;padding:60px 14px;color:var(--l3);font-size:12.5px;line-height:1.6}
 .side-empty b{color:var(--l2);font-weight:var(--font-weight-medium);font-size:var(--fs-text)}
 /* A group's heading: its title and ▾ (▸ when collapsed); a click collapses or opens it. */
