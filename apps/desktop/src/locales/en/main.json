@@ -88,7 +88,11 @@
     "uacOff": "User Account Control is turned off, so other programs could access your key. Turn it on to make this PC a trusted device.",
     "noTPM": "This PC doesn’t have a TPM 2.0 security chip to store your owner key.",
     "failed": "Hermesh’s signer couldn’t be set up (error {{code}}).",
-    "notRunning": "Hermesh’s signer didn’t start. Please try again."
+    "notRunning": "Hermesh’s signer didn’t start. Please try again.",
+    "noService": "Hermesh’s signer isn’t installed on this computer. Install Hermesh from its package (.deb or .rpm) to make this computer a trusted device, or join as a machine only.",
+    "openSudo": "Your account can run anything as root without being asked (sudo NOPASSWD), so other programs could reach your key. Make sudo ask for your password to make this computer a trusted device.",
+    "noPolkit": "This computer has no polkit to ask for your password. Install polkit to make this computer a trusted device.",
+    "notYours": "Hermesh’s signer can’t watch this Hermesh: its socket isn’t yours."
   },
   "herConsole": "Her Console — {{name}}",
   "herConsoleBad": "The console’s address isn’t one Hermesh opens."

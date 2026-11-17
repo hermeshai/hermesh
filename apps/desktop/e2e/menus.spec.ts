@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication } from "@playwright/test";
 import type { BrowserWindow } from "electron";
 import type { TrayView } from "../src/shared/bridge";
-import { cli, fixture, launch, snap, sessionList } from "./app";
+import { cli, fixture, launch, onMac, snap, sessionList } from "./app";
 
 // The native shell: the app menu, the menu bar panel and notifications, as
 // the person uses them. Menu items are clicked through Electron's own menu
@@ -175,7 +175,8 @@ test("closing the window keeps Hermesh in the menu bar, without a renderer", asy
   console.log(`memory with the window open: ${await memory()}`);
   await app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.mainWindow()?.close());
   await expect.poll(() => app.evaluate(({ app }) => app.getAppMetrics().filter((m) => m.type === "Tab").length)).toBe(0);
-  await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  // The Dock is a Mac's; elsewhere the app keeps running in the notification area, where it has one.
+  if (onMac) await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
 
   // Idle: let the closed renderer's memory go back.
   await new Promise((r) => setTimeout(r, 5000));
@@ -186,12 +187,12 @@ test("closing the window keeps Hermesh in the menu bar, without a renderer", asy
     app.waitForEvent("window", (w) => w.url().endsWith("#tray")),
     app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.tray().toggle()),
   ]);
-  expect(await app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  if (onMac) expect(await app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
   const opened = app.waitForEvent("window", (w) => !w.url().endsWith("#tray"));
   await panel.getByRole("button", { name: "打开 Hermesh" }).click();
   const again = await opened;
   await expect((await sessionList(again))).toContainText("写 hello");
-  await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
+  if (onMac) await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
   await app.close();
 });
 

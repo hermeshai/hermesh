@@ -21,7 +21,7 @@ function setBusy(value: boolean) {
 /** Bring the existing approval forward without accepting or rejecting it. */
 export function showSigner() {
   if (signer) signer.kill("SIGUSR1");
-  else if (platform.token === "win") {
+  else if (platform.token !== "mac") {
     const local = createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }));
     local.showSigner({}).catch((e) => console.warn("show the signer:", e));
   }
@@ -30,9 +30,17 @@ export function showSigner() {
 // The signer holds the root key and shows what is signed. It talks only
 // to hermeshd; we just keep it running, where it is the app's child (macOS).
 export function keepSignerRunning(socket: string): () => void {
-  if (platform.token === "win") {
-    // Not the app's child (docs/windows.md §7.3): hermeshd tells whether it waits on the owner.
-    const follow = () => setBusy(!!world.status?.signer?.busy);
+  if (platform.token !== "mac") {
+    // Not the app's child (docs/windows.md §7.3, docs/linux.md §7.3): hermeshd tells whether it waits on the owner.
+    // On Linux the signer asks the app's own process, a new one at each start: once there is an owner, it is told.
+    let told = false;
+    const follow = () => {
+      setBusy(!!world.status?.signer?.busy);
+      if (platform.token === "linux" && !told && world.status?.initialized) {
+        told = true;
+        platform.readySigner().catch((e) => console.warn("the signer:", e));
+      }
+    };
     worldListeners.add(follow);
     return () => worldListeners.delete(follow);
   }

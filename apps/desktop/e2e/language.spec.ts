@@ -2,7 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from "@playwright/t
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, sessionList } from "./app";
+import { launch, sessionList, onMac } from "./app";
 
 // The app's language: the first of the system's preferred languages it has
 // (English or Simplified Chinese), else English; or the one chosen in
@@ -10,12 +10,14 @@ import { launch, sessionList } from "./app";
 
 // Set by the page's script once it runs (index.html starts out in English).
 const lang = (page: Page) => page.evaluate(() => document.documentElement.lang);
+// A Mac's menu bar starts with the app's own menu; elsewhere the window's menu has none.
+const appMenu = onMac ? ["Hermesh"] : [];
 const menus = (app: ElectronApplication) => app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.items.map((i) => i.label) ?? []);
 
 test("on an English system the app is in English, menus and pages", async () => {
   const { app, page } = await launch(undefined, { systemLanguages: ["en-GB", "zh-Hans"] });
   await expect.poll(() => lang(page)).toBe("en");
-  await expect.poll(() => menus(app)).toEqual(["Hermesh", "File", "Edit", "View", "Session", "Window", "Help"]);
+  await expect.poll(() => menus(app)).toEqual([...appMenu, "File", "Edit", "View", "Session", "Window", "Help"]);
   await expect(page.getByRole("heading", { name: "Work", level: 1 })).toBeVisible();
   await expect((await sessionList(page))).toContainText("写 hello"); // a session's title stays as written
   await app.close();

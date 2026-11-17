@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cli, fixture, launch, snap, sessionList, navTo } from "./app";
+import { cli, fixture, launch, onMac, snap, sessionList, navTo } from "./app";
 
 // The main window's frame: the sidebar lists sessions as the owner chose to
 // view them by status when they choose it (by who sent the work otherwise, docs/her-team.md §14.2).
@@ -177,7 +177,9 @@ test("the avatar opens the account menu above it, opaque, by mouse and keyboard"
   const item = (name: string) => menu.getByRole("menuitem", { name: new RegExp(`^${name}`) });
   await avatar.click();
   await expect(avatar).toHaveAttribute("aria-expanded", "true");
-  await expect(menu.getByRole("menuitem")).toHaveText(["连接 agent…⇧⌘N", "添加机器…", "输入配对码…⇧⌘P", "设置…⌘,", "账号…"]);
+  await expect(menu.getByRole("menuitem")).toHaveText(
+    onMac ? ["连接 agent…⇧⌘N", "添加机器…", "输入配对码…⇧⌘P", "设置…⌘,", "账号…"] : ["连接 agent…Ctrl+Shift+N", "添加机器…", "输入配对码…Ctrl+Shift+P", "设置…Ctrl+,", "账号…"],
+  );
   await menu.evaluate((el) => Promise.all(el.getAnimations().map((x) => x.finished))); // it rises into place
   const a = (await avatar.boundingBox())!;
   const m = (await menu.boundingBox())!;
