@@ -18,12 +18,14 @@ const PAGE = 20;
  * routines and changes to them go through the chat: these put a sentence in the composer. They run on
  * the assistant's machine.
  */
-export function RoutinesPanel({ bot, view, route, onDraft, onShowBubble, onClose }: {
+export function RoutinesPanel({ bot, view, route, onDraft, onShowBubble, onBack, onClose }: {
   bot: BotSummary;
   view: SessionView | null;
   route: RoutinesRoute;
   onDraft: (text: string) => void;
   onShowBubble: (run: string) => void;
+  /** Back to Her's page, where the list is one of her cards. */
+  onBack: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation("her");
@@ -59,6 +61,7 @@ export function RoutinesPanel({ bot, view, route, onDraft, onShowBubble, onClose
   return (
     <Shell
       title={t("routines.title")}
+      back={onBack}
       close={close}
       action={
         <button className="tb" title={t("routines.new")} aria-label={t("routines.new")} onClick={create}>

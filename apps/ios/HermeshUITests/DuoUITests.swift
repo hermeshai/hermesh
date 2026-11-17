@@ -274,7 +274,7 @@ extension HermeshUITests {
         duoShot(self, "real-her-onboarding")
         herSend("[[mock:send:你好，主人]] hi")
         XCTAssertTrue(app.staticTexts["你好，主人"].waitForExistence(timeout: 60), "Her's reply")
-        XCTAssertTrue(app.buttons["her-progress"].exists, "Progress, in the bar where it stands on the side")
+        XCTAssertTrue(app.buttons["her-avatar"].exists && app.buttons["her-progress"].exists, "her mark, and Progress in the bar")
         duoShot(self, "real-her")
     }
 }

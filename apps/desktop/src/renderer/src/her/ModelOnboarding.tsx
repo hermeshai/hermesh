@@ -4,6 +4,7 @@ import type { BotSummary } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { errorText } from "../store";
 import { useHer } from "./context";
+import { BusyBubble } from "./Busy";
 import { modelTitle } from "./format";
 import {
   checking,
@@ -279,23 +280,7 @@ export function Onboarding({ flow, bot }: { flow: Flow; bot: BotSummary }) {
           </Hers>
         ),
       )}
-      {flow.step === "connecting" && (
-        <div className="bm working">
-          <div className="bm-b">
-            <div className="bline">
-              <div className="bbub wbub">
-                <div className="wb-h" title={t("line.typing")}>
-                  <span className="dots" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {flow.step === "connecting" && <BusyBubble busy={{ her: true, agents: [] }} />}
     </div>
   );
 }

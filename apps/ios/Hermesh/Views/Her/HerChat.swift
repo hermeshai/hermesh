@@ -87,6 +87,9 @@ final class HerChat {
     private(set) var agentPaging: Set<String> = []
     /// Moves when her says a connector changed (mcp/changed): the connectors pages read them again.
     private(set) var connectorsChanged = 0
+    /// Moves when her says her settings, skills or models changed (config/changed, skills/changed, models/changed):
+    /// the pages that show them read them again.
+    private(set) var settingsChanged = 0
     /// The connections are open.
     private(set) var envUp = false
     private(set) var convUp = false
@@ -178,6 +181,12 @@ final class HerChat {
             envTask = nil
             if f.running { envTask = Task { await self.followEnvironment() } }
         }
+        // Another Her (her data erased, Her on again): what was said was to the one before, and this iPhone's copy
+        // was of hers too. Until the new one's conversation opens (with no model yet, it doesn't), it shows nothing.
+        if let was = following?.bot, let now = f.bot, was != now {
+            live = nil
+            if kept?.bot.id != now { kept = nil }
+        }
         // A model connected opens the conversation her refused for want of one; otherwise what the machine says of
         // its models changes nothing on an open conversation (docs/her-sending.md §5.4).
         var reopen = f
@@ -210,9 +219,12 @@ final class HerChat {
                     case .notification("bots/changed", let params):
                         bots = mergeBots(bots, params)
                     case .notification("models/changed", _):
+                        settingsChanged += 1
                         Task { if let m = try? await c.call("models/list") { models = HerModels(m) } }
                     case .notification("mcp/changed", _):
                         connectorsChanged += 1
+                    case .notification("config/changed", _), .notification("skills/changed", _):
+                        settingsChanged += 1
                     default:
                         break
                     }
@@ -628,6 +640,50 @@ final class HerChat {
             HerBrowser.shared.close()
             flow?.signInEnded(end)
         }
+    }
+
+    /// The ChatGPT sign-in from the Models page, outside the onboarding: in the browser, its redirect caught on this
+    /// iPhone. Closing the browser, or cancelling the task, stops it.
+    func signInChatGPTAlone() async -> HerSignInEnd {
+        let running = SignInTask()
+        let task = Task { () -> HerSignInEnd in
+            do {
+                return await herSignInChatGPT(try await signInDeps { running.task?.cancel() })
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        }
+        running.task = task
+        let end = await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        HerBrowser.shared.close()
+        return end
+    }
+
+    /// Puts a file of this iPhone on the machine, where her can read it, as the console's upload does (a skill's
+    /// archive); where it landed there.
+    func upload(_ file: URL) async throws -> String {
+        guard let api else { throw notConnected }
+        var r = Hermesh_Local_V1_GetHerConsoleRequest()
+        r.machineID = machineID
+        let res: Hermesh_Local_V1_GetHerConsoleResponse = try await api.call("GetHerConsole", r)
+        guard let base = URL(string: res.url), base.scheme == "http", base.host == "127.0.0.1", let port = base.port else { throw notConnected }
+        let prefix = base.path.hasSuffix("/") ? base.path : base.path + "/"
+        let data = try Data(contentsOf: file)
+        let name = file.lastPathComponent.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? "skill.zip"
+        let (status, body) = try await LocalAPI.loopback(port: port, method: "POST", path: prefix + "upload", body: data, contentType: "application/octet-stream",
+                                                         headers: ["Her-File-Name": name], timeout: 120)
+        guard status == 200, let path = (try? JSON.parse(body))?["path"].string else { throw refusal(status, body) }
+        return path
+    }
+
+    /// The environment's console, as this iPhone serves it on a loopback address under a token (GetHerConsole).
+    func consoleURL() async throws -> URL {
+        guard let api else { throw notConnected }
+        var r = Hermesh_Local_V1_GetHerConsoleRequest()
+        r.machineID = machineID
+        let res: Hermesh_Local_V1_GetHerConsoleResponse = try await api.call("GetHerConsole", r)
+        guard let base = URL(string: res.url), base.scheme == "http", base.host == "127.0.0.1", base.port != nil else { throw notConnected }
+        return base
     }
 
     /// Another way: the sign-in under way stops.

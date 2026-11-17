@@ -1,5 +1,5 @@
 import type { ErrorInfo } from "@hermesh/her-protocol";
-import { callTarget, type AgentView, type SessionView } from "./session.ts";
+import { callTarget, runningAgents, type SessionView } from "./session.ts";
 import { conversation, detailsOf, userText, type ReplyQuote, type ToolView, type WorkItem } from "./steps.ts";
 import { baseName } from "./text.ts";
 
@@ -342,14 +342,22 @@ export function imageRatio(f: Pick<BotFile, "width" | "height">, alone: boolean)
   return alone ? clamp(own, 0.5, 4) : clamp(own, 0.75, 2);
 }
 
+/** A sub-agent the busy bubble names: its id, to open its record, and what it is called (as an approval names it). */
+export interface BusyAgent {
+  id: string;
+  name: string;
+}
+
 /**
- * What the busy bubble shows while the bot answers: the call it is on, as Progress says a step (toolVerb, toolObject),
- * else the dots alone. Null while it does not answer: waiting for an approval is not answering, nor is a sub-agent at
- * work in the background, which Progress shows (docs/her-team.md §15).
+ * Who the busy bubble names (docs/her-team.md §15.6): the bot, while it answers, and its sub-agents at work that wait
+ * for nobody, the one that started last first. Only who, never what they are doing. Null when nothing is at work, and
+ * while the bot waits for the owner: an approval in the composer's place says so.
  */
-export function busyBubble(v: SessionView): { now: ToolView | null } | null {
-  if (!v.live || v.live.approvals.length > 0) return null;
-  // Her's own words and the sub-agents she starts show as themselves, not as what she does.
-  const t = v.live.tools.findLast((t) => (t.phase === "running" || t.phase === "pending") && t.name !== "send_to_user" && t.name !== "spawn_agent");
-  return { now: t ? { call_id: t.call_id, name: t.name, category: t.category, title: t.title, args: t.args, state: t.phase as ToolView["state"] } : null };
+export function busyBubble(v: SessionView): { her: boolean; agents: BusyAgent[] } | null {
+  if (v.live?.approvals.length) return null;
+  const agents = runningAgents(v)
+    .filter((a) => !a.view.live?.approvals.length)
+    .sort((a, b) => b.since - a.since)
+    .map((a) => ({ id: a.id, name: a.description || a.name }));
+  return v.live || agents.length ? { her: !!v.live, agents } : null;
 }

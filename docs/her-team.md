@@ -973,7 +973,8 @@ that opens the session (§4.4); its question is All Sessions' to ask.
   her page, on the iPhone a glass circle across from the menu button (where
   the system stands the bars on the side, iPhone Duo, in that bar with the
   menu button, as a page that draws its own top leaves its buttons there),
-  on the Mac before her routines and ⋯. It opens Progress over her conversation (pushed on the iPhone, in
+  on the Mac before ⋯. It stays there, not a card of her page beside her
+  files and routines: it is looked at often (decided 2026-11-17). It opens Progress over her conversation (pushed on the iPhone, in
   her page's place on the Mac, whose sidebar keeps Her current), with a
   way back to her. Its mark is an orange dot while a sub-agent of hers
   waits for the owner, else a blue one while one is at work (2026-11-16),
@@ -1081,33 +1082,51 @@ kind; the apps tell by the `/` and do not read on with it.
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
   sub-agent's post under Needs you, what set it off from its ⓘ, Review to
   its record, the approval answered there, its report, time and tokens; the
-  post under Earlier once it ends; another at work, the top bar's "1 at
-  work" and its post under Now, with no busy bubble; Her's own call in her
-  busy bubble (§15.6); a coding session she starts, a card in her
+  post under Earlier once it ends; another at work, Progress's "1 at
+  work", its post under Now, and the busy bubble naming it and opening its
+  record; two at work, the bubble's menu of them; Her answering, "Typing…"
+  and never her call (§15.6); a coding session she starts, a card in her
   conversation and no post.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
   Needs you, its ⓘ's sheet with the owner's words and Her's, Review to
   the record, and the ended post under Earlier; another at work, Progress
-  marked at work, its post under Now, no busy bubble; Her's own call in
-  her busy bubble. `testHerApprovalEnd`: under a conversation longer than
+  marked at work, its post under Now, the busy bubble naming it and
+  opening its record; two at work, the system's menu of them; Her
+  answering, "Typing…" and never her call. `testHerApprovalEnd`: under a conversation longer than
   the page, a sub-agent's question in the composer's place leaves her last
   words in view.
 
 ### 15.6 The busy bubble
 
-Decided by the owner on 2026-11-16. The dots at the end of her
-conversation mean what they mean in any chat: she is answering. They show
-while her task runs and waits for no approval, and are gone once she has
-answered. A sub-agent at work after that is Progress's to show (its post
-under Now, the button's blue dot), not the conversation's: a background
-piece of work can run for half an hour, and dots that long only worry. In
-Her's bot mode she never waits for a sub-agent within a reply
-(`spawn_agent` there has no `wait`), so no sub-agent belongs in the bubble.
+Decided by the owner on 2026-11-17 (docs/her-busy-demo.html), in place of
+what was decided on 2026-11-16 (the dots gone once she answered, a sub-agent
+at work being Progress's alone): a conversation gone quiet while her work
+went on misled. The last bubble of her conversation says who of hers is at
+work, in one line, and never what they are doing:
 
-While she is on a call of her own (not her words, `send_to_user`, nor a
-sub-agent she starts), the dots quieten and the call follows them,
-shimmering, in the words Progress says a sub-agent's step in: "Running
-df -h". It is read from the task's live tools alone (her-client's
-`busyBubble`, HermeshHer's `herBusyBubble`), nothing more is asked of her,
-and nothing of the conversation is worked out again for it.
+- While her task runs and waits for no approval: Her, "Typing…".
+- Her sub-agents at work that wait for nobody, by name (as an approval
+  names them: the description, else the name), the one started last first,
+  after Her when she answers too.
+- No bubble when nothing is at work, nor while what is waits for the owner:
+  the question in the composer's place says so.
+
+The dots, still, and the words are swept left to right by one light, at the
+shimmer's pace (2.4 s): a mask, so they only fade where it passes, whatever
+is under the bubble (a band of the bubble's colour laid over them showed as
+a box on the iPhone's translucent bubble). With less motion asked for, no
+light and no turns.
+
+One sub-agent: the line opens its record in Progress (›), whose way back is
+her conversation. Several take turns in one cell as wide as the widest name,
+the next each time the light has swept the line (not while the pointer is on
+it or its menu is open); the line ends with their number and a chevron
+pointing where their menu opens, up (turned over while it is open, on the
+Mac). It is a pull-down, not a pop-up: it picks no value, so not ⌃⌄. Its
+menu (the system's on the iPhone, the app's on the Mac) lists them, each
+opening its record, then "See All in Progress".
+
+It is read from the task's live state and its sub-agents' alone
+(her-client's `busyBubble`, HermeshHer's `herBusyBubble`): who, not their
+calls; nothing more is asked of her, nor kept.

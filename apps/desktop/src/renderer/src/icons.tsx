@@ -75,6 +75,14 @@ const paths: Record<string, string> = {
   pin: "<path d=\"M6 2.4h4l-.6 3.4 2 2v1H3.6v-1l2-2z\"/><path d=\"M8 8.8v4.8\"/>",
   play: "<path d=\"M5 3.4v9.2L12.4 8z\"/>",
   retry: "<path d=\"M12.8 7.6a4.8 4.8 0 1 1-1.4-3.4\"/><path d=\"M12 2.4v2.8H9.2\"/>",
+  // A list with checks: Her's page, its Work tab.
+  checklist: "<path d=\"M2.4 4.2l1 1 1.9-2M7.6 4.2h6M2.4 8.6l1 1 1.9-2M7.6 8.6h6M3 12.6h1.6M7.6 12.6h6\"/>",
+  // A puzzle piece: Her's page, its Abilities tab.
+  puzzle: "<path d=\"M6.4 3.4v-.6a1.6 1.6 0 0 1 3.2 0v.6h2.6c.4 0 .7.3.7.7v2.5h.5a1.6 1.6 0 0 1 0 3.2h-.5v2.5c0 .4-.3.7-.7.7H9.6v-.6a1.6 1.6 0 0 0-3.2 0v.6H3.8c-.4 0-.7-.3-.7-.7V9.8h.5a1.6 1.6 0 0 0 0-3.2h-.5V4.1c0-.4.3-.7.7-.7z\"/>",
+  // A brain in two halves: what Her remembers.
+  brain: "<path d=\"M8 3.6C7 2.4 4.8 2.7 4.4 4.5 2.9 4.8 2.3 6.5 3.3 7.6c-1 1.1-.4 3.1 1.2 3.3.3 1.9 2.6 2.3 3.5 1.1M8 3.6c1-1.2 3.2-.9 3.6.9 1.5.3 2.1 2 1.1 3.1 1 1.1.4 3.1-1.2 3.3-.3 1.9-2.6 2.3-3.5 1.1M8 3.6V12\"/>",
+  // A window with its bar: the browsers Her uses.
+  window: "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"1.6\"/><path d=\"M2 6h12M4 4.6h.1M5.6 4.6h.1\"/>",
   // A pulse: the Progress entry.
   pulse: "<path d=\"M1.8 8.4h2.8l1.9-4.8 3 8.8 1.9-4h2.8\"/>",
   // A kitten's head: a sub-agent of Her's.

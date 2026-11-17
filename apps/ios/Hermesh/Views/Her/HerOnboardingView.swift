@@ -53,19 +53,8 @@ struct HerOnboardingView: View {
 
     private func provider(_ id: String) -> String { plan(id)?.name ?? chat.models.provider(id)?.name(language: language) ?? id }
 
-    /// A Token Plan by the name the app gives it (her's catalog names them in English only), and the line that
-    /// tells it from the others.
-    private func plan(_ id: String) -> (name: String, note: String)? {
-        switch id {
-        case "bailian-token-plan": (String(localized: "Bailian Token Plan"), String(localized: "Alibaba Cloud · multi-model"))
-        case "tencent-token-plan": (String(localized: "Tencent Cloud Token Plan"), String(localized: "General and Hy share a key"))
-        case "volcengine-agent-plan": (String(localized: "Volcengine Ark Agent Plan"), String(localized: "Agent Plan key only"))
-        case "volcengine-coding-plan": (String(localized: "Volcengine Ark Coding Plan"), String(localized: "Coding Plan key only"))
-        case "zai-coding-plan": (String(localized: "Z.ai GLM Coding Plan"), String(localized: "International account"))
-        case "zhipu-coding-plan": (String(localized: "Zhipu GLM Coding Plan"), String(localized: "China account"))
-        default: nil
-        }
-    }
+    /// A Token Plan by the name the app gives it, and the line that tells it from the others.
+    private func plan(_ id: String) -> (name: String, note: String)? { herPlanTitle(id) }
 
     private func connectedName(_ done: HerOnboarding.Done) -> String {
         switch flow.connected {

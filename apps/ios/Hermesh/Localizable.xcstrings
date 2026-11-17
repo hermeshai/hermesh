@@ -17,6 +17,26 @@
         }
       }
     },
+    "$5 free a month, about 1,000 searches. Signing up needs a card.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月 $5 免费额度，约 1000 次。注册时要绑卡。"
+          }
+        }
+      }
+    },
+    "$5 free a month, needs a key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月 $5 免费额度，需要密钥"
+          }
+        }
+      }
+    },
     "%@ %lld%%": {
       "localizations": {
         "zh-Hans": {
@@ -47,6 +67,16 @@
         }
       }
     },
+    "%@ (Your Browser)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@（你的浏览器）"
+          }
+        }
+      }
+    },
     "%@ A trusted device: it can approve requests to connect.": {
       "localizations": {
         "zh-Hans": {
@@ -73,6 +103,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 的统计截至 %2$@"
+          }
+        }
+      }
+    },
+    "%@ did not work: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 没测通：%2$@"
           }
         }
       }
@@ -217,6 +257,16 @@
         }
       }
     },
+    "%@ refused this key. It was not saved.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 拒绝了这个密钥，没有保存。"
+          }
+        }
+      }
+    },
     "%@ sent %lld turns": {
       "localizations": {
         "zh-Hans": {
@@ -307,6 +357,16 @@
         }
       }
     },
+    "%@ works · %lld results · %@ s": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 可用 · %2$lld 条结果 · %3$@ 秒"
+          }
+        }
+      }
+    },
     "%@ · %@": {
       "shouldTranslate": false
     },
@@ -352,6 +412,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 在用 · %@"
+          }
+        }
+      }
+    },
+    "%@, something is waiting for you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，有事在等你"
           }
         }
       }
@@ -515,6 +585,26 @@
         }
       }
     },
+    "%lld new": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 份新的"
+          }
+        }
+      }
+    },
+    "%lld of %lld models shown": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示 %1$lld / 共 %2$lld 个模型"
+          }
+        }
+      }
+    },
     "%lld projects": {
       "localizations": {
         "en": {
@@ -597,6 +687,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld 个会话运行过"
+          }
+        }
+      }
+    },
+    "%lld skills didn’t load": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个技能没有加载"
           }
         }
       }
@@ -702,6 +802,26 @@
     "+%lld": {
       "shouldTranslate": false
     },
+    "1,000 free a month, needs a key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月 1000 次免费，需要密钥"
+          }
+        }
+      }
+    },
+    "1,000 searches free a month, then about $0.008 each.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每月 1000 次免费，之后每次约 $0.008。"
+          }
+        }
+      }
+    },
     "1. On the other device": {
       "localizations": {
         "zh-Hans": {
@@ -778,6 +898,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "8 分钟前"
+          }
+        }
+      }
+    },
+    "A copy of each file an assistant sent you, as it was when sent; the same content is kept once": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手每次发给你的文件，按发出时的样子各留一份；内容相同只留一份"
+          }
+        }
+      }
+    },
+    "A key was read from the environment variable %@; one saved here is used only when it is not set.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已从环境变量 %@ 读到密钥；这里保存的密钥只在它不存在时使用。"
           }
         }
       }
@@ -872,12 +1012,42 @@
         }
       }
     },
+    "A search service for Chinese content.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "面向中文内容的搜索服务。"
+          }
+        }
+      }
+    },
+    "A skill is a folder with a SKILL.md, uploaded as a .zip or .skill archive from Files. Her checks its header, then copies it into ~/.her/skills on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能是一个含 SKILL.md 的文件夹，打包成 .zip 或 .skill 从“文件”里上传。Her 先检查它的头部，再复制到 %@ 上的 ~/.her/skills。"
+          }
+        }
+      }
+    },
     "A try": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "试一次"
+          }
+        }
+      }
+    },
+    "Abilities": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "能力"
           }
         }
       }
@@ -938,6 +1108,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "添加"
+          }
+        }
+      }
+    },
+    "Add %@ Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 %@ 密钥"
+          }
+        }
+      }
+    },
+    "Add an API Service": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 API 服务"
           }
         }
       }
@@ -1022,6 +1212,16 @@
         }
       }
     },
+    "Add Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加密钥"
+          }
+        }
+      }
+    },
     "Add projects to it on its page.": {
       "localizations": {
         "zh-Hans": {
@@ -1038,6 +1238,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 %@ 里添加这个连接器"
+          }
+        }
+      }
+    },
+    "Added %@; new conversations can use it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加 %@，新对话起可用"
           }
         }
       }
@@ -1242,12 +1452,32 @@
         }
       }
     },
+    "All Sites": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有网站"
+          }
+        }
+      }
+    },
     "All Sources": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "全部来源"
+          }
+        }
+      }
+    },
+    "Allow Her to Control Browsers": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许 Her 控制浏览器"
           }
         }
       }
@@ -1378,6 +1608,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "回答…"
+          }
+        }
+      }
+    },
+    "API and Custom Services": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 与自定义服务"
           }
         }
       }
@@ -1532,6 +1772,16 @@
         }
       }
     },
+    "Ask First": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先问我"
+          }
+        }
+      }
+    },
     "Asked earlier": {
       "localizations": {
         "zh-Hans": {
@@ -1582,6 +1832,16 @@
         }
       }
     },
+    "Both browsers share these. Addresses on a private network don’t follow All Sites: each asks the first time.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两个浏览器共用。内网地址不跟随“所有网站”，每个第一次用到时都会先问你。"
+          }
+        }
+      }
+    },
     "Branch": {
       "localizations": {
         "zh-Hans": {
@@ -1598,6 +1858,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "浏览其他文件夹…"
+          }
+        }
+      }
+    },
+    "Browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器"
+          }
+        }
+      }
+    },
+    "Built In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置"
+          }
+        }
+      }
+    },
+    "Built into Her": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 内置"
+          }
+        }
+      }
+    },
+    "Built-in Browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置浏览器"
           }
         }
       }
@@ -1652,6 +1952,16 @@
         }
       }
     },
+    "Cache": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缓存"
+          }
+        }
+      }
+    },
     "Called": {
       "localizations": {
         "zh-Hans": {
@@ -1678,6 +1988,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
+          }
+        }
+      }
+    },
+    "Can’t Open the Console": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打不开控制台"
           }
         }
       }
@@ -1842,6 +2162,26 @@
         }
       }
     },
+    "Chinese content, needs a key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中文内容，需要密钥"
+          }
+        }
+      }
+    },
+    "Choose the service you subscribe to; its API key comes next.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择已订阅的服务，下一步填写 API Key。"
+          }
+        }
+      }
+    },
     "Choose Use Your Own Server… and type": {
       "localizations": {
         "zh-Hans": {
@@ -1888,6 +2228,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "选择…"
+          }
+        }
+      }
+    },
+    "Chosen with HER_HOME": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由 HER_HOME 指定"
           }
         }
       }
@@ -2052,6 +2402,36 @@
         }
       }
     },
+    "Configured Paths": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置里的路径"
+          }
+        }
+      }
+    },
+    "Connect %@ under Models first": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要先在“模型”里连接 %@"
+          }
+        }
+      }
+    },
+    "Connect a model plan you already have": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你已有的模型套餐"
+          }
+        }
+      }
+    },
     "Connect Your Agent": {
       "localizations": {
         "zh-Hans": {
@@ -2102,6 +2482,16 @@
         }
       }
     },
+    "Connect your Chrome to choose it. Until then, new pages open in the built-in browser.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接你的 Chrome 后可以选它。在那之前，新网页都在内置浏览器里打开。"
+          }
+        }
+      }
+    },
     "Connect your computer": {
       "localizations": {
         "zh-Hans": {
@@ -2122,12 +2512,32 @@
         }
       }
     },
+    "Connected %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已接上 %@"
+          }
+        }
+      }
+    },
     "Connected Agents": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "连接的 Agent"
+          }
+        }
+      }
+    },
+    "Connected · %lld of %lld models shown": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接 · 显示 %1$lld / 共 %2$lld 个模型"
           }
         }
       }
@@ -2192,12 +2602,32 @@
         }
       }
     },
+    "Conversations": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话"
+          }
+        }
+      }
+    },
     "Copied": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "已拷贝"
+          }
+        }
+      }
+    },
+    "Copied %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制 %@"
           }
         }
       }
@@ -2218,6 +2648,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "拷贝"
+          }
+        }
+      }
+    },
+    "Copies To": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将复制到"
           }
         }
       }
@@ -2252,6 +2692,16 @@
         }
       }
     },
+    "Copy Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制路径"
+          }
+        }
+      }
+    },
     "Copy Session ID": {
       "localizations": {
         "zh-Hans": {
@@ -2262,12 +2712,52 @@
         }
       }
     },
+    "could not be reached": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连不上"
+          }
+        }
+      }
+    },
+    "Could not read the files: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读不到文件：%@"
+          }
+        }
+      }
+    },
     "Couldn’t list its repositories: %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "无法列出仓库：%@"
+          }
+        }
+      }
+    },
+    "Couldn’t sign in to ChatGPT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没能登录 ChatGPT"
+          }
+        }
+      }
+    },
+    "Counted each time this page opens.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每次打开此页面时统计。"
           }
         }
       }
@@ -2312,6 +2802,16 @@
         }
       }
     },
+    "Credential store": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "凭据库"
+          }
+        }
+      }
+    },
     "Current branch (%@)": {
       "localizations": {
         "zh-Hans": {
@@ -2352,6 +2852,16 @@
         }
       }
     },
+    "Default Browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认使用的浏览器"
+          }
+        }
+      }
+    },
     "Default Model": {
       "localizations": {
         "zh-Hans": {
@@ -2378,6 +2888,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除定时任务"
+          }
+        }
+      }
+    },
+    "Delete Skill": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除技能"
           }
         }
       }
@@ -2418,6 +2938,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "已删除"
+          }
+        }
+      }
+    },
+    "Deleted %@; it is in the Trash": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除 %@，移到了废纸篓"
+          }
+        }
+      }
+    },
+    "Deleted Conversations": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已删除的对话"
           }
         }
       }
@@ -2682,6 +3222,16 @@
         }
       }
     },
+    "Each site asks the first time it’s used": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个网站第一次用到时先问你"
+          }
+        }
+      }
+    },
     "Each time it’s woken, the bot runs once.": {
       "localizations": {
         "zh-Hans": {
@@ -2802,6 +3352,16 @@
         }
       }
     },
+    "Enter a site such as example.com or https://example.com.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填一个网站，比如 example.com 或 https://example.com。"
+          }
+        }
+      }
+    },
     "Enter the Pairing Code…": {
       "localizations": {
         "zh-Hans": {
@@ -2818,6 +3378,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "环境"
+          }
+        }
+      }
+    },
+    "Environment variable %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "环境变量 %@"
           }
         }
       }
@@ -2882,6 +3452,26 @@
         }
       }
     },
+    "Every conversation, with its tools’ full output": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有对话，以及工具的完整输出"
+          }
+        }
+      }
+    },
+    "Every service is off, so the model can’t search right now.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有服务都关了，模型现在搜不了。"
+          }
+        }
+      }
+    },
     "Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).": {
       "localizations": {
         "zh-Hans": {
@@ -2898,6 +3488,19 @@
           "stringUnit": {
             "state": "translated",
             "value": "每次放行都要你本人"
+          }
+        }
+      }
+    },
+    "example.com": {
+      "shouldTranslate": false
+    },
+    "Exceptions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "例外"
           }
         }
       }
@@ -2982,6 +3585,16 @@
         }
       }
     },
+    "Featured": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "精选"
+          }
+        }
+      }
+    },
     "Fetched": {
       "localizations": {
         "zh-Hans": {
@@ -2998,6 +3611,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "正在访问"
+          }
+        }
+      }
+    },
+    "Files Sent to You": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发给你的文件"
           }
         }
       }
@@ -3092,12 +3715,52 @@
         }
       }
     },
+    "Folders in skills.paths.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "skills.paths 里的目录。"
+          }
+        }
+      }
+    },
+    "Forget Account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记账户"
+          }
+        }
+      }
+    },
+    "Forget the ChatGPT account?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "忘记 ChatGPT 账户？"
+          }
+        }
+      }
+    },
     "Found %lld on %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "%2$@ 上找到 %1$lld 个"
+          }
+        }
+      }
+    },
+    "Found a skill. Check it:": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读到了一个技能，确认一下："
           }
         }
       }
@@ -3112,12 +3775,62 @@
         }
       }
     },
+    "Free tier, no key needed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "免费额度，不用密钥"
+          }
+        }
+      }
+    },
+    "From a command": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令提供"
+          }
+        }
+      }
+    },
     "From the scheduled task “%@”": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "来自定时任务「%@」"
+          }
+        }
+      }
+    },
+    "From the top down, the first one that can be used goes first; if it fails, the next.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从上到下，先用第一个可用的；失败就换下一个。"
+          }
+        }
+      }
+    },
+    "Get a Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取密钥"
+          }
+        }
+      }
+    },
+    "Get one from %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "去 %@ 获取"
           }
         }
       }
@@ -3228,6 +3941,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her 还没启用"
+          }
+        }
+      }
+    },
+    "Her opens pages in her own %@ on the %@ she runs on, without your sign-ins, in a window there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在她所在的那台%2$@上用她自己的 %1$@ 打开网页，不带你的登录状态，会显示窗口。"
+          }
+        }
+      }
+    },
+    "Her opens pages in her own %@ on the %@ she runs on, without your sign-ins, with no window.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在她所在的那台%2$@上用她自己的 %1$@ 打开网页，不带你的登录状态，不显示窗口。"
+          }
+        }
+      }
+    },
+    "Her opens web pages and acts in them. Which sites she may use without asking is below.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 打开网页并在里面操作。哪些网站不用问你，见下方的网站权限。"
+          }
+        }
+      }
+    },
+    "Her skipped them; the other skills are not affected. Once they are fixed, the list updates by itself.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 跳过了它们，其他技能不受影响。改好之后，列表会自动更新。"
+          }
+        }
+      }
+    },
+    "Her stops using the subscription on %@, and its sign-in is deleted there.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 在 %@ 上不再用这个订阅，那里保存的登录一并删除。"
+          }
+        }
+      }
+    },
+    "Her uses it only when you name it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只能手动调用：你点名时 Her 才用它。"
           }
         }
       }
@@ -3381,6 +4154,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Her 在你的某台机器上运行后，她的定时任务会显示在这里。"
+          }
+        }
+      }
+    },
+    "Her’s tabs go in a “Hermesh” tab group and work in the background. Closing the “debugging” bar at the top of Chrome takes a tab back.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 打开的标签页放在「Hermesh」分组里，在后台操作。关掉 Chrome 顶部的“正在调试”提示条，就能收回某个标签页。"
           }
         }
       }
@@ -3605,6 +4388,16 @@
         }
       }
     },
+    "In use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在用"
+          }
+        }
+      }
+    },
     "Install from a Terminal on This iPhone": {
       "localizations": {
         "zh-Hans": {
@@ -3685,6 +4478,16 @@
         }
       }
     },
+    "Installed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安装"
+          }
+        }
+      }
+    },
     "Instructions": {
       "localizations": {
         "zh-Hans": {
@@ -3721,6 +4524,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "已打断「%@」"
+          }
+        }
+      }
+    },
+    "Invoke": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调用"
           }
         }
       }
@@ -3785,6 +4598,16 @@
         }
       }
     },
+    "It moves to the Trash on %@, and new conversations no longer have it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它会移到 %@ 上的废纸篓，新对话里就没有它了。"
+          }
+        }
+      }
+    },
     "It really does the task, as when its time comes.": {
       "localizations": {
         "zh-Hans": {
@@ -3801,6 +4624,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "删除后不再运行。"
+          }
+        }
+      }
+    },
+    "Its key is deleted from the credential store on %@, and its models leave the menu.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "它的密钥会从 %@ 的凭据库删除，它的模型也会从菜单里拿掉。"
           }
         }
       }
@@ -3845,6 +4678,136 @@
         }
       }
     },
+    "Kept in the credential store on %@.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥保存在 %@ 的凭据库。"
+          }
+        }
+      }
+    },
+    "Kept on %@, where only Her reads it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存在 %@ 上，只有 Her 会读取。"
+          }
+        }
+      }
+    },
+    "Key added": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加密钥"
+          }
+        }
+      }
+    },
+    "Key added · $4 per 1,000, $10 free a month": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加密钥 · $4/千次，每月 $10 免费"
+          }
+        }
+      }
+    },
+    "Key added · $5 free a month": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加密钥 · 每月 $5 免费额度"
+          }
+        }
+      }
+    },
+    "Key added · 1,000 free a month": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加密钥 · 每月 1000 次免费"
+          }
+        }
+      }
+    },
+    "Key added, higher limits": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已添加密钥，限额更高"
+          }
+        }
+      }
+    },
+    "Key from the environment variable %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用环境变量 %@ 里的密钥"
+          }
+        }
+      }
+    },
+    "key rejected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥被拒绝"
+          }
+        }
+      }
+    },
+    "Key removed. Searches go on with the free tier": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除密钥，继续用免费额度"
+          }
+        }
+      }
+    },
+    "Key removed. Searches skip %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除密钥，%@ 这一行搜索时会跳过"
+          }
+        }
+      }
+    },
+    "Key replaced": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥已更换"
+          }
+        }
+      }
+    },
+    "Key saved, but the test did not get through": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥已保存，暂时没测通"
+          }
+        }
+      }
+    },
     "Last run failed": {
       "localizations": {
         "zh-Hans": {
@@ -3865,6 +4828,86 @@
         }
       }
     },
+    "Let Her open sites that need your sign-ins in your own Chrome, on the %@ Her runs on. It is connected there, by adding the Hermesh extension; here you can see how it stands.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要登录的网站，让 Her 用你自己的 Chrome 打开，就在 Her 所在的那台%@上。要在那台电脑的 Chrome 里添加 Hermesh 扩展来连接，这里可以看到它的状态。"
+          }
+        }
+      }
+    },
+    "Let the Model Search the Web": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许模型联网搜索"
+          }
+        }
+      }
+    },
+    "limiting requests": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在限流"
+          }
+        }
+      }
+    },
+    "Linux computer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Linux 电脑"
+          }
+        }
+      }
+    },
+    "Local": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本地"
+          }
+        }
+      }
+    },
+    "Location": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置"
+          }
+        }
+      }
+    },
+    "Manage %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理 %@"
+          }
+        }
+      }
+    },
+    "Manage “%@”…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "管理「%@」…"
+          }
+        }
+      }
+    },
     "Minimal": {
       "localizations": {
         "zh-Hans": {
@@ -3875,12 +4918,42 @@
         }
       }
     },
+    "Model lists, connectors’ tools, icons and logs; fetched again when gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型列表、连接器的工具、图标和日志；删除后会重新获取"
+          }
+        }
+      }
+    },
+    "Models": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型"
+          }
+        }
+      }
+    },
     "Moved": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "已移动"
+          }
+        }
+      }
+    },
+    "Moved aside when deleted, and not removed on their own": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除时移到一旁，不会自动清除"
           }
         }
       }
@@ -3911,6 +4984,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "需更新"
+          }
+        }
+      }
+    },
+    "Needs update": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要更新"
           }
         }
       }
@@ -3965,12 +5048,42 @@
         }
       }
     },
+    "No exceptions yet. “Always allow” in a conversation adds a site here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有例外。在对话里选“始终允许”会加到这里。"
+          }
+        }
+      }
+    },
+    "No models match": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有匹配的模型"
+          }
+        }
+      }
+    },
     "No Scheduled Tasks Yet": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "还没有定时任务"
+          }
+        }
+      }
+    },
+    "No skills of your own yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有自己的技能"
           }
         }
       }
@@ -4055,6 +5168,26 @@
         }
       }
     },
+    "Open and Act": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开和操作"
+          }
+        }
+      }
+    },
+    "Open Only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只打开"
+          }
+        }
+      }
+    },
     "Open This Run": {
       "localizations": {
         "zh-Hans": {
@@ -4075,12 +5208,72 @@
         }
       }
     },
+    "Opens Her’s page": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Her 的页面"
+          }
+        }
+      }
+    },
+    "out of quota": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额度用完了"
+          }
+        }
+      }
+    },
     "Passing it on": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "正在转告"
+          }
+        }
+      }
+    },
+    "Paste this plan’s API key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴这个套餐的 API Key"
+          }
+        }
+      }
+    },
+    "Paste this provider’s API key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴这个服务商的 API Key"
+          }
+        }
+      }
+    },
+    "Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "路径"
+          }
+        }
+      }
+    },
+    "Path copied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制路径"
           }
         }
       }
@@ -4195,6 +5388,126 @@
         }
       }
     },
+    "Refresh the List": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新列表"
+          }
+        }
+      }
+    },
+    "Refreshing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在刷新…"
+          }
+        }
+      }
+    },
+    "Remove %@?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除 %@？"
+          }
+        }
+      }
+    },
+    "Remove Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除密钥"
+          }
+        }
+      }
+    },
+    "Remove the %@ key?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除 %@ 的密钥？"
+          }
+        }
+      }
+    },
+    "Removed %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除 %@"
+          }
+        }
+      }
+    },
+    "Reorder": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序"
+          }
+        }
+      }
+    },
+    "Replace": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "替换"
+          }
+        }
+      }
+    },
+    "Replace %@ Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更换 %@ 密钥"
+          }
+        }
+      }
+    },
+    "Replace Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更换密钥"
+          }
+        }
+      }
+    },
+    "Replace Key…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更换密钥…"
+          }
+        }
+      }
+    },
+    "Replaced %@; the old one is in the Trash": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已替换 %@，旧的在废纸篓里"
+          }
+        }
+      }
+    },
     "Report": {
       "localizations": {
         "zh-Hans": {
@@ -4305,6 +5618,36 @@
         }
       }
     },
+    "Save and Test": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存并测试"
+          }
+        }
+      }
+    },
+    "Saved, though the provider couldn’t confirm this key yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存好了，不过暂时没法向服务商确认这个 Key 能用"
+          }
+        }
+      }
+    },
+    "Saved. A plan’s key is checked on its first reply.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存好了。套餐的 Key 要到第一次回复时才能确认能不能用。"
+          }
+        }
+      }
+    },
     "Scheduled Task": {
       "localizations": {
         "zh-Hans": {
@@ -4331,26 +5674,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "定时任务现在用不了"
-          }
-        }
-      }
-    },
-    "Scheduled Tasks, a last run failed": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定时任务，有一个上次没做成"
-          }
-        }
-      }
-    },
-    "Scheduled Tasks, one running": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定时任务，有一个正在运行"
           }
         }
       }
@@ -4385,12 +5708,32 @@
         }
       }
     },
+    "Search Models": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索模型"
+          }
+        }
+      }
+    },
     "Search routines": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "搜定时任务"
+          }
+        }
+      }
+    },
+    "Search Services": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索服务"
           }
         }
       }
@@ -4435,12 +5778,72 @@
         }
       }
     },
+    "Set in her environment on %@; to remove it, delete %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %1$@ 上 her 的环境里设置，要移除请删掉 %2$@"
+          }
+        }
+      }
+    },
+    "Set in ~/.her/models.toml on %@; to remove it, edit that file": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 %@ 的 ~/.her/models.toml 里设置，要移除请编辑该文件"
+          }
+        }
+      }
+    },
     "Set up a scheduled task for me: ": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "帮我建一个定时任务："
+          }
+        }
+      }
+    },
+    "Settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置"
+          }
+        }
+      }
+    },
+    "Settings and Other": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置及其他"
+          }
+        }
+      }
+    },
+    "Settings, skills, routines and the rest": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置、技能、例行任务等"
+          }
+        }
+      }
+    },
+    "Shares your model key · $0.75 per 1,000": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "和模型共用密钥 · $0.75/千次"
           }
         }
       }
@@ -4491,6 +5894,76 @@
           "stringUnit": {
             "state": "translated",
             "value": "查看你的 Agent 在做什么"
+          }
+        }
+      }
+    },
+    "Sign in with a ChatGPT account": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 ChatGPT 账户登录"
+          }
+        }
+      }
+    },
+    "Signed in to ChatGPT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已登录 ChatGPT"
+          }
+        }
+      }
+    },
+    "Site Permissions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站权限"
+          }
+        }
+      }
+    },
+    "Sites open and are acted on without asking": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站直接打开和操作，不再问你"
+          }
+        }
+      }
+    },
+    "Sites open without asking; acting on them asks first": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站直接打开，操作前先问你"
+          }
+        }
+      }
+    },
+    "Skills": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能"
+          }
+        }
+      }
+    },
+    "Skills That Didn’t Load": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有加载的技能"
           }
         }
       }
@@ -4555,6 +6028,16 @@
         }
       }
     },
+    "Storage": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存储"
+          }
+        }
+      }
+    },
     "Sub-agent": {
       "localizations": {
         "zh-Hans": {
@@ -4571,6 +6054,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "团队"
+          }
+        }
+      }
+    },
+    "Test Search": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试搜索"
+          }
+        }
+      }
+    },
+    "The agents and scheduled tasks Her starts work the same way, while you are away as well. Off, no device notifies you of Her; what is unread still shows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。通知关掉后，所有设备都不发 Her 的通知，未读照常显示。"
+          }
+        }
+      }
+    },
+    "The built-in browser’s sign-ins and downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置浏览器的登录状态和下载"
+          }
+        }
+      }
+    },
+    "The console is the web page that manages %@: models, connectors, skills, web search, the browser and storage.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制台是管理 %@ 的网页：模型、连接器、技能、联网搜索、浏览器和存储。"
+          }
+        }
+      }
+    },
+    "The default location": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认位置"
+          }
+        }
+      }
+    },
+    "The extension and Hermesh on the %@ Her runs on are not the same version; the older one needs an update.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 所在的那台%@上，扩展和 Hermesh 的版本对不上，旧的那个需要更新。"
+          }
+        }
+      }
+    },
+    "The extension is connected, but Her doesn’t use it yet.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扩展已连接，Her 还没有使用。"
+          }
+        }
+      }
+    },
+    "The extension is not connected. Check that Chrome is open on the %@ Her runs on, and that Hermesh is on in its extensions page.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扩展没有连上。确认 Her 所在的那台%@上 Chrome 是打开的，并且它的扩展程序页面里 Hermesh 是打开的。"
+          }
+        }
+      }
+    },
+    "The key is deleted from the credential store, and searches go on with the free tier.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥会从凭据库删除，之后继续用免费额度。"
+          }
+        }
+      }
+    },
+    "The key is deleted from the credential store, and searches skip this service.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "密钥会从凭据库删除，这一行搜索时会跳过。"
+          }
+        }
+      }
+    },
+    "The key saved in this environment is removed; your plan with the provider is not cancelled.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从这个环境移除保存的密钥，不会取消服务商的套餐订阅。"
+          }
+        }
+      }
+    },
+    "The last refresh failed: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次刷新失败：%@"
+          }
+        }
+      }
+    },
+    "The model searches when it needs to. What it searches for is sent to the services below.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要时模型会自己搜索。搜索词会发给下面列表里的服务。"
           }
         }
       }
@@ -4595,6 +6208,16 @@
         }
       }
     },
+    "The sign-in expired; sign in again": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "登录已失效，请重新登录"
+          }
+        }
+      }
+    },
     "The work Her sends out shows here once she runs on one of your machines.": {
       "localizations": {
         "zh-Hans": {
@@ -4611,6 +6234,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "机器恢复连接后，这里会显示 Her 派出去的活。"
+          }
+        }
+      }
+    },
+    "There is a skill of this name. Replacing it moves the old one to the Trash first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已经有一个同名的技能。替换会先把旧的移到废纸篓。"
+          }
+        }
+      }
+    },
+    "There is no Chrome on the %@ Her runs on. Install Google Chrome there, and Her finds it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her 所在的那台%@上没有 Chrome。在那台电脑上装好 Google Chrome，Her 会自己找到。"
           }
         }
       }
@@ -4651,6 +6294,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "只展开思考"
+          }
+        }
+      }
+    },
+    "This file isn’t text, so it can’t be shown here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件不是文本，不能在这里查看。"
+          }
+        }
+      }
+    },
+    "This folder is the only copy of Her’s assistants, conversations, memory and the files they make. The relay and your other devices don’t keep it, so include it in this computer’s backups. Erasing Her’s data deletes it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个文件夹是 Her 的助手、对话、记忆和产出文件的唯一一份。中继和你的其他设备都不保存它，请把它纳入这台电脑的备份。抹除 Her 的数据会删除它。"
           }
         }
       }
@@ -4815,6 +6478,36 @@
         }
       }
     },
+    "This skill comes from a folder in skills.paths. It can only be turned off here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个技能来自配置里 skills.paths 的目录。这里只能停用。"
+          }
+        }
+      }
+    },
+    "This Skill Is Gone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这个技能不在了"
+          }
+        }
+      }
+    },
+    "Those turned on show in the model menu.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开着的会出现在模型菜单里。"
+          }
+        }
+      }
+    },
     "Thought": {
       "localizations": {
         "zh-Hans": {
@@ -4841,6 +6534,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "今天 %lld 个会话"
+          }
+        }
+      }
+    },
+    "Token Plan": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token Plan"
           }
         }
       }
@@ -4885,12 +6588,182 @@
         }
       }
     },
+    "Turn On %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用 %@"
+          }
+        }
+      }
+    },
+    "Turned off %@ for new conversations": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停用 %@，新对话起生效"
+          }
+        }
+      }
+    },
+    "Turned on %@ for new conversations": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已启用 %@，新对话起生效"
+          }
+        }
+      }
+    },
+    "unreadable answer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回答读不了"
+          }
+        }
+      }
+    },
+    "Updated %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@更新"
+          }
+        }
+      }
+    },
+    "Updated with Her.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "随 Her 一起更新。"
+          }
+        }
+      }
+    },
+    "Upload a Skill": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传技能"
+          }
+        }
+      }
+    },
+    "Upload one as a .zip or .skill archive.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打包成 .zip 或 .skill 上传一个。"
+          }
+        }
+      }
+    },
+    "Uploaded": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传"
+          }
+        }
+      }
+    },
+    "Use": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始使用"
+          }
+        }
+      }
+    },
+    "Use %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 %@"
+          }
+        }
+      }
+    },
+    "Use a Subscription": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用订阅"
+          }
+        }
+      }
+    },
+    "Uses the account’s subscription; API keys are billed separately.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用对应账户的订阅额度，API Key 单独计费。"
+          }
+        }
+      }
+    },
     "Waiting for an answer": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "在等回答"
+          }
+        }
+      }
+    },
+    "Waiting for the sign-in in the browser…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待在浏览器里登录…"
+          }
+        }
+      }
+    },
+    "Web Search": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "联网搜索"
+          }
+        }
+      }
+    },
+    "Web search is off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "联网搜索已关闭"
+          }
+        }
+      }
+    },
+    "Web search is on": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "联网搜索已开启"
           }
         }
       }
@@ -8491,6 +10364,36 @@
         }
       }
     },
+    "Well formed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "格式正确"
+          }
+        }
+      }
+    },
+    "What assistants and conversations made": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手和对话产出的文件"
+          }
+        }
+      }
+    },
+    "What each assistant remembers about you and your work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个助手记下的关于你和你工作的内容"
+          }
+        }
+      }
+    },
     "What Her asked": {
       "localizations": {
         "zh-Hans": {
@@ -8517,6 +10420,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "能用什么"
+          }
+        }
+      }
+    },
+    "What It Holds · %@ in All": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存放内容 · 共 %@"
           }
         }
       }
@@ -8587,6 +10500,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "如果机器或 Agent 未携带你的连接地址，终端会显示一个配对码。输入配对码后，会像其他请求一样弹出批准页面，请比对双方的核对码。"
+          }
+        }
+      }
+    },
+    "When the agent doesn’t name a browser, new pages open here.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能体没有指定浏览器时，新网页在这里打开。"
           }
         }
       }
@@ -8684,6 +10607,26 @@
         }
       }
     },
+    "Works without a key. With one it uses your own credit, at higher limits.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不加密钥也能用。加了之后用你自己的额度，限额更高。"
+          }
+        }
+      }
+    },
+    "Works without a key. With one the limits are higher.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不加密钥也能用。加了之后限额更高。"
+          }
+        }
+      }
+    },
     "Worktrees with uncommitted changes: moved aside and kept, and you’re told where": {
       "localizations": {
         "zh-Hans": {
@@ -8760,6 +10703,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "你打断了这一轮。会话还在，%@ 再发消息就会接着做。"
+          }
+        }
+      }
+    },
+    "Your Chrome": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 Chrome"
           }
         }
       }
@@ -10873,16 +12826,6 @@
         }
       }
     },
-    "Opens Her’s settings": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "打开 Her 的设置"
-          }
-        }
-      }
-    },
     "%@ can’t show its screen": {
       "localizations": {
         "zh-Hans": {
@@ -11619,16 +13562,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "任何 MCP 服务器的地址都可以，比如 https://mcp.example.com/mcp。"
-          }
-        }
-      }
-    },
-    "Apps and services Her can use, such as GitHub or Notion. Kept on %@ and shared by the assistants there.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 能用的应用和服务，比如 GitHub、Notion。装在 %@ 上，这台机器上的助手共用。"
           }
         }
       }
@@ -12846,16 +14779,6 @@
         }
       }
     },
-    "Files, needs an update": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "文件，需更新"
-          }
-        }
-      }
-    },
     "Files, %lld new": {
       "localizations": {
         "zh-Hans": {
@@ -13102,6 +15025,98 @@
           "stringUnit": {
             "state": "translated",
             "value": "媒体"
+          }
+        }
+      }
+    },
+    "her.status.on": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已开启"
+          }
+        }
+      }
+    },
+    "her.status.off": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已关闭"
+          }
+        }
+      }
+    },
+    "Sub-agent · %@, at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子智能体 · %@，正在工作"
+          }
+        }
+      }
+    },
+    "%lld sub-agents at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个子智能体正在工作"
+          }
+        }
+      }
+    },
+    "%lld sub-agents at work: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld 个子智能体正在工作：%2$@"
+          }
+        }
+      }
+    },
+    "See All in Progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在「进展」中查看全部"
+          }
+        }
+      }
+    },
+    "%@, %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@，%2$@"
+          }
+        }
+      }
+    },
+    "Shows who is at work": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示正在工作的子智能体"
           }
         }
       }

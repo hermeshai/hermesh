@@ -125,15 +125,17 @@ public final class LocalAPI: @unchecked Sendable {
     /// A request to a port on this device's loopback, without a token: the
     /// Her console's sign-in routes (GetHerConsole), which wait a while
     /// before they answer. Cancelling the task ends it.
-    public static func loopback(port: Int, method: String, path: String, body: Data = Data(), timeout: Int = 40) async throws -> (status: Int, body: Data) {
+    public static func loopback(port: Int, method: String, path: String, body: Data = Data(), contentType: String = "application/json",
+                                headers: [String: String] = [:], timeout: Int = 40) async throws -> (status: Int, body: Data) {
         let conn = HTTPOverUnix()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (k: CheckedContinuation<(status: Int, body: Data), Error>) in
                 Thread.detachNewThread {
                     defer { conn.release() }
                     k.resume(with: Result {
-                        let (status, headers) = try conn.open(endpoint: .loopback(port: port, token: ""), method: method, path: path, contentType: "application/json", body: body, timeout: timeout)
-                        return (status, try conn.readAll(headers: headers))
+                        let (status, answered) = try conn.open(endpoint: .loopback(port: port, token: ""), method: method, path: path, contentType: contentType,
+                                                               headers: headers, body: body, timeout: timeout)
+                        return (status, try conn.readAll(headers: answered))
                     })
                 }
             }
@@ -190,7 +192,8 @@ final class HTTPOverUnix: @unchecked Sendable {
         }
     }
 
-    func open(endpoint: LocalEndpoint, method: String = "POST", path: String, contentType: String, body: Data, timeout: Int? = nil) throws -> (Int, [String: String]) {
+    func open(endpoint: LocalEndpoint, method: String = "POST", path: String, contentType: String, headers: [String: String] = [:], body: Data,
+              timeout: Int? = nil) throws -> (Int, [String: String]) {
         let s: Int32
         var auth = ""
         switch endpoint {
@@ -213,7 +216,8 @@ final class HTTPOverUnix: @unchecked Sendable {
         }
         fd = s
         lock.unlock()
-        var req = "\(method) \(path) HTTP/1.1\r\nHost: hermesh\r\n\(auth)Content-Type: \(contentType)\r\nConnect-Protocol-Version: 1\r\nContent-Length: \(body.count)\r\n\r\n"
+        let more = headers.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)\r\n" }.joined()
+        var req = "\(method) \(path) HTTP/1.1\r\nHost: hermesh\r\n\(auth)\(more)Content-Type: \(contentType)\r\nConnect-Protocol-Version: 1\r\nContent-Length: \(body.count)\r\n\r\n"
         return try exchange(req: &req, contentType: contentType, body: body)
     }
 

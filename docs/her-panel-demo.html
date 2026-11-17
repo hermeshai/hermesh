@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Her 面板 · 原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --round:ui-rounded,"SF Pro Rounded","Google Sans Flex",-apple-system,"PingFang SC",system-ui,sans-serif;
+  --orange:#f08a00;--green:#22a559;--red:#e5484d;
+}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-card:#fff;--page-bd:rgba(0,0,0,.08);
+  --i-bg:#fff;--i-l1:#000;--i-l2:rgba(60,60,67,.6);--i-l3:rgba(60,60,67,.3);--i-sep:rgba(0,0,0,.09);
+  --i-fill:rgba(118,118,128,.12);--i-reply:#f4f4f7;--i-me:#3d5bff;--i-tint:#3d5bff;
+  --i-glass:rgba(255,255,255,.82);--i-glass-bd:rgba(0,0,0,.07);--i-sheet:#f2f2f7;--i-card:#fff;
+  --win:#fff;--win2:#f4f4f7;--side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);
+  --accent:#3d5bff;--accent-t:#3d5bff;--accent-bg:rgba(61,91,255,.10);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+  --bezel:#16171b;--pillbg:rgba(255,255,255,.88);--sheet:#fff;--glassy:rgba(255,255,255,.72);
+  --amb1:oklch(.9 .075 285/.95);--amb2:oklch(.93 .07 45/.85);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-card:#1a1b20;--page-bd:rgba(255,255,255,.08);
+  --i-bg:#000;--i-l1:#fff;--i-l2:rgba(235,235,245,.6);--i-l3:rgba(235,235,245,.3);--i-sep:rgba(255,255,255,.11);
+  --i-fill:rgba(118,118,128,.24);--i-reply:rgba(255,255,255,.08);--i-me:#4f6bff;--i-tint:#8094ff;
+  --i-glass:rgba(48,48,54,.82);--i-glass-bd:rgba(255,255,255,.1);--i-sheet:#000;--i-card:#1c1c1e;
+  --win:#1e1e21;--win2:#29292d;--side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);
+  --accent:#4f6bff;--accent-t:#8ea0ff;--accent-bg:rgba(91,121,255,.2);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+  --bezel:#2a2b31;--pillbg:rgba(0,0,0,.34);--sheet:#d9dae2;--glassy:rgba(255,255,255,.1);
+  --amb1:oklch(.36 .1 285/.75);--amb2:oklch(.34 .08 45/.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-mac);min-height:100vh;padding-bottom:120px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+h4,h5,p,ul{margin:0;padding:0}
+ul{list-style:none}
+.top{max-width:1480px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1480px;margin:0 auto;padding:10px 24px;display:flex;gap:26px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+#stage{min-width:0;max-width:100%;display:flex;flex-direction:column;align-items:center;gap:26px}
+.phones{display:flex;gap:30px;flex-wrap:wrap;justify-content:center}
+.cap{font-size:12.5px;color:var(--page-fg2);margin:0 0 8px 6px}
+.cap b{color:var(--page-fg);font-weight:600;margin-right:6px}
+.notes{width:372px;max-width:100%;flex:none;background:var(--page-card);border:1px solid var(--page-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65;position:sticky;top:14px}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes p{color:var(--page-fg2)}
+.notes ul{margin:6px 0 0;padding-left:19px;list-style:disc}
+.notes li{margin:4px 0}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--page-bd)}
+.notes li b{font-weight:600}
+.notes table{border-collapse:collapse;margin-top:6px;width:100%}
+.notes td{padding:3px 0;vertical-align:top}
+.notes td:first-child{font-weight:600;white-space:nowrap;padding-right:12px}
+.notes td:last-child{color:var(--page-fg2)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--page-card);border-top:1px solid var(--page-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;justify-content:center;font-size:12.5px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:4px 11px;border-radius:7px;background:var(--fill2);color:var(--page-fg)}
+.ctl button.on{background:var(--accent);color:#fff}
+.ctl .g.off{opacity:.4;pointer-events:none}
+.ctl select{font:inherit;padding:3px 6px;border-radius:7px;border:0;background:var(--fill2);color:var(--page-fg)}
+.hide{display:none!important}
+
+/* What both platforms share is drawn with these: each sets them to its own palette. */
+.scr{--c1:var(--i-l1);--c2:var(--i-l2);--c3:var(--i-l3);--csep:var(--i-sep);--cfill:var(--i-fill);--tint:var(--i-tint);--pgbg:var(--i-sheet);--card:var(--i-card);
+  --rh:50px;--fs:16px;--fs2:15px;--fsh:13px;--rad:24px;--ris:30px;--rir:9px;--pad:14px;font-family:var(--font-ios)}
+.mpanel{--c1:var(--l1);--c2:var(--l2);--c3:var(--l3);--csep:var(--sep);--cfill:var(--fill2);--tint:var(--accent-t);--pgbg:var(--win);--card:var(--fill);
+  --rh:36px;--fs:13px;--fs2:12.5px;--fsh:11.5px;--rad:14px;--ris:22px;--rir:6px;--pad:11px}
+
+/* ---------- iPhone ---------- */
+.phone{width:372px;height:800px;border-radius:54px;background:var(--bezel);padding:9px;box-shadow:0 18px 50px rgba(10,20,50,.25);flex:none}
+.scr{position:relative;width:100%;height:100%;border-radius:45px;overflow:hidden;background:var(--i-bg);color:var(--i-l1);display:flex;flex-direction:column}
+.sbar{height:46px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 6px;font-weight:600;font-size:15px;position:relative;z-index:3}
+.sbar i{width:24px;height:11px;border-radius:3.5px;border:1.2px solid var(--i-l2);position:relative;margin-bottom:4px}
+.sbar i::after{content:"";position:absolute;inset:1.3px;right:5px;background:var(--i-l1);border-radius:1.5px}
+.gb{position:relative;width:42px;height:42px;border-radius:50%;background:var(--i-glass);border:.5px solid var(--i-glass-bd);box-shadow:0 2px 10px rgba(0,0,0,.08);display:grid;place-items:center;flex:none;color:var(--i-l1)}
+.bdg{position:absolute;top:-3px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--i-tint);color:#fff;font:700 11px/18px var(--font-ios);text-align:center}
+.dot{position:absolute;top:9px;right:9px;width:8px;height:8px;border-radius:50%;background:var(--i-tint)}
+.dot.o,.d.o{background:var(--orange)}
+.ihead{position:relative;flex:none;height:98px;padding:0 14px}
+.ibtns{display:flex;gap:8px;align-items:center}
+.ibtns .sp{flex:1}
+.iid{position:absolute;left:0;right:0;top:-6px;display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.iid>*{pointer-events:auto}
+.avb{position:relative;display:block;border-radius:50%}
+.avb .att{position:absolute;top:4px;right:2px;width:13px;height:13px;border-radius:50%;background:var(--orange);border:2.5px solid var(--i-bg)}
+.mac .avb .att{border-color:var(--win);width:11px;height:11px;top:2px;right:0}
+.tag{margin-top:-14px;height:34px;padding:0 14px;border-radius:17px;background:var(--i-glass);border:.5px solid var(--i-glass-bd);box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;gap:7px;font-size:14px;font-weight:500;position:relative;z-index:1;white-space:nowrap}
+.tag b{font-size:16px;font-weight:600}
+.tag .bar{width:1px;height:14px;background:var(--i-l3)}
+.d{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+.tag em{font-style:normal;color:var(--orange)}
+.tag span{color:var(--i-l2)}
+.ring{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--c2,var(--i-l2));border-right-color:transparent;display:inline-block;flex:none;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.chat{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:9px;padding:12px 14px;justify-content:flex-end}
+.b{max-width:80%;padding:9px 13px;border-radius:19px;font-size:15.5px;line-height:1.4}
+.b.me{align-self:flex-end;background:var(--i-me);color:#fff}
+.b.her{align-self:flex-start;background:var(--i-reply)}
+.fcard{align-self:flex-start;display:flex;gap:10px;align-items:center;padding:9px 13px 9px 10px;border-radius:16px;background:var(--i-reply);font-size:14px}
+.fcard span{display:block;color:var(--i-l2);font-size:12px}
+.fi{flex:none;width:30px;height:37px;border-radius:6px;background:rgba(229,72,77,.14);color:var(--red);font:700 8px/1 var(--font-ios);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px}
+.cmp{flex:none;margin:4px 12px 22px;height:48px;border-radius:24px;background:var(--i-glass);border:.5px solid var(--i-glass-bd);box-shadow:0 2px 12px rgba(0,0,0,.1);display:flex;align-items:center;gap:8px;padding:0 7px;color:var(--i-l3);font-size:16px}
+.cmp span{flex:1}
+.cmp button{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--i-fill);color:var(--i-l1)}
+.cmp .send{background:var(--i-tint);color:#fff}
+.inav{flex:none;height:50px;display:flex;align-items:center;padding:0 14px}
+.scr.pgd{background:var(--pgbg)}
+.pg{flex:1;min-height:0;overflow-y:auto;padding:0 16px 34px;scrollbar-width:none}
+.pg::-webkit-scrollbar{display:none}
+
+/* ---------- Mac ---------- */
+.mac{width:1030px;max-width:100%;height:740px;border-radius:14px;background:var(--win);color:var(--l1);box-shadow:var(--shadow-win);display:flex;overflow:hidden;font:13px/1.45 var(--font-mac);position:relative}
+.mside{width:186px;flex:none;background:var(--side);padding:14px 10px;border-right:.5px solid var(--sep)}
+.lights{display:flex;gap:8px;padding:2px 4px 18px}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.mside div.sr{display:flex;align-items:center;gap:8px;height:30px;padding:0 8px;border-radius:7px;color:var(--l2)}
+.mside div.sr.on{background:var(--fill2);color:var(--l1);font-weight:600}
+.mmain{flex:1;min-width:0;display:flex;flex-direction:column;position:relative}
+.mhead{flex:none;height:88px;display:flex;align-items:flex-start;gap:4px;padding:10px 12px;position:relative}
+.mhead .sp{flex:1}
+.mid{position:absolute;left:0;right:0;top:8px;display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.mid>*{pointer-events:auto}
+.mcap{margin-top:-10px;height:26px;padding:0 11px;border-radius:13px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 2px 8px rgba(0,0,0,.1);display:flex;align-items:center;gap:6px;font-size:12px;position:relative;z-index:1;white-space:nowrap}
+.mcap b{font-weight:600;font-size:13px}
+.mcap em{font-style:normal;color:var(--orange)}
+.tb{position:relative;width:30px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--l2)}
+.tb:hover,.tb.on{background:var(--fill2);color:var(--l1)}
+.tb .dot{top:4px;right:4px;width:7px;height:7px}
+.tb .bdg{top:-2px;right:-5px;min-width:15px;height:15px;font-size:9.5px;line-height:15px;padding:0 4px;background:var(--accent)}
+.mmenu{position:absolute;right:10px;top:42px;width:216px;background:var(--win);border-radius:9px;box-shadow:0 0 0 .5px var(--sep),0 10px 30px rgba(0,0,0,.22);padding:5px;z-index:6;font-size:12.5px}
+.mmenu div{display:flex;align-items:center;gap:7px;height:28px;padding:0 8px;border-radius:6px}
+.mmenu div span{color:var(--l2);margin-left:auto;font-size:11.5px}
+.mmenu hr{border:0;border-top:.5px solid var(--sep);margin:4px 0}
+.mac .chat{padding:14px 26px;gap:8px}
+.mac .b,.mac .fcard{font-size:13px;border-radius:14px;padding:7px 11px;max-width:74%}
+.mac .b.me{background:var(--accent)}.mac .b.her,.mac .fcard{background:var(--win2)}
+.mac .fcard span{font-size:11.5px;color:var(--l2)}
+.mac .cmp{margin:4px 22px 16px;height:40px;border-radius:13px;background:var(--win2);box-shadow:none;border:.5px solid var(--sep);font-size:13px;color:var(--l3)}
+.mac .cmp button{width:26px;height:26px;background:var(--fill2);color:var(--l1)}
+.mac .cmp .send{background:var(--accent);color:#fff}
+.mpanel{width:372px;flex:none;border-left:.5px solid var(--sep);display:flex;flex-direction:column;position:relative;background:var(--win)}
+.mp-top{flex:none;height:40px;display:flex;align-items:center;padding:0 8px}
+.mp-body{flex:1;min-height:0;overflow-y:auto;padding:0 14px 20px;scrollbar-width:none}
+.mp-body::-webkit-scrollbar{display:none}
+
+/* ---------- lists: the settings as they are today, and the workbench's controls ---------- */
+.hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:2px 0 6px}
+.hero h2{margin:8px 0 0;font-size:22px;font-weight:650;color:var(--c1)}
+.mpanel .hero h2{font-size:17px;margin-top:6px}
+.grp>h4{font-size:var(--fsh);font-weight:500;color:var(--c2);margin:18px var(--pad) 7px}
+.mpanel .grp>h4{margin:15px 4px 6px}
+.card{background:var(--card);border-radius:var(--rad);overflow:hidden}
+.row{position:relative;display:flex;align-items:center;gap:11px;min-height:var(--rh);padding:0 var(--pad);font-size:var(--fs);color:var(--c1);width:100%;text-align:left}
+.mpanel .row{gap:9px}
+.row+.row::before{content:"";position:absolute;left:var(--pad);right:0;top:0;height:.5px;background:var(--csep)}
+.row.ic+.row.ic::before{left:calc(var(--pad) + var(--ris) + 11px)}
+.rl{flex:1;min-width:0}
+.rl small{display:block;font-size:var(--fsh);color:var(--c2);margin-top:-1px}
+.rv{color:var(--c2);font-size:var(--fs2);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.rv .chev{color:var(--c3)}
+.rv .ck{color:var(--tint)}
+.row.red{color:var(--red)}
+.row.blue{color:var(--tint)}
+.ri{width:var(--ris);height:var(--ris);border-radius:var(--rir);display:grid;place-items:center;flex:none;background:var(--cfill);color:var(--c1)}
+.foot{font-size:var(--fsh);color:var(--c2);margin:7px var(--pad) 0;line-height:1.45}
+.mpanel .foot{margin:6px 4px 0}
+.seg{display:inline-flex;padding:2px;border-radius:9px;background:var(--cfill)}
+.seg button{padding:4px 10px;border-radius:7px;font-size:13px;color:var(--c1)}
+.mpanel .seg button{font-size:12px;padding:2px 8px}
+.seg button.on{background:var(--i-card);box-shadow:0 1px 3px rgba(0,0,0,.14);font-weight:600}
+[data-theme=dark] .seg button.on{background:rgba(255,255,255,.2)}
+.sw{width:50px;height:30px;border-radius:15px;background:var(--cfill);position:relative;transition:background .2s;flex:none}
+.sw::after{content:"";position:absolute;left:2px;top:2px;width:26px;height:26px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .2s}
+.sw.on{background:var(--green)}.sw.on::after{transform:translateX(20px)}
+.mpanel .sw{width:34px;height:20px}.mpanel .sw::after{width:16px;height:16px}.mpanel .sw.on::after{transform:translateX(14px)}
+
+/* ---------- Her's page: her name, three tabs, and under each one kind of thing ---------- */
+.tabs{display:flex;gap:2px;padding:4px;border-radius:27px;background:var(--card);margin:18px 0 0}
+.tabs button{flex:1;height:46px;border-radius:23px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:15px;font-weight:500;color:var(--c2);transition:background .2s,color .2s}
+.tabs button.on{background:var(--cfill);color:var(--c1);font-weight:600}
+.mpanel .tabs{border-radius:11px;padding:3px;margin-top:14px}
+.mpanel .tabs button{height:28px;border-radius:8px;font-size:12.5px;gap:5px}
+.tabpage{animation:tabin .28s cubic-bezier(.2,.8,.2,1)}
+@keyframes tabin{from{opacity:0;transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){.tabpage{animation:none}.ring{animation:none}}
+.tabpage>.grp:first-child>h4:empty{margin-top:14px}
+
+/* Panes of glass over a field of Her's own colours. What is in a pane is what suits the thing: a list of what is
+   at work, the files themselves, the next runs, the services, the skills by name, a switch. */
+.gcs{position:relative;isolation:isolate;display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.mpanel .gcs{gap:8px;margin-top:12px}
+.gcs::before{content:"";position:absolute;inset:-26px -8px;z-index:-1;filter:blur(36px);opacity:.8;
+  background:radial-gradient(38% 30% at 16% 12%,#8f9bf0,transparent 72%),radial-gradient(34% 28% at 84% 20%,#f29bc0,transparent 72%),radial-gradient(42% 30% at 56% 56%,#7fc4ea,transparent 72%),radial-gradient(40% 28% at 14% 90%,#b59cf2,transparent 72%)}
+[data-theme=light] .gcs::before{opacity:.62}
+.gc{position:relative;isolation:isolate;overflow:hidden;border-radius:26px;padding:14px 16px 8px;display:block;width:100%;text-align:left;grid-column:1/-1;
+  --gt:var(--c1);--gs:color-mix(in srgb,var(--c1) 66%,transparent);--gline:color-mix(in srgb,var(--c1) 13%,transparent);--gtile:rgba(255,255,255,.1);
+  color:var(--gt);background:linear-gradient(135deg,rgba(255,255,255,.17),rgba(255,255,255,.05));box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(22px) saturate(1.5);backdrop-filter:blur(22px) saturate(1.5)}
+[data-theme=light] .gc{--gtile:rgba(255,255,255,.62);background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.42));box-shadow:inset 0 0 0 1px rgba(255,255,255,.7),0 6px 20px rgba(60,70,140,.1)}
+.mpanel .gc{border-radius:16px;padding:10px 12px 5px}
+.gc[data-go]{cursor:pointer;transition:transform .2s cubic-bezier(.2,.8,.2,1)}
+.gc[data-go]:active{transform:scale(.985)}
+.th{display:flex;align-items:center;gap:8px;min-height:26px}
+.th b{font-size:18px;font-weight:700;letter-spacing:.2px}
+.th .gs{margin-left:auto;font-size:13px;color:var(--gs);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.th .gs.o{color:var(--orange)}
+.th>.chev{color:var(--gs);margin-left:auto}
+.th>.gs+.chev{margin-left:2px}
+.mem>.chev{color:var(--gs)}
+.mpanel .th b{font-size:14px}.mpanel .th .gs{font-size:11.5px}
+.new{font-style:normal;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--tint);background:var(--accent-bg);border-radius:6px;padding:1px 5px;white-space:nowrap}
+/* A card is a way in: its name, at most a word of how it stands, and its glyph. What is in it shows on its page. */
+.gc.ent{grid-column:auto;height:112px;padding:14px 16px;display:flex;flex-direction:column}
+.gc.ent.w2{grid-column:1/-1}
+.gc.ent .th{flex-direction:column;align-items:flex-start;gap:3px}
+.gc.ent .th .gs{margin-left:0}
+.th b .new{margin-left:6px;vertical-align:2px}
+.gc.ent .gi{position:absolute;right:14px;bottom:13px;color:var(--gs)}
+.mpanel .gc.ent{height:84px;padding:10px 12px}
+.mpanel .gc.ent .gi{right:11px;bottom:10px}
+.fic{flex:none;width:28px;height:35px;border-radius:6px;background:color-mix(in srgb,var(--k) 22%,transparent);color:var(--k);font:700 7.5px/1 var(--font-ios);font-style:normal;display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px}
+.k-pdf{--k:#e5484d}.k-sheet{--k:#1a9d55}.k-md{--k:#8a8d98}.k-doc{--k:#2f6bff}.k-img{--k:#8e5bd6}
+[data-theme=dark] .k-pdf{--k:#ff6b70}[data-theme=dark] .k-sheet{--k:#3fcf7f}[data-theme=dark] .k-md{--k:#b3b6c2}[data-theme=dark] .k-doc{--k:#6f95ff}[data-theme=dark] .k-img{--k:#b48cf0}
+.mpanel .fic{width:22px;height:28px;font-size:6px;padding-bottom:4px}
+/* the services, each as it stands */
+.apps{display:flex;justify-content:space-between;margin:12px 0 10px}
+.apps span{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;width:46px}
+.apps i,.ai{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font:700 17px/1 var(--font-ios);font-style:normal;color:#fff;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.2),0 2px 6px rgba(0,0,0,.22);flex:none}
+.apps u{text-decoration:none;font-size:11px;color:var(--gs);white-space:nowrap}
+.apps .add i{background:none;box-shadow:inset 0 0 0 1.2px var(--gs);color:var(--gs);font-weight:400;font-size:22px}
+.apps .at::after{content:"";position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--orange)}
+.mpanel .apps{margin:9px 0 7px}.mpanel .apps span{width:38px;gap:4px}
+.mpanel .apps i{width:36px;height:36px;border-radius:10px;font-size:14px}.mpanel .apps u{font-size:10px}.mpanel .apps .add i{font-size:18px}
+.ai.sm{width:34px;height:34px;border-radius:9px;font-size:13px}
+.mpanel .ai.sm{width:26px;height:26px;border-radius:7px;font-size:11px}
+/* Remote Desktop, at the top right of her page: one tap */
+.rd{margin-left:auto;height:42px;padding:0 15px 0 12px;border-radius:21px;background:var(--i-glass);border:.5px solid var(--i-glass-bd);box-shadow:0 2px 10px rgba(0,0,0,.08);display:flex;align-items:center;gap:7px;font-size:15px;font-weight:500;color:var(--i-l1)}
+.edit{position:absolute;right:-4px;bottom:-2px;width:24px;height:24px;border-radius:50%;background:var(--win2);box-shadow:0 0 0 2px var(--win);display:grid;place-items:center;color:var(--l1)}
+
+/* ---------- the pages under it: plain, as the app's pages are ---------- */
+.inav h3,.mp-top h3{flex:1;margin:0;text-align:center;font-size:17px;font-weight:600;color:var(--c1)}
+.mp-top h3{font-size:13px}
+.inav .sp42{width:42px;flex:none}.mp-top .sp42{width:30px;flex:none}
+.row.two{min-height:calc(var(--rh) + 12px);padding-top:7px;padding-bottom:7px}
+.rl small.o{color:var(--orange)}.rl small.r{color:var(--red)}.rl small.a{color:var(--tint)}
+.row[data-go]{cursor:pointer}
+.srch{height:36px;border-radius:11px;background:var(--cfill);display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--c2);font-size:var(--fs2);margin-top:4px}
+.mpanel .srch{height:28px;border-radius:8px}
+.seg.full{display:flex;margin-top:10px}.seg.full button{flex:1}
+.btn{height:30px;padding:0 13px;border-radius:15px;background:var(--tint);color:#fff;font-size:13px;font-weight:600;white-space:nowrap;flex:none}
+.btn.q{background:var(--cfill);color:var(--tint)}
+.btn.o{background:var(--orange)}
+.mpanel .btn{height:22px;font-size:11.5px;padding:0 9px}
+.badge{font-size:11px;padding:1px 7px;border-radius:8px;background:var(--accent-bg);color:var(--tint);font-weight:600;white-space:nowrap}
+.badge.g{background:var(--cfill);color:var(--c2)}
+.note{font-size:var(--fsh);color:var(--c2);line-height:1.5;margin:10px var(--pad) 0}
+.mpanel .note{margin:8px 4px 0}
+.part{font-size:var(--fsh);font-weight:600;color:var(--c2);margin:22px 4px 0}
+.post{padding:14px 4px 0;border-bottom:.5px solid var(--csep)}
+.post h5{font-size:17px;font-weight:600;display:flex;gap:8px;align-items:baseline;color:var(--c1)}
+.post p{font-size:15px;color:var(--c2);margin-top:4px;line-height:1.4}
+.well{margin-top:10px;background:var(--cfill);border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:15px;color:var(--c1);min-height:46px}
+.well .o{color:var(--orange)}.well .btn{margin-left:auto}
+.beat{display:inline-flex;gap:3px}.beat i{width:5px;height:5px;border-radius:50%;background:var(--tint)}
+.beat i:nth-child(2){opacity:.6}.beat i:nth-child(3){opacity:.3}
+.pfoot{display:flex;align-items:center;gap:6px;font:500 13px/1 var(--font-ios);color:var(--c3);height:42px}
+.pfoot .a{color:var(--tint)}.pfoot svg{margin-left:auto;color:var(--c2)}
+.mpanel .post h5{font-size:13.5px}.mpanel .post p,.mpanel .well{font-size:12.5px}.mpanel .well{min-height:36px;border-radius:9px;padding:7px 10px}.mpanel .pfoot{height:34px;font-size:11.5px}
+.md{padding:12px var(--pad);font-size:var(--fs2);line-height:1.6;color:var(--c1)}
+.md h6{font-size:var(--fs2);font-weight:700;margin:8px 0 2px}.md h6:first-child{margin-top:0}
+.md ul{list-style:disc;padding-left:18px}
+.usebar{display:flex;height:10px;gap:2px;margin:14px var(--pad) 4px;border-radius:5px;overflow:hidden}
+.usebar i{min-width:3px;background:var(--k)}
+.kd{width:10px;height:10px;border-radius:3px;background:var(--k);flex:none}
+.grip{color:var(--c3);flex:none}
+.web{margin-top:10px;border-radius:var(--rad);overflow:hidden;background:var(--card);box-shadow:inset 0 0 0 .5px var(--csep)}
+.web .bar{height:34px;display:flex;align-items:center;gap:7px;padding:0 12px;font-size:12px;color:var(--c2);border-bottom:.5px solid var(--csep)}
+.center{text-align:center}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:.92em}
+.cap2{height:26px;padding:0 10px;border-radius:13px;background:var(--card);font-size:var(--fsh);display:inline-flex;align-items:center;gap:6px}
+.cap2.o{color:var(--orange)}
+.ava{width:40px;height:40px;border-radius:50%;background:var(--cfill);display:grid;place-items:center;color:var(--c2);flex:none}
+.mpanel .ava{width:30px;height:30px}
+.btnrow{display:flex;gap:10px;margin-top:18px}
+.btn.big{flex:1;height:46px;border-radius:23px;font-size:16px}
+.mpanel .btn.big{height:30px;font-size:12.5px}
+.btn.dis{opacity:.4}
+.tbl{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;margin-top:12px;border-radius:14px;overflow:hidden;background:var(--card);font-size:12.5px}
+.tbl span{padding:9px 10px;border-top:.5px solid var(--csep);border-left:.5px solid var(--csep);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl span:nth-child(4n+1){border-left:0;font-weight:600}
+.tbl span:nth-child(-n+4){border-top:0;font-weight:600;color:var(--c2)}
+.mpanel .tbl{font-size:11px}.mpanel .tbl span{padding:6px 7px}
+.delivery{margin-top:14px;padding:14px!important;cursor:default}
+.delivery .who{display:flex;gap:10px;align-items:flex-start;font-size:var(--fs2)}
+.delivery .who small{display:block;font-size:var(--fsh);font-weight:600;color:var(--gs)}
+.appr{margin-top:14px;border-radius:var(--rad);background:var(--card);padding:14px}
+.appr b{font-size:var(--fs)}
+/* what is asked before it is done */
+.act{position:absolute;inset:0;z-index:8;background:rgba(0,0,0,.36);display:flex;flex-direction:column;justify-content:flex-end;padding:10px;gap:8px}
+.act-card{background:var(--i-card);border-radius:24px;overflow:hidden;color:var(--i-l1)}
+.act-card p{font-size:13px;color:var(--i-l2);text-align:center;padding:14px 18px;line-height:1.45}
+.act-card p b{display:block;color:var(--i-l1);font-size:15px;margin-bottom:4px}
+.act button{display:block;width:100%;height:54px;font-size:17px;color:var(--i-tint);border-top:.5px solid var(--i-sep)}
+.act button.red{color:var(--red)}
+.act>button{background:var(--i-card);border-radius:24px;font-weight:600;border:0}
+.mpanel .act{justify-content:center;padding:22px}
+.mpanel .act-card,.mpanel .act>button{border-radius:12px;background:var(--win)}
+.mpanel .act-card p{font-size:12px}.mpanel .act-card p b{font-size:13px}
+.mpanel .act button{height:34px;font-size:13px}
+.linkrow{display:block;width:100%;text-align:center;color:var(--tint);font-size:var(--fs2);padding:14px 0}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Her 面板 · 工作台</h1>
+  <span>点 Her 之后的这一页，和从它点进去的每一页。面板上的每一块都能点进子页；底部也可以直接跳。标着“新”的是这一版提议新增的入口。</span>
+</div>
+<div class="wrap">
+  <div id="stage"></div>
+  <aside class="notes" id="notes"></aside>
+</div>
+<div class="ctl">
+  <div class="g" data-k="v"><b>页面</b><button data-v="wb">工作台</button><button data-v="cur">现状</button></div>
+  <div class="g" data-k="tab"><b>标签</b><button data-v="work">工作</button><button data-v="has">能力</button><button data-v="set">设置</button></div>
+  <div class="g" id="jump"><b>子页面</b><select id="page"></select></div>
+  <div class="g" data-k="plat"><b>平台</b><button data-v="both">都看</button><button data-v="ios">iPhone</button><button data-v="mac">Mac</button></div>
+  <div class="g" data-k="slot"><b>顶栏</b><button data-v="none">只留 Her</button><button data-v="one">留一个槽</button></div>
+  <div class="g" data-k="theme"><b>主题</b><button data-v="light">浅色</button><button data-v="dark">深色</button></div>
+</div>
+<script>
+const P = {
+  menu: "M4 7h16M4 12h16M4 17h16",
+  tray: "M4 13l2.5-7h11L20 13v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM4 13h4.5a3.5 3.5 0 0 0 7 0H20",
+  pulse: "M3 12h4l2.5-6 4 12 2.5-6H21",
+  clock: "M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 0 0 0-17zM12 7.5V12l3 2",
+  chevR: "M9 6l6 6-6 6", chevD: "M6 9l6 6 6-6", chevL: "M15 6l-6 6 6 6",
+  spark: "M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9zM19 16v4M17 18h4",
+  book: "M5 5.5A1.5 1.5 0 0 1 6.5 4H19v14H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19M9 8.5h6",
+  plug: "M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5",
+  laptop: "M5 6h14v9H5zM3 18.5h18",
+  display: "M4 5h16v11H4zM9 20h6M12 16v4",
+  shield: "M12 3l7 3v5.5c0 4.2-2.9 7.6-7 9.5-4.1-1.9-7-5.3-7-9.5V6zM9 12l2 2 4-4.5",
+  bell: "M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2H5zM10 20.5a2 2 0 0 0 4 0",
+  gear: "M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0-6zM12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1",
+  person: "M12 12a4 4 0 1 0 0-8a4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0",
+  play: "M8 5.5v13l10.5-6.5z",
+  info: "M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 0 0 0-17zM12 11v5.5M12 7.8h.01",
+  doc: "M7 3h7l4 4v14H7zM14 3v4h4",
+  grip: "M5 9h14M5 15h14",
+  drive: "M4 14l2.5-8h11L20 14v4H4zM4 14h16M16.5 16.5h.01",
+  cpu: "M8 8h8v8H8zM10 4v4M14 4v4M10 16v4M14 16v4M4 10h4M4 14h4M16 10h4M16 14h4",
+  plus: "M12 5v14M5 12h14", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M6 11l6-6 6 6",
+  check: "M5 12.5l4.5 4.5L19 7.5",
+  edit: "M4 20l1-4.5L16.5 4a2.1 2.1 0 0 1 3 3L8 18.5zM14.5 6l3 3",
+  checklist: "M4 6.5l1.6 1.6L8.4 5.2M12 6.5h8M4 12.5l1.6 1.6 2.8-2.9M12 12.5h8M5 18.5h2.5M12 18.5h8",
+  puzzle: "M9.5 6V5a2 2 0 0 1 4 0v1H17a1 1 0 0 1 1 1v3.5h1a2 2 0 0 1 0 4h-1V18a1 1 0 0 1-1 1h-3.5v-1a2 2 0 0 0-4 0v1H6a1 1 0 0 1-1-1v-3.5h1a2 2 0 0 0 0-4H5V7a1 1 0 0 1 1-1z",
+  brain: "M12 5.6C10.6 4 7.6 4.4 7.1 6.9 5 7.3 4.2 9.7 5.6 11.3 4.2 12.9 5 15.7 7.3 16 7.7 18.7 10.9 19.3 12 17.6M12 5.6C13.4 4 16.4 4.4 16.9 6.9 19 7.3 19.8 9.7 18.4 11.3 19.8 12.9 19 15.7 16.7 16 16.3 18.7 13.1 19.3 12 17.6M12 5.6v12M9 9.4c.2 1.2 1.2 2 3 2M15 13.4c-.2-1.2-1.2-2-3-2",
+  skill: "M12 6.5c-2-1.3-4.5-1.5-7-1v12c2.5-.5 5-.3 7 1 2-1.3 4.5-1.5 7-1v-12c-2.5-.5-5-.3-7 1zM12 6.5v12",
+  search: "M11 4.5a6.5 6.5 0 1 0 0 13a6.5 6.5 0 0 0 0-13zM16 16l4 4",
+  window: "M4 5.5h16v13H4zM4 9.5h16M6.6 7.5h.01M9.2 7.5h.01",
+  team: "M9 11a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM3.5 19a5.5 5.5 0 0 1 11 0M16 5.2a3 3 0 0 1 0 5.6M17.5 14a5.5 5.5 0 0 1 3 5",
+  work: "M4 8h16v11H4zM9 8V5h6v3",
+};
+// Drawn from more than one stroke.
+const RAW = {
+  gear: `<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="8.5" stroke-width="2.6" stroke-dasharray="2.4 4.276" stroke-linecap="butt"/><circle cx="12" cy="12" r="2.3"/>`,
+  remote: `<path d="M4 5h16v11H4zM9 20h6M12 16v4"/><path d="M10.5 7.6l5 3.2-2.2.5 1.1 2.2-1.1.6-1.1-2.2-1.7 1.5z" fill="currentColor" stroke-width=".6"/>`,
+};
+const ic = (n, s = 20, w = 1.8) => n === "more"
+  ? `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18.5" cy="12" r="1.7"/></svg>`
+  : RAW[n] ? `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${RAW[n]}</svg>`
+  : `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"><path d="${P[n]}"/></svg>`;
+const chev = `<span class="chev">${ic("chevR", 14, 2.2)}</span>`;
+const down = ic("chevD", 12, 2.4);
+
+// Her's cat, as apps/desktop draws it (Cat.tsx).
+let cats = 0;
+function cat(size) {
+  const id = "c" + cats++, small = size < 40;
+  const ear = `<path d="M30 53L26 25L50 37Z" fill="#cbd3fb" stroke="#cbd3fb" stroke-width="8" stroke-linejoin="round"/>`;
+  const eye = (x) => `<ellipse cx="${x}" cy="64" rx="${small ? 5.2 : 4.1}" ry="${small ? 5.9 : 4.7}" fill="#3c2f3a"/>${small ? "" : `<circle cx="${x + 1.3}" cy="62.4" r="1.25" fill="#fff"/>`}`;
+  const apart = small ? 12.5 : 11.5;
+  return `<svg width="${size}" height="${size}" viewBox="8 16 104 104"><defs><radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="44" cy="50" r="72"><stop offset="0" stop-color="#f1f3ff"/><stop offset=".55" stop-color="#d7ddff"/><stop offset="1" stop-color="#b3bcf2"/></radialGradient></defs>
+    ${ear}<g transform="translate(120 0) scale(-1 1)">${ear}</g>
+    <path d="M60 30C84 30 100 48 103 72C106 96 92 110 60 110C28 110 14 96 17 72C20 48 36 30 60 30Z" fill="url(#${id})"/>
+    <path d="M46 47H74C86 47 92 55 92 65.5C92 80 82 88 60 88C38 88 28 80 28 65.5C28 55 34 47 46 47Z" fill="#fafbff"/>
+    ${small ? "" : `<ellipse cx="37" cy="73" rx="6.5" ry="4.4" fill="#ffa3be" opacity=".5"/><ellipse cx="83" cy="73" rx="6.5" ry="4.4" fill="#ffa3be" opacity=".5"/>`}
+    ${eye(60 - apart)}${eye(60 + apart)}
+    ${small ? "" : `<path d="M55.2 71.2q2.4 3.3 4.8 0q2.4 3.3 4.8 0" fill="none" stroke="#3c2f3a" stroke-width="2.1" stroke-linecap="round"/>`}</svg>`;
+}
+
+// ---------- the conversation ----------
+const chat = () => `<div class="chat">
+  <div class="b me">把上周的周报整理一下，发我一份 PDF</div>
+  <div class="b her">整理好了，一共 3 页，重点放在连接器那部分。</div>
+  <div class="fcard"><i class="fi">PDF</i><div><b>周报 · 11 月第 2 周.pdf</b><span>3 页 · 刚刚</span></div></div>
+  <div class="b her">登录页那个问题我交给 Codex 去修了，改动需要你确认。</div>
+</div>
+<div class="cmp"><button>${ic("plus", 18)}</button><span>发消息给 Her</span><button class="send">${ic("up", 18, 2.2)}</button></div>`;
+
+function phoneChat(v, slot) {
+  const cur = v === "cur";
+  const right = cur ? `<button class="gb">${ic("pulse")}<i class="dot o"></i></button><button class="gb">${ic("clock")}</button>`
+    : slot === "one" ? `<button class="gb">${ic("pulse")}<i class="dot o"></i></button>` : "";
+  return `<div class="phone"><div class="scr">
+    <div class="sbar"><span>9:41</span><i></i></div>
+    <div class="ihead">
+      <div class="ibtns"><button class="gb">${ic("menu")}</button>${cur ? `<button class="gb">${ic("tray")}<b class="bdg">3</b></button>` : ""}<span class="sp"></span>${right}</div>
+      <div class="iid"><span class="avb">${cat(70)}${cur ? "" : `<i class="att"></i>`}</span>
+        <div class="tag"><b>Her</b><i class="bar"></i><i class="d o"></i><em>Codex 在等你</em><span>2</span><i class="ring"></i></div></div>
+    </div>
+    ${chat()}
+  </div></div>`;
+}
+// ---------- small pieces ----------
+const NEW = `<i class="new">新</i>`;
+// Where a row leads: a page, or (ask:…) what is asked before it is done.
+const link = (to) => to === null ? "" : to.startsWith("ask:") ? `data-ask="${to.slice(4)}"` : `data-go="${to}"`;
+const row = (label, value = "", go = true, cls = "", to = null) =>
+  `<div class="row ${cls}" ${link(to)}><span class="rl">${label}</span><span class="rv">${value}${go ? chev : ""}</span></div>`;
+// A row of two lines: something before it, its name over a line about it, something after.
+const row2 = (lead, title, sub, right = "", subcls = "", to = null) =>
+  `<div class="row two" ${link(to)}>${lead}<span class="rl">${title}<small class="${subcls}">${sub}</small></span><span class="rv">${right}</span></div>`;
+const seg = (a, b) => `<span class="seg"><button class="on">${a}</button><button>${b}</button></span>`;
+const grp = (title, rows, foot = "") => `<div class="grp"><h4>${title}</h4><div class="card">${rows}</div>${foot ? `<p class="foot">${foot}</p>` : ""}</div>`;
+const sw = (on = true) => `<button class="sw ${on ? "on" : ""}"></button>`;
+const app = (bg, letter) => `<i class="ai sm" style="background:${bg}">${letter}</i>`;
+const fic = (k, ext) => `<i class="fic k-${k}">${ext}</i>`;
+const btn = (t, cls = "") => `<button class="btn ${cls}">${t}</button>`;
+const check = `<span class="ck">${ic("check", 17, 2.4)}</span>`;
+const dotNew = `<i class="d" style="background:var(--tint);margin-right:6px"></i>`;
+
+// ---------- the frames ----------
+// A page on the phone: back, its title, and what its bar holds on the right.
+let overlay = "";
+function phonePage(inner, { title = "", back = null, right = "", rightGo = null, remote = false } = {}) {
+  return `<div class="phone"><div class="scr pgd">
+    <div class="sbar"><span>9:41</span><i></i></div>
+    <div class="inav"><button class="gb" ${back === null ? "" : `data-go="${back}"`}>${ic("chevL", 20, 2.2)}</button>
+      ${title ? `<h3>${title}</h3>${right ? `<button class="gb" ${link(rightGo)}>${ic(right, 19)}</button>` : `<span class="sp42"></span>`}` : ""}
+      ${remote ? `<button class="rd">${ic("remote", 19, 1.8)}远程桌面</button>` : ""}</div>
+    <div class="pg">${inner}</div>${overlay}
+  </div></div>`;
+}
+function mac(v, slot, inner, { title = "", back = null, right = "", rightGo = null } = {}) {
+  const cur = v === "cur";
+  const tools = cur ? `<button class="tb">${ic("pulse", 17)}<i class="dot o"></i></button><button class="tb">${ic("tray", 17)}<b class="bdg">3</b></button><button class="tb">${ic("clock", 17)}</button><button class="tb on">${ic("more", 17)}</button>`
+    : `${slot === "one" ? `<button class="tb">${ic("pulse", 17)}<i class="dot o"></i></button>` : ""}<button class="tb">${ic("more", 17)}</button>`;
+  const menu = cur ? `<div class="mmenu"><div>${ic("check", 14, 2.4)}MacBook Pro<span>在线</span></div><div style="padding-left:29px">Mac mini<span>在线 · 2 未读</span></div><hr><div>管理「MacBook Pro」…</div><div>添加环境…</div></div>` : "";
+  const top = title
+    ? `<button class="tb" data-go="${back}">${ic("chevL", 16, 2.2)}</button><h3>${title}</h3>${right ? `<button class="tb" ${link(rightGo)}>${ic(right, 16)}</button>` : `<span class="sp42"></span>`}`
+    : `<button class="tb">${ic("x", 16)}</button>`;
+  return `<div class="mac">
+    <div class="mside"><div class="lights"><i></i><i></i><i></i></div>
+      <div class="sr on">${cat(20)}Her</div><div class="sr">${ic("team", 16)}全部会话</div><div class="sr">${ic("work", 16)}工作</div><div class="sr">${ic("laptop", 16)}机器</div></div>
+    <div class="mmain">
+      <div class="mhead"><span class="sp"></span>${tools}
+        <div class="mid"><span class="avb">${cat(54)}${cur ? "" : `<i class="att"></i>`}</span><div class="mcap"><b>Her</b><i class="d o"></i><em>Codex 在等你</em></div></div>
+        ${menu}
+      </div>
+      ${chat()}
+    </div>
+    <aside class="mpanel"><div class="mp-top">${top}</div><div class="mp-body">${inner}</div>${overlay}</aside>
+  </div>`;
+}
+
+// ---------- as it is today: HerSettings.swift on the iPhone, AssistantPanel.tsx on the Mac ----------
+const current = (m) => m ? `
+  <div class="hero"><span class="avb">${cat(64)}<i class="edit">${ic("edit", 12, 2)}</i></span><h2>Her</h2></div>
+  ${grp("模型设定", row("模型", "GPT-5.5 " + down, false) + row("思考强度", "高 " + down, false), "模型和 Key 在这个环境的控制台里添加。")}
+  ${grp("权限", row("权限模式", "询问权限 " + down, false), "修改文件、运行命令前都先问你。Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。完全访问要用 Touch ID 确认。")}
+  ${grp("连接器", row("连接器", "4 个开着"))}
+  ${grp("通知", row("免打扰", sw(false), false), "所有设备都不发它的通知。列表里的未读照常显示。")}
+  ${grp("记忆", row("记住的事"))}
+  ${grp("", row("清空聊天记录", "", false, "red") + row("清空记忆", "", false, "red"))}
+  ${grp("", row("在 MacBook Pro 上关闭 Her…", "", false, "red"))}` : `
+  <div class="hero">${cat(88)}<h2>Her</h2></div>
+  ${grp("", row("运行在", "MacBook Pro " + down, false) + row("在另一台机器上开启 Her…", "", false, "blue"))}
+  ${grp("", row("模型", "GPT-5.5 · ChatGPT " + down, false) + row("思考强度", "高 " + down, false) + row("做事前", seg("先问我", "完全访问"), false), "Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。")}
+  ${grp("", row("连接器", "4 个开着"), "Her 能用的应用和服务，比如 GitHub、Notion。装在 MacBook Pro 上，这台机器上的助手共用。")}
+  ${grp("", row("远程桌面"), "在手机上查看并操作 MacBook Pro 的屏幕。")}
+  ${grp("", row("通知", sw(), false), "关掉后，所有设备都不发 Her 的通知，未读照常显示。")}
+  ${grp("记忆", row("记住的事"), "你的偏好、定下的事、东西放在哪，Her 会自己记下，清空对话也还在。要改哪条，直接跟 Her 说。")}
+  ${grp("", row("清空对话", "", false, "red") + row("清空记忆", "", false, "red"))}
+  ${grp("", row("在 MacBook Pro 上关闭 Her…", "", false, "red"))}`;
+
+// A way in: where it leads, its glyph, its name, and at most a word of how it stands.
+const ent = (to, icon, title, status = "", cls = "", warn = false) =>
+  `<button class="gc ent ${cls}" data-go="${to}"><div class="th"><b>${title}</b>${status ? `<span class="gs ${warn ? "o" : ""}">${status}</span>` : ""}</div><i class="gi">${ic(icon, 24, 1.8)}</i></button>`;
+
+// ---------- Her's page: three tabs; cards that lead in, and her settings ----------
+function root(m, tab) {
+  const tabs = [["work", "checklist", "工作"], ["has", "puzzle", "能力"], ["set", "gear", "设置"]];
+  const head = `<div class="hero">${m ? `<span class="avb">${cat(64)}<i class="edit">${ic("edit", 12, 2)}</i></span>` : cat(88)}<h2>Her</h2></div>
+    <div class="tabs">${tabs.map(([k, i, t]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${ic(i, m ? 14 : 17, 2)}${t}</button>`).join("")}</div>`;
+  const pages = {
+    // Her work, and what she has: each a way in. Only the services show themselves, as asked.
+    work: `<div class="gcs">
+      ${ent("progress", "pulse", "进展", `<i class="d o"></i>1 个在等你`, "w2", true)}
+      ${ent("files", "tray", "文件", "3 份新的")}
+      ${ent("routines", "clock", "定时任务")}
+    </div>`,
+    has: `<div class="gcs">
+      ${ent("memory", "brain", "记忆")}
+      ${ent("skills", "skill", "技能" + NEW)}
+      <div class="gc" data-go="connectors"><div class="th"><b>连接器</b><span class="gs o"><i class="d o"></i>1 个要处理</span>${chev}</div>
+        <div class="apps">
+          <span><i style="background:#24292f">G</i><u>GitHub</u></span>
+          <span><i style="background:#3a3a3d">N</i><u>Notion</u></span>
+          <span class="at"><i style="background:#5e6ad2">L</i><u>Linear</u></span>
+          <span><i style="background:#6b4a8c">S</i><u>Sentry</u></span>
+          <span class="add"><i>+</i><u>添加</u></span>
+        </div></div>
+      ${ent("search", "search", "联网搜索" + NEW, "已开启")}
+      ${ent("browser", "window", "浏览器" + NEW, "已开启")}
+    </div>`,
+    // Her settings: five rows; what lies under two of them is a page of its own.
+    set: m ? `
+      ${grp("", row("模型", "GPT-5.5 · 高", true, "", "model") + row("权限模式", "询问权限 " + down, false) + row("免打扰", sw(false), false), "Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。")}
+      ${grp("", row("环境", "MacBook Pro", true, "", "env"))}
+      ${grp("", row("清空聊天记录", "", false, "red", "ask:clear"))}` : `
+      ${grp("", row("模型", "GPT-5.5 · 高", true, "", "model") + row("做事前", `<span class="seg"><button class="${state.full ? "" : "on"}" data-full="0">先问我</button><button class="${state.full ? "on" : ""}" ${state.full ? "" : `data-ask="full"`}>完全访问</button></span>`, false) + row("通知", sw(), false), "Her 创建的智能体和定时任务也按这个权限运行，你不在时也一样。")}
+      ${grp("", row("环境", "MacBook Pro", true, "", "env"))}
+      ${grp("", row("清空对话", "", false, "red", "ask:clear"))}`,
+  };
+  return `${head}<div class="tabpage">${pages[tab]}</div>`;
+}
+
+// ---------- the pages under it ----------
+const post = (title, words, well, foot, dot = false, to = null) => `<div class="post" ${link(to)}><h5>${dot ? `<i class="d o"></i>` : ""}${title}</h5>${words ? `<p>${words}</p>` : ""}
+  <div class="well">${well}</div><div class="pfoot">${foot}${ic("info", 20, 1.6)}</div></div>`;
+const beat = `<span class="beat"><i></i><i></i><i></i></span>`;
+const kinds = [["对话", "所有对话，以及工具的完整输出", "820 MB", 820, "#5a68cf"], ["发给你的文件", "助手每次发给你的文件，按发出时的样子各留一份", "410 MB", 410, "#25938d"],
+  ["文件", "助手和对话产出的文件", "260 MB", 260, "#c4881f"], ["浏览器", "内置浏览器的登录状态和下载", "180 MB", 180, "#8e5bd6"], ["缓存", "模型列表、连接器的工具、图标和日志；删除后会重新获取", "96 MB", 96, "#8a8d98"],
+  ["已删除的对话", "删除时移到一旁，不会自动清除", "24 MB", 24, "#e5484d"], ["设置及其他", "设置、技能、例行任务等", "12 MB", 12, "#3a9651"], ["记忆", "每个助手记下的关于你和你工作的内容", "0.4 MB", 1, "#e8508c"]];
+
+const subs = {
+  progress: { title: "进展", tab: "work", from: "现有页面（ProgressPage）", body: () => `
+    <p class="part">需要你</p>
+    ${post("修复登录页的报错", "会话过期后登录页会反复跳转。原因找到了，要改 auth/redirect.ts 里的一处判断。", `<span class="o">等你批准</span>${btn("去批准")}`, `<span>6 分钟</span><span>· 18.2K</span>`, true, "record")}
+    <p class="part">现在</p>
+    ${post("整理竞品资料", "在看三家的定价页和更新日志，整理成一张对比表。", `${beat}<span>正在访问 linear.app/pricing</span>`, `<span class="a">21 分钟</span><span>· 42.6K</span>`)}
+    ${post("核对 11 月账单", "", `${beat}<span style="color:var(--c2)">在想下一步</span>`, `<span class="a">3 分钟</span><span>· 4.1K</span>`)}
+    <p class="part">早些时候</p>
+    ${post("整理上周的周报", "三页，重点放在连接器那部分。", `${ic("doc", 18, 1.7)}<span>周报 · 11 月第 2 周.pdf</span>`, `<span>2 小时前</span><span>· 9.6K</span>`)}
+    <button class="linkrow">更早的进展</button>` },
+
+  files: { title: "文件", tab: "work", from: "现有页面（HerFilesPage）", body: () => `
+    <div class="srch">${ic("search", 15, 2)}搜文件名，或 Her 说过的话</div>
+    <span class="seg full"><button class="on">全部</button><button>文档</button><button>媒体</button></span>
+    ${grp("今天", row2(fic("pdf", "PDF"), dotNew + "周报 · 11 月第 2 周.pdf", "整理好了，一共 3 页，重点放在连接器那部分。", "14:02")
+      + row2(fic("sheet", "XLSX"), dotNew + "竞品对比.xlsx", "三家的定价和功能放在一张表里。 · 2 个版本", "11:40", "", "fileview")
+      + row2(fic("md", "MD"), dotNew + "发布说明 v0.9.md", "按你说的语气改了一遍。", "09:15"))}
+    ${grp("昨天", row2(fic("img", "PNG"), "首页改版示意.png", "1.2 MB", "18:22"))}
+    ${grp("过去 7 天", row2(fic("doc", "DOCX"), "用户访谈纪要.docx", "五场访谈合在一起，按主题分了段。", "11月12日"))}` },
+
+  routines: { title: "定时任务", tab: "work", right: "plus", from: "现有页面（RoutinesPage）", body: () => `
+    ${grp("", row2("", "晨报", "下次 明天 09:00 · 每天早上 9 点", sw(), "", "routine")
+      + row2("", "周报", "下次 周一 10:00 · 每周一上午 10 点", sw())
+      + row2("", "盯主干的 CI", "正在运行 · 02:14", sw(), "a")
+      + row2("", "备份检查", "上次没做成 · 昨天 23:00", sw(), "r"))}
+    ${grp("已暂停", row2("", "盘前简报", "工作日早上 8 点", sw(false)))}
+    <p class="note">定时任务在 MacBook Pro 上运行。那台机器关机或睡眠时不跑，回来后补最近一次。</p>` },
+
+  memory: { title: "记忆", tab: "has", from: "现有页面（HerMemoryPage）", body: () => `
+    ${grp("", `<div class="md"><h6>关于你</h6><ul><li>文件要 PDF，不要 Word。</li><li>周报每周一上午要。</li></ul><h6>项目</h6><ul><li>iOS 工程在 apps/ios；装到真机前先合并 main。</li></ul><h6>约定</h6><ul><li>回答用中文。</li></ul></div>`, "这就是 Her 读到的内容。要改哪条，直接跟 Her 说。")}
+    ${grp("页面", row("项目.md", "11月16日") + row("偏好.md", "11月14日") + row("联系人.md", "11月9日") + row("账单.md", "11月2日"))}
+    ${grp("", row("清空记忆", "", false, "red", "ask:forget"))}`,
+    note: "<li><b>挪动：</b>“清空记忆”从设置挪到这一页底部，和它清的东西放在一起。</li>" },
+
+  connectors: { title: "连接器", tab: "has", right: "plus", rightGo: "addconn", from: "现有页面（iPhone 的 HerConnectorsPage；Mac 现在打开控制台的连接器页）", body: () => `
+    <div class="srch">${ic("search", 15, 2)}搜索</div>
+    ${grp("", row2(app("#24292f", "G"), "GitHub", "仓库、Issue、PR 和代码搜索", btn("查看", "q"), "", "connector")
+      + row2(app("#3a3a3d", "N"), "Notion", "页面、数据库和评论", btn("查看", "q"))
+      + row2(app("#5e6ad2", "L"), "Linear", "需要登录", btn("登录", "o"), "o")
+      + row2(app("#6b4a8c", "S"), "Sentry", "错误、性能问题和发布", btn("查看", "q")),
+      "装在 MacBook Pro 上，这台机器上的助手共用。开关对 Her 的下一步就生效。")}
+    ${grp("开发", row2(app("#111", "V"), "Vercel", "项目、部署和日志", btn("连接")))}
+    ${grp("工作", row2(app("#f0b400", "A"), "Airtable", "数据库、表格和记录", btn("连接")))}
+    ${grp("搜索与资料", row2(app("#1f6feb", "C"), "Context7", "最新的库文档，写代码时查", btn("连接")) + row2(app("#2b59ff", "E"), "Exa", "为 AI 准备的网页搜索", btn("连接")))}
+    ${grp("", row("添加自定义连接器…", "", false, "blue", "addconn"), "任何 MCP 服务器的地址都可以，比如 https://mcp.example.com/mcp。")}` },
+
+  skills: { title: "技能", tab: "has", fresh: true, from: "控制台的“技能”页", body: (m) => `
+    ${grp("已安装", row2("", "weekly-report", "按固定版式整理一周的工作", sw(), "", "skill") + row2("", "brand-voice", "对外文字的语气和用词", sw()) + row2("", "meeting-notes", "已停用", sw(false)))}
+    ${grp("内置", row2("", "skill-creator", "创建、修改和评估技能", sw()), "随 Her 一起更新。")}
+    ${grp("", row("上传技能", "", false, "blue"), `技能是一个含 SKILL.md 的文件夹，打包成 .zip 或 .skill 上传。${m ? "" : "在 iPhone 上从“文件”里选。"}`)}` },
+
+  search: { title: "联网搜索", tab: "has", fresh: true, from: "控制台的“联网搜索”页", body: () => `
+    ${grp("", row("允许模型联网搜索", sw(), false), "需要时模型会自己搜索。搜索词会发给下面列表里的服务。")}
+    ${grp("搜索服务", row2(`<span class="grip">${ic("grip", 18)}</span>`, `Exa <span class="badge">正在用</span>`, "免费额度，不用密钥", sw())
+      + row2(`<span class="grip">${ic("grip", 18)}</span>`, "Parallel", "免费额度，不用密钥", sw())
+      + row2(`<span class="grip">${ic("grip", 18)}</span>`, "DeepSeek", "和模型共用密钥 · $0.75/千次", sw())
+      + row2(`<span class="grip">${ic("grip", 18)}</span>`, "Tavily", "每月 1000 次免费，需要密钥", btn("添加密钥", "q"), "", "searchkey")
+      + row2(`<span class="grip">${ic("grip", 18)}</span>`, "Brave", "每月 $5 免费额度，需要密钥", btn("添加密钥", "q")),
+      "从上到下，先用第一个可用的；失败就换下一个。拖动调整顺序。")}` },
+
+  browser: { title: "浏览器", tab: "has", fresh: true, from: "控制台的“浏览器”页", body: (m) => `
+    ${grp("", row("允许 Her 控制浏览器", sw(), false), "Her 打开网页并在里面操作。哪些网站不用问你，见下方的网站权限。")}
+    ${grp("默认使用的浏览器", row("内置浏览器", check, false) + `<div class="row" style="color:var(--c3)"><span class="rl">你的 Chrome</span></div>`, "连接你的 Chrome 后可以选它。在那之前，新网页都在内置浏览器里打开。")}
+    ${grp("你的 Chrome", row2("", `连接你的 Chrome <span class="badge g">未连接</span>`, "需要登录的网站，让 Her 用你自己的 Chrome 打开，就在 Her 所在的那台 Mac 电脑上。", m ? btn("连接") : ""),
+      m ? "" : "连接要在那台 Mac 的 Chrome 里添加扩展，手机上只能看状态。")}
+    ${grp("内置浏览器", `<div class="md" style="color:var(--c2)">Her 在她所在的那台 Mac 电脑上用她自己的 Chrome 打开网页，不带你的登录状态，不显示窗口。</div>`)}
+    ${grp("网站权限", row("所有网站", "先问我 " + down, false), "每个网站第一次用到时先问你。")}
+    ${grp("例外", `<div class="md" style="color:var(--c2)">还没有例外。在对话里选“始终允许”会加到这里。</div>`)}` },
+
+  model: { title: "模型", tab: "set", from: "现有的两项设置，加上控制台的“模型”页", body: () => `
+    ${grp("", row("模型", "GPT-5.5 · ChatGPT " + down, false) + row("思考强度", "高 " + down, false))}
+    ${grp(`使用订阅 ${NEW}`, row2(app("#10a37f", "C"), "ChatGPT", "已登录 ChatGPT", btn("忘记账户", "q")) + row2(app("#6b7280", "T"), "Token Plan", "连接你已有的模型套餐", btn("接入", "q")), "使用对应账户的订阅额度，API Key 单独计费。")}
+    ${grp(`API 与自定义服务 ${NEW}`, row2(app("#4d6bfe", "D"), "DeepSeek", "已连接 · 显示 2 / 共 2 个模型", chev, "", "models") + row("添加 API 服务", "", false, "blue"))}`,
+    note: "<li><b>合并：</b>模型、思考强度是现有的两行；下面两组是控制台“模型”页的内容，原来设置里只有一句“在控制台里添加”。</li>" },
+
+  env: { title: "环境", tab: "set", from: "现有的几项，收到一页", body: (m) => `
+    ${grp("运行在", `<div class="row two"><span class="rl">MacBook Pro<small>在线</small></span><span class="rv">${check}</span></div><div class="row two"><span class="rl">Mac mini<small>在线 · 2 未读</small></span></div>`
+      + row(m ? "添加环境…" : "在另一台机器上开启 Her…", "", false, "blue", "addenv"))}
+    ${grp("", row(`存储 ${NEW}`, "共 1.8 GB", true, "", "storage") + row(`管理「MacBook Pro」…${m ? "" : " " + NEW}`, "", true, "", "console"))}
+    ${grp("", row("在 MacBook Pro 上关闭 Her…", "", false, "red", "ask:off"))}`,
+    note: "<li><b>挪动：</b>切换环境、添加环境、关闭 Her 都是这台机器的事，收到这一页。Mac 上它们原来在 ⋯ 和面板底部。</li>" },
+
+  storage: { title: "存储", tab: "set", parent: "env", fresh: true, from: "控制台的“存储”页，只读", body: () => `
+    <div class="usebar">${kinds.map((k) => `<i style="flex:${k[3]};--k:${k[4]}"></i>`).join("")}</div>
+    ${grp("存放内容 · 共 1.8 GB", kinds.map((k) => row2(`<i class="kd" style="--k:${k[4]}"></i>`, k[0], k[1], k[2])).join(""), "每次打开此页面时统计。")}
+    ${grp("位置", row2("", "~/.her", "默认位置", btn("复制路径", "q")), "这个文件夹是 Her 的助手、对话、记忆和产出文件的唯一一份。中继和你的其他设备都不保存它，请把它纳入这台电脑的备份。抹除 Her 的数据会删除它。")}`,
+    note: "<li><b>表达：</b>控制台里是一张列表，这里在上面加了一条按占用分段的色条，数据是同一份。</li>" },
+
+  console: { title: "MacBook Pro", name: "控制台", tab: "set", parent: "env", from: "控制台本身，网页", body: (m) => `
+    <p class="note">${m ? "在控制台窗口里打开，和现在一样。" : "控制台是随 Her 发布的网页，在 App 里打开：先过 Face ID，只能停在控制台自己的地址，外链交给 Safari。"}</p>
+    <div class="web"><div class="bar">${ic("shield", 13, 2)}MacBook Pro · 控制台</div>
+      ${[["cpu", "模型"], ["plug", "连接器"], ["skill", "技能"], ["search", "联网搜索"], ["window", "浏览器"], ["drive", "存储"]].map(([i, t]) => `<div class="row"><span style="color:var(--c2)">${ic(i, 18)}</span><span class="rl">${t}</span><span class="rv">${chev}</span></div>`).join("")}</div>
+    <p class="note">6 页在面板里都有了自己的位置。这个总入口留着，是因为控制台随 Her 更新：以后多出来的页，App 还不认识也能从这里进。</p>` },
+};
+
+// A level further down: one piece of work, one file, one task and one of its runs, one service and its tools, one
+// skill, a key, a provider's models, another machine. Each is a page (or a sheet) the app or the console has today.
+Object.assign(subs, {
+  record: { title: "修复登录页的报错", tab: "work", parent: "progress", from: "现有页面（进展里一路的记录）", body: () => `
+    <div style="display:flex;align-items:center;gap:8px;margin:6px 4px 0"><span class="cap2 o">等你批准</span><span style="color:var(--c2);font-size:var(--fs2)">子智能体</span></div>
+    <p class="note" style="margin-left:4px">你 14:20 · 登录页那个报错帮我看一下</p>
+    ${grp("", `<div class="md"><span style="color:var(--c2);font-size:var(--fsh)">Her 派的活</span><br>查清登录页在会话过期后反复跳转的原因并修好。改动前先说明要改哪里。</div>`)}
+    <p class="part" style="display:flex">步骤<span style="margin-left:auto;font-weight:400;color:var(--tint)">展开全部输出</span></p>
+    ${grp("", row("思考") + row(`已读取 <span class="mono">auth/redirect.ts</span>`) + row(`已搜索 <span class="mono">redirectLoop</span>`) + row(`已运行 <span class="mono">npm test -- auth</span>`)
+      + row(`<span style="color:var(--orange)">待批准</span> 修改 <span class="mono">auth/redirect.ts</span>`, "", false))}
+    <div class="appr"><b>修改 auth/redirect.ts？</b><div class="btnrow" style="margin-top:12px">${btn("拒绝", "q big")}${btn("这次允许", "big")}</div></div>`,
+    note: "<li>底部的批准条沿用对话里现有的批准面板，这里只画了问题和两个按钮。</li>" },
+
+  fileview: { title: "竞品对比.xlsx", tab: "work", parent: "files", right: "up", from: "现有的面板（点文件后弹出，这里画成一页）", body: () => `
+    <span class="seg full"><button class="on">第 2 版</button><button>第 1 版</button></span>
+    <div class="tbl">${["", "Linear", "Notion", "Airtable", "起步价", "$8", "$10", "$20", "免费档", "有", "有", "有", "API", "有", "有", "有", "移动端", "有", "有", "有"].map((c) => `<span>${c}</span>`).join("")}</div>
+    <div class="gc delivery"><div class="who">${cat(30)}<div><small>Her · 11月16日 11:40</small>三家的定价和功能放在一张表里。</div></div>
+      <div class="btnrow" style="margin-top:12px">${btn("在对话中查看", "q big")}${btn("回复", "big")}</div></div>` },
+
+  routine: { title: "晨报", tab: "work", parent: "routines", from: "现有页面（定时任务的详情）", body: () => `
+    ${grp("", row("启用", sw(), false) + row("时间", "每天早上 9 点", false) + row("接下来", "明天 09:00、周三 09:00", false))}
+    ${grp("说明", `<div class="md">看一遍昨晚到现在的邮件、日历和 GitHub 通知，挑出今天要处理的，按轻重排好发给我。没有要紧的就不用发。</div>`)}
+    ${grp("", row("立即运行", "", false, "blue") + row("在对话里修改", "", false, "blue") + row("删除定时任务", "", false, "red"))}
+    ${grp("最近运行", row2("", "今天 09:00", "三件要处理：续费提醒，两个待审的 PR。", `发给你了${chev}`, "", "run")
+      + row2("", "昨天 09:00", "", `没有要说的${chev}`) + row2("", "11月10日 到 11月13日", "4 次，点开看每一次", `没有要说的 ${down}`))}
+    <button class="linkrow">更早的运行</button>` },
+
+  run: { title: "一次运行", tab: "work", parent: "routine", from: "现有页面（一次运行的记录）", body: () => `
+    ${grp("", row("定时任务", "晨报", true, "", "routine") + row("结果", "发给你了 今天 09:02", false) + row("在对话里看", "", false, "blue"))}
+    ${grp("", row("计划时间", "今天 09:00", false) + row("开始于", "今天 09:00", false) + row("用时", "1 分 48 秒", false) + row("用量", "12.4K tokens", false))}
+    ${grp("汇报", `<div class="md"><ul><li>域名续费后天到期。</li><li>两个 PR 等你审：连接器页的搜索、定时任务的补跑。</li></ul></div>`)}
+    ${grp("步骤", row("思考") + row("已调用 Gmail · 搜索邮件") + row("已调用 GitHub · 列出通知"))}` },
+
+  connector: { title: "GitHub", tab: "has", parent: "connectors", from: "现有页面（单个连接器）", body: (m) => `
+    ${grp("", row2(`<i class="ava">${ic("person", 20)}</i>`, "你的 GitHub 账号", "已登录"), m ? "登录信息保存在 MacBook Pro 上，不经过 Hermesh 的服务器。" : "登录信息保存在 MacBook Pro 上，不在这台 iPhone 上，也不经过 Hermesh 的服务器。")}
+    ${grp("", row("让 Her 使用", sw(), false), "关掉以后登录还在，Her 从下一步起不再用它。")}
+    ${grp("", row("工具", "42", true, "", "tools"), "GitHub 标为只读的工具，Her 直接用；其他工具用之前会先问你。")}
+    ${grp("地址", `<div class="md mono">https://api.githubcopilot.com/mcp/</div>` + row("上次检测", `3 分钟前　<span style="color:var(--tint)">重新检查</span>`, false))}
+    ${grp("", row("断开", "", false, "red"))}` },
+
+  tools: { title: "工具", tab: "has", parent: "connector", from: "现有页面（连接器的工具）", body: () =>
+    grp("", [["Search for code across GitHub repositories", "search_code"], ["List issues in a repository", "list_issues"], ["Get the contents of a file or directory", "get_file_contents"],
+      ["Create a new pull request", "create_pull_request"], ["Add a comment to an issue", "add_issue_comment"]].map(([d, n]) => row2("", d, `<span class="mono">${n}</span>`)).join(""),
+      "这是 GitHub 上次连接时提供的工具。") },
+
+  addconn: { title: "添加自定义连接器", tab: "has", parent: "connectors", from: "现有的面板（弹出，这里画成一页）", body: () => `
+    <p class="note">填 MCP 服务器的地址。怎么登录由 MacBook Pro 去问它。</p>
+    ${grp("", `<div class="row" style="color:var(--c3)"><span class="rl mono">https://mcp.example.com/mcp</span></div>`, "以命令运行的连接器要在 Mac 上添加。")}
+    <div class="btnrow">${btn("取消", "q big")}${btn("继续", "big")}</div>` },
+
+  skill: { title: "weekly-report", tab: "has", parent: "skills", fresh: true, from: "控制台里技能的详情", body: () => `
+    ${grp("", row("启用", sw(), false) + row("来源", "上传", false) + row("调用", `<span class="mono">/weekly-report</span>　<span style="color:var(--tint)">复制</span>`, false))}
+    ${grp("路径", `<div class="md mono">~/.her/skills/weekly-report</div>`)}
+    ${grp("技能简介", `<div class="md">按固定版式整理一周的工作：本周完成、进行中、下周计划、需要决定的事。</div>`)}
+    ${grp("文件", row("SKILL.md") + row("template.md"))}
+    ${grp("", row("删除技能", "", false, "red"))}` },
+
+  searchkey: { title: "添加 Tavily 密钥", tab: "has", parent: "search", fresh: true, from: "控制台里添加密钥的弹窗", body: () => `
+    <p class="note">每月 1000 次免费，之后每次约 $0.008。</p>
+    ${grp("API Key", `<div class="row" style="color:var(--c3)"><span class="rl">API Key</span></div>`, "密钥保存在凭据库。")}
+    <button class="linkrow">去 Tavily 获取</button>
+    <div class="btnrow" style="margin-top:4px">${btn("取消", "q big")}${btn("保存并测试", "big")}</div>` },
+
+  models: { title: "DeepSeek 的模型", tab: "set", parent: "model", fresh: true, from: "控制台的“管理模型”", body: () => `
+    <div class="srch">${ic("search", 15, 2)}搜索模型</div>
+    <p class="note">来自服务商的模型列表 · 菜单显示 2 个，共 2 个</p>
+    ${grp("", row("deepseek-chat", sw(), false) + row("deepseek-reasoner", sw(), false), "开着的会出现在模型菜单里。")}
+    ${grp("", row("刷新列表", "", false, "blue") + row("更换密钥…", "", false, "blue") + row("移除", "", false, "red"))}` },
+
+  addenv: { title: "添加环境", tab: "set", parent: "env", from: "现有的面板（弹出，这里画成一页）", body: () => `
+    <p class="note">对话、文件和模型的 Key 都只留在那台机器上。</p>
+    ${grp("", row2(`<i class="ava">${ic("display", 19)}</i>`, "Mac Studio", "在线 · macOS", btn("开启 Her"))
+      + row2(`<i class="ava">${ic("drive", 19)}</i>`, "dev-server", "离线 · 3 天前在线", btn("开启 Her", "dis"))
+      + row2(`<i class="ava">${ic("laptop", 19)}</i>`, "WIN-PC", "Windows 暂不支持"),
+      "Her 可以使用你的所有电脑：在任意项目里启动编程 agent，查看并回复它们的会话。这项授权不会到期，关闭 Her 即结束。")}` },
+});
+
+// What is asked before it is done, in the app's own words.
+const asks = {
+  clear: ["清空和「Her」的聊天记录？", "聊天记录会清空，它正在做的事会停止。它记住的事、文件、定时任务和设置都保留。", [["清除", true]]],
+  forget: ["清空「Her」记住的事？", "记忆会移到废纸篓，它马上就不再记得。聊天记录保留。", [["清除", true]]],
+  off: ["在「MacBook Pro」上关闭 Her？", "Her 会在那里停止运行，也不能再使用你的电脑。保留数据的话，下次开启 Her 时接着用。清空会删除 MacBook Pro 上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。", [["关闭，保留数据", false], ["关闭并清空数据", true]]],
+  full: ["让「Her」完全访问？", "它在 MacBook Pro 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那台机器上的一切交给它时开启。", [["开启完全访问", true, "full"]]],
+};
+
+const notes = {
+  cur: `<h3>现状</h3>
+    <p>文案取自两端现在的中文界面。</p>
+    <ul>
+      <li><b>iPhone 顶栏：</b>☰、文件、进展、定时任务 4 个按钮，加头像和名牌。</li>
+      <li><b>iPhone 设置：</b>运行在、模型、思考强度、做事前、连接器、远程桌面、通知、记住的事、清空、关闭。</li>
+      <li><b>Mac：</b>进展、文件、定时任务、⋯ 在顶栏；侧栏面板里是模型设定、权限、连接器、通知、记忆、清空、关闭。</li>
+    </ul>`,
+  work: `<h3>工作：三个入口</h3>
+    <p>卡片只是入口：名字、图标，最多一句状态。里面的内容点进去看。</p>
+    <ul>
+      <li><b>进展：</b>有东西等你时写“几个在等你”，否则写“几个进行中”，都没有就不写。</li>
+      <li><b>文件：</b>有新文件时写“几份新的”。</li>
+      <li><b>定时任务：</b>平时不写；有任务在运行或上次没做成时才写。</li>
+    </ul>
+    <p style="margin-top:6px">这几句就是现在顶栏按钮上的圆点和角标，换成了字。</p>`,
+  has: `<h3>能力：四个入口，一个托盘</h3>
+    <ul>
+      <li><b>记忆、技能、联网搜索、浏览器</b>都是入口卡片。联网搜索和浏览器写一句“已开启 / 已关闭”，开关在各自的页里。</li>
+      <li><b>连接器</b>保留托盘：摆出已连上的服务，哪个要处理标在哪个上。这是上次定的；如果也想收成一张入口卡片，说一声就改。</li>
+    </ul>`,
+  set: `<h3>设置：只留五行</h3>
+    <p>原来十二行平铺。现在首屏只有模型、做事前、通知、环境、清空对话。</p>
+    <ul>
+      <li><b>模型</b>点进去：模型、思考强度，以及控制台“模型”页的订阅和 API 服务。</li>
+      <li><b>环境</b>点进去：切换和添加环境、存储、控制台、关闭 Her。</li>
+      <li><b>清空记忆</b>挪到了记忆页底部。</li>
+      <li>做事前和通知各只有一个控件，留在首屏直接操作。</li>
+    </ul>`,
+};
+const icons = `<div class="blk"><h3>卡片与图标</h3><p>卡片是玻璃，后面是 Her 的蓝紫和粉。图标是手画的近似，落到 App 里用系统图标。</p></div>`;
+
+// ---------- the page ----------
+const state = { v: "wb", tab: "work", page: null, ask: null, full: false, plat: "both", slot: "none", theme: "dark" };
+const label = (id) => subs[id].name || subs[id].title;
+// A page, then the pages under it.
+const under = (parent, depth) => Object.keys(subs).filter((id) => (subs[id].parent || null) === parent).flatMap((id) => [[id, depth], ...under(id, depth + 1)]);
+const path = (id) => (subs[id].parent ? path(subs[id].parent) + " › " : "") + label(id);
+const select = document.getElementById("page");
+select.innerHTML = `<option value="">面板</option>` + [["工作", "work"], ["能力", "has"], ["设置", "set"]].map(([t, k]) =>
+  `<optgroup label="${t}">${under(null, 0).filter(([id]) => subs[id].tab === k).map(([id, d]) => `<option value="${id}">${"　".repeat(d)}${label(id)}</option>`).join("")}</optgroup>`).join("");
+
+function render() {
+  cats = 0;
+  document.documentElement.dataset.theme = state.theme;
+  const { v, plat, slot, tab } = state;
+  const cur = v === "cur";
+  const page = !cur && state.page ? subs[state.page] : null;
+  const nav = page ? { title: page.title, back: page.parent || "", right: page.right || "", rightGo: page.rightGo || null } : {};
+  const ask = !cur && state.ask ? asks[state.ask] : null;
+  overlay = ask ? `<div class="act"><div class="act-card"><p><b>${ask[0]}</b>${ask[1]}</p>${ask[2].map(([t, red, does]) => `<button class="${red ? "red" : ""}" data-ask="" ${does ? `data-do="${does}"` : ""}>${t}</button>`).join("")}</div><button data-ask="">取消</button></div>` : "";
+  const inner = (m) => cur ? current(m) : page ? page.body(m) : root(m, tab);
+  const top = cur ? "对话页 · 4 个按钮 + 头像 + 名牌" : slot === "one" ? "对话页 · 右侧固定留一个槽" : "对话页 · 顶栏只留 Her";
+  const where = cur ? "点头像之后：设置" : page ? path(state.page) : "点 Her 之后";
+  document.getElementById("stage").innerHTML = `
+    <div class="phones ${plat === "mac" ? "hide" : ""}">
+      <div><p class="cap"><b>iPhone</b>${top}</p>${phoneChat(v, slot)}</div>
+      <div><p class="cap"><b>iPhone</b>${where}</p>${phonePage(inner(false), cur ? {} : page ? nav : { remote: true })}</div>
+    </div>
+    <div class="${plat === "ios" ? "hide" : ""}" style="max-width:100%"><p class="cap"><b>Mac</b>${cur ? "设置在侧栏，环境在 ⋯ 里" : page ? where + "，开在同一个侧栏里" : "同一页，开在对话旁边"}</p>${mac(v, slot, inner(true), nav)}</div>`;
+  document.getElementById("notes").innerHTML = cur ? notes.cur : page
+    ? `<h3>${label(state.page)}${page.fresh ? " " + NEW : ""}</h3><p>来源：${page.from}。</p><ul>${page.fresh ? "<li><b>新入口：</b>内容和文案取自控制台现有的这一页，这里按原生样式画出来。第一步可以先在 App 里打开网页，用得多再改原生。</li>" : "<li>内容和现有页面一致，没有新增功能。</li>"}${page.note || ""}</ul>`
+    : notes[tab] + icons;
+  for (const g of document.querySelectorAll(".ctl .g[data-k]")) {
+    for (const b of g.querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === state[g.dataset.k]);
+    if (g.dataset.k === "slot" || g.dataset.k === "tab") g.classList.toggle("off", cur);
+  }
+  document.getElementById("jump").classList.toggle("off", cur);
+  select.value = state.page || "";
+}
+document.querySelector(".ctl").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  state[b.parentElement.dataset.k] = b.dataset.v;
+  if (b.parentElement.dataset.k === "tab" || b.parentElement.dataset.k === "v") state.page = state.ask = null;
+  render();
+});
+select.addEventListener("change", () => {
+  state.page = select.value || null;
+  state.ask = null;
+  if (state.page) state.tab = subs[state.page].tab;
+  render();
+});
+document.getElementById("stage").addEventListener("click", (e) => {
+  const s = e.target.closest(".sw");
+  if (s) return s.classList.toggle("on");
+  const ask = e.target.closest("[data-ask]");
+  if (ask) {
+    if (ask.dataset.do === "full") state.full = true;
+    return (state.ask = ask.dataset.ask || null), render();
+  }
+  if (e.target.closest("[data-full]")) return (state.full = false), render();
+  const sg = e.target.closest(".seg button");
+  if (sg) return [...sg.parentElement.children].forEach((x) => x.classList.toggle("on", x === sg));
+  const tab = e.target.closest("[data-tab]");
+  if (tab) return (state.tab = tab.dataset.tab), render();
+  const go = e.target.closest("[data-go]");
+  if (go) return (state.page = go.dataset.go || null), render();
+});
+render();
+</script>
+</body>
+</html>

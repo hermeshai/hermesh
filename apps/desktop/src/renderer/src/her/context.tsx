@@ -9,8 +9,25 @@ import type { Environment } from "./connection";
 /** Which of Her's routines is open, in the panel beside the conversation. */
 export type RoutinesRoute = { routine?: string; run?: string };
 
-/** The one place beside the conversation: Her's settings (or their memory page), its routines, or the files it sent. */
-export type Panel = null | { kind: "settings"; page?: "memory" } | { kind: "routines"; route: RoutinesRoute } | { kind: "files" };
+/**
+ * The one place beside the conversation: Her's page (docs/her-panel-demo.html; "settings", for what it was), and the
+ * pages her cards and rows open there, each with a way back: her memory, her routines, the files she sent, her
+ * skills (one of them by its folder), web search, the browsers, her model (a provider's models by its id), her
+ * environment and its storage. Progress is a page of its own, and the console a window.
+ */
+export type Panel =
+  | null
+  | { kind: "settings"; page?: "memory" }
+  | { kind: "routines"; route: RoutinesRoute }
+  | { kind: "files" }
+  | { kind: "skills" }
+  | { kind: "skill"; dir: string }
+  | { kind: "search" }
+  | { kind: "browser" }
+  | { kind: "model" }
+  | { kind: "provider"; id: string }
+  | { kind: "environment" }
+  | { kind: "storage" };
 
 /** A sheet over the page: another environment, or full access for Her (signed). */
 export type HerSheet = null | { kind: "add" } | { kind: "access"; bot: BotSummary };

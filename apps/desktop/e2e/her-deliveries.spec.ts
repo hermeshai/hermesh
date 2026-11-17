@@ -34,7 +34,14 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   fs.writeFileSync(report, "# 季度报告\n\n初稿：只有营收。\n");
   await send("[[mock:attach:季度报告.md]] 发我报告");
   await expect(log.getByRole("button", { name: "查看 季度报告.md" })).toBeVisible({ timeout: 60_000 });
-  const button = page.getByTestId("her-files");
+  // The Files card of Her's page counts it; the page opens beside the conversation, on its Work tab.
+  const herPage = page.getByRole("complementary", { name: "助手设置" });
+  const button = herPage.getByTestId("her-files");
+  const openHerPage = async () => {
+    if (!(await herPage.isVisible())) await page.getByTestId("her-avatar").click();
+    await herPage.getByRole("tab", { name: "工作" }).click();
+  };
+  await openHerPage();
   await expect(button).toHaveAttribute("aria-label", "文件，1 份新的", { timeout: 30_000 });
 
   // Changed and sent again: the same file, a version later; still one file new.
@@ -51,7 +58,11 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(row).toHaveCount(1, { timeout: 30_000 });
   await expect(panel.locator(".fhead").first()).toContainText("今天");
   await expect(row.getByLabel("新的")).toBeVisible();
+  // Back on Her's page, the card says nothing is new: the list was seen.
+  await panel.getByRole("button", { name: "返回" }).click();
   await expect(button).toHaveAttribute("aria-label", "文件");
+  await button.click();
+  await expect(row).toHaveCount(1, { timeout: 30_000 });
   // Two lines: the name and when, then Her's words (none here: its size) and how many versions.
   await expect(row.locator(".dlv-vers")).toHaveText("2 个版本");
   await snap(page, "her-files-panel");
@@ -102,6 +113,7 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(panel).toBeHidden();
   fs.writeFileSync(path.join(folder, "数据.csv"), "a,b\n1,2\n");
   await send("[[mock:attach:数据.csv]] 数据也发我");
+  await openHerPage();
   await expect(button).toHaveAttribute("aria-label", "文件，1 份新的", { timeout: 60_000 });
   await button.click();
   await expect(panel.getByTestId("her-file-row")).toHaveCount(2, { timeout: 30_000 });
@@ -119,6 +131,7 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   await expect(approval).toContainText("每日早报", { timeout: 60_000 });
   await approval.getByRole("button", { name: /^允许/ }).click();
   await expect(log.getByRole("button", { name: "查看 早报.md" })).toBeVisible({ timeout: 90_000 });
+  await openHerPage();
   await button.click();
   const rows = panel.getByTestId("her-file-row");
   await expect(rows).toHaveCount(3, { timeout: 30_000 });

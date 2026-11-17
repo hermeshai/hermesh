@@ -29,8 +29,9 @@ struct HerMemory: Equatable {
     }
 }
 
-/// The memory on a page of its own, from Her's settings: MEMORY.md as the conversation renders Markdown, whatever
-/// form it takes, and the pages it names, opened as a file Her sent is. Changing it goes through the chat.
+/// The memory on a page of its own, from Her's page: MEMORY.md as the conversation renders Markdown, whatever
+/// form it takes, and the pages it names, opened as a file Her sent is. Changing it goes through the chat; clearing
+/// it is at the page's foot, with what it clears.
 struct HerMemoryPage: View {
     @Environment(AppModel.self) private var model
     let chat: HerChat
@@ -42,6 +43,7 @@ struct HerMemoryPage: View {
     @State private var preview: URL?
     @State private var page: HerFileText?
     @State private var opening: String?
+    @State private var forgetting = false
 
     var body: some View {
         Group {
@@ -74,6 +76,10 @@ struct HerMemoryPage: View {
                             }
                         }
                     }
+                    Section {
+                        Button("Clear Memory", role: .destructive) { forgetting = true }
+                            .accessibilityIdentifier("her-clear-memory")
+                    }
                 }
                 .listSectionSpacing(.compact)
             } else if older || answers == false {
@@ -101,6 +107,12 @@ struct HerMemoryPage: View {
                 failed = error.localizedDescription
             }
         }
+        // Her memory goes to the trash, and she stops remembering at once; the chat stays.
+        .confirmationDialog("Clear what “\(chat.bot?.name ?? "Her")” remembers?", isPresented: $forgetting, titleVisibility: .visible) {
+            Button("Clear", role: .destructive) { forget() }
+        } message: {
+            Text("Its memory moves to the trash, and it stops remembering at once. The chat stays.")
+        }
         .sheet(item: $page) { HerFilePage(file: $0) }
         .quickLookPreview($preview)
     }
@@ -112,6 +124,16 @@ struct HerMemoryPage: View {
 
     /// Whether her there has bots/memory: nil while unknown.
     private var answers: Bool? { machine.flatMap { herAnswers($0.her, "bots/memory") } }
+
+    private func forget() {
+        Task {
+            do {
+                _ = try await chat.call("bots/memory_clear", ["bot_id": .string(bot)])
+                memory = try? await HerMemory.load(chat, bot: bot)
+                model.show(String(localized: "Memory cleared"))
+            } catch { model.show(error.localizedDescription) }
+        }
+    }
 
     private func open(_ path: String) {
         guard opening == nil else { return }
