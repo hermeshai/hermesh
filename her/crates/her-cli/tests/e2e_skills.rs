@@ -245,8 +245,8 @@ async fn the_skills_command_lists_layers_shadows_and_problems() {
     let output = env.her_in(&work, &["skills", "enable", ".claude/skills/deploy"]).output().await.unwrap();
     assert_eq!(output.status.code(), Some(0), "{}", String::from_utf8_lossy(&output.stderr));
     let config = std::fs::read_to_string(env.home.path().join("config.toml")).unwrap();
-    // A path in TOML: a backslash is written twice there.
-    assert!(config.contains("opt_in = [") && config.replace("\\\\", "/").contains(".claude/skills/deploy"), "{config}");
+    // A path in TOML, with a PC's backslashes once or twice.
+    assert!(config.contains("opt_in = [") && config.replace('\\', "/").replace("//", "/").contains(".claude/skills/deploy"), "{config}");
     let output = env.her_in(&work, &["skills"]).output().await.unwrap();
     let text = String::from_utf8_lossy(&output.stdout);
     assert!(text.contains("project  deploy") && text.contains("catalog: 3 skills"), "{text}");
