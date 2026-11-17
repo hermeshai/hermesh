@@ -13,4 +13,5 @@ jobs:
         with:
           go-version-file: go.mod
       - run: node --version
-      - run: go test ./e2e -run '^TestChatGPTFixtureStartup$' -count=20 -v -timeout 8m
+      - run: cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
+      - run: go test ./e2e -count=1 -v -timeout 30m
