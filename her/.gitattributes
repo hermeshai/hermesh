@@ -1,0 +1,3 @@
+# Files come with LF on every system: her's tests compare what they write with files here, and her
+# carries some of them (the Hermesh extension) byte for byte.
+* text=auto eol=lf

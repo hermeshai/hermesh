@@ -55,7 +55,14 @@ impl Launcher for ManagedLauncher {
             }
             None => find_executable().ok_or_else(|| BrowserError::NotFound(NOT_FOUND.to_string()))?,
         };
-        spawn(&executable, options)
+        #[cfg(unix)]
+        {
+            spawn(&executable, options)
+        }
+        #[cfg(windows)]
+        {
+            spawn(&executable, options).await
+        }
     }
 }
 
@@ -293,7 +300,7 @@ fn nonblocking(fd: std::os::fd::OwnedFd) -> std::io::Result<std::os::fd::OwnedFd
 /// `--remote-debugging-io-pipes` (browser-design D-195). They are named pipes: her's ends are
 /// overlapped, as tokio needs, and the browser's are plain.
 #[cfg(windows)]
-fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, BrowserError> {
+async fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, BrowserError> {
     use std::os::windows::io::AsRawHandle;
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
@@ -328,6 +335,9 @@ fn spawn(executable: &Path, options: &LaunchOptions) -> Result<Launched, Browser
     };
     let (we_write, browser_reads) = pipe("in", false).map_err(launch_error)?;
     let (we_read, browser_writes) = pipe("out", true).map_err(launch_error)?;
+    // The other ends are open already: this only tells tokio's pipes so.
+    we_write.connect().await.map_err(launch_error)?;
+    we_read.connect().await.map_err(launch_error)?;
     let mut args = arguments(options, false);
     args.insert(
         1,
