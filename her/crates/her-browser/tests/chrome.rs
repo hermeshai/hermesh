@@ -162,11 +162,18 @@ impl NavigationGuard for TestGuard {
     }
 }
 
+// Each fixture starts a separate Chrome and its renderer processes. Keep those
+// starts serial on Windows runners; concurrent-session coverage stays in one fixture.
+#[cfg(windows)]
+static BROWSER_SLOT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+
 struct Fixture {
     pool: BrowserPool,
     config: BrowserConfig,
     base: String,
     dir: tempfile::TempDir,
+    #[cfg(windows)]
+    _browser_slot: tokio::sync::SemaphorePermit<'static>,
 }
 
 impl Fixture {
@@ -175,6 +182,8 @@ impl Fixture {
             eprintln!("no Chromium-family browser installed; skipping");
             return None;
         }
+        #[cfg(windows)]
+        let browser_slot = BROWSER_SLOT.acquire().await.unwrap();
         let dir = tempfile::tempdir().unwrap();
         Some(Fixture {
             pool: BrowserPool::new(dir.path().join("browser"), false),
@@ -184,6 +193,8 @@ impl Fixture {
             },
             base: serve(pages()).await,
             dir,
+            #[cfg(windows)]
+            _browser_slot: browser_slot,
         })
     }
 
