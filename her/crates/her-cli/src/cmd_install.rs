@@ -28,7 +28,7 @@ fn progress(received: u64, total: u64) {
 /// The checks that only a person on this machine can act on, before anything downloads.
 fn can_run_here(addon: Addon) -> anyhow::Result<()> {
     match addon {
-        Addon::Computer if !cfg!(target_os = "macos") => bail!("computer use is for macOS only"),
+        Addon::Computer if !cfg!(any(target_os = "macos", windows)) => bail!("computer use is for macOS and Windows only"),
         // The PDF worker on Linux links against glibc; Alpine and the like have none.
         Addon::Pdf if cfg!(target_os = "linux") && !["/lib64/ld-linux-x86-64.so.2", "/lib/ld-linux-aarch64.so.1"].iter().any(|p| Path::new(p).exists()) => {
             bail!("PDF needs a system with glibc; workbooks open without it. To read a PDF here, use a tool such as pdftotext")
