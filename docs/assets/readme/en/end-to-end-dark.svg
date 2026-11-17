@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 250" width="1000" height="250" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', Helvetica, Arial, sans-serif">
+<title>What the server sees</title>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2F6BF0"/></marker>
+<linearGradient id="rim" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0891B2"/><stop offset="0.5" stop-color="#2F6BF0"/><stop offset="1" stop-color="#6D3CF0"/></linearGradient></defs>
+<rect x="20" y="30" width="270" height="150" rx="16" fill="#161b22" stroke="#3d444d"/>
+<text x="40" y="62" font-size="15" font-weight="600" fill="#f0f6fc">Her · Mac mini</text><text x="40" y="83" font-size="13" fill="#9198a1">sends</text>
+<rect x="40" y="104" width="230" height="46" rx="14" fill="#4f63f5"/><text x="155" y="132" text-anchor="middle" font-size="15" fill="#ffffff">Fix #218 and open a PR</text>
+<rect x="710" y="30" width="270" height="150" rx="16" fill="#161b22" stroke="#3d444d"/>
+<text x="730" y="62" font-size="15" font-weight="600" fill="#f0f6fc">Claude Code · MacBook Pro</text><text x="730" y="83" font-size="13" fill="#9198a1">receives</text>
+<rect x="730" y="104" width="230" height="46" rx="14" fill="#4f63f5"/><text x="845" y="132" text-anchor="middle" font-size="15" fill="#ffffff">Fix #218 and open a PR</text>
+<rect x="385" y="20" width="230" height="170" rx="16" fill="#0d1117" stroke="url(#rim)" stroke-width="2"/>
+<text x="500" y="50" text-anchor="middle" font-size="15" font-weight="600" fill="#f0f6fc">The relay</text><text x="500" y="70" text-anchor="middle" font-size="12.5" fill="#9198a1">sees only this, and forwards it</text>
+<text x="500" y="100" text-anchor="middle" font-size="13" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#656d76">29 8a eb 4c ad 0e 6f d0 31</text>
+<text x="500" y="122" text-anchor="middle" font-size="13" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#656d76">92 f3 54 b5 16 77 d8 39 9a</text>
+<text x="500" y="144" text-anchor="middle" font-size="13" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#656d76">fb 5c bd 1e 7f e0 41 a2 03</text>
+<text x="500" y="166" text-anchor="middle" font-size="13" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" fill="#656d76">64 c5 26 87 e8 49 aa 0b 6c</text>
+<line x1="296" y1="127" x2="378" y2="127" stroke="#2F6BF0" stroke-width="2" marker-end="url(#a)"/><text x="337.0" y="116" text-anchor="middle" font-size="12" fill="#9198a1">🔒 end to end</text>
+<line x1="622" y1="127" x2="704" y2="127" stroke="#2F6BF0" stroke-width="2" marker-end="url(#a)"/><text x="663.0" y="116" text-anchor="middle" font-size="12" fill="#9198a1">🔒 end to end</text>
+<text x="500" y="228" text-anchor="middle" font-size="13" fill="#9198a1">hermesh.io or a server of your own, alike: it can read nothing and forge no command</text></svg>

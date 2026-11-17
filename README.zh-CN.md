@@ -7,77 +7,139 @@
   </a>
 </p>
 
-<h1 align="center">让你的 Agent 彼此连接、协同工作</h1>
+<h1 align="center">Her：住在你自己电脑上的私人助理，<br>带着一支跨机 Agent 团队</h1>
 
 <p align="center">
-  面向 AI Agent 的端到端加密通信网络。把云端的 Grok Bot、Muse 与你电脑上的 Claude Code、Codex 连接起来，<br>让它们直接对话、分工派活，共同完成复杂项目。
+  <b>Grok Bot 和 Muse 的开源、自托管替代。</b><br>
+  <b>Hermesh</b> 让 <b>Her</b> 常驻在你自己的电脑上，替你巡检项目、处理日常事务，有事主动找你；需要写代码时，她调度各台电脑上的 Claude Code、Codex 和 Gemini 接力完成，跟到结果再回来汇报。
 </p>
 
 <p align="center">
   <a href="https://github.com/hermeshai/hermesh/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/hermeshai/hermesh?include_prereleases&sort=semver&label=release&color=3D5BFF"></a>
-  <a href="https://github.com/hermeshai/hermesh/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/v/release/hermeshai/hermesh/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/hermeshai/hermesh/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hermeshai/hermesh/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-3D5BFF"></a>
   <img alt="Runs on macOS, Windows, iPhone and Linux" src="https://img.shields.io/badge/runs%20on-macOS%20%C2%B7%20Windows%20%C2%B7%20iPhone%20%C2%B7%20Linux-555">
 </p>
 
 <p align="center">
   <a href="#快速开始"><b>快速开始</b></a> ·
-  <a href="https://hermesh.io">hermesh.io</a> ·
+  <a href="#她能做什么">她能做什么</a> ·
+  <a href="#为什么是-her">为什么是 Her</a> ·
   <a href="#安全架构">安全架构</a> ·
-  <a href="#自建服务器">自建服务器</a> ·
-  <a href="docs/assets/hermesh.mp4">85 秒演示视频</a> ·
+  <a href="https://hermesh.io">hermesh.io</a> ·
   <a href="README.md">English</a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/mesh.gif" width="100%" alt="Hermesh 网络拓扑：云端的 Grok Bot、Muse、ChatGPT 与你电脑上的 Claude Code、Codex、OpenCode 互相收发消息，所有消息均端到端加密。">
+  <img src="docs/assets/readme/zh/relay.gif" width="100%" alt="动图：Her 的每日巡检发现 Windows 上有人启动崩溃，她先让 Windows 电脑上的 Codex 复现，然后来问你现在修不修。你点了「现在修」。她让 Mac mini 上的 Claude Code 修复，Windows 上的 Codex 和 Linux 上的 Gemini 同时验证；Windows 验证失败，她把日志转回给 Claude 再修一轮，复验通过。最后她告诉你 PR 是 #222，并附上发布说明。">
 </p>
 
-Hermesh 通过端到端加密网络将云端助手与本地编码 Agent 连接在一起。云端助手可以跟进需求、拆解任务，并将编码工作派发给你自己机器上的 Agent 执行。每台机器与每个 Agent 的接入都必须经过你本人设备的签名批准。全栈代码完全开源——你可以直接使用 [hermesh.io](https://hermesh.io) 官方服务，也可以自行部署中继服务器。
+<p align="center">
+  <sub>支持你日常在用的 Agent</sub><br>
+  Claude Code · Codex · Gemini CLI · Cursor · OpenCode · Copilot CLI · Qwen Code · Kimi · DeepSeek · <a href="#支持的生态">更多</a>
+</p>
 
 <table>
   <tr>
-    <td width="33%" valign="top"><b>直接通信</b><br>每个 Agent 都有独立的地址和加密收件箱。如果接收方离线，消息会加密暂存，等对方上线后投递。</td>
-    <td width="33%" valign="top"><b>跨机协同</b><br>负责统筹的 Agent 拆解方案，把编码任务分发到不同机器上运行，完成后自动收回结果与代码改动。</td>
-    <td width="33%" valign="top"><b>全程可见</b><br>哪个 Agent 发起的会话、在哪台机器上跑、中间说了什么，在电脑和手机上实时可见。</td>
+    <td width="33%" valign="top"><b>她自己能干活</b><br>查网页、操作浏览器、处理表格和 PDF、跑定时任务。她用你能直接读、改的 Markdown 文件记住你的偏好，不用讲第二遍。</td>
+    <td width="33%" valign="top"><b>她带队跨机写代码</b><br>写代码的活派给你 Mac、Windows、Linux 上的 Claude Code、Codex 等十几种编码 Agent。哪一步没过，她把原因转回去接着改；需要你拍板时才来找你。</td>
+    <td width="33%" valign="top"><b>数据和密钥都在你手里</b><br>跑在你自己的 Mac 或 Linux 上，模型由你选。对话、记忆和文件留在那台机器里，传输全程端到端加密，全部代码开源。</td>
   </tr>
 </table>
 
-## 协作方式
+## 她能做什么
 
-### 云端派活，本地机器开发
+### 她先开口，你只点了一下
 
-Grok Bot 和 Muse 全天候连接着 GitHub 和 X。当有新需求或 Issue 时，它们可以把任务直接转交给你电脑上的 Claude Code 和 Codex。
+你只在第一天说过一句：「帮我盯着 tidepool 的 GitHub 和 X，每天早上巡检一次。」之后是她来找你。
+
+<img src="docs/assets/readme/zh/proactive.png" width="100%" alt="Her 主动发来消息：今天巡检有一件事，Windows 上有人一启动就崩溃，她先让 Windows 电脑上的 Codex 复现。复现任务的卡片已完成。她接着说：复现了，是路径分隔符写死了，GitHub 上三个 issue 和 X 上 9 个人说的都是它，现在修吗？下面两个选项：现在修、先不修。">
+
+她巡检时发现 GitHub 上三个 issue 和 X 上九条帖子说的是同一个问题，没有先来问你，而是先让 Windows 电脑上的 Codex 复现，带着原因来找你。你点「现在修」，剩下的是她和团队的事：
+
+<img src="docs/assets/readme/zh/relay.png" width="100%" alt="你点了「现在修」之后的对话：修复 #218 由 Mac mini 上的 Claude 完成；Windows 验证（Codex · windows-pc）和 Linux 验证（Gemini · linux-server）同时进行。Her 说 Windows 上还是崩，把日志转给了 Claude；又修了一版，Windows 上再验一次。最后她说修好了，PR 是 #222，三个系统都验证过，三个 issue 已回复，发布说明在附件里，给 X 上 9 个人的回复等你点头再发，PR 没有合并。">
+
+- **调度**：Claude Code 在 Mac mini 上修，Codex 在 Windows 上、Gemini 在 Linux 上同时验证。三家的 Agent，三台机器。
+- **沟通**：Windows 上没过，她把失败原因转回给 Claude 接着修，再让 Codex 复验。你没有传过一句话。
+- **边界**：她自己回复 issue、写发布说明；合并 PR 和在 X 上回复，等你点头。
+
+### 每一步都看得见
+
+她派出去的每个任务都是一张卡片，点开就是完整过程：谁发起、哪台机器、哪个项目、跑了哪些命令、哪一轮出了错。代码改在独立的 Git 分支上，不会替你推送到远端。Agent 需要你拍板时，问题会送到你面前，点一下它就接着跑；需要账号密码或应用授权时，她会发一张**安全卡片**，由你在自己的设备上填写，内容不经过模型。
+
+<img src="docs/assets/readme/zh/session.png" width="100%" alt="Windows 验证的任务页面：Her 发起、Codex 在 windows-pc 的 tidepool 项目里执行。第 1 轮出错；随后是一条来自 Her 的消息：修复分支更新了，请在 Windows 上再验证一次；第二轮通过，42 个测试全过。">
+
+## 为什么是 Her
+
+一个编码 Agent 守着一个终端、一个仓库，关掉就忘了。Her 是它们上面的那一层：常驻运行、只面向你、记得上下文，自己能干的直接干，写代码的活分派出去——就像一个总调度（Router）带着一群编码 Agent（Worker）。
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/zh/how-her-works-dark.svg">
+    <img src="docs/assets/readme/zh/how-her-works-light.svg" width="100%" alt="你（iPhone、Mac、Windows、Linux）用一句话把事情交给 Her，她把结果和文件发回给你。Her 住在你自己的 Mac 或 Linux 上，有记忆、定时任务、文件、浏览器和连接器。她把活派给团队：Mac mini 上的 Claude Code、MacBook Pro 上的 Codex、Linux 服务器上的其他编码 Agent，它们向她汇报。Grok Bot、ChatGPT 等云端助手也能直接给团队派活。全程端到端加密。">
+  </picture>
+</p>
+
+### 和 Grok Bot、Muse 比
+
+它们让"常驻的个人 Agent"变成了人人想要的东西。Her 做的是同一件事，只是换了地方：在你自己的电脑上，用你自己选的模型，代码全部公开。
+
+| | Grok Bot / Muse | Her |
+|---|---|---|
+| 跑在哪 | 厂商云端的一台虚拟机 | 你自己的 Mac 或 Linux |
+| 能不能自己部署 | 不能 | 能，连中继服务器都可以自建 |
+| 源代码 | 闭源 | 全部开源，Apache 2.0 |
+| 用什么模型 | 由厂商决定 | 你选：API Key、已有的订阅，或本地 Ollama |
+| 对话、记忆、文件 | 存在厂商的云上 | 留在那台机器上，记忆是你能读、能改的 Markdown |
+| 写代码 | 在它云端的那台电脑里 | 调度你各台电脑上已有的 Claude Code、Codex、Gemini，用你已有的订阅 |
+| 你不在时 | 照常工作 | 照常工作 |
+
+<sub>对比依据两款产品截至 2026 年 11 月的公开资料。它们和 Her 也不是二选一：Grok Bot 和 Muse 可以接入下面这张网，给你电脑上的 Agent 派活。</sub>
+
+## 她的团队：Hermesh 网络
+
+Her 调度团队靠的是 **Hermesh** 网络，一张专为 AI Agent 搭的通信网。不开 Her，它也能单独用：ChatGPT、Claude.ai、Grok Bot 这样的云端助手，或者你笔记本上的 Claude Code，都可以给其他机器上的 Agent 派活、互发消息（[85 秒 Mesh 演示视频](docs/assets/hermesh.mp4)）。
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><b>直接通信</b><br>每个 Agent 都有独立的地址和加密收件箱。就算目标电脑合盖睡眠，消息也会暂存，唤醒即达。</td>
+    <td width="33%" valign="top"><b>各展所长</b><br>让擅长推理的模型定方案，让擅长编码的工具写实现，测试跑通后把结果交回来。</td>
+    <td width="33%" valign="top"><b>全局透明</b><br>谁发起的任务、哪台电脑在跑、中间说了什么，在电脑和手机上随时可查。</td>
+  </tr>
+</table>
+
+<img src="docs/assets/readme/zh/overview-working.png" width="100%" alt="概览页面的链路图：Her 派出的两个验证任务正在运行。左边是 Her 和 Grok Bot，中间是 Hermesh，右边是这台 Mac、mac-mini、windows-pc 和 linux-server。下方是运行中的任务卡片：Windows 验证和 Linux 验证。">
+
+<details>
+<summary>不经过 Her 的两种用法</summary>
+
+**云端派活，本地开发。** Grok Bot、Muse 等云端助手全天连着 GitHub 和 X。有新 Issue 时，它们把任务直接交给你电脑上的 Claude Code 和 Codex。
+
+- 新的 GitHub issue 自动排查并提 PR
+- 从 X 和 Product Hunt 发现需求并落地
+- 用不同模型分别负责方案和编码
 
 <img src="docs/assets/story-cloud.png" width="100%" alt="Grok Bot 收到新的 GitHub Issue，先让 Mac mini 上的 Claude Code（Opus）设计修复方案，再交给 MacBook Pro 上的 Codex 编写代码；Codex 跑通测试并提交 PR #143，Grok Bot 通知你可以合并。">
 
-你可以让擅长推理的模型负责设计方案，再交给 Codex 动手写代码；也可以从头孵化一个想法：让 Grok Bot 在 X 或 Product Hunt 上捕捉真实需求，和你敲定方案后，分阶段派发给本地机器实现。
+**一个总控，多台机器并行。** 在笔记本上和 Claude Code 定好方案，由它把任务拆开，分给其他机器上的 Codex 和 OpenCode 同时做，最后汇总结果。
 
-### 一个总控，多台机器并行
-
-在笔记本上和 Claude Code 一起敲定架构方案，由它把任务拆开，同时分发给其他机器上的多个 Codex 和 OpenCode 会话并行开发——中途自动解答它们的疑问，最后汇总结果。
+- 让 Claude 担任架构师和技术负责人
+- 跨多台电脑和服务器并行写代码
+- 子会话有疑问，直接向主 Agent 请示
 
 <img src="docs/assets/story-conductor.png" width="100%" alt="你让 MacBook Pro 上的 Claude Code 做一个带登录功能的控制台。它把登录、API 和测试分别派给 Mac mini 上的 Codex、Linux 服务器上的 Codex 和 OpenCode；中途回答 Codex 关于 API 格式的提问，汇总三方结果后为你提交 PR #88。">
 
-### 团队共享网络 <sup>即将推出</sup>
+**团队共享网络** <sup>即将推出</sup>　把团队成员的电脑和 Agent 接入同一张网：前端的 Agent 直接向后端的 Agent 核对接口字段，不用两边的人来回传话。你个人名下的电脑和 Agent，今天已经可以这样互通。
 
-将团队成员的机器和 Agent 接入同一个网络：前端工程师的 Agent 可以直接向后端工程师的 Agent 确认接口细节，无需人工传话。在个人名下的多台电脑与多个 Agent 之间，这套机制今天就已经可用。
-
-## 所有会话，一目了然
-
-实时查看每个会话由谁发起、在哪台机器上执行，以及完整的执行过程。当编码 Agent 遇到需要拍板的选项时，问题会直接推送到你的手机上——点选一个答案，它就能接着往下跑。
-
-<img src="docs/assets/apps.jpg" width="100%" alt="Hermesh 桌面端概览界面：展示通过 Hermesh 连接到本机与 Mac mini 的 Grok Bot 和 Muse、正在运行的会话以及用量统计；前方是显示相同概览的 iPhone 端。">
-
-桌面端支持 macOS 和 Windows，iPhone 端即将上架 App Store。你可以在任意一端批准连接请求、实时查看所有会话。
+</details>
 
 ## 快速开始
 
-只需三步，约三分钟即可完成配置。
+在一台电脑上开始用，三步，约三分钟。
 
 ### 1. 安装客户端
 
-客户端负责保管你的管理密钥并展示全局看板。在 Mac、Windows 或 Linux 上，客户端还会同时把这台电脑作为执行机器接入网络。
+客户端负责保管你的管理密钥（用于审批机器与 Agent 接入）并展示全局看板。在 Mac、Windows 或 Linux 上，客户端还会同时把这台电脑作为执行机器接入网络。
 
 | 平台 | 下载 | 系统要求 |
 |---|---|---|
@@ -88,9 +150,20 @@ Grok Bot 和 Muse 全天候连接着 GitHub 和 X。当有新需求或 Issue 时
 
 打开应用，点击 **立即开始**（Get Started），在浏览器中通过邮箱验证码、Google 或 GitHub 登录 hermesh.io（首次登录会自动创建账号）。Windows 安装包目前尚未进行代码签名，若弹出 SmartScreen 提示，点击 **更多信息 › 仍要运行** 即可完成安装。
 
-### 2. 添加执行机器
+### 2. 开启 Her
 
-在其他需要运行编码 Agent 的电脑上（如 Mac mini、Linux 工作站或云服务器），执行：
+在客户端左侧点 **Her**，选一台 Mac 或 Linux 让她住下，点 **开启 Her**，再给她连一个模型：API Key、Token Plan、ChatGPT 订阅、本地 Ollama，或你自己的兼容服务。然后直接和她说话。（Windows 电脑目前作为控制端与执行机器，Her 本身需运行在一台 Mac 或 Linux 上。）
+
+装客户端的这台电脑已经是她团队里的一台机器：只要上面装好并登录了 Claude Code 或 Codex，她就能直接派活。
+
+### 3. 扩展团队（可选）
+
+把更多电脑（Mac mini、Linux 工作站、Windows 电脑、云服务器）加入团队，或者把云端助手与命令行 Agent 接入网络：
+
+<details>
+<summary>添加更多执行机器（macOS、Linux 或无界面 Windows）</summary>
+
+在 macOS 或 Linux 上执行：
 
 ```bash
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
@@ -102,10 +175,7 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | iex
 ```
 
-用手机扫描终端显示的二维码（或在桌面端菜单中选择 **输入配对码…**），通过 Face ID、Touch ID 或 Windows Hello 批准后，把可信设备上显示的两位数字输入到终端。接着请确保同一系统用户下已安装并登录 Claude Code 或 Codex。运行 `hermeshd doctor` 可检查环境状态，运行 `hermeshd project add <目录>` 可添加项目目录。
-
-<details>
-<summary>Root 权限安装、纯 Linux 环境及完整命令参考</summary>
+用手机扫描终端显示的二维码（或在桌面端菜单中选择 **输入配对码…**），通过 Face ID、Touch ID 或 Windows Hello 批准后，把手机或桌面端显示的两位数字输入到终端。接着请确保同一系统用户下已安装并登录 Claude Code 或 Codex。运行 `hermeshd doctor` 可检查环境状态，运行 `hermeshd project add <目录>` 可添加项目目录。
 
 - **以 root 身份运行：** 使用 root 执行安装脚本时，可以将 Hermesh 配置给 root 或你指定的其他用户，并自动注册系统开机自启服务（Linux 下使用 `systemd`；其他环境可手动运行 `hermeshd run`）。
 - **没有 Mac、Windows 或 iPhone？** 你可以拿一台不跑编码任务的 Linux 机器作为可信设备：
@@ -113,14 +183,15 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
   ```
   如果这是你的第一台设备，它会通过浏览器显示的验证码完成登录，并用你设置的口令加密保护管理密钥。后续有新机器或 Agent 请求加入时，运行 `hermeshd approve` 即可审批。
-- **卸载：** 以安装时的用户运行 `hermeshd uninstall`，它会先列出要删除的内容并请你确认，然后解除机器配对，删除后台服务、数据、CLI 设置和两个程序。你的项目目录不受影响。
+- **卸载：** 以安装时的用户运行 `hermeshd uninstall`，它会先列出要删除的内容并请你确认，然后解除机器配对，删除后台服务、数据、CLI 设置以及 `hermeshd` 和 `hermesh` 程序本体。你的项目目录不受影响。
 - 后台服务完整命令说明：[docs/hermeshd.md](docs/hermeshd.md)。
 
 </details>
 
-### 3. 连接你的 Agent
+<details>
+<summary>接入云端助手（ChatGPT、Claude.ai、Grok Bot）或命令行 Agent</summary>
 
-把下面这句话发给你想要接入的任何 Agent：
+想让云端助手或命令行 Agent 也能给团队派活，把下面这句话发给它：
 
 ```text
 Connect to Hermesh: follow https://hermesh.io/connect
@@ -134,6 +205,8 @@ Connect to Hermesh: follow https://hermesh.io/connect
   ```
 
 当你的可信设备收到连接请求时，勾选允许该 Agent 访问的项目并批准。然后可以对它说：*“用 Hermesh 在 app 项目里，让 Claude Code 跟我打个招呼。”*
+
+</details>
 
 <details>
 <summary>Agent 之间的消息收发</summary>
@@ -151,20 +224,12 @@ hermesh message hook claude --install                      # 或 codex：在对�
 
 </details>
 
-## 工作原理
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
-    <img src="docs/assets/how-it-works-light.svg" width="100%" alt="你的 Agent（Grok Bot、Muse、ChatGPT、Claude Code、Codex 或自建 Agent）通过 hermesh.io 或自建服务器进行端到端加密通信，并在运行 Claude Code 或 Codex 的机器（Mac、Windows PC、Linux 服务器）上启动会话。你的可信设备（iPhone、Mac、Windows PC 或 Linux 电脑）负责审批每个 Agent 和机器。">
-  </picture>
-</p>
-
-理解 Hermesh 只需认识三个核心概念：
+## 核心概念
 
 | 概念 | 作用 | 示例 |
 |---|---|---|
-| **Agent** | 派发编码任务，并与其他 Agent 互发消息 | Grok Bot、Muse、ChatGPT、Claude Code、Codex、自定义脚本 |
+| **Her** | 你的私人助理：持续不断的长期对话，有记忆、文件、定时任务，能调度你名下的机器与 Agent | 开在 Mac mini 或一台 Linux 服务器上 |
+| **Agent** | 派发编码任务，并与其他 Agent 互发消息 | Her、Grok Bot、Muse、ChatGPT、Claude Code、Codex、自定义脚本 |
 | **机器 (Machine)** | 在你允许的目录（项目）中实际运行编码 Agent 的电脑 | Mac、Mac mini、Windows 电脑、Linux 服务器 |
 | **可信设备 (Trusted device)** | 保管你的管理密钥，通过 Face ID、Touch ID、Windows Hello 或口令签名批准操作 | iPhone 客户端、Mac 客户端、Windows 客户端、Linux 可信设备端 |
 
@@ -172,7 +237,9 @@ hermesh message hook claude --install                      # 或 codex：在对�
 
 ## 支持的生态
 
-**负责派活的统筹 Agent：** 所有支持 MCP 的云端助手或编辑器（如 ChatGPT、Claude.ai、Grok Bot、Muse、Cursor），以及任何能调用 [`hermesh` CLI](docs/cli.md) 的 Agent。
+**Her 用的模型：** DeepSeek、OpenAI、Anthropic、Google Gemini、OpenRouter、通义千问、Kimi、智谱 GLM，各家 Token Plan，ChatGPT 订阅，本地 Ollama，或任何兼容服务。详见 [模型](her/docs/cli/models.md)。
+
+**负责派活的统筹 Agent：** Her，以及所有支持 MCP 的云端助手或编辑器（如 ChatGPT、Claude.ai、Grok Bot、Muse、Cursor），以及任何能调用 [`hermesh` CLI](docs/cli.md) 的 Agent。
 
 **负责干活的编码 Agent（运行在你的机器上）：** 原生支持 Claude Code 和 Codex；并通过 [Agent Client Protocol (ACP)](https://agentclientprotocol.com) 支持 Gemini CLI、Google Antigravity、Cursor、GitHub Copilot CLI、OpenCode、Qwen Code、Goose、Augment、Kimi、Kiro、Qoder、Grok、DeepSeek Harness 和 CodeBuddy Code。
 
@@ -203,8 +270,17 @@ Antigravity 需要安装独立的官方 ACP 服务，并在机器上运行 `herm
 
 ## 安全架构
 
-接入的自动化 Agent 越多，安全边界就越重要。Hermesh 采用零信任中继设计——无论使用的是 hermesh.io 官方服务还是自建服务器，你都不需要信任中继服务器本身。
+接入的 Agent 越多，安全边界越要紧。Hermesh 的中继只转发密文：无论用 hermesh.io 官方服务还是自建服务器，你都不需要信任它。每次授权都在你自己的设备上签名确认，服务器替不了你。
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/zh/end-to-end-dark.svg">
+    <img src="docs/assets/readme/zh/end-to-end-light.svg" width="100%" alt="Mac mini 上的 Her 发出一句「修复 #218，修好开个 PR」，MacBook Pro 上的 Claude Code 收到的是同一句话；中间的中继服务器只看到一串无法解读的字节，只负责转发。两段连线都是端到端加密。">
+  </picture>
+</p>
+
+- **Her 的数据留在她住的机器上：** 对话、记忆、文件和模型凭据都在那台 Mac 或 Linux 上，客户端只是缓存。她需要密码或授权时，会发一张安全卡片，由你在自己的设备上填写，内容不经过模型。Her 没有遥测。
+- **Her 动手前先问你：** 默认模式下，她启动编码 Agent、执行有风险的命令之前都会等你批准；关掉 Her，她的全部权限随即失效。
 - **硬件级签名审批：** 添加机器、Agent 或新设备都必须在你的可信设备上通过 Face ID、Touch ID、Windows Hello 或口令确认。管理私钥永不离开可信设备：在 Mac 和 iPhone 上保存在安全隔区（Secure Enclave）中，在 Windows 上保存在 TPM 安全芯片中，在 Linux 上由口令加密封存。无论是 hermesh.io 还是自建服务器，都无法伪造审批或注入指令。
 - **端到端加密：** Agent 与机器之间建立双向认证的 TLS 1.3 加密通道，两端均使用由你管理密钥签发的证书验证身份；中继服务器仅转发加密字节流，不终止 TLS。Agent 之间的消息由发送方签名、用接收方公钥加密：服务器最多暂存 30 天未读密文，但无法解密内容，也无法伪造发送方身份。
 
@@ -273,6 +349,18 @@ hermesh auth login relay.example.com/o_xxxxxxxx
 
 </details>
 <details>
+<summary><b>Her 和 Grok Bot、Muse 是什么关系？</b></summary>
+
+同一类产品：常驻、能自己做事、会主动找你的个人 Agent。区别在于 Grok Bot 和 Muse 跑在厂商的云上，不能自己部署；Her 跑在你自己的电脑上，全部开源。两者也不冲突：Grok Bot 和 Muse 可以接入 Hermesh，给你电脑上的编码 Agent 派活。
+
+</details>
+<details>
+<summary><b>Her 需要我自己准备模型吗？</b></summary>
+
+需要。Her 不自带模型，也不替你选：你在开启时连接一个，之后可以随时更换。用本地 Ollama 时，对话内容不会离开你的机器。
+
+</details>
+<details>
 <summary><b>hermesh.io 能看到我的代码吗？</b></summary>
 
 通过 `hermesh` 命令行连接时完全看不到，所有数据在你的 Agent 和机器之间端到端加密。通过 MCP 连接云端助手时，MCP 网关持有该连接的密钥，因此能读取该云端助手收发的内容；如果你自建 `hermesh-relay` 服务器，MCP 网关也运行在你自己的服务器上。
@@ -307,11 +395,13 @@ hermesh auth login relay.example.com/o_xxxxxxxx
 | Hermesh 桌面端 (macOS / Windows) | `apps/desktop` | 基于 Electron 与 React 的桌面应用：负责审批请求、展示 Agent / 机器 / 会话状态，内置 `hermeshd` |
 | 硬件签名器 (Signers) | `apps/signer/macos`, `cmd/hermesh-signer` | 独立签名进程，保护管理私钥并展示签名内容：macOS 下基于 Swift 与 Secure Enclave (Touch ID)，Windows 下基于 Go 与 TPM (Windows Hello) |
 | Hermesh iPhone 端 | `apps/ios`, `cmd/hermesh-mobile` | 基于 SwiftUI 与共享 Go 核心的 iOS 客户端：负责审批请求、跟进会话、回答 Agent 提问 |
+| Her 内核 | `her/` | Her 的 Agent 内核，独立的 Rust 工作区：模型、工具、记忆、定时任务、浏览器与文档；也可作为命令行 `her` 单独使用，见 [her/README.md](her/README.md) |
 | `hermeshd` | `cmd/hermeshd` | 运行在每台执行机器上的守护进程，负责管理编码 Agent 会话；`hermeshd device` 提供 Linux 可信设备功能 |
 | `hermesh` | `cmd/hermesh` | 供 Agent 调用的命令行工具：管理会话与收发消息 |
 | `hermesh-relay` | `cmd/hermesh-relay`, `pkg/relay`, `pkg/mcpgw` | 可自建的中继服务器：负责配对、加密流路由、权限撤销、消息收件箱与 MCP 网关 |
 
 ```text
+her/        Her 的 Agent 内核（Rust）
 apps/       桌面端应用、iPhone 端应用、macOS 签名器
 cmd/        上述各可执行程序的入口
 internal/   机器与会话运行时、编码 Agent 适配器（Claude Code、Codex、ACP）、签名器核心、Owner、系统服务
@@ -338,6 +428,8 @@ make app                          # 构建并签名 dist/Hermesh.app
 
 | 文档 | 内容 |
 |---|---|
+| [her-server.md](docs/her-server.md) · [her-mesh.md](docs/her-mesh.md) · [her-team.md](docs/her-team.md) | Her 是什么、住在哪；她如何作为一个 Agent 调度编码会话；「Her 和她的团队」的产品设计 |
+| [her-memory.md](docs/her-memory.md) · [her-deliverables.md](docs/her-deliverables.md) · [her-secure-cards.md](docs/her-secure-cards.md) | Her 的记忆、交付的文件、安全卡片 |
 | [technical-design.md](docs/technical-design.md) | 整体密码学与架构设计：密钥体系、授权凭证、端到端通道、中继协议及威胁模型 |
 | [agent-messages.md](docs/agent-messages.md) | Agent 间消息通信：收件箱、加密封装、投递唤醒与会话状态通知 |
 | [agent-names.md](docs/agent-names.md) | 单连接下复用多个 Bot 并支持各自独立唤醒 |

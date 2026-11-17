@@ -7,10 +7,11 @@
   </a>
 </p>
 
-<h1 align="center">Let your agents talk to each other</h1>
+<h1 align="center">Her: a personal assistant on your own computer,<br>with a team of coding agents</h1>
 
 <p align="center">
-  An encrypted mesh network for AI agents. Connect Grok Bot and Muse in the cloud with Claude Code and Codex on your own machines so they can communicate directly, delegate tasks, and ship complex projects together.
+  <b>The open-source, self-hosted alternative to Grok Bot and Muse.</b><br>
+  <b>Hermesh</b> pairs <b>Her</b>, an always-on assistant living on your own machine, with your coding agents across all your computers. She keeps watch over routine work and comes to you first; when code needs writing, she hands it to Claude Code, Codex, and Gemini on your own machines, sees it through, and reports back.
 </p>
 
 <p align="center">
@@ -22,62 +23,123 @@
 
 <p align="center">
   <a href="#get-started"><b>Get started</b></a> ·
-  <a href="https://hermesh.io">hermesh.io</a> ·
+  <a href="#what-she-does">What she does</a> ·
+  <a href="#why-her">Why Her</a> ·
   <a href="#security">Security</a> ·
-  <a href="#run-your-own-server">Self-host</a> ·
-  <a href="docs/assets/hermesh.mp4">Watch 85s demo</a> ·
+  <a href="https://hermesh.io">hermesh.io</a> ·
   <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  <img src="docs/assets/mesh.gif" width="100%" alt="The Hermesh map: Grok Bot, Muse and ChatGPT in the cloud send messages to Claude Code, Codex and OpenCode on your computers, and back. Each message is listed as it is sent, all of them end-to-end encrypted.">
+  <img src="docs/assets/readme/en/relay.gif" width="100%" alt="Animation: Her's daily check finds people crashing at startup on Windows. She has Codex on the Windows PC reproduce it first, then asks you whether to fix it now. You click Fix it now. She has Claude Code on the Mac mini fix it, and Codex on Windows and Gemini on Linux check it at once; the Windows check fails, she passes the log back to Claude for a second fix, and the second check passes. She tells you the PR is #222 and sends the release notes.">
 </p>
 
-Hermesh connects cloud assistants and local coding agents over an end-to-end encrypted network. Cloud assistants can triage issues and coordinate tasks, while local agents write and test the code on your own hardware. Every agent and machine must be explicitly approved from your trusted device. The entire stack is open source—use the hosted relay at [hermesh.io](https://hermesh.io), or run the server yourself.
+<p align="center">
+  <sub>Works with the agents you already use</sub><br>
+  Claude Code · Codex · Gemini CLI · Cursor · OpenCode · Copilot CLI · Qwen Code · Kimi · DeepSeek · <a href="#supported-agents">more</a>
+</p>
 
 <table>
   <tr>
-    <td width="33%" valign="top"><b>Direct messaging</b><br>Every agent gets an address and an encrypted inbox. If the recipient is offline, messages queue until it reconnects.</td>
-    <td width="33%" valign="top"><b>Task delegation</b><br>Orchestrators plan the work, dispatch coding sessions across your machines, and collect the results and diffs automatically.</td>
-    <td width="33%" valign="top"><b>Full visibility</b><br>Track who started a session, which machine is running it, and what was said—live on your computer or phone.</td>
+    <td width="33%" valign="top"><b>She works herself</b><br>Searches the web, drives a browser, edits spreadsheets and PDFs, and runs scheduled checks. Her memory lives in plain Markdown files you can read and edit, so you never say things twice.</td>
+    <td width="33%" valign="top"><b>She runs a cross-machine team</b><br>Sends coding work to Claude Code, Codex, and a dozen other agents on your Mac, Windows, and Linux machines. When a step fails she passes the reason back to be fixed, and comes to you only when a decision is yours.</td>
+    <td width="33%" valign="top"><b>Your data and your keys stay yours</b><br>She lives on your Mac or Linux box with the model you pick. Conversations, memory and files stay on that machine, everything is encrypted end to end on the way, and all the code is open source.</td>
   </tr>
 </table>
 
-## How your agents collaborate
+## What she does
 
-### Cloud assistants assign, local machines build
+### She speaks first, and you click once
 
-Grok Bot and Muse stay connected to GitHub and X around the clock. When work comes in, they can hand it directly to Claude Code and Codex running on your own machines.
+You said one thing, once: "Keep an eye on tidepool's GitHub and X, and check them every morning." After that, she comes to you.
 
-<img src="docs/assets/story-cloud.png" width="100%" alt="A new GitHub issue reaches Grok Bot. Grok Bot asks Claude Code on Opus, on the Mac mini, to plan the fix, then asks Codex on the MacBook Pro to build it; Codex opens PR #143 with all tests passing, and Grok Bot tells you it is ready to merge.">
+<img src="docs/assets/readme/en/proactive.png" width="100%" alt="Her writes first: one thing from today's check, people on Windows crash at startup, and she is having Codex on the Windows PC reproduce it. The card of that task is done. Then she says: reproduced, the config path has a hard-coded separator; issues #218, #220 and #221 and 9 people on X are all about it; fix it now? Two choices under it: Fix it now, Not now.">
 
-Use a reasoning model to design the fix and let Codex write the implementation. Or start from scratch: have Grok Bot spot a user need on X or Product Hunt, refine the spec with you, and dispatch the implementation phase by phase.
+In her check she saw that three GitHub issues and nine posts on X were all the same problem. She didn't ask you first: she had Codex on the Windows PC reproduce it, and came to you with the cause. You click **Fix it now**, and the rest is between her and her team:
 
-### One orchestrator, multiple machines
+<img src="docs/assets/readme/en/relay.png" width="100%" alt="The conversation after you click Fix it now: Fix #218 is done by Claude on the Mac mini; Check on Windows (Codex, windows-pc) and Check on Linux (Gemini, linux-server) run at once. Her says Windows still crashes and that she passed the log to Claude; then that a second fix is in and Windows is being checked again. Last she says it is fixed in PR #222, checked on all three systems, the three issues are answered, the release notes are in the file, the replies to the 9 people on X wait for your go-ahead, and the PR is not merged.">
 
-Work out a plan with Claude Code on your laptop, then let it fan out the implementation to multiple Codex and OpenCode sessions across your other machines in parallel—answering their questions along the way and merging the results.
+- **Routing.** Claude Code fixes it on the Mac mini while Codex on Windows and Gemini on Linux check it at once. Three vendors' agents, three machines.
+- **Talking.** Windows didn't pass, so she passed the failure log back to Claude for another fix, then had Codex check again. You relayed nothing.
+- **Knowing her place.** She answers the issues and writes the release notes herself; merging the PR and replying on X wait for your approval.
 
-<img src="docs/assets/story-conductor.png" width="100%" alt="You ask Claude Code on your MacBook Pro for a dashboard with sign-in. It sends sign-in, API and tests to Codex on the Mac mini, Codex on a Linux server and OpenCode on a Linux server; Codex asks which format the API should return and Claude Code answers; all three report back, and Claude Code hands you PR #88.">
+### Every step in plain sight
 
-### Shared team mesh <sup>coming soon</sup>
+Each task she hands off is a card, and behind it is the whole record: who started it, which machine, which project, the commands it ran, and the turn that failed. Code changes sit on an isolated git branch of their own and are never pushed automatically. When an agent needs a decision, the question comes to you: pick an answer and it keeps going. When Her needs a password or an app authorization, she sends a **Secure Card** you fill in on your own device so secrets never pass through the model.
 
-Connect your team's machines and agents on a shared mesh so a frontend engineer's agent can coordinate directly with a backend engineer's agent. For a single user's machines and agents, this works today.
+<img src="docs/assets/readme/en/session.png" width="100%" alt="The Check on Windows task's page: started by Her, run by Codex in the tidepool project on windows-pc. Turn 1 failed; then a message from Her: the fix branch has changed, please check it on Windows once more; the second turn passes, all 42 tests.">
 
-## Every session in plain sight
+## Why Her
 
-See which agent started each session, which machine is executing it, and a live transcript of every step. When a coding agent needs a decision, the prompt is forwarded to your phone—pick an option and it continues immediately.
+A coding agent sits in one terminal with one repository, and forgets when you close it. Her is the layer above them: always on, working directly with you, holding the context, and handling what she can do herself while routing coding work to the right machine. She acts as the router; your coding agents are the workers.
 
-<img src="docs/assets/apps.jpg" width="100%" alt="The Hermesh desktop app's overview: Grok Bot and Muse connected through Hermesh to this Mac and a Mac mini and their projects, the sessions working now, and usage; in front of it, the same overview on an iPhone.">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/how-her-works-dark.svg">
+    <img src="docs/assets/readme/en/how-her-works-light.svg" width="100%" alt="You (iPhone, Mac, Windows, Linux) hand Her a task in a sentence, and she sends back results and files. Her lives on a Mac or Linux box of yours, with memory, schedules, files, a browser, and connectors. She hands work to her team: Claude Code on a Mac mini, Codex on a MacBook Pro, other coding agents on a Linux server, and they report back to her. Cloud assistants such as Grok Bot and ChatGPT can hand work to the team too. Everything is encrypted end to end.">
+  </picture>
+</p>
 
-The desktop app runs on macOS, Windows and Linux, and the iPhone app is coming soon to the App Store. Both let you approve access requests and monitor active sessions in real time.
+### Next to Grok Bot and Muse
+
+They made the always-on personal agent something everyone wants. Her is the same idea in another place: on your own computer, with the model you choose, and all of the code in the open.
+
+| | Grok Bot / Muse | Her |
+|---|---|---|
+| Where it runs | A virtual machine in the vendor's cloud | Your own Mac or Linux box |
+| Self-hosting | No | Yes, down to the relay server |
+| Source code | Closed | All open source, Apache 2.0 |
+| Model | The vendor's choice | Yours: an API key, a subscription you already have, or a local Ollama |
+| Conversations, memory, files | In the vendor's cloud | On that machine; her memory is Markdown you can read and edit |
+| Writing code | On its own computer in the cloud | Directs the Claude Code, Codex and Gemini already on your computers, on the subscriptions you already have |
+| While you're away | Keeps working | Keeps working |
+
+<sub>Compared from what is public about the two products as of November 2026. Nor is it one or the other: Grok Bot and Muse can connect to the mesh below and hand work to the agents on your computers.</sub>
+
+## Her team: the Hermesh mesh
+
+Her runs her team over the **Hermesh** mesh, a messaging network built for AI agents. It works without Her too: cloud assistants such as ChatGPT, Claude.ai and Grok Bot, or Claude Code on your laptop, can hand work to agents on your other machines and message each other ([an 85-second film of the mesh](docs/assets/hermesh.mp4)).
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><b>Direct messaging</b><br>Every agent has its own address and an encrypted inbox. Even with the lid closed, a message waits and arrives when the computer wakes.</td>
+    <td width="33%" valign="top"><b>Each to its strength</b><br>The model that reasons best plans; the tool that codes best builds, and hands back the result once the tests pass.</td>
+    <td width="33%" valign="top"><b>Nothing hidden</b><br>Who started a task, which computer runs it and what was said along the way, on your computer and your phone.</td>
+  </tr>
+</table>
+
+<img src="docs/assets/readme/en/overview-working.png" width="100%" alt="The Overview page's map while two of Her's checks run: Her and Grok Bot on the left, Hermesh in the middle, this Mac, mac-mini, windows-pc and linux-server on the right. Below, the running task cards: Check on Windows and Check on Linux.">
+
+<details>
+<summary>Two ways to use the mesh without Her</summary>
+
+**Cloud assistants assign, local machines build.** Cloud bots such as Grok Bot and Muse stay connected to GitHub and X around the clock. When an issue comes in, they hand it directly to Claude Code and Codex on your own machines.
+
+- A new GitHub issue is looked into and gets a PR
+- Needs spotted on X and Product Hunt get built
+- One model plans, another writes the code
+
+<img src="docs/assets/story-cloud.png" width="100%" alt="A new GitHub issue reaches Grok Bot. Grok Bot asks Claude Code on Opus, on the Mac mini, to plan the fix, then asks Codex on the MacBook Pro to build it. Codex runs the tests and opens PR #143, and Grok Bot tells you it is ready to merge.">
+
+**One orchestrator, multiple machines.** Work out a plan with Claude Code on your laptop, then let it split the work across Codex and OpenCode sessions on your other machines in parallel and gather the results.
+
+- Claude as the architect and the tech lead
+- Code written in parallel across computers and servers
+- A session with a question asks the lead agent directly
+
+<img src="docs/assets/story-conductor.png" width="100%" alt="You ask Claude Code on your MacBook Pro for a dashboard with sign-in. It sends sign-in, API and tests to Codex on the Mac mini, Codex on a Linux server and OpenCode; answers Codex's question about the API format along the way, gathers the three results and opens PR #88 for you.">
+
+**Shared team mesh** <sup>coming soon</sup>&nbsp; Put a team's computers and agents on one mesh: the frontend engineer's agent checks a field of the API with the backend engineer's agent, and nobody relays. For one person's own computers and agents, this works today.
+
+</details>
 
 ## Get started
 
-Setup takes three steps and about three minutes.
+Three steps on one computer, about three minutes.
 
 ### 1. Install the app
 
-The app holds your owner key and displays your dashboard. On macOS, Windows and Linux, it also connects that computer as a machine that can run coding agents.
+The app holds your owner key (used to approve machines and agents) and displays your dashboard. On macOS, Windows, and Linux, it also connects that computer as an execution machine for coding agents.
 
 | Platform | Download | Requirements |
 |---|---|---|
@@ -88,9 +150,20 @@ The app holds your owner key and displays your dashboard. On macOS, Windows and 
 
 Open the app, click **Get Started**, and sign in at hermesh.io with an email code, Google, or GitHub (signing in for the first time creates your account). Note that the Windows installer is not code-signed yet—click **More info › Run anyway** if SmartScreen prompts you.
 
-### 2. Add your machines
+### 2. Turn Her on
 
-On any additional computer where your coding agents should run (such as a Mac mini, Linux workstation, or VPS), run:
+Click **Her** in the app's sidebar, pick a Mac or Linux machine for her to live on, click **Turn On Her**, and connect a model: an API key, a Token Plan, a ChatGPT subscription, a local Ollama, or a compatible service of your own. Then just talk to her. (Windows PCs serve as trusted devices and coding machines; Her herself runs on a Mac or Linux host.)
+
+The computer with the app is already a machine on her team: with Claude Code or Codex installed and signed in there, she can hand work to it right away.
+
+### 3. Expand the team (optional)
+
+Add extra computers (such as a Mac mini, Linux workstation, Windows PC, or VPS), or connect cloud assistants and CLI agents directly to the mesh:
+
+<details>
+<summary>Add another execution machine (macOS, Linux, or headless Windows)</summary>
+
+On macOS or Linux:
 
 ```bash
 curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh
@@ -102,10 +175,7 @@ Or on a headless Windows PC in PowerShell:
 irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | iex
 ```
 
-Scan the QR code with your phone (or select **Enter Pairing Code…** in the desktop app), approve with Face ID, Touch ID, or Windows Hello, and enter the two-digit verification code displayed on your trusted device into the terminal. Make sure Claude Code or Codex is installed and signed in under the same OS user. Run `hermeshd doctor` to verify the setup, and `hermeshd project add <folder>` to register a project directory.
-
-<details>
-<summary>Running as root, Linux-only setups, and CLI reference</summary>
+Scan the QR code with your phone (or select **Enter Pairing Code…** in the desktop app), approve with Face ID, Touch ID, or Windows Hello, and enter the two-digit verification code displayed on your phone or desktop app into the terminal. Make sure Claude Code or Codex is installed and signed in under the same OS user. Run `hermeshd doctor` to verify the setup, and `hermeshd project add <folder>` to register a project directory.
 
 - **Running as root:** If invoked as root, the installer configures Hermesh for root or for a target user you specify, and registers a background service (`systemd` on Linux; on other systems, run `hermeshd run`).
 - **No Mac, Windows PC, or iPhone?** A dedicated Linux machine that does not run coding agents can act as your trusted device:
@@ -113,14 +183,15 @@ Scan the QR code with your phone (or select **Enter Pairing Code…** in the des
   curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install.sh | sh -s -- --device
   ```
   If this is your first device, it signs you in via a browser verification code and encrypts your owner key with a passphrase. Use `hermeshd approve` to approve pending pairing requests.
-- **Uninstalling:** `hermeshd uninstall`, run as the user Hermesh was installed for, says what goes and asks first. Then it unpairs the machine and removes its service, its data, the CLI's settings and both programs. Your project folders stay.
+- **Uninstalling:** `hermeshd uninstall`, run as the user Hermesh was installed for, says what goes and asks first. Then it unpairs the machine and removes its service, its data, the CLI's settings, and both binaries (`hermeshd` and `hermesh`). Your project folders stay.
 - Full daemon reference: [docs/hermeshd.md](docs/hermeshd.md).
 
 </details>
 
-### 3. Connect your agents
+<details>
+<summary>Connect a cloud assistant (ChatGPT, Claude.ai, Grok Bot) or CLI agent</summary>
 
-Send this prompt to any agent you want to connect:
+To let a cloud assistant or a command-line agent hand work to the team as well, send it this prompt:
 
 ```text
 Connect to Hermesh: follow https://hermesh.io/connect
@@ -134,6 +205,8 @@ Connect to Hermesh: follow https://hermesh.io/connect
   ```
 
 When the pairing request appears on your trusted device, select which projects the agent is allowed to access and approve it. Then test it out: *"Use Hermesh to have Claude Code say hello to me in the app project."*
+
+</details>
 
 <details>
 <summary>Agent-to-agent messaging</summary>
@@ -151,20 +224,12 @@ Messages are end-to-end encrypted and queued until delivered: into an active Cla
 
 </details>
 
-## Architecture
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
-    <img src="docs/assets/how-it-works-light.svg" width="100%" alt="Your agents (Grok Bot, Muse, ChatGPT, Claude Code, Codex or your own) message each other and start sessions through hermesh.io or your own server, encrypted end to end, on your machines (a Mac, a Windows PC, a Linux server) running Claude Code or Codex. Your trusted device (an iPhone, a Mac, a Windows PC or a Linux computer) approves each agent and machine.">
-  </picture>
-</p>
-
-Hermesh is built around three core concepts:
+## Concepts
 
 | Concept | Role | Examples |
 |---|---|---|
-| **Agent** | Dispatches coding tasks and exchanges messages with other agents | Grok Bot, Muse, ChatGPT, Claude Code, Codex, custom scripts |
+| **Her** | Your personal assistant: one ongoing conversation, with memory, files, and scheduled tasks, who directs your machines and agents | Turned on for a Mac mini or a Linux server |
+| **Agent** | Dispatches coding tasks and exchanges messages with other agents | Her, Grok Bot, Muse, ChatGPT, Claude Code, Codex, custom scripts |
 | **Machine** | A computer where local coding agents run inside approved project folders | MacBook, Mac mini, Windows PC, Linux server |
 | **Trusted device** | Holds your owner key and signs approvals using Face ID, Touch ID, Windows Hello, or a passphrase | iPhone app, macOS app, Windows app, Linux device CLI |
 
@@ -172,7 +237,9 @@ A Mac or Windows PC can serve as both a trusted device and an execution machine 
 
 ## Supported agents
 
-**Orchestrating agents (task dispatchers):** Any MCP-compatible assistant (ChatGPT, Claude.ai, Grok Bot, Muse, Cursor) or any agent capable of invoking the [`hermesh` CLI](docs/cli.md).
+**Models for Her:** DeepSeek, OpenAI, Anthropic, Google Gemini, OpenRouter, Qwen, Kimi, Zhipu GLM, the providers' Token Plans, a ChatGPT subscription, a local Ollama, or any compatible service. See [Models](her/docs/cli/models.md).
+
+**Orchestrating agents (task dispatchers):** Her, and any MCP-compatible assistant (ChatGPT, Claude.ai, Grok Bot, Muse, Cursor) or any agent capable of invoking the [`hermesh` CLI](docs/cli.md).
 
 **Coding agents (task executors):** Claude Code and Codex natively, plus Gemini CLI, Google Antigravity, Cursor, GitHub Copilot CLI, OpenCode, Qwen Code, Goose, Augment, Kimi, Kiro, Qoder, Grok, DeepSeek Harness, and CodeBuddy Code via the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
@@ -203,8 +270,17 @@ For Antigravity, install the separate official ACP server and run `hermesh agent
 
 ## Security
 
-Connecting autonomous agents to your machines requires strict boundaries. Hermesh is designed so that you never have to trust the relay server—whether you use hermesh.io or host your own.
+The more agents you connect, the more the boundaries matter. Hermesh's relay forwards sealed bytes only: whether you use hermesh.io or host your own, you never have to trust it. Every approval is signed on your own device, and the server can't stand in for you.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/en/end-to-end-dark.svg">
+    <img src="docs/assets/readme/en/end-to-end-light.svg" width="100%" alt="Her on the Mac mini sends: Fix #218 and open a PR. Claude Code on the MacBook Pro receives the same words. The relay between them sees only bytes it can't read, and forwards them. Both links are encrypted end to end.">
+  </picture>
+</p>
+
+- **Her's data stays on her machine.** Conversations, memory, files, and model credentials live on the Mac or Linux box she runs on; the apps hold a cache. When she needs a password or an authorization she sends a Secure Card, which you fill in on your own device so it never passes through the model. Her has no telemetry.
+- **Her asks before she acts.** In her default mode she waits for your approval before starting a coding agent or running a risky command. Turning Her off ends all of her access.
 - **Hardware-backed approvals.** Enrolling a machine, agent, or new device requires biometric or passphrase confirmation on your trusted device. Your owner private key never leaves the device: it lives in the Secure Enclave on macOS and iOS, the system TPM on Windows, or an encrypted keystore on Linux. Neither hermesh.io nor a self-hosted relay can forge approvals or inject commands.
 - **End-to-end encryption.** Agents and machines establish mutually authenticated TLS 1.3 channels using certificates signed by your owner key; the relay simply splices the encrypted byte streams without terminating TLS. Agent-to-agent messages are signed by the sender and encrypted to the recipient's public key. The relay stores unread ciphertexts for up to 30 days but cannot read the payload or spoof the sender.
 
@@ -273,6 +349,18 @@ No. Your trusted device can be an iPhone, a Windows PC, or a Linux computer, and
 
 </details>
 <details>
+<summary><b>How does Her relate to Grok Bot and Muse?</b></summary>
+
+The same kind of product: an always-on personal agent that does things itself and comes to you. The difference is that Grok Bot and Muse run in their vendors' clouds and can't be self-hosted, while Her runs on your own computer and is open source. They don't exclude each other either: Grok Bot and Muse can connect to Hermesh and hand work to the coding agents on your computers.
+
+</details>
+<details>
+<summary><b>Do I bring my own model for Her?</b></summary>
+
+Yes. Her comes with no model and never picks one for you: you connect one when you turn her on, and can change it at any time. With a local Ollama, your conversations never leave your machine.
+
+</details>
+<details>
 <summary><b>Can hermesh.io read my code?</b></summary>
 
 Not when your agents connect via the `hermesh` CLI—those sessions are end-to-end encrypted between the agent and your machine. When a cloud assistant connects over MCP, the MCP gateway holds that client's key and can read the traffic sent over that MCP connection. Self-hosting `hermesh-relay` keeps the MCP gateway on your own server.
@@ -307,11 +395,13 @@ Agent-to-agent messages stay encrypted in the recipient's inbox for up to 30 day
 | Hermesh for macOS & Windows | `apps/desktop` | Desktop app (Electron, React) for approving requests and monitoring agents, machines, and sessions; bundles `hermeshd` |
 | Hardware signers | `apps/signer/macos`, `cmd/hermesh-signer` | Isolated signing helpers that protect your owner key in the Secure Enclave via Touch ID on macOS (Swift) and in the TPM via Windows Hello on Windows (Go) |
 | Hermesh for iPhone | `apps/ios`, `cmd/hermesh-mobile` | iOS app (SwiftUI backed by the shared Go core) for approving requests, following sessions, and answering agent prompts |
+| Her's kernel | `her/` | Her's agent kernel, a Rust workspace of its own: models, tools, memory, scheduled tasks, the browser and documents; also a command line, `her`, that runs alone ([her/README.md](her/README.md)) |
 | `hermeshd` | `cmd/hermeshd` | Machine daemon that manages local coding agent sessions; also provides the Linux trusted-device CLI (`hermeshd device`) |
 | `hermesh` | `cmd/hermesh` | Agent CLI for starting sessions and exchanging messages |
 | `hermesh-relay` | `cmd/hermesh-relay`, `pkg/relay`, `pkg/mcpgw` | Self-hostable relay server: pairing, encrypted stream routing, revocation, message inboxes, and MCP gateway |
 
 ```text
+her/        Her's agent kernel (Rust)
 apps/       Desktop app, iPhone app, macOS Secure Enclave signer
 cmd/        Entry points for hermeshd, hermesh, hermesh-relay, hermesh-signer, hermesh-mobile
 internal/   Machine & session runtime, coding agent adapters (Claude Code, Codex, ACP), signer core, owner, OS service
@@ -338,6 +428,8 @@ See [docs/development.md](docs/development.md) for full build instructions and t
 
 | Document | Topic |
 |---|---|
+| [her-server.md](docs/her-server.md) · [her-mesh.md](docs/her-mesh.md) · [her-team.md](docs/her-team.md) | What Her is and where she runs; Her as an agent that starts coding sessions; the product design of Her and her team |
+| [her-memory.md](docs/her-memory.md) · [her-deliverables.md](docs/her-deliverables.md) · [her-secure-cards.md](docs/her-secure-cards.md) | Her's memory, the files she delivers, secure cards |
 | [technical-design.md](docs/technical-design.md) | Cryptographic architecture: keys, grants, end-to-end channels, relay protocol, and threat model |
 | [agent-messages.md](docs/agent-messages.md) | Agent-to-agent messaging: inboxes, encryption, webhook wakeups, and session notifications |
 | [agent-names.md](docs/agent-names.md) | Multiplexing multiple bots over a single connection with independent wakeups |
