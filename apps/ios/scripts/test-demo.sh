@@ -41,21 +41,6 @@ p.parent.mkdir(parents=True,exist_ok=True)
 p.write_bytes(plistlib.dumps(values))
 Path(sys.argv[2]).write_bytes(plistlib.dumps(values))
 PYSEED
-# Normal signed-out onboarding itself keeps an empty world. Capture that real baseline before entering Demo.
-xcrun simctl launch "$DEVICE" io.hermesh.ios > "$OUT/onboarding.log"
-python3 - "$CONTAINER" "$OUT/onboarding-world.pb" <<'PYBASELINE'
-import sys,time
-from pathlib import Path
-world=Path(sys.argv[1])/"Library/Application Support/Hermesh/world.pb"
-end=time.monotonic()+15
-while not world.exists() and time.monotonic()<end:
-    time.sleep(.1)
-assert world.exists(), "Signed-out onboarding did not initialize its cache"
-time.sleep(2)
-Path(sys.argv[2]).write_bytes(world.read_bytes())
-print(f"Captured signed-out world baseline ({world.stat().st_size} bytes)")
-PYBASELINE
-xcrun simctl terminate "$DEVICE" io.hermesh.ios
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
@@ -68,7 +53,7 @@ xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -res
 xcrun simctl terminate "$DEVICE" io.hermesh.ios >/dev/null 2>&1 || true
 # Xcode can migrate the data-container UUID during installation; inspect the current one.
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
-python3 - "$CONTAINER" "$OUT/expected.plist" "$OUT/onboarding-world.pb" <<'PYVERIFY'
+python3 - "$CONTAINER" "$OUT/expected.plist" <<'PYVERIFY'
 import json,plistlib,sys
 from pathlib import Path
 root=Path(sys.argv[1])
@@ -80,8 +65,35 @@ def decoded(value):
 changed=[k for k,v in expected.items() if decoded(actual.get(k))!=decoded(v)]
 assert not changed, "Demo changed real preferences: "+", ".join(changed)
 support=root/"Library/Application Support/Hermesh"
-assert (support/"world.pb").read_bytes()==Path(sys.argv[3]).read_bytes(), "Demo changed the real world cache"
 assert not any((support/"conversations").glob("*.pb")), "Demo saved real conversation files"
-print(f"Preserved {len(expected)} synthetic real preferences and onboarding world; no real conversation files")
+print(f"Preserved {len(expected)} synthetic real preferences; no real conversation files")
 PYVERIFY
+# Onboarding's empty world may be saved before or after Demo, depending on scene activation.
+# Validate its decoded meaning, not file creation timing: the signed-out namespace must contain no owner or work.
+cat > "$OUT/check-world.go" <<'GOCHECK'
+package main
+
+import (
+    "fmt"
+    "os"
+
+    localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+    "google.golang.org/protobuf/proto"
+)
+
+func main() {
+    data, err := os.ReadFile(os.Args[1])
+    if os.IsNotExist(err) { fmt.Println("No real world cache"); return }
+    if err != nil { panic(err) }
+    var world localv1.WatchResponse
+    if err = proto.Unmarshal(data, &world); err != nil { panic(err) }
+    status := world.GetStatus()
+    if status.GetInitialized() || status.GetOwnerId() != "" || status.GetAccount() != "" ||
+        len(world.Machines)+len(world.Clients)+len(world.Devices)+len(world.Projects)+len(world.Sessions)+len(world.Pairings) != 0 {
+        panic("Signed-out real cache contains an owner, account or world entities")
+    }
+    fmt.Println("Real world cache contains no owner, account or work")
+}
+GOCHECK
+go run "$OUT/check-world.go" "$CONTAINER/Library/Application Support/Hermesh/world.pb"
 printf 'Release demo passed. Evidence: %s\n' "$OUT"
