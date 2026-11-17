@@ -1037,22 +1037,34 @@ extension HermeshUITests {
         app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch.tap()
         XCTAssertTrue(waitUntil { !sheet.exists }, "the sheet closes")
 
-        // Its record: what Her asked of it, and its question, answered there.
+        // Its record, read as a session is: what Her asked of it as what was sent to it, and its question, answered
+        // at the bottom.
         tap("progress-review")
         XCTAssertTrue(app.navigationBars["写长文"].waitForExistence(timeout: 10), "the record's page")
         let brief = app.descendants(matching: .any)["progress-brief"].firstMatch
-        XCTAssertTrue(brief.waitForExistence(timeout: 10) && brief.label.contains("Write it and report."), "what Her asked")
+        XCTAssertTrue(brief.waitForExistence(timeout: 10) && brief.label.contains("Write it and report."), "what Her asked: \(brief.label)")
         XCTAssertTrue(app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 30), "its question")
         XCTAssertTrue(text("运行这条命令？").exists)
         herShot("Progress: a record that asks")
         tap("her-allow-once")
+        // It ends: its call as a grey line that opens to its output, a line that says its last words went back to Her.
         let state = app.descendants(matching: .any)["progress-state"].firstMatch
-        try waitFor("the record says it is done", timeout: 90) { state.label == "完成" ? true : nil }
-        XCTAssertTrue(app.descendants(matching: .any)["progress-report"].firstMatch.waitForExistence(timeout: 10), "its last words, as its report")
-        let facts = app.descendants(matching: .any)["progress-facts"].firstMatch
-        XCTAssertTrue(facts.label.contains("用时") && facts.label.contains("Tokens") && facts.label.contains("步骤"), facts.label)
-        XCTAssertTrue(text("sleep 3").exists, "its call, as a line")
+        try waitFor("the record says it is done", timeout: 90) { state.label.hasSuffix("完成") ? true : nil }
+        XCTAssertTrue(app.descendants(matching: .any)["progress-done"].firstMatch.waitForExistence(timeout: 10), "its last words went back to Her")
+        XCTAssertFalse(app.buttons["progress-stop"].exists, "nothing to stop")
+        let call = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "sleep 3")).firstMatch
+        XCTAssertTrue(call.exists, "its call, as a line")
+        XCTAssertEqual(call.value as? String, "已收起")
+        call.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["tool-output"].firstMatch.waitForExistence(timeout: 5), "it opens to its output")
         herShot("Progress: a record that ended")
+        // Its info, as a session's: how long, how many tokens and steps, who sent it out.
+        tap("progress-info")
+        XCTAssertTrue(text("子智能体信息").waitForExistence(timeout: 10), "its info")
+        for word in ["用时", "Tokens", "步骤", "派出"] { XCTAssertTrue(text(word).exists, word) }
+        herShot("Progress: a record's info")
+        app.buttons.matching(NSPredicate(format: "label IN %@", ["关闭", "Close"])).firstMatch.tap()
+        XCTAssertTrue(waitUntil { !text("子智能体信息").exists }, "the info closes")
 
         // Back in the feed it is among the earlier ones, and says how it ended.
         app.navigationBars.buttons.element(boundBy: 0).tap()

@@ -64,46 +64,20 @@ button.pf-well:hover{background:var(--fill2)}
 .pf-sib>span:nth-child(2)>span{font-size:12px;color:var(--l2)}
 .pf-sib>.ic{color:var(--l3)}
 .pf-chat{align-self:stretch;justify-content:center}
-/* A post's page: back to the feed and what set it off, then the record. */
+/* A post's page, as a session's: back to the feed, its title and the info card's button; then its record (ChatFrame). */
 .pt-bar{height:auto;min-height:52px;gap:12px;padding:10px 20px 10px 16px}
-.pt-bar .link{flex:none;font-size:12.5px;white-space:nowrap}
 .pt-back{flex:none;padding:0 12px 0 8px}
-.pt-gap{flex:1}
+/* Under a toolbar of its own, not Her's floating bar. */
+.her .dwrap.pt-rec{border-top:.5px solid var(--sep)}
+.her .pt-rec .dmain::before{content:none}
+.her .pt-rec .dbody{padding-top:24px}
 .pt-off{width:7px;height:7px;border-radius:50%;background:var(--l3);flex:none}
-.pt{max-width:calc(var(--conversation-width) + 48px);margin:0 auto;padding:26px 24px 48px;display:flex;flex-direction:column;gap:18px}
-.pt-h{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
-.pt-hm{flex:1 1 360px;min-width:0}
-.pt-hm h2{margin:0;font-size:22px;font-weight:var(--font-weight-bold);line-height:1.3;overflow-wrap:anywhere}
-.pt-meta{margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--l2)}
-.pt-pill{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:var(--fill2);font-size:12px}
-.pt-pill.waiting{color:var(--orange)}
-.pt-pill.failed{color:var(--red)}
-.pt-facts{font-variant-numeric:tabular-nums}
-.pt-brief{display:flex;gap:10px;align-items:flex-start}
-.pt-brief-cat{width:24px;height:24px;flex:none;margin-top:8px;display:flex}
-.pt-brief-cat>svg{width:100%;height:100%}
-.pt-brief>div{flex:1;min-width:0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
-.pt-brief span,.pt-again span{font-size:12px;color:var(--l2)}
-.pt-brief p,.pt-again p{margin:3px 0 0;font-size:var(--chat-size);line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
-.pt-again{align-self:flex-start;max-width:86%;margin:6px 0;padding:10px 14px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
-.pt-steps-h{display:flex;align-items:center;gap:12px;margin-bottom:-12px;font-size:12px;color:var(--l2)}
-.pt-steps-h span{flex:1}
-.pt-steps{display:flex;flex-direction:column;gap:2px}
-/* Each row is laid out as it comes into view: a long record costs what it shows. */
-.pt-work{display:flex;flex-direction:column;gap:1px}
-.pt-work .tool{content-visibility:auto;contain-intrinsic-size:auto 28px}
-.pt-work .tool .th{width:100%;min-height:28px;padding:3px 8px;border-radius:7px}
-.pt-work .tool .th:hover{background:var(--fill)}
-.pt-work .tool .th .sm2{flex:1;color:var(--l1)}
-.pt-work .tool .th .mini-spin{flex:none}
-.pt-work .tool .out{margin:3px 8px 8px;max-height:420px;overflow:auto}
-.pt-work .tool.thought .out{font-family:var(--font);font-size:13.5px;line-height:1.65;background:var(--win2);color:var(--l1)}
-.pt-say{padding:4px 8px}
-.pt-end{padding:14px 16px;border-radius:16px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep)}
-.pt-end>span{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--l2)}
-.pt-end.fail>span{color:var(--red)}
-.pt-end>p{margin:6px 0 0;font-size:var(--chat-size);line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
-.pt-end .am{margin-top:6px}
-.pt-end .tm-ok.sm,.pf-sib .tm-ok.sm{width:14px;height:14px;stroke-width:1.8}
-.pt-note{margin:0;padding:0 8px;font-size:13px;color:var(--l2)}
-.pt-ask{position:relative}
+.pf-sib .tm-ok.sm,.insp-facts .tm-ok.sm{width:14px;height:14px;stroke-width:1.8}
+.insp-cat,.pt-cat{width:16px;height:16px;flex:none;display:flex}
+.insp-cat>svg,.pt-cat>svg{width:100%;height:100%}
+.insp-mark{width:16px;flex:none;display:flex;align-items:center;justify-content:center}
+.pt-time{font-variant-numeric:tabular-nums}
+/* A thought opens to words, not a program's output. */
+.tr:not(.bots) .tool.thought .out{font-family:var(--font);font-size:13.5px;line-height:1.65;color:var(--l1)}
+/* What it asks the owner is the control bar's panel, as a session's question is. */
+.cbar.q .appr{background:none;box-shadow:none;border-radius:0;animation:none}

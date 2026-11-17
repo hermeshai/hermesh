@@ -1037,19 +1037,26 @@ shows each task of theirs as a post:
 
 ### 15.2 A card's page
 
-A sub-agent's card opens its record: the owner's words that set it off, the
-other cards of the same group (one tap shows another; both are now behind
-the capsule at its top, and the iPhone shows how long it ran, its tokens and
-its steps as three tiles), what Her asked of it,
-then everything it thought, said and called, in order, and how it ended: its
-last words are its report to Her. Thoughts show whole; a call is a line that
-opens to its output, and Expand All Output opens them all. What it asks the
-owner is answered there, with the approval the conversation shows. Stop
-interrupts it (`agent_interrupt`).
+A sub-agent's card opens its record, laid out as a coding session's page is
+and drawn with the same pieces (the Mac's `ChatFrame` and its rows in
+`session/Chat.tsx`; the iPhone's `PromptBubble`, `ToolFold`, `ToolLine`,
+`LiveBar`, `FailedCard` and `followsEnd` beside `SessionView`): what Her asked
+of it on the right, as what was sent to a session, and what she told it later
+the same way; its words across the page; what it thought and called in
+between as one grey line ("Read 2 files, ran 3 commands"), folded until
+opened, each call then a line that opens to its output; and how it ended: a
+line that says its last words went back to Her, the failure card, or a note
+that it was stopped. It opens at its end and follows it as it grows. While it
+works, the bar at the bottom says so, for how long, with Stop
+(`agent_interrupt`); what it asks the owner is answered there, above it, with
+the approval the conversation shows. How it stands, how long it ran, its
+tokens and steps, who sent it out and the owner's words that set it off (a tap
+shows them whole, with the other cards of the same group) are its info: the
+Mac's info card beside it, the iPhone's info sheet. Its data is its own (Her's
+conversation, §15.3), shown in the session's shapes.
 
-It reads as a session does (the same rows for thoughts and calls), and is
-not one: a sub-agent is not among All Sessions, where it would read as work
-somebody sent to the team.
+It reads as a session does, and is not one: a sub-agent is not among All
+Sessions, where it would read as work somebody sent to the team.
 
 ### 15.3 Where the data comes from
 
@@ -1065,8 +1072,9 @@ tests. A view's steps are worked out once (it is replaced, never changed).
   iPhone the pages hold Her's connections one after another (`HerChat.hold`),
   which close a moment after the last page let go; before, each page of
   hers opened them again.
-- **Rows as they show.** The Mac's record lays a row out when it comes into
-  view (`content-visibility`); the iPhone's is a lazy stack.
+- **Rows as they show.** The Mac's record draws only the rows near what is
+  in sight, as a session's conversation does (`ChatFrame`); the iPhone's
+  is a plain stack, as a session's is.
 - **Offline.** What hermeshd keeps of Her's conversation has no agents: the
   page then says the work shows once the machine is back.
 
@@ -1090,7 +1098,10 @@ kind; the apps tell by the `/` and do not read on with it.
 - `go test ./e2e -run '^TestDesktopHerProgress$'`: real hermeshd and her
   with her-mock, the Mac app: the entry appears with Her; an empty page; a
   sub-agent's post under Needs you, what set it off from its ⓘ, Review to
-  its record, the approval answered there, its report, time and tokens; the
+  its record read as a session (Her's words in a bubble, the info card with
+  its state and what set it off), the approval answered in the bar at the
+  bottom, its call as a folded line that opens, the line that its last words
+  went back to Her, time and tokens, the info card hidden and shown; the
   post under Earlier once it ends; another at work, Progress's "1 at
   work", its post under Now, and the busy bubble naming it and opening its
   record; two at work, the bubble's menu of them; Her answering, "Typing…"
@@ -1099,7 +1110,9 @@ kind; the apps tell by the `/` and do not read on with it.
 - `HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerProgress go test ./e2e
   -run '^TestIPhone$'`: the same story on the iPhone's feed: the post under
   Needs you, its ⓘ's sheet with the owner's words and Her's, Review to
-  the record, and the ended post under Earlier; another at work, Progress
+  the record (what Her asked as a bubble, the approval at the bottom, its
+  call a folded line that opens, the line that its last words went back to
+  Her, its info sheet), and the ended post under Earlier; another at work, Progress
   marked at work, its post under Now, the busy bubble naming it and
   opening its record; two at work, the system's menu of them; Her
   answering, "Typing…" and never her call. `testHerApprovalEnd`: under a conversation longer than

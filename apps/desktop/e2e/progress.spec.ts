@@ -72,25 +72,40 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   await page.keyboard.press("Escape");
   await expect(source).toBeHidden();
 
-  // Review opens its record: what set it off, the work, what Her asked of it, and the question, answered there.
+  // Review opens its record, read as a session is: what Her asked of it as what was sent to it, the info card with
+  // how it stands and what set it off, and the question, answered in the control bar at the bottom.
   await post.getByRole("button", { name: "去批准" }).click();
   await expect(page.getByRole("heading", { name: "写长文", level: 2 })).toBeVisible();
-  await expect(page.locator(".pt-bar .pf-from")).toContainText("写一篇长文");
-  await expect(page.locator(".pt-brief")).toContainText("Write it and report.");
-  await expect(page.locator(".pt-pill")).toHaveText("等你批准");
-  const asked = page.getByRole("region", { name: "等你批准" });
+  const steps = page.getByRole("log", { name: /^过程/ });
+  await expect(steps.locator(".um .bub")).toContainText("Write it and report.");
+  const card = page.getByRole("complementary", { name: "任务信息" });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("等你批准");
+  await expect(card.getByRole("button", { name: "来自哪句话" })).toContainText("写一篇长文");
+  const bar = page.getByRole("region", { name: "这一轮" });
+  await expect(bar).toContainText("等你批准");
+  const asked = bar.getByRole("region", { name: "等你批准" });
   await expect(asked).toContainText("sleep 3");
   await snap(page, "progress-record-asking");
   await asked.getByRole("button", { name: /^允许/ }).first().click();
 
-  // It works, then ends: its call as a line that opens to its output, its last words as its report, how long and
-  // how many tokens it took.
-  const steps = page.getByRole("log", { name: /^过程/ });
-  await expect(steps).toContainText("sleep 3", { timeout: 60_000 });
-  await expect(page.locator(".pt-pill")).toHaveText("已完成", { timeout: 60_000 });
-  await expect(page.locator(".pt-end")).toContainText("交回给 Her 的汇报");
-  await expect(page.locator(".pt-facts")).toContainText(/用时 .+ · .+ tokens/);
-  await expect(steps.getByRole("button", { name: /已运行/ })).toBeVisible();
+  // It works, then ends: its call as a grey line that opens to its output, its last words across the page and a
+  // line that says they went back to Her; the card says how long and how many tokens it took. The bar is gone.
+  await expect(card).toContainText("已完成", { timeout: 60_000 });
+  await expect(bar).toHaveCount(0);
+  await expect(steps).toContainText("sleep 3");
+  await expect(page.getByText(/^已办完，最后这段话已交回给 /)).toBeVisible();
+  await expect(card).toContainText(/用时 .+/);
+  await expect(card).toContainText(/.+ tokens/);
+  const call = steps.getByRole("button", { name: /已运行/ });
+  await expect(call).toHaveAttribute("aria-expanded", "false");
+  await call.click();
+  await expect(call).toHaveAttribute("aria-expanded", "true");
+  // The info card goes as a session's does, with its button.
+  await page.getByRole("button", { name: "信息面板", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await page.getByRole("button", { name: "信息面板", exact: true }).click();
+  await expect(card).toBeVisible();
   await snap(page, "progress-record-done");
 
   // Back in the feed it is among the earlier ones, and nothing needs the owner.

@@ -546,7 +546,7 @@ private struct RunDetail: View {
             if !steps.isEmpty {
                 Section("Steps") {
                     ForEach(steps) { step in
-                        StepRow(step: step, report: false, open: Binding(get: { chosen[step.key] ?? opensByDefault(step) }, set: { chosen[step.key] = $0 }))
+                        StepRow(step: step, open: Binding(get: { chosen[step.key] ?? opensByDefault(step) }, set: { chosen[step.key] = $0 }))
                     }
                 }
             }
