@@ -12,10 +12,11 @@ import (
 	"time"
 
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
+	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
 // her's JSON-RPC 2.0 (her/docs/cli/json-rpc.md): one JSON object per line
-// on her's Unix socket. A conn matches answers to its requests by id and
+// on her's endpoint (a Unix socket; a named pipe on Windows). A conn matches answers to its requests by id and
 // keeps her's notifications for the one who reads its notes.
 
 const (
@@ -71,8 +72,7 @@ var errClosed = errors.New("the connection to her closed")
 // dial connects to her on sock and initializes the connection; with notes,
 // her's notifications on it are kept for the caller to read.
 func dial(ctx context.Context, sock, version string, notes bool) (*conn, error) {
-	var d net.Dialer
-	nc, err := d.DialContext(ctx, "unix", sock)
+	nc, err := localipc.Dial(ctx, sock)
 	if err != nil {
 		return nil, err
 	}

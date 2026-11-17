@@ -110,6 +110,7 @@ pub(super) fn save(log: &Path, scanned: &Scanned, before: &Metadata) {
     }
     let target = path(log);
     let Some(dir) = target.parent() else { return };
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {

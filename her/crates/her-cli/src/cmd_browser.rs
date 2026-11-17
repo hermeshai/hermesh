@@ -175,10 +175,10 @@ async fn serve_once(
     to_chrome: &mpsc::UnboundedSender<String>,
     inbox: &mut mpsc::UnboundedReceiver<String>,
 ) -> anyhow::Result<()> {
-    let stream = tokio::net::UnixStream::connect(socket)
+    let stream = her_server::endpoint::connect(socket)
         .await
         .map_err(|_| anyhow::anyhow!("Hermesh is not running"))?;
-    let (read, mut write) = stream.into_split();
+    let (read, mut write) = tokio::io::split(stream);
     let mut lines = tokio::io::BufReader::new(read).lines();
     let line = |value: Value| format!("{value}\n").into_bytes();
     write
@@ -482,7 +482,10 @@ fn place_extension(folder: &Path) -> anyhow::Result<()> {
 /// Chromium-family browser on this machine (or for one user data directory); with `folder`,
 /// the extension itself there, to load in Chrome.
 pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket: Option<PathBuf>, folder: Option<PathBuf>) -> anyhow::Result<u8> {
-    use std::os::unix::fs::PermissionsExt as _;
+    // Windows finds a host through the registry, and starts a program, not a script.
+    if cfg!(windows) {
+        anyhow::bail!("the Hermesh extension's host is not installed on Windows yet");
+    }
     let home = setup::home()?;
     // First: it is there to load even where no browser is installed yet.
     if let Some(folder) = &folder {
@@ -496,7 +499,11 @@ pub fn install(extension_ids: &[String], user_data_dir: Option<PathBuf>, socket:
     let launcher = home.browser_dir().join("native-host");
     std::fs::create_dir_all(home.browser_dir())?;
     std::fs::write(&launcher, launcher_script(&exe, home.root(), socket.as_deref()))?;
-    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o755))?;
+    }
 
     let mut ids: Vec<&str> = vec![EXTENSION_ID];
     ids.extend(STORE_EXTENSION_ID);

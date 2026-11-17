@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -38,9 +37,6 @@ import (
 func TestHer(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
-	}
-	if runtime.GOOS == "windows" {
-		t.Skip("her does not run on Windows")
 	}
 	bin := hertest.Bin(t)
 	hertest.Home(t, bin)

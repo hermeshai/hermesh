@@ -720,6 +720,9 @@ func herBin() string {
 			return ""
 		}
 		bin = filepath.Join(filepath.Dir(exe), "her")
+		if runtime.GOOS == "windows" {
+			bin += ".exe"
+		}
 	}
 	if st, err := os.Stat(bin); err != nil || st.IsDir() {
 		return ""

@@ -9,9 +9,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// exe ends a program's name on Windows.
+var exe = map[bool]string{true: ".exe"}[runtime.GOOS == "windows"]
 
 // Bin is the her to test with: $HERMESH_HER_BIN, else her/target/debug/her
 // in this repository, with her-mock beside it; the test is skipped without.
@@ -28,9 +32,9 @@ func Bin(t testing.TB) string {
 			}
 			dir = filepath.Dir(dir)
 		}
-		bin = filepath.Join(dir, "her", "target", "debug", "her")
+		bin = filepath.Join(dir, "her", "target", "debug", "her"+exe)
 	}
-	for _, p := range []string{bin, filepath.Join(filepath.Dir(bin), "her-mock")} {
+	for _, p := range []string{bin, filepath.Join(filepath.Dir(bin), "her-mock"+exe)} {
 		if _, err := os.Stat(p); err != nil {
 			t.Skipf("no her to test with (%v): build her/ or set HERMESH_HER_BIN", err)
 		}
@@ -70,7 +74,7 @@ var baseURL = regexp.MustCompile(`base_url = "(http://[^"]+)/v1"`)
 // (her/crates/her-mock).
 func Home(t testing.TB, bin string) string {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(filepath.Dir(bin), "her-mock"), "127.0.0.1:0")
+	cmd := exec.Command(filepath.Join(filepath.Dir(bin), "her-mock"+exe), "127.0.0.1:0")
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)

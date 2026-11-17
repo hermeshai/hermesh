@@ -1,4 +1,5 @@
-//! `her serve` and `her acp`: the protocol service, on stdio or a Unix socket.
+//! `her serve` and `her acp`: the protocol service, on stdio or its local endpoint (a Unix
+//! socket; a named pipe on Windows).
 
 use anyhow::Context as _;
 use her_server::NativeProtocol;
@@ -15,6 +16,7 @@ use crate::setup;
 pub(crate) fn start(overrides: &[String]) -> anyhow::Result<(Server, Option<tracing_appender::non_blocking::WorkerGuard>)> {
     let home = setup::home()?;
     let guard = setup::init_logging(&home);
+    #[cfg(unix)]
     match her_server::limits::raise_open_file_limit() {
         Ok((before, after)) if after > before => tracing::debug!(before, after, "raised the open file limit"),
         Ok(_) => {}
@@ -42,15 +44,30 @@ pub(crate) fn start(overrides: &[String]) -> anyhow::Result<(Server, Option<trac
 }
 
 /// SIGINT and SIGTERM stop the service gracefully: sessions are closed and their logs saved.
+/// On Windows, Ctrl-C, Ctrl-Break and the console closing do.
 fn spawn_signal_handler(server: Server) {
     tokio::spawn(async move {
-        let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(term) => term,
-            Err(_) => return,
-        };
-        tokio::select! {
-            _ = tokio::signal::ctrl_c() => {}
-            _ = term.recv() => {}
+        #[cfg(unix)]
+        {
+            let mut term = match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(term) => term,
+                Err(_) => return,
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+        }
+        #[cfg(windows)]
+        {
+            let (Ok(mut ctrl_break), Ok(mut close)) = (tokio::signal::windows::ctrl_break(), tokio::signal::windows::ctrl_close()) else {
+                return;
+            };
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = ctrl_break.recv() => {}
+                _ = close.recv() => {}
+            }
         }
         server.request_shutdown();
     });
@@ -101,5 +118,5 @@ pub async fn acp(overrides: &[String]) -> anyhow::Result<u8> {
 
 /// Whether a service answers on the default socket.
 pub(crate) fn service_runs(home: &her_core::paths::HerHome) -> bool {
-    std::os::unix::net::UnixStream::connect(home.root().join("run").join("her.sock")).is_ok()
+    her_server::endpoint::answers(&home.root().join("run").join("her.sock"))
 }

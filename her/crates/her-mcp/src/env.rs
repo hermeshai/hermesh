@@ -31,7 +31,41 @@ pub const BASE_VARS: &[&str] = &[
     "REQUESTS_CA_BUNDLE",
 ];
 
+/// Passed through as well on Windows, whose programs do not start, find their folders or reach
+/// the network without them.
+#[cfg(windows)]
+const WINDOWS_BASE_VARS: &[&str] = &[
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "USERNAME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "ProgramData",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "CommonProgramFiles(x86)",
+    "CommonProgramW6432",
+    "PROCESSOR_ARCHITECTURE",
+    "NUMBER_OF_PROCESSORS",
+    "OS",
+];
+
 fn is_base(name: &str) -> bool {
+    // Windows' names have no case: its `PATH` is `Path`.
+    #[cfg(windows)]
+    if BASE_VARS.iter().chain(WINDOWS_BASE_VARS).any(|base| base.eq_ignore_ascii_case(name)) {
+        return true;
+    }
     BASE_VARS.contains(&name) || name.starts_with("XDG_")
 }
 

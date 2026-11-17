@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -30,10 +29,7 @@ const kHer = "her"
 
 // herUnsupported is why this machine can't run her, or "".
 func (n *Machine) herUnsupported() string {
-	switch {
-	case runtime.GOOS == "windows":
-		return "windows"
-	case n.cfg.HerBin == "":
+	if n.cfg.HerBin == "" {
 		return "no her"
 	}
 	return ""

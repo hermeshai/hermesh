@@ -984,6 +984,7 @@ mod tests {
         assert!(err.to_string().ends_with("is not valid UTF-16 text."), "{err}");
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn files_that_cannot_be_edited_are_named_as_such() {
         use std::os::unix::ffi::OsStrExt;

@@ -47,6 +47,9 @@ tracing.workspace = true
 tracing-appender.workspace = true
 tracing-subscriber.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Console"] }
+
 [dev-dependencies]
 agent-client-protocol-schema.workspace = true
 her-eval.workspace = true

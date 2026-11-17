@@ -410,6 +410,35 @@ fn ask_about_trust(cwd: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Ends when her is asked to end or its terminal goes away: SIGTERM and SIGHUP; on Windows,
+/// Ctrl-Break and the console closing.
+fn asked_to_end() -> std::io::Result<impl Future<Output = ()>> {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::SignalKind;
+        use tokio::signal::unix::signal;
+        let mut term = signal(SignalKind::terminate())?;
+        let mut hangup = signal(SignalKind::hangup())?;
+        Ok(async move {
+            tokio::select! {
+                _ = term.recv() => {}
+                _ = hangup.recv() => {}
+            }
+        })
+    }
+    #[cfg(windows)]
+    {
+        let mut ctrl_break = tokio::signal::windows::ctrl_break()?;
+        let mut close = tokio::signal::windows::ctrl_close()?;
+        Ok(async move {
+            tokio::select! {
+                _ = ctrl_break.recv() => {}
+                _ = close.recv() => {}
+            }
+        })
+    }
+}
+
 fn load_history(file: &Path, project: &Path) -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(file) else { return Vec::new() };
     text.lines()
@@ -420,10 +449,12 @@ fn load_history(file: &Path, project: &Path) -> Vec<String> {
 }
 
 fn save_history(file: &Path, project: &Path, text: &str) {
-    use std::os::unix::fs::OpenOptionsExt;
     let line = serde_json::json!({ "project": project, "text": text }).to_string();
-    let opened = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(file);
-    if let Ok(mut opened) = opened {
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    if let Ok(mut opened) = options.open(file) {
         let _ = writeln!(opened, "{line}");
     }
 }
@@ -479,8 +510,8 @@ impl App {
         let mut keys = spawn_keys(keys_paused);
         let mut tick = tokio::time::interval(REDRAW);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut term_signal = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        let mut hangup = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::hangup())?;
+        let asked_to_end = asked_to_end()?;
+        tokio::pin!(asked_to_end);
         if let Some(prompt) = prompt {
             self.send(&prompt, PromptMode::Steer).await;
         }
@@ -517,8 +548,7 @@ impl App {
                         self.draw();
                     }
                 },
-                _ = term_signal.recv() => self.quit = true,
-                _ = hangup.recv() => self.quit = true,
+                _ = &mut asked_to_end => self.quit = true,
             }
         }
         Ok(0)
@@ -926,14 +956,18 @@ impl App {
         self.print(self.style.dim(her_core::lang::say("Ctrl-C again to quit", "再按一次 Ctrl-C 退出")));
     }
 
-    /// Ctrl-Z: the terminal comes back while stopped, and goes raw again on `fg`.
+    /// Ctrl-Z: the terminal comes back while stopped, and goes raw again on `fg`. Windows has
+    /// no such stop: the key does nothing there.
     fn suspend(&mut self) {
-        let _ = self.live.clear(&mut std::io::stdout());
-        drop(self.raw.take());
-        // SAFETY: raises a signal on this process; it stops here until SIGCONT.
-        unsafe { libc::raise(libc::SIGTSTP) };
-        self.raw = term::Raw::enter().ok();
-        self.dirty = true;
+        #[cfg(unix)]
+        {
+            let _ = self.live.clear(&mut std::io::stdout());
+            drop(self.raw.take());
+            // SAFETY: raises a signal on this process; it stops here until SIGCONT.
+            unsafe { libc::raise(libc::SIGTSTP) };
+            self.raw = term::Raw::enter().ok();
+            self.dirty = true;
+        }
     }
 
     async fn on_enter(&mut self) -> anyhow::Result<()> {

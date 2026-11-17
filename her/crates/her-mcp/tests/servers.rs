@@ -33,7 +33,7 @@ fn server_bin() -> PathBuf {
         }
         let status = build.status().expect("cargo build");
         assert!(status.success(), "building her-mcp-server failed");
-        profile_dir.join("her-mcp-server")
+        profile_dir.join(format!("her-mcp-server{}", std::env::consts::EXE_SUFFIX))
     })
     .clone()
 }
@@ -229,8 +229,8 @@ async fn stdio_server_environment_timeouts_crash_and_cleanup() {
     let echo = server.call_tool("echo", json!({"text": "again"}), options()).await.unwrap();
     assert_eq!(text(&echo), "echo: again");
 
-    // Shutting down takes the whole process group, grandchildren included.
-    let pid: i32 = text(&server.call_tool("spawn_sleeper", json!({}), options()).await.unwrap())
+    // Shutting down takes the whole process tree, grandchildren included.
+    let pid: u32 = text(&server.call_tool("spawn_sleeper", json!({}), options()).await.unwrap())
         .parse()
         .unwrap();
     assert!(alive(pid));
@@ -242,9 +242,16 @@ async fn stdio_server_environment_timeouts_crash_and_cleanup() {
     assert!(!alive(pid), "the grandchild survived the shutdown");
 }
 
-fn alive(pid: i32) -> bool {
+#[cfg(unix)]
+fn alive(pid: u32) -> bool {
     // SAFETY: signal 0 only checks whether the process exists.
-    unsafe { libc::kill(pid, 0) == 0 }
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+#[cfg(windows)]
+fn alive(pid: u32) -> bool {
+    let listed = std::process::Command::new("tasklist").args(["/NH", "/FI", &format!("PID eq {pid}")]).output().unwrap();
+    String::from_utf8_lossy(&listed.stdout).contains(&format!(" {pid} "))
 }
 
 #[tokio::test]

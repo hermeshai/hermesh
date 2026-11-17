@@ -38,6 +38,7 @@ use crate::env::OsInfo;
 use crate::env::TextWindow;
 use crate::env::WriteOutcome;
 use crate::files::FileStamp;
+use crate::proctree::ProcessTree;
 use crate::text;
 use crate::text::LineIndex;
 
@@ -53,7 +54,7 @@ const LINE_INDEXES: usize = 8;
 type LineIndexes = Mutex<Vec<(PathBuf, Arc<LineIndex>)>>;
 /// After the process exits, how long to wait for children that still hold the pipes.
 const EXIT_GRACE: Duration = Duration::from_millis(500);
-/// Between SIGTERM and SIGKILL.
+/// Between asking the command's processes to stop and ending them.
 const KILL_GRACE: Duration = Duration::from_secs(2);
 
 pub struct LocalEnvironment {
@@ -108,12 +109,63 @@ impl LocalEnvironment {
     }
 }
 
+/// The shell commands run in: bash, else sh. On Windows, Git for Windows' bash where it is
+/// installed, else PowerShell.
+#[cfg(not(windows))]
 fn default_shell() -> String {
     if Path::new("/bin/bash").exists() {
         "/bin/bash".to_string()
     } else {
         "/bin/sh".to_string()
     }
+}
+
+#[cfg(windows)]
+fn default_shell() -> String {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let on_path = |name: &str| std::env::split_paths(&path).map(|dir| dir.join(name)).find(|file| file.is_file());
+    // Git's folder holds bin\bash.exe; git.exe is in its cmd, bin or mingw64\bin. `bash.exe`
+    // on PATH is not looked for: System32's starts WSL, another system.
+    let git = on_path("git.exe");
+    let roots = ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .map(|dir| PathBuf::from(dir).join("Git"))
+        .chain(std::env::var_os("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("Programs").join("Git")))
+        .chain(git.iter().flat_map(|git| git.ancestors().skip(2).take(2).map(Path::to_path_buf)));
+    for root in roots {
+        let bash = root.join("bin").join("bash.exe");
+        if bash.is_file() {
+            return bash.to_string_lossy().into_owned();
+        }
+    }
+    match on_path("pwsh.exe") {
+        Some(pwsh) => pwsh.to_string_lossy().into_owned(),
+        // Windows PowerShell, which every Windows has.
+        None => "powershell.exe".to_string(),
+    }
+}
+
+/// The arguments `shell` runs `command` with: `-c` for a POSIX shell, and PowerShell's own.
+fn shell_arguments(shell: &str, command: &str) -> Vec<String> {
+    let name = Path::new(shell).file_stem().map(|stem| stem.to_string_lossy().to_ascii_lowercase());
+    if !matches!(name.as_deref(), Some("powershell" | "pwsh")) {
+        return vec!["-c".to_string(), command.to_string()];
+    }
+    // Output as UTF-8 whatever the console's code page, no progress records among it, and the
+    // exit code of the program that failed last, where PowerShell alone would answer 1.
+    let script = format!(
+        "$ProgressPreference = 'SilentlyContinue'\n\
+         [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)\n\
+         $OutputEncoding = [Console]::OutputEncoding\n\
+         {command}\n\
+         if (-not $?) {{ if ($LASTEXITCODE) {{ exit $LASTEXITCODE }}; exit 1 }}\n"
+    );
+    // Base64 of UTF-16: no quoting of the command on its way through the command line.
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(utf16);
+    ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded].map(str::to_string).to_vec()
 }
 
 #[async_trait]
@@ -230,8 +282,7 @@ impl Environment for LocalEnvironment {
         let started = Instant::now();
         let mut command = tokio::process::Command::new(&self.shell);
         command
-            .arg("-c")
-            .arg(&req.command)
+            .args(shell_arguments(&self.shell, &req.command))
             .current_dir(&req.cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -241,11 +292,9 @@ impl Environment for LocalEnvironment {
             command.env_remove(var);
         }
         command.envs(&self.extra_env).envs(&req.env);
-        #[cfg(unix)]
-        command.process_group(0);
 
-        let mut child = command.spawn()?;
-        let pid = child.id();
+        let (mut child, tree) = ProcessTree::spawn(&mut command)?;
+        let tree = Arc::new(tree);
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
         if let Some(stdout) = child.stdout.take() {
             tokio::spawn(pump(stdout, tx.clone()));
@@ -295,16 +344,16 @@ impl Environment for LocalEnvironment {
                 }
                 _ = grace_sleep => {
                     // The command exited but something it started still holds the output pipes.
-                    signal_group(pid, libc::SIGKILL);
+                    tree.kill();
                     pipes_open = false;
                 }
                 _ = tokio::time::sleep_until(deadline), if !stopping && exit_status.is_none() => {
                     timed_out = true;
-                    terminate_group(pid);
+                    terminate_tree(&tree);
                 }
                 _ = req.cancel.cancelled(), if !stopping && exit_status.is_none() => {
                     cancelled = true;
-                    terminate_group(pid);
+                    terminate_tree(&tree);
                 }
             }
         }
@@ -386,23 +435,13 @@ async fn pump(mut reader: impl AsyncRead + Unpin, tx: mpsc::Sender<Vec<u8>>) {
     }
 }
 
-fn signal_group(pid: Option<u32>, signal: libc::c_int) {
-    #[cfg(unix)]
-    if let Some(pid) = pid {
-        // The child leads its own process group (process_group(0)), so this reaches
-        // everything it started.
-        unsafe {
-            libc::killpg(pid as libc::pid_t, signal);
-        }
-    }
-}
-
-/// SIGTERM now, SIGKILL after a grace period.
-fn terminate_group(pid: Option<u32>) {
-    signal_group(pid, libc::SIGTERM);
+/// Asks the tree to stop now, and ends it after a grace period.
+fn terminate_tree(tree: &Arc<ProcessTree>) {
+    tree.terminate();
+    let tree = tree.clone();
     tokio::spawn(async move {
         tokio::time::sleep(KILL_GRACE).await;
-        signal_group(pid, libc::SIGKILL);
+        tree.kill();
     });
 }
 
@@ -741,6 +780,7 @@ fn is_read_only(path: &Path) -> bool {
 
 /// Creates the temporary file for a write to `name` in `dir`, under a random name.
 /// `create_new` (O_EXCL) never opens, follows or truncates anything already there.
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn create_temp(dir: &Path, name: &OsStr, replacing: bool) -> io::Result<(std::fs::File, PathBuf)> {
     let (name, _) = cap_text(&name.to_string_lossy(), TMP_NAME_BYTES);
     let mut options = std::fs::OpenOptions::new();
@@ -766,7 +806,9 @@ fn create_temp(dir: &Path, name: &OsStr, replacing: bool) -> io::Result<(std::fs
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use tokio_util::sync::CancellationToken;
 
@@ -791,6 +833,60 @@ mod tests {
         assert!(out.output.head.contains("out"));
         assert!(out.output.head.contains("err"));
         assert!(!out.output.truncated);
+    }
+
+    #[test]
+    fn a_shell_takes_the_command_in_its_own_way() {
+        assert_eq!(shell_arguments("/bin/bash", "echo hi"), ["-c", "echo hi"]);
+        for shell in ["powershell.exe", "pwsh"] {
+            let args = shell_arguments(shell, "Write-Output \"it's\"");
+            assert_eq!(args[..4], ["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+            use base64::Engine as _;
+            let bytes = base64::engine::general_purpose::STANDARD.decode(&args[4]).unwrap();
+            let units: Vec<u16> = bytes.chunks(2).map(|pair| u16::from_le_bytes([pair[0], pair[1]])).collect();
+            let script = String::from_utf16(&units).unwrap();
+            assert!(script.contains("\nWrite-Output \"it's\"\n"), "{script}");
+        }
+    }
+
+    /// PowerShell, the shell of a PC without Git for Windows: output as UTF-8, both streams,
+    /// and the exit code of the program or the command that failed last.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_runs_commands_and_keeps_exit_codes() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = LocalEnvironment::new(dir.path().to_path_buf()).with_shell("powershell.exe");
+        let run = |command: &'static str| {
+            let mut req = request(command, dir.path());
+            req.timeout = Duration::from_secs(60);
+            env.exec(req)
+        };
+        let out = run("Write-Output 'out 中文'; [Console]::Error.WriteLine('err'); cmd /c exit 3").await.unwrap();
+        assert_eq!(out.exit_code, Some(3), "{}", out.output.head);
+        assert!(out.output.head.contains("out 中文"), "{}", out.output.head);
+        assert!(out.output.head.contains("err"), "{}", out.output.head);
+        let out = run("Get-Item 'C:\\no\\such\\file'").await.unwrap();
+        assert_eq!(out.exit_code, Some(1), "{}", out.output.head);
+        let out = run("Write-Output (Get-Location).Path").await.unwrap();
+        assert_eq!(out.exit_code, Some(0), "{}", out.output.head);
+        let cwd = std::fs::canonicalize(dir.path()).unwrap();
+        let printed = std::fs::canonicalize(out.output.head.trim()).unwrap();
+        assert_eq!(printed, cwd);
+    }
+
+    /// A command past its time ends with everything it started, which holds its output pipes.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn powershell_times_out_and_ends_the_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = LocalEnvironment::new(dir.path().to_path_buf()).with_shell("powershell.exe");
+        let mut req = request("Start-Process -NoNewWindow ping -ArgumentList '-n','60','127.0.0.1'; Start-Sleep 60; Write-Output never", dir.path());
+        req.timeout = Duration::from_secs(5);
+        let started = Instant::now();
+        let out = env.exec(req).await.unwrap();
+        assert!(out.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(20), "{:?}", started.elapsed());
+        assert!(!out.output.head.contains("never"));
     }
 
     #[tokio::test]
@@ -913,10 +1009,12 @@ mod tests {
             .collect()
     }
 
+    #[cfg(unix)]
     fn is_link(path: &Path) -> bool {
         std::fs::symlink_metadata(path).unwrap().file_type().is_symlink()
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn atomic_write_replaces_what_a_symlink_points_to() {
         let dir = tempfile::tempdir().unwrap();
@@ -956,6 +1054,7 @@ mod tests {
         assert!(is_link(&root.join("real/inner/link")));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn atomic_write_through_dangling_links_and_loops() {
         let dir = tempfile::tempdir().unwrap();
@@ -995,6 +1094,7 @@ mod tests {
         assert!(leftovers(dir.path()).is_empty());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_failed_write_leaves_no_temporary_file() {
         let dir = tempfile::tempdir().unwrap();
@@ -1008,6 +1108,7 @@ mod tests {
         assert!(is_link(&root.join("link")));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn atomic_write_detaches_hard_links() {
         use std::os::unix::fs::MetadataExt;
@@ -1025,6 +1126,7 @@ mod tests {
         assert_eq!(std::fs::metadata(&other).unwrap().nlink(), 1);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn atomic_write_refuses_read_only_files() {
         // Root may write anything.
@@ -1047,6 +1149,7 @@ mod tests {
         assert!(leftovers(dir.path()).is_empty());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn atomic_write_keeps_permissions() {
         let dir = tempfile::tempdir().unwrap();

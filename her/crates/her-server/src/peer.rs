@@ -30,9 +30,33 @@ fn executable_of(pid: u32) -> Option<PathBuf> {
     Some(PathBuf::from(std::ffi::OsString::from_vec(buf)))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(unix, not(target_os = "macos")))]
 fn executable_of(pid: u32) -> Option<PathBuf> {
     std::fs::read_link(format!("/proc/{pid}/exe")).ok()
+}
+
+#[cfg(windows)]
+fn executable_of(pid: u32) -> Option<PathBuf> {
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::OpenProcess;
+    use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+    use windows_sys::Win32::System::Threading::QueryFullProcessImageNameW;
+
+    // SAFETY: opens the process to ask its image's name only.
+    let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if process.is_null() {
+        return None;
+    }
+    let mut buf = vec![0u16; 32_768];
+    let mut len = buf.len() as u32;
+    // SAFETY: the buffer is as large as `len` says; the call writes how much it used.
+    let ok = unsafe { QueryFullProcessImageNameW(process, 0, buf.as_mut_ptr(), &mut len) };
+    // SAFETY: the handle opened above.
+    unsafe {
+        CloseHandle(process);
+    }
+    (ok != 0).then(|| PathBuf::from(std::ffi::OsString::from_wide(&buf[..len as usize])))
 }
 
 #[cfg(test)]

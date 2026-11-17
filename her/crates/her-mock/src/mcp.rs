@@ -17,7 +17,7 @@
 //! | `add_tool` | adds `extra_echo` and sends `tools/list_changed` |
 //! | `vault_reveal_code {project}` | a code derived from the project name |
 //! | `crash` | exits with status 3 (separate process only) |
-//! | `spawn_sleeper` | starts `sleep 300` in the server's process group and returns its pid |
+//! | `spawn_sleeper` | starts a process that sleeps 300 s among the server's own and returns its pid |
 //! | `bad_schema`, `ui_panel` | listed, but her must not offer them |
 //!
 //! `generated` adds that many plausible tools (`<domain>_<action>`) for tool-search tests;
@@ -341,7 +341,7 @@ impl State {
                 self.log("crash");
                 std::process::exit(3);
             }
-            "spawn_sleeper" if self.options.own_process => match std::process::Command::new("sleep").arg("300").spawn() {
+            "spawn_sleeper" if self.options.own_process => match sleeper().spawn() {
                 Ok(child) => text(format!("{}", child.id())),
                 Err(err) => return Err((-32000, format!("cannot spawn: {err}"))),
             },
@@ -719,6 +719,20 @@ async fn serve_sse_stream(mut stream: TcpStream, state: Arc<State>) {
         }
     }
     state.sse.lock().remove(&session);
+}
+
+/// A program that does nothing for 300 seconds. Windows has no `sleep`: its `ping` waits a
+/// second between echoes, and says so on a standard output that is not the server's.
+fn sleeper() -> std::process::Command {
+    if cfg!(windows) {
+        let mut ping = std::process::Command::new("ping");
+        ping.args(["-n", "300", "127.0.0.1"]).stdout(std::process::Stdio::null());
+        ping
+    } else {
+        let mut sleep = std::process::Command::new("sleep");
+        sleep.arg("300");
+        sleep
+    }
 }
 
 #[cfg(test)]

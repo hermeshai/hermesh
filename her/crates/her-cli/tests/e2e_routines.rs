@@ -14,7 +14,6 @@ use serde_json::json;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tokio::net::UnixStream;
 use tokio::process::Child;
 use tokio::sync::mpsc;
 
@@ -624,8 +623,8 @@ async fn routines_belong_to_the_bot_not_the_conversation() {
 }
 
 async fn connect(path: &Path) -> (Client, IncomingRx) {
-    let stream = UnixStream::connect(path).await.expect("connect");
-    let (read, write) = stream.into_split();
+    let stream = her_server::endpoint::connect(path).await.expect("connect");
+    let (read, write) = tokio::io::split(stream);
     let (client, incoming) = Client::connect(read, write);
     native_init(&client).await;
     (client, incoming)
@@ -633,7 +632,7 @@ async fn connect(path: &Path) -> (Client, IncomingRx) {
 
 async fn wait_for_socket(path: &Path) {
     for _ in 0..200 {
-        if UnixStream::connect(path).await.is_ok() {
+        if her_server::endpoint::connect(path).await.is_ok() {
             return;
         }
         tokio::time::sleep(Duration::from_millis(25)).await;

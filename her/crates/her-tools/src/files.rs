@@ -5,7 +5,6 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::Duration;
 use std::time::SystemTime;
 
 /// One version of a file. Any write, metadata change or file renamed over it gives a new stamp.
@@ -23,6 +22,7 @@ pub struct FileStamp {
 
 impl FileStamp {
     pub fn of(meta: &std::fs::Metadata) -> Self {
+        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut stamp = Self {
             size: meta.len(),
             mtime: meta.modified().ok(),
@@ -31,6 +31,7 @@ impl FileStamp {
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
+            use std::time::Duration;
             stamp.ctime = u64::try_from(meta.ctime())
                 .ok()
                 .map(|secs| SystemTime::UNIX_EPOCH + Duration::new(secs, meta.ctime_nsec() as u32));
@@ -116,6 +117,7 @@ impl PathLocks {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn detects_unread_and_changed_files() {

@@ -1065,6 +1065,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn file_changes() {
         let dir = tempfile::tempdir().unwrap();

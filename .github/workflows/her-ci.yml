@@ -72,3 +72,33 @@ jobs:
           sh tools/check-public.sh
       - name: Browser extension tests
         run: node --test apps/chrome-extension/src/*.test.js
+
+  # Windows, being ported (docs/windows.md): its failures do not fail the run yet.
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+        working-directory: her
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read access to the NimbleOffice fork
+        env:
+          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
+        run: |
+          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
+            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
+            exit 0
+          fi
+          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
+          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: PDFium for the document tests
+        run: |
+          mkdir -p "$RUNNER_TEMP/pdfium"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/pdfium-win-x64.tgz" | tar xz -C "$RUNNER_TEMP/pdfium"
+          echo "HER_PDFIUM=$(cygpath -w "$RUNNER_TEMP/pdfium/bin/pdfium.dll")" >> "$GITHUB_ENV"
+      # her-bench drives a service over Unix sockets and reads Unix's process accounting.
+      - name: Rust tests, every crate but the benchmarks
+        run: cargo test --workspace --exclude her-bench --no-fail-fast
