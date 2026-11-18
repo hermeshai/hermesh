@@ -14,8 +14,28 @@ import SwiftUI
 struct HerSettings: View {
     @Environment(AppModel.self) private var model
 
+    private var reviewDemo: Bool {
+        #if DEBUG
+        if DemoService.herDemoOn { return false } // preserve the existing developer-only settings gallery
+        #endif
+        return model.isDemo
+    }
+
     var body: some View {
-        HerEnvironmentPage { chat, machine in HerPageBody(chat: chat, machine: machine) }
+        if reviewDemo {
+            List {
+                Section {
+                    Text("Her uses preset sample tasks in this demo. No model, account, computer or service is connected.")
+                    Button("Progress") { model.path.append(.progress) }
+                } header: { Text("Demo Mode") }
+                Section {
+                    Text("In your own workspace, Her can use memory, files, scheduled tasks and connected tools on your Mac or Linux computer. Exit the demo to configure them.")
+                }
+            }
+            .navigationTitle("Her")
+        } else {
+            HerEnvironmentPage { chat, machine in HerPageBody(chat: chat, machine: machine) }
+        }
     }
 }
 

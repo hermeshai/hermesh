@@ -2,3 +2,17 @@
 
 /* A machine's her older than this app lacks what was asked (docs/version-skew.md) */
 "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again." = "那台电脑上的 Hermesh 版本较旧，还没有这项功能。在那台电脑上更新 Hermesh 后再试。";
+
+// Public review demo.
+"Delegate a sample task" = "委派示例任务";
+"Simulate a failure" = "模拟失败";
+"Retry sample task" = "重试示例任务";
+"Show sample result" = "显示示例结果";
+"Explore Her with sample data. I can delegate a coding task, follow its checks and report back. Nothing is sent to a model or computer. Choose a sample below, or type a message to start the same simulated task." = "用示例数据体验 Her。我会委派编码任务、跟进检查并汇报结果，不会向模型或电脑发送任何内容。选择下面的示例，或输入消息以开始同一个模拟任务。";
+"This demo uses sample tasks only. No real model, account, file or service is connected." = "演示只使用示例任务，未连接真实模型、账户、文件或服务。";
+"Start a sample coding task?\nCodex · Linux Studio · hello-world\nSimulated only; no computer or agent will be contacted." = "开始示例编码任务？\nCodex · Linux Studio · hello-world\n仅为模拟，不会连接电脑或 Agent。";
+"Permission denied. No sample task was started. You can try again; nothing was changed on a computer." = "已拒绝权限。未启动示例任务，电脑上的内容没有变化，你可以重试。";
+"The sample coding task is in progress. Inspect its card or Progress, stop it, or choose Show sample result to finish the simulation when you are ready." = "示例编码任务进行中。你可以查看任务卡或「进度」、停止任务，或在准备好后选择「显示示例结果」来完成模拟。";
+"The sample check failed. This is an intentional simulated error; no live task ran." = "示例检查失败。这是预设的模拟错误，未运行真实任务。";
+"Sample task complete. The preset change and two simulated tests passed. No code ran, no PR was created and nothing was pushed or merged." = "示例任务完成。预设改动及两项模拟测试通过；未执行代码、创建 PR、推送或合并。";
+"The simulated task was stopped. Try again when you are ready." = "模拟任务已停止。准备好后可以重试。";
