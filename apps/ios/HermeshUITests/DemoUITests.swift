@@ -10,6 +10,27 @@ final class DemoUITests: XCTestCase {
         app.launch()
     }
 
+    func testPrivacyPolicy() {
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        let link = app.descendants(matching: .any)["privacy-policy"].firstMatch
+
+        func openPolicy() {
+            XCTAssertTrue(link.waitForExistence(timeout: 10))
+            XCTAssertTrue(link.isHittable)
+            XCTAssertEqual(link.label, "Privacy Policy")
+            link.tap()
+            XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+            app.activate()
+        }
+
+        openPolicy()
+        enterWorkDemo()
+        tap("menu"); tap("account")
+        reach("privacy-policy")
+        openPolicy()
+        XCTAssertTrue(link.exists)
+    }
+
     func testTaskAndExit() {
         enterWorkDemo()
         XCTAssertTrue(app.staticTexts["Demo Mode"].waitForExistence(timeout: 15))
@@ -201,6 +222,9 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(demo.waitForExistence(timeout: 15))
         XCTAssertTrue(start.label.contains("开始使用"))
         XCTAssertTrue(demo.label.contains("先体验一下"))
+        let privacy = app.descendants(matching: .any)["privacy-policy"].firstMatch
+        XCTAssertTrue(privacy.isHittable)
+        XCTAssertEqual(privacy.label, "隐私政策")
         XCTAssertTrue(demo.isHittable && join.isHittable)
         XCTAssertLessThan(start.frame.maxY, join.frame.midY)
         XCTAssertLessThan(join.frame.maxY, demo.frame.midY)

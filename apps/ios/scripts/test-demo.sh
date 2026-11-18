@@ -26,7 +26,9 @@ BUILD=(-project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Releas
 xcodebuild build-for-testing "${BUILD[@]}" > "$OUT/build.log" 2>&1
 xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
-xcrun simctl install "$DEVICE" "$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
+APP="$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
+plutil -lint "$APP/PrivacyInfo.xcprivacy"
+xcrun simctl install "$DEVICE" "$APP"
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
 
 # Seed synthetic preferences before this app's first launch. No account, key or existing device data is copied.
@@ -44,6 +46,7 @@ PYSEED
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
+  -only-testing:HermeshUITests/DemoUITests/testPrivacyPolicy \
   -only-testing:HermeshUITests/DemoUITests/testChineseEntry \
   -only-testing:HermeshUITests/DemoUITests/testReviewPersistentSettingsIsolation \
   -only-testing:HermeshUITests/DemoUITests/testReviewBackgroundAndReset \
