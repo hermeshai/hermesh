@@ -49,16 +49,16 @@ curl -fsSL https://github.com/hermeshai/hermesh/releases/latest/download/install
 
 ## Updates
 
-Hermesh updates itself: every few hours it looks for a new release and,
-once no session is running and Her is not at work, installs it (her and
-its console too, where they are) and restarts its service. It only
-installs a release signed by the Hermesh release key, and never goes back
-to an older version ([machine-updates.md](machine-updates.md)).
+Hermesh checks for signed releases every few hours. Once no session is
+running and Her is idle, it installs a newer release and restarts the
+service. Linux machine installations also get missing Her components from
+the latest signed release, including when already on that version
+([machine-updates.md](machine-updates.md)).
 
 | Command | Does |
 |---|---|
 | `hermeshd update` | Updates now and restarts the service; asks first when that would stop a session (`--yes` does not ask) |
-| `hermeshd update --check` | Says whether a newer version exists |
+| `hermeshd update --check` | Says whether a newer version or Her repair is available |
 | `hermeshd update auto off`, `auto on` | Turns automatic updates off or on |
 
 `hermesh update` does the same on a computer with only the agent CLI. The
