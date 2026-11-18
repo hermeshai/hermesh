@@ -233,7 +233,8 @@ final class DemoService {
                 let text = answer?.text ?? ""
                 let greeting = answer?.selected.first ?? (text.isEmpty ? "Hello, world!" : text)
                 tasks[id] = Task { [weak self] in
-                    try? await Task.sleep(for: .seconds(2))
+                    // Leave enough time to inspect and interrupt the simulated work, as in Her's sample.
+                    try? await Task.sleep(for: .seconds(8))
                     guard !Task.isCancelled else { return }
                     self?.finish(id, greeting: greeting)
                     self?.tasks[id] = nil

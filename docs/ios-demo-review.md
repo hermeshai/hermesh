@@ -27,6 +27,9 @@ DEBUG-only; they are not the reviewer path or evidence for Release support.
 6. Interrupt the coding session or exit during execution: its old timer must
    not complete later. Reentering or relaunching starts no account or old task.
 
+Both the Her task and the Work greeting task show eight seconds of simulated
+execution, leaving time to inspect and interrupt them before their preset result.
+
 The sample's words and results identify it as simulated. Only sample text is
 accepted: photos/files, real model credentials, connector authorization and
 external services are unavailable. Her's demo settings do not write the real
