@@ -31,6 +31,10 @@
 </p>
 
 <p align="center">
+  <b>iOS Public Beta:</b> <a href="https://testflight.apple.com/join/Nh2sjbdP?source=github">Join the official Hermesh iOS TestFlight</a> (iOS 26 or later)
+</p>
+
+<p align="center">
   <img src="docs/assets/readme/en/relay.gif" width="100%" alt="Animation: Her's daily check finds people crashing at startup on Windows. She has Codex on the Windows PC reproduce it first, then asks you whether to fix it now. You click Fix it now. She has Claude Code on the Mac mini fix it, and Codex on Windows and Gemini on Linux check it at once; the Windows check fails, she passes the log back to Claude for a second fix, and the second check passes. She tells you the PR is #222 and sends the release notes.">
 </p>
 
