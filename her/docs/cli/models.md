@@ -16,7 +16,7 @@ To pick the default yourself: `her config set model provider/model-id`. For one 
 | Token Plan | `her login bailian-token-plan` | Bailian, Tencent, Volcengine, Zhipu, Z.ai |
 | ChatGPT subscription | `her login chatgpt` | Signs in with your browser. On a server reached over ssh, open the address it prints in your own computer's browser, then paste the address that browser ends on (it starts with `http://127.0.0.1`, and does not open there) into the terminal. `her logout chatgpt` signs out; `--forget` also forgets the registration |
 | Local | `her login ollama` | No key. LM Studio and llama.cpp go as your own service |
-| Your own service | `her login work --base-url URL` | A company gateway, Azure, a self-hosted model. `--api` says what it speaks (default `openai-chat`), `--no-key` that it takes no key. Written to `~/.her/models.toml` |
+| Your own service | `her login work --base-url URL` | A company gateway, Azure, a self-hosted model. her finds out what it speaks, each protocol's prefix and its models; `--api` names the protocol by hand, `--no-key` says it takes no key. The same name again updates it, `her logout NAME --remove` removes it. Written to `~/.her/models.toml` |
 
 `her models` lists the providers, what each needs and what you can use now. `hide` and `unhide` change the menu. `--refresh` asks the providers again.
 

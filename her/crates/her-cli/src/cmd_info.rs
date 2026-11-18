@@ -166,7 +166,12 @@ pub fn models(
             writeln!(out, "    {}", style.dim(&format!("(no models shown; use {}/<model-id> or --all)", p.id)))?;
         }
         for m in rows {
+            // Whose details it borrows (custom-endpoint-design §10).
+            let like = m.canonical.as_ref().map(|c| if c.guessed { format!("guessed: like {}", c.name) } else { format!("like {}", c.name) });
             let mut traits = Vec::new();
+            if let Some(like) = &like {
+                traits.push(like.as_str());
+            }
             if m.reasoning {
                 traits.push("reasoning");
             }

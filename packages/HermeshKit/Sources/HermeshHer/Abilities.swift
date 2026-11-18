@@ -396,6 +396,8 @@ public struct HerProviderRow: Equatable, Sendable, Identifiable {
     public var listingSource: String?
     /// Its Token Plan's list can be asked for again.
     public var dynamicModels: Bool
+    /// A service added by its address: its host (custom-endpoint-design §11).
+    public var customHost: String?
 
     init?(_ p: JSON) {
         guard let id = p["id"].string else { return nil }
@@ -415,14 +417,17 @@ public struct HerProviderRow: Equatable, Sendable, Identifiable {
         listingError = l["error"]["message"].text
         fetchedAt = l["fetched_at"].string.flatMap { try? Date($0, strategy: .iso8601) }
         listingSource = l["source"].string
+        customHost = p["custom"]["base_url"].string.map { u in
+            URL(string: u).flatMap { url in url.host().map { h in url.port.map { "\(h):\($0)" } ?? h } } ?? u
+        }
     }
 
     public func name(language: String) -> String {
         names[language] ?? names[String(language.prefix { $0 != "-" })] ?? name
     }
 
-    /// Its key is kept in her's credential store, so it can be removed or replaced here.
-    public var removable: Bool { credential == "stored" }
+    /// Its key is kept in her's credential store, or it is a service added by its address, so it can be removed here.
+    public var removable: Bool { credential == "stored" || customHost != nil }
 }
 
 /// The order the Token Plans are offered in; one not named here comes after them, by name.
@@ -444,11 +449,11 @@ public struct HerProviders: Equatable, Sendable {
     public var addedPlans: [HerProviderRow] { plans.filter { $0.credential != "missing" } }
     /// The Token Plans without one, to connect.
     public var plansLeft: [HerProviderRow] { plans.filter { $0.credential == "missing" } }
-    /// Providers with a key from somewhere; keyless ones need nothing.
-    public var keyed: [HerProviderRow] { all.filter { !$0.plan && $0.auth == "api_key" && $0.credential != "missing" } }
+    /// Providers with a key from somewhere, and every service added by its address (a local one takes no key); the built-in keyless ones need nothing.
+    public var keyed: [HerProviderRow] { all.filter { $0.customHost != nil || (!$0.plan && $0.auth == "api_key" && $0.credential != "missing") } }
     /// Providers that take a key and have none yet: what adding one offers.
     public var keyChoices: [HerProviderRow] {
-        all.filter { !$0.plan && $0.auth == "api_key" && $0.credential == "missing" && $0.id != "deepseek-anthropic" }
+        all.filter { !$0.plan && $0.customHost == nil && $0.auth == "api_key" && $0.credential == "missing" && $0.id != "deepseek-anthropic" }
     }
 }
 
@@ -516,6 +521,8 @@ public struct HerAbilityCalls: Sendable {
         return j["verified"].bool ?? false
     }
     public func removeKey(_ provider: String) async throws { _ = try await call("auth/delete", ["provider": .string(provider)]) }
+    /// Removes a service added by its address, its saved key with it.
+    public func removeProvider(_ id: String) async throws { _ = try await call("providers/remove", ["id": .string(id)]) }
     public func refreshModels(_ provider: String) async throws { _ = try await call("models/refresh", ["provider": .string(provider)]) }
     public func showModel(_ id: String, shown: Bool) async throws { _ = try await call("models/show", ["model": .string(id), "shown": .bool(shown)]) }
 }

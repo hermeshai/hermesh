@@ -114,6 +114,9 @@ pub struct PublicModel {
     pub cost: Option<ModelCost>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_tiers: Vec<CostTier>,
+    /// The model's id at its lab (`canonical_model_id`), e.g. `anthropic/claude-sonnet-5-5`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical: Option<String>,
 }
 
 /// Upstream kinds that are not chat models.
@@ -185,7 +188,7 @@ fn project_provider(root: &serde_json::Map<String, Value>, id: &str, fetched_at:
     Ok(PublicProvider { provider: id.to_string(), fetched_at: fetched_at.to_string(), models: list })
 }
 
-fn project_model(key: &str, m: &Value) -> Result<PublicModel, String> {
+pub(crate) fn project_model(key: &str, m: &Value) -> Result<PublicModel, String> {
     let obj = m.as_object().ok_or("not an object")?;
     let id = match obj.get("id") {
         Some(Value::String(id)) => id.clone(),
@@ -218,6 +221,7 @@ fn project_model(key: &str, m: &Value) -> Result<PublicModel, String> {
         released: string(obj.get("release_date"))?,
         cost: cost.map(prices).transpose()?,
         cost_tiers: cost.map(tiers).transpose()?.unwrap_or_default(),
+        canonical: string(obj.get("canonical_model_id"))?.filter(|c| crate::discovery::valid_id(c)),
     })
 }
 
@@ -300,7 +304,7 @@ fn tiers(v: &Value) -> Result<Vec<CostTier>, String> {
     Ok(out)
 }
 
-fn reasoning_options(v: Option<&Value>) -> Result<Vec<ReasoningOption>, String> {
+pub(crate) fn reasoning_options(v: Option<&Value>) -> Result<Vec<ReasoningOption>, String> {
     let Some(Value::Array(items)) = v else {
         return Ok(Vec::new());
     };
@@ -344,7 +348,11 @@ fn header_time(text: &str) -> Option<&str> {
 }
 
 pub fn embedded(catalog_id: &str) -> Option<&'static str> {
-    EMBEDDED.iter().find(|(id, _)| *id == catalog_id).map(|(_, text)| *text)
+    match catalog_id {
+        crate::canonical::CANONICAL => Some(crate::canonical::EMBEDDED_CANONICAL),
+        crate::canonical::ALIASES => Some(crate::canonical::EMBEDDED_ALIASES),
+        _ => EMBEDDED.iter().find(|(id, _)| *id == catalog_id).map(|(_, text)| *text),
+    }
 }
 
 pub fn embedded_ids() -> impl Iterator<Item = &'static str> {
@@ -352,7 +360,7 @@ pub fn embedded_ids() -> impl Iterator<Item = &'static str> {
 }
 
 /// The text of the newer of the local copy under `dir` and the compiled-in snapshot.
-fn newer_text(dir: Option<&Path>, catalog_id: &str) -> Option<std::borrow::Cow<'static, str>> {
+pub(crate) fn newer_text(dir: Option<&Path>, catalog_id: &str) -> Option<std::borrow::Cow<'static, str>> {
     let builtin = embedded(catalog_id);
     let local = dir.and_then(|d| std::fs::read_to_string(d.join(format!("{catalog_id}.json"))).ok());
     match (local, builtin) {
@@ -445,10 +453,52 @@ pub async fn refresh(http: &reqwest::Client, url: &str, dir: &Path, ids: &[&str]
         }
         crate::discovery::write_text(&dir.join(format!("{id}.json")), &to_file(&provider))?;
     }
+    changed |= refresh_canonical(http, url, dir, &raw, &now).await?;
     state.etag = etag;
     state.checked_at = Some(now);
     crate::discovery::write_json(&dir.join("state.json"), &state)?;
     Ok(changed)
+}
+
+/// Rewrites the local canonical rows and alias table from the catalog just fetched and its
+/// lab-level file (custom-endpoint-design §6.2). The lab file is best effort: without it the
+/// rows come from the providers alone. A catalog without canonical models leaves the old copies.
+async fn refresh_canonical(http: &reqwest::Client, url: &str, dir: &Path, raw: &Value, now: &str) -> Result<bool, LlmError> {
+    let lab = match crate::canonical::lab_url(url) {
+        Some(lab_url) => fetch_json(http, &lab_url).await.map_err(|e| tracing::info!("no lab-level model file: {}", e.message)).ok(),
+        None => None,
+    };
+    let projected = match crate::canonical::project(raw, lab.as_ref(), now) {
+        Ok(p) => p,
+        Err(error) => {
+            tracing::warn!(%error, "the model catalog's canonical models were not refreshed");
+            return Ok(false);
+        }
+    };
+    let current = load(Some(dir), crate::canonical::CANONICAL);
+    let aliases = crate::canonical::to_alias_file(&projected.aliases);
+    let current_aliases = newer_text(Some(dir), crate::canonical::ALIASES);
+    let changed = current.as_ref().map(|c| &c.models) != Some(&projected.canonical.models)
+        || current_aliases.as_deref().and_then(|t| serde_json::from_str::<crate::canonical::AliasFile>(t).ok()).map(|f| f.names)
+            != Some(projected.aliases.names.clone());
+    crate::discovery::write_text(&dir.join(format!("{}.json", crate::canonical::CANONICAL)), &to_file(&projected.canonical))?;
+    crate::discovery::write_text(&dir.join(format!("{}.json", crate::canonical::ALIASES)), &aliases)?;
+    Ok(changed)
+}
+
+async fn fetch_json(http: &reqwest::Client, url: &str) -> Result<Value, LlmError> {
+    let response = http
+        .get(url)
+        .timeout(FETCH_TIMEOUT)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|e| LlmError::from_reqwest(&e))?;
+    if !response.status().is_success() {
+        return Err(LlmError::new(ErrorKind::Server, format!("HTTP {}", response.status().as_u16())));
+    }
+    let body = crate::discovery::read_limited(response, MAX_BYTES).await?;
+    serde_json::from_slice(&body).map_err(|e| LlmError::new(ErrorKind::Protocol, format!("not JSON: {e}")))
 }
 
 #[cfg(test)]

@@ -151,6 +151,9 @@ pub struct ResolvedModel {
 
 pub struct ModelRegistry {
     providers: BTreeMap<String, ProviderConfig>,
+    /// The person's own services from models.toml (custom endpoints), read again when the file
+    /// changes (docs/kernel/custom-endpoint-design.md §8). Listed among the built-in providers.
+    custom: RwLock<BTreeMap<String, ProviderConfig>>,
     warnings: Vec<String>,
     sources: RwLock<BTreeMap<String, Vec<ProviderConfig>>>,
     authorizer: OnceLock<Arc<dyn crate::connection::ConnectionAuthorizer>>,
@@ -163,8 +166,10 @@ pub struct ModelRegistry {
 
 impl ModelRegistry {
     pub fn new(catalog: Catalog, options: RegistryOptions) -> Self {
+        let (custom, providers): (BTreeMap<_, _>, BTreeMap<_, _>) = catalog.providers.into_iter().partition(|(_, p)| p.custom);
         let mut registry = Self {
-            providers: catalog.providers,
+            providers,
+            custom: RwLock::new(custom),
             warnings: catalog.warnings,
             sources: RwLock::new(BTreeMap::new()),
             authorizer: OnceLock::new(),
@@ -192,9 +197,11 @@ impl ModelRegistry {
         self.providers.insert(provider.id.clone(), provider);
     }
 
-    /// An owned snapshot: callers never retain a lock across I/O.
+    /// An owned snapshot: callers never retain a lock across I/O. Built-in and the person's own
+    /// providers by id, then the external sources.
     pub fn providers(&self) -> impl Iterator<Item = ProviderConfig> {
-        let mut result: Vec<_> = self.providers.values().cloned().collect();
+        let mut result: Vec<_> = self.providers.values().cloned().chain(self.custom.read().values().cloned()).collect();
+        result.sort_by(|a, b| a.id.cmp(&b.id));
         result.extend(self.sources.read().values().flatten().cloned());
         result.into_iter()
     }
@@ -204,11 +211,14 @@ impl ModelRegistry {
         if let Some(provider) = self.providers.get(id) {
             return Some(provider.auth.status(id));
         }
+        if let Some(provider) = self.custom.read().get(id) {
+            return Some(provider.auth.status(id));
+        }
         self.sources.read().values().flatten().find(|p| p.id == id).map(|p| p.auth.status(id))
     }
 
     pub fn provider(&self, id: &str) -> Option<ProviderConfig> {
-        self.providers.get(id).cloned().or_else(|| {
+        self.providers.get(id).cloned().or_else(|| self.custom.read().get(id).cloned()).or_else(|| {
             self.sources
                 .read()
                 .values()
@@ -216,6 +226,26 @@ impl ModelRegistry {
                 .find(|p| p.id == id)
                 .cloned()
         })
+    }
+
+    /// Replaces the person's own services with `providers`, as models.toml now says
+    /// (custom-endpoint-design §8). An id that a built-in provider or a connection holds is
+    /// refused, and nothing changes.
+    pub fn replace_custom(&self, providers: Vec<ProviderConfig>) -> Result<(), String> {
+        {
+            let sources = self.sources.read();
+            for p in &providers {
+                if self.providers.contains_key(&p.id) || sources.values().flatten().any(|s| s.id == p.id) {
+                    return Err(format!("provider ID '{}' is already taken", p.id));
+                }
+            }
+        }
+        let mut custom = self.custom.write();
+        for id in custom.keys().chain(providers.iter().map(|p| &p.id)) {
+            self.directory.forget(id);
+        }
+        *custom = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
+        Ok(())
     }
 
     /// Atomically replace just one external source, never built-in/user providers.
@@ -229,6 +259,7 @@ impl ModelRegistry {
         for p in &providers {
             if !ids.insert(&p.id)
                 || self.providers.contains_key(&p.id)
+                || self.custom.read().contains_key(&p.id)
                 || sources
                     .iter()
                     .any(|(s, ps)| s != source && ps.iter().any(|v| v.id == p.id))
@@ -359,11 +390,9 @@ impl ModelRegistry {
 
     /// Environment variables holding provider keys (scrubbed from tool subprocesses).
     pub fn key_env_vars(&self) -> Vec<String> {
-        let mut vars: Vec<String> = self
-            .providers
-            .values()
-            .flat_map(|p| p.auth.env_vars().iter().cloned())
-            .collect();
+        // By reference: every new session asks, and cloning every provider costs more than this.
+        let custom = self.custom.read();
+        let mut vars: Vec<String> = self.providers.values().chain(custom.values()).flat_map(|p| p.auth.env_vars().iter().cloned()).collect();
         vars.sort();
         vars.dedup();
         vars
@@ -419,6 +448,8 @@ impl ModelRegistry {
             compat: Default::default(),
             listing: Default::default(),
             plan: None,
+            endpoints: Default::default(),
+            custom: false,
         };
         Ok(ResolvedModel { model: Arc::new(gone.ad_hoc_model(id)), ad_hoc: true })
     }

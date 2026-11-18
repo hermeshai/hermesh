@@ -4818,6 +4818,16 @@
         }
       }
     },
+    "Its models leave the menu, and its saved key goes too.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移除后它的模型从菜单里消失，保存的密钥一并删除。"
+          }
+        }
+      }
+    },
     "Its scheduled task may have been deleted.": {
       "localizations": {
         "zh-Hans": {

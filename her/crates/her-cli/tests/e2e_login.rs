@@ -121,6 +121,14 @@ async fn a_service_of_ones_own() {
     assert_eq!(code, 0, "{stderr}");
     assert!(stdout.contains("Hello from mock."), "{stdout}");
 
+    // The same name again is the same service, probed again with the new key.
+    let (code, stdout, stderr) = piped(&env, &["login", "gateway", "--base-url", &base, "--key-stdin"], "sk-another-key").await;
+    assert_eq!(code, 0, "{stderr}");
+    assert!(stdout.contains("updated gateway in "), "{stdout}");
+    let text = std::fs::read_to_string(&models).unwrap();
+    assert_eq!(text.matches("[providers.gateway]").count(), 1, "{text}");
+    assert!(!text.contains("gateway-2"), "{text}");
+
     // One that takes no key.
     let (code, _, stderr) = piped(&env, &["login", "openly", "--base-url", &base, "--no-key", "--model", "mock-1"], "").await;
     assert_eq!(code, 0, "{stderr}");

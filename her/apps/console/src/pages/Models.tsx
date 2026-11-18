@@ -15,8 +15,9 @@ export function ModelsPage() {
   const { t: tc } = useTranslation();
   const { models } = useHer();
   const [adding, setAdding] = useState(false);
-  // Providers with a key from somewhere; keyless ones (Ollama) need nothing.
-  const keyed = (models?.providers ?? []).filter((p) => !p.plan && p.auth === "api_key" && p.credential !== "missing");
+  // Providers with a key from somewhere, and every service added by its address (a local one takes
+  // no key); the built-in keyless Ollama needs nothing.
+  const keyed = (models?.providers ?? []).filter((p) => p.custom || (!p.plan && p.auth === "api_key" && p.credential !== "missing"));
   return (
     <>
       <PageTop title={tc("nav.models")} />

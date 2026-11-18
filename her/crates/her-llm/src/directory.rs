@@ -14,9 +14,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::canonical;
 use crate::catalog::ModelToml;
 use crate::catalog::ProviderConfig;
 use crate::catalog::merge_model;
+use crate::model::AuthHeader;
+use crate::model::Compat;
 use crate::discovery::ListSource;
 use crate::discovery::ListedModel;
 use crate::discovery::ModelList;
@@ -59,6 +62,18 @@ pub struct ModelMeta {
     pub chat: bool,
     /// Its name by language tag, when its channel declares them.
     pub names: std::collections::BTreeMap<String, String>,
+    /// The model its details were borrowed from, when that is not this channel's own row.
+    pub canonical: Option<CanonicalRef>,
+}
+
+/// The model a model's details come from (docs/kernel/custom-endpoint-design.md §6.4): a maker's
+/// row, a canonical model found by name, or one the person named.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CanonicalRef {
+    pub id: String,
+    pub name: String,
+    /// Found only by dropping a date or a decoration: it lends less.
+    pub guessed: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -73,6 +88,8 @@ pub struct ProviderModels {
     pub source: IdSource,
     pub list: Option<ModelList>,
     pub models: Vec<DirectoryModel>,
+    /// A custom endpoint: its unknown models fill the menu (custom-endpoint-design §7.2).
+    pub custom: bool,
 }
 
 impl ProviderModels {
@@ -100,6 +117,14 @@ impl ProviderModels {
         });
         let room = DEFAULT_SHOWN.saturating_sub(shown.len());
         shown.extend(candidates.into_iter().take(room).map(|m| m.model.id.clone()));
+        // A service of one's own that runs models nobody describes still has a menu: they fill
+        // what the known ones leave, in the list's order.
+        if self.custom {
+            let room = DEFAULT_SHOWN.saturating_sub(shown.len());
+            let unknown = self.models.iter().filter(|m| m.meta.chat && !m.meta.known && !m.meta.deprecated && !shown.contains(&m.model.id));
+            let fill: Vec<String> = unknown.take(room).map(|m| m.model.id.clone()).collect();
+            shown.extend(fill);
+        }
         shown
     }
 }
@@ -139,6 +164,9 @@ impl Selection {
     }
 }
 
+/// A canonical model a name found, and whether the match was only a guess (§6.4).
+type CanonicalFound = (Arc<PublicModel>, bool);
+
 /// The merged models of every provider, read lazily and dropped when something is refreshed.
 #[derive(Default)]
 pub struct ModelDirectory {
@@ -147,6 +175,12 @@ pub struct ModelDirectory {
     /// Makers' rows found by a channel's name for a model, and the names that have none.
     maker_rows: RwLock<HashMap<String, Option<Arc<PublicModel>>>>,
     merged: RwLock<HashMap<String, Arc<ProviderModels>>>,
+    /// The alias table, once read (`None` inside: there is none).
+    aliases: RwLock<Option<Option<Arc<canonical::AliasTable>>>>,
+    /// Whether a refresh left its own alias table, once looked at.
+    local_aliases: RwLock<Option<bool>>,
+    /// Canonical models found by names, and the names that find none.
+    canonical_matches: RwLock<HashMap<String, Option<CanonicalFound>>>,
     selection: RwLock<Option<Arc<Selection>>>,
     /// Providers that said a model does not exist; their lists are refreshed.
     missing: Arc<Mutex<BTreeSet<String>>>,
@@ -175,6 +209,9 @@ impl ModelDirectory {
         self.public.write().clear();
         self.maker_rows.write().clear();
         self.merged.write().clear();
+        *self.aliases.write() = None;
+        *self.local_aliases.write() = None;
+        self.canonical_matches.write().clear();
         *self.selection.write() = None;
     }
 
@@ -238,13 +275,112 @@ impl ModelDirectory {
                 None => crate::public_catalog::load_one(self.catalog_dir().as_deref(), c, id),
             }
         });
-        let maker = if own.is_none() { self.maker_row(id) } else { None };
         let entry = provider.entry(id);
-        if listed.is_none() && own.is_none() && maker.is_none() && entry.is_none() {
+        let named = entry.and_then(|e| e.canonical.as_deref()).and_then(|c| self.canonical_for_config(c));
+        let maker = if own.is_none() && named.is_none() { self.maker_row(id) } else { None };
+        let found = if own.is_none() && maker.is_none() && named.is_none() { self.canonical_match(&names_of(id, listed)) } else { None };
+        if listed.is_none() && own.is_none() && maker.is_none() && entry.is_none() && found.is_none() {
             return None;
         }
-        let row = own.as_ref().map(Row::Own).or(maker.as_deref().map(Row::Maker));
+        let row = named
+            .as_deref()
+            .map(Row::Canonical)
+            .or(own.as_ref().map(Row::Own))
+            .or(maker.as_deref().map(Row::Maker))
+            .or(found.as_ref().map(|(row, guessed)| if *guessed { Row::Guessed(row) } else { Row::Canonical(row) }));
         Some(build(provider, id, row, listed, entry).model)
+    }
+
+    /// The canonical model `names` stand for (custom-endpoint-design §6.2–§6.3), and whether
+    /// the match is weak. Kept per name, since every model without a row of its own asks.
+    fn canonical_match(&self, names: &[&str]) -> Option<(Arc<PublicModel>, bool)> {
+        let key = names.join("\u{1f}");
+        if let Some(found) = self.canonical_matches.read().get(&key) {
+            return found.clone();
+        }
+        let found = (self.local_aliases() || canonical::compiled_may_know(names))
+            .then(|| self.alias_table())
+            .flatten()
+            .and_then(|table| table.find(names))
+            .and_then(|m| self.canonical_row(&m.canonical).map(|row| (row, m.guessed)));
+        self.canonical_matches.write().insert(key, found.clone());
+        found
+    }
+
+    /// Whether a refresh left its own alias table, which may know names this build does not.
+    /// Looked at once per refresh, not once per name: a big list asks for hundreds.
+    fn local_aliases(&self) -> bool {
+        if let Some(local) = *self.local_aliases.read() {
+            return local;
+        }
+        let local = self.catalog_dir().is_some_and(|d| d.join(format!("{}.json", canonical::ALIASES)).exists());
+        *self.local_aliases.write() = Some(local);
+        local
+    }
+
+    fn alias_table(&self) -> Option<Arc<canonical::AliasTable>> {
+        if let Some(found) = self.aliases.read().as_ref() {
+            return found.clone();
+        }
+        let text = crate::public_catalog::newer_text(self.catalog_dir().as_deref(), canonical::ALIASES);
+        let table = text.and_then(|t| canonical::AliasTable::parse(&t)).map(Arc::new);
+        *self.aliases.write() = Some(table.clone());
+        table
+    }
+
+    /// A canonical model's row by its id (`anthropic/claude-sonnet-5-5`).
+    pub fn canonical_row(&self, id: &str) -> Option<Arc<PublicModel>> {
+        if let Some(Some(loaded)) = self.public.read().get(canonical::CANONICAL) {
+            return loaded.model(id).cloned().map(Arc::new);
+        }
+        crate::public_catalog::load_one(self.catalog_dir().as_deref(), canonical::CANONICAL, id).map(Arc::new)
+    }
+
+    /// Canonical models whose names are like `query`, the likeliest first (custom-endpoint-design
+    /// §7.3): a person's own name for a model (`prod-gpt4o-eastus`) puts GPT-4o first.
+    pub fn search_canonical(&self, query: &str, limit: usize) -> Vec<PublicModel> {
+        let Some(rows) = self.public(canonical::CANONICAL) else { return Vec::new() };
+        let q = query.trim().to_ascii_lowercase();
+        if q.is_empty() {
+            return Vec::new();
+        }
+        let variants = crate::names::variants(&q);
+        let squashed = crate::names::squash(&q);
+        let tokens: Vec<String> = q.split(|c: char| !c.is_ascii_alphanumeric()).filter(|t| t.len() >= 3).map(str::to_string).collect();
+        let score = |row: &PublicModel| -> u32 {
+            let id = row.id.to_ascii_lowercase();
+            let bare = id.rsplit('/').next().unwrap_or(&id).to_string();
+            let name = row.name.as_deref().unwrap_or_default().to_ascii_lowercase();
+            let row_squash = crate::names::squash(&bare);
+            if variants.iter().any(|v| *v == bare || *v == id) {
+                return 100;
+            }
+            if !squashed.is_empty() && squashed == row_squash {
+                return 90;
+            }
+            if bare.starts_with(&q) || name.starts_with(&q) {
+                return 70;
+            }
+            if bare.contains(&q) || name.contains(&q) {
+                return 50;
+            }
+            tokens
+                .iter()
+                .map(|t| if row_squash == *t { 45 } else if row_squash.starts_with(t.as_str()) { 30 } else if row_squash.contains(t.as_str()) { 15 } else { 0 })
+                .max()
+                .unwrap_or(0)
+        };
+        let mut found: Vec<(u32, &PublicModel)> = rows.models.iter().map(|m| (score(m), m)).filter(|(s, m)| *s > 0 && m.is_chat()).collect();
+        found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.released.cmp(&a.1.released)).then_with(|| a.1.id.cmp(&b.1.id)));
+        found.into_iter().take(limit).map(|(_, m)| m.clone()).collect()
+    }
+
+    /// The canonical model a person named for a model: its id, or any name that finds it.
+    pub fn canonical_for_config(&self, named: &str) -> Option<Arc<PublicModel>> {
+        self.canonical_row(named).or_else(|| {
+            let found = self.alias_table()?.find(&[named]).filter(|m| !m.guessed)?;
+            self.canonical_row(&found.canonical)
+        })
     }
 
     /// The row of the model's maker, as this channel calls the model. Asked on every request of
@@ -304,14 +440,26 @@ impl ModelDirectory {
         let models = ids
             .iter()
             .map(|id| {
-                let own = public.as_ref().and_then(|p| p.model(id));
-                let maker = if own.is_none() { self.maker_row(id) } else { None };
-                let row = own.map(Row::Own).or(maker.as_deref().map(Row::Maker));
+                let entry = provider.entry(id);
                 let listed = listed.and_then(|l| l.iter().find(|m| m.id == *id));
-                build(provider, id, row, listed, provider.entry(id))
+                let named = entry.and_then(|e| e.canonical.as_deref()).and_then(|c| self.canonical_for_config(c));
+                let own = public.as_ref().and_then(|p| p.model(id)).filter(|_| named.is_none());
+                let maker = if own.is_none() && named.is_none() { self.maker_row(id) } else { None };
+                let found = if own.is_none() && maker.is_none() && named.is_none() {
+                    self.canonical_match(&names_of(id, listed))
+                } else {
+                    None
+                };
+                let row = named
+                    .as_deref()
+                    .map(Row::Canonical)
+                    .or(own.map(Row::Own))
+                    .or(maker.as_deref().map(Row::Maker))
+                    .or(found.as_ref().map(|(row, guessed)| if *guessed { Row::Guessed(row) } else { Row::Canonical(row) }));
+                build(provider, id, row, listed, entry)
             })
             .collect();
-        ProviderModels { source, list, models }
+        ProviderModels { source, list, models, custom: provider.custom }
     }
 
     pub fn selection(&self) -> Arc<Selection> {
@@ -372,14 +520,84 @@ enum Row<'a> {
     /// The maker's, for a channel the catalog has no row of it for: what the model can do applies,
     /// not what the maker charges or has retired.
     Maker(&'a PublicModel),
+    /// A canonical model the channel's name for it finds (custom-endpoint-design §6.2), or one
+    /// the person named: as a maker's row, without its name.
+    Canonical(&'a PublicModel),
+    /// A canonical model found only after dropping a date or a decoration: what the model can see
+    /// and hold applies, not its output limit or how it thinks (§6.4).
+    Guessed(&'a PublicModel),
 }
 
 impl<'a> Row<'a> {
     fn model(self) -> &'a PublicModel {
         match self {
-            Row::Own(p) | Row::Maker(p) => p,
+            Row::Own(p) | Row::Maker(p) | Row::Canonical(p) | Row::Guessed(p) => p,
         }
     }
+
+    /// The model it describes, unless it is the channel's own row.
+    fn borrowed(self) -> Option<CanonicalRef> {
+        let (p, guessed) = match self {
+            Row::Own(_) => return None,
+            Row::Maker(p) | Row::Canonical(p) => (p, false),
+            Row::Guessed(p) => (p, true),
+        };
+        let id = p.canonical.clone().unwrap_or_else(|| p.id.clone());
+        Some(CanonicalRef { name: p.name.clone().unwrap_or_else(|| id.clone()), id, guessed })
+    }
+}
+
+/// The names a model may be found by: its id, then the other names its list gives (§6.3).
+fn names_of<'a>(id: &'a str, listed: Option<&'a ListedModel>) -> Vec<&'a str> {
+    let mut names = vec![id];
+    for alt in listed.map(|l| l.alt_names.as_slice()).unwrap_or_default() {
+        if !names.contains(&alt.as_str()) {
+            names.push(alt);
+        }
+    }
+    names
+}
+
+/// A Claude model: by its row's lab, else by its name.
+fn is_claude(id: &str, row: Option<Row<'_>>) -> bool {
+    let named = |n: &str| n.rsplit('/').next().is_some_and(|bare| bare.to_ascii_lowercase().starts_with("claude"));
+    row.map(Row::model).is_some_and(|p| {
+        p.canonical.as_deref().or(Some(p.id.as_str())).is_some_and(|c| c.starts_with("anthropic/")) || named(&p.id)
+    }) || named(id)
+}
+
+/// The protocol a model of a service with several takes (custom-endpoint-design §5), when it is
+/// not the service's default: its prefix and the header its key goes in.
+fn chosen_endpoint(provider: &ProviderConfig, id: &str, row: Option<Row<'_>>, listed: Option<&ListedModel>) -> Option<(String, String, AuthHeader)> {
+    if provider.endpoints.is_empty() {
+        return None;
+    }
+    // Responses waits for a general adapter (D-601); the service's own default is kept as is.
+    let mut offered: Vec<&str> = std::iter::once(provider.api.as_str())
+        .chain(provider.endpoints.keys().map(String::as_str).filter(|a| *a != "openai-responses"))
+        .collect();
+    if let Some(said) = listed.map(|l| &l.protocols).filter(|p| !p.is_empty()) {
+        let within: Vec<&str> = offered.iter().copied().filter(|a| said.iter().any(|s| s == a)).collect();
+        if !within.is_empty() {
+            offered = within;
+        }
+    }
+    let has = |api: &str| offered.contains(&api);
+    let pick = if is_claude(id, row) && has("anthropic-messages") {
+        "anthropic-messages"
+    } else if has("openai-chat") {
+        "openai-chat"
+    } else if has("anthropic-messages") {
+        "anthropic-messages"
+    } else {
+        offered[0]
+    };
+    if pick == provider.api {
+        return None;
+    }
+    let endpoint = provider.endpoints.get(pick)?;
+    let usual = if pick == "anthropic-messages" { AuthHeader::XApiKey } else { AuthHeader::Bearer };
+    Some((pick.to_string(), endpoint.base_url.clone(), endpoint.auth_header.unwrap_or(usual)))
 }
 
 /// One model over the layers: public catalog, the provider's list, what the channel declares,
@@ -393,7 +611,20 @@ fn build(
 ) -> DirectoryModel {
     let mut lower = row.map(|row| public_layer(row, id)).unwrap_or_else(|| ModelToml::new(id));
     if let Some(listed) = listed {
+        // A deployment that runs the model with a shorter window than its row says checks the
+        // prompt and the output limit together: the row's limit would fail every request (§6.7).
+        if listed.context_window.zip(lower.context_window).is_some_and(|(list, row)| list < row) {
+            lower.max_output_tokens = None;
+        }
         merge_model(&mut lower, list_layer(listed));
+    }
+    if entry.is_none_or(|e| e.api.is_none())
+        && let Some((api, base_url, auth_header)) = chosen_endpoint(provider, id, row, listed)
+    {
+        lower.api = Some(api);
+        lower.base_url = Some(base_url);
+        let compat = lower.compat.take().unwrap_or_default();
+        lower.compat = Some(compat.merged(&Compat { auth_header: Some(auth_header), ..Default::default() }));
     }
     let top = entry.cloned().unwrap_or_else(|| ModelToml::new(id));
     let mut model = provider.build_model(Some(&lower), &top);
@@ -411,11 +642,12 @@ fn build(
     let meta = ModelMeta {
         known: public.is_some() || listed.is_some_and(ListedModel::has_details) || entry.is_some_and(ModelToml::describes_model),
         deprecated: matches!(row, Some(Row::Own(p)) if p.deprecated),
-        released: public.and_then(|p| p.released.clone()),
+        released: if matches!(row, Some(Row::Guessed(_))) { None } else { public.and_then(|p| p.released.clone()) },
         configured: entry.is_some(),
         chat: entry.is_some()
-            || (public.is_none_or(PublicModel::is_chat) && listed.is_none_or(|l| l.tool_call != Some(false))),
+            || (public.is_none_or(PublicModel::is_chat) && listed.is_none_or(|l| l.tool_call != Some(false) && l.chat != Some(false))),
         names: entry.map(|e| e.names.clone()).unwrap_or_default(),
+        canonical: row.and_then(Row::borrowed),
     };
     DirectoryModel { model: Arc::new(model), meta }
 }
@@ -423,23 +655,28 @@ fn build(
 /// A row as a layer of the model the channel calls `id`, which is what requests must say.
 fn public_layer(row: Row<'_>, id: &str) -> ModelToml {
     let p = row.model();
+    let input = (!p.input.is_empty()).then(|| {
+        if p.input.iter().any(|i| i == "image") {
+            vec![Modality::Text, Modality::Image]
+        } else {
+            vec![Modality::Text]
+        }
+    });
+    if matches!(row, Row::Guessed(_)) {
+        return ModelToml { id: id.to_string(), context_window: p.context_window, input, ..Default::default() };
+    }
     let (thinking, thinking_budgets) = row_thinking(p);
     let own = matches!(row, Row::Own(_));
     ModelToml {
         id: id.to_string(),
-        name: p.name.clone(),
+        // A gateway's own name for a model stays: several names may find one canonical model.
+        name: if matches!(row, Row::Canonical(_)) { None } else { p.name.clone() },
         context_window: p.context_window,
         max_output_tokens: p.max_output_tokens,
         reasoning: p.reasoning,
         catalog_thinking: Some(thinking),
         thinking_budgets,
-        input: (!p.input.is_empty()).then(|| {
-            if p.input.iter().any(|i| i == "image") {
-                vec![Modality::Text, Modality::Image]
-            } else {
-                vec![Modality::Text]
-            }
-        }),
+        input,
         cost: p.cost.clone().filter(|c| own && c.is_configured()),
         currency: own.then_some(Currency::Usd),
         ..Default::default()
@@ -447,12 +684,20 @@ fn public_layer(row: Row<'_>, id: &str) -> ModelToml {
 }
 
 fn list_layer(l: &ListedModel) -> ModelToml {
+    let (catalog_thinking, thinking_budgets) = if l.reasoning_options.is_empty() {
+        (None, None)
+    } else {
+        let (thinking, budgets) = derive_thinking(&l.reasoning_options);
+        (Some(thinking), budgets)
+    };
     ModelToml {
         id: l.id.clone(),
         name: l.name.clone(),
         context_window: l.context_window,
         max_output_tokens: l.max_output_tokens,
         reasoning: l.reasoning,
+        catalog_thinking,
+        thinking_budgets,
         input: l.images.map(|images| if images { vec![Modality::Text, Modality::Image] } else { vec![Modality::Text] }),
         currency: l.cost.as_ref().map(|_| Currency::Usd),
         cost: l.cost.clone().filter(|c| c.is_configured()),
@@ -774,6 +1019,153 @@ mod tests {
         assert_eq!(directory.models(&seeded).get("deepseek-v9").unwrap().model.context_window, 64_000);
     }
 
+    /// A gateway the person added: Chat Completions by default, Messages too.
+    fn gateway() -> ProviderConfig {
+        let mut p = Catalog::from_toml(
+            r#"
+            [providers.gw]
+            api = "openai-chat"
+            base_url = "https://gw.example/v1"
+            endpoints = { anthropic-messages = "https://gw.example" }
+            "#,
+        )
+        .unwrap()
+        .providers
+        .remove("gw")
+        .unwrap();
+        p.custom = true;
+        p
+    }
+
+    fn give_list(dir: &Path, provider: &str, models: Vec<ListedModel>) {
+        let list = ModelList {
+            version: 1,
+            fetched_at: Some(crate::discovery::now()),
+            checked_at: crate::discovery::now(),
+            source: ListSource::Provider,
+            credential: None,
+            error: None,
+            models,
+        };
+        crate::discovery::write_json(&dir.join(format!("lists/{provider}.json")), &list).unwrap();
+    }
+
+    #[test]
+    fn a_gateways_names_find_their_canonical_models() {
+        let dir = tempfile::tempdir().unwrap();
+        let directory = ModelDirectory::new(Some(dir.path().to_path_buf()));
+        let names = ["meta-llama/Llama-3.3-70B-Instruct", "accounts/fireworks/models/qwen3p8-max", "meta-llama/llama-3.3-70b-instruct-fast", "house-model-7"];
+        give_list(dir.path(), "gw", names.iter().map(|id| ListedModel { id: id.to_string(), ..Default::default() }).collect());
+        let p = gateway();
+        let models = directory.models(&p);
+        let llama = models.get(names[0]).unwrap();
+        assert!(llama.meta.known);
+        assert_eq!(llama.meta.canonical.as_ref().map(|c| (c.id.as_str(), c.guessed)), Some(("meta/llama-3.3-70b-instruct", false)));
+        assert_eq!(llama.model.name, names[0], "the gateway's own name stays");
+        assert!(llama.model.context_window >= 128_000);
+        let qwen = models.get(names[1]).unwrap();
+        assert_eq!(qwen.meta.canonical.as_ref().map(|c| c.id.as_str()), Some("alibaba/qwen3.8-max"));
+        assert!(qwen.model.reasoning);
+        let fast = models.get(names[2]).unwrap();
+        let guess = fast.meta.canonical.as_ref().unwrap();
+        assert!(guess.guessed, "only after dropping -fast");
+        assert!(fast.meta.known && fast.model.context_window >= 128_000);
+        assert!(!fast.model.reasoning && fast.model.thinking.is_empty() && fast.model.max_output_tokens.is_none(), "a weak match lends the window, not how it thinks");
+        let unknown = models.get(names[3]).unwrap();
+        assert!(!unknown.meta.known && unknown.meta.canonical.is_none());
+        // The one-model path finds the same.
+        directory.invalidate();
+        assert_eq!(directory.model(&p, names[1]).unwrap().reasoning, qwen.model.reasoning);
+        // A name nobody ties to one model is not borrowed across providers.
+        assert!(directory.canonical_match(&["auto"]).is_none());
+    }
+
+    #[test]
+    fn a_release_with_its_own_canonical_model_is_not_another() {
+        let directory = ModelDirectory::new(None);
+        for (name, canonical) in [
+            ("deepseek/deepseek-v4.1-flash-1017", "deepseek/deepseek-v4.1-flash-1017"),
+            ("deepseek-v4.1-flash-1017", "deepseek/deepseek-v4.1-flash-1017"),
+            ("deepseek/deepseek-v4-flash-vision-exp", "deepseek/deepseek-v4-flash-vision-exp"),
+        ] {
+            let found = directory.canonical_match(&[name]).map(|(row, guessed)| (row.canonical.clone().unwrap_or(row.id.clone()), row.name.clone(), guessed));
+            assert_eq!(found.as_ref().map(|f| f.0.as_str()), Some(canonical), "{name}: {found:?}");
+        }
+    }
+
+    #[test]
+    fn claude_takes_messages_where_the_gateway_speaks_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let directory = ModelDirectory::new(Some(dir.path().to_path_buf()));
+        give_list(dir.path(), "gw", vec![
+            ListedModel { id: "claude-sonnet-4-5".into(), ..Default::default() },
+            ListedModel { id: "gpt-4o".into(), ..Default::default() },
+            ListedModel { id: "claude-chat-only".into(), protocols: vec!["openai-chat".into()], ..Default::default() },
+        ]);
+        let p = gateway();
+        let models = directory.models(&p);
+        let claude = &models.get("claude-sonnet-4-5").unwrap().model;
+        assert_eq!((claude.api.as_str(), claude.base_url.as_str()), ("anthropic-messages", "https://gw.example"));
+        assert_eq!(claude.compat.auth_header, Some(AuthHeader::XApiKey));
+        let gpt = &models.get("gpt-4o").unwrap().model;
+        assert_eq!((gpt.api.as_str(), gpt.base_url.as_str()), ("openai-chat", "https://gw.example/v1"));
+        let said = &models.get("claude-chat-only").unwrap().model;
+        assert_eq!(said.api, "openai-chat", "the list says which protocols the model takes");
+        // A model written with its protocol keeps it.
+        let mut written = gateway();
+        written.listing.entries = vec![ModelToml { api: Some("openai-chat".into()), ..ModelToml::new("claude-sonnet-4-5") }];
+        directory.invalidate();
+        assert_eq!(directory.models(&written).get("claude-sonnet-4-5").unwrap().model.api, "openai-chat");
+    }
+
+    #[test]
+    fn a_shorter_deployed_window_drops_the_rows_output_limit() {
+        let p = gateway();
+        let row = PublicModel { id: "m".into(), context_window: Some(262_144), max_output_tokens: Some(65_536), ..PublicModel::default() };
+        let capped = ListedModel { id: "m".into(), context_window: Some(32_768), ..Default::default() };
+        let built = build(&p, "m", Some(Row::Canonical(&row)), Some(&capped), None);
+        assert_eq!((built.model.context_window, built.model.max_output_tokens), (32_768, None));
+        let full = ListedModel { id: "m".into(), context_window: Some(262_144), ..Default::default() };
+        assert_eq!(build(&p, "m", Some(Row::Canonical(&row)), Some(&full), None).model.max_output_tokens, Some(65_536));
+    }
+
+    #[test]
+    fn a_custom_endpoints_unknown_models_fill_the_menu() {
+        let dir = tempfile::tempdir().unwrap();
+        let directory = ModelDirectory::new(Some(dir.path().to_path_buf()));
+        give_list(dir.path(), "gw", vec![ListedModel { id: "house-a".into(), ..Default::default() }, ListedModel { id: "house-b".into(), ..Default::default() }]);
+        let p = gateway();
+        assert_eq!(directory.models(&p).default_shown(false).len(), 2);
+        let mut builtin = gateway();
+        builtin.custom = false;
+        directory.invalidate();
+        assert!(directory.models(&builtin).default_shown(false).is_empty(), "built-in providers keep showing known models only");
+    }
+
+    #[test]
+    fn a_model_the_person_says_is_like_another_borrows_from_it() {
+        let mut p = gateway();
+        p.listing.entries = vec![ModelToml { canonical: Some("openai/gpt-4o".into()), ..ModelToml::new("prod-gpt4o-eastus") }];
+        let directory = ModelDirectory::new(None);
+        let m = directory.models(&p);
+        let m = m.get("prod-gpt4o-eastus").unwrap();
+        assert!(m.meta.known && m.meta.configured);
+        assert_eq!(m.meta.canonical.as_ref().map(|c| c.id.as_str()), Some("openai/gpt-4o"));
+        assert!(m.model.accepts_images());
+        assert!(directory.canonical_for_config("GPT-4o").is_some(), "any name that finds it will do");
+    }
+
+    #[test]
+    fn the_catalog_is_searched_by_a_persons_own_names() {
+        let directory = ModelDirectory::new(None);
+        let first = |q: &str| directory.search_canonical(q, 5).first().map(|m| m.id.clone());
+        assert_eq!(first("prod-gpt4o-eastus").as_deref(), Some("openai/gpt-4o"));
+        assert_eq!(first("claude sonnet 4.5").as_deref().map(|id| id.starts_with("anthropic/claude-sonnet-4")), Some(true));
+        assert_eq!(first("Qwen/Qwen3-235B-A22B-Instruct-2507").as_deref(), Some("alibaba/qwen3-235b-a22b-instruct-2507"));
+        assert!(directory.search_canonical("", 5).is_empty());
+        assert!(directory.search_canonical("zzzz-nothing", 5).is_empty());
+    }
+
     #[test]
     fn the_list_decides_which_models_exist() {
         let dir = tempfile::tempdir().unwrap();
@@ -853,7 +1245,7 @@ mod tests {
         models.push(build(&p, "old", Some(Row::Own(&old)), None, None));
         models.push(build(&p, "unknown", None, None, None));
         models.push(build(&p, "mine", None, None, p.listing.entries.first()));
-        let pm = ProviderModels { source: IdSource::Catalog, list: None, models };
+        let pm = ProviderModels { source: IdSource::Catalog, list: None, models, custom: false };
         let shown = pm.default_shown(false);
         assert_eq!(shown.len(), DEFAULT_SHOWN);
         assert!(shown.contains("mine") && shown.contains("m19") && !shown.contains("m08"));

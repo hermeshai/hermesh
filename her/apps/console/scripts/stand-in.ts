@@ -25,6 +25,8 @@ export type StandIn = {
   home: string;
   /** her-mock's MCP server, for a connector added by address. */
   mcpUrl: string;
+  /** her-mock's model service, http://127.0.0.1:<port>: a gateway added by its address is under /gateway/v1. */
+  modelUrl: string;
   /** What her opened on its computer (browser/open_setup), one line each: the program and its arguments. */
   opened(): string[];
   /** Every connection the console holds drops, as when the tunnel goes. */
@@ -78,6 +80,11 @@ const allowed = new Set([
   "browser/open_setup",
   "models/refresh",
   "models/show",
+  "providers/add",
+  "providers/update",
+  "providers/remove",
+  "models/configure",
+  "models/catalog",
   "storage/usage",
 ]);
 
@@ -431,6 +438,7 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
     url: `http://127.0.0.1:${port}/her/console/`,
     home,
     mcpUrl,
+    modelUrl: base,
     opened: () => (existsSync(openedLog) ? readFileSync(openedLog, "utf8").trim().split("\n") : []),
     drop() {
       for (const c of held.values()) c.close();

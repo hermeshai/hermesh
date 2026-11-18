@@ -13,13 +13,14 @@
       "notStarted": "The sign-in did not start"
     },
     "api": "API & custom services",
-    "add": "Add API Service",
+    "add": "Add a Service",
     "close": "Close",
     "connect": "Sign In",
     "disconnect": "Disconnect",
     "remove": "Remove",
     "confirmRemove": "Remove",
     "cancel": "Cancel",
+    "setKey": "Set Key…",
     "replaceKey": "Replace Key…",
     "state": {
       "readyShown": "Connected · {{shown}} of {{count}} models shown"
@@ -56,7 +57,20 @@
       "context": "{{size}} context",
       "price": "{{price}} per million tokens",
       "inMenu": "Show {{name}} in the model menu",
-      "none": "No matching models"
+      "none": "No matching models",
+      "like": "Like {{name}}",
+      "guessed": "Guessed by name: like {{name}}",
+      "configure": "Set Details",
+      "likeLabel": "Which model is it like",
+      "likePlaceholder": "Search models, e.g. gpt-4o",
+      "orFill": "Or fill them in",
+      "contextLabel": "Context window (tokens)",
+      "contextPlaceholder": "e.g. 128000",
+      "imagesLabel": "Takes images",
+      "reasoningLabel": "Thinks",
+      "save": "Save",
+      "clear": "Back to Automatic",
+      "saved": "Saved"
     },
     "plans": {
       "title": "Token Plan",
@@ -103,6 +117,57 @@
           "note": "China account"
         }
       }
+    },
+    "custom": {
+      "tile": "Custom Service",
+      "tileNote": "OpenAI- or Anthropic-compatible",
+      "title": "Custom Service",
+      "subtitle": "A company gateway, a relay or a local inference server",
+      "url": "Address",
+      "urlPlaceholder": "https://llm.example.com/v1",
+      "key": "API key",
+      "keyOptional": "Optional; local servers usually need none",
+      "name": "Name",
+      "namePlaceholder": "The host's name when empty",
+      "advanced": "Advanced",
+      "protocol": "Protocol",
+      "protocolAuto": "Detect",
+      "models": "Model names",
+      "modelsNote": "It lists no models: name the ones to use, separated by commas",
+      "connect": "Connect",
+      "detecting": "Checking…",
+      "found": "Found {{count}} models, {{known}} with known details",
+      "foundManual": "Connected with the models you named",
+      "protocols": "Protocols: {{list}}",
+      "listSep": ", ",
+      "claudeMessages": "Claude models use Anthropic Messages, the others Chat Completions",
+      "done": "Done",
+      "manage": "Manage Models",
+      "insecure": "This address is not encrypted: the key travels in plain text",
+      "builtin": "This is {{name}}'s own address: the built-in connection has its thinking options and prices",
+      "unsure": "Could not tell whether it speaks the Anthropic protocol; choose it under Advanced if it does",
+      "note": {
+        "azure_deployments": "Azure requests name a deployment: where yours differ from the model names, add them in Manage models",
+        "bedrock_models": "Bedrock lists no models here: name them",
+        "vertex_token": "Vertex wants a token that expires hourly: use api_key_command in models.toml",
+        "portkey_headers": "Portkey routes by its x-portkey-* headers: add them as headers in models.toml"
+      },
+      "error": {
+        "unreachable": "Cannot reach this address: check it, the network, or whether the service runs",
+        "tls": "The certificate of this address is not valid",
+        "not_a_model_service": "This address does not look like a model service: no OpenAI- or Anthropic-compatible interface was found",
+        "key_required": "This service needs an API key",
+        "invalid_url": "Not a usable address: {{message}}",
+        "no_models": "It lists no models: name them",
+        "key_rejected": "The key was not accepted: {{message}}"
+      },
+      "details": "Connection details",
+      "address": "Address",
+      "recheck": "Check Again",
+      "rechecked": "Checked again",
+      "removeNote": "Its models leave the menu, and its saved key goes too",
+      "setKeyTitle": "Set Key",
+      "keySaved": "Key saved"
     }
   },
   "key": {

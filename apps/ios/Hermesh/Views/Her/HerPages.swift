@@ -277,13 +277,13 @@ private struct HerModelList: View {
 
 /// What a provider's row says: where its key comes from, how many of its models the menu shows, when its list was read.
 func herProviderLine(_ p: HerProviderRow, models: HerModels) -> String {
-    let source: String? = switch p.credential {
+    let source: String? = if let host = p.customHost { host } else { switch p.credential {
     case "stored": String(localized: "Credential store")
     case "env": p.credentialSource.map { String(localized: "Environment variable \($0)") }
     case "config": "models.toml"
     case "command": String(localized: "From a command")
     default: nil
-    }
+    } }
     let all = models.models.filter { $0.provider == p.id }
     let shown = String(localized: "\(p.shown ?? all.filter(\.shown).count) of \(p.models ?? all.count) models shown")
     let updated: String? = p.refreshing ? String(localized: "Refreshing…")
@@ -353,7 +353,9 @@ private struct HerProviderList: View {
                             .disabled(refreshing || p.refreshing)
                     }
                     if p.removable {
-                        Button(p.plan ? String(localized: "Replace Key…") : String(localized: "Replace Key…")) { replacing = true }
+                        if p.credential == "stored" {
+                            Button(p.plan ? String(localized: "Replace Key…") : String(localized: "Replace Key…")) { replacing = true }
+                        }
                         Button("Remove", role: .destructive) { removing = true }
                             .accessibilityIdentifier("her-provider-remove")
                     }
@@ -370,6 +372,7 @@ private struct HerProviderList: View {
             Button("Remove", role: .destructive) { remove() }
         } message: {
             Text(provider?.plan == true ? "The key saved in this environment is removed; your plan with the provider is not cancelled."
+                : provider?.customHost != nil ? "Its models leave the menu, and its saved key goes too."
                 : "Its key is deleted from the credential store on \(machine.machineName), and its models leave the menu.")
         }
         .sheet(isPresented: $replacing) {
@@ -410,7 +413,7 @@ private struct HerProviderList: View {
     private func remove() {
         Task {
             do {
-                try await chat.abilities.removeKey(id)
+                if provider?.customHost != nil { try await chat.abilities.removeProvider(id) } else { try await chat.abilities.removeKey(id) }
                 model.show(String(localized: "Removed \(provider.map(herProviderTitle) ?? id)"))
                 dismiss()
             } catch { model.show(error.localizedDescription) }

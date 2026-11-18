@@ -223,6 +223,11 @@ pub fn document() -> Value {
             Some(name::<api::AuthDeleteParams>(g)),
             name::<api::Empty>(g),
         ),
+        (method::PROVIDERS_ADD, Some(name::<api::ProvidersAddParams>(g)), name::<api::ProvidersAddResult>(g)),
+        (method::PROVIDERS_UPDATE, Some(name::<api::ProvidersUpdateParams>(g)), name::<api::ProvidersAddResult>(g)),
+        (method::PROVIDERS_REMOVE, Some(name::<api::ProviderIdParams>(g)), name::<api::Empty>(g)),
+        (method::MODELS_CONFIGURE, Some(name::<api::ModelsConfigureParams>(g)), name::<api::ModelsConfigureResult>(g)),
+        (method::MODELS_CATALOG, Some(name::<api::ModelsCatalogParams>(g)), name::<api::ModelsCatalogResult>(g)),
         (method::CHATGPT_LOGIN, Some(name::<api::ChatGptLoginParams>(g)), name::<api::ChatGptStatus>(g)),
         (method::CHATGPT_COMPLETE, Some(name::<api::ChatGptCompleteParams>(g)), name::<api::ChatGptStatus>(g)),
         (method::CHATGPT_STATUS, None, name::<api::ChatGptStatus>(g)),
@@ -435,7 +440,12 @@ pub fn document() -> Value {
 /// the desktop app and the extension host.
 pub fn stability(name: &str) -> &'static str {
     const INTERNAL: &[&str] = &["browser/host", "browser/cdp", "browser/extension", "browser/control", "browser/request", "docx/host", "docx/serialize", "mesh/host", "mesh/describe", "mesh/call", "mesh/news"];
-    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/", "cards/"];
+    const EXPERIMENTAL: &[&str] = &["connections/", "connectors/", "doc/", "docx/", "pptx/", "bots/", "browser/", "routines/", "bot/", "connector/", "desktop/", "cards/",
+        // Services added by their address (custom-endpoint-design §9), until the design is reviewed.
+        "providers/",
+        "models/configure",
+        "models/catalog",
+    ];
     if INTERNAL.contains(&name) {
         "internal"
     } else if EXPERIMENTAL.iter().any(|prefix| name.starts_with(prefix)) {

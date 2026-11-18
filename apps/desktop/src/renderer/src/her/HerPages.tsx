@@ -125,9 +125,18 @@ function providerName(p: ProviderSummary, t: TFunction<"her">, zh: boolean): str
   return (zh ? p.names?.zh : p.names?.en) ?? p.name;
 }
 
+/** The host of a service added by its address, for its row. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /** What a provider's row says: where its key comes from, how many of its models the menu shows, when its list was read. */
 function providerLine(p: ProviderSummary, models: ModelsListResult, t: TFunction<"her">, now: Date): string {
-  const source = p.credential === "stored" ? t("hp.source.stored") : p.credential === "env" ? t("hp.source.env", { env: p.credential_source ?? "" }) : p.credential === "config" ? "models.toml" : p.credential === "command" ? t("hp.source.command") : "";
+  const source = p.custom ? hostOf(p.custom.base_url) : p.credential === "stored" ? t("hp.source.stored") : p.credential === "env" ? t("hp.source.env", { env: p.credential_source ?? "" }) : p.credential === "config" ? "models.toml" : p.credential === "command" ? t("hp.source.command") : "";
   const mine = models.models.filter((m) => m.provider === p.id);
   const shown = t("hp.shownOf", { shown: p.listing?.shown ?? mine.filter((m) => m.shown).length, count: p.listing?.models ?? mine.length });
   const updated = p.listing?.refreshing ? t("hp.refreshing") : p.listing?.fetched_at ? t("hp.updated", { when: agoText(new Date(p.listing.fetched_at), now) }) : "";
@@ -275,9 +284,10 @@ export function ProviderPage({ id, onBack, onClose }: { id: string; onBack: () =
       sheet: {
         kind: "confirm",
         title: t("hp.removeTitle", { name: p ? providerName(p, t, i18n.language.startsWith("zh")) : id }),
-        message: p?.plan ? t("hp.removePlan") : t("hp.removeKey", { machine: her.machine.machineName }),
+        message: p?.plan ? t("hp.removePlan") : p?.custom ? t("hp.removeCustom") : t("hp.removeKey", { machine: her.machine.machineName }),
         button: t("hp.remove"),
-        run: () => her.call("auth/delete", { provider: id }).then(onBack),
+        // A service added by its address goes altogether, its saved key with it.
+        run: () => (p?.custom ? her.call("providers/remove", { id }) : her.call("auth/delete", { provider: id })).then(onBack),
       },
     });
   return (
@@ -312,10 +322,10 @@ export function ProviderPage({ id, onBack, onClose }: { id: string; onBack: () =
                 <span className="fl">{p.listing?.refreshing ? t("hp.refreshing") : t("hp.refresh")}</span>
               </button>
             )}
-            {p.credential === "stored" && (
+            {(p.credential === "stored" || p.custom) && (
               <>
                 <button className="frow bpn-go hp-link" onClick={() => her.openConsole("models")}>
-                  <span className="fl">{t("hp.replaceKey")}</span>
+                  <span className="fl">{p.credential === "stored" ? t("hp.replaceKey") : t("hp.setKey")}</span>
                 </button>
                 <button className="frow bpn-end" data-testid="her-provider-remove" onClick={remove}>
                   {t("hp.remove")}

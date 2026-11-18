@@ -57,6 +57,7 @@
       "uninstall",
       "models hide",
       "models unhide",
+      "models set",
       "skills add",
       "skills remove",
       "skills enable",

@@ -6,6 +6,7 @@
 
 pub mod api;
 pub mod auth;
+pub mod canonical;
 pub mod catalog;
 pub mod credentials;
 pub mod connection;
@@ -13,6 +14,8 @@ pub mod directory;
 pub mod discovery;
 pub mod error;
 pub mod model;
+pub mod names;
+pub mod probe;
 pub mod public_catalog;
 pub mod registry;
 pub mod stream;

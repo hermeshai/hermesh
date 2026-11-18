@@ -283,6 +283,8 @@ impl Manager {
                     .collect();
                 Some(ProviderConfig {
                     plan: None,
+                    endpoints: Default::default(),
+                    custom: false,
                     id: record.provider_id.clone(),
                     name: view.display_name.clone(),
                     names: adapter::names(&record.adapter_id),

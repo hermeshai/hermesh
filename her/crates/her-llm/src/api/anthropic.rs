@@ -62,6 +62,7 @@ impl WireApi for AnthropicApi {
                 builder = match model.compat.auth_header.unwrap_or(AuthHeader::XApiKey) {
                     AuthHeader::XApiKey => builder.header("x-api-key", key),
                     AuthHeader::Bearer => builder.bearer_auth(key),
+                    AuthHeader::ApiKey => builder.header("api-key", key),
                 };
             }
             for (name, value) in &req.credentials.headers {

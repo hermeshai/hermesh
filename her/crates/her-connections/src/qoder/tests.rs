@@ -395,6 +395,8 @@ async fn strict_transport_rejects_partial_and_malformed_tools_and_keeps_system()
     let (s, _, _, http) = setup().await;
     let provider = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "local-test".into(),
         name: "test".into(),
         names: Default::default(),
@@ -478,6 +480,8 @@ async fn transport_surfaces_qoder_error_events_and_preserves_partial_content() {
     let (server, _, _, http) = setup().await;
     let provider = her_llm::ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "test".into(),
         name: "test".into(),
         names: Default::default(),
@@ -823,6 +827,8 @@ async fn capability_controls_preserve_images_and_only_caller_prompt_and_tools() 
     let (server, _, _, http) = setup().await;
     let provider = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "qoder-test".into(),
         name: "test".into(),
         names: Default::default(),
@@ -926,6 +932,8 @@ async fn disproven_off_control_fails_before_network_even_with_stale_catalog() {
     let (server, _, _, http) = setup().await;
     let provider = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "test".into(),
         name: "test".into(),
         names: Default::default(),
@@ -976,6 +984,8 @@ async fn kimi_temperature_constraint_is_explicit_and_preserves_verified_values()
     let (server, _, _, http) = setup().await;
     let provider = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "test".into(),
         name: "test".into(),
         names: Default::default(),

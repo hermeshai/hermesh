@@ -13,13 +13,14 @@
       "notStarted": "登录没有开始"
     },
     "api": "API 与自定义服务",
-    "add": "添加 API 服务",
+    "add": "添加服务",
     "close": "关闭",
     "connect": "登录",
     "disconnect": "断开",
     "remove": "移除",
     "confirmRemove": "确认移除",
     "cancel": "取消",
+    "setKey": "设置密钥…",
     "replaceKey": "更换密钥…",
     "state": {
       "readyShown": "已连接 · 显示 {{shown}} / 共 {{count}} 个模型"
@@ -56,7 +57,20 @@
       "context": "上下文 {{size}}",
       "price": "每百万 token {{price}}",
       "inMenu": "在模型菜单里显示 {{name}}",
-      "none": "没有匹配的模型"
+      "none": "没有匹配的模型",
+      "like": "参照 {{name}}",
+      "guessed": "按名称推测：参照 {{name}}",
+      "configure": "设置参数",
+      "likeLabel": "像哪个模型",
+      "likePlaceholder": "搜索模型，例如 gpt-4o",
+      "orFill": "或者直接填",
+      "contextLabel": "上下文窗口（token）",
+      "contextPlaceholder": "例如 128000",
+      "imagesLabel": "能看图片",
+      "reasoningLabel": "会思考",
+      "save": "保存",
+      "clear": "恢复自动识别",
+      "saved": "已保存"
     },
     "plans": {
       "title": "Token Plan",
@@ -103,6 +117,57 @@
           "note": "中国站账户"
         }
       }
+    },
+    "custom": {
+      "tile": "自定义服务",
+      "tileNote": "OpenAI、Anthropic 兼容",
+      "title": "自定义服务",
+      "subtitle": "公司网关、中转站、本机推理服务都可以接",
+      "url": "服务地址",
+      "urlPlaceholder": "https://llm.example.com/v1",
+      "key": "API Key",
+      "keyOptional": "可选，本机服务一般不需要",
+      "name": "名称",
+      "namePlaceholder": "不填就用主机名",
+      "advanced": "高级",
+      "protocol": "协议",
+      "protocolAuto": "自动检测",
+      "models": "模型名",
+      "modelsNote": "它没有列出模型：填上要用的模型名，多个用逗号分隔",
+      "connect": "连接",
+      "detecting": "正在检测…",
+      "found": "找到 {{count}} 个模型，{{known}} 个已识别参数",
+      "foundManual": "已按你填的模型名接入",
+      "protocols": "协议：{{list}}",
+      "listSep": "、",
+      "claudeMessages": "Claude 模型走 Anthropic Messages，其余走 Chat Completions",
+      "done": "完成",
+      "manage": "管理模型",
+      "insecure": "这个地址不加密，密钥会明文传输",
+      "builtin": "这是 {{name}} 的官方地址：用内置接入能得到它专门的思考参数和价格",
+      "unsure": "没法确认它是否讲 Anthropic 协议；需要时在高级里指定",
+      "note": {
+        "azure_deployments": "Azure 的请求用部署名：部署名和模型名不同时，在管理模型里补上",
+        "bedrock_models": "Bedrock 不提供模型列表，请填模型名",
+        "vertex_token": "Vertex 要每小时过期的令牌，请在 models.toml 里用 api_key_command",
+        "portkey_headers": "Portkey 要 x-portkey-* 请求头，请在 models.toml 里写 headers"
+      },
+      "error": {
+        "unreachable": "连不上这个地址：检查地址、网络，或者服务是否在运行",
+        "tls": "这个地址的证书无效",
+        "not_a_model_service": "这个地址不像模型服务：没找到 OpenAI 或 Anthropic 兼容的接口",
+        "key_required": "这个服务需要 API Key",
+        "invalid_url": "地址不对：{{message}}",
+        "no_models": "它没有列出模型，请填模型名",
+        "key_rejected": "密钥无效：{{message}}"
+      },
+      "details": "连接详情",
+      "address": "地址",
+      "recheck": "重新检测",
+      "rechecked": "已重新检测",
+      "removeNote": "移除后它的模型从菜单里消失，保存的密钥一并删除",
+      "setKeyTitle": "设置密钥",
+      "keySaved": "密钥已保存"
     }
   },
   "key": {

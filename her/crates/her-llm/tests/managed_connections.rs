@@ -88,6 +88,8 @@ fn setup(server: &MockServer) -> (ModelRegistry, Arc<AtomicUsize>, Arc<AtomicUsi
     );
     let p = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "local-test".into(),
         name: "Managed".into(),
         names: Default::default(),
@@ -223,6 +225,8 @@ async fn authorization_network_failures_are_retried_each_with_its_own_lease() {
     );
     let p = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "local-test".into(),
         name: "Managed".into(),
         names: Default::default(),

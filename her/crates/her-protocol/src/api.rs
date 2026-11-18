@@ -60,6 +60,11 @@ pub mod method {
     pub const MODELS_LIST: &str = "models/list";
     pub const MODELS_REFRESH: &str = "models/refresh";
     pub const MODELS_SHOW: &str = "models/show";
+    pub const MODELS_CONFIGURE: &str = "models/configure";
+    pub const MODELS_CATALOG: &str = "models/catalog";
+    pub const PROVIDERS_ADD: &str = "providers/add";
+    pub const PROVIDERS_UPDATE: &str = "providers/update";
+    pub const PROVIDERS_REMOVE: &str = "providers/remove";
     pub const SERVER_SHUTDOWN: &str = "server/shutdown";
     /// The session list now, and `sessions/changed` on this connection from then on.
     pub const SESSIONS_SUBSCRIBE: &str = "sessions/subscribe";
@@ -359,6 +364,9 @@ pub mod error_code {
     pub const NO_MODEL: i64 = -32046;
     /// `cards/answer`: the card has ended (done, declined, failed, expired or replaced).
     pub const CARD_ENDED: i64 = -32047;
+    /// `providers/add`, `providers/update`: the address cannot be used; `data.reason` says why
+    /// (`invalid_url`, `unreachable`, `tls`, `not_a_model_service`, `key_required`).
+    pub const ENDPOINT_UNUSABLE: i64 = -32048;
 
     /// Every code with its `kind`, standard JSON-RPC codes included.
     pub const ALL: &[(i64, &str)] = &[
@@ -407,6 +415,7 @@ pub mod error_code {
         (ROUTINES_UNAVAILABLE, "routines_unavailable"),
         (NO_MODEL, "no_model"),
         (CARD_ENDED, "card_ended"),
+        (ENDPOINT_UNUSABLE, "endpoint_unusable"),
     ];
 }
 
@@ -976,6 +985,11 @@ pub struct ServerCapabilities {
     /// and a checked `auth/set`.
     #[serde(default)]
     pub model_discovery: bool,
+    /// Services added by their address (docs/kernel/custom-endpoint-design.md §9):
+    /// `providers/add`, `providers/update`, `providers/remove`, `models/configure`, `custom` on
+    /// providers and `canonical` on models.
+    #[serde(default)]
+    pub custom_endpoints: bool,
     /// The 自定义 page's methods: `config/*`, `credentials/*`, `skills/install`,
     /// `skills/remove`, `skills/set_enabled`, `skills/files`, `mcp/list`, `mcp/tools`,
     /// `mcp/check`, and their notifications (docs/desktop/customize-design.md §6).
@@ -1489,6 +1503,156 @@ pub struct ProviderSummary {
     /// Where its models came from; absent while it has no credentials.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub listing: Option<ProviderListing>,
+    /// A service the person added by its address (docs/kernel/custom-endpoint-design.md §9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<CustomEndpoint>,
+}
+
+/// How a custom endpoint is reached.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CustomEndpoint {
+    /// The address as the person gave it, tidied.
+    pub base_url: String,
+    /// The protocols it speaks, the default one first.
+    pub protocols: Vec<EndpointProtocol>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct EndpointProtocol {
+    /// `openai-chat`, `anthropic-messages` or `openai-responses`.
+    pub api: String,
+    pub base_url: String,
+    /// The header the key goes in: `bearer`, `x_api_key` or `api_key`; absent without a key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_header: Option<String>,
+}
+
+/// `providers/add`: a service by its address. Probed first; saved only when usable.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ProvidersAddParams {
+    pub base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    /// Shown in lists; the host's name when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Use only this protocol instead of finding out which ones it speaks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+    /// Model ids, for a service that lists none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
+}
+
+/// `providers/update`: a new name, address, key or protocol. A new address, key or protocol is
+/// probed first and changes nothing when unusable.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ProvidersUpdateParams {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ProviderIdParams {
+    pub id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ProvidersAddResult {
+    pub provider: ProviderSummary,
+    pub probe: ProbeSummary,
+}
+
+/// What probing a service found (docs/kernel/custom-endpoint-design.md §4.7).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ProbeSummary {
+    pub base_url: String,
+    pub protocols: Vec<EndpointProtocol>,
+    /// Protocols it could not tell: the service answers every path alike.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsure: Vec<String>,
+    /// Models it listed, and how many of them have known details.
+    pub models: u32,
+    pub known: u32,
+    /// It listed no models: they were named by hand, or have to be.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub no_list: bool,
+    /// A built-in provider at the same address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub builtin: Option<String>,
+    /// `http://` to an address that is not local: the key travels unencrypted.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub insecure: bool,
+    /// What the person should know about this kind of service (Azure, Bedrock, ...).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+/// `models/configure`: what a model is like, for one nothing describes (§7.3). A field left out
+/// stays as it is; `null` removes it. With `clear`, the model's entry goes and it is found by its
+/// name again.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelsConfigureParams {
+    /// `provider/model-id`
+    pub model: String,
+    /// The canonical model it is like (`openai/gpt-4o`), or any name that finds one.
+    #[serde(default, deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    pub canonical: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<Option<u64>>,
+    #[serde(default, deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    pub images: Option<Option<bool>>,
+    #[serde(default, deserialize_with = "double_option", skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<Option<bool>>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub clear: bool,
+}
+
+/// A field that may be left out (`None`), `null` (`Some(None)`) or set.
+fn double_option<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelsConfigureResult {
+    pub model: ModelSummary,
+}
+
+/// `models/catalog`: canonical models of the public catalog by name, to say what a model is like
+/// (docs/kernel/custom-endpoint-design.md §7.3).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelsCatalogParams {
+    pub query: String,
+    /// At most this many; 8 when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelsCatalogResult {
+    pub models: Vec<CatalogModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CatalogModel {
+    /// `openai/gpt-4o`: what `models/configure` takes as `canonical`.
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+    pub images: bool,
+    pub reasoning: bool,
 }
 
 /// Connection details for a subscription product, never its secret or entitlement status.
@@ -1662,6 +1826,20 @@ pub struct ModelSummary {
     pub released: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelPrice>,
+    /// The model its details were borrowed from, when that is not its provider's own catalog row
+    /// (docs/kernel/custom-endpoint-design.md §6.4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical: Option<ModelCanonical>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelCanonical {
+    /// `anthropic/claude-sonnet-5-5`
+    pub id: String,
+    pub name: String,
+    /// Found only by its name without a date or a decoration: it lends the window and images.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub guessed: bool,
 }
 
 /// Prices per million tokens.

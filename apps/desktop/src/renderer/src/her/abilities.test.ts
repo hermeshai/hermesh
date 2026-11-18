@@ -89,8 +89,11 @@ test("the Models page groups the providers", () => {
     p("ollama", { auth: "none", credential: "not_required" }),
     p("zhipu-coding-plan", { credential: "stored", plan }),
     p("bailian-token-plan", { plan }),
+    // Services added by their address, a local one without a key.
+    p("acme", { credential: "stored", custom: { base_url: "https://llm.acme.com/v1", protocols: [] } }),
+    p("vllm", { auth: "none", credential: "not_required", custom: { base_url: "http://127.0.0.1:8000/v1", protocols: [] } }),
   ]);
-  assert.deepEqual(g.keyed.map((x) => x.id), ["deepseek", "anthropic"]);
+  assert.deepEqual(g.keyed.map((x) => x.id), ["deepseek", "anthropic", "acme", "vllm"]);
   assert.deepEqual(g.addedPlans.map((x) => x.id), ["zhipu-coding-plan"]);
   assert.deepEqual(g.plansLeft.map((x) => x.id), ["bailian-token-plan"]);
 });

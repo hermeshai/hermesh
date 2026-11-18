@@ -105,6 +105,31 @@
 .plan-details p{margin:8px 0;color:var(--l3)}
 .key-entry .plan-details{margin:-4px 0 8px}
 
+/* Custom endpoints (her/docs/kernel/custom-endpoint-design.md §11) */
+.brand-custom{color:var(--l2)}
+.choice-custom strong{font-size:13px;letter-spacing:0}
+.custom-result{display:grid;gap:4px;font-size:13px;line-height:1.55;color:var(--l2)}
+.custom-result p{margin:0}
+.custom-result .custom-found{color:var(--l1);font-weight:500}
+.custom-result .warn{color:var(--l3)}
+.custom-protocol{margin-top:6px}
+.mm-config-open{margin-top:4px;padding:0;border:0;background:none;font-size:12px;color:var(--accent-t);cursor:pointer}
+.mm-config-open:hover{text-decoration:underline}
+.mm-config{display:grid;gap:8px;margin-top:8px;padding:10px 12px;border-radius:var(--r-sm);background:var(--field);font-size:12px;color:var(--l2)}
+.mm-config-label{display:grid;gap:4px;color:var(--l1)}
+.mm-suggest{display:grid;gap:2px}
+.mm-suggest-row{display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:5px 8px;border:0;border-radius:var(--r-sm);background:none;text-align:left;font-size:12px;color:var(--l1);cursor:pointer}
+.mm-suggest-row:hover{background:var(--fill)}
+.mm-config-or{margin:2px 0 0;color:var(--l3)}
+.mm-config-fields{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.mm-config-fields .mm-config-label{flex:1 1 140px}
+.mm-config-switch{display:inline-flex;align-items:center;gap:6px;height:26px;color:var(--l1)}
+.mm-config-actions{display:flex;justify-content:flex-end;gap:8px}
+.mm-row .mm-config-open.quiet{opacity:0}
+.mm-row:hover .mm-config-open.quiet,.mm-config-open.quiet:focus-visible{opacity:1}
+.mm-row.configuring{align-items:flex-start}
+.mm-row.configuring>.sw{margin-top:4px}
+
 /* Web Search: the order is the setting, so a grip on every row; what cannot be used yet stays in its place, greyed. */
 .search-set .mrow{position:relative}
 .search-set .tb{flex:none}

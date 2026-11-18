@@ -152,7 +152,7 @@ export type Providers = {
   /** Token Plans with a key, and those without one to connect. */
   addedPlans: ProviderSummary[];
   plansLeft: ProviderSummary[];
-  /** Providers with a key from somewhere; keyless ones need nothing. */
+  /** Providers with a key from somewhere, and every service added by its address (a local one takes no key); the built-in keyless ones need nothing. */
   keyed: ProviderSummary[];
 };
 
@@ -161,7 +161,7 @@ export function providers(list: ProviderSummary[]): Providers {
   return {
     addedPlans: plans.filter((p) => p.credential !== "missing"),
     plansLeft: plans.filter((p) => p.credential === "missing"),
-    keyed: list.filter((p) => !p.plan && p.auth === "api_key" && p.credential !== "missing"),
+    keyed: list.filter((p) => p.custom || (!p.plan && p.auth === "api_key" && p.credential !== "missing")),
   };
 }
 

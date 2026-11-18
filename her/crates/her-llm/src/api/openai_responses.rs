@@ -223,7 +223,7 @@ impl WireApi for OpenAiResponsesApi {
             let mut acc = MessageAccumulator::for_model(&req.model);
             let body = build_body(&req.model, &req.context, &req.options);
             let mut request = req.http.post(format!("{}/responses",req.model.base_url.trim_end_matches('/'))).json(&body).header("Accept","text/event-stream");
-            if let Some(key) = &req.credentials.api_key { request = request.bearer_auth(key); }
+            if let Some(key) = &req.credentials.api_key { request = req.model.compat.auth_header.unwrap_or(crate::model::AuthHeader::Bearer).apply(request, key); }
             for (k,v) in req.model.headers.iter().chain(req.credentials.headers.iter()) { request = request.header(k,v); }
             let response = match http::send(request,&req.timeouts,&req.model.compat.overflow_patterns()).await {
                 Ok(r) => r,

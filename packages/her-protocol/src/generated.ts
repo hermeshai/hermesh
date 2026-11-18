@@ -622,6 +622,15 @@ export type CatalogInfo = {
   tokens: number;
 };
 
+export type CatalogModel = {
+  context_window?: number | null;
+  /** `openai/gpt-4o`: what `models/configure` takes as `canonical`. */
+  id: string;
+  images: boolean;
+  name: string;
+  reasoning: boolean;
+};
+
 export type CellBorder = {
   line: LineSpec;
   side: CellBorderSide;
@@ -1073,6 +1082,14 @@ export type CredentialsSetParams = {
 };
 
 export type Currency = "USD" | "CNY";
+
+/** How a custom endpoint is reached. */
+export type CustomEndpoint = {
+  /** The address as the person gave it, tidied. */
+  base_url: string;
+  /** The protocols it speaks, the default one first. */
+  protocols: EndpointProtocol[];
+};
 
 export type DataLabels = {
   category?: boolean;
@@ -2420,6 +2437,14 @@ export type DocxUndoParams = {
 /** The result of methods that return nothing: `{}`. */
 export type Empty = { [key: string]: unknown };
 
+export type EndpointProtocol = {
+  /** `openai-chat`, `anthropic-messages` or `openai-responses`. */
+  api: string;
+  /** The header the key goes in: `bearer`, `x_api_key` or `api_key`; absent without a key. */
+  auth_header?: string | null;
+  base_url: string;
+};
+
 export type ErrorInfo = {
   kind: string;
   message: string;
@@ -3431,6 +3456,14 @@ export type Message = {
   ts: number;
 };
 
+export type ModelCanonical = {
+  /** Found only by its name without a date or a decoration: it lends the window and images. */
+  guessed?: boolean;
+  /** `anthropic/claude-sonnet-5-5` */
+  id: string;
+  name: string;
+};
+
 /** Prices per million tokens. */
 export type ModelPrice = {
   cache_read?: number | null;
@@ -3443,6 +3476,8 @@ export type ModelPrice = {
 export type ModelSummary = {
   /** The provider's credentials are available. */
   available: boolean;
+  /** The model its details were borrowed from, when that is not its provider's own catalog row (docs/kernel/custom-endpoint-design.md §6.4). */
+  canonical?: ModelCanonical | null;
   context_window: number;
   cost?: ModelPrice | null;
   /** The level a session starts with on this model: the one last chosen on it, else its configured default, else `default`. */
@@ -3465,6 +3500,33 @@ export type ModelSummary = {
   shown: boolean;
   /** The provider's own thinking levels this model offers, `off` when it can be switched off; `default` (the provider decides) is always possible and not listed. Empty: no control. */
   thinking_levels: ThinkingLevel[];
+};
+
+/** `models/catalog`: canonical models of the public catalog by name, to say what a model is like (docs/kernel/custom-endpoint-design.md §7.3). */
+export type ModelsCatalogParams = {
+  /** At most this many; 8 when absent. */
+  limit?: number | null;
+  query: string;
+};
+
+export type ModelsCatalogResult = {
+  models: CatalogModel[];
+};
+
+/** `models/configure`: what a model is like, for one nothing describes (§7.3). A field left out stays as it is; `null` removes it. With `clear`, the model's entry goes and it is found by its name again. */
+export type ModelsConfigureParams = {
+  /** The canonical model it is like (`openai/gpt-4o`), or any name that finds one. */
+  canonical?: string | null;
+  clear?: boolean;
+  context_window?: number | null;
+  images?: boolean | null;
+  /** `provider/model-id` */
+  model: string;
+  reasoning?: boolean | null;
+};
+
+export type ModelsConfigureResult = {
+  model: ModelSummary;
 };
 
 export type ModelsListResult = {
@@ -3764,6 +3826,25 @@ export type PptxWriteParams = {
   session_id: string;
 };
 
+/** What probing a service found (docs/kernel/custom-endpoint-design.md §4.7). */
+export type ProbeSummary = {
+  base_url: string;
+  /** A built-in provider at the same address. */
+  builtin?: string | null;
+  /** `http://` to an address that is not local: the key travels unencrypted. */
+  insecure?: boolean;
+  known: number;
+  /** Models it listed, and how many of them have known details. */
+  models: number;
+  /** It listed no models: they were named by hand, or have to be. */
+  no_list?: boolean;
+  /** What the person should know about this kind of service (Azure, Bedrock, ...). */
+  note?: string | null;
+  protocols: EndpointProtocol[];
+  /** Protocols it could not tell: the service answers every path alike. */
+  unsure?: string[];
+};
+
 export type PromptMode = "steer" | "follow_up";
 
 export type ProposalChange = "created" | "updated" | "accepted" | "rejected" | "reverted" | "stale" | "superseded";
@@ -3774,6 +3855,10 @@ export type ProposalOrigin = "ai_action" | "check_fix" | "layout" | "generate" |
 export type ProposalSource = "human" | "agent";
 
 export type ProposalStatus = "pending" | "rejected" | "accepted" | "reverted" | "stale" | "superseded";
+
+export type ProviderIdParams = {
+  id: string;
+};
 
 /** A provider's model list as the kernel last saw it. */
 export type ProviderListing = {
@@ -3795,6 +3880,8 @@ export type ProviderSummary = {
   credential: CredentialState;
   /** The environment variable the key comes from, when `credential` is `env`. */
   credential_source?: string | null;
+  /** A service the person added by its address (docs/kernel/custom-endpoint-design.md §9). */
+  custom?: CustomEndpoint | null;
   id: string;
   /** Environment variables that may hold the key. */
   key_env?: string[];
@@ -3805,6 +3892,32 @@ export type ProviderSummary = {
   names?: { [key: string]: string };
   /** Subscription product metadata; API-key authentication alone does not imply a plan. */
   plan?: TokenPlanSummary | null;
+};
+
+/** `providers/add`: a service by its address. Probed first; saved only when usable. */
+export type ProvidersAddParams = {
+  /** Use only this protocol instead of finding out which ones it speaks. */
+  api?: string | null;
+  api_key?: string | null;
+  base_url: string;
+  /** Model ids, for a service that lists none. */
+  models?: string[];
+  /** Shown in lists; the host's name when absent. */
+  name?: string | null;
+};
+
+export type ProvidersAddResult = {
+  probe: ProbeSummary;
+  provider: ProviderSummary;
+};
+
+/** `providers/update`: a new name, address, key or protocol. A new address, key or protocol is probed first and changes nothing when unusable. */
+export type ProvidersUpdateParams = {
+  api?: string | null;
+  api_key?: string | null;
+  base_url?: string | null;
+  id: string;
+  name?: string | null;
 };
 
 /** Input waiting for the running task. */
@@ -3988,6 +4101,8 @@ export type ServerCapabilities = {
   auth: boolean;
   /** Bots: the `bots/*` methods and `bots/changed` (docs/kernel/bot-design.md §4). */
   bots: boolean;
+  /** Services added by their address (docs/kernel/custom-endpoint-design.md §9): `providers/add`, `providers/update`, `providers/remove`, `models/configure`, `custom` on providers and `canonical` on models. */
+  custom_endpoints: boolean;
   /** The 自定义 page's methods: `config/*`, `credentials/*`, `skills/install`, `skills/remove`, `skills/set_enabled`, `skills/files`, `mcp/list`, `mcp/tools`, `mcp/check`, and their notifications (docs/desktop/customize-design.md §6). */
   customize: boolean;
   /** `browser/host` and `browser/cdp`: a client can show the browser tools' pages (browser-design §8.3). */
@@ -5094,12 +5209,17 @@ export interface Methods {
   "mcp/tools": [McpServerParams, McpToolsResult];
   "mesh/host": [MeshHostParams, Empty];
   "mesh/news": [MeshNewsParams, Empty];
+  "models/catalog": [ModelsCatalogParams, ModelsCatalogResult];
+  "models/configure": [ModelsConfigureParams, ModelsConfigureResult];
   "models/list": [Record<string, never>, ModelsListResult];
   "models/refresh": [ModelsRefreshParams, ModelsRefreshResult];
   "models/show": [ModelsShowParams, Empty];
   "pptx/metafile": [PptxMetafileParams, PptxMetafileResult];
   "pptx/read": [PptxReadParams, PptxReadResult];
   "pptx/write": [PptxWriteParams, FilesWriteResult];
+  "providers/add": [ProvidersAddParams, ProvidersAddResult];
+  "providers/remove": [ProviderIdParams, Empty];
+  "providers/update": [ProvidersUpdateParams, ProvidersAddResult];
   "resource/read": [ResourceReadParams, ResourceReadResult];
   "server/shutdown": [Record<string, never>, Empty];
   "session/archive": [SessionIdParams, Empty];
@@ -5211,6 +5331,7 @@ export const RPC_ERROR_KINDS = {
   "-32045": "routines_unavailable",
   "-32046": "no_model",
   "-32047": "card_ended",
+  "-32048": "endpoint_unusable",
   "-32600": "invalid_request",
   "-32601": "method_not_found",
   "-32602": "invalid_params",

@@ -42,6 +42,7 @@ mod browser_setup;
 mod cards;
 mod browser_status;
 mod connections;
+mod custom_endpoints;
 mod customize;
 mod db;
 mod deliveries;
