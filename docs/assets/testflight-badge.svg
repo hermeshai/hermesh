@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 164 34" width="164" height="34" role="img" aria-label="TestFlight iOS">
+  <title>Hermesh iOS TestFlight</title>
+  <defs>
+    <linearGradient id="tf-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2557EB"/>
+      <stop offset="100%" stop-color="#4B46E5"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="163" height="33" rx="9" fill="url(#tf-bg)" stroke="#6C8CFF" stroke-opacity="0.45" stroke-width="1"/>
+  <rect x="14.75" y="8.75" width="10.5" height="16.5" rx="2.25" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <line x1="18.75" y1="11.5" x2="21.25" y2="11.5" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.85"/>
+  <line x1="18.25" y1="22.5" x2="21.75" y2="22.5" stroke="#FFFFFF" stroke-width="1.2" stroke-linecap="round" opacity="0.9"/>
+  <text x="35" y="21.4" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="-0.15" fill="#FFFFFF">TestFlight</text>
+  <rect x="114" y="7" width="36" height="20" rx="6" fill="#FFFFFF" fill-opacity="0.18"/>
+  <text x="132" y="21" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="600" fill="#FFFFFF">iOS</text>
+</svg>
