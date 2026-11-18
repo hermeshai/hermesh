@@ -19,7 +19,7 @@ import (
 // Run is `hermeshd update` and `hermesh update`: it updates the programs
 // in the running one's folder and restarts the service, asking first when
 // that stops a session (yes: it does not ask). check only says whether a
-// newer version exists.
+// newer version or a repair is available.
 func Run(ctx context.Context, in io.Reader, out io.Writer, dataDir string, check, yes bool) error {
 	current := machine.Version
 	dir, err := Dir()
@@ -30,15 +30,21 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, dataDir string, check
 	if err != nil {
 		return fmt.Errorf("could not look for an update: %w", err)
 	}
-	if !r.Newer(current) {
+	repair := r.repairsHer(current, dataDir, dir)
+	if !r.Newer(current) && !repair {
 		fmt.Fprintf(out, "Hermesh %s is the latest.\n", current)
 		return nil
 	}
-	if check {
+	if repair {
+		fmt.Fprintf(out, "Hermesh %s is missing Her components available from this release.\n", current)
+	} else if check {
 		fmt.Fprintf(out, "Hermesh %s is available (this computer has %s).\n", r.Version, current)
+	} else {
+		fmt.Fprintf(out, "Hermesh %s → %s\n", current, r.Version)
+	}
+	if check {
 		return nil
 	}
-	fmt.Fprintf(out, "Hermesh %s → %s\n", current, r.Version)
 	c, machineUp := machineCheck(ctx, dataDir)
 	if c.Busy > 0 && !yes {
 		if c.Busy == 1 {
@@ -56,11 +62,17 @@ func Run(ctx context.Context, in io.Reader, out io.Writer, dataDir string, check
 			return nil
 		}
 	}
-	names, err := Install(ctx, dataDir, dir, r)
+	names, err := Install(ctx, dataDir, dir, r, repair)
 	if err != nil {
 		return err
 	}
-	Edit(dataDir, func(s *State) { s.From, s.To, s.Updated, s.Available = current, r.Version, time.Now(), "" })
+	if len(names) == 0 {
+		fmt.Fprintln(out, "Her components are already installed.")
+		return nil
+	}
+	if !repair {
+		Edit(dataDir, func(s *State) { s.From, s.To, s.Updated, s.Available = current, r.Version, time.Now(), "" })
+	}
 	fmt.Fprintf(out, "✓ verified %s\n", and(names))
 	fmt.Fprintf(out, "✓ installed in %s\n", tilde(dir))
 	switch {

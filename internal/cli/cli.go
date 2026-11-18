@@ -169,7 +169,7 @@ func (a *app) updateCmd() *cobra.Command {
 			}
 			return update.Run(c.Context(), c.InOrStdin(), c.OutOrStdout(), paths.DataDir(), check, yes)
 		}}
-	c.Flags().BoolVar(&check, "check", false, "only say whether a newer version exists")
+	c.Flags().BoolVar(&check, "check", false, "only check for a newer release or missing Her components")
 	c.Flags().BoolVar(&yes, "yes", false, "update without asking, even when that stops a session")
 	return c
 }

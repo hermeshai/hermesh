@@ -24,7 +24,7 @@ Hermesh is installed per user into `~/.local/bin` and runs as a systemd user ser
 ## 3. Principles
 
 1. **Never under a running session.** Restarting `hermeshd` marks a turn in progress crashed and loses pending questions ([technical-design.md](technical-design.md), restart recovery). An update waits while a session on the machine is queued, preparing, running or waiting for an answer, the guard [windows.md](windows.md) §6.2 uses. Her stops with `hermeshd`, so her assistants at work count too: a turn (an approval waiting is in one), sub-agents, a routine's run, as hermeshd last saw them in her's `bots/changed`.
-2. **Only signed releases, never backwards.** What is installed is checked against the release's signed checksum list with the public key built into the program, as `install.sh` does. The version is part of what is signed (§5.1), and an update only goes to a higher one.
+2. **Only signed releases, never backwards.** What is installed is checked against the release's signed checksum list with the public key built into the program, as `install.sh` does. The version is part of what is signed (§5.1), and the machine installs only a higher version or missing Her components from its own version.
 3. **One way, two doors.** `hermeshd update`, `hermesh update` and the background updater are the same code.
 4. **The release address is a build-time constant.** Release builds read GitHub Releases; only test builds read another, as for the app's feed (desktop-app.md §6.5).
 
@@ -51,8 +51,8 @@ Automatic updates are off. `hermeshd update` still updates.
 
 | Command | Does |
 |---|---|
-| `hermeshd update` | Updates `hermeshd` and `hermesh` in the folder they are in, with `her` and `her-console/` where they are there, and restarts the service; asks first when a session would be stopped (`--yes` does not ask) |
-| `hermeshd update --check` | Says whether a newer version exists; exit 0 either way |
+| `hermeshd update` | Installs a newer release, or restores missing Her components on a Linux machine already on the latest release, and restarts the service; asks first when a session would be stopped (`--yes` does not ask) |
+| `hermeshd update --check` | Says whether a newer version or a Her repair is available; exit 0 either way |
 | `hermeshd update auto on`, `auto off`, `auto` | Turns automatic updates on or off, or says which |
 | `hermesh update` | The same, for a computer with only the agent CLI |
 
@@ -72,15 +72,15 @@ Looking for an update reads three small files from `https://github.com/hermeshai
 
 1. Find the folder: the running program's own, links resolved. Refuse inside an app bundle ("Hermesh.app updates itself") and when the folder cannot be written ("installed by another user; run the install command as them").
 2. Take a lock in `update/` in the data directory, so a manual and a background update never overlap.
-3. For each of `hermeshd` and `hermesh` present in the folder: download `<name>-<os>-<arch>` next to it as `.<name>.new`, check its hash, make it executable, and run it with `version`: it must start and say the expected version. `her`, when it is there and the release has it, the same, but `her --version` only has to start (her has a version of its own); `her-console/`, then, is unpacked from `her-console.tar.gz` as `.her-console.new/`. A release without them (from before her) updates the others and leaves them.
-4. Keep the current program as `.<name>.previous` (the console: `.her-console.previous/`, moved whole), then `rename` the new one over it.
+3. For each of `hermeshd` and `hermesh` present in the folder: download `<name>-<os>-<arch>` next to it as `.<name>.new`, check its hash, make it executable, and run it with `version`: it must start and say the expected version. `her`, when it is there and the release has it, the same, but `her --version` only has to start (her has a version of its own); `her-console/`, then, is unpacked from `her-console.tar.gz` as `.her-console.new/`. On Linux machine installs, missing Her components are added when listed in the signed release. The PDF and computer-use tools are added where glibc is available, as with the install command. If the signed latest release matches the running version, only missing Her components are installed. A release without Her updates the other programs.
+4. Keep the current program as `.<name>.previous` (the console: `.her-console.previous/`, moved whole), then `rename` the new one over it. Adding a missing component keeps any backup already there.
 5. Restart: `hermeshd update` restarts the service (`service.Restart`) and waits for the control socket to report the new version; the background updater exits instead (§5.3). Her, when on, starts again with the new hermeshd, on the new her.
 
 ### 5.3 In the background
 
 - Runs inside `hermeshd run`, machine or Linux trusted device, only when the process is the installed service for its data directory (systemd's `INVOCATION_ID`, launchd's `XPC_SERVICE_NAME`, `service.Supervised`): the service manager is what starts the new version. In a container or under `nohup` it never runs; `hermeshd update --check` still works there.
 - Checks 5 to 15 minutes after start, then every 6 hours with up to an hour's jitter, so a release does not reach every machine at once.
-- With a newer version found, it waits for the guard (§3.1), looking again every 10 minutes, then installs (§5.2) and exits; systemd (`Restart=always`) and launchd (`KeepAlive`) start the new program.
+- With an upgrade or repair available, it waits for the guard (§3.1), looking again every 10 minutes, then installs (§5.2) and exits; systemd (`Restart=always`) and launchd (`KeepAlive`) start the new program.
 - launchd keeps a job as it loaded it, and an update replaces only the program. So on a Mac whose service an older version installed as a Background job, the new program corrects the plist when it starts and has launchd load the job again (`service.ReloadOldJob`).
 - A failed check or download is logged and tried again at the next check. Nothing is ever shown on a device for it.
 
@@ -111,6 +111,7 @@ Looking for an update reads three small files from `https://github.com/hermeshai
   3. The install command runs again (B): no pairing, the service restarts, still connected.
   4. `hermeshd update auto off`, C is published: no update; `hermeshd update --check` names C; `hermeshd update --yes` installs it and the device sees C.
 - **TestLinuxHer** (`HERMESH_DOCKER=1`, end to end): the same kind of server and releases, carrying her and its console. The install command installs them and pairs; Her, turned on, answers; B, published while Her is at work, waits for her, then replaces hermeshd, her and the console, and Her answers again; `hermeshd uninstall` removes her and leaves `~/.her`.
+- **TestLinuxHerRepair** (`HERMESH_DOCKER=1`): a Fedora 43 container with systemd and signed synthetic releases. An upgrade adds missing Her components. Automatic and manual same-version repairs restore missing components and preserve backups. The owner's client receives a startup error when Her is absent or stops answering during startup.
 
 ## 8. Later
 

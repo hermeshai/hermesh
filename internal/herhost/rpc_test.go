@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -57,6 +58,21 @@ func fakeHer(t *testing.T, handle func(req map[string]any, c net.Conn)) string {
 		}
 	}()
 	return sock
+}
+
+func TestWatchStartupTimeout(t *testing.T) {
+	sock := fakeHer(t, func(map[string]any, net.Conn) {})
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	c, err := dial(ctx, sock, "test", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	err = New(Config{}).watch(ctx, c, nil)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "bots/subscribe") || ctx.Err() != nil {
+		t.Fatalf("startup returned %v (daemon context: %v)", err, ctx.Err())
+	}
 }
 
 // Answers find their requests by id, in whatever order her sends them;
