@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -63,6 +64,7 @@ func programs() []string {
 const (
 	herConsole      = "her-console"
 	herConsoleAsset = "her-console.tar.gz"
+	herConsoleEntry = "index.html"
 	herComputer     = "her-computer"
 	herPDF          = "her-pdf"
 )
@@ -195,9 +197,9 @@ func Dir() (string, error) {
 	return filepath.Dir(exe), nil
 }
 
-// missingHer lists the signed Her components absent from a Linux machine
-// installation. The machine key distinguishes it from a CLI or trusted
-// device installation. Like install.sh, the auxiliary tools need glibc.
+// missingHer lists the signed Her components a Linux machine needs to
+// restore. The machine key distinguishes it from a CLI or trusted device
+// installation. Like install.sh, the auxiliary tools need glibc.
 func (r *Release) missingHer(dataDir, dir string) []string {
 	if runtime.GOOS != "linux" || r.sums[asset("her")] == "" {
 		return nil
@@ -221,11 +223,25 @@ func (r *Release) missingHer(dataDir, dir string) []string {
 		if name == "her" {
 			file = asset(name)
 		}
-		if _, err := os.Lstat(filepath.Join(dir, name)); errors.Is(err, os.ErrNotExist) && r.sums[file] != "" {
+		if r.sums[file] == "" {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		st, err := os.Lstat(path)
+		absent := errors.Is(err, os.ErrNotExist)
+		if name == herConsole && err == nil && st.IsDir() {
+			absent = consoleEntryMissing(path)
+		}
+		if absent {
 			missing = append(missing, name)
 		}
 	}
 	return missing
+}
+
+func consoleEntryMissing(path string) bool {
+	entry, err := os.Stat(filepath.Join(path, herConsoleEntry))
+	return errors.Is(err, os.ErrNotExist) || (err == nil && !entry.Mode().IsRegular())
 }
 
 func (r *Release) repairsHer(current, dataDir, dir string) bool {
@@ -234,7 +250,8 @@ func (r *Release) repairsHer(current, dataDir, dir string) bool {
 
 // Install stages and verifies the programs and assets before replacing
 // them. An upgrade keeps replaced files as .<name>.previous. A repair
-// installs only missing Her components and keeps any existing backups.
+// restores missing Her components or an incomplete console, keeping
+// any existing backups.
 func Install(ctx context.Context, dataDir, dir string, r *Release, repair bool) ([]string, error) {
 	lock, err := flock.Acquire(filepath.Join(dataDir, "update"))
 	if err != nil {
@@ -257,7 +274,11 @@ func Install(ctx context.Context, dataDir, dir string, r *Release, repair bool) 
 			}
 		}
 	}
-	names = append(names, r.missingHer(dataDir, dir)...)
+	for _, name := range r.missingHer(dataDir, dir) {
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
 	for _, name := range names {
 		if err := download(ctx, dir, name, r); err != nil {
 			for _, n := range names {
@@ -269,6 +290,12 @@ func Install(ctx context.Context, dataDir, dir string, r *Release, repair bool) 
 	for _, name := range names {
 		path := filepath.Join(dir, name)
 		if _, err := os.Lstat(path); err == nil {
+			if repair && name == herConsole {
+				if err := replaceIncompleteConsole(dir, path); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			prev := previousPath(dir, name)
 			os.RemoveAll(prev)
 			if folders[name] != "" { // a folder, moved aside whole
@@ -300,6 +327,30 @@ func Install(ctx context.Context, dataDir, dir string, r *Release, repair bool) 
 	return names, nil
 }
 
+// replaceIncompleteConsole sets aside an incomplete folder without touching
+// .her-console.previous. Restore it if placing the verified archive fails.
+func replaceIncompleteConsole(dir, path string) error {
+	staged := newPath(dir, herConsole)
+	defer os.RemoveAll(staged)
+	if st, err := os.Lstat(path); err != nil || !st.IsDir() || !consoleEntryMissing(path) {
+		return fmt.Errorf("%s changed during repair", path)
+	}
+	recovery, err := os.MkdirTemp(dir, ".her-console.incomplete-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(recovery) // leave the old folder here if restoration fails
+	incomplete := filepath.Join(recovery, herConsole)
+	if err := os.Rename(path, incomplete); err != nil {
+		return err
+	}
+	if err := os.Rename(staged, path); err != nil {
+		return errors.Join(err, os.Rename(incomplete, path))
+	}
+	os.RemoveAll(incomplete)
+	return nil
+}
+
 // download puts name's next version beside it, checked.
 func download(ctx context.Context, dir, name string, r *Release) error {
 	file := asset(name)
@@ -322,6 +373,11 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 		os.RemoveAll(tmp)
 		if err := unpack(body, tmp); err != nil {
 			return fmt.Errorf("cannot unpack %s: %w", file, err)
+		}
+		if name == herConsole {
+			if st, err := os.Stat(filepath.Join(tmp, herConsoleEntry)); err != nil || !st.Mode().IsRegular() {
+				return fmt.Errorf("%s is missing %s", file, herConsoleEntry)
+			}
 		}
 		return nil
 	}

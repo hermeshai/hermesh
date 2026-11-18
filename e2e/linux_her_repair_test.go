@@ -27,7 +27,7 @@ func TestLinuxHerRepair(t *testing.T) {
 		t.Skip("set HERMESH_DOCKER=1")
 	}
 	tmp := filepath.Join(t.TempDir(), "her")
-	build := exec.Command("go", "build", "-o", tmp, "./e2e/testdata/her-startup")
+	build := exec.Command("go", "build", "-o", tmp, "github.com/hermeshai/hermesh/e2e/testdata/her-startup")
 	build.Env = append(os.Environ(), "GOOS=linux", "GOARCH="+runtime.GOARCH, "CGO_ENABLED=0")
 	if b, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build Her fixture: %v\n%s", err, b)
@@ -135,9 +135,6 @@ func TestLinuxHerRepair(t *testing.T) {
 	// A manual repair adds a missing console without replacing Her or the backups.
 	run("/root/.local/bin/hermeshd update auto off && cd /root/.local/bin && mv her-console .her-console.previous")
 	herInode := run("stat -c %i /root/.local/bin/her")
-	if out := run("/root/.local/bin/hermeshd update --check"); !strings.Contains(out, "missing Her components") {
-		t.Errorf("--check: %s", out)
-	}
 	run("test ! -e /root/.local/bin/her-console")
 	console, err := c.GetHerConsole(ctx, &localv1.GetHerConsoleRequest{MachineId: id})
 	if err != nil {
@@ -146,13 +143,39 @@ func TestLinuxHerRepair(t *testing.T) {
 	if status, text := httpDo(t, http.MethodGet, console.Url, ""); status != http.StatusNotFound || !strings.Contains(text, "not installed") {
 		t.Errorf("missing console: HTTP %d %s", status, text)
 	}
-	if out := run("/root/.local/bin/hermeshd update --yes"); !strings.Contains(out, "verified her-console") || !strings.Contains(out, "service restarted on 0.1.6") {
-		t.Errorf("manual repair: %s", out)
+	repairConsole := func() {
+		t.Helper()
+		if out := run("/root/.local/bin/hermeshd update --check"); !strings.Contains(out, "missing Her components") {
+			t.Errorf("--check: %s", out)
+		}
+		if out := run("/root/.local/bin/hermeshd update --yes"); !strings.Contains(out, "verified her-console") || !strings.Contains(out, "service restarted on 0.1.6") {
+			t.Errorf("manual repair: %s", out)
+		}
 	}
-	if got := run("test -f /root/.local/bin/.her-console.previous/index.html && stat -c %i /root/.local/bin/her"); got != herInode {
+	repairConsole()
+	checkFiles()
+
+	// An empty console folder also needs repair, with the first backup intact.
+	backupInode := run("stat -c %i /root/.local/bin/.her-console.previous/index.html")
+	run("cd /root/.local/bin/her-console && rm index.html && test -z \"$(ls -A)\"")
+	repairConsole()
+	checkFiles()
+	if got := run("stat -c %i /root/.local/bin/.her-console.previous/index.html"); got != backupInode {
+		t.Errorf("manual repair replaced the console backup: inode %s → %s", backupInode, got)
+	}
+	if got := run("stat -c %i /root/.local/bin/her"); got != herInode {
 		t.Errorf("manual repair replaced her: inode %s → %s", herInode, got)
 	}
-	checkFiles()
+	console, err = c.GetHerConsole(ctx, &localv1.GetHerConsoleRequest{MachineId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, text := httpDo(t, http.MethodGet, console.Url, ""); status != http.StatusOK || !strings.Contains(text, "the repaired console") {
+		t.Errorf("repaired console: HTTP %d %s", status, text)
+	}
+	if out := run("/root/.local/bin/hermeshd update --check"); !strings.Contains(out, "is the latest") {
+		t.Errorf("complete console: %s", out)
+	}
 
 	// The kernel can answer initialize and then stop answering startup RPCs.
 	run("mkdir -p /root/.her && touch /root/.her/stall-startup")

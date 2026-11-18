@@ -72,8 +72,8 @@ Looking for an update reads three small files from `https://github.com/hermeshai
 
 1. Find the folder: the running program's own, links resolved. Refuse inside an app bundle ("Hermesh.app updates itself") and when the folder cannot be written ("installed by another user; run the install command as them").
 2. Take a lock in `update/` in the data directory, so a manual and a background update never overlap.
-3. For each of `hermeshd` and `hermesh` present in the folder: download `<name>-<os>-<arch>` next to it as `.<name>.new`, check its hash, make it executable, and run it with `version`: it must start and say the expected version. `her`, when it is there and the release has it, the same, but `her --version` only has to start (her has a version of its own); `her-console/`, then, is unpacked from `her-console.tar.gz` as `.her-console.new/`. On Linux machine installs, missing Her components are added when listed in the signed release. The PDF and computer-use tools are added where glibc is available, as with the install command. If the signed latest release matches the running version, only missing Her components are installed. A release without Her updates the other programs.
-4. Keep the current program as `.<name>.previous` (the console: `.her-console.previous/`, moved whole), then `rename` the new one over it. Adding a missing component keeps any backup already there.
+3. For each of `hermeshd` and `hermesh` present in the folder: download `<name>-<os>-<arch>` next to it as `.<name>.new`, check its hash, make it executable, and run it with `version`: it must start and say the expected version. `her`, when it is there and the release has it, the same, but `her --version` only has to start (her has a version of its own); `her-console/`, then, is unpacked from `her-console.tar.gz` as `.her-console.new/`. On Linux machine installs, missing Her components are added when listed in the signed release. The PDF and computer-use tools are added where glibc is available, as with the install command. If the signed latest release matches the running version, the updater repairs only missing Her components, including a console folder without an `index.html` file. A release without Her updates the other programs.
+4. Keep the current program as `.<name>.previous` (the console: `.her-console.previous/`, moved whole), then `rename` the new one over it. Repairing a missing component or an incomplete console keeps any backup already there.
 5. Restart: `hermeshd update` restarts the service (`service.Restart`) and waits for the control socket to report the new version; the background updater exits instead (§5.3). Her, when on, starts again with the new hermeshd, on the new her.
 
 ### 5.3 In the background
@@ -111,12 +111,12 @@ Looking for an update reads three small files from `https://github.com/hermeshai
   3. The install command runs again (B): no pairing, the service restarts, still connected.
   4. `hermeshd update auto off`, C is published: no update; `hermeshd update --check` names C; `hermeshd update --yes` installs it and the device sees C.
 - **TestLinuxHer** (`HERMESH_DOCKER=1`, end to end): the same kind of server and releases, carrying her and its console. The install command installs them and pairs; Her, turned on, answers; B, published while Her is at work, waits for her, then replaces hermeshd, her and the console, and Her answers again; `hermeshd uninstall` removes her and leaves `~/.her`.
-- **TestLinuxHerRepair** (`HERMESH_DOCKER=1`): a Fedora 43 container with systemd and signed synthetic releases. An upgrade adds missing Her components. Automatic and manual same-version repairs restore missing components and preserve backups. The owner's client receives a startup error when Her is absent or stops answering during startup.
+- **TestLinuxHerRepair** (`HERMESH_DOCKER=1`): a Fedora 43 container with systemd and signed synthetic releases. An upgrade adds missing Her components. Automatic and manual same-version repairs restore missing components and preserve backups, including when the console folder exists without its entry file. The owner's client receives a startup error when Her is absent or stops answering during startup.
 
 ## 8. Later
 
 - **Update from a device.** An "Update Now" button on the iPhone's machine page, sent end to end like other machine commands.
-- **Rollback.** A release that fails to start leaves the machine off until someone logs in and moves `.hermeshd.previous` back. The `version` check (§5.2) catches a broken download, not a broken release. If that is needed, the service would start the previous program after repeated failures.
+- **Rollback.** Components are replaced one at a time. A failure during replacement can leave a mix of versions, and moving a directory into place uses separate renames. The previous files support manual rollback. A release that fails to start leaves the machine off until someone logs in and moves `.hermeshd.previous` back. The `version` check (§5.2) catches a broken download, not a broken release. If that is needed, the service would start the previous program after repeated failures.
 
 ## 9. The owner's decisions
 

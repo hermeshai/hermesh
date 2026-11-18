@@ -376,6 +376,64 @@ func TestRepairMissingHer(t *testing.T) {
 	}
 }
 
+func TestRepairIncompleteHerConsole(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux machine components")
+	}
+	ctx := context.Background()
+	r := newRelease(t)
+	r.publish("0.1.6")
+	dir, data := programsAt(t, "0.1.6"), t.TempDir()
+	markMachine(t, data)
+	if err := os.Remove(filepath.Join(dir, herConsole, "index.html")); err != nil {
+		t.Fatal(err)
+	}
+	backup := previousPath(dir, herConsole)
+	if err := os.Mkdir(backup, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "index.html"), []byte("previous console"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A signed archive with its entry in the wrong folder leaves the
+	// installation and the previous console intact.
+	r.files[herConsoleAsset] = consoleArchive(t, "./dist/", "wrong location")
+	r.sign()
+	rel, err := Latest(ctx)
+	if err != nil || !rel.repairsHer("0.1.6", data, dir) {
+		t.Fatalf("expected a repair: %v", err)
+	}
+	if _, err := Install(ctx, data, dir, rel, true); err == nil || !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("repair with a missing entry: %v", err)
+	}
+	// If the staged folder cannot be moved into place, restore the partial one.
+	if err := replaceIncompleteConsole(dir, filepath.Join(dir, herConsole)); err == nil {
+		t.Fatal("replaced the console without a staged folder")
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, herConsole, "assets", "old.js")); err != nil || string(got) != "old" {
+		t.Fatalf("console changed after failed repair: %q, %v", got, err)
+	}
+
+	r.publish("0.1.6")
+	rel, err = Latest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || !slices.Equal(names, []string{herConsole}) {
+		t.Fatalf("repair: %v, %v", names, err)
+	}
+	if got := console(dir, herConsole); got != "console 0.1.6" {
+		t.Errorf("repaired console: %q", got)
+	}
+	if got := console(dir, filepath.Base(backup)); got != "previous console" {
+		t.Errorf("backup after repair: %q", got)
+	}
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || len(names) != 0 {
+		t.Fatalf("complete console selected for repair: %v, %v", names, err)
+	}
+}
+
 func markMachine(t *testing.T, data string) {
 	t.Helper()
 	key := machine.KeyPath(filepath.Join(data, "machine"))
