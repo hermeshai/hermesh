@@ -47,9 +47,10 @@ still use its local loopback API; it is not a production connection.
 
 The `ios-demo` CI job retains the unit/offline logs and Release `.xcresult`.
 Preference comparison uses decoded JSON values: normal startup may reorder
-encoding without changing a setting. The normal signed-out homepage creates an
-empty world cache before Demo starts; that file must match its onboarding
-baseline afterward, and no real conversation files may be created. No new Hermesh binary is uploaded
+encoding without changing a setting. Depending on scene activation, normal
+signed-out onboarding may save an empty world cache. Any such cache must decode
+to no owner, account or world entities, and no real conversation files may be
+created; file creation timing alone does not establish a demo-state leak. No new Hermesh binary is uploaded
 or installed on a physical device by this acceptance.
 
 ## Acceptance matrix
