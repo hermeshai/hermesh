@@ -208,5 +208,12 @@
     "title": "需要更新 Hermesh",
     "body": "{{machine}} 上的 Hermesh 版本较旧，还没有这项功能。在那里更新 Hermesh 后，这里会自动恢复。",
     "text": "那台电脑上的 Hermesh 版本较旧，还没有这项功能。在那台电脑上更新 Hermesh 后再试。"
+  },
+  "signing": {
+    "declined": "没有签名：请求在签名器里被拒绝了，或者没有完成确认。",
+    "title": "更新 Hermesh 签名器",
+    "body": "没有签名：这台电脑的签名器（{{version}}）比 Hermesh 旧，看不懂这次的请求。更新签名器后再试一次。Windows 会请你允许一次。",
+    "button": "更新签名器",
+    "updated": "签名器已更新，请再试一次"
   }
 }

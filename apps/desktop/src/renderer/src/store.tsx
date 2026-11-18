@@ -55,13 +55,13 @@ export type Sheet =
    * With herData, removing a machine that has Her's data: the choice to erase it too, given to run, or a line
    * that it stays while the machine is offline (docs/her-server.md §5.6).
    */
-  | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean } }
+  | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean }; safe?: boolean }
   /** Erase Everything (docs/erase-everything.md). */
   | { kind: "erase" }
   /** Turning Her off on a machine, her data kept or erased (docs/her-server.md §5.6). */
   | { kind: "herOff"; machineId: string; machineName: string };
 
-export type Toast = { text: string; undo?: () => void; id: number };
+export type Toast = { text: string; undo?: () => void; failed?: boolean; id: number };
 
 /** The list by status, titles alone, until the owner picks a view (docs/her-team.md §16). */
 export const defaultView = () => sessionView({ metadata: false });
@@ -132,8 +132,14 @@ export function useStore(): Store {
 /** Message of an error from hermeshd, for the person. */
 export function errorText(e: unknown): string {
   if (needsUpdate(e)) return i18n.t("common:needsUpdate.text");
+  if (declinedToSign(e)) return i18n.t("common:signing.declined");
   if (e instanceof ConnectError) return e.rawMessage;
   return e instanceof Error ? e.message : String(e);
+}
+
+/** hermeshd's ErrSigningRejected: nothing was signed; the signer said why, in its own window. */
+function declinedToSign(e: unknown): boolean {
+  return (e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e)).includes("the owner declined to sign");
 }
 
 function saved(key: string, fallback: boolean): boolean {
@@ -233,10 +239,10 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     setUI((u) => ({ ...u, ...patch }));
   }, []);
 
-  const show = useCallback((text: string, undo?: () => void) => {
+  const show = useCallback((text: string, undo?: () => void, failed?: boolean) => {
     clearTimeout(toastTimer.current);
     const id = Date.now();
-    setUI((u) => ({ ...u, toast: { text, undo, id } }));
+    setUI((u) => ({ ...u, toast: { text, undo, failed, id } }));
     toastTimer.current = setTimeout(() => setUI((u) => (u.toast?.id === id ? { ...u, toast: null } : u)), 5200);
   }, []);
 
@@ -248,7 +254,22 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
         await refresh();
         return true;
       } catch (e) {
-        show(errorText(e));
+        // A signer older than the app (Windows) can't show what this version asks it to sign: update it, then try again.
+        const signer = declinedToSign(e) ? await window.hermesh?.signerUpdate().catch(() => undefined) : undefined;
+        if (signer) {
+          setUI((u) => ({
+            ...u,
+            sheet: {
+              kind: "confirm",
+              title: i18n.t("common:signing.title"),
+              message: i18n.t("common:signing.body", { version: signer }),
+              button: i18n.t("common:signing.button"),
+              done: i18n.t("common:signing.updated"),
+              safe: true,
+              run: async () => window.hermesh?.updateSigner(),
+            },
+          }));
+        } else show(errorText(e), undefined, true);
         return false;
       }
     },

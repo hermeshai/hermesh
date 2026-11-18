@@ -48,6 +48,15 @@ type Refused struct{ Type, Why string }
 
 func (r *Refused) Error() string { return fmt.Sprintf("can't show %s in full: %s", r.Type, r.Why) }
 
+// told is a refusal said in the language Cards was asked for.
+type told struct {
+	r *Refused
+	w words
+}
+
+func (t told) Error() string { return t.w.f("can't show %s in full: %s", t.r.Type, t.w.f(t.r.Why)) }
+func (t told) Unwrap() error { return t.r }
+
 // Cards tells a batch, in order, in lang (en, zh-CN); any request it can't
 // show refuses all.
 func Cards(reqs []*localv1.SigningRequest, h Hints, lang string) ([]Card, error) {
@@ -56,6 +65,9 @@ func Cards(reqs []*localv1.SigningRequest, h Hints, lang string) ([]Card, error)
 	var out []Card
 	for _, r := range reqs {
 		c, err := card(r, h, reissue, w)
+		if refused, ok := err.(*Refused); ok {
+			return nil, told{refused, w}
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +124,7 @@ func strict(r *localv1.SigningRequest, m proto.Message) error {
 	}
 	again, err := proto.MarshalOptions{Deterministic: true}.Marshal(m)
 	if err != nil || !bytes.Equal(again, r.Body) {
-		return &Refused{r.Type, "it holds something this version doesn't know; update Hermesh"}
+		return &Refused{r.Type, "it holds something this signer doesn't know: the signer is older than Hermesh; update the signer"}
 	}
 	return nil
 }
@@ -181,7 +193,7 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool, w words) (Card, erro
 			Why:     w.f("Hermesh on all your trusted devices and machines, this computer included, erases its keys, tasks and settings, and your agents are disconnected. This can't be undone."),
 			Warning: w.f("Approve only if you started erasing everything yourself.")}, nil
 	}
-	return Card{}, &Refused{r.Type, "Hermesh doesn't know this kind of request"}
+	return Card{}, &Refused{r.Type, "this signer doesn't know this kind of request: the signer is older than Hermesh; update the signer"}
 }
 
 // isReissue: a batch that removes a trusted device re-issues, unchanged,

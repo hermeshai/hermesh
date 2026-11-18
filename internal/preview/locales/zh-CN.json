@@ -93,5 +93,15 @@
   "Let Her on %s use your computers": "允许 %s 上的 Her 使用你的电脑",
   "Her becomes one of your agents: she can start coding agents in your projects, read their tasks and answer them. It ends when you turn Her off there.": "Her 成为你的一个 agent：她可以在你的项目里启动编程 agent，查看并回复它们的任务。在那台机器上关闭 Her 即结束。",
   "Full trust: on these machines, a coding agent she starts can do anything you can.": "完全信任：在这些机器上，她启动的编程 agent 能做你能做的任何事。",
-  "Doesn’t expire": "不会到期"
+  "Doesn’t expire": "不会到期",
+  "can't show %s in full: %s": "无法完整显示这项请求（%s）：%s",
+  "it can't be parsed": "它无法解析",
+  "it holds something this signer doesn't know: the signer is older than Hermesh; update the signer": "它含有这个签名器不认识的内容：签名器比 Hermesh 旧，请更新签名器",
+  "what would be signed isn't what would be shown": "要签名的内容和显示的内容不一致",
+  "only a device's own request is signed here": "这里只签这台设备自己的请求",
+  "an unknown visibility": "可见范围未知",
+  "this signer doesn't know this kind of request: the signer is older than Hermesh; update the signer": "这个签名器不认识这类请求：签名器比 Hermesh 旧，请更新签名器",
+  "Her turned on with her data erased": "开启 Her 的同时清除她的数据",
+  "an unknown approval mode": "审批模式未知",
+  "an unknown command": "命令未知"
 }

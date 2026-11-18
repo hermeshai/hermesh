@@ -545,3 +545,67 @@ test("通用's 外观 follows the system, or keeps every window light or dark, a
   await expect.poll(source).toBe("system");
   await app.close();
 });
+
+test("nothing signed: a signer older than the app offers its update, else the failure says nothing was signed", async () => {
+  // hermeshd as it answers when its signer didn't sign a rename: as an older signer does with a request it can't show.
+  const proxy = http.createServer((req, res) => {
+    if (req.url?.endsWith("/RenameMachine")) {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(JSON.stringify({ code: "unknown", message: "the owner declined to sign" }));
+      return;
+    }
+    const up = http.request({ socketPath: fixture.socket, path: req.url, method: req.method, headers: req.headers }, (r) => {
+      res.writeHead(r.statusCode ?? 502, r.headers);
+      r.pipe(res);
+    });
+    up.on("error", () => res.destroy());
+    res.on("close", () => up.destroy());
+    req.pipe(up);
+  });
+  const socket = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hms-")), "d.sock");
+  await new Promise<void>((r) => proxy.listen(socket, r));
+  const { app, page } = await launch(socket);
+  // The signer set up here (Windows: a copy in Program Files), older than the app or not; updating it is counted.
+  const signer = (version?: string) =>
+    app.evaluate(({ ipcMain }, v) => {
+      const g = globalThis as unknown as { updates: number };
+      g.updates = 0;
+      ipcMain.removeHandler("signer-update");
+      ipcMain.handle("signer-update", () => ({ value: v }));
+      ipcMain.removeHandler("update-signer");
+      ipcMain.handle("update-signer", () => ({ value: void g.updates++ }));
+    }, version);
+  try {
+    const settings = await openSettings(app, page, "machines");
+    const panel = page_(settings, "机器");
+    await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
+    const rename = async () => {
+      await panel.getByRole("button", { name: "改名…" }).click();
+      const field = settings.getByRole("dialog", { name: "给这台机器改名" }).getByRole("textbox", { name: "机器名" });
+      await field.fill("studio-mac");
+      await field.press("Enter");
+    };
+
+    await signer("0.0.1");
+    await rename();
+    const update = settings.getByRole("dialog", { name: "更新 Hermesh 签名器" });
+    await expect(update).toContainText("这台电脑的签名器（0.0.1）比 Hermesh 旧");
+    await expect(settings.getByRole("dialog", { name: "给这台机器改名" })).toHaveCount(0);
+    await snap(settings, "settings-signer-older");
+    await update.getByRole("button", { name: "更新签名器" }).click();
+    await expect(settings.getByRole("status")).toContainText("签名器已更新，请再试一次");
+    await expect(update).toBeHidden();
+    expect(await app.evaluate(() => (globalThis as unknown as { updates: number }).updates)).toBe(1);
+
+    await signer(undefined);
+    await rename();
+    const toast = settings.getByRole("status");
+    await expect(toast).toContainText("没有签名：请求在签名器里被拒绝了，或者没有完成确认。");
+    await expect(toast).not.toContainText("declined");
+    await expect(settings.getByRole("dialog")).toHaveCount(0);
+    await expect(panel.locator(".dhero")).toContainText("owner-mac");
+  } finally {
+    await app.close();
+    proxy.close();
+  }
+});

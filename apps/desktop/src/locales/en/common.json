@@ -219,5 +219,12 @@
     "title": "Hermesh needs an update",
     "body": "Hermesh on {{machine}} doesn’t have this yet. Update Hermesh there, and this page loads by itself.",
     "text": "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again."
+  },
+  "signing": {
+    "declined": "Nothing was signed: the request was declined, or not confirmed, in the signer.",
+    "title": "Update Hermesh Signer",
+    "body": "Nothing was signed: this PC’s signer ({{version}}) is older than Hermesh and can’t show this request. Update it, then try again. Windows will ask for permission once.",
+    "button": "Update Signer",
+    "updated": "Signer updated. Try again."
   }
 }

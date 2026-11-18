@@ -129,7 +129,7 @@ export function ToastView() {
   if (!toast) return null;
   return (
     <div className={`toast ${leaving ? "leaving" : ""}`} inert={leaving} role="status">
-      <Icon name="check" />
+      <Icon name={toast.failed ? "alert" : "check"} />
       <span>{toast.text}</span>
       {toast.undo && (
         <button className="btn sm" onClick={() => (st.set({ toast: null }), toast.undo?.())}>{t("window.undo")}</button>
