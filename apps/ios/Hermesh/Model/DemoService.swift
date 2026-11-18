@@ -370,7 +370,7 @@ final class DemoService {
         switch herReview.codingState {
         case .running:
             world.sessions.removeAll { $0.sessionID == id }
-            var s = session(id, title: "Her sample task", machine: "demo-mac", status: .running)
+            var s = session(id, title: "Her sample task", machine: "demo-linux", status: .running)
             s.createdBy = "her"
             world.sessions.append(s)
             events[id] = []

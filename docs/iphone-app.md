@@ -77,8 +77,8 @@ it on another device”, and “Try It First”. “Try It First” opens a disp
 sample workspace at **Her**, without signing in, pairing a computer,
 installing an agent or connecting a model. This path is compiled in Release.
 
-Choose **Delegate a sample task**, then **Allow Once**. Her starts a simulated
-Codex session and a sample reviewer. Open the task card for its output and
+Choose **Delegate a sample task**, then **Allow Once**. Her on the sample Mac starts a simulated
+Codex session on **Linux Studio** and a sample reviewer. Open the task card for its output and
 code diff, or **Progress** for the reviewer's record. The result explicitly
 says that no code ran and nothing was pushed or merged. **Deny** starts no
 coding task. **Simulate a failure** demonstrates a failed check;

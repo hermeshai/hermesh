@@ -17,6 +17,7 @@ import HermeshProto
     #expect(herChat(d.session).contains { if case .question = $0.kind { true } else { false } })
     try d.send(HerReviewDemo.delegate, id: "first")
     #expect(d.session.live?.approvals.count == 1)
+    #expect(d.session.live?.approvals.first?.args["arguments"]["machine"].string == "demo-linux", "Her on the sample Mac delegates to another machine")
     #expect(d.codingState == nil)
     try await approve(d)
     #expect(d.codingState == .running)

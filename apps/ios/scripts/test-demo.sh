@@ -41,6 +41,21 @@ p.parent.mkdir(parents=True,exist_ok=True)
 p.write_bytes(plistlib.dumps(values))
 Path(sys.argv[2]).write_bytes(plistlib.dumps(values))
 PYSEED
+# Normal signed-out onboarding itself keeps an empty world. Capture that real baseline before entering Demo.
+xcrun simctl launch "$DEVICE" io.hermesh.ios > "$OUT/onboarding.log"
+python3 - "$CONTAINER" "$OUT/onboarding-world.pb" <<'PYBASELINE'
+import sys,time
+from pathlib import Path
+world=Path(sys.argv[1])/"Library/Application Support/Hermesh/world.pb"
+end=time.monotonic()+15
+while not world.exists() and time.monotonic()<end:
+    time.sleep(.1)
+assert world.exists(), "Signed-out onboarding did not initialize its cache"
+time.sleep(2)
+Path(sys.argv[2]).write_bytes(world.read_bytes())
+print(f"Captured signed-out world baseline ({world.stat().st_size} bytes)")
+PYBASELINE
+xcrun simctl terminate "$DEVICE" io.hermesh.ios
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
@@ -53,7 +68,7 @@ xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -res
 xcrun simctl terminate "$DEVICE" io.hermesh.ios >/dev/null 2>&1 || true
 # Xcode can migrate the data-container UUID during installation; inspect the current one.
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
-python3 - "$CONTAINER" "$OUT/expected.plist" <<'PYVERIFY'
+python3 - "$CONTAINER" "$OUT/expected.plist" "$OUT/onboarding-world.pb" <<'PYVERIFY'
 import json,plistlib,sys
 from pathlib import Path
 root=Path(sys.argv[1])
@@ -65,8 +80,8 @@ def decoded(value):
 changed=[k for k,v in expected.items() if decoded(actual.get(k))!=decoded(v)]
 assert not changed, "Demo changed real preferences: "+", ".join(changed)
 support=root/"Library/Application Support/Hermesh"
-assert not (support/"world.pb").exists(), "Demo saved a world into the real cache"
-assert not (support/"conversations").exists(), "Demo saved real conversation files"
-print(f"Preserved {len(expected)} synthetic real preferences; no real world/conversation cache")
+assert (support/"world.pb").read_bytes()==Path(sys.argv[3]).read_bytes(), "Demo changed the real world cache"
+assert not any((support/"conversations").glob("*.pb")), "Demo saved real conversation files"
+print(f"Preserved {len(expected)} synthetic real preferences and onboarding world; no real conversation files")
 PYVERIFY
 printf 'Release demo passed. Evidence: %s\n' "$OUT"
