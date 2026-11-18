@@ -22,12 +22,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
 	"golang.org/x/mod/semver"
 
 	"github.com/hermeshai/hermesh/internal/flock"
+	"github.com/hermeshai/hermesh/internal/machine"
 )
 
 // Build-time constants: test builds set them with -ldflags -X.
@@ -62,6 +64,7 @@ func programs() []string {
 const (
 	herConsole      = "her-console"
 	herConsoleAsset = "her-console.tar.gz"
+	herConsoleEntry = "index.html"
 	herComputer     = "her-computer"
 	herPDF          = "her-pdf"
 )
@@ -194,29 +197,85 @@ func Dir() (string, error) {
 	return filepath.Dir(exe), nil
 }
 
-// Install puts r's programs in dir over the ones there, keeping each old
-// one as .<name>.previous, and her's console with them. Each new program
-// must start and say r's version (her: start) before any is replaced. her
-// and its console go only from a release that carries them. On Windows a
-// running program can't be replaced, only renamed: the old one moves aside
-// instead.
-func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, error) {
+// missingHer lists the signed Her components a Linux machine needs to
+// restore. The machine key distinguishes it from a CLI or trusted device
+// installation. Like install.sh, the auxiliary tools need glibc.
+func (r *Release) missingHer(dataDir, dir string) []string {
+	if runtime.GOOS != "linux" || r.sums[asset("her")] == "" {
+		return nil
+	}
+	if st, err := os.Stat(machine.KeyPath(filepath.Join(dataDir, "machine"))); err != nil || !st.Mode().IsRegular() {
+		return nil
+	}
+	if st, err := os.Stat(filepath.Join(dir, "hermeshd")); err != nil || !st.Mode().IsRegular() {
+		return nil
+	}
+
+	components := []string{"her", herConsole}
+	_, amd64Err := os.Stat("/lib64/ld-linux-x86-64.so.2")
+	_, arm64Err := os.Stat("/lib/ld-linux-aarch64.so.1")
+	if amd64Err == nil || arm64Err == nil {
+		components = append(components, herComputer, herPDF)
+	}
+	var missing []string
+	for _, name := range components {
+		file := folders[name]
+		if name == "her" {
+			file = asset(name)
+		}
+		if r.sums[file] == "" {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		st, err := os.Lstat(path)
+		absent := errors.Is(err, os.ErrNotExist)
+		if name == herConsole && err == nil && st.IsDir() {
+			absent = consoleEntryMissing(path)
+		}
+		if absent {
+			missing = append(missing, name)
+		}
+	}
+	return missing
+}
+
+func consoleEntryMissing(path string) bool {
+	entry, err := os.Stat(filepath.Join(path, herConsoleEntry))
+	return errors.Is(err, os.ErrNotExist) || (err == nil && !entry.Mode().IsRegular())
+}
+
+func (r *Release) repairsHer(current, dataDir, dir string) bool {
+	return r.Version == current && len(r.missingHer(dataDir, dir)) > 0
+}
+
+// Install stages and verifies the programs and assets before replacing
+// them. An upgrade keeps replaced files as .<name>.previous. A repair
+// restores missing Her components or an incomplete console, keeping
+// any existing backups.
+func Install(ctx context.Context, dataDir, dir string, r *Release, repair bool) ([]string, error) {
 	lock, err := flock.Acquire(filepath.Join(dataDir, "update"))
 	if err != nil {
 		return nil, errors.New("another update is running")
 	}
 	defer lock.Release()
 	var names []string
-	for _, name := range Programs {
-		if _, err := os.Stat(filepath.Join(dir, name)); err == nil && (!ownVersion(name) || r.sums[asset(name)] != "") {
-			names = append(names, name)
+	if !repair {
+		for _, name := range Programs {
+			if _, err := os.Stat(filepath.Join(dir, name)); err == nil && (!ownVersion(name) || r.sums[asset(name)] != "") {
+				names = append(names, name)
+			}
+		}
+		if names == nil {
+			return nil, fmt.Errorf("no Hermesh programs in %s", dir)
+		}
+		for _, name := range []string{herConsole, herComputer, herPDF} {
+			if st, err := os.Stat(filepath.Join(dir, name)); err == nil && st.IsDir() && r.sums[folders[name]] != "" {
+				names = append(names, name)
+			}
 		}
 	}
-	if names == nil {
-		return nil, fmt.Errorf("no Hermesh programs in %s", dir)
-	}
-	for _, name := range []string{herConsole, herComputer, herPDF} {
-		if st, err := os.Stat(filepath.Join(dir, name)); err == nil && st.IsDir() && r.sums[folders[name]] != "" {
+	for _, name := range r.missingHer(dataDir, dir) {
+		if !slices.Contains(names, name) {
 			names = append(names, name)
 		}
 	}
@@ -230,32 +289,66 @@ func Install(ctx context.Context, dataDir, dir string, r *Release) ([]string, er
 	}
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		prev := previousPath(dir, name)
-		os.RemoveAll(prev)
-		if folders[name] != "" { // a folder, moved aside whole
-			if err := os.Rename(path, prev); err != nil {
-				return nil, err
-			}
-		} else if runtime.GOOS == "windows" {
-			older, _ := filepath.Glob(prev + ".*")
-			for _, o := range older {
-				os.Remove(o) // unless it runs
-			}
-			// The one before may still run (the service's supervisor):
-			// it stays, and this one moves beside it.
-			if err := os.Rename(path, prev); err != nil {
-				if err := os.Rename(path, fmt.Sprintf("%s.%d", prev, time.Now().UnixNano())); err != nil {
+		if _, err := os.Lstat(path); err == nil {
+			if repair && name == herConsole {
+				if err := replaceIncompleteConsole(dir, path); err != nil {
 					return nil, err
 				}
+				continue
 			}
-		} else {
-			os.Link(path, prev)
+			prev := previousPath(dir, name)
+			os.RemoveAll(prev)
+			if folders[name] != "" { // a folder, moved aside whole
+				if err := os.Rename(path, prev); err != nil {
+					return nil, err
+				}
+			} else if runtime.GOOS == "windows" {
+				older, _ := filepath.Glob(prev + ".*")
+				for _, o := range older {
+					os.Remove(o) // unless it runs
+				}
+				// The one before may still run (the service's supervisor):
+				// it stays, and this one moves beside it.
+				if err := os.Rename(path, prev); err != nil {
+					if err := os.Rename(path, fmt.Sprintf("%s.%d", prev, time.Now().UnixNano())); err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				os.Link(path, prev)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
 		}
 		if err := os.Rename(newPath(dir, name), path); err != nil {
 			return nil, err
 		}
 	}
 	return names, nil
+}
+
+// replaceIncompleteConsole sets aside an incomplete folder without touching
+// .her-console.previous. Restore it if placing the verified archive fails.
+func replaceIncompleteConsole(dir, path string) error {
+	staged := newPath(dir, herConsole)
+	defer os.RemoveAll(staged)
+	if st, err := os.Lstat(path); err != nil || !st.IsDir() || !consoleEntryMissing(path) {
+		return fmt.Errorf("%s changed during repair", path)
+	}
+	recovery, err := os.MkdirTemp(dir, ".her-console.incomplete-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(recovery) // leave the old folder here if restoration fails
+	incomplete := filepath.Join(recovery, herConsole)
+	if err := os.Rename(path, incomplete); err != nil {
+		return err
+	}
+	if err := os.Rename(staged, path); err != nil {
+		return errors.Join(err, os.Rename(incomplete, path))
+	}
+	os.RemoveAll(incomplete)
+	return nil
 }
 
 // download puts name's next version beside it, checked.
@@ -280,6 +373,11 @@ func download(ctx context.Context, dir, name string, r *Release) error {
 		os.RemoveAll(tmp)
 		if err := unpack(body, tmp); err != nil {
 			return fmt.Errorf("cannot unpack %s: %w", file, err)
+		}
+		if name == herConsole {
+			if st, err := os.Stat(filepath.Join(tmp, herConsoleEntry)); err != nil || !st.Mode().IsRegular() {
+				return fmt.Errorf("%s is missing %s", file, herConsoleEntry)
+			}
 		}
 		return nil
 	}
