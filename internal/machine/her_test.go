@@ -113,7 +113,7 @@ func TestHerSetting(t *testing.T) {
 
 	n = openHerMachine(t, dir, "")
 	defer n.Close()
-	if st := n.Status().Her; !st.Enabled || st.Unsupported != why || st.Running {
+	if st := n.Status().Her; !st.Enabled || st.Unsupported != why || st.Running || !strings.Contains(st.Error, "not installed") {
 		t.Fatalf("after a restart: %v", st)
 	}
 	if n.statusFor(&Principal{Kind: PrincipalClient}).Her != nil || n.statusFor(&Principal{Kind: PrincipalOwner}).Her == nil {

@@ -8,10 +8,9 @@ import (
 )
 
 // Background is hermeshd's updater, for a hermeshd its service runs. Now
-// and then it looks for a newer release and, once busy (the sessions a
-// restart would stop) is 0, installs it and returns true: hermeshd then
-// exits, and its service starts the new program. It returns false when ctx
-// is done.
+// and then it looks for an upgrade or missing Her components. Once idle,
+// it installs them and returns true so hermeshd exits and its service
+// starts it again.
 func Background(ctx context.Context, dataDir, current string, busy func() int, log *slog.Logger) bool {
 	wait := func(d, jitter time.Duration) bool {
 		if testInterval != "" {
@@ -37,9 +36,14 @@ func Background(ctx context.Context, dataDir, current string, busy func() int, l
 	if !wait(5*time.Minute, 10*time.Minute) {
 		return false
 	}
+	dir, err := Dir()
+	if err != nil {
+		log.Warn("update directory", "err", err)
+		return false
+	}
 	for {
-		if r := check(ctx, dataDir, current, log); r != nil && idle() && !Load(dataDir).Off {
-			if installed(ctx, dataDir, current, r, log) && idle() {
+		if r := check(ctx, dataDir, dir, current, log); r != nil && idle() && !Load(dataDir).Off {
+			if installed(ctx, dataDir, dir, current, r, log) && idle() {
 				return true
 			}
 		}
@@ -49,8 +53,8 @@ func Background(ctx context.Context, dataDir, current string, busy func() int, l
 	}
 }
 
-// check returns a newer release, when automatic updates are on.
-func check(ctx context.Context, dataDir, current string, log *slog.Logger) *Release {
+// check returns a release for an upgrade or repair, when automatic updates are on.
+func check(ctx context.Context, dataDir, dir, current string, log *slog.Logger) *Release {
 	if Load(dataDir).Off {
 		return nil
 	}
@@ -66,23 +70,29 @@ func check(ctx context.Context, dataDir, current string, log *slog.Logger) *Rele
 			s.Available = r.Version
 		}
 	})
-	if !newer {
+	if newer {
+		log.Info("update found", "version", r.Version)
+	} else if !r.repairsHer(current, dataDir, dir) {
 		return nil
 	}
-	log.Info("update found", "version", r.Version)
 	return r
 }
 
-func installed(ctx context.Context, dataDir, current string, r *Release, log *slog.Logger) bool {
-	dir, err := Dir()
-	if err == nil {
-		_, err = Install(ctx, dataDir, dir, r)
-	}
+func installed(ctx context.Context, dataDir, dir, current string, r *Release, log *slog.Logger) bool {
+	repair := r.Version == current
+	names, err := Install(ctx, dataDir, dir, r, repair)
 	if err != nil {
 		log.Warn("update", "version", r.Version, "err", err)
 		return false
 	}
-	Edit(dataDir, func(s *State) { s.From, s.To, s.Updated, s.Available = current, r.Version, time.Now(), "" })
-	log.Info("updated; restarting", "from", current, "to", r.Version)
+	if len(names) == 0 {
+		return false
+	}
+	if repair {
+		log.Info("repaired Her components; restarting", "version", current, "components", names)
+	} else {
+		Edit(dataDir, func(s *State) { s.From, s.To, s.Updated, s.Available = current, r.Version, time.Now(), "" })
+		log.Info("updated; restarting", "from", current, "to", r.Version)
+	}
 	return true
 }

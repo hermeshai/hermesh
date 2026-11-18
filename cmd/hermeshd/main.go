@@ -600,9 +600,9 @@ in), a LaunchAgent on macOS, a Task Scheduler logon task on Windows.
 		Use:   "update",
 		Short: "Update Hermesh here to the latest release and restart the service",
 		Long: `Update hermeshd and hermesh, where they are installed, to the latest signed
-release, and restart the background service; her and its console, Her's,
-when they are installed beside them. When that would stop a session, it
-asks first.
+release, and restart the background service. Linux machines also receive
+missing Her components, including when already on the latest release.
+When a restart would stop a session, the command asks first.
 
 Hermesh also updates itself when no session is running, unless
 "hermeshd update auto off" turned that off.`,
@@ -611,7 +611,7 @@ Hermesh also updates itself when no session is running, unless
 			return update.Run(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), dataDir, updateCheck, updateYes)
 		},
 	}
-	upd.Flags().BoolVar(&updateCheck, "check", false, "only say whether a newer version exists")
+	upd.Flags().BoolVar(&updateCheck, "check", false, "only check for a newer release or missing Her components")
 	upd.Flags().BoolVar(&updateYes, "yes", false, "update without asking, even when that stops a session")
 	upd.AddCommand(&cobra.Command{Use: "auto [on|off]", Short: "Turn automatic updates on or off, or say which", Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
