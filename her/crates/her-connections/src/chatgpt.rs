@@ -270,6 +270,8 @@ impl ChatGpt {
                 if let Some(id) = Self::provider(&p) {
                     providers.push(ProviderConfig {
                         plan: None,
+                        endpoints: Default::default(),
+                        custom: false,
                         id,
                         name: "ChatGPT API".into(),
                         names: Default::default(),

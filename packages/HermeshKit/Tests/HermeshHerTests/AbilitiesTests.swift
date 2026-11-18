@@ -90,9 +90,13 @@ private func skill(_ name: String, scope: String = "user", state: String = "acti
         ["id": "ollama", "name": "Ollama", "auth": "none", "credential": "not_required"],
         ["id": "zhipu-coding-plan", "name": "GLM", "auth": "api_key", "credential": "stored", "plan": ["api": "openai-chat", "base_url": "https://x", "dynamic_models": false, "key_url": "https://k"]],
         ["id": "bailian-token-plan", "name": "Bailian", "auth": "api_key", "credential": "missing", "plan": ["api": "openai-chat", "base_url": "https://y", "dynamic_models": true, "key_url": "https://k2"]],
+        // Services added by their address: one whose key is not set yet, and a local one that takes none.
+        ["id": "acme", "name": "Acme", "auth": "api_key", "credential": "missing", "custom": ["base_url": "https://llm.acme.com/v1", "protocols": []]],
+        ["id": "vllm", "name": "vLLM", "auth": "none", "credential": "not_required", "custom": ["base_url": "http://127.0.0.1:8000/v1", "protocols": []]],
     ]]
     let p = HerProviders(j)
-    #expect(p.keyed.map(\.id) == ["deepseek", "anthropic"])
+    #expect(p.keyed.map(\.id) == ["deepseek", "anthropic", "acme", "vllm"])
+    #expect(p.keyed[3].customHost == "127.0.0.1:8000" && p.keyed[3].removable && p.keyed[0].customHost == nil)
     #expect(p.keyChoices.map(\.id) == ["openai"])
     #expect(p.plans.map(\.id) == ["bailian-token-plan", "zhipu-coding-plan"])
     #expect(p.addedPlans.map(\.id) == ["zhipu-coding-plan"] && p.plansLeft.map(\.id) == ["bailian-token-plan"])

@@ -1,6 +1,6 @@
 import type {
   ActiveTask, AgentStatus, Avatar, AvatarInput, BotSummary, RoutineOutcome, RoutineRunInfo, RoutineSummary, ContextReport, Event, Methods, ApprovalDecision, MailInfo, PermissionMode, AssistantContent, ErrorInfo, EventMsg, Op, PromptMode, RpcErrorObject,
-  SessionInfo, SessionSnapshot, SessionState, SessionSummary, ThinkingLevel, TranscriptItem, Usage, UserContent, UserMessage,
+  SessionInfo, SessionSnapshot, SessionState, SessionSummary, ThinkingLevel, TranscriptItem, Usage, UserContent, UserMessage, ModelsListResult,
 } from "@hermesh/her-protocol";
 import { botScript, demoBots, demoImage, relayScript, type DemoBot, type DemoRoutine } from "./bots.ts";
 import { applyEvent, fromSnapshot, pendingApproval, runningAgents, statusOf, type SessionView } from "../session.ts";
@@ -127,11 +127,23 @@ function listState(v: SessionView): SessionState {
 
 class Failure extends Error {
   readonly error: RpcErrorObject;
-  constructor(code: number, kind: string, message: string) {
+  constructor(code: number, kind: string, message: string, extra: Record<string, unknown> = {}) {
     super(message);
-    this.error = { code, message, data: { kind } };
+    this.error = { code, message, data: { kind, ...extra } };
   }
 }
+
+/** A service added by its address in the demo (custom-endpoint-design): what it was given. */
+type DemoCustom = { name: string; base_url: string; key: boolean; configured: Map<string, string> };
+
+/** The demo's canonical models, for models/catalog and models/configure. */
+const demoCatalog = [
+  { id: "openai/gpt-4o", name: "GPT-4o", context_window: 128_000, images: true, reasoning: false },
+  { id: "openai/gpt-5.4", name: "GPT-5.4", context_window: 922_000, images: true, reasoning: true },
+  { id: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5", context_window: 200_000, images: true, reasoning: true },
+  { id: "alibaba/qwen3.8-max", name: "Qwen3.8 Max", context_window: 1_000_000, images: true, reasoning: true },
+  { id: "meta/llama-3.3-70b-instruct", name: "Llama-3.3-70B-Instruct", context_window: 128_000, images: false, reasoning: false },
+];
 
 /** The rate limit a retried task waits out before it goes on. */
 const rateLimited: ErrorInfo = { kind: "rate_limited", message: "429 Too Many Requests: Rate limit reached for deepseek-flash on tokens per min (TPM). Please try again in 4s.", status: 429, retryable: true };
@@ -158,6 +170,8 @@ export class MockServer {
   private readonly selection = new Map<string, boolean>();
   /** When the demo's model lists were last asked (models/refresh). */
   private listedAt = "2026-10-30T08:00:00Z";
+  /** Services added by their address, by id. */
+  private readonly customs = new Map<string, DemoCustom>();
   /** Bot mode's bots, by id. */
   private readonly bots = new Map<string, MockBot>();
   /** The 自定义 page's skills, servers and configuration; its changes reach every connection. */
@@ -535,6 +549,55 @@ export class MockServer {
     if (this.clock !== null || s.bot) return;
     const line = JSON.stringify({ jsonrpc: "2.0", method: "sessions/changed", params: { sessions: deleted.length ? [] : [s.summary], deleted } }) + "\n";
     for (const c of this.conns) if (c.listening) c.peer.write(line);
+  }
+
+  /** The demo's lists with the services added by their address: a Claude model, one found only by
+   * its name without a decoration, and one nothing describes. */
+  private withCustoms(result: ModelsListResult): ModelsListResult {
+    for (const [id, c] of this.customs) {
+      const ids = ["claude-sonnet-4-5", "gpt-5.4-fast", "house-model-7"];
+      result.providers.push({
+        id,
+        name: c.name,
+        auth: c.key ? "api_key" : "none",
+        credential: c.key ? "stored" : "not_required",
+        custom: {
+          base_url: c.base_url,
+          protocols: [
+            { api: "openai-chat", base_url: `${c.base_url.replace(/\/$/, "")}`, auth_header: c.key ? "bearer" : undefined },
+            { api: "anthropic-messages", base_url: c.base_url.replace(/\/v1\/?$/, ""), auth_header: c.key ? "x_api_key" : undefined },
+          ],
+        },
+        listing: { source: "provider", fetched_at: this.listedAt, refreshing: false, models: ids.length, shown: ids.length },
+      });
+      for (const model of ids) {
+        const reference = `${id}/${model}`;
+        const named = demoCatalog.find((m) => m.id === c.configured.get(model));
+        const known = model !== "house-model-7" || !!named;
+        const canonical = named
+          ? { id: named.id, name: named.name }
+          : model === "claude-sonnet-4-5"
+            ? { id: "anthropic/claude-sonnet-4-5", name: "Claude Sonnet 4.5" }
+            : model === "gpt-5.4-fast"
+              ? { id: "openai/gpt-5.4", name: "GPT-5.4", guessed: true }
+              : undefined;
+        result.models.push({
+          id: reference,
+          name: model,
+          provider: id,
+          context_window: named?.context_window ?? (model === "claude-sonnet-4-5" ? 200_000 : model === "gpt-5.4-fast" ? 922_000 : 128_000),
+          reasoning: named?.reasoning ?? model === "claude-sonnet-4-5",
+          thinking_levels: model === "claude-sonnet-4-5" ? ["off", "low", "medium", "high", "max"] : [],
+          default_thinking: "default",
+          images: named?.images ?? model !== "house-model-7",
+          available: true,
+          shown: this.selection.get(reference) ?? true,
+          known,
+          canonical,
+        });
+      }
+    }
+    return result;
   }
 
   /** Tells every connection the models changed, as her does after a key, a refresh or a menu change. */
@@ -992,7 +1055,7 @@ export class MockServer {
     type R<K extends keyof Methods> = Methods[K][1];
     switch (method) {
       case "initialize": {
-        const capabilities = { max_frame_bytes: 134_217_728, session_delete: true, resource_read: false, event_filter: false, sessions_subscribe: true, session_metadata: true, transcript_task_end: true, auth: true, agents: true, model_connections: false, model_discovery: true, customize: true, embedded_browser: false, input_queue: true, message_resend: true, workbooks: true, bots: true, routines: true };
+        const capabilities = { max_frame_bytes: 134_217_728, session_delete: true, resource_read: false, event_filter: false, sessions_subscribe: true, session_metadata: true, transcript_task_end: true, auth: true, agents: true, model_connections: false, model_discovery: true, custom_endpoints: true, customize: true, embedded_browser: false, input_queue: true, message_resend: true, workbooks: true, bots: true, routines: true };
         return { protocol_version: 2, server_info: { name: "her", version: "0.1.0-mock" }, capabilities } satisfies R<"initialize">;
       }
       case "sessions/subscribe":
@@ -1140,11 +1203,82 @@ export class MockServer {
         return {};
       }
       case "models/list":
-        return demoModels(this.stored, this.selection, this.listedAt) satisfies R<"models/list">;
+        return this.withCustoms(demoModels(this.stored, this.selection, this.listedAt)) satisfies R<"models/list">;
       case "models/refresh":
         this.listedAt = new Date().toISOString();
         this.notifyModels();
-        return { providers: demoModels(this.stored, this.selection, this.listedAt).providers } satisfies R<"models/refresh">;
+        return { providers: this.withCustoms(demoModels(this.stored, this.selection, this.listedAt)).providers } satisfies R<"models/refresh">;
+      case "providers/add": {
+        const q = p as P<"providers/add">;
+        const url = q.base_url.trim();
+        // Addresses that show the failures: nothing listening, a key the demo refuses, no list.
+        if (!/^https?:\/\/[^/]+/.test(url) && !/^[a-z0-9.-]+(:\d+)?(\/|$)/i.test(url)) throw new Failure(-32048, "endpoint_unusable", "not an address", { reason: "invalid_url" });
+        if (url.includes("unreachable")) throw new Failure(-32048, "endpoint_unusable", "cannot reach it", { reason: "unreachable" });
+        if (q.api_key === "sk-rejected") throw new Failure(-32021, "key_rejected", "Authentication Fails, Your api key is invalid");
+        if (url.includes("nolist") && !q.models?.length) throw new Failure(-32048, "endpoint_unusable", "the service gave no model list", { reason: "no_models" });
+        const host = url.replace(/^https?:\/\//, "").split(/[/:]/)[0] ?? url;
+        let id = (q.name ?? host.split(".").filter((l) => !["www", "api", "llm", "gw"].includes(l)).slice(-2)[0] ?? "custom").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "custom";
+        for (let n = 2; this.customs.has(id) || demoModels().providers.some((d) => d.id === id); n++) id = `${id.replace(/-\d+$/, "")}-${n}`;
+        const base = url.startsWith("http") ? url : `https://${url}`;
+        this.customs.set(id, { name: q.name?.trim() || host, base_url: base, key: !!q.api_key, configured: new Map() });
+        this.notifyModels();
+        const listed = this.withCustoms(demoModels(this.stored, this.selection, this.listedAt));
+        return {
+          provider: listed.providers.find((x) => x.id === id)!,
+          probe: {
+            base_url: base,
+            protocols: listed.providers.find((x) => x.id === id)!.custom!.protocols,
+            models: 3,
+            known: 2,
+            insecure: base.startsWith("http://") && !/localhost|127\.0\.0\.1|192\.168\./.test(base),
+            ...(host === "api.deepseek.com" ? { builtin: "deepseek" } : {}),
+          },
+        } satisfies R<"providers/add">;
+      }
+      case "providers/update": {
+        const q = p as P<"providers/update">;
+        const c = this.customs.get(q.id);
+        if (!c) throw new Failure(-32602, "invalid_params", `'${q.id}' is not a service added by its address`);
+        if (q.api_key === "sk-rejected") throw new Failure(-32021, "key_rejected", "Authentication Fails, Your api key is invalid");
+        if (q.name) c.name = q.name;
+        if (q.base_url) c.base_url = q.base_url;
+        if (q.api_key) c.key = true;
+        this.listedAt = new Date().toISOString();
+        this.notifyModels();
+        const listed = this.withCustoms(demoModels(this.stored, this.selection, this.listedAt));
+        const provider = listed.providers.find((x) => x.id === q.id)!;
+        return { provider, probe: { base_url: c.base_url, protocols: provider.custom!.protocols, models: 3, known: 2 } } satisfies R<"providers/update">;
+      }
+      case "providers/remove": {
+        const q = p as P<"providers/remove">;
+        if (!this.customs.delete(q.id)) throw new Failure(-32602, "invalid_params", `'${q.id}' is not a service added by its address`);
+        this.notifyModels();
+        return {} satisfies R<"providers/remove">;
+      }
+      case "models/catalog": {
+        const q = (p as P<"models/catalog">).query.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const score = (m: (typeof demoCatalog)[number]) => {
+          const bare = m.id.split("/")[1]!.replace(/[^a-z0-9]/g, "");
+          return bare === q ? 3 : q.includes(bare) || bare.includes(q) ? 2 : bare.slice(0, 4) === q.slice(0, 4) ? 1 : 0;
+        };
+        return { models: demoCatalog.filter((m) => score(m) > 0).sort((a, b) => score(b) - score(a)) } satisfies R<"models/catalog">;
+      }
+      case "models/configure": {
+        const q = p as P<"models/configure">;
+        const [id, ...rest] = q.model.split("/");
+        const c = this.customs.get(id ?? "");
+        if (!c) throw new Failure(-32602, "invalid_params", "only services added by their address");
+        const model = rest.join("/");
+        if (q.clear) c.configured.delete(model);
+        if (typeof q.canonical === "string") {
+          const found = demoCatalog.find((m) => m.id === q.canonical || m.name.toLowerCase() === q.canonical!.toLowerCase());
+          if (!found) throw new Failure(-32602, "invalid_params", `no model in the catalog is called '${q.canonical}'`);
+          c.configured.set(model, found.id);
+        }
+        this.notifyModels();
+        const summary = this.withCustoms(demoModels(this.stored, this.selection, this.listedAt)).models.find((m) => m.id === q.model)!;
+        return { model: summary } satisfies R<"models/configure">;
+      }
       case "models/show": {
         const q = p as P<"models/show">;
         if (!demoModels(new Set([...this.stored, "anthropic", "kimi"])).models.some((m) => m.id === q.model)) throw new Failure(-32602, "invalid_params", `unknown model '${q.model}'`);
@@ -1235,7 +1369,7 @@ export class MockServer {
         const q = p as P<"session/new">;
         const model = q.model ?? demoModels().defaults!.model!;
         // As her: a model whose provider is gone (a connection removed) is not there to start on.
-        if (!demoModels().providers.some((d) => d.id === providerOf(model))) {
+        if (!demoModels().providers.some((d) => d.id === providerOf(model)) && !this.customs.has(providerOf(model))) {
           throw new Failure(-32022, "model_unavailable", `unknown provider '${providerOf(model)}'`);
         }
         // Without a project, a folder of its own, as her makes one.

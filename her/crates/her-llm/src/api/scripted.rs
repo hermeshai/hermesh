@@ -180,6 +180,8 @@ impl ScriptedApi {
     pub fn provider_with(entries: Vec<ModelToml>) -> ProviderConfig {
         ProviderConfig {
             plan: None,
+            endpoints: Default::default(),
+            custom: false,
             id: PROVIDER_ID.into(),
             name: "Test".into(),
             names: Default::default(),

@@ -172,50 +172,6 @@ fn ask_provider(listing: &ModelsListResult) -> anyhow::Result<String> {
     }
 }
 
-/// Adds a service of one's own to models.toml; returns what to put back if its key is refused.
-fn add_service(home: &her_core::HerHome, id: &str, base_url: &str, api: &str, no_key: bool, model: Option<&str>) -> anyhow::Result<Option<Vec<u8>>> {
-    let valid = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'));
-    if !valid {
-        bail!("`{id}` cannot be a provider's name: use letters, digits, - and _");
-    }
-    if !["openai-chat", "anthropic-messages", "openai-responses"].contains(&api) {
-        bail!("--api {api}: expected openai-chat, anthropic-messages or openai-responses");
-    }
-    let path = home.models_file();
-    let _lock = her_core::config_edit::lock(&path, home.root()).map_err(|err| anyhow::anyhow!("{err}"))?;
-    let before = match std::fs::read(&path) {
-        Ok(bytes) => Some(bytes),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-        Err(err) => return Err(err).with_context(|| format!("cannot read {}", path.display())),
-    };
-    let text = before.as_deref().map(String::from_utf8_lossy).unwrap_or_default();
-    let mut document: toml_edit::DocumentMut = text.parse().with_context(|| format!("cannot read {}", path.display()))?;
-    let providers = document.entry("providers").or_insert(toml_edit::table());
-    let providers = providers.as_table_mut().context("`providers` in models.toml is not a table")?;
-    providers.set_implicit(true);
-    let mut table = toml_edit::Table::new();
-    table["name"] = toml_edit::value(id);
-    table["api"] = toml_edit::value(api);
-    table["base_url"] = toml_edit::value(base_url);
-    if no_key {
-        table["auth"] = toml_edit::value("none");
-    }
-    if let Some(model) = model.and_then(|m| m.split_once('/').map(|(_, id)| id).or(Some(m))) {
-        let mut entry = toml_edit::Table::new();
-        entry["id"] = toml_edit::value(model);
-        let mut models = toml_edit::ArrayOfTables::new();
-        models.push(entry);
-        table["models"] = toml_edit::Item::ArrayOfTables(models);
-    }
-    providers[id] = toml_edit::Item::Table(table);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    her_core::config_edit::replace_file(&path, document.to_string().as_bytes())
-        .with_context(|| format!("cannot write {}", path.display()))?;
-    Ok(before)
-}
-
 async fn set_model(server: &Server, home: &her_core::HerHome, reference: &str) -> anyhow::Result<()> {
     let written = server
         .config_write(ConfigWriteParams {
@@ -298,25 +254,114 @@ async fn chatgpt_login(overrides: &[String], model: Option<String>, interactive:
     }
 }
 
-pub async fn login(overrides: &[String], args: LoginArgs) -> anyhow::Result<u8> {
-    let LoginArgs { provider, key_stdin, model, base_url, api, no_key } = args;
-    let interactive = std::io::stdin().is_terminal() && !key_stdin;
-    if provider.as_deref() == Some(CHATGPT) {
-        return chatgpt_login(overrides, model, interactive).await;
+/// The names of the protocols, as people know them.
+fn protocol_name(api: &str) -> &str {
+    match api {
+        "openai-chat" => "OpenAI Chat Completions",
+        "anthropic-messages" => "Anthropic Messages",
+        "openai-responses" => "OpenAI Responses",
+        other => other,
     }
+}
+
+/// `her login NAME --base-url URL`: probes the service, saves it with its key and offers its
+/// models (docs/kernel/custom-endpoint-design.md §3.2). The kernel's `providers/add` does the work.
+async fn add_service(overrides: &[String], base_url: String, args: LoginArgs, interactive: bool) -> anyhow::Result<u8> {
+    let LoginArgs { provider, key_stdin, model, api, no_key, .. } = args;
+    let name = provider.context("--base-url needs a name: her login NAME --base-url URL")?;
+    if her_llm::Catalog::builtin()?.providers.contains_key(&name) {
+        bail!("{name} is a built-in provider; pick another name for your service");
+    }
+    let key = if no_key {
+        None
+    } else if key_stdin {
+        let mut text = String::new();
+        std::io::stdin().lock().read_to_string(&mut text).context("cannot read the key from standard input")?;
+        Some(text.trim().to_string()).filter(|k| !k.is_empty())
+    } else if interactive {
+        Some(read_hidden(&format!("Paste the key of {name} (not shown; Enter if it takes none): "))?).filter(|k| !k.is_empty())
+    } else {
+        None
+    };
+    let (server, _guard) = cmd_serve::start(overrides)?;
     let home = setup::home()?;
-    // Before the service starts, so that it knows the new provider.
-    let mut undo = None;
-    if let Some(base_url) = &base_url {
-        let id = provider.as_deref().context("--base-url needs a name: her login NAME --base-url URL")?;
-        let api = api.as_deref().unwrap_or("openai-chat");
-        let builtin = her_llm::Catalog::builtin()?;
-        if builtin.providers.contains_key(id) {
-            bail!("{id} is a built-in provider; pick another name for your service");
+    // The same name again is the same service: probed again with what was given, not a second one.
+    let again = her_llm::Catalog::custom_providers(&home.models_file()).is_ok_and(|ps| ps.iter().any(|p| p.id == name));
+    let result = if again {
+        let params = her_protocol::api::ProvidersUpdateParams { id: name.clone(), name: None, base_url: Some(base_url), api_key: key.clone(), api };
+        server.update_provider(params).await
+    } else {
+        let named = model.as_deref().map(|m| m.strip_prefix(&format!("{name}/")).unwrap_or(m).to_string());
+        let params = her_protocol::api::ProvidersAddParams { base_url, api_key: key.clone(), name: Some(name.clone()), api, models: named.into_iter().collect() };
+        server.add_provider(params).await
+    };
+    let added = match result {
+        Ok(added) => added,
+        Err(err) if err.kind() == Some("key_rejected") => return Err(KeyRejected(err.message).into()),
+        Err(err) => {
+            let reason = err.data.as_ref().and_then(|d| d.get("reason")).and_then(|r| r.as_str());
+            match reason {
+                Some("no_models") => bail!("{name} gave no model list: name one with --model"),
+                Some("key_required") => bail!("{name} needs a key: pipe it with --key-stdin, or run this at a terminal"),
+                _ => bail!("{}", err.message),
+            }
         }
-        undo = Some(add_service(&home, id, base_url, api, no_key, model.as_deref())?);
+    };
+    let probe = &added.probe;
+    let found: Vec<String> = probe.protocols.iter().map(|p| format!("{} ({})", protocol_name(&p.api), p.base_url)).collect();
+    println!("found {}", found.join(", "));
+    if probe.no_list {
+        println!("it lists no models; using the one you named");
+    } else {
+        println!("{} models, {} with known details", probe.models, probe.known);
+    }
+    if probe.protocols.iter().any(|p| p.api == "anthropic-messages") && probe.protocols.iter().any(|p| p.api == "openai-chat") {
+        println!("Claude models use Anthropic Messages, the others Chat Completions");
+    }
+    let id = added.provider.id.clone();
+    if again {
+        println!("updated {id} in {}", shorten(&home, &home.models_file()));
+    } else {
         println!("added {id} to {}", shorten(&home, &home.models_file()));
-    } else if api.is_some() || no_key {
+    }
+    if key.is_some() {
+        let store = her_llm::credentials::store_name().unwrap_or("credential store");
+        println!("saved the key in the {store}");
+    }
+    if probe.insecure {
+        eprintln!("note: the address is http://, so the key travels unencrypted");
+    }
+    if let Some(builtin) = &probe.builtin {
+        eprintln!("note: this is the address of {builtin}; `her login {builtin}` gives its own thinking options and prices");
+    }
+    if probe.unsure.iter().any(|a| a == "anthropic-messages") {
+        eprintln!("note: could not tell whether it speaks Anthropic Messages; add --api anthropic-messages to use only that");
+    }
+    match probe.note.as_deref() {
+        Some("azure_deployments") => eprintln!("note: Azure requests name a deployment: add yours with --model"),
+        Some("bedrock_models") => eprintln!("note: Bedrock lists no models here: name them with --model"),
+        Some("vertex_token") => eprintln!("note: Vertex wants a token that expires hourly: use api_key_command in models.toml"),
+        Some("portkey_headers") => eprintln!("note: Portkey routes by its x-portkey-* headers: add them as headers in models.toml"),
+        _ => {}
+    }
+    choose_model(&server, &home, &id, model, interactive).await?;
+    if interactive {
+        println!("Try it: her \"say hello\"");
+    }
+    Ok(0)
+}
+
+pub async fn login(overrides: &[String], mut args: LoginArgs) -> anyhow::Result<u8> {
+    let interactive = std::io::stdin().is_terminal() && !args.key_stdin;
+    if args.provider.as_deref() == Some(CHATGPT) {
+        return chatgpt_login(overrides, args.model, interactive).await;
+    }
+    if let Some(base_url) = args.base_url.take() {
+        return add_service(overrides, base_url, args, interactive).await;
+    }
+    let LoginArgs { provider, key_stdin, model, api, no_key, .. } = args;
+    let home = setup::home()?;
+    if api.is_some() || no_key {
         bail!("--api and --no-key go with --base-url");
     }
     let (server, _guard) = cmd_serve::start(overrides)?;
@@ -374,14 +419,6 @@ pub async fn login(overrides: &[String], args: LoginArgs) -> anyhow::Result<u8> 
                     }
                 }
                 Err(err) => {
-                    if let Some(before) = undo.take() {
-                        match before {
-                            Some(bytes) => her_core::config_edit::replace_file(&home.models_file(), &bytes)?,
-                            None => {
-                                let _ = std::fs::remove_file(home.models_file());
-                            }
-                        }
-                    }
                     if err.kind() == Some("key_rejected") {
                         return Err(KeyRejected(err.message).into());
                     }
@@ -401,7 +438,72 @@ pub async fn login(overrides: &[String], args: LoginArgs) -> anyhow::Result<u8> 
     Ok(0)
 }
 
-pub async fn logout(overrides: &[String], provider: &str, forget: bool) -> anyhow::Result<u8> {
+/// What `her models set` says about a model (custom-endpoint-design §7.3).
+pub struct SetModel {
+    pub model: String,
+    pub like: Option<String>,
+    pub context: Option<String>,
+    pub images: Option<bool>,
+    pub reasoning: Option<bool>,
+    pub clear: bool,
+}
+
+/// `128000`, `128k`, `1m`.
+fn tokens(text: &str) -> anyhow::Result<u64> {
+    let t = text.trim().to_ascii_lowercase();
+    let (number, unit) = match t.strip_suffix('k') {
+        Some(n) => (n, 1_000.0),
+        None => match t.strip_suffix('m') {
+            Some(n) => (n, 1_000_000.0),
+            None => (t.as_str(), 1.0),
+        },
+    };
+    let value: f64 = number.trim().parse().map_err(|_| anyhow::anyhow!("--context {text}: a number of tokens, as 131072, 128k or 1m"))?;
+    if !value.is_finite() || value < 1.0 {
+        bail!("--context {text}: a number of tokens, as 131072, 128k or 1m");
+    }
+    Ok((value * unit) as u64)
+}
+
+pub async fn configure_model(overrides: &[String], args: SetModel) -> anyhow::Result<u8> {
+    let SetModel { model, like, context, images, reasoning, clear } = args;
+    if !clear && like.is_none() && context.is_none() && images.is_none() && reasoning.is_none() {
+        bail!("say what it is like: --like MODEL, --context TOKENS, --images on|off, --reasoning on|off, or --clear");
+    }
+    let params = her_protocol::api::ModelsConfigureParams {
+        model: model.clone(),
+        canonical: like.map(Some),
+        context_window: context.as_deref().map(tokens).transpose()?.map(Some),
+        images: images.map(Some),
+        reasoning: reasoning.map(Some),
+        clear,
+    };
+    let (server, _guard) = cmd_serve::start(overrides)?;
+    let result = tokio::task::spawn_blocking(move || server.configure_model(params)).await?.map_err(|err| anyhow::anyhow!("{}", err.message))?;
+    let m = result.model;
+    let mut said = Vec::new();
+    if let Some(canonical) = &m.canonical {
+        said.push(format!("like {}", canonical.name));
+    }
+    said.push(format!("{}k window", m.context_window / 1000));
+    if m.images {
+        said.push("images".into());
+    }
+    if m.reasoning {
+        said.push("thinks".into());
+    }
+    println!("{}: {}", m.id, said.join(", "));
+    Ok(0)
+}
+
+pub async fn logout(overrides: &[String], provider: &str, forget: bool, remove: bool) -> anyhow::Result<u8> {
+    if remove {
+        let (server, _guard) = cmd_serve::start(overrides)?;
+        let id = provider.to_string();
+        tokio::task::spawn_blocking(move || server.remove_provider(&id)).await?.map_err(|err| anyhow::anyhow!("{}", err.message))?;
+        println!("removed {provider}: its settings, key and model list");
+        return Ok(0);
+    }
     if provider == CHATGPT {
         let (server, _guard) = cmd_serve::start(overrides)?;
         let chatgpt = server.connections().chatgpt.clone();

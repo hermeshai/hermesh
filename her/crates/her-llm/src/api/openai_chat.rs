@@ -79,7 +79,7 @@ fn stream(req: WireRequest, strict: bool, decoder: Option<ChatEventDecoder>) -> 
                 .header(CONTENT_TYPE, "application/json")
                 .body(body);
             if let Some(key) = &req.credentials.api_key {
-                builder = builder.bearer_auth(key);
+                builder = model.compat.auth_header.unwrap_or(crate::model::AuthHeader::Bearer).apply(builder, key);
             }
             for (name, value) in &req.credentials.headers {
                 builder = builder.header(name.as_str(), value.as_str());

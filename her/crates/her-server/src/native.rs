@@ -293,6 +293,7 @@ impl NativeProtocol {
                             agents: true,
                             model_connections: true,
                             model_discovery: true,
+                            custom_endpoints: true,
                             customize: true,
                             embedded_browser: true,
                             input_queue: true,
@@ -1127,6 +1128,57 @@ impl NativeProtocol {
                             .await
                             .unwrap_or_else(|e| Err(RpcError::internal(e.to_string())))
                             .map(|()| json!({}));
+                        conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::PROVIDERS_ADD => match her_rpc::params::<her_protocol::api::ProvidersAddParams>(params) {
+                Ok(p) => {
+                    let reply_id = id.clone();
+                    self.spawn(id.clone(), conn, async move { Some(reply(&reply_id, server.add_provider(p).await)) });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::PROVIDERS_UPDATE => match her_rpc::params::<her_protocol::api::ProvidersUpdateParams>(params) {
+                Ok(p) => {
+                    let reply_id = id.clone();
+                    self.spawn(id.clone(), conn, async move { Some(reply(&reply_id, server.update_provider(p).await)) });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::PROVIDERS_REMOVE => match her_rpc::params::<her_protocol::api::ProviderIdParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let result = tokio::task::spawn_blocking(move || server.remove_provider(&p.id))
+                            .await
+                            .unwrap_or_else(|e| Err(RpcError::internal(e.to_string())))
+                            .map(|()| json!({}));
+                        conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::MODELS_CATALOG => match her_rpc::params::<her_protocol::api::ModelsCatalogParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let result = tokio::task::spawn_blocking(move || server.catalog_models(p))
+                            .await
+                            .map_err(|e| RpcError::internal(e.to_string()));
+                        conn.send(reply(&id, result));
+                    });
+                }
+                Err(err) => conn.send_error(Some(id), &err),
+            },
+            method::MODELS_CONFIGURE => match her_rpc::params::<her_protocol::api::ModelsConfigureParams>(params) {
+                Ok(p) => {
+                    let (conn, id) = (conn.clone(), id.clone());
+                    tokio::spawn(async move {
+                        let result = tokio::task::spawn_blocking(move || server.configure_model(p))
+                            .await
+                            .unwrap_or_else(|e| Err(RpcError::internal(e.to_string())));
                         conn.send(reply(&id, result));
                     });
                 }

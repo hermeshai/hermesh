@@ -57,6 +57,7 @@ const initialized: InitializeResult = {
     workbooks: true,
     bots: true,
     routines: true,
+    custom_endpoints: true,
   },
 };
 

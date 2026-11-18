@@ -1,9 +1,12 @@
 //! Refreshes the compiled-in public catalog snapshot (docs/kernel/model-catalog-design.md §5.1).
 //!
-//! cargo run -p her-llm --example sync_catalog [-- --input api.json] [--check]
+//! cargo run -p her-llm --example sync_catalog [-- --input api.json] [--lab models.json] [--check] [--canonical-only]
 //!
 //! Downloads the public catalog (or reads `--input`), projects the providers the built-in
 //! catalog names and the model makers, rewrites `crates/her-llm/catalog/public/*.json` and prints what changed.
+//! It also writes the canonical models' rows and the alias table (`_canonical.json`,
+//! `_aliases.json`, custom-endpoint-design §6.2) from the whole catalog and its lab-level file
+//! (`--lab`, else downloaded). `--canonical-only` writes only those two.
 //! `--check` only reports, and exits 1 when the snapshot is out of date.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -23,6 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let input = args.iter().position(|a| a == "--input").and_then(|i| args.get(i + 1)).cloned();
     let check = args.iter().any(|a| a == "--check");
+    let canonical_only = args.iter().any(|a| a == "--canonical-only");
+    let lab_input = args.iter().position(|a| a == "--lab").and_then(|i| args.get(i + 1)).cloned();
     let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("catalog/public");
 
     let builtin = Catalog::builtin()?;
@@ -31,21 +36,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ids.sort();
     ids.dedup();
 
-    let raw: serde_json::Value = match input {
-        Some(path) => serde_json::from_slice(&std::fs::read(path)?)?,
-        None => {
-            // The kernel's own client: system certificates, her's User-Agent.
-            let http = her_llm::ModelRegistry::new(Catalog::default(), Default::default()).http_client()?;
-            let response = http
-                .get(public_catalog::SOURCE_URL)
-                .send()
-                .await?
-                .error_for_status()?;
-            serde_json::from_slice(&response.bytes().await?)?
+    // The kernel's own client: system certificates, her's User-Agent.
+    let http = her_llm::ModelRegistry::new(Catalog::default(), Default::default()).http_client()?;
+    let download = |url: String| {
+        let http = http.clone();
+        async move {
+            let response = http.get(url).send().await?.error_for_status()?;
+            Ok::<serde_json::Value, Box<dyn std::error::Error>>(serde_json::from_slice(&response.bytes().await?)?)
         }
     };
+    let raw: serde_json::Value = match input {
+        Some(path) => serde_json::from_slice(&std::fs::read(path)?)?,
+        None => download(public_catalog::SOURCE_URL.to_string()).await?,
+    };
+    let lab: serde_json::Value = match lab_input {
+        Some(path) => serde_json::from_slice(&std::fs::read(path)?)?,
+        None => download(her_llm::canonical::lab_url(public_catalog::SOURCE_URL).expect("the lab file's address")).await?,
+    };
+    let now = her_llm::discovery::now();
+    let canonical = her_llm::canonical::project(&raw, Some(&lab), &now)?;
+    let mut stale = write_canonical(&out_dir, &canonical, check)?;
+    if canonical_only {
+        if check && stale {
+            eprintln!("the canonical models are out of date");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     let refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-    let projection = public_catalog::project(&raw, &refs, &her_llm::discovery::now())?;
+    let projection = public_catalog::project(&raw, &refs, &now)?;
     // The snapshot has to cover every id: the service tolerates a provider going missing upstream,
     // this does not.
     if !projection.failed.is_empty() {
@@ -54,7 +73,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let projected = projection.providers;
 
-    let mut stale = false;
     for (id, provider) in &projected {
         let path = out_dir.join(format!("{id}.json"));
         let old: Option<PublicProvider> =
@@ -86,6 +104,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// Writes the canonical rows and the alias table when they changed; returns whether they did.
+fn write_canonical(out_dir: &std::path::Path, projected: &her_llm::canonical::Projected, check: bool) -> Result<bool, Box<dyn std::error::Error>> {
+    use her_llm::canonical::{ALIASES, AliasFile, CANONICAL};
+    let rows_path = out_dir.join(format!("{CANONICAL}.json"));
+    let aliases_path = out_dir.join(format!("{ALIASES}.json"));
+    let old_rows: Option<PublicProvider> = std::fs::read_to_string(&rows_path).ok().and_then(|t| serde_json::from_str(&t).ok());
+    let old_aliases: Option<AliasFile> = std::fs::read_to_string(&aliases_path).ok().and_then(|t| serde_json::from_str(&t).ok());
+    let report = diff(old_rows.as_ref(), &projected.canonical);
+    let names_changed = old_aliases.as_ref().map(|a| &a.names) != Some(&projected.aliases.names);
+    if !report.is_empty() {
+        println!("{CANONICAL}: {} canonical models, {} changed", projected.canonical.models.len(), report.len());
+    }
+    if names_changed {
+        let before = old_aliases.map_or(0, |a| a.names.len());
+        println!("{ALIASES}: {} names (was {before})", projected.aliases.names.len());
+    }
+    let changed = !report.is_empty() || names_changed;
+    if changed && !check {
+        std::fs::write(&rows_path, public_catalog::to_file(&projected.canonical))?;
+        std::fs::write(&aliases_path, her_llm::canonical::to_alias_file(&projected.aliases))?;
+    }
+    Ok(changed)
 }
 
 /// Added, removed and changed models, one line each.

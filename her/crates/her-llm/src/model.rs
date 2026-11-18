@@ -104,8 +104,24 @@ pub enum ThinkingControl {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthHeader {
+    /// `x-api-key: <key>`. Also written as the header's own name.
+    #[serde(alias = "x-api-key")]
     XApiKey,
     Bearer,
+    /// `api-key: <key>`, as Azure and some gateways take it.
+    #[serde(alias = "api-key")]
+    ApiKey,
+}
+
+impl AuthHeader {
+    /// Puts `key` on a request the way this header says.
+    pub fn apply(self, request: reqwest::RequestBuilder, key: &str) -> reqwest::RequestBuilder {
+        match self {
+            AuthHeader::Bearer => request.bearer_auth(key),
+            AuthHeader::XApiKey => request.header("x-api-key", key),
+            AuthHeader::ApiKey => request.header("api-key", key),
+        }
+    }
 }
 
 /// Differences between implementations of the same wire protocol, expressed as data.

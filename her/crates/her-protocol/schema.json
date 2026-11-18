@@ -521,6 +521,18 @@
       "$ref": "#/definitions/MeshNewsParams"
     },
     {
+      "$ref": "#/definitions/ModelsCatalogParams"
+    },
+    {
+      "$ref": "#/definitions/ModelsCatalogResult"
+    },
+    {
+      "$ref": "#/definitions/ModelsConfigureParams"
+    },
+    {
+      "$ref": "#/definitions/ModelsConfigureResult"
+    },
+    {
       "$ref": "#/definitions/ModelsListResult"
     },
     {
@@ -552,6 +564,18 @@
     },
     {
       "$ref": "#/definitions/PptxWriteParams"
+    },
+    {
+      "$ref": "#/definitions/ProviderIdParams"
+    },
+    {
+      "$ref": "#/definitions/ProvidersAddParams"
+    },
+    {
+      "$ref": "#/definitions/ProvidersAddResult"
+    },
+    {
+      "$ref": "#/definitions/ProvidersUpdateParams"
     },
     {
       "$ref": "#/definitions/ResourceReadParams"
@@ -3123,6 +3147,38 @@
       ],
       "type": "object"
     },
+    "CatalogModel": {
+      "properties": {
+        "context_window": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "`openai/gpt-4o`: what `models/configure` takes as `canonical`.",
+          "type": "string"
+        },
+        "images": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "images",
+        "name",
+        "reasoning"
+      ],
+      "type": "object"
+    },
     "CellBorder": {
       "additionalProperties": false,
       "properties": {
@@ -4981,6 +5037,27 @@
         "CNY"
       ],
       "type": "string"
+    },
+    "CustomEndpoint": {
+      "description": "How a custom endpoint is reached.",
+      "properties": {
+        "base_url": {
+          "description": "The address as the person gave it, tidied.",
+          "type": "string"
+        },
+        "protocols": {
+          "description": "The protocols it speaks, the default one first.",
+          "items": {
+            "$ref": "#/definitions/EndpointProtocol"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "base_url",
+        "protocols"
+      ],
+      "type": "object"
     },
     "DataLabels": {
       "additionalProperties": false,
@@ -10638,6 +10715,29 @@
       "description": "The result of methods that return nothing: `{}`.",
       "type": "object"
     },
+    "EndpointProtocol": {
+      "properties": {
+        "api": {
+          "description": "`openai-chat`, `anthropic-messages` or `openai-responses`.",
+          "type": "string"
+        },
+        "auth_header": {
+          "description": "The header the key goes in: `bearer`, `x_api_key` or `api_key`; absent without a key.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "api",
+        "base_url"
+      ],
+      "type": "object"
+    },
     "ErrorInfo": {
       "properties": {
         "kind": {
@@ -14997,6 +15097,26 @@
         }
       ]
     },
+    "ModelCanonical": {
+      "properties": {
+        "guessed": {
+          "description": "Found only by its name without a date or a decoration: it lends the window and images.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "`anthropic/claude-sonnet-5-5`",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
     "ModelPrice": {
       "description": "Prices per million tokens.",
       "properties": {
@@ -15038,6 +15158,17 @@
         "available": {
           "description": "The provider's credentials are available.",
           "type": "boolean"
+        },
+        "canonical": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ModelCanonical"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The model its details were borrowed from, when that is not its provider's own catalog row (docs/kernel/custom-endpoint-design.md §6.4)."
         },
         "context_window": {
           "format": "uint64",
@@ -15120,6 +15251,95 @@
         "provider",
         "reasoning",
         "thinking_levels"
+      ],
+      "type": "object"
+    },
+    "ModelsCatalogParams": {
+      "description": "`models/catalog`: canonical models of the public catalog by name, to say what a model is like (docs/kernel/custom-endpoint-design.md §7.3).",
+      "properties": {
+        "limit": {
+          "description": "At most this many; 8 when absent.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "ModelsCatalogResult": {
+      "properties": {
+        "models": {
+          "items": {
+            "$ref": "#/definitions/CatalogModel"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "models"
+      ],
+      "type": "object"
+    },
+    "ModelsConfigureParams": {
+      "description": "`models/configure`: what a model is like, for one nothing describes (§7.3). A field left out stays as it is; `null` removes it. With `clear`, the model's entry goes and it is found by its name again.",
+      "properties": {
+        "canonical": {
+          "description": "The canonical model it is like (`openai/gpt-4o`), or any name that finds one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clear": {
+          "type": "boolean"
+        },
+        "context_window": {
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "images": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "`provider/model-id`",
+          "type": "string"
+        },
+        "reasoning": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "model"
+      ],
+      "type": "object"
+    },
+    "ModelsConfigureResult": {
+      "properties": {
+        "model": {
+          "$ref": "#/definitions/ModelSummary"
+        }
+      },
+      "required": [
+        "model"
       ],
       "type": "object"
     },
@@ -16447,6 +16667,67 @@
       ],
       "type": "object"
     },
+    "ProbeSummary": {
+      "description": "What probing a service found (docs/kernel/custom-endpoint-design.md §4.7).",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "builtin": {
+          "description": "A built-in provider at the same address.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "insecure": {
+          "description": "`http://` to an address that is not local: the key travels unencrypted.",
+          "type": "boolean"
+        },
+        "known": {
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "models": {
+          "description": "Models it listed, and how many of them have known details.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "no_list": {
+          "description": "It listed no models: they were named by hand, or have to be.",
+          "type": "boolean"
+        },
+        "note": {
+          "description": "What the person should know about this kind of service (Azure, Bedrock, ...).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocols": {
+          "items": {
+            "$ref": "#/definitions/EndpointProtocol"
+          },
+          "type": "array"
+        },
+        "unsure": {
+          "description": "Protocols it could not tell: the service answers every path alike.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "base_url",
+        "known",
+        "models",
+        "protocols"
+      ],
+      "type": "object"
+    },
     "PromptMode": {
       "oneOf": [
         {
@@ -16545,6 +16826,17 @@
         }
       ]
     },
+    "ProviderIdParams": {
+      "properties": {
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
     "ProviderListing": {
       "description": "A provider's model list as the kernel last saw it.",
       "properties": {
@@ -16609,6 +16901,17 @@
             "null"
           ]
         },
+        "custom": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CustomEndpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A service the person added by its address (docs/kernel/custom-endpoint-design.md §9)."
+        },
         "id": {
           "type": "string"
         },
@@ -16657,6 +16960,96 @@
         "credential",
         "id",
         "name"
+      ],
+      "type": "object"
+    },
+    "ProvidersAddParams": {
+      "description": "`providers/add`: a service by its address. Probed first; saved only when usable.",
+      "properties": {
+        "api": {
+          "description": "Use only this protocol instead of finding out which ones it speaks.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "models": {
+          "description": "Model ids, for a service that lists none.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "Shown in lists; the host's name when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "base_url"
+      ],
+      "type": "object"
+    },
+    "ProvidersAddResult": {
+      "properties": {
+        "probe": {
+          "$ref": "#/definitions/ProbeSummary"
+        },
+        "provider": {
+          "$ref": "#/definitions/ProviderSummary"
+        }
+      },
+      "required": [
+        "probe",
+        "provider"
+      ],
+      "type": "object"
+    },
+    "ProvidersUpdateParams": {
+      "description": "`providers/update`: a new name, address, key or protocol. A new address, key or protocol is probed first and changes nothing when unusable.",
+      "properties": {
+        "api": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id"
       ],
       "type": "object"
     },
@@ -17381,6 +17774,11 @@
         "bots": {
           "default": false,
           "description": "Bots: the `bots/*` methods and `bots/changed` (docs/kernel/bot-design.md §4).",
+          "type": "boolean"
+        },
+        "custom_endpoints": {
+          "default": false,
+          "description": "Services added by their address (docs/kernel/custom-endpoint-design.md §9): `providers/add`, `providers/update`, `providers/remove`, `models/configure`, `custom` on providers and `canonical` on models.",
           "type": "boolean"
         },
         "customize": {
@@ -21445,6 +21843,7 @@
     "-32045": "routines_unavailable",
     "-32046": "no_model",
     "-32047": "card_ended",
+    "-32048": "endpoint_unusable",
     "-32600": "invalid_request",
     "-32601": "method_not_found",
     "-32602": "invalid_params",
@@ -21904,6 +22303,14 @@
       "params": "MeshNewsParams",
       "result": "Empty"
     },
+    "models/catalog": {
+      "params": "ModelsCatalogParams",
+      "result": "ModelsCatalogResult"
+    },
+    "models/configure": {
+      "params": "ModelsConfigureParams",
+      "result": "ModelsConfigureResult"
+    },
     "models/list": {
       "result": "ModelsListResult"
     },
@@ -21926,6 +22333,18 @@
     "pptx/write": {
       "params": "PptxWriteParams",
       "result": "FilesWriteResult"
+    },
+    "providers/add": {
+      "params": "ProvidersAddParams",
+      "result": "ProvidersAddResult"
+    },
+    "providers/remove": {
+      "params": "ProviderIdParams",
+      "result": "Empty"
+    },
+    "providers/update": {
+      "params": "ProvidersUpdateParams",
+      "result": "ProvidersAddResult"
     },
     "resource/read": {
       "params": "ResourceReadParams",
@@ -22192,12 +22611,17 @@
       "mcp/tools": "stable",
       "mesh/host": "internal",
       "mesh/news": "internal",
+      "models/catalog": "experimental",
+      "models/configure": "experimental",
       "models/list": "stable",
       "models/refresh": "stable",
       "models/show": "stable",
       "pptx/metafile": "experimental",
       "pptx/read": "experimental",
       "pptx/write": "experimental",
+      "providers/add": "experimental",
+      "providers/remove": "experimental",
+      "providers/update": "experimental",
       "resource/read": "stable",
       "server/shutdown": "stable",
       "session/archive": "stable",

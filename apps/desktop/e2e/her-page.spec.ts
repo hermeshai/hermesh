@@ -6,7 +6,8 @@ import { fixture, launch, snap } from "./app";
 // Plan (her-mock in its place) connected as she asks; her avatar opens her page beside the conversation.
 // Under Abilities, her built-in skill is turned off and on and its page shows its SKILL.md; web search is switched
 // off, which its card says, and on again; Her is let control browsers and a site is set apart. Under Settings, the
-// Model page lists the plan connected, which opens its models; her Environment page opens the storage of her data.
+// Model page lists the plan connected, which opens its models, and a service of the owner's own, removed from its
+// page; her Environment page opens the storage of her data.
 // Every page has its way back to her page.
 
 test("Her's page: its tabs, and the pages its cards and rows open beside the conversation", async () => {
@@ -111,6 +112,17 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
   await expect(providerPage.locator('[data-testid^="her-model-shown-"]').first()).toBeVisible({ timeout: 30_000 });
   await snap(page, "her-page-provider");
   await providerPage.getByRole("button", { name: "返回" }).click();
+  // A service of the owner's own in work-mac's models.toml, added by its address with no key yet: listed by its host
+  // under API and custom services; its page offers its key, and removes it altogether (providers/remove).
+  const custom = models.getByTestId("her-provider-acme");
+  await expect(custom).toContainText(`Acme Gateway${new URL(fixture.modelService!).host}`);
+  await custom.click();
+  await expect(providerPage.getByRole("button", { name: "设置密钥…" })).toBeVisible();
+  await providerPage.getByTestId("her-provider-remove").click();
+  const removing = page.getByRole("dialog", { name: "移除 Acme Gateway？" });
+  await expect(removing).toContainText("移除后它的模型从菜单里消失，保存的密钥一并删除。");
+  await removing.getByRole("button", { name: "移除" }).click();
+  await expect(custom).toBeHidden({ timeout: 30_000 });
   await models.getByRole("button", { name: "返回" }).click();
 
   // Her environment, and the storage of her data there.

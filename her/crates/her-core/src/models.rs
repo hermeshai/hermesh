@@ -103,7 +103,31 @@ fn summary_of(llm: &ModelRegistry, model: &Model, meta: &ModelMeta, available: b
             cache_write: (model.cost.cache_write > 0.0).then_some(model.cost.cache_write),
             currency: model.currency,
         }),
+        canonical: meta.canonical.as_ref().map(|c| her_protocol::api::ModelCanonical { id: c.id.clone(), name: c.name.clone(), guessed: c.guessed }),
     }
+}
+
+/// How a custom endpoint is reached: its default protocol, then the others
+/// (docs/kernel/custom-endpoint-design.md §9).
+pub fn custom_endpoint(provider: &ProviderConfig) -> Option<her_protocol::api::CustomEndpoint> {
+    if !provider.custom {
+        return None;
+    }
+    let keyed = !matches!(provider.auth, AuthConfig::None);
+    let header = |api: &str, given: Option<her_llm::model::AuthHeader>| {
+        keyed.then(|| crate::custom_providers::header_name(given.unwrap_or_else(|| crate::custom_providers::usual_header(api))).to_string())
+    };
+    let mut protocols = vec![her_protocol::api::EndpointProtocol {
+        api: provider.api.clone(),
+        base_url: provider.base_url.clone(),
+        auth_header: header(&provider.api, provider.compat.auth_header),
+    }];
+    protocols.extend(provider.endpoints.iter().map(|(api, e)| her_protocol::api::EndpointProtocol {
+        api: api.clone(),
+        base_url: e.base_url.clone(),
+        auth_header: header(api, e.auth_header),
+    }));
+    Some(her_protocol::api::CustomEndpoint { base_url: provider.base_url.clone(), protocols })
 }
 
 
@@ -198,6 +222,7 @@ pub fn list(llm: &ModelRegistry, defaults: &SessionDefaults, refreshing: &dyn Fn
             credential_source,
             key_env: provider.auth.env_vars().to_vec(),
             listing: None,
+            custom: custom_endpoint(&provider),
         };
         if credential == CredentialState::Missing {
             providers.push(summary);

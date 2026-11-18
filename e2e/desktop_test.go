@@ -44,6 +44,9 @@ type desktopFixture struct {
 	// This Mac's her home, for the spec to change a file Her sent as her
 	// model would (empty when none).
 	HerHome string `json:"herHome,omitempty"`
+	// her-mock's model service, http://127.0.0.1:<port>, where a service
+	// added by its address answers under /gateway/v1 (empty when none).
+	ModelService string `json:"modelService,omitempty"`
 	// her's ChatGPT fixture, standing in for OpenAI, for the app to open
 	// its sign-in page (empty when none).
 	ChatGPT string `json:"chatgpt,omitempty"`
@@ -422,7 +425,10 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 		t.Fatal(err)
 	}
 	base := regexp.MustCompile(`base_url = "([^"]+)"`).FindStringSubmatch(mock.models)[1]
-	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n", base, base)), 0o600); err != nil {
+	// And a service of the owner's own, added by its address and given no key yet: it
+	// connects no model, and her-page.spec.ts finds it on the Model page and removes it.
+	models := fmt.Sprintf("[providers.deepseek]\nbase_url = %q\n\n[providers.tencent-token-plan]\nbase_url = %q\n\n[providers.acme]\nname = \"Acme Gateway\"\napi = \"openai-chat\"\nbase_url = %q\n", base, base, mock.base+"/gateway/v1")
+	if err := os.WriteFile(filepath.Join(workHome, "models.toml"), []byte(models), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Nor a key from this computer: work-mac's her has none of the provider
@@ -445,7 +451,7 @@ func desktopHerWorld(t *testing.T) desktopFixture {
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	t.Cleanup(daemon.stop)
 	w.joinTyped(work, home, "work-mac")
-	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, Connector: connector, HerHome: macHome, owner: w}
+	return desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv, OtherMac: daemon.cmd.Process.Pid, Connector: connector, HerHome: macHome, ModelService: mock.base, owner: w}
 }
 
 // desktopWorld is an owner Mac with a session in every state the app

@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::auth::AuthConfig;
+use crate::model::AuthHeader;
 use crate::model::CatalogThinking;
 use crate::model::Compat;
 use crate::model::DEFAULT_CONTEXT_WINDOW;
@@ -89,7 +90,26 @@ pub struct ProviderToml {
     pub models: Option<Vec<ModelToml>>,
     /// A subscription product, independent of its API-key authentication.
     pub plan: Option<PlanConfig>,
+    /// Other wire protocols the same service speaks, by `api`, with their prefixes
+    /// (docs/kernel/custom-endpoint-design.md §8).
+    pub endpoints: Option<BTreeMap<String, EndpointToml>>,
 }
+
+/// Where a service takes another protocol: its prefix, and the header its key goes in when that
+/// is not the protocol's usual one.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum EndpointToml {
+    Url(String),
+    Full {
+        base_url: String,
+        #[serde(default)]
+        auth_header: Option<AuthHeader>,
+    },
+}
+
+/// The wire protocols a service can be asked for.
+pub const KNOWN_APIS: &[&str] = &["openai-chat", "anthropic-messages", "openai-responses"];
 
 /// Product metadata. Endpoints and credentials still use the normal provider machinery.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -132,6 +152,9 @@ pub struct ModelToml {
     /// What the public catalog's row says about its thinking; never written by hand.
     #[serde(skip)]
     pub catalog_thinking: Option<CatalogThinking>,
+    /// The canonical model this one is like (`openai/gpt-4o`): its details apply, as when the
+    /// name finds it (docs/kernel/custom-endpoint-design.md §7.3).
+    pub canonical: Option<String>,
 }
 
 impl ModelToml {
@@ -142,7 +165,8 @@ impl ModelToml {
 
     /// Whether it says anything about what the model can do, beyond its name and price.
     pub fn describes_model(&self) -> bool {
-        self.context_window.is_some()
+        self.canonical.is_some()
+            || self.context_window.is_some()
             || self.max_output_tokens.is_some()
             || self.reasoning.is_some()
             || self.thinking.is_some()
@@ -187,6 +211,18 @@ pub struct ProviderConfig {
     pub compat: Compat,
     pub listing: Listing,
     pub plan: Option<PlanConfig>,
+    /// Other protocols the same service speaks, by `api` (custom-endpoint-design §5).
+    pub endpoints: BTreeMap<String, Endpoint>,
+    /// Added by the person in models.toml, not built in: a custom endpoint
+    /// (custom-endpoint-design §7.2).
+    pub custom: bool,
+}
+
+/// Another protocol of the same service.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Endpoint {
+    pub base_url: String,
+    pub auth_header: Option<AuthHeader>,
 }
 
 impl ProviderConfig {
@@ -358,6 +394,7 @@ impl Catalog {
     /// Built-in catalog merged with `user_file` when it exists.
     pub fn load(user_file: Option<&Path>) -> Result<Self, CatalogError> {
         let mut file = builtin_file()?;
+        let builtin: std::collections::BTreeSet<String> = file.providers.keys().cloned().collect();
         let mut origin = "builtin catalog".to_string();
         let mut warnings = Vec::new();
         if let Some(path) = user_file
@@ -374,8 +411,25 @@ impl Catalog {
             origin = origin_name;
         }
         let mut catalog = resolve(file, &origin)?;
+        for (id, provider) in catalog.providers.iter_mut() {
+            provider.custom = !builtin.contains(id);
+        }
         catalog.warnings = warnings;
         Ok(catalog)
+    }
+
+    /// Takes out the providers the person added (custom endpoints), which a running service
+    /// keeps as a source it can read again (custom-endpoint-design §8).
+    pub fn take_custom(&mut self) -> Vec<ProviderConfig> {
+        let ids: Vec<String> = self.providers.values().filter(|p| p.custom).map(|p| p.id.clone()).collect();
+        ids.iter().filter_map(|id| self.providers.remove(id)).collect()
+    }
+
+    /// The providers the person added in `user_file`, read again after it changed. Overrides of
+    /// built-in providers are not among them: those are read when the service starts.
+    pub fn custom_providers(user_file: &Path) -> Result<Vec<ProviderConfig>, CatalogError> {
+        let mut catalog = Self::load(Some(user_file))?;
+        Ok(catalog.take_custom())
     }
 
     pub fn from_toml(text: &str) -> Result<Self, CatalogError> {
@@ -456,6 +510,9 @@ fn merge_provider(base: &mut ProviderToml, over: ProviderToml) {
     if over.list_details.is_some() {
         base.list_details = over.list_details;
     }
+    if let Some(endpoints) = over.endpoints {
+        base.endpoints.get_or_insert_with(BTreeMap::new).extend(endpoints);
+    }
     if let Some(models) = over.models {
         let list = base.models.get_or_insert_with(Vec::new);
         for model in models {
@@ -477,7 +534,7 @@ pub(crate) fn merge_model(base: &mut ModelToml, over: ModelToml) {
             })*
         };
     }
-    take!(name, api, base_url, context_window, max_output_tokens, reasoning, thinking, default_thinking, thinking_budgets, input, catalog_thinking);
+    take!(name, api, base_url, context_window, max_output_tokens, reasoning, thinking, default_thinking, thinking_budgets, input, catalog_thinking, canonical);
     if over.cost.is_some() || over.currency.is_some() {
         base.cost = over.cost;
         base.currency = over.currency;
@@ -511,6 +568,19 @@ fn resolve(file: CatalogFile, origin: &str) -> Result<Catalog, CatalogError> {
                 },
             },
         };
+        let mut endpoints = BTreeMap::new();
+        for (other, endpoint) in p.endpoints.unwrap_or_default() {
+            if !KNOWN_APIS.contains(&other.as_str()) {
+                return Err(invalid(&format!("unknown api '{other}' in `endpoints`")));
+            }
+            let (base_url, auth_header) = match endpoint {
+                EndpointToml::Url(url) => (url, None),
+                EndpointToml::Full { base_url, auth_header } => (base_url, auth_header),
+            };
+            if other != api {
+                endpoints.insert(other, Endpoint { base_url, auth_header });
+            }
+        }
         let headers = p.headers.unwrap_or_default();
         let currency = p.currency.unwrap_or_default();
         let compat = p.compat.unwrap_or_default();
@@ -543,6 +613,8 @@ fn resolve(file: CatalogFile, origin: &str) -> Result<Catalog, CatalogError> {
                 details: p.list_details,
                 entries,
             },
+            endpoints,
+            custom: false,
         };
         providers.insert(id, config);
     }
@@ -585,7 +657,12 @@ mod tests {
         let mut envs = std::collections::BTreeSet::new();
         for p in &plans {
             assert!(p.auth.env_vars().iter().all(|env| envs.insert(env.clone())));
-            assert!(p.base_url.contains("/plan/") || p.base_url.contains("/coding/") || p.base_url.contains("token-plan."));
+            // Tencent's plan has its own host, tokenhub.tencentmaas.com (/v1 since 5fb4171).
+            assert!(
+                p.base_url.contains("/plan/") || p.base_url.contains("/coding/") || p.base_url.contains("token-plan.") || p.base_url.contains("tokenhub."),
+                "{}",
+                p.base_url
+            );
             assert!(p.listing.from.is_none(), "a plan never borrows a pay-as-you-go list");
         }
         for p in catalog.providers.values().filter(|p| p.plan.is_none()) {
@@ -621,6 +698,9 @@ mod tests {
 
             [[providers.my-vllm.models]]
             id = "qwen3-coder"
+
+            [[providers.my-vllm.models]]
+            id = "house-model-7"
             "#,
             "user",
         )
@@ -638,8 +718,15 @@ mod tests {
         assert_eq!(flash.max_output_tokens, Some(393_216));
         assert_eq!(flash.thinking, [ThinkingLevel::Off, ThinkingLevel::Low, ThinkingLevel::High, ThinkingLevel::Max]);
         assert_eq!(flash.compat.thinking_format, Some(ThinkingFormat::Deepseek));
-        let vllm = crate::directory::ModelDirectory::new(None).model(&catalog.providers["my-vllm"], "qwen3-coder").unwrap();
-        assert_eq!(vllm.max_output_tokens, None, "not known: left to the provider");
+        let directory = crate::directory::ModelDirectory::new(None);
+        let unknown = directory.model(&catalog.providers["my-vllm"], "house-model-7").unwrap();
+        assert_eq!(unknown.max_output_tokens, None, "not known: left to the provider");
+        // A name the canonical models know lends their details (custom-endpoint-design §6.2).
+        let coder = directory.models(&catalog.providers["my-vllm"]);
+        let coder = coder.get("qwen3-coder").unwrap();
+        assert_eq!(coder.meta.canonical.as_ref().map(|c| c.id.as_str()), Some("alibaba/qwen3-coder-480b-a35b-instruct"));
+        assert_eq!(coder.model.name, "qwen3-coder", "a gateway's name for the model stays");
+        assert!(coder.meta.known && coder.model.context_window > 128_000);
         assert_eq!(
             catalog.providers["my-vllm"].auth,
             AuthConfig::ApiKey {
@@ -647,6 +734,65 @@ mod tests {
                 value: None
             }
         );
+    }
+
+    #[test]
+    fn key_headers_are_taken_as_written_or_as_their_header_names() {
+        let catalog = Catalog::from_toml(
+            r#"
+[providers.gw]
+api = "openai-chat"
+base_url = "http://127.0.0.1:1/v1"
+compat = { auth_header = "api-key" }
+endpoints = { anthropic-messages = { base_url = "http://127.0.0.1:1", auth_header = "x-api-key" } }
+
+[providers.gw2]
+api = "openai-chat"
+base_url = "http://127.0.0.1:2/v1"
+compat = { auth_header = "x_api_key" }
+"#,
+        )
+        .unwrap();
+        assert_eq!(catalog.providers["gw"].compat.auth_header, Some(AuthHeader::ApiKey));
+        assert_eq!(catalog.providers["gw"].endpoints["anthropic-messages"].auth_header, Some(AuthHeader::XApiKey));
+        assert_eq!(catalog.providers["gw2"].compat.auth_header, Some(AuthHeader::XApiKey));
+    }
+
+    #[test]
+    fn the_persons_own_services_are_custom_and_read_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("models.toml");
+        std::fs::write(
+            &file,
+            r#"
+            [providers.deepseek]
+            base_url = "http://proxy.local/v1"
+
+            [providers.acme]
+            api = "openai-chat"
+            base_url = "https://llm.acme.example/v1"
+            endpoints = { anthropic-messages = "https://llm.acme.example", openai-responses = { base_url = "https://llm.acme.example/v1", auth_header = "api_key" } }
+            compat = { auth_header = "bearer" }
+
+            [[providers.acme.models]]
+            id = "prod-gpt"
+            canonical = "openai/gpt-4o"
+            "#,
+        )
+        .unwrap();
+        let mut catalog = Catalog::load(Some(&file)).unwrap();
+        assert!(catalog.providers["acme"].custom && !catalog.providers["deepseek"].custom);
+        let acme = &catalog.providers["acme"];
+        assert_eq!(acme.endpoints["anthropic-messages"], Endpoint { base_url: "https://llm.acme.example".into(), auth_header: None });
+        assert_eq!(acme.endpoints["openai-responses"].auth_header, Some(AuthHeader::ApiKey));
+        assert_eq!(acme.entry("prod-gpt").and_then(|e| e.canonical.as_deref()), Some("openai/gpt-4o"));
+        let custom = catalog.take_custom();
+        assert_eq!(custom.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["acme"]);
+        assert!(!catalog.providers.contains_key("acme") && catalog.providers.contains_key("deepseek"));
+        let again = Catalog::custom_providers(&file).unwrap();
+        assert_eq!(again.len(), 1);
+        std::fs::write(&file, "[providers.acme]\napi = \"openai-chat\"\nbase_url = \"x\"\nendpoints = { mystery = \"y\" }\n").unwrap();
+        assert!(Catalog::load(Some(&file)).unwrap_err().to_string().contains("mystery"));
     }
 
     #[test]

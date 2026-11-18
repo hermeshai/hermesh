@@ -199,10 +199,10 @@ enum Command {
         /// The model new sessions start on: writes `model` to your configuration
         #[arg(short, long)]
         model: Option<String>,
-        /// The address of a compatible service of your own: writes it to models.toml
+        /// The address of a service of your own: finds out what it speaks and writes it to models.toml
         #[arg(long, value_name = "URL")]
         base_url: Option<String>,
-        /// What the service speaks (default: openai-chat)
+        /// Use only this protocol: openai-chat, anthropic-messages or openai-responses
         #[arg(long, value_name = "API", requires = "base_url")]
         api: Option<String>,
         /// The service takes no key
@@ -215,6 +215,9 @@ enum Command {
         /// For chatgpt: also forget this registration, so another account can sign in
         #[arg(long)]
         forget: bool,
+        /// For a service added by its address: remove it, with its key and model list
+        #[arg(long, conflicts_with = "forget")]
+        remove: bool,
     },
     /// List, rename and remove sessions
     ///
@@ -744,6 +747,32 @@ pub(crate) enum ModelsAction {
         /// provider/model-id
         model: String,
     },
+    /// Say what a model of your own service is like, when its name finds nothing
+    Set {
+        /// provider/model-id
+        model: String,
+        /// A model in the public catalog it is like (`openai/gpt-4o`): its details apply
+        #[arg(long, value_name = "MODEL")]
+        like: Option<String>,
+        /// Its context window, as 131072, 128k or 1m
+        #[arg(long, value_name = "TOKENS")]
+        context: Option<String>,
+        /// Whether it takes images
+        #[arg(long, value_name = "on|off")]
+        images: Option<OnOff>,
+        /// Whether it thinks
+        #[arg(long, value_name = "on|off")]
+        reasoning: Option<OnOff>,
+        /// Forget what was said about it: it is found by its name again
+        #[arg(long, conflicts_with_all = ["like", "context", "images", "reasoning"])]
+        clear: bool,
+    },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+pub(crate) enum OnOff {
+    On,
+    Off,
 }
 
 #[derive(Subcommand)]
@@ -889,7 +918,11 @@ async fn run(overrides: &[String], command: Command) -> anyhow::Result<u8> {
         Command::Login { provider, key_stdin, model, base_url, api, no_key } => {
             cmd_login::login(overrides, cmd_login::LoginArgs { provider, key_stdin, model, base_url, api, no_key }).await
         }
-        Command::Logout { provider, forget } => cmd_login::logout(overrides, &provider, forget).await,
+        Command::Logout { provider, forget, remove } => cmd_login::logout(overrides, &provider, forget, remove).await,
+        Command::Models { action: Some(ModelsAction::Set { model, like, context, images, reasoning, clear }), .. } => {
+            let on = |v: Option<OnOff>| v.map(|v| matches!(v, OnOff::On));
+            cmd_login::configure_model(overrides, cmd_login::SetModel { model, like, context, images: on(images), reasoning: on(reasoning), clear }).await
+        }
         Command::Models { action: Some(ModelsAction::Check { model, json }), .. } => cmd_check::check(overrides, model, json).await,
         Command::Doctor { json, strict, online: true } => {
             let online = cmd_info::online_check(overrides).await;
@@ -1218,7 +1251,7 @@ fn main() -> ExitCode {
         Command::Models { list, action: None } | Command::Models { action: Some(ModelsAction::List(list)), .. } => {
             cmd_info::models(&overrides, list.provider.as_deref(), list.all, list.refresh, list.json, None)
         }
-        Command::Models { action: Some(ModelsAction::Check { .. }), .. } => run_async(&overrides, command),
+        Command::Models { action: Some(ModelsAction::Check { .. } | ModelsAction::Set { .. }), .. } => run_async(&overrides, command),
         Command::Models { action, .. } => cmd_info::models(&overrides, None, false, false, false, action),
         Command::Status { json } => cmd_info::status(&overrides, json),
         Command::Doctor { json, strict, online: false } => cmd_info::doctor(&overrides, json, strict, None),

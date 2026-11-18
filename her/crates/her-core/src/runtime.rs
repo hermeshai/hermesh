@@ -272,6 +272,15 @@ fn shared_tools(config: &Config) -> Result<Arc<ToolRegistry>, RuntimeError> {
     Ok(tools)
 }
 
+/// Reads the person's own services from `models.toml` again, after it changed
+/// (docs/kernel/custom-endpoint-design.md §8). Overrides of built-in providers are read at start.
+pub fn reload_custom(home: &HerHome, llm: &ModelRegistry) -> Result<(), String> {
+    let custom = Catalog::custom_providers(&home.models_file()).map_err(|e| e.to_string())?;
+    llm.replace_custom(custom)?;
+    llm.directory().invalidate();
+    Ok(())
+}
+
 /// The built-in catalog merged with `models.toml`, with the timeouts and retries of `config`.
 pub fn model_registry(home: &HerHome, config: &Config) -> Result<ModelRegistry, RuntimeError> {
     let catalog = Catalog::load(Some(&home.models_file()))?;

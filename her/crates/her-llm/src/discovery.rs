@@ -13,6 +13,7 @@ use crate::error::ErrorKind;
 use crate::error::LlmError;
 use crate::model::AuthHeader;
 use crate::model::ModelCost;
+use crate::public_catalog::ReasoningOption;
 
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 const DETAILS_TIMEOUT: Duration = Duration::from_secs(2);
@@ -44,6 +45,22 @@ pub struct ListedModel {
     /// US dollars per million tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
+    /// Other names the list gives the model: an alias's target, a Hugging Face repo, a deployment's
+    /// base (docs/kernel/custom-endpoint-design.md §6.3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alt_names: Vec<String>,
+    /// The protocols the list says the model takes, as her names them (§5).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub protocols: Vec<String>,
+    /// How its thinking is controlled, when the list says (§6.5).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_options: Vec<ReasoningOption>,
+    /// `false`: the list says it is no chat model (an embedding model, say).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<bool>,
+    /// Who the list says serves it (`owned_by`): `llamacpp` has its running window at `/props`.
+    #[serde(skip)]
+    pub owner: Option<String>,
 }
 
 impl ListedModel {
@@ -186,11 +203,8 @@ pub async fn fetch(http: &reqwest::Client, provider: &ProviderConfig, credential
         }
         let mut request = http.get(&url).timeout(LIST_TIMEOUT).header(reqwest::header::ACCEPT, "application/json");
         if let Some(key) = &credentials.api_key {
-            request = if anthropic && provider.compat.auth_header.unwrap_or(AuthHeader::XApiKey) == AuthHeader::XApiKey {
-                request.header("x-api-key", key)
-            } else {
-                request.bearer_auth(key)
-            };
+            let default = if anthropic { AuthHeader::XApiKey } else { AuthHeader::Bearer };
+            request = provider.compat.auth_header.unwrap_or(default).apply(request, key);
         }
         if anthropic {
             request = request.header("anthropic-version", ANTHROPIC_VERSION);
@@ -220,14 +234,18 @@ pub async fn fetch(http: &reqwest::Client, provider: &ProviderConfig, credential
             break;
         }
     }
-    if provider.listing.details.as_deref() == Some("ollama") {
-        ollama_details(http, base, &mut models).await;
+    match provider.listing.details.as_deref() {
+        Some("ollama") => ollama_details(http, base, &mut models).await,
+        Some("lmstudio") => lmstudio_details(http, base, &mut models).await,
+        Some("llamacpp") => llamacpp_details(http, base, &mut models).await,
+        _ if models.iter().any(|m| m.owner.as_deref() == Some("llamacpp")) => llamacpp_details(http, base, &mut models).await,
+        _ => {}
     }
     Ok(Listed::Models(models))
 }
 
 /// Adds the entries of one page: `{"data": [...]}`, a bare array, or Ollama's `{"models": [...]}`.
-fn parse_page(page: &Value, models: &mut Vec<ListedModel>) -> Result<(), LlmError> {
+pub(crate) fn parse_page(page: &Value, models: &mut Vec<ListedModel>) -> Result<(), LlmError> {
     let items = page
         .get("data")
         .or_else(|| page.get("models"))
@@ -250,9 +268,70 @@ fn parse_page(page: &Value, models: &mut Vec<ListedModel>) -> Result<(), LlmErro
     Ok(())
 }
 
-/// The details some lists carry (OpenRouter: window, output limit, prices, modalities, tools).
+/// Kinds a list may give that are not chat models.
+const NOT_CHAT_KINDS: &[&str] = &[
+    "embedding", "embeddings", "embed", "image", "video", "speech", "audio", "transcription", "reranking", "rerank",
+    "realtime", "moderation",
+];
+
+/// A count from a number or a numeric string; zero means unknown.
+fn count(v: &Value) -> Option<u32> {
+    let n = v.as_u64().or_else(|| v.as_f64().filter(|f| f.is_finite() && *f >= 1.0).map(|f| f as u64)).or_else(|| v.as_str()?.trim().parse().ok())?;
+    (n > 0).then(|| n.min(u64::from(u32::MAX)) as u32)
+}
+
+/// A yes or no: a boolean, or an object that says `supported`.
+fn flag(v: &Value) -> Option<bool> {
+    v.as_bool().or_else(|| v.get("supported").and_then(Value::as_bool))
+}
+
+/// How thinking is controlled, from the shapes lists use (§6.5): the catalog's own
+/// `reasoning_options` (Vercel AI Gateway), Anthropic's `capabilities.thinking` and
+/// `capabilities.effort`, OpenRouter's `reasoning.supported_efforts`.
+fn reasoning_options_of(item: &Value) -> Vec<ReasoningOption> {
+    if let Ok(options) = crate::public_catalog::reasoning_options(item.get("reasoning_options"))
+        && !options.is_empty()
+    {
+        return options;
+    }
+    let mut out = Vec::new();
+    let named = |v: Option<&Value>| -> Vec<String> {
+        match v {
+            Some(Value::Array(items)) => items.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+            Some(Value::Object(map)) => map.iter().filter(|(_, v)| flag(v) == Some(true)).map(|(k, _)| k.clone()).collect(),
+            _ => Vec::new(),
+        }
+    };
+    if let Some(types) = item.pointer("/capabilities/thinking/types") {
+        if types.get("disabled").and_then(flag) == Some(true) {
+            out.push(ReasoningOption::Toggle);
+        }
+        if types.get("enabled").and_then(flag) == Some(true) {
+            out.push(ReasoningOption::BudgetTokens { min: None, max: None });
+        }
+    }
+    let mut efforts: Vec<String> = named(item.pointer("/capabilities/effort"))
+        .into_iter()
+        .chain(named(item.pointer("/reasoning/supported_efforts")))
+        .filter(|e| e != "supported")
+        .collect();
+    // Weakest first: an object's keys come sorted or as sent, depending on how serde_json was built.
+    const WEAKEST_FIRST: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+    efforts.sort_by_key(|e| WEAKEST_FIRST.iter().position(|w| w == e).unwrap_or(WEAKEST_FIRST.len()));
+    efforts.dedup();
+    if !efforts.is_empty() {
+        out.push(ReasoningOption::Effort { values: efforts });
+    }
+    out
+}
+
+/// The details a list item carries, in the fields the services use (§6.5).
 fn listed(id: &str, item: &Value) -> ListedModel {
-    let u32_of = |v: Option<&Value>| v.and_then(Value::as_u64).filter(|n| *n > 0).map(|n| n.min(u64::from(u32::MAX)) as u32);
+    let at = |path: &str| item.pointer(path);
+    let first_count = |paths: &[&str]| paths.iter().find_map(|p| at(p).and_then(count));
+    let strings = |path: &str| -> Vec<String> {
+        at(path).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_ascii_lowercase).collect()).unwrap_or_default()
+    };
     let per_million = |key: &str| {
         item.get("pricing")
             .and_then(|p| p.get(key))
@@ -266,8 +345,76 @@ fn listed(id: &str, item: &Value) -> ListedModel {
         cache_read: per_million("input_cache_read").unwrap_or(0.0),
         cache_write: per_million("input_cache_write").unwrap_or(0.0),
     });
-    let modalities = item.get("architecture").and_then(|a| a.get("input_modalities")).and_then(Value::as_array);
-    let parameters = item.get("supported_parameters").and_then(Value::as_array);
+    let context = first_count(&[
+        "/context_length", "/context_window", "/max_context_length", "/max_model_len", "/max_input_tokens", "/inputTokenLimit",
+        "/metadata/context_length", "/top_provider/context_length", "/meta/n_ctx_train",
+    ]);
+    // `max_tokens` means the output limit on some lists and the window on others: only smaller
+    // than the window does it say the former.
+    let output = first_count(&["/max_output_tokens", "/max_completion_tokens", "/outputTokenLimit", "/top_provider/max_completion_tokens"])
+        .or_else(|| first_count(&["/max_tokens", "/metadata/max_tokens"]).filter(|m| context.is_some_and(|c| *m < c)));
+    let mut tags = strings("/tags");
+    tags.extend(strings("/metadata/tags"));
+    let tagged = |t: &str| tags.iter().any(|x| x == t).then_some(true);
+    let parameters = strings("/supported_parameters");
+    let listed_caps = strings("/capabilities");
+    let in_caps = |c: &str| (!listed_caps.is_empty()).then(|| listed_caps.iter().any(|x| x == c));
+    let cap = |path: &str| at(path).and_then(flag);
+    let mut modalities = strings("/architecture/input_modalities");
+    modalities.extend(strings("/modalities/input"));
+    let images = (!modalities.is_empty())
+        .then(|| modalities.iter().any(|m| m == "image"))
+        .or_else(|| cap("/capabilities/image_input"))
+        .or_else(|| cap("/capabilities/vision"))
+        .or_else(|| in_caps("vision"))
+        .or_else(|| cap("/supports_vision"))
+        .or_else(|| tagged("vision"));
+    let tool_call = (!parameters.is_empty())
+        .then(|| parameters.iter().any(|p| p == "tools"))
+        .or_else(|| cap("/capabilities/function_calling"))
+        .or_else(|| cap("/capabilities/trained_for_tool_use"))
+        .or_else(|| in_caps("tools"))
+        .or_else(|| cap("/supports_function_calling"))
+        .or_else(|| tagged("tool-use"));
+    let reasoning_options = reasoning_options_of(item);
+    let reasoning = (!reasoning_options.is_empty())
+        .then_some(true)
+        .or_else(|| (!parameters.is_empty()).then(|| parameters.iter().any(|p| p == "reasoning")))
+        .or_else(|| tagged("reasoning"))
+        .or_else(|| cap("/capabilities/thinking"))
+        .or_else(|| at("/capabilities/reasoning").filter(|v| v.is_object()).map(|_| true))
+        .or_else(|| cap("/capabilities/reasoning"))
+        .or_else(|| in_caps("thinking"))
+        .or_else(|| cap("/supports_reasoning"))
+        .or_else(|| at("/thinking").and_then(Value::as_bool));
+    let kind = item.get("type").and_then(Value::as_str).map(str::to_ascii_lowercase);
+    let chat = match kind.as_deref() {
+        Some(k) if NOT_CHAT_KINDS.contains(&k) => Some(false),
+        _ => match item.get("mode").and_then(Value::as_str) {
+            Some(mode) => Some(mode == "chat" || mode == "responses"),
+            None => in_caps("completion"),
+        },
+    };
+    let protocols = strings("/supported_endpoint_types")
+        .iter()
+        .filter_map(|t| match t.as_str() {
+            "openai" => Some("openai-chat"),
+            "anthropic" => Some("anthropic-messages"),
+            "openai-response" | "openai-responses" => Some("openai-responses"),
+            _ => None,
+        })
+        .map(str::to_string)
+        .collect();
+    let mut alt_names: Vec<String> = Vec::new();
+    for key in ["alias_target", "hugging_face_id", "root", "baseModelId"] {
+        if let Some(name) = item.get(key).and_then(Value::as_str).map(|n| n.strip_prefix("models/").unwrap_or(n))
+            && valid_id(name)
+            && name != id
+            && !alt_names.iter().any(|a| a == name)
+        {
+            alt_names.push(name.to_string());
+        }
+    }
     let name = item
         .get("display_name")
         .or_else(|| item.get("name").filter(|_| item.get("id").is_some()))
@@ -277,18 +424,71 @@ fn listed(id: &str, item: &Value) -> ListedModel {
     ListedModel {
         id: id.to_string(),
         name,
-        context_window: u32_of(item.get("context_length")),
-        max_output_tokens: u32_of(item.get("top_provider").and_then(|t| t.get("max_completion_tokens"))),
-        reasoning: parameters.map(|p| p.iter().any(|v| v == "reasoning")),
-        images: modalities.map(|m| m.iter().any(|v| v == "image")),
-        tool_call: parameters.map(|p| p.iter().any(|v| v == "tools")),
+        context_window: context,
+        max_output_tokens: output,
+        reasoning,
+        images,
+        tool_call,
         cost,
+        alt_names,
+        protocols,
+        reasoning_options,
+        chat,
+        owner: item.get("owned_by").and_then(Value::as_str).map(str::to_string),
+    }
+}
+
+/// The root of a server whose list is under `/v1`.
+fn server_root(base: &str) -> &str {
+    base.strip_suffix("/v1").unwrap_or(base)
+}
+
+/// LM Studio says each model's window, the loaded one first, and what it can do at
+/// `/api/v1/models`.
+async fn lmstudio_details(http: &reqwest::Client, base: &str, models: &mut [ListedModel]) {
+    let Ok(response) = http.get(format!("{}/api/v1/models", server_root(base))).timeout(DETAILS_TIMEOUT).send().await else {
+        return;
+    };
+    let Ok(page) = response.json::<Value>().await else { return };
+    let items = page.get("models").or_else(|| page.get("data")).or(Some(&page)).and_then(Value::as_array).cloned().unwrap_or_default();
+    for item in items {
+        let Some(key) = item.get("key").or_else(|| item.get("id")).and_then(Value::as_str) else { continue };
+        let Some(model) = models.iter_mut().find(|m| m.id == key) else { continue };
+        let loaded = item.pointer("/loaded_instances/0/config/context_length").and_then(count);
+        if let Some(window) = loaded.or_else(|| item.get("max_context_length").and_then(count)) {
+            model.context_window = Some(window);
+        }
+        if let Some(vision) = item.pointer("/capabilities/vision").and_then(flag) {
+            model.images = Some(vision);
+        }
+        if let Some(tools) = item.pointer("/capabilities/trained_for_tool_use").and_then(flag) {
+            model.tool_call = Some(tools);
+        }
+        if item.pointer("/capabilities/reasoning").is_some_and(|r| r.is_object() || r.as_bool() == Some(true)) {
+            model.reasoning = Some(true);
+        }
+        if let Some(kind) = item.get("type").and_then(Value::as_str) {
+            model.chat = Some(!NOT_CHAT_KINDS.contains(&kind));
+        }
+    }
+}
+
+/// llama.cpp runs one window for the server, at `/props`: it beats the trained one in its list.
+async fn llamacpp_details(http: &reqwest::Client, base: &str, models: &mut [ListedModel]) {
+    let Ok(response) = http.get(format!("{}/props", server_root(base))).timeout(DETAILS_TIMEOUT).send().await else {
+        return;
+    };
+    let Ok(props) = response.json::<Value>().await else { return };
+    if let Some(window) = props.pointer("/default_generation_settings/n_ctx").and_then(count) {
+        for model in models.iter_mut() {
+            model.context_window = Some(window);
+        }
     }
 }
 
 /// Ollama tells each local model's window and abilities through `/api/show`.
 async fn ollama_details(http: &reqwest::Client, base: &str, models: &mut [ListedModel]) {
-    let root = base.strip_suffix("/v1").unwrap_or(base);
+    let root = server_root(base);
     for model in models.iter_mut() {
         let response = http
             .post(format!("{root}/api/show"))
@@ -356,6 +556,49 @@ mod tests {
         assert_eq!((m.images, m.tool_call, m.reasoning), (Some(true), Some(true), Some(true)));
         let bare = listed("x", &json!({"id": "x", "object": "model"}));
         assert!(!bare.has_details());
+    }
+
+    #[test]
+    fn details_in_the_fields_each_service_uses() {
+        // Vercel AI Gateway: window, output, tags, the catalog's own thinking shape.
+        let vercel = listed("anthropic/claude-sonnet-4.5", &json!({
+            "id": "anthropic/claude-sonnet-4.5", "context_window": 1000000, "max_tokens": 64000, "type": "language",
+            "tags": ["reasoning", "tool-use", "vision"], "modalities": {"input": ["text", "image"], "output": ["text"]},
+            "reasoning_options": [{"type": "toggle"}, {"type": "budget_tokens", "min": 1024}]
+        }));
+        assert_eq!((vercel.context_window, vercel.max_output_tokens), (Some(1_000_000), Some(64_000)));
+        assert_eq!((vercel.images, vercel.tool_call, vercel.reasoning), (Some(true), Some(true), Some(true)));
+        assert_eq!(vercel.reasoning_options.len(), 2);
+        // DeepInfra: its max_tokens is the window, not an output limit.
+        let deepinfra = listed("Qwen/Qwen3.5-9B", &json!({
+            "id": "Qwen/Qwen3.5-9B", "root": "Qwen/Qwen3.5-9B",
+            "metadata": {"context_length": 262144, "max_tokens": 262144, "tags": ["chat", "vision", "reasoning"]}
+        }));
+        assert_eq!((deepinfra.context_window, deepinfra.max_output_tokens), (Some(262_144), None));
+        assert_eq!((deepinfra.images, deepinfra.reasoning), (Some(true), Some(true)));
+        assert!(deepinfra.alt_names.is_empty(), "the same name is no other name");
+        // Anthropic's list: limits and capabilities.
+        let anthropic = listed("claude-opus-5-5", &json!({
+            "id": "claude-opus-5-5", "type": "model", "display_name": "Claude Opus 5.5", "max_input_tokens": 1000000, "max_tokens": 128000,
+            "capabilities": {"image_input": {"supported": true},
+                "thinking": {"supported": true, "types": {"adaptive": {"supported": true}, "enabled": {"supported": false}, "disabled": {"supported": false}}},
+                "effort": {"low": {"supported": true}, "high": {"supported": true}, "max": {"supported": true}}}
+        }));
+        assert_eq!((anthropic.context_window, anthropic.max_output_tokens), (Some(1_000_000), Some(128_000)));
+        assert_eq!(anthropic.images, Some(true));
+        assert_eq!(anthropic.reasoning_options, [ReasoningOption::Effort { values: vec!["low".into(), "high".into(), "max".into()] }]);
+        // New API: which protocols each model takes; OpenRouter: what an alias points at; vLLM: the base.
+        let relay = listed("claude-sonnet-4-5", &json!({"id": "claude-sonnet-4-5", "owned_by": "custom", "supported_endpoint_types": ["anthropic", "openai"]}));
+        assert_eq!(relay.protocols, ["anthropic-messages", "openai-chat"]);
+        let alias = listed("~anthropic/claude-opus-latest", &json!({"id": "~anthropic/claude-opus-latest", "alias_target": "anthropic/claude-opus-5.5", "hugging_face_id": ""}));
+        assert_eq!(alias.alt_names, ["anthropic/claude-opus-5.5"]);
+        let vllm = listed("my-coder", &json!({"id": "my-coder", "owned_by": "vllm", "root": "Qwen/Qwen3-Coder-30B-A3B-Instruct", "max_model_len": 65536}));
+        assert_eq!((vllm.context_window, vllm.alt_names.as_slice()), (Some(65_536), ["Qwen/Qwen3-Coder-30B-A3B-Instruct".to_string()].as_slice()));
+        // Not chat models.
+        assert_eq!(listed("e", &json!({"id": "e", "type": "embedding"})).chat, Some(false));
+        assert_eq!(listed("m", &json!({"id": "m", "mode": "embedding"})).chat, Some(false));
+        assert_eq!(listed("l", &json!({"id": "l", "type": "llm"})).chat, None);
+        assert_eq!(listed("x", &json!({"id": "x", "owned_by": "llamacpp", "meta": {"n_ctx_train": 131072}})).context_window, Some(131_072));
     }
 
     #[test]

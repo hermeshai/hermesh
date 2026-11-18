@@ -2,6 +2,11 @@
 
 include!("catalog/makers.rs");
 
+#[allow(dead_code)]
+mod rules {
+    include!("catalog/name_rules.rs");
+}
+
 fn main() {
     println!("cargo:rerun-if-changed=catalog/builtin.toml");
     println!("cargo:rerun-if-changed=catalog/makers.rs");
@@ -34,4 +39,23 @@ fn main() {
         format!("const MAKER_NAME_HASHES: [u32; {}] = {hashes:?};\n", hashes.len()),
     )
     .expect("write the makers' model ids");
+    // The alias table's names and their squashed forms, the same way: a gateway's name the table
+    // cannot know costs one lookup (docs/kernel/custom-endpoint-design.md §6.2).
+    let text = std::fs::read_to_string("catalog/public/_aliases.json").expect("read the alias table");
+    let file: serde_json::Value = serde_json::from_str(&text).expect("parse the alias table");
+    let mut hashes: Vec<u32> = Vec::new();
+    for entry in file["names"].as_array().expect("its names") {
+        let name = entry[0].as_str().expect("a name");
+        hashes.push(model_name_hash(name));
+        if !entry[1].is_null() {
+            hashes.push(model_name_hash(&rules::squash(name)));
+        }
+    }
+    hashes.sort_unstable();
+    hashes.dedup();
+    std::fs::write(
+        output.join("alias-names.rs"),
+        format!("static ALIAS_NAME_HASHES: [u32; {}] = {hashes:?};\n", hashes.len()),
+    )
+    .expect("write the alias table's names");
 }

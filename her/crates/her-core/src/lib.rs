@@ -17,6 +17,7 @@ pub mod config;
 pub mod config_edit;
 pub mod connect;
 pub mod connectors;
+pub mod custom_providers;
 pub mod context;
 pub mod context_report;
 mod deck;

@@ -32,15 +32,20 @@ test("an environment set up from its console", async ({ page }) => {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(site.url);
 
+  // The mock's service is in models.toml without a key: a service of the person's own, listed as
+  // one; its key is set from its models, and her asks the service again with it.
   await test.step("an API key connects a model service, on the page the console opens on", async () => {
     await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("button", { name: "Models", exact: true })).toHaveAttribute("aria-current", "page");
-    await page.getByRole("button", { name: "Add API Service" }).click();
-    const sheet = page.getByRole("dialog", { name: "Add API Service" });
-    await sheet.locator(".provider-choice", { hasText: "Mock" }).click();
+    const row = page.locator(".mrow", { hasText: "Mock" });
+    await row.getByRole("button", { name: "Manage Models" }).click();
+    const manage = page.getByRole("dialog", { name: /Mock/ });
+    await manage.getByRole("button", { name: "Set Key…" }).click();
+    const sheet = page.getByRole("dialog", { name: "Set Key" });
     await sheet.getByLabel("API Key").fill("sk-e2e");
     await sheet.getByRole("button", { name: "Save" }).click();
     await expect(sheet).toBeHidden();
-    await expect(page.locator(".mrow", { hasText: "Mock" })).toContainText("Credential store");
+    await expect(page.getByText("Key saved")).toBeVisible();
+    await expect(row).toContainText(new URL(site.modelUrl).host);
   });
 
   await test.step("a connector added by address, checked, its tools listed", async () => {
@@ -227,6 +232,78 @@ test("an environment set up from its console", async ({ page }) => {
     await expect.poll(() => read("config.toml")).toContain('"https://docs.example.org" = "navigate"');
   });
 
+  expect(errors).toEqual([]);
+});
+
+// A service added by its address (her/docs/kernel/custom-endpoint-design.md §3.1), as the owner
+// adds one: only its address; her probes her-mock's gateway, which speaks Chat Completions and
+// Anthropic Messages and lists a Claude model, the mock's own and one nothing describes.
+test("a custom service added by its address, described, checked again and removed", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  const address = `${site.modelUrl}/gateway/v1`;
+  const host = new URL(site.modelUrl).host;
+  await page.goto(site.url);
+  await nav(page, "Models");
+
+  await test.step("an address nothing answers at is not saved, and the form says why", async () => {
+    await page.getByRole("button", { name: "Add a Service" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add a Service" });
+    await sheet.locator(".provider-choice", { hasText: "Custom Service" }).click();
+    await sheet.getByLabel("Address").fill("http://127.0.0.1:9/v1");
+    await sheet.getByRole("button", { name: "Connect" }).click();
+    await expect(sheet.getByRole("alert")).toContainText("Cannot reach this address");
+    await sheet.getByRole("button", { name: "Close" }).click();
+    expect(read("models.toml")).not.toContain("127.0.0.1:9");
+  });
+
+  await test.step("the address alone is enough: her finds its protocols and models", async () => {
+    await page.getByRole("button", { name: "Add a Service" }).click();
+    const sheet = page.getByRole("dialog", { name: "Add a Service" });
+    await sheet.locator(".provider-choice", { hasText: "Custom Service" }).click();
+    await sheet.getByLabel("Address").fill(address);
+    await sheet.getByLabel("Name").fill("Acme Gateway");
+    await sheet.getByRole("button", { name: "Connect" }).click();
+    const added = sheet.getByTestId("custom-added");
+    await expect(added).toContainText("Acme Gateway");
+    await expect(added).toContainText(/Found 3 models, \d with known details/);
+    await expect(added).toContainText("Protocols: OpenAI Chat Completions, Anthropic Messages");
+    await expect(added).toContainText("Claude models use Anthropic Messages, the others Chat Completions");
+    await sheet.getByRole("button", { name: "Done" }).click();
+    await expect(sheet).toBeHidden();
+    await expect(page.locator(".mrow", { hasText: "Acme Gateway" })).toContainText(host);
+    expect(read("models.toml")).toContain(address);
+  });
+
+  await test.step("a model nothing describes is told which model it is like", async () => {
+    await page.locator(".mrow", { hasText: "Acme Gateway" }).getByRole("button", { name: "Manage Models" }).click();
+    const manage = page.getByRole("dialog", { name: /Acme Gateway/ });
+    const house = manage.locator(".mm-row", { hasText: "house-model-7" });
+    await expect(house).toContainText("Details unknown");
+    await house.getByRole("button", { name: "Set Details" }).click();
+    await house.getByLabel("Which model is it like").fill("gpt-4o");
+    await house.locator(".mm-suggest-row").first().click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    await expect(house).toContainText(/Like GPT-4o/);
+    await expect(house).not.toContainText("Details unknown");
+    expect(read("models.toml")).toMatch(/canonical = "openai\/gpt-4o/);
+
+    await manage.getByText("Connection details").click();
+    await expect(manage.locator(".plan-details dd").first()).toHaveText(address);
+    await manage.getByRole("button", { name: "Check Again" }).click();
+    await expect(page.getByText("Checked again")).toBeVisible();
+    await manage.getByRole("button", { name: "Close" }).click();
+  });
+
+  await test.step("removed, it leaves the list and models.toml", async () => {
+    const row = page.locator(".mrow", { hasText: "Acme Gateway" });
+    await row.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(row).toContainText("Its models leave the menu");
+    await expect(row.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await row.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(row).toBeHidden();
+    expect(read("models.toml")).not.toContain(address);
+  });
   expect(errors).toEqual([]);
 });
 

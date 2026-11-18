@@ -65,7 +65,11 @@
 
 pub mod mcp;
 pub mod mcp_auth;
+mod gateways;
 pub mod search;
+
+pub use gateways::GATEWAY_KEY;
+pub use gateways::Gateway;
 pub mod simulation;
 
 use parking_lot::Mutex;
@@ -95,6 +99,10 @@ pub const REJECTED_KEY: &str = "sk-rejected";
 /// a routing name and models that do not chat included.
 const BAILIAN_PLAN_MODELS: &[&str] = &["qwen3.8-max", "qwen3.7-max", "glm-5.3", "deepseek-v4.1-flash-1017", "wan2.7-image", "auto"];
 
+/// A gateway added by its address (`…/gateway`): a Claude model, the mock's own, and one nobody
+/// describes (docs/kernel/custom-endpoint-design.md).
+const GATEWAY_MODELS: &[&str] = &["claude-sonnet-4-5", MODEL_ID, "house-model-7"];
+
 #[derive(Default)]
 pub struct Stats {
     pub requests: AtomicU64,
@@ -114,6 +122,8 @@ pub struct Stats {
     pub catalog_fetches: AtomicU64,
     /// What the latest chat requests asked for, all but their messages and tools.
     chat_controls: Mutex<VecDeque<Value>>,
+    /// Anthropic Messages requests (`…/v1/messages`).
+    pub messages_requests: AtomicU64,
 }
 
 impl Stats {
@@ -171,6 +181,8 @@ pub struct MockServer {
     accept: tokio::task::JoinHandle<()>,
     addr: SocketAddr,
     shared: Arc<Shared>,
+    /// Gateways started by [`MockServer::gateway`], each on its own port.
+    gateways: Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl MockServer {
@@ -203,7 +215,27 @@ impl MockServer {
                 tokio::spawn(serve_connection(stream, accept_shared.clone()));
             }
         });
-        Ok(MockServer { addr, shared, accept })
+        Ok(MockServer { addr, shared, accept, gateways: Mutex::new(Vec::new()) })
+    }
+
+    /// Starts a service of `kind` on a port of its own, as a real one has a host of its own (a
+    /// probe also tries paths at the host's root), answering from this mock and counted in its
+    /// stats. Returns the root: `http://127.0.0.1:PORT`.
+    pub async fn gateway(&self, kind: Gateway) -> io::Result<String> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let shared = self.shared.clone();
+        let accept = tokio::spawn(async move {
+            loop {
+                let Ok((stream, _)) = listener.accept().await else {
+                    continue;
+                };
+                let _ = stream.set_nodelay(true);
+                tokio::spawn(serve_gateway(stream, shared.clone(), kind));
+            }
+        });
+        self.gateways.lock().push(accept);
+        Ok(format!("http://{addr}"))
     }
 
     pub fn addr(&self) -> SocketAddr {
@@ -264,7 +296,12 @@ cost = {{ input = 1.0, output = 2.0, cache_read = 0.1 }}
 }
 
 impl Drop for MockServer {
-    fn drop(&mut self) { self.accept.abort(); }
+    fn drop(&mut self) {
+        self.accept.abort();
+        for gateway in self.gateways.lock().drain(..) {
+            gateway.abort();
+        }
+    }
 }
 
 struct Request {
@@ -273,8 +310,45 @@ struct Request {
     body: Vec<u8>,
     close: bool,
     authorization: Option<String>,
-    /// `X-Subscription-Token` or `X-Api-Key`.
+    /// `X-Subscription-Token`, `X-Api-Key` or `Api-Key`.
     token: Option<String>,
+    x_api_key: Option<String>,
+    api_key: Option<String>,
+}
+
+impl Request {
+    /// Whether it carries [`REJECTED_KEY`], in whichever header. Services check the key before
+    /// the body, so a probe's empty request with this key is refused too.
+    fn rejected(&self) -> bool {
+        self.authorization.as_deref() == Some(&format!("Bearer {REJECTED_KEY}")) || self.token.as_deref() == Some(REJECTED_KEY)
+    }
+
+    /// The header its key came in, as models.toml names it.
+    fn key_header(&self) -> Option<&'static str> {
+        if self.authorization.as_deref().is_some_and(|a| a.starts_with("Bearer ")) {
+            Some("bearer")
+        } else if self.x_api_key.is_some() {
+            Some("x-api-key")
+        } else if self.api_key.is_some() {
+            Some("api-key")
+        } else {
+            None
+        }
+    }
+
+    /// Where it went and how it was signed, recorded with its fields (`_path`, `_auth`).
+    fn noted(&self, fields: &Value) -> Value {
+        let mut recorded = fields.clone();
+        if let Some(object) = recorded.as_object_mut() {
+            object.insert("_path".into(), json!(self.path));
+            object.insert("_auth".into(), json!(self.key_header()));
+        }
+        recorded
+    }
+}
+
+fn rejected_key() -> Value {
+    json!({"error": {"message": "Authentication Fails, Your api key is invalid", "type": "authentication_error"}})
 }
 
 async fn serve_connection(mut stream: TcpStream, shared: Arc<Shared>) {
@@ -287,21 +361,62 @@ async fn serve_connection(mut stream: TcpStream, shared: Arc<Shared>) {
         let ok = if let Some((status, body)) = search::answer(&shared.search, &request) {
             write_json(&mut stream, status, &body).await
         } else if request.path.ends_with("/chat/completions") {
-            respond_chat(&mut stream, &request.body, &shared).await
+            if request.rejected() {
+                write_json(&mut stream, 401, &rejected_key()).await
+            } else {
+                respond_chat(&mut stream, &request, &shared).await
+            }
+        } else if request.method == "POST" && request.path.ends_with("/v1/messages") {
+            if request.rejected() {
+                write_json(&mut stream, 401, &rejected_key()).await
+            } else {
+                respond_messages(&mut stream, &request, &shared).await
+            }
         } else if request.path == "/catalog/api.json" {
             shared.stats.catalog_fetches.fetch_add(1, Ordering::Relaxed);
             write_json(&mut stream, 200, &catalog()).await
         } else if request.path.ends_with("/models") {
             shared.stats.model_lists.fetch_add(1, Ordering::Relaxed);
-            if request.authorization.as_deref() == Some(&format!("Bearer {REJECTED_KEY}")) {
-                write_json(&mut stream, 401, &json!({"error": {"message": "Authentication Fails, Your api key is invalid"}})).await
+            if request.rejected() {
+                write_json(&mut stream, 401, &rejected_key()).await
             } else {
-                let ids: &[&str] = if request.path.contains("/bailian/") { BAILIAN_PLAN_MODELS } else { &[MODEL_ID, "mock-2", "deepseek-flash"] };
+                let ids: &[&str] = if request.path.contains("/bailian/") {
+                    BAILIAN_PLAN_MODELS
+                } else if request.path.contains("/gateway/") {
+                    GATEWAY_MODELS
+                } else {
+                    &[MODEL_ID, "mock-2", "deepseek-flash"]
+                };
                 let data: Vec<Value> = ids.iter().map(|id| json!({"id": id, "object": "model"})).collect();
                 write_json(&mut stream, 200, &json!({"object": "list", "data": data})).await
             }
         } else {
             write_json(&mut stream, 404, &json!({"error": {"message": "not found"}})).await
+        };
+        if ok.is_err() || request.close {
+            return;
+        }
+    }
+}
+
+/// A connection to a gateway of `kind` ([`MockServer::gateway`]).
+async fn serve_gateway(mut stream: TcpStream, shared: Arc<Shared>, kind: Gateway) {
+    let mut buf = Vec::with_capacity(16 * 1024);
+    loop {
+        let request = match read_request(&mut stream, &mut buf).await {
+            Ok(Some(request)) => request,
+            _ => return,
+        };
+        let ok = match gateways::route(kind, &request) {
+            gateways::Routed::Json(status, body) => {
+                if request.path.split('?').next().is_some_and(|p| p.ends_with("/models")) {
+                    shared.stats.model_lists.fetch_add(1, Ordering::Relaxed);
+                }
+                write_json(&mut stream, status, &body).await
+            }
+            gateways::Routed::Text(status, text) => write_text(&mut stream, status, text).await,
+            gateways::Routed::Chat => respond_chat(&mut stream, &request, &shared).await,
+            gateways::Routed::Messages => respond_messages(&mut stream, &request, &shared).await,
         };
         if ok.is_err() || request.close {
             return;
@@ -330,6 +445,8 @@ async fn read_request(stream: &mut TcpStream, buf: &mut Vec<u8>) -> io::Result<O
     let mut close = false;
     let mut authorization = None;
     let mut token = None;
+    let mut x_api_key = None;
+    let mut api_key = None;
     for line in lines {
         let Some((name, value)) = line.split_once(':') else { continue };
         let value = value.trim();
@@ -337,7 +454,15 @@ async fn read_request(stream: &mut TcpStream, buf: &mut Vec<u8>) -> io::Result<O
             "content-length" => length = value.parse().unwrap_or(0),
             "connection" => close = value.eq_ignore_ascii_case("close"),
             "authorization" => authorization = Some(value.to_string()),
-            "x-subscription-token" | "x-api-key" => token = Some(value.to_string()),
+            "x-subscription-token" => token = Some(value.to_string()),
+            "x-api-key" => {
+                token = Some(value.to_string());
+                x_api_key = Some(value.to_string());
+            }
+            "api-key" => {
+                token = Some(value.to_string());
+                api_key = Some(value.to_string());
+            }
             _ => {}
         }
     }
@@ -352,7 +477,7 @@ async fn read_request(stream: &mut TcpStream, buf: &mut Vec<u8>) -> io::Result<O
     }
     let body = buf[body_start..body_start + length].to_vec();
     buf.drain(..body_start + length);
-    Ok(Some(Request { method, path, body, close, authorization, token }))
+    Ok(Some(Request { method, path, body, close, authorization, token, x_api_key, api_key }))
 }
 
 /// The catalog the mock serves: DeepSeek's flash with a window no real catalog has, so a test
@@ -383,6 +508,48 @@ fn catalog() -> Value {
 
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Anthropic Messages: one short streamed reply. Its fields, the system blocks with their cache
+/// breakpoints included, are recorded with the chat requests' as `_route: "messages"`.
+async fn respond_messages(stream: &mut TcpStream, from: &Request, shared: &Shared) -> io::Result<()> {
+    let request: Value = match serde_json::from_slice(&from.body) {
+        Ok(v) => v,
+        Err(_) => return write_json(stream, 400, &json!({"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})).await,
+    };
+    if request.get("messages").is_none() {
+        return write_json(stream, 400, &json!({"type": "error", "error": {"type": "invalid_request_error", "message": "model: Field required"}})).await;
+    }
+    shared.stats.requests.fetch_add(1, Ordering::Relaxed);
+    shared.stats.messages_requests.fetch_add(1, Ordering::Relaxed);
+    let mut recorded = from.noted(&request);
+    recorded["_route"] = json!("messages");
+    shared.stats.record_controls(&recorded);
+    let model = request.get("model").and_then(Value::as_str).unwrap_or(MODEL_ID);
+    let events = [
+        json!({"type": "message_start", "message": {"id": "msg_mock", "type": "message", "role": "assistant", "model": model, "content": [], "stop_reason": null, "usage": {"input_tokens": 12, "output_tokens": 0, "cache_read_input_tokens": 0}}}),
+        json!({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+        json!({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello from Messages"}}),
+        json!({"type": "content_block_stop", "index": 0}),
+        json!({"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 4}}),
+        json!({"type": "message_stop"}),
+    ];
+    let mut text = String::new();
+    for event in events {
+        text.push_str(&format!("event: {}\ndata: {}\n\n", event["type"].as_str().unwrap_or("message"), event));
+    }
+    let head = format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\n\r\n", text.len());
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(text.as_bytes()).await
+}
+
+/// A plain-text answer, as some services give for a missing key.
+async fn write_text(stream: &mut TcpStream, status: u16, text: &str) -> io::Result<()> {
+    let reason = if status == 401 { "Unauthorized" } else { "Error" };
+    let head = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n", text.len());
+    stream.write_all(head.as_bytes()).await?;
+    stream.write_all(text.as_bytes()).await?;
+    stream.flush().await
 }
 
 async fn write_json(stream: &mut TcpStream, status: u16, body: &Value) -> io::Result<()> {
@@ -1483,7 +1650,8 @@ fn check_plan(request: &Value, messages: &[Value]) -> Option<Plan> {
     Some(Plan::Step(Step::calls(calls)))
 }
 
-async fn respond_chat(stream: &mut TcpStream, body: &[u8], shared: &Shared) -> io::Result<()> {
+async fn respond_chat(stream: &mut TcpStream, from: &Request, shared: &Shared) -> io::Result<()> {
+    let body = from.body.as_slice();
     shared.stats.requests.fetch_add(1, Ordering::Relaxed);
     shared.stats.request_bytes.fetch_add(body.len() as u64, Ordering::Relaxed);
     shared.stats.peak_request_bytes.fetch_max(body.len() as u64, Ordering::Relaxed);
@@ -1495,7 +1663,11 @@ async fn respond_chat(stream: &mut TcpStream, body: &[u8], shared: &Shared) -> i
                 Ok(v) => v,
                 Err(_) => return write_json(stream, 400, &json!({"error": {"message": "invalid JSON"}})).await,
             };
-            shared.stats.record_controls(&request);
+            // An empty body is refused while it is checked, as real services do: a probe asks so.
+            if request.get("model").is_none() && request.get("messages").is_none() {
+                return write_json(stream, 400, &json!({"error": {"message": "model is required", "type": "invalid_request_error"}})).await;
+            }
+            shared.stats.record_controls(&from.noted(&request));
             let messages = request.get("messages").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
             let (name, arg, prompt, step) = directive(messages);
             let bot = offers_tool(&request, "send_to_user");

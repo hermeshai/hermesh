@@ -38,6 +38,9 @@ func init() {
 		// A conversation waiting for the owner's Chrome: the owner goes on without it.
 		"browser/cancel_wait",
 		"browser/use_extension", "models/refresh", "models/show",
+		// A model service added by its address: her probes it with list requests and
+		// empty bodies only, and saves its address and key (her/docs/kernel/custom-endpoint-design.md §9).
+		"providers/add", "providers/update", "providers/remove", "models/configure", "models/catalog",
 		// The console's guide to the owner's Chrome: its extensions page, and the
 		// extension's folder, opened on that computer.
 		"browser/open_setup",

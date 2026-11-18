@@ -26,6 +26,8 @@ fn entry() -> Value {
 fn model(base: &str) -> Arc<her_llm::Model> {
     let provider = ProviderConfig {
         plan: None,
+        endpoints: Default::default(),
+        custom: false,
         id: "qoder".into(),
         name: "Qoder".into(),
         names: Default::default(),
