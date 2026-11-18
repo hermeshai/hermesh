@@ -23,8 +23,14 @@ struct MainView: View {
                 }
             }
             .animation(.smooth(duration: 0.35), value: model.toast)
-            .sheet(item: $model.sheet) { sheet in
+            .sheet(item: Binding(get: { model.accountPresented ? nil : model.sheet }, set: { model.sheet = $0 })) { sheet in
                 SheetHost(kind: sheet).environment(model)
+            }
+            .sheet(isPresented: $model.accountPresented) {
+                SheetHost(kind: .account).environment(model)
+                    .sheet(item: $model.sheet) { sheet in
+                        SheetHost(kind: sheet).environment(model)
+                    }
             }
     }
 }
@@ -36,7 +42,7 @@ private struct PageView: View {
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.path) {
-            rootPage.navigationDestination(for: Route.self) { page($0) }
+            rootPage.navigationDestination(for: Route.self) { routePage($0) }
         }
         .overlay(alignment: .top) { // in the middle of a root page's bar while its title is large
             if model.path.isEmpty && model.root.titleLarge && !model.rootTitleSmall && model.shownSync != nil {
@@ -44,36 +50,6 @@ private struct PageView: View {
             }
         }
         .task(id: model.sync) { await model.showSync(model.sync) }
-    }
-
-    @ViewBuilder private func page(_ route: Route) -> some View {
-        switch route {
-        case .session(let id): SessionView(id: id) // the sync line in its title's second line
-        case .grant(let id): GrantView(id: id).syncSubtitle()
-        case .machine(let id): MachineView(id: id).syncSubtitle()
-        case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
-        case .herSettings: HerSettings()
-        case .herConnectors: HerConnectorsPage()
-        case .herConnector(let name): HerConnectorPage(name: name)
-        case .herConnectorTools(let name): HerConnectorToolsPage(name: name)
-        case .herConnectorGroup(let id): HerConnectorGroupPage(id: id)
-        case .progress: ProgressPage()
-        case .progressAgent(let id): ProgressAgentPage(agentID: id)
-        case .routines: RoutinesPage()
-        case .herFiles: HerFilesPage()
-        case .routine(let id): RoutinePage(routineID: id)
-        case .routineRun(let routine, let run): RoutineRunPage(routineID: routine, runID: run)
-        case .herMemory: HerEnvironmentPage { chat, machine in HerMemoryRoute(chat: chat, machine: machine) }
-        case .herModel: HerModelPage()
-        case .herProvider(let id): HerProviderPage(id: id)
-        case .herEnvironment: HerEnvironmentSettings()
-        case .herStorage: HerStoragePage()
-        case .herConsole: HerConsolePage()
-        case .herSkills: HerSkillsPage()
-        case .herSkill(let dir): HerSkillPage(dir: dir)
-        case .herSearch: HerSearchPage()
-        case .herBrowser: HerBrowserPage()
-        }
     }
 
     @ViewBuilder private var rootPage: some View {
@@ -84,6 +60,38 @@ private struct PageView: View {
         case .machines: MachinesView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
         }
+    }
+}
+
+@ViewBuilder func routePage(_ route: Route) -> some View {
+    switch route {
+    case .machines: MachinesView(isRoot: false)
+    case .grants: GrantsView(isRoot: false)
+    case .session(let id): SessionView(id: id) // the sync line in its title's second line
+    case .grant(let id): GrantView(id: id).syncSubtitle()
+    case .machine(let id): MachineView(id: id).syncSubtitle()
+    case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
+    case .herSettings: HerSettings()
+    case .herConnectors: HerConnectorsPage()
+    case .herConnector(let name): HerConnectorPage(name: name)
+    case .herConnectorTools(let name): HerConnectorToolsPage(name: name)
+    case .herConnectorGroup(let id): HerConnectorGroupPage(id: id)
+    case .progress: ProgressPage()
+    case .progressAgent(let id): ProgressAgentPage(agentID: id)
+    case .routines: RoutinesPage()
+    case .herFiles: HerFilesPage()
+    case .routine(let id): RoutinePage(routineID: id)
+    case .routineRun(let routine, let run): RoutineRunPage(routineID: routine, runID: run)
+    case .herMemory: HerEnvironmentPage { chat, machine in HerMemoryRoute(chat: chat, machine: machine) }
+    case .herModel: HerModelPage()
+    case .herProvider(let id): HerProviderPage(id: id)
+    case .herEnvironment: HerEnvironmentSettings()
+    case .herStorage: HerStoragePage()
+    case .herConsole: HerConsolePage()
+    case .herSkills: HerSkillsPage()
+    case .herSkill(let dir): HerSkillPage(dir: dir)
+    case .herSearch: HerSearchPage()
+    case .herBrowser: HerBrowserPage()
     }
 }
 
@@ -637,7 +645,9 @@ extension View {
     /// its bar: once the title is small, in its place; while it is large,
     /// the bar shows nothing there (UIKit hides a title view then), so the
     /// line is laid over the bar (PageView).
-    func rootToolbar() -> some View { modifier(RootToolbar()) }
+    @ViewBuilder func rootToolbar(enabled: Bool = true) -> some View {
+        if enabled { modifier(RootToolbar()) } else { self.syncSubtitle() }
+    }
 }
 
 private struct RootToolbar: ViewModifier {

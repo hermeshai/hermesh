@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -26,6 +25,8 @@ import (
 // HerService and the console on the owner's tunnels.
 
 const kHer = "her"
+
+const herMissing = "Her is not installed on this machine"
 
 // herUnsupported is why this machine can't run her, or "".
 func (n *Machine) herUnsupported() string {
@@ -176,7 +177,11 @@ func (n *Machine) herStatus() *machinev1.HerStatus {
 	on, data := n.herOn, n.herData
 	n.mu.Unlock()
 	if why := n.herUnsupported(); why != "" {
-		return &machinev1.HerStatus{Enabled: on, Unsupported: why, Data: data}
+		st := &machinev1.HerStatus{Enabled: on, Unsupported: why, Data: data}
+		if on {
+			st.Error = herMissing
+		}
+		return st
 	}
 	st := n.her.Status()
 	st.Enabled = on
@@ -217,8 +222,8 @@ func (n *Machine) statusFor(p *Principal) *machinev1.MachineStatus {
 
 // herHost is the Her host, on a machine that can run her.
 func (n *Machine) herHost() (*herhost.Host, error) {
-	if why := n.herUnsupported(); why != "" {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("this machine can't run Her (%s)", why))
+	if n.herUnsupported() != "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(herMissing))
 	}
 	return n.her, nil
 }

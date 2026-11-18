@@ -33,6 +33,18 @@ async fn new_session(client: &Client, cwd: &Path) -> (String, Value) {
     (result["session_id"].as_str().unwrap().to_string(), result["snapshot"].clone())
 }
 
+/// Shutdown must deliver its reply before the process drops its stdout writer.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stdio_shutdown_flushes_its_reply() {
+    let env = TestEnv::new("manual", "").await;
+    for _ in 0..20 {
+        let (mut child, client, _incoming) = env.spawn_rpc(&["serve", "--stdio"]);
+        native_init(&client).await;
+        assert_eq!(client.request("server/shutdown", json!({})).await.unwrap(), json!({}));
+        assert_eq!(common::exit_code(&mut child).await, 0);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn stdio_runs_a_full_session() {
     let env = TestEnv::new("manual", "").await;

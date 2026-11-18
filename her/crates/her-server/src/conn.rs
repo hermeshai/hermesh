@@ -265,7 +265,7 @@ pub trait Encoder: Send {
     fn encode(&mut self, item: Outgoing, out: &mut Vec<Bytes>);
 }
 
-/// Serves one connection until the client closes its side, then lets the writer drain.
+/// Serves one connection until EOF or server shutdown, then lets the writer drain.
 pub async fn run_connection<R, W>(server: Server, reader: R, writer: W, protocol: Arc<dyn Protocol>)
 where
     R: AsyncRead + Unpin + Send + 'static,
@@ -283,10 +283,15 @@ where
     let mut conn = server.new_connection();
     conn.peer_pid = peer_pid;
     let encoder = protocol.encoder(&conn);
-    let writer_task = tokio::spawn(write_loop(conn.clone(), encoder, writer));
+    let mut writer_task = tokio::spawn(write_loop(conn.clone(), encoder, writer));
     let mut frames = FrameReader::new(reader, server.settings().max_frame_bytes);
+    let stopped = server.shutdown_token();
     loop {
-        match frames.next().await {
+        let frame = tokio::select! {
+            _ = stopped.cancelled() => break,
+            frame = frames.next() => frame,
+        };
+        match frame {
             Ok(Some(Frame::Line(line))) => protocol.clone().on_line(line, &conn),
             Ok(Some(Frame::Oversize { head })) => {
                 let limit = server.settings().max_frame_bytes;
@@ -304,7 +309,17 @@ where
     protocol.on_closed(&conn);
     server.connection_closed(&conn);
     conn.queue.close();
-    let _ = writer_task.await;
+    tokio::select! {
+        _ = &mut writer_task => {}
+        _ = stopped.cancelled() => {
+            // Flush replies before exiting, but a client that stopped reading must not
+            // hold the service open indefinitely.
+            if tokio::time::timeout(std::time::Duration::from_secs(5), &mut writer_task).await.is_err() {
+                writer_task.abort();
+                let _ = writer_task.await;
+            }
+        }
+    }
 }
 
 async fn write_loop<W: AsyncWrite + Unpin>(conn: ConnHandle, mut encoder: Box<dyn Encoder>, mut writer: W) {
@@ -395,6 +410,43 @@ async fn write_all<W: AsyncWrite + Unpin>(writer: &mut W, bufs: &[Bytes]) -> io:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn shutdown_drains_a_reply_larger_than_the_transport_buffer() {
+        use tokio::io::AsyncBufReadExt;
+        use tokio::io::AsyncReadExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = her_core::HerHome::new(dir.path().join("home"));
+        home.ensure().unwrap();
+        let server = Server::new(crate::server::ServerOptions {
+            home,
+            cwd: dir.path().to_path_buf(),
+            overrides: Vec::new(),
+            mcp_servers: Vec::new(),
+            doc_worker: her_docs::Launcher::Thread,
+        }).unwrap();
+        let protocol = crate::native::NativeProtocol::new(server.clone());
+        let (client, transport) = tokio::io::duplex(7);
+        let (reader, writer) = tokio::io::split(transport);
+        let task = tokio::spawn(run_connection(server.clone(), reader, writer, protocol));
+        let (reader, mut writer) = tokio::io::split(client);
+        let mut reader = tokio::io::BufReader::new(reader);
+        writer.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocol_version\":2}}\n").await.unwrap();
+        let mut initialized = String::new();
+        reader.read_line(&mut initialized).await.unwrap();
+        assert!(serde_json::from_str::<serde_json::Value>(&initialized).unwrap().get("result").is_some());
+
+        let id = "shutdown".repeat(100);
+        let mut request = serde_json::to_vec(&serde_json::json!({"jsonrpc": "2.0", "id": id, "method": "server/shutdown", "params": {}})).unwrap();
+        request.push(b'\n');
+        writer.write_all(&request).await.unwrap();
+        let mut reply = Vec::new();
+        tokio::time::timeout(std::time::Duration::from_secs(5), reader.read_to_end(&mut reply)).await.unwrap().unwrap();
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&reply).unwrap(), serde_json::json!({"jsonrpc": "2.0", "id": id, "result": {}}));
+        task.await.unwrap();
+        server.close_all().await;
+    }
 
     #[tokio::test]
     async fn vectored_writes_survive_partial_writes() {

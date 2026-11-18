@@ -161,7 +161,7 @@ struct DrawerView: View {
     private var bottomBar: some View {
         HStack {
             Button {
-                model.sheet = .account
+                model.accountPresented = true
             } label: {
                 AccountPicture(status: model.status).frame(width: 44, height: 44)
                     .padding(4)

@@ -2590,7 +2590,7 @@
               "type": "string"
             },
             {
-              "description": "Presses the key combo in `text` (return, escape, cmd+s; ctrl+s on Windows) in the app; needs no ref.",
+              "description": "Presses the key combo in `text` (return, escape, cmd+s; ctrl+s where the computer is not a Mac) in the app; needs no ref.",
               "enum": [
                 "press"
               ],

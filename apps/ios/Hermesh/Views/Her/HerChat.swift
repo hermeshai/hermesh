@@ -29,6 +29,11 @@ final class HerPlace {
         return c
     }
 
+    func stop() {
+        for chat in chats.values { chat.stop() }
+        chats.removeAll()
+    }
+
     /// Wakes every environment chat's retry backoff sleep after connectivity returns.
     func wakeRetries() {
         for chat in chats.values {
@@ -117,6 +122,17 @@ final class HerChat {
     var session: HerSession? { live ?? kept?.session }
 
     private var api: AppAPI? { model?.api }
+    /// A demo can only open its in-memory transport; it never falls back to the core.
+    private var transport: (any HerLocal)? {
+        if let demo = api?.demo {
+            #if DEBUG
+            if DemoService.herDemoOn { return nil } // the existing scrolling gallery remains a kept snapshot
+            #endif
+            return demo.herReview
+        }
+        return api?.live.map { HerTunnel(api: $0) }
+    }
+
     private var name: String { model?.machineName(machineID) ?? machineID }
 
     private func report(_ e: Error) { model?.show((e as? APIError)?.message ?? e.localizedDescription) }
@@ -124,6 +140,12 @@ final class HerChat {
     private var notConnected: Error { APIError(code: "unavailable", message: String(localized: "Can’t reach \(name) right now")) }
 
     // MARK: Connections
+
+    func stop() {
+        envTask?.cancel(); convTask?.cancel(); letGo?.cancel()
+        wakeRetry()
+        for task in signingIn.values { task.cancel() }
+    }
 
     /// Wakes any backoff sleep currently waiting to retry, without disturbing live streams.
     func wakeRetry() {
@@ -202,10 +224,10 @@ final class HerChat {
     /// The environment's connection, until the task is cancelled: her's assistants and models as she pushes them;
     /// one that ends opens again after a while.
     func followEnvironment() async {
-        guard let live = api?.live else { return }
+        guard let transport else { return }
         var failures = 0
         while !Task.isCancelled {
-            let c = HerConnection(local: HerTunnel(api: live), machineID: machineID)
+            let c = HerConnection(local: transport, machineID: machineID)
             do {
                 events: for try await e in c.open(setup: [("bots/subscribe", [:]), ("models/list", [:])]) {
                     switch e {
@@ -239,10 +261,10 @@ final class HerChat {
     /// The conversation's connection, until the task is cancelled: opened with bots/open in its setup, so the
     /// snapshot comes ahead of its events, which never carry words as they are written.
     func followConversation(botID: String) async {
-        guard let live = api?.live else { return }
+        guard let transport else { return }
         var failures = 0
         while !Task.isCancelled {
-            let c = HerConnection(local: HerTunnel(api: live), machineID: machineID)
+            let c = HerConnection(local: transport, machineID: machineID)
             var opened: String?
             // Its last items, earlier ones read as it is scrolled up (earlier()).
             let open: JSON = ["bot_id": .string(botID), "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]],
@@ -382,8 +404,8 @@ final class HerChat {
     /// A request to her on a connection of its own (HerCall without one): it goes at once, without waiting for the
     /// environment's connection, which a page that just came up may still be opening through the relay.
     func callAlone(_ method: String, _ params: JSON) async throws -> JSON {
-        guard let live = api?.live else { throw notConnected }
-        return try await HerConnection.call(HerTunnel(api: live), machineID: machineID, method, params)
+        guard let transport else { throw notConnected }
+        return try await HerConnection.call(transport, machineID: machineID, method, params)
     }
 
     /// What the next message replies to: above the composer's words, which take the keyboard.

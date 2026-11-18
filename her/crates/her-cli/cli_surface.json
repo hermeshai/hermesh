@@ -140,6 +140,7 @@
     "HER_DESKTOP_E2E": { "job": "test", "stability": "internal", "legacy": true },
     "HER_DOC_CORPUS": { "job": "test", "stability": "internal", "legacy": true },
     "HER_LEGACY_OK": { "job": "test", "stability": "internal", "legacy": true },
+    "HER_MOCK_SCRIPTS": { "job": "test", "stability": "internal", "legacy": true },
     "HER_PPT_RENDER_OUT": { "job": "test", "stability": "internal", "legacy": true },
     "HER_PPT_SAMPLES": { "job": "test", "stability": "internal", "legacy": true },
     "HER_QODER_CAPABILITIES_OUT": { "job": "test", "stability": "internal", "legacy": true },
