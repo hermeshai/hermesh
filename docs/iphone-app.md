@@ -74,28 +74,45 @@ Buttons come in four sizes, each by what it does, never sized by hand
 
 The welcome page offers three choices: “Start Using Hermesh”, “Already using
 it on another device”, and “Try It First”. “Try It First” opens a disposable
-sample workspace without signing in, pairing a computer or
-installing a coding agent. The normal screens show simulated machines,
-projects, grants and conversations. “Run Demo Task” starts a question;
-answering or declining it produces simulated tool output, a result and a
-code diff. Adding machines, approving agents and managing projects also
-work within this sample workspace.
+sample workspace at **Her**, without signing in, pairing a computer,
+installing an agent or connecting a model. This path is compiled in Release.
+
+Choose **Delegate a sample task**, then **Allow Once**. Her starts a simulated
+Codex session and a sample reviewer. Open the task card for its output and
+code diff, or **Progress** for the reviewer's record. The result explicitly
+says that no code ran and nothing was pushed or merged. **Deny** starts no
+coding task. **Simulate a failure** demonstrates a failed check;
+**Retry sample task** asks for approval again. Interrupting the coding session
+also stops the simulated Her workflow, so a late timer cannot complete it.
+Free text starts the same preset task; this is not a model answering arbitrary
+requests. Personal file/photo attachments and model/service setup are not
+available in the demo. Her's demo settings explain this boundary.
+
+The menu's **Work** entry retains the existing sample tasks, machines, projects,
+grants and questions. **Run Demo Task** starts a greeting question; answering
+or declining it produces sample tool output, a result and a code diff.
 
 The persistent banner and sheet footer identify simulated data. Exit Demo
-returns to onboarding; reopening starts fresh. The signed-in account page
-has no demo entry.
-`AppAPI` routes demo calls to `DemoService` in memory, with no fallback to
-the real core. Its model, conversation cache, search history and settings
-are separate from the real workspace. `DemoUITests` exercises the public
-entry and core flows. The [review acceptance matrix](ios-demo-review.md)
-records the 15 UI scenarios and their execution boundaries. The first-run
-end-to-end test also checks that the signed-in account page has no demo entry.
+returns to onboarding; reopening starts fresh, including Her's conversation,
+approvals, progress and in-flight timers. The signed-in account page has no
+demo entry. `AppAPI` routes demo calls to `DemoService`, and Her's connections
+to `HerReviewDemo`, in memory, with no fallback to the real core. Conversation
+caches, search history, appearance, environment choice and list settings remain
+separate from the real workspace. Real E2EE, hardware-backed signing, provider
+sign-in, APNs delivery and remote desktop are not simulated security tests.
 
-For App Review notes: open the app, tap **Try It First**, then **Run Demo Task**.
-Choose a greeting and tap **Answer**. Open **Session Info** to inspect the
-simulated changes; the menu also exposes machines and grants. No login,
-external hardware, pairing code or external service is required for this
-demo.
+For App Review notes: open the app, tap **Try It First**, then **Delegate a
+sample task** and **Allow Once**. Inspect its task card and **Session Info**
+for the sample diff; return to Her and open **Progress** for the reviewer.
+No account, computer, agent, API key or payment is needed. See the
+[acceptance record](ios-demo-review.md) and run
+`apps/ios/scripts/test-demo.sh /tmp/hermesh-demo-review` to verify the Release
+path on a new simulator, offline state tests and preference isolation.
+
+These source changes do not establish availability in an uploaded build.
+In particular, TestFlight **0.1.6 (722)** predates this Her demo; its existing
+public demo covers the Work workspace only. Uploading or submitting a new
+build is a separate release action.
 
 ## 2. How it is built
 

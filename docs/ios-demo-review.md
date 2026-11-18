@@ -10,6 +10,47 @@ physical pairing, external agents, push delivery and real webhook delivery
 are outside this demo. They must not be required to finish a demo flow.
 Simulation remains identified by the persistent banner and sheet footer.
 
+## Release Her reviewer path
+
+The current source adds Her to the public Release demo. The earlier November 2
+record below applies to the Work demo and does not certify this new path or
+TestFlight 0.1.6 (722). The old `-HerDemo` scrolling/Markdown fixtures remain
+DEBUG-only; they are not the reviewer path or evidence for Release support.
+
+1. Fresh launch → **Try It First** → Her's sample conversation.
+2. **Delegate a sample task** → **Allow Once** → sample coding task and review.
+3. Task card → output → **Session Info** → `src/welcome.ts` diff.
+4. Back to Her → **Progress** → **Check sample change** → review record.
+5. Reopen the demo; **Deny** must start no task. Reopen again;
+   **Simulate a failure** → **Allow Once** → error → **Retry sample task**
+   → a new approval → successful simulated result.
+6. Interrupt the coding session or exit during execution: its old timer must
+   not complete later. Reentering or relaunching starts no account or old task.
+
+The sample's words and results identify it as simulated. Only sample text is
+accepted: photos/files, real model credentials, connector authorization and
+external services are unavailable. Her's demo settings do not write the real
+settings tab or environment choice. The Work menu retains the previous sample
+flows. No real security permission or signing check is bypassed.
+
+`HerReviewUITests` enters only through the public button, with no test signer,
+account, relay, model key or `-HerDemo` launch argument. The repeatable command
+is `apps/ios/scripts/test-demo.sh /tmp/hermesh-demo-review`. It builds the app
+with `-configuration Release`, uses a new simulator, checks the UI flows and
+compares nine synthetic real-preference values afterward. The script deletes
+only its own simulator, retaining logs and the `.xcresult` in the output folder.
+The state tests use the same `HerLocal` protocol and parsers as the UI; an outer
+OS sandbox denies networking during their offline run. This proves the local
+scenario works without networking, not real E2EE, third-party sign-in, push,
+remote desktop, or real model behavior. The app's normal onboarding core may
+still use its local loopback API; it is not a production connection.
+
+The `ios-demo` CI job retains the unit/offline logs and Release `.xcresult`.
+Preference comparison uses decoded JSON values: normal startup may reorder
+encoding without changing a setting. World and conversation caches must remain
+absent on this fresh, signed-out simulator. No new Hermesh binary is uploaded
+or installed on a physical device by this acceptance.
+
 ## Acceptance matrix
 
 | Area | Actions and required results | UI scenario |

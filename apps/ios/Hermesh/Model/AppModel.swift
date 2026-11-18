@@ -140,7 +140,7 @@ final class AppModel {
     var usage: UsageYear?
     /// The overview's range, and the work counted over each range asked,
     /// kept so switching shows the last count at once.
-    var workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today {
+    var workPeriod: WorkPeriod = .today {
         didSet {
             if !isDemo { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
         }
@@ -197,8 +197,7 @@ final class AppModel {
     }
 
     // Navigation
-    /// Her's page first (docs/her-team.md §4.1); Work in the demo, which has no Her, and once the owner put her
-    /// first run off.
+    /// Her's page first (docs/her-team.md §4.1); Work once the owner put her first run off.
     var root: Root = .overview
     @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
@@ -242,7 +241,8 @@ final class AppModel {
         isDemo = demo != nil
         conversations = Conversations(persistent: demo == nil)
         her = HerPlace(persistent: demo == nil)
-        if let demo { api = AppAPI(demo: demo); return }
+        if let demo { api = AppAPI(demo: demo); root = .her; return }
+        workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []

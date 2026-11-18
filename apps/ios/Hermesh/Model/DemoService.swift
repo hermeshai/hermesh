@@ -1,4 +1,5 @@
 import Foundation
+import HermeshHer
 import HermeshKit
 import HermeshProto
 import HermeshSessions
@@ -7,6 +8,7 @@ import SwiftProtobuf
 /// A disposable world. No sockets, credentials, files or real agent processes.
 /// It speaks the same messages as the core so the normal screens stay in use.
 final class DemoService {
+    let herReview = HerReviewDemo()
     private var world = Hermesh_Local_V1_WatchResponse()
     private var events: [String: [SessionEvent]] = [:]
     private var watchers: [UUID: AsyncThrowingStream<Data, Error>.Continuation] = [:]
@@ -17,9 +19,13 @@ final class DemoService {
     var herWaiting: [Hermesh_Local_V1_HerWaiting] = []
     #endif
 
-    init() { seed() }
+    init() {
+        seed()
+        herReview.codingChanged = { [weak self] in self?.updateHerTask() }
+    }
 
     func stop() {
+        herReview.stop()
         tasks.values.forEach { $0.cancel() }
         tasks.removeAll()
         watchers.values.forEach { $0.finish() }
@@ -38,9 +44,7 @@ final class DemoService {
             $0.deviceKeyID = "demo-iphone"
         }
         world.machines = [machine("demo-mac", "Mac mini", "darwin/arm64"), machine("demo-linux", "Linux Studio", "linux/amd64")]
-        #if DEBUG
-        if Self.herDemoOn { Self.herDemo(&world.machines[0]) }
-        #endif
+        world.machines[0].her = .with { $0.enabled = true; $0.running = true; $0.modelReady = true }
         world.devices = [.with { $0.keyID = "demo-iphone"; $0.label = "iPhone"; $0.platform = "ios"; $0.thisDevice = true }]
         world.projects = world.machines.map { m in .with {
             $0.machineID = m.machineID; $0.projectID = "hello-world"; $0.path = "/Demo/Projects/hello-world"
@@ -147,6 +151,10 @@ final class DemoService {
     }
 
     private func stopTask(_ id: String) {
+        if id == HerReviewDemo.codingID, herReview.codingState == .running {
+            herReview.interrupt()
+            return
+        }
         guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
         tasks.removeValue(forKey: id)?.cancel()
         if world.sessions[i].progress.hasPendingQuestion {
@@ -238,6 +246,7 @@ final class DemoService {
             publish()
             return try encoded(Hermesh_Local_V1_SessionResponse.with { $0.session = world.sessions[i] })
         case "DeleteSession":
+            if id == HerReviewDemo.codingID { herReview.interrupt() }
             tasks.removeValue(forKey: id)?.cancel(); world.sessions.removeAll { $0.sessionID == id }; events[id] = nil
             world.deletedSessionIds = [id]; publish(); world.deletedSessionIds = []
         case "GetDiff":
@@ -338,11 +347,52 @@ final class DemoService {
             // A simulated check only: never open the URL or store its authorization.
             return try encoded(Hermesh_Local_V1_SetWakeResponse.with { $0.wake = wake; $0.check = .with { $0.ok = true; $0.status = 200 } })
         case "ClearWake": wakes.removeAll { $0.clientID == string("clientId") && $0.name == string("name") }
-        // No machine runs Her in the demo: nothing is kept of her, and nothing waits for her.
-        case "GetHerConversation", "ListHerWaiting": break
+        case "GetHerConversation":
+            return try encoded(Hermesh_Local_V1_GetHerConversationResponse.with {
+                $0.bot = herReview.keptBot; $0.snapshot = herReview.keptSnapshot
+            })
+        case "HerSend":
+            let request = try Hermesh_Local_V1_HerSendRequest(jsonUTF8Data: data)
+            guard request.machineID == "demo-mac", request.localPaths.isEmpty, request.pictures.isEmpty else {
+                throw APIError(code: "demo_only", message: String(localized: "The demo uses sample text only. No personal files or photos are read."))
+            }
+            try herReview.send(request.text, id: request.id)
+            return try encoded(Hermesh_Local_V1_HerSendResponse.with { $0.delivered = true })
+        case "ListHerWaiting", "DeleteHerWaiting": break
         default: throw APIError(code: "unimplemented", message: String(localized: "This action needs a real connection. Exit the demo to set up your own workspace."))
         }
         return try object()
+    }
+
+    /// The Her protocol and the normal session screens share the same disposable coding task.
+    private func updateHerTask() {
+        let id = HerReviewDemo.codingID
+        switch herReview.codingState {
+        case .running:
+            world.sessions.removeAll { $0.sessionID == id }
+            var s = session(id, title: "Her sample task", machine: "demo-mac", status: .running)
+            s.createdBy = "her"
+            world.sessions.append(s)
+            events[id] = []
+            greetings[id] = nil
+            append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "Her" } })
+            append(id, .with { $0.userMessage.text = String(localized: "Update the sample welcome page. This task was delegated by Her; no code is executed.") })
+        case .done:
+            finish(id, greeting: "Welcome from Her!")
+            return
+        case .failed:
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
+            let message = String(localized: "The sample check failed. No code ran. Return to Her and retry the sample task.")
+            world.sessions[i].status = .crashed
+            world.sessions[i].error = message
+            world.sessions[i].progress.lastFailure = .with { $0.message = message; $0.retryable = true }
+            world.sessions[i].result = message
+            append(id, .with { $0.agentMessage.text = message })
+        case .stopped:
+            stopTask(id)
+        case nil: return
+        }
+        publish()
     }
 
     private func queryWork(_ r: Hermesh_Local_V1_QueryWorkRequest) -> Hermesh_Local_V1_QueryWorkResponse {

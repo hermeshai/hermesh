@@ -28,7 +28,7 @@ struct DemoView: View {
                 if p == .active { model.foreground() }
                 else if p == .background { model.background() }
             }
-            .onDisappear { model.background(); model.api?.demo?.stop() }
+            .onDisappear { model.background(); model.her.stop(); model.api?.demo?.stop() }
             .alert("Something went wrong", isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })) {
                 Button("OK", role: .cancel) {}
             } message: { Text(model.problem ?? "") }
