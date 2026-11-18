@@ -31,12 +31,16 @@ final class HerReviewUITests: XCTestCase {
         tap("委派示例任务")
         tap("her-deny")
         XCTAssertTrue(words("已拒绝权限").waitForExistence(timeout: 10))
+        tap("exit-demo"); tap("try-demo")
+        tap("委派示例任务"); tap("her-allow-once"); tap("显示示例结果")
+        XCTAssertTrue(words("示例任务完成").waitForExistence(timeout: 10))
     }
 
     func testDelegateResultsAndProgress() {
         tap("try-demo")
         tap("Delegate a sample task")
         tap("her-allow-once")
+        tap("Show sample result")
         XCTAssertTrue(words("Sample task complete.").waitForExistence(timeout: 20))
         tap("her-session-Her sample task")
         XCTAssertTrue(words("Welcome from Her!").waitForExistence(timeout: 15))
@@ -67,11 +71,14 @@ final class HerReviewUITests: XCTestCase {
         tap("try-demo")
         tap("Simulate a failure")
         tap("her-allow-once")
+        tap("Show sample result")
         XCTAssertTrue(words("intentional simulated error").waitForExistence(timeout: 20))
         tap("Retry sample task")
         tap("her-allow-once")
         XCUIDevice.shared.press(.home)
         app.activate()
+        XCTAssertFalse(words("Sample task complete.").exists, "the reviewer controls when the preset result appears")
+        tap("Show sample result")
         XCTAssertTrue(words("Sample task complete.").waitForExistence(timeout: 20))
         tap("exit-demo")
         tap("try-demo")
@@ -93,7 +100,7 @@ final class HerReviewUITests: XCTestCase {
         tap("her-session-Her sample task")
         tap("interrupt"); tap("interrupt-confirm")
         XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 10))
-        XCTAssertFalse(words("Welcome from Her!").waitForExistence(timeout: 9), "past the demo completion deadline, a stopped task stays stopped")
+        XCTAssertFalse(words("Welcome from Her!").exists, "stopping never emits the preset completion")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(words("The simulated task was stopped.").exists)
         XCTAssertFalse(words("Sample task complete.").exists)
@@ -104,7 +111,7 @@ final class HerReviewUITests: XCTestCase {
     }
 
     private func tap(_ id: String) {
-        let element = app.descendants(matching: .any)[id].firstMatch
+        let element = app.buttons[id].firstMatch
         XCTAssertTrue(element.waitForExistence(timeout: 15), id)
         element.tap()
     }

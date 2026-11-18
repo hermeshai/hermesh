@@ -23,7 +23,7 @@ import HermeshProto
     #expect(d.codingState == .running)
     #expect(herChat(d.session).contains { if case .session(let s) = $0.kind { s.sessionID == HerReviewDemo.codingID } else { false } })
     #expect(herProgress(d.session).flatMap(\.tasks).count == 1)
-    d.complete()
+    _ = try await reviewCall(d, "session/op", ["op": ["type": "prompt", "input": [["type": "text", "text": .string(HerReviewDemo.showResult)]]]])
     #expect(d.codingState == .done)
     #expect(d.session.live == nil)
     guard case .agent(let launch)? = herProgress(d.session).first?.tasks.first else { Issue.record("missing progress record"); return }
@@ -61,6 +61,8 @@ import HermeshProto
     d.complete()
     #expect(d.codingState == .stopped, "a late completion cannot undo interruption")
     #expect(d.session.live == nil)
+    #expect(d.session.agents.last?.view.live == nil)
+    #expect(throws: HerRPCError.self) { try d.send(HerReviewDemo.showResult, id: "late-result") }
     d.stop()
 }
 

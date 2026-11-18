@@ -151,8 +151,9 @@ final class DemoService {
     }
 
     private func stopTask(_ id: String) {
-        if id == HerReviewDemo.codingID, herReview.codingState == .running {
-            herReview.interrupt()
+        // The stopped callback falls through to update Work's session; completed work is left intact.
+        if id == HerReviewDemo.codingID, herReview.codingState != .stopped {
+            if herReview.codingState == .running { herReview.interrupt() }
             return
         }
         guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
@@ -233,7 +234,7 @@ final class DemoService {
                 let text = answer?.text ?? ""
                 let greeting = answer?.selected.first ?? (text.isEmpty ? "Hello, world!" : text)
                 tasks[id] = Task { [weak self] in
-                    // Leave enough time to inspect and interrupt the simulated work, as in Her's sample.
+                    // Leave enough time to inspect and interrupt the simulated Work task.
                     try? await Task.sleep(for: .seconds(8))
                     guard !Task.isCancelled else { return }
                     self?.finish(id, greeting: greeting)

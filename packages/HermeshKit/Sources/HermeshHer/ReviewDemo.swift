@@ -7,6 +7,7 @@ import HermeshProto
     public static var delegate: String { String(localized: "Delegate a sample task", bundle: .module) }
     public static var failure: String { String(localized: "Simulate a failure", bundle: .module) }
     public static var retry: String { String(localized: "Retry sample task", bundle: .module) }
+    public static var showResult: String { String(localized: "Show sample result", bundle: .module) }
     public static let codingID = "demo-her-coding"
     public private(set) var codingState: CodingState?
     public var codingChanged: (() -> Void)?
@@ -18,7 +19,6 @@ import HermeshProto
     private var pending: String?
     private var fails = false
     private var stopped = false
-    private var work: Task<Void, Never>?
     private var round = 0
     private var codingCall = ""
     private var agentID = ""
@@ -115,6 +115,13 @@ import HermeshProto
     public func send(_ text: String, id: String) throws {
         guard !stopped else { throw HerRPCError.disconnected }
         guard !sent.contains(id) else { return }
+        if text == Self.showResult {
+            guard codingState == .running, session.live != nil else { throw unavailable }
+            sent.insert(id)
+            emit(["type": "message_completed", "message_id": .string(id), "message": ["role": "user", "ts": now, "content": [["type": "text", "text": .string(text)]]]])
+            complete()
+            return
+        }
         guard session.live == nil else { throw unavailable }
         sent.insert(id)
         round += 1
@@ -141,18 +148,12 @@ import HermeshProto
         agent(["type": "task_started", "task_id": "check"])
         agent(["type": "message_completed", "message_id": "check-input", "message": ["role": "user", "ts": now, "content": [["type": "text", "text": "Inspect the sample diff and test results."]]]])
         agent(["type": "message_completed", "message_id": "check-step", "message": ["role": "assistant", "ts": now, "content": [["type": "text", "text": "Checking the preset sample change. No tools are running."]]]])
-        say(String(localized: "The sample coding task is in progress. Open its card for output and changes, or Progress for the sample reviewer's record.", bundle: .module))
+        say(String(localized: "The sample coding task is in progress. Inspect its card or Progress, stop it, or choose Show sample result to finish the simulation when you are ready.", bundle: .module), choices: [Self.showResult])
         codingState = .running
         codingChanged?()
-        work?.cancel()
-        work = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(8))
-            guard !Task.isCancelled else { return }
-            self?.complete()
-        }
     }
 
-    /// Deterministic completion is also used by the state tests, without a clock or external service.
+    /// Only the explicit sample-result action finishes work; reviewers can inspect or stop it at their own pace.
     func complete() {
         guard !stopped, codingState == .running, session.live != nil else { return }
         let summary = fails ? String(localized: "The sample check failed. This is an intentional simulated error; no live task ran.", bundle: .module)
@@ -168,10 +169,10 @@ import HermeshProto
 
     public func interrupt() {
         guard session.live != nil else { return }
-        work?.cancel()
         pending = nil
         if codingState == .running {
             codingState = .stopped
+            agent(["type": "task_interrupted"])
             emit(["type": "agent_status", "agent_id": .string(agentID), "status": "interrupted"])
             codingChanged?()
         }
@@ -181,7 +182,6 @@ import HermeshProto
 
     public func stop() {
         stopped = true
-        work?.cancel()
         codingChanged = nil
         let closing = streams.values
         streams.removeAll()

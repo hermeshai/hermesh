@@ -18,17 +18,19 @@ TestFlight 0.1.6 (722). The old `-HerDemo` scrolling/Markdown fixtures remain
 DEBUG-only; they are not the reviewer path or evidence for Release support.
 
 1. Fresh launch → **Try It First** → Her's sample conversation.
-2. **Delegate a sample task** → **Allow Once** → sample coding task and review.
+2. **Delegate a sample task** → **Allow Once** → **Show sample result** → sample coding task result and review.
 3. Task card → output → **Session Info** → `src/welcome.ts` diff.
 4. Back to Her → **Progress** → **Check sample change** → review record.
 5. Reopen the demo; **Deny** must start no task. Reopen again;
-   **Simulate a failure** → **Allow Once** → error → **Retry sample task**
-   → a new approval → successful simulated result.
-6. Interrupt the coding session or exit during execution: its old timer must
-   not complete later. Reentering or relaunching starts no account or old task.
+   **Simulate a failure** → **Allow Once** → **Show sample result** → error → **Retry sample task**
+   → a new approval → **Show sample result** → successful simulated result.
+6. Interrupt the coding session or exit during execution: a stale result action
+   must not complete it later. Reentering or relaunching starts no account or old task.
 
-Both the Her task and the Work greeting task show eight seconds of simulated
-execution, leaving time to inspect and interrupt them before their preset result.
+Her's task stays in simulated execution until **Show sample result**, interruption
+or exit. Reviewers can inspect its record and confirm interruption at their own
+pace; it never races an automatic completion timer. The existing Work greeting
+task shows eight seconds of simulated execution.
 
 The sample's words and results identify it as simulated. Only sample text is
 accepted: photos/files, real model credentials, connector authorization and

@@ -78,12 +78,13 @@ sample workspace at **Her**, without signing in, pairing a computer,
 installing an agent or connecting a model. This path is compiled in Release.
 
 Choose **Delegate a sample task**, then **Allow Once**. Her on the sample Mac starts a simulated
-Codex session on **Linux Studio** and a sample reviewer. Open the task card for its output and
+Codex session on **Linux Studio** and a sample reviewer. Choose **Show sample result**
+when ready to finish the simulation. Open the task card for its output and
 code diff, or **Progress** for the reviewer's record. The result explicitly
 says that no code ran and nothing was pushed or merged. **Deny** starts no
 coding task. **Simulate a failure** demonstrates a failed check;
 **Retry sample task** asks for approval again. Interrupting the coding session
-also stops the simulated Her workflow, so a late timer cannot complete it.
+also stops the simulated Her workflow; a stale result action cannot complete it.
 Free text starts the same preset task; this is not a model answering arbitrary
 requests. Personal file/photo attachments and model/service setup are not
 available in the demo. Her's demo settings explain this boundary.
@@ -102,7 +103,7 @@ separate from the real workspace. Real E2EE, hardware-backed signing, provider
 sign-in, APNs delivery and remote desktop are not simulated security tests.
 
 For App Review notes: open the app, tap **Try It First**, then **Delegate a
-sample task** and **Allow Once**. Inspect its task card and **Session Info**
+sample task**, **Allow Once**, and **Show sample result**. Inspect its task card and **Session Info**
 for the sample diff; return to Her and open **Progress** for the reviewer.
 No account, computer, agent, API key or payment is needed. See the
 [acceptance record](ios-demo-review.md) and run
