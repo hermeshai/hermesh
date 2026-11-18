@@ -24,6 +24,7 @@ final class DuoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 20))
         shot("onboarding")
         tap("try-demo")
+        tap("menu"); tap("overview-place")
         XCTAssertTrue(app.buttons["run-demo-task"].waitForExistence(timeout: 20))
         sleep(2)
         walk("")
