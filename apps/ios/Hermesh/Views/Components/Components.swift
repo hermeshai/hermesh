@@ -10,7 +10,6 @@ struct PrivacyPolicyLink: View {
     var body: some View {
         let language = locale.language.languageCode?.identifier == "zh" ? "zh" : "en"
         Link("Privacy Policy", destination: officialCenter.appending(path: "\(language)/privacy"))
-            .accessibilityIdentifier("privacy-policy")
     }
 }
 

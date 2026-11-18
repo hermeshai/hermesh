@@ -120,6 +120,7 @@ struct OnboardingView: View {
                 .accessibilityIdentifier("own-server")
             PrivacyPolicyLink()
                 .font(.footnote)
+                .accessibilityIdentifier("welcome-privacy-policy")
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
         }
