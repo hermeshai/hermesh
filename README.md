@@ -31,7 +31,8 @@
 </p>
 
 <p align="center">
-  <b>iOS Public Beta:</b> <a href="https://testflight.apple.com/join/Nh2sjbdP?source=github">Join the official Hermesh iOS TestFlight</a> (iOS 26 or later)
+  <a href="https://testflight.apple.com/join/Nh2sjbdP?source=github"><img src="docs/assets/testflight-badge.svg" alt="Join the official Hermesh iOS TestFlight public beta (iOS 26+)" width="164" height="34"></a><br>
+  <sub>Try the official Hermesh iPhone public beta on TestFlight (iOS 26+).</sub>
 </p>
 
 <p align="center">

@@ -31,7 +31,8 @@
 </p>
 
 <p align="center">
-  <b>iOS 公开测试：</b><a href="https://testflight.apple.com/join/Nh2sjbdP?source=github">加入官方 Hermesh iOS TestFlight</a>（iOS 26 及以上）
+  <a href="https://testflight.apple.com/join/Nh2sjbdP?source=github"><img src="docs/assets/testflight-badge.svg" alt="加入官方 Hermesh iOS TestFlight 公开测试（iOS 26+）" width="164" height="34"></a><br>
+  <sub>欢迎试用官方 Hermesh iPhone 公开测试版（需 iOS 26+）。</sub>
 </p>
 
 <p align="center">
