@@ -19,6 +19,27 @@ final class HerScrollUITests: XCTestCase {
         XCTAssertTrue(waitUntil { self.lastMessage.isHittable }, "opened at its end")
     }
 
+    func testKeyboardKeepsHeaderStill() {
+        let avatar = app.buttons["her-avatar"], tag = app.buttons["her-tag"]
+        let avatarFrame = avatar.frame, tagFrame = tag.frame
+        XCTAssertGreaterThan(avatarFrame.height, 60)
+        for _ in 0..<3 {
+            composer.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertEqual(avatar.frame.height, avatarFrame.height, accuracy: 1)
+            XCTAssertEqual(avatar.frame.midY, avatarFrame.midY, accuracy: 1)
+            XCTAssertEqual(tag.frame.midY, tagFrame.midY, accuracy: 1)
+            XCTAssertLessThanOrEqual(composer.frame.maxY, app.keyboards.firstMatch.frame.minY + 1)
+            tap("her-tag")
+            XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+            tap("her-avatar")
+            XCTAssertEqual(avatar.frame.height, avatarFrame.height, accuracy: 1)
+            XCTAssertEqual(tag.frame.midY, tagFrame.midY, accuracy: 1)
+        }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "Her: stable header after typing"; shot.lifetime = .keepAlways; add(shot)
+    }
+
     /// A quick flick moves the conversation, begun on a message as anywhere. (The swipe that replies used to take a
     /// flick fast enough to pass both its own distance and the scroll's in one touch, and the page stayed still.)
     func testQuickFlicksScroll() {

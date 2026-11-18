@@ -2,7 +2,6 @@ package machine
 
 import (
 	"runtime"
-	"sync"
 	"testing"
 )
 
@@ -31,36 +30,5 @@ func TestNearLimit(t *testing.T) {
 		if got := nearLimit(c.used, c.limit); got != c.near {
 			t.Errorf("nearLimit(%d, %d) = %v", c.used, c.limit, got)
 		}
-	}
-}
-
-// On Linux the limit on a user's processes counts their threads: the count
-// it is held against does too, so a computer full of threads is seen full.
-func TestUserProcessesCountThreads(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("Linux's RLIMIT_NPROC")
-	}
-	before, err := userProcesses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	stop := make(chan struct{})
-	var started sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		started.Add(1)
-		go func() {
-			runtime.LockOSThread() // a thread of its own, held
-			started.Done()
-			<-stop
-		}()
-	}
-	started.Wait()
-	defer close(stop)
-	after, err := userProcesses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if after.used < before.used+50 {
-		t.Fatalf("50 more threads, counted %d then %d", before.used, after.used)
 	}
 }

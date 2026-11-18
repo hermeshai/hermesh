@@ -711,6 +711,11 @@ const f = await (await import(pathToFileURL(process.argv[1]).href)).fixture();
 process.on("SIGTERM", () => f.close().then(() => process.exit(0)));
 console.log("fixture at " + f.base);`, fixture)
 	t.Cleanup(p.stop) // so that it removes its folder
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("ChatGPT fixture output:\n%s", p.output())
+		}
+	})
 	var at []string
 	eventually(t, 20*time.Second, "the fixture's address", func() bool {
 		at = regexp.MustCompile(`fixture at (http://127\.0\.0\.1:\d+)`).FindStringSubmatch(p.output())

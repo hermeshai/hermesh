@@ -65,7 +65,7 @@ type Host struct {
 const (
 	// readyWait is how long her may take to answer once started.
 	readyWait = 30 * time.Second
-	// dialWait bounds connecting to her and initializing the connection.
+	// dialWait bounds connecting to her and each startup RPC.
 	dialWait = 5 * time.Second
 )
 
@@ -248,12 +248,14 @@ func (h *Host) ready(ctx context.Context, p *provider.Proc) (*conn, error) {
 // watch keeps the snapshot current from the monitor's connection until her
 // stops, the connection fails or ctx ends.
 func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
-	res, err := mon.call(ctx, "bots/subscribe", nil)
+	subscribe, cancel := context.WithTimeout(ctx, dialWait)
+	res, err := mon.call(subscribe, "bots/subscribe", nil)
+	cancel()
 	if err == nil && res.Error != nil {
-		err = fmt.Errorf("bots/subscribe: %s", res.Error.Message)
+		err = errors.New(res.Error.Message)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("bots/subscribe: %w", err)
 	}
 	var list struct {
 		Bots []bot `json:"bots"`
@@ -263,7 +265,10 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 	mon.mu.Lock()
 	mon.serve = h.serveMesh
 	mon.mu.Unlock()
-	if err := h.offerMesh(ctx, mon); err != nil {
+	mesh, cancel := context.WithTimeout(ctx, dialWait)
+	err = h.offerMesh(mesh, mon)
+	cancel()
+	if err != nil {
 		// A her older than the mesh group: Her works without it.
 		h.log.Info("her takes no mesh group", "err", err)
 	}

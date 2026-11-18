@@ -130,12 +130,12 @@ func goBodiesAreShown(type: String, body: String) throws {
     g.taskVisibility = .all
     g.maxConcurrentSessions = 3
     let c = try SigningPreview.card(request(g))
-    #expect(c.lines.contains("Can also see other personal agents’ sessions in these projects"))
-    #expect(c.lines.contains("Sessions at once: up to 3"))
+    #expect(c.lines.contains("Can also see other personal agents’ tasks in these projects"))
+    #expect(c.lines.contains("Tasks at once: up to 3"))
     // A limit beyond the defaults stays on the card, not behind ⓘ.
-    #expect(c.rows.contains(CardRow(kind: .extra, value: "Can also see other personal agents’ sessions in these projects")))
-    #expect(c.rows.contains(CardRow(kind: .extra, value: "Sessions at once: up to 3")))
-    #expect(try !SigningPreview.card(request(grant())).lines.contains { $0.lowercased().contains("session") })
+    #expect(c.rows.contains(CardRow(kind: .extra, value: "Can also see other personal agents’ tasks in these projects")))
+    #expect(c.rows.contains(CardRow(kind: .extra, value: "Tasks at once: up to 3")))
+    #expect(try !SigningPreview.card(request(grant())).lines.contains { $0.lowercased().contains("task") })
 }
 
 // An MCP connection's grant says which server holds the agent's key.

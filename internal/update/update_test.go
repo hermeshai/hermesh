@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/hermeshai/hermesh/internal/machine"
 )
 
 // release is a signed release served the way GitHub serves one.
@@ -194,7 +196,7 @@ func TestInstall(t *testing.T) {
 	r.publish("0.2.0")
 	rel, _ := Latest(context.Background())
 	dir := programsAt(t, "0.1.0")
-	names, err := Install(context.Background(), t.TempDir(), dir, rel)
+	names, err := Install(context.Background(), t.TempDir(), dir, rel, false)
 	if err != nil || strings.Join(names, " ") != strings.Join(append(Programs, herConsole), " ") {
 		t.Fatalf("%v %v", names, err)
 	}
@@ -226,7 +228,7 @@ func TestInstall(t *testing.T) {
 	// Only the programs there: an agent CLI alone.
 	cli := t.TempDir()
 	os.WriteFile(filepath.Join(cli, hermesh), fakeProgram(t, "0.1.0"), 0o755)
-	if names, err := Install(context.Background(), t.TempDir(), cli, rel); err != nil || strings.Join(names, " ") != hermesh {
+	if names, err := Install(context.Background(), t.TempDir(), cli, rel, false); err != nil || strings.Join(names, " ") != hermesh {
 		t.Errorf("CLI only: %v %v", names, err)
 	}
 
@@ -238,7 +240,7 @@ func TestInstall(t *testing.T) {
 	r.sign()
 	rel, _ = Latest(context.Background())
 	os.WriteFile(filepath.Join(dir, "her"), fakeProgram(t, "0.2.0"), 0o755)
-	if names, err := Install(context.Background(), t.TempDir(), dir, rel); err != nil || slices.Contains(names, "her") || slices.Contains(names, herConsole) {
+	if names, err := Install(context.Background(), t.TempDir(), dir, rel, false); err != nil || slices.Contains(names, "her") || slices.Contains(names, herConsole) {
 		t.Fatalf("a release without her: %v %v", names, err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "her")); !strings.Contains(string(b), "0.2.0") || console(dir, herConsole) != "console 0.2.0" {
@@ -274,7 +276,7 @@ func TestInstallRefuses(t *testing.T) {
 		change()
 		rel, _ := Latest(context.Background())
 		dir := programsAt(t, "0.1.0")
-		if _, err := Install(context.Background(), t.TempDir(), dir, rel); err == nil || !strings.Contains(err.Error(), what) {
+		if _, err := Install(context.Background(), t.TempDir(), dir, rel, false); err == nil || !strings.Contains(err.Error(), what) {
 			t.Errorf("%s: %v", what, err)
 		}
 		for _, name := range Programs {
@@ -294,6 +296,152 @@ func TestInstallRefuses(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "index.html")); err == nil {
 			t.Errorf("%s: a file written outside", what)
 		}
+	}
+}
+
+func TestInstallMissingHer(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux machine components")
+	}
+	r := newRelease(t)
+	r.publish("0.1.6")
+	rel, err := Latest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, data := t.TempDir(), t.TempDir()
+	markMachine(t, data)
+	for _, name := range []string{"hermeshd", "hermesh"} {
+		if err := os.WriteFile(filepath.Join(dir, name), fakeProgram(t, "0.1.5"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := Install(context.Background(), data, dir, rel, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "her")); err != nil {
+		t.Errorf("Her after the upgrade: %v", err)
+	}
+	if got := console(dir, herConsole); got != "console 0.1.6" {
+		t.Errorf("console after the upgrade: %q", got)
+	}
+}
+
+func TestRepairMissingHer(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux machine components")
+	}
+	ctx := context.Background()
+	r := newRelease(t)
+	r.publish("0.1.6")
+	dir, data := programsAt(t, "0.1.6"), t.TempDir()
+	missing := filepath.Join(dir, "her")
+	if err := os.Remove(missing); err != nil {
+		t.Fatal(err)
+	}
+	backup := previousPath(dir, "her")
+	if err := os.WriteFile(backup, []byte("previous Her"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rel, err := Latest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel.repairsHer("0.1.6", data, dir) {
+		t.Fatal("a trusted device offered a repair")
+	}
+	markMachine(t, data)
+	if rel.repairsHer("0.1.7", data, dir) || !rel.repairsHer("0.1.6", data, dir) {
+		t.Fatal("repair must use the installed version")
+	}
+
+	// A failed download leaves the installation and its backup intact.
+	her := r.files[asset("her")]
+	r.files[asset("her")] = []byte("incomplete download")
+	if _, err := Install(ctx, data, dir, rel, true); err == nil || !strings.Contains(err.Error(), "does not match its checksum") {
+		t.Fatalf("unverified repair: %v", err)
+	}
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatalf("Her after failed repair: %v", err)
+	}
+	r.files[asset("her")] = her
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || !slices.Equal(names, []string{"her"}) {
+		t.Fatalf("repair: %v %v", names, err)
+	}
+	if b, err := os.ReadFile(backup); err != nil || string(b) != "previous Her" {
+		t.Fatalf("backup after repair: %q %v", b, err)
+	}
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || len(names) != 0 {
+		t.Fatalf("repair retried: %v %v", names, err)
+	}
+}
+
+func TestRepairIncompleteHerConsole(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Linux machine components")
+	}
+	ctx := context.Background()
+	r := newRelease(t)
+	r.publish("0.1.6")
+	dir, data := programsAt(t, "0.1.6"), t.TempDir()
+	markMachine(t, data)
+	if err := os.Remove(filepath.Join(dir, herConsole, "index.html")); err != nil {
+		t.Fatal(err)
+	}
+	backup := previousPath(dir, herConsole)
+	if err := os.Mkdir(backup, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backup, "index.html"), []byte("previous console"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A signed archive with its entry in the wrong folder leaves the
+	// installation and the previous console intact.
+	r.files[herConsoleAsset] = consoleArchive(t, "./dist/", "wrong location")
+	r.sign()
+	rel, err := Latest(ctx)
+	if err != nil || !rel.repairsHer("0.1.6", data, dir) {
+		t.Fatalf("expected a repair: %v", err)
+	}
+	if _, err := Install(ctx, data, dir, rel, true); err == nil || !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("repair with a missing entry: %v", err)
+	}
+	// If the staged folder cannot be moved into place, restore the partial one.
+	if err := replaceIncompleteConsole(dir, filepath.Join(dir, herConsole)); err == nil {
+		t.Fatal("replaced the console without a staged folder")
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, herConsole, "assets", "old.js")); err != nil || string(got) != "old" {
+		t.Fatalf("console changed after failed repair: %q, %v", got, err)
+	}
+
+	r.publish("0.1.6")
+	rel, err = Latest(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || !slices.Equal(names, []string{herConsole}) {
+		t.Fatalf("repair: %v, %v", names, err)
+	}
+	if got := console(dir, herConsole); got != "console 0.1.6" {
+		t.Errorf("repaired console: %q", got)
+	}
+	if got := console(dir, filepath.Base(backup)); got != "previous console" {
+		t.Errorf("backup after repair: %q", got)
+	}
+	if names, err := Install(ctx, data, dir, rel, true); err != nil || len(names) != 0 {
+		t.Fatalf("complete console selected for repair: %v, %v", names, err)
+	}
+}
+
+func markMachine(t *testing.T, data string) {
+	t.Helper()
+	key := machine.KeyPath(filepath.Join(data, "machine"))
+	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, nil, 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -407,7 +555,7 @@ func testInstallHerFolder(t *testing.T, folder string) {
 	rel, _ := Latest(context.Background())
 
 	dir := programsAt(t, "0.1.0")
-	if names, err := Install(context.Background(), t.TempDir(), dir, rel); err != nil || slices.Contains(names, folder) {
+	if names, err := Install(context.Background(), t.TempDir(), dir, rel, false); err != nil || slices.Contains(names, folder) {
 		t.Fatalf("a machine without the folder: %v %v", names, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, folder)); err == nil {
@@ -418,7 +566,7 @@ func testInstallHerFolder(t *testing.T, folder string) {
 	os.MkdirAll(filepath.Join(dir, folder), 0o755)
 	os.WriteFile(filepath.Join(dir, folder, "program"), []byte("0.1.0"), 0o755)
 	os.WriteFile(filepath.Join(dir, folder, "old-helper"), []byte("0.1.0"), 0o755)
-	if names, err := Install(context.Background(), t.TempDir(), dir, rel); err != nil || !slices.Contains(names, folder) {
+	if names, err := Install(context.Background(), t.TempDir(), dir, rel, false); err != nil || !slices.Contains(names, folder) {
 		t.Fatalf("%v %v", names, err)
 	}
 	program := filepath.Join(dir, folder, "program")

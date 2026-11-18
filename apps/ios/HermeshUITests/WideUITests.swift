@@ -21,6 +21,7 @@ final class WideUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         app.launch()
         tap("try-demo")
+        tap("menu"); tap("overview-place")
         XCTAssertTrue(app.buttons["run-demo-task"].waitForExistence(timeout: 20))
         XCUIDevice.shared.orientation = .landscapeLeft
         sleep(2)

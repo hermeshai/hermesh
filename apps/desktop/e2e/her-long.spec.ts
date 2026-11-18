@@ -11,6 +11,7 @@ import { fixture, launch, snap } from "./app";
 /** How far one stroke on the trackpad scrolls: in small steps, a frame apart, as a trackpad sends them. */
 const STROKE = 480;
 const STEPS = 12;
+type Lab = { blank: number; frames: number; wheeled: number; settled: number };
 
 test("Her: a long conversation, scrolled up to its first message, moves only as far as it is scrolled", async () => {
   test.setTimeout(600_000);
@@ -23,7 +24,9 @@ test("Her: a long conversation, scrolled up to its first message, moves only as 
   // Every frame, whether any message is in sight: rows not drawn are a space, which must never fill the view.
   await page.evaluate(() => {
     const scroller = document.querySelector<HTMLElement>(".cscroll")!;
-    const lab = ((window as unknown as { lab: { blank: number; frames: number } }).lab = { blank: 0, frames: 0 });
+    const lab = ((window as unknown as { lab: Lab }).lab = { blank: 0, frames: 0, wheeled: 0, settled: 0 });
+    scroller.addEventListener("wheel", (e) => { lab.wheeled -= e.deltaY; }, { passive: true });
+    scroller.addEventListener("scrollend", () => { lab.settled = lab.wheeled; });
     const tick = () => {
       const top = scroller.getBoundingClientRect().top;
       const bottom = top + scroller.clientHeight;
@@ -62,6 +65,13 @@ test("Her: a long conversation, scrolled up to its first message, moves only as 
       await page.mouse.wheel(0, -STROKE / STEPS);
       await page.waitForTimeout(16);
     }
+    // mouse.wheel returns before Chromium finishes scrolling. A fixed delay can measure the last
+    // wheel in the next stroke on a busy runner; wait for its input and scrollend before sampling.
+    await page.waitForFunction((distance) => {
+      const lab = (window as unknown as { lab: Lab }).lab;
+      const scroller = document.querySelector<HTMLElement>(".cscroll")!;
+      return lab.wheeled === distance && (lab.settled === distance || scroller.scrollTop === 0);
+    }, steps * STROKE, { timeout: 5000 });
     await page.waitForTimeout(100);
     const after = await sight(before.key);
     // Scrolled a whole stroke up: the row in sight came down as far, whatever was read or drawn meanwhile.
@@ -70,7 +80,7 @@ test("Her: a long conversation, scrolled up to its first message, moves only as 
   }
   await expect(log.locator(".vrow").first()).toContainText("Msg 1:");
   await snap(page, "her-long-start");
-  const { blank, frames } = await page.evaluate(() => (window as unknown as { lab: { blank: number; frames: number } }).lab);
+  const { blank, frames } = await page.evaluate(() => (window as unknown as { lab: Lab }).lab);
   expect(jumps, "every stroke moves the conversation as far").toEqual([]);
   expect(frames).toBeGreaterThan(steps);
   expect(blank, "no frame without a message in sight").toBe(0);

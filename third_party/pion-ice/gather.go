@@ -30,6 +30,21 @@ type turnClient interface {
 	Close()
 }
 
+// TURN's binding lookup and creation are separate operations. Serialize writes
+// so concurrent ICE checks cannot allocate two channel numbers for one peer,
+// which makes the server reject the binding and closes the whole allocation.
+type turnWriteConn struct {
+	net.PacketConn
+	writeMu sync.Mutex
+}
+
+func (c *turnWriteConn) WriteTo(data []byte, addr net.Addr) (int, error) {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+
+	return c.PacketConn.WriteTo(data, addr)
+}
+
 func defaultTurnClient(cfg *turn.ClientConfig) (turnClient, error) {
 	return turn.NewClient(cfg)
 }
@@ -1318,6 +1333,7 @@ func (a *Agent) gatherCandidatesRelay(ctx context.Context, urls []*stun.URI, gen
 
 						return
 					}
+					relayConn = &turnWriteConn{PacketConn: relayConn}
 
 					closeRelayConn := func() {
 						if relayConErr := relayConn.Close(); relayConErr != nil {

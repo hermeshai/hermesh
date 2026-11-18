@@ -207,7 +207,7 @@ test("the busy bubble names who is at work, never what: the bot while it answers
   ]);
   assert.deepEqual(busyBubble(two)?.agents, [{ id: "g2", name: "writer" }, { id: "g1", name: "调研更新方案" }], "the latest first; a nameless one by its handle");
   const asking = applyEvents(two, [
-    { seq: 26, ts: 0, type: "agent_event", agent_id: "g2", event: { seq: 2, ts: 0, type: "approval_requested", call_id: "g-c2", tool: "bash", args: { command: "rm -rf build" } } } as Event,
+    { seq: 26, ts: 0, type: "agent_event", agent_id: "g2", event: { seq: 2, ts: 0, type: "approval_requested", call_id: "g-c2", name: "bash", summary: "Remove the build directory", args: { command: "rm -rf build" } } } as Event,
   ]);
   assert.deepEqual(busyBubble(asking)?.agents.map((a) => a.id), ["g1"], "one waiting for the owner is not at work");
   const over = applyEvents(after, [{ seq: 24, ts: 1, type: "agent_status", agent_id: "g1", status: "completed", summary: "查完了" } as Event]);

@@ -18,7 +18,7 @@ is never a machine: nothing runs on it, and it hosts no agent.
 | A session | Its conversation, newest at the bottom, as the Mac shows it: the owner's messages in a bubble of the brand's blue on the right, the agent's replies as GitHub Markdown with code in the Mac's colours under a bar with its language and Copy, and tables in a box with a shaded header, tool calls as grey lines folded until opened (a run of them one line, opening to a card with a row each; a row opens to its whole output); long-press a message to copy it. Scrolled well up from the end, a button brings it back. A control bar to interrupt a live turn, or the agent's question to answer; session info and the diff in a sheet; ⋯ to copy its id, rename, archive or delete it (delete asks first; its branch stays) |
 | Grants | Agents and MCP connections: approve, renew, rename, disconnect, pause; each grant's sessions on a page of their own |
 | Machines | The machines, a green shield on those that are trusted devices too, then the other trusted devices (which approve but run nothing; remove one with a swipe), each machine opening its page: its coding agents (signed in, projects, defaults), projects no installed agent may use, taking no new sessions, its sessions, rename, remove. A coding agent opens its own page: signing in, the default model, reasoning effort and (Codex) speed as menus in place, and its projects, each with a menu to change how agents work there or stop using it; Add a Project… for this agent. Three levels at most |
-| Account | Laid out as iOS Settings: the service and whether it is reached; usage in place (the last 30 days, active days, streak, the weeks of days); appearance as three small phones (the system's, light, dark); Notifications on a page of their own; about (on an own server the connection address and, when it serves MCP, its MCP address, each copied with a tap; the web console; the version); sign out |
+| Account | Laid out as iOS Settings: the service and whether it is reached; usage in place (the last 30 days, active days, streak, the weeks of days); Settings with Machines and Connected Agents (their pages return here); Notifications on a page of their own; appearance as three small phones (the system's, light, dark); about (on an own server the connection address and, when it serves MCP, its MCP address, each copied with a tap; the web console; the version); account actions (sign out and erase everything) at the bottom |
 | Remote Desktop | From Her's settings, on a Mac or a Linux machine with a desktop that runs her: its screen, full screen, operated by touch, after Face ID; copied text goes both ways ([computer-control.md](computer-control.md) §6, [computer-control-linux.md](computer-control-linux.md)) |
 | New | The Overview's top right: Connect an Agent…, Add a Machine…, Enter a Pairing Code… |
 
@@ -74,28 +74,46 @@ Buttons come in four sizes, each by what it does, never sized by hand
 
 The welcome page offers three choices: “Start Using Hermesh”, “Already using
 it on another device”, and “Try It First”. “Try It First” opens a disposable
-sample workspace without signing in, pairing a computer or
-installing a coding agent. The normal screens show simulated machines,
-projects, grants and conversations. “Run Demo Task” starts a question;
-answering or declining it produces simulated tool output, a result and a
-code diff. Adding machines, approving agents and managing projects also
-work within this sample workspace.
+sample workspace at **Her**, without signing in, pairing a computer,
+installing an agent or connecting a model. This path is compiled in Release.
+
+Choose **Delegate a sample task**, then **Allow Once**. Her on the sample Mac starts a simulated
+Codex session on **Linux Studio** and a sample reviewer. Choose **Show sample result**
+when ready to finish the simulation. Open the task card for its output and
+code diff, or **Progress** for the reviewer's record. The result explicitly
+says that no code ran and nothing was pushed or merged. **Deny** starts no
+coding task. **Simulate a failure** demonstrates a failed check;
+**Retry sample task** asks for approval again. Interrupting the coding session
+also stops the simulated Her workflow; a stale result action cannot complete it.
+Free text starts the same preset task; this is not a model answering arbitrary
+requests. Personal file/photo attachments and model/service setup are not
+available in the demo. Her's demo settings explain this boundary.
+
+The menu's **Work** entry retains the existing sample tasks, machines, projects,
+grants and questions. **Run Demo Task** starts a greeting question; answering
+or declining it produces sample tool output, a result and a code diff.
 
 The persistent banner and sheet footer identify simulated data. Exit Demo
-returns to onboarding; reopening starts fresh. The signed-in account page
-has no demo entry.
-`AppAPI` routes demo calls to `DemoService` in memory, with no fallback to
-the real core. Its model, conversation cache, search history and settings
-are separate from the real workspace. `DemoUITests` exercises the public
-entry and core flows. The [review acceptance matrix](ios-demo-review.md)
-records the 15 UI scenarios and their execution boundaries. The first-run
-end-to-end test also checks that the signed-in account page has no demo entry.
+returns to onboarding; reopening starts fresh, including Her's conversation,
+approvals, progress and in-flight timers. The signed-in account page has no
+demo entry. `AppAPI` routes demo calls to `DemoService`, and Her's connections
+to `HerReviewDemo`, in memory, with no fallback to the real core. Conversation
+caches, search history, appearance, environment choice and list settings remain
+separate from the real workspace. Real E2EE, hardware-backed signing, provider
+sign-in, APNs delivery and remote desktop are not simulated security tests.
 
-For App Review notes: open the app, tap **Try It First**, then **Run Demo Task**.
-Choose a greeting and tap **Answer**. Open **Session Info** to inspect the
-simulated changes; the menu also exposes machines and grants. No login,
-external hardware, pairing code or external service is required for this
-demo.
+For App Review notes: open the app, tap **Try It First**, then **Delegate a
+sample task**, **Allow Once**, and **Show sample result**. Inspect its task card and **Session Info**
+for the sample diff; return to Her and open **Progress** for the reviewer.
+No account, computer, agent, API key or payment is needed. See the
+[acceptance record](ios-demo-review.md) and run
+`apps/ios/scripts/test-demo.sh /tmp/hermesh-demo-review` to verify the Release
+path on a new simulator, offline state tests and preference isolation.
+
+These source changes do not establish availability in an uploaded build.
+In particular, TestFlight **0.1.6 (722)** predates this Her demo; its existing
+public demo covers the Work workspace only. Uploading or submitting a new
+build is a separate release action.
 
 ## 2. How it is built
 

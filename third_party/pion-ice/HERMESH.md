@@ -15,6 +15,14 @@ normal STUN retransmission continues. Requests and responses have separate
 slots. Host and server-reflexive writes, media packets, authentication and
 the TURN server's permission rules are unchanged.
 
+`gather.go` serializes writes on each TURN allocation. Pion TURN v5.1.3
+looks up and creates channel bindings separately; concurrent request and
+response writes to a new peer can assign it two channel numbers. The server
+rejects the second binding, closing the allocation before ICE nomination.
+The serialization stays outside the ICE task loop. The full WebRTC regression
+`internal/screen/TestBirthdayAdoptionPreservesWebRTCMediaAndInput` reproduces
+the failure and verifies media and input through relay-to-direct promotion.
+
 A second change, in the same function: a check from a relayed candidate
 whose server is on the internet is not written to a private, loopback or
 link-local address (`relayCannotReach`). Such a server forwards to none (the

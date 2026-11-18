@@ -94,6 +94,7 @@ struct HerComposer: View {
                     .tint(.primary)
                     .accessibilityLabel(Text("Add Photos or Files"))
                     .accessibilityIdentifier("her-attach")
+                    .disabled(model.isDemo)
                     .popover(isPresented: $adding, arrowEdge: .bottom) {
                         VStack(alignment: .leading, spacing: 0) {
                             Button { add(photos: true) } label: { Label("Photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect) }

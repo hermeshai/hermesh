@@ -22,8 +22,9 @@ enum Root: Hashable {
     }
 }
 
-/// Pages pushed onto the main stack.
+/// Pages pushed onto the main or account navigation stack.
 enum Route: Hashable {
+    case machines, grants
     case session(String)
     case grant(String) // grant id
     case machine(String) // machine id
@@ -139,7 +140,7 @@ final class AppModel {
     var usage: UsageYear?
     /// The overview's range, and the work counted over each range asked,
     /// kept so switching shows the last count at once.
-    var workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today {
+    var workPeriod: WorkPeriod = .today {
         didSet {
             if !isDemo { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
         }
@@ -196,8 +197,7 @@ final class AppModel {
     }
 
     // Navigation
-    /// Her's page first (docs/her-team.md §4.1); Work in the demo, which has no Her, and once the owner put her
-    /// first run off.
+    /// Her's page first (docs/her-team.md §4.1); Work once the owner put her first run off.
     var root: Root = .overview
     @ObservationIgnored private var startSettled = false
     /// "Not Now" on Her's first run: Work is the first page until a machine runs her. Kept on this iPhone.
@@ -222,6 +222,8 @@ final class AppModel {
         guard path.isEmpty, case .session(let id) = root else { return nil }
         return id
     }
+    var accountPresented = false { didSet { if !accountPresented { accountPath = [] } } }
+    var accountPath: [Route] = []
     var sheet: SheetKind?
     /// How the session list is laid out, whether it shows archived sessions,
     /// and its collapsed sections ("grouping:key"); kept on this iPhone.
@@ -239,7 +241,8 @@ final class AppModel {
         isDemo = demo != nil
         conversations = Conversations(persistent: demo == nil)
         her = HerPlace(persistent: demo == nil)
-        if let demo { api = AppAPI(demo: demo); return }
+        if let demo { api = AppAPI(demo: demo); root = .her; return }
+        workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
@@ -471,6 +474,7 @@ final class AppModel {
 
     /// Forgets the world: another owner, or none.
     private func forgetWorld() {
+        accountPresented = false
         saveTask?.cancel()
         heldSessions = []
         machines = []
@@ -780,12 +784,14 @@ final class AppModel {
     // MARK: Navigation
 
     func open(_ r: Root) {
+        accountPresented = false
         root = r
         path = []
         drawerOpen = false
     }
 
     func openSession(_ id: String) {
+        accountPresented = false
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }
         path.append(.session(id))
