@@ -76,6 +76,19 @@ final class DemoService {
         append("demo-finished-session", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
         append("demo-finished-session", .with { $0.userMessage.text = String(localized: "Add a welcome page and test it.") })
         finish("demo-finished-session", greeting: "Hello, world!")
+        #if DEBUG
+        let extra = UserDefaults.standard.integer(forKey: "DemoSessions")
+        for i in 0 ..< max(0, extra) {
+            var s = session("demo-extra-\(i)", title: "Sidebar Task \(i + 1)", machine: i.isMultiple(of: 2) ? "demo-mac" : "demo-linux", status: .idle)
+            s.agent = i.isMultiple(of: 2) ? "codex" : "claude"
+            s.updatedAt = .init(date: .now.addingTimeInterval(Double(-600 - i * 120)))
+            world.sessions.append(s)
+        }
+        if UserDefaults.standard.bool(forKey: "DemoSidebarActivity") {
+            world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
+            world.status.relayConnected = false
+        }
+        #endif
         _ = pairing(.client)
     }
 
