@@ -613,3 +613,38 @@ test("nothing signed: a signer older than the app offers its update, else the fa
     proxy.close();
   }
 });
+
+test("local workspace storage protects files, releases a checkout and resumes the original session", async () => {
+  const { app, page } = await launch();
+  try {
+    const title = "工作区恢复验证";
+    const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "write saved.txt first turn", "--wait", "-o", "json")).session;
+    const { localMachineId } = await api<{ localMachineId: string }>(page, "GetStatus");
+    const settings = await openSettings(app, page, `machines/${localMachineId}`);
+    const storage = settings.getByRole("region", { name: "本地工作区" });
+    await storage.getByRole("button", { name: "查看磁盘占用" }).click();
+    await storage.locator("summary").filter({ hasText: "demo" }).click();
+    const row = storage.locator(".frow").filter({ hasText: title });
+    await expect(row).toContainText(/\d+(\.\d+)? (B|KiB|MiB)/);
+    const { workspaces } = await api<{ workspaces: { sessionId: string; path: string }[] }>(page, "ListLocalWorkspaces");
+    const dir = workspaces.find((w) => w.sessionId === started.session_id)!.path;
+    const draft = path.join(dir, "unsaved.txt");
+    fs.writeFileSync(draft, "keep me");
+    const release = row.getByRole("button", { name: "释放本地工作区" });
+    await release.click();
+    await expect(storage.getByRole("alert")).toContainText("unsaved.txt");
+    expect(fs.readFileSync(draft, "utf8")).toBe("keep me");
+    fs.unlinkSync(draft);
+
+    await release.click();
+    await expect(row).toHaveCount(0);
+    expect(fs.existsSync(dir)).toBe(false);
+    await cli("session", "send", started.session_id, "--message", "write resumed.txt second turn", "--wait");
+    expect(fs.readFileSync(path.join(dir, "saved.txt"), "utf8")).toContain("first turn");
+    expect(fs.readFileSync(path.join(dir, "resumed.txt"), "utf8")).toContain("second turn");
+    await storage.getByRole("button", { name: "刷新" }).click();
+    await expect(row).toBeVisible();
+  } finally {
+    await app.close();
+  }
+});
