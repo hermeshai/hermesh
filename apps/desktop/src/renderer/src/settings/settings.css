@@ -13,6 +13,7 @@ html[data-platform=win] .set-top{padding-right:calc(var(--caption) + 8px)}
 .set-body{flex:1;min-height:0;overflow-y:auto;padding:21px 34px 34px}
 .settings .form{gap:21px}
 .settings .fhead{font-weight:400}
+.workspace-summary{padding:10px 14px;cursor:pointer;border-top:.5px solid var(--sep)}
 .settings .frow{gap:12px;min-height:44px}
 .settings .frow>.ic{color:var(--l2)}
 .settings .frow.dim{color:var(--l3)}

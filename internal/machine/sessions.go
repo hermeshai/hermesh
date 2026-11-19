@@ -151,6 +151,8 @@ type live struct {
 	mayHaveEdits  bool // a tool that can change files ran this turn
 	mu            sync.Mutex
 	row           *sessionRow
+	releasing     chan struct{} // closed when the idle checkout can be used again
+	idleClose     chan struct{} // an idle process is still shutting down
 	sess          provider.Session
 	seq           uint64
 	turn          uint32
@@ -626,6 +628,15 @@ func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts
 func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error) {
 	for {
 		l.mu.Lock()
+		if done := l.releasing; done != nil {
+			l.mu.Unlock()
+			select {
+			case <-done:
+				continue
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
 		if (l.asker != m.by || l.askerConv != m.conv) && turnBusy(l.row.Status) {
 			l.asked = append(l.asked, m)
 			s.saveAsked(l)
@@ -847,8 +858,11 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	if !alive {
 		// pending: what a failed start never delivered (interruptStart).
 		l.pending, l.resume, l.queuedAt = l.pending.join(m), l.row.ProviderRef != "", time.Now()
+		changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED)
 		l.mu.Unlock()
-		s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "")
+		if changed {
+			s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "")
+		}
 		s.dispatch()
 		return nil
 	}
@@ -951,9 +965,15 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 		l.mu.Unlock()
 		return nil, cerr(connect.CodeFailedPrecondition, "session %s is starting the turn another agent's message waits for; interrupt it first", id)
 	}
+	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
+	if !inPlace && !s.ws.none {
+		if err := s.releaseCheckoutLocked(ctx, l); err != nil {
+			l.mu.Unlock()
+			return nil, err
+		}
+	}
 	ps := l.sess
 	l.sess = nil
-	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
 	changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED)
 	row := snapshotRow(l.row)
 	l.mu.Unlock()
@@ -963,14 +983,8 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 	// The agent's temporary files go with its process; its next start makes
 	// the directory again. Attachments stay: they belong to the record.
 	os.RemoveAll(filepath.Join(s.dataDir, "sessions", id, "tmp"))
-	if !inPlace && s.ws.Exists(id) {
-		if proj, _ := s.st.Project(row.ProjectID); proj != nil {
-			if err := s.ws.Remove(ctx, proj.Path, id); err != nil {
-				s.log.Warn("archive: worktree not removed", "session", id, "err", err)
-			}
-		} else {
-			os.RemoveAll(s.ws.Path(id))
-		}
+	if !inPlace && s.ws.none {
+		os.RemoveAll(s.ws.Path(id)) // synthetic, non-Git benchmark workspace
 	}
 	s.archiveInAgent(ctx, row, true)
 	if changed {
@@ -2377,11 +2391,18 @@ func (s *Sessions) Janitor(ctx context.Context) {
 				// process goes, and the next message resumes it.
 				if ps != nil && now.Sub(idleSince) > s.limits.IdleProcessTTL {
 					l.mu.Lock()
-					if l.sess == ps {
+					if l.sess == ps && l.releasing == nil && l.idleClose == nil {
 						l.sess = nil
+						l.idleClose = make(chan struct{})
+						go func() {
+							ps.Close()
+							l.mu.Lock()
+							close(l.idleClose)
+							l.idleClose = nil
+							l.mu.Unlock()
+						}()
 					}
 					l.mu.Unlock()
-					go ps.Close()
 				}
 			}
 		}

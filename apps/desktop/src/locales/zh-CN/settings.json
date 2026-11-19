@@ -1,5 +1,21 @@
 {
   "title": "设置",
+  "workspaces": {
+    "title": "本地工作区",
+    "usage": "各项目和会话的预计磁盘占用",
+    "note": "请先保存编辑器里的改动。释放后，下次发消息会从原分支恢复工作区。如果磁盘上有无法从分支恢复的文件，Hermesh 会保留目录。",
+    "open": "打开文件夹",
+    "partial": "部分统计",
+    "sizeError": "无法统计：{{reason}}",
+    "scan": "查看磁盘占用",
+    "refresh": "刷新",
+    "scanning": "正在统计…",
+    "release": "释放本地工作区",
+    "releasing": "正在释放…",
+    "released": "已释放「{{title}}」的本地工作区。",
+    "empty": "本机没有占用磁盘的会话工作区。",
+    "kept": "已保留工作区 {{path}}。{{reason}}"
+  },
   "pages": {
     "general": "通用",
     "grants": "授权",

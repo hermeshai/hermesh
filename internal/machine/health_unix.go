@@ -3,8 +3,13 @@
 package machine
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -37,4 +42,19 @@ func fdDir() string {
 		return "/proc/self/fd"
 	}
 	return "/dev/fd"
+}
+
+// du counts allocated blocks, including directory entries, and accounts
+// for hard links without following symlinks into other checkouts.
+func workspaceBytes(ctx context.Context, path string) (uint64, error) {
+	out, err := exec.CommandContext(ctx, "du", "-sk", path).Output()
+	if err != nil {
+		return 0, err
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("du returned no size")
+	}
+	kib, err := strconv.ParseUint(fields[0], 10, 64)
+	return kib * 1024, err
 }

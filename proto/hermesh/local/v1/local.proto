@@ -108,6 +108,9 @@ service LocalService {
   // something does not work: versions, health, PATH and each coding agent.
   // Nothing leaves the Mac unless they do.
   rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
+  // On this machine only. Scanning the checkouts is an explicit user action.
+  rpc ListLocalWorkspaces(ListLocalWorkspacesRequest) returns (ListLocalWorkspacesResponse);
+  rpc ReleaseLocalWorkspace(ReleaseLocalWorkspaceRequest) returns (ReleaseLocalWorkspaceResponse);
 
   // Her (docs/her-server.md). A machine's Her is Machine.her. Each call
   // goes in process when the machine is this Mac, else through the tunnel.
@@ -1351,3 +1354,26 @@ message GetHerConsoleResponse {
   // runs; anything under it is the machine's /her/console/.
   string url = 1;
 }
+
+message ListLocalWorkspacesRequest {}
+
+message LocalWorkspace {
+  string project_id = 1;
+  string session_id = 2;
+  string title = 3;
+  string path = 4;
+  uint64 size_bytes = 5;
+  hermesh.session.v1.SessionStatus status = 6;
+  // The rest of the scan is still usable when one checkout could not be read.
+  string size_error = 7;
+}
+
+message ListLocalWorkspacesResponse {
+  repeated LocalWorkspace workspaces = 1;
+}
+
+message ReleaseLocalWorkspaceRequest {
+  string session_id = 1;
+}
+
+message ReleaseLocalWorkspaceResponse {}

@@ -14,6 +14,7 @@ import { herDataKept } from "../her/environments";
 import { GrantLine } from "../her/GrantLine";
 import { Icon } from "../icons";
 import { useNow, useStore, type Store } from "../store";
+import { WorkspaceStorage } from "./WorkspaceStorage";
 import { GoRow, SRow, Switch, type Ask } from "./common";
 
 function machineIcon(m: Machine): string {
@@ -232,6 +233,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
         </div>
       </div>
       <Problems m={m} />
+      {m.local && <WorkspaceStorage />}
       {/* A machine only is there to share them. */}
       {m.local && !st.status?.machineOnly && (
         <div className="fgroup">
