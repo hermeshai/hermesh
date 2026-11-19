@@ -365,3 +365,22 @@ func TestDialRetriesTransientHandshakeDrop(t *testing.T) {
 		t.Fatalf("attempts = %d, want 2", got)
 	}
 }
+
+func TestRelayConnRecordRTTSubTickSample(t *testing.T) {
+	var c RelayConn
+	if got := c.RTT(); got != 0 {
+		t.Fatalf("unmeasured RTT = %v, want 0", got)
+	}
+	c.recordRTT(-time.Millisecond)
+	if got := c.RTT(); got != 0 {
+		t.Fatalf("negative sample RTT = %v, want 0", got)
+	}
+	c.recordRTT(0)
+	if got := c.RTT(); got <= 0 {
+		t.Fatalf("zero-duration measured RTT = %v, want > 0", got)
+	}
+	c.recordRTT(8 * time.Millisecond)
+	if got := c.RTT(); got < time.Millisecond {
+		t.Fatalf("smoothed RTT after 8ms sample = %v, want >= 1ms", got)
+	}
+}
