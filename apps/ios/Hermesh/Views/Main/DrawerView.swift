@@ -35,7 +35,7 @@ struct DrawerView: View {
     }
 
     private var menu: some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .bottomLeading) {
             VStack(spacing: 0) {
                 // The top stays: search and the menu's own button whatever the list's length.
                 top
@@ -159,23 +159,18 @@ struct DrawerView: View {
     }
 
     private var bottomBar: some View {
-        HStack {
-            Button {
-                model.accountPresented = true
-            } label: {
-                AccountPicture(status: model.status).frame(width: 44, height: 44)
-                    .padding(4)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .contentShape(.circle)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Account and devices")
-            .accessibilityIdentifier("account")
-            Spacer()
+        Button {
+            model.accountPresented = true
+        } label: {
+            AccountPicture(status: model.status).frame(width: 44, height: 44)
+                .padding(4)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(.circle)
         }
-        .padding(.horizontal, 16).padding(.bottom, 8).padding(.top, 24)
-        // The fade only shows: a row under it (once the list is long) still takes a tap.
-        .background(LinearGradient(colors: [Color(.menuBackground).opacity(0), Color(.menuBackground)], startPoint: .top, endPoint: .center).allowsHitTesting(false))
+        .buttonStyle(.plain)
+        .padding(.leading, 16).padding(.bottom, 8)
+        .accessibilityLabel("Account and devices")
+        .accessibilityIdentifier("account")
     }
 }
 
