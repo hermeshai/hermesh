@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -40,12 +41,19 @@ func (p *Provider) antigravityCandidates(ctx context.Context) []launch {
 		}
 		return []launch{{bin: p.Binary, args: standaloneArgs, mode: antigravityStandalone}}
 	}
-	var out []launch
+	var agy launch
 	for _, bin := range p.lookAll(p.Command, antigravityCLIPaths()...) {
-		if p.agySupportsACP(ctx, bin) {
-			out = append(out, launch{bin: bin, args: p.Args, mode: antigravityCLI})
+		ok, err := p.agySupportsACP(ctx, bin)
+		if ok || (err != nil && agy.bin == "") {
+			agy = launch{bin: bin, args: p.Args, mode: antigravityCLI, probeErr: err}
+		}
+		if ok {
 			break
 		}
+	}
+	var out []launch
+	if agy.bin != "" {
+		out = append(out, agy)
 	}
 	if p.fallback != nil {
 		if bins := p.lookAll(p.fallback.command, p.fallback.paths...); len(bins) > 0 {
@@ -113,7 +121,7 @@ func (p *Provider) resolveAntigravityStart(ctx context.Context, env []string) la
 	if chosen, ok := p.getChosen(stamp); ok {
 		return chosen
 	}
-	if !antigravityStandaloneConfigured(probeEnv) {
+	if candidates[0].probeErr == nil && !antigravityStandaloneConfigured(probeEnv) {
 		return candidates[0]
 	}
 	_, chosen := p.selectAntigravity(ctx, candidates, probeEnv)
@@ -124,6 +132,9 @@ func (p *Provider) resolveAntigravityLogin(ctx context.Context) launch {
 	candidates := p.antigravityCandidates(ctx)
 	if len(candidates) == 0 {
 		return launch{}
+	}
+	if candidates[0].probeErr != nil && len(candidates) > 1 {
+		return candidates[1]
 	}
 	return candidates[0]
 }
@@ -157,6 +168,9 @@ func (p *Provider) clearChosen() {
 func antigravityCandidatesStamp(candidates []launch, env []string) string {
 	var parts []string
 	for _, c := range candidates {
+		if c.probeErr != nil {
+			return ""
+		}
 		parts = append(parts, binaryStamp(c.bin), modelContext(c.bin, env))
 	}
 	return strings.Join(parts, "\x1f")
@@ -193,14 +207,16 @@ func binaryStamp(bin string) string {
 	return bin + "\x00" + target + "\x00" + strconv.FormatInt(st.Size(), 10) + "\x00" + strconv.FormatInt(st.ModTime().UnixNano(), 10)
 }
 
-func (p *Provider) agySupportsACP(ctx context.Context, bin string) bool {
+// agySupportsACP caches definitive results. A transient failure leaves the
+// capability unknown so it can be checked again on the next lookup.
+func (p *Provider) agySupportsACP(ctx context.Context, bin string) (bool, error) {
 	stamp := binaryStamp(bin)
 	if stamp != "" {
 		p.acpMu.Lock()
 		ok, cached := p.acpProbe[stamp]
 		p.acpMu.Unlock()
 		if cached {
-			return ok
+			return ok, nil
 		}
 	}
 	if ctx == nil {
@@ -210,18 +226,26 @@ func (p *Provider) agySupportsACP(ctx context.Context, bin string) bool {
 	defer cancel()
 	stdout, stderr, err := provider.RunCommand(probeCtx, bin, []string{"acp", "--help"}, "", provider.ProbeEnv(p.PathEnv))
 	if err != nil {
-		transient := errors.Is(probeCtx.Err(), context.DeadlineExceeded) || errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, syscall.EAGAIN)
-		if !transient && stamp != "" {
+		if probeErr := probeCtx.Err(); probeErr != nil {
+			if errors.Is(probeErr, context.DeadlineExceeded) {
+				return false, fmt.Errorf("agy acp --help timed out: %w", probeErr)
+			}
+			return false, fmt.Errorf("agy acp --help probe failed: %w", probeErr)
+		}
+		if errors.Is(err, syscall.EAGAIN) {
+			return false, fmt.Errorf("agy acp --help probe failed: %w", err)
+		}
+		if stamp != "" {
 			p.cacheACPProbe(stamp, false)
 		}
-		return false
+		return false, nil
 	}
 	out := strings.ToLower(string(stdout) + "\n" + string(stderr))
 	ok := strings.Contains(out, "acp")
 	if stamp != "" {
 		p.cacheACPProbe(stamp, ok)
 	}
-	return ok
+	return ok, nil
 }
 
 func (p *Provider) cacheACPProbe(stamp string, ok bool) {

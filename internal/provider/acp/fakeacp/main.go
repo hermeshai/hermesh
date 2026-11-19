@@ -171,6 +171,9 @@ func main() {
 	agyMode := fakeSetting("FAKE_ACP_AGY_MODE", "fakeacp.mode")
 	if len(os.Args) > 2 && os.Args[1] == "acp" && os.Args[2] == "--help" {
 		switch agyMode {
+		case "help-hangs":
+			time.Sleep(time.Minute)
+			return
 		case "legacy-error":
 			fmt.Fprintln(os.Stderr, "unknown command: acp")
 			os.Exit(1)

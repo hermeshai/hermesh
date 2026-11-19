@@ -491,6 +491,29 @@ func TestAntigravityPrecedenceAndIncompatibleAgy(t *testing.T) {
 	})
 }
 
+func TestAntigravityAgyCapabilityProbeTimeout(t *testing.T) {
+	_, _, _ = isolateAntigravityEnv(t)
+	dir := t.TempDir()
+	bin := installFakeBinary(t, dir, agyExeName(), "help-hangs", "1.5.9")
+	a := antigravityAgent(runtime.GOOS)
+	a.DesktopApps = nil
+	p := &Provider{Agent: a, PathEnv: dir}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	got := p.Discover(ctx)
+	if got.Available || got.Problem != provider.ProblemTimedOut || got.Binary != bin || !strings.Contains(got.Detail, "agy acp --help") {
+		t.Fatalf("expected an inconclusive agy capability probe: %+v", got)
+	}
+
+	// When the same executable can answer again, retry its capability probe.
+	setFakeFile(t, dir, "fakeacp.mode", "acp")
+	got = p.Discover(context.Background())
+	if !got.Available || got.Binary != bin || got.Version != "1.5.9" {
+		t.Fatalf("expected agy to recover without replacing the executable: %+v", got)
+	}
+}
+
 func TestAntigravityBinaryOverride(t *testing.T) {
 	for _, tc := range []struct {
 		bin  string

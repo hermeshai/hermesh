@@ -263,6 +263,57 @@ func TestAntigravityACP(t *testing.T) {
 	}
 }
 
+// TestAntigravityCapabilityProbeTimeout exercises the user-facing login
+// command with a hanging capability probe, with and without the old server.
+// An invalid method stops the handshake before authentication.
+func TestAntigravityCapabilityProbeTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	home, dir := t.TempDir(), t.TempDir()
+	fake, err := os.ReadFile(filepath.Join(bin, "fakeacp"+exe))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, data []byte, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), data, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("agy"+exe, fake, 0o755)
+	write("fakeacp.mode", []byte("help-hangs"), 0o600)
+	env := []string{
+		"HOME=" + home,
+		"USERPROFILE=" + home,
+		"LOCALAPPDATA=" + t.TempDir(),
+		"HERMESH_HOME=" + t.TempDir(),
+		"GEMINI_HOME=" + t.TempDir(),
+		"HERMESH_ANTIGRAVITY_BIN=",
+		"PATH=" + dir,
+		"SHELL=/bin/sh",
+		"FAKE_ACP_STATE=" + t.TempDir(),
+		"FAKE_ACP_AUTH=oauth-personal",
+	}
+	login := func() result {
+		return run(t, env, 30*time.Second, filepath.Join(bin, "hermesh"+exe),
+			"agent", "login", "antigravity", "--method", "probe-invalid")
+	}
+	if r := login(); r.code == 0 || !strings.Contains(r.stderr, "agy acp --help") || !strings.Contains(r.stderr, "timed out") {
+		t.Fatalf("expected the capability timeout: %+v", r)
+	}
+
+	standalone := "agy_acp_server.par"
+	if exe != "" {
+		standalone = "agy_acp_server" + exe
+	}
+	write(standalone, fake, 0o755)
+	if r := login(); r.code == 0 || !strings.Contains(r.stderr, "available: other, oauth-personal") {
+		t.Fatalf("expected the standalone server's authentication methods: %+v", r)
+	}
+}
+
 // TestDeepSeekFromDesktopApp: someone with only the DSH Desktop app (no
 // `dsh` on PATH) can use DeepSeek Harness: hermeshd runs the dsh the app
 // keeps, as the app does (its executable as Node on its CLI script).
