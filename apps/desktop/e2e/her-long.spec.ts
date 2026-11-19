@@ -19,6 +19,16 @@ test("Her: a long conversation, scrolled up to its first message, moves only as 
   await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   const log = page.getByRole("log", { name: "Conversation" });
   await expect(log).toContainText("Reply 240:", { timeout: 120_000 });
+  // The last reply can render before the composer reports its height. Wait for
+  // the initial bottom padding and follow-to-end scroll before measuring input.
+  await page.waitForFunction(() => {
+    const scroller = document.querySelector<HTMLElement>(".her .cscroll");
+    const body = scroller?.querySelector<HTMLElement>(".dbody");
+    const composer = document.querySelector<HTMLElement>(".her .cmp-col");
+    return scroller && body && composer &&
+      parseFloat(body.style.paddingBottom) === composer.offsetHeight + 40 &&
+      Math.abs(scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop) <= 1;
+  });
   await snap(page, "her-long-end");
 
   // Every frame, whether any message is in sight: rows not drawn are a space, which must never fill the view.
