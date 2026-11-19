@@ -16079,6 +16079,66 @@
           }
         }
       }
+    },
+    "Direct · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已直连 · %@"
+          }
+        }
+      }
+    },
+    "Relayed · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "经中继连接 · %@"
+          }
+        }
+      }
+    },
+    "Relay connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中继服务已连接"
+          }
+        }
+      }
+    },
+    "Check Wi-Fi or cellular settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请检查 Wi-Fi 或蜂窝网络"
+          }
+        }
+      }
+    },
+    "Healthy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正常"
+          }
+        }
+      }
+    },
+    "Assistant": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
