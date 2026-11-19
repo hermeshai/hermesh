@@ -15,35 +15,151 @@ import (
 	"github.com/hermeshai/hermesh/internal/provider"
 )
 
+type antigravityMode uint8
+
 const (
-	// Official `agy acp` defaults --app-data-dir to antigravity-cli, while the
-	// standalone ACP registry archive uses antigravity-acp.
-	antigravityCLIDir = "antigravity-cli"
-	antigravityACPDir = "antigravity-acp"
+	antigravityNone antigravityMode = iota
+	// Official `agy acp` (1.5.0+): credentials live in the OS keyring or CLI
+	// environment (never read by Hermesh); login state comes from ACP protocol.
+	antigravityCLI
+	// Legacy standalone ACP registry archive (`agy_acp_server.par` / `.exe`):
+	// requires an explicit auth.type in $GEMINI_HOME/antigravity-acp/settings.json.
+	antigravityStandalone
 )
 
-func (p *Provider) resolveAntigravity(ctx context.Context) launch {
+const antigravityACPDir = "antigravity-acp"
+
+func (p *Provider) antigravityCandidates(ctx context.Context) []launch {
 	var standaloneArgs []string
 	if p.fallback != nil {
 		standaloneArgs = p.fallback.args
 	}
 	if p.Binary != "" {
 		if isAgyBinary(p.Binary) {
-			return launch{bin: p.Binary, args: p.Args, configDir: antigravityCLIDir}
+			return []launch{{bin: p.Binary, args: p.Args, mode: antigravityCLI}}
 		}
-		return launch{bin: p.Binary, args: standaloneArgs, configDir: antigravityACPDir}
+		return []launch{{bin: p.Binary, args: standaloneArgs, mode: antigravityStandalone}}
 	}
+	var out []launch
 	for _, bin := range p.lookAll(p.Command, antigravityCLIPaths()...) {
 		if p.agySupportsACP(ctx, bin) {
-			return launch{bin: bin, args: p.Args, configDir: antigravityCLIDir}
+			out = append(out, launch{bin: bin, args: p.Args, mode: antigravityCLI})
+			break
 		}
 	}
 	if p.fallback != nil {
 		if bins := p.lookAll(p.fallback.command, p.fallback.paths...); len(bins) > 0 {
-			return launch{bin: bins[0], args: p.fallback.args, configDir: antigravityACPDir}
+			out = append(out, launch{bin: bins[0], args: p.fallback.args, mode: antigravityStandalone})
 		}
 	}
-	return launch{}
+	return out
+}
+
+// antigravityReady reports whether Discover confirmed this Antigravity entry
+// point is runnable and authenticated (neither auth_required nor a probe error).
+func antigravityReady(info provider.Info) bool {
+	return info.Available && info.LoggedIn && info.ModelsState != provider.ModelsError
+}
+
+func (p *Provider) discoverAntigravity(ctx context.Context) provider.Info {
+	candidates := p.antigravityCandidates(ctx)
+	info, _ := p.selectAntigravity(ctx, candidates, provider.ProbeEnv(p.PathEnv))
+	return info
+}
+
+// selectAntigravity picks between official `agy acp` and the legacy standalone
+// archive. When both are installed, `agy acp` is preferred once confirmed ready,
+// but an unauthenticated or broken `agy` must not shadow an already-working
+// standalone installation.
+func (p *Provider) selectAntigravity(ctx context.Context, candidates []launch, env []string) (provider.Info, launch) {
+	if len(candidates) == 0 {
+		return p.notFoundInfo(), launch{}
+	}
+	stamp := antigravityCandidatesStamp(candidates, env)
+	if len(candidates) == 1 {
+		info := p.discoverLaunch(ctx, candidates[0], env)
+		p.setChosen(stamp, candidates[0])
+		return info, candidates[0]
+	}
+	infoAgy := p.discoverLaunch(ctx, candidates[0], env)
+	if antigravityReady(infoAgy) {
+		p.setChosen(stamp, candidates[0])
+		return infoAgy, candidates[0]
+	}
+	infoStandalone := p.discoverLaunch(ctx, candidates[1], env)
+	if antigravityReady(infoStandalone) ||
+		(!infoAgy.Available && infoStandalone.Available) ||
+		(!infoAgy.LoggedIn && infoStandalone.Available && infoStandalone.LoggedIn) {
+		p.setChosen(stamp, candidates[1])
+		return infoStandalone, candidates[1]
+	}
+	p.setChosen(stamp, candidates[0])
+	return infoAgy, candidates[0]
+}
+
+func (p *Provider) resolveAntigravityStart(ctx context.Context, env []string) launch {
+	candidates := p.antigravityCandidates(ctx)
+	if len(candidates) == 0 {
+		return launch{}
+	}
+	if len(candidates) == 1 {
+		return candidates[0]
+	}
+	probeEnv := env
+	if probeEnv == nil {
+		probeEnv = provider.ProbeEnv(p.PathEnv)
+	}
+	stamp := antigravityCandidatesStamp(candidates, probeEnv)
+	if chosen, ok := p.getChosen(stamp); ok {
+		return chosen
+	}
+	if !antigravityStandaloneConfigured(probeEnv) {
+		return candidates[0]
+	}
+	_, chosen := p.selectAntigravity(ctx, candidates, probeEnv)
+	return chosen
+}
+
+func (p *Provider) resolveAntigravityLogin(ctx context.Context) launch {
+	candidates := p.antigravityCandidates(ctx)
+	if len(candidates) == 0 {
+		return launch{}
+	}
+	return candidates[0]
+}
+
+func (p *Provider) getChosen(stamp string) (launch, bool) {
+	p.acpMu.Lock()
+	defer p.acpMu.Unlock()
+	if stamp != "" && p.chosenStamp == stamp && p.chosenLaunch.bin != "" {
+		return p.chosenLaunch, true
+	}
+	return launch{}, false
+}
+
+func (p *Provider) setChosen(stamp string, l launch) {
+	if stamp == "" || l.bin == "" {
+		return
+	}
+	p.acpMu.Lock()
+	defer p.acpMu.Unlock()
+	p.chosenStamp = stamp
+	p.chosenLaunch = l
+}
+
+func (p *Provider) clearChosen() {
+	p.acpMu.Lock()
+	defer p.acpMu.Unlock()
+	p.chosenStamp = ""
+	p.chosenLaunch = launch{}
+}
+
+func antigravityCandidatesStamp(candidates []launch, env []string) string {
+	var parts []string
+	for _, c := range candidates {
+		parts = append(parts, binaryStamp(c.bin), modelContext(c.bin, env))
+	}
+	return strings.Join(parts, "\x1f")
 }
 
 func antigravityCLIPaths() []string {
@@ -117,14 +233,7 @@ func (p *Provider) cacheACPProbe(stamp string, ok bool) {
 	p.acpProbe[stamp] = ok
 }
 
-// The official server requires an explicitly selected auth method, saved by
-// authenticate. This only checks configuration in the directory matching the
-// selected launch mode; the server validates credentials when a session starts.
-// Never read or copy the desktop app's credentials.
-func antigravityConfigured(env []string, appDataDir string) bool {
-	if appDataDir == "" {
-		appDataDir = antigravityACPDir
-	}
+func geminiHome(env []string) string {
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, ".gemini")
 	for _, e := range env {
@@ -132,7 +241,16 @@ func antigravityConfigured(env []string, appDataDir string) bool {
 			dir = v
 		}
 	}
-	b, err := os.ReadFile(filepath.Join(dir, appDataDir, "settings.json"))
+	return dir
+}
+
+// The legacy standalone ACP archive requires an explicitly selected auth.type
+// in $GEMINI_HOME/antigravity-acp/settings.json, saved by authenticate. Official
+// `agy acp` manages credentials via the OS keyring or CLI environment and is
+// checked over ACP protocol instead. Never read OS keychains or copy desktop
+// credentials.
+func antigravityStandaloneConfigured(env []string) bool {
+	b, err := os.ReadFile(filepath.Join(geminiHome(env), antigravityACPDir, "settings.json"))
 	if err != nil {
 		return false
 	}

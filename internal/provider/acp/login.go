@@ -67,6 +67,9 @@ func (p *Provider) Login(ctx context.Context, method string, output io.Writer) e
 		select {
 		case err := <-done:
 			printOutput()
+			if err == nil && p.Name() == "antigravity" {
+				p.clearChosen()
+			}
 			return err
 		case <-tick.C:
 			printOutput()

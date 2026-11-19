@@ -1,17 +1,22 @@
 # Google Antigravity through official ACP
 
 Hermesh runs Google's official ACP server — either built into the official
-`agy` CLI (`agy acp`, preferred when installed and supporting `acp`) or Google's
+`agy` CLI (`agy acp`, preferred once installed and signed in) or Google's
 **standalone ACP server** archive as a fallback. It never uses the Antigravity
-desktop app's private RPCs or a third-party model proxy. Its agent ID is
-`antigravity`.
+desktop app's private RPCs, never reads OS keyring/keychain secrets, and never
+uses a third-party model proxy. Its agent ID is `antigravity`.
+
+Official Google references:
+- [Antigravity CLI ACP](https://antigravity.google/docs/cli/acp/)
+- [Other editors (ACP)](https://antigravity.google/docs/ide/extensions/acp/)
+- [Authenticate](https://antigravity.google/docs/install)
 
 ## Install on the machine that runs the work
 
 ### Official `agy` CLI (recommended for `agy` 1.5.0+)
 
 Install the official Antigravity CLI (`agy`) following the
-[Google installation documentation](https://antigravity.google/docs/install).
+[Google Antigravity installation & authentication guide](https://antigravity.google/docs/install).
 Hermesh finds `agy` on the login shell's PATH, in `~/.local/bin/`, or on Windows
 under `%LOCALAPPDATA%\agy\bin\agy.exe`, verifies that `agy acp --help` is
 supported, and launches `agy acp`.
@@ -25,9 +30,11 @@ Keep both files in the same directory.
 
 Download the archive for your platform from the registry. Check its SHA-256
 against that entry before extracting it. When no ACP-capable `agy` CLI is
-present, Hermesh falls back to the standalone server on the login shell's PATH,
-or under `~/.local/share/antigravity-acp/` (the same directory relative to the
-user's home on Windows).
+present — or when a newly installed `agy` CLI is not yet signed in while an
+existing standalone installation is already working — Hermesh uses the
+standalone server on the login shell's PATH or under
+`~/.local/share/antigravity-acp/` (the same directory relative to the user's
+home on Windows).
 
 | Platform | Registry target | Executable |
 | --- | --- | --- |
@@ -57,7 +64,39 @@ companion executables and libraries. Do not copy just the server into PATH.
 Installation and updates are explicit: Hermesh does not download or silently
 update Google's runtime.
 
-## Sign in
+## Sign in and upgrade behavior
+
+### Official `agy` CLI (`agy acp`)
+
+`agy acp` reuses the official Antigravity CLI's own authentication (stored by
+Google's CLI in the operating system's native keyring — Apple Keychain, Linux
+Secret Service, or Windows Credential Manager — or provided via `GEMINI_API_KEY`
+with `{"modelProvider": "gemini"}` in `~/.gemini/antigravity-cli/settings.json`
+or `AGY_ADC_AUTH=true` with Google Cloud ADC). Sign in as the same OS user that
+runs Hermesh's machine using any official method:
+
+```sh
+agy                 # interactive sign-in (local browser or SSH code flow)
+# or, over SSH / headless:
+agy acp --login
+# or through ACP authenticate:
+hermesh agent login antigravity
+```
+
+Hermesh **never reads OS keyring/keychain secrets** and **does not require
+`auth.type` in `~/.gemini/antigravity-cli/settings.json`** (which holds CLI
+preferences such as `agentMode` or `modelProvider`). Instead, discovery checks
+readiness over the official ACP protocol:
+
+- When `agy acp` returns JSON-RPC `-32000` (`Authentication required`), Hermesh
+  reports Antigravity as not signed in (`models_state: auth_required`).
+- When the ACP probe fails for a non-auth reason (timeout, crash, or another
+  RPC error), Hermesh reports `models_state: error` without falsely marking the
+  agent as not signed in.
+- Server logs for `agy acp` are written by Google's CLI under
+  `~/.gemini/antigravity-cli/log/acp-*.log`.
+
+### Standalone ACP archive (`agy_acp_server.par` / `.exe`)
 
 Run as the same OS user that runs Hermesh's machine:
 
@@ -94,18 +133,28 @@ Hermesh validates that the server offers the requested method before calling
 `authenticate`. A configured business/API-key method is preserved during
 normal sessions; Hermesh does not automatically switch it to personal OAuth.
 
-The config directory follows the selected launch mode under `$GEMINI_HOME`
-(defaulting to `~/.gemini`):
+The standalone archive stores its selected `auth.type` in
+`$GEMINI_HOME/antigravity-acp/settings.json` (defaulting to
+`~/.gemini/antigravity-acp/settings.json`). Discovery checks whether an auth
+method has been selected there without modifying or copying user configuration;
+credentials are validated by the server when a session starts. An
+expired/revoked login can therefore still require signing in again. Session
+authentication errors include the login command.
 
-- `agy acp`: `$GEMINI_HOME/antigravity-cli/settings.json`
-- Standalone archive (`agy_acp_server.par` / `agy_acp_server.exe`):
-  `$GEMINI_HOME/antigravity-acp/settings.json`
+### Upgrading from the standalone archive to `agy`
 
-Discovery checks whether an auth method has been selected in the matching
-directory without modifying or copying user configuration; credentials are
-validated by the server when a session starts. An expired/revoked login can
-therefore still require signing in again. Session authentication errors include
-the login command.
+If both `agy` (with `acp` support) and the legacy standalone archive are
+installed on the same machine:
+
+- While `agy acp` is not yet signed in (or fails its readiness probe) and the
+  existing standalone installation is signed in and working, Hermesh keeps using
+  the working standalone installation so installing `agy` does not break
+  existing setups.
+- Once `agy` is signed in (`agy`, `agy acp --login`, or
+  `hermesh agent login antigravity`) and ready over ACP, Hermesh automatically
+  switches to `agy acp` on the next agent check.
+- If neither is signed in yet, Hermesh selects `agy acp` so new sign-ins target
+  the current official CLI.
 
 If installing a new macOS build still leaves Antigravity under “not installed,”
 check the **machine's Hermesh version**, not just the app version. A signed
