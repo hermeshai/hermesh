@@ -31,7 +31,16 @@ func TestMachineOnlyMac(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	env := []string{"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"), "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")}
+	// Make the route observable without inheriting a user's Gemini settings or proxy.
+	homeDir := t.TempDir()
+	env := []string{
+		"HOME=" + homeDir, "USERPROFILE=" + homeDir, "GEMINI_CLI_HOME=" + homeDir,
+		"GEMINI_CLI_SYSTEM_SETTINGS_PATH=" + filepath.Join(homeDir, "system.json"),
+		"GEMINI_CLI_SYSTEM_DEFAULTS_PATH=" + filepath.Join(homeDir, "defaults.json"),
+		"HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "SSL_CERT_FILE=", "NODE_EXTRA_CA_CERTS=",
+		"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"+exe),
+		"FAKE_ACP_STATE=" + filepath.Join(homeDir, "fakeacp"),
+	}
 	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}}) // all machines, as the app's default
 	ctx := context.Background()
 	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})

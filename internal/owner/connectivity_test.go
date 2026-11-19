@@ -2,6 +2,7 @@ package owner
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -228,6 +229,85 @@ func TestOwnerStatusNotConnectedWhileKeptUnverified(t *testing.T) {
 	}
 }
 
+func TestFollowRemoteDialErrors(t *testing.T) {
+	ids := makeTestIdentities(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
+		if err != nil {
+			return
+		}
+		conn := transport.NetConnFromWS(ws)
+		defer conn.Close()
+		if err := transport.WriteFrame(conn, &relayv1.Challenge{Nonce: make([]byte, 32), RelayId: "relay"}); err != nil {
+			return
+		}
+		var hello relayv1.Hello
+		if err := transport.ReadFrame(conn, &hello); err != nil {
+			return
+		}
+		if err := transport.WriteFrame(conn, &relayv1.HelloResult{Ok: true}); err != nil {
+			return
+		}
+		sess, err := yamux.Server(conn, transport.YamuxConfig())
+		if err != nil {
+			return
+		}
+		defer sess.Close()
+		for {
+			st, err := sess.AcceptStream()
+			if err != nil {
+				return
+			}
+			func() {
+				defer st.Close()
+				var h relayv1.StreamHeader
+				if err := transport.ReadFrame(st, &h); err != nil {
+					return
+				}
+				if h.MachineId == "m_silent" {
+					// The machine accepts the tunnel but never answers the handshake.
+					_, _ = io.Copy(io.Discard, st)
+				} else {
+					// Read the start of ClientHello, then close without a reply.
+					_, _ = io.CopyN(io.Discard, st, 1)
+				}
+			}()
+		}
+	}))
+	defer srv.Close()
+
+	dev, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+	o := dev.owner()
+	if err := o.saveIdentity(ids.ownerID, srv.URL, ids.rootPub, ids.chain, ids.device, ids.deviceCert, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	follow := func(t *testing.T, machineID string) error {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 2*followTimeout)
+		defer cancel()
+		return o.rep.followRemote(&sources{ctx: ctx}, machineID, &feed{}, func() { t.Error("unexpectedly started following") })
+	}
+	t.Run("immediate close", func(t *testing.T) {
+		if err := follow(t, "m_closed"); !errors.Is(err, io.EOF) {
+			t.Fatalf("followRemote = %v, want a handshake EOF", err)
+		}
+	})
+	t.Run("timeout", func(t *testing.T) {
+		started := time.Now()
+		if err := follow(t, "m_silent"); err == nil || err.Error() != "did not answer in time" {
+			t.Fatalf("followRemote = %v, want did not answer in time", err)
+		}
+		if elapsed := time.Since(started); elapsed < followTimeout {
+			t.Fatalf("reported a timeout after %v, want at least %v", elapsed, followTimeout)
+		}
+	})
+}
+
 func TestConnectOrKeepReplacesBlackholedChildTunnel(t *testing.T) {
 	ids := makeTestIdentities(t)
 	var blockGetInfo atomic.Bool
@@ -439,5 +519,109 @@ func TestHerOnRecoverTunnelAndBoundedCooldown(t *testing.T) {
 	cancelA2()
 	if o.recoverTunnel(cB, ids.machineID, err2) {
 		t.Fatal("expected second recoverTunnel within cooldown to be suppressed")
+	}
+}
+
+func TestKeepRelayForgetsDirectTunnels(t *testing.T) {
+	ids := makeTestIdentities(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
+		if err != nil {
+			return
+		}
+		conn := transport.NetConnFromWS(ws)
+		defer conn.Close()
+		_ = transport.WriteFrame(conn, &relayv1.Challenge{Nonce: make([]byte, 32), RelayId: "relay"})
+		var hello relayv1.Hello
+		if err := transport.ReadFrame(conn, &hello); err != nil {
+			return
+		}
+		_ = transport.WriteFrame(conn, &relayv1.HelloResult{Ok: true})
+		sess, err := yamux.Server(conn, transport.YamuxConfig())
+		if err != nil {
+			return
+		}
+		defer sess.Close()
+		for {
+			st, err := sess.AcceptStream()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer st.Close()
+				var h relayv1.StreamHeader
+				if err := transport.ReadFrame(st, &h); err != nil || h.Kind != relayv1.StreamKind_STREAM_KIND_TUNNEL {
+					return
+				}
+				tc, _, err := transport.ServerHandshake(context.Background(), st, ids.machineKey.CryptoSigner(), ids.machineCreds, identity.NewTrust(ids.ownerID), func(*identity.Subject) error { return nil })
+				if err != nil {
+					return
+				}
+				defer tc.Close()
+				mux := http.NewServeMux()
+				mux.Handle(machinev1connect.NewMachineServiceHandler(stubMachineInfo{}))
+				transport.ServeH2(context.Background(), tc, mux)
+			}()
+		}
+	}))
+	defer srv.Close()
+
+	trust := identity.NewTrust(ids.ownerID)
+	if _, err := trust.AcceptRootChain(ids.chain); err != nil {
+		t.Fatal(err)
+	}
+	dialer := &peer.Dialer{
+		RelayURL:    srv.URL,
+		Role:        relayv1.Role_ROLE_OWNER,
+		Key:         ids.device,
+		Trust:       trust,
+		Credentials: ids.deviceCreds,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := dialer.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	relayed, err := c.RelayMachine(ctx, ids.machineID)
+	if err != nil {
+		t.Fatalf("RelayMachine: %v", err)
+	}
+	otherID := "m_direct_only_test"
+	directPeer, err := dialer.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directPeer.Close()
+	directMach, err := directPeer.RelayMachine(ctx, ids.machineID)
+	if err != nil {
+		t.Fatalf("second RelayMachine: %v", err)
+	}
+	if !c.AdoptDirect(otherID, directMach) {
+		t.Fatal("AdoptDirect failed")
+	}
+
+	d, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	o := d.owner()
+	o.mu.Lock()
+	o.client = c
+	o.mu.Unlock()
+
+	o.keepRelay()
+
+	if _, _, ok := c.MachineTunnel(otherID); ok {
+		t.Fatal("keepRelay did not close cached direct tunnel on client")
+	}
+	if directMach.Alive() {
+		t.Fatal("direct tunnel remained alive after keepRelay")
+	}
+	if path, _, ok := c.MachineTunnel(ids.machineID); !ok || path != "relay" || !relayed.Alive() {
+		t.Fatalf("keepRelay unexpectedly dropped relayed tunnel: ok=%v path=%q alive=%v", ok, path, relayed.Alive())
 	}
 }

@@ -1563,6 +1563,7 @@ func (s *Sessions) prepare(l *live) {
 	row := snapshotRow(l.row)
 	l.mu.Unlock()
 	route := s.codingRoute(agent, spec.WorkDir, spec.Env)
+	spec.CodingRoute = route
 	if prompt.codingVersion != "" {
 		spec.GuardInput = func(send func() error) error {
 			return s.codingInput(row, route, prompt, send)
@@ -1618,7 +1619,9 @@ func (s *Sessions) prepare(l *live) {
 		fail(ctx.Err())
 		return
 	}
-	if reported, ok := ps.(interface{ CodingRouteMatches(string) bool }); ok && !reported.CodingRouteMatches(route.Recipient) {
+	if reported, ok := ps.(interface {
+		CodingRouteMatches(provider.CodingRoute) bool
+	}); ok && !reported.CodingRouteMatches(route) {
 		route = provider.CodingRoute{}
 	}
 	l.sess, l.codingRoute = ps, route

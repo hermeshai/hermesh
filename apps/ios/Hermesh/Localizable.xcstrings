@@ -3154,6 +3154,26 @@
         }
       }
     },
+    "Delete Account opens the hosted account page in your browser. Erase Everything resets your workspace and its devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“删除账号”会在系统浏览器中打开托管账号页面。“全部清空”会重置工作区及其设备。"
+          }
+        }
+      }
+    },
+    "Delete Account…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "删除账号…"
+          }
+        }
+      }
+    },
     "Delete": {
       "localizations": {
         "zh-Hans": {

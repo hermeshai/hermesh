@@ -120,8 +120,9 @@ type feed struct {
 	more     bool                          // it has others besides
 	changed  chan struct{}                 // its sessions changed status: read its state again (a machine without Watch)
 	// Where its Watch resumes, and the machine's clock then.
-	token  []byte
-	heldAt *timestamppb.Timestamp
+	token    []byte
+	heldAt   *timestamppb.Timestamp
+	lastSeen time.Time // relay LastSeen (updates on machine connect/disconnect)
 	// retry: how long after a failed follow it is tried again.
 	retry time.Duration
 
@@ -286,7 +287,7 @@ func (s *sources) adopt(h *sources) {
 	s.machines.err, s.clients.err, s.pairings.err = nil, nil, nil // a poll the stop cut short
 	for id, f := range h.feeds {
 		s.feeds[id] = &feed{name: f.name, online: f.online, local: f.local, status: f.status, projects: f.projects, sessions: f.sessions, more: f.more,
-			token: f.token, heldAt: f.heldAt}
+			token: f.token, heldAt: f.heldAt, lastSeen: f.lastSeen}
 	}
 }
 
@@ -455,11 +456,12 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		if u.Pairings != nil {
 			pairings = r.o.pairingsFrom(u.Pairings)
 		}
+		var evict []string
 		r.mu.Lock()
 		r.polls++
 		n := r.polls
 		if u.Machines != nil && s.machines.set(n, machines, mErr) {
-			r.machinesListedLocked(s)
+			evict = r.machinesListedLocked(s)
 		}
 		if u.Clients != nil {
 			s.clients.set(n, clients, nil)
@@ -469,6 +471,9 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		}
 		r.kickLocked()
 		r.mu.Unlock()
+		for _, id := range evict {
+			r.o.forgetMachine(id)
+		}
 		if answer != nil {
 			close(answer)
 			answer = nil
@@ -511,17 +516,20 @@ func (r *replica) poll(ctx context.Context, s *sources, machines, pairings bool)
 	if machines {
 		wg.Go(func() {
 			list, err := r.o.listedMachines(ctx)
+			var evict []string
 			r.mu.Lock()
-			defer r.mu.Unlock()
-			if errors.Is(ctx.Err(), context.Canceled) {
-				return // cut short (the sources stopped, its caller left): it tells nothing
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				if err != nil && s.machines.list != nil {
+					list = s.machines.list // without the relay, whether they are online is not known: as last listed
+				}
+				if s.machines.set(n, list, err) {
+					evict = r.machinesListedLocked(s)
+					r.kickLocked()
+				}
 			}
-			if err != nil && s.machines.list != nil {
-				list = s.machines.list // without the relay, whether they are online is not known: as last listed
-			}
-			if s.machines.set(n, list, err) {
-				r.machinesListedLocked(s)
-				r.kickLocked()
+			r.mu.Unlock()
+			for _, id := range evict {
+				r.o.forgetMachine(id)
 			}
 		})
 		wg.Go(func() {
@@ -610,16 +618,36 @@ func (r *replica) refreshMachine(ctx context.Context, id string) {
 }
 
 // machinesListedLocked follows the machines just listed that are online,
-// and forgets those removed.
-func (r *replica) machinesListedLocked(s *sources) {
+// forgets those removed, and returns machine IDs whose cached tunnels should
+// be dropped after releasing r.mu (went offline, removed, or reconnected with
+// a newer relay LastSeen).
+func (r *replica) machinesListedLocked(s *sources) []string {
 	listed, _ := r.o.withLocal(s.machines.list, s.machines.err)
+	authoritative := s.machines.err == nil
 	seen := map[string]bool{}
+	var evict []string
 	for _, m := range listed {
 		seen[m.MachineId] = true
 		f := s.feeds[m.MachineId]
 		if f == nil {
 			f = &feed{heldAt: s.since[m.MachineId]}
 			s.feeds[m.MachineId] = f
+		}
+		if authoritative && !m.Local {
+			var seenAt time.Time
+			if m.LastSeen != nil {
+				seenAt = m.LastSeen.AsTime()
+			}
+			if !m.Online {
+				if f.online || f.conn != nil {
+					evict = append(evict, m.MachineId)
+				}
+			} else if !f.lastSeen.IsZero() && !seenAt.IsZero() && !seenAt.Equal(f.lastSeen) {
+				evict = append(evict, m.MachineId)
+			}
+			if !seenAt.IsZero() {
+				f.lastSeen = seenAt
+			}
 		}
 		f.name, f.local = m.MachineName, m.Local
 		f.online = m.Online || m.Local // this device's own is followed in process
@@ -631,9 +659,13 @@ func (r *replica) machinesListedLocked(s *sources) {
 	for id := range s.feeds {
 		if !seen[id] {
 			delete(s.feeds, id) // removed
+			if authoritative {
+				evict = append(evict, id)
+			}
 		}
 	}
 	r.machinesChangedLocked(s)
+	return evict
 }
 
 // follow follows one machine until its stream ends; started is closed once
@@ -656,14 +688,18 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	}
 	r.mu.Lock()
 	f.ready, f.running, f.conn, f.err = false, false, nil, err.Error()
-	if errors.As(err, new(noRelay)) {
-		f.err = "" // not the machine's doing: it is being connected to, as the relay is
+	offline := !f.online
+	if errors.As(err, new(noRelay)) || offline {
+		f.err = "" // not the machine's doing, or already offline
 	}
 	f.retry = min(max(2*f.retry, retryFirst), retryMax)
 	retry := f.retry
 	r.machinesChangedLocked(s)
 	r.mu.Unlock()
 	done()
+	if offline {
+		return
+	}
 	// Again after a while, while the relay lists it online: a relay that
 	// pushes its lists (WatchOwner) says nothing while they stay the same.
 	select {
@@ -714,25 +750,42 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 	if err != nil {
 		return noRelay{err}
 	}
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-	timer := time.AfterFunc(followTimeout, cancel)
-	late := func(err error) error {
-		if s.ctx.Err() == nil && ctx.Err() != nil {
-			return errors.New("did not answer in time")
+	for {
+		ctx, cancel := context.WithCancel(s.ctx)
+		deadline := time.Now().Add(followTimeout)
+		timer := time.AfterFunc(time.Until(deadline), cancel)
+		late := func(err error) error {
+			// The transport may time out before our timer's cancel runs.
+			if s.ctx.Err() == nil && !time.Now().Before(deadline) {
+				return errors.New("did not answer in time")
+			}
+			return err
+		}
+		n, err := c.Machine(ctx, id)
+		if err != nil {
+			timer.Stop()
+			reported := late(err) // classify before canceling the probe ourselves
+			cancel()
+			r.o.recoverTunnel(c, id, err)
+			return reported
+		}
+		r.o.noteTunnelOK(id)
+		old, err := r.followWatch(ctx, s, f, n, timer, late, ready)
+		if old {
+			err = r.followSessions(ctx, s, f, n, timer, late, ready)
+		}
+		timer.Stop()
+		cancel()
+		if err != nil && s.ctx.Err() == nil {
+			if c.HasReplacement(id, n) {
+				// Tunnel was upgraded (e.g. relay -> direct QUIC): re-attach
+				// without dropping f.ready or reporting an unreachable error.
+				continue
+			}
+			c.ForgetMachine(n)
 		}
 		return err
 	}
-	n, err := c.Machine(ctx, id)
-	if err != nil {
-		r.o.recoverTunnel(c, id, err)
-		return late(err)
-	}
-	r.o.noteTunnelOK(id)
-	if old, err := r.followWatch(ctx, s, f, n, timer, late, ready); !old {
-		return err
-	}
-	return r.followSessions(ctx, s, f, n, timer, late, ready)
 }
 
 // followWatch follows a machine's MachineService.Watch: its first message

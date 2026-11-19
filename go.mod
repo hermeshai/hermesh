@@ -13,6 +13,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.3
 	github.com/coder/websocket v1.8.15
 	github.com/hashicorp/yamux v0.1.2
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/pelletier/go-toml/v2 v2.4.3

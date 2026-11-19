@@ -3,6 +3,7 @@ package provider
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +30,7 @@ type CodingRouter interface {
 
 // InspectCodingRoute recognizes built-in service routes and binds the
 // observation to the executable and route settings used to launch it.
-func InspectCodingRoute(agent, bin, dir string, env []string) CodingRoute {
+func InspectCodingRoute(agent, bin, dir string, env []string, args ...string) CodingRoute {
 	if bin == "" {
 		return CodingRoute{}
 	}
@@ -38,7 +39,7 @@ func InspectCodingRoute(agent, bin, dir string, env []string) CodingRoute {
 		return CodingRoute{}
 	}
 	h := sha256.New()
-	fmt.Fprintln(h, bin, fi.Size(), fi.ModTime().UnixNano())
+	fmt.Fprintf(h, "%q %d %d %q\n", bin, fi.Size(), fi.ModTime().UnixNano(), args)
 	settings := make(map[string]string)
 	for _, e := range env {
 		key, val, _ := strings.Cut(e, "=")
@@ -57,6 +58,7 @@ func InspectCodingRoute(agent, bin, dir string, env []string) CodingRoute {
 		return CodingRoute{}
 	}
 	var recipient, route string
+	officialAgy := agent == "antigravity" && len(args) > 0 && args[0] == "acp"
 	switch agent {
 	case "codex":
 		recipient, route = "OpenAI", "Codex using its built-in OpenAI service"
@@ -81,7 +83,13 @@ func InspectCodingRoute(agent, bin, dir string, env []string) CodingRoute {
 			recipient, route = "Google Cloud (Vertex AI)", "Gemini CLI using Google Cloud Vertex AI"
 		}
 	case "antigravity":
-		recipient, route = "Google", "Antigravity ACP using Google's Antigravity service"
+		recipient, route = "Google", "Antigravity standalone ACP using Google's Antigravity service"
+		if officialAgy {
+			route = "Official agy ACP using Google's Antigravity service"
+			if enabledRouteSetting(settings["AGY_ADC_AUTH"]) {
+				recipient, route = "Google Cloud", "Official agy ACP using Google Cloud authentication"
+			}
+		}
 	case "cursor":
 		recipient, route = "Cursor (Anysphere)", "Cursor's managed coding service"
 	case "copilot":
@@ -183,7 +191,15 @@ func InspectCodingRoute(agent, bin, dir string, env []string) CodingRoute {
 			return CodingRoute{}
 		}
 	case "antigravity":
-		if !readConfig(filepath.Join(homeSetting("GEMINI_HOME", ".gemini"), "antigravity-acp", "settings.json")) {
+		dir := homeSetting("GEMINI_HOME", ".gemini")
+		if officialAgy {
+			defaultDir := filepath.Join(home, ".gemini")
+			settingsFile := filepath.Join("antigravity-cli", "settings.json")
+			if !read(filepath.Join(defaultDir, settingsFile), true, knownAgySettings) ||
+				(dir != defaultDir && !read(filepath.Join(dir, settingsFile), true, knownAgySettings)) {
+				return CodingRoute{}
+			}
+		} else if !readConfig(filepath.Join(dir, "antigravity-acp", "settings.json")) {
 			return CodingRoute{}
 		}
 	case "gemini":
@@ -259,6 +275,17 @@ func knownCodexSettings(config map[string]any) bool {
 	return true
 }
 
+func knownAgySettings(raw string) bool {
+	var config struct {
+		ModelProvider string `json:"modelProvider"`
+	}
+	if json.Unmarshal([]byte(strings.TrimPrefix(raw, "\ufeff")), &config) != nil ||
+		(config.ModelProvider != "" && config.ModelProvider != "gemini") {
+		return false
+	}
+	return !containsAny(strings.ToLower(raw), "\\u", "base_url", "baseurl", "endpoint", "proxy")
+}
+
 func routeSetting(agent, key string) bool {
 	if strings.HasPrefix(key, strings.ToUpper(agent)+"_") {
 		return true
@@ -269,7 +296,12 @@ func routeSetting(agent, key string) bool {
 	case "claude":
 		return strings.HasPrefix(key, "ANTHROPIC_") || strings.HasPrefix(key, "AWS_") ||
 			strings.HasPrefix(key, "GOOGLE_") || strings.HasPrefix(key, "AZURE_")
-	case "gemini", "antigravity":
+	case "antigravity":
+		if strings.HasPrefix(key, "AGY_") || key == "CLOUDSDK_CONFIG" {
+			return true
+		}
+		fallthrough
+	case "gemini":
 		return strings.HasPrefix(key, "GOOGLE_") || strings.HasPrefix(key, "GEMINI_")
 	}
 	return false

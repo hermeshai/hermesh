@@ -76,6 +76,19 @@ final class DemoService {
         append("demo-finished-session", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
         append("demo-finished-session", .with { $0.userMessage.text = String(localized: "Add a welcome page and test it.") })
         finish("demo-finished-session", greeting: "Hello, world!")
+        #if DEBUG
+        let extra = UserDefaults.standard.integer(forKey: "DemoSessions")
+        for i in 0 ..< max(0, extra) {
+            var s = session("demo-extra-\(i)", title: "Sidebar Task \(i + 1)", machine: i.isMultiple(of: 2) ? "demo-mac" : "demo-linux", status: .idle)
+            s.agent = i.isMultiple(of: 2) ? "codex" : "claude"
+            s.updatedAt = .init(date: .now.addingTimeInterval(Double(-600 - i * 120)))
+            world.sessions.append(s)
+        }
+        if UserDefaults.standard.bool(forKey: "DemoSidebarActivity") {
+            world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
+            world.status.relayConnected = false
+        }
+        #endif
         _ = pairing(.client)
     }
 
@@ -193,6 +206,15 @@ final class DemoService {
         return id
     }
 
+    // UI automation must be able to interrupt even if finding the button takes longer than the demo task.
+    private static let holdWorkTaskForUITest: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
@@ -233,12 +255,14 @@ final class DemoService {
                 let answer = request.answers.first
                 let text = answer?.text ?? ""
                 let greeting = answer?.selected.first ?? (text.isEmpty ? "Hello, world!" : text)
-                tasks[id] = Task { [weak self] in
-                    // Leave enough time to inspect and interrupt the simulated Work task.
-                    try? await Task.sleep(for: .seconds(8))
-                    guard !Task.isCancelled else { return }
-                    self?.finish(id, greeting: greeting)
-                    self?.tasks[id] = nil
+                if !Self.holdWorkTaskForUITest {
+                    tasks[id] = Task { [weak self] in
+                        // Leave enough time to inspect and interrupt the simulated Work task.
+                        try? await Task.sleep(for: .seconds(8))
+                        guard !Task.isCancelled else { return }
+                        self?.finish(id, greeting: greeting)
+                        self?.tasks[id] = nil
+                    }
                 }
             } else if method == "InterruptSession" {
                 stopTask(id)
