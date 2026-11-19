@@ -75,15 +75,9 @@ func call(t *testing.T, h *Host, conn, method string, params any) json.RawMessag
 
 func approveMockModel(t *testing.T, h *Host) {
 	t.Helper()
-	var offer struct {
-		Recipient json.RawMessage `json:"recipient"`
-		Revision  string          `json:"revision"`
-	}
-	const model = "mock/mock-1"
-	if err := json.Unmarshal(call(t, h, "", aiConsentStatus, map[string]string{"model": model}), &offer); err != nil || !strings.Contains(string(offer.Recipient), "127.0.0.1:") {
-		t.Fatalf("expected a loopback model recipient: %s (%v)", offer.Recipient, err)
-	}
-	call(t, h, "", aiConsentAllow, map[string]any{"model": model, "recipient": offer.Recipient, "revision": offer.Revision})
+	hertest.ApproveModel(t, "mock/mock-1", func(method string, params any) []byte {
+		return call(t, h, "", method, params)
+	})
 }
 
 // defaultBot is the id of her's default assistant in a bots/subscribe result.

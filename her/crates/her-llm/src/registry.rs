@@ -1,7 +1,6 @@
 //! The entry point for callers: resolves models, credentials and adapters, converts history,
 //! retries, and prices the usage.
 
-use futures::StreamExt;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -291,7 +290,15 @@ impl ModelRegistry {
         for id in custom.keys().chain(providers.iter().map(|p| &p.id)) {
             self.directory.forget(id);
         }
-        *custom = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
+        let providers: BTreeMap<_, _> = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
+        if let Some(consent) = &self.consent {
+            consent.revoke_if(|recipient| custom.get(&recipient.provider).is_some_and(|old| {
+                providers.get(&recipient.provider).is_none_or(|new| {
+                    old.api != new.api || old.base_url != new.base_url || old.endpoints != new.endpoints
+                })
+            }));
+        }
+        *custom = providers;
         Ok(())
     }
 
@@ -511,12 +518,13 @@ impl ModelRegistry {
         // Capture the current route and its credential together, even for a running
         // conversation whose original Model predates a sidecar restart.
         let provider = self.provider(&model.provider);
-        let model = provider
-            .as_ref()
-            .and_then(|p| self.lookup(p, &model.id))
-            .unwrap_or(model);
-        let api = self.apis.get(&model.api).cloned();
         let consent = self.consent.clone();
+        let model = provider.as_ref().and_then(|p| {
+            self.lookup(p, &model.id).or_else(|| {
+                consent.as_ref().map(|_| Arc::new(p.ad_hoc_model(&model.id)))
+            })
+        }).unwrap_or(model);
+        let api = self.apis.get(&model.api).cloned();
         let recipient = consent.as_ref().and_then(|_| self.recipient(&model));
         let auth = provider.map(|p| p.auth);
         let authorizer = self.authorizer.get().cloned();
@@ -700,7 +708,14 @@ impl ModelRegistry {
                         attempt += 1;
                         tracing::info!(attempt, ?delay, kind = %error.kind, "retrying model request");
                         yield StreamEvent::Retrying { attempt, delay, error };
-                        tokio::time::sleep(delay).await;
+                        tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
+                            () = tokio::time::sleep(delay) => {}
+                        }
                     }
                     Err(requested) => {
                         let mut error = error;
@@ -721,6 +736,7 @@ impl ModelRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use crate::api::scripted::Script;
     use crate::api::scripted::ScriptedApi;
     use crate::types::Message;

@@ -609,7 +609,7 @@ private struct HerConnectorTray: View {
 
 /// What turning Her on lets her do (docs/her-mesh.md §3.6), said before it is signed.
 private var herGrantNote: String {
-    String(localized: "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.")
+    String(localized: "Her can read coding sessions on your computers. Starting tasks, sending follow-ups and answering agents require a verifiable AI recipient. Turn Her off to end access.")
 }
 
 /// Her was on once on m and her data is still there (docs/her-server.md §5.6): as m says while it answers, else

@@ -25,6 +25,11 @@ func TestHerBlocksCodingWritesBeforeConnecting(t *testing.T) {
 		t.Fatal("attempted to connect to the unverified coding recipient")
 		return nil
 	}})
+	for _, tool := range link.Group().Tools {
+		if tool.Writes {
+			t.Fatalf("advertised unverified coding tool %s", tool.Name)
+		}
+	}
 	for _, name := range []string{"session_start", "session_send", "session_answer"} {
 		out, _, failed := link.Call(context.Background(), "fictional-bot", "fictional-call", name, json.RawMessage(`{"prompt":"fictional content"}`))
 		if !failed || errorKind([]byte(out)) != "ai_recipient_unverified" {
