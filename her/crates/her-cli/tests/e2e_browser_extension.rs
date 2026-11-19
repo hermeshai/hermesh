@@ -1532,7 +1532,7 @@ async fn extension_reconnects_after_restart_and_activity_and_reports_true_chrome
         eprintln!("no Chromium-family browser installed; skipping");
         return;
     };
-    let env = TestEnv::new("bypass-permissions", "[browser]\nextension = true\n").await;
+    let env = TestEnv::new("manual", "[browser]\nextension = true\n").await;
     let home = env.home.path().to_path_buf();
     let socket = home.join("run").join("her.sock");
     let profile = env.work().join("chrome-profile");
@@ -1598,15 +1598,16 @@ async fn extension_reconnects_after_restart_and_activity_and_reports_true_chrome
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert!(reconnected, "browser activity did not reconnect out of backoff within 4s");
+    let recovered = serve_page("<title>Recovered</title><h1>After browser activity</h1>").await;
+    let turn = native_prompt(&client, &mut events, &session, &format!("[[mock:yours:{recovered}]] open"), true).await;
+    assert!(tool_results(&turn).contains("After browser activity"), "{}", tool_results(&turn));
 
     // 3. Real Chrome exit: native-host stops cleanly without false "Hermesh stopped", and unwatched calls report NO_EXTENSION.
     let before_stopped = logs(&home).matches("extension host stopped").count();
     let before_hermesh_stopped = logs(&home).matches("Hermesh stopped").count();
     let _ = chrome.send(None, "Browser.close", json!({})).await;
-    if tokio::time::timeout(Duration::from_secs(5), chrome_process.wait()).await.is_err() {
-        let _ = chrome_process.kill().await;
-        let _ = chrome_process.wait().await;
-    }
+    let exited = tokio::time::timeout(Duration::from_secs(10), chrome_process.wait()).await.expect("Chrome quits").unwrap();
+    assert!(exited.success(), "Chrome exits cleanly: {exited}");
     wait_for("extension host stopped after Chrome exit", || {
         logs(&home).matches("extension host stopped").count() > before_stopped
     })
