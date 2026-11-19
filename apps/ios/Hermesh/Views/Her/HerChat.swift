@@ -2,7 +2,10 @@ import Foundation
 import HermeshHer
 import HermeshKit
 import HermeshProto
+import os
 import UIKit
+
+private let herConnLog = Logger(subsystem: "ai.hermesh.app", category: "connectivity")
 
 /// The Her entry while the app runs (docs/her-server.md §9): the
 /// environment shown, kept on this iPhone, and each environment's chat,
@@ -29,13 +32,37 @@ final class HerPlace {
         return c
     }
 
+    /// Returns an already-created chat without allocating a new one.
+    func existingChat(_ machineID: String) -> HerChat? { chats[machineID] }
+
     func stop() {
         for chat in chats.values { chat.stop() }
         chats.removeAll()
     }
 
-    /// Wakes every environment chat's retry backoff sleep after connectivity returns.
-    func wakeRetries() {
+    /// Pauses active Her streams while the app is in the background so no
+    /// zombie half-open sockets survive iOS suspension.
+    func pause() {
+        for chat in chats.values { chat.pause() }
+    }
+
+    /// Resumes active Her streams on returning to the foreground, clearing
+    /// any retry backoff immediately.
+    func resume() {
+        for chat in chats.values { chat.resume() }
+    }
+
+    /// Forces an immediate reconnect of active Her streams.
+    func reconnectNow() {
+        for chat in chats.values { chat.reconnectNow() }
+    }
+
+    /// Wakes every environment chat's (or one machine's) retry backoff sleep after connectivity returns.
+    func wakeRetries(for machineID: String? = nil) {
+        if let machineID {
+            chats[machineID]?.wakeRetry()
+            return
+        }
         for chat in chats.values {
             chat.wakeRetry()
         }
@@ -86,6 +113,17 @@ final class HerChat {
     @ObservationIgnored private var outgoing: [String: HerDraft] = [:]
     /// The conversation's connection is opening again after it was open: a reply may take a moment.
     private(set) var reconnecting = false
+    /// When the current conversation connection attempt started (first connect or reconnect); nil once open.
+    private(set) var convConnectingSince: Date?
+    /// Consecutive failed conversation connection attempts since last connected.
+    private(set) var convRetries = 0
+    /// When the next automatic reconnect attempt is scheduled while backing off.
+    private(set) var nextRetryAt: Date?
+    /// Most recent environment / conversation stream error (never silently discarded).
+    private(set) var envError: String?
+    private(set) var convError: String?
+    /// True while the app is in the background and streams are intentionally paused.
+    private(set) var paused = false
     /// Earlier history is being read.
     private(set) var paging = false
     /// The sub-agents whose earlier history is being read.
@@ -107,6 +145,9 @@ final class HerChat {
     @ObservationIgnored private var convTask: Task<Void, Never>?
     @ObservationIgnored private var letGo: Task<Void, Never>?
     @ObservationIgnored private var retryWaits: [UUID: Task<Void, Never>] = [:]
+    @ObservationIgnored private var retryGen = 0
+    /// Server-issued hub epoch paired with `live?.lastSeq` for incremental `bots/open`.
+    @ObservationIgnored private var resumeEpoch: String?
     @ObservationIgnored private var progressMemo: (key: ProgressKey, groups: [HerProgressGroup])?
     @ObservationIgnored private var chatGPT: Task<Void, Never>?
 
@@ -143,28 +184,93 @@ final class HerChat {
 
     func stop() {
         envTask?.cancel(); convTask?.cancel(); letGo?.cancel()
+        envTask = nil; convTask = nil
+        env = nil; conv = nil
+        envUp = false; convUp = false
+        convConnectingSince = nil; nextRetryAt = nil
         wakeRetry()
         for task in signingIn.values { task.cancel() }
     }
 
-    /// Wakes any backoff sleep currently waiting to retry, without disturbing live streams.
+    /// Cancels active streams on entering the background while keeping `following`
+    /// so `resume()` immediately reopens them when returning to the front.
+    func pause() {
+        paused = true
+        envTask?.cancel(); convTask?.cancel(); letGo?.cancel()
+        envTask = nil; convTask = nil
+        env = nil; conv = nil
+        envUp = false; convUp = false
+        reconnecting = false
+        convConnectingSince = nil
+        nextRetryAt = nil
+        wakeRetry()
+    }
+
+    /// Reopens streams after returning to the foreground, resetting retry backoff.
+    func resume() {
+        let wasPaused = paused
+        paused = false
+        convRetries = 0
+        nextRetryAt = nil
+        wakeRetry()
+        if live == nil {
+            Task { await self.loadKept() }
+        }
+        guard holders > 0, let f = following else { return }
+        if wasPaused || (f.running && envTask == nil) || (f.running && f.bot != nil && convTask == nil) {
+            startStreams(for: f)
+        }
+    }
+
+    /// Forces an immediate teardown and fresh open of active Her streams.
+    func reconnectNow() {
+        paused = false
+        envTask?.cancel(); convTask?.cancel(); letGo?.cancel()
+        envTask = nil; convTask = nil
+        env = nil; conv = nil
+        envUp = false; convUp = false
+        convRetries = 0; nextRetryAt = nil
+        envError = nil; convError = nil
+        wakeRetry()
+        guard holders > 0, let f = following else { return }
+        startStreams(for: f)
+    }
+
+    /// Wakes any backoff sleep currently waiting to retry, resetting backoff
+    /// progression without disturbing live streams.
     func wakeRetry() {
+        retryGen += 1
+        nextRetryAt = nil
         for task in retryWaits.values { task.cancel() }
         retryWaits.removeAll()
+        if live == nil {
+            Task { await self.loadKept() }
+        }
     }
 
     /// After a connection ended: again in 1 s, then up to every 30 s while it keeps failing.
-    private func pause(_ failures: Int) async {
+    /// Returns true if woken early (caller should reset its backoff counter).
+    @discardableResult
+    private func pause(_ failures: Int, forConv: Bool = false) async -> Bool {
+        let gen = retryGen
         let id = UUID()
         let seconds = min(30, 1 << min(5, max(0, failures - 1)))
+        if forConv {
+            convRetries = failures
+            nextRetryAt = Date().addingTimeInterval(Double(seconds))
+        }
         let sleep = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
         retryWaits[id] = sleep
-        defer { retryWaits.removeValue(forKey: id) }
+        defer {
+            retryWaits.removeValue(forKey: id)
+            if forConv { nextRetryAt = nil }
+        }
         await withTaskCancellationHandler {
             await sleep.value
         } onCancel: {
             sleep.cancel()
         }
+        return retryGen != gen
     }
 
     /// What the connections follow: they open again when it changes.
@@ -197,7 +303,20 @@ final class HerChat {
         }
     }
 
+    private func startStreams(for f: Following) {
+        if f.running && envTask == nil {
+            envTask = Task { await self.followEnvironment() }
+        }
+        if f.running, let bot = f.bot, convTask == nil {
+            convTask = Task { await self.followConversation(botID: bot) }
+        }
+    }
+
     private func follow(_ f: Following) {
+        if paused {
+            following = f
+            return
+        }
         if envTask == nil || f.running != following?.running {
             envTask?.cancel()
             envTask = nil
@@ -207,6 +326,7 @@ final class HerChat {
         // was of hers too. Until the new one's conversation opens (with no model yet, it doesn't), it shows nothing.
         if let was = following?.bot, let now = f.bot, was != now {
             live = nil
+            resumeEpoch = nil
             if kept?.bot.id != now { kept = nil }
         }
         // A model connected opens the conversation her refused for want of one; otherwise what the machine says of
@@ -226,18 +346,27 @@ final class HerChat {
     func followEnvironment() async {
         guard let transport else { return }
         var failures = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled && !paused {
+            let started = Date()
             let c = HerConnection(local: transport, machineID: machineID)
+            var didOpen = false
             do {
                 events: for try await e in c.open(setup: [("bots/subscribe", [:]), ("models/list", [:])]) {
                     switch e {
                     case .opened(let r):
-                        guard case .success(let listed)? = r.first else { break events }
+                        guard case .success(let listed)? = r.first else {
+                            if case .failure(let err)? = r.first { envError = err.message }
+                            break events
+                        }
+                        didOpen = true
                         failures = 0
+                        envError = nil
                         bots = (listed["bots"].array ?? []).compactMap(HerBot.init)
                         if case .success(let m)? = r.dropFirst().first { models = HerModels(m) }
                         env = c
                         envUp = true
+                        let openMs = Int(Date().timeIntervalSince(started) * 1000)
+                        herConnLog.info("her.env.open machine=\(self.machineID, privacy: .public) open_ms=\(openMs)")
                     case .notification("bots/changed", let params):
                         bots = mergeBots(bots, params)
                     case .notification("models/changed", _):
@@ -251,10 +380,18 @@ final class HerChat {
                         break
                     }
                 }
-            } catch {}
+            } catch {
+                if !Task.isCancelled && !paused {
+                    let msg = (error as? APIError)?.message ?? error.localizedDescription
+                    envError = msg
+                    let afterMs = Int(Date().timeIntervalSince(started) * 1000)
+                    herConnLog.warning("her.env.error machine=\(self.machineID, privacy: .public) opened=\(didOpen) after_ms=\(afterMs) err=\(msg, privacy: .public)")
+                }
+            }
             if env === c { env = nil; envUp = false }
+            guard !Task.isCancelled && !paused else { break }
             failures += 1
-            await pause(failures)
+            if await pause(failures) { failures = 0 }
         }
     }
 
@@ -263,12 +400,26 @@ final class HerChat {
     func followConversation(botID: String) async {
         guard let transport else { return }
         var failures = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled && !paused {
+            let started = Date()
+            if convConnectingSince == nil { convConnectingSince = started }
             let c = HerConnection(local: transport, machineID: machineID)
             var opened: String?
             // Its last items, earlier ones read as it is scrolled up (earlier()).
-            let open: JSON = ["bot_id": .string(botID), "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]],
-                              "history_limit": testWindow]
+            // When reconnecting to the same live conversation, pass (session_id,
+            // resume_epoch, after_seq) so her sends only missed events instead
+            // of a full 100-item snapshot.
+            var openObj: [String: JSON] = [
+                "bot_id": .string(botID),
+                "events": ["exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]],
+            ]
+            if testWindow != .null { openObj["history_limit"] = testWindow }
+            if let existing = self.live, let epoch = self.resumeEpoch, !epoch.isEmpty {
+                openObj["session_id"] = .string(existing.sessionID)
+                openObj["resume_epoch"] = .string(epoch)
+                openObj["after_seq"] = .number(Double(existing.lastSeq))
+            }
+            let open = JSON.object(openObj)
             do {
                 events: for try await e in c.open(setup: [("bots/open", open)]) {
                     switch e {
@@ -276,17 +427,41 @@ final class HerChat {
                         switch r.first {
                         case .success(let s)?:
                             failures = 0
+                            convRetries = 0
+                            convError = nil
+                            convConnectingSince = nil
+                            nextRetryAt = nil
                             opened = s["session_id"].string
-                            self.live = HerSession(snapshot: s["snapshot"])
+                            if let epoch = s["resume_epoch"].string, !epoch.isEmpty {
+                                self.resumeEpoch = epoch
+                            }
+                            let incremental = s["incremental"].bool == true && opened == self.live?.sessionID
+                            if incremental {
+                                let missed = s["events"].array ?? []
+                                let was = self.live
+                                for ev in missed { self.live?.apply(ev) }
+                                if let latest = s["last_seq"].int, let cur = self.live?.lastSeq, latest > cur {
+                                    self.live?.lastSeq = latest
+                                }
+                                feel(was, self.live)
+                            } else {
+                                self.live = HerSession(snapshot: s["snapshot"])
+                            }
                             noModel = false
                             conv = c
                             convUp = true
                             reconnecting = false
                             settle { _ in true }
+                            let openMs = Int(Date().timeIntervalSince(started) * 1000)
+                            herConnLog.info("her.conv.open machine=\(self.machineID, privacy: .public) incremental=\(incremental) open_ms=\(openMs)")
                         case .failure(let refused)?:
                             // Without a model, the page says so; deleted meanwhile, the list hears of it too. The
                             // connection stays until what it waits on changes.
-                            if refused.kind == "no_model" { noModel = true } else if refused.kind != "bot_not_found" { report(refused) }
+                            convConnectingSince = nil
+                            if refused.kind == "no_model" { noModel = true } else if refused.kind != "bot_not_found" {
+                                convError = refused.message
+                                report(refused)
+                            }
                         case nil:
                             break events
                         }
@@ -307,10 +482,22 @@ final class HerChat {
                         break
                     }
                 }
-            } catch {}
-            if conv === c { conv = nil; convUp = false; reconnecting = !Task.isCancelled }
+            } catch {
+                if !Task.isCancelled && !paused {
+                    let msg = (error as? APIError)?.message ?? error.localizedDescription
+                    convError = msg
+                    let afterMs = Int(Date().timeIntervalSince(started) * 1000)
+                    herConnLog.warning("her.conv.error machine=\(self.machineID, privacy: .public) opened=\(opened != nil) after_ms=\(afterMs) retries=\(failures + 1) err=\(msg, privacy: .public)")
+                }
+            }
+            if conv === c { conv = nil; convUp = false; reconnecting = !Task.isCancelled && !paused }
+            guard !Task.isCancelled && !paused else {
+                convConnectingSince = nil
+                break
+            }
+            if convConnectingSince == nil { convConnectingSince = Date() }
             failures += 1
-            await pause(failures)
+            if await pause(failures, forConv: true) { failures = 0 }
         }
     }
 

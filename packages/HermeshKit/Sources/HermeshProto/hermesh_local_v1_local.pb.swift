@@ -486,11 +486,44 @@ public nonisolated struct Hermesh_Local_V1_GetStatusResponse: @unchecked Sendabl
     set {_uniqueStorage()._abilities = newValue}
   }
 
+  /// Connection health of the owner's relay link: phase, smoothed RTT,
+  /// consecutive retries, and most recent error.
+  public var relayHealth: Hermesh_Local_V1_RelayHealth {
+    get {_storage._relayHealth ?? Hermesh_Local_V1_RelayHealth()}
+    set {_uniqueStorage()._relayHealth = newValue}
+  }
+  /// Returns true if `relayHealth` has been explicitly set.
+  public var hasRelayHealth: Bool {_storage._relayHealth != nil}
+  /// Clears the value of `relayHealth`. Subsequent reads from it will return its default value.
+  public mutating func clearRelayHealth() {_uniqueStorage()._relayHealth = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Hermesh_Local_V1_RelayHealth: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "idle", "connecting", "connected", "reconnecting", "offline"
+  public var phase: String = String()
+
+  /// Smoothed round-trip time to the relay in milliseconds (0 when unknown).
+  public var rttMs: UInt32 = 0
+
+  /// Consecutive failed dial attempts since the last verified connection.
+  public var retryCount: UInt32 = 0
+
+  /// Most recent dial or admission error, empty while healthy.
+  public var lastError: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Hermesh_Local_V1_ListProfilesRequest: Sendable {
@@ -1552,11 +1585,43 @@ public nonisolated struct Hermesh_Local_V1_Machine: @unchecked Sendable {
   /// Clears the value of `her`. Subsequent reads from it will return its default value.
   public mutating func clearHer() {_uniqueStorage()._her = nil}
 
+  /// End-to-end tunnel health for this machine (path, RTT, phase, error).
+  public var tunnel: Hermesh_Local_V1_TunnelHealth {
+    get {_storage._tunnel ?? Hermesh_Local_V1_TunnelHealth()}
+    set {_uniqueStorage()._tunnel = newValue}
+  }
+  /// Returns true if `tunnel` has been explicitly set.
+  public var hasTunnel: Bool {_storage._tunnel != nil}
+  /// Clears the value of `tunnel`. Subsequent reads from it will return its default value.
+  public mutating func clearTunnel() {_uniqueStorage()._tunnel = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+public nonisolated struct Hermesh_Local_V1_TunnelHealth: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "offline", "dialing", "ready", "retrying", "unreachable"
+  public var phase: String = String()
+
+  /// "local", "direct_lan", "direct_ipv6", "relay", or "" when not connected.
+  public var path: String = String()
+
+  /// Smoothed round-trip time over the machine tunnel in milliseconds (0 when unknown).
+  public var rttMs: UInt32 = 0
+
+  /// Most recent tunnel or follow error, empty while ready.
+  public var lastError: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 public nonisolated struct Hermesh_Local_V1_ListMachinesRequest: Sendable {
@@ -3872,7 +3937,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusRequest: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0\u{3}mcp_url\0\u{1}signer\0\u{3}account_avatar_url\0\u{1}abilities\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}initialized\0\u{3}owner_id\0\u{3}relay_url\0\u{3}relay_connected\0\u{3}local_machine_enabled\0\u{3}local_machine_id\0\u{3}local_machine_name\0\u{1}version\0\u{3}connect_address\0\u{1}hosted\0\u{3}console_url\0\u{3}device_key_id\0\u{1}removed\0\u{3}machine_only\0\u{3}signed_out\0\u{1}account\0\u{1}erased\0\u{3}mcp_url\0\u{1}signer\0\u{3}account_avatar_url\0\u{1}abilities\0\u{3}relay_health\0")
 
   fileprivate class _StorageClass {
     var _initialized: Bool = false
@@ -3896,6 +3961,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
     var _signer: Hermesh_Local_V1_SignerState? = nil
     var _accountAvatarURL: String = String()
     var _abilities: [String] = []
+    var _relayHealth: Hermesh_Local_V1_RelayHealth? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3927,6 +3993,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       _signer = source._signer
       _accountAvatarURL = source._accountAvatarURL
       _abilities = source._abilities
+      _relayHealth = source._relayHealth
     }
   }
 
@@ -3966,6 +4033,7 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         case 19: try { try decoder.decodeSingularMessageField(value: &_storage._signer) }()
         case 20: try { try decoder.decodeSingularStringField(value: &_storage._accountAvatarURL) }()
         case 21: try { try decoder.decodeRepeatedStringField(value: &_storage._abilities) }()
+        case 22: try { try decoder.decodeSingularMessageField(value: &_storage._relayHealth) }()
         default: break
         }
       }
@@ -4041,6 +4109,9 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
       if !_storage._abilities.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._abilities, fieldNumber: 21)
       }
+      try { if let v = _storage._relayHealth {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 22)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -4071,10 +4142,56 @@ nonisolated extension Hermesh_Local_V1_GetStatusResponse: SwiftProtobuf.Message,
         if _storage._signer != rhs_storage._signer {return false}
         if _storage._accountAvatarURL != rhs_storage._accountAvatarURL {return false}
         if _storage._abilities != rhs_storage._abilities {return false}
+        if _storage._relayHealth != rhs_storage._relayHealth {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_RelayHealth: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RelayHealth"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}phase\0\u{3}rtt_ms\0\u{3}retry_count\0\u{3}last_error\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.phase) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.rttMs) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.retryCount) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.lastError) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.phase.isEmpty {
+      try visitor.visitSingularStringField(value: self.phase, fieldNumber: 1)
+    }
+    if self.rttMs != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rttMs, fieldNumber: 2)
+    }
+    if self.retryCount != 0 {
+      try visitor.visitSingularUInt32Field(value: self.retryCount, fieldNumber: 3)
+    }
+    if !self.lastError.isEmpty {
+      try visitor.visitSingularStringField(value: self.lastError, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_RelayHealth, rhs: Hermesh_Local_V1_RelayHealth) -> Bool {
+    if lhs.phase != rhs.phase {return false}
+    if lhs.rttMs != rhs.rttMs {return false}
+    if lhs.retryCount != rhs.retryCount {return false}
+    if lhs.lastError != rhs.lastError {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6060,7 +6177,7 @@ nonisolated extension Hermesh_Local_V1_ApproveClientPairingResponse: SwiftProtob
 
 nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Machine"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}machine_name\0\u{1}online\0\u{3}last_seen\0\u{1}status\0\u{1}local\0\u{3}device_key_id\0\u{1}version\0\u{1}unreachable\0\u{1}syncing\0\u{1}her\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}machine_name\0\u{1}online\0\u{3}last_seen\0\u{1}status\0\u{1}local\0\u{3}device_key_id\0\u{1}version\0\u{1}unreachable\0\u{1}syncing\0\u{1}her\0\u{1}tunnel\0")
 
   fileprivate class _StorageClass {
     var _machineID: String = String()
@@ -6074,6 +6191,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
     var _unreachable: String = String()
     var _syncing: Bool = false
     var _her: Hermesh_Machine_V1_HerStatus? = nil
+    var _tunnel: Hermesh_Local_V1_TunnelHealth? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -6095,6 +6213,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
       _unreachable = source._unreachable
       _syncing = source._syncing
       _her = source._her
+      _tunnel = source._tunnel
     }
   }
 
@@ -6124,6 +6243,7 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
         case 9: try { try decoder.decodeSingularStringField(value: &_storage._unreachable) }()
         case 10: try { try decoder.decodeSingularBoolField(value: &_storage._syncing) }()
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._her) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._tunnel) }()
         default: break
         }
       }
@@ -6169,6 +6289,9 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
       try { if let v = _storage._her {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._tunnel {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -6189,10 +6312,56 @@ nonisolated extension Hermesh_Local_V1_Machine: SwiftProtobuf.Message, SwiftProt
         if _storage._unreachable != rhs_storage._unreachable {return false}
         if _storage._syncing != rhs_storage._syncing {return false}
         if _storage._her != rhs_storage._her {return false}
+        if _storage._tunnel != rhs_storage._tunnel {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_TunnelHealth: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".TunnelHealth"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}phase\0\u{1}path\0\u{3}rtt_ms\0\u{3}last_error\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.phase) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.rttMs) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.lastError) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.phase.isEmpty {
+      try visitor.visitSingularStringField(value: self.phase, fieldNumber: 1)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 2)
+    }
+    if self.rttMs != 0 {
+      try visitor.visitSingularUInt32Field(value: self.rttMs, fieldNumber: 3)
+    }
+    if !self.lastError.isEmpty {
+      try visitor.visitSingularStringField(value: self.lastError, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_TunnelHealth, rhs: Hermesh_Local_V1_TunnelHealth) -> Bool {
+    if lhs.phase != rhs.phase {return false}
+    if lhs.path != rhs.path {return false}
+    if lhs.rttMs != rhs.rttMs {return false}
+    if lhs.lastError != rhs.lastError {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

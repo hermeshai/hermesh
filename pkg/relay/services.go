@@ -442,6 +442,11 @@ func (n *machineControl) WatchUpdates(ctx context.Context, _ *relayv1.WatchUpdat
 		targets.Targets = append(targets.Targets, pt)
 	}
 	stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_PushTargets{PushTargets: targets}})
+	syncTargets := &relayv1.SyncTargets{}
+	for _, st := range s.syncTargets(t) {
+		syncTargets.Targets = append(syncTargets.Targets, st)
+	}
+	stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_SyncTargets{SyncTargets: syncTargets}})
 	if g := s.machineGrants(t, p.subject.ID); g != nil {
 		stream.Send(&relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_Grants{Grants: g}})
 	}

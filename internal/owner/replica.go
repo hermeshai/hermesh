@@ -409,6 +409,9 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
+	go func() {
+		_ = r.o.registerSyncKey(ctx, ctl)
+	}()
 	stream, err := ctl.WatchOwner(ctx, &relayv1.WatchOwnerRequest{})
 	if err != nil {
 		return nil, err
@@ -435,7 +438,13 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		var machines []*localv1.Machine
 		var mErr error
 		if u.Machines != nil {
+			r.o.rememberMachineCerts(u.Machines)
 			machines, mErr = r.o.keepListed(r.o.machinesFrom(u.Machines), nil)
+		}
+		if len(u.DeltaStreams) > 0 {
+			go func() {
+				_, _ = r.o.pullDeltas(ctx, ctl)
+			}()
 		}
 		var clients []*localv1.Client
 		if u.Clients != nil {
@@ -716,8 +725,10 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 	}
 	n, err := c.Machine(ctx, id)
 	if err != nil {
+		r.o.recoverTunnel(c, id, err)
 		return late(err)
 	}
+	r.o.noteTunnelOK(id)
 	if old, err := r.followWatch(ctx, s, f, n, timer, late, ready); !old {
 		return err
 	}
@@ -803,7 +814,7 @@ func (r *replica) machineChanged(s *sources, f *feed, machineID string, m *machi
 	var haveStatus bool
 	if m.Status != nil {
 		f.status = m.Status
-		directAddrs, haveStatus = m.Status.DirectAddrs, true
+		directAddrs, haveStatus = combineDirectAddrs(m.Status.DirectQuicAddrs, m.Status.DirectAddrs), true
 	}
 	r.workSeenLocked(s, f, machineID, m.WorkSeq)
 	if len(sessions) > 0 || len(deleted) > 0 {
@@ -911,7 +922,7 @@ func (r *replica) readInfo(ctx context.Context, s *sources, f *feed, n *peer.Mac
 	}
 	r.mu.Unlock()
 	if kept && info.Status != nil {
-		r.o.saveDirectAddrs(n.MachineID, info.Status.DirectAddrs)
+		r.o.saveDirectAddrs(n.MachineID, combineDirectAddrs(info.Status.DirectQuicAddrs, info.Status.DirectAddrs))
 	}
 	return nil
 }
@@ -1157,6 +1168,13 @@ func (r *replica) machinesChangedLocked(s *sources) {
 	}
 }
 
+// kick tells the screens that what they show may have changed.
+func (r *replica) kick() {
+	r.mu.Lock()
+	r.kickLocked()
+	r.mu.Unlock()
+}
+
 // kickLocked tells the screens that what they show may have changed.
 func (r *replica) kickLocked() {
 	for c := range r.screens {
@@ -1183,19 +1201,46 @@ func (r *replica) screen() (<-chan struct{}, func()) {
 
 // unreachable says, of each machine but this device's own, why its sessions
 // and projects cannot be read now; empty while they can, or while it is
-// being connected to.
+// being connected to. It also populates each machine's TunnelHealth.
 func (r *replica) unreachable(machines []*localv1.Machine) {
+	r.o.mu.Lock()
+	c := r.o.client
+	r.o.mu.Unlock()
 	r.feeds(func(feeds map[string]*feed) {
 		for _, m := range machines {
 			f := feeds[m.MachineId]
 			switch {
 			case m.Local:
+				m.Tunnel = &localv1.TunnelHealth{Phase: "ready", Path: "local"}
 			case !m.Online:
 				m.Unreachable = "offline"
+				m.Tunnel = &localv1.TunnelHealth{Phase: "offline"}
+			case f != nil && f.ready:
+				path, rtt := "", time.Duration(0)
+				if dn := r.o.cachedDirectMachine(m.MachineId); dn != nil {
+					path, rtt = dn.Path(), dn.RTT()
+				} else if c != nil {
+					if p, d, ok := c.MachineTunnel(m.MachineId); ok {
+						path, rtt = p, d
+					}
+				}
+				if path == "" && f.conn != nil {
+					path, rtt = f.conn.Path(), f.conn.RTT()
+				}
+				if path == "" {
+					path = "relay"
+				}
+				m.Tunnel = &localv1.TunnelHealth{Phase: "ready", Path: path, RttMs: durToMs(rtt)}
 			case f != nil && !f.ready && f.err != "":
 				m.Unreachable = f.err
+				phase := "unreachable"
+				if f.running {
+					phase = "retrying"
+				}
+				m.Tunnel = &localv1.TunnelHealth{Phase: phase, LastError: f.err}
 			case f == nil || !f.ready:
 				m.Syncing = true
+				m.Tunnel = &localv1.TunnelHealth{Phase: "dialing"}
 			}
 		}
 	})

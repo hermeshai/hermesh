@@ -29,6 +29,12 @@ service MachineService {
   rpc PullWork(PullWorkRequest) returns (PullWorkResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
+  // PunchDirect asks the machine to send UDP hole-punch packets from its
+  // direct QUIC endpoints toward the owner device's candidate UDP endpoints
+  // so stateful IPv6/NAT firewalls allow direct QUIC handshakes (owner-only).
+  rpc PunchDirect(PunchDirectRequest) returns (PunchDirectResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
 }
 
 message WatchRequest {
@@ -171,6 +177,10 @@ message MachineStatus {
   // Direct LAN IPv4 / public IPv6 E2E tunnel endpoints (host:port) for
   // bypassing the relay when reachable. Sent to the owner's devices only.
   repeated string direct_addrs = 16;
+  // Direct LAN IPv4 / public IPv6 E2E QUIC/HTTP3 UDP endpoints (host:port)
+  // offering 1-RTT handshakes, independent non-HoL streams, and connection
+  // migration. Sent to the owner's devices only.
+  repeated string direct_quic_addrs = 17;
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this
@@ -500,3 +510,13 @@ message SetHerGrantRequest {
 }
 
 message SetHerGrantResponse {}
+
+message PunchDirectRequest {
+  // Candidate client UDP host:port endpoints (e.g. "[2408:...]:54321").
+  repeated string targets = 1;
+}
+
+message PunchDirectResponse {
+  // Current direct QUIC host:port endpoints listening on this machine.
+  repeated string direct_quic_addrs = 1;
+}

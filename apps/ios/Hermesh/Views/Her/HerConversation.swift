@@ -31,8 +31,10 @@ struct HerConversation: View {
     @State private var preview: URL?
     /// Markdown or code Her sent, brought here to read on a page of the app's.
     @State private var page: HerFileText?
-    /// The conversation's connection has been opening again for a while.
+    /// The conversation's connection (first connect or reconnect) has taken more than 1.2 s.
     @State private var slow = false
+    /// Connection diagnostics sheet presented from the top status capsule.
+    @State private var showDiagnostics = false
     /// The message a scheduled task's run page brought into view, or one a reply quotes, marked a moment.
     @State private var marked: String?
     /// The message whose text is being selected from, to reply to a part of it (docs/her-reply.md §3.3).
@@ -109,19 +111,29 @@ struct HerConversation: View {
             if rows.isEmpty && busy == nil { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
         }
         .safeAreaInset(edge: .top) {
-            if case .offline(let seen) = state {
-                HerOfflineLine(name: machine.machineName, seen: seen)
-            } else if state == .ready && slow {
-                HerConnectingLine(name: machine.machineName)
+            Group {
+                if case .offline(let seen) = state {
+                    Button { showDiagnostics = true } label: {
+                        HerOfflineLine(name: machine.machineName, seen: seen)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                } else if let banner = linkBanner {
+                    Button { showDiagnostics = true } label: {
+                        HerLinkCapsule(banner: banner)
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
             }
+            .animation(still ? nil : .easeInOut(duration: 0.25), value: linkBanner)
         }
-        // The conversation's connection opening again for more than a moment: a reply may take a while, and the page
-        // says why (docs/her-sending.md §5.4).
-        .task(id: chat.reconnecting) {
+        // Any first connect or reconnect lasting > 1.2 s surfaces status smoothly (no flash on quick resumes).
+        .task(id: waitingForLink) {
             slow = false
-            guard chat.reconnecting else { return }
-            try? await Task.sleep(for: .seconds(2))
-            if !Task.isCancelled { slow = chat.reconnecting }
+            guard waitingForLink else { return }
+            try? await Task.sleep(for: .milliseconds(1200))
+            if !Task.isCancelled { slow = waitingForLink }
         }
         .safeAreaInset(edge: .bottom) {
             HerToEnd(far: far) {
@@ -139,6 +151,9 @@ struct HerConversation: View {
         .sheet(item: $page) { HerFilePage(file: $0) }
         .sheet(item: $selecting) { from in
             HerSelectText(text: from.text) { picked in chat.reply(herQuote(ref: from.id, own: from.own, whole: from.text, selected: picked)) }
+        }
+        .sheet(isPresented: $showDiagnostics) {
+            HerDiagnosticsSheet(chat: chat, machine: machine, state: state)
         }
         // Her's onboarding: begun when her says no model works there, or HerStatus says so for a while (it says
         // Her runs a moment before her has listed her models); done once the conversation opens on a model.
@@ -168,6 +183,56 @@ struct HerConversation: View {
 }
 
 extension HerConversation {
+    /// Whether the relay, machine tunnel, or Her conversation is still connecting.
+    private var waitingForLink: Bool {
+        guard !model.isDemo, !chat.paused else { return false }
+        if !model.status.relayConnected { return true }
+        if machine.hasTunnel && machine.tunnel.phase != "ready" { return true }
+        return state == .ready && !chat.convUp && !noModel
+    }
+
+    /// Top status capsule for Her: covers offline immediately, and gates transient
+    /// connecting/reconnecting states behind the 1.2 s `slow` debounce so brief
+    /// foreground resumes never flash under Her's avatar.
+    private var linkBanner: HerLinkBanner? {
+        guard !model.isDemo, !chat.paused else { return nil }
+        let relay = model.status.relayHealth
+        let tunnel = machine.hasTunnel ? machine.tunnel : nil
+        if model.networkKind == "offline" {
+            return HerLinkBanner(kind: .error, text: String(localized: "No network connection"))
+        }
+        if !model.status.relayConnected {
+            if relay.phase == "offline" || relay.retryCount >= 3 {
+                return HerLinkBanner(kind: .error, text: String(localized: "Can’t reach Hermesh · #\(Int(relay.retryCount))"))
+            }
+            guard slow else { return nil }
+            if relay.retryCount > 0 {
+                return HerLinkBanner(kind: .connecting, text: String(localized: "Reconnecting to Hermesh · #\(Int(relay.retryCount))"))
+            }
+            return HerLinkBanner(kind: .connecting, text: String(localized: "Connecting to Hermesh…"))
+        }
+        if let tunnel, tunnel.phase == "unreachable" || tunnel.phase == "retrying" {
+            guard slow || tunnel.phase == "unreachable" else { return nil }
+            return HerLinkBanner(kind: tunnel.phase == "unreachable" ? .error : .connecting,
+                                 text: String(localized: "Reconnecting to \(machine.machineName)…"))
+        }
+        if state == .ready && !chat.convUp && !noModel {
+            guard slow else { return nil }
+            if chat.convRetries > 0 {
+                return HerLinkBanner(kind: .connecting, text: String(localized: "Reconnecting to \(machine.machineName) · #\(chat.convRetries)"))
+            }
+            if chat.convError != nil {
+                return HerLinkBanner(kind: .error, text: String(localized: "Can’t reach Her on \(machine.machineName)"))
+            }
+            return HerLinkBanner(kind: .connecting, text: String(localized: "Connecting to \(machine.machineName)…"))
+        }
+        if let tunnel, tunnel.phase == "ready", tunnel.rttMs >= 250 {
+            let pathLabel = herPathLabel(tunnel.path)
+            return HerLinkBanner(kind: .slow, text: "\(pathLabel) · \(Int(tunnel.rttMs)) ms")
+        }
+        return nil
+    }
+
     /// Brings a row into view and marks it a moment.
     private func reveal(_ key: String, in proxy: ScrollViewProxy, after wait: Duration) {
         atEnd = false
@@ -1101,14 +1166,50 @@ private struct HerOfflineLine: View {
     }
 }
 
-/// The conversation's connection opening again, under the top, while the machine answers.
-private struct HerConnectingLine: View {
-    let name: String
+private struct HerLinkBanner: Equatable {
+    enum Kind { case connecting, slow, error }
+    let kind: Kind
+    let text: String
+}
+
+func herPathLabel(_ path: String) -> String {
+    switch path {
+    case "quic_lan": String(localized: "QUIC LAN")
+    case "quic_ipv6": String(localized: "QUIC IPv6")
+    case "direct_lan": String(localized: "Direct LAN")
+    case "direct_ipv6": String(localized: "Direct IPv6")
+    case "local": String(localized: "Local")
+    case "relay": String(localized: "Relay")
+    default: String(localized: "Unknown")
+    }
+}
+
+func herNetworkLabel(_ kind: String) -> String {
+    if kind == "offline" { return String(localized: "Offline") }
+    let parts = kind.split(separator: "+")
+    let vpn = parts.contains("other")
+    if parts.contains("wifi") { return vpn ? String(localized: "Wi-Fi (VPN)") : "Wi-Fi" }
+    if parts.contains("wired") { return vpn ? String(localized: "Wired (VPN)") : String(localized: "Wired") }
+    if parts.contains("cell") { return vpn ? String(localized: "Cellular (VPN)") : String(localized: "Cellular") }
+    return kind.isEmpty ? String(localized: "Unknown") : kind
+}
+
+/// Top status capsule on Her's conversation (tappable for full diagnostics).
+private struct HerLinkCapsule: View {
+    let banner: HerLinkBanner
 
     var body: some View {
         HStack(spacing: 7) {
-            ProgressView().controlSize(.mini)
-            Text("Connecting to \(name)…")
+            switch banner.kind {
+            case .connecting:
+                ProgressView().controlSize(.mini)
+            case .slow:
+                Circle().fill(.orange).frame(width: 7, height: 7)
+            case .error:
+                Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
+            }
+            Text(banner.text).lineLimit(1)
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .font(.footnote).foregroundStyle(.secondary)
         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -1117,6 +1218,148 @@ private struct HerConnectingLine: View {
         .padding(.top, 4)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("her-connecting")
+    }
+}
+
+/// Four-hop connection diagnostics sheet: iPhone network -> Relay -> Machine tunnel -> Her service.
+private struct HerDiagnosticsSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let chat: HerChat
+    let machine: HerMachine
+    let state: HerEnvState
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Connection Path") {
+                    row(title: String(localized: "iPhone Network"), detail: networkText, color: model.networkKind == "offline" ? .red : .green)
+                    row(title: String(localized: "Relay"), detail: relayText, color: relayColor, error: relayError)
+                    row(title: machine.machineName, detail: tunnelText, color: tunnelColor, error: tunnelError)
+                    row(title: "Her", detail: herText, color: herColor, error: chat.convError ?? chat.envError)
+                }
+                if !chat.waiting.isEmpty {
+                    Section("Outbox") {
+                        Text("\(chat.waiting.count) message(s) waiting to be delivered")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    Button {
+                        model.reconnectNow()
+                        dismiss()
+                    } label: {
+                        Label("Reconnect Now", systemImage: "arrow.clockwise")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    .accessibilityIdentifier("her-diagnostics-reconnect")
+                }
+            }
+            .navigationTitle("Connection Diagnostics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func row(title: String, detail: String, color: Color, error: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(title).font(.subheadline.weight(.medium))
+                Spacer()
+                Text(detail).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+            }
+            if let error, !error.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+    }
+
+    private var networkText: String {
+        herNetworkLabel(model.networkKind)
+    }
+
+    private var relayText: String {
+        let rh = model.status.relayHealth
+        if model.status.relayConnected {
+            return rh.rttMs > 0 ? String(localized: "Connected · \(Int(rh.rttMs)) ms") : String(localized: "Connected")
+        }
+        if rh.retryCount > 0 { return String(localized: "Reconnecting · #\(Int(rh.retryCount))") }
+        return rh.phase == "offline" ? String(localized: "Offline") : String(localized: "Connecting…")
+    }
+
+    private var relayColor: Color {
+        if model.status.relayConnected { return model.status.relayHealth.rttMs >= 250 ? .orange : .green }
+        return model.status.relayHealth.phase == "offline" ? .red : .orange
+    }
+
+    private var relayError: String? {
+        let e = model.status.relayHealth.lastError
+        return e.isEmpty ? nil : e
+    }
+
+    private var tunnelText: String {
+        guard machine.hasTunnel else { return machine.online ? String(localized: "Online") : String(localized: "Offline") }
+        let t = machine.tunnel
+        switch t.phase {
+        case "ready":
+            let p = herPathLabel(t.path)
+            return t.rttMs > 0 ? "\(p) · \(t.rttMs) ms" : p
+        case "dialing": return String(localized: "Connecting…")
+        case "retrying": return String(localized: "Reconnecting…")
+        case "unreachable": return String(localized: "Unreachable")
+        default: return String(localized: "Offline")
+        }
+    }
+
+    private var tunnelColor: Color {
+        guard machine.hasTunnel else { return machine.online ? .green : .red }
+        switch machine.tunnel.phase {
+        case "ready": return machine.tunnel.rttMs >= 250 ? .orange : .green
+        case "dialing", "retrying": return .orange
+        default: return .red
+        }
+    }
+
+    private var tunnelError: String? {
+        if machine.hasTunnel && !machine.tunnel.lastError.isEmpty { return machine.tunnel.lastError }
+        return machine.unreachable.isEmpty ? nil : machine.unreachable
+    }
+
+    private var herText: String {
+        if chat.convUp {
+            if machine.hasTunnel, machine.tunnel.phase == "ready" {
+                let path = herPathLabel(machine.tunnel.path)
+                if machine.tunnel.rttMs > 0 {
+                    return String(localized: "Connected · \(path) (\(Int(machine.tunnel.rttMs)) ms)")
+                }
+                return String(localized: "Connected · \(path)")
+            }
+            return String(localized: "Connected")
+        }
+        if case .offline = state { return String(localized: "Offline") }
+        if case .starting = state { return String(localized: "Starting…") }
+        if case .failed = state { return String(localized: "Failed") }
+        if chat.convRetries > 0 {
+            if let next = chat.nextRetryAt {
+                let sec = max(1, Int(ceil(next.timeIntervalSince(model.now))))
+                return String(localized: "Retry #\(chat.convRetries) in \(sec)s")
+            }
+            return String(localized: "Reconnecting · #\(chat.convRetries)")
+        }
+        return String(localized: "Connecting…")
+    }
+
+    private var herColor: Color {
+        if chat.convUp { return .green }
+        if case .offline = state { return .red }
+        if case .failed = state { return .red }
+        return .orange
     }
 }
 

@@ -203,6 +203,9 @@ service MachineControlService {
   // Where Computer Control looks for a path to the owner's device
   // (docs/computer-control.md §7).
   rpc GetScreenServers(GetScreenServersRequest) returns (GetScreenServersResponse);
+  // Appends a machine-signed, E2EE delta to the relay's zero-knowledge delta
+  // mailbox so trusted devices can catch up even while this machine sleeps.
+  rpc AppendDelta(AppendDeltaRequest) returns (AppendDeltaResponse);
 }
 
 message GetScreenServersRequest {}
@@ -280,6 +283,7 @@ message MachineUpdate {
     hermesh.identity.v1.Signed machine_cert = 3;
     PushTargets push_targets = 4;
     MachineGrants grants = 5;
+    SyncTargets sync_targets = 6;
   }
 }
 
@@ -379,6 +383,12 @@ service OwnerControlService {
   // Where Computer Control looks for a path to a machine
   // (docs/computer-control.md §7).
   rpc GetScreenServers(GetScreenServersRequest) returns (GetScreenServersResponse);
+  // Registers this trusted device's X25519 sync key so machines seal delta
+  // mailbox entries for it (no APNs token required).
+  rpc RegisterSync(RegisterSyncRequest) returns (RegisterSyncResponse);
+  // Pulls unseen encrypted deltas from the relay's delta mailbox without
+  // deleting them (each trusted device keeps its own read cursor).
+  rpc PullDeltas(PullDeltasRequest) returns (PullDeltasResponse);
 }
 
 // Wake is a doorbell: a webhook rung when messages wait for an address. Its
@@ -537,6 +547,8 @@ message OwnerUpdate {
   ListMachinesResponse machines = 1;
   ListClientsResponse clients = 2;
   ListPairingRequestsResponse pairings = 3;
+  // Streams with newly appended encrypted deltas in the delta mailbox.
+  repeated string delta_streams = 4;
 }
 
 message ListClientsRequest {}
@@ -728,4 +740,62 @@ message MessageState {
 
 message MessageStatusResponse {
   repeated MessageState states = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Zero-knowledge encrypted delta mailbox (multi-device offline sync).
+
+message SyncTarget {
+  hermesh.identity.v1.Signed registration = 1;
+  hermesh.identity.v1.Signed device_cert = 2;
+}
+
+message SyncTargets {
+  repeated SyncTarget targets = 1;
+}
+
+message RegisterSyncRequest {
+  hermesh.identity.v1.Signed registration = 1;
+}
+
+message RegisterSyncResponse {}
+
+message AppendDeltaRequest {
+  string stream_id = 1;
+  // Signed hermesh.identity.v1.DeltaEnvelope signed by the machine's key.
+  hermesh.identity.v1.Signed envelope = 2;
+  // Retention in seconds; 0 uses the relay default (7 days).
+  uint32 ttl_seconds = 3;
+}
+
+message AppendDeltaResponse {
+  // Relay-assigned monotonic sequence number within (owner_id, stream_id).
+  uint64 seq = 1;
+}
+
+message StreamCursor {
+  string stream_id = 1;
+  uint64 after_seq = 2;
+}
+
+message PullDeltasRequest {
+  // Known stream cursors; streams not listed are pulled from seq 0 unless
+  // known_only is true.
+  repeated StreamCursor cursors = 1;
+  // Maximum total records returned across all streams (default 64, max 256).
+  uint32 limit = 2;
+  // If true, only pull streams explicitly named in cursors.
+  bool known_only = 3;
+}
+
+message DeltaRecord {
+  string stream_id = 1;
+  uint64 seq = 2;
+  hermesh.identity.v1.Signed envelope = 3;
+  google.protobuf.Timestamp stored_at = 4;
+}
+
+message PullDeltasResponse {
+  repeated DeltaRecord deltas = 1;
+  bool has_more = 2;
 }

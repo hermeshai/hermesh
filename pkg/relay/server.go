@@ -101,6 +101,7 @@ type Server struct {
 	// noticeLimit bounds the notices each machine sends.
 	noticeLimit *limiter
 	pushMem     memoryPush
+	deltaMem    memoryDeltas
 	// The post office (messages.go): its store when the Backend has none,
 	// its limits, and what hears of each message it takes in.
 	messageMem   memoryMessages
@@ -216,6 +217,9 @@ func New(cfg Config) (*Server, error) {
 		if err := es.PurgeErases(time.Now()); err != nil {
 			s.log.Warn("purging erase orders", "err", err)
 		}
+	}
+	if err := s.deltaStore().PurgeDeltas(time.Now()); err != nil {
+		s.log.Warn("purging expired deltas", "err", err)
 	}
 	s.registerMetrics()
 	if cfg.TURN != nil {
@@ -413,8 +417,9 @@ func (s *Server) acceptRootChain(t *tenant, c *identityv1.RootChain) error {
 // disconnects the trusted devices it removed.
 func (s *Server) chainChanged(t *tenant) {
 	s.broadcastMachineUpdate(t, &relayv1.MachineUpdate{Update: &relayv1.MachineUpdate_RootChain{RootChain: t.trust.RootChain()}})
-	// A removed device gets no more notices.
+	// A removed device gets no more notices or encrypted deltas.
 	s.broadcastPushTargets(t)
+	s.broadcastSyncTargets(t)
 	// A device removed from the chain is disconnected now, not when it
 	// next connects.
 	current := map[string]bool{}

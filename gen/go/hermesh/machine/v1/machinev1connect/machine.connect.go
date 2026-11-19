@@ -44,6 +44,9 @@ const (
 	MachineServiceWatchProcedure = "/hermesh.machine.v1.MachineService/Watch"
 	// MachineServicePullWorkProcedure is the fully-qualified name of the MachineService's PullWork RPC.
 	MachineServicePullWorkProcedure = "/hermesh.machine.v1.MachineService/PullWork"
+	// MachineServicePunchDirectProcedure is the fully-qualified name of the MachineService's
+	// PunchDirect RPC.
+	MachineServicePunchDirectProcedure = "/hermesh.machine.v1.MachineService/PunchDirect"
 	// MachineAdminServiceApplyAdminCommandProcedure is the fully-qualified name of the
 	// MachineAdminService's ApplyAdminCommand RPC.
 	MachineAdminServiceApplyAdminCommandProcedure = "/hermesh.machine.v1.MachineAdminService/ApplyAdminCommand"
@@ -78,6 +81,10 @@ type MachineServiceClient interface {
 	// after, for the keys the caller may read: whole hours, keys and
 	// sessions. Owner devices keep a copy (docs/work-stats.md §6).
 	PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error)
+	// PunchDirect asks the machine to send UDP hole-punch packets from its
+	// direct QUIC endpoints toward the owner device's candidate UDP endpoints
+	// so stateful IPv6/NAT firewalls allow direct QUIC handshakes (owner-only).
+	PunchDirect(context.Context, *v1.PunchDirectRequest) (*v1.PunchDirectResponse, error)
 }
 
 // NewMachineServiceClient constructs a client for the hermesh.machine.v1.MachineService service. By
@@ -115,6 +122,12 @@ func NewMachineServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(machineServiceMethods.ByName("PullWork")),
 			connect.WithClientOptions(opts...),
 		),
+		punchDirect: connect.NewClient[v1.PunchDirectRequest, v1.PunchDirectResponse](
+			httpClient,
+			baseURL+MachineServicePunchDirectProcedure,
+			connect.WithSchema(machineServiceMethods.ByName("PunchDirect")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -124,6 +137,7 @@ type machineServiceClient struct {
 	listProjects *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
 	watch        *connect.Client[v1.WatchRequest, v1.WatchResponse]
 	pullWork     *connect.Client[v1.PullWorkRequest, v1.PullWorkResponse]
+	punchDirect  *connect.Client[v1.PunchDirectRequest, v1.PunchDirectResponse]
 }
 
 // GetInfo calls hermesh.machine.v1.MachineService.GetInfo.
@@ -158,6 +172,15 @@ func (c *machineServiceClient) PullWork(ctx context.Context, req *v1.PullWorkReq
 	return nil, err
 }
 
+// PunchDirect calls hermesh.machine.v1.MachineService.PunchDirect.
+func (c *machineServiceClient) PunchDirect(ctx context.Context, req *v1.PunchDirectRequest) (*v1.PunchDirectResponse, error) {
+	response, err := c.punchDirect.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineServiceHandler is an implementation of the hermesh.machine.v1.MachineService service.
 type MachineServiceHandler interface {
 	GetInfo(context.Context, *v1.GetInfoRequest) (*v1.GetInfoResponse, error)
@@ -172,6 +195,10 @@ type MachineServiceHandler interface {
 	// after, for the keys the caller may read: whole hours, keys and
 	// sessions. Owner devices keep a copy (docs/work-stats.md §6).
 	PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error)
+	// PunchDirect asks the machine to send UDP hole-punch packets from its
+	// direct QUIC endpoints toward the owner device's candidate UDP endpoints
+	// so stateful IPv6/NAT firewalls allow direct QUIC handshakes (owner-only).
+	PunchDirect(context.Context, *v1.PunchDirectRequest) (*v1.PunchDirectResponse, error)
 }
 
 // NewMachineServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -205,6 +232,12 @@ func NewMachineServiceHandler(svc MachineServiceHandler, opts ...connect.Handler
 		connect.WithSchema(machineServiceMethods.ByName("PullWork")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineServicePunchDirectHandler := connect.NewUnaryHandlerSimple(
+		MachineServicePunchDirectProcedure,
+		svc.PunchDirect,
+		connect.WithSchema(machineServiceMethods.ByName("PunchDirect")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineServiceGetInfoProcedure:
@@ -215,6 +248,8 @@ func NewMachineServiceHandler(svc MachineServiceHandler, opts ...connect.Handler
 			machineServiceWatchHandler.ServeHTTP(w, r)
 		case MachineServicePullWorkProcedure:
 			machineServicePullWorkHandler.ServeHTTP(w, r)
+		case MachineServicePunchDirectProcedure:
+			machineServicePunchDirectHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -238,6 +273,10 @@ func (UnimplementedMachineServiceHandler) Watch(context.Context, *v1.WatchReques
 
 func (UnimplementedMachineServiceHandler) PullWork(context.Context, *v1.PullWorkRequest) (*v1.PullWorkResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.PullWork is not implemented"))
+}
+
+func (UnimplementedMachineServiceHandler) PunchDirect(context.Context, *v1.PunchDirectRequest) (*v1.PunchDirectResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineService.PunchDirect is not implemented"))
 }
 
 // MachineAdminServiceClient is a client for the hermesh.machine.v1.MachineAdminService service.

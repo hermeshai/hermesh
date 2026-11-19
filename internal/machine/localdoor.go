@@ -3,6 +3,7 @@ package machine
 import (
 	"cmp"
 	"context"
+	"errors"
 	"net"
 	"os"
 	"slices"
@@ -12,6 +13,8 @@ import (
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
 	screenhost "github.com/hermeshai/hermesh/internal/screen"
+	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // serveLocal takes the connections of this user's own agents on this
@@ -73,8 +76,266 @@ func (n *Machine) serveDirect(ctx context.Context) {
 	}
 }
 
+// serveDirectQUIC listens for direct E2E QUIC/HTTP3 UDP connections from the
+// owner's devices (LAN IPv4 / public IPv6), giving 1-RTT handshakes,
+// independent non-HoL streams, and QUIC connection migration. Global IPv6
+// addresses are bound explicitly so outbound/return IPv6 packets route over
+// the physical interface even when a TUN VPN scopes the default IPv6 route.
+func (n *Machine) serveDirectQUIC(ctx context.Context) {
+	accept := func(s *identity.Subject) error {
+		if s.Kind != identity.SubjectOwnerDevice {
+			return errors.New("direct QUIC tunnel requires owner device")
+		}
+		return nil
+	}
+	ep, err := transport.ListenQUICEndpoint("udp4", ":0", n.key.CryptoSigner(), n.credentials, n.trust, accept)
+	if err != nil {
+		ep, err = transport.ListenQUICEndpoint("udp", ":0", n.key.CryptoSigner(), n.credentials, n.trust, accept)
+		if err != nil {
+			n.log.Warn("direct QUIC endpoint", "err", err)
+			return
+		}
+	}
+	if ua, ok := ep.Addr().(*net.UDPAddr); ok {
+		n.directQUICPort.Store(int32(ua.Port))
+		n.log.Info("direct QUIC endpoint listening", "port", ua.Port)
+	}
+	n.quicMu.Lock()
+	n.quicCtx = ctx
+	n.quicPrimary = ep
+	n.quicV6 = map[string]*transport.QUICEndpoint{}
+	n.quicMu.Unlock()
+
+	n.syncDirectQUICV6()
+
+	go func() {
+		<-ctx.Done()
+		n.directQUICPort.Store(0)
+		n.quicMu.Lock()
+		primary := n.quicPrimary
+		v6s := n.quicV6
+		n.quicPrimary = nil
+		n.quicV6 = nil
+		n.quicCtx = nil
+		n.quicMu.Unlock()
+		if primary != nil {
+			_ = primary.Close()
+		}
+		for _, v6ep := range v6s {
+			_ = v6ep.Close()
+		}
+	}()
+	n.acceptQUICEndpoint(ctx, ep)
+}
+
+func (n *Machine) acceptQUICEndpoint(ctx context.Context, ep *transport.QUICEndpoint) {
+	for {
+		qconn, err := ep.Accept(ctx)
+		if err != nil {
+			return
+		}
+		go n.serveQUICTunnel(ctx, qconn, "direct QUIC, not through the relay", true)
+	}
+}
+
+func (n *Machine) syncDirectQUICV6() {
+	n.quicMu.Lock()
+	ctx := n.quicCtx
+	if ctx == nil || ctx.Err() != nil {
+		n.quicMu.Unlock()
+		return
+	}
+	existing := make(map[string]bool, len(n.quicV6))
+	for ip := range n.quicV6 {
+		existing[ip] = true
+	}
+	n.quicMu.Unlock()
+
+	want := preferredGlobalIPv6s()
+	wantSet := make(map[string]bool, len(want))
+	for _, ip := range want {
+		wantSet[ip] = true
+	}
+	accept := func(s *identity.Subject) error {
+		if s.Kind != identity.SubjectOwnerDevice {
+			return errors.New("direct QUIC tunnel requires owner device")
+		}
+		return nil
+	}
+	for _, ip := range want {
+		if existing[ip] {
+			continue
+		}
+		ep, err := transport.ListenQUICEndpoint("udp6", net.JoinHostPort(ip, "0"), n.key.CryptoSigner(), n.credentials, n.trust, accept)
+		if err != nil {
+			continue
+		}
+		n.quicMu.Lock()
+		if n.quicCtx == nil || n.quicCtx.Err() != nil || n.quicV6 == nil {
+			n.quicMu.Unlock()
+			_ = ep.Close()
+			return
+		}
+		if _, dup := n.quicV6[ip]; dup {
+			n.quicMu.Unlock()
+			_ = ep.Close()
+			continue
+		}
+		n.quicV6[ip] = ep
+		n.quicMu.Unlock()
+		if ua, ok := ep.Addr().(*net.UDPAddr); ok {
+			n.log.Info("direct QUIC IPv6 endpoint listening", "addr", net.JoinHostPort(ip, strconv.Itoa(ua.Port)))
+		}
+		go n.acceptQUICEndpoint(ctx, ep)
+	}
+	// Close bound endpoints whose IPv6 address disappeared from local interfaces.
+	var stale []*transport.QUICEndpoint
+	n.quicMu.Lock()
+	for ip, ep := range n.quicV6 {
+		if !wantSet[ip] {
+			delete(n.quicV6, ip)
+			stale = append(stale, ep)
+		}
+	}
+	n.quicMu.Unlock()
+	for _, ep := range stale {
+		_ = ep.Close()
+	}
+}
+
+// punchDirect sends UDP hole-punch packets from the machine's bound QUIC
+// endpoints toward targets and returns the machine's current QUIC addresses.
+func (n *Machine) punchDirect(targets []string) []string {
+	n.syncDirectQUICV6()
+	addrs := n.directQUICAddresses()
+	if len(targets) == 0 {
+		return addrs
+	}
+	var dsts []*net.UDPAddr
+	for _, t := range targets {
+		if len(dsts) >= 8 {
+			break
+		}
+		ua, err := net.ResolveUDPAddr("udp", t)
+		if err != nil || ua.Port <= 0 || ua.IP == nil || !ua.IP.IsGlobalUnicast() {
+			continue
+		}
+		dsts = append(dsts, ua)
+	}
+	if len(dsts) == 0 {
+		return addrs
+	}
+	n.quicMu.Lock()
+	ctx := n.quicCtx
+	primary := n.quicPrimary
+	var v6eps []*transport.QUICEndpoint
+	for _, ep := range n.quicV6 {
+		v6eps = append(v6eps, ep)
+	}
+	n.quicMu.Unlock()
+
+	sendOnce := func() {
+		for _, dst := range dsts {
+			if dst.IP.To4() == nil {
+				for _, ep := range v6eps {
+					_ = ep.WritePunch(dst)
+				}
+			} else if primary != nil {
+				_ = primary.WritePunch(dst)
+			}
+		}
+	}
+	// First punch synchronously so firewall pinholes open before the RPC returns.
+	sendOnce()
+	if ctx != nil {
+		go func() {
+			for range 2 {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(120 * time.Millisecond):
+					sendOnce()
+				}
+			}
+		}()
+	}
+	return addrs
+}
+
 func (n *Machine) directAddresses() []string {
-	port := int(n.directPort.Load())
+	return n.directAddressesForPort(int(n.directPort.Load()))
+}
+
+func (n *Machine) directQUICAddresses() []string {
+	n.syncDirectQUICV6()
+	port := int(n.directQUICPort.Load())
+	var out []string
+	if port > 0 {
+		for _, hp := range n.directAddressesForPort(port) {
+			host, _, err := net.SplitHostPort(hp)
+			if err != nil {
+				continue
+			}
+			if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
+				out = append(out, hp)
+			}
+		}
+	}
+	n.quicMu.Lock()
+	var v6Addrs []string
+	for ip, ep := range n.quicV6 {
+		if ua, ok := ep.Addr().(*net.UDPAddr); ok && ua.Port > 0 {
+			v6Addrs = append(v6Addrs, net.JoinHostPort(ip, strconv.Itoa(ua.Port)))
+		}
+	}
+	n.quicMu.Unlock()
+	slices.Sort(v6Addrs)
+	out = append(out, v6Addrs...)
+	return out
+}
+
+func preferredGlobalIPv6s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	type ifacePrefix struct {
+		iface string
+		v6    [8]byte
+	}
+	seenV6 := map[ifacePrefix]bool{}
+	var out []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || !screenhost.UsableInterface(iface.Name) {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ip := netAddrIP(a)
+			if ip == nil || ip.To4() != nil || !ip.IsGlobalUnicast() || !screenhost.UsableInterfaceIP(ip) {
+				continue
+			}
+			v6 := ip.To16()
+			if v6 == nil {
+				continue
+			}
+			var k ifacePrefix
+			k.iface = iface.Name
+			copy(k.v6[:], v6[:8])
+			if seenV6[k] {
+				continue
+			}
+			seenV6[k] = true
+			out = append(out, ip.String())
+		}
+	}
+	return out
+}
+
+func (n *Machine) directAddressesForPort(port int) []string {
 	if port <= 0 {
 		return nil
 	}
@@ -124,11 +385,11 @@ func (n *Machine) directAddresses() []string {
 			cands = append(cands, c)
 		}
 	}
-	slices.SortFunc(cands, func(a, b candidate) int {
-		if c := cmp.Compare(a.tier, b.tier); c != 0 {
-			return c
-		}
-		return cmp.Compare(a.addr, b.addr)
+	// Preserve OS interface address order within each tier so macOS/Linux
+	// preferred non-deprecated IPv6 addresses stay ahead of deprecated
+	// temporary privacy addresses when deduplicating per /64 prefix.
+	slices.SortStableFunc(cands, func(a, b candidate) int {
+		return cmp.Compare(a.tier, b.tier)
 	})
 	type ifacePrefix struct {
 		iface string

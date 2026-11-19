@@ -65,6 +65,9 @@ func (c *H2Client) Close() error {
 // Alive reports whether the connection can take new requests.
 func (c *H2Client) Alive() bool { return c.cc.CanTakeNewRequest() }
 
+// RTT returns 0 (HTTP/2 does not expose transport-layer SRTT; peer tracks RPC RTT).
+func (c *H2Client) RTT() time.Duration { return 0 }
+
 // ConnListener turns pushed connections into a net.Listener.
 type ConnListener struct {
 	ch     chan net.Conn

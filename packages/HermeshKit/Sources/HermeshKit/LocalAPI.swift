@@ -33,16 +33,28 @@ public enum LocalEndpoint: Sendable, Equatable {
     case loopback(port: Int, token: String)
 }
 
-/// A minimal Connect-protocol client (JSON codec) for LocalService. Unary
-/// calls and server streams are enough. Unary calls give up after 10 s
-/// without an answer, unless given a longer timeout.
+/// In-process binary Protobuf FFI transport (used on iOS to call the embedded
+/// core directly in memory with zero TCP loopback sockets, zero TN2277
+/// listener reclaim races, and zero JSON/Base64 overhead).
+public protocol LocalFFITransport: Sendable {
+    func unary(method: String, requestData: Data, timeoutSeconds: Int) throws -> Data
+    func openStream(method: String, requestData: Data) -> Int64
+    func nextFrame(streamID: Int64) throws -> Data?
+    func closeStream(streamID: Int64)
+}
+
+/// A minimal Connect-protocol client for LocalService. Uses in-process binary
+/// Protobuf FFI when provided (iPhone), else HTTP/1.1 JSON over Unix socket
+/// (Mac) or loopback. Unary calls give up after 10 s without an answer, unless
+/// given a longer timeout.
 ///
-/// Its sockets block, so each call runs on a thread of its own, never on
-/// Swift's cooperative pool: a stream open for as long as a page shows, or a
-/// call that waits for Face ID, would hold one of its few threads (one per
-/// core) and could starve the work it waits for.
+/// Blocking transport calls run on a dedicated thread, never on Swift's
+/// cooperative pool: a stream open for as long as a page shows, or a call that
+/// waits for Face ID, would hold one of its few threads (one per core) and
+/// could starve the work it waits for.
 public final class LocalAPI: @unchecked Sendable {
     public let endpoint: LocalEndpoint
+    private let ffi: (any LocalFFITransport)?
     private let service = "hermesh.local.v1.LocalService"
     private let decodeOptions: JSONDecodingOptions = {
         var o = JSONDecodingOptions()
@@ -50,12 +62,27 @@ public final class LocalAPI: @unchecked Sendable {
         return o
     }()
 
-    public init(socketPath: String) { endpoint = .unix(socketPath) }
-    public init(endpoint: LocalEndpoint) { self.endpoint = endpoint }
+    public init(socketPath: String) {
+        endpoint = .unix(socketPath)
+        ffi = nil
+    }
+    public init(endpoint: LocalEndpoint, ffi: (any LocalFFITransport)? = nil) {
+        self.endpoint = endpoint
+        self.ffi = ffi
+    }
 
     // MARK: Unary
 
     public func call<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 10) async throws -> Res {
+        if let ffi {
+            let body = try req.serializedData()
+            let data = try await withCheckedThrowingContinuation { (k: CheckedContinuation<Data, Error>) in
+                Thread.detachNewThread {
+                    k.resume(with: Result { try ffi.unary(method: method, requestData: body, timeoutSeconds: timeout) })
+                }
+            }
+            return try Res(serializedBytes: data)
+        }
         let body = try req.jsonUTF8Data()
         let path = "/\(service)/\(method)"
         let endpoint = endpoint
@@ -73,6 +100,41 @@ public final class LocalAPI: @unchecked Sendable {
     // MARK: Server streaming
 
     public func stream<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
+        if let ffi {
+            return AsyncThrowingStream { continuation in
+                let state = FFIStreamCancelState()
+                Thread.detachNewThread {
+                    do {
+                        let body = try req.serializedData()
+                        let sid = ffi.openStream(method: method, requestData: body)
+                        guard sid > 0 else {
+                            throw APIError(code: "unavailable", message: "Hermesh core is not running")
+                        }
+                        if !state.attach(sid) {
+                            ffi.closeStream(streamID: sid)
+                            continuation.finish()
+                            return
+                        }
+                        defer {
+                            if state.markClosed() {
+                                ffi.closeStream(streamID: sid)
+                            }
+                        }
+                        while let frame = try ffi.nextFrame(streamID: sid) {
+                            continuation.yield(try Res(serializedBytes: frame))
+                        }
+                        continuation.finish()
+                    } catch {
+                        continuation.finish(throwing: error)
+                    }
+                }
+                continuation.onTermination = { _ in
+                    if let sid = state.cancel() {
+                        ffi.closeStream(streamID: sid)
+                    }
+                }
+            }
+        }
         let path = "/\(service)/\(method)"
         let options = decodeOptions
         return AsyncThrowingStream { continuation in
@@ -149,6 +211,36 @@ public final class LocalAPI: @unchecked Sendable {
             return APIError.received(code: obj["code"] as? String ?? "http_\(status)", message: obj["message"] as? String ?? "")
         }
         return APIError(code: "http_\(status)", message: String(data: data, encoding: .utf8) ?? "")
+    }
+}
+
+private final class FFIStreamCancelState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var sid: Int64 = 0
+    private var closed = false
+
+    func attach(_ id: Int64) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if closed { return false }
+        sid = id
+        return true
+    }
+
+    func cancel() -> Int64? {
+        lock.lock()
+        defer { lock.unlock() }
+        if closed { return nil }
+        closed = true
+        return sid > 0 ? sid : nil
+    }
+
+    func markClosed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if closed { return false }
+        closed = true
+        return true
     }
 }
 

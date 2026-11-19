@@ -70,8 +70,9 @@ func (o *ownerControl) WatchOwner(ctx context.Context, _ *relayv1.WatchOwnerRequ
 		s.mu.Unlock()
 	}()
 	var sent relayv1.OwnerUpdate // as last sent
+	var sentHeads map[string]uint64
 	for {
-		u, err := s.ownerUpdate(t, &sent)
+		u, err := s.ownerUpdate(t, &sent, &sentHeads)
 		if err != nil {
 			return err
 		}
@@ -98,7 +99,7 @@ func (o *ownerControl) WatchOwner(ctx context.Context, _ *relayv1.WatchOwnerRequ
 
 // ownerUpdate is t's lists that differ from those sent (all of them the
 // first time), which it then holds as sent; nil when none does.
-func (s *Server) ownerUpdate(t *tenant, sent *relayv1.OwnerUpdate) (*relayv1.OwnerUpdate, error) {
+func (s *Server) ownerUpdate(t *tenant, sent *relayv1.OwnerUpdate, sentHeads *map[string]uint64) (*relayv1.OwnerUpdate, error) {
 	machines, err := s.machineEntries(t, nil, false)
 	if err != nil {
 		return nil, err
@@ -111,6 +112,7 @@ func (s *Server) ownerUpdate(t *tenant, sent *relayv1.OwnerUpdate) (*relayv1.Own
 	if err != nil {
 		return nil, err
 	}
+	heads, _ := s.deltaStore().DeltaHeads(t.ownerID, time.Now())
 	// In a set order, so an unchanged list compares equal.
 	slices.SortFunc(machines, func(a, b *relayv1.MachineEntry) int {
 		return bytes.Compare(a.MachineCert.GetBody(), b.MachineCert.GetBody())
@@ -127,7 +129,26 @@ func (s *Server) ownerUpdate(t *tenant, sent *relayv1.OwnerUpdate) (*relayv1.Own
 	if p := (&relayv1.ListPairingRequestsResponse{Pairings: pairings}); sent.Pairings == nil || !proto.Equal(p, sent.Pairings) {
 		sent.Pairings, u.Pairings = p, p
 	}
-	if u.Machines == nil && u.Clients == nil && u.Pairings == nil {
+	var changedStreams []string
+	if *sentHeads == nil {
+		*sentHeads = map[string]uint64{}
+		for streamID, seq := range heads {
+			(*sentHeads)[streamID] = seq
+			if seq > 0 {
+				changedStreams = append(changedStreams, streamID)
+			}
+		}
+	} else {
+		for streamID, seq := range heads {
+			if seq > (*sentHeads)[streamID] {
+				(*sentHeads)[streamID] = seq
+				changedStreams = append(changedStreams, streamID)
+			}
+		}
+	}
+	slices.Sort(changedStreams)
+	u.DeltaStreams = changedStreams
+	if u.Machines == nil && u.Clients == nil && u.Pairings == nil && len(u.DeltaStreams) == 0 {
 		return nil, nil
 	}
 	return u, nil
