@@ -2,6 +2,7 @@ package owner
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -226,6 +227,85 @@ func TestOwnerStatusNotConnectedWhileKeptUnverified(t *testing.T) {
 	if st.GetRelayHealth().GetPhase() == "connected" {
 		t.Fatalf("expected non-connected RelayHealth phase while kept, got %+v", st.GetRelayHealth())
 	}
+}
+
+func TestFollowRemoteDialErrors(t *testing.T) {
+	ids := makeTestIdentities(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
+		if err != nil {
+			return
+		}
+		conn := transport.NetConnFromWS(ws)
+		defer conn.Close()
+		if err := transport.WriteFrame(conn, &relayv1.Challenge{Nonce: make([]byte, 32), RelayId: "relay"}); err != nil {
+			return
+		}
+		var hello relayv1.Hello
+		if err := transport.ReadFrame(conn, &hello); err != nil {
+			return
+		}
+		if err := transport.WriteFrame(conn, &relayv1.HelloResult{Ok: true}); err != nil {
+			return
+		}
+		sess, err := yamux.Server(conn, transport.YamuxConfig())
+		if err != nil {
+			return
+		}
+		defer sess.Close()
+		for {
+			st, err := sess.AcceptStream()
+			if err != nil {
+				return
+			}
+			func() {
+				defer st.Close()
+				var h relayv1.StreamHeader
+				if err := transport.ReadFrame(st, &h); err != nil {
+					return
+				}
+				if h.MachineId == "m_silent" {
+					// The machine accepts the tunnel but never answers the handshake.
+					_, _ = io.Copy(io.Discard, st)
+				} else {
+					// Read the start of ClientHello, then close without a reply.
+					_, _ = io.CopyN(io.Discard, st, 1)
+				}
+			}()
+		}
+	}))
+	defer srv.Close()
+
+	dev, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dev.Close()
+	o := dev.owner()
+	if err := o.saveIdentity(ids.ownerID, srv.URL, ids.rootPub, ids.chain, ids.device, ids.deviceCert, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	follow := func(t *testing.T, machineID string) error {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 2*followTimeout)
+		defer cancel()
+		return o.rep.followRemote(&sources{ctx: ctx}, machineID, &feed{}, func() { t.Error("unexpectedly started following") })
+	}
+	t.Run("immediate close", func(t *testing.T) {
+		if err := follow(t, "m_closed"); !errors.Is(err, io.EOF) {
+			t.Fatalf("followRemote = %v, want a handshake EOF", err)
+		}
+	})
+	t.Run("timeout", func(t *testing.T) {
+		started := time.Now()
+		if err := follow(t, "m_silent"); err == nil || err.Error() != "did not answer in time" {
+			t.Fatalf("followRemote = %v, want did not answer in time", err)
+		}
+		if elapsed := time.Since(started); elapsed < followTimeout {
+			t.Fatalf("reported a timeout after %v, want at least %v", elapsed, followTimeout)
+		}
+	})
 }
 
 func TestConnectOrKeepReplacesBlackholedChildTunnel(t *testing.T) {

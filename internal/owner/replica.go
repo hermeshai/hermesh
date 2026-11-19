@@ -762,9 +762,10 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 		n, err := c.Machine(ctx, id)
 		if err != nil {
 			timer.Stop()
+			reported := late(err) // classify before canceling the probe ourselves
 			cancel()
 			r.o.recoverTunnel(c, id, err)
-			return late(err)
+			return reported
 		}
 		r.o.noteTunnelOK(id)
 		old, err := r.followWatch(ctx, s, f, n, timer, late, ready)
