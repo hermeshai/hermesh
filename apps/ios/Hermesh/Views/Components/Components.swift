@@ -4,6 +4,15 @@ import SwiftUI
 
 // Small pieces the screens share.
 
+struct PrivacyPolicyLink: View {
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        let language = locale.language.languageCode?.identifier == "zh" ? "zh" : "en"
+        Link("Privacy Policy", destination: officialCenter.appending(path: "\(language)/privacy"))
+    }
+}
+
 /// A coding agent's or personal agent's logo, or a tile with its initial.
 struct AgentLogo: View {
     let id: String
