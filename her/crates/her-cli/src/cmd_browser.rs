@@ -140,7 +140,8 @@ async fn relay(socket: PathBuf, to_chrome: mpsc::UnboundedSender<String>, mut in
     let mut said = String::new();
     loop {
         let status = match serve_once(&socket, &hello, &to_chrome, &mut inbox).await {
-            Ok(()) => "Hermesh stopped".to_string(),
+            Ok(ServeEnd::ChromeClosed) => return None,
+            Ok(ServeEnd::ServiceClosed) => "Hermesh stopped".to_string(),
             Err(err) => {
                 if let Some(refused) = err.downcast_ref::<Refused>() {
                     return Some(refused.0.clone());
@@ -168,13 +169,20 @@ async fn relay(socket: PathBuf, to_chrome: mpsc::UnboundedSender<String>, mut in
     }
 }
 
+/// Which side ended a single connection to the service.
+#[derive(Debug, PartialEq, Eq)]
+enum ServeEnd {
+    ServiceClosed,
+    ChromeClosed,
+}
+
 /// One connection to the service, until it ends.
 async fn serve_once(
     socket: &Path,
     hello: &Value,
     to_chrome: &mpsc::UnboundedSender<String>,
     inbox: &mut mpsc::UnboundedReceiver<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<ServeEnd> {
     let stream = her_server::endpoint::connect(socket)
         .await
         .map_err(|_| anyhow::anyhow!("Hermesh is not running"))?;
@@ -210,10 +218,10 @@ async fn serve_once(
         // belong to no browser.
         loop {
             tokio::select! {
-                next = lines.next_line() => if next?.is_none() { return Ok(()) },
+                next = lines.next_line() => if next?.is_none() { return Ok(ServeEnd::ServiceClosed) },
                 message = inbox.recv() => match message {
                     Some(message) => { host_action(&message); }
-                    None => return Ok(()),
+                    None => return Ok(ServeEnd::ChromeClosed),
                 },
             }
         }
@@ -223,7 +231,7 @@ async fn serve_once(
     loop {
         tokio::select! {
             next = lines.next_line() => {
-                let Some(text) = next? else { return Ok(()) };
+                let Some(text) = next? else { return Ok(ServeEnd::ServiceClosed) };
                 let Ok(message) = serde_json::from_str::<Incoming>(&text) else { continue };
                 match (message.method.as_deref(), message.params) {
                     (Some("browser/cdp"), Some(params)) => {
@@ -236,7 +244,7 @@ async fn serve_once(
                 }
             }
             message = inbox.recv() => {
-                let Some(message) = message else { return Ok(()) };
+                let Some(message) = message else { return Ok(ServeEnd::ChromeClosed) };
                 if host_action(&message) {
                     continue;
                 }
@@ -781,5 +789,75 @@ mod tests {
             ),
             "{script}"
         );
+    }
+
+    #[cfg(unix)]
+    async fn mock_extension_service(socket: &Path, close_after_host: bool) -> tokio::task::JoinHandle<()> {
+        let listener = tokio::net::UnixListener::bind(socket).unwrap();
+        tokio::spawn(async move {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            let (read, mut write) = stream.into_split();
+            let mut lines = tokio::io::BufReader::new(read).lines();
+            let _ = lines.next_line().await;
+            let _ = write.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n").await;
+            let _ = lines.next_line().await;
+            let _ = write.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"bridge\":2}}\n").await;
+            if close_after_host {
+                return;
+            }
+            // Hold open until the host disconnects.
+            while let Ok(Some(_)) = lines.next_line().await {}
+        })
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn relay_exits_cleanly_when_chrome_closes_stdin() {
+        let dir = tempfile::Builder::new().prefix("her-").tempdir_in("/tmp").unwrap();
+        let socket = dir.path().join("s");
+        let _server = mock_extension_service(&socket, false).await;
+
+        let (to_chrome, mut outbox) = mpsc::unbounded_channel();
+        let (from_chrome, inbox) = mpsc::unbounded_channel();
+        let task = tokio::spawn(relay(socket, to_chrome, inbox));
+        from_chrome.send(r#"{"hello":{"browser":"Chrome 157","extension_version":"0.2.2","bridge":{"min":1,"max":2}}}"#.into()).unwrap();
+
+        let first: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(first["status"], "connected");
+
+        // Chrome closes the native messaging pipe: relay must exit cleanly without saying Hermesh stopped.
+        drop(from_chrome);
+        let ended = tokio::time::timeout(Duration::from_secs(5), task).await.unwrap().unwrap();
+        assert_eq!(ended, None);
+        let mut remaining = Vec::new();
+        while let Ok(msg) = outbox.try_recv() {
+            remaining.push(msg);
+        }
+        assert!(remaining.is_empty(), "unexpected messages after Chrome EOF: {remaining:?}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn relay_reports_hermesh_stopped_when_service_closes() {
+        let dir = tempfile::Builder::new().prefix("her-").tempdir_in("/tmp").unwrap();
+        let socket = dir.path().join("s");
+        let _server = mock_extension_service(&socket, true).await;
+
+        let (to_chrome, mut outbox) = mpsc::unbounded_channel();
+        let (from_chrome, inbox) = mpsc::unbounded_channel();
+        let task = tokio::spawn(relay(socket, to_chrome, inbox));
+        from_chrome.send(r#"{"hello":{"browser":"Chrome 157","extension_version":"0.2.2","bridge":{"min":1,"max":2}}}"#.into()).unwrap();
+
+        let first: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(first["status"], "connected");
+        let second: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(second["status"], "waiting");
+        assert_eq!(second["reason"], "Hermesh stopped");
+
+        drop(from_chrome);
+        let ended = tokio::time::timeout(Duration::from_secs(5), task).await.unwrap().unwrap();
+        assert_eq!(ended, None);
     }
 }

@@ -47,6 +47,8 @@ let stuckTimer = null;
 let inUse = true;
 let retries = 0;
 let retryTimer = null;
+/** When connect() last tried the host, to throttle activity-driven retries. */
+let lastAttempt = 0;
 /** Whether this port has said who it is. */
 let helloSent = false;
 
@@ -252,7 +254,11 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   if (reason === "canceled_by_user" && tab) postControl({ kind: "revoked", sessions: [tab.session] });
   report();
 });
-chrome.tabs.onCreated.addListener((tab) => live?.browser.tabCreated(tab.id, tab.openerTabId, tab.pendingUrl ?? tab.url));
+chrome.tabs.onCreated.addListener((tab) => {
+  live?.browser.tabCreated(tab.id, tab.openerTabId, tab.pendingUrl ?? tab.url);
+  reconnectOnActivity();
+});
+chrome.tabs.onActivated?.addListener(() => reconnectOnActivity());
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.url !== undefined || change.title !== undefined) {
     live?.browser.tabUpdated(tabId, change);
@@ -264,6 +270,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   live?.browser.tabRemoved(tabId);
   offered.delete(tabId);
   forget(tabId);
+});
+chrome.windows?.onCreated?.addListener(() => reconnectOnActivity());
+chrome.windows?.onFocusChanged?.addListener((id) => {
+  if (id !== chrome.windows.WINDOW_ID_NONE && id !== -1) reconnectOnActivity();
 });
 chrome.windows.onRemoved.addListener((id) => {
   if (id === windowId) windowId = null;
@@ -453,7 +463,13 @@ function onMessage(message) {
   if (typeof data !== "object" || data === null) return;
   if (live?.stream !== stream) {
     letGo();
-    const out = (message) => port?.postMessage({ stream, data: message });
+    const out = (message) => {
+      try {
+        port?.postMessage({ stream, data: message });
+      } catch {
+        // The port closed mid-stream; onDisconnect clears the live browser.
+      }
+    };
     live = { stream, browser: new ExtensionBrowser(tabs, out) };
   }
   live.browser.receive(data);
@@ -469,7 +485,7 @@ async function instance() {
 }
 
 /** Tells the host which browser this is, so Hermesh can show it. */
-async function hello() {
+async function hello(current) {
   let browser = navigator.userAgent;
   try {
     // Brands name Edge, Brave and Chrome apart; the generic ones ("Chromium", "Not A;Brand") last.
@@ -481,32 +497,61 @@ async function hello() {
     // The user agent string says enough.
   }
   const account = await chrome.identity?.getProfileUserInfo({ accountStatus: "ANY" }).then((u) => u.email, () => "");
-  port?.postMessage({
-    hello: {
-      browser,
-      extension_version: chrome.runtime.getManifest().version,
-      bridge: { min: BRIDGE_MIN, max: bridge },
-      instance: await instance().catch(() => undefined),
-      account: account || undefined,
-    },
-  });
-  helloSent = true;
+  const id = await instance().catch(() => undefined);
+  if (port !== current) return;
+  try {
+    current.postMessage({
+      hello: {
+        browser,
+        extension_version: chrome.runtime.getManifest().version,
+        bridge: { min: BRIDGE_MIN, max: bridge },
+        instance: id,
+        account: account || undefined,
+      },
+    });
+    helloSent = true;
+  } catch {
+    // The port closed while gathering browser details; onDisconnect schedules the next one.
+  }
+}
+
+/** Reconnects right away on browser activity instead of waiting out exponential backoff. */
+function reconnectOnActivity() {
+  if (port) return;
+  const cooldown = hostState === "missing" ? STUCK_AFTER : RETRY_MIN;
+  const now = Date.now();
+  const wait = cooldown - (now - lastAttempt);
+  retries = 0;
+  if (wait > 0) {
+    clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => ready.then(connect), wait);
+    return;
+  }
+  lastAttempt = now;
+  ready.then(connect);
 }
 
 function connect() {
   clearTimeout(retryTimer);
+  retryTimer = null;
   if (port) return;
+  lastAttempt = Date.now();
+  let current;
   try {
-    port = chrome.runtime.connectNative(HOST);
+    current = chrome.runtime.connectNative(HOST);
   } catch {
     hostState = "missing";
     show();
     return;
   }
+  port = current;
   helloSent = false;
-  port.onMessage.addListener(onMessage);
-  void hello();
-  port.onDisconnect.addListener(() => {
+  current.onMessage.addListener((message) => {
+    if (port === current) onMessage(message);
+  });
+  void hello(current);
+  current.onDisconnect.addListener(() => {
+    if (port !== current) return;
     const error = chrome.runtime.lastError?.message;
     port = null;
     helloSent = false;
@@ -609,7 +654,7 @@ chrome.runtime.onMessage.addListener((message, _sender, reply) => {
 chrome.alarms.create("her-connect", { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "her-connect") {
-    connect();
+    ready.then(connect);
     void checkFiles();
     takeUpdate();
   }
