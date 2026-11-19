@@ -1,5 +1,21 @@
 {
   "title": "Settings",
+  "workspaces": {
+    "title": "Local workspaces",
+    "usage": "Estimated disk usage by project and session",
+    "note": "Save any open editor buffers first. Release keeps the session and restores its checkout on the next message. Local files outside the branch block release.",
+    "open": "Open folder",
+    "partial": "partial",
+    "sizeError": "Could not measure: {{reason}}",
+    "scan": "View disk usage",
+    "refresh": "Refresh",
+    "scanning": "Measuring…",
+    "release": "Release local workspace",
+    "releasing": "Releasing…",
+    "released": "Released the workspace for “{{title}}”.",
+    "empty": "No local session workspaces on disk.",
+    "kept": "Workspace kept at {{path}}. {{reason}}"
+  },
   "pages": {
     "general": "General",
     "grants": "Access",
