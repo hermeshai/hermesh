@@ -4,7 +4,7 @@ import { useStore, type Sheet } from "../store";
 import { EraseHerData } from "./HerOff";
 
 /**
- * A destructive action asked for by another screen: its title, what happens, and the button that does it;
+ * An action asked for by another screen, destructive unless safe: its title, what happens, and the button that does it;
  * removing a machine with Her's data, the choice to erase it too, or why it stays (docs/her-server.md §5.6).
  */
 export function ConfirmSheet({ sheet }: { sheet: Extract<Sheet, { kind: "confirm" }> }) {
@@ -25,7 +25,7 @@ export function ConfirmSheet({ sheet }: { sheet: Extract<Sheet, { kind: "confirm
       {her && (her.offline ? <p className="sub">{t("herOff.offline", { name: her.name })}</p> : <EraseHerData name={her.name} on={erase} set={setErase} disabled={busy} />)}
       <div className="sheet-foot">
         <button className="btn" onClick={() => st.set({ sheet: null })}>{t("cancel")}</button>
-        <button className="btn primary destructive" disabled={busy} onClick={go}>{sheet.button}</button>
+        <button className={`btn primary ${sheet.safe ? "" : "destructive"}`} disabled={busy} onClick={go}>{sheet.button}</button>
       </div>
     </>
   );

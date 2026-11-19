@@ -230,6 +230,5 @@
     "reveal_win": "Show in File Explorer",
     "reveal_linux": "Show in Files",
     "dismiss": "Close"
-  },
-  "declined": "Nothing was signed because the request was declined or not confirmed in the signer."
+  }
 }

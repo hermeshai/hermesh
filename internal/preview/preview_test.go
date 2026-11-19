@@ -60,6 +60,15 @@ func TestRefusals(t *testing.T) {
 	if _, err := Cards([]*localv1.SigningRequest{g, other}, Hints{}, "en"); err == nil {
 		t.Fatal("a batch with one it can't show")
 	}
+	// Said in the signer's language, and the way on is updating the signer.
+	_, err := Cards([]*localv1.SigningRequest{unknown}, Hints{}, "en")
+	if !strings.Contains(err.Error(), "the signer is older than Hermesh; update the signer") {
+		t.Fatalf("in English: %v", err)
+	}
+	_, err = Cards([]*localv1.SigningRequest{unknown}, Hints{}, "zh-CN")
+	if want := "无法完整显示这项请求（hermesh.identity.v1.Grant）：它含有这个签名器不认识的内容：签名器比 Hermesh 旧，请更新签名器"; err == nil || err.Error() != want || !errors.As(err, &refused) {
+		t.Fatalf("in Chinese: %v", err)
+	}
 }
 
 // An erase order says what it does and that it can't be undone.
@@ -201,15 +210,15 @@ func TestJoinMatch(t *testing.T) {
 	}
 }
 
-// Every text a card shows has its Chinese, with the same verbs, and the
-// Chinese file holds nothing the cards don't use.
+// Every text a card or a refusal shows has its Chinese, with the same
+// verbs, and the Chinese file holds nothing they don't use.
 func TestWords(t *testing.T) {
 	src, err := os.ReadFile("preview.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	used := map[string]bool{"2006-01-02": true}
-	for _, m := range regexp.MustCompile(`w\.f\(("(?:[^"\\]|\\.)*")`).FindAllSubmatch(src, -1) {
+	for _, m := range regexp.MustCompile(`(?:w\.f\(|Refused\{[^,]+, )("(?:[^"\\]|\\.)*")`).FindAllSubmatch(src, -1) {
 		k, err := strconv.Unquote(string(m[1]))
 		if err != nil {
 			t.Fatal(err)
