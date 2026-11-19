@@ -51,6 +51,10 @@ test("Her: a reply from a message's buttons, from words selected in it, and what
   const replied = log.locator(".um").filter({ hasText: "哪家近" });
   await expect(replied.getByTestId("her-quote")).toContainText("酒店有两家：园区旁的，西湖边的。");
   await expect(replied.locator(".bub-t")).toHaveText("[[mock:send]] 哪家近");
+  // Message bubbles show the text cursor on selectable text, while buttons inside them keep the arrow.
+  expect(await hers.locator(".bbub").evaluate((el) => getComputedStyle(el).cursor)).toBe("text");
+  expect(await replied.locator(".bub-t").evaluate((el) => getComputedStyle(el).cursor)).toBe("text");
+  expect(await replied.getByTestId("her-quote").evaluate((el) => getComputedStyle(el).cursor)).toBe("default");
   const heard = log.locator(".bm").filter({ hasText: "哪家近" });
   await expect(heard).toContainText("Replying to this earlier message of yours, quoted in full:", { timeout: 60_000 });
   await expect(heard.locator("blockquote")).toHaveText("酒店有两家：园区旁的，西湖边的。");

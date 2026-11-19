@@ -18,7 +18,7 @@
   --side:#f4f4f7;--side-head:#f4f4f7;--side-tint:rgba(246,246,249,.28);
   --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
   --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
-  --sel:rgba(61,91,255,.12);--sel-fg:#2a45d8;--side-sel:rgba(0,0,0,.075);
+  --sel:rgba(61,91,255,.12);--sel-fg:#2a45d8;--side-sel:rgba(0,0,0,.075);--side-fg:rgba(0,0,0,.76);--side-sel-fg:rgba(0,0,0,.95);
   --accent-t:var(--accent-fg);--accent-bg:rgba(61,91,255,.10);
   --green:var(--ok);--green-bg:rgba(23,146,79,.11);--orange:var(--warn);--orange-bg:rgba(230,126,10,.12);--red:var(--danger);--red-bg:rgba(215,51,63,.10);
   --btn:#ffffff;--btn-sh:0 0 0 .5px rgba(0,0,0,.14),0 1px 1.5px rgba(0,0,0,.08);
@@ -40,7 +40,7 @@
   --side:#25252a;--side-head:#25252a;--side-tint:rgba(28,28,32,.3);
   --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
   --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
-  --sel:rgba(91,121,255,.24);--sel-fg:#a9b7ff;--side-sel:rgba(255,255,255,.1);
+  --sel:rgba(91,121,255,.24);--sel-fg:#a9b7ff;--side-sel:rgba(255,255,255,.1);--side-fg:rgba(255,255,255,.78);--side-sel-fg:#fff;
   --accent-bg:rgba(91,121,255,.16);
   --green-bg:rgba(63,207,134,.14);--orange-bg:rgba(255,171,61,.14);--red-bg:rgba(255,102,112,.13);
   --btn:rgba(255,255,255,.12);--btn-sh:0 0 0 .5px rgba(255,255,255,.08);
@@ -163,8 +163,6 @@ button{font:inherit;color:inherit}
 .mainwrap.railed{grid-template-columns:74px minmax(0,1fr)}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
-/* Sidebar titles a step brighter than other text in the dark, as small text on the material reads grey. */
-@media (prefers-color-scheme:dark){.side{--l1:rgba(255,255,255,.93)}}
 .mainwrap>.content{grid-column:2}
 /* The sidebar's rail (docs/her-team.md §16): Her, the overview and the agents at work as icons, 74 px wide; the traffic lights in its top band. */
 .rail{grid-column:1;position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;min-height:0;background:var(--side);border-right:.5px solid var(--sep)}
@@ -216,13 +214,13 @@ html.vibrant .rail{background:var(--side-tint)}
 .tb.on{background:var(--fill2);color:var(--l1)}
 /* Her and the overview, rows 32 high, 34 apart; then the sessions, with no line between. */
 .side-nav{padding:0 8px 8px;display:flex;flex-direction:column;gap:2px;flex:none}
-.nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;border:0;background:none;width:100%;text-align:left}
-.nav-i .ic{width:18px;height:18px;color:var(--l1)}
+.nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;color:var(--side-fg);border:0;background:none;width:100%;text-align:left}
+.nav-i .ic{width:18px;height:18px;color:currentColor}
 /* The shortcut shows on hover only: the menus say it too. */
 .nav-i .kbd{margin-left:auto;opacity:0;transition:opacity .12s}
 .nav-i:hover .kbd,.nav-i:focus-visible .kbd{opacity:1}
 .nav-i:hover{background:var(--fill)}
-.nav-i.sel{background:var(--side-sel)}
+.nav-i.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .nav-i .cnt{margin-left:auto;font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
 /* Marks (docs/her-team.md §16): orange, the owner is needed; red, it failed; blue, Her has something unread; a ring, at work. No numbers. */
 .nav-marks{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
@@ -234,25 +232,25 @@ html.vibrant .rail{background:var(--side-tint)}
 @keyframes busy-turn{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.busy>i{animation:none}}
 /* The sessions' heading, with the view menu at its end. */
-.side-h{height:34px;flex:none;display:flex;align-items:center;padding:0 8px 0 18px;font-size:12px;color:var(--l2)}
+.side-h{height:34px;flex:none;display:flex;align-items:center;padding:0 8px 0 18px;font-size:12.5px;color:var(--l2)}
 .side-h .tb{margin-left:auto}
 .side-list{flex:1;overflow-y:auto;min-height:0;padding:0 8px 8px;scrollbar-width:thin}
 .side-sessions>[role=group]{display:flex;flex-direction:column;gap:1px}
 /* An empty group's line starts where its sessions' logos would. */
-.side-none{font-size:12.5px;color:var(--l3);padding:5px 9px 8px}
+.side-none{font-size:13px;color:var(--l3);padding:5px 9px 8px}
 .side-empty{display:flex;flex-direction:column;gap:3px;text-align:center;padding:60px 14px;color:var(--l3);font-size:12.5px;line-height:1.6}
 .side-empty b{color:var(--l2);font-weight:var(--font-weight-medium);font-size:var(--fs-text)}
 /* A group's heading: its title and ▾ (▸ when collapsed); a click collapses or opens it. */
-.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:12px;font-weight:400;color:var(--l2);padding:14px 10px 5px;margin-bottom:1px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
+.grp-h{position:sticky;top:0;z-index:2;font:inherit;font-size:13px;font-weight:400;color:var(--l2);padding:14px 10px 5px;margin-bottom:1px;display:flex;align-items:center;gap:6px;background:var(--side-head);border:0;width:100%;text-align:left}
 .side-sessions>[role=group]:first-child .grp-h{padding-top:6px}
 .grp-h:hover{color:var(--l1)}
 .grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
 .grp-h.shut .ic{transform:rotate(-90deg)}
-/* A session: its agent's logo, the title, one mark; 30 high. */
-.srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:13px}
-.slogo{display:flex;flex:none;margin-top:1px}
+/* A session: its agent's logo, the title, one mark; 32 high. */
+.srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
+.slogo{display:flex;flex:none;margin-top:2px}
 .srow:hover{background:var(--fill)}
-.srow.sel{background:var(--side-sel)}
+.srow.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
 .srow.arch .stitle{color:var(--l2)}
 .rowact{display:none;border:0;background:none;width:20px;height:18px;border-radius:5px;align-items:center;justify-content:center;color:var(--l2);padding:0;flex:none;margin:-2px -4px -2px 0}
 .rowact:hover{background:var(--fill2);color:var(--l1)}
@@ -260,13 +258,13 @@ html.vibrant .rail{background:var(--side-tint)}
 .srow.has-act:hover .rowact{display:flex}
 .srow.menu-open .smeta{display:none}
 .srow.menu-open .rowact{display:flex;background:var(--fill2);color:var(--l1)}
-.srename{flex:1;min-width:0;font:inherit;font-size:13px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
+.srename{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--l1);background:var(--field);border:0;border-radius:5px;outline:none;box-shadow:0 0 0 1.5px var(--accent);padding:0 5px;margin:-1px 0 -1px -5px}
 .psel{appearance:none;-webkit-appearance:none;border:0;background-color:var(--fill2);color:var(--l1);height:24px;border-radius:var(--r-ctl);padding:0 24px 0 9px;font:inherit;font-size:12px;width:100%;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 13px) 10px,calc(100% - 9px) 10px;background-size:4px 4px;background-repeat:no-repeat}
 .psel.on{background-color:var(--accent-bg);color:var(--accent-t)}
 .anote{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);background:var(--fill);border-radius:var(--r-box);padding:8px 12px;margin-bottom:16px}
 .anote .link{margin-left:auto}
 .smain{min-width:0;flex:1}
-.sl1{display:flex;gap:8px;align-items:center;line-height:18px}
+.sl1{display:flex;gap:8px;align-items:center;line-height:20px}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
 .sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
