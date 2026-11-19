@@ -3,6 +3,7 @@
 #   VERSION=0.1.1 apps/ios/scripts/testflight.sh
 #   VERSION                     the release's version, also the core's
 #   BUILD                       the build number (default: the commit count, which only grows on main)
+#   HERMESH_ACCOUNT_DELETION_ORIGINS   space-separated HTTPS console origins, empty until verified ready
 #   ASC_KEY_ID, ASC_ISSUER_ID   an App Store Connect API key of the team
 #   ASC_KEY_PATH                its .p8 (default ~/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8)
 set -euo pipefail
@@ -20,7 +21,8 @@ AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KEY" -authenticationKey
 # FORCE rebuilds the core, stamped with VERSION.
 VERSION="$VERSION" FORCE=1 xcodebuild archive -project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Release \
   -destination 'generic/platform=iOS' -archivePath "$OUT/Hermesh.xcarchive" "${AUTH[@]}" \
-  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD"
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+  HERMESH_ACCOUNT_DELETION_ORIGINS="${HERMESH_ACCOUNT_DELETION_ORIGINS:-}"
 cat > "$OUT/export.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
