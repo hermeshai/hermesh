@@ -5,15 +5,16 @@ import XCTest
 /// Regression tests for the iPhone session sidebar's floating account button over a long list
 /// in both dark and light mode (no horizontal mask covering rows beside the avatar, avatar tap
 /// and row taps beside it work, and scrolling reaches the final row above the avatar).
+/// Also checks the Overview row while tasks are running and the connection is down.
 ///
 ///     xcodebuild test -project apps/ios/Hermesh.xcodeproj -scheme Hermesh \
 ///         -destination 'platform=iOS Simulator,name=…' -only-testing:HermeshUITests/SidebarUITests
 final class SidebarUITests: XCTestCase {
     let app = XCUIApplication()
 
-    override func setUp() {
+    private func launchDemo(_ arguments: [String]) {
         continueAfterFailure = false
-        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-DemoSessions", "24"]
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + arguments
         app.launch()
         // Enter demo if onboarding shows (standalone run without a signed-in owner).
         let tryDemo = app.buttons["try-demo"]
@@ -23,6 +24,7 @@ final class SidebarUITests: XCTestCase {
     }
 
     func testLongSidebarNoBottomMaskDarkAndLight() throws {
+        launchDemo(["-DemoSessions", "24"])
         openDrawer()
         for mode in ["dark", "light"] {
             setAppearance(mode)
@@ -45,6 +47,27 @@ final class SidebarUITests: XCTestCase {
             .tap()
         XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10),
                       "tapping a row beside the floating account button should open its session")
+    }
+
+    func testOverviewHidesTaskSpinnerAndKeepsConnectionNotice() {
+        launchDemo(["-DemoSidebarActivity", "YES"])
+        openDrawer()
+        let overview = app.buttons["overview-place"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10))
+        XCTAssertTrue(overview.label.contains("1 working"), "the demo task is running")
+
+        let screenshot = XCUIScreen.main.screenshot()
+        attach(screenshot, name: "sidebar-overview-running")
+        // The trailing region has the orange attention dot. Any neutral contrast here is the task spinner.
+        let trailing = CGRect(x: overview.frame.maxX - 48, y: overview.frame.midY - 10, width: 37, height: 20)
+        let stats = contrastStats(in: screenshot.image, rectInPoints: trailing, ignoringOrange: true)
+        XCTAssertLessThan(stats.range, 0.08, "task spinner next to Overview (neutral luminance range: \(stats.range))")
+
+        overview.tap()
+        let syncLine = app.descendants(matching: .any)["sync-line"].firstMatch
+        XCTAssertTrue(syncLine.waitForExistence(timeout: 10))
+        XCTAssertTrue(syncLine.label.contains("Connecting to Hermesh") || syncLine.label.contains("Can’t reach Hermesh"))
+        attach(XCUIScreen.main.screenshot(), name: "overview-connection-notice")
     }
 
     private func verifyLongSidebar(mode: String) {
@@ -132,7 +155,7 @@ final class SidebarUITests: XCTestCase {
         }
     }
 
-    private func contrastStats(in image: UIImage, rectInPoints: CGRect) -> (range: Double, contrastPixels: Int) {
+    private func contrastStats(in image: UIImage, rectInPoints: CGRect, ignoringOrange: Bool = false) -> (range: Double, contrastPixels: Int) {
         guard let cg = image.cgImage else { return (0, 0) }
         let scale = CGFloat(cg.width) / max(1, image.size.width)
         let pixelRect = CGRect(
@@ -156,11 +179,13 @@ final class SidebarUITests: XCTestCase {
         luminances.reserveCapacity(w * h)
         var minL = 1.0, maxL = 0.0
         for i in stride(from: 0, to: rgba.count, by: 4) {
+            if ignoringOrange && Int(rgba[i]) - Int(rgba[i + 2]) > 10 { continue }
             let l = (0.299 * Double(rgba[i]) + 0.587 * Double(rgba[i + 1]) + 0.114 * Double(rgba[i + 2])) / 255.0
             luminances.append(l)
             if l < minL { minL = l }
             if l > maxL { maxL = l }
         }
+        guard !luminances.isEmpty else { return (0, 0) }
         luminances.sort()
         let bgL = luminances[luminances.count / 2]
         let contrastPixels = luminances.reduce(0) { $0 + (abs($1 - bgL) > 0.25 ? 1 : 0) }

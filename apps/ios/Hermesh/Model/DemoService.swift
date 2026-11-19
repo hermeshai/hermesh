@@ -84,6 +84,10 @@ final class DemoService {
             s.updatedAt = .init(date: .now.addingTimeInterval(Double(-600 - i * 120)))
             world.sessions.append(s)
         }
+        if UserDefaults.standard.bool(forKey: "DemoSidebarActivity") {
+            world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
+            world.status.relayConnected = false
+        }
         #endif
         _ = pairing(.client)
     }
