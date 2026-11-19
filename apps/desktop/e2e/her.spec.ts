@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, navTo, sys, thisComputer } from "./app";
+import { fixture, launch, snap, navTo, sessionList, sys, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -206,6 +206,38 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(page.getByRole("heading", { name: "Her 派的活" })).toBeVisible();
   await navTo(page, /^Her/);
   await expect(sessionCard).toBeVisible();
+
+  // When a coding session crashes and the owner asks Her to continue it, both the session card and the sidebar's
+  // task row leave the error state as soon as the resumed turn runs, then settle as done.
+  const herSessionId = await page.evaluate(async () => {
+    const r = await fetch("app://hermesh/api/hermesh.local.v1.LocalService/ListSessions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ limit: 50 }) });
+    return ((await r.json()).sessions as { sessionId: string; title: string }[]).find((s) => s.title === "Her 派的活")?.sessionId ?? "";
+  });
+  expect(herSessionId).toMatch(/^s_/);
+  await send(`[[mock:mesh:session_send:${JSON.stringify({ session_id: herSessionId, message: "sleep 1s\ncrash" })}]] 跑一下`);
+  await expect(approval).toContainText("Her 派的活", { timeout: 60_000 });
+  await approval.getByRole("button", { name: /^允许/ }).click();
+  const list = await sessionList(page);
+  const sideRow = list.getByRole("listitem").filter({ hasText: "Her 派的活" });
+  await expect(sessionCard.locator(".hc-fail")).toBeVisible({ timeout: 60_000 });
+  await expect(list.getByRole("group", { name: "需要处理" })).toContainText("Her 派的活");
+  await expect(sideRow.getByRole("img", { name: "已崩溃" })).toBeVisible();
+  await expect(log.locator(".bm").filter({ hasText: 'kind="failure"' })).toBeVisible({ timeout: 90_000 });
+
+  await send(`[[mock:mesh:session_send:${JSON.stringify({ session_id: herSessionId, message: "sleep 5s\nsay 接着做完了" })}]] 继续跑`);
+  await expect(approval).toContainText("Her 派的活", { timeout: 60_000 });
+  await approval.getByRole("button", { name: /^允许/ }).click();
+  await expect(sessionCard.locator(".hc-run")).toBeVisible({ timeout: 60_000 });
+  await expect(sessionCard.locator(".busy")).toBeVisible();
+  await expect(sessionCard.locator(".hc-fail")).toHaveCount(0);
+  await expect(tag).toContainText("1 个在忙");
+  await expect(list.getByRole("group", { name: "进行中" })).toContainText("Her 派的活");
+  await expect(list.getByRole("group", { name: "需要处理" })).toHaveCount(0);
+  await expect(sideRow.getByRole("img", { name: "运行中" })).toBeVisible();
+
+  await expect(sessionCard).toContainText("完成", { timeout: 60_000 });
+  await expect(list.getByRole("group", { name: "已结束" })).toContainText("Her 派的活", { timeout: 60_000 });
+  await expect(log.locator(".bm").filter({ hasText: "接着做完了" })).toBeVisible({ timeout: 90_000 });
 
   // Her notes a rule (her-mock's remember), with no approval asked; her settings show it on the memory page,
   // as written (a list, Markdown), and clear it there, after asking.

@@ -91,6 +91,13 @@ func ask(_ s: inout Session) {
     var f = session("f", .idle)
     f.progress.lastFailure.kind = .contextOverflow
     #expect(f.isFailed && f.needsAttention && statusOf(f) == .attention)
+    for active: SessionStatus in [.queued, .preparing, .running] {
+        f.status = active
+        #expect(!f.isFailed && !f.needsAttention && statusOf(f) == .active)
+    }
+    let resumedTeam = teamState([f], requests: 0)
+    #expect(resumedTeam.failed.isEmpty && resumedTeam.running.map(\.sessionID) == ["f"] && resumedTeam.tag == .working(1))
+    #expect(liveByAgent(resumedTeam).map { "\($0.agent):\($0.sessions.map(\.sessionID).joined(separator: ","))" } == ["claude:f"])
     var i = session("i", .idle)
     i.progress.lastFailure.kind = .interrupted
     #expect(!i.isFailed && !i.needsAttention && statusOf(i) == .done && dayOf(i, now: now, calendar: utc) == .today)
