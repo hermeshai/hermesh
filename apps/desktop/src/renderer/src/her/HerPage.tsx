@@ -147,7 +147,7 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
             <Progress bot={bot} conv={conv} op={op} task={sel.kind === "progress" ? sel.task : undefined} />
           ) : (
             <>
-              <TopBar />
+              <TopBar view={conv.view} />
               {bot ? <Conversation bot={bot} conv={conv} op={op} waiting={waiting.list} onWaiting={refreshWaiting} /> : <EnvStatus machine={machine} />}
             </>
           )}

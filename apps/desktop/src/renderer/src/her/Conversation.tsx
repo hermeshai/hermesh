@@ -508,7 +508,7 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
                       </div>
                     )),
               )}
-              {busy && <BusyBubble busy={busy} retry={view?.live?.retry} />}
+              {busy && <BusyBubble busy={busy} />}
             </div>
           )}
         </div>

@@ -178,6 +178,7 @@ private struct HerPage: View {
             }
         } label: {
             HerTag(name: chat.bot?.name ?? "Her",
+                   session: chat.live,
                    team: teamState(model.sessions, requests: model.pairings.count),
                    network: net,
                    paused: phase != .active)
@@ -268,19 +269,44 @@ private enum HerTagNetwork: Equatable {
 
 /// Her's name tag: the single status slot under her avatar. Severe network/offline
 /// issues take priority over team activity; brief reconnects (0.4–3 s) show only a
-/// subtle breathing dot beside her name; healthy connections show her team's state.
+/// subtle breathing dot beside her name; while Her answers (and isn't awaiting
+/// approval), her live status replaces her name in place, keeping the team panel tap.
 private struct HerTag: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let name: String
+    let session: HerSession?
     let team: TeamState
     let network: HerTagNetwork
     /// Nothing turns while the app is not in front.
     let paused: Bool
 
+    private static let sweep = 2.4
+
     var body: some View {
+        TimelineView(.periodic(from: .now, by: session?.live?.retryAt != nil ? 1 : 60)) { tick in
+            let status = network.overridesTeam ? nil : session.flatMap { herStatus($0, now: tick.date.timeIntervalSince1970 * 1000) }
+            let statusText = status.map(Self.words(for:))
+            content(statusText: statusText)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(verbatim: spoken(statusText: statusText)))
+        }
+    }
+
+    private func content(statusText: String?) -> some View {
         HStack(spacing: 7) {
             HStack(spacing: 5) {
-                Text(name).font(.headline)
+                if let statusText {
+                    TimelineView(.animation(paused: paused || still)) { t in
+                        let swept = t.date.timeIntervalSinceReferenceDate / Self.sweep
+                        let phase = swept - swept.rounded(.down)
+                        Text(verbatim: statusText)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .mask { if paused || still { Rectangle() } else { light(at: phase) } }
+                    }
+                } else {
+                    Text(name).font(.headline)
+                }
                 if network == .subtleConnecting {
                     breathingDot(size: 6)
                         .transition(.opacity)
@@ -336,8 +362,25 @@ private struct HerTag: View {
         .lineLimit(1)
         .animation(still ? nil : .snappy, value: team.tag)
         .animation(still ? nil : .easeInOut(duration: 0.22), value: network)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: spoken))
+        .animation(still ? nil : .easeInOut(duration: 0.2), value: statusText)
+    }
+
+    private static func words(for status: HermeshHer.HerStatus) -> String {
+        switch status {
+        case .typing: String(localized: "Typing…")
+        case .compacting: String(localized: "Compacting…")
+        case .retrying: String(localized: "Retrying…")
+        }
+    }
+
+    private func light(at phase: Double) -> some View {
+        GeometryReader { g in
+            let w = g.size.width
+            LinearGradient(stops: [.init(color: .black, location: 0.38), .init(color: .black.opacity(0.28), location: 0.5), .init(color: .black, location: 0.62)],
+                           startPoint: .leading, endPoint: .trailing)
+                .frame(width: w * 3)
+                .offset(x: -2 * w + 2 * w * phase)
+        }
     }
 
     private func breathingDot(size: CGFloat) -> some View {
@@ -352,8 +395,8 @@ private struct HerTag: View {
     }
 
     /// What the tag says, in words.
-    private var spoken: String {
-        var parts = [name]
+    private func spoken(statusText: String?) -> String {
+        var parts = [statusText ?? name]
         switch network {
         case .healthy:
             break

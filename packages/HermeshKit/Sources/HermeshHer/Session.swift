@@ -117,9 +117,18 @@ public struct HerSession: Equatable, Sendable {
             failure = nil
             liveTokens = 0
             live = HerLive(taskID: e["task_id"].string ?? "", tools: [], approvals: [])
+        case "turn_started", "message_started":
+            live?.retryAt = nil
+        case "stream_retry":
+            live?.retryAt = ts
+        case "compaction_started":
+            live?.compacting = e["reason"].string ?? "auto"
+        case "compaction_completed":
+            live?.compacting = nil
         case "turn_completed":
             liveTokens += herTokens(usage: e["usage"])
         case "message_completed":
+            live?.retryAt = nil
             entries.append(HerEntry(["type": "message", "message_id": e["message_id"], "message": e["message"], "mail": e["mail"]]))
         case "queue_changed":
             queued = (e["queued"].array ?? []).compactMap(HerQueued.init)
@@ -130,6 +139,7 @@ public struct HerSession: Equatable, Sendable {
             let removed = Set((e["removed_agents"].array ?? []).compactMap(\.string))
             agents.removeAll { removed.contains($0.id) }
         case "tool_started":
+            live?.retryAt = nil
             let tool = HerLiveTool(callID: callID, name: e["name"].string ?? "", category: e["category"].string ?? "other", title: e["title"].string ?? "", phase: .pending)
             live?.tools.removeAll { $0.callID == callID }
             live?.tools.append(tool)
@@ -382,6 +392,9 @@ public struct HerLive: Equatable, Sendable {
     public var taskID: String
     public var tools: [HerLiveTool]
     public var approvals: [HerApproval]
+    public var compacting: String?
+    /// Timestamp (ms) of the latest stream_retry while backoff is still under way.
+    public var retryAt: Double?
 }
 
 public struct HerLiveTool: Equatable, Sendable {

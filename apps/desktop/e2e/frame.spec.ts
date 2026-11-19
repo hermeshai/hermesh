@@ -28,7 +28,7 @@ test("the sidebar groups sessions by status: needs you, running, done; archived 
 });
 
 // The sidebar reads calmly: Her and the overview a row apart, no line under them, the sessions' heading with the
-// view menu at its end; search and the toggle in the top band; 13px titles; a quiet foot, a dot only when something
+// view menu at its end; search and the toggle in the top band; 14px titles; a quiet foot, a dot only when something
 // is wrong, and no count of machines.
 test("the sidebar keeps one rhythm, one heading per group and a quiet foot", async () => {
   const { app, page } = await launch();
@@ -56,7 +56,9 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
 
   const list = await sessionList(page);
   const title = list.getByRole("listitem").first().locator(".stitle");
-  expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["13px", "18px"]);
+  expect(await title.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14px", "20px"]);
+  expect(await heading.evaluate((el) => getComputedStyle(el).fontSize)).toBe("12.5px");
+  expect(await list.locator(".grp-h").first().evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
   // No numbers: the group headings are their names alone.
   for (const h of await list.locator(".grp-h").allInnerTexts()) expect(h).not.toMatch(/\d/);
 
@@ -64,6 +66,11 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   await expect(foot).not.toContainText("在线");
   await expect(foot.locator(".dotc")).toHaveCount((await foot.innerText()).includes("未连接") ? 1 : 0);
   await page.emulateMedia({ colorScheme: "dark" });
+  // Selected nav item reads brighter and heavier than an unselected row in the dark.
+  const selStyle = await nav.locator(".nav-i.sel").evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el).fontWeight]);
+  const idleStyle = await title.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el).fontWeight]);
+  expect(selStyle).toEqual(["rgb(255, 255, 255)", "500"]);
+  expect(idleStyle).toEqual(["rgba(255, 255, 255, 0.78)", "400"]);
   await snap(page, "sidebar-rhythm");
   await app.close();
 });
