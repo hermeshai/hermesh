@@ -126,9 +126,15 @@ func (n *Machine) RTT() time.Duration {
 
 // RecordRTT folds a new RTT sample into this tunnel's smoothed RTT.
 func (n *Machine) RecordRTT(d time.Duration) {
-	ns := d.Nanoseconds()
-	if ns <= 0 {
+	if d < 0 {
 		return
+	}
+	ns := d.Nanoseconds()
+	if ns == 0 {
+		// On coarse clocks (e.g. Windows), a fast loopback round-trip can
+		// measure 0 ns; clamp to 1 ns so RTT() distinguishes a measured
+		// sub-tick sample from an unmeasured tunnel (0).
+		ns = 1
 	}
 	for {
 		old := n.srtt.Load()
