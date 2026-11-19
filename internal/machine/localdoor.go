@@ -138,7 +138,37 @@ func (n *Machine) acceptQUICEndpoint(ctx context.Context, ep *transport.QUICEndp
 	}
 }
 
+const directIPCacheTTL = 3 * time.Second
+
+type directIPSnapshot struct {
+	at       time.Time
+	all      []string
+	ipv4     []string
+	globalV6 []string
+}
+
+func (n *Machine) cachedDirectIPs(force bool) (directIPSnapshot, bool) {
+	n.directIPMu.Lock()
+	if !force && !n.directIPs.at.IsZero() && time.Since(n.directIPs.at) < directIPCacheTTL {
+		snap := n.directIPs
+		n.directIPMu.Unlock()
+		return snap, false
+	}
+	n.directIPMu.Unlock()
+
+	snap := scanDirectIPs()
+	n.directIPMu.Lock()
+	n.directIPs = snap
+	n.directIPMu.Unlock()
+	return snap, true
+}
+
 func (n *Machine) syncDirectQUICV6() {
+	snap, _ := n.cachedDirectIPs(true)
+	n.syncDirectQUICV6With(snap.globalV6)
+}
+
+func (n *Machine) syncDirectQUICV6With(want []string) {
 	n.quicMu.Lock()
 	ctx := n.quicCtx
 	if ctx == nil || ctx.Err() != nil {
@@ -150,8 +180,6 @@ func (n *Machine) syncDirectQUICV6() {
 		existing[ip] = true
 	}
 	n.quicMu.Unlock()
-
-	want := preferredGlobalIPv6s()
 	wantSet := make(map[string]bool, len(want))
 	for _, ip := range want {
 		wantSet[ip] = true
@@ -262,25 +290,43 @@ func (n *Machine) punchDirect(targets []string) []string {
 	return addrs
 }
 
+func joinIPsPort(ips []string, port int) []string {
+	if port <= 0 || len(ips) == 0 {
+		return nil
+	}
+	pstr := strconv.Itoa(port)
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		out = append(out, net.JoinHostPort(ip, pstr))
+	}
+	return out
+}
+
+func (n *Machine) directStatusAddrs() (tcpAddrs, quicAddrs []string) {
+	snap, refreshed := n.cachedDirectIPs(false)
+	if refreshed {
+		n.syncDirectQUICV6With(snap.globalV6)
+	}
+	tcpAddrs = joinIPsPort(snap.all, int(n.directPort.Load()))
+	quicAddrs = n.directQUICAddressesFrom(snap)
+	return tcpAddrs, quicAddrs
+}
+
 func (n *Machine) directAddresses() []string {
-	return n.directAddressesForPort(int(n.directPort.Load()))
+	snap, _ := n.cachedDirectIPs(false)
+	return joinIPsPort(snap.all, int(n.directPort.Load()))
 }
 
 func (n *Machine) directQUICAddresses() []string {
-	n.syncDirectQUICV6()
-	port := int(n.directQUICPort.Load())
-	var out []string
-	if port > 0 {
-		for _, hp := range n.directAddressesForPort(port) {
-			host, _, err := net.SplitHostPort(hp)
-			if err != nil {
-				continue
-			}
-			if ip := net.ParseIP(host); ip != nil && ip.To4() != nil {
-				out = append(out, hp)
-			}
-		}
+	snap, refreshed := n.cachedDirectIPs(false)
+	if refreshed {
+		n.syncDirectQUICV6With(snap.globalV6)
 	}
+	return n.directQUICAddressesFrom(snap)
+}
+
+func (n *Machine) directQUICAddressesFrom(snap directIPSnapshot) []string {
+	out := joinIPsPort(snap.ipv4, int(n.directQUICPort.Load()))
 	n.quicMu.Lock()
 	var v6Addrs []string
 	for ip, ep := range n.quicV6 {
@@ -294,65 +340,21 @@ func (n *Machine) directQUICAddresses() []string {
 	return out
 }
 
-func preferredGlobalIPv6s() []string {
+func scanDirectIPs() directIPSnapshot {
+	snap := directIPSnapshot{at: time.Now()}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return nil
-	}
-	type ifacePrefix struct {
-		iface string
-		v6    [8]byte
-	}
-	seenV6 := map[ifacePrefix]bool{}
-	var out []string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || !screenhost.UsableInterface(iface.Name) {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			ip := netAddrIP(a)
-			if ip == nil || ip.To4() != nil || !ip.IsGlobalUnicast() || !screenhost.UsableInterfaceIP(ip) {
-				continue
-			}
-			v6 := ip.To16()
-			if v6 == nil {
-				continue
-			}
-			var k ifacePrefix
-			k.iface = iface.Name
-			copy(k.v6[:], v6[:8])
-			if seenV6[k] {
-				continue
-			}
-			seenV6[k] = true
-			out = append(out, ip.String())
-		}
-	}
-	return out
-}
-
-func (n *Machine) directAddressesForPort(port int) []string {
-	if port <= 0 {
-		return nil
-	}
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil
+		return snap
 	}
 	type candidate struct {
 		tier  int
-		addr  string
+		ip    string
 		iface string
 		v6    [8]byte
 		isV6  bool
 	}
 	var cands []candidate
 	seen := map[string]bool{}
-	pstr := strconv.Itoa(port)
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 || !screenhost.UsableInterface(iface.Name) {
 			continue
@@ -366,12 +368,12 @@ func (n *Machine) directAddressesForPort(port int) []string {
 			if ip == nil || !ip.IsGlobalUnicast() || !screenhost.UsableInterfaceIP(ip) {
 				continue
 			}
-			hp := net.JoinHostPort(ip.String(), pstr)
-			if seen[hp] {
+			ipStr := ip.String()
+			if seen[ipStr] {
 				continue
 			}
-			seen[hp] = true
-			c := candidate{tier: 2, addr: hp, iface: iface.Name}
+			seen[ipStr] = true
+			c := candidate{tier: 2, ip: ipStr, iface: iface.Name}
 			if v4 := ip.To4(); v4 != nil {
 				if isRFC1918(v4) {
 					c.tier = 0
@@ -396,7 +398,7 @@ func (n *Machine) directAddressesForPort(port int) []string {
 		v6    [8]byte
 	}
 	seenV6 := map[ifacePrefix]bool{}
-	out := make([]string, 0, len(cands))
+	snap.all = make([]string, 0, len(cands))
 	for _, c := range cands {
 		if c.isV6 {
 			k := ifacePrefix{iface: c.iface, v6: c.v6}
@@ -404,10 +406,13 @@ func (n *Machine) directAddressesForPort(port int) []string {
 				continue
 			}
 			seenV6[k] = true
+			snap.globalV6 = append(snap.globalV6, c.ip)
+		} else {
+			snap.ipv4 = append(snap.ipv4, c.ip)
 		}
-		out = append(out, c.addr)
+		snap.all = append(snap.all, c.ip)
 	}
-	return out
+	return snap
 }
 
 func netAddrIP(a net.Addr) net.IP {
