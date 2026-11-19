@@ -31,10 +31,6 @@ struct HerConversation: View {
     @State private var preview: URL?
     /// Markdown or code Her sent, brought here to read on a page of the app's.
     @State private var page: HerFileText?
-    /// The conversation's connection (first connect or reconnect) has taken more than 1.2 s.
-    @State private var slow = false
-    /// Connection diagnostics sheet presented from the top status capsule.
-    @State private var showDiagnostics = false
     /// The message a scheduled task's run page brought into view, or one a reply quotes, marked a moment.
     @State private var marked: String?
     /// The message whose text is being selected from, to reply to a part of it (docs/her-reply.md §3.3).
@@ -110,31 +106,6 @@ struct HerConversation: View {
         .overlay {
             if rows.isEmpty && busy == nil { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
         }
-        .safeAreaInset(edge: .top) {
-            Group {
-                if case .offline(let seen) = state {
-                    Button { showDiagnostics = true } label: {
-                        HerOfflineLine(name: machine.machineName, seen: seen)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
-                } else if let banner = linkBanner {
-                    Button { showDiagnostics = true } label: {
-                        HerLinkCapsule(banner: banner)
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.opacity)
-                }
-            }
-            .animation(still ? nil : .easeInOut(duration: 0.25), value: linkBanner)
-        }
-        // Any first connect or reconnect lasting > 1.2 s surfaces status smoothly (no flash on quick resumes).
-        .task(id: waitingForLink) {
-            slow = false
-            guard waitingForLink else { return }
-            try? await Task.sleep(for: .milliseconds(1200))
-            if !Task.isCancelled { slow = waitingForLink }
-        }
         .safeAreaInset(edge: .bottom) {
             HerToEnd(far: far) {
                 atEnd = true
@@ -151,9 +122,6 @@ struct HerConversation: View {
         .sheet(item: $page) { HerFilePage(file: $0) }
         .sheet(item: $selecting) { from in
             HerSelectText(text: from.text) { picked in chat.reply(herQuote(ref: from.id, own: from.own, whole: from.text, selected: picked)) }
-        }
-        .sheet(isPresented: $showDiagnostics) {
-            HerDiagnosticsSheet(chat: chat, machine: machine, state: state)
         }
         // Her's onboarding: begun when her says no model works there, or HerStatus says so for a while (it says
         // Her runs a moment before her has listed her models); done once the conversation opens on a model.
@@ -183,56 +151,6 @@ struct HerConversation: View {
 }
 
 extension HerConversation {
-    /// Whether the relay, machine tunnel, or Her conversation is still connecting.
-    private var waitingForLink: Bool {
-        guard !model.isDemo, !chat.paused else { return false }
-        if !model.status.relayConnected { return true }
-        if machine.hasTunnel && machine.tunnel.phase != "ready" { return true }
-        return state == .ready && !chat.convUp && !noModel
-    }
-
-    /// Top status capsule for Her: covers offline immediately, and gates transient
-    /// connecting/reconnecting states behind the 1.2 s `slow` debounce so brief
-    /// foreground resumes never flash under Her's avatar.
-    private var linkBanner: HerLinkBanner? {
-        guard !model.isDemo, !chat.paused else { return nil }
-        let relay = model.status.relayHealth
-        let tunnel = machine.hasTunnel ? machine.tunnel : nil
-        if model.networkKind == "offline" {
-            return HerLinkBanner(kind: .error, text: String(localized: "No network connection"))
-        }
-        if !model.status.relayConnected {
-            if relay.phase == "offline" || relay.retryCount >= 3 {
-                return HerLinkBanner(kind: .error, text: String(localized: "Can’t reach Hermesh · #\(Int(relay.retryCount))"))
-            }
-            guard slow else { return nil }
-            if relay.retryCount > 0 {
-                return HerLinkBanner(kind: .connecting, text: String(localized: "Reconnecting to Hermesh · #\(Int(relay.retryCount))"))
-            }
-            return HerLinkBanner(kind: .connecting, text: String(localized: "Connecting to Hermesh…"))
-        }
-        if let tunnel, tunnel.phase == "unreachable" || tunnel.phase == "retrying" {
-            guard slow || tunnel.phase == "unreachable" else { return nil }
-            return HerLinkBanner(kind: tunnel.phase == "unreachable" ? .error : .connecting,
-                                 text: String(localized: "Reconnecting to \(machine.machineName)…"))
-        }
-        if state == .ready && !chat.convUp && !noModel {
-            guard slow else { return nil }
-            if chat.convRetries > 0 {
-                return HerLinkBanner(kind: .connecting, text: String(localized: "Reconnecting to \(machine.machineName) · #\(chat.convRetries)"))
-            }
-            if chat.convError != nil {
-                return HerLinkBanner(kind: .error, text: String(localized: "Can’t reach Her on \(machine.machineName)"))
-            }
-            return HerLinkBanner(kind: .connecting, text: String(localized: "Connecting to \(machine.machineName)…"))
-        }
-        if let tunnel, tunnel.phase == "ready", tunnel.rttMs >= 250 {
-            let pathLabel = herPathLabel(tunnel.path)
-            return HerLinkBanner(kind: .slow, text: "\(pathLabel) · \(Int(tunnel.rttMs)) ms")
-        }
-        return nil
-    }
-
     /// Brings a row into view and marks it a moment.
     private func reveal(_ key: String, in proxy: ScrollViewProxy, after wait: Duration) {
         atEnd = false
@@ -1141,37 +1059,6 @@ private struct HerEmpty: View {
     }
 }
 
-/// An environment that can't be reached: what was read stays, under when the machine was last seen.
-private struct HerOfflineLine: View {
-    @Environment(AppModel.self) private var model
-    let name: String
-    let seen: Date?
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Circle().fill(.tertiary).frame(width: 7, height: 7)
-            if let seen {
-                Text("\(name) offline · seen \(agoText(seen, now: model.now))")
-            } else {
-                Text("\(name) is offline")
-            }
-        }
-        .font(.footnote).foregroundStyle(.secondary)
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(.bar, in: .capsule)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("her-offline")
-    }
-}
-
-private struct HerLinkBanner: Equatable {
-    enum Kind { case connecting, slow, error }
-    let kind: Kind
-    let text: String
-}
-
 func herPathLabel(_ path: String) -> String {
     switch path {
     case "quic_lan": String(localized: "QUIC LAN")
@@ -1194,35 +1081,8 @@ func herNetworkLabel(_ kind: String) -> String {
     return kind.isEmpty ? String(localized: "Unknown") : kind
 }
 
-/// Top status capsule on Her's conversation (tappable for full diagnostics).
-private struct HerLinkCapsule: View {
-    let banner: HerLinkBanner
-
-    var body: some View {
-        HStack(spacing: 7) {
-            switch banner.kind {
-            case .connecting:
-                ProgressView().controlSize(.mini)
-            case .slow:
-                Circle().fill(.orange).frame(width: 7, height: 7)
-            case .error:
-                Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
-            }
-            Text(banner.text).lineLimit(1)
-            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-        }
-        .font(.footnote).foregroundStyle(.secondary)
-        .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(.bar, in: .capsule)
-        .frame(maxWidth: .infinity)
-        .padding(.top, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("her-connecting")
-    }
-}
-
 /// Four-hop connection diagnostics sheet: iPhone network -> Relay -> Machine tunnel -> Her service.
-private struct HerDiagnosticsSheet: View {
+struct HerDiagnosticsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let chat: HerChat

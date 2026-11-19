@@ -16039,6 +16039,46 @@
           }
         }
       }
+    },
+    "No network": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无网络"
+          }
+        }
+      }
+    },
+    "Reconnecting": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重连中"
+          }
+        }
+      }
+    },
+    "Connection lost": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时连不上"
+          }
+        }
+      }
+    },
+    "Opens connection diagnostics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开连接诊断"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
