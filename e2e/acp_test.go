@@ -116,20 +116,21 @@ func TestACPAgents(t *testing.T) {
 	}
 }
 
-// Antigravity uses Google's separate ACP server. Exercise its registered name
-// through the relay, owner and CLI, including permission-gated edits and resume.
+// Antigravity uses Google's official ACP server (built into `agy acp`, with the
+// standalone archive as fallback). Exercise its registered name through the
+// relay, owner and CLI, including permission-gated edits and resume.
 func TestAntigravityACP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	for _, real := range []bool{false, true} {
-		name := "scripted"
-		if real {
-			name = "real"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, mode := range []string{"scripted", "agy_cli", "upgrade_keeps_standalone", "real"} {
+		real := mode == "real"
+		t.Run(mode, func(t *testing.T) {
 			var env []string
-			if real {
+			var argsLog string
+			var wantArgs string
+			switch mode {
+			case "real":
 				if os.Getenv("HERMESH_REAL_CLI") != "1" {
 					t.Skip("set HERMESH_REAL_CLI=1")
 				}
@@ -142,11 +143,78 @@ func TestAntigravityACP(t *testing.T) {
 						env = append(env, "HERMESH_ANTIGRAVITY_BIN="+i.Binary)
 					}
 				}
-			} else {
+			case "agy_cli":
+				// Keyring-authenticated `agy acp`: official CLI settings.json has no auth.type.
+				gemini := t.TempDir()
+				os.Mkdir(filepath.Join(gemini, "antigravity-cli"), 0o700)
+				os.WriteFile(filepath.Join(gemini, "antigravity-cli", "settings.json"), []byte(`{"agentMode":"auto"}`), 0o600)
+				agyDir := t.TempDir()
+				src, err := os.ReadFile(filepath.Join(binaries(t), "fakeacp"+exe))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(agyDir, "agy"+exe), src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.mode"), []byte("acp"), 0o600)
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.version"), []byte("agy 1.5.9"), 0o600)
+				argsLog = filepath.Join(t.TempDir(), "args.log")
+				wantArgs = `["acp"]`
+				home := t.TempDir()
+				env = []string{
+					"HOME=" + home,
+					"USERPROFILE=" + home,
+					"GEMINI_HOME=" + gemini,
+					"PATH=" + agyDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+					"SHELL=/bin/sh",
+					"FAKE_ACP_ARGS_LOG=" + argsLog,
+					"FAKE_ACP_STATE=" + t.TempDir(),
+					"FAKE_ACP_RESUME=resume",
+					"FAKE_ACP_REQUIRE_MODE=1",
+				}
+			case "upgrade_keeps_standalone":
+				// Existing standalone user installs unauthenticated `agy`: must keep
+				// running the working standalone archive rather than breaking sessions.
+				home := t.TempDir()
 				gemini := t.TempDir()
 				os.Mkdir(filepath.Join(gemini, "antigravity-acp"), 0o700)
 				os.WriteFile(filepath.Join(gemini, "antigravity-acp", "settings.json"), []byte(`{"auth":{"type":"oauth-personal"}}`), 0o600)
-				env = []string{"GEMINI_HOME=" + gemini, "HERMESH_ANTIGRAVITY_BIN=" + filepath.Join(binaries(t), "fakeacp"),
+				src, err := os.ReadFile(filepath.Join(binaries(t), "fakeacp"+exe))
+				if err != nil {
+					t.Fatal(err)
+				}
+				agyDir := t.TempDir()
+				if err := os.WriteFile(filepath.Join(agyDir, "agy"+exe), src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.mode"), []byte("acp"), 0o600)
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.version"), []byte("agy 1.5.9"), 0o600)
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.auth"), []byte("oauth-personal"), 0o600)
+				standaloneDir := filepath.Join(home, ".local", "share", "antigravity-acp")
+				os.MkdirAll(standaloneDir, 0o755)
+				standaloneName := "agy_acp_server.par"
+				if exe != "" {
+					standaloneName = "agy_acp_server" + exe
+				}
+				if err := os.WriteFile(filepath.Join(standaloneDir, standaloneName), src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				os.WriteFile(filepath.Join(standaloneDir, "fakeacp.version"), []byte("1.4.5"), 0o600)
+				env = []string{
+					"HOME=" + home,
+					"USERPROFILE=" + home,
+					"GEMINI_HOME=" + gemini,
+					"PATH=" + agyDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+					"SHELL=/bin/sh",
+					"FAKE_ACP_STATE=" + t.TempDir(),
+					"FAKE_ACP_RESUME=resume",
+					"FAKE_ACP_REQUIRE_MODE=1",
+				}
+			default:
+				gemini := t.TempDir()
+				os.Mkdir(filepath.Join(gemini, "antigravity-acp"), 0o700)
+				os.WriteFile(filepath.Join(gemini, "antigravity-acp", "settings.json"), []byte(`{"auth":{"type":"oauth-personal"}}`), 0o600)
+				env = []string{"GEMINI_HOME=" + gemini, "HERMESH_ANTIGRAVITY_BIN=" + filepath.Join(binaries(t), "fakeacp"+exe),
 					"FAKE_ACP_STATE=" + t.TempDir(), "FAKE_ACP_RESUME=resume", "FAKE_ACP_REQUIRE_MODE=1"}
 			}
 			w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
@@ -185,7 +253,64 @@ func TestAntigravityACP(t *testing.T) {
 			if r := w.cli(3*time.Minute, "session", "send", s.SessionID, "--wait", "--message", prompt); r.code != 0 || !strings.Contains(r.stdout, want) {
 				t.Fatalf("resume after daemon restart: %+v", r)
 			}
+			if argsLog != "" && wantArgs != "" {
+				b, err := os.ReadFile(argsLog)
+				if err != nil || !strings.Contains(string(b), wantArgs) {
+					t.Fatalf("expected %s in args log: err=%v log=%q", wantArgs, err, string(b))
+				}
+			}
 		})
+	}
+}
+
+// TestAntigravityCapabilityProbeTimeout exercises the user-facing login
+// command with a hanging capability probe, with and without the old server.
+// An invalid method stops the handshake before authentication.
+func TestAntigravityCapabilityProbeTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	bin := binaries(t)
+	home, dir := t.TempDir(), t.TempDir()
+	fake, err := os.ReadFile(filepath.Join(bin, "fakeacp"+exe))
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, data []byte, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), data, mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("agy"+exe, fake, 0o755)
+	write("fakeacp.mode", []byte("help-hangs"), 0o600)
+	env := []string{
+		"HOME=" + home,
+		"USERPROFILE=" + home,
+		"LOCALAPPDATA=" + t.TempDir(),
+		"HERMESH_HOME=" + t.TempDir(),
+		"GEMINI_HOME=" + t.TempDir(),
+		"HERMESH_ANTIGRAVITY_BIN=",
+		"PATH=" + dir,
+		"SHELL=/bin/sh",
+		"FAKE_ACP_STATE=" + t.TempDir(),
+		"FAKE_ACP_AUTH=oauth-personal",
+	}
+	login := func() result {
+		return run(t, env, 30*time.Second, filepath.Join(bin, "hermesh"+exe),
+			"agent", "login", "antigravity", "--method", "probe-invalid")
+	}
+	if r := login(); r.code == 0 || !strings.Contains(r.stderr, "agy acp --help") || !strings.Contains(r.stderr, "timed out") {
+		t.Fatalf("expected the capability timeout: %+v", r)
+	}
+
+	standalone := "agy_acp_server.par"
+	if exe != "" {
+		standalone = "agy_acp_server" + exe
+	}
+	write(standalone, fake, 0o755)
+	if r := login(); r.code == 0 || !strings.Contains(r.stderr, "available: other, oauth-personal") {
+		t.Fatalf("expected the standalone server's authentication methods: %+v", r)
 	}
 }
 
