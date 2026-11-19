@@ -126,6 +126,26 @@ func TestMachineOnlyMac(t *testing.T) {
 	if _, err := work.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("a machine only lists pairing requests: %v", err)
 	}
+	coding := &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: &sessionv1.CodingConsentRequest{
+		Agent: "gemini", ProjectId: "billing", Scope: sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_HER,
+	}}
+	for _, action := range []*sessionv1.CodingConsentRequest{coding.Consent, {Agent: "gemini", Scope: coding.Consent.Scope, Revoke: true}} {
+		if _, err := work.CodingConsent(ctx, &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: action}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("machine-only local API managed coding consent: %v", err)
+		}
+	}
+	disclosure, err := w.app.client.CodingConsent(ctx, coding)
+	if err != nil || disclosure.Approved || disclosure.Recipient != "Google" {
+		t.Fatalf("trusted owner reads the remote coding route: %v %v", disclosure, err)
+	}
+	coding.Consent.ApproveVersion = disclosure.Version
+	if grant, err := w.app.client.CodingConsent(ctx, coding); err != nil || !grant.Approved {
+		t.Fatalf("trusted owner approves the remote coding route: %v %v", grant, err)
+	}
+	coding.Consent.ApproveVersion, coding.Consent.Revoke = "", true
+	if _, err := w.app.client.CodingConsent(ctx, coding); err != nil {
+		t.Fatalf("trusted owner revokes the remote coding route: %v", err)
+	}
 	watch, err := work.WatchSessions(ctx, &localv1.WatchSessionsRequest{})
 	if err != nil || !watch.Receive() || !watch.Msg().MachinesChanged {
 		t.Fatalf("watch sessions: %v", err)
