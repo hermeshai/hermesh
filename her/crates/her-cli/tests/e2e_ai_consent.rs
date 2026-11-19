@@ -21,6 +21,7 @@ async fn refused_prompt(client: &Client, session: &str, text: &str) {
         "session_id": session,
         "op": {"type": "prompt", "input": [{"type": "text", "text": text}]},
     })).await.unwrap_err();
+    assert_eq!(error.data.as_ref().unwrap()["kind"], "ai_consent_required");
     assert!(error.message.contains("AI sharing is blocked"), "{error:?}");
 }
 

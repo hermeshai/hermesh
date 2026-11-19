@@ -103,6 +103,25 @@ func (s *sessionService) AnswerQuestion(ctx context.Context, req *sessionv1.Answ
 	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
 }
 
+func (s *sessionService) AnswerLocalQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
+	return s.n.sessions.answerQuestion(principalFrom(ctx), req, true)
+}
+
+func (s *sessionService) CheckLocalCodingRecipient(ctx context.Context, req *sessionv1.CheckLocalCodingRecipientRequest) (*sessionv1.CheckLocalCodingRecipientResponse, error) {
+	agent := req.GetAgent()
+	if req.GetSessionId() != "" {
+		_, row, err := s.n.sessions.find(principalFrom(ctx), req.GetSessionId(), false)
+		if err != nil {
+			return nil, err
+		}
+		agent = row.Agent
+	}
+	if !isLocalAgent(s.n.sessions.providers[agent]) {
+		return nil, cerr(connect.CodeFailedPrecondition, AIRecipientUnverified)
+	}
+	return &sessionv1.CheckLocalCodingRecipientResponse{}, nil
+}
+
 type machineService struct{ n *Machine }
 
 func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {

@@ -3,7 +3,6 @@ package mobile
 import (
 	"context"
 	"fmt"
-	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 type bearer struct{ token string }
@@ -29,7 +29,7 @@ func client(c *Core, token string) localv1connect.LocalServiceClient {
 	return localv1connect.NewLocalServiceClient(&http.Client{Transport: bearer{token}}, fmt.Sprintf("http://127.0.0.1:%d", c.Port()))
 }
 
-func TestCoreBlocksUnverifiedCodingAnswers(t *testing.T) {
+func TestCoreRejectsDeclineWithAnswerContent(t *testing.T) {
 	c, err := Start(t.TempDir(), slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
@@ -37,9 +37,9 @@ func TestCoreBlocksUnverifiedCodingAnswers(t *testing.T) {
 	t.Cleanup(c.o.Close)
 	t.Cleanup(c.Pause)
 	_, err = client(c, c.Token()).AnswerQuestion(t.Context(), &localv1.AnswerQuestionRequest{
-		SessionId: "s_fictional", Answers: []*sessionv1.Answer{{Text: "fictional answer"}},
+		SessionId: "s_fictional", Decline: true, Answers: []*sessionv1.Answer{{Text: "fictional answer"}},
 	})
-	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "AI recipient") {
+	if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "takes no answer content") {
 		t.Fatalf("coding answer reached session routing: %v", err)
 	}
 }

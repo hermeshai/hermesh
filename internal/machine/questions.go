@@ -11,6 +11,7 @@ import (
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
+	"github.com/hermeshai/hermesh/internal/provider/fake"
 )
 
 // DefaultQuestionTimeout is how long a question waits for an answer when
@@ -51,7 +52,8 @@ func (s *Sessions) ask(l *live, ps provider.Session, pq *provider.Question) {
 	now := time.Now()
 	l.mu.Lock()
 	l.questionSeq++
-	q := &sessionv1.Question{QuestionId: fmt.Sprintf("q_%d_%d", l.turn, l.questionSeq), Turn: l.turn, AskedAt: timestamppb.New(now)}
+	q := &sessionv1.Question{QuestionId: fmt.Sprintf("q_%d_%d", l.turn, l.questionSeq), Turn: l.turn, AskedAt: timestamppb.New(now),
+		LocalAnswerAvailable: isLocalAgent(s.providers[l.row.Agent]) && fake.IsLocalSession(ps)}
 	for _, it := range pq.Items {
 		pi := &sessionv1.QuestionItem{Id: it.ID, Header: it.Header, Text: it.Text, MultiSelect: it.MultiSelect,
 			AllowOther: it.AllowOther || len(it.Options) == 0, Secret: it.Secret, Optional: it.Optional}
@@ -156,12 +158,16 @@ func (s *Sessions) expireQuestions(l *live, now time.Time) {
 
 // AnswerQuestion answers (or declines) the agent's pending question.
 func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
+	return s.answerQuestion(p, req, p.LocalAnswersOnly)
+}
+
+func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionRequest, localOnly bool) (*sessionv1.Session, error) {
 	l, r, err := s.find(p, req.SessionId, false)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkHerCodingRecipient(p, r.Agent); err != nil {
-		return nil, err
+	if req.Decline && len(req.Answers) != 0 {
+		return nil, cerr(connect.CodeInvalidArgument, "declining a question takes no answer content")
 	}
 	// The owner, the session's creator, or whoever asked for the turn.
 	if p.Kind != PrincipalOwner && !s.canWrite(p, r) && (l == nil || !l.askedBy(p.ID())) {
@@ -184,6 +190,10 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 			return nil, cerr(connect.CodeFailedPrecondition, "question %s is not waiting for an answer (answered, timed out, or its turn ended)", req.QuestionId)
 		}
 		return nil, cerr(connect.CodeFailedPrecondition, "the agent is not waiting for an answer")
+	}
+	if !req.Decline && (localOnly || p.Grant.GetHerMachineId() != "") &&
+		(!isLocalAgent(s.providers[r.Agent]) || !fake.IsLocalSession(w.ps)) {
+		return nil, cerr(connect.CodeFailedPrecondition, AIRecipientUnverified)
 	}
 	if req.Decline {
 		s.reply(l, w, provider.Reply{Declined: true, Message: declinedMessage}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED, p.ID(), nil)
