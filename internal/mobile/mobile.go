@@ -17,22 +17,28 @@ import (
 	"net/http"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/hermeshai/hermesh/internal/owner"
 )
 
 // Core is the running owner role.
 type Core struct {
-	o     *owner.Device
-	port  int
-	srv   *http.Server
-	token string
-	log   *slog.Logger
+	o       *owner.Device
+	handler http.Handler
+	port    int
+	srv     *http.Server
+	token   string
+	log     *slog.Logger
 
 	mu     sync.Mutex
 	ln     net.Listener // while in front (listen)
 	cancel context.CancelFunc
 	done   chan struct{}
+
+	streamsMu sync.Mutex
+	nextID    int64
+	streams   map[int64]*ffiStream
 }
 
 // Start opens the owner's data under dataDir, serves LocalService and keeps
@@ -48,12 +54,13 @@ func Start(dataDir string, log *slog.Logger) (*Core, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Core{o: o, port: ln.Addr().(*net.TCPAddr).Port, token: hex.EncodeToString(b), log: log}
+	localHandler := o.LocalHandler()
+	c := &Core{o: o, handler: localHandler, port: ln.Addr().(*net.TCPAddr).Port, token: hex.EncodeToString(b), log: log, streams: map[int64]*ffiStream{}}
 	var protocols http.Protocols
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	mux := http.NewServeMux()
-	mux.Handle("/", o.LocalHandler())
+	mux.Handle("/", localHandler)
 	mux.Handle("/screen/", o.ScreenHandler()) // Computer Control's picture and input (owner.ScreenHandler)
 	c.srv = &http.Server{Handler: c.authorize(mux), Protocols: &protocols}
 	c.mu.Lock()
@@ -94,6 +101,7 @@ func (c *Core) Token() string { return c.token }
 // Resume serves LocalService again and keeps the owner's relay connection
 // up (the app is in front).
 func (c *Core) Resume() {
+	started := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.listenLocked()
@@ -103,6 +111,7 @@ func (c *Core) Resume() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	c.cancel, c.done = cancel, done
+	c.log.Info("mobile: core resume", "listen_ms", time.Since(started).Milliseconds())
 	go func() {
 		defer close(done)
 		c.o.Run(ctx)
@@ -115,6 +124,7 @@ func (c *Core) Resume() {
 // no more after it resumed (Apple's TN2277), so it is closed here and
 // opened again by Resume; calls under way go on.
 func (c *Core) Pause() {
+	started := time.Now()
 	c.mu.Lock()
 	cancel, done := c.cancel, c.done
 	c.cancel, c.done = nil, nil
@@ -128,7 +138,12 @@ func (c *Core) Pause() {
 		cancel()
 		<-done
 	}
+	c.log.Info("mobile: core pause", "after_ms", time.Since(started).Milliseconds())
 }
+
+// SetCellularOnly records whether the phone currently uses cellular only (no
+// Wi-Fi or wired interface) so direct dialing skips unreachable RFC1918 LAN IPs.
+func (c *Core) SetCellularOnly(v bool) { c.o.SetCellularOnly(v) }
 
 // Reconnect connects to the relay and the machines again: the network
 // changed (Wi-Fi to cellular, say).

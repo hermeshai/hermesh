@@ -15729,6 +15729,316 @@
           }
         }
       }
+    },
+    "Network Diagnostics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网络诊断"
+          }
+        }
+      }
+    },
+    "Connection Diagnostics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接诊断"
+          }
+        }
+      }
+    },
+    "Connection Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接链路"
+          }
+        }
+      }
+    },
+    "iPhone Network": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPhone 网络"
+          }
+        }
+      }
+    },
+    "Relay": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中继服务"
+          }
+        }
+      }
+    },
+    "Reconnect Now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "立即重连"
+          }
+        }
+      }
+    },
+    "QUIC LAN": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QUIC 局域网直连"
+          }
+        }
+      }
+    },
+    "QUIC IPv6": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QUIC IPv6 直连"
+          }
+        }
+      }
+    },
+    "Direct LAN": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "局域网直连"
+          }
+        }
+      }
+    },
+    "Direct IPv6": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IPv6 直连"
+          }
+        }
+      }
+    },
+    "Cellular": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "蜂窝网络"
+          }
+        }
+      }
+    },
+    "Wired": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有线网络"
+          }
+        }
+      }
+    },
+    "Dialing…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在建立连接…"
+          }
+        }
+      }
+    },
+    "Unreachable": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不可达"
+          }
+        }
+      }
+    },
+    "Outbox": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待发送队列"
+          }
+        }
+      }
+    },
+    "Connected · %lld ms": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接 · %lld ms"
+          }
+        }
+      }
+    },
+    "Reconnecting · #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重连中 · 第 %lld 次"
+          }
+        }
+      }
+    },
+    "%lld message(s) waiting to be delivered": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 条消息等待送达"
+          }
+        }
+      }
+    },
+    "No network connection": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前无网络连接"
+          }
+        }
+      }
+    },
+    "Reconnecting to Hermesh · #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重连 Hermesh（第 %lld 次）"
+          }
+        }
+      }
+    },
+    "Can’t reach Hermesh · #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时连不上 Hermesh（已重试 %lld 次）"
+          }
+        }
+      }
+    },
+    "Reconnecting to %@…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在恢复与 %@ 的连接…"
+          }
+        }
+      }
+    },
+    "Reconnecting to %@ · #%lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重连 %1$@（第 %2$lld 次）"
+          }
+        }
+      }
+    },
+    "Can’t reach Her on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂时无法连接到 %@ 上的 Her"
+          }
+        }
+      }
+    },
+    "Connected · %@ (%lld ms)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接 · 经 %1$@ (%2$lld ms)"
+          }
+        }
+      }
+    },
+    "Connected · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已连接 · 经 %@"
+          }
+        }
+      }
+    },
+    "Retry #%lld in %llds": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%2$lld 秒后第 %1$lld 次重试"
+          }
+        }
+      }
+    },
+    "Unknown": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未知"
+          }
+        }
+      }
+    },
+    "Wi-Fi (VPN)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi（VPN）"
+          }
+        }
+      }
+    },
+    "Cellular (VPN)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "蜂窝网络（VPN）"
+          }
+        }
+      }
+    },
+    "Wired (VPN)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "有线网络（VPN）"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

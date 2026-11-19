@@ -93,7 +93,7 @@ private struct HerPage: View {
                 if chat.bot != nil { ToolbarItem(placement: .topBarTrailing) { HerProgressButton(marks: herProgressMarks(chat), inBar: true) } }
             }
         }
-        .safeAreaBar(edge: .top) { header(chat) }
+        .safeAreaBar(edge: .top) { header(chat, state: state) }
         // Outside the bar, the top inset is the status bar's (or the system's bar's, beside the menu).
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { statusBar = $0 }
         // A row opened, or a sheet: the panel is done.
@@ -107,7 +107,7 @@ private struct HerPage: View {
         .task(id: [chat.bot?.unread ?? 0, chat.envUp ? 1 : 0, phase == .active ? 1 : 0]) { if phase == .active { await chat.markRead() } }
     }
 
-    private func header(_ chat: HerChat) -> some View {
+    private func header(_ chat: HerChat, state: HerEnvState) -> some View {
         ZStack(alignment: .top) {
             HStack(spacing: 8) {
                 if !sideBars && !model.menuBeside { HerMenuButton() }
@@ -117,7 +117,7 @@ private struct HerPage: View {
             }
             VStack(spacing: -16) {
                 avatar(chat, size: 72).zIndex(1)
-                tag(chat)
+                tag(chat, state: state)
             }
         }
         // The tag's words grow with the text size, up to what the top has room for.
@@ -149,11 +149,14 @@ private struct HerPage: View {
         .accessibilityIdentifier("her-avatar")
     }
 
-    private func tag(_ chat: HerChat) -> some View {
+    private func tag(_ chat: HerChat, state: HerEnvState) -> some View {
         Button {
             showTeam(true)
         } label: {
-            HerTag(name: chat.bot?.name ?? "Her", team: teamState(model.sessions, requests: model.pairings.count), paused: phase != .active)
+            HerTag(name: chat.bot?.name ?? "Her",
+                   team: teamState(model.sessions, requests: model.pairings.count),
+                   link: tagLink(chat, state: state),
+                   paused: phase != .active)
                 .frame(height: tagHeight)
                 .padding(.horizontal, 14)
                 .glassEffect(.regular.interactive(), in: .capsule)
@@ -166,12 +169,29 @@ private struct HerPage: View {
         .allowsHitTesting(!team)
     }
 
+    private func tagLink(_ chat: HerChat, state: HerEnvState) -> HerTagLink {
+        guard !model.isDemo, !chat.paused else { return .healthy }
+        if model.networkKind == "offline" { return .offline }
+        if case .offline = state { return .offline }
+        if case .failed = state { return .offline }
+        if chat.convUp && (chat.bot != nil || chat.envUp) { return .healthy }
+        if state == .ready && !chat.noModel { return .connecting }
+        if !model.status.relayConnected { return .connecting }
+        return .healthy
+    }
+
     private let tagHeight: CGFloat = 36
 
     private func showTeam(_ on: Bool) {
         if on { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
         withAnimation(still ? .easeOut(duration: 0.15) : .snappy(duration: 0.36, extraBounce: 0.08)) { team = on }
     }
+}
+
+/// Subtle connection state shown inside Her's name tag: invisible when healthy,
+/// softly breathing orange while connecting/reconnecting, muted gray when offline.
+private enum HerTagLink: Equatable {
+    case healthy, connecting, offline
 }
 
 /// Her's name tag: her name and, beside it, the team's state, the first that holds (TeamState.Tag): one session
@@ -181,12 +201,19 @@ private struct HerTag: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let name: String
     let team: TeamState
+    let link: HerTagLink
     /// Nothing turns while the app is not in front.
     let paused: Bool
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(name).font(.headline)
+            HStack(spacing: 5) {
+                Text(name).font(.headline)
+                if link != .healthy {
+                    linkDot
+                        .transition(.opacity)
+                }
+            }
             if team.tag != .quiet {
                 Capsule().fill(.tertiary).frame(width: 1, height: 14)
                 switch team.tag {
@@ -218,13 +245,41 @@ private struct HerTag: View {
         .font(.subheadline.weight(.medium))
         .lineLimit(1)
         .animation(still ? nil : .snappy, value: team.tag)
+        .animation(still ? nil : .easeInOut(duration: 0.2), value: link)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: spoken))
+    }
+
+    @ViewBuilder
+    private var linkDot: some View {
+        switch link {
+        case .healthy:
+            EmptyView()
+        case .connecting:
+            TimelineView(.animation(minimumInterval: 1 / 20, paused: paused || still)) { timeline in
+                let t = paused || still ? 0.0 : timeline.date.timeIntervalSinceReferenceDate
+                let opacity = 0.35 + 0.65 * (0.5 + 0.5 * sin(t * 3.8))
+                Circle()
+                    .fill(.orange.opacity(opacity))
+                    .frame(width: 6, height: 6)
+            }
+            .accessibilityHidden(true)
+        case .offline:
+            Circle()
+                .fill(.secondary.opacity(0.65))
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+        }
     }
 
     /// What the tag says, in words.
     private var spoken: String {
         var parts = [name]
+        switch link {
+        case .healthy: break
+        case .connecting: parts.append(String(localized: "Connecting…"))
+        case .offline: parts.append(String(localized: "Offline"))
+        }
         switch team.tag {
         case .waiting(let agent): parts.append(String(localized: "\(agentShortTitle(agent)) is waiting"))
         case .needYou(let n): parts.append(String(localized: "\(n) need you"))

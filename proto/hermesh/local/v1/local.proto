@@ -326,6 +326,20 @@ message GetStatusResponse {
   // What this core does that an app must not take for granted of an older
   // one (docs/version-skew.md §6.1): "her_reply" (docs/her-reply.md).
   repeated string abilities = 21;
+  // Connection health of the owner's relay link: phase, smoothed RTT,
+  // consecutive retries, and most recent error.
+  RelayHealth relay_health = 22;
+}
+
+message RelayHealth {
+  // "idle", "connecting", "connected", "reconnecting", "offline"
+  string phase = 1;
+  // Smoothed round-trip time to the relay in milliseconds (0 when unknown).
+  uint32 rtt_ms = 2;
+  // Consecutive failed dial attempts since the last verified connection.
+  uint32 retry_count = 3;
+  // Most recent dial or admission error, empty while healthy.
+  string last_error = 4;
 }
 
 message ListProfilesRequest {}
@@ -738,6 +752,19 @@ message Machine {
   // while it is offline, so an environment stays listed
   // (docs/her-server.md §5.5). Unset for a machine never seen running Her.
   hermesh.machine.v1.HerStatus her = 11;
+  // End-to-end tunnel health for this machine (path, RTT, phase, error).
+  TunnelHealth tunnel = 12;
+}
+
+message TunnelHealth {
+  // "offline", "dialing", "ready", "retrying", "unreachable"
+  string phase = 1;
+  // "local", "direct_lan", "direct_ipv6", "relay", or "" when not connected.
+  string path = 2;
+  // Smoothed round-trip time over the machine tunnel in milliseconds (0 when unknown).
+  uint32 rtt_ms = 3;
+  // Most recent tunnel or follow error, empty while ready.
+  string last_error = 4;
 }
 
 message ListMachinesRequest {}
