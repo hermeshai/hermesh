@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
 	herv1 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
@@ -323,8 +325,17 @@ func TestPushHerNotices(t *testing.T) {
 	// before is no news.
 	w.restartOwner(false)
 	c = w.app.client
-	eventually(t, 2*time.Minute, "her running again", func() bool { return listedMachine(t, c, mac).GetHer().GetRunning() })
+	eventually(t, 2*time.Minute, "Her running again with a model", func() bool {
+		h := listedMachine(t, c, mac).GetHer()
+		return h.GetRunning() && h.GetModelReady()
+	})
 	none("a notice for what her had before she started")
+	draft := &localv1.HerSendRequest{MachineId: mac, BotId: bot.ID, Text: mockSend("fictional draft after restart")}
+	if _, err := c.HerSend(ctx, draft); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "AI sharing is blocked") {
+		t.Fatalf("Her reused approval after restart: %v", err)
+	}
+	none("a notice for the unapproved draft")
+	approveHerTestModel(t, c, mac, "mock/mock-1")
 
 	// An approval: asking before each command, she waits for the owner.
 	if _, err := c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: mac, BotId: bot.ID, PermissionMode: "manual"}); err != nil {
