@@ -17,8 +17,34 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
+
+// geminiCodingFixtureEnv lets the real ACP adapter talk only to the test
+// executable, with a known route regardless of the host's installed agents.
+func geminiCodingFixtureEnv(t *testing.T, homeDir string) []string {
+	t.Helper()
+	var env []string
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(strings.ToUpper(key), "GOOGLE_") || strings.HasPrefix(strings.ToUpper(key), "GEMINI_") {
+			env = append(env, key+"=")
+		}
+	}
+	missing := filepath.Join(homeDir, "no-other-coding-agent")
+	for _, agent := range machine.AgentNames() {
+		if agent != "gemini" {
+			env = append(env, "HERMESH_"+strings.ToUpper(agent)+"_BIN="+missing)
+		}
+	}
+	return append(env, "HOME="+homeDir, "USERPROFILE="+homeDir, "GEMINI_CLI_HOME="+homeDir,
+		"GEMINI_CLI_SYSTEM_SETTINGS_PATH="+filepath.Join(homeDir, "system.json"),
+		"GEMINI_CLI_SYSTEM_DEFAULTS_PATH="+filepath.Join(homeDir, "defaults.json"),
+		"HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "SSL_CERT_FILE=", "NODE_EXTRA_CA_CERTS=",
+		"HERMESH_FAKE_PROVIDERS=", "HERMESH_GEMINI_BIN="+filepath.Join(binaries(t), "fakeacp"+exe),
+		"FAKE_ACP_STATE="+filepath.Join(homeDir, "state"))
+}
 
 // TestMachineOnlyMac: a Mac joins its owner as a machine only (a work Mac):
 // approved on a trusted device and, because the owner id came from the
@@ -31,16 +57,7 @@ func TestMachineOnlyMac(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	// Make the route observable without inheriting a user's Gemini settings or proxy.
-	homeDir := t.TempDir()
-	env := []string{
-		"HOME=" + homeDir, "USERPROFILE=" + homeDir, "GEMINI_CLI_HOME=" + homeDir,
-		"GEMINI_CLI_SYSTEM_SETTINGS_PATH=" + filepath.Join(homeDir, "system.json"),
-		"GEMINI_CLI_SYSTEM_DEFAULTS_PATH=" + filepath.Join(homeDir, "defaults.json"),
-		"HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "SSL_CERT_FILE=", "NODE_EXTRA_CA_CERTS=",
-		"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"+exe),
-		"FAKE_ACP_STATE=" + filepath.Join(homeDir, "fakeacp"),
-	}
+	env := geminiCodingFixtureEnv(t, t.TempDir())
 	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}}) // all machines, as the app's default
 	ctx := context.Background()
 	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
