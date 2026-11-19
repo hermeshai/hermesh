@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { fixture, launch, snap } from "./app";
+import { allowFixtureAISharing, fixture, launch, snap } from "./app";
 
 // Replying to a message of Her's conversation, or to a part of one (docs/her-reply.md), as the owner does it,
 // against her itself with her-mock as its model. Run by TestDesktopHerReply, which needs her built. One story: Her
@@ -20,6 +20,7 @@ test("Her: a reply from a message's buttons, from words selected in it, and what
   await choices.getByRole("listitem").filter({ hasText: "这台 Mac" }).getByRole("button", { name: "开启 Her" }).click({ timeout: 60_000 });
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
   await send("[[mock:send:酒店有两家：园区旁的，西湖边的。]] hi");
+  await allowFixtureAISharing(page);
   await expect(log).toContainText("酒店有两家：园区旁的，西湖边的。", { timeout: 60_000 });
   await send("[[mock:send:周五的票已经锁好。]] hi");
   await expect(log).toContainText("周五的票已经锁好。", { timeout: 60_000 });

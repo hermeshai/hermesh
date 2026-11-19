@@ -165,3 +165,10 @@ export async function clickToClose(button: Locator): Promise<void> {
     }),
   ]);
 }
+
+
+export async function allowFixtureAISharing(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "与第三方 AI 共享数据？" });
+  await expect(dialog).toContainText("127.0.0.1:", { timeout: 15_000 });
+  await dialog.getByRole("button", { name: "允许与 AI 共享" }).click();
+}

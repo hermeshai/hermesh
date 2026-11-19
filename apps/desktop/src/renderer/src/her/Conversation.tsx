@@ -10,7 +10,9 @@ import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
 import { Markdown } from "../session/Markdown";
 import { ContentScope } from "../session/scope";
 import { useVirtualRows, type VirtualRow } from "../session/useVirtualRows";
+import { herAnswers } from "../skew";
 import { errorText, useNow, useStore } from "../store";
+import { aiSharingAllowed, useAISharingConfirmation } from "./AISharing";
 import { Approval, type SendOp } from "./Approval";
 import { BusyBubble } from "./Busy";
 import { addAttachments, type Attachment } from "./attachments";
@@ -776,6 +778,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   const { t } = useTranslation("her");
   const st = useStore();
   const her = useHer();
+  const confirmAISharing = useAISharingConfirmation();
   const view = conv.view;
   const key = her.machine.machineId;
   const asking = view && conv.rpc ? pendingApproval(view) : null;
@@ -877,9 +880,8 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       if (deliveries.get(key) === again) deliveries.delete(key);
     };
   }, [key, deliver]);
-  const send = () => {
-    const sent = draft;
-    if (!sent.text.trim() && sent.attachments.length === 0) return;
+  const sendDraft = (sent: Draft) => {
+    if (drafts.get(key) !== sent) return;
     change({ text: "", attachments: [] });
     const id = messageId();
     outbox.add(key, {
@@ -894,6 +896,27 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       draft: sent,
     });
     void deliver(id);
+  };
+  const send = async () => {
+    const sent = draft;
+    if (!sent.text.trim() && sent.attachments.length === 0) return;
+    const model = open.current.view?.info.model;
+    // A draft may still go to the local outbox when the machine is offline.
+    // The host enforces consent when it can deliver it.
+    if (!model || !open.current.rpc || herAnswers(her.machine, "ai_consent/status") !== true) {
+      sendDraft(sent);
+      return;
+    }
+    try {
+      const status = await her.call("ai_consent/status", { model });
+      if (open.current.view?.info.model !== model) return;
+      if (aiSharingAllowed(status)) sendDraft(sent);
+      else confirmAISharing(model, status, () => {
+        if (open.current.view?.info.model === model) sendDraft(sent);
+      });
+    } catch (error) {
+      st.show(errorText(error));
+    }
   };
   // Without a model, the onboarding in the conversation says what to do; the composer waits.
   const above = asking ? (

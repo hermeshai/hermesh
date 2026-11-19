@@ -117,7 +117,7 @@ struct QuestionCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("session-\(session.displayTitle)")
-            if let choice {
+            if model.isDemo, let choice {
                 let options = choice.options.map(\.label)
                 // Side by side while they fit, else one under the other.
                 ViewThatFits(in: .horizontal) {
