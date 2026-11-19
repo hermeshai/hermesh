@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, navTo, sys, thisComputer } from "./app";
+import { allowFixtureAISharing, fixture, launch, snap, navTo, sys, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -141,6 +141,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
 
   // A chat: the message, then Her's reply in a bubble of its own.
   await send(mockSend("你好，主人"));
+  await allowFixtureAISharing(page);
   await expect(log).toContainText("你好，主人", { timeout: 60_000 });
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
@@ -486,6 +487,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(composer).toHaveValue("");
   await snap(page, "her-onboarding-done");
   await send(mockSend("来自 work-mac"));
+  await allowFixtureAISharing(page);
   await expect(log).toContainText("来自 work-mac", { timeout: 60_000 });
 
   // Back to this Mac, its own conversation, with no onboarding of its own; then to work-mac again, which

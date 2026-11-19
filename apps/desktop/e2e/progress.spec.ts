@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { fixture, launch, navTo, snap } from "./app";
+import { allowFixtureAISharing, fixture, launch, navTo, snap } from "./app";
 
 // Progress (docs/her-team.md §15), as the owner uses it, against her itself with her-mock as its model. Run by
 // TestDesktopHerProgress, which needs her built. One story: Her is turned on here; nothing is sent out yet; she
@@ -46,6 +46,7 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   // She hands a piece of work to a sub-agent (her-mock's relay_slow: "写长文", which runs a command).
   await navTo(page, /^Her/);
   await send("[[mock:relay_slow:3]] 写一篇长文");
+  await allowFixtureAISharing(page);
   await expect(log).toContainText("好，这个要一会儿，写好发你。", { timeout: 60_000 });
 
   // She has answered, and her sub-agent waits for the owner: no dots, the question is Progress's.

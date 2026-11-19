@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Update Her’s computer to review third-party AI sharing." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新运行 Her 的电脑，以查看第三方 AI 共享授权。"
+          }
+        }
+      }
+    },
     "Review Third-Party AI Sharing" : {
       "localizations" : {
         "zh-Hans" : {

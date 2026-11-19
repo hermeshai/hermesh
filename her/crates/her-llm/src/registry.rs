@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::task::Poll;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -636,8 +637,16 @@ impl ModelRegistry {
                                 yield StreamEvent::Failed(base.fail(LlmError::new(ErrorKind::Auth, "connection cancelled")));
                                 return;
                             }
-                            event = inner.next() => event,
+                            event = std::future::poll_fn(|cx| match &consent {
+                                Some(consent) => consent.dispatch(&consent_lease, || inner.as_mut().poll_next(cx))
+                                    .unwrap_or(Poll::Ready(None)),
+                                None => inner.as_mut().poll_next(cx),
+                            }) => event,
                         };
+                        if consent_lease.is_cancelled() {
+                            yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                            return;
+                        }
                         let Some(event) = event else {
                             yield StreamEvent::Failed(base.fail(LlmError::new(
                                 ErrorKind::Protocol,

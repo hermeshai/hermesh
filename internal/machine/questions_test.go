@@ -10,6 +10,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/provider/fake"
 )
 
 const waiting = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
@@ -177,6 +178,7 @@ func TestInterruptWithdrawsQuestion(t *testing.T) {
 // every task does none of it; renaming and deleting stay the owner's.
 func TestHerActsOnEverySession(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
+	h.s.providers["fake"] = fake.Provider{}
 	ctx := context.Background()
 	all := func(id string, her string) *Principal {
 		return &Principal{Kind: PrincipalClient, ClientID: id, Grant: &identityv1.Grant{GrantId: "g_" + id, MachineIds: []string{"*"}, ProjectIds: []string{"*"},

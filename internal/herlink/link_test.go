@@ -1,6 +1,7 @@
 package herlink
 
 import (
+	"context"
 	"encoding/json"
 	"slices"
 	"strings"
@@ -17,6 +18,19 @@ import (
 
 func testLink(t *testing.T) *Link {
 	return New(machine.HerLinkConfig{DataDir: t.TempDir()}).(*Link)
+}
+
+func TestHerBlocksCodingWritesBeforeConnecting(t *testing.T) {
+	link := New(machine.HerLinkConfig{DataDir: t.TempDir(), Credentials: func() *machine.HerCredentials {
+		t.Fatal("attempted to connect to the unverified coding recipient")
+		return nil
+	}})
+	for _, name := range []string{"session_start", "session_send", "session_answer"} {
+		out, _, failed := link.Call(context.Background(), "fictional-bot", "fictional-call", name, json.RawMessage(`{"prompt":"fictional content"}`))
+		if !failed || errorKind([]byte(out)) != "ai_recipient_unverified" {
+			t.Fatalf("%s: %s", name, out)
+		}
+	}
 }
 
 // Her's tools are CLI commands under her own names, without the parameters

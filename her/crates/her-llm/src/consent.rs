@@ -97,6 +97,12 @@ impl Consent {
         }
     }
 
+    /// A revoke that has returned cannot race a later transport poll.
+    pub fn dispatch<T>(&self, lease: &CancellationToken, poll: impl FnOnce() -> T) -> Option<T> {
+        let _state = self.0.read();
+        (!lease.is_cancelled()).then(poll)
+    }
+
     pub fn lease(&self, recipient: Option<&Recipient>) -> Result<CancellationToken, LlmError> {
         let state = self.0.read();
         match &state.grant {

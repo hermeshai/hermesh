@@ -776,9 +776,18 @@ func (s *Sessions) startAsked(l *live) {
 		l.mu.Unlock()
 		return
 	}
-	m := l.asked[0]
-	var keep []message
-	for _, o := range l.asked[1:] {
+	first := 0
+	if !isLocalAgent(s.providers[l.row.Agent]) {
+		clients := s.st.knownClients()
+		first = slices.IndexFunc(l.asked, func(m message) bool { return !clients[m.by].isHer() })
+		if first < 0 {
+			l.mu.Unlock()
+			return
+		}
+	}
+	m := l.asked[first]
+	keep := append([]message(nil), l.asked[:first]...)
+	for _, o := range l.asked[first+1:] {
 		if o.by == m.by && o.conv == m.conv {
 			m = m.join(o)
 		} else {

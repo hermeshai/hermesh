@@ -493,6 +493,11 @@ final class HerChat {
     private func checkAISharing(then send: @escaping () -> Void) async -> Bool {
         if model?.isDemo == true { return true }
         guard !checkingConsent, aiConsentPrompt == nil else { return false }
+        if let machine = model?.machines.first(where: { $0.machineID == machineID }),
+           herAnswers(machine.her, "ai_consent/status") == false {
+            model?.show(String(localized: "Update Her’s computer to review third-party AI sharing."))
+            return false
+        }
         guard let reference = live?.model, convUp else {
             model?.show(String(localized: "Connect to Her’s computer to check who will receive your data."))
             return false

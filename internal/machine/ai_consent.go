@@ -1,6 +1,8 @@
 package machine
 
 import (
+	"strings"
+
 	"connectrpc.com/connect"
 
 	"github.com/hermeshai/hermesh/internal/provider"
@@ -30,4 +32,10 @@ func (s *Sessions) checkHerCodingRecipient(p *Principal, agent string) error {
 		return cerr(connect.CodeFailedPrecondition, AIRecipientUnverified)
 	}
 	return nil
+}
+
+// Queued messages written before the gate can still be in the on-disk inbox.
+// Old client records stored the canonical Her label from the signed grant.
+func (c knownClient) isHer() bool {
+	return c.Her || c.Label == "Her" || strings.HasPrefix(c.Label, "Her on ")
 }

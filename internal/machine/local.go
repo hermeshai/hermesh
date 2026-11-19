@@ -156,14 +156,17 @@ const kClients = "clients"
 type knownClient struct {
 	Label   string `json:"label"`
 	GrantID string `json:"grant_id"`
+	Her     bool   `json:"her,omitempty"`
 	// Seen: when it last reached this machine (Unix seconds), kept to the
 	// minute or so.
 	Seen int64 `json:"seen,omitempty"`
 }
 
-func (n *Machine) knownClients() map[string]knownClient {
+func (n *Machine) knownClients() map[string]knownClient { return n.st.knownClients() }
+
+func (s *Store) knownClients() map[string]knownClient {
 	m := map[string]knownClient{}
-	if b, _ := n.st.Get(kClients); len(b) > 0 {
+	if b, _ := s.Get(kClients); len(b) > 0 {
 		json.Unmarshal(b, &m)
 	}
 	return m
@@ -179,8 +182,8 @@ func (n *Machine) rememberClient(clientID string, g *identityv1.Grant) {
 	defer n.clientsMu.Unlock()
 	m := n.knownClients()
 	now := time.Now().Unix()
-	c := knownClient{Label: g.ClientLabel, GrantID: g.GrantId, Seen: now}
-	if old := m[clientID]; old.Label == c.Label && old.GrantID == c.GrantID && now-old.Seen < 60 {
+	c := knownClient{Label: g.ClientLabel, GrantID: g.GrantId, Her: g.HerMachineId != "", Seen: now}
+	if old := m[clientID]; old.Label == c.Label && old.GrantID == c.GrantID && old.Her == c.Her && now-old.Seen < 60 {
 		return
 	}
 	m[clientID] = c
