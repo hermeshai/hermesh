@@ -135,6 +135,7 @@ html.blurred .her-id-n{color:var(--l2)}
    the bubble, taking no room under it. */
 .tr.bots{--bub:var(--bot-user)}
 .tr.bots .um{margin-bottom:var(--sp-1)}
+.tr.bots .um .bub{cursor:text}
 .tr.bots .vrow.join-next>.um{margin-bottom:0}
 .tr.bots .vrow.join-prev>.um{margin-top:-7px}
 .tr.bots .um .msg-act{top:auto;bottom:0;right:100%;padding:0 6px 0 0}
@@ -151,7 +152,8 @@ html.blurred .her-id-n{color:var(--l2)}
 .bm-b{position:relative;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
 .bline{anchor-scope:--bline;display:flex;align-items:flex-end;gap:6px;max-width:100%}
 .bline>:first-child{anchor-name:--bline}
-.bbub{min-width:0;max-width:min(640px,100%);padding:9px 15px;border-radius:var(--r-xl);background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--msg);font-size:var(--chat-size);line-height:1.625;overflow-wrap:anywhere}
+.bbub{min-width:0;max-width:min(640px,100%);padding:9px 15px;border-radius:var(--r-xl);background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--msg);font-size:var(--chat-size);line-height:1.625;overflow-wrap:anywhere;cursor:text}
+:where(.bbub,.tr.bots .um .bub) :is(button,summary){cursor:default}
 .bbub .md>*+*{margin-top:8px}
 .bbub .md pre{background:var(--win)}
 .bbub .md :is(pre,table,.md-table){max-width:100%;overflow-x:auto}
@@ -227,7 +229,7 @@ span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
    light at the shimmer's pace. A mask, so only they fade where it passes, whatever is under the bubble. Several
    sub-agents take turns in one cell as wide as the widest name; their number and a chevron pointing where their
    menu opens (up, turned over while it is open) end the line. One opens its record (›). */
-.wbub{display:flex;flex-direction:column;padding:0}
+.wbub{display:flex;flex-direction:column;padding:0;cursor:default}
 .wb-h{display:flex;align-items:center;gap:7px;width:100%;min-height:39px;padding:0 15px;border:0;border-radius:var(--r-xl);background:none;font:inherit;color:inherit;text-align:left;min-width:0}
 button.wb-h{cursor:pointer}
 button.wb-h:hover{background:var(--fill)}
