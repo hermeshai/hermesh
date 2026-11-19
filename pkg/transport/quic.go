@@ -50,8 +50,8 @@ func (n h3SchemeNormalizer) RoundTrip(req *http.Request) (*http.Response, error)
 func quicConfig() *quic.Config {
 	return &quic.Config{
 		HandshakeIdleTimeout: 5 * time.Second,
-		MaxIdleTimeout:       45 * time.Second,
-		KeepAlivePeriod:      15 * time.Second,
+		MaxIdleTimeout:       15 * time.Second,
+		KeepAlivePeriod:      5 * time.Second,
 		MaxIncomingStreams:   4096,
 	}
 }
