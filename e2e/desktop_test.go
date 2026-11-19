@@ -16,6 +16,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -51,10 +52,9 @@ type desktopFixture struct {
 	// its sign-in page (empty when none).
 	ChatGPT string `json:"chatgpt,omitempty"`
 	// The file of the methods this Mac's her acts as if it lacked
-	// (HER_TEST_WITHOUT), and the her program it runs, for the spec to
-	// restart her as an update does (empty when none).
+	// (HER_TEST_WITHOUT), and the socket of this fixture's Her instance.
 	HerWithout string `json:"herWithout,omitempty"`
-	HerBin     string `json:"herBin,omitempty"`
+	HerSocket  string `json:"herSocket,omitempty"`
 	// old-box, a machine from before Her (TestDesktopHerBeforeHer): the file
 	// that says so while it holds 1, and the start of its hermeshd's command
 	// line, for the spec to stop it so that it starts again as it is now.
@@ -326,8 +326,14 @@ func TestDesktopHerOlder(t *testing.T) {
 	env := append(herEnv(her, herConsole(t), herHome(t, mock.models), mock.base), "HER_TEST_WITHOUT="+without)
 	w := newOwnerMac(t, env, &localv1.GrantSpec{})
 	t.Cleanup(w.owner.stop) // stopped as a service is, so that it stops her
+	ownerDir := filepath.Join(w.tmp, "owner-mac", "owner")
+	current, err := os.ReadFile(filepath.Join(ownerDir, "current"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := paths.Her(filepath.Join(ownerDir, "profiles", string(current), "machine"))
 	herSpec(t, desktopFixture{Socket: w.sock, Sessions: map[string]string{}, CLI: filepath.Join(w.bin, "hermesh"), CLIEnv: w.cliEnv,
-		HerWithout: without, HerBin: her, owner: w}, "her-older.spec.ts")
+		HerWithout: without, HerSocket: sock, owner: w}, "her-older.spec.ts")
 }
 
 // TestDesktopHerBeforeHer runs apps/desktop/e2e/her-before.spec.ts: old-box,
