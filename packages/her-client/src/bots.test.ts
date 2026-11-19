@@ -219,7 +219,7 @@ test("herStatus reports typing, compacting and retrying for Her's name tag, neve
   assert.equal(herStatus(idle, 100_000), null);
   const live = play([{ type: "task_started", task_id: "t1" }]);
   assert.equal(herStatus(live, 100_000), "typing");
-  const compacting = applyEvents(live, [{ seq: 10, ts: 10_000, type: "compaction_started", reason: "auto" } as Event]);
+  const compacting = applyEvents(live, [{ seq: 10, ts: 10_000, type: "compaction_started", reason: "threshold" }]);
   assert.equal(herStatus(compacting, 15_000), "compacting");
   const retrying = applyEvents(compacting, [{ seq: 11, ts: 20_000, type: "stream_retry", attempt: 1, delay_ms: 5000, error: { kind: "rate_limited", message: "429", retryable: true } } as Event]);
   assert.equal(herStatus(retrying, 25_000), "compacting", "retry under 10s does not outrank compacting");
