@@ -159,3 +159,53 @@ private func admin(_ build: (inout Hermesh_Identity_V1_AdminCommand) -> Void) ->
     }, hints)
     #expect(removed.title == "Remove Her’s connector “files” from machine “box”")
 }
+
+private final class StubFFITransport: LocalFFITransport, @unchecked Sendable {
+    private let lock = NSLock()
+    var frames: [Data] = []
+    var closedIDs: [Int64] = []
+
+    func unary(method: String, requestData: Data, timeoutSeconds: Int) throws -> Data {
+        #expect(method == "GetStatus")
+        var res = Hermesh_Local_V1_GetStatusResponse()
+        res.initialized = true
+        res.relayConnected = true
+        res.relayHealth.rttMs = 42
+        return try res.serializedData()
+    }
+
+    func openStream(method: String, requestData: Data) -> Int64 { 7 }
+
+    func nextFrame(streamID: Int64) throws -> Data? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !frames.isEmpty else { return nil }
+        return frames.removeFirst()
+    }
+
+    func closeStream(streamID: Int64) {
+        lock.lock()
+        closedIDs.append(streamID)
+        lock.unlock()
+    }
+}
+
+@Test func localFFITransportUnaryAndStream() async throws {
+    let stub = StubFFITransport()
+    var w1 = Hermesh_Local_V1_WatchResponse()
+    w1.reset = true
+    var w2 = Hermesh_Local_V1_WatchResponse()
+    w2.status.relayConnected = true
+    stub.frames = [try w1.serializedData(), try w2.serializedData()]
+
+    let api = LocalAPI(endpoint: .loopback(port: 0, token: ""), ffi: stub)
+    let st: Hermesh_Local_V1_GetStatusResponse = try await api.call("GetStatus", Hermesh_Local_V1_GetStatusRequest())
+    #expect(st.initialized && st.relayConnected && st.relayHealth.rttMs == 42)
+
+    var received: [Hermesh_Local_V1_WatchResponse] = []
+    for try await msg in api.stream("Watch", Hermesh_Local_V1_WatchRequest(), as: Hermesh_Local_V1_WatchResponse.self) {
+        received.append(msg)
+    }
+    #expect(received.count == 2 && received[0].reset && received[1].status.relayConnected)
+    #expect(stub.closedIDs == [7])
+}

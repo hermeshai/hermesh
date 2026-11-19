@@ -103,7 +103,7 @@ func (o *Owner) screenMachine(ctx context.Context, machineID string) (c *peer.Cl
 		return relayClient, nil, elapsed, err
 	}
 	if dn != nil {
-		o.storeDirectMachine(machineID, dn)
+		dn = o.storeDirectMachine(machineID, dn)
 		return nil, dn, elapsed, nil
 	}
 	return relayClient, sn, elapsed, nil
@@ -141,7 +141,7 @@ func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1conn
 		}
 		_, isConnect := any(req).(*screenv1.ConnectRequest)
 		if isConnect {
-			o.log.Info("screen: signal request", "method", method, "direct", c == nil, "tunnel_after", tunnelAfter)
+			o.log.Info("screen: signal request", "method", method, "direct", n.Path() != "relay", "path", n.Path(), "tunnel_after", tunnelAfter)
 		}
 		callCtx := ctx
 		var callCancel context.CancelFunc
@@ -169,7 +169,7 @@ func screenCall[Req, Res any](o *Owner, machineID string, call func(screenv1conn
 		res, err := call(n.Screen, callCtx, req)
 		rpcAfter := time.Since(started).Round(time.Millisecond)
 		o.log.Info("screen: signal response", "method", method, "err", err, "after", rpcAfter,
-			"direct", c == nil, "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
+			"direct", n.Path() != "relay", "path", n.Path(), "tunnel_after", tunnelAfter, "rpc_after", rpcAfter)
 		if err != nil && (callCtx.Err() == nil && tunnelError(err) || errors.Is(callCtx.Err(), context.DeadlineExceeded)) {
 			if c != nil {
 				c.ForgetMachine(n)

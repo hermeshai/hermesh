@@ -152,6 +152,27 @@ func (h *Host) AssistantMode(ctx context.Context, botID, mode string) error {
 	return answered("session/op", res, err)
 }
 
+// OpenBotSnapshot opens botID on a short-lived connection and returns the raw
+// bots/open JSON result (excluding streaming deltas), then closes immediately
+// so her's idle unloading is unaffected.
+func (h *Host) OpenBotSnapshot(ctx context.Context, botID string) ([]byte, error) {
+	c, err := h.dial(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	params, _ := json.Marshal(map[string]any{
+		"bot_id":        botID,
+		"history_limit": 100,
+		"events":        map[string]any{"exclude": []string{"text_delta", "thinking_delta", "tool_call_delta", "tool_progress"}},
+	})
+	res, err := c.call(ctx, "bots/open", params)
+	if err := answered("bots/open", res, err); err != nil {
+		return nil, err
+	}
+	return res.Result, nil
+}
+
 // connectorName is a name her takes for an MCP server.
 var connectorName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 

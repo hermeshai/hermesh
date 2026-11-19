@@ -5,8 +5,11 @@ import HermeshProto
 import HermeshSessions
 import Network
 import Observation
+import os
 import SwiftUI
 import UserNotifications
+
+private let appConnLog = Logger(subsystem: "ai.hermesh.app", category: "connectivity")
 
 /// Where the side menu leads.
 enum Root: Hashable {
@@ -153,6 +156,8 @@ final class AppModel {
     var watched = false
     /// Since when the relay has not been reached, while it is not.
     var relayDownSince: Date?
+    /// Current iPhone network interface summary ("wifi", "cell", "wired", "offline", or "").
+    var networkKind = ""
     /// The last conversations opened.
     @ObservationIgnored let conversations: Conversations
     /// The Her entry: the environment shown, and each one's chat.
@@ -275,6 +280,8 @@ final class AppModel {
     @ObservationIgnored private var network: NWPathMonitor?
     @ObservationIgnored private var networkSeen: String?
     @ObservationIgnored private var networkPending = false
+    @ObservationIgnored private var foregroundAt: Date?
+    @ObservationIgnored private var loggedFirstReset = false
 
     // MARK: Lifecycle
 
@@ -321,7 +328,9 @@ final class AppModel {
     /// The app came to the front: keep everything current.
     func foreground() {
         active = true
-        if isDemo { begin(); return }
+        foregroundAt = Date()
+        loggedFirstReset = false
+        if isDemo { begin(); her.resume(); return }
         // Back from the background, a new Watch begins: what shows is not
         // current until its first message. Only inactive meanwhile (the
         // Notification Center pulled part way, say), the Watch went on.
@@ -329,10 +338,14 @@ final class AppModel {
             watched = false
             relayDownSince = nil
         }
+        let fgAt = foregroundAt ?? Date()
         Core.resume { [self] in // the core listens again
+            let resumeMs = Int(Date().timeIntervalSince(fgAt) * 1000)
+            appConnLog.info("app.foreground core_ready_ms=\(resumeMs)")
             guard active, phase == .ready else { return }
             flushNetworkChange()
             begin()
+            her.resume()
             Task { await askForNotifications() }
         }
     }
@@ -347,9 +360,16 @@ final class AppModel {
         watchTask = nil
         clockTask = nil
         workTask = nil
+        her.pause()
         if isDemo { return }
         if phase == .ready { saveWorld(now: true) }
         Core.pause()
+    }
+
+    /// Forces an immediate network and Her reconnect (used by the diagnostics sheet).
+    func reconnectNow() {
+        if !isDemo { Core.networkChanged() }
+        her.reconnectNow()
     }
 
     /// Wi-Fi to cellular and back: the connections made on the old network
@@ -387,6 +407,12 @@ final class AppModel {
     }
 
     private func networkChanged(to seen: String?) {
+        networkKind = seen ?? "offline"
+        if !isDemo {
+            let parts = seen?.split(separator: "+") ?? []
+            let cellularOnly = parts.contains("cell") && !parts.contains("wifi") && !parts.contains("wired")
+            Core.setCellularOnly(cellularOnly)
+        }
         guard let seen else {
             if networkSeen != nil { networkPending = true }
             return
@@ -402,7 +428,12 @@ final class AppModel {
             return
         }
         networkPending = false
-        if changed { Core.networkChanged() } else { Core.pathChanged() }
+        if changed {
+            Core.networkChanged()
+            her.wakeRetries()
+        } else {
+            Core.pathChanged()
+        }
     }
 
     private func flushNetworkChange() {
@@ -643,6 +674,11 @@ final class AppModel {
             noOlder = !r.hasNext && cursor == nil
             watched = true
             hasWorld = true
+            if !loggedFirstReset, let fg = foregroundAt {
+                loggedFirstReset = true
+                let ms = Int(Date().timeIntervalSince(fg) * 1000)
+                appConnLog.info("app.watch.first_reset after_fg_ms=\(ms) relay_connected=\(r.status.relayConnected) machines=\(r.machines.count)")
+            }
         }
         let wasRelay = status.relayConnected
         if r.hasStatus {
@@ -652,7 +688,11 @@ final class AppModel {
                 her.wakeRetries()
             }
         }
+        let prevReachable = Set(known.filter { $0.online && $0.unreachable.isEmpty }.map(\.machineID))
         machines = upsert(machines, holdingState(r.machines, known: known), removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
+        for m in machines where m.online && m.unreachable.isEmpty && !prevReachable.contains(m.machineID) {
+            her.wakeRetries(for: m.machineID)
+        }
         clients = upsert(clients, r.clients, removed: r.removedGrantIds, key: \.grantID).sorted { $0.label < $1.label }
         devices = upsert(devices, r.devices, removed: r.removedDeviceKeyIds, key: \.keyID)
         projects = upsert(projects, r.projects, removed: r.removedProjects.map { "\($0.machineID)/\($0.projectID)" }, key: { "\($0.machineID)/\($0.projectID)" })

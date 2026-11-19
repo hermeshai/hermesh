@@ -19,12 +19,12 @@ use her_protocol::PromptMode;
 use her_protocol::api::EventClass;
 use her_protocol::api::EventFilter;
 use her_protocol::api::SessionListParams;
-use her_protocol::api::SessionSnapshot;
 use her_protocol::api::SkillsListParams;
 use her_rpc::Id;
 use her_rpc::Kind;
 use her_rpc::RawMessage;
 use her_rpc::RpcError;
+use her_server::AttachReply;
 use her_server::AttachRequest;
 use her_server::ConnHandle;
 use her_server::Encoder;
@@ -214,7 +214,11 @@ impl AcpProtocol {
             conn: conn.clone(),
             filter: acp_filter(),
             history_limit: if replay { None } else { Some(0) },
-            respond: Box::new(move |snapshot: &SessionSnapshot| {
+            resume: None,
+            respond: Box::new(move |reply: AttachReply<'_>| {
+                let AttachReply::Snapshot { snapshot, .. } = reply else {
+                    return Vec::new();
+                };
                 let session = snapshot.session.session_id.as_str();
                 let mut items = vec![Outgoing::Control(Box::new(Control::Opened {
                     session: session.into(),

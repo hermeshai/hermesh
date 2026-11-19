@@ -377,3 +377,45 @@ message Contact {
   Signed machine_cert = 3;
   Signed registration = 4;
 }
+
+// SyncRegistration registers a trusted device's X25519 key for decrypting
+// zero-knowledge delta mailbox entries sealed by the owner's machines.
+// Signed by the device key (certified by a root key), so no root-key prompt
+// is needed and revoked devices are automatically excluded.
+message SyncRegistration {
+  string owner_id = 1;
+  // SPKI DER of the trusted device's signing key.
+  bytes device_public_key = 2;
+  // X25519 public key, 32 bytes.
+  bytes sync_public_key = 3;
+  google.protobuf.Timestamp issued_at = 4;
+}
+
+// WrappedKey is a 32-byte AES-256-GCM data encryption key HPKE-sealed to one
+// trusted device's X25519 sync key.
+message WrappedKey {
+  // Fingerprint (KeyID) of the trusted device's signing public key.
+  string device_key_id = 1;
+  // HPKE encapsulated key followed by ciphertext.
+  bytes hpke_key = 2;
+}
+
+// DeltaEnvelope is a machine-signed, end-to-end encrypted state delta stored
+// opaquely in the relay's delta mailbox so trusted devices can catch up in
+// 1 RTT even while the machine is asleep or offline.
+message DeltaEnvelope {
+  string owner_id = 1;
+  string machine_id = 2;
+  // Logical stream identifier, e.g. "her:<machine_id>".
+  string stream_id = 3;
+  // Machine-local monotonic sequence number within stream_id.
+  uint64 machine_seq = 4;
+  // 12-byte AES-256-GCM nonce.
+  bytes nonce = 5;
+  // AES-256-GCM ciphertext of the gzipped delta payload; AAD binds
+  // owner_id, machine_id, stream_id, and machine_seq.
+  bytes ciphertext = 6;
+  // Per-device wrapped DEKs so every trusted device decrypts independently.
+  repeated WrappedKey keys = 7;
+  google.protobuf.Timestamp created_at = 8;
+}

@@ -91,6 +91,25 @@ CREATE TABLE erase_acks (
   acked_at INTEGER NOT NULL,
   PRIMARY KEY (erase_id, key_id)
 );
+`, `
+CREATE TABLE sync_targets (
+  device_key_id TEXT PRIMARY KEY,
+  target BLOB NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE deltas (
+  stream_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  envelope BLOB NOT NULL,
+  stored_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  PRIMARY KEY (stream_id, seq)
+);
+CREATE INDEX deltas_expires ON deltas(expires_at);
+CREATE TABLE delta_seqs (
+  stream_id TEXT PRIMARY KEY,
+  next_seq INTEGER NOT NULL
+);
 `}
 
 // Store is the Backend of a self-hosted relay: one owner, SQLite. It keeps
@@ -103,6 +122,7 @@ var (
 	_ Backend      = (*Store)(nil)
 	_ PushStore    = (*Store)(nil)
 	_ MessageStore = (*Store)(nil)
+	_ DeltaStore   = (*Store)(nil)
 )
 
 func OpenStore(path string) (*Store, error) {
@@ -582,6 +602,7 @@ ON CONFLICT(owner_id) DO UPDATE SET erase_id=excluded.erase_id, erase_order=excl
 		`DELETE FROM meta WHERE key IN ('owner_id', 'root_chain', 'device_cert', 'revocations', 'claim_code')`,
 		`DELETE FROM machine_certs`, `DELETE FROM grants`, `DELETE FROM pairing`, `DELETE FROM push_targets`,
 		`DELETE FROM messages`, `DELETE FROM inbox_registrations`, `DELETE FROM contact_cards`, `DELETE FROM connection_log`,
+		`DELETE FROM sync_targets`, `DELETE FROM deltas`, `DELETE FROM delta_seqs`,
 	} {
 		if _, err := tx.Exec(q); err != nil {
 			return err
@@ -641,5 +662,122 @@ func (s *Store) AckErase(eraseID, keyID string, at time.Time) error {
 	_, err := s.db.Exec(`INSERT INTO erase_acks(erase_id, key_id, acked_at) SELECT ?, ?, ?
 WHERE EXISTS (SELECT 1 FROM erase_orders WHERE erase_id=?) AND (SELECT COUNT(*) FROM erase_acks WHERE erase_id=?) < ?
 ON CONFLICT(erase_id, key_id) DO NOTHING`, eraseID, keyID, at.Unix(), eraseID, eraseID, maxEraseAcks)
+	return err
+}
+
+// DeltaStore (deltas.go): sync keys and encrypted deltas persisted in SQLite.
+
+func (s *Store) SyncTargets(string) (map[string]*relayv1.SyncTarget, error) {
+	rows, err := s.db.Query(`SELECT device_key_id, target FROM sync_targets`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]*relayv1.SyncTarget{}
+	for rows.Next() {
+		var id string
+		var b []byte
+		if err := rows.Scan(&id, &b); err != nil {
+			return nil, err
+		}
+		t := &relayv1.SyncTarget{}
+		if err := proto.Unmarshal(b, t); err != nil {
+			return nil, err
+		}
+		out[id] = t
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PutSyncTarget(_, deviceKeyID string, t *relayv1.SyncTarget) error {
+	b, err := proto.Marshal(t)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT INTO sync_targets (device_key_id, target, updated_at) VALUES (?, ?, ?)
+ON CONFLICT(device_key_id) DO UPDATE SET target = excluded.target, updated_at = excluded.updated_at`, deviceKeyID, b, time.Now().Unix())
+	return err
+}
+
+func (s *Store) DeleteSyncTarget(_, deviceKeyID string) error {
+	_, err := s.db.Exec(`DELETE FROM sync_targets WHERE device_key_id = ?`, deviceKeyID)
+	return err
+}
+
+func (s *Store) AppendDelta(_, streamID string, envelope []byte, storedAt, expiresAt time.Time) (uint64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var seq uint64
+	err = tx.QueryRow(`INSERT INTO delta_seqs(stream_id, next_seq) VALUES(?, 1)
+ON CONFLICT(stream_id) DO UPDATE SET next_seq = next_seq + 1
+RETURNING next_seq`, streamID).Scan(&seq)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`INSERT INTO deltas(stream_id, seq, envelope, stored_at, expires_at) VALUES(?,?,?,?,?)`,
+		streamID, seq, envelope, storedAt.UnixNano(), expiresAt.UnixNano()); err != nil {
+		return 0, err
+	}
+	if seq > deltaMaxPerStream {
+		_, _ = tx.Exec(`DELETE FROM deltas WHERE stream_id = ? AND seq <= ?`, streamID, seq-deltaMaxPerStream)
+	}
+	return seq, tx.Commit()
+}
+
+func (s *Store) PullDeltas(_ string, cursors map[string]uint64, knownOnly bool, limit int, now time.Time) ([]DeltaEntry, bool, error) {
+	rows, err := s.db.Query(`SELECT stream_id, seq, envelope, stored_at, expires_at FROM deltas WHERE expires_at > ? ORDER BY stream_id, seq`, now.UnixNano())
+	if err != nil {
+		return nil, false, err
+	}
+	defer rows.Close()
+	var out []DeltaEntry
+	hasMore := false
+	for rows.Next() {
+		var e DeltaEntry
+		var stored, expires int64
+		if err := rows.Scan(&e.StreamID, &e.Seq, &e.Envelope, &stored, &expires); err != nil {
+			return nil, false, err
+		}
+		if knownOnly {
+			if _, ok := cursors[e.StreamID]; !ok {
+				continue
+			}
+		}
+		if e.Seq <= cursors[e.StreamID] {
+			continue
+		}
+		if len(out) >= limit {
+			hasMore = true
+			break
+		}
+		e.StoredAt, e.ExpiresAt = time.Unix(0, stored), time.Unix(0, expires)
+		out = append(out, e)
+	}
+	return out, hasMore, rows.Err()
+}
+
+func (s *Store) DeltaHeads(_ string, now time.Time) (map[string]uint64, error) {
+	rows, err := s.db.Query(`SELECT stream_id, MAX(seq) FROM deltas WHERE expires_at > ? GROUP BY stream_id`, now.UnixNano())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]uint64{}
+	for rows.Next() {
+		var id string
+		var seq uint64
+		if err := rows.Scan(&id, &seq); err != nil {
+			return nil, err
+		}
+		out[id] = seq
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) PurgeDeltas(now time.Time) error {
+	_, err := s.db.Exec(`DELETE FROM deltas WHERE expires_at <= ?`, now.UnixNano())
 	return err
 }

@@ -1125,6 +1125,101 @@ public nonisolated struct Hermesh_Identity_V1_Contact: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
+/// SyncRegistration registers a trusted device's X25519 key for decrypting
+/// zero-knowledge delta mailbox entries sealed by the owner's machines.
+/// Signed by the device key (certified by a root key), so no root-key prompt
+/// is needed and revoked devices are automatically excluded.
+public nonisolated struct Hermesh_Identity_V1_SyncRegistration: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var ownerID: String = String()
+
+  /// SPKI DER of the trusted device's signing key.
+  public var devicePublicKey: Data = Data()
+
+  /// X25519 public key, 32 bytes.
+  public var syncPublicKey: Data = Data()
+
+  public var issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_issuedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_issuedAt = newValue}
+  }
+  /// Returns true if `issuedAt` has been explicitly set.
+  public var hasIssuedAt: Bool {self._issuedAt != nil}
+  /// Clears the value of `issuedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearIssuedAt() {self._issuedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _issuedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// WrappedKey is a 32-byte AES-256-GCM data encryption key HPKE-sealed to one
+/// trusted device's X25519 sync key.
+public nonisolated struct Hermesh_Identity_V1_WrappedKey: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Fingerprint (KeyID) of the trusted device's signing public key.
+  public var deviceKeyID: String = String()
+
+  /// HPKE encapsulated key followed by ciphertext.
+  public var hpkeKey: Data = Data()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// DeltaEnvelope is a machine-signed, end-to-end encrypted state delta stored
+/// opaquely in the relay's delta mailbox so trusted devices can catch up in
+/// 1 RTT even while the machine is asleep or offline.
+public nonisolated struct Hermesh_Identity_V1_DeltaEnvelope: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var ownerID: String = String()
+
+  public var machineID: String = String()
+
+  /// Logical stream identifier, e.g. "her:<machine_id>".
+  public var streamID: String = String()
+
+  /// Machine-local monotonic sequence number within stream_id.
+  public var machineSeq: UInt64 = 0
+
+  /// 12-byte AES-256-GCM nonce.
+  public var nonce: Data = Data()
+
+  /// AES-256-GCM ciphertext of the gzipped delta payload; AAD binds
+  /// owner_id, machine_id, stream_id, and machine_seq.
+  public var ciphertext: Data = Data()
+
+  /// Per-device wrapped DEKs so every trusted device decrypts independently.
+  public var keys: [Hermesh_Identity_V1_WrappedKey] = []
+
+  public var createdAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_createdAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_createdAt = newValue}
+  }
+  /// Returns true if `createdAt` has been explicitly set.
+  public var hasCreatedAt: Bool {self._createdAt != nil}
+  /// Clears the value of `createdAt`. Subsequent reads from it will return its default value.
+  public mutating func clearCreatedAt() {self._createdAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hermesh.identity.v1"
@@ -2671,6 +2766,159 @@ nonisolated extension Hermesh_Identity_V1_Contact: SwiftProtobuf.Message, SwiftP
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SyncRegistration: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SyncRegistration"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}device_public_key\0\u{3}sync_public_key\0\u{3}issued_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.devicePublicKey) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.syncPublicKey) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._issuedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.ownerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
+    }
+    if !self.devicePublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.devicePublicKey, fieldNumber: 2)
+    }
+    if !self.syncPublicKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.syncPublicKey, fieldNumber: 3)
+    }
+    try { if let v = self._issuedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SyncRegistration, rhs: Hermesh_Identity_V1_SyncRegistration) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.devicePublicKey != rhs.devicePublicKey {return false}
+    if lhs.syncPublicKey != rhs.syncPublicKey {return false}
+    if lhs._issuedAt != rhs._issuedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_WrappedKey: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WrappedKey"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}device_key_id\0\u{3}hpke_key\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.deviceKeyID) }()
+      case 2: try { try decoder.decodeSingularBytesField(value: &self.hpkeKey) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.deviceKeyID.isEmpty {
+      try visitor.visitSingularStringField(value: self.deviceKeyID, fieldNumber: 1)
+    }
+    if !self.hpkeKey.isEmpty {
+      try visitor.visitSingularBytesField(value: self.hpkeKey, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_WrappedKey, rhs: Hermesh_Identity_V1_WrappedKey) -> Bool {
+    if lhs.deviceKeyID != rhs.deviceKeyID {return false}
+    if lhs.hpkeKey != rhs.hpkeKey {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_DeltaEnvelope: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeltaEnvelope"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}machine_id\0\u{3}stream_id\0\u{3}machine_seq\0\u{1}nonce\0\u{1}ciphertext\0\u{1}keys\0\u{3}created_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.ownerID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 4: try { try decoder.decodeSingularUInt64Field(value: &self.machineSeq) }()
+      case 5: try { try decoder.decodeSingularBytesField(value: &self.nonce) }()
+      case 6: try { try decoder.decodeSingularBytesField(value: &self.ciphertext) }()
+      case 7: try { try decoder.decodeRepeatedMessageField(value: &self.keys) }()
+      case 8: try { try decoder.decodeSingularMessageField(value: &self._createdAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.ownerID.isEmpty {
+      try visitor.visitSingularStringField(value: self.ownerID, fieldNumber: 1)
+    }
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 2)
+    }
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 3)
+    }
+    if self.machineSeq != 0 {
+      try visitor.visitSingularUInt64Field(value: self.machineSeq, fieldNumber: 4)
+    }
+    if !self.nonce.isEmpty {
+      try visitor.visitSingularBytesField(value: self.nonce, fieldNumber: 5)
+    }
+    if !self.ciphertext.isEmpty {
+      try visitor.visitSingularBytesField(value: self.ciphertext, fieldNumber: 6)
+    }
+    if !self.keys.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.keys, fieldNumber: 7)
+    }
+    try { if let v = self._createdAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_DeltaEnvelope, rhs: Hermesh_Identity_V1_DeltaEnvelope) -> Bool {
+    if lhs.ownerID != rhs.ownerID {return false}
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.machineSeq != rhs.machineSeq {return false}
+    if lhs.nonce != rhs.nonce {return false}
+    if lhs.ciphertext != rhs.ciphertext {return false}
+    if lhs.keys != rhs.keys {return false}
+    if lhs._createdAt != rhs._createdAt {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

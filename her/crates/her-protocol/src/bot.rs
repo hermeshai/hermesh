@@ -433,7 +433,9 @@ pub struct BotMemoryPage {
     pub modified_at: Option<String>,
 }
 
-/// Parameters of `bots/open`, which answers as `session/new` does.
+/// Parameters of `bots/open`, which answers as `session/new` does (or with an
+/// incremental event list when `session_id`, `resume_epoch`, and `after_seq`
+/// match the loaded session hub).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BotOpenParams {
     pub bot_id: String,
@@ -441,6 +443,16 @@ pub struct BotOpenParams {
     pub events: EventFilter,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub history_limit: Option<u32>,
+    /// Client's currently held session id for incremental resume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Server-issued epoch from the previous `bots/open` reply, preventing
+    /// sequence collisions across `her` restarts or session unloads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_epoch: Option<String>,
+    /// Client's last applied event sequence number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after_seq: Option<u64>,
 }
 
 /// Server notification to `bots/subscribe`rs: the bots that changed, and those deleted.
