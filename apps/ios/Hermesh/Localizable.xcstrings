@@ -12666,6 +12666,26 @@
         }
       }
     },
+    "Compacting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整理对话中…"
+          }
+        }
+      }
+    },
+    "Retrying…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重试…"
+          }
+        }
+      }
+    },
     "Hi, I’m %@. I work on %@. Tell me what you need, several things at once if you like.": {
       "localizations": {
         "zh-Hans": {
@@ -16176,6 +16196,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "打开连接诊断"
+          }
+        }
+      }
+    },
+    "Direct · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已直连 · %@"
+          }
+        }
+      }
+    },
+    "Relayed · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "经中继连接 · %@"
+          }
+        }
+      }
+    },
+    "Relay connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中继服务已连接"
+          }
+        }
+      }
+    },
+    "Check Wi-Fi or cellular settings": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请检查 Wi-Fi 或蜂窝网络"
+          }
+        }
+      }
+    },
+    "Healthy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正常"
+          }
+        }
+      }
+    },
+    "Assistant": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "助手"
           }
         }
       }

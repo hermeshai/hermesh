@@ -153,12 +153,13 @@ test("Progress: what Her sent out to her sub-agents as a feed, and a sub-agent's
   await menu.getByRole("menuitem", { name: "在「进展」中查看全部" }).click();
   await expect(list.getByRole("listitem", { name: "现在" }).getByRole("article", { name: "写长文" })).toHaveCount(2);
 
-  // While Her herself answers, she leads the line; on a call too, it says only that she is at it.
+  // While Her herself answers, her top capsule says "正在输入…" and the busy bubble stays clean (never mixing her status with sub-agents, nor naming her call).
   await navTo(page, /^Her/);
   await send("[[mock:bash:sleep 8]] 看看");
   await expect(asking).toContainText("sleep 8", { timeout: 60_000 });
   await asking.getByRole("button", { name: /^允许/ }).first().click();
-  await expect(busy.locator(".wb-w")).toContainText("正在输入…", { timeout: 30_000 });
+  await expect(page.locator(".her-cap")).toContainText("正在输入…", { timeout: 30_000 });
+  await expect(busy).not.toContainText("正在输入…");
   await expect(busy).not.toContainText("sleep 8");
   await snap(page, "busy-her");
 

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { botWorking, routineDot } from "@hermesh/her-client";
+import { botWorking, herStatus, routineDot, type SessionView } from "@hermesh/her-client";
 import { Icon } from "../icons";
 import { Avatar, BotAvatar } from "./Avatar";
 import { useHer } from "./context";
 import { reachable } from "./environments";
 import { menuKeys } from "./menus";
 import { TagWords, TeamPanel, useTeam } from "../team";
-import { useStore } from "../store";
+import { useNow, useStore } from "../store";
 
 /**
  * The Her page's top (docs/her-server.md §9.1), as on the iPhone: Her's avatar in the middle, larger than a bar's,
@@ -17,13 +17,16 @@ import { useStore } from "../store";
  * panel. On the right Progress, looked at often, marked while her work waits or runs; then ⋯: the environments, the
  * environment's console, and another environment.
  */
-export function TopBar() {
+export function TopBar({ view }: { view?: SessionView | null } = {}) {
   const { t } = useTranslation("her");
   const her = useHer();
   const st = useStore();
   const bot = her.bot;
   const panel = her.panel;
   const team = useTeam();
+  const now = useNow(view?.live?.retry ? 1000 : 60_000).getTime();
+  const status = view ? herStatus(view, now) : null;
+  const statusText = status ? t(`line.${status}`) : null;
   const [teamOpen, setTeamOpen] = useState(false);
   const capsule = useRef<HTMLButtonElement>(null);
   const closeTeam = useCallback(() => {
@@ -44,9 +47,9 @@ export function TopBar() {
         ) : (
           <Avatar spec={{ kind: "mark" }} name="" size={56} />
         )}
-        {/* The capsule is the team's name tag (docs/her-team.md §14.3): Her's name and what the team does; it opens the team panel. */}
+        {/* The capsule is the team's name tag (docs/her-team.md §14.3): Her's name (or live status while she answers) and what the team does; it opens the team panel. */}
         <button ref={capsule} className={`her-cap ${teamOpen ? "on" : ""}`} aria-expanded={teamOpen} aria-haspopup="dialog" aria-label={t("head.team")} onClick={() => setTeamOpen(!teamOpen)}>
-          <span className="her-id-n">{bot?.name ?? "Her"}</span>
+          {statusText ? <span className="her-id-n her-id-st"><span className="wb-sweep">{statusText}</span></span> : <span className="her-id-n">{bot?.name ?? "Her"}</span>}
           <TagWords team={team} />
         </button>
       </div>
