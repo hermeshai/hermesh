@@ -816,6 +816,14 @@ public nonisolated struct Hermesh_Relay_V1_MachineUpdate: Sendable {
     set {update = .grants(newValue)}
   }
 
+  public var syncTargets: Hermesh_Relay_V1_SyncTargets {
+    get {
+      if case .syncTargets(let v)? = update {return v}
+      return Hermesh_Relay_V1_SyncTargets()
+    }
+    set {update = .syncTargets(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Update: Equatable, Sendable {
@@ -824,6 +832,7 @@ public nonisolated struct Hermesh_Relay_V1_MachineUpdate: Sendable {
     case machineCert(Hermesh_Identity_V1_Signed)
     case pushTargets(Hermesh_Relay_V1_PushTargets)
     case grants(Hermesh_Relay_V1_MachineGrants)
+    case syncTargets(Hermesh_Relay_V1_SyncTargets)
 
   }
 
@@ -1513,6 +1522,9 @@ public nonisolated struct Hermesh_Relay_V1_OwnerUpdate: Sendable {
   /// Clears the value of `pairings`. Subsequent reads from it will return its default value.
   public mutating func clearPairings() {self._pairings = nil}
 
+  /// Streams with newly appended encrypted deltas in the delta mailbox.
+  public var deltaStreams: [String] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2107,6 +2119,203 @@ public nonisolated struct Hermesh_Relay_V1_MessageStatusResponse: Sendable {
   // methods supported on all messages.
 
   public var states: [Hermesh_Relay_V1_MessageState] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_SyncTarget: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var registration: Hermesh_Identity_V1_Signed {
+    get {_registration ?? Hermesh_Identity_V1_Signed()}
+    set {_registration = newValue}
+  }
+  /// Returns true if `registration` has been explicitly set.
+  public var hasRegistration: Bool {self._registration != nil}
+  /// Clears the value of `registration`. Subsequent reads from it will return its default value.
+  public mutating func clearRegistration() {self._registration = nil}
+
+  public var deviceCert: Hermesh_Identity_V1_Signed {
+    get {_deviceCert ?? Hermesh_Identity_V1_Signed()}
+    set {_deviceCert = newValue}
+  }
+  /// Returns true if `deviceCert` has been explicitly set.
+  public var hasDeviceCert: Bool {self._deviceCert != nil}
+  /// Clears the value of `deviceCert`. Subsequent reads from it will return its default value.
+  public mutating func clearDeviceCert() {self._deviceCert = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _registration: Hermesh_Identity_V1_Signed? = nil
+  fileprivate var _deviceCert: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_SyncTargets: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var targets: [Hermesh_Relay_V1_SyncTarget] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_RegisterSyncRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var registration: Hermesh_Identity_V1_Signed {
+    get {_registration ?? Hermesh_Identity_V1_Signed()}
+    set {_registration = newValue}
+  }
+  /// Returns true if `registration` has been explicitly set.
+  public var hasRegistration: Bool {self._registration != nil}
+  /// Clears the value of `registration`. Subsequent reads from it will return its default value.
+  public mutating func clearRegistration() {self._registration = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _registration: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_RegisterSyncResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_AppendDeltaRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var streamID: String = String()
+
+  /// Signed hermesh.identity.v1.DeltaEnvelope signed by the machine's key.
+  public var envelope: Hermesh_Identity_V1_Signed {
+    get {_envelope ?? Hermesh_Identity_V1_Signed()}
+    set {_envelope = newValue}
+  }
+  /// Returns true if `envelope` has been explicitly set.
+  public var hasEnvelope: Bool {self._envelope != nil}
+  /// Clears the value of `envelope`. Subsequent reads from it will return its default value.
+  public mutating func clearEnvelope() {self._envelope = nil}
+
+  /// Retention in seconds; 0 uses the relay default (7 days).
+  public var ttlSeconds: UInt32 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _envelope: Hermesh_Identity_V1_Signed? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_AppendDeltaResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Relay-assigned monotonic sequence number within (owner_id, stream_id).
+  public var seq: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_StreamCursor: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var streamID: String = String()
+
+  public var afterSeq: UInt64 = 0
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_PullDeltasRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Known stream cursors; streams not listed are pulled from seq 0 unless
+  /// known_only is true.
+  public var cursors: [Hermesh_Relay_V1_StreamCursor] = []
+
+  /// Maximum total records returned across all streams (default 64, max 256).
+  public var limit: UInt32 = 0
+
+  /// If true, only pull streams explicitly named in cursors.
+  public var knownOnly: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Relay_V1_DeltaRecord: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var streamID: String = String()
+
+  public var seq: UInt64 = 0
+
+  public var envelope: Hermesh_Identity_V1_Signed {
+    get {_envelope ?? Hermesh_Identity_V1_Signed()}
+    set {_envelope = newValue}
+  }
+  /// Returns true if `envelope` has been explicitly set.
+  public var hasEnvelope: Bool {self._envelope != nil}
+  /// Clears the value of `envelope`. Subsequent reads from it will return its default value.
+  public mutating func clearEnvelope() {self._envelope = nil}
+
+  public var storedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_storedAt = newValue}
+  }
+  /// Returns true if `storedAt` has been explicitly set.
+  public var hasStoredAt: Bool {self._storedAt != nil}
+  /// Clears the value of `storedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearStoredAt() {self._storedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _envelope: Hermesh_Identity_V1_Signed? = nil
+  fileprivate var _storedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public nonisolated struct Hermesh_Relay_V1_PullDeltasResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var deltas: [Hermesh_Relay_V1_DeltaRecord] = []
+
+  public var hasMore_p: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -3252,7 +3461,7 @@ nonisolated extension Hermesh_Relay_V1_WatchUpdatesRequest: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}root_chain\0\u{1}revocations\0\u{3}machine_cert\0\u{3}push_targets\0\u{1}grants\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}root_chain\0\u{1}revocations\0\u{3}machine_cert\0\u{3}push_targets\0\u{1}grants\0\u{3}sync_targets\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3325,6 +3534,19 @@ nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, Swi
           self.update = .grants(v)
         }
       }()
+      case 6: try {
+        var v: Hermesh_Relay_V1_SyncTargets?
+        var hadOneofValue = false
+        if let current = self.update {
+          hadOneofValue = true
+          if case .syncTargets(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.update = .syncTargets(v)
+        }
+      }()
       default: break
       }
     }
@@ -3355,6 +3577,10 @@ nonisolated extension Hermesh_Relay_V1_MachineUpdate: SwiftProtobuf.Message, Swi
     case .grants?: try {
       guard case .grants(let v)? = self.update else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+    }()
+    case .syncTargets?: try {
+      guard case .syncTargets(let v)? = self.update else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
     }()
     case nil: break
     }
@@ -4530,7 +4756,7 @@ nonisolated extension Hermesh_Relay_V1_WatchOwnerRequest: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Relay_V1_OwnerUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".OwnerUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}machines\0\u{1}clients\0\u{1}pairings\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}machines\0\u{1}clients\0\u{1}pairings\0\u{3}delta_streams\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -4541,6 +4767,7 @@ nonisolated extension Hermesh_Relay_V1_OwnerUpdate: SwiftProtobuf.Message, Swift
       case 1: try { try decoder.decodeSingularMessageField(value: &self._machines) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._clients) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._pairings) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.deltaStreams) }()
       default: break
       }
     }
@@ -4560,6 +4787,9 @@ nonisolated extension Hermesh_Relay_V1_OwnerUpdate: SwiftProtobuf.Message, Swift
     try { if let v = self._pairings {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    if !self.deltaStreams.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.deltaStreams, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -4567,6 +4797,7 @@ nonisolated extension Hermesh_Relay_V1_OwnerUpdate: SwiftProtobuf.Message, Swift
     if lhs._machines != rhs._machines {return false}
     if lhs._clients != rhs._clients {return false}
     if lhs._pairings != rhs._pairings {return false}
+    if lhs.deltaStreams != rhs.deltaStreams {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -5672,6 +5903,361 @@ nonisolated extension Hermesh_Relay_V1_MessageStatusResponse: SwiftProtobuf.Mess
 
   public static func ==(lhs: Hermesh_Relay_V1_MessageStatusResponse, rhs: Hermesh_Relay_V1_MessageStatusResponse) -> Bool {
     if lhs.states != rhs.states {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_SyncTarget: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SyncTarget"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}registration\0\u{3}device_cert\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._registration) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._deviceCert) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._registration {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try { if let v = self._deviceCert {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_SyncTarget, rhs: Hermesh_Relay_V1_SyncTarget) -> Bool {
+    if lhs._registration != rhs._registration {return false}
+    if lhs._deviceCert != rhs._deviceCert {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_SyncTargets: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SyncTargets"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}targets\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.targets) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.targets.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.targets, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_SyncTargets, rhs: Hermesh_Relay_V1_SyncTargets) -> Bool {
+    if lhs.targets != rhs.targets {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_RegisterSyncRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RegisterSyncRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}registration\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._registration) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._registration {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_RegisterSyncRequest, rhs: Hermesh_Relay_V1_RegisterSyncRequest) -> Bool {
+    if lhs._registration != rhs._registration {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_RegisterSyncResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".RegisterSyncResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_RegisterSyncResponse, rhs: Hermesh_Relay_V1_RegisterSyncResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_AppendDeltaRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AppendDeltaRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}stream_id\0\u{1}envelope\0\u{3}ttl_seconds\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularMessageField(value: &self._envelope) }()
+      case 3: try { try decoder.decodeSingularUInt32Field(value: &self.ttlSeconds) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    try { if let v = self._envelope {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
+    } }()
+    if self.ttlSeconds != 0 {
+      try visitor.visitSingularUInt32Field(value: self.ttlSeconds, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_AppendDeltaRequest, rhs: Hermesh_Relay_V1_AppendDeltaRequest) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs._envelope != rhs._envelope {return false}
+    if lhs.ttlSeconds != rhs.ttlSeconds {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_AppendDeltaResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AppendDeltaResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}seq\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt64Field(value: &self.seq) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.seq != 0 {
+      try visitor.visitSingularUInt64Field(value: self.seq, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_AppendDeltaResponse, rhs: Hermesh_Relay_V1_AppendDeltaResponse) -> Bool {
+    if lhs.seq != rhs.seq {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_StreamCursor: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".StreamCursor"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}stream_id\0\u{3}after_seq\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.afterSeq) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    if self.afterSeq != 0 {
+      try visitor.visitSingularUInt64Field(value: self.afterSeq, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_StreamCursor, rhs: Hermesh_Relay_V1_StreamCursor) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.afterSeq != rhs.afterSeq {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_PullDeltasRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PullDeltasRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}cursors\0\u{1}limit\0\u{3}known_only\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.cursors) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.limit) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.knownOnly) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.cursors.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.cursors, fieldNumber: 1)
+    }
+    if self.limit != 0 {
+      try visitor.visitSingularUInt32Field(value: self.limit, fieldNumber: 2)
+    }
+    if self.knownOnly != false {
+      try visitor.visitSingularBoolField(value: self.knownOnly, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_PullDeltasRequest, rhs: Hermesh_Relay_V1_PullDeltasRequest) -> Bool {
+    if lhs.cursors != rhs.cursors {return false}
+    if lhs.limit != rhs.limit {return false}
+    if lhs.knownOnly != rhs.knownOnly {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_DeltaRecord: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".DeltaRecord"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}stream_id\0\u{1}seq\0\u{1}envelope\0\u{3}stored_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.seq) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._envelope) }()
+      case 4: try { try decoder.decodeSingularMessageField(value: &self._storedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    if self.seq != 0 {
+      try visitor.visitSingularUInt64Field(value: self.seq, fieldNumber: 2)
+    }
+    try { if let v = self._envelope {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._storedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 4)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_DeltaRecord, rhs: Hermesh_Relay_V1_DeltaRecord) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.seq != rhs.seq {return false}
+    if lhs._envelope != rhs._envelope {return false}
+    if lhs._storedAt != rhs._storedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Relay_V1_PullDeltasResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PullDeltasResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}deltas\0\u{3}has_more\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.deltas) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.hasMore_p) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.deltas.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.deltas, fieldNumber: 1)
+    }
+    if self.hasMore_p != false {
+      try visitor.visitSingularBoolField(value: self.hasMore_p, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Relay_V1_PullDeltasResponse, rhs: Hermesh_Relay_V1_PullDeltasResponse) -> Bool {
+    if lhs.deltas != rhs.deltas {return false}
+    if lhs.hasMore_p != rhs.hasMore_p {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

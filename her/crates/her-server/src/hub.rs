@@ -9,6 +9,7 @@ use her_protocol::Event;
 use her_protocol::EventMsg;
 use her_protocol::Op;
 use her_protocol::api::DetachReason;
+use her_protocol::api::EventClass;
 use her_protocol::api::EventFilter;
 use her_protocol::api::SessionDetachedParams;
 use her_protocol::api::SessionInfo;
@@ -17,6 +18,7 @@ use her_protocol::api::TranscriptItem;
 use her_protocol::api::TranscriptPage;
 use her_rpc::RpcError;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
@@ -45,9 +47,35 @@ use her_protocol::api::SessionState;
 use her_protocol::api::SessionSummary;
 
 const CONTROL_CAPACITY: usize = 64;
+/// Non-delta events kept in memory per loaded hub to answer incremental
+/// `bots/open` reconnects without resending a full 100-item snapshot.
+const RECENT_EVENTS_CAP: usize = 1024;
 
-/// Turns the snapshot into what the requester sends back, queued before any later event.
-pub type Responder = Box<dyn FnOnce(&SessionSnapshot) -> Vec<Outgoing> + Send>;
+/// Reply handed to an attach responder: either a full snapshot or an
+/// incremental delta list when the client's `(session_id, resume_epoch,
+/// after_seq)` cursor is still covered by this hub.
+pub enum AttachReply<'a> {
+    Snapshot {
+        snapshot: &'a SessionSnapshot,
+        resume_epoch: &'a str,
+    },
+    Incremental {
+        session_id: &'a str,
+        resume_epoch: &'a str,
+        last_seq: u64,
+        events: &'a [Event],
+    },
+}
+
+/// Optional client cursor for incremental attach (`bots/open`).
+pub struct AttachResume {
+    pub session_id: String,
+    pub resume_epoch: String,
+    pub after_seq: u64,
+}
+
+/// Turns the attach outcome into what the requester sends back, queued before any later event.
+pub type Responder = Box<dyn FnOnce(AttachReply<'_>) -> Vec<Outgoing> + Send>;
 /// Turns the outcome of an operation into what the requester sends back.
 pub type OpResponder = Box<dyn FnOnce(Result<(), RpcError>) -> Vec<Outgoing> + Send>;
 pub type DetachResponder = Box<dyn FnOnce() -> Vec<Outgoing> + Send>;
@@ -57,6 +85,8 @@ pub struct AttachRequest {
     pub filter: EventFilter,
     /// Transcript items in the snapshot; `None` for all of them.
     pub history_limit: Option<usize>,
+    /// When set, attach returns missed events incrementally if covered.
+    pub resume: Option<AttachResume>,
     pub respond: Responder,
 }
 
@@ -299,6 +329,47 @@ struct Hub {
     /// When the session last got busy: a task started while it was idle. Sub-agents keep it busy
     /// after that task ends, until `idle`.
     busy_since: Option<Timestamp>,
+    /// Unique per-load epoch paired with `after_seq` for incremental `bots/open`.
+    resume_epoch: String,
+    /// Recent non-delta events kept for incremental resume.
+    recent: VecDeque<Event>,
+    /// Highest `seq` no longer in `recent` (any `after_seq >= recent_floor` is covered).
+    recent_floor: u64,
+}
+
+fn next_resume_epoch() -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    format!("e_{pid}_{ts}_{n}")
+}
+
+fn event_class(event: &Event) -> Option<EventClass> {
+    match &event.msg {
+        EventMsg::MessageDelta { delta, .. } => Some(match delta {
+            her_protocol::Delta::Text { .. } => EventClass::TextDelta,
+            her_protocol::Delta::Thinking { .. } => EventClass::ThinkingDelta,
+            her_protocol::Delta::ToolCallStart { .. } | her_protocol::Delta::ToolCallArgs { .. } => {
+                EventClass::ToolCallDelta
+            }
+        }),
+        EventMsg::ToolProgress { .. } => Some(EventClass::ToolProgress),
+        _ => None,
+    }
+}
+
+fn excludes_all_deltas(filter: &EventFilter) -> bool {
+    [
+        EventClass::TextDelta,
+        EventClass::ThinkingDelta,
+        EventClass::ToolCallDelta,
+        EventClass::ToolProgress,
+    ]
+    .iter()
+    .all(|c| filter.exclude.contains(c))
 }
 
 /// Starts the hub of a freshly started or resumed kernel. `first` attaches before any event
@@ -329,6 +400,7 @@ pub(crate) fn spawn(
         task: parking_lot::Mutex::new(mirror.last_user_text().map(|text| preview(&text))),
         done: done_rx,
     });
+    let initial_seq = mirror.last_seq();
     let mut hub = Hub {
         shared: shared.clone(),
         ops: kernel.op_sender(),
@@ -348,6 +420,9 @@ pub(crate) fn spawn(
         listing,
         base,
         busy_since: None,
+        resume_epoch: next_resume_epoch(),
+        recent: VecDeque::new(),
+        recent_floor: initial_seq,
     };
     if let Some(first) = first {
         hub.attach(first);
@@ -456,6 +531,14 @@ impl Hub {
         if self.changes_summary(&event.msg) {
             self.publish();
         }
+        if event_class(&event).is_none() {
+            if self.recent.len() >= RECENT_EVENTS_CAP
+                && let Some(evicted) = self.recent.pop_front()
+            {
+                self.recent_floor = self.recent_floor.max(evicted.seq);
+            }
+            self.recent.push_back(event.clone());
+        }
         if !self.subscribers.is_empty() {
             let frame = Arc::new(EventFrame::new(self.shared.session.clone(), event));
             let class = frame.class();
@@ -554,8 +637,35 @@ impl Hub {
     }
 
     fn attach(&mut self, req: AttachRequest) {
-        let snapshot = self.mirror.snapshot(req.history_limit);
-        req.conn.queue.push_all((req.respond)(&snapshot));
+        let last_seq = self.mirror.last_seq();
+        let can_resume = req.resume.as_ref().is_some_and(|r| {
+            r.session_id == self.shared.session.id.as_ref()
+                && r.resume_epoch == self.resume_epoch
+                && r.after_seq >= self.recent_floor
+                && r.after_seq <= last_seq
+                && (r.after_seq == last_seq || excludes_all_deltas(&req.filter))
+        });
+        if can_resume && let Some(resume) = &req.resume {
+            let missed: Vec<Event> = self
+                .recent
+                .iter()
+                .filter(|e| e.seq > resume.after_seq)
+                .filter(|e| !event_class(e).is_some_and(|c| req.filter.exclude.contains(&c)))
+                .cloned()
+                .collect();
+            req.conn.queue.push_all((req.respond)(AttachReply::Incremental {
+                session_id: self.shared.session.id.as_ref(),
+                resume_epoch: &self.resume_epoch,
+                last_seq,
+                events: &missed,
+            }));
+        } else {
+            let snapshot = self.mirror.snapshot(req.history_limit);
+            req.conn.queue.push_all((req.respond)(AttachReply::Snapshot {
+                snapshot: &snapshot,
+                resume_epoch: &self.resume_epoch,
+            }));
+        }
         self.subscribers.retain(|s| s.conn.id != req.conn.id);
         self.subscribers.push(Subscriber {
             conn: req.conn,

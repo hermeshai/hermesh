@@ -196,7 +196,7 @@ func (n *Machine) herStatus() *machinev1.HerStatus {
 func (n *Machine) statusFor(p *Principal) *machinev1.MachineStatus {
 	st := n.Status()
 	if p == nil || p.Kind != PrincipalOwner {
-		st.Her, st.Screen, st.DirectAddrs = nil, nil, nil
+		st.Her, st.Screen, st.DirectAddrs, st.DirectQuicAddrs = nil, nil, nil, nil
 	}
 	return st
 }

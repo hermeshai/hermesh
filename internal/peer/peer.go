@@ -8,12 +8,17 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/quic-go/quic-go"
+
 	"github.com/hermeshai/hermesh/gen/go/hermesh/her/v1/herv1connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
@@ -50,6 +55,9 @@ type Dialer struct {
 	// OnDirectSuccess, when set, is called with the winning direct address so
 	// subsequent dials can try it first.
 	OnDirectSuccess func(machineID, addr string)
+	// OnUpgrade, when set, is called whenever an existing machine tunnel is
+	// upgraded onto a faster direct QUIC/TCP path.
+	OnUpgrade func(machineID, path string, rtt time.Duration)
 }
 
 // Client is a relay connection plus cached E2E tunnels to machines.
@@ -59,18 +67,28 @@ type Client struct {
 	// connected never waits for a dial.
 	conn atomic.Pointer[transport.RelayConn]
 
-	mu       sync.Mutex
-	closed   bool
-	holds    int // Closes that only end a Hold
-	machines map[string]*Machine
-	warming  map[string]chan struct{} // closed when the attempt ends
-	gen      int                      // counts Resets
+	mu        sync.Mutex
+	closed    bool
+	holds     int // Closes that only end a Hold
+	machines  map[string]*Machine
+	warming   map[string]chan struct{} // closed when the attempt ends
+	lastPunch map[string]time.Time     // cooldown for automatic post-relay IPv6 punch upgrades
+	gen       int                      // counts Resets
 
 	// linked: the relay and machines are reached through Dialer.Link, with
 	// no connection of this client's own (conn is nil until it fails).
 	linkMu      sync.Mutex
 	linked      bool
 	linkControl *transport.H2Client
+}
+
+// tunnelConn is implemented by both *transport.H2Client (TCP/Relay) and
+// *transport.H3Client (direct UDP QUIC/HTTP3).
+type tunnelConn interface {
+	Do(*http.Request) (*http.Response, error)
+	Alive() bool
+	Close() error
+	RTT() time.Duration
 }
 
 // Machine holds typed clients for one machine over one E2E tunnel.
@@ -84,24 +102,93 @@ type Machine struct {
 	Admin   machinev1connect.MachineAdminServiceClient
 	Her     herv1connect.HerServiceClient
 	Screen  screenv1connect.ScreenServiceClient
-	h2      *transport.H2Client
+	h2      tunnelConn
+	httpCli *http.Client
 	direct  bool
+	path    string
+	srtt    atomic.Int64 // smoothed tunnel RTT in nanoseconds
+}
+
+// Path returns how this tunnel reaches the machine: "local", "quic_lan",
+// "quic_ipv6", "direct_lan", "direct_ipv6", or "relay".
+func (n *Machine) Path() string { return n.path }
+
+// RTT returns the live transport smoothed RTT when available (QUIC RFC 9002),
+// falling back to the smoothed RPC RTT recorded on this tunnel.
+func (n *Machine) RTT() time.Duration {
+	if n.h2 != nil {
+		if rtt := n.h2.RTT(); rtt > 0 {
+			return rtt
+		}
+	}
+	return time.Duration(n.srtt.Load())
+}
+
+// RecordRTT folds a new RTT sample into this tunnel's smoothed RTT.
+func (n *Machine) RecordRTT(d time.Duration) {
+	ns := d.Nanoseconds()
+	if ns <= 0 {
+		return
+	}
+	for {
+		old := n.srtt.Load()
+		next := ns
+		if old > 0 {
+			next = (old*7 + ns) / 8
+		}
+		if n.srtt.CompareAndSwap(old, next) {
+			return
+		}
+	}
+}
+
+func classifyDirectPath(addr string) string {
+	isQUIC := false
+	if stripped, ok := strings.CutPrefix(addr, "quic://"); ok {
+		isQUIC = true
+		addr = stripped
+	}
+	host, _, err := net.SplitHostPort(addr)
+	isV6 := false
+	if err == nil {
+		if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+			isV6 = true
+		}
+	}
+	if isQUIC {
+		if isV6 {
+			return "quic_ipv6"
+		}
+		return "quic_lan"
+	}
+	if isV6 {
+		return "direct_ipv6"
+	}
+	return "direct_lan"
 }
 
 // newMachine is the typed clients for machineID over h2, its tunnel.
 func newMachine(machineID, name string, h2 *transport.H2Client) *Machine {
-	const base = "https://machine"
-	return &Machine{MachineID: machineID, Name: name, h2: h2,
-		Session: sessionv1connect.NewSessionServiceClient(h2, base, transport.ClientNoCompression),
-		Info:    machinev1connect.NewMachineServiceClient(h2, base, transport.ClientNoCompression),
-		Admin:   machinev1connect.NewMachineAdminServiceClient(h2, base, transport.ClientNoCompression),
-		Her:     herv1connect.NewHerServiceClient(h2, base, transport.ClientNoCompression),
-		Screen:  screenv1connect.NewScreenServiceClient(h2, base, transport.ClientNoCompression)}
+	return newMachineWithConn(machineID, name, h2, h2.Client)
 }
 
-// HTTP is the tunnel's HTTP/2 client, for the machine's plain HTTP routes
-// (Her's console): requests go to "https://machine/…".
-func (n *Machine) HTTP() *http.Client { return n.h2.Client }
+func newMachineQUIC(machineID, name string, h3 *transport.H3Client) *Machine {
+	return newMachineWithConn(machineID, name, h3, h3.Client)
+}
+
+func newMachineWithConn(machineID, name string, tc tunnelConn, httpCli *http.Client) *Machine {
+	const base = "https://machine"
+	return &Machine{MachineID: machineID, Name: name, h2: tc, httpCli: httpCli, path: "relay",
+		Session: sessionv1connect.NewSessionServiceClient(tc, base, transport.ClientNoCompression),
+		Info:    machinev1connect.NewMachineServiceClient(tc, base, transport.ClientNoCompression),
+		Admin:   machinev1connect.NewMachineAdminServiceClient(tc, base, transport.ClientNoCompression),
+		Her:     herv1connect.NewHerServiceClient(tc, base, transport.ClientNoCompression),
+		Screen:  screenv1connect.NewScreenServiceClient(tc, base, transport.ClientNoCompression)}
+}
+
+// HTTP is the tunnel's HTTP client (HTTP/2 or HTTP/3), for the machine's plain
+// HTTP routes (Her's console): requests go to "https://machine/…".
+func (n *Machine) HTTP() *http.Client { return n.httpCli }
 
 // Alive reports whether the machine's tunnel can accept new requests.
 func (n *Machine) Alive() bool { return n.h2.Alive() }
@@ -167,6 +254,59 @@ func (c *Client) Done() <-chan struct{} {
 		return conn.Done()
 	}
 	return nil
+}
+
+// RTT returns the smoothed RTT to the relay (0 when unknown).
+func (c *Client) RTT() time.Duration {
+	if conn := c.conn.Load(); conn != nil {
+		return conn.RTT()
+	}
+	return 0
+}
+
+// MachineTunnel reports the cached tunnel path, smoothed RTT, and liveness for
+// machineID without dialing.
+func (c *Client) MachineTunnel(machineID string) (path string, rtt time.Duration, alive bool) {
+	c.mu.Lock()
+	n := c.machines[machineID]
+	c.mu.Unlock()
+	if n == nil {
+		return "", 0, false
+	}
+	return n.Path(), n.RTT(), n.h2.Alive()
+}
+
+// CachedRelayedMachineIDs returns the IDs of cached alive relayed machine
+// tunnels on this client.
+func (c *Client) CachedRelayedMachineIDs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var ids []string
+	for id, n := range c.machines {
+		if n != nil && !n.direct && n.h2.Alive() {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// ProbeTunnel verifies an already-cached relayed tunnel to machineID with a
+// lightweight GetInfo RPC and updates its RTT. Returns probed=false when no
+// cached relayed tunnel exists.
+func (c *Client) ProbeTunnel(ctx context.Context, machineID string) (probed bool, rtt time.Duration, err error) {
+	c.mu.Lock()
+	n := c.machines[machineID]
+	c.mu.Unlock()
+	if n == nil || n.direct || !n.h2.Alive() {
+		return false, 0, nil
+	}
+	started := time.Now()
+	_, err = n.Info.GetInfo(ctx, &machinev1.GetInfoRequest{})
+	elapsed := time.Since(started)
+	if err == nil {
+		n.RecordRTT(elapsed)
+	}
+	return true, elapsed, err
 }
 
 // Ping waits for the relay to answer a ping on the current connection.
@@ -347,7 +487,9 @@ func (c *Client) machineHere(ctx context.Context, machineID string) *Machine {
 		tc.Close()
 		return nil
 	}
-	return newMachine(machineID, sub.MachineName, h2)
+	n := newMachine(machineID, sub.MachineName, h2)
+	n.path = "local"
+	return n
 }
 
 // machineByLink is machineID through the link; nil when the client
@@ -469,14 +611,16 @@ func (c *Client) Warm(machineIDs []string) {
 }
 
 const (
-	directStagger = 25 * time.Millisecond
-	directHeadLAN = 80 * time.Millisecond
-	directHeadWAN = 280 * time.Millisecond
-	directTimeout = 2 * time.Second
+	directStagger       = 25 * time.Millisecond
+	directQUICHeadStart = 80 * time.Millisecond
+	directHeadLAN       = 80 * time.Millisecond
+	directHeadWAN       = 280 * time.Millisecond
+	directTimeout       = 2 * time.Second
 )
 
 func directHeadFor(addrs []string) time.Duration {
 	for _, hp := range addrs {
+		hp = strings.TrimPrefix(hp, "quic://")
 		host, _, err := net.SplitHostPort(hp)
 		if err != nil {
 			continue
@@ -503,8 +647,29 @@ func (d *Dialer) DialDirect(ctx context.Context, machineID string, addrs []strin
 		addr string
 		err  error
 	}
+	hasQUIC := false
+	for _, a := range addrs {
+		if strings.HasPrefix(a, "quic://") {
+			hasQUIC = true
+			break
+		}
+	}
 	ch := make(chan res, len(addrs))
-	for i, addr := range addrs {
+	quicIdx, tcpIdx := 0, 0
+	for _, addr := range addrs {
+		var delay time.Duration
+		if strings.HasPrefix(addr, "quic://") {
+			delay = time.Duration(quicIdx) * directStagger
+			quicIdx++
+		} else {
+			delay = time.Duration(tcpIdx) * directStagger
+			if hasQUIC {
+				// Give QUIC an 80 ms head start so local VPN/proxy Fake-TCP
+				// SYN-ACK responders cannot hijack LAN dials ahead of QUIC.
+				delay += directQUICHeadStart
+			}
+			tcpIdx++
+		}
 		go func(delay time.Duration, addr string) {
 			if delay > 0 {
 				t := time.NewTimer(delay)
@@ -518,6 +683,20 @@ func (d *Dialer) DialDirect(ctx context.Context, machineID string, addrs []strin
 			}
 			dctx, dcancel := context.WithTimeout(rctx, directTimeout)
 			defer dcancel()
+			started := time.Now()
+			if quicAddr, isQUIC := strings.CutPrefix(addr, "quic://"); isQUIC {
+				h3, sub, err := transport.DialQUIC(dctx, quicAddr, d.Key.CryptoSigner(), d.Credentials, d.Trust, machineID)
+				if err != nil {
+					ch <- res{err: err}
+					return
+				}
+				m := newMachineQUIC(machineID, sub.MachineName, h3)
+				m.direct = true
+				m.path = classifyDirectPath(addr)
+				m.RecordRTT(time.Since(started))
+				ch <- res{n: m, addr: addr}
+				return
+			}
 			nd := net.Dialer{Timeout: directTimeout, KeepAlive: 15 * time.Second}
 			raw, err := nd.DialContext(dctx, "tcp", addr)
 			if err != nil {
@@ -536,8 +715,12 @@ func (d *Dialer) DialDirect(ctx context.Context, machineID string, addrs []strin
 				ch <- res{err: err}
 				return
 			}
-			ch <- res{n: newMachine(machineID, sub.MachineName, h2), addr: addr}
-		}(time.Duration(i)*directStagger, addr)
+			m := newMachine(machineID, sub.MachineName, h2)
+			m.direct = true
+			m.path = classifyDirectPath(addr)
+			m.RecordRTT(time.Since(started))
+			ch <- res{n: m, addr: addr}
+		}(delay, addr)
 	}
 
 	var firstErr error
@@ -667,6 +850,7 @@ func (c *Client) openRelayTunnel(ctx context.Context, machineID string) (*Machin
 	if err != nil {
 		return nil, nil, err
 	}
+	started := time.Now()
 	raw, err := conn.OpenTunnel(machineID)
 	if err != nil {
 		return nil, nil, err
@@ -688,7 +872,10 @@ func (c *Client) openRelayTunnel(ctx context.Context, machineID string) (*Machin
 		tc.Close()
 		return nil, nil, err
 	}
-	return newMachine(machineID, sub.MachineName, h2), conn, nil
+	m := newMachine(machineID, sub.MachineName, h2)
+	m.path = "relay"
+	m.RecordRTT(time.Since(started))
+	return m, conn, nil
 }
 
 func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, error) {
@@ -742,7 +929,298 @@ func (c *Client) storeMachine(machineID string, gen int, conn *transport.RelayCo
 		existing.h2.Close()
 	}
 	c.machines[machineID] = n
+	shouldPunch := !n.direct && c.d.Role == relayv1.Role_ROLE_OWNER && c.canAutoPunchLocked(machineID)
+	if shouldPunch {
+		if c.lastPunch == nil {
+			c.lastPunch = map[string]time.Time{}
+		}
+		c.lastPunch[machineID] = time.Now()
+	}
+	if shouldPunch {
+		go func(id string, cur *Machine) {
+			uctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if dn := c.dialPunchedQUIC(uctx, id, cur); dn != nil {
+				c.replaceMachine(id, cur, dn)
+			}
+		}(machineID, n)
+	}
 	return n, nil
+}
+
+func (c *Client) canAutoPunchLocked(machineID string) bool {
+	if c.lastPunch == nil {
+		return true
+	}
+	return time.Since(c.lastPunch[machineID]) >= 10*time.Second
+}
+
+// ResetPunchCooldown clears automatic IPv6 punch cooldowns after a network change.
+func (c *Client) ResetPunchCooldown() {
+	c.mu.Lock()
+	c.lastPunch = nil
+	c.mu.Unlock()
+}
+
+func (c *Client) replaceMachine(machineID string, expected, replacement *Machine) bool {
+	if replacement == nil {
+		return false
+	}
+	replacement.direct = true
+	c.mu.Lock()
+	if c.closed || !replacement.h2.Alive() || c.machines[machineID] != expected {
+		c.mu.Unlock()
+		replacement.h2.Close()
+		return false
+	}
+	c.machines[machineID] = replacement
+	c.mu.Unlock()
+	if expected != nil {
+		expected.h2.Close()
+	}
+	if c.d.OnUpgrade != nil {
+		c.d.OnUpgrade(machineID, replacement.Path(), replacement.RTT())
+	}
+	return true
+}
+
+// UpgradeToDirect attempts to upgrade cached relayed tunnels (and, when
+// preferLAN is true, non-LAN tunnels after returning to Wi-Fi) onto a faster
+// direct QUIC/TCP tunnel. Failed attempts leave existing tunnels untouched.
+func (c *Client) UpgradeToDirect(ctx context.Context, preferLAN bool) []string {
+	type cand struct {
+		id  string
+		cur *Machine
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	var cands []cand
+	for id, n := range c.machines {
+		if n == nil || !n.h2.Alive() {
+			continue
+		}
+		if !n.direct || (preferLAN && n.path != "quic_lan" && n.path != "direct_lan" && n.path != "local") {
+			cands = append(cands, cand{id: id, cur: n})
+		}
+	}
+	c.mu.Unlock()
+	if len(cands) == 0 {
+		return nil
+	}
+	var (
+		mu       sync.Mutex
+		upgraded []string
+		wg       sync.WaitGroup
+	)
+	for _, cd := range cands {
+		wg.Add(1)
+		go func(cd cand) {
+			defer wg.Done()
+			var addrs []string
+			if c.d.Direct != nil {
+				addrs = c.d.Direct(cd.id)
+			}
+			if cd.cur.direct && preferLAN {
+				addrs = filterLANAddrs(addrs)
+			}
+			if len(addrs) > 0 {
+				dctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+				dn, err := c.d.DialDirect(dctx, cd.id, addrs)
+				cancel()
+				if err == nil && dn != nil {
+					if c.replaceMachine(cd.id, cd.cur, dn) {
+						mu.Lock()
+						upgraded = append(upgraded, cd.id)
+						mu.Unlock()
+					}
+					return
+				}
+			}
+			if !cd.cur.direct && c.d.Role == relayv1.Role_ROLE_OWNER {
+				pctx, cancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+				dn := c.dialPunchedQUIC(pctx, cd.id, cd.cur)
+				cancel()
+				if dn != nil && c.replaceMachine(cd.id, cd.cur, dn) {
+					mu.Lock()
+					upgraded = append(upgraded, cd.id)
+					mu.Unlock()
+				}
+			}
+		}(cd)
+	}
+	wg.Wait()
+	return upgraded
+}
+
+func filterLANAddrs(addrs []string) []string {
+	var out []string
+	for _, a := range addrs {
+		hp := strings.TrimPrefix(a, "quic://")
+		host, _, err := net.SplitHostPort(hp)
+		if err != nil {
+			continue
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			continue
+		}
+		if v4 := ip.To4(); v4 != nil && (v4[0] == 10 || (v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31) || (v4[0] == 192 && v4[1] == 168)) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func localGlobalIPv6s() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.To4() != nil || !ip.IsGlobalUnicast() || ip.IsPrivate() {
+				continue
+			}
+			s := ip.String()
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+			if len(out) >= 4 {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+// dialPunchedQUIC upgrades a relayed owner tunnel to direct QUIC over global
+// IPv6 by asking the machine (over the existing E2E relay tunnel) to send UDP
+// hole-punch packets from its explicitly bound IPv6 QUIC socket toward our
+// bound UDP socket, opening stateful IPv6 firewalls on both ends.
+func (c *Client) dialPunchedQUIC(ctx context.Context, machineID string, cur *Machine) *Machine {
+	if cur == nil || !cur.h2.Alive() {
+		return nil
+	}
+	v6s := localGlobalIPv6s()
+	if len(v6s) == 0 {
+		return nil
+	}
+	pc, err := net.ListenPacket("udp6", net.JoinHostPort(v6s[0], "0"))
+	if err != nil {
+		pc, err = net.ListenPacket("udp6", "[::]:0")
+		if err != nil {
+			return nil
+		}
+	}
+	ua, ok := pc.LocalAddr().(*net.UDPAddr)
+	if !ok || ua.Port <= 0 {
+		_ = pc.Close()
+		return nil
+	}
+	pstr := strconv.Itoa(ua.Port)
+	targets := make([]string, 0, len(v6s))
+	for _, ip := range v6s {
+		targets = append(targets, net.JoinHostPort(ip, pstr))
+	}
+	qtr := &quic.Transport{Conn: pc}
+	cleanup := func() {
+		_ = qtr.Close()
+		_ = pc.Close()
+	}
+
+	rpcCtx, rpcCancel := context.WithTimeout(ctx, 2*time.Second)
+	res, err := cur.Info.PunchDirect(rpcCtx, &machinev1.PunchDirectRequest{Targets: targets})
+	rpcCancel()
+	if err != nil || len(res.GetDirectQuicAddrs()) == 0 {
+		cleanup()
+		return nil
+	}
+
+	var remoteV6 []string
+	for _, raw := range res.GetDirectQuicAddrs() {
+		hp := strings.TrimPrefix(strings.TrimSpace(raw), "quic://")
+		host, _, err := net.SplitHostPort(hp)
+		if err != nil {
+			continue
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.To4() == nil && ip.IsGlobalUnicast() && !ip.IsPrivate() {
+			remoteV6 = append(remoteV6, hp)
+			if dst, rerr := net.ResolveUDPAddr("udp6", hp); rerr == nil {
+				_, _ = qtr.WriteTo([]byte("HMP1"), dst)
+			}
+		}
+	}
+	if len(remoteV6) == 0 {
+		cleanup()
+		return nil
+	}
+
+	rctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	type dialRes struct {
+		h3   *transport.H3Client
+		name string
+		addr string
+		rtt  time.Duration
+	}
+	ch := make(chan dialRes, len(remoteV6))
+	for _, addr := range remoteV6 {
+		go func(addr string) {
+			started := time.Now()
+			h3, sub, err := transport.DialQUICOnTransport(rctx, qtr, addr, c.d.Key.CryptoSigner(), c.d.Credentials, c.d.Trust, machineID)
+			if err != nil {
+				ch <- dialRes{}
+				return
+			}
+			ch <- dialRes{h3: h3, name: sub.MachineName, addr: addr, rtt: time.Since(started)}
+		}(addr)
+	}
+	var winner dialRes
+	for range remoteV6 {
+		r := <-ch
+		if r.h3 != nil {
+			if winner.h3 == nil {
+				winner = r
+				cancel()
+			} else {
+				_ = r.h3.Close()
+			}
+		}
+	}
+	if winner.h3 == nil {
+		cleanup()
+		return nil
+	}
+	winner.h3.AttachPacketTransport(qtr, pc)
+	m := newMachineQUIC(machineID, winner.name, winner.h3)
+	m.direct = true
+	m.path = "quic_ipv6"
+	m.RecordRTT(winner.rtt)
+	if c.d.OnDirectSuccess != nil {
+		c.d.OnDirectSuccess(machineID, "quic://"+winner.addr)
+	}
+	return m
 }
 
 // AdoptDirect installs a pre-dialed direct tunnel n for machineID if c is still
@@ -817,6 +1295,40 @@ func (c *Client) ForgetDirect() {
 		delete(c.machines, id)
 	}
 	c.mu.Unlock()
+}
+
+// ProbeOrForgetDirect probes each cached direct tunnel with a lightweight
+// GetInfo RPC and drops only those that fail, avoiding unnecessary teardown of
+// healthy QUIC/TCP direct tunnels on transient mobile network path events.
+func (c *Client) ProbeOrForgetDirect(ctx context.Context) {
+	c.mu.Lock()
+	var directs []*Machine
+	for _, n := range c.machines {
+		if n.direct {
+			directs = append(directs, n)
+		}
+	}
+	c.mu.Unlock()
+	if len(directs) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, n := range directs {
+		wg.Add(1)
+		go func(n *Machine) {
+			defer wg.Done()
+			pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			started := time.Now()
+			_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
+			cancel()
+			if err != nil {
+				c.ForgetMachine(n)
+				return
+			}
+			n.RecordRTT(time.Since(started))
+		}(n)
+	}
+	wg.Wait()
 }
 
 // ForgetMachine drops the tunnel used by a failed call. A later failure of

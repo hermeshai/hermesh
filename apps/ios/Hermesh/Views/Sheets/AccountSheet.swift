@@ -40,6 +40,16 @@ struct AccountSheet: View {
                 Section {
                     manage("Machines", symbol: "desktopcomputer", color: .blue, opens: .machines, id: "account-machines")
                     manage("Connected Agents", symbol: "link", color: .indigo, opens: .grants, id: "account-grants")
+                    NavigationLink {
+                        NetworkDiagnosticsView()
+                    } label: {
+                        LabeledContent {
+                            Text(networkSummary).foregroundStyle(.secondary).monospacedDigit()
+                        } label: {
+                            Label { Text("Network Diagnostics") } icon: { SettingsIcon(symbol: "antenna.radiowaves.left.and.right", color: .green) }
+                        }
+                    }
+                    .accessibilityIdentifier("account-network-diagnostics")
                 } header: {
                     Text("Settings").accessibilityIdentifier("account-settings")
                 }
@@ -140,6 +150,20 @@ struct AccountSheet: View {
             Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
         }
         .accessibilityIdentifier(id)
+    }
+
+    private var networkSummary: String {
+        if model.networkKind == "offline" { return String(localized: "Offline") }
+        if let active = model.machines.first(where: { $0.machineID == model.her.machine }) ?? model.machines.first(where: \.online),
+           active.online, active.hasTunnel, active.tunnel.phase == "ready" {
+            let path = herPathLabel(active.tunnel.path)
+            return active.tunnel.rttMs > 0 ? "\(path) · \(active.tunnel.rttMs) ms" : path
+        }
+        if model.status.relayConnected {
+            let rtt = model.status.relayHealth.rttMs
+            return rtt > 0 ? "\(rtt) ms" : String(localized: "Connected")
+        }
+        return String(localized: "Connecting…")
     }
 
     /// The service this iPhone belongs to, as Settings shows the account at
@@ -532,5 +556,150 @@ private struct CopyAddressRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text("Copies it"))
+    }
+}
+
+/// Always-accessible full-chain network diagnostics inside Settings:
+/// iPhone Network -> Relay -> every Machine tunnel (QUIC/TCP/Relay & RTT) -> active Her stream.
+private struct NetworkDiagnosticsView: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        List {
+            Section("Connection Path") {
+                row(title: String(localized: "iPhone Network"), detail: networkText, color: model.networkKind == "offline" ? .red : .green)
+                row(title: String(localized: "Relay"), detail: relayText, color: relayColor, error: relayError)
+            }
+            if !model.machines.isEmpty {
+                Section("Machines") {
+                    ForEach(model.machines, id: \.machineID) { m in
+                        row(title: m.machineName.isEmpty ? m.machineID : m.machineName,
+                            detail: tunnelText(for: m),
+                            color: tunnelColor(for: m),
+                            error: tunnelError(for: m))
+                    }
+                }
+            }
+            if let chat = activeHerChat {
+                Section("Her") {
+                    row(title: activeHerTitle, detail: herText(for: chat), color: herColor(for: chat), error: chat.convError ?? chat.envError)
+                    if !chat.waiting.isEmpty {
+                        Text("\(chat.waiting.count) message(s) waiting to be delivered")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Section {
+                Button {
+                    model.reconnectNow()
+                } label: {
+                    Label("Reconnect Now", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .accessibilityIdentifier("settings-diagnostics-reconnect")
+            }
+        }
+        .navigationTitle("Network Diagnostics")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(title: String, detail: String, color: Color, error: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(title).font(.subheadline.weight(.medium))
+                Spacer()
+                Text(detail).font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+            }
+            if let error, !error.isEmpty {
+                Text(error).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+    }
+
+    private var networkText: String {
+        herNetworkLabel(model.networkKind)
+    }
+
+    private var relayText: String {
+        let rh = model.status.relayHealth
+        if model.status.relayConnected {
+            return rh.rttMs > 0 ? String(localized: "Connected · \(Int(rh.rttMs)) ms") : String(localized: "Connected")
+        }
+        if rh.retryCount > 0 { return String(localized: "Reconnecting · #\(Int(rh.retryCount))") }
+        return rh.phase == "offline" ? String(localized: "Offline") : String(localized: "Connecting…")
+    }
+
+    private var relayColor: Color {
+        if model.status.relayConnected { return model.status.relayHealth.rttMs >= 250 ? .orange : .green }
+        return model.status.relayHealth.phase == "offline" ? .red : .orange
+    }
+
+    private var relayError: String? {
+        let e = model.status.relayHealth.lastError
+        return e.isEmpty ? nil : e
+    }
+
+    private func tunnelText(for m: Hermesh_Local_V1_Machine) -> String {
+        guard m.online else { return String(localized: "Offline") }
+        guard m.hasTunnel else { return String(localized: "Online") }
+        let th = m.tunnel
+        switch th.phase {
+        case "ready":
+            let path = herPathLabel(th.path)
+            return th.rttMs > 0 ? "\(path) · \(th.rttMs) ms" : path
+        case "dialing": return String(localized: "Dialing…")
+        case "retrying", "unreachable": return String(localized: "Unreachable")
+        default: return String(localized: "Offline")
+        }
+    }
+
+    private func tunnelColor(for m: Hermesh_Local_V1_Machine) -> Color {
+        guard m.online else { return .secondary }
+        guard m.hasTunnel else { return .green }
+        switch m.tunnel.phase {
+        case "ready": return m.tunnel.rttMs >= 250 ? .orange : .green
+        case "dialing": return .orange
+        default: return .red
+        }
+    }
+
+    private func tunnelError(for m: Hermesh_Local_V1_Machine) -> String? {
+        let e = m.hasTunnel ? m.tunnel.lastError : ""
+        return e.isEmpty ? nil : e
+    }
+
+    private var activeHerChat: HerChat? {
+        guard let id = model.her.machine, !id.isEmpty else { return nil }
+        return model.her.existingChat(id)
+    }
+
+    private var activeHerTitle: String {
+        if let id = model.her.machine, let m = model.machines.first(where: { $0.machineID == id }), !m.machineName.isEmpty {
+            return "Her (\(m.machineName))"
+        }
+        return "Her"
+    }
+
+    private func herText(for chat: HerChat) -> String {
+        if chat.live != nil && chat.convUp && chat.envUp {
+            if let id = model.her.machine,
+               let m = model.machines.first(where: { $0.machineID == id }),
+               m.hasTunnel, m.tunnel.phase == "ready" {
+                let path = herPathLabel(m.tunnel.path)
+                if m.tunnel.rttMs > 0 {
+                    return String(localized: "Connected · \(path) (\(Int(m.tunnel.rttMs)) ms)")
+                }
+                return String(localized: "Connected · \(path)")
+            }
+            return String(localized: "Connected")
+        }
+        if chat.convRetries > 0 { return String(localized: "Reconnecting · #\(chat.convRetries)") }
+        return String(localized: "Connecting…")
+    }
+
+    private func herColor(for chat: HerChat) -> Color {
+        if chat.live != nil && chat.convUp && chat.envUp { return .green }
+        return chat.convError != nil || chat.envError != nil ? .red : .orange
     }
 }

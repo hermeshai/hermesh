@@ -79,7 +79,7 @@ func TestMessageAnswersTheQuestion(t *testing.T) {
 	h.sendNow(id, "red")
 	h.said(id, "answer: Red")
 	h.wait(id, waiting)
-	owner := &Principal{Kind: PrincipalOwner}
+	owner := &Principal{Kind: PrincipalOwner, DesktopAnswersAllowed: true}
 	if _, err := h.s.AnswerQuestion(context.Background(), owner, &sessionv1.AnswerQuestionRequest{SessionId: id, Answers: []*sessionv1.Answer{{Text: "extra large"}}}); err != nil {
 		t.Fatal(err)
 	}

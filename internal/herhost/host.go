@@ -41,6 +41,10 @@ type Config struct {
 	// Notice is told of each newest the owner's devices tell of (snapshot's
 	// changed): her reply, a question, or what waits for the owner.
 	Notice func(*machinev1.HerLatest)
+	// OnDefaultBotChanged is called when the default assistant (Her) has a
+	// conversation update (message/unread/waiting) so the machine can mirror
+	// an encrypted delta snapshot to the relay mailbox.
+	OnDefaultBotChanged func(botID string, botRaw []byte)
 	// Mesh is what serves her's mesh tools now (mesh.go); nil: none.
 	Mesh func() Mesh
 }
@@ -258,10 +262,22 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 		return fmt.Errorf("bots/subscribe: %w", err)
 	}
 	var list struct {
-		Bots []bot `json:"bots"`
+		Bots []json.RawMessage `json:"bots"`
 	}
 	json.Unmarshal(res.Result, &list)
-	snap := newSnapshot(mon.version, mon.methods, list.Bots)
+	parsedBots := make([]bot, 0, len(list.Bots))
+	var initDefaultID string
+	var initDefaultRaw []byte
+	for _, raw := range list.Bots {
+		var b bot
+		if json.Unmarshal(raw, &b) == nil {
+			parsedBots = append(parsedBots, b)
+			if b.Default && b.Last != nil {
+				initDefaultID, initDefaultRaw = b.ID, append([]byte(nil), raw...)
+			}
+		}
+	}
+	snap := newSnapshot(mon.version, mon.methods, parsedBots)
 	mon.mu.Lock()
 	mon.serve = h.serveMesh
 	mon.mu.Unlock()
@@ -281,6 +297,9 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 		h.mu.Unlock()
 	}()
 	h.log.Info("her running", "version", mon.version, "socket", h.cfg.Socket)
+	if initDefaultID != "" && h.cfg.OnDefaultBotChanged != nil {
+		go h.cfg.OnDefaultBotChanged(initDefaultID, initDefaultRaw)
+	}
 	models := make(chan struct{}, 1)
 	models <- struct{}{}
 	go h.followModels(ctx, mon, snap, models)
@@ -302,15 +321,35 @@ func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
 			switch n.method {
 			case "bots/changed":
 				var c struct {
-					Bots    []bot    `json:"bots"`
-					Deleted []string `json:"deleted"`
+					Bots    []json.RawMessage `json:"bots"`
+					Deleted []string          `json:"deleted"`
 				}
 				if json.Unmarshal(n.params, &c) == nil {
+					parsed := make([]bot, 0, len(c.Bots))
+					var changedDefID string
+					var changedDefRaw []byte
+					for _, raw := range c.Bots {
+						var b bot
+						if json.Unmarshal(raw, &b) == nil {
+							parsed = append(parsed, b)
+							if b.Default && b.Last != nil {
+								changedDefID, changedDefRaw = b.ID, append([]byte(nil), raw...)
+							}
+						}
+					}
 					h.mu.Lock()
-					news := snap.changed(c.Bots, c.Deleted, time.Now())
+					prevDef, hadPrev := snap.bots[changedDefID]
+					news := snap.changed(parsed, c.Deleted, time.Now())
+					curDef := snap.bots[changedDefID]
 					h.mu.Unlock()
 					if news != nil && h.cfg.Notice != nil {
 						h.cfg.Notice(news)
+					}
+					if changedDefID != "" && h.cfg.OnDefaultBotChanged != nil {
+						lastChanged := !hadPrev || prevDef.Last == nil || curDef.Last == nil || *prevDef.Last != *curDef.Last
+						if lastChanged || prevDef.Unread != curDef.Unread {
+							go h.cfg.OnDefaultBotChanged(changedDefID, changedDefRaw)
+						}
 					}
 				}
 			case "models/changed":

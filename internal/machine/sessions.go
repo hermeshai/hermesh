@@ -69,10 +69,10 @@ const (
 
 // Principal is the verified caller of an RPC.
 type Principal struct {
-	Kind             PrincipalKind
-	ClientID         string
-	Grant            *identityv1.Grant
-	LocalAnswersOnly bool // a remote owner without a verified desktop platform
+	Kind                  PrincipalKind
+	ClientID              string
+	Grant                 *identityv1.Grant
+	DesktopAnswersAllowed bool // local desktop or a verified remote desktop platform
 }
 
 func (p *Principal) ID() string {

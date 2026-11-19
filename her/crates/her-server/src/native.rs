@@ -56,7 +56,9 @@ use crate::conn::Encoder;
 use crate::conn::Outgoing;
 use crate::conn::Protocol;
 use crate::errors;
+use crate::hub::AttachReply;
 use crate::hub::AttachRequest;
+use crate::hub::AttachResume;
 use crate::server::NewSession;
 use crate::server::ResumeOverrides;
 use crate::server::Server;
@@ -134,11 +136,24 @@ pub struct NativeProtocol {
 struct NewResult<'a> {
     session_id: &'a str,
     snapshot: &'a SessionSnapshot,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    resume_epoch: &'a str,
+}
+
+#[derive(Serialize)]
+struct IncrementalResult<'a> {
+    session_id: &'a str,
+    incremental: bool,
+    resume_epoch: &'a str,
+    last_seq: u64,
+    events: &'a [her_protocol::Event],
 }
 
 #[derive(Serialize)]
 struct SnapshotResult<'a> {
     snapshot: &'a SessionSnapshot,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    resume_epoch: &'a str,
 }
 
 #[derive(Deserialize)]
@@ -217,29 +232,80 @@ impl NativeProtocol {
         limit: Option<u32>,
         new: bool,
     ) -> AttachRequest {
+        Self::attach_request_with_resume(conn, id, events, limit, new, None)
+    }
+
+    fn attach_request_with_resume(
+        conn: &ConnHandle,
+        id: &Id,
+        events: her_protocol::api::EventFilter,
+        limit: Option<u32>,
+        new: bool,
+        resume: Option<AttachResume>,
+    ) -> AttachRequest {
         let reply_id = id.clone();
         let respond: crate::hub::Responder = if new {
-            Box::new(move |snapshot: &SessionSnapshot| {
-                let result = NewResult {
-                    session_id: &snapshot.session.session_id,
-                    snapshot,
-                };
-                vec![Outgoing::Frame(Bytes::from(her_rpc::response(
-                    &reply_id, &result,
-                )))]
+            Box::new(move |reply: AttachReply<'_>| match reply {
+                AttachReply::Snapshot { snapshot, resume_epoch } => {
+                    let result = NewResult {
+                        session_id: &snapshot.session.session_id,
+                        snapshot,
+                        resume_epoch,
+                    };
+                    vec![Outgoing::Frame(Bytes::from(her_rpc::response(
+                        &reply_id, &result,
+                    )))]
+                }
+                AttachReply::Incremental {
+                    session_id,
+                    resume_epoch,
+                    last_seq,
+                    events,
+                } => {
+                    let result = IncrementalResult {
+                        session_id,
+                        incremental: true,
+                        resume_epoch,
+                        last_seq,
+                        events,
+                    };
+                    vec![Outgoing::Frame(Bytes::from(her_rpc::response(
+                        &reply_id, &result,
+                    )))]
+                }
             })
         } else {
-            Box::new(move |snapshot: &SessionSnapshot| {
-                vec![Outgoing::Frame(Bytes::from(her_rpc::response(
-                    &reply_id,
-                    &SnapshotResult { snapshot },
-                )))]
+            Box::new(move |reply: AttachReply<'_>| match reply {
+                AttachReply::Snapshot { snapshot, resume_epoch } => {
+                    vec![Outgoing::Frame(Bytes::from(her_rpc::response(
+                        &reply_id,
+                        &SnapshotResult { snapshot, resume_epoch },
+                    )))]
+                }
+                AttachReply::Incremental {
+                    session_id,
+                    resume_epoch,
+                    last_seq,
+                    events,
+                } => {
+                    let result = IncrementalResult {
+                        session_id,
+                        incremental: true,
+                        resume_epoch,
+                        last_seq,
+                        events,
+                    };
+                    vec![Outgoing::Frame(Bytes::from(her_rpc::response(
+                        &reply_id, &result,
+                    )))]
+                }
             })
         };
         AttachRequest {
             conn: conn.clone(),
             filter: events,
             history_limit: Some(limit.map_or(100, |n| n.clamp(1, 1000)) as usize),
+            resume,
             respond,
         }
     }
@@ -857,8 +923,15 @@ impl NativeProtocol {
             },
             method::BOTS_OPEN => match her_rpc::params::<BotOpenParams>(params) {
                 Ok(p) => {
-                    // Answered as session/new is, whether the conversation is new or not.
-                    let attach = Self::attach_request(conn, id, p.events, p.history_limit, true);
+                    // Answered as session/new is, or incrementally when the client's
+                    // (session_id, resume_epoch, after_seq) cursor is still buffered.
+                    let resume = match (p.session_id, p.resume_epoch, p.after_seq) {
+                        (Some(session_id), Some(resume_epoch), Some(after_seq)) => {
+                            Some(AttachResume { session_id, resume_epoch, after_seq })
+                        }
+                        _ => None,
+                    };
+                    let attach = Self::attach_request_with_resume(conn, id, p.events, p.history_limit, true, resume);
                     let reply_id = id.clone();
                     self.spawn(id.clone(), conn, async move {
                         match server.bots_open(&p.bot_id, attach).await {

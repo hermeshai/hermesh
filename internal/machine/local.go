@@ -30,7 +30,9 @@ type Local struct {
 	p *Principal
 }
 
-func (n *Machine) Local() *Local { return &Local{n: n, p: &Principal{Kind: PrincipalOwner}} }
+func (n *Machine) Local() *Local {
+	return &Local{n: n, p: &Principal{Kind: PrincipalOwner, DesktopAnswersAllowed: true}}
+}
 
 func (l *Local) MachineID() string { return l.n.machineID }
 

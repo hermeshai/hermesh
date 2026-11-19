@@ -19,6 +19,7 @@ import (
 type bot struct {
 	ID      string  `json:"id"`
 	Name    string  `json:"name"`
+	Default bool    `json:"default"`
 	Unread  uint32  `json:"unread"`
 	Waiting *string `json:"waiting"`
 	Muted   bool    `json:"muted"`
