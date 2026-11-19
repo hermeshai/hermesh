@@ -45,6 +45,20 @@ func TestHerCannotSendToAnUnverifiedCodingAgent(t *testing.T) {
 	}
 }
 
+func TestHerCannotManageCodingConsent(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	h.p.Grant.HerMachineId = "m_her"
+	for _, req := range []*sessionv1.CodingConsentRequest{
+		{Agent: "fake", Scope: herCoding, ProjectId: "demo"},
+		{Agent: "fake", Scope: phoneCoding, ProjectId: "demo", ApproveVersion: "fictional"},
+		{Agent: "fake", Scope: herCoding, Revoke: true},
+	} {
+		if _, err := h.s.codingConsent(h.p, req); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("coding consent with a Her grant: %v", err)
+		}
+	}
+}
+
 func TestPersistedHerCodingMessageStaysHeld(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	ctx := t.Context()

@@ -1,6 +1,56 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Share answers with this coding agent?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与此编码代理共享回答？"
+          }
+        }
+      }
+    },
+    "Allow and Send": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许并发送"
+          }
+        }
+      }
+    },
+    "Revoke iPhone Answer Sharing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤回 iPhone 回答共享授权"
+          }
+        }
+      }
+    },
+    "iPhone answer sharing revoked.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已撤回 iPhone 回答共享授权。"
+          }
+        }
+      }
+    },
+    "%@ · %@\n%@\n\nData: %@\nPurpose: %@\n\nRevoke future sharing on this agent’s device settings. Data already sent cannot be recalled.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ · %2$@\n%3$@\n\n数据：%4$@\n用途：%5$@\n\n可在设备的代理设置中撤回后续共享。已发送的数据无法收回。"
+          }
+        }
+      }
+    },
     "Update Her’s computer to review third-party AI sharing." : {
       "localizations" : {
         "zh-Hans" : {

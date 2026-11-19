@@ -61,7 +61,7 @@ func (s *sessionService) StreamEvents(ctx context.Context, req *sessionv1.Stream
 }
 
 func (s *sessionService) SendMessage(ctx context.Context, req *sessionv1.SendMessageRequest) (*sessionv1.SendMessageResponse, error) {
-	sess, err := s.n.sessions.Send(ctx, principalFrom(ctx), req.SessionId, req.Text, req.Attachments)
+	sess, err := s.n.sessions.Send(ctx, principalFrom(ctx), req.SessionId, req.Text, req.Attachments, req.CodingConsentVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -108,18 +108,24 @@ func (s *sessionService) AnswerLocalQuestion(ctx context.Context, req *sessionv1
 }
 
 func (s *sessionService) CheckLocalCodingRecipient(ctx context.Context, req *sessionv1.CheckLocalCodingRecipientRequest) (*sessionv1.CheckLocalCodingRecipientResponse, error) {
-	agent := req.GetAgent()
+	p := principalFrom(ctx)
+	row := &sessionRow{Agent: req.GetAgent(), ProjectID: req.ProjectId}
 	if req.GetSessionId() != "" {
-		_, row, err := s.n.sessions.find(principalFrom(ctx), req.GetSessionId(), false)
+		_, r, err := s.n.sessions.find(p, req.GetSessionId(), false)
 		if err != nil {
 			return nil, err
 		}
-		agent = row.Agent
+		row = r
 	}
-	if !isLocalAgent(s.n.sessions.providers[agent]) {
-		return nil, cerr(connect.CodeFailedPrecondition, AIRecipientUnverified)
+	version, err := s.n.sessions.checkHerCodingRecipient(p, row, "", true)
+	if err != nil {
+		return nil, err
 	}
-	return &sessionv1.CheckLocalCodingRecipientResponse{}, nil
+	return &sessionv1.CheckLocalCodingRecipientResponse{Version: version}, nil
+}
+
+func (s *sessionService) CodingConsent(ctx context.Context, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	return s.n.sessions.codingConsent(principalFrom(ctx), req)
 }
 
 type machineService struct{ n *Machine }

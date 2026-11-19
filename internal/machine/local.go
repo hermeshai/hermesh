@@ -133,6 +133,10 @@ func (l *Local) Rename(ctx context.Context, id, title string) (*sessionv1.Sessio
 	return l.n.sessions.Rename(ctx, l.p, id, title)
 }
 
+func (l *Local) CodingConsent(req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	return l.n.sessions.codingConsent(l.p, req)
+}
+
 func (l *Local) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
 	return l.n.sessions.AnswerQuestion(ctx, l.p, req)
 }

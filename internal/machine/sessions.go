@@ -109,6 +109,8 @@ type Sessions struct {
 	mu         sync.Mutex
 	live       map[string]*live
 	dispatchMu sync.Mutex
+	codingMu   sync.Mutex
+	coding     map[codingKey]codingApproval
 	w          *writer
 	// counts tracks live sessions per status so hot paths never scan.
 	counts [10]atomic.Int64
@@ -155,6 +157,7 @@ type live struct {
 	releasing     chan struct{} // closed when the idle checkout can be used again
 	idleClose     chan struct{} // an idle process is still shutting down
 	sess          provider.Session
+	codingRoute   provider.CodingRoute
 	seq           uint64
 	turn          uint32
 	subs          map[chan *sessionv1.SessionEvent]bool   // true: it takes drafts
@@ -360,7 +363,8 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		return nil, cerr(connect.CodePermissionDenied, "only clients may start sessions")
 	}
 	g := p.Grant
-	if err := s.checkHerCodingRecipient(p, req.Agent); err != nil {
+	version, err := s.checkHerCodingRecipient(p, &sessionRow{Agent: req.Agent, ProjectID: req.ProjectId}, req.CodingConsentVersion, false)
+	if err != nil {
 		return nil, err
 	}
 	if req.IdempotencyKey != "" {
@@ -445,7 +449,7 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
 	}
 	s.count(r.Status, 1)
-	prompt.by, prompt.conv = p.ID(), req.Conversation
+	prompt.by, prompt.conv, prompt.codingVersion = p.ID(), req.Conversation, version
 	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now,
 		asker: p.ID(), askerConv: req.Conversation}
 	s.mu.Lock()
@@ -594,12 +598,13 @@ func (s *Sessions) ActiveByProject() map[string]uint32 {
 	return out
 }
 
-func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts []*sessionv1.Attachment) (*sessionv1.Session, error) {
+func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts []*sessionv1.Attachment, consentVersion ...string) (*sessionv1.Session, error) {
 	l, row, err := s.find(p, id, true)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.checkHerCodingRecipient(p, row.Agent); err != nil {
+	version, err := s.checkHerCodingRecipient(p, row, firstCodingVersion(consentVersion), false)
+	if err != nil {
 		return nil, err
 	}
 	if err := checkAttachments(text, atts); err != nil {
@@ -615,7 +620,7 @@ func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts
 	if err != nil {
 		return nil, fmt.Errorf("saving attachments: %w", err)
 	}
-	m.by = p.ID()
+	m.by, m.codingVersion = p.ID(), version
 	if _, err := s.take(ctx, l, m); err != nil {
 		return nil, err
 	}
@@ -653,7 +658,11 @@ func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error)
 		switch l.row.Status {
 		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // the answer to the agent's question
 			l.mu.Unlock()
-			if s.answerWithText(l, m.by, m.answerText()) {
+			answered, err := s.answerWithText(l, m)
+			if err != nil {
+				return "", err
+			}
+			if answered {
 				return "answer", nil
 			}
 			continue // answered meanwhile
@@ -672,12 +681,16 @@ func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error)
 				s.startRetry(l, m)
 				return "joined", nil
 			}
-			ps := l.sess
+			ps, row, route := l.sess, snapshotRow(l.row), l.codingRoute
 			if ps == nil || l.finishing {
 				break
 			}
 			l.mu.Unlock()
-			if ps.Steer(ctx, m.input()) == nil {
+			err := s.codingInput(row, route, m, func() error { return ps.Steer(ctx, m.input()) })
+			if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+				return "", err
+			}
+			if err == nil {
 				l.mu.Lock()
 				l.turnMsg = l.turnMsg.join(m) // a restarted turn includes it
 				l.mu.Unlock()
@@ -711,7 +724,7 @@ func (l *live) askedBy(who string) bool {
 // §7.2): p is that agent, with its grant, which must cover the session's
 // project and coding agent, and the session must be one it may read. text
 // is what the coding agent is given; rec is what the session records.
-func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text string, rec *sessionv1.MessageReceived, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
+func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text string, rec *sessionv1.MessageReceived, atts []*sessionv1.Attachment, consentVersion ...string) (*sessionv1.Session, string, error) {
 	if p.Kind != PrincipalClient {
 		return nil, "", cerr(connect.CodePermissionDenied, "only an agent delivers messages")
 	}
@@ -719,7 +732,8 @@ func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text str
 	if err != nil {
 		return nil, "", err
 	}
-	if err := s.checkHerCodingRecipient(p, r.Agent); err != nil {
+	version, err := s.checkHerCodingRecipient(p, r, firstCodingVersion(consentVersion), false)
+	if err != nil {
 		return nil, "", err
 	}
 	if !identity.Allows(p.Grant.ProjectIds, r.ProjectID) || !identity.Allows(p.Grant.Agents, r.Agent) {
@@ -738,7 +752,7 @@ func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text str
 	if err != nil {
 		return nil, "", fmt.Errorf("saving attachments: %w", err)
 	}
-	m.by, m.conv, m.quiet, m.answer = p.ID(), conv, true, rec.Text
+	m.by, m.conv, m.quiet, m.answer, m.codingVersion = p.ID(), conv, true, rec.Text, version
 	delivered, err := s.take(ctx, l, m)
 	if err != nil {
 		return nil, "", err
@@ -785,7 +799,7 @@ func (s *Sessions) startAsked(l *live) {
 	m := l.asked[first]
 	keep := append([]message(nil), l.asked[:first]...)
 	for _, o := range l.asked[first+1:] {
-		if o.by == m.by && o.conv == m.conv {
+		if o.by == m.by && o.conv == m.conv && o.codingVersion == m.codingVersion {
 			m = m.join(o)
 		} else {
 			keep = append(keep, o)
@@ -800,12 +814,13 @@ func (s *Sessions) startAsked(l *live) {
 
 // askedJSON is a message waiting for its turn, as the store keeps it.
 type askedJSON struct {
-	Text   string   `json:"text"`
-	Files  [][]byte `json:"files,omitempty"` // AttachmentInfo
-	By     string   `json:"by"`
-	Conv   string   `json:"conv,omitempty"`
-	Quiet  bool     `json:"quiet,omitempty"`
-	Answer string   `json:"answer,omitempty"`
+	Text          string   `json:"text"`
+	Files         [][]byte `json:"files,omitempty"` // AttachmentInfo
+	By            string   `json:"by"`
+	Conv          string   `json:"conv,omitempty"`
+	Quiet         bool     `json:"quiet,omitempty"`
+	Answer        string   `json:"answer,omitempty"`
+	CodingVersion string   `json:"coding_version,omitempty"`
 }
 
 func askedKey(id string) string { return "asked/" + id }
@@ -815,7 +830,7 @@ func askedKey(id string) string { return "asked/" + id }
 func (s *Sessions) saveAsked(l *live) {
 	out := []askedJSON{}
 	for _, m := range l.asked {
-		a := askedJSON{Text: m.text, By: m.by, Conv: m.conv, Quiet: m.quiet, Answer: m.answer}
+		a := askedJSON{Text: m.text, By: m.by, Conv: m.conv, Quiet: m.quiet, Answer: m.answer, CodingVersion: m.codingVersion}
 		for _, f := range m.files {
 			b, _ := proto.Marshal(f)
 			a.Files = append(a.Files, b)
@@ -838,7 +853,7 @@ func (s *Sessions) loadAsked(id string) []message {
 	json.Unmarshal(b, &in)
 	var out []message
 	for _, a := range in {
-		m := message{text: a.Text, by: a.By, conv: a.Conv, quiet: a.Quiet, answer: a.Answer}
+		m := message{text: a.Text, by: a.By, conv: a.Conv, quiet: a.Quiet, answer: a.Answer, codingVersion: a.CodingVersion}
 		for _, f := range a.Files {
 			info := &sessionv1.AttachmentInfo{}
 			if proto.Unmarshal(f, info) == nil {
@@ -853,7 +868,7 @@ func (s *Sessions) loadAsked(id string) []message {
 // nextTurn starts a turn with m, in the running agent process or a new
 // one. It is called with l.mu held and releases it.
 func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
-	ps := l.sess
+	ps, row, route := l.sess, snapshotRow(l.row), l.codingRoute
 	alive := ps != nil
 	if alive {
 		select {
@@ -897,7 +912,7 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	}
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: m.by}}})
 	s.emitUser(l, m)
-	if err := ps.Send(ctx, m.input()); err != nil {
+	if err := s.codingInput(row, route, m, func() error { return ps.Send(ctx, m.input()) }); err != nil {
 		s.interruptTurn(l, ps, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "could not send the message: " + err.Error()})
 		return err
 	}
@@ -1545,7 +1560,22 @@ func (s *Sessions) prepare(l *live) {
 		}
 	}
 	agent := l.row.Agent
+	row := snapshotRow(l.row)
 	l.mu.Unlock()
+	route := s.codingRoute(agent, spec.WorkDir, spec.Env)
+	if prompt.codingVersion != "" {
+		spec.GuardInput = func(send func() error) error {
+			return s.codingInput(row, route, prompt, send)
+		}
+		if err := spec.GuardInput(func() error { return nil }); err != nil {
+			// A fresh message must not replay a revoked or rerouted prompt.
+			l.mu.Lock()
+			l.pending, l.followUps = message{}, nil
+			l.mu.Unlock()
+			fail(err)
+			return
+		}
+	}
 	startAt := time.Now()
 	ps, err := s.providers[agent].Start(ctx, spec)
 	mProviderStart.Since(startAt)
@@ -1588,7 +1618,10 @@ func (s *Sessions) prepare(l *live) {
 		fail(ctx.Err())
 		return
 	}
-	l.sess = ps
+	if reported, ok := ps.(interface{ CodingRouteMatches(string) bool }); ok && !reported.CodingRouteMatches(route.Recipient) {
+		route = provider.CodingRoute{}
+	}
+	l.sess, l.codingRoute = ps, route
 	l.row.Pgid = ps.Pgid()
 	l.procStarted = time.Now()
 	if !restarting {
@@ -1621,7 +1654,12 @@ func (s *Sessions) prepare(l *live) {
 	l.followUps = nil
 	l.mu.Unlock()
 	for _, m := range pending {
-		if ps.Steer(ctx, m.input()) == nil {
+		err := s.codingInput(row, route, m, func() error { return ps.Steer(ctx, m.input()) })
+		if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+			s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: err.Error()}}})
+			continue
+		}
+		if err == nil {
 			l.mu.Lock()
 			l.turnMsg = l.turnMsg.join(m)
 			l.mu.Unlock()
@@ -1904,7 +1942,7 @@ func (s *Sessions) startRetry(l *live, m message) {
 	l.retryTimer = nil
 	// The note records no message of its own, even if a failed start keeps
 	// it for the next turn.
-	p := message{text: retryNote, quiet: true}
+	p := message{text: retryNote, quiet: true, codingVersion: l.turnMsg.codingVersion}
 	withM := m.text != "" || len(m.files) > 0
 	if withM {
 		p = p.join(m)

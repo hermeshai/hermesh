@@ -14,7 +14,11 @@ struct QuestionPanel: View {
     @State private var sending = false
     @FocusState private var typing: Bool
 
-    private var canAnswer: Bool { model.isDemo || question.localAnswerAvailable }
+    @State private var consent: CodingConsent?
+    @State private var consentError: String?
+    @State private var showConsent = false
+
+    private var canAnswer: Bool { model.isDemo || consent != nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,9 +38,8 @@ struct QuestionPanel: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .frame(maxHeight: 340)
-            if !canAnswer {
-                Text("The coding agent’s AI recipient can’t be verified. Answers are blocked on iPhone.")
-                    .font(.footnote).foregroundStyle(.secondary)
+            if let consentError {
+                Text(consentError).font(.footnote).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
                 Button("Don’t Answer") { send(decline: true) }
@@ -44,7 +47,11 @@ struct QuestionPanel: View {
                     .accessibilityIdentifier("decline")
                 if canAnswer {
                     Button {
-                        send(decline: false)
+                        if model.isDemo || consent?.approved == true {
+                            send(decline: false)
+                        } else {
+                            showConsent = true
+                        }
                     } label: {
                         Text("Answer").frame(maxWidth: .infinity)
                     }
@@ -61,6 +68,24 @@ struct QuestionPanel: View {
         .padding(.horizontal, 10).padding(.bottom, 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("question")
+        .task(id: question.questionID) { await refreshConsent() }
+        .alert("Share answers with this coding agent?", isPresented: $showConsent, presenting: consent) { disclosure in
+            Button("Allow and Send") { send(decline: false, approve: disclosure.version) }
+            Button("Cancel", role: .cancel) {}
+        } message: { disclosure in
+            Text("\(disclosure.recipient) · \(model.machineName(disclosure.machineID))\n\(disclosure.route)\n\nData: \(disclosure.dataCategories)\nPurpose: \(disclosure.purpose)\n\nRevoke future sharing on this agent’s device settings. Data already sent cannot be recalled.")
+        }
+    }
+
+    private func refreshConsent() async {
+        guard !model.isDemo else { return }
+        do {
+            consent = try await model.codingAnswerConsent(session)
+            consentError = nil
+        } catch {
+            consent = nil
+            consentError = error.localizedDescription
+        }
     }
 
     @ViewBuilder private func item(_ it: Hermesh_Session_V1_QuestionItem) -> some View {
@@ -112,7 +137,7 @@ struct QuestionPanel: View {
         }
     }
 
-    private func send(decline: Bool) {
+    private func send(decline: Bool, approve: String = "") {
         typing = false
         sending = true
         let answers: [Answer] = decline ? [] : question.items.map { it in
@@ -123,8 +148,22 @@ struct QuestionPanel: View {
             return a
         }
         Task {
-            _ = await model.answer(session, answers: answers, decline: decline)
-            sending = false
+            defer { sending = false }
+            var version = decline ? "" : (consent?.version ?? "")
+            if !approve.isEmpty {
+                do {
+                    let granted = try await model.codingAnswerConsent(session, approve: approve)
+                    consent = granted
+                    version = granted.version
+                } catch {
+                    model.report(error)
+                    await refreshConsent()
+                    return
+                }
+            }
+            if !(await model.answer(session, answers: answers, decline: decline, consentVersion: version)), !decline {
+                await refreshConsent()
+            }
         }
     }
 }

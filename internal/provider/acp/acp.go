@@ -172,6 +172,11 @@ func withPath(env []string, path string) []string {
 	return append(shellenv.Without(env, "PATH"), "PATH="+path)
 }
 
+func (p *Provider) CodingRoute(dir string, env []string) provider.CodingRoute {
+	bin, _, extra := p.command()
+	return provider.InspectCodingRoute(p.Name(), bin, dir, append(slices.Clip(env), extra...))
+}
+
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	bin, pre, env := p.command()
 	if bin == "" {
@@ -183,7 +188,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		}
 		spec.Env = append(slices.Clip(spec.Env), env...)
 	}
-	proc, err := provider.StartProc(ctx, bin, append(pre, p.Args...), spec.WorkDir, spec.Env)
+	proc, err := spec.Launch(ctx, bin, append(pre, p.Args...))
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +249,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	caps := init.AgentCapabilities
 	switch {
 	case spec.ResumeRef == "":
-		res, err = s.call(ctx, "session/new", params)
+		res, err = s.callGuarded(ctx, spec.Submit, "session/new", params)
 		if err != nil {
 			return fail(fmt.Errorf("session/new: %w", classified(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)))
 		}
@@ -258,7 +263,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		s.sessionID = r.SessionID
 	case len(caps.SessionCapabilities.Resume) > 0 && string(caps.SessionCapabilities.Resume) != "null":
 		params["sessionId"] = spec.ResumeRef
-		if res, err = s.call(ctx, "session/resume", params); err != nil {
+		if res, err = s.callGuarded(ctx, spec.Submit, "session/resume", params); err != nil {
 			return fail(fmt.Errorf("session/resume: %w", resumeError(err)))
 		}
 		s.sessionID = spec.ResumeRef
@@ -267,7 +272,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		// notifications before it answers; they are not new events.
 		params["sessionId"] = spec.ResumeRef
 		s.replaying.Store(true)
-		res, err = s.call(ctx, "session/load", params)
+		res, err = s.callGuarded(ctx, spec.Submit, "session/load", params)
 		s.replaying.Store(false)
 		if err != nil {
 			return fail(fmt.Errorf("session/load: %w", resumeError(err)))
@@ -313,7 +318,10 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		ref.Effort = o.thought.current()
 	}
 	s.emit(ref)
-	if err := s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
+	if err := spec.Submit(func() error {
+
+		return s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images})
+	}); err != nil {
 		return fail(err)
 	}
 	return s, nil
@@ -667,9 +675,13 @@ func (s *session) request(method string, params any, done func(rpcResult)) error
 }
 
 func (s *session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	return s.callGuarded(ctx, provider.StartSpec{}.Submit, method, params)
+}
+
+func (s *session) callGuarded(ctx context.Context, guard func(func() error) error, method string, params any) (json.RawMessage, error) {
 	ch := make(chan rpcResult, 1)
-	if err := s.request(method, params, func(r rpcResult) {
-		ch <- r
+	if err := guard(func() error {
+		return s.request(method, params, func(r rpcResult) { ch <- r })
 	}); err != nil {
 		return nil, err
 	}

@@ -53,11 +53,9 @@ type HerCredentials struct {
 
 // HerLinkConfig is what a HerLink is made with.
 type HerLinkConfig struct {
-	// OnlyLocalAgents allows the in-process coding simulators used in mesh tests.
-	OnlyLocalAgents bool
-	DataDir         string
-	HTTPClient      *http.Client
-	Logger          *slog.Logger
+	DataDir    string
+	HTTPClient *http.Client
+	Logger     *slog.Logger
 	// Credentials are Her's now; nil while she has no grant.
 	Credentials func() *HerCredentials
 	// Adopted is told of a grant or root chain the relay had newer.
@@ -121,7 +119,7 @@ func (n *Machine) openHerMesh() {
 	}
 	n.mesh.key, n.mesh.inbox = key, inbox
 	if n.cfg.NewHerLink != nil {
-		n.mesh.link = n.cfg.NewHerLink(HerLinkConfig{OnlyLocalAgents: onlyLocalAgents(n.cfg.Providers), DataDir: n.cfg.DataDir, HTTPClient: n.cfg.HTTPClient, Logger: n.log,
+		n.mesh.link = n.cfg.NewHerLink(HerLinkConfig{DataDir: n.cfg.DataDir, HTTPClient: n.cfg.HTTPClient, Logger: n.log,
 			Credentials: n.herCredentials, Adopted: n.herAdopted, Revoked: func() { n.dropHerGrant("the owner revoked it") }, News: n.takeHerNews})
 	}
 }
