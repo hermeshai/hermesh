@@ -137,30 +137,69 @@ func TestAntigravityDiscovery(t *testing.T) {
 	}
 }
 
+func setFakeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if content == "" {
+		os.Remove(path)
+		return
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAntigravityAgyCLIDiscoveryAndLaunch(t *testing.T) {
 	home, gemini, localAppData := isolateAntigravityEnv(t)
 
-	// 1. agy discovered on PATH uses `agy acp` and antigravity-cli/settings.json.
+	// 1. agy discovered on PATH uses `agy acp` and protocol-based auth readiness:
+	// credentials managed in the OS keyring require NO auth.type in settings.json.
 	binDir := t.TempDir()
 	agyBin := installFakeBinary(t, binDir, agyExeName(), "acp", "agy 1.5.9")
+	setFakeFile(t, binDir, "fakeacp.config", "1")
+	setFakeFile(t, binDir, "fakeacp.close", "1")
+	setFakeFile(t, binDir, "fakeacp.models", "gemini-4-neon,gemini-3.8-flash")
 	argsLog := filepath.Join(t.TempDir(), "args.log")
 	t.Setenv("FAKE_ACP_ARGS_LOG", argsLog)
 	t.Setenv("FAKE_ACP_STATE", t.TempDir())
 
-	// Standalone config alone must not mark `agy acp` as signed in.
-	writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
+	// No settings.json at all (e.g. keyring sign-in): must be reported signed in
+	// and ready when `agy acp` answers the ACP protocol without -32000.
 	p := &Provider{Agent: antigravityAgent("linux"), PathEnv: binDir}
 	i := p.Discover(context.Background())
-	if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || i.LoggedIn || i.ModelsState != provider.ModelsAuthRequired {
-		t.Fatalf("agy without antigravity-cli settings: %+v", i)
+	if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || !i.LoggedIn || i.ModelsState != provider.ModelsKnown || len(i.Models) != 2 {
+		t.Fatalf("agy signed in without settings.json: %+v", i)
 	}
 
-	// Configuring antigravity-cli/settings.json (with UTF-8 BOM) marks it signed in.
-	writeAntigravitySettings(t, gemini, antigravityCLIDir, "\xef\xbb\xbf"+`{"auth":{"type":"oauth-personal"}}`)
-	i = p.Discover(context.Background())
-	if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || !i.LoggedIn {
-		t.Fatalf("agy with antigravity-cli settings: %+v", i)
+	// Official CLI settings.json without auth.type (e.g. agentMode or modelProvider: "gemini")
+	// must also be accepted via protocol readiness.
+	for _, cfg := range []string{`{"agentMode":"auto"}`, `{"modelProvider":"gemini"}`} {
+		writeAntigravitySettings(t, gemini, "antigravity-cli", cfg)
+		pCfg := &Provider{Agent: antigravityAgent("linux"), PathEnv: binDir}
+		got := pCfg.Discover(context.Background())
+		if !got.Available || !got.LoggedIn || got.ModelsState != provider.ModelsKnown {
+			t.Fatalf("agy with official CLI settings %s: %+v", cfg, got)
+		}
 	}
+
+	// Authoritative ACP -32000 ("Authentication required") marks agy as not signed in.
+	setFakeFile(t, binDir, "fakeacp.auth", "oauth-personal")
+	pUnauth := &Provider{Agent: antigravityAgent("linux"), PathEnv: binDir}
+	i = pUnauth.Discover(context.Background())
+	if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || i.LoggedIn || i.ModelsState != provider.ModelsAuthRequired {
+		t.Fatalf("agy with -32000 auth required: %+v", i)
+	}
+
+	// Non-auth probe failure (no authoritative auth signal) must report ModelsError
+	// while keeping LoggedIn true, distinguishing unknown/error from unauthenticated.
+	setFakeFile(t, binDir, "fakeacp.auth", "")
+	setFakeFile(t, binDir, "fakeacp.new_error", "-32603")
+	pErr := &Provider{Agent: antigravityAgent("linux"), PathEnv: binDir}
+	i = pErr.Discover(context.Background())
+	if !i.Available || i.Binary != agyBin || !i.LoggedIn || i.ModelsState != provider.ModelsError {
+		t.Fatalf("agy with non-auth probe failure must distinguish error from auth_required: %+v", i)
+	}
+	setFakeFile(t, binDir, "fakeacp.new_error", "")
 
 	// Start must run `agy acp` (never `--uid=`, even for linux Agent config).
 	os.Remove(argsLog)
@@ -184,12 +223,12 @@ func TestAntigravityAgyCLIDiscoveryAndLaunch(t *testing.T) {
 	}
 
 	// Login must also launch `agy acp`.
-	t.Setenv("FAKE_ACP_AUTH", "oauth-personal")
+	setFakeFile(t, binDir, "fakeacp.auth", "oauth-personal")
 	var out bytes.Buffer
 	if err := p.Login(context.Background(), "oauth-personal", &out); err != nil {
 		t.Fatalf("agy login: %v", err)
 	}
-	t.Setenv("FAKE_ACP_AUTH", "")
+	setFakeFile(t, binDir, "fakeacp.auth", "")
 
 	// 2. Discovery via ~/.local/bin/agy when PATH is empty.
 	localBin := installFakeBinary(t, filepath.Join(home, ".local", "bin"), agyExeName(), "acp", "1.5.9")
@@ -215,7 +254,7 @@ func TestAntigravityStandaloneFallback(t *testing.T) {
 	t.Setenv("FAKE_ACP_STATE", t.TempDir())
 
 	// antigravity-cli settings alone must not mark standalone server as signed in.
-	writeAntigravitySettings(t, gemini, antigravityCLIDir, `{"auth":{"type":"oauth-personal"}}`)
+	writeAntigravitySettings(t, gemini, "antigravity-cli", `{"auth":{"type":"oauth-personal"}}`)
 	p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: t.TempDir()}
 	i := p.Discover(context.Background())
 	if !i.Available || i.Binary != standalone || i.Version != "1.4.5" || i.LoggedIn || i.ModelsState != provider.ModelsAuthRequired {
@@ -263,17 +302,143 @@ func TestAntigravityStandaloneFallback(t *testing.T) {
 }
 
 func TestAntigravityPrecedenceAndIncompatibleAgy(t *testing.T) {
-	t.Run("prefers_agy_over_standalone", func(t *testing.T) {
+	t.Run("prefers_ready_agy_over_standalone_without_settings_json", func(t *testing.T) {
 		home, gemini, _ := isolateAntigravityEnv(t)
 		agyDir := t.TempDir()
 		agyBin := installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
 		installFakeBinary(t, filepath.Join(home, ".local", "share", "antigravity-acp"), standaloneExeName(), "", "1.4.5")
-		writeAntigravitySettings(t, gemini, antigravityCLIDir, `{"auth":{"type":"oauth-personal"}}`)
+		writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
 
 		p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
 		i := p.Discover(context.Background())
 		if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || !i.LoggedIn {
-			t.Fatalf("expected agy to win: %+v", i)
+			t.Fatalf("expected authenticated agy to win: %+v", i)
+		}
+	})
+
+	t.Run("upgrade_unauthenticated_agy_preserves_working_standalone", func(t *testing.T) {
+		home, gemini, _ := isolateAntigravityEnv(t)
+		agyDir := t.TempDir()
+		agyBin := installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
+		setFakeFile(t, agyDir, "fakeacp.auth", "oauth-personal") // not signed in yet -> -32000
+		standaloneDir := filepath.Join(home, ".local", "share", "antigravity-acp")
+		standalone := installFakeBinary(t, standaloneDir, standaloneExeName(), "", "1.4.5")
+		setFakeFile(t, standaloneDir, "fakeacp.config", "1")
+		setFakeFile(t, standaloneDir, "fakeacp.models", "gemini-3.8-flash")
+		writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
+		t.Setenv("FAKE_ACP_STATE", t.TempDir())
+
+		// Discover must keep the working standalone server rather than breaking the user.
+		p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+		i := p.Discover(context.Background())
+		if !i.Available || i.Binary != standalone || i.Version != "1.4.5" || !i.LoggedIn || i.ModelsState != provider.ModelsKnown {
+			t.Fatalf("expected working standalone to be preserved: %+v", i)
+		}
+
+		// Start after Discover must also run standalone (and succeed).
+		s, err := p.Start(context.Background(), provider.StartSpec{
+			WorkDir: t.TempDir(),
+			Prompt:  "say still working",
+			Env:     os.Environ(),
+			Gate:    func(context.Context, provider.ToolAction) provider.Decision { return provider.Decision{Allow: true} },
+		})
+		if err != nil {
+			t.Fatalf("start after discover: %v", err)
+		}
+		evs, done := collect(t, s)
+		s.Close()
+		if done.IsError || len(of(evs, provider.EventAgentMessage)) != 1 || of(evs, provider.EventAgentMessage)[0].Text != "still working" {
+			t.Fatalf("session after discover: done=%+v evs=%+v", done, evs)
+		}
+
+		// Cold Start on a fresh Provider (without prior Discover) must also preserve standalone.
+		cold := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+		s, err = cold.Start(context.Background(), provider.StartSpec{
+			WorkDir: t.TempDir(),
+			Prompt:  "say cold start ok",
+			Env:     os.Environ(),
+			Gate:    func(context.Context, provider.ToolAction) provider.Decision { return provider.Decision{Allow: true} },
+		})
+		if err != nil {
+			t.Fatalf("cold start: %v", err)
+		}
+		_, done = collect(t, s)
+		s.Close()
+		if done.IsError {
+			t.Fatalf("cold start done: %+v", done)
+		}
+
+		// Once the user signs in to agy (keyring; no antigravity-cli/settings.json needed),
+		// Discover and Start switch cleanly to agy acp.
+		setFakeFile(t, agyDir, "fakeacp.auth", "")
+		setFakeFile(t, agyDir, "fakeacp.config", "1")
+		setFakeFile(t, agyDir, "fakeacp.models", "gemini-4-neon")
+		i = p.Discover(context.Background())
+		if !i.Available || i.Binary != agyBin || i.Version != "1.5.9" || !i.LoggedIn || i.ModelsState != provider.ModelsKnown {
+			t.Fatalf("expected switch to signed-in agy: %+v", i)
+		}
+	})
+
+	for _, tc := range []struct {
+		name, file, val string
+	}{
+		{"probe_error", "fakeacp.new_error", "-32603"},
+		{"broken_version", "fakeacp.version_fail", "1"},
+	} {
+		t.Run("upgrade_"+tc.name+"_agy_preserves_working_standalone", func(t *testing.T) {
+			home, gemini, _ := isolateAntigravityEnv(t)
+			agyDir := t.TempDir()
+			installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
+			setFakeFile(t, agyDir, tc.file, tc.val)
+			standalone := installFakeBinary(t, filepath.Join(home, ".local", "share", "antigravity-acp"), standaloneExeName(), "", "1.4.5")
+			writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
+
+			p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+			i := p.Discover(context.Background())
+			if !i.Available || i.Binary != standalone || i.Version != "1.4.5" || !i.LoggedIn {
+				t.Fatalf("expected working standalone when agy has %s: %+v", tc.name, i)
+			}
+		})
+	}
+
+	t.Run("upgrade_unauthenticated_agy_preserves_configured_standalone_on_probe_error", func(t *testing.T) {
+		home, gemini, _ := isolateAntigravityEnv(t)
+		agyDir := t.TempDir()
+		installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
+		setFakeFile(t, agyDir, "fakeacp.auth", "oauth-personal") // authoritatively unauthenticated (-32000)
+		standaloneDir := filepath.Join(home, ".local", "share", "antigravity-acp")
+		standalone := installFakeBinary(t, standaloneDir, standaloneExeName(), "", "1.4.5")
+		setFakeFile(t, standaloneDir, "fakeacp.new_error", "-32603") // transient non-auth probe failure
+		writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
+
+		p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+		i := p.Discover(context.Background())
+		if !i.Available || i.Binary != standalone || !i.LoggedIn || i.ModelsState != provider.ModelsError {
+			t.Fatalf("expected configured standalone with models_state=error, not agy auth_required: %+v", i)
+		}
+	})
+
+	t.Run("both_unauthenticated_prefers_agy_and_login_uses_agy", func(t *testing.T) {
+		home, _, _ := isolateAntigravityEnv(t)
+		agyDir := t.TempDir()
+		agyBin := installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
+		setFakeFile(t, agyDir, "fakeacp.auth", "oauth-personal")
+		installFakeBinary(t, filepath.Join(home, ".local", "share", "antigravity-acp"), standaloneExeName(), "", "1.4.5")
+		argsLog := filepath.Join(t.TempDir(), "args.log")
+		t.Setenv("FAKE_ACP_ARGS_LOG", argsLog)
+
+		p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+		i := p.Discover(context.Background())
+		if !i.Available || i.Binary != agyBin || i.LoggedIn || i.ModelsState != provider.ModelsAuthRequired {
+			t.Fatalf("expected agy auth_required when neither is signed in: %+v", i)
+		}
+		os.Remove(argsLog)
+		var out bytes.Buffer
+		if err := p.Login(context.Background(), "oauth-personal", &out); err != nil {
+			t.Fatalf("login: %v", err)
+		}
+		if logged := readArgsLog(t, argsLog); !slices.ContainsFunc(logged, func(a []string) bool { return slices.Equal(a, []string{"acp"}) }) {
+			t.Fatalf("expected login to invoke agy acp, got %v", logged)
 		}
 	})
 
@@ -294,12 +459,11 @@ func TestAntigravityPrecedenceAndIncompatibleAgy(t *testing.T) {
 	}
 
 	t.Run("skips_incompatible_agy_for_later_valid_agy_on_path", func(t *testing.T) {
-		_, gemini, _ := isolateAntigravityEnv(t)
+		_, _, _ = isolateAntigravityEnv(t)
 		badDir := t.TempDir()
 		goodDir := t.TempDir()
 		installFakeBinary(t, badDir, agyExeName(), "ide-launcher", "1.0.0")
 		goodBin := installFakeBinary(t, goodDir, agyExeName(), "acp", "1.5.9")
-		writeAntigravitySettings(t, gemini, antigravityCLIDir, `{"auth":{"type":"oauth-personal"}}`)
 
 		p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: badDir + string(os.PathListSeparator) + goodDir}
 		i := p.Discover(context.Background())
@@ -345,12 +509,11 @@ func TestAntigravityBinaryOverride(t *testing.T) {
 		}
 	}
 
-	_, gemini, _ := isolateAntigravityEnv(t)
+	_, _, _ = isolateAntigravityEnv(t)
 	agyBin := installFakeBinary(t, t.TempDir(), agyExeName(), "acp", "1.5.9")
-	writeAntigravitySettings(t, gemini, antigravityCLIDir, `{"auth":{"type":"oauth-personal"}}`)
 	p := &Provider{Agent: antigravityAgent("linux"), Binary: agyBin}
 	cmd := p.resolve(context.Background())
-	if cmd.bin != agyBin || !slices.Equal(cmd.args, []string{"acp"}) || cmd.configDir != antigravityCLIDir {
+	if cmd.bin != agyBin || !slices.Equal(cmd.args, []string{"acp"}) || cmd.mode != antigravityCLI {
 		t.Fatalf("agy override resolve: %+v", cmd)
 	}
 	if i := p.Discover(context.Background()); !i.Available || !i.LoggedIn || i.Version != "1.5.9" {
@@ -360,7 +523,7 @@ func TestAntigravityBinaryOverride(t *testing.T) {
 	standalone := installFakeBinary(t, t.TempDir(), standaloneExeName(), "", "1.4.5")
 	pStandalone := &Provider{Agent: antigravityAgent("linux"), Binary: standalone}
 	cmd = pStandalone.resolve(context.Background())
-	if cmd.bin != standalone || !slices.Equal(cmd.args, []string{"--uid="}) || cmd.configDir != antigravityACPDir {
+	if cmd.bin != standalone || !slices.Equal(cmd.args, []string{"--uid="}) || cmd.mode != antigravityStandalone {
 		t.Fatalf("standalone override resolve: %+v", cmd)
 	}
 }

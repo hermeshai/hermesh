@@ -152,6 +152,7 @@ func fakeSetting(envKey, fileName string) string {
 }
 
 func main() {
+	authID = fakeSetting("FAKE_ACP_AUTH", "fakeacp.auth")
 	if path := os.Getenv("FAKE_ACP_ARGS_LOG"); path != "" {
 		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
 			b, _ := json.Marshal(os.Args[1:])
@@ -160,6 +161,10 @@ func main() {
 		}
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		if fakeSetting("FAKE_ACP_VERSION_FAIL", "fakeacp.version_fail") == "1" {
+			fmt.Fprintln(os.Stderr, "version failed")
+			os.Exit(1)
+		}
 		fmt.Println(cmp.Or(fakeSetting("FAKE_ACP_VERSION", "fakeacp.version"), "fakeacp 1.2.3"))
 		return
 	}
@@ -251,7 +256,7 @@ func handle(m msg) {
 		if os.Getenv("FAKE_ACP_OPTIONS") == "1" {
 			sessionCaps["options"] = map[string]any{}
 		}
-		if os.Getenv("FAKE_ACP_CLOSE") == "1" {
+		if fakeSetting("FAKE_ACP_CLOSE", "fakeacp.close") == "1" {
 			sessionCaps["close"] = map[string]any{}
 		}
 		caps["sessionCapabilities"] = sessionCaps
@@ -296,12 +301,17 @@ func handle(m msg) {
 		curModel = ""
 		reply(m.ID, map[string]any{"configOptions": modelConfig()})
 	case "session/close":
-		if os.Getenv("FAKE_ACP_CLOSE") != "1" {
+		if fakeSetting("FAKE_ACP_CLOSE", "fakeacp.close") != "1" {
 			replyErr(m.ID, -32601, "not advertised")
 			return
 		}
 		reply(m.ID, map[string]any{})
 	case "session/new":
+		if code := fakeSetting("FAKE_ACP_NEW_ERROR", "fakeacp.new_error"); code != "" {
+			n, _ := strconv.Atoi(code)
+			replyErr(m.ID, n, "session/new failed")
+			return
+		}
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
 			return
@@ -311,12 +321,12 @@ func handle(m msg) {
 		save(sid, &history{})
 		res := map[string]any{"sessionId": sid}
 		curModel, curEffort = "", ""
-		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
+		if fakeSetting("FAKE_ACP_CONFIG", "fakeacp.config") == "1" {
 			res["configOptions"] = modelConfig()
 		}
 		if os.Getenv("FAKE_ACP_LEGACY") == "1" {
 			var available []any
-			for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+			for _, x := range strings.Split(fakeSetting("FAKE_ACP_MODELS", "fakeacp.models"), ",") {
 				if x != "" {
 					available = append(available, map[string]any{"modelId": x, "name": strings.ToUpper(x)})
 					curModel = cmp.Or(curModel, x)
@@ -525,7 +535,7 @@ func modelConfig() any {
 		return json.RawMessage(b)
 	}
 	opts := []any{}
-	for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+	for _, x := range strings.Split(fakeSetting("FAKE_ACP_MODELS", "fakeacp.models"), ",") {
 		if x == "" {
 			continue
 		}

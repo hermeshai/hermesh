@@ -52,10 +52,13 @@ func modelContext(bin string, env []string) string {
 	home, _ := os.UserHomeDir()
 	values := map[string]string{"HOME": home}
 	for _, e := range env {
-		for _, k := range []string{"HOME", "GEMINI_HOME", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "CLOUDSDK_CONFIG"} {
+		for _, k := range []string{"HOME", "GEMINI_HOME", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_CLOUD_QUOTA_PROJECT", "CLOUDSDK_CONFIG", "AGY_ADC_AUTH"} {
 			if v, ok := strings.CutPrefix(e, k+"="); ok {
 				values[k] = v
 			}
+		}
+		if v, ok := strings.CutPrefix(e, "GEMINI_API_KEY="); ok && v != "" {
+			values["GEMINI_API_KEY"] = modelHash(v)
 		}
 	}
 	stamp := bin

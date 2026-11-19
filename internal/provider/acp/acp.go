@@ -70,19 +70,21 @@ type Provider struct {
 	// PathEnv is the PATH used to find binaries ("": the login shell's).
 	PathEnv string
 	// Binary overrides discovery (tests use a fake agent).
-	Binary   string
-	modelsMu sync.Mutex
-	list     *modelList
-	acpMu    sync.Mutex
-	acpProbe map[string]bool
+	Binary       string
+	modelsMu     sync.Mutex
+	list         *modelList
+	acpMu        sync.Mutex
+	acpProbe     map[string]bool
+	chosenStamp  string
+	chosenLaunch launch
 }
 
 type launch struct {
-	bin       string
-	pre       []string
-	args      []string
-	env       []string
-	configDir string
+	bin  string
+	pre  []string
+	args []string
+	env  []string
+	mode antigravityMode
 }
 
 func (l launch) probeArgs() []string {
@@ -160,10 +162,18 @@ func (p *Provider) lookAll(command string, paths ...string) []string {
 
 func (p *Provider) resolve(ctx context.Context) launch {
 	if p.Name() == "antigravity" {
-		return p.resolveAntigravity(ctx)
+		return p.resolveAntigravityLogin(ctx)
 	}
 	bin, pre, env := p.command()
 	return launch{bin: bin, pre: pre, args: p.Args, env: env}
+}
+
+func (p *Provider) resolveForStart(ctx context.Context, env []string) launch {
+	if p.Name() == "antigravity" {
+		return p.resolveAntigravityStart(ctx, env)
+	}
+	bin, pre, extraEnv := p.command()
+	return launch{bin: bin, pre: pre, args: p.Args, env: extraEnv}
 }
 
 func (p *Provider) notFoundDetail() string {
@@ -171,6 +181,14 @@ func (p *Provider) notFoundDetail() string {
 		return p.Command + " or " + p.fallback.command + " not found"
 	}
 	return p.Command + " not found"
+}
+
+func (p *Provider) notFoundInfo() provider.Info {
+	info := provider.Info{Name: p.Name(), Problem: provider.ProblemNotFound, Detail: p.notFoundDetail()}
+	if app := provider.AppWithoutCLI(p.DesktopApps...); app != "" && p.Binary == "" {
+		info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+	}
+	return info
 }
 
 // command is how to start the CLI: its binary, the arguments ahead of the
@@ -220,19 +238,21 @@ func scriptThere(script string) bool {
 var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
 
 func (p *Provider) Discover(ctx context.Context) provider.Info {
+	if p.Name() == "antigravity" {
+		return p.discoverAntigravity(ctx)
+	}
+	return p.discoverLaunch(ctx, p.resolve(ctx), provider.ProbeEnv(p.PathEnv))
+}
+
+func (p *Provider) discoverLaunch(ctx context.Context, cmd launch, baseEnv []string) provider.Info {
 	info := provider.Info{Name: p.Name()}
-	cmd := p.resolve(ctx)
 	if !provider.Exists(cmd.bin) {
-		info.Problem, info.Detail = provider.ProblemNotFound, p.notFoundDetail()
-		if app := provider.AppWithoutCLI(p.DesktopApps...); app != "" && p.Binary == "" {
-			info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
-		}
-		return info
+		return p.notFoundInfo()
 	}
 	info.Binary = cmd.bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	env := append(provider.ProbeEnv(p.PathEnv), cmd.env...)
+	env := append(slices.Clip(baseEnv), cmd.env...)
 	out, problem, detail := provider.Probe(ctx, env, cmd.bin, cmd.probeArgs()...)
 	if problem != provider.ProblemNone {
 		info.Problem, info.Detail = problem, detail
@@ -243,8 +263,8 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	// ACP has no way to ask for the login state before a session: reading
 	// the models tells, as a missing login fails the session.
 	info.LoggedIn = true
-	if p.Name() == "antigravity" {
-		info.LoggedIn = antigravityConfigured(env, cmd.configDir)
+	if cmd.mode == antigravityStandalone {
+		info.LoggedIn = antigravityStandaloneConfigured(env)
 	}
 	if info.LoggedIn {
 		p.fillModels(ctx, &info, cmd, env)
@@ -264,7 +284,7 @@ func withPath(env []string, path string) []string {
 }
 
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
-	cmd := p.resolve(ctx)
+	cmd := p.resolveForStart(ctx, spec.Env)
 	if cmd.bin == "" {
 		return nil, errors.New(p.notFoundDetail())
 	}
