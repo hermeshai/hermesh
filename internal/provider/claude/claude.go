@@ -2,6 +2,8 @@
 package claude
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -99,17 +101,98 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	if !info.LoggedIn && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		info.LoggedIn = true
 	}
-	info.Models = Models
+	info.Models, info.ModelsState, info.ModelsAt = Models, provider.ModelsKnown, time.Now()
+	if ms, err := listModels(ctx, env, bin); err == nil && len(ms) > 0 {
+		info.Models = ms
+	}
 	return info
 }
 
-// Models are the aliases Claude Code takes for its latest models; it lists
-// none itself.
+// Models are the aliases Claude Code takes for its latest models, listed
+// when it does not say which it offers (a version from before it did).
 var Models = []provider.Model{
 	{ID: "fable", Name: "Fable", Efforts: efforts},
 	{ID: "opus", Name: "Opus", Efforts: efforts},
 	{ID: "sonnet", Name: "Sonnet", Efforts: efforts},
 	{ID: "haiku", Name: "Haiku", Efforts: efforts},
+}
+
+// listModels asks Claude Code which models it offers this account, as its
+// own model picker does: the initialize control request, answered before
+// any prompt, so no model runs and no session is kept. It runs in an empty
+// folder, so no project's settings change the answer, and is given 10 s:
+// a Claude Code that hangs is stopped with all it started.
+func listModels(ctx context.Context, env []string, bin string) ([]provider.Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	dir, err := os.MkdirTemp("", "hermesh-models-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	proc, err := provider.StartProc(ctx, bin, []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--settings", `{"crossSessionInbound":"refuse"}`}, dir, env)
+	if err != nil {
+		return nil, err
+	}
+	defer proc.Stop(time.Second)
+	answer := make(chan []byte, 1)
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		proc.Lines(func(b []byte) {
+			if bytes.Contains(b, []byte(`"hermesh-models"`)) {
+				select {
+				case answer <- bytes.Clone(b):
+				default:
+				}
+			}
+		})
+	}()
+	if err := proc.WriteLine([]byte(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}`)); err != nil {
+		return nil, err
+	}
+	select {
+	case b := <-answer:
+		return modelsFrom(b)
+	case <-read: // it ended without answering (a version from before)
+		return nil, errors.New("claude gave no models")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// modelsFrom reads Claude Code's answer to the initialize request: the
+// models it offers ("default" is following its own setting, which Hermesh
+// offers as not setting one).
+func modelsFrom(line []byte) ([]provider.Model, error) {
+	var m struct {
+		Type     string
+		Response struct {
+			Subtype   string
+			RequestID string `json:"request_id"`
+			Error     string
+			Response  struct {
+				Models []struct {
+					Value, DisplayName    string
+					SupportedEffortLevels []string
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(line, &m); err != nil {
+		return nil, err
+	}
+	if m.Type != "control_response" || m.Response.RequestID != "hermesh-models" || m.Response.Subtype != "success" {
+		return nil, fmt.Errorf("claude: %s", cmp.Or(m.Response.Error, "no models"))
+	}
+	var ms []provider.Model
+	for _, x := range m.Response.Response.Models {
+		if x.Value != "" && x.Value != "default" {
+			ms = append(ms, provider.Model{ID: x.Value, Name: x.DisplayName, Efforts: x.SupportedEffortLevels})
+		}
+	}
+	return ms, nil
 }
 
 var efforts = []string{"low", "medium", "high", "xhigh", "max"}

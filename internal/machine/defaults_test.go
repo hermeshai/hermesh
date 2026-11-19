@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path/filepath"
@@ -16,8 +17,8 @@ import (
 // TestAgentDefaults: a Codex session started without a model runs with the
 // machine's defaults; one naming a model keeps it, with the default effort
 // and speed; a session's process started again keeps what the session
-// started with, whatever the defaults are by then. Only Claude Code and
-// Codex take defaults, and only Codex a speed.
+// started with, whatever the defaults are by then. Every coding agent takes
+// defaults (an unknown one none), and only Codex a speed.
 func TestAgentDefaults(t *testing.T) {
 	codex := &recorder{}
 	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": codex})
@@ -70,8 +71,12 @@ func TestAgentDefaults(t *testing.T) {
 	}
 	want(-1, "gpt-5.6-luna", "low", std)
 
+	if err := set(&identityv1.AgentDefaults{Agent: "antigravity", Model: "gemini-4-neon", Effort: "xhigh"}); err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range []*identityv1.AgentDefaults{
 		{Agent: "fake", Model: "m"},
+		{Agent: "antigravity", Speed: identityv1.AgentSpeed_AGENT_SPEED_FAST},
 		{Agent: "claude", Speed: identityv1.AgentSpeed_AGENT_SPEED_FAST},
 		{Agent: "codex", Model: "two words"},
 		{Agent: "codex", Effort: "High"},
@@ -166,6 +171,23 @@ func TestModelAndEffort(t *testing.T) {
 	for i, effort := range []string{"high", "xhigh"} {
 		if s := codex.spec(i); s.Effort != effort {
 			t.Fatalf("start %d ran with effort %q, want %q", i, s.Effort, effort)
+		}
+	}
+
+	// A default effort the model run does not take follows the agent's own;
+	// one it takes, or that of a model not listed, is passed.
+	if _, err := h.n.execAdmin(ctx, &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetAgentDefaults{
+		SetAgentDefaults: &identityv1.AgentDefaults{Agent: "codex", Model: "gpt-big", Effort: "xhigh"}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ model, effort string }{{"", "xhigh"}, {"gpt-small", ""}, {"gpt-big", "xhigh"}} {
+		s, err := start("codex", c.model, "")
+		if err != nil {
+			t.Fatalf("%+v: %v", c, err)
+		}
+		h.wait(s.SessionId, idle)
+		if got := codex.spec(-1); got.Model != cmp.Or(c.model, "gpt-big") || got.Effort != c.effort {
+			t.Fatalf("%+v ran with %q/%q", c, got.Model, got.Effort)
 		}
 	}
 }

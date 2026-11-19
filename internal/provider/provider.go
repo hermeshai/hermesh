@@ -23,30 +23,28 @@ type Info struct {
 	// Problem is why it is not available; Detail, what was printed.
 	Problem Problem
 	Detail  string
-	// Models it offers and its own configuration, as far as it tells
-	// (Claude Code and Codex), for picking a machine's defaults.
+	// Models it offers and its own configuration, as the agent itself
+	// reports them, for picking a machine's defaults and a session's model.
 	Models []Model
 	Own    Settings
-	// AllModels: Models are every model it takes here (Codex lists its
-	// own), so a session naming another can be refused before it starts.
+	// AllModels: Models are every model it takes here (Codex and ACP
+	// agents list their own), so a session naming another can be refused
+	// before it starts.
 	AllModels bool
+	// ModelsState says what Models are: ModelsKnown (the agent's own list,
+	// as of ModelsAt), ModelsUnsupported (it offers no choice of model),
+	// ModelsAuthRequired (it must be signed in to tell) or ModelsError
+	// (it could not tell); "" when it was not asked.
+	ModelsState string
+	ModelsAt    time.Time
 }
 
-// ModelCatalog is an observation, not a machine-wide entitlement guarantee.
-// Scope is an opaque session address, or "isolated" for a workspace-free probe.
-// State distinguishes a known empty model selection from missing information.
-type ModelCatalog struct {
-	Scope, Source, State       string
-	Models                     []Model
-	DefaultModel, CurrentModel string
-	ObservedAt, ExpiresAt      time.Time
-}
-
-// ModelCatalogProvider exposes in-memory, scoped observations without starting
-// processes. Providers without this optional interface retain their old behavior.
-type ModelCatalogProvider interface {
-	ModelCatalogs() []ModelCatalog
-}
+const (
+	ModelsKnown        = "known"
+	ModelsUnsupported  = "unsupported"
+	ModelsAuthRequired = "auth_required"
+	ModelsError        = "error"
+)
 
 // Model is one model an agent offers.
 type Model struct {
@@ -196,18 +194,15 @@ type Input struct {
 // StartSpec describes one provider process.
 type StartSpec struct {
 	WorkDir string
-	// ModelScope names this session for scoped model observations, without
-	// exposing its filesystem path to clients listing coding agents.
-	ModelScope string
-	TempDir    string
-	Prompt     string
-	Images     []Image // with the first prompt
+	TempDir string
+	Prompt  string
+	Images  []Image // with the first prompt
 	// ReadDirs are directories outside WorkDir the agent must be able to
 	// read (the session's attached files).
 	ReadDirs []string
 	Model    string
 	// Effort and Speed, like Model, override the agent's own configuration
-	// for this session only (Claude Code and Codex; Speed: Codex).
+	// for this session only (Speed: Codex).
 	Effort string
 	Speed  identityv1.AgentSpeed
 	// ResumeRef resumes a previous provider session (Claude session id or
