@@ -189,6 +189,23 @@ func snapshot(_ items: [JSON], task: JSON = nil, seq: Int = 10, queued: JSON = [
     #expect(herBusyBubble(v) == nil, "nothing at work, no bubble")
 }
 
+@Test func herStatusReportsTypingCompactingAndRetryingForHerTag() {
+    var v = snapshot([said("u1", "hi", ts: 1)])
+    #expect(herStatus(v, now: 100_000) == nil)
+    v.apply(["seq": 11, "ts": 10_000, "type": "task_started", "task_id": "t1"])
+    #expect(herStatus(v, now: 12_000) == .typing)
+    v.apply(["seq": 12, "ts": 15_000, "type": "compaction_started", "reason": "auto"])
+    #expect(herStatus(v, now: 16_000) == .compacting)
+    v.apply(["seq": 13, "ts": 20_000, "type": "stream_retry", "attempt": 1, "delay_ms": 5000])
+    #expect(herStatus(v, now: 25_000) == .compacting, "retry under 10s does not outrank compacting")
+    #expect(herStatus(v, now: 31_000) == .retrying, "retry past 10s takes precedence")
+    v.apply(["seq": 14, "ts": 32_000, "type": "compaction_completed", "tokens_before": 100, "tokens_after": 50])
+    v.apply(["seq": 15, "ts": 33_000, "type": "turn_started", "turn": 2])
+    #expect(herStatus(v, now: 35_000) == .typing, "turn_started clears retry")
+    v.apply(["seq": 16, "ts": 36_000, "type": "approval_requested", "call_id": "c1", "name": "bash", "summary": "Run ls", "args": [:]])
+    #expect(herStatus(v, now: 40_000) == nil, "awaiting approval yields back to Her's name")
+}
+
 @Test func aSessionOnTheOwnersComputersAsksInItsOwnWords() {
     let ask: JSON = ["call_id": "c1", "name": "session_start", "args": ["project": "homemini/hermesh"], "summary": "Start Codex in homemini/hermesh\n\nFix the flaky relay test.\n  Keep the diff small.\n",
                      "proposed_rule": ["prefix": ["mesh", "homemini/hermesh"]]]

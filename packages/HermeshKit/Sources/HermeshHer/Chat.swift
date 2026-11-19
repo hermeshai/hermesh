@@ -535,6 +535,21 @@ public struct HerBusyBubble: Equatable, Sendable {
     public var agents: [Agent]
 }
 
+/// What Her's name tag says in place of her name while she answers (never while waiting for approval).
+public enum HerStatus: Equatable, Sendable {
+    case typing
+    case compacting
+    case retrying
+}
+
+/// Her's own capsule status (her-client's herStatus): nil while idle or waiting for approval.
+public func herStatus(_ v: HerSession, now: Double = Date.now.timeIntervalSince1970 * 1000) -> HerStatus? {
+    guard let live = v.live, live.approvals.isEmpty else { return nil }
+    if let retryAt = live.retryAt, now - retryAt > 10_000 { return .retrying }
+    if live.compacting != nil { return .compacting }
+    return .typing
+}
+
 /// Nil when nothing is at work, and while Her waits for the owner: an approval in the composer's place says so.
 public func herBusyBubble(_ v: HerSession) -> HerBusyBubble? {
     if let live = v.live, !live.approvals.isEmpty { return nil }

@@ -43,6 +43,8 @@
   },
   "line": {
     "typing": "Typing…",
+    "compacting": "Compacting…",
+    "retrying": "Retrying…",
     "agentAtWork": "Sub-agent · {{name}}, at work",
     "agentsWorking_one": "{{count}} sub-agent at work",
     "agentsWorking_other": "{{count}} sub-agents at work",
