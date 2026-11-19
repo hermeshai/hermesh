@@ -83,6 +83,9 @@ const (
 	// SessionServiceCheckLocalCodingRecipientProcedure is the fully-qualified name of the
 	// SessionService's CheckLocalCodingRecipient RPC.
 	SessionServiceCheckLocalCodingRecipientProcedure = "/hermesh.session.v1.SessionService/CheckLocalCodingRecipient"
+	// SessionServiceCodingConsentProcedure is the fully-qualified name of the SessionService's
+	// CodingConsent RPC.
+	SessionServiceCodingConsentProcedure = "/hermesh.session.v1.SessionService/CodingConsent"
 	// SessionServiceReadToolOutputProcedure is the fully-qualified name of the SessionService's
 	// ReadToolOutput RPC.
 	SessionServiceReadToolOutputProcedure = "/hermesh.session.v1.SessionService/ReadToolOutput"
@@ -128,12 +131,14 @@ type SessionServiceClient interface {
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion submits a substantive answer only to a verified
-	// in-process agent. Mobile clients never fall back to AnswerQuestion.
+	// AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
+	// to AnswerQuestion on older hosts.
 	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
 	// CheckLocalCodingRecipient checks the destination before Her forwards
 	// content. The subsequent write still checks the authenticated Her grant.
 	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
+	// CodingConsent reads or changes an execution host's coding consent.
+	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
 	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
 	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
 	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
@@ -253,6 +258,12 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("CheckLocalCodingRecipient")),
 			connect.WithClientOptions(opts...),
 		),
+		codingConsent: connect.NewClient[v1.CodingConsentRequest, v1.CodingConsentResponse](
+			httpClient,
+			baseURL+SessionServiceCodingConsentProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("CodingConsent")),
+			connect.WithClientOptions(opts...),
+		),
 		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v1.ToolOutputChunk](
 			httpClient,
 			baseURL+SessionServiceReadToolOutputProcedure,
@@ -281,6 +292,7 @@ type sessionServiceClient struct {
 	answerQuestion            *connect.Client[v1.AnswerQuestionRequest, v1.Session]
 	answerLocalQuestion       *connect.Client[v1.AnswerQuestionRequest, v1.Session]
 	checkLocalCodingRecipient *connect.Client[v1.CheckLocalCodingRecipientRequest, v1.CheckLocalCodingRecipientResponse]
+	codingConsent             *connect.Client[v1.CodingConsentRequest, v1.CodingConsentResponse]
 	readToolOutput            *connect.Client[v1.ReadToolOutputRequest, v1.ToolOutputChunk]
 }
 
@@ -429,6 +441,15 @@ func (c *sessionServiceClient) CheckLocalCodingRecipient(ctx context.Context, re
 	return nil, err
 }
 
+// CodingConsent calls hermesh.session.v1.SessionService.CodingConsent.
+func (c *sessionServiceClient) CodingConsent(ctx context.Context, req *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error) {
+	response, err := c.codingConsent.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // ReadToolOutput calls hermesh.session.v1.SessionService.ReadToolOutput.
 func (c *sessionServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v1.ToolOutputChunk], error) {
 	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
@@ -474,12 +495,14 @@ type SessionServiceHandler interface {
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion submits a substantive answer only to a verified
-	// in-process agent. Mobile clients never fall back to AnswerQuestion.
+	// AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
+	// to AnswerQuestion on older hosts.
 	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
 	// CheckLocalCodingRecipient checks the destination before Her forwards
 	// content. The subsequent write still checks the authenticated Her grant.
 	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
+	// CodingConsent reads or changes an execution host's coding consent.
+	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
 	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
 	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
 	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
@@ -595,6 +618,12 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("CheckLocalCodingRecipient")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceCodingConsentHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceCodingConsentProcedure,
+		svc.CodingConsent,
+		connect.WithSchema(sessionServiceMethods.ByName("CodingConsent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	sessionServiceReadToolOutputHandler := connect.NewServerStreamHandlerSimple(
 		SessionServiceReadToolOutputProcedure,
 		svc.ReadToolOutput,
@@ -637,6 +666,8 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceAnswerLocalQuestionHandler.ServeHTTP(w, r)
 		case SessionServiceCheckLocalCodingRecipientProcedure:
 			sessionServiceCheckLocalCodingRecipientHandler.ServeHTTP(w, r)
+		case SessionServiceCodingConsentProcedure:
+			sessionServiceCodingConsentHandler.ServeHTTP(w, r)
 		case SessionServiceReadToolOutputProcedure:
 			sessionServiceReadToolOutputHandler.ServeHTTP(w, r)
 		default:
@@ -714,6 +745,10 @@ func (UnimplementedSessionServiceHandler) AnswerLocalQuestion(context.Context, *
 
 func (UnimplementedSessionServiceHandler) CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.CheckLocalCodingRecipient is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.CodingConsent is not implemented"))
 }
 
 func (UnimplementedSessionServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v1.ToolOutputChunk]) error {

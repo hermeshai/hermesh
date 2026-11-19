@@ -76,8 +76,8 @@ service SessionService {
   rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // AnswerLocalQuestion submits a substantive answer only to a verified
-  // in-process agent. Mobile clients never fall back to AnswerQuestion.
+  // AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
+  // to AnswerQuestion on older hosts.
   rpc AnswerLocalQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
@@ -85,6 +85,10 @@ service SessionService {
   // content. The subsequent write still checks the authenticated Her grant.
   rpc CheckLocalCodingRecipient(CheckLocalCodingRecipientRequest) returns (CheckLocalCodingRecipientResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  // CodingConsent reads or changes an execution host's coding consent.
+  rpc CodingConsent(CodingConsentRequest) returns (CodingConsentResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
   // ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
   // past that its first and last 512 KiB), in chunks of at most 64 KiB:
@@ -189,6 +193,7 @@ message StartSessionRequest {
   // Reasoning effort, one the model offers (AgentModel.efforts); unset:
   // the machine's default for the agent, else the agent's own.
   string effort = 12;
+  string coding_consent_version = 13;
 }
 
 // Attachment is a file sent with a message (at most 20 files and 32 MiB
@@ -298,7 +303,7 @@ message Question {
   google.protobuf.Timestamp asked_at = 4;
   // When the agent is told to continue without an answer.
   google.protobuf.Timestamp expires_at = 5;
-  // The pending question belongs to a verified in-process agent.
+  // An older mobile client can answer using the current host authorization.
   bool local_answer_available = 6;
 }
 
@@ -632,6 +637,7 @@ message SendMessageRequest {
   string session_id = 1;
   string text = 2;
   repeated Attachment attachments = 3;
+  string coding_consent_version = 4;
 }
 
 message SendMessageResponse {
@@ -643,6 +649,7 @@ message DeliverMessageRequest {
   // An inbox.v1.Message, signed by the sender's identity key.
   hermesh.identity.v1.Signed message = 2;
   repeated Attachment attachments = 3;
+  string coding_consent_version = 4;
 }
 
 message DeliverMessageResponse {
@@ -682,6 +689,7 @@ message AnswerQuestionRequest {
   repeated Answer answers = 3;
   // No answer: the agent is told nobody will answer and to continue.
   bool decline = 4;
+  string coding_consent_version = 5;
 }
 
 message CheckLocalCodingRecipientRequest {
@@ -689,9 +697,37 @@ message CheckLocalCodingRecipientRequest {
     string agent = 1;
     string session_id = 2;
   }
+  string project_id = 3;
 }
 
-message CheckLocalCodingRecipientResponse {}
+message CheckLocalCodingRecipientResponse { string version = 1; }
+
+enum CodingConsentScope {
+  CODING_CONSENT_SCOPE_UNSPECIFIED = 0;
+  CODING_CONSENT_SCOPE_HER = 1;
+  CODING_CONSENT_SCOPE_MOBILE_ANSWER = 2;
+}
+
+message CodingConsentRequest {
+  string agent = 1;
+  string project_id = 2;
+  string session_id = 3;
+  CodingConsentScope scope = 4;
+  // Approval must echo the version of the disclosure the owner saw.
+  string approve_version = 5;
+  bool revoke = 6;
+}
+
+message CodingConsentResponse {
+  string recipient = 1;
+  string route = 2;
+  string machine_id = 3;
+  string data_categories = 4;
+  string purpose = 5;
+  string version = 6;
+  bool approved = 7;
+  bool local = 8;
+}
 
 message GetDiffRequest {
   string session_id = 1;

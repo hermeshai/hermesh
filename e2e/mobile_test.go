@@ -77,7 +77,12 @@ type mobileCore struct {
 // signer with root.
 func startMobileCore(t *testing.T, dir string, root *identity.SoftwareKey) *mobileCore {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run", "^TestMobileCoreProcess$")
+	return startMobileCoreFrom(t, os.Args[0], dir, root)
+}
+
+func startMobileCoreFrom(t *testing.T, bin, dir string, root *identity.SoftwareKey) *mobileCore {
+	t.Helper()
+	cmd := exec.Command(bin, "-test.run", "^TestMobileCoreProcess$")
 	cmd.Env = append(os.Environ(), "HERMESH_TEST_MOBILE_CORE="+dir)
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
@@ -230,14 +235,18 @@ func (p *cutProxy) setCut(cut bool) {
 // w's Mac, as the iPhone joins; it reaches the relay at relayURL.
 func joinMobile(t *testing.T, w *ownerMac, relayURL, dir string, root *identity.SoftwareKey) *mobileCore {
 	t.Helper()
+	return joinMobileWithCore(t, w, relayURL, startMobileCore(t, dir, root))
+}
+
+func joinMobileWithCore(t *testing.T, w *ownerMac, relayURL string, m *mobileCore) *mobileCore {
+	t.Helper()
 	ctx := context.Background()
 	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := startMobileCore(t, dir, root)
 	join, err := m.client.RequestJoin(ctx, &localv1.RequestJoinRequest{RelayUrl: relayURL, OwnerId: st.OwnerId,
-		RootPublicKey: rootPub(root), RootLabel: "test-iphone", RootPlatform: "ios"})
+		RootPublicKey: rootPub(m.app.root), RootLabel: "test-iphone", RootPlatform: "ios"})
 	if err != nil {
 		t.Fatalf("request join: %v", err)
 	}

@@ -116,15 +116,15 @@ func readPrompt(flag, text, file string, files int) (string, error) {
 
 // requireLocalCodingRecipient checks the destination on the same verified tunnel
 // before any Her task or message is written. An older host cannot confirm it.
-func (a *app) requireLocalCodingRecipient(ctx context.Context, n *peer.Machine, req *sessionv1.CheckLocalCodingRecipientRequest) error {
+func (a *app) requireLocalCodingRecipient(ctx context.Context, n *peer.Machine, req *sessionv1.CheckLocalCodingRecipientRequest) (string, error) {
 	if a.g.GetHerMachineId() == "" {
-		return nil
+		return "", nil
 	}
-	_, err := n.Session.CheckLocalCodingRecipient(ctx, req)
+	out, err := n.Session.CheckLocalCodingRecipient(ctx, req)
 	if connect.CodeOf(err) == connect.CodeUnimplemented {
-		return connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host to verify the coding agent’s AI recipient"))
+		return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host for coding agent consent"))
 	}
-	return err
+	return out.GetVersion(), err
 }
 
 func (a *app) startCmd() *cobra.Command {
@@ -169,14 +169,15 @@ func (a *app) startCmd() *cobra.Command {
 				return err
 			}
 			return a.onMachine(ctx, c, ref, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
-				if err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
-					Destination: &sessionv1.CheckLocalCodingRecipientRequest_Agent{Agent: agent},
-				}); err != nil {
+				version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+					Destination: &sessionv1.CheckLocalCodingRecipientRequest_Agent{Agent: agent}, ProjectId: projectID,
+				})
+				if err != nil {
 					return err
 				}
 				res, err := n.Session.StartSession(ctx, &sessionv1.StartSessionRequest{IdempotencyKey: idem, ProjectId: projectID,
 					Agent: agent, Prompt: text, BaseRef: base, Model: model, Effort: effort, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
-					Conversation: a.as})
+					Conversation: a.as, CodingConsentVersion: version})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
 				}
@@ -604,6 +605,13 @@ A message sent with ` + "`hermesh session send`" + ` while the agent waits also 
 				}
 				answer := n.Session.AnswerQuestion
 				if !decline && a.g.GetHerMachineId() != "" {
+					version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+						Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: args[0]},
+					})
+					if err != nil {
+						return err
+					}
+					req.CodingConsentVersion = version
 					answer = n.Session.AnswerLocalQuestion
 				}
 				res, err := answer(ctx, req)
@@ -935,12 +943,13 @@ take input only between turns (ACP) run it as the next turn, right after.
 					return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", args[0]),
 						hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", args[0])}
 				}
-				if err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+				version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
 					Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: args[0]},
-				}); err != nil {
+				})
+				if err != nil {
 					return err
 				}
-				res, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: args[0], Text: text, Attachments: atts})
+				res, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: args[0], Text: text, Attachments: atts, CodingConsentVersion: version})
 				if err != nil {
 					return err
 				}

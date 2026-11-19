@@ -136,8 +136,16 @@ struct QuestionCard: View {
             Button {
                 sending = true
                 Task {
-                    _ = await model.answer(session, answers: [Answer.with { $0.itemID = item; $0.selected = [o] }], decline: false)
-                    sending = false
+                    defer { sending = false }
+                    var version = ""
+                    if !model.isDemo {
+                        guard let consent = try? await model.codingAnswerConsent(session), consent.approved else {
+                            model.openSession(session.sessionID)
+                            return
+                        }
+                        version = consent.version
+                    }
+                    _ = await model.answer(session, answers: [Answer.with { $0.itemID = item; $0.selected = [o] }], decline: false, consentVersion: version)
                 }
             } label: {
                 Text(o).lineLimit(1).frame(maxWidth: wide ? .infinity : nil)

@@ -10,11 +10,13 @@ The execution host refuses unapproved prompts before they enter conversation his
 
 ## Coding agents
 
-Her's mesh tools can start a session, send a follow-up, or answer a coding agent. The mesh link would forward the content to the target execution machine, which would launch or write to Codex, Claude Code, or an ACP adapter. That subprocess controls its account, cloud provider, overrides, and network traffic. A model name or agent display name does not establish the inference recipient.
+Her’s mesh tools can start sessions, send follow-ups, and answer questions. The execution host discloses the configured coding service, the categories of data, and the reason for sharing. For each host and agent, desktop Her settings offer separate approvals for Her’s handoffs and for iPhone answers. This approval is additional to Her’s tool approval and mesh grant. On iPhone, the question panel offers the answer disclosure at first use, and the agent’s settings on that device can revoke it.
 
-On a host with external coding adapters, Her offers session reads and control actions. Task starts, follow-ups, and free-text, selected-option, or multi-part answers to Codex, Claude Code, and ACP agents are blocked. The fixed decline action remains available and sends the agent only the instruction to continue without an answer. The receiving daemon checks Her's signed grant at the session RPCs. Her checks the destination on an authenticated tunnel before attempting a start or follow-up. A host that cannot confirm the in-process scripted adapter cannot receive those writes, including through the offline relay inbox. The in-process scripted adapter has no remote inference service and remains available in test installations configured to offer it.
+The host recognizes Codex’s built-in OpenAI service, Claude Code’s built-in Anthropic service, supported explicitly selected Claude cloud services, and the built-in services for Gemini CLI, Antigravity, Cursor, and GitHub Copilot. The host reads local route settings and checks the installed adapter. Codex also reports the provider for the thread through app-server. The coding process manages its own connections and can keep account or downstream processing details private. These controls establish the configured service and do not attest the exact network endpoint. The host refuses content for routes it cannot identify, including opaque custom gateways and ACP agents that do not expose an identifiable service through the supported configurations.
 
-On iPhone, substantive answers require the execution host to verify the running adapter. A new iPhone uses a dedicated RPC. An older execution host fails this check and still accepts a fixed decline. A new execution host checks the paired device's platform from the signed root chain on the legacy RPC over either TCP or QUIC. iPhone and unclassified remote owner devices require the same adapter verification. Desktop replies initiated independently by the owner continue through the established desktop path. Existing sessions remain readable, can be interrupted or archived, and may still contain context previously given to an agent. Persisted Her coding messages for unverified agents stay held when an execution host upgrades. The offline demo continues using its in-process sample tasks.
+Approvals are bound to the host, agent, observed route, and purpose. Approval expires when the execution host restarts. Her obtains a version from the authenticated execution host before forwarding content. The host verifies it again when dispatching queued work, starting or resuming an adapter, or sending answers and follow-ups. Revocation invalidates that version, including for queued or retried messages. Authorizing the route again does not release older content that still carries the withdrawn version. Previously delivered data remains with the recipient. The fixed decline remains available and carries only an instruction to proceed.
+
+New iPhone clients use a dedicated answer RPC and an owner-only disclosure RPC. Older iPhone clients can use a standing approval previously created on a current owner device. The new host applies the approval check to the old RPC using the signed device platform over TCP and QUIC. Desktop replies initiated independently by the owner use their existing path. New clients with pre-consent hosts can still decline but cannot send substantive answers. Her does not use offline relay delivery for protected coding content. Existing sessions stay readable and the offline demo keeps its scripted, in-process agent.
 
 A prompt refused on account of missing approval stays out of Her's history. A connected client keeps its draft. If an older outbox item receives this refusal on reconnect, the updated owner holds it and gives the user a discard action. Regranting access does not replay a refusal recorded by the updated owner.
 
@@ -32,21 +34,24 @@ Use fictional input, a local relay and scripted coding providers, and two loopba
 
 ```sh
 go test ./internal/machine ./internal/owner ./internal/herhost ./internal/herlink ./internal/mobile \
-  -run 'Test(ServeDirectOwnerOnlyAndSignedAnswerPolicy|HerCannotSendToAnUnverifiedCodingAgent|PersistedHerCodingMessageStaysHeld|HerConsentRefusalIsNotReplayedAfterRegrant|HerBlocksCodingWritesBeforeConnecting|CoreRejectsDeclineWithAnswerContent|CardsAnswer)$'
-go test ./e2e -run '^TestMobileAnswersVerifiedLocalCodingAgent$'
+  -run 'Test(ServeDirectOwnerOnlyAndSignedAnswerPolicy|HerCannotSendToAnUnverifiedCodingAgent|PersistedHerCodingMessageStaysHeld|HerConsentRefusalIsNotReplayedAfterRegrant|CoreRejectsDeclineWithAnswerContent|CardsAnswer)$'
+go test ./internal/provider -run '^TestCodingRouteBindsConfiguredRecipient$'
+go test ./e2e -run '^Test(MobileAnswersVerifiedLocalCodingAgent|MobileCodingConsentWithRecordingACP|HerCodingConsentWithRecordingACP)$'
 go test ./e2e -run '^TestPushHerNotices$'
 cargo test --manifest-path her/Cargo.toml -p her-llm --test http_adapters
 cargo test --manifest-path her/Cargo.toml -p her-cli --test e2e_ai_consent
 apps/ios/scripts/test-demo.sh
 ```
 
-For the version-skew checks, build the current Her and mock first. The older daemon comes from the PR's base and runs only in the test fixture.
+For the version-skew checks, build the current Her and mock first. The older daemon and mobile core come from the PR’s pre-consent base and run only in the test fixture.
 
 ```sh
 cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
 fixture="$(mktemp -d)"
 git archive ef3f8a81 | tar -xf - -C "$fixture"
 go -C "$fixture" build -o "$fixture/hermeshd" ./cmd/hermeshd
-HERMESH_TEST_LEGACY_CODING_HOST="$fixture/hermeshd" go test ./e2e \
-  -run '^Test(MobileBlocksCodingAnswerToLegacyHost|HerMeshBlocksHandoffToLegacyHost|HerMesh|HerCommandConnector)$' -count=1
+go -C "$fixture" test -c -o "$fixture/mobile.test" ./e2e
+HERMESH_TEST_LEGACY_CODING_HOST="$fixture/hermeshd" \
+HERMESH_TEST_LEGACY_MOBILE_CORE="$fixture/mobile.test" go test ./e2e \
+  -run '^Test(MobileCodingConsentWithRecordingACP|MobileBlocksCodingAnswerToLegacyHost|HerMeshBlocksHandoffToLegacyHost|HerMesh|HerCommandConnector)$' -count=1
 ```

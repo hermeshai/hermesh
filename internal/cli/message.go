@@ -972,12 +972,13 @@ func (a *app) deliverDirect(ctx context.Context, cmd *cobra.Command, c *peer.Cli
 			return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", t.session),
 				hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", t.session)}
 		}
-		if err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+		version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
 			Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: t.session},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
-		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts})
+		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts, CodingConsentVersion: version})
 		delivered := ""
 		var sess *sessionv1.Session
 		switch {

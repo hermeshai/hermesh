@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -86,29 +85,7 @@ func (l *Link) saveLocked() {
 	}
 }
 
-func (l *Link) Group() *herhost.MeshGroup {
-	g := group()
-	if !l.cfg.OnlyLocalAgents {
-		g.Summary = "Coding sessions on the user's computers, their progress and what they changed."
-		g.Guidelines = []string{
-			"Read a coding session’s status and diff to report its work. Start, follow-up and answers with content require a verified AI recipient. Respect that boundary for any other tools. If the user asks to let a coding agent continue without an answer, use session_answer with decline set to true.",
-		}
-		g.Tools = slices.DeleteFunc(g.Tools, func(t herhost.MeshTool) bool { return t.Writes && t.Name != "session_answer" })
-		for i := range g.Tools {
-			if g.Tools[i].Name == "session_answer" {
-				g.Tools[i].Description = "Decline a pending question so the coding agent can proceed on its own."
-				g.Tools[i].Parameters = map[string]any{
-					"type": "object", "additionalProperties": false, "required": []string{"session_id", "decline"},
-					"properties": map[string]any{
-						"session_id": map[string]any{"type": "string"},
-						"decline":    map[string]any{"type": "boolean", "const": true},
-					},
-				}
-			}
-		}
-	}
-	return g
-}
+func (l *Link) Group() *herhost.MeshGroup { return group() }
 
 // options are what a command runs with: her credentials and her kept
 // connection.
@@ -215,26 +192,12 @@ func isSession(to string) bool {
 	return strings.HasPrefix(s, "s_")
 }
 
-func fixedDecline(raw json.RawMessage) bool {
-	var values map[string]any
-	if json.Unmarshal(raw, &values) != nil || len(values) != 2 {
-		return false
-	}
-	session, _ := values["session_id"].(string)
-	decline, _ := values["decline"].(bool)
-	return isSession(session) && decline
-}
-
 // Call runs one of her tools and returns the command's JSON document, and
 // what the apps read of it (docs/her-team.md §6.2).
 func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawMessage) (string, any, bool) {
 	t, ok := find(name)
 	if !ok {
 		return failure("usage", "no tool "+name), nil, true
-	}
-	// Stop before forwarding to a machine that might predate the recipient check.
-	if t.writes && !l.cfg.OnlyLocalAgents && (name != "session_answer" || !fixedDecline(raw)) {
-		return failure("ai_recipient_unverified", machine.AIRecipientUnverified), nil, true
 	}
 	args, err := l.arguments(t, bot, callID, raw)
 	if err != nil {
