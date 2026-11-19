@@ -23,6 +23,13 @@ struct AccountSheet: View {
         model.isDemo ? Binding(get: { model.demoAppearance }, set: { model.demoAppearance = $0 }) : $appearance
     }
 
+    private var accountDeletionURL: URL? {
+        let status = model.status
+        guard !model.isDemo, status.initialized, status.hosted, !status.signedOut, !status.removed else { return nil }
+        let origins = Bundle.main.object(forInfoDictionaryKey: "HermeshAccountDeletionOrigins") as? String ?? ""
+        return HostedAccountDeletion.browserURL(consoleURL: status.consoleURL, enabledOrigins: origins)
+    }
+
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.accountPath) {
@@ -93,8 +100,16 @@ struct AccountSheet: View {
                             Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
                                 .accessibilityIdentifier("erase-everything")
                         }
+                        if let url = accountDeletionURL {
+                            Button(role: .destructive) { openURL(url) } label: { endRow("Delete Account…") }
+                                .accessibilityIdentifier("delete-hosted-account")
+                        }
                     } header: {
                         Text("Actions").accessibilityIdentifier("account-actions")
+                    } footer: {
+                        if accountDeletionURL != nil {
+                            Text("Delete Account opens the hosted account page in your browser. Erase Everything resets your workspace and its devices.")
+                        }
                     }
                 }
             }
