@@ -201,6 +201,9 @@ pub mod method {
     /// permissions as agent-desktop finds them.
     pub const DESKTOP_STATUS: &str = "desktop/status";
     /// Where her keeps her data, and how much of it there is, by kind.
+    pub const AI_CONSENT_STATUS: &str = "ai_consent/status";
+    pub const AI_CONSENT_ALLOW: &str = "ai_consent/allow";
+    pub const AI_CONSENT_REVOKE: &str = "ai_consent/revoke";
     pub const STORAGE_USAGE: &str = "storage/usage";
     /// This connection writes .docx files from the kernel's Word documents (word-design §2): a
     /// later host replaces the one before it, and the host leaves with its connection.
@@ -531,6 +534,19 @@ pub struct MeshNewsParams {
 /// The result of methods that return nothing: `{}`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Empty {}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct AiConsentStatusParams {
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct AiConsentAllowParams {
+    pub model: String,
+    pub recipient: her_llm::consent::Recipient,
+    pub revision: String,
+}
+
 
 /// A JSON-RPC request id.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

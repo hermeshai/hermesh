@@ -3,8 +3,10 @@ package mobile
 import (
 	"context"
 	"fmt"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 
 	"connectrpc.com/connect"
@@ -25,6 +27,21 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func client(c *Core, token string) localv1connect.LocalServiceClient {
 	return localv1connect.NewLocalServiceClient(&http.Client{Transport: bearer{token}}, fmt.Sprintf("http://127.0.0.1:%d", c.Port()))
+}
+
+func TestCoreBlocksUnverifiedCodingAnswers(t *testing.T) {
+	c, err := Start(t.TempDir(), slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.o.Close)
+	t.Cleanup(c.Pause)
+	_, err = client(c, c.Token()).AnswerQuestion(t.Context(), &localv1.AnswerQuestionRequest{
+		SessionId: "s_fictional", Answers: []*sessionv1.Answer{{Text: "fictional answer"}},
+	})
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "AI recipient") {
+		t.Fatalf("coding answer reached session routing: %v", err)
+	}
 }
 
 func TestCoreServesLocalServiceToTheTokenOnly(t *testing.T) {

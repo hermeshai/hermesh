@@ -359,6 +359,9 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 		return nil, cerr(connect.CodePermissionDenied, "only clients may start sessions")
 	}
 	g := p.Grant
+	if err := s.checkHerCodingRecipient(p, req.Agent); err != nil {
+		return nil, err
+	}
 	if req.IdempotencyKey != "" {
 		if id, err := s.st.Idempotent(p.ClientID, req.IdempotencyKey); err != nil {
 			return nil, err
@@ -591,8 +594,11 @@ func (s *Sessions) ActiveByProject() map[string]uint32 {
 }
 
 func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts []*sessionv1.Attachment) (*sessionv1.Session, error) {
-	l, _, err := s.find(p, id, true)
+	l, row, err := s.find(p, id, true)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkHerCodingRecipient(p, row.Agent); err != nil {
 		return nil, err
 	}
 	if err := checkAttachments(text, atts); err != nil {
@@ -710,6 +716,9 @@ func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text str
 	}
 	l, r, err := s.find(p, id, false)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := s.checkHerCodingRecipient(p, r.Agent); err != nil {
 		return nil, "", err
 	}
 	if !identity.Allows(p.Grant.ProjectIds, r.ProjectID) || !identity.Allows(p.Grant.Agents, r.Agent) {

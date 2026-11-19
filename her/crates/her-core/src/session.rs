@@ -903,6 +903,7 @@ impl Session {
     fn change_model(&self, model: Arc<Model>, thinking: ThinkingLevel) {
         {
             let mut state = self.state.lock();
+            self.llm.ai_model_changed(&state.model, &model);
             state.model = model.clone();
             state.thinking = thinking;
         }

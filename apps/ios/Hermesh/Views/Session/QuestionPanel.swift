@@ -27,23 +27,29 @@ struct QuestionPanel: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ForEach(question.items, id: \.id) { item($0) }
+                    ForEach(question.items, id: \.id) { item($0).disabled(!model.isDemo) }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
             .frame(maxHeight: 340)
+            if !model.isDemo {
+                Text("The coding agent’s AI recipient can’t be verified. Answers are blocked on iPhone.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             HStack(spacing: 10) {
                 Button("Don’t Answer") { send(decline: true) }
                     .buttonStyle(.glass).frame(maxWidth: .infinity)
                     .accessibilityIdentifier("decline")
-                Button {
-                    send(decline: false)
-                } label: {
-                    Text("Answer").frame(maxWidth: .infinity)
+                if model.isDemo {
+                    Button {
+                        send(decline: false)
+                    } label: {
+                        Text("Answer").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent).frame(maxWidth: .infinity)
+                    .disabled(!ready)
+                    .accessibilityIdentifier("answer")
                 }
-                .buttonStyle(.glassProminent).frame(maxWidth: .infinity)
-                .disabled(!ready)
-                .accessibilityIdentifier("answer")
             }
             .controlSize(.large)
             .disabled(sending)

@@ -14,6 +14,10 @@ use std::time::Duration;
 use crate::setup;
 
 pub(crate) fn start(overrides: &[String]) -> anyhow::Result<(Server, Option<tracing_appender::non_blocking::WorkerGuard>)> {
+    start_service(overrides, false)
+}
+
+fn start_service(overrides: &[String], require_ai_consent: bool) -> anyhow::Result<(Server, Option<tracing_appender::non_blocking::WorkerGuard>)> {
     let home = setup::home()?;
     let guard = setup::init_logging(&home);
     #[cfg(unix)]
@@ -32,13 +36,13 @@ pub(crate) fn start(overrides: &[String]) -> anyhow::Result<(Server, Option<trac
     for warning in warnings.iter().chain(&mcp.warnings) {
         tracing::warn!("{warning}");
     }
-    let server = Server::new(ServerOptions {
+    let server = Server::with_ai_consent(ServerOptions {
         home,
         cwd: std::env::current_dir()?,
         overrides,
         mcp_servers: mcp.servers.clone(),
         doc_worker: her_docs::Launcher::this_program(),
-    })?;
+    }, require_ai_consent)?;
     spawn_signal_handler(server.clone());
     Ok((server, guard))
 }
@@ -73,8 +77,8 @@ fn spawn_signal_handler(server: Server) {
     });
 }
 
-pub async fn serve(overrides: &[String], listen: Option<String>, idle_exit: Option<u64>) -> anyhow::Result<u8> {
-    let (server, _guard) = start(overrides)?;
+pub async fn serve(overrides: &[String], listen: Option<String>, idle_exit: Option<u64>, require_ai_consent: bool) -> anyhow::Result<u8> {
+    let (server, _guard) = start_service(overrides, require_ai_consent)?;
     // The resident service keeps model lists and the public catalog fresh in the background.
     server.start_model_upkeep();
     server.start_routines();

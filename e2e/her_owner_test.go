@@ -159,6 +159,7 @@ func turnHerOn(t *testing.T, c localv1connect.LocalServiceClient, machineID stri
 			her = m.Her
 		}
 		if her.GetRunning() && her.GetModelReady() {
+			allowFixtureModel(t, c, machineID)
 			return
 		}
 		if time.Now().After(deadline) {
@@ -166,6 +167,44 @@ func turnHerOn(t *testing.T, c localv1connect.LocalServiceClient, machineID stri
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+// allowFixtureModel approves the current model only after verifying that its
+// URL is one of this suite's synthetic services.
+func allowFixtureModel(t *testing.T, c localv1connect.LocalServiceClient, machineID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	bot := defaultBot(t, c, machineID)
+	stream, opened := herOpen(t, ctx, c, machineID, herSetup("bots/open", map[string]string{"bot_id": bot.ID}))
+	defer stream.Close()
+	var session struct {
+		Snapshot struct {
+			Info struct {
+				Model string `json:"model"`
+			} `json:"info"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(opened.Responses[0].Result, &session); err != nil || session.Snapshot.Info.Model == "" {
+		t.Fatalf("model from bots/open: %s (%v)", opened.Responses[0].Result, err)
+	}
+	model := session.Snapshot.Info.Model
+	env := &herEnvironment{c: c, machine: machineID}
+	var offer struct {
+		Recipient struct {
+			Endpoint string `json:"endpoint"`
+		} `json:"recipient"`
+		Revision string `json:"revision"`
+	}
+	status := herCall(t, env, "", "ai_consent/status", map[string]string{"model": model})
+	if err := json.Unmarshal(status, &offer); err != nil || !strings.HasPrefix(offer.Recipient.Endpoint, "http://127.0.0.1:") {
+		t.Fatalf("expected a loopback model recipient: %s (%v)", status, err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(status, &raw); err != nil {
+		t.Fatal(err)
+	}
+	herCall(t, env, "", "ai_consent/allow", map[string]any{"model": model, "recipient": raw["recipient"], "revision": offer.Revision})
 }
 
 // herSetup is one her request, as HerOpen's setup takes it.
