@@ -65,9 +65,31 @@ final class HermeshUITests: XCTestCase {
         XCTAssertLessThan(appearance.frame.minY, about.frame.minY)
         XCTAssertLessThan(about.frame.minY, actions.frame.minY, "account actions stay at the bottom")
         XCTAssertLessThan(actions.frame.minY, app.buttons["erase-everything"].frame.minY)
+        XCTAssertFalse(app.buttons["delete-hosted-account"].exists, "a self-hosted relay has no hosted account")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "account-actions-at-bottom"; shot.lifetime = .keepAlways; add(shot)
         tap("close")
+    }
+
+    func testHostedAccountDeletion() throws {
+        try join()
+        app.terminate()
+        app.launch()
+        openMenu(); tap("account")
+        let deletion = app.buttons["delete-hosted-account"]
+        reach("delete-hosted-account")
+        XCTAssertTrue(app.buttons["erase-everything"].exists)
+        XCTAssertEqual(deletion.label, "删除账号…")
+        deletion.tap()
+
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+        XCTAssertTrue(safari.staticTexts["Fixture: Account deletion is unavailable"].waitForExistence(timeout: 30))
+        app.activate()
+        XCTAssertTrue(app.navigationBars["账号与设备"].waitForExistence(timeout: 15))
+        XCTAssertTrue(deletion.exists)
+        XCTAssertTrue(app.buttons["erase-everything"].exists)
+        XCTAssertFalse(app.buttons["start-new"].exists, "returning from the browser does not sign out or erase the phone")
     }
 
     func testAntigravitySetup() throws {
