@@ -356,6 +356,22 @@ func (l *localService) TestMachineAgent(ctx context.Context, req *localv1.TestMa
 	return l.o().TestMachineAgent(ctx, req.MachineId, req.Agent)
 }
 
+func (l *localService) ListLocalWorkspaces(ctx context.Context, _ *localv1.ListLocalWorkspacesRequest) (*localv1.ListLocalWorkspacesResponse, error) {
+	m := l.o().local()
+	if m == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
+	}
+	return m.ListLocalWorkspaces(ctx)
+}
+
+func (l *localService) ReleaseLocalWorkspace(ctx context.Context, req *localv1.ReleaseLocalWorkspaceRequest) (*localv1.ReleaseLocalWorkspaceResponse, error) {
+	m := l.o().local()
+	if m == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
+	}
+	return &localv1.ReleaseLocalWorkspaceResponse{}, m.ReleaseLocalWorkspace(ctx, req.SessionId)
+}
+
 // GetDiagnostics describes this Mac: what it is to its owner, then its
 // machine, when it shares its coding agents.
 func (l *localService) GetDiagnostics(ctx context.Context, _ *localv1.GetDiagnosticsRequest) (*localv1.GetDiagnosticsResponse, error) {
