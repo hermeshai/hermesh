@@ -134,6 +134,7 @@ type Machine struct {
 	// conn is the relay connection while there is one (notices go over it).
 	conn    *transport.RelayConn
 	notices notices
+	deltas  deltaState
 	// contacts caches the owner's inboxes, for the news it writes (news.go).
 	contacts contactBook
 	// lettersSeen are the messages delivered to sessions, or being
@@ -159,6 +160,12 @@ type Machine struct {
 	mesh herMesh
 	// directPort is the ephemeral TCP port of serveDirect when listening.
 	directPort atomic.Int32
+	// directQUICPort is the ephemeral UDP port of serveDirectQUIC when listening.
+	directQUICPort atomic.Int32
+	quicMu         sync.Mutex
+	quicCtx        context.Context
+	quicPrimary    *transport.QUICEndpoint
+	quicV6         map[string]*transport.QUICEndpoint
 }
 
 const (
@@ -204,7 +211,7 @@ func Open(cfg Config) (*Machine, error) {
 		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
-		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, Mesh: n.herMeshNow})
+		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, OnDefaultBotChanged: n.herDeltaChanged, Mesh: n.herMeshNow})
 	n.openHerMesh()
 	n.screen = screenhost.NewHost(screenhost.HostConfig{Bin: cfg.ScreenBin, Args: cfg.ScreenArgs, Off: ScreenOffPath(cfg.DataDir), Log: n.log, Servers: n.screenServers, NoRelay: n.iceServers.Doubt})
 	if n.audit, err = OpenAudit(filepath.Join(cfg.DataDir, "audit"), key); err != nil {
@@ -496,6 +503,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	}
 	st.Screen = n.screenStatus()
 	st.DirectAddrs = n.directAddresses()
+	st.DirectQuicAddrs = n.directQUICAddresses()
 	return st
 }
 
@@ -513,6 +521,7 @@ func (n *Machine) Run(ctx context.Context) error {
 	go n.serveControl(ctx)
 	go n.serveLocal(ctx)
 	go n.serveDirect(ctx)
+	go n.serveDirectQUIC(ctx)
 	n.startHer()
 	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
 	n.runLink(ctx)

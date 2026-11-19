@@ -1820,8 +1820,17 @@
       "type": "object"
     },
     "BotOpenParams": {
-      "description": "Parameters of `bots/open`, which answers as `session/new` does.",
+      "description": "Parameters of `bots/open`, which answers as `session/new` does (or with an incremental event list when `session_id`, `resume_epoch`, and `after_seq` match the loaded session hub).",
       "properties": {
+        "after_seq": {
+          "description": "Client's last applied event sequence number.",
+          "format": "uint64",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
         "bot_id": {
           "type": "string"
         },
@@ -1834,6 +1843,20 @@
           "minimum": 0.0,
           "type": [
             "integer",
+            "null"
+          ]
+        },
+        "resume_epoch": {
+          "description": "Server-issued epoch from the previous `bots/open` reply, preventing sequence collisions across `her` restarts or session unloads.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_id": {
+          "description": "Client's currently held session id for incremental resume.",
+          "type": [
+            "string",
             "null"
           ]
         }

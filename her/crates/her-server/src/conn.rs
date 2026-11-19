@@ -539,4 +539,180 @@ mod tests {
         queue.close();
         assert_eq!(queue.push_event(frame), Err(PushError::Closed));
     }
+
+    #[tokio::test]
+    async fn bots_open_resumes_incrementally_and_falls_back_on_epoch_mismatch() {
+        use tokio::io::AsyncBufReadExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = her_core::HerHome::new(dir.path().join("home"));
+        home.ensure().unwrap();
+        let server = Server::new(crate::server::ServerOptions {
+            home,
+            cwd: dir.path().to_path_buf(),
+            overrides: vec!["model=anthropic/claude-sonnet-4-5".to_string()],
+            mcp_servers: Vec::new(),
+            doc_worker: her_docs::Launcher::Thread,
+        }).unwrap();
+        let protocol = crate::native::NativeProtocol::new(server.clone());
+        let (client, transport) = tokio::io::duplex(64 * 1024);
+        let (reader, writer) = tokio::io::split(transport);
+        let task = tokio::spawn(run_connection(server.clone(), reader, writer, protocol));
+        let (reader, mut writer) = tokio::io::split(client);
+        let mut reader = tokio::io::BufReader::new(reader);
+
+        async fn call(
+            writer: &mut (impl AsyncWriteExt + Unpin),
+            reader: &mut (impl AsyncBufReadExt + Unpin),
+            id: u64,
+            method: &str,
+            params: serde_json::Value,
+        ) -> serde_json::Value {
+            let mut req = serde_json::to_vec(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "method": method,
+                "params": params,
+            }))
+            .unwrap();
+            req.push(b'\n');
+            writer.write_all(&req).await.unwrap();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await.unwrap();
+                let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+                if v.get("id").and_then(|x| x.as_u64()) == Some(id) {
+                    assert!(v.get("error").is_none(), "{method} failed: {v}");
+                    return v["result"].clone();
+                }
+            }
+        }
+
+        let _ = call(&mut writer, &mut reader, 1, "initialize", serde_json::json!({"protocol_version": 2})).await;
+        let sub = call(&mut writer, &mut reader, 2, "bots/subscribe", serde_json::json!({})).await;
+        let bot_id = sub["bots"][0]["id"].as_str().unwrap().to_string();
+
+        // 1. Cold bots/open returns full snapshot + resume_epoch.
+        let full = call(
+            &mut writer,
+            &mut reader,
+            3,
+            "bots/open",
+            serde_json::json!({
+                "bot_id": bot_id,
+                "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]},
+            }),
+        )
+        .await;
+        assert!(full.get("snapshot").is_some(), "cold open must return snapshot: {full}");
+        assert!(full.get("incremental").is_none());
+        let session_id = full["session_id"].as_str().unwrap().to_string();
+        let resume_epoch = full["resume_epoch"].as_str().unwrap().to_string();
+        let last_seq = full["snapshot"]["last_seq"].as_u64().unwrap();
+
+        // 2. Reconnect with matching (session_id, resume_epoch, after_seq) gets incremental: true, no snapshot.
+        //    Note: a brand-new session emits its startup event (seq 1) right after cold attach at seq 0,
+        //    so re-attaching from `last_seq` catches up any startup events, and a subsequent re-attach
+        //    from the updated `last_seq` returns 0 events.
+        let inc = call(
+            &mut writer,
+            &mut reader,
+            4,
+            "bots/open",
+            serde_json::json!({
+                "bot_id": bot_id,
+                "session_id": session_id,
+                "resume_epoch": resume_epoch,
+                "after_seq": last_seq,
+                "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]},
+            }),
+        )
+        .await;
+        assert_eq!(inc["incremental"], serde_json::json!(true), "expected incremental reply: {inc}");
+        assert!(inc.get("snapshot").is_none());
+        let caught_up_seq = inc["last_seq"].as_u64().unwrap();
+        assert!(caught_up_seq >= last_seq);
+        assert_eq!(inc["events"].as_array().unwrap().len() as u64, caught_up_seq - last_seq);
+
+        let inc_idle = call(
+            &mut writer,
+            &mut reader,
+            5,
+            "bots/open",
+            serde_json::json!({
+                "bot_id": bot_id,
+                "session_id": session_id,
+                "resume_epoch": resume_epoch,
+                "after_seq": caught_up_seq,
+                "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]},
+            }),
+        )
+        .await;
+        assert_eq!(inc_idle["incremental"], serde_json::json!(true), "expected idle incremental reply: {inc_idle}");
+        assert!(inc_idle.get("snapshot").is_none());
+        assert_eq!(inc_idle["last_seq"].as_u64().unwrap(), caught_up_seq);
+        assert_eq!(inc_idle["events"].as_array().unwrap().len(), 0);
+
+        // 2b. Emit a real session event via session/op (set_permission_mode), then resume from `caught_up_seq`
+        // and verify incremental reply returns the missed event(s) without a full snapshot.
+        let _ = call(
+            &mut writer,
+            &mut reader,
+            6,
+            "session/op",
+            serde_json::json!({
+                "session_id": session_id,
+                "op": {"type": "set_permission_mode", "mode": "accept-edits"},
+            }),
+        )
+        .await;
+        let mut inc2 = serde_json::Value::Null;
+        for attempt in 0..20 {
+            let reply = call(
+                &mut writer,
+                &mut reader,
+                100 + attempt,
+                "bots/open",
+                serde_json::json!({
+                    "bot_id": bot_id,
+                    "session_id": session_id,
+                    "resume_epoch": resume_epoch,
+                    "after_seq": caught_up_seq,
+                    "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]},
+                }),
+            )
+            .await;
+            if reply["last_seq"].as_u64().unwrap_or(0) > caught_up_seq {
+                inc2 = reply;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert_eq!(inc2["incremental"], serde_json::json!(true), "expected incremental catch-up: {inc2}");
+        assert!(inc2.get("snapshot").is_none());
+        assert!(inc2["last_seq"].as_u64().unwrap() > caught_up_seq);
+        assert!(!inc2["events"].as_array().unwrap().is_empty(), "expected missed events in {inc2}");
+
+        // 3. Wrong resume_epoch falls back cleanly to full snapshot.
+        let fallback = call(
+            &mut writer,
+            &mut reader,
+            200,
+            "bots/open",
+            serde_json::json!({
+                "bot_id": bot_id,
+                "session_id": session_id,
+                "resume_epoch": "stale_epoch",
+                "after_seq": last_seq,
+                "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]},
+            }),
+        )
+        .await;
+        assert!(fallback.get("snapshot").is_some(), "stale epoch must fall back to full snapshot: {fallback}");
+        assert!(fallback.get("incremental").is_none());
+
+        drop(writer);
+        drop(reader);
+        let _ = task.await;
+    }
 }

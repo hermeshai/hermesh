@@ -71,6 +71,9 @@ const (
 	// MachineControlServiceGetScreenServersProcedure is the fully-qualified name of the
 	// MachineControlService's GetScreenServers RPC.
 	MachineControlServiceGetScreenServersProcedure = "/hermesh.relay.v1.MachineControlService/GetScreenServers"
+	// MachineControlServiceAppendDeltaProcedure is the fully-qualified name of the
+	// MachineControlService's AppendDelta RPC.
+	MachineControlServiceAppendDeltaProcedure = "/hermesh.relay.v1.MachineControlService/AppendDelta"
 	// ClientControlServiceWhoAmIProcedure is the fully-qualified name of the ClientControlService's
 	// WhoAmI RPC.
 	ClientControlServiceWhoAmIProcedure = "/hermesh.relay.v1.ClientControlService/WhoAmI"
@@ -146,6 +149,12 @@ const (
 	// OwnerControlServiceGetScreenServersProcedure is the fully-qualified name of the
 	// OwnerControlService's GetScreenServers RPC.
 	OwnerControlServiceGetScreenServersProcedure = "/hermesh.relay.v1.OwnerControlService/GetScreenServers"
+	// OwnerControlServiceRegisterSyncProcedure is the fully-qualified name of the OwnerControlService's
+	// RegisterSync RPC.
+	OwnerControlServiceRegisterSyncProcedure = "/hermesh.relay.v1.OwnerControlService/RegisterSync"
+	// OwnerControlServicePullDeltasProcedure is the fully-qualified name of the OwnerControlService's
+	// PullDeltas RPC.
+	OwnerControlServicePullDeltasProcedure = "/hermesh.relay.v1.OwnerControlService/PullDeltas"
 	// MessageServiceRegisterProcedure is the fully-qualified name of the MessageService's Register RPC.
 	MessageServiceRegisterProcedure = "/hermesh.relay.v1.MessageService/Register"
 	// MessageServiceContactsProcedure is the fully-qualified name of the MessageService's Contacts RPC.
@@ -380,6 +389,9 @@ type MachineControlServiceClient interface {
 	// Where Computer Control looks for a path to the owner's device
 	// (docs/computer-control.md §7).
 	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
+	// Appends a machine-signed, E2EE delta to the relay's zero-knowledge delta
+	// mailbox so trusted devices can catch up even while this machine sleeps.
+	AppendDelta(context.Context, *v1.AppendDeltaRequest) (*v1.AppendDeltaResponse, error)
 }
 
 // NewMachineControlServiceClient constructs a client for the hermesh.relay.v1.MachineControlService
@@ -423,6 +435,12 @@ func NewMachineControlServiceClient(httpClient connect.HTTPClient, baseURL strin
 			connect.WithSchema(machineControlServiceMethods.ByName("GetScreenServers")),
 			connect.WithClientOptions(opts...),
 		),
+		appendDelta: connect.NewClient[v1.AppendDeltaRequest, v1.AppendDeltaResponse](
+			httpClient,
+			baseURL+MachineControlServiceAppendDeltaProcedure,
+			connect.WithSchema(machineControlServiceMethods.ByName("AppendDelta")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -433,6 +451,7 @@ type machineControlServiceClient struct {
 	leave            *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
 	notify           *connect.Client[v1.NotifyRequest, v1.NotifyResponse]
 	getScreenServers *connect.Client[v1.GetScreenServersRequest, v1.GetScreenServersResponse]
+	appendDelta      *connect.Client[v1.AppendDeltaRequest, v1.AppendDeltaResponse]
 }
 
 // ReportStatus calls hermesh.relay.v1.MachineControlService.ReportStatus.
@@ -476,6 +495,15 @@ func (c *machineControlServiceClient) GetScreenServers(ctx context.Context, req 
 	return nil, err
 }
 
+// AppendDelta calls hermesh.relay.v1.MachineControlService.AppendDelta.
+func (c *machineControlServiceClient) AppendDelta(ctx context.Context, req *v1.AppendDeltaRequest) (*v1.AppendDeltaResponse, error) {
+	response, err := c.appendDelta.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineControlServiceHandler is an implementation of the hermesh.relay.v1.MachineControlService
 // service.
 type MachineControlServiceHandler interface {
@@ -492,6 +520,9 @@ type MachineControlServiceHandler interface {
 	// Where Computer Control looks for a path to the owner's device
 	// (docs/computer-control.md §7).
 	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
+	// Appends a machine-signed, E2EE delta to the relay's zero-knowledge delta
+	// mailbox so trusted devices can catch up even while this machine sleeps.
+	AppendDelta(context.Context, *v1.AppendDeltaRequest) (*v1.AppendDeltaResponse, error)
 }
 
 // NewMachineControlServiceHandler builds an HTTP handler from the service implementation. It
@@ -531,6 +562,12 @@ func NewMachineControlServiceHandler(svc MachineControlServiceHandler, opts ...c
 		connect.WithSchema(machineControlServiceMethods.ByName("GetScreenServers")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineControlServiceAppendDeltaHandler := connect.NewUnaryHandlerSimple(
+		MachineControlServiceAppendDeltaProcedure,
+		svc.AppendDelta,
+		connect.WithSchema(machineControlServiceMethods.ByName("AppendDelta")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.MachineControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineControlServiceReportStatusProcedure:
@@ -543,6 +580,8 @@ func NewMachineControlServiceHandler(svc MachineControlServiceHandler, opts ...c
 			machineControlServiceNotifyHandler.ServeHTTP(w, r)
 		case MachineControlServiceGetScreenServersProcedure:
 			machineControlServiceGetScreenServersHandler.ServeHTTP(w, r)
+		case MachineControlServiceAppendDeltaProcedure:
+			machineControlServiceAppendDeltaHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -570,6 +609,10 @@ func (UnimplementedMachineControlServiceHandler) Notify(context.Context, *v1.Not
 
 func (UnimplementedMachineControlServiceHandler) GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MachineControlService.GetScreenServers is not implemented"))
+}
+
+func (UnimplementedMachineControlServiceHandler) AppendDelta(context.Context, *v1.AppendDeltaRequest) (*v1.AppendDeltaResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.MachineControlService.AppendDelta is not implemented"))
 }
 
 // ClientControlServiceClient is a client for the hermesh.relay.v1.ClientControlService service.
@@ -763,6 +806,12 @@ type OwnerControlServiceClient interface {
 	// Where Computer Control looks for a path to a machine
 	// (docs/computer-control.md §7).
 	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
+	// Registers this trusted device's X25519 sync key so machines seal delta
+	// mailbox entries for it (no APNs token required).
+	RegisterSync(context.Context, *v1.RegisterSyncRequest) (*v1.RegisterSyncResponse, error)
+	// Pulls unseen encrypted deltas from the relay's delta mailbox without
+	// deleting them (each trusted device keeps its own read cursor).
+	PullDeltas(context.Context, *v1.PullDeltasRequest) (*v1.PullDeltasResponse, error)
 }
 
 // NewOwnerControlServiceClient constructs a client for the hermesh.relay.v1.OwnerControlService
@@ -908,6 +957,18 @@ func NewOwnerControlServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(ownerControlServiceMethods.ByName("GetScreenServers")),
 			connect.WithClientOptions(opts...),
 		),
+		registerSync: connect.NewClient[v1.RegisterSyncRequest, v1.RegisterSyncResponse](
+			httpClient,
+			baseURL+OwnerControlServiceRegisterSyncProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("RegisterSync")),
+			connect.WithClientOptions(opts...),
+		),
+		pullDeltas: connect.NewClient[v1.PullDeltasRequest, v1.PullDeltasResponse](
+			httpClient,
+			baseURL+OwnerControlServicePullDeltasProcedure,
+			connect.WithSchema(ownerControlServiceMethods.ByName("PullDeltas")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -935,6 +996,8 @@ type ownerControlServiceClient struct {
 	clearWake           *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
 	openWakeLink        *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 	getScreenServers    *connect.Client[v1.GetScreenServersRequest, v1.GetScreenServersResponse]
+	registerSync        *connect.Client[v1.RegisterSyncRequest, v1.RegisterSyncResponse]
+	pullDeltas          *connect.Client[v1.PullDeltasRequest, v1.PullDeltasResponse]
 }
 
 // GetPairingRequest calls hermesh.relay.v1.OwnerControlService.GetPairingRequest.
@@ -1131,6 +1194,24 @@ func (c *ownerControlServiceClient) GetScreenServers(ctx context.Context, req *v
 	return nil, err
 }
 
+// RegisterSync calls hermesh.relay.v1.OwnerControlService.RegisterSync.
+func (c *ownerControlServiceClient) RegisterSync(ctx context.Context, req *v1.RegisterSyncRequest) (*v1.RegisterSyncResponse, error) {
+	response, err := c.registerSync.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// PullDeltas calls hermesh.relay.v1.OwnerControlService.PullDeltas.
+func (c *ownerControlServiceClient) PullDeltas(ctx context.Context, req *v1.PullDeltasRequest) (*v1.PullDeltasResponse, error) {
+	response, err := c.pullDeltas.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // OwnerControlServiceHandler is an implementation of the hermesh.relay.v1.OwnerControlService
 // service.
 type OwnerControlServiceHandler interface {
@@ -1188,6 +1269,12 @@ type OwnerControlServiceHandler interface {
 	// Where Computer Control looks for a path to a machine
 	// (docs/computer-control.md §7).
 	GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error)
+	// Registers this trusted device's X25519 sync key so machines seal delta
+	// mailbox entries for it (no APNs token required).
+	RegisterSync(context.Context, *v1.RegisterSyncRequest) (*v1.RegisterSyncResponse, error)
+	// Pulls unseen encrypted deltas from the relay's delta mailbox without
+	// deleting them (each trusted device keeps its own read cursor).
+	PullDeltas(context.Context, *v1.PullDeltasRequest) (*v1.PullDeltasResponse, error)
 }
 
 // NewOwnerControlServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -1329,6 +1416,18 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 		connect.WithSchema(ownerControlServiceMethods.ByName("GetScreenServers")),
 		connect.WithHandlerOptions(opts...),
 	)
+	ownerControlServiceRegisterSyncHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServiceRegisterSyncProcedure,
+		svc.RegisterSync,
+		connect.WithSchema(ownerControlServiceMethods.ByName("RegisterSync")),
+		connect.WithHandlerOptions(opts...),
+	)
+	ownerControlServicePullDeltasHandler := connect.NewUnaryHandlerSimple(
+		OwnerControlServicePullDeltasProcedure,
+		svc.PullDeltas,
+		connect.WithSchema(ownerControlServiceMethods.ByName("PullDeltas")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.relay.v1.OwnerControlService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case OwnerControlServiceGetPairingRequestProcedure:
@@ -1375,6 +1474,10 @@ func NewOwnerControlServiceHandler(svc OwnerControlServiceHandler, opts ...conne
 			ownerControlServiceOpenWakeLinkHandler.ServeHTTP(w, r)
 		case OwnerControlServiceGetScreenServersProcedure:
 			ownerControlServiceGetScreenServersHandler.ServeHTTP(w, r)
+		case OwnerControlServiceRegisterSyncProcedure:
+			ownerControlServiceRegisterSyncHandler.ServeHTTP(w, r)
+		case OwnerControlServicePullDeltasProcedure:
+			ownerControlServicePullDeltasHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1470,6 +1573,14 @@ func (UnimplementedOwnerControlServiceHandler) OpenWakeLink(context.Context, *v1
 
 func (UnimplementedOwnerControlServiceHandler) GetScreenServers(context.Context, *v1.GetScreenServersRequest) (*v1.GetScreenServersResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.GetScreenServers is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) RegisterSync(context.Context, *v1.RegisterSyncRequest) (*v1.RegisterSyncResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.RegisterSync is not implemented"))
+}
+
+func (UnimplementedOwnerControlServiceHandler) PullDeltas(context.Context, *v1.PullDeltasRequest) (*v1.PullDeltasResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.relay.v1.OwnerControlService.PullDeltas is not implemented"))
 }
 
 // MessageServiceClient is a client for the hermesh.relay.v1.MessageService service.

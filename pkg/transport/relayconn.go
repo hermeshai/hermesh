@@ -80,6 +80,7 @@ type Dialer struct {
 type RelayConn struct {
 	sess  *yamux.Session
 	admit *admission
+	srtt  atomic.Int64 // smoothed RTT in nanoseconds (0 when not measured yet)
 
 	mu      sync.Mutex
 	control *H2Client
@@ -117,22 +118,23 @@ func newDefaultDialHTTPClient() *http.Client {
 	}
 	cl := tr.Clone()
 	cl.DialContext = (&net.Dialer{
-		Timeout:   5 * time.Second,
+		Timeout:   3 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
-	cl.TLSHandshakeTimeout = 5 * time.Second
+	cl.TLSHandshakeTimeout = 4 * time.Second
 	return &http.Client{Transport: cl}
 }
 
 func dialWebSocket(ctx context.Context, wsURL string, hc *http.Client) (*websocket.Conn, error) {
-	for attempt := range 3 {
-		actx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	timeouts := [...]time.Duration{2500 * time.Millisecond, 4 * time.Second, 6 * time.Second}
+	for attempt, limit := range timeouts {
+		actx, cancel := context.WithTimeout(ctx, limit)
 		ws, resp, err := websocket.Dial(actx, wsURL, &websocket.DialOptions{HTTPClient: hc, Subprotocols: []string{"hermesh.v1"}})
 		cancel()
 		if err == nil {
 			return ws, nil
 		}
-		if attempt == 2 || ctx.Err() != nil || resp != nil || errors.Is(err, syscall.ECONNREFUSED) {
+		if attempt == len(timeouts)-1 || ctx.Err() != nil || resp != nil || errors.Is(err, syscall.ECONNREFUSED) {
 			return nil, err
 		}
 		select {
@@ -171,6 +173,7 @@ func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 		conn.Close()
 		return nil, err
 	}
+	helloSent := time.Now()
 	hello := &relayv1.Hello{Role: d.Role, Credentials: d.Credentials(), Proof: proof, ProtocolVersion: ProtocolVersion}
 	if err := WriteFrame(conn, hello); err != nil {
 		conn.Close()
@@ -178,7 +181,8 @@ func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 	}
 	// The relay reads nothing past Hello until it admits the peer, so the
 	// session may start writing before the answer.
-	admit := &admission{Conn: conn, done: make(chan struct{}), now: wallNow}
+	c := &RelayConn{}
+	admit := &admission{Conn: conn, done: make(chan struct{}), now: wallNow, helloSent: helloSent, onRTT: c.recordRTT}
 	admit.read.Store(admit.now().UnixNano())
 	cfg := YamuxConfig()
 	cfg.EnableKeepAlive = false // watch, which gives up sooner
@@ -187,7 +191,7 @@ func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 		conn.Close()
 		return nil, err
 	}
-	c := &RelayConn{sess: sess, admit: admit}
+	c.sess, c.admit = sess, admit
 	go c.watch(pingEvery, pingWithin, wakeTick, wakeGap, wakeWithin)
 	if !d.Pipeline {
 		if err := c.Admitted(dctx); err != nil {
@@ -202,9 +206,11 @@ func (d *Dialer) Dial(ctx context.Context) (*RelayConn, error) {
 // is read, and fails them when it refused the peer.
 type admission struct {
 	net.Conn
-	once sync.Once
-	done chan struct{}
-	err  error
+	once      sync.Once
+	done      chan struct{}
+	err       error
+	helloSent time.Time
+	onRTT     func(time.Duration)
 	// read is when the relay was last heard from (by now, in nanoseconds).
 	read atomic.Int64
 	now  func() time.Time
@@ -222,6 +228,9 @@ func (a *admission) Read(p []byte) (int, error) {
 		default:
 			a.Conn.SetDeadline(time.Time{})
 			a.read.Store(a.now().UnixNano())
+			if a.onRTT != nil && !a.helloSent.IsZero() {
+				a.onRTT(time.Since(a.helloSent))
+			}
 		}
 	})
 	if a.err != nil {
@@ -405,12 +414,35 @@ func (c *RelayConn) Done() <-chan struct{} { return c.sess.CloseChan() }
 // wall clock, which goes on while the computer sleeps).
 func (c *RelayConn) Heard() time.Time { return time.Unix(0, c.admit.read.Load()) }
 
+// RTT returns the smoothed round-trip time to the relay (0 if not measured yet).
+func (c *RelayConn) RTT() time.Duration { return time.Duration(c.srtt.Load()) }
+
+func (c *RelayConn) recordRTT(d time.Duration) {
+	ns := d.Nanoseconds()
+	if ns <= 0 {
+		return
+	}
+	for {
+		old := c.srtt.Load()
+		next := ns
+		if old > 0 {
+			next = (old*7 + ns) / 8
+		}
+		if c.srtt.CompareAndSwap(old, next) {
+			return
+		}
+	}
+}
+
 // Ping waits for the relay to answer a ping: whether the connection still
 // works, which one kept while its process was suspended may not.
 func (c *RelayConn) Ping(ctx context.Context) error {
 	done := make(chan error, 1)
 	go func() {
-		_, err := c.sess.Ping()
+		d, err := c.sess.Ping()
+		if err == nil {
+			c.recordRTT(d)
+		}
 		done <- err
 	}()
 	select {

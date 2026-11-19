@@ -453,3 +453,41 @@ func TestHerDeliveriesKept(t *testing.T) {
 		t.Fatalf("forgotten with Her: %q %v", kept(d), err)
 	}
 }
+
+func TestHerConversationIncrementalOpen(t *testing.T) {
+	dir := t.TempDir()
+	h := &herScript{results: map[string]string{
+		"bots/subscribe": `{"bots":[` + herBotJSON + `]}`,
+		"bots/open":      herOpened("conv-her", 4, herUserMsg("u1", "hello")),
+	}}
+	d, o := scriptedOwner(t, dir, h)
+	herFollow(t, o, herSubscribe)
+	herFollow(t, o, herOpenBot("her"))
+	_, items, snap := keptOf(t, d)
+	if strings.Join(items, "|") != "user u1" || string(snap["last_seq"]) != "4" {
+		t.Fatalf("initial kept: %q seq=%s", items, snap["last_seq"])
+	}
+	d.Close()
+
+	// Reopen from disk (fresh herFollower with nil conv) and receive an
+	// incremental bots/open response carrying missed events plus a live event.
+	u2 := `{"seq":5,"ts":9,"type":"message_completed","message_id":"u2","message":{"role":"user","content":[{"type":"text","text":"missed"}],"ts":5}}`
+	a2 := `{"seq":6,"ts":9,"type":"message_completed","message_id":"a2","message":{"role":"assistant","content":[{"type":"tool_call","id":"c1","name":"send_to_user","arguments":{"text":"reply"}}],"ts":6}}`
+	h2 := &herScript{
+		results: map[string]string{
+			"bots/open": fmt.Sprintf(`{"session_id":"conv-her","incremental":true,"resume_epoch":"ep1","last_seq":7,"events":[%s,%s]}`, u2, a2),
+		},
+		notes: []*herv1.Notification{
+			herSessionEvent("conv-her", 8, "task_completed", `"task_id":"t1","reason":"done","usage":{}`),
+		},
+	}
+	d, o = scriptedOwner(t, dir, h2)
+	defer d.Close()
+	herFollow(t, o, &herv1.Request{Method: "bots/open", Params: []byte(`{"bot_id":"her","session_id":"conv-her","resume_epoch":"ep1","after_seq":4}`)})
+
+	_, items, snap = keptOf(t, d)
+	want := "user u1|user u2|assistant a2 c1:send_to_user|end t1 completed"
+	if strings.Join(items, "|") != want || string(snap["last_seq"]) != "8" {
+		t.Fatalf("after incremental open: items=%q seq=%s, want %q seq=8", items, snap["last_seq"], want)
+	}
+}

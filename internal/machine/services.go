@@ -135,6 +135,14 @@ func (s *machineService) PullWork(ctx context.Context, req *machinev1.PullWorkRe
 	return s.n.sessions.PullWork(ctx, principalFrom(ctx), req)
 }
 
+func (s *machineService) PunchDirect(ctx context.Context, req *machinev1.PunchDirectRequest) (*machinev1.PunchDirectResponse, error) {
+	if principalFrom(ctx).Kind != PrincipalOwner {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("direct punch requires owner"))
+	}
+	addrs := s.n.punchDirect(req.Targets)
+	return &machinev1.PunchDirectResponse{DirectQuicAddrs: addrs}, nil
+}
+
 func (s *machineService) ListProjects(ctx context.Context, _ *machinev1.ListProjectsRequest) (*machinev1.ListProjectsResponse, error) {
 	return s.projects(ctx, principalFrom(ctx), true)
 }
