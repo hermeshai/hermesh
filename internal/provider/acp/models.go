@@ -243,10 +243,9 @@ func (p *Provider) fillModels(ctx context.Context, info *provider.Info, bin stri
 // session/options when the agent offers it; else in a new session, never
 // prompted, each model selected once to read its efforts, then closed when
 // the agent can close sessions (one it cannot is left empty in its list).
-// It says the state when it learned nothing.
+// It says the state when it learned nothing. ctx bounds it (the agent
+// check's time), and the agent is stopped with all it started.
 func (p *Provider) readModels(ctx context.Context, key, bin string, pre, env []string) string {
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	dir, err := os.MkdirTemp("", "hermesh-models-")
 	if err != nil {
 		return provider.ModelsError
