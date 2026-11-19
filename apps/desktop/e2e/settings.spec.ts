@@ -276,7 +276,8 @@ const pipePrefix = "\\\\.\\pipe\\";
 const daemonEndpoint = () => (onWindows && !fixture.socket.startsWith(pipePrefix) ? fs.readFileSync(fixture.socket, "utf8").trim() : fixture.socket);
 
 async function listenDaemonProxy(proxy: http.Server): Promise<string> {
-  const socket = onWindows ? `${pipePrefix}hms-${randomUUID()}` : path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hms-")), "d.sock");
+  // Keep Unix socket paths short even when TMPDIR is deeply nested.
+  const socket = onWindows ? `${pipePrefix}hms-${randomUUID()}` : path.join(fs.mkdtempSync("/tmp/hms-"), "d.sock");
   await once(proxy.listen(socket), "listening");
   return socket;
 }
