@@ -1873,7 +1873,7 @@ func (x *SetHerCommandConnector) GetRemove() bool {
 // passes the rest per session and never changes that configuration.
 type AgentDefaults struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "claude" | "codex"
+	// The coding agent's name ("claude", "codex", "antigravity", …).
 	Agent string `protobuf:"bytes,1,opt,name=agent,proto3" json:"agent,omitempty"`
 	Model string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
 	// The reasoning effort, as the agent names it ("low" … "max").

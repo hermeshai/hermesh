@@ -2,11 +2,13 @@
 package claude
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -99,17 +101,84 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	if !info.LoggedIn && os.Getenv("ANTHROPIC_API_KEY") != "" {
 		info.LoggedIn = true
 	}
-	info.Models = Models
+	info.Models, info.ModelsState, info.ModelsAt = Models, provider.ModelsKnown, time.Now()
+	if ms, err := listModels(ctx, env, bin); err == nil && len(ms) > 0 {
+		info.Models = ms
+	}
 	return info
 }
 
-// Models are the aliases Claude Code takes for its latest models; it lists
-// none itself.
+// Models are the aliases Claude Code takes for its latest models, listed
+// when it does not say which it offers (a version from before it did).
 var Models = []provider.Model{
 	{ID: "fable", Name: "Fable", Efforts: efforts},
 	{ID: "opus", Name: "Opus", Efforts: efforts},
 	{ID: "sonnet", Name: "Sonnet", Efforts: efforts},
 	{ID: "haiku", Name: "Haiku", Efforts: efforts},
+}
+
+// listModels asks Claude Code which models it offers this account, as its
+// own model picker does: the initialize control request, answered before
+// any prompt, so no model runs and no session is kept. It runs in an empty
+// folder, so no project's settings change the answer.
+func listModels(ctx context.Context, env []string, bin string) ([]provider.Model, error) {
+	dir, err := os.MkdirTemp("", "hermesh-models-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	cmd := provider.Command(ctx, bin, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--settings", `{"crossSessionInbound":"refuse"}`)
+	cmd.Dir, cmd.Env = dir, env
+	cmd.Stdin = strings.NewReader(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}` + "\n")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	defer cmd.Wait()
+	defer cmd.Process.Kill()
+	return modelsFrom(out)
+}
+
+// modelsFrom reads Claude Code's output up to its answer to the initialize
+// request: the models it offers ("default" is following its own setting,
+// which Hermesh offers as not setting one).
+func modelsFrom(r io.Reader) ([]provider.Model, error) {
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	for sc.Scan() {
+		var m struct {
+			Type     string
+			Response struct {
+				Subtype   string
+				RequestID string `json:"request_id"`
+				Error     string
+				Response  struct {
+					Models []struct {
+						Value, DisplayName    string
+						SupportedEffortLevels []string
+					}
+				}
+			}
+		}
+		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Type != "control_response" || m.Response.RequestID != "hermesh-models" {
+			continue
+		}
+		if m.Response.Subtype != "success" {
+			return nil, errors.New(m.Response.Error)
+		}
+		var ms []provider.Model
+		for _, x := range m.Response.Response.Models {
+			if x.Value != "" && x.Value != "default" {
+				ms = append(ms, provider.Model{ID: x.Value, Name: x.DisplayName, Efforts: x.SupportedEffortLevels})
+			}
+		}
+		return ms, nil
+	}
+	return nil, errors.New("claude gave no models")
 }
 
 var efforts = []string{"low", "medium", "high", "xhigh", "max"}

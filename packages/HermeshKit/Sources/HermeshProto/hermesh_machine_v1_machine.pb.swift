@@ -784,7 +784,8 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._checking = newValue}
   }
 
-  /// The models it offers, to pick defaults from (Claude Code and Codex).
+  /// The models it offers, as it says, to pick defaults and a session's
+  /// model from.
   public var models: [Hermesh_Machine_V1_AgentModel] {
     get {_storage._models}
     set {_uniqueStorage()._models = newValue}
@@ -801,7 +802,7 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
   public mutating func clearDefaults() {_uniqueStorage()._defaults = nil}
 
   /// Its own configuration, which empty defaults follow, as far as the
-  /// agent tells it (Codex).
+  /// agent tells it.
   public var own: Hermesh_Identity_V1_AgentDefaults {
     get {_storage._own ?? Hermesh_Identity_V1_AgentDefaults()}
     set {_uniqueStorage()._own = newValue}
@@ -823,11 +824,18 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._binary = newValue}
   }
 
-  /// Scoped ACP observations. These are not machine-wide model entitlements;
-  /// a session's own config options remain authoritative. Empty on older peers.
-  public var modelCatalogs: [Hermesh_Machine_V1_AgentModelCatalog] {
-    get {_storage._modelCatalogs}
-    set {_uniqueStorage()._modelCatalogs = newValue}
+  /// What models are: "known" (the agent's own list, as of
+  /// models_observed_at_unix_ms), "unsupported" (it offers no choice of
+  /// model), "auth_required" (it must be signed in to tell) or "error" (it
+  /// could not tell); empty when it was not asked (or a machine from before).
+  public var modelsState: String {
+    get {_storage._modelsState}
+    set {_uniqueStorage()._modelsState = newValue}
+  }
+
+  public var modelsObservedAtUnixMs: Int64 {
+    get {_storage._modelsObservedAtUnixMs}
+    set {_uniqueStorage()._modelsObservedAtUnixMs = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -835,38 +843,6 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
-}
-
-public nonisolated struct Hermesh_Machine_V1_AgentModelCatalog: Sendable {
-  // SwiftProtobuf.Message conformance is added in an extension below. See the
-  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
-  // methods supported on all messages.
-
-  /// project/session address, or "isolated" for a probe with no project data.
-  public var scope: String = String()
-
-  /// acp_initialize, acp_options, acp_session, or acp_update.
-  public var source: String = String()
-
-  /// known (including zero models), unknown, session_required, auth_required,
-  /// timeout, or error. Failures can retain an expired previous observation.
-  public var state: String = String()
-
-  public var models: [Hermesh_Machine_V1_AgentModel] = []
-
-  /// Initial selection of a NEW session, before Hermesh applies overrides.
-  /// Never inferred from a resumed session or subsequent model changes.
-  public var defaultModel: String = String()
-
-  public var currentModel: String = String()
-
-  public var observedAtUnixMs: Int64 = 0
-
-  public var expiresAtUnixMs: Int64 = 0
-
-  public var unknownFields = SwiftProtobuf.UnknownStorage()
-
-  public init() {}
 }
 
 public nonisolated struct Hermesh_Machine_V1_AgentModel: Sendable {
@@ -2261,7 +2237,7 @@ nonisolated extension Hermesh_Machine_V1_MachineProblem: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{3}model_catalogs\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{4}\u{2}models_state\0\u{3}models_observed_at_unix_ms\0\u{b}sandbox_available\0\u{b}model_catalogs\0\u{c}\u{5}\u{1}\u{c}\u{d}\u{1}")
 
   fileprivate class _StorageClass {
     var _name: String = String()
@@ -2275,7 +2251,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
     var _own: Hermesh_Identity_V1_AgentDefaults? = nil
     var _problem: Hermesh_Machine_V1_AgentProblem = .unspecified
     var _binary: String = String()
-    var _modelCatalogs: [Hermesh_Machine_V1_AgentModelCatalog] = []
+    var _modelsState: String = String()
+    var _modelsObservedAtUnixMs: Int64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2297,7 +2274,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       _own = source._own
       _problem = source._problem
       _binary = source._binary
-      _modelCatalogs = source._modelCatalogs
+      _modelsState = source._modelsState
+      _modelsObservedAtUnixMs = source._modelsObservedAtUnixMs
     }
   }
 
@@ -2327,7 +2305,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         case 10: try { try decoder.decodeSingularMessageField(value: &_storage._own) }()
         case 11: try { try decoder.decodeSingularEnumField(value: &_storage._problem) }()
         case 12: try { try decoder.decodeSingularStringField(value: &_storage._binary) }()
-        case 13: try { try decoder.decodeRepeatedMessageField(value: &_storage._modelCatalogs) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._modelsState) }()
+        case 15: try { try decoder.decodeSingularInt64Field(value: &_storage._modelsObservedAtUnixMs) }()
         default: break
         }
       }
@@ -2373,8 +2352,11 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       if !_storage._binary.isEmpty {
         try visitor.visitSingularStringField(value: _storage._binary, fieldNumber: 12)
       }
-      if !_storage._modelCatalogs.isEmpty {
-        try visitor.visitRepeatedMessageField(value: _storage._modelCatalogs, fieldNumber: 13)
+      if !_storage._modelsState.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._modelsState, fieldNumber: 14)
+      }
+      if _storage._modelsObservedAtUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._modelsObservedAtUnixMs, fieldNumber: 15)
       }
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2396,76 +2378,12 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         if _storage._own != rhs_storage._own {return false}
         if _storage._problem != rhs_storage._problem {return false}
         if _storage._binary != rhs_storage._binary {return false}
-        if _storage._modelCatalogs != rhs_storage._modelCatalogs {return false}
+        if _storage._modelsState != rhs_storage._modelsState {return false}
+        if _storage._modelsObservedAtUnixMs != rhs_storage._modelsObservedAtUnixMs {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
-    if lhs.unknownFields != rhs.unknownFields {return false}
-    return true
-  }
-}
-
-nonisolated extension Hermesh_Machine_V1_AgentModelCatalog: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
-  public static let protoMessageName: String = _protobuf_package + ".AgentModelCatalog"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}scope\0\u{1}source\0\u{1}state\0\u{1}models\0\u{3}default_model\0\u{3}current_model\0\u{3}observed_at_unix_ms\0\u{3}expires_at_unix_ms\0")
-
-  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.scope) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.source) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.state) }()
-      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.models) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.defaultModel) }()
-      case 6: try { try decoder.decodeSingularStringField(value: &self.currentModel) }()
-      case 7: try { try decoder.decodeSingularInt64Field(value: &self.observedAtUnixMs) }()
-      case 8: try { try decoder.decodeSingularInt64Field(value: &self.expiresAtUnixMs) }()
-      default: break
-      }
-    }
-  }
-
-  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if !self.scope.isEmpty {
-      try visitor.visitSingularStringField(value: self.scope, fieldNumber: 1)
-    }
-    if !self.source.isEmpty {
-      try visitor.visitSingularStringField(value: self.source, fieldNumber: 2)
-    }
-    if !self.state.isEmpty {
-      try visitor.visitSingularStringField(value: self.state, fieldNumber: 3)
-    }
-    if !self.models.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.models, fieldNumber: 4)
-    }
-    if !self.defaultModel.isEmpty {
-      try visitor.visitSingularStringField(value: self.defaultModel, fieldNumber: 5)
-    }
-    if !self.currentModel.isEmpty {
-      try visitor.visitSingularStringField(value: self.currentModel, fieldNumber: 6)
-    }
-    if self.observedAtUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.observedAtUnixMs, fieldNumber: 7)
-    }
-    if self.expiresAtUnixMs != 0 {
-      try visitor.visitSingularInt64Field(value: self.expiresAtUnixMs, fieldNumber: 8)
-    }
-    try unknownFields.traverse(visitor: &visitor)
-  }
-
-  public static func ==(lhs: Hermesh_Machine_V1_AgentModelCatalog, rhs: Hermesh_Machine_V1_AgentModelCatalog) -> Bool {
-    if lhs.scope != rhs.scope {return false}
-    if lhs.source != rhs.source {return false}
-    if lhs.state != rhs.state {return false}
-    if lhs.models != rhs.models {return false}
-    if lhs.defaultModel != rhs.defaultModel {return false}
-    if lhs.currentModel != rhs.currentModel {return false}
-    if lhs.observedAtUnixMs != rhs.observedAtUnixMs {return false}
-    if lhs.expiresAtUnixMs != rhs.expiresAtUnixMs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

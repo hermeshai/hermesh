@@ -858,7 +858,7 @@ export const SetHerCommandConnectorSchema: GenMessage<SetHerCommandConnector> = 
  */
 export type AgentDefaults = Message<"hermesh.identity.v1.AgentDefaults"> & {
   /**
-   * "claude" | "codex"
+   * The coding agent's name ("claude", "codex", "antigravity", …).
    *
    * @generated from field: string agent = 1;
    */
