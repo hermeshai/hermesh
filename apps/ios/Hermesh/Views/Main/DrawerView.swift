@@ -122,7 +122,7 @@ struct DrawerView: View {
         .accessibilityIdentifier("her-place")
     }
 
-    /// The overview: an orange dot while something needs the owner, a ring while anything runs. No numbers.
+    /// The overview: an orange dot while something needs the owner. No numbers.
     private var overviewPlace: some View {
         let team = teamState(model.sessions, requests: model.pairings.count)
         let waits = !team.waiting.isEmpty || team.requests > 0
@@ -133,11 +133,9 @@ struct DrawerView: View {
                 Image(systemName: "square.grid.2x2").frame(width: 28)
                 Text("Overview")
                 Spacer(minLength: 0)
-                HStack(spacing: 6) {
-                    if waits { Circle().fill(.orange).frame(width: 9, height: 9) }
-                    if !team.running.isEmpty { BusyRing() }
+                if waits {
+                    Circle().fill(.orange).frame(width: 9, height: 9).accessibilityHidden(true)
                 }
-                .accessibilityHidden(true)
             }
             .font(.body).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).frame(height: 48)
