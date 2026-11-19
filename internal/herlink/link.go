@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -85,7 +86,17 @@ func (l *Link) saveLocked() {
 	}
 }
 
-func (l *Link) Group() *herhost.MeshGroup { return group() }
+func (l *Link) Group() *herhost.MeshGroup {
+	g := group()
+	if !l.cfg.OnlyLocalAgents {
+		g.Summary = "Coding sessions on the user's computers, their progress and what they changed."
+		g.Guidelines = []string{
+			"Read a coding session's status and diff to report its work. Start, follow-up and answer are unavailable until the coding agent's AI recipient can be verified. Respect that boundary for any other tools.",
+		}
+		g.Tools = slices.DeleteFunc(g.Tools, func(t herhost.MeshTool) bool { return t.Writes })
+	}
+	return g
+}
 
 // options are what a command runs with: her credentials and her kept
 // connection.

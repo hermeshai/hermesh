@@ -46,7 +46,7 @@
   },
   "grant": {
     "runs": "Her runs on this computer and works whenever it is on.",
-    "desc": "Her can use all your computers: start coding agents in any project, read their tasks and answer them. This doesn't expire. Turn Her off to end it.",
+    "desc": "Her can read coding sessions on your computers. Starting tasks, sending follow-ups and answering agents require a verifiable AI recipient. Turn Her off to end access.",
     "allow": "Let Her use your computers"
   },
   "line": {

@@ -17,6 +17,6 @@ Her's mesh link blocks those writes before forwarding to another host. The recei
 ## Other routes and remaining risk
 
 - MCP services, browser and desktop control, shell commands, web search, and installed connectors have their own permission and network paths. They can transfer data independently of inference. The model disclosure covers connector results when Her includes them in model context.
-- Provider catalog requests, key verification and discovery, and subscription sign-in are separate setup calls. They can exchange network metadata and credentials with their configured provider and identity service. This change gates conversational inference, including against providers added through setup.
+- Provider catalog requests, key verification and discovery, and subscription sign-in are separate setup calls. They can exchange network metadata and credentials with their configured provider and identity service. Changing a custom endpoint address requires an explicit new key when the old address had a stored key. This change gates conversational inference, including against providers added through setup.
 - A custom gateway may forward requests after receiving them. Hermesh verifies the immediate endpoint, and downstream processing depends on that operator.
 - Earlier daemons and clients still have their earlier behavior when used together. A third-party coding process that was already started before upgrade can retain or transmit context already handed to it. Standalone coding from other clients and standalone `her` CLI use their own controls.
