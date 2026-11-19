@@ -1,18 +1,33 @@
 # Google Antigravity through official ACP
 
-Hermesh runs Google's **standalone ACP server**, not the Antigravity desktop
-app, the `agy` terminal UI, or a third-party model proxy. Its agent ID is
-`antigravity`. Google distributes the server and its companion
+Hermesh runs Google's official ACP server — either built into the official
+`agy` CLI (`agy acp`, preferred when installed and supporting `acp`) or Google's
+**standalone ACP server** archive as a fallback. It never uses the Antigravity
+desktop app's private RPCs or a third-party model proxy. Its agent ID is
+`antigravity`.
+
+## Install on the machine that runs the work
+
+### Official `agy` CLI (recommended for `agy` 1.5.0+)
+
+Install the official Antigravity CLI (`agy`) following the
+[Google installation documentation](https://antigravity.google/docs/install).
+Hermesh finds `agy` on the login shell's PATH, in `~/.local/bin/`, or on Windows
+under `%LOCALAPPDATA%\agy\bin\agy.exe`, verifies that `agy acp --help` is
+supported, and launches `agy acp`.
+
+### Standalone ACP archive (fallback)
+
+Google also distributes the standalone server and its companion
 `localharness_external` together in the
 [ACP registry](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json).
 Keep both files in the same directory.
 
-## Install on the machine that runs the work
-
 Download the archive for your platform from the registry. Check its SHA-256
-against that entry before extracting it. Hermesh finds the server on the
-login shell's PATH, or under `~/.local/share/antigravity-acp/` (the same
-directory relative to the user's home on Windows).
+against that entry before extracting it. When no ACP-capable `agy` CLI is
+present, Hermesh falls back to the standalone server on the login shell's PATH,
+or under `~/.local/share/antigravity-acp/` (the same directory relative to the
+user's home on Windows).
 
 | Platform | Registry target | Executable |
 | --- | --- | --- |
@@ -36,10 +51,11 @@ rm "$archive"
 ```
 
 Other platforms must use their own archive and checksum, not this example.
-On Linux, Hermesh adds the registry's `--uid=` argument. On Windows, extract
-the whole ZIP, including companion executables and libraries. Do not copy
-just the server into PATH. Installation and updates are explicit: Hermesh
-does not download or silently update Google's runtime.
+On Linux, Hermesh adds the registry's `--uid=` argument for the standalone
+archive (not for `agy acp`). On Windows, extract the whole ZIP, including
+companion executables and libraries. Do not copy just the server into PATH.
+Installation and updates are explicit: Hermesh does not download or silently
+update Google's runtime.
 
 ## Sign in
 
@@ -78,11 +94,18 @@ Hermesh validates that the server offers the requested method before calling
 `authenticate`. A configured business/API-key method is preserved during
 normal sessions; Hermesh does not automatically switch it to personal OAuth.
 
-The server uses `$GEMINI_HOME/antigravity-acp/settings.json`, defaulting to
-`~/.gemini/antigravity-acp/settings.json`. Discovery checks whether an auth
-method has been selected; credentials are validated by the server when a
-session starts. An expired/revoked login can therefore still require signing
-in again. Session authentication errors include the login command.
+The config directory follows the selected launch mode under `$GEMINI_HOME`
+(defaulting to `~/.gemini`):
+
+- `agy acp`: `$GEMINI_HOME/antigravity-cli/settings.json`
+- Standalone archive (`agy_acp_server.par` / `agy_acp_server.exe`):
+  `$GEMINI_HOME/antigravity-acp/settings.json`
+
+Discovery checks whether an auth method has been selected in the matching
+directory without modifying or copying user configuration; credentials are
+validated by the server when a session starts. An expired/revoked login can
+therefore still require signing in again. Session authentication errors include
+the login command.
 
 If installing a new macOS build still leaves Antigravity under “not installed,”
 check the **machine's Hermesh version**, not just the app version. A signed

@@ -142,10 +142,44 @@ func save(sid string, h *history) {
 	os.WriteFile(filepath.Join(stateDir, sid+".json"), b, 0o600)
 }
 
+func fakeSetting(envKey, fileName string) string {
+	if exe, err := os.Executable(); err == nil {
+		if b, err := os.ReadFile(filepath.Join(filepath.Dir(exe), fileName)); err == nil {
+			return strings.TrimSpace(string(b))
+		}
+	}
+	return strings.TrimSpace(os.Getenv(envKey))
+}
+
 func main() {
+	if path := os.Getenv("FAKE_ACP_ARGS_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			b, _ := json.Marshal(os.Args[1:])
+			f.Write(append(b, '\n'))
+			f.Close()
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println("fakeacp 1.2.3")
+		fmt.Println(cmp.Or(fakeSetting("FAKE_ACP_VERSION", "fakeacp.version"), "fakeacp 1.2.3"))
 		return
+	}
+	agyMode := fakeSetting("FAKE_ACP_AGY_MODE", "fakeacp.mode")
+	if len(os.Args) > 2 && os.Args[1] == "acp" && os.Args[2] == "--help" {
+		switch agyMode {
+		case "legacy-error":
+			fmt.Fprintln(os.Stderr, "unknown command: acp")
+			os.Exit(1)
+		case "ide-launcher":
+			fmt.Println("Usage: agy [paths...]\nOpen files in Antigravity.")
+			return
+		default:
+			fmt.Fprintln(os.Stderr, "Usage: agy acp [options]\nStart the ACP stdio server.")
+			return
+		}
+	}
+	if agyMode == "acp" && !slices.Equal(os.Args[1:], []string{"acp"}) {
+		fmt.Fprintf(os.Stderr, "expected args [acp], got %v\n", os.Args[1:])
+		os.Exit(2)
 	}
 	if stateDir == "" {
 		stateDir = filepath.Join(os.TempDir(), "fakeacp")

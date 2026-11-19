@@ -116,20 +116,20 @@ func TestACPAgents(t *testing.T) {
 	}
 }
 
-// Antigravity uses Google's separate ACP server. Exercise its registered name
-// through the relay, owner and CLI, including permission-gated edits and resume.
+// Antigravity uses Google's official ACP server (built into `agy acp`, with the
+// standalone archive as fallback). Exercise its registered name through the
+// relay, owner and CLI, including permission-gated edits and resume.
 func TestAntigravityACP(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	for _, real := range []bool{false, true} {
-		name := "scripted"
-		if real {
-			name = "real"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, mode := range []string{"scripted", "agy_cli", "real"} {
+		real := mode == "real"
+		t.Run(mode, func(t *testing.T) {
 			var env []string
-			if real {
+			var argsLog string
+			switch mode {
+			case "real":
 				if os.Getenv("HERMESH_REAL_CLI") != "1" {
 					t.Skip("set HERMESH_REAL_CLI=1")
 				}
@@ -142,11 +142,38 @@ func TestAntigravityACP(t *testing.T) {
 						env = append(env, "HERMESH_ANTIGRAVITY_BIN="+i.Binary)
 					}
 				}
-			} else {
+			case "agy_cli":
+				gemini := t.TempDir()
+				os.Mkdir(filepath.Join(gemini, "antigravity-cli"), 0o700)
+				os.WriteFile(filepath.Join(gemini, "antigravity-cli", "settings.json"), []byte(`{"auth":{"type":"oauth-personal"}}`), 0o600)
+				agyDir := t.TempDir()
+				src, err := os.ReadFile(filepath.Join(binaries(t), "fakeacp"+exe))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(agyDir, "agy"+exe), src, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.mode"), []byte("acp"), 0o600)
+				os.WriteFile(filepath.Join(agyDir, "fakeacp.version"), []byte("agy 1.5.9"), 0o600)
+				argsLog = filepath.Join(t.TempDir(), "args.log")
+				home := t.TempDir()
+				env = []string{
+					"HOME=" + home,
+					"USERPROFILE=" + home,
+					"GEMINI_HOME=" + gemini,
+					"PATH=" + agyDir + string(os.PathListSeparator) + os.Getenv("PATH"),
+					"SHELL=/bin/sh",
+					"FAKE_ACP_ARGS_LOG=" + argsLog,
+					"FAKE_ACP_STATE=" + t.TempDir(),
+					"FAKE_ACP_RESUME=resume",
+					"FAKE_ACP_REQUIRE_MODE=1",
+				}
+			default:
 				gemini := t.TempDir()
 				os.Mkdir(filepath.Join(gemini, "antigravity-acp"), 0o700)
 				os.WriteFile(filepath.Join(gemini, "antigravity-acp", "settings.json"), []byte(`{"auth":{"type":"oauth-personal"}}`), 0o600)
-				env = []string{"GEMINI_HOME=" + gemini, "HERMESH_ANTIGRAVITY_BIN=" + filepath.Join(binaries(t), "fakeacp"),
+				env = []string{"GEMINI_HOME=" + gemini, "HERMESH_ANTIGRAVITY_BIN=" + filepath.Join(binaries(t), "fakeacp"+exe),
 					"FAKE_ACP_STATE=" + t.TempDir(), "FAKE_ACP_RESUME=resume", "FAKE_ACP_REQUIRE_MODE=1"}
 			}
 			w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
@@ -184,6 +211,12 @@ func TestAntigravityACP(t *testing.T) {
 			}
 			if r := w.cli(3*time.Minute, "session", "send", s.SessionID, "--wait", "--message", prompt); r.code != 0 || !strings.Contains(r.stdout, want) {
 				t.Fatalf("resume after daemon restart: %+v", r)
+			}
+			if argsLog != "" {
+				b, err := os.ReadFile(argsLog)
+				if err != nil || !strings.Contains(string(b), `["acp"]`) {
+					t.Fatalf("expected agy acp launch in args log: err=%v log=%q", err, string(b))
+				}
 			}
 		})
 	}
