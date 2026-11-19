@@ -784,7 +784,8 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._checking = newValue}
   }
 
-  /// The models it offers, to pick defaults from (Claude Code and Codex).
+  /// The models it offers, as it says, to pick defaults and a session's
+  /// model from.
   public var models: [Hermesh_Machine_V1_AgentModel] {
     get {_storage._models}
     set {_uniqueStorage()._models = newValue}
@@ -801,7 +802,7 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
   public mutating func clearDefaults() {_uniqueStorage()._defaults = nil}
 
   /// Its own configuration, which empty defaults follow, as far as the
-  /// agent tells it (Codex).
+  /// agent tells it.
   public var own: Hermesh_Identity_V1_AgentDefaults {
     get {_storage._own ?? Hermesh_Identity_V1_AgentDefaults()}
     set {_uniqueStorage()._own = newValue}
@@ -823,11 +824,26 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._binary = newValue}
   }
 
-  /// Scoped ACP observations. These are not machine-wide model entitlements;
-  /// a session's own config options remain authoritative. Empty on older peers.
+  /// No longer sent: models (with models_state) are every agent's list now.
+  ///
+  /// NOTE: This field was marked as deprecated in the .proto file.
   public var modelCatalogs: [Hermesh_Machine_V1_AgentModelCatalog] {
     get {_storage._modelCatalogs}
     set {_uniqueStorage()._modelCatalogs = newValue}
+  }
+
+  /// What models are: "known" (the agent's own list, as of
+  /// models_observed_at_unix_ms), "unsupported" (it offers no choice of
+  /// model), "auth_required" (it must be signed in to tell) or "error" (it
+  /// could not tell); empty when it was not asked (or a machine from before).
+  public var modelsState: String {
+    get {_storage._modelsState}
+    set {_uniqueStorage()._modelsState = newValue}
+  }
+
+  public var modelsObservedAtUnixMs: Int64 {
+    get {_storage._modelsObservedAtUnixMs}
+    set {_uniqueStorage()._modelsObservedAtUnixMs = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -837,6 +853,9 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
   fileprivate var _storage = _StorageClass.defaultInstance
 }
 
+/// AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).
+///
+/// NOTE: This message was marked as deprecated in the .proto file.
 public nonisolated struct Hermesh_Machine_V1_AgentModelCatalog: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2261,7 +2280,7 @@ nonisolated extension Hermesh_Machine_V1_MachineProblem: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{3}model_catalogs\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{3}model_catalogs\0\u{3}models_state\0\u{3}models_observed_at_unix_ms\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _name: String = String()
@@ -2276,6 +2295,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
     var _problem: Hermesh_Machine_V1_AgentProblem = .unspecified
     var _binary: String = String()
     var _modelCatalogs: [Hermesh_Machine_V1_AgentModelCatalog] = []
+    var _modelsState: String = String()
+    var _modelsObservedAtUnixMs: Int64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2298,6 +2319,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       _problem = source._problem
       _binary = source._binary
       _modelCatalogs = source._modelCatalogs
+      _modelsState = source._modelsState
+      _modelsObservedAtUnixMs = source._modelsObservedAtUnixMs
     }
   }
 
@@ -2328,6 +2351,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         case 11: try { try decoder.decodeSingularEnumField(value: &_storage._problem) }()
         case 12: try { try decoder.decodeSingularStringField(value: &_storage._binary) }()
         case 13: try { try decoder.decodeRepeatedMessageField(value: &_storage._modelCatalogs) }()
+        case 14: try { try decoder.decodeSingularStringField(value: &_storage._modelsState) }()
+        case 15: try { try decoder.decodeSingularInt64Field(value: &_storage._modelsObservedAtUnixMs) }()
         default: break
         }
       }
@@ -2376,6 +2401,12 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       if !_storage._modelCatalogs.isEmpty {
         try visitor.visitRepeatedMessageField(value: _storage._modelCatalogs, fieldNumber: 13)
       }
+      if !_storage._modelsState.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._modelsState, fieldNumber: 14)
+      }
+      if _storage._modelsObservedAtUnixMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._modelsObservedAtUnixMs, fieldNumber: 15)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2397,6 +2428,8 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         if _storage._problem != rhs_storage._problem {return false}
         if _storage._binary != rhs_storage._binary {return false}
         if _storage._modelCatalogs != rhs_storage._modelCatalogs {return false}
+        if _storage._modelsState != rhs_storage._modelsState {return false}
+        if _storage._modelsObservedAtUnixMs != rhs_storage._modelsObservedAtUnixMs {return false}
         return true
       }
       if !storagesAreEqual {return false}

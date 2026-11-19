@@ -56,10 +56,14 @@ func TestIPhone(t *testing.T) {
 	}
 
 	fake := filepath.Join(binaries(t), "fakeacp")
+	// Qwen Code offers models, each with its reasoning efforts, for the
+	// defaults picked on its page (testAgentModelDefaults).
+	qwen := filepath.Join(t.TempDir(), "qwen")
+	os.WriteFile(qwen, []byte("#!/bin/sh\nFAKE_ACP_CONFIG=1 FAKE_ACP_MODELS=small,large FAKE_ACP_EFFORTS='small=low,high;large=low,high,xhigh' exec "+fake+" \"$@\"\n"), 0o755)
 	her := iphoneHerEnv(t)
 	screen, _ := screenEnv(t) // the Mac's screen for testComputerControl: the helper's test picture
 	w := newOwnerMac(t, append(append([]string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro",
-		"HERMESH_ANTIGRAVITY_BIN=" + fake, "GEMINI_HOME=" + t.TempDir()}, her...), screen...),
+		"HERMESH_ANTIGRAVITY_BIN=" + fake, "HERMESH_QWEN_BIN=" + qwen, "GEMINI_HOME=" + t.TempDir()}, her...), screen...),
 		&localv1.GrantSpec{Agents: []string{"gemini"}}, "--retry-delay", "0") // its rate limit fails at once
 	if her != nil {
 		t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her (the daemon of the moment)
@@ -468,6 +472,21 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		json.NewEncoder(rw).Encode(v)
 	}
 	mux.HandleFunc("GET /address", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": w.addr}) })
+	// What the owner set for an agent's sessions on the Mac.
+	mux.HandleFunc("GET /agent-defaults", func(rw http.ResponseWriter, r *http.Request) {
+		res, err := w.app.client.ListMachines(r.Context(), &localv1.ListMachinesRequest{})
+		if err != nil || len(res.Machines) == 0 {
+			http.Error(rw, fmt.Sprint(err), 500)
+			return
+		}
+		for _, a := range res.Machines[0].Status.GetAgents() {
+			if a.Name == r.URL.Query().Get("agent") {
+				reply(rw, map[string]string{"model": a.Defaults.GetModel(), "effort": a.Defaults.GetEffort()})
+				return
+			}
+		}
+		http.Error(rw, "no such agent", 404)
+	})
 	mcp := mcpAddress(t, w.app)
 	mux.HandleFunc("GET /mcp", func(rw http.ResponseWriter, _ *http.Request) { reply(rw, map[string]string{"address": mcp}) })
 	// A bot's routine for a doorbell: it takes one key, and says what called it.

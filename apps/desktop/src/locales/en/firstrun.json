@@ -141,22 +141,6 @@
     "prompt": "Use Hermesh to have {{agent}} say hello to me."
   },
   "prepare": {
-    "catalogsTitle": "Observed models",
-    "catalogsNote": "Choices reported for each scope, not a machine-wide guarantee. Listing creates no conversation and sends no prompt.",
-    "catalogSource": "Source: {{source}}",
-    "catalogNever": "Not observed yet",
-    "catalogExpired": "Expired observation · availability needs revalidation",
-    "catalogEmpty": "The server reported no choices in this scope.",
-    "catalogInitial": "Initial model: {{model}}",
-    "catalogCurrent": "Current model: {{model}}",
-    "catalogState": {
-      "known": "Observed",
-      "unknown": "Unknown",
-      "session_required": "Unknown until a normal task reports its choices",
-      "auth_required": "Authentication required",
-      "timeout": "Discovery timed out",
-      "error": "Discovery failed"
-    },
     "promise": "Never reads any agent’s tokens or keys. Runs them from the command line just as you do.",
     "later": "Set Up Later",
     "next": "Next: Connect Your Agent",
@@ -194,6 +178,10 @@
     "speed": "Speed",
     "defaultsHead": "Default Model",
     "defaultsNote": "Used when an agent starts a task here without specifying a model. {{agent}}’s own settings remain unchanged.",
+    "models": {
+      "unsupported": "{{agent}} offers no choice of model; its sessions use its own settings.",
+      "error": "Couldn’t read the models {{agent}} offers; the next check tries again. Its sessions use its own settings."
+    },
     "sameAs": "Same as {{agent}}",
     "sameAsValue": "Same as {{agent}} ({{value}})",
     "standard": "Standard",

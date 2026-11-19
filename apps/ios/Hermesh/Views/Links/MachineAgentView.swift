@@ -52,8 +52,9 @@ func defaultsText(_ a: AgentStatus) -> String {
 
 /// A coding agent on a machine, opened from the machine's page: signing in
 /// when it isn't, the model, reasoning effort and (Codex) speed its sessions
-/// run with when the agent starting one names no model, and the projects it
-/// may work in, each with how agents work there.
+/// run with when the agent starting one names no model (or why there is no
+/// choosing), and the projects it may work in, each with how agents work
+/// there.
 struct MachineAgentView: View {
     @Environment(AppModel.self) private var model
     let machineID: String
@@ -130,6 +131,15 @@ struct MachineAgentView: View {
             }
             if !a.models.isEmpty {
                 defaults(m, a, title: title).disabled(!editable)
+            } else if a.loggedIn && (a.modelsState == "unsupported" || a.modelsState == "error") {
+                Section {
+                    Text(a.modelsState == "unsupported"
+                        ? String(localized: "\(title) offers no choice of model; its sessions use its own settings.")
+                        : String(localized: "Couldn’t read the models \(title) offers; the next check tries again. Its sessions use its own settings."))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                } header: {
+                    Text("Default Model")
+                }
             }
             Section {
                 ForEach(mine, id: \.projectID) { p in
@@ -184,7 +194,7 @@ struct MachineAgentView: View {
         let own = a.own
         let same = { (v: String) in v.isEmpty ? String(localized: "Same as \(title)") : String(localized: "Same as \(title) (\(v))") }
         let effortsOf = { (id: String) in a.models.first { $0.id == id }?.efforts }
-        let efforts = effortsOf(d.model.isEmpty ? own.model : d.model) ?? a.models[0].efforts
+        let efforts = effortsOf(d.model.isEmpty ? own.model : d.model) ?? a.models.first { !$0.efforts.isEmpty }?.efforts ?? []
         let save = { (next: Hermesh_Identity_V1_AgentDefaults) in Task { await model.setAgentDefaults(m, next) } }
         return Section {
             Picker("Model", selection: Binding(get: { d.model }, set: { v in
@@ -199,16 +209,19 @@ struct MachineAgentView: View {
                 ForEach(a.models, id: \.id) { x in Text(x.name.isEmpty ? x.id : x.name).tag(x.id) }
             }
             .accessibilityIdentifier("default-model")
-            Picker("Reasoning Effort", selection: Binding(get: { d.effort }, set: { v in
-                var next = d
-                next.agent = agent
-                next.effort = v
-                save(next)
-            })) {
-                Text(same(own.effort.isEmpty ? "" : effortName(own.effort))).tag("")
-                ForEach(efforts, id: \.self) { e in Text(effortName(e)).tag(e) }
+            // An agent whose models take no reasoning effort has no picker for it.
+            if a.models.contains(where: { !$0.efforts.isEmpty }) {
+                Picker("Reasoning Effort", selection: Binding(get: { d.effort }, set: { v in
+                    var next = d
+                    next.agent = agent
+                    next.effort = v
+                    save(next)
+                })) {
+                    Text(same(own.effort.isEmpty ? "" : effortName(own.effort))).tag("")
+                    ForEach(efforts, id: \.self) { e in Text(effortName(e)).tag(e) }
+                }
+                .accessibilityIdentifier("default-effort")
             }
-            .accessibilityIdentifier("default-effort")
             if agent == "codex" {
                 Picker("Speed", selection: Binding(get: { d.speed }, set: { v in
                     var next = d
