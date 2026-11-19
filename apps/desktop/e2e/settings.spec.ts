@@ -1,5 +1,7 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
 import { codingAgentIds, codingAgentTitle } from "@hermesh/ui/agents";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
@@ -267,8 +269,19 @@ test("only an agent that asked to be woken has a wake group: its link opens the 
   }
 });
 
+const pipePrefix = "\\\\.\\pipe\\";
+
+// The Windows fixture points to a file holding the daemon's pipe name. Read it
+// for each request because the name changes when hermeshd restarts.
+const daemonEndpoint = () => (onWindows && !fixture.socket.startsWith(pipePrefix) ? fs.readFileSync(fixture.socket, "utf8").trim() : fixture.socket);
+
+async function listenDaemonProxy(proxy: http.Server): Promise<string> {
+  const socket = onWindows ? `${pipePrefix}hms-${randomUUID()}` : path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hms-")), "d.sock");
+  await once(proxy.listen(socket), "listening");
+  return socket;
+}
+
 test("an app just updated finds the previous hermeshd, which keeps no doorbells; once that is restarted, the agent's page has them", async () => {
-  test.skip(onWindows, "its proxy listens on a Unix socket");
   // The daemon through a proxy: first as the previous version (no
   // ListWakes), then, its connections dropped as a restart drops them, as
   // itself.
@@ -279,7 +292,7 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
       res.end(JSON.stringify({ code: "unimplemented", message: "not in this version" }));
       return;
     }
-    const up = http.request({ socketPath: fixture.socket, path: req.url, method: req.method, headers: req.headers }, (r) => {
+    const up = http.request({ socketPath: daemonEndpoint(), path: req.url, method: req.method, headers: req.headers }, (r) => {
       res.writeHead(r.statusCode ?? 502, r.headers);
       r.pipe(res);
     });
@@ -287,9 +300,7 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
     res.on("close", () => up.destroy());
     req.pipe(up);
   });
-  const socket = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hmw-")), "d.sock");
-  await new Promise<void>((r) => proxy.listen(socket, r));
-  const { app, page } = await launch(socket);
+  const { app, page } = await launch(await listenDaemonProxy(proxy));
   // The bot has a doorbell (kept though nothing answers its webhook).
   const bot = (await api<{ clients: { clientId: string; label: string }[] }>(page, "ListClients")).clients.find((c) => c.label === "bot")!.clientId;
   await api(page, "SetWake", { clientId: bot, url: "http://127.0.0.1:9/hook", keep: true });
@@ -546,9 +557,6 @@ test("通用's 外观 follows the system, or keeps every window light or dark, a
   await app.close();
 });
 
-/** hermeshd's endpoint: on Windows the pipe named in the fixture's file, read each time (its name changes when hermeshd starts). */
-const daemonEndpoint = () => (onWindows && !fixture.socket.startsWith("\\\\.\\pipe\\") ? fs.readFileSync(fixture.socket, "utf8").trim() : fixture.socket);
-
 test("nothing signed: a signer older than the app offers its update, else the failure says nothing was signed", async () => {
   // hermeshd as it answers when its signer didn't sign a rename: as an older signer does with a request it can't show.
   const proxy = http.createServer((req, res) => {
@@ -565,10 +573,7 @@ test("nothing signed: a signer older than the app offers its update, else the fa
     res.on("close", () => up.destroy());
     req.pipe(up);
   });
-  // Windows has no Unix sockets here: the proxy serves a named pipe, as hermeshd does.
-  const socket = onWindows ? `\\\\.\\pipe\\hms-${process.pid}-${Date.now()}` : path.join(fs.mkdtempSync(path.join(os.tmpdir(), "hms-")), "d.sock");
-  await new Promise<void>((r) => proxy.listen(socket, r));
-  const { app, page } = await launch(socket);
+  const { app, page } = await launch(await listenDaemonProxy(proxy));
   // The signer set up here (Windows: a copy in Program Files), older than the app or not; updating it is counted.
   const signer = (version?: string) =>
     app.evaluate(({ ipcMain }, v) => {
