@@ -47,6 +47,13 @@ describe("session notices", () => {
     expect(f[0].title).toContain("上下文已满");
     // Already failed before: nothing new.
     expect(noticeDiff(new Map([["s", noticeSnapshot(crashed)]]), [crashed], grant)).toEqual([]);
+    // Resumed (still carrying lastFailure until the turn ends), then fails again: noticed again.
+    const resumed = clone(SessionSchema, crashed);
+    resumed.status = SessionStatus.RUNNING;
+    expect(noticeDiff(noticeSnapshots([crashed]), [resumed], grant)).toEqual([]);
+    const crashedAgain = clone(SessionSchema, resumed);
+    crashedAgain.status = SessionStatus.CRASHED;
+    expect(noticeDiff(noticeSnapshots([resumed]), [crashedAgain], grant).map((i) => i.kind)).toEqual(["failed"]);
     // Failures of sessions seen for the first time are not news.
     expect(noticeDiff(new Map(), [crashed], grant)).toEqual([]);
 

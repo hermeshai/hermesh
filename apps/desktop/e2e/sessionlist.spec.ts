@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { cli, launch, snap, sessionList } from "./app";
+import { cli, fixture, launch, snap, sessionList } from "./app";
 
 // The session list as a chat app's: the newest page at once, older ones as
 // the list scrolls to its end, and what changes shows up as it happens.
@@ -72,5 +72,29 @@ test("a session started by an agent shows up at once, and so do its changes", as
   await expect(row.getByRole("img", { name: "运行中" })).toBeVisible();
   await expect(list.getByRole("group", { name: "已结束" })).toContainText("新来的", { timeout: 30_000 });
   await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
+  await app.close();
+});
+
+test("a failed or crashed session resumed leaves the error state as soon as it runs", async () => {
+  const { app, page } = await launch();
+  const list = await sessionList(page);
+  const attention = list.getByRole("group", { name: "需要处理" });
+  const active = list.getByRole("group", { name: "进行中" });
+  const done = list.getByRole("group", { name: "已结束" });
+
+  for (const [title, errMark] of [["限流", "出错"], ["崩溃", "已崩溃"]] as const) {
+    const row = list.getByRole("listitem").filter({ hasText: title });
+    await expect(attention).toContainText(title);
+    await expect(row.getByRole("img", { name: errMark })).toBeVisible();
+
+    await cli("session", "send", fixture.sessions[title], "--message", "shell sleep 3\nsay 接着跑完");
+    await expect(active).toContainText(title, { timeout: 5_000 });
+    await expect(attention).not.toContainText(title);
+    await expect(row.getByRole("img", { name: "运行中" })).toBeVisible();
+    await expect(row.getByRole("img", { name: errMark })).toHaveCount(0);
+
+    await expect(done).toContainText(title, { timeout: 30_000 });
+    await expect(row.locator(".smeta [role=img]")).toHaveCount(0);
+  }
   await app.close();
 });

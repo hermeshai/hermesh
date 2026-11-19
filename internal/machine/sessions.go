@@ -294,7 +294,7 @@ func (s *Sessions) Recover() error {
 		s.live[r.ID] = l
 		s.mu.Unlock()
 		if r.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE && r.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			r.Progress.PendingQuestion = nil // it went with the agent process
+			r.Progress.PendingQuestion, r.Progress.CurrentTool, r.Progress.TurnStartedAt = nil, "", nil // they went with the agent process
 			if turnActive(r.Status) || r.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING {
 				r.Progress.LastFailure = (&provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "hermeshd restarted during the turn"}).Proto()
 			}
@@ -873,6 +873,7 @@ func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
 	if !alive {
 		// pending: what a failed start never delivered (interruptStart).
 		l.pending, l.resume, l.queuedAt = l.pending.join(m), l.row.ProviderRef != "", time.Now()
+		l.row.Progress.TurnStartedAt = timestamppb.Now()
 		changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED)
 		l.mu.Unlock()
 		if changed {
@@ -1801,6 +1802,7 @@ func (s *Sessions) interruptStart(l *live, f *provider.Failure) {
 	l.mu.Lock()
 	l.row.Error = pf.Message
 	l.row.Progress.LastFailure = pf
+	l.row.Progress.TurnStartedAt = nil
 	// The agent never got the prompt, nor what came while it was starting:
 	// kept for the next turn, which the next message starts.
 	for _, m := range l.followUps {
@@ -2111,6 +2113,7 @@ func (s *Sessions) settle(l *live, f *provider.Failure, status sessionv1.Session
 	pf := f.Proto()
 	l.mu.Lock()
 	l.row.Progress.LastFailure = pf
+	l.row.Progress.TurnStartedAt = nil
 	l.mu.Unlock()
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: pf.Message, Failure: pf}}})
 	s.setStatus(l, status, pf.Message)
