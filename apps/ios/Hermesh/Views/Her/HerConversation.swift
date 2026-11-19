@@ -895,8 +895,6 @@ struct HerTyping: View {
 
     var body: some View {
         let typing = String(localized: "Typing…")
-        // What VoiceOver says: Her first, while she answers, then who else is at work.
-        let said = { (rest: String) in her ? String(localized: "\(typing), \(rest)") : rest }
         Group {
             if agents.isEmpty {
                 line { EmptyView() }
@@ -907,7 +905,7 @@ struct HerTyping: View {
                     line { Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary) }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: said(String(localized: "Sub-agent · \(agents[0].name), at work"))))
+                .accessibilityLabel(Text(verbatim: String(localized: "Sub-agent · \(agents[0].name), at work")))
             } else {
                 Button {
                     held = Int(Date.now.timeIntervalSinceReferenceDate / Self.sweep)
@@ -923,7 +921,7 @@ struct HerTyping: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: said(String(localized: "\(agents.count) sub-agents at work: \(agents.map(\.name).formatted(.list(type: .and)))"))))
+                .accessibilityLabel(Text(verbatim: String(localized: "\(agents.count) sub-agents at work: \(agents.map(\.name).formatted(.list(type: .and)))")))
                 .accessibilityHint(Text("Shows who is at work"))
                 .popover(isPresented: $listing, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) { menu }
                 // A list left open stays where it opened: once the line moves (her words coming in), it goes.
@@ -996,27 +994,28 @@ struct HerTyping: View {
         .contentShape(.capsule)
     }
 
-    /// The dots, still, and who is at work; several by turns, in a cell as wide as the widest name.
+    /// The dots, still, and sub-agents at work; several by turns, in a cell as wide as the widest name.
+    /// Her's own "Typing…" lives in her top capsule, so the bubble stays pure dots while she answers alone.
     private func words(turn: Int) -> some View {
         HStack(spacing: 8) {
             HStack(spacing: 3) {
                 ForEach(0 ..< 3, id: \.self) { _ in Circle().fill(.secondary).frame(width: 5, height: 5) }
             }
-            HStack(spacing: 6) {
-                if her { Text("Typing…") }
-                if her, !agents.isEmpty { Text(verbatim: "·").foregroundStyle(.tertiary) }
-                if agents.count == 1 { Text(verbatim: agents[0].name) }
-                if agents.count > 1 {
-                    let shown = turn % agents.count
-                    ZStack(alignment: .leading) {
-                        ForEach(Array(agents.enumerated()), id: \.element.id) { i, a in
-                            Text(verbatim: a.name).opacity(i == shown ? 1 : 0).offset(y: i == shown ? 0 : 3)
+            if !agents.isEmpty {
+                HStack(spacing: 6) {
+                    if agents.count == 1 { Text(verbatim: agents[0].name) }
+                    if agents.count > 1 {
+                        let shown = turn % agents.count
+                        ZStack(alignment: .leading) {
+                            ForEach(Array(agents.enumerated()), id: \.element.id) { i, a in
+                                Text(verbatim: a.name).opacity(i == shown ? 1 : 0).offset(y: i == shown ? 0 : 3)
+                            }
                         }
+                        .animation(still ? nil : .easeOut(duration: 0.4), value: shown)
                     }
-                    .animation(still ? nil : .easeOut(duration: 0.4), value: shown)
                 }
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
-            .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
         }
     }
 

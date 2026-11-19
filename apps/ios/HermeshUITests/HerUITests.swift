@@ -1116,10 +1116,12 @@ extension HermeshUITests {
         XCTAssertTrue(app.navigationBars["进展"].waitForExistence(timeout: 10), "Progress")
         herBackToConversation()
 
-        // While Her herself answers, she leads the line; on a call too, it says only that she is at it.
+        // While Her herself answers, her top capsule says "正在输入…" and the busy bubble stays clean (never mixing her status with sub-agents, nor naming her call).
         herSend("[[mock:bash:sleep 8]] 看看")
         tap("her-allow-once", timeout: 60)
-        try waitFor("Her leads the line (\(typing.firstMatch.label))", timeout: 30) { typing.firstMatch.label.hasPrefix("正在输入…，") ? true : nil }
+        let tag = app.buttons["her-tag"]
+        try waitFor("Her's capsule says typing (\(tag.exists ? tag.label : "none"))", timeout: 30) { tag.exists && tag.label.hasPrefix("正在输入…") ? true : nil }
+        XCTAssertFalse(typing.firstMatch.label.hasPrefix("正在输入…"), "busy bubble no longer prefixes Her's typing status")
         XCTAssertFalse(typing.firstMatch.label.contains("sleep"), "never what she does")
         herShot("Her: at work herself")
     }

@@ -12566,6 +12566,26 @@
         }
       }
     },
+    "Compacting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "整理对话中…"
+          }
+        }
+      }
+    },
+    "Retrying…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在重试…"
+          }
+        }
+      }
+    },
     "Hi, I’m %@. I work on %@. Tell me what you need, several things at once if you like.": {
       "localizations": {
         "zh-Hans": {

@@ -431,6 +431,16 @@ export interface BusyAgent {
   name: string;
 }
 
+/** What Her's name tag says in place of her name while she answers (never while waiting for approval). */
+export type HerStatus = "typing" | "compacting" | "retrying";
+
+export function herStatus(v: SessionView, now = Date.now()): HerStatus | null {
+  if (!v.live || v.live.approvals.length > 0) return null;
+  if (v.live.retry && now - v.live.retry.at > 10_000) return "retrying";
+  if (v.live.compacting) return "compacting";
+  return "typing";
+}
+
 /**
  * Who the busy bubble names (docs/her-team.md §15.6): the bot, while it answers, and its sub-agents at work that wait
  * for nobody, the one that started last first. Only who, never what they are doing. Null when nothing is at work, and

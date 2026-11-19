@@ -43,6 +43,8 @@
   },
   "line": {
     "typing": "正在输入…",
+    "compacting": "整理对话中…",
+    "retrying": "正在重试…",
     "agentAtWork": "子智能体 · {{name}}，正在工作",
     "agentsWorking_other": "{{count}} 个子智能体正在工作",
     "allInProgress": "在「进展」中查看全部"

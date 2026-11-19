@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { AssistantContent, BotSummary, Event, EventMsg, SessionInfo, Usage } from "@hermesh/her-protocol";
 import { applyEvents, fromSnapshot, type SessionView } from "./session.ts";
 import { attention, botLine, initialOf, lastText, mergeBots, plain, searchBots, sortBots } from "./bots.ts";
-import { botChat, busyBubble, imageRatio, imageRows, readSent } from "./botChat.ts";
+import { botChat, busyBubble, herStatus, imageRatio, imageRows, readSent } from "./botChat.ts";
 
 const bot = (id: string, o: Partial<BotSummary> = {}): BotSummary => ({ id, name: id, avatar: { kind: "mono", hue: "slate" }, created_at: "2026-11-01T00:00:00Z", ...o });
 const at = (minute: number) => `2026-11-04T10:${String(minute).padStart(2, "0")}:00Z`;
@@ -212,6 +212,20 @@ test("the busy bubble names who is at work, never what: the bot while it answers
   assert.deepEqual(busyBubble(asking)?.agents.map((a) => a.id), ["g1"], "one waiting for the owner is not at work");
   const over = applyEvents(after, [{ seq: 24, ts: 1, type: "agent_status", agent_id: "g1", status: "completed", summary: "查完了" } as Event]);
   assert.equal(busyBubble(over), null, "nothing at work, no bubble");
+});
+
+test("herStatus reports typing, compacting and retrying for Her's name tag, never while idle or awaiting approval", () => {
+  const idle = play([{ type: "task_started", task_id: "t1" }, { type: "task_completed", task_id: "t1", usage: { per_model: {} }, reason: "done" }]);
+  assert.equal(herStatus(idle, 100_000), null);
+  const live = play([{ type: "task_started", task_id: "t1" }]);
+  assert.equal(herStatus(live, 100_000), "typing");
+  const compacting = applyEvents(live, [{ seq: 10, ts: 10_000, type: "compaction_started", reason: "auto" } as Event]);
+  assert.equal(herStatus(compacting, 15_000), "compacting");
+  const retrying = applyEvents(compacting, [{ seq: 11, ts: 20_000, type: "stream_retry", attempt: 1, delay_ms: 5000, error: { kind: "rate_limited", message: "429", retryable: true } } as Event]);
+  assert.equal(herStatus(retrying, 25_000), "compacting", "retry under 10s does not outrank compacting");
+  assert.equal(herStatus(retrying, 31_000), "retrying", "retry past 10s takes precedence");
+  const asking = applyEvents(retrying, [{ seq: 12, ts: 32_000, type: "approval_requested", call_id: "c1", name: "bash", summary: "Run ls", args: {} } as Event]);
+  assert.equal(herStatus(asking, 40_000), null, "awaiting approval yields back to Her's name");
 });
 
 // ---- message types (bot-design §3.12) ----

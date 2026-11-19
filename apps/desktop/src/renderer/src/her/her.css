@@ -53,6 +53,7 @@
 .her .her-note{position:relative;z-index:1;margin-top:36px}
 .her .her-note+.cscroll>.dbody{padding-top:24px}
 .her-id-n{flex:none;font-size:14px;font-weight:500;white-space:nowrap}
+.her-id-st{color:var(--l2)}
 /* Her's avatar opens her settings, the capsule the team panel: the hand says they can be clicked, as the owner asked. */
 .her-id-av{display:flex;padding:0;border:0;border-radius:50%;background:none;cursor:pointer}
 button.her-cap{cursor:pointer}
