@@ -166,6 +166,8 @@ type Machine struct {
 	quicCtx        context.Context
 	quicPrimary    *transport.QUICEndpoint
 	quicV6         map[string]*transport.QUICEndpoint
+	directIPMu     sync.Mutex
+	directIPs      directIPSnapshot
 }
 
 const (
@@ -502,8 +504,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 		st.Her = n.herStatus()
 	}
 	st.Screen = n.screenStatus()
-	st.DirectAddrs = n.directAddresses()
-	st.DirectQuicAddrs = n.directQUICAddresses()
+	st.DirectAddrs, st.DirectQuicAddrs = n.directStatusAddrs()
 	return st
 }
 
