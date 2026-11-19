@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{Demux, TestEnv, native_init, native_prompt};
+use common::{Demux, TestEnv, native_init, native_prompt, recv};
 use her_rpc::Client;
 use serde_json::{Value, json};
 
@@ -14,6 +14,14 @@ async fn allow(client: &Client, model: &str, status: &Value) -> Result<Value, he
     client.request("ai_consent/allow", json!({
         "model": model, "recipient": status["recipient"], "revision": status["revision"],
     })).await
+}
+
+async fn refused_prompt(client: &Client, session: &str, text: &str) {
+    let error = client.request("session/op", json!({
+        "session_id": session,
+        "op": {"type": "prompt", "input": [{"type": "text", "text": text}]},
+    })).await.unwrap_err();
+    assert!(error.message.contains("AI sharing is blocked"), "{error:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -41,26 +49,35 @@ async fn her_only_sends_to_the_currently_approved_recipient() {
     assert_eq!(offered["recipient"]["provider"], "mock");
     assert!(offered["recipient"]["endpoint"].as_str().unwrap().starts_with(&env.mock.base_url()));
     assert!(offered["allowed"].is_null());
-    let denied = native_prompt(&client, &mut events, session, "fictional draft", false).await;
-    assert_eq!(denied.end["type"], "task_failed");
+    refused_prompt(&client, session, "fictional declined draft").await;
     assert_eq!(counts(), (0, 0));
 
     allow(&client, first, &offered).await.unwrap();
     let accepted = native_prompt(&client, &mut events, session, "fictional allowed input", false).await;
     assert_eq!(accepted.end["type"], "task_completed");
     assert_eq!(counts(), (1, 0));
+    assert!(!env.mock.stats().chat_controls()[0].to_string().contains("fictional declined draft"));
 
     let stale = status(&client, first).await;
     client.request("ai_consent/revoke", json!({})).await.unwrap();
     assert!(allow(&client, first, &stale).await.is_err());
-    let revoked = native_prompt(&client, &mut events, session, "fictional revoked input", false).await;
-    assert_eq!(revoked.end["type"], "task_failed");
+    refused_prompt(&client, session, "fictional revoked input").await;
+    // Compact goes straight to the inference gate with the existing history.
+    client.request("session/op", json!({"session_id": session, "op": {"type": "compact"}})).await.unwrap();
+    loop {
+        let incoming = recv(&mut events).await;
+        let event = incoming.params()["event"].clone();
+        if event["type"] == "task_failed" {
+            assert!(event.to_string().contains("AI sharing is blocked"), "{event}");
+            break;
+        }
+        assert_ne!(event["type"], "task_completed");
+    }
     assert_eq!(counts(), (1, 0));
 
     allow(&client, first, &status(&client, first).await).await.unwrap();
     client.request("session/op", json!({"session_id": session, "op": {"type": "set_model", "model": second}})).await.unwrap();
-    let switched = native_prompt(&client, &mut events, session, "fictional switched input", false).await;
-    assert_eq!(switched.end["type"], "task_failed");
+    refused_prompt(&client, session, "fictional switched input").await;
     assert_eq!(counts(), (1, 0));
     let offer = status(&client, second).await;
     assert!(offer["recipient"]["endpoint"].as_str().unwrap().starts_with(&other.mock.base_url()));
@@ -70,4 +87,6 @@ async fn her_only_sends_to_the_currently_approved_recipient() {
     let accepted = native_prompt(&client, &mut events, session, "fictional second approval", false).await;
     assert_eq!(accepted.end["type"], "task_completed");
     assert_eq!(counts(), (1, 1));
+    let received = other.mock.stats().chat_controls()[0].to_string();
+    assert!(!received.contains("fictional revoked input") && !received.contains("fictional switched input"));
 }

@@ -192,9 +192,19 @@ impl ModelRegistry {
     }
 
     pub fn ai_consent(&self, reference: Option<&str>) -> Option<Status> {
-        let recipient = reference.and_then(|reference| self.resolve(reference).ok())
-            .and_then(|resolved| self.recipient(&resolved.model));
-        self.consent.as_ref().map(|consent| consent.status(recipient))
+        self.consent.as_ref().map(|consent| consent.status(reference.and_then(|reference| self.recipient_for(reference))))
+    }
+
+    pub fn check_ai_consent(&self, reference: &str) -> Result<(), LlmError> {
+        if let Some(consent) = &self.consent {
+            consent.lease(self.recipient_for(reference).as_ref())?;
+        }
+        Ok(())
+    }
+
+    fn recipient_for(&self, reference: &str) -> Option<Recipient> {
+        let resolved = self.resolve(reference).ok()?;
+        self.recipient(&resolved.model)
     }
 
     fn recipient(&self, model: &Model) -> Option<Recipient> {
