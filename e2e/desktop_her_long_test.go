@@ -205,7 +205,7 @@ cost = { input = 0.0, output = 0.0 }
 func longChatWith(t *testing.T, w *ownerMac) {
 	c := w.app.client
 	mac := localMachine(t, c)
-	turnHerOn(t, c, mac)
+	turnHerOnWithModel(t, c, mac, "long/long-1")
 	bot := defaultBot(t, c, mac)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
