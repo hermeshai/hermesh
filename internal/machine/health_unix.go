@@ -17,6 +17,10 @@ import (
 // diskSpace is the free and the total space, in bytes, of the disk that
 // holds dir.
 func diskSpace(dir string) (free, size uint64, ok bool) {
+	// The iPhone cannot run an execution machine or its disk diagnostics.
+	if runtime.GOOS == "ios" {
+		return 0, 0, false
+	}
 	var fs unix.Statfs_t
 	if unix.Statfs(dir, &fs) != nil {
 		return 0, 0, false
