@@ -9,6 +9,9 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | Method | Parameters | Result | What it does |
 |---|---|---|---|
 | `ai/action` | `AiActionParams` | `AiActionResult` | `ai/action`. Answers when the proposal is ready; `ai/action_progress` goes out meanwhile, and `$/cancel_request` stops it. |
+| `ai_consent/allow` | `AiConsentAllowParams` | `Empty` |  |
+| `ai_consent/revoke` | — | `Empty` | The result of methods that return nothing: `{}`. |
+| `ai_consent/status` | `AiConsentStatusParams` | `Status` |  |
 | `auth/delete` | `AuthDeleteParams` | `Empty` | Parameters of `auth/delete`. |
 | `auth/set` | `AuthSetParams` | `AuthSetResult` | Parameters of `auth/set`. |
 | `chatgpt/cancel` | `ChatGptCancelParams` | `ChatGptStatus` |  |
@@ -155,9 +158,14 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | `docx/save` | `DocxSaveParams` | `DocxSaveResult` |  |
 | `docx/sync` | `DocxSyncParams` | `DocxSyncResult` | A replica's update (merged and sent to the other replicas), and/or its state vector (the result then carries what it lacks). |
 | `docx/undo` | `DocxUndoParams` | `DocxRevisionResult` | Takes back the agent's edit `edit` (the revision it made), when it is the agent's latest step still in the document. |
+| `models/catalog` | `ModelsCatalogParams` | `ModelsCatalogResult` | `models/catalog`: canonical models of the public catalog by name, to say what a model is like (docs/kernel/custom-endpoint-design.md §7.3). |
+| `models/configure` | `ModelsConfigureParams` | `ModelsConfigureResult` | `models/configure`: what a model is like, for one nothing describes (§7.3). A field left out stays as it is; `null` removes it. With `clear`, the model's entry goes and it is found by its name again. |
 | `pptx/metafile` | `PptxMetafileParams` | `PptxMetafileResult` |  |
 | `pptx/read` | `PptxReadParams` | `PptxReadResult` | Optional correlation ID keeps concurrent opens and reopened tabs isolated. |
 | `pptx/write` | `PptxWriteParams` | `FilesWriteResult` |  |
+| `providers/add` | `ProvidersAddParams` | `ProvidersAddResult` | `providers/add`: a service by its address. Probed first; saved only when usable. |
+| `providers/remove` | `ProviderIdParams` | `Empty` |  |
+| `providers/update` | `ProvidersUpdateParams` | `ProvidersAddResult` | `providers/update`: a new name, address, key or protocol. A new address, key or protocol is probed first and changes nothing when unusable. |
 
 ## Client notifications
 
@@ -232,6 +240,7 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | -32045 | `routines_unavailable` |
 | -32046 | `no_model` |
 | -32047 | `card_ended` |
+| -32048 | `endpoint_unusable` |
 | -32600 | `invalid_request` |
 | -32601 | `method_not_found` |
 | -32602 | `invalid_params` |

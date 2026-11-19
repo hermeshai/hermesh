@@ -160,6 +160,9 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkHerCodingRecipient(p, r.Agent); err != nil {
+		return nil, err
+	}
 	// The owner, the session's creator, or whoever asked for the turn.
 	if p.Kind != PrincipalOwner && !s.canWrite(p, r) && (l == nil || !l.askedBy(p.ID())) {
 		return nil, cerr(connect.CodePermissionDenied, "only who asked for the turn may answer its question")

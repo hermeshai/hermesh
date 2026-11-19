@@ -199,6 +199,10 @@ func (l *Link) Call(ctx context.Context, bot, callID, name string, raw json.RawM
 	if !ok {
 		return failure("usage", "no tool "+name), nil, true
 	}
+	// Stop before forwarding to a machine that might predate the recipient check.
+	if t.writes && !l.cfg.OnlyLocalAgents {
+		return failure("ai_recipient_unverified", machine.AIRecipientUnverified), nil, true
+	}
 	args, err := l.arguments(t, bot, callID, raw)
 	if err != nil {
 		return failure("usage", err.Error()), nil, true

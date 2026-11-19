@@ -17,6 +17,7 @@ use crate::api::anthropic::AnthropicApi;
 use crate::api::openai_chat::OpenAiChatApi;
 use crate::catalog::Catalog;
 use crate::catalog::ProviderConfig;
+use crate::consent::{Consent, Recipient, Status};
 use crate::directory::ModelDirectory;
 use crate::discovery::ListError;
 use crate::discovery::ListSource;
@@ -162,6 +163,7 @@ pub struct ModelRegistry {
     http: OnceLock<Result<reqwest::Client, LlmError>>,
     directory: ModelDirectory,
     options: RegistryOptions,
+    consent: Option<Arc<Consent>>,
 }
 
 impl ModelRegistry {
@@ -177,11 +179,55 @@ impl ModelRegistry {
             http: OnceLock::new(),
             directory: ModelDirectory::new(options.models_dir.clone()),
             options,
+            consent: None,
         };
         registry.register_api(Arc::new(OpenAiChatApi));
         registry.register_api(Arc::new(crate::api::openai_responses::OpenAiResponsesApi));
         registry.register_api(Arc::new(AnthropicApi));
         registry
+    }
+
+    pub fn require_ai_consent(&mut self) {
+        self.consent = Some(Arc::new(Consent::default()));
+    }
+
+    pub fn ai_consent(&self, reference: Option<&str>) -> Option<Status> {
+        let recipient = reference.and_then(|reference| self.resolve(reference).ok())
+            .and_then(|resolved| self.recipient(&resolved.model));
+        self.consent.as_ref().map(|consent| consent.status(recipient))
+    }
+
+    fn recipient(&self, model: &Model) -> Option<Recipient> {
+        // Only built-in HTTP adapters have a verified single destination.
+        // Qoder can fall back to a second transport; do not offer consent for that route.
+        if !matches!(model.api.as_str(), "anthropic-messages" | "openai-chat" | "openai-responses")
+            || self.provider(&model.provider).is_some_and(|p| matches!(p.auth, crate::AuthConfig::Managed) && p.name == "Qoder")
+        {
+            return None;
+        }
+        Recipient::of(model)
+    }
+
+    pub fn allow_ai(&self, reference: &str, recipient: Recipient, revision: &str) -> bool {
+        let Some(status) = self.ai_consent(Some(reference)) else { return false };
+        status.recipient.as_ref() == Some(&recipient)
+            && self.consent.as_ref().is_some_and(|consent| consent.allow(recipient, revision))
+    }
+
+    /// A session switching away from the approved recipient ends that approval.
+    pub fn ai_model_changed(&self, previous: &Model, next: &Model) {
+        if let Some(consent) = &self.consent {
+            let previous = self.recipient(previous);
+            if previous != self.recipient(next) {
+                consent.revoke_if(|granted| Some(granted) == previous.as_ref());
+            }
+        }
+    }
+
+    pub fn revoke_ai(&self) {
+        if let Some(consent) = &self.consent {
+            consent.revoke();
+        }
     }
 
     /// What reading the catalog left to say: settings it did not know.
@@ -469,6 +515,8 @@ impl ModelRegistry {
             .and_then(|p| self.lookup(p, &model.id))
             .unwrap_or(model);
         let api = self.apis.get(&model.api).cloned();
+        let consent = self.consent.clone();
+        let recipient = consent.as_ref().and_then(|_| self.recipient(&model));
         let auth = provider.map(|p| p.auth);
         let authorizer = self.authorizer.get().cloned();
         let http = self.http.get_or_init(|| build_http(&self.options)).clone();
@@ -476,6 +524,13 @@ impl ModelRegistry {
         let missing = self.directory.missing_handle();
         Box::pin(async_stream::stream! {
             let base = MessageAccumulator::for_model(&model);
+            let consent_lease = match &consent {
+                Some(consent) => match consent.lease(recipient.as_ref()) {
+                    Ok(lease) => lease,
+                    Err(error) => { yield StreamEvent::Failed(base.fail(error)); return; }
+                },
+                None => tokio_util::sync::CancellationToken::new(),
+            };
             let http = match http {
                 Ok(http) => http,
                 Err(err) => {
@@ -521,6 +576,10 @@ impl ModelRegistry {
             // The retry window counts from the first failure.
             let mut first_failure: Option<Instant> = None;
             'requests: loop {
+                if consent_lease.is_cancelled() {
+                    yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                    return;
+                }
                 let error = 'attempt: {
                     if let Some(authorizer) = &authorizer && managed.is_none() {
                         match authorizer.begin(&model.provider, &model.id, http.clone()).await {
@@ -531,11 +590,17 @@ impl ModelRegistry {
                     let cancellation = managed.as_ref().map(|m| m.cancellation()).unwrap_or_default();
                     let (request_model, request_credentials, request_api) = if let Some(managed) = &managed {
                         let authorization = tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => Err(crate::consent::blocked()),
                             _ = cancellation.cancelled() => Err(LlmError::new(ErrorKind::Auth, "connection cancelled")),
                             value = managed.authorize(refresh_auth) => value,
                         };
                         refresh_auth = false;
                         match authorization {
+                            Ok(a) if consent.is_some() && a.transport.is_some() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
                             Ok(a) => { let mut current = (*model).clone(); current.base_url = a.base_url; (Arc::new(current), a.credentials, a.transport.unwrap_or_else(|| api.clone())) }
                             Err(error) => {
                                 if error.kind.is_retryable() && retry.allows(attempt, *first_failure.get_or_insert_with(Instant::now)) {
@@ -546,6 +611,10 @@ impl ModelRegistry {
                             }
                         }
                     } else { (model.clone(), credentials.clone(), api.clone()) };
+                    if consent.is_some() && (consent_lease.is_cancelled() || Recipient::of(&request_model) != recipient) {
+                        yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                        return;
+                    }
                     let request = WireRequest {
                         model: request_model,
                         credentials: request_credentials,
@@ -558,6 +627,11 @@ impl ModelRegistry {
                     let mut produced = false;
                     loop {
                         let event = tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
                             _ = cancellation.cancelled() => {
                                 yield StreamEvent::Failed(base.fail(LlmError::new(ErrorKind::Auth, "connection cancelled")));
                                 return;
