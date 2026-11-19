@@ -165,10 +165,7 @@ func turnHerOnWithModel(t *testing.T, c localv1connect.LocalServiceClient, machi
 			her = m.Her
 		}
 		if her.GetRunning() && her.GetModelReady() {
-			env := &herEnvironment{c: c, machine: machineID}
-			hertest.ApproveModel(t, model, func(method string, params any) []byte {
-				return herCall(t, env, "", method, params)
-			})
+			approveHerTestModel(t, c, machineID, model)
 			return
 		}
 		if time.Now().After(deadline) {
@@ -176,6 +173,14 @@ func turnHerOnWithModel(t *testing.T, c localv1connect.LocalServiceClient, machi
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func approveHerTestModel(t *testing.T, c localv1connect.LocalServiceClient, machineID, model string) {
+	t.Helper()
+	env := &herEnvironment{c: c, machine: machineID}
+	hertest.ApproveModel(t, model, func(method string, params any) []byte {
+		return herCall(t, env, "", method, params)
+	})
 }
 
 // herSetup is one her request, as HerOpen's setup takes it.
