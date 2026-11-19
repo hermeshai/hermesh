@@ -31,9 +31,7 @@ export function needsAttention(s: Session): boolean {
 export function isFailed(s: Session): boolean {
   return (
     s.status === SessionStatus.CRASHED ||
-    (s.status !== SessionStatus.WAITING_INPUT &&
-      s.status !== SessionStatus.UNSPECIFIED && // not known now (withKnownState)
-      s.status !== SessionStatus.ARCHIVED &&
+    (s.status === SessionStatus.IDLE &&
       s.progress?.lastFailure !== undefined &&
       s.progress.lastFailure.kind !== FailureKind.INTERRUPTED)
   );

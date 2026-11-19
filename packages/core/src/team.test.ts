@@ -64,6 +64,15 @@ describe("the team's state", () => {
     const t = teamState([running("a", -300, "claude"), running("b", -200, "codex"), running("c", -100, "claude")], 0);
     expect(t.runningAgents).toEqual(["claude", "codex"]);
   });
+
+  test("a failed session resumed is at work, not failed or listed twice", () => {
+    const resumed = failed("r1", -10);
+    resumed.status = SessionStatus.RUNNING;
+    const t = teamState([resumed], 0);
+    expect([ids(t.failed), ids(t.running)]).toEqual([[], ["r1"]]);
+    expect(t.tag).toEqual({ kind: "working", count: 1 });
+    expect(liveByAgent(t).map((g) => [g.agent, ids(g.sessions)])).toEqual([["claude", ["r1"]]]);
+  });
 });
 
 describe("a question one click answers", () => {
