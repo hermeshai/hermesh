@@ -1520,3 +1520,108 @@ async fn a_tab_group_is_named_for_the_users_latest_words() {
     client.request("server/shutdown", json!({})).await.unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
+
+/// Unwatched tasks survive a service restart once an extension has been seen, browser activity
+/// pulls the extension out of exponential backoff, and a real Chrome exit logs cleanly and
+/// still reports the extension as disconnected without launching Chrome.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn extension_reconnects_after_restart_and_activity_and_reports_true_chrome_exit() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+    let env = TestEnv::new("bypass-permissions", "[browser]\nextension = true\n").await;
+    let home = env.home.path().to_path_buf();
+    let socket = home.join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let (mut service, client, demux) = serve_unwatched(&env, &socket, None).await;
+    let installed = env.her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap()]).output().await.unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let (chrome, mut chrome_process) = chrome_with_extension(&env, &profile, &chrome_exe).await;
+    wait_for("the extension host to connect", || logs(&home).contains("extension host connected")).await;
+
+    let cwd = env.workspace("ext");
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let page1 = serve_page("<title>First</title><h1>Before restart</h1>").await;
+    let turn = native_prompt(&client, &mut events, &session, &format!("[[mock:yours:{page1}]] open"), true).await;
+    assert!(tool_results(&turn).contains("Before restart"), "{}", tool_results(&turn));
+    assert!(home.join("browser/extension-seen").exists());
+
+    // 1. Service restarts while unwatched: the next call waits for the extension instead of failing immediately.
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+    let (mut service, client, demux) = serve_unwatched(&env, &socket, None).await;
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let page2 = serve_page("<title>Second</title><h1>After restart</h1>").await;
+    let turn = native_prompt(&client, &mut events, &session, &format!("[[mock:yours:{page2}]] open"), true).await;
+    assert!(tool_results(&turn).contains("After restart"), "{}", tool_results(&turn));
+
+    // 2. Native host fails repeatedly into exponential backoff (1s + 2s + 4s -> 8s): new tab wakes it up quickly.
+    let launcher = home.join("browser/native-host");
+    let real_launcher = std::fs::read(&launcher).unwrap();
+    let broken = home.join("browser/native-host.broken");
+    std::fs::write(&broken, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&broken, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::rename(&broken, &launcher).unwrap();
+    let hosts = std::process::Command::new("/usr/bin/pgrep")
+        .args(["-P", &chrome_process.id().unwrap().to_string(), "-f", "native-host"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&hosts.stdout);
+    let pids: Vec<&str> = stdout.lines().filter(|s| !s.is_empty()).collect();
+    assert!(!pids.is_empty(), "the extension's host runs");
+    for pid in pids {
+        let _ = std::process::Command::new("/bin/kill").args(["-9", pid]).status();
+    }
+    tokio::time::sleep(Duration::from_secs(9)).await;
+
+    let restored = home.join("browser/native-host.restored");
+    std::fs::write(&restored, &real_launcher).unwrap();
+    std::fs::set_permissions(&restored, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::rename(&restored, &launcher).unwrap();
+    let before_connects = logs(&home).matches("extension host connected").count();
+    let wake_page = serve_page("<title>Wake</title><p>activity</p>").await;
+    let woken = std::time::Instant::now();
+    chrome.send(None, "Target.createTarget", json!({"url": wake_page})).await.unwrap();
+    let mut reconnected = false;
+    while woken.elapsed() < Duration::from_secs(4) {
+        if logs(&home).matches("extension host connected").count() > before_connects {
+            reconnected = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(reconnected, "browser activity did not reconnect out of backoff within 4s");
+
+    // 3. Real Chrome exit: native-host stops cleanly without false "Hermesh stopped", and unwatched calls report NO_EXTENSION.
+    let before_stopped = logs(&home).matches("extension host stopped").count();
+    let before_hermesh_stopped = logs(&home).matches("Hermesh stopped").count();
+    let _ = chrome.send(None, "Browser.close", json!({})).await;
+    if tokio::time::timeout(Duration::from_secs(5), chrome_process.wait()).await.is_err() {
+        let _ = chrome_process.kill().await;
+        let _ = chrome_process.wait().await;
+    }
+    wait_for("extension host stopped after Chrome exit", || {
+        logs(&home).matches("extension host stopped").count() > before_stopped
+    })
+    .await;
+    let all_logs = logs(&home);
+    assert_eq!(
+        all_logs.matches("Hermesh stopped").count(),
+        before_hermesh_stopped,
+        "Chrome exit must not log Hermesh stopped: {all_logs}"
+    );
+
+    let page3 = serve_page("<title>Gone</title>").await;
+    let turn = native_prompt(&client, &mut events, &session, &format!("[[mock:yours:{page3}]] open"), true).await;
+    assert!(tool_results(&turn).contains("extension is not connected"), "{}", tool_results(&turn));
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
