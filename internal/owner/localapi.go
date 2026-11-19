@@ -568,6 +568,9 @@ func (l *localService) CodingConsent(ctx context.Context, req *localv1.CodingCon
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("choose a coding agent or session"))
 	}
 	o := l.o()
+	if !o.Initialized() {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("coding consent requires a trusted owner device"))
+	}
 	host := req.GetMachineId()
 	if consent.GetSessionId() != "" {
 		if local := o.localSession(consent.SessionId); local != nil {
