@@ -418,9 +418,15 @@ func (c *RelayConn) Heard() time.Time { return time.Unix(0, c.admit.read.Load())
 func (c *RelayConn) RTT() time.Duration { return time.Duration(c.srtt.Load()) }
 
 func (c *RelayConn) recordRTT(d time.Duration) {
-	ns := d.Nanoseconds()
-	if ns <= 0 {
+	if d < 0 {
 		return
+	}
+	ns := d.Nanoseconds()
+	if ns == 0 {
+		// On coarse clocks (e.g. Windows), a fast loopback round-trip can
+		// measure 0 ns; clamp to 1 ns so RTT() distinguishes a measured
+		// sub-tick sample from an unmeasured connection (0).
+		ns = 1
 	}
 	for {
 		old := c.srtt.Load()

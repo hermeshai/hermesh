@@ -193,6 +193,15 @@ final class DemoService {
         return id
     }
 
+    // UI automation must be able to interrupt even if finding the button takes longer than the demo task.
+    private static let holdWorkTaskForUITest: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
@@ -233,12 +242,14 @@ final class DemoService {
                 let answer = request.answers.first
                 let text = answer?.text ?? ""
                 let greeting = answer?.selected.first ?? (text.isEmpty ? "Hello, world!" : text)
-                tasks[id] = Task { [weak self] in
-                    // Leave enough time to inspect and interrupt the simulated Work task.
-                    try? await Task.sleep(for: .seconds(8))
-                    guard !Task.isCancelled else { return }
-                    self?.finish(id, greeting: greeting)
-                    self?.tasks[id] = nil
+                if !Self.holdWorkTaskForUITest {
+                    tasks[id] = Task { [weak self] in
+                        // Leave enough time to inspect and interrupt the simulated Work task.
+                        try? await Task.sleep(for: .seconds(8))
+                        guard !Task.isCancelled else { return }
+                        self?.finish(id, greeting: greeting)
+                        self?.tasks[id] = nil
+                    }
                 }
             } else if method == "InterruptSession" {
                 stopTask(id)
