@@ -441,3 +441,107 @@ func TestHerOnRecoverTunnelAndBoundedCooldown(t *testing.T) {
 		t.Fatal("expected second recoverTunnel within cooldown to be suppressed")
 	}
 }
+
+func TestKeepRelayForgetsDirectTunnels(t *testing.T) {
+	ids := makeTestIdentities(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
+		if err != nil {
+			return
+		}
+		conn := transport.NetConnFromWS(ws)
+		defer conn.Close()
+		_ = transport.WriteFrame(conn, &relayv1.Challenge{Nonce: make([]byte, 32), RelayId: "relay"})
+		var hello relayv1.Hello
+		if err := transport.ReadFrame(conn, &hello); err != nil {
+			return
+		}
+		_ = transport.WriteFrame(conn, &relayv1.HelloResult{Ok: true})
+		sess, err := yamux.Server(conn, transport.YamuxConfig())
+		if err != nil {
+			return
+		}
+		defer sess.Close()
+		for {
+			st, err := sess.AcceptStream()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer st.Close()
+				var h relayv1.StreamHeader
+				if err := transport.ReadFrame(st, &h); err != nil || h.Kind != relayv1.StreamKind_STREAM_KIND_TUNNEL {
+					return
+				}
+				tc, _, err := transport.ServerHandshake(context.Background(), st, ids.machineKey.CryptoSigner(), ids.machineCreds, identity.NewTrust(ids.ownerID), func(*identity.Subject) error { return nil })
+				if err != nil {
+					return
+				}
+				defer tc.Close()
+				mux := http.NewServeMux()
+				mux.Handle(machinev1connect.NewMachineServiceHandler(stubMachineInfo{}))
+				transport.ServeH2(context.Background(), tc, mux)
+			}()
+		}
+	}))
+	defer srv.Close()
+
+	trust := identity.NewTrust(ids.ownerID)
+	if _, err := trust.AcceptRootChain(ids.chain); err != nil {
+		t.Fatal(err)
+	}
+	dialer := &peer.Dialer{
+		RelayURL:    srv.URL,
+		Role:        relayv1.Role_ROLE_OWNER,
+		Key:         ids.device,
+		Trust:       trust,
+		Credentials: ids.deviceCreds,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, err := dialer.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	relayed, err := c.RelayMachine(ctx, ids.machineID)
+	if err != nil {
+		t.Fatalf("RelayMachine: %v", err)
+	}
+	otherID := "m_direct_only_test"
+	directPeer, err := dialer.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer directPeer.Close()
+	directMach, err := directPeer.RelayMachine(ctx, ids.machineID)
+	if err != nil {
+		t.Fatalf("second RelayMachine: %v", err)
+	}
+	if !c.AdoptDirect(otherID, directMach) {
+		t.Fatal("AdoptDirect failed")
+	}
+
+	d, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	o := d.owner()
+	o.mu.Lock()
+	o.client = c
+	o.mu.Unlock()
+
+	o.keepRelay()
+
+	if _, _, ok := c.MachineTunnel(otherID); ok {
+		t.Fatal("keepRelay did not close cached direct tunnel on client")
+	}
+	if directMach.Alive() {
+		t.Fatal("direct tunnel remained alive after keepRelay")
+	}
+	if path, _, ok := c.MachineTunnel(ids.machineID); !ok || path != "relay" || !relayed.Alive() {
+		t.Fatalf("keepRelay unexpectedly dropped relayed tunnel: ok=%v path=%q alive=%v", ok, path, relayed.Alive())
+	}
+}

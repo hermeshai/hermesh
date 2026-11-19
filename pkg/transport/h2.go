@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/http2"
@@ -22,8 +23,9 @@ func ServeH2(ctx context.Context, c net.Conn, h http.Handler) {
 // H2Client is an http.Client bound to a single established connection.
 type H2Client struct {
 	*http.Client
-	cc   *http2.ClientConn
-	conn net.Conn
+	cc     *http2.ClientConn
+	conn   net.Conn
+	closed atomic.Bool
 }
 
 // NewH2Client starts an HTTP/2 client on c. Requests must use a base URL
@@ -58,12 +60,13 @@ func newH2Client(c net.Conn, t *http2.Transport) (*H2Client, error) {
 }
 
 func (c *H2Client) Close() error {
+	c.closed.Store(true)
 	c.cc.Close()
 	return c.conn.Close()
 }
 
 // Alive reports whether the connection can take new requests.
-func (c *H2Client) Alive() bool { return c.cc.CanTakeNewRequest() }
+func (c *H2Client) Alive() bool { return !c.closed.Load() && c.cc.CanTakeNewRequest() }
 
 // RTT returns 0 (HTTP/2 does not expose transport-layer SRTT; peer tracks RPC RTT).
 func (c *H2Client) RTT() time.Duration { return 0 }

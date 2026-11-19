@@ -715,12 +715,18 @@ func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer
 }
 
 // keepRelay keeps the relay connection over a pause, to be tried again
-// before it is dialed again (connectOrKeep). Direct fast-path sockets are
-// closed so foreground resume dials fresh over the current interface.
+// before it is dialed again (connectOrKeep). Direct sockets (both standalone
+// fast-path and cached direct tunnels on the relay client) are closed so
+// foreground resume dials fresh over the current interface and never reuses
+// a QUIC socket whose peer silently timed out while the app was suspended.
 func (o *Owner) keepRelay() {
 	o.mu.Lock()
-	o.kept = o.client
+	c := o.client
+	o.kept = c
 	o.mu.Unlock()
+	if c != nil {
+		c.ForgetDirect()
+	}
 	o.closeDirectMachines()
 }
 
@@ -1319,6 +1325,29 @@ func (o *Owner) closeDirectMachines() {
 	o.directMu.Unlock()
 	for _, n := range ms {
 		n.Close()
+	}
+}
+
+// forgetMachine drops any cached tunnel (relayed or direct) for machineID
+// when the relay reports it offline or reconnected, so calls do not hang on
+// a dead UDP/QUIC socket whose peer exited without sending CONNECTION_CLOSE.
+func (o *Owner) forgetMachine(machineID string) {
+	o.mu.Lock()
+	c := o.client
+	kept := o.kept
+	o.mu.Unlock()
+	if c != nil {
+		c.Forget(machineID)
+	}
+	if kept != nil && kept != c {
+		kept.Forget(machineID)
+	}
+	o.directMu.Lock()
+	dn := o.directMachines[machineID]
+	delete(o.directMachines, machineID)
+	o.directMu.Unlock()
+	if dn != nil {
+		dn.Close()
 	}
 }
 
