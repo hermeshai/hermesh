@@ -94,11 +94,18 @@ describe("session list", () => {
     expect(sessionSections(all, sessionView({ group: "machine" }), { archived: false, now, machines: ["m2", "m1"] }).map((s) => s.key)).toEqual(["m2", "m1", "m3"]);
   });
 
-  test("a failed turn needs the owner", () => {
+  test("a failed turn needs the owner until a new turn runs", () => {
     const s = session("f", SessionStatus.IDLE);
-    progressOf(s).lastFailure = create(FailureSchema, { kind: FailureKind.CONTEXT_OVERFLOW });
+    progressOf(s).lastFailure = create(FailureSchema, { kind: FailureKind.AGENT_CRASHED, message: "hermeshd restarted during the turn" });
     expect(isFailed(s) && needsAttention(s)).toBe(true);
     expect(statusOf(s)).toBe("attention");
+
+    for (const active of [SessionStatus.QUEUED, SessionStatus.PREPARING, SessionStatus.RUNNING]) {
+      s.status = active;
+      expect(isFailed(s)).toBe(false);
+      expect(needsAttention(s)).toBe(false);
+      expect(statusOf(s)).toBe("active");
+    }
   });
 
   test("an interrupted turn did not fail", () => {

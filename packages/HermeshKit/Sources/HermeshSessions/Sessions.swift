@@ -28,7 +28,7 @@ public extension Session {
 
     /// Crashed, or its last turn failed (a turn stopped on purpose did not fail).
     var isFailed: Bool {
-        status == .crashed || (status != .waitingInput && status != .archived && status != .unspecified && progress.hasLastFailure && progress.lastFailure.kind != .interrupted)
+        status == .crashed || (status == .idle && progress.hasLastFailure && progress.lastFailure.kind != .interrupted)
     }
 
     var isActive: Bool { status == .queued || status == .preparing || status == .running }

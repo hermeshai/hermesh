@@ -934,3 +934,42 @@ func TestRenameSession(t *testing.T) {
 		t.Fatalf("stored title %q", r.Title)
 	}
 }
+
+// Recover clears the live tool and timer of a turn cut short by a restart,
+// and queueing a resumed turn stamps a fresh TurnStartedAt.
+func TestRecoverAndResumeResetLiveProgress(t *testing.T) {
+	h := newHarness(t, DefaultLimits())
+	oldStart := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	created := time.Now().Add(-3 * time.Hour).Truncate(time.Second)
+	if err := h.n.st.WriteBatch([]writeOp{{row: &sessionRow{
+		ID: "s_restart", ProjectID: "demo", Agent: "fake", Status: sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+		CreatedBy: h.p.ClientID, GrantID: "g_test", Workspace: identityv1.Workspace_WORKSPACE_IN_PLACE, QuestionTimeout: -1, Title: "restart",
+		Progress:  &sessionv1.SessionProgress{Phase: "running_shell", CurrentTool: "shell: cargo test", TurnStartedAt: timestamppb.New(oldStart), PendingQuestion: &sessionv1.Question{QuestionId: "q1"}},
+		CreatedAt: created, UpdatedAt: oldStart,
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.s.Recover(); err != nil {
+		t.Fatal(err)
+	}
+	crashedSess := h.wait("s_restart", crashed)
+	if crashedSess.Progress.CurrentTool != "" ||
+		crashedSess.Progress.TurnStartedAt != nil ||
+		crashedSess.Progress.PendingQuestion != nil ||
+		crashedSess.Progress.LastFailure.GetMessage() != "hermeshd restarted during the turn" {
+		t.Fatalf("after recover: %+v / %+v", crashedSess.Status, crashedSess.Progress)
+	}
+	h.s.limits.MaxConcurrent = 1
+	blocker := h.start("hang")
+	h.wait(blocker, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
+	beforeSend := time.Now().Add(-time.Second)
+	queuedSess, err := h.s.Send(context.Background(), h.p, "s_restart", "say continue", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queuedSess.Status != sessionv1.SessionStatus_SESSION_STATUS_QUEUED ||
+		queuedSess.Progress.TurnStartedAt == nil ||
+		queuedSess.Progress.TurnStartedAt.AsTime().Before(beforeSend) {
+		t.Fatalf("queued resume: status=%v turnStartedAt=%v", queuedSess.Status, queuedSess.Progress.TurnStartedAt)
+	}
+}
