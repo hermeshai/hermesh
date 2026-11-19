@@ -31,6 +31,7 @@ final class DemoUITests: XCTestCase {
         tap("menu"); tap("account")
         reachInSheet("account-privacy-policy")
         openPolicy("account-privacy-policy")
+        XCTAssertFalse(app.buttons["delete-hosted-account"].exists)
     }
 
     func testTaskAndExit() {
