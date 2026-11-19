@@ -70,8 +70,18 @@ func TestIPhone(t *testing.T) {
 		only = "testTheIPhoneApp"
 	}
 	if only == "testHostedAccountDeletion" {
-		// Trust the browser fixture only on a new, disposable simulator.
-		t.Setenv("HERMESH_IPHONE_SIMULATOR", "")
+		// Trust the browser fixture only on a new, disposable simulator. The
+		// same model as the Release demo supports the installed iOS 26 runtime.
+		r := run(t, nil, time.Minute, "xcrun", "simctl", "create", "Hermesh Hosted Deletion", "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+		if r.code != 0 {
+			t.Fatalf("create hosted-deletion simulator: %+v", r)
+		}
+		id := strings.TrimSpace(r.stdout)
+		t.Cleanup(func() {
+			exec.Command("xcrun", "simctl", "shutdown", id).Run()
+			exec.Command("xcrun", "simctl", "delete", id).Run()
+		})
+		t.Setenv("HERMESH_IPHONE_SIMULATOR", id)
 	}
 	device := simulator(t)
 	// Notifications: the relay spools them, and this test hands each to the
