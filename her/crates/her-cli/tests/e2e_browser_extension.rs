@@ -287,6 +287,36 @@ async fn hello(env: &TestEnv, hello: Value) -> (tokio::process::Child, Value) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_native_host_exits_cleanly_when_chrome_closes_its_read_end_first() {
+    let env = TestEnv::new("manual", "[browser]\nextension = true\n").await;
+    let home = env.home.path();
+    let socket = home.join("run/her.sock");
+    let (mut service, client, _demux) = serve(&env, &socket, None).await;
+    let mut host = env
+        .her(&["browser", "native-host"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    // Chrome can stop reading before closing its write end, even if a message is in flight.
+    drop(host.stdout.take().unwrap());
+    let mut input = host.stdin.take().unwrap();
+    let message = json!({"hello": {"browser": "Chrome", "extension_version": "0.2.2", "bridge": {"min": 1, "max": 2}}});
+    input.write_all(&frame(&message)).await.unwrap();
+    let exited = tokio::time::timeout(Duration::from_secs(5), host.wait()).await.expect("the host exits").unwrap();
+    drop(input);
+    assert!(exited.success(), "the host exits cleanly: {exited}");
+    let written = logs(home);
+    assert!(written.contains("extension host stopped"), "{written}");
+    assert!(!written.contains("Hermesh stopped"), "{written}");
+    status_until(&client, "the extension disconnected", |s| s.get("extension").is_none()).await;
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_extension_and_her_agree_on_a_bridge_version_or_say_which_to_update() {
     let env = TestEnv::new("manual", "").await;
     let socket = env.home.path().join("run").join("her.sock");
