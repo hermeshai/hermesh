@@ -80,6 +80,8 @@ struct AccountSheet: View {
                         }
                     }
                     LabeledContent("Version", value: model.status.version)
+                    PrivacyPolicyLink()
+                        .accessibilityIdentifier("account-privacy-policy")
                 } header: {
                     Text("About").accessibilityIdentifier("account-about")
                 }

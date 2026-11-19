@@ -118,6 +118,11 @@ struct OnboardingView: View {
             Button("Use Your Own Server…") { go(.ownServer) }
                 .padding(.horizontal, 20).padding(.vertical, 12)
                 .accessibilityIdentifier("own-server")
+            PrivacyPolicyLink()
+                .font(.footnote)
+                .accessibilityIdentifier("welcome-privacy-policy")
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
         }
         .padding(.bottom, 8)
         .fullScreenCover(isPresented: $showingDemo) { DemoView() }
