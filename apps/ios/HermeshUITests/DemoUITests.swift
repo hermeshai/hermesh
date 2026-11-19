@@ -12,9 +12,9 @@ final class DemoUITests: XCTestCase {
 
     func testPrivacyPolicy() {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        let link = app.descendants(matching: .any)["privacy-policy"].firstMatch
 
-        func openPolicy() {
+        func openPolicy(_ id: String) {
+            let link = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(link.waitForExistence(timeout: 10))
             XCTAssertTrue(link.isHittable)
             XCTAssertEqual(link.label, "Privacy Policy")
@@ -23,12 +23,11 @@ final class DemoUITests: XCTestCase {
             app.activate()
         }
 
-        openPolicy()
+        openPolicy("welcome-privacy-policy")
         enterWorkDemo()
         tap("menu"); tap("account")
-        reach("privacy-policy")
-        openPolicy()
-        XCTAssertTrue(link.exists)
+        reachInSheet("account-privacy-policy")
+        openPolicy("account-privacy-policy")
     }
 
     func testTaskAndExit() {
@@ -222,7 +221,7 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(demo.waitForExistence(timeout: 15))
         XCTAssertTrue(start.label.contains("开始使用"))
         XCTAssertTrue(demo.label.contains("先体验一下"))
-        let privacy = app.descendants(matching: .any)["privacy-policy"].firstMatch
+        let privacy = app.descendants(matching: .any)["welcome-privacy-policy"].firstMatch
         XCTAssertTrue(privacy.isHittable)
         XCTAssertEqual(privacy.label, "隐私政策")
         XCTAssertTrue(demo.isHittable && join.isHittable)
