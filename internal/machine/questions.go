@@ -158,7 +158,7 @@ func (s *Sessions) expireQuestions(l *live, now time.Time) {
 
 // AnswerQuestion answers (or declines) the agent's pending question.
 func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return s.answerQuestion(p, req, p.LocalAnswersOnly)
+	return s.answerQuestion(p, req, p.Kind == PrincipalOwner && !p.DesktopAnswersAllowed)
 }
 
 func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionRequest, localOnly bool) (*sessionv1.Session, error) {

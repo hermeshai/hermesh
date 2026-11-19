@@ -44,10 +44,11 @@ type Device struct {
 	// The network this device is on: its addresses as last seen, and a
 	// channel closed (and made anew) when it changed, for what must find
 	// its paths again (a Computer Control session).
-	nmu         sync.Mutex
-	addrs       string
-	moved       chan struct{}
-	movedForced bool
+	nmu          sync.Mutex
+	addrs        string
+	moved        chan struct{}
+	movedForced  bool
+	cellularOnly bool
 }
 
 // Open opens the device's profiles under cfg.DataDir, and an empty one to
@@ -138,6 +139,10 @@ func (d *Device) openProfile(id string) (*Owner, error) {
 	o, err := openProfile(cfg, d.hub)
 	if o != nil {
 		o.onErase = d.erasedBy
+		d.nmu.Lock()
+		cell := d.cellularOnly
+		d.nmu.Unlock()
+		o.SetCellularOnly(cell)
 	}
 	return o, err
 }
@@ -245,6 +250,20 @@ func (d *Device) Close() {
 	d.lock.Release()
 }
 
+// SetCellularOnly updates whether the device currently has only a cellular
+// network interface (no Wi-Fi or wired Ethernet), skipping RFC1918 LAN direct
+// addresses on all profiles.
+func (d *Device) SetCellularOnly(v bool) {
+	d.nmu.Lock()
+	d.cellularOnly = v
+	d.nmu.Unlock()
+	d.mu.Lock()
+	for _, o := range d.profiles {
+		o.SetCellularOnly(v)
+	}
+	d.mu.Unlock()
+}
+
 func (d *Device) Pause() {
 	o := d.owner()
 	o.rep.pause()
@@ -262,7 +281,7 @@ func (d *Device) Reconnect() {
 	d.movedForced = true
 	d.signalMovedLocked()
 	d.nmu.Unlock()
-	d.owner().reconnect()
+	d.owner().reconnect(true)
 }
 
 // PathChanged is Reconnect when this device's addresses are not the ones
@@ -280,7 +299,7 @@ func (d *Device) PathChanged() {
 	}
 	d.nmu.Unlock()
 	if !same {
-		d.owner().reconnect()
+		d.owner().reconnect(false)
 	}
 }
 

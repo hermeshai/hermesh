@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hermeshai/hermesh/pkg/metrics"
+	"io"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/quic-go/quic-go"
 
 	"github.com/hermeshai/hermesh/gen/go/hermesh/her/v1/herv1connect"
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
@@ -27,7 +29,7 @@ import (
 
 type tunnel struct {
 	principal *Principal
-	conn      net.Conn
+	conn      io.Closer
 }
 
 // runLink keeps the relay connection up with jittered exponential backoff.
@@ -104,6 +106,7 @@ func (n *Machine) serveConn(ctx context.Context, conn *transport.RelayConn) {
 	go n.watchUpdates(lctx, conn)
 	go n.reportStatus(lctx, conn)
 	go n.sendWaitingNotices(conn)
+	go n.sendPendingDeltas(conn)
 	go n.keepScreenServers(lctx, conn)
 	go func() {
 		n.registerInbox(lctx, conn)
@@ -183,6 +186,8 @@ func (n *Machine) handleUpdate(u *relayv1.MachineUpdate) {
 		n.acceptMachineCert(v.MachineCert)
 	case *relayv1.MachineUpdate_PushTargets:
 		n.acceptPushTargets(v.PushTargets)
+	case *relayv1.MachineUpdate_SyncTargets:
+		n.acceptSyncTargets(v.SyncTargets)
 	case *relayv1.MachineUpdate_Grants:
 		n.acceptGrants(v.Grants)
 	}
@@ -219,6 +224,20 @@ func principalFrom(ctx context.Context) *Principal {
 	return p
 }
 
+// tunnelPrincipal applies the same signed identity rules on every transport.
+func (n *Machine) tunnelPrincipal(sub *identity.Subject) *Principal {
+	if sub.Kind == identity.SubjectClient {
+		n.rememberClient(sub.ID, sub.Grant)
+		return &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
+	}
+	p := &Principal{Kind: PrincipalOwner}
+	switch sub.DevicePlatform {
+	case "macos", "windows", "linux":
+		p.DesktopAnswersAllowed = true
+	}
+	return p
+}
+
 // serveTunnel serves an agent or an owner device over raw, a tunnel the
 // relay spliced or, with via non-empty, a local or direct connection
 // (serveLocal / serveDirect): the end-to-end handshake, then their calls.
@@ -242,15 +261,7 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, own
 	mHandshake.Since(hsStart)
 	mTunnels.Add(1)
 	defer mTunnels.Add(-1)
-	p := &Principal{Kind: PrincipalOwner, LocalAnswersOnly: true}
-	switch sub.DevicePlatform {
-	case "macos", "windows", "linux":
-		p.LocalAnswersOnly = false
-	}
-	if sub.Kind == identity.SubjectClient {
-		p = &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
-		n.rememberClient(sub.ID, sub.Grant)
-	}
+	p := n.tunnelPrincipal(sub)
 	t := &tunnel{principal: p, conn: tc}
 	n.mu.Lock()
 	n.tunnels[t] = struct{}{}
@@ -263,6 +274,42 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, own
 	n.audit.Log(AuditRecord{Kind: "tunnel", Subject: p.ID(), Decision: "allow", Detail: via})
 	transport.ServeH2(context.WithValue(ctx, principalKey{}, p), tc, n.handler())
 }
+
+// serveQUICTunnel serves an owner device over a direct E2E QUIC/HTTP3 connection.
+func (n *Machine) serveQUICTunnel(ctx context.Context, qconn *quic.Conn, via string, ownerOnly bool) {
+	defer func() { _ = qconn.CloseWithError(0, "done") }()
+	sub, err := transport.VerifiedQUICSubject(n.trust, qconn)
+	if err != nil {
+		n.audit.Log(AuditRecord{Kind: "tunnel", Decision: "deny", Reason: err.Error(), Detail: via})
+		return
+	}
+	if ownerOnly && sub.Kind != identity.SubjectOwnerDevice {
+		n.audit.Log(AuditRecord{Kind: "tunnel", Decision: "deny", Reason: "direct QUIC tunnel requires owner device", Detail: via})
+		return
+	}
+	mTunnels.Add(1)
+	defer mTunnels.Add(-1)
+	p := n.tunnelPrincipal(sub)
+	t := &tunnel{principal: p, conn: quicCloser{qconn}}
+	n.mu.Lock()
+	n.tunnels[t] = struct{}{}
+	n.mu.Unlock()
+	defer func() {
+		n.mu.Lock()
+		delete(n.tunnels, t)
+		n.mu.Unlock()
+	}()
+	n.audit.Log(AuditRecord{Kind: "tunnel", Subject: p.ID(), Decision: "allow", Detail: via})
+	baseHandler := n.handler()
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		baseHandler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+	})
+	transport.ServeH3(ctx, qconn, h)
+}
+
+type quicCloser struct{ q *quic.Conn }
+
+func (c quicCloser) Close() error { return c.q.CloseWithError(0, "closed") }
 
 func (n *Machine) handler() http.Handler {
 	mux := http.NewServeMux()

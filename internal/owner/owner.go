@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -70,29 +71,35 @@ type Owner struct {
 	// Control (screen.go).
 	iceServers screen.Servers
 
-	mu         sync.Mutex
-	ownerID    string
-	relayURL   string
-	rootPub    *ecdsa.PublicKey
-	trust      *identity.Trust
-	device     *identity.SoftwareKey
-	deviceCert *identityv1.Signed
-	client     *peer.Client
-	dialing    *relayDial    // the dial to the relay under way, if any
-	kept       *peer.Client  // client, kept over a pause: not known to work yet
-	recheck    chan struct{} // closed when an in-flight reconnect probe finishes
-	relayInfo  *relayv1.GetInfoResponse
-	mcpURL     string       // the relay's own MCP address, with its key (GetMCP)
-	avatarURL  string       // the account's picture on a center (fetchAccount)
-	join       *pendingJoin // this device asking to join an owner
+	mu           sync.Mutex
+	ownerID      string
+	relayURL     string
+	rootPub      *ecdsa.PublicKey
+	trust        *identity.Trust
+	device       *identity.SoftwareKey
+	deviceCert   *identityv1.Signed
+	client       *peer.Client
+	dialing      *relayDial           // the dial to the relay under way, if any
+	kept         *peer.Client         // client, kept over a pause: not known to work yet
+	recheck      chan struct{}        // closed when an in-flight reconnect probe finishes
+	relayRetries uint32               // consecutive failed relay dials since last verified connect
+	relayErr     string               // most recent relay dial error (cleared on connect)
+	recoverLast  map[string]time.Time // per-machine cooldown for RecoverTunnel
+	relayInfo    *relayv1.GetInfoResponse
+	mcpURL       string       // the relay's own MCP address, with its key (GetMCP)
+	avatarURL    string       // the account's picture on a center (fetchAccount)
+	join         *pendingJoin // this device asking to join an owner
 	// byCode: machine and device requests the person looked up by their
 	// code here.
-	byCode    map[string]bool
-	pendingMu sync.Mutex // pending names (pendingNames)
-	cardsMu   sync.Mutex // one card sync at a time (cards.go)
-	removed   bool       // the relay no longer counts this device as the owner's
-	signedOut bool       // SignOut: set up, but it neither connects nor signs
-	account   string     // the account, as the center named it (display)
+	byCode       map[string]bool
+	pendingMu    sync.Mutex                    // pending names (pendingNames)
+	cardsMu      sync.Mutex                    // one card sync at a time (cards.go)
+	syncMu       sync.Mutex                    // sync X25519 key creation (deltas.go)
+	pullMu       sync.Mutex                    // one delta mailbox pull at a time (deltas.go)
+	machineCerts map[string]*identityv1.Signed // cached machine certs for delta signature checks
+	removed      bool                          // the relay no longer counts this device as the owner's
+	signedOut    bool                          // SignOut: set up, but it neither connects nor signs
+	account      string                        // the account, as the center named it (display)
 
 	localMachine *machine.Machine
 	// lastMachines: the machines as the relay last listed them, shown
@@ -138,6 +145,13 @@ type Owner struct {
 	direct         map[string][]string      // machineID -> normalized direct_addrs, persisted under kDirectAddrs
 	lastDirect     map[string]string        // machineID -> last winning direct address, tried first on reconnect
 	directMachines map[string]*peer.Machine // direct tunnels opened while relay isn't ready
+	directDialing  map[string]*directDial   // per-machine singleflight for directFastMachine
+	cellularOnly   atomic.Bool              // true when device has only cellular (no Wi-Fi/wired): skip RFC1918 LAN addrs
+}
+
+type directDial struct {
+	done chan struct{}
+	n    *peer.Machine
 }
 
 const (
@@ -292,7 +306,7 @@ func (o *Owner) stayConnected(ctx context.Context) {
 			if c, err = o.relay(ctx); err == nil {
 				done = c.Done()
 				warned = false
-				o.log.Info("owner: relay connected", "after", time.Since(started).Round(time.Millisecond))
+				o.log.Info("owner: relay connected", "after", time.Since(started).Round(time.Millisecond), "rtt_ms", durToMs(c.RTT()))
 			} else if !warned && ctx.Err() == nil {
 				warned = true
 				o.log.Warn("owner: relay unreachable", "err", err, "retry_in", backoff)
@@ -307,6 +321,7 @@ func (o *Owner) stayConnected(ctx context.Context) {
 			case <-done:
 			}
 			o.log.Info("owner: relay disconnected")
+			o.kickScreens()
 			if err := c.Refused(); err == nil {
 				backoff = time.Second
 				continue
@@ -407,7 +422,7 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		if kept == nil {
 			adoptPrewarm = prewarmDirect(ctx, d, o.seenOnline())
 		}
-		c, err := connectOrKeep(ctx, d, kept)
+		c, err := connectOrKeep(ctx, d, kept, o.log)
 		if adoptPrewarm != nil {
 			if err == nil {
 				adoptPrewarm(c)
@@ -419,11 +434,17 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		o.dialing = nil
 		if err == nil {
 			o.client = c
+			o.relayRetries = 0
+			o.relayErr = ""
+		} else if ctx.Err() == nil {
+			o.relayRetries++
+			o.relayErr = err.Error()
 		}
 		if err == nil || ctx.Err() == nil {
 			o.kept = nil
 		}
 		o.mu.Unlock()
+		o.kickScreens()
 		if err != nil {
 			if errors.Is(err, transport.ErrAdmission) {
 				go o.checkRemoved()
@@ -457,34 +478,155 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	}
 }
 
+// adaptiveProbeTimeout scales a liveness probe timeout from smoothed RTT so
+// high-RTT relays (e.g. transpacific) are not torn down by cellular jitter.
+func adaptiveProbeTimeout(srtt time.Duration) time.Duration {
+	d := max(3*srtt, time.Second)
+	return min(d, 4*time.Second)
+}
+
+func durToMs(d time.Duration) uint32 {
+	if d <= 0 {
+		return 0
+	}
+	ms := d.Milliseconds()
+	if ms < 1 {
+		return 1
+	}
+	return uint32(ms)
+}
+
+// recoverCooldown bounds how often a single machine's tunnel timeout may drop
+// the shared outer relay connection (prevents a sleeping machine from causing
+// a reconnect storm).
+var recoverCooldown = 30 * time.Second
+
+func (o *Owner) recoverTunnel(c *peer.Client, machineID string, err error) bool {
+	if c == nil || err == nil {
+		return false
+	}
+	o.mu.Lock()
+	if last, ok := o.recoverLast[machineID]; ok && time.Since(last) < recoverCooldown {
+		o.mu.Unlock()
+		return false
+	}
+	o.mu.Unlock()
+	if !c.RecoverTunnel(err) {
+		return false
+	}
+	o.mu.Lock()
+	if o.recoverLast == nil {
+		o.recoverLast = map[string]time.Time{}
+	}
+	o.recoverLast[machineID] = time.Now()
+	o.mu.Unlock()
+	if o.log != nil {
+		o.log.Info("owner: tunnel recovery replaced relay", "machine", machineID, "err", err)
+	}
+	o.kickScreens()
+	return true
+}
+
+func (o *Owner) noteTunnelOK(machineID string) {
+	o.mu.Lock()
+	delete(o.recoverLast, machineID)
+	o.mu.Unlock()
+}
+
+func (o *Owner) kickScreens() {
+	if o.rep != nil {
+		o.rep.kick()
+	}
+}
+
 // connectOrKeep dials the relay. With kept, the connection kept over a
-// pause, it pings that one meanwhile and keeps it if it answers first:
-// after a short pause it mostly still works, and keeping it saves the
-// dial's round trips and the machines' handshakes (their connections
-// through it are kept too). After a long one it may be dead without a
-// word, and the dial is no later for it. The one not kept is closed.
-func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client) (*peer.Client, error) {
+// pause, it verifies kept (outer Ping plus a lightweight tunnel RPC when kept
+// holds a cached relayed machine tunnel) in parallel with dialing a new
+// connection, keeping whichever proves usable first. The one not kept is closed.
+func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client, log *slog.Logger) (*peer.Client, error) {
 	if kept == nil {
-		return d.Connect(ctx)
+		started := time.Now()
+		c, err := d.Connect(ctx)
+		if log != nil {
+			if err == nil {
+				log.Info("owner: relay cold dial", "dial_ms", time.Since(started).Milliseconds(), "rtt_ms", durToMs(c.RTT()))
+			} else {
+				log.Debug("owner: relay cold dial failed", "dial_ms", time.Since(started).Milliseconds(), "err", err)
+			}
+		}
+		return c, err
 	}
 	dctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type dial struct {
-		c   *peer.Client
-		err error
+		c      *peer.Client
+		err    error
+		dialMs int64
 	}
-	dialed, pinged := make(chan dial, 1), make(chan error, 1)
+	type probe struct {
+		err      error
+		pingMs   int64
+		tunnelMs int64
+		probed   bool
+		machine  string
+	}
+	dialed, pinged := make(chan dial, 1), make(chan probe, 1)
 	go func() {
+		started := time.Now()
 		c, err := d.Connect(dctx)
-		dialed <- dial{c, err}
+		dialed <- dial{c: c, err: err, dialMs: time.Since(started).Milliseconds()}
 	}()
-	go func() { pinged <- kept.Ping(dctx) }()
+	go func() {
+		pStart := time.Now()
+		ids := kept.CachedRelayedMachineIDs()
+		slices.Sort(ids)
+		if len(ids) == 0 {
+			perr := kept.Ping(dctx)
+			pinged <- probe{err: perr, pingMs: time.Since(pStart).Milliseconds()}
+			return
+		}
+		// Run outer Ping (to refresh relay SRTT) and child tunnel GetInfo
+		// probe in parallel so tunnel verification adds zero extra RTT over
+		// outer-only ping + first RPC.
+		pingDone := make(chan struct {
+			err error
+			ms  int64
+		}, 1)
+		go func() {
+			err := kept.Ping(dctx)
+			pingDone <- struct {
+				err error
+				ms  int64
+			}{err: err, ms: time.Since(pStart).Milliseconds()}
+		}()
+		tctx, tcancel := context.WithTimeout(dctx, adaptiveProbeTimeout(kept.RTT()))
+		probed, rtt, terr := kept.ProbeTunnel(tctx, ids[0])
+		tcancel()
+		res := probe{machine: ids[0], probed: probed, tunnelMs: rtt.Milliseconds()}
+		if probed {
+			res.err = terr
+			select {
+			case p := <-pingDone:
+				res.pingMs = p.ms
+			default:
+			}
+			pinged <- res
+			return
+		}
+		p := <-pingDone
+		res.pingMs = p.ms
+		res.err = p.err
+		pinged <- res
+	}()
 	var err error
 	for dialing, pinging := true, true; dialing || pinging; {
 		select {
-		case perr := <-pinged:
+		case p := <-pinged:
 			pinging = false
-			if perr == nil {
+			if p.err == nil {
+				if log != nil {
+					log.Info("owner: relay connectOrKeep", "winner", "kept", "relay_ping_ms", p.pingMs, "tunnel_probed", p.probed, "tunnel_probe_ms", p.tunnelMs, "probe_machine", p.machine)
+				}
 				if dialing {
 					go func() {
 						if r := <-dialed; r.c != nil {
@@ -494,9 +636,15 @@ func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client) (*pee
 				}
 				return kept, nil
 			}
+			if log != nil {
+				log.Info("owner: kept relay failed verification", "relay_ping_ms", p.pingMs, "tunnel_probed", p.probed, "tunnel_probe_ms", p.tunnelMs, "probe_machine", p.machine, "err", p.err)
+			}
 		case r := <-dialed:
 			dialing = false
 			if r.err == nil {
+				if log != nil {
+					log.Info("owner: relay connectOrKeep", "winner", "redial", "redial_ms", r.dialMs, "rtt_ms", durToMs(r.c.RTT()))
+				}
 				kept.Close()
 				return r.c, nil
 			}
@@ -567,11 +715,13 @@ func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer
 }
 
 // keepRelay keeps the relay connection over a pause, to be tried again
-// before it is dialed again (connectOrKeep).
+// before it is dialed again (connectOrKeep). Direct fast-path sockets are
+// closed so foreground resume dials fresh over the current interface.
 func (o *Owner) keepRelay() {
 	o.mu.Lock()
 	o.kept = o.client
 	o.mu.Unlock()
+	o.closeDirectMachines()
 }
 
 // dropRelay closes the relay connection, so the next call dials a new one:
@@ -590,9 +740,11 @@ func (o *Owner) dropRelay() {
 
 // reconnect verifies whether the active relay connection still answers Ping
 // before dropping it and restarting the replica. Transient network events (e.g.
-// iOS path changes) can fire without disrupting an active socket.
-func (o *Owner) reconnect() {
-	o.closeDirectMachines()
+// iOS path changes) can fire without disrupting an active socket or healthy
+// direct QUIC/TCP tunnels, so direct tunnels are probed rather than blindly
+// closed when the relay Ping succeeds, and any relayed tunnels are upgraded to
+// direct QUIC/TCP (LAN or hole-punched IPv6) immediately.
+func (o *Owner) reconnect(interfaceSwitched bool) {
 	o.mu.Lock()
 	c := o.client
 	rctx := o.runCtx
@@ -602,11 +754,22 @@ func (o *Owner) reconnect() {
 		if rep != nil {
 			rep.restart()
 		}
+		if rctx == nil {
+			rctx = context.Background()
+		}
+		go func() {
+			dctx, dcancel := context.WithTimeout(rctx, 1500*time.Millisecond)
+			o.probeOrCloseDirectMachines(dctx)
+			dcancel()
+		}()
 		return
 	}
 	probe := make(chan struct{})
 	o.recheck = probe
 	o.mu.Unlock()
+	if interfaceSwitched {
+		c.ResetPunchCooldown()
+	}
 	if rctx == nil {
 		rctx = context.Background()
 	}
@@ -619,11 +782,51 @@ func (o *Owner) reconnect() {
 			o.mu.Unlock()
 			close(probe)
 		}()
-		pctx, cancel := context.WithTimeout(rctx, 500*time.Millisecond)
+		pctx, cancel := context.WithTimeout(rctx, adaptiveProbeTimeout(c.RTT()))
 		err := c.Ping(pctx)
 		cancel()
 		if err == nil {
-			c.ForgetDirect()
+			dctx, dcancel := context.WithTimeout(rctx, 3500*time.Millisecond)
+			c.ProbeOrForgetDirect(dctx)
+			o.probeOrCloseDirectMachines(dctx)
+			preferLAN := interfaceSwitched && !o.cellularOnly.Load()
+			upgraded := c.UpgradeToDirect(dctx, preferLAN)
+			dcancel()
+			if len(upgraded) > 0 {
+				for _, id := range upgraded {
+					o.noteTunnelOK(id)
+				}
+				if o.log != nil {
+					o.log.Info("owner: upgraded tunnels to direct", "machines", upgraded, "prefer_lan", preferLAN)
+				}
+			}
+			// On cellular -> Wi-Fi (or manual Reconnect Now on Wi-Fi), iOS can
+			// fire the path event slightly before LAN DHCP/routes settle. Run
+			// one quiet follow-up upgrade check 1.5 s later if any machine is
+			// still relayed.
+			if preferLAN && len(c.CachedRelayedMachineIDs()) > 0 {
+				go func(c *peer.Client) {
+					select {
+					case <-rctx.Done():
+						return
+					case <-time.After(1500 * time.Millisecond):
+					}
+					if o.cellularOnly.Load() {
+						return
+					}
+					fctx, fcancel := context.WithTimeout(rctx, 3*time.Second)
+					more := c.UpgradeToDirect(fctx, true)
+					fcancel()
+					if len(more) > 0 {
+						for _, id := range more {
+							o.noteTunnelOK(id)
+						}
+						if o.log != nil {
+							o.log.Info("owner: upgraded tunnels to direct (delayed)", "machines", more)
+						}
+					}
+				}(c)
+			}
 			return
 		}
 		o.mu.Lock()
@@ -636,11 +839,13 @@ func (o *Owner) reconnect() {
 		}
 		o.mu.Unlock()
 		c.Close()
-		if still {
-			o.closeDirectMachines()
-		}
 		if still && rctx.Err() == nil && rep != nil {
 			rep.restart()
+		}
+		if still {
+			dctx, dcancel := context.WithTimeout(rctx, 1500*time.Millisecond)
+			o.probeOrCloseDirectMachines(dctx)
+			dcancel()
 		}
 	}()
 }
@@ -757,12 +962,36 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 	if o.ownerID != "" {
 		st.ConnectAddress = connaddr.Format(o.relayURL, o.ownerID)
 	}
-	if o.client != nil {
+	var relayRTT uint32
+	if o.client != nil && o.client != o.kept {
 		select {
 		case <-o.client.Done():
 		default:
 			st.RelayConnected = true
+			relayRTT = durToMs(o.client.RTT())
 		}
+	}
+	if st.Initialized && !o.signedOut {
+		rh := &localv1.RelayHealth{RttMs: relayRTT, RetryCount: o.relayRetries, LastError: o.relayErr}
+		switch {
+		case st.RelayConnected:
+			rh.Phase = "connected"
+			rh.RetryCount = 0
+			rh.LastError = ""
+		case o.dialing != nil && (o.relayRetries > 0 || o.kept != nil):
+			rh.Phase = "reconnecting"
+		case o.dialing != nil:
+			rh.Phase = "connecting"
+		case o.relayRetries >= 3:
+			rh.Phase = "offline"
+		case o.relayRetries > 0:
+			rh.Phase = "reconnecting"
+		default:
+			rh.Phase = "connecting"
+		}
+		st.RelayHealth = rh
+	} else {
+		st.RelayHealth = &localv1.RelayHealth{Phase: "idle"}
 	}
 	if o.localMachine != nil {
 		st.LocalMachineEnabled, st.LocalMachineId, st.LocalMachineName = true, o.localMachine.MachineID(), o.localMachine.Name()
@@ -916,6 +1145,12 @@ func (o *Owner) dialerLocked() *peer.Dialer {
 		Credentials:     o.credentials,
 		Direct:          o.directAddrs,
 		OnDirectSuccess: o.noteDirectSuccess,
+		OnUpgrade: func(machineID, path string, rtt time.Duration) {
+			o.noteTunnelOK(machineID)
+			if o.log != nil {
+				o.log.Info("owner: direct tunnel upgraded", "machine", machineID, "path", path, "rtt_ms", durToMs(rtt))
+			}
+		},
 	}
 }
 
@@ -925,10 +1160,70 @@ func (o *Owner) dialer() *peer.Dialer {
 	return o.dialerLocked()
 }
 
+// SetCellularOnly records whether this device currently uses cellular only
+// (no Wi-Fi or wired interface). When true, RFC1918 LAN direct addresses are
+// skipped so dials do not waste the LAN head-start window on unreachable IPs.
+func (o *Owner) SetCellularOnly(v bool) { o.cellularOnly.Store(v) }
+
+func isRFC1918Addr(addr string) bool {
+	addr = strings.TrimPrefix(addr, "quic://")
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = strings.Trim(addr, "[]")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	return v4[0] == 10 || (v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31) || (v4[0] == 192 && v4[1] == 168)
+}
+
+// combineDirectAddrs puts QUIC/HTTP3 addresses ahead of TCP addresses so QUIC
+// gets priority (1-RTT, non-HoL streams) while falling back automatically to
+// TCP if UDP is blocked.
+func combineDirectAddrs(quicAddrs, tcpAddrs []string) []string {
+	if len(quicAddrs) == 0 {
+		return tcpAddrs
+	}
+	out := make([]string, 0, len(quicAddrs)+len(tcpAddrs))
+	for _, a := range quicAddrs {
+		if a = strings.TrimSpace(a); a != "" {
+			if !strings.HasPrefix(a, "quic://") {
+				a = "quic://" + a
+			}
+			out = append(out, a)
+		}
+	}
+	for _, a := range tcpAddrs {
+		if a = strings.TrimSpace(a); a != "" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 func (o *Owner) directAddrs(machineID string) []string {
 	o.directMu.Lock()
 	defer o.directMu.Unlock()
-	out := slices.Clone(o.direct[machineID])
+	raw := o.direct[machineID]
+	if len(raw) == 0 {
+		return nil
+	}
+	cellular := o.cellularOnly.Load()
+	var out []string
+	if !cellular {
+		out = slices.Clone(raw)
+	} else {
+		for _, a := range raw {
+			if !isRFC1918Addr(a) {
+				out = append(out, a)
+			}
+		}
+	}
 	if last := o.lastDirect[machineID]; last != "" {
 		if idx := slices.Index(out, last); idx > 0 {
 			out[0], out[idx] = out[idx], out[0]
@@ -989,16 +1284,23 @@ func (o *Owner) cachedDirectMachine(machineID string) *peer.Machine {
 	return n
 }
 
-func (o *Owner) storeDirectMachine(machineID string, n *peer.Machine) {
+func (o *Owner) storeDirectMachine(machineID string, n *peer.Machine) *peer.Machine {
 	o.directMu.Lock()
-	defer o.directMu.Unlock()
 	if o.directMachines == nil {
 		o.directMachines = map[string]*peer.Machine{}
 	}
-	if prev := o.directMachines[machineID]; prev != nil && prev != n {
-		prev.Close()
+	prev := o.directMachines[machineID]
+	if prev != nil && prev != n && prev.Alive() {
+		o.directMu.Unlock()
+		n.Close()
+		return prev
 	}
 	o.directMachines[machineID] = n
+	o.directMu.Unlock()
+	if prev != nil && prev != n {
+		prev.Close()
+	}
+	return n
 }
 
 func (o *Owner) forgetDirectMachine(machineID string, n *peer.Machine) {
@@ -1018,6 +1320,109 @@ func (o *Owner) closeDirectMachines() {
 	for _, n := range ms {
 		n.Close()
 	}
+}
+
+func (o *Owner) probeOrCloseDirectMachines(ctx context.Context) {
+	o.directMu.Lock()
+	var list []*peer.Machine
+	for _, n := range o.directMachines {
+		list = append(list, n)
+	}
+	o.directMu.Unlock()
+	if len(list) == 0 {
+		return
+	}
+	var wg sync.WaitGroup
+	for _, n := range list {
+		wg.Add(1)
+		go func(n *peer.Machine) {
+			defer wg.Done()
+			pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+			started := time.Now()
+			_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
+			cancel()
+			if err != nil {
+				o.forgetDirectMachine(n.MachineID, n)
+				return
+			}
+			n.RecordRTT(time.Since(started))
+		}(n)
+	}
+	wg.Wait()
+}
+
+func (o *Owner) relayPending() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.client == nil || o.client == o.kept
+}
+
+// directFastMachine returns a live cached direct tunnel to machineID, or dials
+// direct (QUIC/TCP) immediately while the outer relay is still dialing/probing
+// so LAN Her resumes do not block behind a transpacific relay probe.
+// Concurrent callers for the same machineID share a single dial (singleflight)
+// so simultaneous Her env + conv opens never tear down each other's tunnel.
+func (o *Owner) directFastMachine(ctx context.Context, machineID string) *peer.Machine {
+	if n := o.cachedDirectMachine(machineID); n != nil {
+		return n
+	}
+	if !o.relayPending() {
+		return nil
+	}
+	addrs := o.directAddrs(machineID)
+	if len(addrs) == 0 {
+		return nil
+	}
+	d := o.dialer()
+	if d == nil {
+		return nil
+	}
+	o.directMu.Lock()
+	if n := o.directMachines[machineID]; n != nil {
+		if n.Alive() {
+			o.directMu.Unlock()
+			return n
+		}
+		delete(o.directMachines, machineID)
+		o.directMu.Unlock()
+		n.Close()
+		o.directMu.Lock()
+	}
+	if in := o.directDialing[machineID]; in != nil {
+		o.directMu.Unlock()
+		select {
+		case <-in.done:
+			if in.n != nil && in.n.Alive() {
+				return in.n
+			}
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
+	}
+	if o.directDialing == nil {
+		o.directDialing = map[string]*directDial{}
+	}
+	in := &directDial{done: make(chan struct{})}
+	o.directDialing[machineID] = in
+	o.directMu.Unlock()
+
+	dctx, cancel := context.WithTimeout(ctx, 350*time.Millisecond)
+	n, err := d.DialDirect(dctx, machineID, addrs)
+	cancel()
+	if err == nil && n != nil {
+		n = o.storeDirectMachine(machineID, n)
+	} else {
+		n = nil
+	}
+	in.n = n
+	o.directMu.Lock()
+	if o.directDialing[machineID] == in {
+		delete(o.directDialing, machineID)
+	}
+	o.directMu.Unlock()
+	close(in.done)
+	return n
 }
 
 func normalizeRelayURL(s string) string {
@@ -2420,8 +2825,17 @@ func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Mac
 			}
 			pn, err := c.Machine(ctx, n.MachineId)
 			if err != nil {
+				if o.recoverTunnel(c, n.MachineId, err) {
+					if c2, err2 := o.relay(ctx); err2 == nil {
+						if pn2, err2 := c2.Machine(ctx, n.MachineId); err2 == nil {
+							o.noteTunnelOK(n.MachineId)
+							return pn2, nil
+						}
+					}
+				}
 				return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("%s is unreachable: %w", n.MachineName, err))
 			}
+			o.noteTunnelOK(n.MachineId)
 			return pn, nil
 		}
 	}

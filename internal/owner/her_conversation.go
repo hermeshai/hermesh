@@ -76,6 +76,36 @@ func (f *herFollower) opened(op *herv1.Opened) {
 			if json.Unmarshal(r.Params, &p) != nil || p.BotID == "" || p.BotID != f.o.st.herBotID(f.machine) {
 				continue // not Her's
 			}
+			var inc struct {
+				SessionID   string            `json:"session_id"`
+				Incremental bool              `json:"incremental"`
+				LastSeq     int64             `json:"last_seq"`
+				Events      []json.RawMessage `json:"events"`
+			}
+			if json.Unmarshal(result, &inc) == nil && inc.Incremental && inc.SessionID != "" {
+				if f.conv == nil || f.conv.session != inc.SessionID {
+					_, keptSnap, err := f.o.st.herKept(f.machine)
+					if err == nil && len(keptSnap) > 0 {
+						f.conv = keptConversation(inc.SessionID, keptSnap)
+					}
+				}
+				if f.conv != nil {
+					changed := false
+					for _, ev := range inc.Events {
+						if f.conv.apply(ev) {
+							changed = true
+						}
+					}
+					if inc.LastSeq > f.conv.snap.LastSeq {
+						f.conv.snap.LastSeq = inc.LastSeq
+						changed = true
+					}
+					if changed {
+						f.keep()
+					}
+				}
+				continue
+			}
 			if f.conv = openedConversation(result); f.conv != nil {
 				f.keep()
 			}
@@ -161,6 +191,27 @@ func openedConversation(result []byte) *herConversation {
 	}
 	c := &herConversation{session: r.SessionID, snap: r.Snapshot, calls: map[string]bool{}}
 	for _, item := range r.Snapshot.Transcript.Items {
+		c.add(item)
+	}
+	c.trim()
+	return c
+}
+
+// keptConversation reloads a previously persisted snapshot from SQLite so an
+// incremental bots/open reply can append missed events on top of it.
+func keptConversation(sessionID string, raw []byte) *herConversation {
+	var snap herSnapshot
+	if json.Unmarshal(raw, &snap) != nil {
+		return nil
+	}
+	var hdr struct {
+		SessionID string `json:"session_id"`
+	}
+	if json.Unmarshal(snap.Session, &hdr) != nil || hdr.SessionID != sessionID {
+		return nil
+	}
+	c := &herConversation{session: sessionID, snap: snap, calls: map[string]bool{}}
+	for _, item := range snap.Transcript.Items {
 		c.add(item)
 	}
 	c.trim()

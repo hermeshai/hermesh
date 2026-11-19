@@ -2,7 +2,7 @@
 
 ## Model inference
 
-The iPhone talks to its embedded Go owner service over authenticated loopback. Her's messages, images, and file attachments can go through the owner's encrypted machine connection to the execution host. The kernel there assembles inference requests from messages, history, images, file contents, memory, instructions, and tool results. Compaction, Her's sub-agents, scheduled runs, and runs started by mesh news also use the host's model registry. The destination is the provider's effective API endpoint, which may be a user-configured gateway.
+The iPhone talks to its embedded Go owner service through the in-process Protobuf interface or authenticated loopback, depending on the client version. Her's messages, images, and file attachments can go through the owner's encrypted machine connection to the execution host. The kernel there assembles inference requests from messages, history, images, file contents, memory, instructions, and tool results. Compaction, Her's sub-agents, scheduled runs, and runs started by mesh news also use the host's model registry. The destination is the provider's effective API endpoint, which may be a user-configured gateway.
 
 On the iPhone, sending a draft, retrying, or tapping a suggested answer checks the execution host before submitting content. The prompt gives the provider and API address, the categories of data, and the purpose, including scheduled work. The user can also make the decision in Her's Settings. The desktop app offers the same disclosure and controls on its Model page. Closing or declining the prompt keeps the draft. When the host is unreachable, the composer keeps new drafts until it can check the recipient.
 
@@ -14,7 +14,7 @@ Her's mesh tools can start a session, send a follow-up, or answer a coding agent
 
 On a host with external coding adapters, Her offers session reads and control actions. Task starts, follow-ups, and free-text, selected-option, or multi-part answers to Codex, Claude Code, and ACP agents are blocked. The fixed decline action remains available and sends the agent only the instruction to continue without an answer. The receiving daemon checks Her's signed grant at the session RPCs. Her checks the destination on an authenticated tunnel before attempting a start or follow-up. A host that cannot confirm the in-process scripted adapter cannot receive those writes, including through the offline relay inbox. The in-process scripted adapter has no remote inference service and remains available in test installations configured to offer it.
 
-On iPhone, substantive answers require the execution host to verify the running adapter. A new iPhone uses a dedicated RPC. An older execution host fails this check and still accepts a fixed decline. A new execution host checks the paired device's platform from the signed root chain on the legacy RPC. iPhone and unclassified remote owner devices require the same adapter verification. Desktop replies initiated independently by the owner continue through the established desktop path. Existing sessions remain readable, can be interrupted or archived, and may still contain context previously given to an agent. Persisted Her coding messages for unverified agents stay held when an execution host upgrades. The offline demo continues using its in-process sample tasks.
+On iPhone, substantive answers require the execution host to verify the running adapter. A new iPhone uses a dedicated RPC. An older execution host fails this check and still accepts a fixed decline. A new execution host checks the paired device's platform from the signed root chain on the legacy RPC over either TCP or QUIC. iPhone and unclassified remote owner devices require the same adapter verification. Desktop replies initiated independently by the owner continue through the established desktop path. Existing sessions remain readable, can be interrupted or archived, and may still contain context previously given to an agent. Persisted Her coding messages for unverified agents stay held when an execution host upgrades. The offline demo continues using its in-process sample tasks.
 
 A prompt refused on account of missing approval stays out of Her's history. A connected client keeps its draft. If an older outbox item receives this refusal on reconnect, the updated owner holds it and gives the user a discard action. Regranting access does not replay a refusal recorded by the updated owner.
 
@@ -32,8 +32,9 @@ Use fictional input, a local relay and scripted coding providers, and two loopba
 
 ```sh
 go test ./internal/machine ./internal/owner ./internal/herhost ./internal/herlink ./internal/mobile \
-  -run 'Test(ServeDirectOwnerOnlyAndH2|HerCannotSendToAnUnverifiedCodingAgent|PersistedHerCodingMessageStaysHeld|HerConsentRefusalIsNotReplayedAfterRegrant|HerBlocksCodingWritesBeforeConnecting|CoreRejectsDeclineWithAnswerContent|CardsAnswer)$'
+  -run 'Test(ServeDirectOwnerOnlyAndSignedAnswerPolicy|HerCannotSendToAnUnverifiedCodingAgent|PersistedHerCodingMessageStaysHeld|HerConsentRefusalIsNotReplayedAfterRegrant|HerBlocksCodingWritesBeforeConnecting|CoreRejectsDeclineWithAnswerContent|CardsAnswer)$'
 go test ./e2e -run '^TestMobileAnswersVerifiedLocalCodingAgent$'
+go test ./e2e -run '^TestPushHerNotices$'
 cargo test --manifest-path her/Cargo.toml -p her-llm --test http_adapters
 cargo test --manifest-path her/Cargo.toml -p her-cli --test e2e_ai_consent
 apps/ios/scripts/test-demo.sh

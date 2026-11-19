@@ -37,7 +37,7 @@ func TestStatusForHidesDirectAddrs(t *testing.T) {
 	}
 }
 
-func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
+func TestServeDirectOwnerOnlyAndSignedAnswerPolicy(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	n := h.n
 	id := h.start("ask Branch|Which fictional branch?|Main,Dev")
@@ -68,7 +68,19 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chain := &identityv1.RootChain{Certs: []*identityv1.Signed{rc}}
+	desktopRoot, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paired, err := identity.Sign(&identityv1.RootCert{OwnerId: ownerID, Version: 2, IssuedAt: timestamppb.Now(),
+		RootKeys: []*identityv1.RootKey{
+			{PublicKey: identity.MarshalPublicKey(root.Public()), Platform: "ios"},
+			{PublicKey: identity.MarshalPublicKey(desktopRoot.Public()), Platform: "macos"},
+		}}, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain := &identityv1.RootChain{Certs: []*identityv1.Signed{rc, paired}}
 	tr := identity.NewTrust(ownerID)
 	if _, err := tr.AcceptRootChain(chain); err != nil {
 		t.Fatal(err)
@@ -131,6 +143,25 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 	}
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
+	// Use the old RPC as an earlier iPhone would, and also exercise the one
+	// new iPhones require. Keep the question pending to test both tunnels.
+	checkPhone := func(session sessionv1connect.SessionServiceClient) error {
+		answer := &sessionv1.AnswerQuestionRequest{SessionId: id, QuestionId: q.GetQuestionId(),
+			Answers: []*sessionv1.Answer{{Text: "fictional blocked answer"}}}
+		for _, call := range []func(context.Context, *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error){
+			session.AnswerQuestion, session.AnswerLocalQuestion,
+		} {
+			if _, err := call(ctx, answer); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+				return fmt.Errorf("opaque agent answer: %v", err)
+			}
+		}
+		got, err := session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
+		if err != nil || got.GetProgress().GetPendingQuestion().GetQuestionId() != q.GetQuestionId() {
+			return fmt.Errorf("question changed after refusal: %v %v", got, err)
+		}
+		return nil
+	}
+
 	dialWith := func(k *identity.SoftwareKey, creds *identityv1.Credentials) error {
 		raw, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "tcp", addr)
 		if err != nil {
@@ -155,25 +186,7 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		// The verified iOS principal uses the old RPC here, exactly as an older
-		// phone would. It cannot get around the new host check.
-		session := sessionv1connect.NewSessionServiceClient(h2, "https://machine")
-		answer := &sessionv1.AnswerQuestionRequest{SessionId: id, QuestionId: q.GetQuestionId(),
-			Answers: []*sessionv1.Answer{{Text: "fictional blocked answer"}}}
-		for _, call := range []func(context.Context, *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error){
-			session.AnswerQuestion, session.AnswerLocalQuestion,
-		} {
-			if _, err := call(ctx, answer); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-				return fmt.Errorf("opaque agent answer: %v", err)
-			}
-		}
-		got, err := session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
-		if err != nil || got.GetProgress().GetPendingQuestion().GetQuestionId() != q.GetQuestionId() {
-			return fmt.Errorf("question changed after refusal: %v %v", got, err)
-		}
-		answer.Decline, answer.Answers = true, nil
-		_, err = session.AnswerQuestion(ctx, answer)
-		return err
+		return checkPhone(sessionv1connect.NewSessionServiceClient(h2, "https://machine"))
 	}
 
 	// Owner device succeeds E2E handshake + GetInfo.
@@ -185,4 +198,54 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 	if err := dialWith(clientKey, &identityv1.Credentials{RootChain: chain, Subject: &identityv1.Credentials_Grant{Grant: grant}}); err == nil {
 		t.Fatal("agent grant unexpectedly succeeded on direct door")
 	}
+
+	// The same signed identity and write checks apply through real QUIC.
+	listener, err := transport.ListenQUIC("127.0.0.1:0", n.key.CryptoSigner(), n.credentials, tr, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		for {
+			conn, err := listener.Accept(ctx)
+			if err != nil {
+				return
+			}
+			go n.serveQUICTunnel(ctx, conn, "test QUIC", true)
+		}
+	}()
+	dialQUIC := func(cert *identityv1.Signed) sessionv1connect.SessionServiceClient {
+		t.Helper()
+		h3, _, err := transport.DialQUIC(ctx, listener.Addr().String(), device.CryptoSigner(),
+			func() *identityv1.Credentials {
+				return &identityv1.Credentials{RootChain: chain, Subject: &identityv1.Credentials_DeviceCert{DeviceCert: cert}}
+			}, tr, n.machineID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { h3.Close() })
+		return sessionv1connect.NewSessionServiceClient(h3, "https://machine")
+	}
+	phone := dialQUIC(dc)
+	if err := checkPhone(phone); err != nil {
+		t.Fatalf("iPhone over QUIC: %v", err)
+	}
+	if _, err := phone.AnswerQuestion(ctx, &sessionv1.AnswerQuestionRequest{SessionId: id, QuestionId: q.GetQuestionId(), Decline: true}); err != nil {
+		t.Fatalf("fixed decline over QUIC: %v", err)
+	}
+
+	desktopCert, err := identity.Sign(&identityv1.OwnerDeviceCert{
+		OwnerId: ownerID, DevicePublicKey: identity.MarshalPublicKey(device.Public()), IssuedAt: timestamppb.Now(),
+	}, desktopRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id = h.start("ask Branch|Which fictional branch?|Main,Dev")
+	q = h.wait(id, waiting).GetProgress().GetPendingQuestion()
+	desktop := dialQUIC(desktopCert)
+	if _, err := desktop.AnswerQuestion(ctx, &sessionv1.AnswerQuestionRequest{SessionId: id, QuestionId: q.GetQuestionId(),
+		Answers: []*sessionv1.Answer{{Selected: []string{"Dev"}}}}); err != nil {
+		t.Fatalf("verified desktop over QUIC: %v", err)
+	}
+	h.said(id, "answer: Dev")
 }

@@ -555,6 +555,11 @@ public nonisolated struct Hermesh_Machine_V1_MachineStatus: Sendable {
   /// bypassing the relay when reachable. Sent to the owner's devices only.
   public var directAddrs: [String] = []
 
+  /// Direct LAN IPv4 / public IPv6 E2E QUIC/HTTP3 UDP endpoints (host:port)
+  /// offering 1-RTT handshakes, independent non-HoL streams, and connection
+  /// migration. Sent to the owner's devices only.
+  public var directQuicAddrs: [String] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1246,6 +1251,32 @@ public nonisolated struct Hermesh_Machine_V1_SetHerGrantResponse: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Machine_V1_PunchDirectRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Candidate client UDP host:port endpoints (e.g. "[2408:...]:54321").
+  public var targets: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Machine_V1_PunchDirectResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// Current direct QUIC host:port endpoints listening on this machine.
+  public var directQuicAddrs: [String] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "hermesh.machine.v1"
@@ -1885,7 +1916,7 @@ nonisolated extension Hermesh_Machine_V1_GetInfoResponse: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{3}direct_quic_addrs\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -1906,6 +1937,7 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       case 14: try { try decoder.decodeSingularMessageField(value: &self._her) }()
       case 15: try { try decoder.decodeSingularMessageField(value: &self._screen) }()
       case 16: try { try decoder.decodeRepeatedStringField(value: &self.directAddrs) }()
+      case 17: try { try decoder.decodeRepeatedStringField(value: &self.directQuicAddrs) }()
       default: break
       }
     }
@@ -1955,6 +1987,9 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     if !self.directAddrs.isEmpty {
       try visitor.visitRepeatedStringField(value: self.directAddrs, fieldNumber: 16)
     }
+    if !self.directQuicAddrs.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.directQuicAddrs, fieldNumber: 17)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -1972,6 +2007,7 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     if lhs._her != rhs._her {return false}
     if lhs._screen != rhs._screen {return false}
     if lhs.directAddrs != rhs.directAddrs {return false}
+    if lhs.directQuicAddrs != rhs.directQuicAddrs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -3157,6 +3193,66 @@ nonisolated extension Hermesh_Machine_V1_SetHerGrantResponse: SwiftProtobuf.Mess
   }
 
   public static func ==(lhs: Hermesh_Machine_V1_SetHerGrantResponse, rhs: Hermesh_Machine_V1_SetHerGrantResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_PunchDirectRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PunchDirectRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}targets\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.targets) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.targets.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.targets, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_PunchDirectRequest, rhs: Hermesh_Machine_V1_PunchDirectRequest) -> Bool {
+    if lhs.targets != rhs.targets {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_PunchDirectResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PunchDirectResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}direct_quic_addrs\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedStringField(value: &self.directQuicAddrs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.directQuicAddrs.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.directQuicAddrs, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_PunchDirectResponse, rhs: Hermesh_Machine_V1_PunchDirectResponse) -> Bool {
+    if lhs.directQuicAddrs != rhs.directQuicAddrs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
