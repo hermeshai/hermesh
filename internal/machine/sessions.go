@@ -405,8 +405,13 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	// neither sets follows the agent's own configuration.
 	set := s.defaults(req.Agent)
 	set.Model, set.Effort = cmp.Or(req.Model, set.Model), cmp.Or(req.Effort, set.Effort)
-	if err := checkSettings(req.Agent, info, req.Model, req.Effort, cmp.Or(set.Model, info.Own.Model)); err != nil {
+	runs := cmp.Or(set.Model, info.Own.Model)
+	if err := checkSettings(req.Agent, info, req.Model, req.Effort, runs); err != nil {
 		return nil, err
+	}
+	// A default effort the model run does not take follows the agent's own.
+	if req.Effort == "" && !takesEffort(info, runs, set.Effort) {
+		set.Effort = ""
 	}
 	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
 		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")
@@ -1497,8 +1502,7 @@ func (s *Sessions) prepare(l *live) {
 	gate := s.gate(l)
 	l.mu.Lock()
 	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
-		ModelScope: l.row.ProjectID + "/" + id,
-		Effort:     l.row.Effort, Speed: l.row.Speed, Title: l.row.Title, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
+		Effort: l.row.Effort, Speed: l.row.Speed, Title: l.row.Title, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
 	if s.mcp != nil {
 		spec.MCPServers = s.mcp(l.id)
 	}

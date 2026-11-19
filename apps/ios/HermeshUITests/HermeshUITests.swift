@@ -80,6 +80,32 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "hermesh agent login antigravity")).firstMatch.waitForExistence(timeout: 20))
     }
 
+    /// Qwen Code, an ACP agent, offers models, each with its reasoning
+    /// efforts: its default model and effort are picked from them on its
+    /// page, and the Mac keeps them for its sessions.
+    func testAgentModelDefaults() throws {
+        try join()
+        openMachines()
+        tap("machine-owner-mac", timeout: 20)
+        tap("agent-qwen", timeout: 30)
+        let model = app.descendants(matching: .any)["default-model"].firstMatch
+        XCTAssertTrue(model.waitForExistence(timeout: 30), "its default model")
+        for _ in 0..<5 where !model.isHittable { app.swipeUp() }
+        XCTAssertTrue(text("跟随 Qwen Code（SMALL）").exists, "its own model until one is picked")
+        press(model)
+        XCTAssertTrue(app.buttons["SMALL"].waitForExistence(timeout: 5), "the models it offers")
+        tap("LARGE")
+        try waitFor("the model kept on the Mac") { (try self.control("agent-defaults?agent=qwen")["model"] as? String) == "large" ? true : nil }
+        // The efforts are the picked model's: large's go up to Extra High.
+        tap("default-effort")
+        tap("超高")
+        try waitFor("the effort kept on the Mac") { (try self.control("agent-defaults?agent=qwen")["effort"] as? String) == "xhigh" ? true : nil }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "default model of an ACP agent"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testSearchAndConnectivity() throws {
         try join()
         try search()

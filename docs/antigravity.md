@@ -109,82 +109,37 @@ hermesh session send <session-id> --wait --message "Add a usage example"
 hermesh session interrupt <session-id>
 ```
 
-`--model` accepts an ID offered by the official server. In the tested account
-these included `gemini-3.8-flash` and `gemini-4-argon`; availability depends on
-Google and the account. Omitting it uses the server's default. Model IDs are
-validated against the session's ACP config options, not a hard-coded list.
+`--model` accepts an ID offered by the official server and `--effort` one of
+that model's thinking levels. In the tested account (Google AI Pro, ACP
+1.4.5, 2026-11-19) these were `gemini-4-neon` and `gemini-4-hydrogen` (low,
+medium, high, xhigh) and `gemini-4-argon` and `gemini-3.8-flash` (low,
+medium, high), starting on `gemini-3.8-flash` at high; availability depends on
+Google and the account. Omitting them uses the owner's default for the
+machine (set on the agent's page in the apps), else the server's own.
 
-### Discover models without inference
+### Models
 
 `hermesh agent list --agent antigravity -o json` (also `coding_agent_list`)
-returns **`model_catalogs`**, separate from machine-wide `models` and
-`default_model`. ACP choices can depend on the account, client and workspace;
-one session's choices must not become a machine-wide entitlement list.
-The desktop agent page shows these read-only observations, their source and
-time, unknown states, and expiry; it does not turn them into global defaults.
-No model directory is hard-coded, no client identity is impersonated, and
-Hermesh never reads private credential/model caches to build this list.
+returns the models with their efforts, `default_model`/`default_effort`, and
+`models_state` with `models_observed_at_unix_ms`, as for every agent. Hermesh
+reads them as for every ACP agent, through public protocol only, and never
+from private credential or model caches:
 
-Discovery starts the installed official process in a new empty temporary
-directory and calls public `initialize` with Hermesh's real client identity.
-It calls [`session/options`](https://github.com/agentclientprotocol/agent-client-protocol/blob/main/docs/rfds/session-options.mdx)
-**only** if `sessionCapabilities.options` is advertised. This public method
-is still unstable. No authentication flow is initiated, no MCP servers are
-passed, tool permission requests are denied, and discovery never calls
-`session/new`, `session/prompt`, or changes configuration. The official runtime
-may contact Google, refresh its credentials, write logs, or run startup hooks;
-this is not an offline/static scan. The temporary directory and process are
-removed after the query.
+- `session/options`, when `initialize` advertises it (1.4.5 does not).
+- Otherwise `session/new` in a new empty folder, with no MCP servers and
+  tool permission requests denied, never prompted: its `configOptions` are
+  the `model` choices and, for the model selected, the `thought_level`
+  choices. Each other model is selected once (`session/set_config_option`)
+  to read its own; the selection is that session's alone (checked: a later
+  session starts on the server's default again). 1.4.5 cannot close or
+  delete sessions, so each reading leaves one empty session in the server's
+  own `session/list`.
+- A list read stands for a day; every new session refreshes it. A failed
+  reading is not kept and is tried again at the next agent check;
+  `auth_required` also reports the agent as not signed in.
 
-On 2026-11-16, local Apple silicon ACP **1.4.5** returned `loadSession` and
-session `list`, `additionalDirectories`, and `resume` capabilities. It did
-**not** advertise `options`, `close`, or `delete`. Only `initialize` was sent
-for this real-runtime check; no real model availability or quota was tested.
-For this runtime, discovery reports `session_required`. A model catalog is
-then learned from a normally authorized session's public
-[`configOptions`](https://agentclientprotocol.com/protocol/v1/session-config-options),
-including grouped choices and later `config_option_update` notifications.
-There is no implicit throwaway session, even on a failed/unsupported query.
-
-Each catalog contains:
-
-- `scope`: `isolated` for the empty-directory query, otherwise `project/session`.
-  A provider used outside the machine kernel uses an opaque workspace hash.
-  Workspace observations are kept separate; remote clients see only those
-  whose sessions they may read, and only for agents in their grant.
-- `source`: `acp_initialize`, `acp_options`, `acp_session`, or `acp_update`.
-- `state`: `known`, `unknown`, `session_required`, `auth_required`, `timeout`,
-  or `error`. Only `known` with zero models means a known empty selection.
-  Missing options never mean the account has no models. Raw server errors and
-  stderr are not included in discovery results.
-- `models`: exact option values/labels from the server. Separate reasoning
-  options are not guessed to apply to every model; this adapter still takes
-  no explicit `effort` parameter.
-- `default_model`: the initial selection of a **new** session, before any
-  per-session override; never a default inferred from a resumed session or
-  subsequent model change. `current_model` tracks the current selection.
-  Both are contextual observations, not a global account preference.
-- `observed_at_unix_ms`, `expires_at_unix_ms`, and (CLI/tools) `stale`: five-minute
-  freshness. A failed refresh can retain the last model observation, explicitly
-  expired and with the failure state. Empty timestamps mean never observed.
-
-The cache is in memory only, bounded to 32 observations, and isolated by
-runtime path/file version, session/workspace, and non-secret routing context
-(`HOME`, `GEMINI_HOME`, Cloud project/location/config directory). Agent checks
-query on demand, not on a background timer; repeated checks within five minutes
-do not restart the runtime. Restarting the daemon forgets observations.
-An external account switch inside the same configuration directory cannot be
-detected without a suitable official API: timestamps are not proof of unchanged
-authentication or remaining quota. The actual session always validates its
-model against the server's own options; cached catalogs do not enable strict
-machine-wide model rejection.
-
-Google now also documents [`agy models`](https://antigravity.google/docs/models/)
-and structured `--output-format json` output for the separate CLI. Hermesh does
-not import those results into this ACP catalog: the runtime/authentication may
-differ, and Google's [ACP client restrictions](https://antigravity.google/docs/ide/extensions/acp/)
-can further limit which models it offers. No installation/migration to `agy`
-is performed by model discovery.
+A session sets the model and the thinking level through its config options;
+one the session does not offer fails the start with the ones it does.
 
 Each session uses a long-running stdio ACP process. Hermesh handles streamed
 replies, tool events, token usage, permission requests, cancellation and

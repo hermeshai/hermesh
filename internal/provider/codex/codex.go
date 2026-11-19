@@ -72,6 +72,13 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	}
 	info.Models, info.Own, _ = catalog(ctx, env, bin)
 	info.AllModels = len(info.Models) > 0
+	info.ModelsState, info.ModelsAt = provider.ModelsKnown, time.Now()
+	if len(info.Models) == 0 {
+		info.ModelsState = provider.ModelsError
+		if !info.LoggedIn {
+			info.ModelsState = provider.ModelsAuthRequired
+		}
+	}
 	return info
 }
 

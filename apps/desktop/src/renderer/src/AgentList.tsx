@@ -10,7 +10,7 @@ import type { TerminalCommand } from "../../shared/bridge";
 import { useRecheckAgents } from "./agents";
 import { local } from "./api";
 import { Icon } from "./icons";
-import { useNow, useStore } from "./store";
+import { useStore } from "./store";
 import "./agentlist.css";
 
 // A machine's coding agents, as the first run's "Check and Manage Available
@@ -196,8 +196,8 @@ const logins: Record<string, { key: TerminalCommand; text: string }> = {
 /**
  * An agent's page on a machine, opened from its row: signing in when it
  * isn't, the model, reasoning effort and (Codex) speed its sessions run with
- * when the agent starting one names no model (Claude Code and Codex), and the
- * projects it may work in.
+ * when the agent starting one names no model (or why there is no choosing),
+ * and the projects it may work in.
  */
 export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
   const { t } = useTranslation("firstrun");
@@ -272,7 +272,12 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
         </div>
       )}
       {a && a.models.length > 0 && <Defaults a={a} m={m} />}
-      {a && a.modelCatalogs.length > 0 && <ModelCatalogs a={a} />}
+      {a && a.models.length === 0 && a.loggedIn && (a.modelsState === "unsupported" || a.modelsState === "error") && (
+        <section aria-label={t("prepare.defaultsHead")}>
+          <div className="ag-group">{t("prepare.defaultsHead")}</div>
+          <p className="ag-note">{t(`prepare.models.${a.modelsState}`, { agent: title })}</p>
+        </section>
+      )}
       <section aria-label={t("prepare.projectsHead")}>
         <div className="ag-group">{t("prepare.projectsHead")}</div>
         {mine.length > 0 && (
@@ -291,29 +296,6 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
   );
 }
 
-/** Read-only contextual observations, separate from machine-wide defaults. */
-function ModelCatalogs({ a }: { a: AgentStatus }) {
-  const { t } = useTranslation("firstrun");
-  const now = useNow(1000);
-  return (
-    <section aria-label={t("prepare.catalogsTitle")}>
-      <div className="ag-group">{t("prepare.catalogsTitle")}</div>
-      <p className="ag-note">{t("prepare.catalogsNote")}</p>
-      {a.modelCatalogs.map((c) => (
-        <div className="ag-prjs ag-catalog" role="group" aria-label={c.scope} key={c.scope}>
-          <p className="ag-note">{c.scope} · {t(`prepare.catalogState.${c.state}`, { defaultValue: t("prepare.catalogState.unknown") })}</p>
-          <p className="ag-note">{t("prepare.catalogSource", { source: c.source || "—" })} · {c.observedAtUnixMs ? new Date(Number(c.observedAtUnixMs)).toLocaleString() : t("prepare.catalogNever")}</p>
-          {c.expiresAtUnixMs > 0n && Number(c.expiresAtUnixMs) <= now.getTime() && <p className="ag-note">{t("prepare.catalogExpired")}</p>}
-          {c.models.map((m) => <p className="ag-note mono" key={m.id}>{m.id}</p>)}
-          {c.state === "known" && c.models.length === 0 && <p className="ag-note">{t("prepare.catalogEmpty")}</p>}
-          {c.defaultModel && <p className="ag-note">{t("prepare.catalogInitial", { model: c.defaultModel })}</p>}
-          {c.currentModel && <p className="ag-note">{t("prepare.catalogCurrent", { model: c.currentModel })}</p>}
-        </div>
-      ))}
-    </section>
-  );
-}
-
 /**
  * The model, reasoning effort and (Codex) speed an agent's sessions run with
  * when the agent starting one names no model, one row each: the agent's own
@@ -329,6 +311,8 @@ function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
   const same = (v: string) => (v ? t("prepare.sameAsValue", { agent: title, value: v }) : t("prepare.sameAs", { agent: title }));
   const effortsOf = (id: string) => a.models.find((x) => x.id === id)?.efforts;
   const model = d.model || own?.model || "";
+  // An agent whose models take no reasoning effort has no row for it.
+  const efforts = effortsOf(model) ?? a.models.find((x) => x.efforts.length > 0)?.efforts ?? [];
 
   const save = (next: typeof d) => st.run(() => local.setAgentDefaults({ machineId: m.machineId, defaults: { agent: a.name, ...next } }));
   const pick = async (items: { id: string; label: string; checked: boolean }[], set: (v: string) => void) => {
@@ -351,19 +335,23 @@ function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
           },
         ),
     },
-    {
-      key: "effort",
-      label: t("prepare.effort"),
-      value: d.effort ? effortName(t, d.effort) : same(own?.effort ? effortName(t, own.effort) : ""),
-      open: () =>
-        pick(
-          [
-            { id: "", label: same(own?.effort ? effortName(t, own.effort) : ""), checked: !d.effort },
-            ...(effortsOf(model) ?? a.models[0].efforts).map((e) => ({ id: e, label: effortName(t, e), checked: d.effort === e })),
-          ],
-          (v) => save({ ...d, effort: v }),
-        ),
-    },
+    ...(a.models.some((x) => x.efforts.length > 0)
+      ? [
+          {
+            key: "effort",
+            label: t("prepare.effort"),
+            value: d.effort ? effortName(t, d.effort) : same(own?.effort ? effortName(t, own.effort) : ""),
+            open: () =>
+              pick(
+                [
+                  { id: "", label: same(own?.effort ? effortName(t, own.effort) : ""), checked: !d.effort },
+                  ...efforts.map((e) => ({ id: e, label: effortName(t, e), checked: d.effort === e })),
+                ],
+                (v) => save({ ...d, effort: v }),
+              ),
+          },
+        ]
+      : []),
     ...(a.name === "codex"
       ? [
           {

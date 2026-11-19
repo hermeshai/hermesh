@@ -1580,22 +1580,30 @@ type AgentStatus struct {
 	// A check of this agent is under way; the rest is what the last check
 	// found, if any (an agent never checked yet is not available).
 	Checking bool `protobuf:"varint,7,opt,name=checking,proto3" json:"checking,omitempty"`
-	// The models it offers, to pick defaults from (Claude Code and Codex).
+	// The models it offers, as it says, to pick defaults and a session's
+	// model from.
 	Models []*AgentModel `protobuf:"bytes,8,rep,name=models,proto3" json:"models,omitempty"`
 	// What its sessions here run with when the client names no model.
 	Defaults *v11.AgentDefaults `protobuf:"bytes,9,opt,name=defaults,proto3" json:"defaults,omitempty"`
 	// Its own configuration, which empty defaults follow, as far as the
-	// agent tells it (Codex).
+	// agent tells it.
 	Own *v11.AgentDefaults `protobuf:"bytes,10,opt,name=own,proto3" json:"own,omitempty"`
 	// Why it is not available (detail: what the system or the agent said).
 	Problem AgentProblem `protobuf:"varint,11,opt,name=problem,proto3,enum=hermesh.machine.v1.AgentProblem" json:"problem,omitempty"`
 	// Where it was found, when it was.
 	Binary string `protobuf:"bytes,12,opt,name=binary,proto3" json:"binary,omitempty"`
-	// Scoped ACP observations. These are not machine-wide model entitlements;
-	// a session's own config options remain authoritative. Empty on older peers.
+	// No longer sent: models (with models_state) are every agent's list now.
+	//
+	// Deprecated: Marked as deprecated in hermesh/machine/v1/machine.proto.
 	ModelCatalogs []*AgentModelCatalog `protobuf:"bytes,13,rep,name=model_catalogs,json=modelCatalogs,proto3" json:"model_catalogs,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// What models are: "known" (the agent's own list, as of
+	// models_observed_at_unix_ms), "unsupported" (it offers no choice of
+	// model), "auth_required" (it must be signed in to tell) or "error" (it
+	// could not tell); empty when it was not asked (or a machine from before).
+	ModelsState            string `protobuf:"bytes,14,opt,name=models_state,json=modelsState,proto3" json:"models_state,omitempty"`
+	ModelsObservedAtUnixMs int64  `protobuf:"varint,15,opt,name=models_observed_at_unix_ms,json=modelsObservedAtUnixMs,proto3" json:"models_observed_at_unix_ms,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
 }
 
 func (x *AgentStatus) Reset() {
@@ -1705,6 +1713,7 @@ func (x *AgentStatus) GetBinary() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in hermesh/machine/v1/machine.proto.
 func (x *AgentStatus) GetModelCatalogs() []*AgentModelCatalog {
 	if x != nil {
 		return x.ModelCatalogs
@@ -1712,6 +1721,23 @@ func (x *AgentStatus) GetModelCatalogs() []*AgentModelCatalog {
 	return nil
 }
 
+func (x *AgentStatus) GetModelsState() string {
+	if x != nil {
+		return x.ModelsState
+	}
+	return ""
+}
+
+func (x *AgentStatus) GetModelsObservedAtUnixMs() int64 {
+	if x != nil {
+		return x.ModelsObservedAtUnixMs
+	}
+	return 0
+}
+
+// AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).
+//
+// Deprecated: Marked as deprecated in hermesh/machine/v1/machine.proto.
 type AgentModelCatalog struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// project/session address, or "isolated" for a probe with no project data.
@@ -2954,7 +2980,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x05limit\x18\x03 \x01(\x04R\x05limit\x12\x18\n" +
 	"\aculprit\x18\x04 \x01(\tR\aculprit\x12#\n" +
 	"\rculprit_count\x18\x05 \x01(\rR\fculpritCount\x12\x16\n" +
-	"\x06detail\x18\x06 \x01(\tR\x06detail\"\x93\x04\n" +
+	"\x06detail\x18\x06 \x01(\tR\x06detail\"\xf6\x04\n" +
 	"\vAgentStatus\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1c\n" +
 	"\tavailable\x18\x02 \x01(\bR\tavailable\x12\x18\n" +
@@ -2967,8 +2993,10 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x03own\x18\n" +
 	" \x01(\v2\".hermesh.identity.v1.AgentDefaultsR\x03own\x12:\n" +
 	"\aproblem\x18\v \x01(\x0e2 .hermesh.machine.v1.AgentProblemR\aproblem\x12\x16\n" +
-	"\x06binary\x18\f \x01(\tR\x06binary\x12L\n" +
-	"\x0emodel_catalogs\x18\r \x03(\v2%.hermesh.machine.v1.AgentModelCatalogR\rmodelCatalogsJ\x04\b\x05\x10\x06R\x11sandbox_available\"\xb5\x02\n" +
+	"\x06binary\x18\f \x01(\tR\x06binary\x12P\n" +
+	"\x0emodel_catalogs\x18\r \x03(\v2%.hermesh.machine.v1.AgentModelCatalogB\x02\x18\x01R\rmodelCatalogs\x12!\n" +
+	"\fmodels_state\x18\x0e \x01(\tR\vmodelsState\x12:\n" +
+	"\x1amodels_observed_at_unix_ms\x18\x0f \x01(\x03R\x16modelsObservedAtUnixMsJ\x04\b\x05\x10\x06R\x11sandbox_available\"\xb9\x02\n" +
 	"\x11AgentModelCatalog\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x14\n" +
@@ -2977,7 +3005,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\rdefault_model\x18\x05 \x01(\tR\fdefaultModel\x12#\n" +
 	"\rcurrent_model\x18\x06 \x01(\tR\fcurrentModel\x12-\n" +
 	"\x13observed_at_unix_ms\x18\a \x01(\x03R\x10observedAtUnixMs\x12+\n" +
-	"\x12expires_at_unix_ms\x18\b \x01(\x03R\x0fexpiresAtUnixMs\"J\n" +
+	"\x12expires_at_unix_ms\x18\b \x01(\x03R\x0fexpiresAtUnixMs:\x02\x18\x01\"J\n" +
 	"\n" +
 	"AgentModel\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +

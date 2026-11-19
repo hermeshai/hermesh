@@ -338,3 +338,32 @@ func scripted(t *testing.T) {
 		t.Skip("the fake agent is a shell script")
 	}
 }
+
+// TestModels: the models listed are the ones Claude Code says it offers
+// (not "default", which is following its own setting), with each one's
+// efforts; one that says none (an older version) lists its aliases.
+func TestModels(t *testing.T) {
+	scripted(t)
+	bin := filepath.Join(t.TempDir(), "claude")
+	answer := `{"type":"system","subtype":"init"}
+{"type":"control_response","response":{"subtype":"success","request_id":"hermesh-models","response":{"models":[` +
+		`{"value":"default","displayName":"Default (recommended)","supportedEffortLevels":["low"]},` +
+		`{"value":"opus","displayName":"Opus 5.5","supportedEffortLevels":["low","high","max"]},` +
+		`{"value":"claude-haiku-4-5","displayName":"Haiku 4.5"}]}}}`
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo '2.1.325 (Claude Code)';;\nauth) echo '{\"loggedIn\":true}';;\n" +
+		"-p) read line; case \"$line\" in *'\"subtype\":\"initialize\"'*) cat <<'JSON'\n" + answer + "\nJSON\n;; esac;;\nesac\n"
+	os.WriteFile(bin, []byte(script), 0o755)
+	i := (&Provider{Binary: bin}).Discover(context.Background())
+	var got []string
+	for _, m := range i.Models {
+		got = append(got, m.ID+"("+m.Name+")"+strings.Join(m.Efforts, "/"))
+	}
+	if strings.Join(got, " ") != "opus(Opus 5.5)low/high/max claude-haiku-4-5(Haiku 4.5)" || i.ModelsState != provider.ModelsKnown || i.ModelsAt.IsZero() || i.AllModels {
+		t.Fatalf("%+v", i)
+	}
+
+	os.WriteFile(bin, []byte("#!/bin/sh\ncase \"$1\" in\n--version) echo '2.1.0 (Claude Code)';;\nesac\n"), 0o755)
+	if i := (&Provider{Binary: bin}).Discover(context.Background()); len(i.Models) != len(Models) || i.Models[0].ID != "fable" || i.ModelsState != provider.ModelsKnown {
+		t.Fatalf("older: %+v", i)
+	}
+}

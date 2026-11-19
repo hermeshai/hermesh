@@ -141,22 +141,6 @@
     "prompt": "用 Hermesh 让 {{agent}} 跟我打个招呼。"
   },
   "prepare": {
-    "catalogsTitle": "已观察到的模型",
-    "catalogsNote": "各作用域返回的选项，不代表全机可用保证。查看列表不会创建对话或发送提示词。",
-    "catalogSource": "来源：{{source}}",
-    "catalogNever": "尚未观察",
-    "catalogExpired": "观察结果已过期 · 可用性需重新验证",
-    "catalogEmpty": "服务器在此作用域中未提供选项。",
-    "catalogInitial": "初始模型：{{model}}",
-    "catalogCurrent": "当前模型：{{model}}",
-    "catalogState": {
-      "known": "已观察",
-      "unknown": "未知",
-      "session_required": "未知，等待一次正常任务返回模型选项",
-      "auth_required": "需要认证",
-      "timeout": "模型发现超时",
-      "error": "模型发现失败"
-    },
     "promise": "绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。",
     "later": "稍后设置",
     "next": "下一步：连接你的 Agent",
@@ -193,6 +177,10 @@
     "speed": "速度",
     "defaultsHead": "默认模型",
     "defaultsNote": "Agent 在这里开任务、没指定模型时用这些；不改 {{agent}} 自己的配置。",
+    "models": {
+      "unsupported": "{{agent}} 不提供模型选择，会话用它自己的设置。",
+      "error": "这次没读到 {{agent}} 提供的模型，下次检查会再试；会话仍用它自己的设置。"
+    },
     "sameAs": "跟随 {{agent}}",
     "sameAsValue": "跟随 {{agent}}（{{value}}）",
     "standard": "标准",

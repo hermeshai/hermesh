@@ -902,7 +902,7 @@ public nonisolated struct Hermesh_Identity_V1_AgentDefaults: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "claude" | "codex"
+  /// The coding agent's name ("claude", "codex", "antigravity", …).
   public var agent: String = String()
 
   public var model: String = String()
