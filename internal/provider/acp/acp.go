@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -80,11 +81,12 @@ type Provider struct {
 }
 
 type launch struct {
-	bin  string
-	pre  []string
-	args []string
-	env  []string
-	mode antigravityMode
+	bin      string
+	pre      []string
+	args     []string
+	env      []string
+	mode     antigravityMode
+	probeErr error // inconclusive Antigravity capability check
 }
 
 func (l launch) probeArgs() []string {
@@ -250,6 +252,16 @@ func (p *Provider) discoverLaunch(ctx context.Context, cmd launch, baseEnv []str
 		return p.notFoundInfo()
 	}
 	info.Binary = cmd.bin
+	if cmd.probeErr != nil {
+		info.Problem, info.Detail = provider.ProblemFailed, cmd.probeErr.Error()
+		switch {
+		case errors.Is(cmd.probeErr, context.DeadlineExceeded):
+			info.Problem = provider.ProblemTimedOut
+		case errors.Is(cmd.probeErr, syscall.EAGAIN):
+			info.Problem = provider.ProblemNoProcesses
+		}
+		return info
+	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	env := append(slices.Clip(baseEnv), cmd.env...)
@@ -285,6 +297,9 @@ func withPath(env []string, path string) []string {
 
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	cmd := p.resolveForStart(ctx, spec.Env)
+	if cmd.probeErr != nil {
+		return nil, cmd.probeErr
+	}
 	if cmd.bin == "" {
 		return nil, errors.New(p.notFoundDetail())
 	}

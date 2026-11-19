@@ -17,6 +17,9 @@ import (
 // credentials remain with the agent. Normal sessions never initiate this flow.
 func (p *Provider) Login(ctx context.Context, method string, output io.Writer) error {
 	cmd := p.resolve(ctx)
+	if cmd.probeErr != nil {
+		return cmd.probeErr
+	}
 	if cmd.bin == "" {
 		return errors.New(p.notFoundDetail() + "; install the official Antigravity CLI (agy) or standalone ACP archive (see docs/antigravity.md)")
 	}
