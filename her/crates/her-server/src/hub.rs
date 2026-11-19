@@ -719,7 +719,9 @@ impl Hub {
         if matches!(op, Op::Prompt { .. } | Op::Resend { .. })
             && let Some(kernel) = &self.kernel
         {
-            kernel.check_ai_consent().map_err(|error| RpcError::invalid_request(error.message))?;
+            kernel.check_ai_consent().map_err(|error| {
+                RpcError::with_kind(her_rpc::code::INVALID_REQUEST, "ai_consent_required", error.message)
+            })?;
         }
         match &op {
             Op::Prompt { id: Some(id), .. } if !her_protocol::valid_input_id(id) => {

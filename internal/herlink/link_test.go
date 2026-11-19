@@ -26,7 +26,7 @@ func TestHerBlocksCodingWritesBeforeConnecting(t *testing.T) {
 		return nil
 	}})
 	for _, tool := range link.Group().Tools {
-		if tool.Writes {
+		if tool.Writes && tool.Name != "session_answer" {
 			t.Fatalf("advertised unverified coding tool %s", tool.Name)
 		}
 	}
@@ -35,6 +35,14 @@ func TestHerBlocksCodingWritesBeforeConnecting(t *testing.T) {
 		if !failed || errorKind([]byte(out)) != "ai_recipient_unverified" {
 			t.Fatalf("%s: %s", name, out)
 		}
+	}
+	out, _, failed := link.Call(context.Background(), "fictional-bot", "fictional-call", "session_answer",
+		json.RawMessage(`{"session_id":"s_fictional","decline":true,"text":"fictional content"}`))
+	if !failed || errorKind([]byte(out)) != "ai_recipient_unverified" {
+		t.Fatal(out)
+	}
+	if !fixedDecline(json.RawMessage(`{"session_id":"s_fictional","decline":true}`)) {
+		t.Fatal("fixed decline was blocked")
 	}
 }
 

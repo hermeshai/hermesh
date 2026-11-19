@@ -817,6 +817,9 @@ public nonisolated struct Hermesh_Session_V1_Question: Sendable {
   /// Clears the value of `expiresAt`. Subsequent reads from it will return its default value.
   public mutating func clearExpiresAt() {self._expiresAt = nil}
 
+  /// The pending question belongs to a verified in-process agent.
+  public var localAnswerAvailable: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1886,6 +1889,50 @@ public nonisolated struct Hermesh_Session_V1_AnswerQuestionRequest: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Session_V1_CheckLocalCodingRecipientRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var destination: Hermesh_Session_V1_CheckLocalCodingRecipientRequest.OneOf_Destination? = nil
+
+  public var agent: String {
+    get {
+      if case .agent(let v)? = destination {return v}
+      return String()
+    }
+    set {destination = .agent(newValue)}
+  }
+
+  public var sessionID: String {
+    get {
+      if case .sessionID(let v)? = destination {return v}
+      return String()
+    }
+    set {destination = .sessionID(newValue)}
+  }
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public nonisolated enum OneOf_Destination: Equatable, Sendable {
+    case agent(String)
+    case sessionID(String)
+
+  }
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Session_V1_CheckLocalCodingRecipientResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Session_V1_GetDiffRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2660,7 +2707,7 @@ nonisolated extension Hermesh_Session_V1_SessionProgress: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Session_V1_Question: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Question"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}question_id\0\u{1}turn\0\u{1}items\0\u{3}asked_at\0\u{3}expires_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}question_id\0\u{1}turn\0\u{1}items\0\u{3}asked_at\0\u{3}expires_at\0\u{3}local_answer_available\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2673,6 +2720,7 @@ nonisolated extension Hermesh_Session_V1_Question: SwiftProtobuf.Message, SwiftP
       case 3: try { try decoder.decodeRepeatedMessageField(value: &self.items) }()
       case 4: try { try decoder.decodeSingularMessageField(value: &self._askedAt) }()
       case 5: try { try decoder.decodeSingularMessageField(value: &self._expiresAt) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.localAnswerAvailable) }()
       default: break
       }
     }
@@ -2698,6 +2746,9 @@ nonisolated extension Hermesh_Session_V1_Question: SwiftProtobuf.Message, SwiftP
     try { if let v = self._expiresAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
     } }()
+    if self.localAnswerAvailable != false {
+      try visitor.visitSingularBoolField(value: self.localAnswerAvailable, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2707,6 +2758,7 @@ nonisolated extension Hermesh_Session_V1_Question: SwiftProtobuf.Message, SwiftP
     if lhs.items != rhs.items {return false}
     if lhs._askedAt != rhs._askedAt {return false}
     if lhs._expiresAt != rhs._expiresAt {return false}
+    if lhs.localAnswerAvailable != rhs.localAnswerAvailable {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -4732,6 +4784,82 @@ nonisolated extension Hermesh_Session_V1_AnswerQuestionRequest: SwiftProtobuf.Me
     if lhs.questionID != rhs.questionID {return false}
     if lhs.answers != rhs.answers {return false}
     if lhs.decline != rhs.decline {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_CheckLocalCodingRecipientRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CheckLocalCodingRecipientRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}agent\0\u{3}session_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try {
+        var v: String?
+        try decoder.decodeSingularStringField(value: &v)
+        if let v = v {
+          if self.destination != nil {try decoder.handleConflictingOneOf()}
+          self.destination = .agent(v)
+        }
+      }()
+      case 2: try {
+        var v: String?
+        try decoder.decodeSingularStringField(value: &v)
+        if let v = v {
+          if self.destination != nil {try decoder.handleConflictingOneOf()}
+          self.destination = .sessionID(v)
+        }
+      }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    switch self.destination {
+    case .agent?: try {
+      guard case .agent(let v)? = self.destination else { preconditionFailure() }
+      try visitor.visitSingularStringField(value: v, fieldNumber: 1)
+    }()
+    case .sessionID?: try {
+      guard case .sessionID(let v)? = self.destination else { preconditionFailure() }
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    }()
+    case nil: break
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_CheckLocalCodingRecipientRequest, rhs: Hermesh_Session_V1_CheckLocalCodingRecipientRequest) -> Bool {
+    if lhs.destination != rhs.destination {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_CheckLocalCodingRecipientResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CheckLocalCodingRecipientResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_CheckLocalCodingRecipientResponse, rhs: Hermesh_Session_V1_CheckLocalCodingRecipientResponse) -> Bool {
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

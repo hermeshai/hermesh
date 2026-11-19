@@ -102,6 +102,12 @@ func (Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Se
 	return s, nil
 }
 
+// IsLocalSession identifies the in-process simulator without trusting an agent name.
+func IsLocalSession(ps provider.Session) bool {
+	_, ok := ps.(*session)
+	return ok
+}
+
 type session struct {
 	spec      provider.StartSpec
 	ref       string

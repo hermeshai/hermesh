@@ -50,6 +50,7 @@ type herSide struct {
 	files   map[string]string // what Download serves, by path
 	failBot string            // bots/open fails for this assistant
 	refuse  string            // her refuses a call that holds this
+	blocked bool              // inference sharing was revoked
 	silent  bool              // Open never answers: the machine froze
 	slow    time.Duration     // how long a call takes
 }
@@ -94,6 +95,11 @@ func (h *herSide) Call(_ context.Context, req *herv1.CallRequest) (*herv1.CallRe
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no her connection %s: its stream ended", req.ConnectionId))
 	}
 	h.ops = append(h.ops, req.ConnectionId+" "+req.Request.Method+" "+string(req.Request.Params))
+	if h.blocked {
+		return &herv1.CallResponse{Response: &herv1.Response{Error: &herv1.Error{
+			Code: -32600, Message: "AI sharing is blocked.", Data: []byte(`{"kind":"ai_consent_required"}`),
+		}}}, nil
+	}
 	if h.refuse != "" && strings.Contains(string(req.Request.Params), h.refuse) {
 		return &herv1.CallResponse{Response: &herv1.Response{Error: &herv1.Error{Code: -32602, Message: "her won't take it"}}}, nil
 	}
@@ -335,6 +341,44 @@ func TestHerWaitingRefused(t *testing.T) {
 	}
 	if list, _ := o.st.herWaiting("", ""); len(list) != 2 {
 		t.Fatalf("kept the refused one: %v", list)
+	}
+}
+
+func TestHerConsentRefusalIsNotReplayedAfterRegrant(t *testing.T) {
+	h := &herSide{blocked: true}
+	_, o, down, _ := herOwner(t, h)
+	ctx := t.Context()
+	down.Store(true)
+	held, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "fictional waiting draft"})
+	if err != nil || held.GetWaiting() == nil {
+		t.Fatalf("waiting: %v %v", held, err)
+	}
+	down.Store(false)
+	o.flushWaiting(ctx)
+	waiting, err := o.st.herWaiting("m_1", "b1")
+	if err != nil || len(waiting) != 1 || waiting[0].Error != heldHerConsent {
+		t.Fatalf("refusal was not saved: %v %v", waiting, err)
+	}
+	// A connected app must receive its refusal once, without reopening and retrying.
+	_, err = o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b2", Text: "fictional current draft",
+		ConnectionId: "app", SessionId: "open"})
+	if !errors.Is(err, errHerConsent) {
+		t.Fatalf("direct refusal: %v", err)
+	}
+
+	h.mu.Lock()
+	h.blocked = false
+	h.mu.Unlock()
+	o.flushWaiting(ctx)
+	if got := h.prompts(t); !slices.Equal(got, []string{"conv-b1: fictional waiting draft", "open: fictional current draft"}) {
+		t.Fatalf("refused prompts were retried: %q", got)
+	}
+	if err := o.DeleteHerWaiting("m_1", held.Waiting.Id); err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := o.HerSend(ctx, &localv1.HerSendRequest{MachineId: "m_1", BotId: "b1", Text: "fictional new approval"})
+	if err != nil || !fresh.GetDelivered() {
+		t.Fatalf("fresh send: %v %v", fresh, err)
 	}
 }
 

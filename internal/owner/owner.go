@@ -2589,6 +2589,13 @@ func (o *Owner) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestio
 	if err != nil {
 		return nil, err
 	}
+	if o.cfg.NoLocalMachine && !req.Decline {
+		sess, err := n.Session.AnswerLocalQuestion(ctx, req)
+		if connect.CodeOf(err) == connect.CodeUnimplemented {
+			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host to verify the coding agent’s AI recipient"))
+		}
+		return o.written(req.SessionId)(sess, err)
+	}
 	return o.written(req.SessionId)(n.Session.AnswerQuestion(ctx, req))
 }
 

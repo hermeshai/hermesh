@@ -69,9 +69,10 @@ const (
 
 // Principal is the verified caller of an RPC.
 type Principal struct {
-	Kind     PrincipalKind
-	ClientID string
-	Grant    *identityv1.Grant
+	Kind             PrincipalKind
+	ClientID         string
+	Grant            *identityv1.Grant
+	LocalAnswersOnly bool // a remote owner without a verified desktop platform
 }
 
 func (p *Principal) ID() string {
@@ -776,14 +777,10 @@ func (s *Sessions) startAsked(l *live) {
 		l.mu.Unlock()
 		return
 	}
-	first := 0
-	if !isLocalAgent(s.providers[l.row.Agent]) {
-		clients := s.st.knownClients()
-		first = slices.IndexFunc(l.asked, func(m message) bool { return !clients[m.by].isHer() })
-		if first < 0 {
-			l.mu.Unlock()
-			return
-		}
+	first := s.firstDeliverableAsked(l)
+	if first < 0 {
+		l.mu.Unlock()
+		return
 	}
 	m := l.asked[first]
 	keep := append([]message(nil), l.asked[:first]...)
@@ -979,7 +976,7 @@ func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessi
 		l.mu.Unlock()
 		return nil, cerr(connect.CodeFailedPrecondition, "session %s has a turn in progress (%s); interrupt it first", id, phaseOf(st))
 	}
-	if len(l.asked) > 0 {
+	if s.firstDeliverableAsked(l) >= 0 {
 		l.mu.Unlock()
 		return nil, cerr(connect.CodeFailedPrecondition, "session %s is starting the turn another agent's message waits for; interrupt it first", id)
 	}

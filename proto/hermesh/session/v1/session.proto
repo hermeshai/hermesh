@@ -76,6 +76,16 @@ service SessionService {
   rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // AnswerLocalQuestion submits a substantive answer only to a verified
+  // in-process agent. Mobile clients never fall back to AnswerQuestion.
+  rpc AnswerLocalQuestion(AnswerQuestionRequest) returns (Session) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // CheckLocalCodingRecipient checks the destination before Her forwards
+  // content. The subsequent write still checks the authenticated Her grant.
+  rpc CheckLocalCodingRecipient(CheckLocalCodingRecipientRequest) returns (CheckLocalCodingRecipientResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
   // ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
   // past that its first and last 512 KiB), in chunks of at most 64 KiB:
   // what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
@@ -288,6 +298,8 @@ message Question {
   google.protobuf.Timestamp asked_at = 4;
   // When the agent is told to continue without an answer.
   google.protobuf.Timestamp expires_at = 5;
+  // The pending question belongs to a verified in-process agent.
+  bool local_answer_available = 6;
 }
 
 // QuestionItem is one question of a Question; answer each by its id.
@@ -671,6 +683,15 @@ message AnswerQuestionRequest {
   // No answer: the agent is told nobody will answer and to continue.
   bool decline = 4;
 }
+
+message CheckLocalCodingRecipientRequest {
+  oneof destination {
+    string agent = 1;
+    string session_id = 2;
+  }
+}
+
+message CheckLocalCodingRecipientResponse {}
 
 message GetDiffRequest {
   string session_id = 1;

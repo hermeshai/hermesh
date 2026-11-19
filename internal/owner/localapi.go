@@ -563,9 +563,8 @@ func (l *localService) ReadToolOutput(ctx context.Context, req *localv1.ReadTool
 }
 
 func (l *localService) AnswerQuestion(ctx context.Context, req *localv1.AnswerQuestionRequest) (*localv1.AnswerQuestionResponse, error) {
-	// The iPhone cannot verify the inference service behind the remote agent.
-	if l.o().cfg.NoLocalMachine && (!req.Decline || len(req.Answers) != 0) {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("the coding agent’s AI recipient cannot be verified on iPhone"))
+	if req.Decline && len(req.Answers) != 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("declining a question takes no answer content"))
 	}
 	answer := &sessionv1.AnswerQuestionRequest{SessionId: req.SessionId, QuestionId: req.QuestionId, Answers: req.Answers, Decline: req.Decline}
 	answerer := l.o().AnswerQuestion

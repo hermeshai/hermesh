@@ -242,7 +242,11 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, own
 	mHandshake.Since(hsStart)
 	mTunnels.Add(1)
 	defer mTunnels.Add(-1)
-	p := &Principal{Kind: PrincipalOwner}
+	p := &Principal{Kind: PrincipalOwner, LocalAnswersOnly: true}
+	switch sub.DevicePlatform {
+	case "macos", "windows", "linux":
+		p.LocalAnswersOnly = false
+	}
 	if sub.Kind == identity.SubjectClient {
 		p = &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
 		n.rememberClient(sub.ID, sub.Grant)

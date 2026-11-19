@@ -14,6 +14,8 @@ struct QuestionPanel: View {
     @State private var sending = false
     @FocusState private var typing: Bool
 
+    private var canAnswer: Bool { model.isDemo || question.localAnswerAvailable }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -27,12 +29,12 @@ struct QuestionPanel: View {
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    ForEach(question.items, id: \.id) { item($0).disabled(!model.isDemo) }
+                    ForEach(question.items, id: \.id) { item($0).disabled(!canAnswer) }
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
             .frame(maxHeight: 340)
-            if !model.isDemo {
+            if !canAnswer {
                 Text("The coding agent’s AI recipient can’t be verified. Answers are blocked on iPhone.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
@@ -40,7 +42,7 @@ struct QuestionPanel: View {
                 Button("Don’t Answer") { send(decline: true) }
                     .buttonStyle(.glass).frame(maxWidth: .infinity)
                     .accessibilityIdentifier("decline")
-                if model.isDemo {
+                if canAnswer {
                     Button {
                         send(decline: false)
                     } label: {

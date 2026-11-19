@@ -7,11 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -35,8 +38,13 @@ func TestStatusForHidesDirectAddrs(t *testing.T) {
 }
 
 func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
-	n := openHerMachine(t, t.TempDir(), "")
-	defer n.Close()
+	h := newHarness(t, DefaultLimits())
+	n := h.n
+	id := h.start("ask Branch|Which fictional branch?|Main,Dev")
+	q := h.wait(id, waiting).GetProgress().GetPendingQuestion()
+	if q.GetLocalAnswerAvailable() {
+		t.Fatal("an opaque adapter was advertised as local")
+	}
 
 	root, err := identity.GenerateKey()
 	if err != nil {
@@ -55,7 +63,7 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 		OwnerId:  ownerID,
 		Version:  1,
 		IssuedAt: timestamppb.Now(),
-		RootKeys: []*identityv1.RootKey{{PublicKey: identity.MarshalPublicKey(root.Public())}},
+		RootKeys: []*identityv1.RootKey{{PublicKey: identity.MarshalPublicKey(root.Public()), Platform: "ios"}},
 	}, root)
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +152,27 @@ func TestServeDirectOwnerOnlyAndH2(t *testing.T) {
 		}
 		defer h2.Close()
 		_, err = machinev1connect.NewMachineServiceClient(h2, "https://machine").GetInfo(ctx, &machinev1.GetInfoRequest{})
+		if err != nil {
+			return err
+		}
+		// The verified iOS principal uses the old RPC here, exactly as an older
+		// phone would. It cannot get around the new host check.
+		session := sessionv1connect.NewSessionServiceClient(h2, "https://machine")
+		answer := &sessionv1.AnswerQuestionRequest{SessionId: id, QuestionId: q.GetQuestionId(),
+			Answers: []*sessionv1.Answer{{Text: "fictional blocked answer"}}}
+		for _, call := range []func(context.Context, *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error){
+			session.AnswerQuestion, session.AnswerLocalQuestion,
+		} {
+			if _, err := call(ctx, answer); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+				return fmt.Errorf("opaque agent answer: %v", err)
+			}
+		}
+		got, err := session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
+		if err != nil || got.GetProgress().GetPendingQuestion().GetQuestionId() != q.GetQuestionId() {
+			return fmt.Errorf("question changed after refusal: %v %v", got, err)
+		}
+		answer.Decline, answer.Answers = true, nil
+		_, err = session.AnswerQuestion(ctx, answer)
 		return err
 	}
 
