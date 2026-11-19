@@ -31,6 +31,11 @@
 </p>
 
 <p align="center">
+  <a href="https://testflight.apple.com/join/Nh2sjbdP?source=github"><img src="docs/assets/testflight-badge.svg" alt="加入官方 Hermesh iOS TestFlight 公开测试（iOS 26+）" width="164" height="34"></a><br>
+  <sub>欢迎试用官方 Hermesh iPhone 公开测试版（需 iOS 26+）。</sub>
+</p>
+
+<p align="center">
   <img src="docs/assets/readme/zh/relay.gif" width="100%" alt="动图：Her 的每日巡检发现 Windows 上有人启动崩溃，她先让 Windows 电脑上的 Codex 复现，然后来问你现在修不修。你点了「现在修」。她让 Mac mini 上的 Claude Code 修复，Windows 上的 Codex 和 Linux 上的 Gemini 同时验证；Windows 验证失败，她把日志转回给 Claude 再修一轮，复验通过。最后她告诉你 PR 是 #222，并附上发布说明。">
 </p>
 
