@@ -2,13 +2,13 @@
 package claude
 
 import (
-	"bufio"
+	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -120,65 +120,79 @@ var Models = []provider.Model{
 // listModels asks Claude Code which models it offers this account, as its
 // own model picker does: the initialize control request, answered before
 // any prompt, so no model runs and no session is kept. It runs in an empty
-// folder, so no project's settings change the answer.
+// folder, so no project's settings change the answer, and is given 10 s:
+// a Claude Code that hangs is stopped with all it started.
 func listModels(ctx context.Context, env []string, bin string) ([]provider.Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	dir, err := os.MkdirTemp("", "hermesh-models-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	cmd := provider.Command(ctx, bin, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-		"--settings", `{"crossSessionInbound":"refuse"}`)
-	cmd.Dir, cmd.Env = dir, env
-	cmd.Stdin = strings.NewReader(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}` + "\n")
-	out, err := cmd.StdoutPipe()
+	proc, err := provider.StartProc(ctx, bin, []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--settings", `{"crossSessionInbound":"refuse"}`}, dir, env)
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	defer proc.Stop(time.Second)
+	answer := make(chan []byte, 1)
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		proc.Lines(func(b []byte) {
+			if bytes.Contains(b, []byte(`"hermesh-models"`)) {
+				select {
+				case answer <- bytes.Clone(b):
+				default:
+				}
+			}
+		})
+	}()
+	if err := proc.WriteLine([]byte(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}`)); err != nil {
 		return nil, err
 	}
-	defer cmd.Wait()
-	defer cmd.Process.Kill()
-	return modelsFrom(out)
+	select {
+	case b := <-answer:
+		return modelsFrom(b)
+	case <-read: // it ended without answering (a version from before)
+		return nil, errors.New("claude gave no models")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
-// modelsFrom reads Claude Code's output up to its answer to the initialize
-// request: the models it offers ("default" is following its own setting,
-// which Hermesh offers as not setting one).
-func modelsFrom(r io.Reader) ([]provider.Model, error) {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		var m struct {
-			Type     string
-			Response struct {
-				Subtype   string
-				RequestID string `json:"request_id"`
-				Error     string
-				Response  struct {
-					Models []struct {
-						Value, DisplayName    string
-						SupportedEffortLevels []string
-					}
+// modelsFrom reads Claude Code's answer to the initialize request: the
+// models it offers ("default" is following its own setting, which Hermesh
+// offers as not setting one).
+func modelsFrom(line []byte) ([]provider.Model, error) {
+	var m struct {
+		Type     string
+		Response struct {
+			Subtype   string
+			RequestID string `json:"request_id"`
+			Error     string
+			Response  struct {
+				Models []struct {
+					Value, DisplayName    string
+					SupportedEffortLevels []string
 				}
 			}
 		}
-		if json.Unmarshal(sc.Bytes(), &m) != nil || m.Type != "control_response" || m.Response.RequestID != "hermesh-models" {
-			continue
-		}
-		if m.Response.Subtype != "success" {
-			return nil, errors.New(m.Response.Error)
-		}
-		var ms []provider.Model
-		for _, x := range m.Response.Response.Models {
-			if x.Value != "" && x.Value != "default" {
-				ms = append(ms, provider.Model{ID: x.Value, Name: x.DisplayName, Efforts: x.SupportedEffortLevels})
-			}
-		}
-		return ms, nil
 	}
-	return nil, errors.New("claude gave no models")
+	if err := json.Unmarshal(line, &m); err != nil {
+		return nil, err
+	}
+	if m.Type != "control_response" || m.Response.RequestID != "hermesh-models" || m.Response.Subtype != "success" {
+		return nil, fmt.Errorf("claude: %s", cmp.Or(m.Response.Error, "no models"))
+	}
+	var ms []provider.Model
+	for _, x := range m.Response.Response.Models {
+		if x.Value != "" && x.Value != "default" {
+			ms = append(ms, provider.Model{ID: x.Value, Name: x.DisplayName, Efforts: x.SupportedEffortLevels})
+		}
+	}
+	return ms, nil
 }
 
 var efforts = []string{"low", "medium", "high", "xhigh", "max"}

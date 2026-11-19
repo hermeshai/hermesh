@@ -139,7 +139,6 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 		return info
 	}
 	info.Binary = bin
-	outer := ctx
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	env = append(provider.ProbeEnv(p.PathEnv), env...)
@@ -157,7 +156,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 		info.LoggedIn = antigravityConfigured(env)
 	}
 	if info.LoggedIn {
-		p.fillModels(outer, &info, bin, pre, env)
+		p.fillModels(ctx, &info, bin, pre, env)
 	} else {
 		info.ModelsState, info.ModelsAt = provider.ModelsAuthRequired, time.Now()
 	}
