@@ -13,6 +13,8 @@
 //	crash               exit in the middle of the turn
 //	fail <text>         answer the prompt with a JSON-RPC error
 //	fail-code <n> <t>   same, with error code n
+//	settings            agent message "settings: <model> <effort>" (what
+//	                    the session runs with)
 //	images              agent message "images: <media types>" (the image
 //	                    blocks of the prompt)
 //	ask <title>|<a,b>   elicitation/create (a form: a choice of a or b, and
@@ -34,15 +36,23 @@
 //	FAKE_ACP_OPTIONS=1                advertise session/options (never creates a session)
 //	FAKE_ACP_OPTIONS_ERROR=<code>     fail session/options; "wait" waits for cancellation
 //	FAKE_ACP_CONFIG_FILE=<path>       configOptions JSON used by new/options
+//	FAKE_ACP_EFFORTS=a=low,high;b=low a "thought_level" config option, its
+//	                                  choices those of the selected model
+//	                                  (with FAKE_ACP_CONFIG=1)
+//	FAKE_ACP_LEGACY=1                 offer the models as the older "models"
+//	                                  session state (session/set_model)
+//	FAKE_ACP_CLOSE=1                  advertise and take session/close
 //	FAKE_ACP_LOG=<path>               append method names only, for no-prompt assertions
 package main
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -70,6 +80,8 @@ var (
 	waitMu    sync.Mutex
 	cancelled = make(chan struct{}, 1)
 	cwd       string
+	// The session's selected model and thought level.
+	curModel, curEffort string
 )
 
 func send(v any) {
@@ -205,6 +217,9 @@ func handle(m msg) {
 		if os.Getenv("FAKE_ACP_OPTIONS") == "1" {
 			sessionCaps["options"] = map[string]any{}
 		}
+		if os.Getenv("FAKE_ACP_CLOSE") == "1" {
+			sessionCaps["close"] = map[string]any{}
+		}
 		caps["sessionCapabilities"] = sessionCaps
 		caps["promptCapabilities"] = map[string]any{"image": os.Getenv("FAKE_ACP_IMAGES") == "1"}
 		var auth []any
@@ -244,7 +259,14 @@ func handle(m msg) {
 			replyErr(m.ID, n, "sensitive server error must not be exposed")
 			return
 		}
-		reply(m.ID, map[string]any{"configOptions": modelConfig("")})
+		curModel = ""
+		reply(m.ID, map[string]any{"configOptions": modelConfig()})
+	case "session/close":
+		if os.Getenv("FAKE_ACP_CLOSE") != "1" {
+			replyErr(m.ID, -32601, "not advertised")
+			return
+		}
+		reply(m.ID, map[string]any{})
 	case "session/new":
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
@@ -254,8 +276,19 @@ func handle(m msg) {
 		sid := fmt.Sprintf("fake-%d", time.Now().UnixNano())
 		save(sid, &history{})
 		res := map[string]any{"sessionId": sid}
+		curModel, curEffort = "", ""
 		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
-			res["configOptions"] = modelConfig("")
+			res["configOptions"] = modelConfig()
+		}
+		if os.Getenv("FAKE_ACP_LEGACY") == "1" {
+			var available []any
+			for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+				if x != "" {
+					available = append(available, map[string]any{"modelId": x, "name": strings.ToUpper(x)})
+					curModel = cmp.Or(curModel, x)
+				}
+			}
+			res["models"] = map[string]any{"availableModels": available, "currentModelId": curModel}
 		}
 		reply(m.ID, res)
 	case "session/load", "session/resume":
@@ -278,12 +311,18 @@ func handle(m msg) {
 		}
 		res := map[string]any{}
 		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
-			res["configOptions"] = modelConfig("")
+			res["configOptions"] = modelConfig()
 		}
 		reply(m.ID, res)
 	case "session/set_config_option":
+		if p.ConfigID == "effort" && os.Getenv("FAKE_ACP_CONFIG") == "1" && slices.Contains(efforts(curModel), p.Value) {
+			curEffort = p.Value
+			reply(m.ID, map[string]any{"configOptions": modelConfig()})
+			return
+		}
 		if p.ConfigID == "llm" && os.Getenv("FAKE_ACP_CONFIG") == "1" {
-			reply(m.ID, map[string]any{"configOptions": modelConfig(p.Value)})
+			curModel = p.Value
+			reply(m.ID, map[string]any{"configOptions": modelConfig()})
 			if options := os.Getenv("FAKE_ACP_EAGER_UPDATE"); options != "" {
 				update(p.SessionID, map[string]any{"sessionUpdate": "config_option_update", "configOptions": json.RawMessage(options)})
 			}
@@ -297,6 +336,7 @@ func handle(m msg) {
 		}
 		for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
 			if x != "" && x == p.ModelID {
+				curModel = x
 				reply(m.ID, map[string]any{})
 				return
 			}
@@ -346,6 +386,8 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 	for _, line := range strings.Split(text, "\n") {
 		cmd, arg, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch cmd {
+		case "settings":
+			update(sid, map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "settings: " + curModel + " " + curEffort}})
 		case "model-options":
 			update(sid, map[string]any{"sessionUpdate": "config_option_update", "configOptions": json.RawMessage(arg)})
 		case "say":
@@ -441,7 +483,9 @@ func prompt(id json.RawMessage, sid, text string, images []string) {
 	reply(id, map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 100, "outputTokens": 20, "cachedReadTokens": 5}})
 }
 
-func modelConfig(current string) any {
+// modelConfig is the session's config options, selecting the first model
+// when none is.
+func modelConfig() any {
 	if file := os.Getenv("FAKE_ACP_CONFIG_FILE"); file != "" {
 		b, _ := os.ReadFile(file)
 		return json.RawMessage(b)
@@ -451,16 +495,41 @@ func modelConfig(current string) any {
 		if x == "" {
 			continue
 		}
-		opts = append(opts, map[string]any{"value": x, "name": x})
-		if current == "" {
-			current = x
-		}
+		opts = append(opts, map[string]any{"value": x, "name": strings.ToUpper(x)})
+		curModel = cmp.Or(curModel, x)
 	}
-	return []any{
+	config := []any{
 		map[string]any{"id": "mode", "category": "mode", "type": "select", "currentValue": "ask", "options": []any{map[string]any{"value": "ask"}}},
-		map[string]any{"id": "llm", "category": "model", "type": "select", "currentValue": current,
+		map[string]any{"id": "llm", "category": "model", "type": "select", "currentValue": curModel,
 			"options": []any{map[string]any{"group": "g", "name": "Models", "options": opts}}},
 	}
+	if os.Getenv("FAKE_ACP_EFFORTS") != "" {
+		es := efforts(curModel)
+		if !slices.Contains(es, curEffort) { // as agents do: the model's default
+			curEffort = ""
+			if slices.Contains(es, "high") {
+				curEffort = "high"
+			} else if len(es) > 0 {
+				curEffort = es[0]
+			}
+		}
+		var choices []any
+		for _, e := range es {
+			choices = append(choices, map[string]any{"value": e, "name": e})
+		}
+		config = append(config, map[string]any{"id": "effort", "category": "thought_level", "type": "select", "currentValue": curEffort, "options": choices})
+	}
+	return config
+}
+
+// efforts are model's thought levels in FAKE_ACP_EFFORTS.
+func efforts(model string) []string {
+	for _, x := range strings.Split(os.Getenv("FAKE_ACP_EFFORTS"), ";") {
+		if m, es, ok := strings.Cut(x, "="); ok && m == model {
+			return strings.Split(es, ",")
+		}
+	}
+	return nil
 }
 
 func tool(sid, kind, title string, input map[string]any, path string, run func() (string, error)) {

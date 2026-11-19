@@ -20,6 +20,9 @@ final class DemoUITests: XCTestCase {
             XCTAssertEqual(link.label, "Privacy Policy")
             link.tap()
             XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+            // Quit, so each link opens Safari as the first does: one left in the
+            // background did not come forward for the second on CI.
+            safari.terminate()
             app.activate()
         }
 
