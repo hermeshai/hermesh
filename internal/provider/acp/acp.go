@@ -8,6 +8,7 @@ package acp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -61,7 +62,7 @@ type Provider struct {
 	// Binary overrides discovery (tests use a fake agent).
 	Binary   string
 	modelsMu sync.Mutex
-	catalogs map[string]cachedCatalog
+	list     *modelList
 }
 
 func (p *Provider) Name() string { return p.Agent.Name }
@@ -138,6 +139,7 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 		return info
 	}
 	info.Binary = bin
+	outer := ctx
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	env = append(provider.ProbeEnv(p.PathEnv), env...)
@@ -148,12 +150,16 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	}
 	info.Available = true
 	info.Version = versionRE.FindString(string(out))
-	// ACP has no way to ask for the login state before a session; a
-	// missing login fails the session with the agent's own message.
+	// ACP has no way to ask for the login state before a session: reading
+	// the models tells, as a missing login fails the session.
 	info.LoggedIn = true
 	if p.Name() == "antigravity" {
 		info.LoggedIn = antigravityConfigured(env)
-		p.discoverModels(ctx, bin, pre, env)
+	}
+	if info.LoggedIn {
+		p.fillModels(outer, &info, bin, pre, env)
+	} else {
+		info.ModelsState, info.ModelsAt = provider.ModelsAuthRequired, time.Now()
 	}
 	return info
 }
@@ -184,16 +190,6 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s := &session{name: p.Name(), proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
 		gate: spec.Gate, ctx: ctx, known: map[string]*toolCall{}, calls: map[string]provider.Decision{}, finished: map[string]bool{}}
-	if p.Name() == "antigravity" {
-		key := modelContext(bin, spec.Env)
-		scope := spec.ModelScope
-		if scope == "" {
-			scope = "workspace:" + modelHash(spec.WorkDir)
-		}
-		s.catalog = func(data json.RawMessage, initial bool) {
-			p.observeModels(key, scope, "acp_session", data, initial)
-		}
-	}
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
 		proc.Stop(time.Second)
@@ -288,57 +284,82 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 			return fail(fmt.Errorf("set permission mode: %w", err))
 		}
 	}
-	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.sessionID})
+	// What the session offers refreshes the models listed; a new one's
+	// selection is the agent's own.
+	key := modelContext(bin, spec.Env)
+	o := optionsOf(res)
+	p.learn(key, o, spec.ResumeRef == "")
 	if spec.Model != "" {
-		if err := s.setModel(ctx, res, spec.Model); err != nil {
+		r, err := s.setModel(ctx, o, spec.Model)
+		if err != nil {
 			return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, fmt.Sprintf("model %q: %v", spec.Model, err)))
 		}
+		if o.model != nil {
+			o = optionsOf(r)
+			p.learn(key, o, false)
+		}
 	}
+	if spec.Effort != "" {
+		r, err := s.setEffort(ctx, o, spec.Effort)
+		if err != nil {
+			return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, fmt.Sprintf("reasoning effort %q: %v", spec.Effort, err)))
+		}
+		o = optionsOf(r)
+	}
+	ref := provider.Event{Kind: provider.EventRef, Ref: s.sessionID, Model: cmp.Or(spec.Model, o.current)}
+	if o.model != nil {
+		ref.Model = o.model.current()
+	}
+	if o.thought != nil {
+		ref.Effort = o.thought.current()
+	}
+	s.emit(ref)
 	if err := s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
 		return fail(err)
 	}
 	return s, nil
 }
 
-// setModel selects the session's model through its "model" config option
-// when the session offers one, else through session/set_model. An unknown
-// model fails the start: running on a different one silently is worse.
-func (s *session) setModel(ctx context.Context, session json.RawMessage, model string) error {
-	type choice struct {
-		Value   string   `json:"value"`
-		Options []choice `json:"options"` // a group of choices
-	}
-	var r struct {
-		ConfigOptions []struct {
-			ID       string   `json:"id"`
-			Category string   `json:"category"`
-			Options  []choice `json:"options"`
-		} `json:"configOptions"`
-	}
-	json.Unmarshal(session, &r)
-	for _, o := range r.ConfigOptions {
-		if o.Category != "model" && o.ID != "model" {
-			continue
+// setModel selects the session's model through its model config option
+// when the session offers one (returning the options it has then), else
+// through session/set_model. An unknown model fails the start: running on
+// a different one silently is worse.
+func (s *session) setModel(ctx context.Context, o sessionOptions, model string) (json.RawMessage, error) {
+	if o.model == nil {
+		if o.legacy != nil && !slices.ContainsFunc(o.legacy, func(m provider.Model) bool { return m.ID == model }) {
+			return nil, fmt.Errorf("not offered by the agent (available: %s)", strings.Join(modelIDs(o.legacy), ", "))
 		}
-		var values []string
-		var walk func([]choice)
-		walk = func(cs []choice) {
-			for _, c := range cs {
-				if c.Value != "" {
-					values = append(values, c.Value)
-				}
-				walk(c.Options)
-			}
-		}
-		walk(o.Options)
-		if !contains(values, model) {
-			return fmt.Errorf("not offered by the agent (available: %s)", strings.Join(values, ", "))
-		}
-		_, err := s.call(ctx, "session/set_config_option", map[string]any{"sessionId": s.sessionID, "configId": o.ID, "value": model})
-		return err
+		return s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": model})
 	}
-	_, err := s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": model})
-	return err
+	return s.set(ctx, o.model, model)
+}
+
+// setEffort selects the reasoning effort through the session's thought
+// level option, for the model selected.
+func (s *session) setEffort(ctx context.Context, o sessionOptions, effort string) (json.RawMessage, error) {
+	if o.thought == nil {
+		return nil, errors.New("the agent takes no reasoning effort")
+	}
+	return s.set(ctx, o.thought, effort)
+}
+
+func (s *session) set(ctx context.Context, o *configOption, value string) (json.RawMessage, error) {
+	var values []string
+	for _, c := range o.values() {
+		values = append(values, c.Value)
+	}
+	if !slices.Contains(values, value) {
+		return nil, fmt.Errorf("not offered by the agent (available: %s)", strings.Join(values, ", "))
+	}
+	return s.call(ctx, "session/set_config_option", map[string]any{"sessionId": s.sessionID, "configId": o.ID, "value": value})
+}
+
+func modelIDs(ms []provider.Model) []string {
+	var ids []string
+	for _, m := range ms {
+		ids = append(ids, m.ID)
+	}
+	return ids
 }
 
 func authMethod(want []string, offered []struct {
@@ -402,7 +423,6 @@ type session struct {
 	gate      provider.Gate
 	ctx       context.Context
 	sessionID string
-	catalog   func(json.RawMessage, bool)
 	// images: the agent takes image content blocks (promptCapabilities).
 	images    bool
 	replaying atomic.Bool
@@ -650,14 +670,6 @@ func (s *session) request(method string, params any, done func(rpcResult)) error
 func (s *session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
 	ch := make(chan rpcResult, 1)
 	if err := s.request(method, params, func(r rpcResult) {
-		// Observe responses on the reader, before the next notification. The
-		// caller goroutine must not overwrite a newer config_option_update.
-		if r.err == nil && s.catalog != nil {
-			switch method {
-			case "session/new", "session/load", "session/resume", "session/set_config_option":
-				s.catalog(r.result, method == "session/new")
-			}
-		}
 		ch <- r
 	}); err != nil {
 		return nil, err
@@ -835,10 +847,6 @@ func (s *session) handleUpdate(params json.RawMessage) {
 	}
 	u := p.Update
 	switch u.SessionUpdate {
-	case "config_option_update":
-		if s.catalog != nil {
-			s.catalog(paramsForOptions(u.ConfigOptions), false)
-		}
 	case "agent_message_chunk":
 		var c struct {
 			Type string `json:"type"`

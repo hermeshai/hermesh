@@ -293,7 +293,7 @@ message SetHerCommandConnector {
 // nothing. Empty fields follow the agent's own configuration; Hermesh
 // passes the rest per session and never changes that configuration.
 message AgentDefaults {
-  // "claude" | "codex"
+  // The coding agent's name ("claude", "codex", "antigravity", …).
   string agent = 1;
   string model = 2;
   // The reasoning effort, as the agent names it ("low" … "max").

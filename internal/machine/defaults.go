@@ -26,7 +26,7 @@ var (
 )
 
 func (n *Machine) loadDefaults() {
-	for _, a := range []string{"claude", "codex"} {
+	for _, a := range AgentNames() {
 		d := &identityv1.AgentDefaults{}
 		if ok, _ := n.st.GetProto(kAgentDefaults+a, d); ok {
 			n.defaults[a] = d
@@ -39,8 +39,8 @@ func (n *Machine) setAgentDefaults(d *identityv1.AgentDefaults) error {
 		return errors.New("unknown speed")
 	}
 	switch {
-	case d.Agent != "claude" && d.Agent != "codex":
-		return errors.New("only Claude Code and Codex have defaults")
+	case !slices.Contains(AgentNames(), d.Agent):
+		return errors.New("not a coding agent")
 	case !modelRE.MatchString(d.Model):
 		return errors.New("not a model name")
 	case !effortRE.MatchString(d.Effort):
@@ -105,6 +105,13 @@ func checkSettings(agent string, i provider.Info, model, effort, runs string) er
 	return nil
 }
 
+// takesEffort: the model listed by that id takes effort, or is not listed
+// (what it takes is not known).
+func takesEffort(i provider.Info, model, effort string) bool {
+	k := slices.IndexFunc(i.Models, func(m provider.Model) bool { return m.ID == model })
+	return effort == "" || k < 0 || slices.Contains(i.Models[k].Efforts, effort)
+}
+
 // agentModels fills in what a's status says of models: the ones it offers,
 // this machine's defaults and the agent's own configuration. n.mu is held.
 func (n *Machine) agentModels(a *machinev1.AgentStatus, i provider.Info) {
@@ -115,17 +122,8 @@ func (n *Machine) agentModels(a *machinev1.AgentStatus, i provider.Info) {
 	if i.Own != (provider.Settings{}) {
 		a.Own = &identityv1.AgentDefaults{Agent: a.Name, Model: i.Own.Model, Effort: i.Own.Effort, Speed: i.Own.Speed}
 	}
-	if p, ok := n.cfg.Providers[a.Name].(provider.ModelCatalogProvider); ok {
-		for _, c := range p.ModelCatalogs() {
-			v := &machinev1.AgentModelCatalog{Scope: c.Scope, Source: c.Source, State: c.State,
-				DefaultModel: c.DefaultModel, CurrentModel: c.CurrentModel}
-			if !c.ObservedAt.IsZero() {
-				v.ObservedAtUnixMs, v.ExpiresAtUnixMs = c.ObservedAt.UnixMilli(), c.ExpiresAt.UnixMilli()
-			}
-			for _, m := range c.Models {
-				v.Models = append(v.Models, &machinev1.AgentModel{Id: m.ID, Name: m.Name, Efforts: m.Efforts})
-			}
-			a.ModelCatalogs = append(a.ModelCatalogs, v)
-		}
+	a.ModelsState = i.ModelsState
+	if !i.ModelsAt.IsZero() {
+		a.ModelsObservedAtUnixMs = i.ModelsAt.UnixMilli()
 	}
 }
