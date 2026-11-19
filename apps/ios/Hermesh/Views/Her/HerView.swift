@@ -103,9 +103,9 @@ private struct HerPage: View {
         .onChange(of: model.drawerOpen) { team = false }
         .onAppear { model.her.machine = machine.machineID }
         .herConnections(chat, machine: machine)
-        .herAISharingAlert(chat)
         // Nothing is unread while the owner looks.
         .task(id: [chat.bot?.unread ?? 0, chat.envUp ? 1 : 0, phase == .active ? 1 : 0]) { if phase == .active { await chat.markRead() } }
+        .herAISharingAlert(chat)
     }
 
     private func header(_ chat: HerChat) -> some View {
