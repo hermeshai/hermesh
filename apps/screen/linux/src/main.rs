@@ -247,3 +247,5 @@ fn test_picture(video: Arc<Video>, fps: u32) {
         std::thread::sleep(std::time::Duration::from_secs(1) / fps.max(1));
     }
 }
+
+fn temporary_ci_failure( {
