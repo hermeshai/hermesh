@@ -353,7 +353,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    let Some(chrome) = her_browser::discover() else {
+    let Some(chrome) = her_browser::launch::find_executable() else {
         eprintln!("skipping real browser site_login test: no Chromium found");
         return;
     };
@@ -420,12 +420,11 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
     let api = ScriptedApi::new();
     let mut cfg = Config::default();
     cfg.browser.enabled = Some(true);
-    cfg.browser.executable = Some(chrome);
-    cfg.browser.headless = true;
-    cfg.browser.scripts = true;
+    cfg.browser.config.executable = Some(chrome);
+    cfg.browser.config.headless = her_browser::Headless::On;
 
     let mut d = deps(&api, &folder, &home);
-    d.browser_pool = Some(Arc::new(her_core::BrowserPool::new()));
+    d.browser_pool = Some(Arc::new(her_core::BrowserPool::new(home.browser_dir(), false)));
 
     let options = StartOptions {
         model: "test/scripted".into(),
@@ -597,7 +596,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         }
     }
     let mut disk_files = Vec::new();
-    walk_files(home.path(), &mut disk_files);
+    walk_files(home.root(), &mut disk_files);
     for path in disk_files {
         let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).into_owned();
         assert!(!text.contains(DUMMY_PASS), "password leaked to disk file {}", path.display());
