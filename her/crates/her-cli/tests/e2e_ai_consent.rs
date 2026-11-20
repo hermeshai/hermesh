@@ -91,3 +91,81 @@ async fn her_only_sends_to_the_currently_approved_recipient() {
     let received = other.mock.stats().chat_controls()[0].to_string();
     assert!(!received.contains("fictional revoked input") && !received.contains("fictional switched input"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn her_persists_consent_across_restart_for_matching_recipient_only() {
+    let env = TestEnv::new("bypass-permissions", "[models]\nnetwork = false\n").await;
+    let other = TestEnv::new("manual", "").await;
+    let models_path = env.home.path().join("models.toml");
+    let models = std::fs::read_to_string(&models_path).unwrap();
+    let second = other.mock.models_toml().replace("providers.mock", "providers.second");
+    std::fs::write(&models_path, format!("{models}\n{second}")).unwrap();
+
+    let first = "mock/mock-1";
+    let second_model = "second/mock-1";
+    let counts = || (env.mock.stats().chat_controls().len(), other.mock.stats().chat_controls().len());
+
+    // First process: approve mock/mock-1 and send once.
+    {
+        let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio", "--require-ai-consent"]);
+        native_init(&client).await;
+        let demux = Demux::spawn(incoming);
+        let bots = client.request("bots/subscribe", json!({})).await.unwrap();
+        let bot = bots["bots"][0]["id"].as_str().unwrap();
+        let opened = client.request("bots/open", json!({"bot_id": bot})).await.unwrap();
+        let session = opened["session_id"].as_str().unwrap();
+        let mut events = demux.subscribe(session);
+
+        let offered = status(&client, first).await;
+        allow(&client, first, &offered).await.unwrap();
+        let accepted = native_prompt(&client, &mut events, session, "fictional before restart", false).await;
+        assert_eq!(accepted.end["type"], "task_completed");
+        assert_eq!(counts(), (1, 0));
+        let _ = child.kill().await;
+    }
+
+    // Second process (restarted with same home): approval still applies to mock/mock-1,
+    // does NOT apply to second/mock-1, and revocation persists across the next restart.
+    {
+        let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio", "--require-ai-consent"]);
+        native_init(&client).await;
+        let demux = Demux::spawn(incoming);
+        let bots = client.request("bots/subscribe", json!({})).await.unwrap();
+        let bot = bots["bots"][0]["id"].as_str().unwrap();
+        let opened = client.request("bots/open", json!({"bot_id": bot})).await.unwrap();
+        let session = opened["session_id"].as_str().unwrap();
+        let mut events = demux.subscribe(session);
+
+        let after_restart = status(&client, first).await;
+        assert_eq!(after_restart["allowed"], after_restart["recipient"]);
+        let accepted = native_prompt(&client, &mut events, session, "fictional after restart", false).await;
+        assert_eq!(accepted.end["type"], "task_completed");
+        assert_eq!(counts(), (2, 0));
+
+        // Switching to a different recipient after restart must NOT reuse the persisted grant.
+        client.request("session/op", json!({"session_id": session, "op": {"type": "set_model", "model": second_model}})).await.unwrap();
+        refused_prompt(&client, session, "fictional mismatched recipient after restart").await;
+        assert_eq!(counts(), (2, 0));
+
+        // Explicitly revoking clears the persisted grant.
+        client.request("ai_consent/revoke", json!({})).await.unwrap();
+        let _ = child.kill().await;
+    }
+
+    // Third process: revoked consent stays revoked after restart.
+    {
+        let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio", "--require-ai-consent"]);
+        native_init(&client).await;
+        let _demux = Demux::spawn(incoming);
+        let bots = client.request("bots/subscribe", json!({})).await.unwrap();
+        let bot = bots["bots"][0]["id"].as_str().unwrap();
+        let opened = client.request("bots/open", json!({"bot_id": bot})).await.unwrap();
+        let session = opened["session_id"].as_str().unwrap();
+
+        let revoked_status = status(&client, first).await;
+        assert!(revoked_status["allowed"].is_null());
+        refused_prompt(&client, session, "fictional after revoke restart").await;
+        assert_eq!(counts(), (2, 0));
+        let _ = child.kill().await;
+    }
+}

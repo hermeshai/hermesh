@@ -61,7 +61,7 @@ func (s *sessionService) StreamEvents(ctx context.Context, req *sessionv1.Stream
 }
 
 func (s *sessionService) SendMessage(ctx context.Context, req *sessionv1.SendMessageRequest) (*sessionv1.SendMessageResponse, error) {
-	sess, err := s.n.sessions.Send(ctx, principalFrom(ctx), req.SessionId, req.Text, req.Attachments, req.CodingConsentVersion)
+	sess, err := s.n.sessions.Send(ctx, principalFrom(ctx), req.SessionId, req.Text, req.Attachments)
 	if err != nil {
 		return nil, err
 	}
@@ -103,29 +103,28 @@ func (s *sessionService) AnswerQuestion(ctx context.Context, req *sessionv1.Answ
 	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
 }
 
+// AnswerLocalQuestion is kept for wire compatibility with v0.1.7 clients and
+// applies the same authorization and validation rules as AnswerQuestion.
 func (s *sessionService) AnswerLocalQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.answerQuestion(principalFrom(ctx), req, true)
+	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
 }
 
+// CheckLocalCodingRecipient is kept for wire compatibility with v0.1.7 Her
+// clients after coding-specific consent was removed.
 func (s *sessionService) CheckLocalCodingRecipient(ctx context.Context, req *sessionv1.CheckLocalCodingRecipientRequest) (*sessionv1.CheckLocalCodingRecipientResponse, error) {
 	p := principalFrom(ctx)
-	row := &sessionRow{Agent: req.GetAgent(), ProjectID: req.ProjectId}
 	if req.GetSessionId() != "" {
-		_, r, err := s.n.sessions.find(p, req.GetSessionId(), false)
-		if err != nil {
+		if _, _, err := s.n.sessions.find(p, req.GetSessionId(), false); err != nil {
 			return nil, err
 		}
-		row = r
 	}
-	version, err := s.n.sessions.checkHerCodingRecipient(p, row, "", true)
-	if err != nil {
-		return nil, err
-	}
-	return &sessionv1.CheckLocalCodingRecipientResponse{Version: version}, nil
+	return &sessionv1.CheckLocalCodingRecipientResponse{}, nil
 }
 
+// CodingConsent is kept for wire compatibility with v0.1.7 owner clients after
+// coding-specific consent was removed.
 func (s *sessionService) CodingConsent(ctx context.Context, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
-	return s.n.sessions.codingConsent(principalFrom(ctx), req)
+	return s.n.sessions.codingConsentCompat(principalFrom(ctx), req)
 }
 
 type machineService struct{ n *Machine }

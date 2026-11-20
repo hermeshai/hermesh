@@ -12,7 +12,6 @@ import (
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
-	"github.com/hermeshai/hermesh/internal/provider/fake"
 )
 
 // DefaultQuestionTimeout is how long a question waits for an answer when
@@ -56,7 +55,7 @@ func (s *Sessions) ask(l *live, ps provider.Session, pq *provider.Question) {
 	l.mu.Lock()
 	l.questionSeq++
 	q := &sessionv1.Question{QuestionId: fmt.Sprintf("q_%d_%d", l.turn, l.questionSeq), Turn: l.turn, AskedAt: timestamppb.New(now),
-		LocalAnswerAvailable: s.phoneCanAnswer(l, ps)}
+		LocalAnswerAvailable: true}
 	for _, it := range pq.Items {
 		pi := &sessionv1.QuestionItem{Id: it.ID, Header: it.Header, Text: it.Text, MultiSelect: it.MultiSelect,
 			AllowOther: it.AllowOther || len(it.Options) == 0, Secret: it.Secret, Optional: it.Optional}
@@ -92,22 +91,14 @@ func (s *Sessions) ask(l *live, ps provider.Session, pq *provider.Question) {
 
 // reply sends a question's resolution to the agent; the turn goes on.
 func (s *Sessions) reply(l *live, w *question, r provider.Reply, res sessionv1.QuestionResolution, by string, answers []*sessionv1.Answer) {
-	_ = s.replyUsing(l, w, r, res, by, answers, nil)
+	_ = s.replyChecked(l, w, r, res, by, answers)
 }
 
-func (s *Sessions) replyUsing(l *live, w *question, r provider.Reply, res sessionv1.QuestionResolution, by string, answers []*sessionv1.Answer, guard func(func() error) error) error {
+func (s *Sessions) replyChecked(l *live, w *question, r provider.Reply, res sessionv1.QuestionResolution, by string, answers []*sessionv1.Answer) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.resolved {
 		return cerr(connect.CodeFailedPrecondition, "the question was already resolved")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	send := func() error { return w.ps.Answer(ctx, w.ref, r) }
-	if guard != nil {
-		if err := guard(send); err != nil {
-			return err
-		}
 	}
 	w.resolved = true
 	now := time.Now()
@@ -135,10 +126,10 @@ func (s *Sessions) replyUsing(l *live, w *question, r provider.Reply, res sessio
 	if changed {
 		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	}
-	if guard == nil {
-		if err := send(); err != nil {
-			s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := w.ps.Answer(ctx, w.ref, r); err != nil {
+		s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
 	}
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_QuestionResolved{QuestionResolved: &sessionv1.QuestionResolved{
 		QuestionId: w.q.QuestionId, Resolution: res, By: by, Answers: redactAnswers(w.q, answers)}}})
@@ -179,10 +170,6 @@ func (s *Sessions) expireQuestions(l *live, now time.Time) {
 
 // AnswerQuestion answers (or declines) the agent's pending question.
 func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return s.answerQuestion(p, req, p.Kind == PrincipalOwner && !p.DesktopAnswersAllowed)
-}
-
-func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionRequest, localOnly bool) (*sessionv1.Session, error) {
 	l, r, err := s.find(p, req.SessionId, false)
 	if err != nil {
 		return nil, err
@@ -205,7 +192,6 @@ func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionReq
 			break
 		}
 	}
-	active := l.codingRoute
 	l.mu.Unlock()
 	if w == nil {
 		if req.QuestionId != "" {
@@ -213,31 +199,16 @@ func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionReq
 		}
 		return nil, cerr(connect.CodeFailedPrecondition, "the agent is not waiting for an answer")
 	}
-	var guard func(func() error) error
-	if !req.Decline && (localOnly || p.Grant.GetHerMachineId() != "") &&
-		(!isLocalAgent(s.providers[r.Agent]) || !fake.IsLocalSession(w.ps)) {
-		if active.Fingerprint == "" {
-			return nil, cerr(connect.CodeFailedPrecondition, AIRecipientUnverified)
-		}
-		scope := phoneCoding
-		if p.Grant.GetHerMachineId() != "" {
-			scope = herCoding
-			if req.CodingConsentVersion == "" {
-				return nil, cerr(connect.CodeFailedPrecondition, "coding_consent_required: check the coding recipient before sending")
-			}
-		}
-		guard = func(send func() error) error {
-			return s.guardCoding(r.Agent, s.codingDir(r), active, scope, req.CodingConsentVersion, send)
-		}
-	}
 	if req.Decline {
-		s.reply(l, w, provider.Reply{Declined: true, Message: declinedMessage}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED, p.ID(), nil)
+		if err := s.replyChecked(l, w, provider.Reply{Declined: true, Message: declinedMessage}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED, p.ID(), nil); err != nil {
+			return nil, err
+		}
 	} else {
 		answers, err := checkAnswers(w.q, req.Answers)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.replyUsing(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, p.ID(), answers, guard); err != nil {
+		if err := s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, p.ID(), answers); err != nil {
 			return nil, err
 		}
 	}
@@ -248,15 +219,14 @@ func (s *Sessions) answerQuestion(p *Principal, req *sessionv1.AnswerQuestionReq
 
 // answerWithText answers the pending question with a message's text (a
 // message sent while the agent waits is its answer). false: no question.
-func (s *Sessions) answerWithText(l *live, m message) (bool, error) {
+func (s *Sessions) answerWithText(l *live, by, text string) bool {
 	l.mu.Lock()
 	if len(l.questions) == 0 {
 		l.mu.Unlock()
-		return false, nil
+		return false
 	}
-	w, row, route := l.questions[0], snapshotRow(l.row), l.codingRoute
+	w := l.questions[0]
 	l.mu.Unlock()
-	text := m.answerText()
 	var answers []*sessionv1.Answer
 	for _, it := range w.q.Items {
 		a := &sessionv1.Answer{ItemId: it.Id, Text: text}
@@ -267,12 +237,21 @@ func (s *Sessions) answerWithText(l *live, m message) (bool, error) {
 		}
 		answers = append(answers, a)
 	}
-	var guard func(func() error) error
-	if m.codingVersion != "" {
-		guard = func(send func() error) error { return s.codingInput(row, route, m, send) }
+	return s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, by, answers) == nil
+}
+
+// codingConsentCompat handles the legacy v0.1.7 CodingConsent RPC for
+// already-installed owner clients after coding-specific consent was removed.
+func (s *Sessions) codingConsentCompat(p *Principal, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	if p.Kind != PrincipalOwner {
+		return nil, cerr(connect.CodePermissionDenied, "only an owner device manages coding consent")
 	}
-	err := s.replyUsing(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, m.by, answers, guard)
-	return err == nil, err
+	if req.GetSessionId() != "" {
+		if _, _, err := s.find(p, req.GetSessionId(), false); err != nil {
+			return nil, err
+		}
+	}
+	return &sessionv1.CodingConsentResponse{MachineId: s.machineID, Approved: !req.GetRevoke()}, nil
 }
 
 // checkAnswers validates answers against the question: every item is

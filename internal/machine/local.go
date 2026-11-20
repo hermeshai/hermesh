@@ -30,9 +30,7 @@ type Local struct {
 	p *Principal
 }
 
-func (n *Machine) Local() *Local {
-	return &Local{n: n, p: &Principal{Kind: PrincipalOwner, DesktopAnswersAllowed: true}}
-}
+func (n *Machine) Local() *Local { return &Local{n: n, p: &Principal{Kind: PrincipalOwner}} }
 
 func (l *Local) MachineID() string { return l.n.machineID }
 
@@ -134,7 +132,7 @@ func (l *Local) Rename(ctx context.Context, id, title string) (*sessionv1.Sessio
 }
 
 func (l *Local) CodingConsent(req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
-	return l.n.sessions.codingConsent(l.p, req)
+	return l.n.sessions.codingConsentCompat(l.p, req)
 }
 
 func (l *Local) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
