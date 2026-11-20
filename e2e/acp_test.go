@@ -263,6 +263,45 @@ func TestAntigravityACP(t *testing.T) {
 	}
 }
 
+func TestAntigravityResumeLoadFallback(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	env, _ := antigravityEnv(t)
+	state := t.TempDir()
+	env = append(env, "FAKE_ACP_RESUME=load-fallback", "FAKE_ACP_STATE="+state, "FAKE_ACP_REQUIRE_MODE=1")
+	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"antigravity"}})
+	s, r := w.startSession(time.Minute, "--agent", "antigravity", "--wait", "--prompt", "say first reply")
+	if r.code != 0 || s.Ref == "" || s.Result != "first reply" {
+		t.Fatalf("first turn: %+v", r)
+	}
+	if _, r := w.send(time.Minute, s.SessionID, "crash"); r.code != 7 || !strings.Contains(r.stdout, "agent_crashed") {
+		t.Fatalf("crash: %+v", r)
+	}
+
+	// A failed load must keep the provider reference available for another try.
+	history := filepath.Join(state, s.Ref+".json")
+	if err := os.Rename(history, history+".unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	failed, r := w.send(time.Minute, s.SessionID, "no-op")
+	if r.code != 5 || failed.Ref != s.Ref || failed.LastFailure == nil || failed.LastFailure.Kind != "start_failed" ||
+		!strings.Contains(failed.LastFailure.Message, "session/load:") {
+		t.Fatalf("failed load: %+v", r)
+	}
+	if err := os.Rename(history+".unavailable", history); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, r := w.send(time.Minute, s.SessionID, "history")
+	if r.code != 0 || resumed.Ref != s.Ref || resumed.Result != "history: 3 turns" {
+		t.Fatalf("resumed with history: %+v", r)
+	}
+	if r := w.cli(time.Minute, "session", "events", s.SessionID, "--limit", "1000"); r.code != 0 || strings.Contains(r.stdout, "replayed say first reply") {
+		t.Fatalf("history replay was stored as a new message: %+v", r)
+	}
+}
+
 // TestAntigravityCapabilityProbeTimeout exercises the user-facing login
 // command with a hanging capability probe, with and without the old server.
 // An invalid method stops the handshake before authentication.
