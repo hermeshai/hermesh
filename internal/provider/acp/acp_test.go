@@ -454,9 +454,9 @@ func TestDesktopAppCLIAsar(t *testing.T) {
 	exe := filepath.Join(app, a.Exec)
 	os.WriteFile(exe, nil, 0o755) // LookPath on Linux needs the execute bit
 	p := &Provider{Agent: Agent{Name: "fake", Command: "hermesh-no-such-agent", Args: []string{"acp"}, Apps: []App{a}}, PathEnv: t.TempDir()}
-	bin, pre, env := p.command()
+	cmd := p.resolve(context.Background())
 	want := filepath.Join(app, "resources/app.asar/dsh/lib/bin.js")
-	if bin != exe || len(pre) != 1 || pre[0] != want || len(env) != 1 || env[0] != "ELECTRON_RUN_AS_NODE=1" {
-		t.Fatalf("command: %q %q %q", bin, pre, env)
+	if cmd.bin != exe || len(cmd.pre) != 1 || cmd.pre[0] != want || len(cmd.env) != 1 || cmd.env[0] != "ELECTRON_RUN_AS_NODE=1" {
+		t.Fatalf("resolve: %+v", cmd)
 	}
 }

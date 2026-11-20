@@ -16,11 +16,14 @@ import (
 // or prompting the model. The server's login instructions go to the terminal;
 // credentials remain with the agent. Normal sessions never initiate this flow.
 func (p *Provider) Login(ctx context.Context, method string, output io.Writer) error {
-	bin, pre, env := p.command()
-	if bin == "" {
-		return errors.New(p.Command + " not found; install the official Antigravity ACP archive (see docs/antigravity.md)")
+	cmd := p.resolve(ctx)
+	if cmd.probeErr != nil {
+		return cmd.probeErr
 	}
-	proc, err := provider.StartProc(ctx, bin, append(pre, p.Args...), "", append(provider.ProbeEnv(p.PathEnv), env...))
+	if cmd.bin == "" {
+		return errors.New(p.notFoundDetail() + "; install the official Antigravity CLI (agy) or standalone ACP archive (see docs/antigravity.md)")
+	}
+	proc, err := provider.StartProc(ctx, cmd.bin, cmd.acpArgs(), "", append(provider.ProbeEnv(p.PathEnv), cmd.env...))
 	if err != nil {
 		return err
 	}
@@ -67,6 +70,9 @@ func (p *Provider) Login(ctx context.Context, method string, output io.Writer) e
 		select {
 		case err := <-done:
 			printOutput()
+			if err == nil && p.Name() == "antigravity" {
+				p.clearChosen()
+			}
 			return err
 		case <-tick.C:
 			printOutput()
