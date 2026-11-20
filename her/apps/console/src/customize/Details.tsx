@@ -126,7 +126,7 @@ function Note({ kind, title, children, action }: { kind: "warn" | "bad" | "info"
 
 export function ServerPage({ c, a, s }: { c: Customize; a: ServerActions; s: McpServerView }) {
   const { t } = useTranslation("customize");
-  const { rpc, show } = useHer();
+  const { rpc, show, host } = useHer();
   const now = useNow();
   const look = statusOf(s, c.checking.has(s.name));
   const remote = !isCommand(s);
@@ -225,7 +225,7 @@ export function ServerPage({ c, a, s }: { c: Customize; a: ServerActions; s: Mcp
       </Note>
     );
   else if (s.auth_partial && s.auth_state === "logged_in") note = <Note kind="warn">{t("connector.partialPermissions")}</Note>;
-  else if (!remote) note = <Note kind="info">{t("connector.commandNote")}</Note>;
+  else if (!remote) note = <Note kind="info">{host?.machine_name ? t("connector.commandNoteHost", { host: host.machine_name }) : t("connector.commandNote")}</Note>;
 
   const list = tools?.tools ?? [];
   const from = tools?.source === "session" ? t("connector.toolsFromSessions", { count: s.status.sessions ?? 1 }) : tools?.checked_at ? t("connector.checkedAt", { ago: agoText(new Date(tools.checked_at), now) }) : "";
@@ -254,6 +254,12 @@ export function ServerPage({ c, a, s }: { c: Customize; a: ServerActions; s: Mcp
               {stText}
             </div>
           </div>
+          {!remote && (
+            <div className="cz-fact">
+              <div className="k">{t("connector.host")}</div>
+              <div className="v">{host?.machine_name || t("connector.thisMachine")}</div>
+            </div>
+          )}
           {access && (
             <div className="cz-fact">
               <div className="k">{access.k}</div>
