@@ -453,7 +453,10 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 			close(w.done)
 			return nil, w.err
 		}
-		c.Warm(o.seenOnline()) // before the callers waiting wake, so that they join these handshakes
+		// Start these handshakes before waiting callers wake and join them.
+		c.Warm(o.seenOnline(), func(id string, err error) {
+			o.recoverTunnel(c, id, err)
+		})
 		o.warmScreenServers(c)
 		close(w.done)
 		if c == kept {
@@ -746,10 +749,9 @@ func (o *Owner) dropRelay() {
 
 // reconnect verifies whether the active relay connection still answers Ping
 // before dropping it and restarting the replica. Transient network events (e.g.
-// iOS path changes) can fire without disrupting an active socket or healthy
-// direct QUIC/TCP tunnels, so direct tunnels are probed rather than blindly
-// closed when the relay Ping succeeds, and any relayed tunnels are upgraded to
-// direct QUIC/TCP (LAN or hole-punched IPv6) immediately.
+// iOS path changes) can fire without disrupting healthy sockets. When the
+// relay answers, check cached tunnels, retry failed follows, and try to
+// upgrade relayed tunnels to direct QUIC/TCP.
 func (o *Owner) reconnect(interfaceSwitched bool) {
 	o.mu.Lock()
 	c := o.client
@@ -793,7 +795,10 @@ func (o *Owner) reconnect(interfaceSwitched bool) {
 		cancel()
 		if err == nil {
 			dctx, dcancel := context.WithTimeout(rctx, 3500*time.Millisecond)
-			c.ProbeOrForgetDirect(dctx)
+			c.ProbeOrForgetTunnels(dctx)
+			if rep != nil {
+				rep.retryFailed()
+			}
 			o.probeOrCloseDirectMachines(dctx)
 			preferLAN := interfaceSwitched && !o.cellularOnly.Load()
 			upgraded := c.UpgradeToDirect(dctx, preferLAN)

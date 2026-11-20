@@ -323,6 +323,22 @@ func (r *replica) restart() {
 	}
 }
 
+// retryFailed wakes feeds in backoff after the network path is verified.
+func (r *replica) retryFailed() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.src
+	if s == nil || s.ctx.Err() != nil {
+		return
+	}
+	for id, f := range s.feeds {
+		if f.online && !f.running && f.retry > 0 {
+			f.running, f.started = true, make(chan struct{})
+			go r.follow(s, id, f, f.started)
+		}
+	}
+}
+
 func (r *replica) run(s *sources) {
 	if s.warm { // the machines online when it stopped, from their tokens, while the relay is asked
 		r.mu.Lock()
@@ -709,7 +725,7 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.src == s && s.feeds[id] == f && f.online && !f.running {
+	if r.src == s && s.feeds[id] == f && f.online && !f.running && f.started == started {
 		f.running, f.started = true, make(chan struct{})
 		go r.follow(s, id, f, f.started)
 	}
@@ -751,9 +767,7 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 		return noRelay{err}
 	}
 	for {
-		ctx, cancel := context.WithCancel(s.ctx)
 		deadline := time.Now().Add(followTimeout)
-		timer := time.AfterFunc(time.Until(deadline), cancel)
 		late := func(err error) error {
 			// The transport may time out before our timer's cancel runs.
 			if s.ctx.Err() == nil && !time.Now().Before(deadline) {
@@ -761,14 +775,21 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 			}
 			return err
 		}
-		n, err := c.Machine(ctx, id)
+		// Give the handshake the actual deadline so a deadline-driven
+		// transport failure can trigger recovery of its relay.
+		dialCtx, stopDial := context.WithDeadline(s.ctx, deadline)
+		n, err := c.Machine(dialCtx, id)
+		stopDial()
 		if err != nil {
-			timer.Stop()
-			reported := late(err) // classify before canceling the probe ourselves
-			cancel()
-			r.o.recoverTunnel(c, id, err)
+			reported := late(err)
+			if s.ctx.Err() == nil {
+				r.o.recoverTunnel(c, id, err)
+			}
 			return reported
 		}
+		// Only the first watch message shares the dial's time budget.
+		ctx, cancel := context.WithCancel(s.ctx)
+		timer := time.AfterFunc(time.Until(deadline), cancel)
 		r.o.noteTunnelOK(id)
 		old, err := r.followWatch(ctx, s, f, n, timer, late, ready)
 		if old {

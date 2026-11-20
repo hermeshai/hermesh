@@ -296,7 +296,7 @@ func (a *app) settle(ctx context.Context, c *peer.Client, warm func([]machineRef
 		for _, m := range a.st.Machines {
 			seen = append(seen, machineRef{ID: m.ID, Name: m.Name, Online: m.Online})
 		}
-		c.Warm(ids(warm(seen)))
+		c.Warm(ids(warm(seen)), nil)
 	}
 	listed, err := listMachines(ctx, c)
 	serr := <-synced
