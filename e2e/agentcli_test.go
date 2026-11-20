@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -30,7 +29,7 @@ func TestAgentDrivesCLI(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, filepath.Join(w.bin, "hermesh"), args...)
-		cmd.Env = append(os.Environ(), w.cliEnv...)
+		cmd.Env = commandEnv(cmd.Path, w.cliEnv)
 		var so, se bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &so, &se
 		in, _ := cmd.StdinPipe()

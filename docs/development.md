@@ -25,8 +25,9 @@ lockfiles, workflows, or unrecognized paths run the full suite. Pushes to
 
 `ci-ok` requires every selected blocking job to succeed and every unselected
 blocking job to be skipped. Windows desktop and Windows E2E report separately.
-The Windows desktop job packages x64 whenever it runs and also packages Arm64
-on full runs and when the change affects its build inputs.
+New pushes to `main` supersede earlier automatic runs. Manual runs and reruns
+have independent concurrency groups. Windows packages x64 whenever its desktop
+job runs, with a parallel Arm64 build on full runs and changes to packaging inputs.
 
 ## Releases
 

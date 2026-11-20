@@ -67,7 +67,15 @@ jobs:
       - name: Rust tests, every crate
         run: cargo test --workspace --no-fail-fast
       - name: Word saved through the desktop app's serializer
-        run: HER_WORD_SAVE=desktop cargo test --workspace --lib docx_host -- --ignored
+        shell: bash
+        run: |
+          # Resolve the test executable from the same target set as the preceding build.
+          test_bin=$(cargo test --workspace --no-fail-fast --no-run --message-format=json |
+            jq -ers '[.[] | select(.reason == "compiler-artifact" and .profile.test and
+              .target.name == "her_server" and .target.kind == ["lib"]) | .executable] |
+              if length == 1 then .[0] else error("expected one her-server test binary") end')
+          cd crates/her-server
+          HER_WORD_SAVE=desktop "$test_bin" docx_host --ignored
       - uses: actions/setup-node@v4
         with:
           node-version: 22

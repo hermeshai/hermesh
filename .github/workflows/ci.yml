@@ -9,8 +9,8 @@ on:
 
 concurrency:
   # Only the opening run and fresh commits share the PR's group.
-  group: ci-${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action != 'reopened' && format('pr-{0}', github.event.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action == 'synchronize' }}
+  group: ci-${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action != 'reopened' && format('pr-{0}', github.event.number) || github.event_name == 'push' && github.run_attempt == '1' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action == 'synchronize' || github.event_name == 'push' && github.run_attempt == '1' }}
 
 permissions:
   contents: read
@@ -76,6 +76,8 @@ jobs:
           path: |
             ${{ runner.temp }}/ios-demo/*.log
             ${{ runner.temp }}/ios-demo/review.xcresult
+            ${{ runner.temp }}/ios-demo/interaction/*.log
+            ${{ runner.temp }}/ios-demo/interaction/review.xcresult
           if-no-files-found: ignore
   go:
     needs: changes
@@ -252,6 +254,10 @@ jobs:
   windows-app:
     needs: changes
     if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_app == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON((needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true') && '["x64","arm64"]' || '["x64"]') }}
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -265,6 +271,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: end-to-end (desktop app)
+        if: matrix.arch == 'x64'
         run: go test ./e2e -run '^TestDesktop$' -count=1 -v -timeout 30m
       # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
       - name: Read access to the NimbleOffice fork
@@ -282,18 +289,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: her -> target
-          key: ci-windows-app-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          key: ci-windows-app-${{ matrix.arch }}-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
           cache-on-failure: true
       # her is built once, with the profile that takes the least of this job's time.
       - name: package
         run: node apps/desktop/scripts/package-win.mjs
         env:
           HERMESH_HER_PROFILE: release
+          HERMESH_ARCH: ${{ matrix.arch }}
       - name: install it, open it, uninstall it
+        if: matrix.arch == 'x64'
         shell: pwsh
         run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
       # Two builds, the older updating to the newer from a feed signed with a key of the test's.
       - name: update between two builds
+        if: matrix.arch == 'x64'
         shell: bash
         run: |
           openssl ecparam -name prime256v1 -genkey -noout -out "$RUNNER_TEMP/test.key"
@@ -304,16 +314,9 @@ jobs:
           VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
           VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
           pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
-      # For Windows on Arm PCs and VMs (this runner can't run it).
-      - name: package for arm64
-        if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true'
-        run: node apps/desktop/scripts/package-win.mjs
-        env:
-          HERMESH_ARCH: arm64
-          HERMESH_HER_PROFILE: release
       - uses: actions/upload-artifact@v4
         with:
-          name: Hermesh-windows-setup
+          name: ${{ matrix.arch == 'x64' && 'Hermesh-windows-setup' || 'Hermesh-windows-setup-arm64' }}
           path: dist/Hermesh-windows-*-setup.exe
 
   ci-ok:

@@ -96,7 +96,7 @@ func start(t *testing.T, name string, env []string, bin string, args ...string) 
 	t.Helper()
 	endLinks(t, env)
 	cmd := exec.Command(bin, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = commandEnv(bin, env)
 	ownGroup(cmd)
 	pr, pw := io.Pipe()
 	cmd.Stdout, cmd.Stderr = pw, pw
@@ -186,6 +186,16 @@ func (p *proc) wait(t *testing.T, timeout time.Duration) int {
 	return -1
 }
 
+// The race runtime sleeps a second at exit by default. Short-lived CLI calls
+// can skip that wait while the daemons keep their normal shutdown behavior.
+func commandEnv(bin string, extra []string) []string {
+	env := os.Environ()
+	if filepath.Base(bin) == "hermesh"+exe && os.Getenv("HERMESH_E2E_RACE") != "" && os.Getenv("GORACE") == "" {
+		env = append(env, "GORACE=atexit_sleep_ms=0")
+	}
+	return append(env, extra...)
+}
+
 // result of a one-shot CLI command.
 type result struct {
 	stdout, stderr string
@@ -198,7 +208,7 @@ func run(t *testing.T, env []string, timeout time.Duration, bin string, args ...
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = commandEnv(bin, env)
 	var so, se bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &so, &se
 	err := cmd.Run()
