@@ -111,6 +111,61 @@ extension HermeshUITests {
         XCTAssertEqual(composer.value as? String, "fictional draft after withdrawal")
     }
 
+    @objc func testHerNotifications() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let banner = springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@", "Something needs you", "有事需要你处理", "synthetic ")).firstMatch
+        func pushed() throws -> Int { try XCTUnwrap(control("pushed")["pushed"] as? Int) }
+        func waitForPush(after before: Int) throws {
+            try waitFor("the relay hands the Her notice to SpringBoard") { try pushed() > before ? true : nil }
+        }
+        func sendFromMac(_ message: String) throws {
+            let text = try XCTUnwrap("[[mock:send:\(message)]] hi".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
+            _ = try control("her-send?text=\(text)", method: "POST")
+        }
+
+        XCTAssertTrue(banner.waitForNonExistence(timeout: 10))
+        var before = try pushed()
+        herSend("[[mock:send:synthetic foreground reply]] hi")
+        try waitForPush(after: before)
+        XCTAssertFalse(banner.waitForExistence(timeout: 5), "the open Her conversation is quiet")
+        XCTAssertTrue(app.staticTexts["synthetic foreground reply"].waitForExistence(timeout: 30))
+
+        before = try pushed()
+        try sendFromMac("synthetic synced reply")
+        try waitForPush(after: before)
+        XCTAssertFalse(banner.waitForExistence(timeout: 5), "a synced reply in the open conversation is quiet")
+        XCTAssertTrue(app.staticTexts["synthetic synced reply"].waitForExistence(timeout: 30))
+
+        openMenu()
+        tap("overview-place")
+        XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 10))
+        before = try pushed()
+        try sendFromMac("synthetic other page reply")
+        try waitForPush(after: before)
+        XCTAssertTrue(banner.waitForExistence(timeout: 10), "Her notifies when another page is open")
+        banner.tap()
+        XCTAssertTrue(app.staticTexts["synthetic other page reply"].waitForExistence(timeout: 30), "the other device's reply syncs")
+
+        before = try pushed()
+        XCUIDevice.shared.press(.home)
+        try sendFromMac("synthetic background reply")
+        try waitForPush(after: before)
+        XCTAssertTrue(banner.waitForExistence(timeout: 10), "Her notifies on the Home Screen")
+        banner.tap()
+        XCTAssertTrue(app.staticTexts["synthetic background reply"].waitForExistence(timeout: 30))
+
+        before = try pushed()
+        herSend("[[mock:ask:synthetic question|yes|no]] hi")
+        try waitForPush(after: before)
+        XCTAssertTrue(banner.waitForExistence(timeout: 10), "a question still notifies within the conversation")
+    }
+
     /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
