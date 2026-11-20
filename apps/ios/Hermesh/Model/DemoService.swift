@@ -88,7 +88,9 @@ final class DemoService {
             world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
             world.status.relayConnected = false
         }
-        if UserDefaults.standard.bool(forKey: "DemoSessionDetailRegression") {
+        #endif
+        #if targetEnvironment(simulator)
+        if Self.sessionDetailRegression {
             seedSessionDetailRegression()
         }
         #endif
@@ -213,6 +215,15 @@ final class DemoService {
     private static let holdWorkTaskForUITest: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for SessionDetailUITests (runs in both Debug and Release CI).
+    private static let sessionDetailRegression: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoSessionDetailRegression")
         #else
         false
         #endif
@@ -467,8 +478,8 @@ final class DemoService {
             let request = try Hermesh_Local_V1_StreamSessionEventsRequest(jsonUTF8Data: data)
             return AsyncThrowingStream { c in
                 followers[token] = (request.sessionID, c)
-                #if DEBUG
-                if UserDefaults.standard.bool(forKey: "DemoSessionDetailRegression"),
+                #if targetEnvironment(simulator)
+                if Self.sessionDetailRegression,
                    streamSessionDetailRegression(request: request, token: token, continuation: c) {
                     return
                 }
@@ -482,7 +493,7 @@ final class DemoService {
         throw APIError(code: "unimplemented", message: String(localized: "This action needs a real connection. Exit the demo to set up your own workspace."))
     }
 
-    #if DEBUG
+    #if targetEnvironment(simulator)
     private func seedSessionDetailRegression() {
         let now = Date.now
 
@@ -550,7 +561,7 @@ final class DemoService {
             if tasks[request.sessionID] == nil {
                 let id = request.sessionID
                 tasks[id] = Task { @MainActor [weak self] in
-                    for n in 1 ... 30 {
+                    for n in 1 ... 60 {
                         try? await Task.sleep(for: .milliseconds(350))
                         guard !Task.isCancelled, let self else { return }
                         var draft = SessionEvent()

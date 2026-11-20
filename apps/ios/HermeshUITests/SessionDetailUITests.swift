@@ -17,7 +17,7 @@ final class SessionDetailUITests: XCTestCase {
         app.launchArguments = [
             "-AppleLanguages", "(en)",
             "-AppleLocale", "en_US",
-            "-DemoSessionDetailRegression", "YES",
+            "-DemoSessionDetailRegression",
         ]
         app.launch()
         let tryDemo = app.buttons["try-demo"]
@@ -30,11 +30,15 @@ final class SessionDetailUITests: XCTestCase {
     func testSessionInfoHidesTurnsRow() {
         openSessionFromOverview("Long history session")
         tap("session-info")
-        XCTAssertTrue(app.staticTexts["Environment"].waitForExistence(timeout: 10), "Environment section")
-        XCTAssertTrue(app.staticTexts["Started by"].exists, "Started by row")
-        XCTAssertTrue(app.staticTexts["Coding agent"].exists, "Coding agent row")
-        XCTAssertFalse(app.staticTexts["Turns"].exists, "Session Info should not display unreliable Turns row")
-        XCTAssertFalse(app.staticTexts["轮数"].exists, "Session Info should not display Chinese Turns row")
+        XCTAssertTrue(app.navigationBars["Session Info"].waitForExistence(timeout: 10), "Session Info sheet")
+        XCTAssertTrue(element(containing: "Started by").waitForExistence(timeout: 10), "Started by row")
+        XCTAssertTrue(element(containing: "Coding agent").exists, "Coding agent row")
+        XCTAssertFalse(element(containing: "Turns").exists, "Session Info should not display unreliable Turns row")
+        XCTAssertFalse(element(containing: "轮数").exists, "Session Info should not display Chinese Turns row")
+        app.swipeUp()
+        XCTAssertTrue(element(containing: "Started").exists, "Started row")
+        XCTAssertFalse(element(containing: "Turns").exists, "Session Info should not display Turns row after scrolling")
+        XCTAssertFalse(element(containing: "轮数").exists, "Session Info should not display Chinese Turns row after scrolling")
         tap("close")
     }
 
@@ -89,9 +93,8 @@ final class SessionDetailUITests: XCTestCase {
         openSessionFromOverview("Streaming session")
 
         // Initial load should position at the bottom and follow incoming live updates while at the end.
-        let update1 = text(beginningWith: "Live update #1:")
-        XCTAssertTrue(waitUntil(timeout: 12) { update1.exists && self.isVisibleInViewport(update1) },
-                      "staying at bottom should follow Live update #1 into view (frame=\(update1.frame))")
+        XCTAssertTrue(waitUntil(timeout: 12) { self.hasVisibleLiveUpdate(atLeast: 1) },
+                      "staying at bottom should follow incoming Live update into view")
         XCTAssertFalse(app.buttons["to-end"].exists, "to-end hidden while following at bottom")
 
         // User actively scrolls up to read earlier history while streaming continues.
@@ -103,11 +106,12 @@ final class SessionDetailUITests: XCTestCase {
         // Pick an earlier message currently visible in the viewport as our position anchor.
         let anchor = try XCTUnwrap(visibleHistoryAnchor(), "expected an earlier Stream history message in view")
         let anchorBeforeY = anchor.frame.minY
+        let targetUpdateNumber = max(highestLiveUpdateNumber(), 1) + 4
 
-        // Wait until at least 3 newer committed updates have streamed in while staying scrolled up.
-        let laterUpdate = text(beginningWith: "Live update #6:")
-        XCTAssertTrue(laterUpdate.waitForExistence(timeout: 15), "new streaming messages should arrive in the background")
-        usleep(500_000)
+        // Wait until at least 4 newer committed updates have streamed in while staying scrolled up.
+        let laterUpdate = text(beginningWith: "Live update #\(targetUpdateNumber):")
+        XCTAssertTrue(laterUpdate.waitForExistence(timeout: 15), "Live update #\(targetUpdateNumber) should arrive in the background")
+        usleep(400_000)
 
         // The user's reading position must not have been stolen by the streaming updates.
         XCTAssertTrue(toEnd.exists, "to-end should remain visible while scrolled up during streaming")
@@ -118,8 +122,8 @@ final class SessionDetailUITests: XCTestCase {
 
         // Tapping Back to the Bottom returns to the latest streamed messages.
         toEnd.tap()
-        XCTAssertTrue(waitUntil(timeout: 8) { !toEnd.exists && self.hasVisibleLiveUpdate(atLeast: 6) },
-                      "tapping to-end should bring the latest streamed messages into view")
+        XCTAssertTrue(waitUntil(timeout: 8) { !toEnd.exists && self.hasVisibleLiveUpdate(atLeast: targetUpdateNumber) },
+                      "tapping to-end should bring Live update #\(targetUpdateNumber)+ into view")
     }
 
     // MARK: Helpers
@@ -178,6 +182,15 @@ final class SessionDetailUITests: XCTestCase {
         }
     }
 
+    private func highestLiveUpdateNumber() -> Int {
+        let items = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update #"))
+        return items.allElementsBoundByIndex.compactMap { el -> Int? in
+            guard el.exists else { return nil }
+            let rest = el.label.dropFirst("Live update #".count)
+            return Int(rest.prefix { $0.isNumber })
+        }.max() ?? 0
+    }
+
     private func hasVisibleLiveUpdate(atLeast minimum: Int) -> Bool {
         let items = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update #"))
         return items.allElementsBoundByIndex.contains { el in
@@ -186,6 +199,10 @@ final class SessionDetailUITests: XCTestCase {
             let digits = rest.prefix { $0.isNumber }
             return (Int(digits) ?? 0) >= minimum
         }
+    }
+
+    private func element(containing substring: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", substring)).firstMatch
     }
 
     private func isVisibleInViewport(_ element: XCUIElement) -> Bool {
