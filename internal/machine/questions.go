@@ -124,8 +124,7 @@ func (s *Sessions) replyChecked(l *live, w *question, r provider.Reply, res sess
 	l.turnStarted = l.turnStarted.Add(now.Sub(w.since))
 	l.lastProgress = now
 	var changed bool
-	if len(l.questions) == 0 && l.row.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
-		// Before the agent goes on: its turn may end right after.
+	if len(l.questions) == 0 && l.row.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT && !l.finishing {
 		changed = s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
 	}
 	sessionID := l.row.ID
@@ -153,6 +152,14 @@ func (s *Sessions) dropQuestions(l *live) {
 	l.row.Progress.PendingQuestion = nil
 	l.mu.Unlock()
 	for _, w := range qs {
+		// An answer in flight may be accepted while the turn is ending.
+		w.mu.Lock()
+		resolved := w.resolved
+		w.resolved = true
+		w.mu.Unlock()
+		if resolved {
+			continue
+		}
 		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_QuestionResolved{QuestionResolved: &sessionv1.QuestionResolved{
 			QuestionId: w.q.QuestionId, Resolution: sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED}}})
 	}
