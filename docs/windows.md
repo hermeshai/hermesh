@@ -229,7 +229,7 @@ What MSIX would have given and Setup.exe doesn't: files that no program of the u
 - **A signed feed.** Squirrel.Mac checks the app's Developer ID signature; the Windows app has none. So each architecture's feed, `RELEASES-win32-<arch>.json`, is signed with the release key, which signs the checksum list too (`.sig`, openssl's DER signature), and the app carries the public key (a build-time constant, as the feed's address is). The feed names this version (`currentRelease`), its highlights (`hermeshNotes`, as the darwin feed has them) and its package: the `.nupkg`'s address, its SHA-256 and Squirrel's `RELEASES` line for it.
 - **Downloaded by the app.** The app reads the feed as on the Mac, checks its signature, downloads the package into `<data>\desktop\update`, checks its hash, writes the `RELEASES` line beside it, and points `autoUpdater` (Squirrel.Windows) at that folder. Squirrel installs the version beside the running one, at once; the app runs it from its next start, as Restart to Update does under the Mac's guard (desktop-app.md §6.5): never a restart under the owner.
 - **hermeshd after an update.** The new version places its programs (§6.1); hermeshd keeps running the old ones, which moved aside, until the app restarts it as on the Mac: once no approval is pending and no session on this PC is queued, preparing, running or waiting for an answer.
-- **Tested end to end** (`check-windows-update.ps1`, in CI): an older build, installed from its Setup.exe, finds, downloads and installs a newer one from a feed signed with a key of the test's, and opened again runs it, with hermeshd restarted on the new programs.
+- **Tested end to end** (`check-windows-update.ps1`, on release tags): an older build, installed from its Setup.exe, finds, downloads and installs a newer one from a feed signed with a key of the test's, and opened again runs it, with hermeshd restarted on the new programs.
 
 ### 6.3 Programs without the app
 
@@ -389,7 +389,7 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 
 ## 14. Built, then checked on a real PC
 
-All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, the desktop spec for Windows against the real daemon, and the app installed, opened, updated and uninstalled from its Setup.exe. What only a real PC shows, checked in one pass:
+All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, and the desktop spec for Windows against the real daemon. The release workflow installs, opens, updates and uninstalls the app from its Setup.exe. What only a real PC shows, checked in one pass:
 
 | Check | How |
 |---|---|
