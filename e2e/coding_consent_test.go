@@ -215,3 +215,65 @@ func TestHerCodingHandoffRespectsApprovalAndGrant(t *testing.T) {
 		t.Fatalf("revoked Her grant bypassed authorization: %s, prompts %d", said, f.prompts())
 	}
 }
+
+// A provider rejection reaches both callers and leaves the question unresolved.
+func TestCodingAgentAnswerRejection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	codingEnv := append(geminiCodingFixtureEnv(t, t.TempDir()),
+		"HERMESH_CODEX_BIN="+filepath.Join(binaries(t), "fakecodex"+exe), "FAKE_CODEX_REJECT_ANSWER=1")
+	env := newHerEnvironmentWithCodingAgents(t, codingEnv)
+	w, c := env.w, env.c
+	ctx := t.Context()
+	st, err := c.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	phone := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	front, leave := context.WithCancel(ctx)
+	defer leave()
+	scr := watchScreenOf(front, t, phone.client)
+
+	start := func() string {
+		t.Helper()
+		s, r := w.startSession(20*time.Second, "--agent", "codex", "--prompt", "ask a question")
+		if r.code != 0 || s.SessionID == "" {
+			t.Fatalf("start Codex: %+v", r)
+		}
+		eventually(t, 10*time.Second, "Codex is waiting for an answer", func() bool {
+			return w.get(s.SessionID).Status == "waiting_input"
+		})
+		return s.SessionID
+	}
+	const rejection = "this turn cannot accept an answer"
+	id := start()
+	var questionID string
+	eventually(t, 10*time.Second, "the phone sees the question", scr.has(func(s *screen) bool {
+		questionID = s.sessions[id].GetProgress().GetPendingQuestion().GetQuestionId()
+		return questionID != ""
+	}))
+	if _, err := phone.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{
+		SessionId: id, QuestionId: questionID, Answers: []*sessionv1.Answer{{Selected: []string{"Blue"}}},
+	}); err == nil || !strings.Contains(err.Error(), rejection) {
+		t.Fatalf("the phone should see the provider rejection: %v", err)
+	}
+	if s := w.get(id); s.Status != "waiting_input" {
+		t.Fatalf("rejected mobile answer changed the session: %+v", s)
+	}
+
+	id = start()
+	asked, said := tellHer(t, env, meshCall("session_answer", map[string]any{
+		"session_id": id, "choose": []string{"Blue"},
+	}), "approve", "mesh ")
+	if len(asked) != 1 || !strings.HasPrefix(said, "mesh failed") || !strings.Contains(said, rejection) {
+		t.Fatalf("Her should see the provider rejection after approval: asked %+v, said %s", asked, said)
+	}
+	if s := w.get(id); s.Status != "waiting_input" {
+		t.Fatalf("rejected Her answer changed the session: %+v", s)
+	}
+}

@@ -3,6 +3,7 @@ use crate::{ErrorKind, LlmError, Model};
 use parking_lot::RwLock;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
@@ -81,28 +82,25 @@ fn load_grant(path: &Path) -> Option<Recipient> {
     Some(stored.allowed)
 }
 
-fn save_grant(path: &Path, recipient: &Recipient) -> std::io::Result<()> {
+fn save_grant(path: &Path, recipient: &Recipient) -> io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let data = serde_json::to_vec(&StoredConsent { allowed: recipient.clone() })
-        .map_err(std::io::Error::other)?;
+        .map_err(io::Error::other)?;
     let tmp = path.with_extension(format!("json.{}.tmp", revision()));
-    std::fs::write(&tmp, data)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
     #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
-    }
-    if let Err(err) = std::fs::rename(&tmp, path) {
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(&tmp)?;
+    let written = file.write_all(&data).and_then(|()| file.sync_all());
+    drop(file);
+    let result = written.and_then(|()| std::fs::rename(&tmp, path));
+    if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
-        return Err(err);
     }
-    Ok(())
-}
-
-fn clear_grant(path: &Path) {
-    let _ = std::fs::remove_file(path);
+    result
 }
 
 impl Consent {
@@ -121,7 +119,9 @@ impl Consent {
         let state = self.state.read();
         Status {
             recipient,
-            allowed: state.grant.as_ref().map(|(recipient, _)| recipient.clone()),
+            allowed: state.grant.as_ref()
+                .filter(|(_, lease)| !lease.is_cancelled())
+                .map(|(recipient, _)| recipient.clone()),
             revision: state.revision.clone(),
         }
     }
@@ -145,29 +145,34 @@ impl Consent {
         true
     }
 
-    pub fn revoke(&self) {
-        let mut state = self.state.write();
-        if let Some((_, lease)) = state.grant.take() {
-            lease.cancel();
-        }
-        if let Some(path) = &self.path {
-            clear_grant(path);
-        }
-        state.revision = revision();
+    pub fn revoke(&self) -> io::Result<()> {
+        self.revoke_locked(&mut self.state.write())
     }
 
-    pub fn revoke_if(&self, matches: impl FnOnce(&Recipient) -> bool) {
+    pub fn revoke_if(&self, matches: impl FnOnce(&Recipient) -> bool) -> io::Result<()> {
         let mut state = self.state.write();
-        if let Some((recipient, lease)) = &state.grant
-            && matches(recipient)
-        {
-            lease.cancel();
-            state.grant = None;
-            if let Some(path) = &self.path {
-                clear_grant(path);
-            }
-            state.revision = revision();
+        if state.grant.as_ref().is_some_and(|(recipient, _)| matches(recipient)) {
+            self.revoke_locked(&mut state)?;
         }
+        Ok(())
+    }
+
+    fn revoke_locked(&self, state: &mut State) -> io::Result<()> {
+        // Block live inference even if disk cleanup fails. Keep the cancelled
+        // grant until cleanup succeeds so switching recipients can retry it.
+        if let Some((_, lease)) = &state.grant {
+            lease.cancel();
+        }
+        state.revision = revision();
+        if let Some(path) = &self.path {
+            match std::fs::remove_file(path) {
+                Ok(()) => (),
+                Err(err) if err.kind() == io::ErrorKind::NotFound => (),
+                Err(err) => return Err(err),
+            }
+        }
+        state.grant = None;
+        Ok(())
     }
 
     /// A revoke that has returned cannot race a later transport poll.
@@ -179,7 +184,7 @@ impl Consent {
     pub fn lease(&self, recipient: Option<&Recipient>) -> Result<CancellationToken, LlmError> {
         let state = self.state.read();
         match &state.grant {
-            Some((granted, lease)) if Some(granted) == recipient => Ok(lease.clone()),
+            Some((granted, lease)) if Some(granted) == recipient && !lease.is_cancelled() => Ok(lease.clone()),
             _ => Err(blocked()),
         }
     }
