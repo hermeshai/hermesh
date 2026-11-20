@@ -1814,50 +1814,63 @@ impl BrowserSession {
             });
         }
         let _busy = tab.busy.lock().await;
+        // Brief results leave the previous snapshot for the next full result to diff against.
+        let body = if is_brief() {
+            String::new()
+        } else if same_document.is_some() {
+            let before = self.main_loader(tab);
+            let body = self.report_page(tab, same_document).await;
+            // The renderer can commit during the snapshot, before its navigation events have
+            // reached the router. Check the current loader before returning a same-document diff.
+            let document = self.conn().send(Some(&tab.session), "Page.getFrameTree", json!({})).await;
+            let committed = document.as_ref().ok().and_then(|tree| tree["frameTree"]["frame"]["loaderId"].as_str());
+            if committed.is_some_and(|current| Some(current) != before.as_deref()) {
+                self.wait_for(tab, self.options.navigation_timeout, |state| {
+                    !state.loading && state.main().is_some_and(|frame| Some(frame.loader.as_str()) != before.as_deref())
+                })
+                .await;
+                self.report_page(tab, None).await
+            } else {
+                body
+            }
+        } else {
+            self.report_page(tab, None).await
+        };
         self.refresh(tab).await;
-        let mut text = format!("{done}\n{}", self.header(tab));
-        if is_brief() {
-            // The last snapshot stays as it was, so the next full result diffs against it.
-            return Ok(self.finish(tab, text));
-        }
-        match same_document {
-            Some((frame_id, frame, before)) => {
-                let still = tab.state.lock().frames.get(&frame_id).is_some_and(|f| f.loader == frame.loader);
-                if still {
-                    let after = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
-                    let changes = snapshot::diff(&before, &after, DIFF_LINES);
-                    self.last
-                        .lock()
-                        .insert((tab.id.clone(), frame_id), (frame.loader.clone(), after));
-                    match changes {
-                        Some(changes) => {
-                            text.push_str("\nChanges:\n");
-                            text.push_str(&snapshot::wrap_page_content(&url_origin(&frame.url), &changes));
-                        }
-                        None => text.push_str("\nNo visible change."),
-                    }
-                } else {
-                    text.push_str("\nThe frame navigated; take a snapshot to see it.");
-                }
-            }
-            None => {
-                // A new document: the start of its snapshot.
-                if let Ok((frame_id, frame)) = self.main_frame(tab) {
-                    let lines = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
-                    self.last
-                        .lock()
-                        .insert((tab.id.clone(), frame_id), (frame.loader.clone(), lines.clone()));
-                    let body = cut(
-                        &lines.join("\n"),
-                        NEW_PAGE_CHARS,
-                        "Use browser_snapshot with query or mode \"text\" to read further.",
-                    );
-                    text.push_str("\nSnapshot:\n");
-                    text.push_str(&snapshot::wrap_page_content(&url_origin(&frame.url), &body));
-                }
-            }
-        }
+        let text = format!("{done}\n{}{body}", self.header(tab));
         Ok(self.finish(tab, text))
+    }
+
+    async fn report_page(&self, tab: &Tab, same_document: Option<(String, Frame, Vec<String>)>) -> String {
+        if let Some((frame_id, frame, before)) = same_document {
+            let still = tab.state.lock().frames.get(&frame_id).is_some_and(|f| f.loader == frame.loader);
+            if still {
+                let after = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
+                let changes = snapshot::diff(&before, &after, DIFF_LINES);
+                self.last
+                    .lock()
+                    .insert((tab.id.clone(), frame_id), (frame.loader.clone(), after));
+                return match changes {
+                    Some(changes) => format!("\nChanges:\n{}", snapshot::wrap_page_content(&url_origin(&frame.url), &changes)),
+                    None => "\nNo visible change.".into(),
+                };
+            }
+            if frame.parent.is_some() {
+                return "\nThe frame navigated; take a snapshot to see it.".into();
+            }
+        }
+        // A new document: the start of its snapshot.
+        let Ok((frame_id, frame)) = self.main_frame(tab) else { return String::new() };
+        let lines = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
+        self.last
+            .lock()
+            .insert((tab.id.clone(), frame_id), (frame.loader.clone(), lines.clone()));
+        let body = cut(
+            &lines.join("\n"),
+            NEW_PAGE_CHARS,
+            "Use browser_snapshot with query or mode \"text\" to read further.",
+        );
+        format!("\nSnapshot:\n{}", snapshot::wrap_page_content(&url_origin(&frame.url), &body))
     }
 
     /// Adds what happened on the side, then the page's details.

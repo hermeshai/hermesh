@@ -257,9 +257,12 @@ async fn login_form_end_to_end() {
     assert_eq!(ref_of(&again.text, "textbox \"Email\""), email);
     assert!(again.text.contains("[type=password] [value=<hidden>]"), "{}", again.text);
     let button = ref_of(&again.text, "button \"Continue\"");
-    let clicked = act(&session, Action::Click, &button).await.unwrap();
-    assert!(clicked.contains("Welcome back"), "the new page's snapshot follows: {clicked}");
-    assert!(clicked.contains("/welcome?email=ada%40example.com"), "{clicked}");
+    let button = session.element(&button).await.unwrap();
+    let clicked = session.act(&Action::Click, &Place::Element(button), &CancellationToken::new()).await.unwrap();
+    assert!(clicked.text.contains("Welcome back"), "the new page's snapshot follows: {}", clicked.text);
+    assert!(clicked.text.contains("/welcome?email=ada%40example.com"), "{}", clicked.text);
+    assert_eq!(clicked.title, "Welcome", "{}", clicked.text);
+    assert!(clicked.url.starts_with(fx.url("/welcome?email=ada%40example.com").as_str()), "{}", clicked.url);
     // Refs of the old document are stale, and say why.
     let stale = session.element(&email).await.unwrap_err();
     assert!(stale.to_string().contains("before the page navigated"), "{stale}");
