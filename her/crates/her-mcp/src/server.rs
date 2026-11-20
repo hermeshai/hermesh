@@ -349,6 +349,11 @@ impl McpServer {
                     .filter(|secret| !secret.is_empty())
                     .map(str::to_owned)
                     .collect();
+                let escaped: Vec<String> = secrets.iter()
+                    .filter_map(|secret| serde_json::to_string(secret).ok())
+                    .map(|json| json[1..json.len() - 1].to_owned())
+                    .collect();
+                secrets.extend(escaped);
                 secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
                 secrets.dedup();
                 let cwd = match &self.config.cwd {

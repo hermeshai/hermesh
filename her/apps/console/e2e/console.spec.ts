@@ -53,6 +53,7 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
   });
 
   await test.step("a connector started as a command, signed on the owner's device, never written by the page", async () => {
+    const name = "hello-" + "a".repeat(26);
     await page.getByRole("button", { name: "Add Connector" }).click();
     const sheet = page.getByRole("dialog", { name: "Add Connector" });
     // Explicit transport switcher: Remote URL (HTTP) vs Local Program (stdio).
@@ -66,7 +67,7 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     await local.getByRole("button", { name: "Fill fields" }).click();
     await expect(local).toContainText("Shell operators");
     // Fill structured Name, Executable, Arguments, and Environment variables (including a locked secret).
-    await local.getByLabel("Name", { exact: true }).fill("hello");
+    await local.getByLabel("Name", { exact: true }).fill(name);
     await local.getByLabel("Executable").fill(process.execPath);
     await local.getByRole("button", { name: "Add argument" }).click();
     await local.getByLabel("Argument 1").fill(path.join(import.meta.dirname, "mcp-stdio.mjs"));
@@ -77,16 +78,16 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     await local.getByLabel("Name", { exact: true }).nth(2).fill("API_TOKEN");
     await local.getByLabel("Value").nth(1).fill("secret-e2e-token-12345");
     await local.getByRole("button", { name: "Add and Approve" }).click();
-    await expect(local.getByText("Added hello", { exact: true })).toBeVisible();
+    await expect(local.getByText(`Added ${name}`, { exact: true })).toBeVisible();
     await expect(local.getByText("say_hello")).toBeVisible();
     await local.getByRole("button", { name: "Done" }).click();
-    const row = page.locator(".cz-row", { hasText: "hello" });
+    const row = page.locator(".cz-row", { hasText: name });
     await expect(row).toContainText("Ready · 1 tool");
-    expect(read("config.toml")).toContain("[mcp_servers.hello]");
+    expect(read("config.toml")).toContain(`[mcp_servers.${name}]`);
     expect(read("config.toml")).toContain(`command = ${JSON.stringify(process.execPath)}`);
     expect(read("config.toml")).toContain('GREETING = "hi"');
     // Secret value is never written in plaintext to config.toml; only its credential reference is stored.
-    const original = read("config.toml").match(/API_TOKEN = "(\$\{credential:mcp-stdio\.hello\.[a-f0-9-]+\})"/)?.[1];
+    const original = read("config.toml").match(/API_TOKEN = "(\$\{credential:mcp-stdio\.[A-Za-z0-9_-]{32}\.[a-f0-9]{20}\})"/)?.[1];
     expect(original).toBeDefined();
     expect(read("config.toml")).not.toContain("secret-e2e-token-12345");
     // Detail page shows execution host and allows structured editing.
@@ -94,10 +95,10 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     await expect(page.getByText("Execution host")).toBeVisible();
     await page.getByRole("button", { name: "More" }).click();
     await page.getByRole("menuitem", { name: "Edit Configuration…" }).click();
-    const edit = page.getByRole("dialog", { name: "Edit hello" });
+    const edit = page.getByRole("dialog", { name: `Edit ${name}` });
     await expect(edit.getByLabel("Executable")).toHaveValue(process.execPath);
     await expect(edit.getByLabel("Argument 1")).toHaveValue(path.join(import.meta.dirname, "mcp-stdio.mjs"));
-    const token = edit.getByLabel("Value").nth(1);
+    const token = edit.getByLabel("Value").and(edit.locator('input[type="password"]'));
     await expect(token).toHaveAttribute("type", "password");
     await expect(token).toHaveValue("");
     await token.fill("rotated-e2e-token");
