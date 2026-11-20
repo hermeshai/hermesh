@@ -38,6 +38,7 @@ jobs:
       go_macos: ${{ steps.route.outputs.go_macos }}
       go_e2e: ${{ steps.route.outputs.go_e2e }}
       her_integration: ${{ steps.route.outputs.her_integration }}
+      console_only: ${{ steps.route.outputs.console_only }}
       desktop_e2e: ${{ steps.route.outputs.desktop_e2e }}
     steps:
       - uses: actions/checkout@v4
@@ -240,13 +241,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        if: needs.changes.outputs.console_only != 'true'
         with:
           go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: corepack enable
+      - name: Console types
+        if: needs.changes.outputs.console_only == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @hermesh/her-console typecheck
       - name: types and unit tests
+        if: needs.changes.outputs.console_only != 'true'
         run: make test-app-js
       - name: Cache Cargo dependencies
         if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
@@ -266,19 +274,21 @@ jobs:
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
       - name: end-to-end (Her consent and coding agents)
-        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true' && needs.changes.outputs.console_only != 'true'
         run: |
           test -x her/target/debug/her
           test -x her/target/debug/her-mock
           go test ./e2e -run '^Test(HerConsentRefusalAllowsDirectCodingAndMobileAnswers|HerCodingHandoffRespectsApprovalAndGrant|CodingAgentAnswerRejection|PushHerNotices)$' -count=1 -v -timeout 10m
       - name: Custom MCP connectors through the owner and execution host
-        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true' && needs.changes.outputs.console_only != 'true'
         run: go test ./e2e -run '^TestHerCommandConnector$' -count=1 -v -timeout 5m
-      - name: Custom MCP connectors in the console
+      - name: Console unit tests and connector flows
         if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
-        run: pnpm --filter @hermesh/her-console e2e --grep 'custom HTTP and stdio connectors'
+        run: |
+          pnpm --filter @hermesh/her-console test
+          pnpm --filter @hermesh/her-console e2e --grep 'custom HTTP and stdio connectors'
       - name: Electron shell against the daemon
-        if: ${{ needs.changes.outputs.exhaustive != 'true' && needs.changes.outputs.desktop_e2e != 'true' }}
+        if: ${{ needs.changes.outputs.exhaustive != 'true' && needs.changes.outputs.desktop_e2e != 'true' && needs.changes.outputs.console_only != 'true' }}
         run: go test ./e2e -run '^TestDesktop$/^shell$' -count=1 -v -timeout 10m
       - name: end-to-end (desktop app and signer)
         if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.desktop_e2e == 'true'

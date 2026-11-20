@@ -118,6 +118,9 @@ def main():
         print("mode=full")
     else:
         print("mode=routed")
+        if "her_integration" in selected and all(path in DOC_FILES or path.startswith(
+                ("her/apps/console/", "docs/", "her/docs/")) for path in paths):
+            print("console_only=true")
         if any(path.startswith(("her/docs/", "her/apps/console/")) or path == "her/README.md" for path in paths):
             print("her_static=true")
         # These suites run on a fresh simulator without an external fixture server.
