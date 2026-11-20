@@ -24,9 +24,9 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func start(maxEdge: Int, fps: Int, pointer: Bool) async throws {
-        let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
-        guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first else {
-            throw NSError(domain: "hermesh.screen", code: 1, userInfo: [NSLocalizedDescriptionKey: "no display"])
+        let display = try await Self.findDisplay {
+            let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+            return content.displays.first(where: { $0.displayID == CGMainDisplayID() }) ?? content.displays.first
         }
         let filter = SCContentFilter(display: display, excludingWindows: [])
         // The picture's size: the display's own pixels, made smaller to fit maxEdge, both even.
@@ -46,6 +46,15 @@ final class Capture: NSObject, SCStreamOutput, SCStreamDelegate {
         try await s.startCapture()
         stream = s
         seedFirstFrame(filter: filter)
+    }
+
+    static func findDisplay<Display>(_ query: () async throws -> Display?) async throws -> Display {
+        // The display may take a moment to appear after the wake request.
+        for attempt in 0...5 {
+            if attempt > 0 { try await Task.sleep(for: .milliseconds(200)) }
+            if let display = try await query() { return display }
+        }
+        throw NSError(domain: "hermesh.screen", code: 1, userInfo: [NSLocalizedDescriptionKey: "no display"])
     }
 
     /// Captures an immediate initial frame so a still desktop does not wait for
