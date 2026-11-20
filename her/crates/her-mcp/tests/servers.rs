@@ -281,4 +281,26 @@ async fn configuration_errors_are_permanent_and_explained() {
     server.connect();
     server.wait_settled(Instant::now() + Duration::from_secs(10)).await;
     assert!(server.status().error.unwrap().contains("HER_TEST_NO_SUCH_TOKEN"));
+
+    // Command interpolation and credentials inside args are rejected permanently.
+    let interp_cmd = McpServerConfig {
+        name: "interp".into(),
+        command: Some("${HOME}/bin/mcp".into()),
+        ..Default::default()
+    };
+    let server = McpServer::new(interp_cmd, context(dir.path()));
+    server.connect();
+    server.wait_settled(Instant::now() + Duration::from_secs(10)).await;
+    assert!(server.status().error.unwrap().contains("variable or credential references"));
+
+    let cred_arg = McpServerConfig {
+        name: "credarg".into(),
+        command: Some("node".into()),
+        args: vec!["--token".into(), "${credential:mcp.credarg.TOKEN}".into()],
+        ..Default::default()
+    };
+    let server = McpServer::new(cred_arg, context(dir.path()));
+    server.connect();
+    server.wait_settled(Instant::now() + Duration::from_secs(10)).await;
+    assert!(server.status().error.unwrap().contains("credentials cannot be passed in command arguments"));
 }

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
@@ -76,7 +77,12 @@ type mobileCore struct {
 // signer with root.
 func startMobileCore(t *testing.T, dir string, root *identity.SoftwareKey) *mobileCore {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run", "^TestMobileCoreProcess$")
+	return startMobileCoreFrom(t, os.Args[0], dir, root)
+}
+
+func startMobileCoreFrom(t *testing.T, bin, dir string, root *identity.SoftwareKey) *mobileCore {
+	t.Helper()
+	cmd := exec.Command(bin, "-test.run", "^TestMobileCoreProcess$")
 	cmd.Env = append(os.Environ(), "HERMESH_TEST_MOBILE_CORE="+dir)
 	stdin, _ := cmd.StdinPipe()
 	stdout, _ := cmd.StdoutPipe()
@@ -229,14 +235,18 @@ func (p *cutProxy) setCut(cut bool) {
 // w's Mac, as the iPhone joins; it reaches the relay at relayURL.
 func joinMobile(t *testing.T, w *ownerMac, relayURL, dir string, root *identity.SoftwareKey) *mobileCore {
 	t.Helper()
+	return joinMobileWithCore(t, w, relayURL, startMobileCore(t, dir, root))
+}
+
+func joinMobileWithCore(t *testing.T, w *ownerMac, relayURL string, m *mobileCore) *mobileCore {
+	t.Helper()
 	ctx := context.Background()
 	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := startMobileCore(t, dir, root)
 	join, err := m.client.RequestJoin(ctx, &localv1.RequestJoinRequest{RelayUrl: relayURL, OwnerId: st.OwnerId,
-		RootPublicKey: rootPub(root), RootLabel: "test-iphone", RootPlatform: "ios"})
+		RootPublicKey: rootPub(m.app.root), RootLabel: "test-iphone", RootPlatform: "ios"})
 	if err != nil {
 		t.Fatalf("request join: %v", err)
 	}
@@ -253,6 +263,53 @@ func joinMobile(t *testing.T, w *ownerMac, relayURL, dir string, root *identity.
 		t.Fatal(err)
 	}
 	return m
+}
+
+// A paired phone can still answer an existing question if the actual
+// receiver is in-process. The route is the same one the iPhone app calls.
+func TestMobileAnswersVerifiedLocalCodingAgent(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancel()
+	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
+	session, started := w.startSession(30*time.Second, "--prompt", "ask Branch|Which fictional branch?|Main,Dev")
+	if started.code != 0 || session.SessionID == "" {
+		t.Fatalf("start: %+v", started)
+	}
+	front, leave := context.WithCancel(ctx)
+	defer leave()
+	scr := watchScreenOf(front, t, m.client)
+	var questionID string
+	eventually(t, 30*time.Second, "phone sees the verified pending question", scr.has(func(s *screen) bool {
+		q := s.sessions[session.SessionID].GetProgress().GetPendingQuestion()
+		questionID = q.GetQuestionId()
+		return q.GetLocalAnswerAvailable()
+	}))
+	answer := &localv1.AnswerQuestionRequest{SessionId: session.SessionID, QuestionId: questionID, Decline: true,
+		Answers: []*sessionv1.Answer{{Text: "fictional answer masquerading as a decline"}}}
+	if _, err := m.client.AnswerQuestion(ctx, answer); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("decline with content: %v", err)
+	}
+	answer.Decline = false
+	answer.Answers = []*sessionv1.Answer{{Selected: []string{"Dev"}}}
+	if _, err := m.client.AnswerQuestion(ctx, answer); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 20*time.Second, "agent receives the selected answer", func() bool {
+		got := w.get(session.SessionID)
+		return got.Status == "idle" && strings.Contains(got.Result, "Dev")
+	})
 }
 
 // within is how long cond took to hold, or -1 when it did not in timeout.

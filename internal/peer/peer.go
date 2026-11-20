@@ -126,9 +126,15 @@ func (n *Machine) RTT() time.Duration {
 
 // RecordRTT folds a new RTT sample into this tunnel's smoothed RTT.
 func (n *Machine) RecordRTT(d time.Duration) {
-	ns := d.Nanoseconds()
-	if ns <= 0 {
+	if d < 0 {
 		return
+	}
+	ns := d.Nanoseconds()
+	if ns == 0 {
+		// On coarse clocks (e.g. Windows), a fast loopback round-trip can
+		// measure 0 ns; clamp to 1 ns so RTT() distinguishes a measured
+		// sub-tick sample from an unmeasured tunnel (0).
+		ns = 1
 	}
 	for {
 		old := n.srtt.Load()
@@ -518,29 +524,34 @@ func (c *Client) machineByLink(ctx context.Context, machineID string) *Machine {
 // Machine returns (and caches) an E2E connection to machineID. It joins a
 // Warm or concurrent Machine dial in progress, and retries if that attempt fails.
 func (c *Client) Machine(ctx context.Context, machineID string) (*Machine, error) {
+	n, _, err := c.machineWithOrigin(ctx, machineID)
+	return n, err
+}
+
+func (c *Client) machineWithOrigin(ctx context.Context, machineID string) (n *Machine, cached bool, err error) {
 	for {
 		c.mu.Lock()
 		if c.closed {
 			c.mu.Unlock()
-			return nil, errors.New("peer client closed")
+			return nil, false, errors.New("peer client closed")
 		}
-		if n := c.machines[machineID]; n != nil && n.h2.Alive() {
+		if m := c.machines[machineID]; m != nil && m.h2.Alive() {
 			c.mu.Unlock()
-			return n, nil
+			return m, true, nil
 		}
 		w := c.warming[machineID]
 		if w == nil {
 			w = make(chan struct{})
 			c.warming[machineID] = w
 			c.mu.Unlock()
-			n, err := c.dialAndFinishWarm(ctx, machineID, w)
-			return n, err
+			m, err := c.dialAndFinishWarm(ctx, machineID, w)
+			return m, false, err
 		}
 		c.mu.Unlock()
 		select {
 		case <-w:
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, false, ctx.Err()
 		}
 	}
 }
@@ -579,8 +590,8 @@ func (c *Client) RelayMachine(ctx context.Context, machineID string) (*Machine, 
 }
 
 // Warm connects to machines in the background, ahead of the calls likely to
-// need them.
-func (c *Client) Warm(machineIDs []string) {
+// need them. onError can recover the relay that a background dial timed out on.
+func (c *Client) Warm(machineIDs []string, onError func(string, error)) {
 	for _, id := range machineIDs {
 		c.mu.Lock()
 		if c.warming[id] != nil {
@@ -600,8 +611,11 @@ func (c *Client) Warm(machineIDs []string) {
 		c.mu.Unlock()
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			c.dialMachine(ctx, id)
+			_, err := c.dialMachine(ctx, id)
 			cancel()
+			if err != nil && onError != nil {
+				onError(id, err)
+			}
 			c.mu.Lock()
 			delete(c.warming, id)
 			c.mu.Unlock()
@@ -1297,38 +1311,44 @@ func (c *Client) ForgetDirect() {
 	c.mu.Unlock()
 }
 
-// ProbeOrForgetDirect probes each cached direct tunnel with a lightweight
-// GetInfo RPC and drops only those that fail, avoiding unnecessary teardown of
-// healthy QUIC/TCP direct tunnels on transient mobile network path events.
-func (c *Client) ProbeOrForgetDirect(ctx context.Context) {
+// ProbeOrForgetTunnels checks each cached machine with GetInfo after a
+// network change. A healthy relay can still carry an unresponsive tunnel.
+func (c *Client) ProbeOrForgetTunnels(ctx context.Context) {
 	c.mu.Lock()
-	var directs []*Machine
+	tunnels := make([]*Machine, 0, len(c.machines))
 	for _, n := range c.machines {
-		if n.direct {
-			directs = append(directs, n)
-		}
+		tunnels = append(tunnels, n)
 	}
 	c.mu.Unlock()
-	if len(directs) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
-	for _, n := range directs {
-		wg.Add(1)
-		go func(n *Machine) {
-			defer wg.Done()
-			pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	for _, n := range tunnels {
+		wg.Go(func() {
+			timeout := 1500 * time.Millisecond
+			if !n.direct {
+				timeout = max(timeout, 3*n.RTT())
+			}
+			pctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
 			started := time.Now()
 			_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
-			cancel()
 			if err != nil {
 				c.ForgetMachine(n)
 				return
 			}
 			n.RecordRTT(time.Since(started))
-		}(n)
+		})
 	}
 	wg.Wait()
+}
+
+// HasReplacement reports whether machineID now has a different live cached
+// tunnel than old (e.g. after UpgradeToDirect or auto-punch replaced a relayed
+// tunnel with a direct QUIC tunnel).
+func (c *Client) HasReplacement(machineID string, old *Machine) bool {
+	c.mu.Lock()
+	cur := c.machines[machineID]
+	c.mu.Unlock()
+	return cur != nil && cur != old && cur.h2.Alive()
 }
 
 // ForgetMachine drops the tunnel used by a failed call. A later failure of
@@ -1348,7 +1368,9 @@ func (c *Client) ForgetMachine(n *Machine) {
 }
 
 // FanOut runs fn against each machine concurrently (at most 8 at a time) and
-// returns per-machine errors.
+// returns per-machine errors. If a call fails on a cached tunnel that died or
+// was replaced by an upgrade, it drops that tunnel and retries once on a fresh
+// connection.
 func (c *Client) FanOut(ctx context.Context, machineIDs []string, fn func(ctx context.Context, n *Machine) error) map[string]error {
 	errs := map[string]error{}
 	var mu sync.Mutex
@@ -1362,9 +1384,16 @@ func (c *Client) FanOut(ctx context.Context, machineIDs []string, fn func(ctx co
 			defer func() { <-sem }()
 			nctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			n, err := c.Machine(nctx, id)
+			n, cached, err := c.machineWithOrigin(nctx, id)
 			if err == nil {
 				err = fn(nctx, n)
+				if err != nil && cached && nctx.Err() == nil && (!n.Alive() || c.HasReplacement(id, n)) {
+					c.ForgetMachine(n)
+					n, err = c.Machine(nctx, id)
+					if err == nil {
+						err = fn(nctx, n)
+					}
+				}
 			}
 			if err != nil {
 				c.ForgetMachine(n)

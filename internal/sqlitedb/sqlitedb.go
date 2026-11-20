@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
-
-	_ "modernc.org/sqlite"
 )
 
 // Open opens (creating if needed) the database at path and applies
@@ -19,8 +17,7 @@ func Open(path string, migrations []string) (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(driverName, "file:"+path+"?"+writerOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +55,7 @@ func Open(path string, migrations []string) (*sql.DB, error) {
 // already created. In WAL mode they read concurrently with the single
 // writer connection instead of queueing behind its transactions.
 func OpenReader(path string) (*sql.DB, error) {
-	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=query_only(1)&_pragma=foreign_keys(1)"
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(driverName, "file:"+path+"?"+readerOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +95,7 @@ func StartCheckpointer(path string, writer *sql.DB, interval time.Duration, obse
 	if _, err := writer.Exec(fmt.Sprintf("PRAGMA journal_size_limit=%d", walLimit)); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	db, err := sql.Open(driverName, "file:"+path+"?"+checkpointOptions)
 	if err != nil {
 		return nil, err
 	}

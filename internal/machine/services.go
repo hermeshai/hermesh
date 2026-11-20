@@ -103,6 +103,30 @@ func (s *sessionService) AnswerQuestion(ctx context.Context, req *sessionv1.Answ
 	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
 }
 
+// AnswerLocalQuestion is kept for wire compatibility with v0.1.7 clients and
+// applies the same authorization and validation rules as AnswerQuestion.
+func (s *sessionService) AnswerLocalQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
+	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
+}
+
+// CheckLocalCodingRecipient is kept for wire compatibility with v0.1.7 Her
+// clients after coding-specific consent was removed.
+func (s *sessionService) CheckLocalCodingRecipient(ctx context.Context, req *sessionv1.CheckLocalCodingRecipientRequest) (*sessionv1.CheckLocalCodingRecipientResponse, error) {
+	p := principalFrom(ctx)
+	if req.GetSessionId() != "" {
+		if _, _, err := s.n.sessions.find(p, req.GetSessionId(), false); err != nil {
+			return nil, err
+		}
+	}
+	return &sessionv1.CheckLocalCodingRecipientResponse{}, nil
+}
+
+// CodingConsent is kept for wire compatibility with v0.1.7 owner clients after
+// coding-specific consent was removed.
+func (s *sessionService) CodingConsent(ctx context.Context, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	return s.n.sessions.codingConsentCompat(principalFrom(ctx), req)
+}
+
 type machineService struct{ n *Machine }
 
 func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {

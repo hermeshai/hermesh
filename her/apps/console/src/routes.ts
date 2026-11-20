@@ -71,6 +71,25 @@ export async function caught(id: string, signal?: AbortSignal): Promise<Caught> 
   }
 }
 
+/** The target Her Server this console manages, where local stdio commands execute. */
+export type ConsoleHost = { machine_id: string; machine_name: string };
+
+/** Reads the target execution host from the owner's console proxy; null when unavailable. */
+export async function readHost(): Promise<ConsoleHost | null> {
+  try {
+    const r = await fetch("./host");
+    if (!r.ok) return null;
+    const data = (await r.json()) as Partial<ConsoleHost>;
+    if (typeof data.machine_id !== "string") return null;
+    return { machine_id: data.machine_id, machine_name: typeof data.machine_name === "string" ? data.machine_name : "" };
+  } catch {
+    return null;
+  }
+}
+
+/** The owner route definitively refused a command connector. */
+export class CommandConnectorRefusal extends Error {}
+
 /** A connector started as a command, as the owner's device signs it. */
 export type CommandConnector = { name: string; command: string; args: string[]; env: Record<string, string> };
 
@@ -80,5 +99,9 @@ export type CommandConnector = { name: string; command: string; args: string[]; 
  */
 export async function signCommandConnector(c: CommandConnector): Promise<void> {
   const r = await fetch("./command-connector", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
-  if (!r.ok) throw await refusal(r);
+  if (!r.ok) {
+    const error = await refusal(r);
+    if ([400, 403, 404, 412].includes(r.status)) throw new CommandConnectorRefusal(error.message);
+    throw error;
+  }
 }

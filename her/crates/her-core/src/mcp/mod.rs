@@ -185,7 +185,9 @@ impl McpManager {
         let server = {
             let mut servers = self.servers.lock();
             if let Some(had) = servers.iter().find(|s| s.name() == config.name) {
-                if self.events.lock().is_some() {
+                if had.config() == &config && self.events.lock().is_some()
+                    && (config.url.is_some() || had.status().state != McpServerState::Ready)
+                {
                     had.connect();
                 }
                 return had.clone();

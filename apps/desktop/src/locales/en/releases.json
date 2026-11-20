@@ -3,6 +3,23 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.7": {
+    "improvements": [
+      "Mobile and desktop connections use end-to-end encrypted QUIC, support direct IPv6 paths, and can return to a direct connection after switching back to Wi-Fi. A relayed encrypted mailbox can fill in missing Her history after a device reconnects.",
+      "On iPhone, Network Diagnostics shows whether the connection is direct, relayed or offline, along with its primary path and round-trip time. Her’s header shows her connection and work status. On desktop and iPhone, the busy bubble shows sub-agent activity.",
+      "Her supports adding custom model services by endpoint address. On desktop and iPhone, Hermesh asks for approval before Her shares data with an external AI service or hands off to a configured coding service. iPhone answers sent to coding agents use the same approval controls. You can review and revoke approvals.",
+      "Coding agents come with default models. Antigravity also supports the official agy CLI. Settings show local workspace disk usage and let you release idle checkouts.",
+      "On iPhone, Try It First includes an offline Her demo that keeps its activity separate from your account, settings and work. The app includes its privacy manifest and links to its privacy policy."
+    ],
+    "fixes": [
+      "On iPhone, reconnecting through a relay restores stalled task and machine updates. The sidebar keeps long lists clear at the bottom in light and dark mode, and the Overview row keeps connection notices without showing a task spinner.",
+      "The iPhone app uses system SQLite. Existing owner databases are migrated with their saved data on upgrade.",
+      "Her’s Chrome extension reconnects more reliably after browser activity or a Her restart, and replies stay with the connection that started the action.",
+      "Resumed tasks no longer show as failed while queued, preparing or running.",
+      "On Mac, screen sharing recovers when display discovery briefly reports no display. When the signer is older than the app and nothing was signed, the app offers to update it.",
+      "Linux machines check for missing Her components, repair them where possible, and provide clearer startup errors. On desktop, Her’s message bubbles use a text cursor for easier selection."
+    ]
+  },
   "0.1.6": {
     "improvements": [
       "The sidebar brings Her, Overview and every task together. Group and sort tasks with view options, or collapse the sidebar to a rail of working agents. Machines and connected agents are managed in Settings (Account & Devices on iPhone).",

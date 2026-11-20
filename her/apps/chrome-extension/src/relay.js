@@ -40,10 +40,15 @@ export class TargetRelay {
 
   /** One message from the kernel: a command, as the transport parsed it. */
   receive(command) {
-    if (typeof command !== "object" || command === null) return;
+    if (this.closed || typeof command !== "object" || command === null) return;
     if (typeof command.id !== "number" || typeof command.method !== "string") return;
     this.handle(command).then(
-      (result) => this.emitRaw({ id: command.id, result: result ?? {} }),
+      (result) => {
+        const reply = { id: command.id, result: result ?? {} };
+        // The close requested on a live connection still gets its own acknowledgement.
+        if (command.method === "Browser.close") this.send(reply);
+        else this.emitRaw(reply);
+      },
       (e) => this.emitRaw({ id: command.id, error: { code: -32000, message: e instanceof Error ? e.message : String(e) } }),
     );
   }
@@ -210,6 +215,6 @@ export class TargetRelay {
   }
 
   emitRaw(message) {
-    if (!this.closed || "id" in message) this.send(message);
+    if (!this.closed) this.send(message);
   }
 }

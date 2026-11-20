@@ -320,6 +320,16 @@ VERSION=0.1.1 ASC_KEY_ID=<key id> ASC_ISSUER_ID=<issuer id> apps/ios/scripts/tes
 
 The build number is the commit count unless `BUILD` says otherwise.
 
+The hosted **Delete Account…** action is off unless the release sets
+`HERMESH_ACCOUNT_DELETION_ORIGINS` to the enabled public HTTPS console origins,
+separated by spaces, without paths or trailing slashes. Before setting it,
+deploy and enable the hosted deletion service and verify that its browser
+route and reauthentication work on each listed origin. For the official
+service the setting is `https://hermesh.io`. The app opens `/account/delete`
+in the system browser with no credentials or query parameters. A return
+from the browser follows normal relay reconnection. **Erase Everything…**
+remains the separate workspace and device operation.
+
 Info.plist answers export compliance (`ITSAppUsesNonExemptEncryption`
 false): the app uses only standard algorithms (TLS, HPKE with X25519 and
 AES-GCM, ECDSA P-256) and is not distributed in France, so a new build

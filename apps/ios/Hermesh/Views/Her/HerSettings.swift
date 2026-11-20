@@ -60,6 +60,8 @@ private struct HerPageBody: View {
     @State private var fullAccess = false
     @State private var clearing = false
     @State private var granting = false
+    @State private var aiSharing: JSON?
+    @State private var revokingAISharing = false
     /// The Computer Control session on screen (docs/computer-control.md).
     @State private var control: ScreenSession?
 
@@ -114,6 +116,11 @@ private struct HerPageBody: View {
             if herAnswers(machine.her, "browser/status") != false { browsing = (try? await chat.abilities.browser())?.controlling }
             if chat.envUp, let bot = chat.bot, herAnswers(machine.her, "bots/memory") != false { memoryEmpty = (try? await HerMemory.load(chat, bot: bot.id))?.isEmpty }
         }
+        .task(id: "\(tab == .settings) \(herReachable(machine)) \(chat.live?.model ?? "") \(chat.aiSharingChanged) \(shown)") {
+            aiSharing = nil
+            if tab == .settings, herReachable(machine) { aiSharing = try? await chat.aiSharingStatus() }
+        }
+        .herAISharingAlert(chat)
         .confirmationDialog("Clear your chat with “\(chat.bot?.name ?? "Her")”?", isPresented: $clearing, titleVisibility: .visible) {
             Button("Clear", role: .destructive) { clear() }
         } message: {
@@ -229,6 +236,34 @@ private struct HerPageBody: View {
                 }
                 .buttonStyle(HerRowStyle())
                 .accessibilityIdentifier("her-environment")
+            }
+            if let recipient = aiSharing?["allowed"], let endpoint = recipient["endpoint"].string {
+                HerGroup(footer: endpoint) {
+                    Button(role: .destructive) {
+                        revokingAISharing = true
+                        Task {
+                            defer { revokingAISharing = false }
+                            do {
+                                try await chat.revokeAISharing()
+                                aiSharing = nil
+                            } catch { model.show(error.localizedDescription) }
+                        }
+                    } label: {
+                        HerRowLabel { Text("Revoke Third-Party AI Sharing").foregroundStyle(.red) }
+                    }
+                    .buttonStyle(HerRowStyle())
+                    .disabled(revokingAISharing || !herReachable(machine))
+                    .accessibilityIdentifier("her-ai-sharing-revoke")
+                }
+            } else if let endpoint = aiSharing?["recipient"]["endpoint"].string {
+                HerGroup(footer: endpoint) {
+                    Button { chat.reviewAISharing() } label: {
+                        HerRowLabel(chevron: true) { Text("Review Third-Party AI Sharing") }
+                    }
+                    .buttonStyle(HerRowStyle())
+                    .disabled(!herReachable(machine))
+                    .accessibilityIdentifier("her-ai-sharing-review")
+                }
             }
             if chat.bot != nil {
                 HerGroup {

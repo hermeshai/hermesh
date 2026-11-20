@@ -99,6 +99,9 @@ final class HerChat {
     var pictures: [String: UIImage?] = [:]
     /// What the owner wrote and has not sent.
     var draft = HerDraft()
+    var aiConsentPrompt: HerAIConsentPrompt?
+    private(set) var aiSharingChanged = 0
+    @ObservationIgnored private var checkingConsent = false
     /// The composer is to take the keyboard: something put words in it for the owner to finish.
     var wantsFocus = false
     /// The routine's run whose message the conversation is to bring into view, and mark.
@@ -611,6 +614,13 @@ final class HerChat {
 
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
     func say(_ text: String) async -> Bool {
+        guard await checkAISharing(then: { [weak self] in
+            Task { _ = await self?.sendAnswer(text) }
+        }) else { return false }
+        return await sendAnswer(text)
+    }
+
+    private func sendAnswer(_ text: String) async -> Bool {
         Haptic.sent.play()
         spoken += 1
         return await op(prompt([.text(text)]))
@@ -655,6 +665,64 @@ final class HerChat {
         await refreshWaiting()
     }
 
+    // MARK: Third-party AI sharing
+
+    func aiSharingStatus() async throws -> JSON {
+        let reference = live?.model
+        return try await callAlone("ai_consent/status", ["model": reference.map(JSON.string) ?? .null])
+    }
+
+    func reviewAISharing() {
+        Task { _ = await checkAISharing(then: {}) }
+    }
+
+    /// The draft and any retry stay put while the owner decides. The host checks again at inference.
+    private func checkAISharing(then send: @escaping () -> Void) async -> Bool {
+        if model?.isDemo == true { return true }
+        guard !checkingConsent, aiConsentPrompt == nil else { return false }
+        if let machine = model?.machines.first(where: { $0.machineID == machineID }),
+           herAnswers(machine.her, "ai_consent/status") == false {
+            model?.show(String(localized: "Update Her’s computer to review third-party AI sharing."))
+            return false
+        }
+        guard let reference = live?.model, convUp else {
+            model?.show(String(localized: "Connect to Her’s computer to check who will receive your data."))
+            return false
+        }
+        checkingConsent = true
+        defer { checkingConsent = false }
+        do {
+            let status = try await callAlone("ai_consent/status", ["model": .string(reference)])
+            guard live?.model == reference, convUp else { return false }
+            guard let endpoint = status["recipient"]["endpoint"].string,
+                  let provider = status["recipient"]["provider"].string,
+                  let revision = status["revision"].string else {
+                model?.show(String(localized: "Her can’t verify a single recipient for this model. Choose another model to send."))
+                return false
+            }
+            if status["allowed"] == status["recipient"] { return true }
+            let label = models.providers.first(where: { $0.id == provider })?.name(language: Locale.current.identifier) ?? provider
+            let modelLabel = models.title(reference)
+            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, model: modelLabel, allow: { [weak self] in
+                guard let self, self.live?.model == reference else { return }
+                do {
+                    _ = try await self.callAlone("ai_consent/allow", [
+                        "model": .string(reference), "recipient": status["recipient"], "revision": .string(revision),
+                    ])
+                    self.aiSharingChanged += 1
+                    if self.live?.model == reference, self.convUp { send() }
+                } catch { self.report(error) }
+            })
+        } catch { report(error) }
+        return false
+    }
+
+    func revokeAISharing() async throws {
+        aiConsentPrompt = nil
+        _ = try await callAlone("ai_consent/revoke", [:])
+        aiSharingChanged += 1
+    }
+
     // MARK: Sending
 
     /// Sends the draft (docs/her-sending.md): the composer is empty at once and the message shows as being sent, under
@@ -663,6 +731,15 @@ final class HerChat {
     func send() {
         let sent = draft
         guard bot != nil, api != nil, !sent.isEmpty else { return }
+        Task {
+            if await checkAISharing(then: { [weak self] in self?.sendIfCurrent(sent) }) {
+                sendIfCurrent(sent)
+            }
+        }
+    }
+
+    private func sendIfCurrent(_ sent: HerDraft) {
+        guard draft == sent else { return }
         Haptic.sent.play()
         spoken += 1
         draft = HerDraft()
@@ -676,6 +753,13 @@ final class HerChat {
 
     /// A message that was not sent, sent again as it was.
     func retry(_ id: String) {
+        Task {
+            let resend = { [weak self] in self?.retryIfPending(id) ?? () }
+            if await checkAISharing(then: resend) { resend() }
+        }
+    }
+
+    private func retryIfPending(_ id: String) {
         guard let i = sending.firstIndex(where: { $0.id == id }) else { return }
         sending[i].refused = nil
         Task { await deliver(id) }
@@ -989,6 +1073,13 @@ final class HerChat {
                              open: { url in await HerBrowser.shared.open(url, closed: closed) },
                              caught: { await HerBrowser.shared.close() })
     }
+}
+
+struct HerAIConsentPrompt {
+    let provider: String
+    let endpoint: String
+    let model: String
+    let allow: () async -> Void
 }
 
 /// A connector's sign-in under way, for the browser's closing to stop.

@@ -15,6 +15,19 @@ pnpm --dir apps/desktop dev   # the desktop app against the local hermeshd (HERM
 `make e2e` includes the desktop app's tests, which open the app on this Mac;
 `go test ./e2e -skip 'TestDesktop$|TestSignerApp$'` leaves them out.
 
+## CI
+
+The `ci` workflow selects PR jobs from the test merge's diff against its base.
+Both paths in a rename count. Changes to Go core, shared protocols and fixtures,
+lockfiles, workflows, or unrecognized paths run the full suite. Pushes to
+`main` and manual runs also run the full suite. To run it on a PR branch, use
+`gh workflow run ci.yml --ref <branch>`.
+
+`ci-ok` requires every selected blocking job to succeed and every unselected
+blocking job to be skipped. Windows desktop and Windows E2E report separately.
+The Windows desktop job packages x64 whenever it runs and also packages Arm64
+on full runs and when the change affects its build inputs.
+
 ## Releases
 
 A release build of the desktop app needs, besides the Developer ID certificate in the keychain, the signer's Developer ID provisioning profile (App ID `com.hermesh.app.signer`, so the root key stays in the signer's Keychain group) and an App Store Connect API key to notarize:

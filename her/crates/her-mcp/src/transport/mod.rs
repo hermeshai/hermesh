@@ -30,6 +30,11 @@ pub(crate) trait Transport: Send + Sync + 'static {
     /// `notifications/initialized` was sent; HTTP opens its stream for server messages.
     fn initialized(&self) {}
 
+    /// Removes secrets from a diagnostic received from the server.
+    fn redact(&self, message: &str) -> String {
+        message.to_owned()
+    }
+
     /// Ends the connection and, for a local server, the process.
     async fn close(&self);
 }

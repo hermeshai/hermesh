@@ -87,6 +87,16 @@ export type AiActionResult = {
 
 export type AiActionStage = "reading" | "writing" | "laying_out" | "checking";
 
+export type AiConsentAllowParams = {
+  model: string;
+  recipient: Recipient;
+  revision: string;
+};
+
+export type AiConsentStatusParams = {
+  model?: string | null;
+};
+
 /** An action too large for an instant answer, handed to the conversation (§5.2.9). */
 export type AiHandoff = {
   /** The message to start the conversation turn with, context included. */
@@ -266,11 +276,17 @@ export type BotMemoryResult = {
   text: string;
 };
 
-/** Parameters of `bots/open`, which answers as `session/new` does. */
+/** Parameters of `bots/open`, which answers as `session/new` does (or with an incremental event list when `session_id`, `resume_epoch`, and `after_seq` match the loaded session hub). */
 export type BotOpenParams = {
+  /** Client's last applied event sequence number. */
+  after_seq?: number | null;
   bot_id: string;
   events?: EventFilter;
   history_limit?: number | null;
+  /** Server-issued epoch from the previous `bots/open` reply, preventing sequence collisions across `her` restarts or session unloads. */
+  resume_epoch?: string | null;
+  /** Client's currently held session id for incremental resume. */
+  session_id?: string | null;
 };
 
 /** Result of `bots/create` and `bots/update`. */
@@ -559,13 +575,13 @@ export type Capability = "view" | "text" | "search" | "outline" | "edit_values" 
 /** A card as the apps draw it. */
 export type Card = {
   asked_by: AskedBy;
-  body: ConnectBody;
-  /** RFC 3339: 24 hours after the card was prepared. */
+  body: CardBody;
+  /** RFC 3339: when the card expires (24 hours for `connect`, 5 minutes for `site_login`). */
   expires_at: string;
   /** `c_` and 10 random letters and digits. It means something only in its session. */
   id: string;
   kind: CardKind;
-  /** The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `"<value:FIELD_ID>"`. */
+  /** The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `"<value:FIELD_ID>"`. Empty for `site_login`. */
   ops: CardOp[];
   /** In English: for a kind the app does not know, and for notifications. Apps draw the kinds they know from `body`, in the owner's language. */
   title: string;
@@ -575,8 +591,13 @@ export type CardAnswer = {
   decision: "approve";
   ops: CardOp[];
 } | {
+  decision: "fill";
+  fields: { [key: string]: string };
+} | {
   decision: "decline";
 };
+
+export type CardBody = ConnectBody | SiteLoginBody;
 
 /** A value the owner types into the card. */
 export type CardField = {
@@ -586,7 +607,7 @@ export type CardField = {
   secret: boolean;
 };
 
-export type CardKind = "connect";
+export type CardKind = "connect" | "site_login";
 
 /** One console call: its method and its params. */
 export type CardOp = {
@@ -3930,6 +3951,11 @@ export type QueuedInput = {
 
 export type ReadDetail = "brief" | "full";
 
+export type Recipient = {
+  endpoint: string;
+  provider: string;
+};
+
 /** A rectangle on a page: `x0 < x1`, `y0 < y1`. */
 export type Rect = {
   x0: number;
@@ -4415,6 +4441,28 @@ export type SiteGrant = {
   origin: string;
 };
 
+/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser. */
+export type SiteLoginBody = {
+  /** Verified login fields on the page (never authored by the model). */
+  fields: SiteLoginField[];
+  /** The origin's host (with non-default port), shown large on the card. */
+  host: string;
+  /** Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures). */
+  origin: string;
+  /** The page's title, sanitized and clipped. */
+  title?: string | null;
+};
+
+export type SiteLoginField = {
+  id: string;
+  kind: SiteLoginFieldKind;
+  label: string;
+  /** Masked as it is typed (`password` and `one_time_code`). */
+  secret: boolean;
+};
+
+export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_code";
+
 /** One `SKILL.md` that was found, and what became of it. */
 export type SkillEntry = {
   /** What to type after `/name`, from the header's `argument-hint`. */
@@ -4658,6 +4706,12 @@ export type SnapshotResult = {
 };
 
 export type Speaker = "user" | "bot";
+
+export type Status = {
+  allowed?: Recipient | null;
+  recipient?: Recipient | null;
+  revision: string;
+};
 
 export type StopReason = "stop" | "length" | "tool_use" | "error" | "aborted";
 
@@ -5094,6 +5148,9 @@ export type ZOrder = "front" | "back" | "forward" | "backward";
 
 /** Requests: [params, result]. */
 export interface Methods {
+  "ai_consent/allow": [AiConsentAllowParams, Empty];
+  "ai_consent/revoke": [Record<string, never>, Empty];
+  "ai_consent/status": [AiConsentStatusParams, Status];
   "ai/action": [AiActionParams, AiActionResult];
   "auth/delete": [AuthDeleteParams, Empty];
   "auth/set": [AuthSetParams, AuthSetResult];
