@@ -250,11 +250,11 @@ pub struct SiteLoginInspection {
 /// Active sensitive sign-in guard on a tab (pending card or filled unsubmitted fields).
 struct SensitiveTab {
     frame: String,
-    loader: String,
     origin: String,
     backends: HashSet<i64>,
     pending_cards: HashSet<String>,
     filled: bool,
+    discard_logs: bool,
 }
 
 pub struct BrowserSession {
@@ -270,8 +270,8 @@ pub struct BrowserSession {
     worlds: Mutex<HashMap<(String, String), i64>>,
     /// Said once, in the first result.
     pending_note: Mutex<Option<String>>,
-    /// Tabs currently in a sensitive sign-in step, keyed by tab id.
-    sensitive: Mutex<HashMap<String, SensitiveTab>>,
+    /// Sensitive documents by tab and loader, including filled documents in browser history.
+    sensitive: Mutex<HashMap<String, HashMap<String, SensitiveTab>>>,
 }
 
 impl BrowserSession {
@@ -541,58 +541,56 @@ impl BrowserSession {
     /// is cancelled/expired without filling or the page safely navigates away.
     pub fn begin_sensitive_card(&self, card_id: &str, tab: &str, frame: &str, loader: &str, origin: &str, backends: &[i64]) {
         let mut sensitive = self.sensitive.lock();
-        let entry = sensitive.entry(tab.to_string()).or_insert_with(|| SensitiveTab {
-            frame: frame.to_string(),
-            loader: loader.to_string(),
-            origin: origin.to_string(),
-            backends: HashSet::new(),
-            pending_cards: HashSet::new(),
-            filled: false,
-        });
-        if entry.frame != frame || entry.loader != loader || entry.origin != origin {
-            entry.frame = frame.to_string();
-            entry.loader = loader.to_string();
-            entry.origin = origin.to_string();
-            entry.backends.clear();
-            entry.pending_cards.clear();
-            entry.filled = false;
-        }
+        let entry = sensitive
+            .entry(tab.to_string())
+            .or_default()
+            .entry(loader.to_string())
+            .or_insert_with(|| SensitiveTab {
+                frame: frame.to_string(),
+                origin: origin.to_string(),
+                backends: HashSet::new(),
+                pending_cards: HashSet::new(),
+                filled: false,
+                discard_logs: false,
+            });
         entry.backends.extend(backends.iter().copied());
         entry.pending_cards.insert(card_id.to_string());
     }
 
-    /// Releases a `site_login` card that ended without filling; if nothing was filled and no other
-    /// card is pending on that tab, model observation resumes immediately.
+    /// Releases a card that ended without filling.
     pub fn end_sensitive_card(&self, card_id: &str) {
-        let mut sensitive = self.sensitive.lock();
-        sensitive.retain(|_, entry| {
-            entry.pending_cards.remove(card_id);
-            entry.filled || !entry.pending_cards.is_empty()
+        self.sensitive.lock().retain(|_, documents| {
+            documents.retain(|_, entry| {
+                entry.pending_cards.remove(card_id);
+                entry.filled || !entry.pending_cards.is_empty()
+            });
+            !documents.is_empty()
         });
     }
 
-    /// Returns `(pending_card_open, redacted_backends)` if `tab` is currently in a sensitive
-    /// sign-in step on its active document; automatically clears the guard once the document
-    /// navigates to a new loader or the tab closes (safe recovery).
-    fn sensitive_active(&self, tab: &Tab) -> Option<(bool, HashSet<i64>)> {
-        if tab.is_closed() {
-            self.sensitive.lock().remove(&tab.id);
-            return None;
-        }
+    fn sensitive_active(&self, tab: &Tab) -> Option<HashSet<i64>> {
         let mut sensitive = self.sensitive.lock();
-        let entry = sensitive.get(&tab.id)?;
-        let same_doc = {
-            let state = tab.state.lock();
-            state
-                .frames
-                .get(&entry.frame)
-                .is_some_and(|f| f.loader == entry.loader && url_origin(&f.url) == entry.origin)
-        };
-        if !same_doc {
+        if tab.is_closed() {
             sensitive.remove(&tab.id);
             return None;
         }
-        Some((!entry.pending_cards.is_empty(), entry.backends.clone()))
+        let documents = sensitive.get_mut(&tab.id)?;
+        let mut state = tab.state.lock();
+        let mut active = None;
+        let mut discard_logs = false;
+        for (loader, entry) in documents {
+            if state.frames.get(&entry.frame).is_some_and(|f| &f.loader == loader && url_origin(&f.url) == entry.origin) {
+                entry.discard_logs = entry.filled;
+                active = Some(entry.backends.clone());
+            } else {
+                discard_logs |= std::mem::take(&mut entry.discard_logs);
+            }
+        }
+        if discard_logs {
+            state.console.clear();
+            state.notes.clear();
+        }
+        active
     }
 
     /// Inspects `refs` directly in the isolated browser DOM to prepare a `site_login` card.
@@ -627,6 +625,9 @@ impl BrowserSession {
         let (tab, _) = self.verify(first_page)?;
         let _busy = tab.busy.lock().await;
         let (tab, frame) = self.verify(first_page)?;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
+        }
         let (main_id, main_frame) = self.main_frame(&tab)?;
         let top_origin = url_origin(&main_frame.url);
         if first_page.frame != main_id || top_origin != first_page.origin {
@@ -824,56 +825,44 @@ impl BrowserSession {
             }
         }
 
-        // Fill each bound input without pressing Enter or submitting the form.
-        let s = Some(frame.session.as_str());
-        let mut filled_backends = Vec::with_capacity(fields.len());
-        for (backend, _, value) in fields {
-            let _ = self
-                .conn()
-                .send(s, "DOM.scrollIntoViewIfNeeded", json!({ "backendNodeId": backend }))
-                .await;
-            let _ = self
-                .conn()
-                .send(s, "DOM.focus", json!({ "backendNodeId": backend }))
-                .await;
-            let prepared = self
-                .call_on(frame_id, &frame, *backend, SELECT_ALL_SCRIPT, vec![])
-                .await;
-            if !matches!(prepared.as_ref().ok().and_then(Value::as_str), Some("ok")) {
-                self.clear_inputs(frame_id, &frame, &filled_backends).await;
-                return Err(BrowserError::PageChanged { now: main_frame.url });
+        // Keep observation blocked even if the card ends during a write or the page handles
+        // input before a later field can be filled.
+        {
+            let mut sensitive = self.sensitive.lock();
+            let entry = sensitive
+                .get_mut(&tab.id)
+                .and_then(|documents| documents.get_mut(loader))
+                .filter(|entry| entry.frame == frame_id && entry.origin == origin)
+                .ok_or_else(|| BrowserError::failed("The sign-in card is no longer open."))?;
+            if !entry.pending_cards.remove(card_id) {
+                return Err(BrowserError::failed("The sign-in card is no longer open."));
             }
+            entry.filled = true;
+            entry.discard_logs = true;
+        }
+
+        // Write to the bound DOM node without relying on the renderer's current focus.
+        let mut filled_backends = Vec::with_capacity(fields.len());
+        for (backend, input_type, value) in fields {
             if self.verify(&page).is_err() {
                 self.clear_inputs(frame_id, &frame, &filled_backends).await;
                 return Err(BrowserError::PageChanged { now: main_frame.url });
             }
-            if let Err(err) = self
-                .conn()
-                .send(Some(&tab.session), "Input.insertText", json!({ "text": value }))
-                .await
-            {
+            let result = self
+                .call_on(
+                    frame_id,
+                    &frame,
+                    *backend,
+                    FILL_LOGIN_INPUT_SCRIPT,
+                    vec![json!(origin), json!(input_type), json!(value)],
+                )
+                .await;
+            if !matches!(result, Ok(Value::Bool(true))) {
                 self.clear_inputs(frame_id, &frame, &filled_backends).await;
-                return Err(err.into());
+                return Err(BrowserError::PageChanged { now: main_frame.url });
             }
             filled_backends.push(*backend);
         }
-
-        // Keep all filled fields under the sensitive observation guard until navigation recovery.
-        let mut sensitive = self.sensitive.lock();
-        let entry = sensitive.entry(tab.id.clone()).or_insert_with(|| SensitiveTab {
-            frame: frame_id.to_string(),
-            loader: loader.to_string(),
-            origin: origin.to_string(),
-            backends: HashSet::new(),
-            pending_cards: HashSet::new(),
-            filled: true,
-        });
-        entry.frame = frame_id.to_string();
-        entry.loader = loader.to_string();
-        entry.origin = origin.to_string();
-        entry.backends.extend(filled_backends);
-        entry.pending_cards.remove(card_id);
-        entry.filled = true;
         Ok(())
     }
 
@@ -1164,7 +1153,7 @@ impl BrowserSession {
     ) -> Result<Vec<String>, BrowserError> {
         self.prune(&tab.id, frame_id, &frame.loader);
         let nodes = tree["nodes"].as_array().map(Vec::as_slice).unwrap_or_default();
-        let redacted = self.sensitive_active(tab).map(|(_, b)| b).unwrap_or_default();
+        let redacted = self.sensitive_active(tab).unwrap_or_default();
         let items = snapshot::build_with_redacted(nodes, attrs, root, &redacted);
         // The frames behind the iframes, looked up all at once.
         let iframes: Vec<i64> = items.iter().filter(|i| i.iframe).filter_map(|i| i.backend).collect();
@@ -1407,27 +1396,20 @@ impl BrowserSession {
         let (tab, _) = self.verify(place.page())?;
         let _busy = tab.busy.lock().await;
         let (tab, frame) = self.verify(place.page())?;
-        if let Some((pending, _)) = self.sensitive_active(&tab)
-            && pending
-        {
+        if self.sensitive_active(&tab).is_some() {
             return Err(BrowserError::failed(
-                "Cannot act on this page while a sensitive sign-in card is waiting for the owner.",
+                "Cannot act on this page during sensitive sign-in. Use browser_wait with user so the owner can continue.",
             ));
         }
         let frame_id = place.page().frame.clone();
-        // The state to diff against: the last snapshot of this document, else one now (skipped
-        // while sensitive fields remain on this document so nothing reads the page).
-        let before = if self.sensitive_active(&tab).is_some() {
-            Vec::new()
-        } else {
-            let cached = match self.last.lock().get(&(tab.id.clone(), frame_id.clone())) {
-                Some((loader, lines)) if *loader == frame.loader => Some(lines.clone()),
-                _ => None,
-            };
-            match cached {
-                Some(lines) => lines,
-                None => self.fresh_tree(&tab, &frame_id, &frame).await,
-            }
+        // The state to diff against: the last snapshot of this document, else one now.
+        let cached = match self.last.lock().get(&(tab.id.clone(), frame_id.clone())) {
+            Some((loader, lines)) if *loader == frame.loader => Some(lines.clone()),
+            _ => None,
+        };
+        let before = match cached {
+            Some(lines) => lines,
+            None => self.fresh_tree(&tab, &frame_id, &frame).await,
         };
         let main_before = self.main_loader(&tab);
         let since = Instant::now();
@@ -2097,13 +2079,13 @@ impl BrowserSession {
     /// quiet, or a fixed time.
     pub async fn wait(&self, tab: Option<&str>, condition: &WaitFor, timeout: Duration) -> Result<Report, BrowserError> {
         let tab = self.resolve_tab(tab)?;
-        if matches!(condition, WaitFor::Text(_) | WaitFor::TextGone(_)) && self.sensitive_active(&tab).is_some() {
-            return Err(BrowserError::failed(
-                "Reading page text is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
-            ));
-        }
         let deadline = Instant::now() + timeout;
         let met = loop {
+            if matches!(condition, WaitFor::Text(_) | WaitFor::TextGone(_) | WaitFor::Url(_))
+                && self.sensitive_active(&tab).is_some()
+            {
+                return Err(BrowserError::failed("Reading the page is blocked during sensitive sign-in."));
+            }
             let met = match condition {
                 WaitFor::Time => false,
                 WaitFor::Url(part) => tab.state.lock().url.contains(part.as_str()),
@@ -2224,14 +2206,20 @@ impl BrowserSession {
 
     /// `Page: <title> — <url> (tab 1 of 2)`.
     pub fn header(&self, tab: &Tab) -> String {
-        let (url, title) = {
-            let state = tab.state.lock();
-            (state.url.clone(), state.title.clone())
-        };
+        let (url, title) = self.page_metadata(tab);
         let count = self.tabs().len();
         let title = snapshot::clean(&title);
         let page = if title.is_empty() { url } else { format!("\"{}\" {url}", title.replace('"', "'")) };
         format!("Page: {page} (tab {} of {count})", tab.id)
+    }
+
+    pub fn page_metadata(&self, tab: &Tab) -> (String, String) {
+        let sensitive = self.sensitive_active(tab).is_some();
+        let state = tab.state.lock();
+        if sensitive {
+            return (url_origin(&state.url), String::new());
+        }
+        (state.url.clone(), state.title.clone())
     }
 
     /// The result of a call that may have changed the page: what was done, where things
@@ -2250,63 +2238,76 @@ impl BrowserSession {
             });
         }
         let _busy = tab.busy.lock().await;
+        // Brief results leave the previous snapshot for the next full result to diff against.
+        let body = if is_brief() {
+            String::new()
+        } else if same_document.is_some() {
+            let before = self.main_loader(tab);
+            let body = self.report_page(tab, same_document).await;
+            // The renderer can commit during the snapshot, before its navigation events have
+            // reached the router. Check the current loader before returning a same-document diff.
+            let document = self.conn().send(Some(&tab.session), "Page.getFrameTree", json!({})).await;
+            let committed = document.as_ref().ok().and_then(|tree| tree["frameTree"]["frame"]["loaderId"].as_str());
+            if committed.is_some_and(|current| Some(current) != before.as_deref()) {
+                self.wait_for(tab, self.options.navigation_timeout, |state| {
+                    !state.loading && state.main().is_some_and(|frame| Some(frame.loader.as_str()) != before.as_deref())
+                })
+                .await;
+                self.report_page(tab, None).await
+            } else {
+                body
+            }
+        } else {
+            self.report_page(tab, None).await
+        };
         self.refresh(tab).await;
-        let mut text = format!("{done}\n{}", self.header(tab));
-        if is_brief() {
-            // The last snapshot stays as it was, so the next full result diffs against it.
-            return Ok(self.finish(tab, text));
-        }
-        if self.sensitive_active(tab).is_some() {
-            text.push_str("\nPage observation remains blocked while sensitive sign-in fields stay on this document.");
-            return Ok(self.finish(tab, text));
-        }
-        match same_document {
-            Some((frame_id, frame, before)) => {
-                let still = tab.state.lock().frames.get(&frame_id).is_some_and(|f| f.loader == frame.loader);
-                if still {
-                    let after = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
-                    let changes = snapshot::diff(&before, &after, DIFF_LINES);
-                    self.last
-                        .lock()
-                        .insert((tab.id.clone(), frame_id), (frame.loader.clone(), after));
-                    match changes {
-                        Some(changes) => {
-                            text.push_str("\nChanges:\n");
-                            text.push_str(&snapshot::wrap_page_content(&url_origin(&frame.url), &changes));
-                        }
-                        None => text.push_str("\nNo visible change."),
-                    }
-                } else {
-                    text.push_str("\nThe frame navigated; take a snapshot to see it.");
-                }
-            }
-            None => {
-                // A new document: the start of its snapshot.
-                if let Ok((frame_id, frame)) = self.main_frame(tab) {
-                    let lines = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
-                    self.last
-                        .lock()
-                        .insert((tab.id.clone(), frame_id), (frame.loader.clone(), lines.clone()));
-                    let body = cut(
-                        &lines.join("\n"),
-                        NEW_PAGE_CHARS,
-                        "Use browser_snapshot with query or mode \"text\" to read further.",
-                    );
-                    text.push_str("\nSnapshot:\n");
-                    text.push_str(&snapshot::wrap_page_content(&url_origin(&frame.url), &body));
-                }
-            }
-        }
+        let text = format!("{done}\n{}{body}", self.header(tab));
         Ok(self.finish(tab, text))
+    }
+
+    async fn report_page(&self, tab: &Tab, same_document: Option<(String, Frame, Vec<String>)>) -> String {
+        if self.sensitive_active(tab).is_some() {
+            return "\nPage observation remains blocked while sensitive sign-in fields stay on this document.".into();
+        }
+        if let Some((frame_id, frame, before)) = same_document {
+            let still = tab.state.lock().frames.get(&frame_id).is_some_and(|f| f.loader == frame.loader);
+            if still {
+                let after = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
+                let changes = snapshot::diff(&before, &after, DIFF_LINES);
+                self.last
+                    .lock()
+                    .insert((tab.id.clone(), frame_id), (frame.loader.clone(), after));
+                return match changes {
+                    Some(changes) => format!("\nChanges:\n{}", snapshot::wrap_page_content(&url_origin(&frame.url), &changes)),
+                    None => "\nNo visible change.".into(),
+                };
+            }
+            if frame.parent.is_some() {
+                return "\nThe frame navigated; take a snapshot to see it.".into();
+            }
+        }
+        // A new document: the start of its snapshot.
+        let Ok((frame_id, frame)) = self.main_frame(tab) else { return String::new() };
+        let lines = self.tree(tab, &frame_id, &frame, None, 0).await.unwrap_or_default();
+        self.last
+            .lock()
+            .insert((tab.id.clone(), frame_id), (frame.loader.clone(), lines.clone()));
+        let body = cut(
+            &lines.join("\n"),
+            NEW_PAGE_CHARS,
+            "Use browser_snapshot with query or mode \"text\" to read further.",
+        );
+        format!("\nSnapshot:\n{}", snapshot::wrap_page_content(&url_origin(&frame.url), &body))
     }
 
     /// Adds what happened on the side, then the page's details.
     fn finish(&self, tab: &Tab, mut text: String) -> Report {
-        let (notes, errors, url, title) = {
+        let (url, title) = self.page_metadata(tab);
+        let (notes, errors) = if self.sensitive_active(tab).is_some() {
+            (Vec::new(), 0)
+        } else {
             let mut state = tab.state.lock();
-            let notes = std::mem::take(&mut state.notes);
-            let errors = state.take_new_errors();
-            (notes, errors, state.url.clone(), state.title.clone())
+            (std::mem::take(&mut state.notes), state.take_new_errors())
         };
         let mut side = Vec::new();
         if let Some(note) = self.pending_note.lock().take() {
@@ -2434,6 +2435,15 @@ const SELECT_ALL_SCRIPT: &str = r#"function(){
   this.focus();
   try { this.select(); } catch (e) { this.value = ''; }
   return 'ok';
+}"#;
+
+const FILL_LOGIN_INPUT_SCRIPT: &str = r#"function(origin, type, value) {
+  if (!this.isConnected || this.ownerDocument !== document || location.origin !== origin ||
+      this.tagName !== 'INPUT' || (this.getAttribute('type') || 'text').toLowerCase() !== type ||
+      this.disabled || this.readOnly) return false;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, value);
+  this.dispatchEvent(new InputEvent('input', {bubbles: true, composed: true}));
+  return true;
 }"#;
 
 const SELECT_SCRIPT: &str = r#"function(values){

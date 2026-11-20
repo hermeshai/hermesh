@@ -69,7 +69,6 @@ struct SessionInfoSheet: View {
                         LabeledContent("Started by", value: model.grantLabel(s))
                         LabeledContent("Machine / project", value: "\(model.machineName(s.machineID)) / \(s.projectID)")
                         LabeledContent("Coding agent", value: agentTitle(s.agent))
-                        LabeledContent("Turns", value: "\(s.currentTurn)")
                         if !s.branch.isEmpty { LabeledContent("Branch", value: s.branch) }
                         LabeledContent("Started", value: s.createdDate.formatted(date: .abbreviated, time: .shortened))
                     }

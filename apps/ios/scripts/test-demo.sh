@@ -28,12 +28,17 @@ xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
 APP="$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
 plutil -lint "$APP/PrivacyInfo.xcprivacy"
+DISK_IMPORTS="$(xcrun nm -u "$APP/Hermesh" | awk '$NF ~ /^_f?stat(fs|vfs)(\$.*)?$/ {print $NF}')"
+if [[ -n "$DISK_IMPORTS" ]]; then
+  printf 'iOS imports unexpected disk-space APIs:\n%s\n' "$DISK_IMPORTS" >&2
+  exit 1
+fi
 xcrun simctl install "$DEVICE" "$APP"
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
 
 # Seed synthetic preferences before this app's first launch. No account, key or existing device data is copied.
 python3 - "$CONTAINER" "$OUT/expected.plist" <<'PYSEED'
-import plistlib,sys
+import plistlib,shutil,sqlite3,sys,tempfile
 from pathlib import Path
 values={"appearance":"light", "her-env":"real-env-sentinel", "herTab":"settings", "workPeriod":"week",
         "sessions.showArchived":b'true', "sessions.collapsed":b'["sentinel"]',
@@ -42,9 +47,34 @@ p=Path(sys.argv[1])/"Library/Preferences/io.hermesh.ios.plist"
 p.parent.mkdir(parents=True,exist_ok=True)
 p.write_bytes(plistlib.dumps(values))
 Path(sys.argv[2]).write_bytes(plistlib.dumps(values))
+
+# An existing profile with the first owner schema and committed, uncheckpointed WAL.
+owner=Path(sys.argv[1])/"Library/Application Support/Hermesh/owner"
+profile="01arz3ndektsv4rrffq69g5fav"
+profile_dir=owner/"profiles"/profile
+profile_dir.mkdir(parents=True)
+(owner/"current").write_text(profile)
+with tempfile.TemporaryDirectory() as tmp:
+    source=Path(tmp)/"owner.db"
+    db=sqlite3.connect(source)
+    db.executescript("""
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB NOT NULL);
+        CREATE TABLE grants (
+            grant_id TEXT PRIMARY KEY, client_id TEXT NOT NULL, version INTEGER NOT NULL,
+            signed BLOB NOT NULL, revoked INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
+        );
+        PRAGMA user_version = 1;
+    """)
+    db.execute("INSERT INTO kv(key,value) VALUES(?,?)", ("sqlite-upgrade-fixture", b"committed in WAL"))
+    db.commit()
+    for name in ("owner.db", "owner.db-wal"):
+        shutil.copyfile(source.parent/name, profile_dir/name)
+    db.close()
 PYSEED
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
+  -only-testing:HermeshUITests/ScreenViewportUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
   -only-testing:HermeshUITests/DemoUITests/testPrivacyPolicy \
   -only-testing:HermeshUITests/DemoUITests/testChineseEntry \
@@ -52,12 +82,13 @@ xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -res
   -only-testing:HermeshUITests/DemoUITests/testReviewBackgroundAndReset \
   -only-testing:HermeshUITests/DemoUITests/testReviewFreeAnswerAndInterrupt \
   -only-testing:HermeshUITests/DemoUITests/testReviewGrantLifecycle \
-  -only-testing:HermeshUITests/DemoUITests/testReviewHerAndHerTeam > "$OUT/ui.log" 2>&1
+  -only-testing:HermeshUITests/DemoUITests/testReviewHerAndHerTeam \
+  -only-testing:HermeshUITests/SessionDetailUITests > "$OUT/ui.log" 2>&1
 xcrun simctl terminate "$DEVICE" io.hermesh.ios >/dev/null 2>&1 || true
 # Xcode can migrate the data-container UUID during installation; inspect the current one.
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
 python3 - "$CONTAINER" "$OUT/expected.plist" <<'PYVERIFY'
-import json,plistlib,sys
+import json,plistlib,sqlite3,sys
 from pathlib import Path
 root=Path(sys.argv[1])
 expected=plistlib.loads(Path(sys.argv[2]).read_bytes())
@@ -70,6 +101,14 @@ assert not changed, "Demo changed real preferences: "+", ".join(changed)
 support=root/"Library/Application Support/Hermesh"
 assert not any((support/"conversations").glob("*.pb")), "Demo saved real conversation files"
 print(f"Preserved {len(expected)} synthetic real preferences; no real conversation files")
+owner=support/"owner"
+assert (owner/"current").read_text().strip()=="01arz3ndektsv4rrffq69g5fav"
+database=owner/"profiles"/"01arz3ndektsv4rrffq69g5fav"/"owner.db"
+db=sqlite3.connect(database.as_uri()+"?mode=ro", uri=True)
+assert db.execute("PRAGMA user_version").fetchone()[0]>1, "The existing owner database was not migrated"
+assert db.execute("SELECT value FROM kv WHERE key='sqlite-upgrade-fixture'").fetchone()==(b"committed in WAL",)
+assert db.execute("PRAGMA integrity_check").fetchone()==("ok",)
+print("Migrated existing owner database and kept its WAL data")
 PYVERIFY
 # Onboarding's empty world may be saved before or after Demo, depending on scene activation.
 # Validate its decoded meaning, not file creation timing: the signed-out namespace must contain no owner or work.

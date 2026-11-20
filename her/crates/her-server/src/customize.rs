@@ -102,7 +102,7 @@ fn own_client(server: &her_protocol::McpServerConfig) -> Result<Option<her_proto
     let Some(own) = server.oauth.clone() else { return Ok(None) };
     let secret = match &own.client_secret {
         Some(value) => {
-            let names = her_mcp::env::credential_names([value.as_str()]);
+            let names = her_mcp::env::remote_credential_names([value.as_str()]);
             let saved: HashMap<String, String> = names.into_iter().filter_map(|n| her_llm::credentials::get(&n).map(|v| (n, v))).collect();
             let lookup = |name: &str| match name.strip_prefix("credential:") {
                 Some(c) => saved.get(c).cloned(),
@@ -800,7 +800,7 @@ impl Server {
             // Signed in on the connectors page: the bots' conversations connect it again.
             if signed_in {
                 for session in server.bots().session_ids() {
-                    server.add_to_conversation(&session, &name).await;
+                    server.add_to_conversation(&session, &name, None).await;
                 }
             }
         });
@@ -843,10 +843,20 @@ impl Server {
     }
 
     pub async fn mcp_check(&self, params: McpServerParams) -> Result<McpCheckResult, RpcError> {
+        self.mcp_check_target(params, None).await
+    }
+
+    /// A card's check must use its approved address and the result of this connection attempt.
+    pub(crate) async fn mcp_check_target(&self, params: McpServerParams, approved_url: Option<&str>) -> Result<McpCheckResult, RpcError> {
         let server = self.clone();
         let cwd = params.cwd.clone();
         let ws = tokio::task::spawn_blocking(move || server.workspace(cwd.as_deref())).await.map_err(blocking_error)??;
         let config = views::for_check(&ws, &params.name).ok_or_else(|| RpcError::invalid_params(format!("no MCP server named {}", params.name)))?;
+        if let Some(url) = approved_url
+            && (config.url.as_deref() != Some(url) || config.transport() != Ok(her_protocol::mcp::McpTransportKind::Http))
+        {
+            return Err(RpcError::invalid_params("The connector's address changed. Ask for a new card."));
+        }
         let dir = views::workspace_dir(&ws);
         let key = format!("{}\u{0}{}", dir.display(), params.name);
         let lock = self.customize().checks.lock().entry(key).or_default().clone();
@@ -881,13 +891,35 @@ impl Server {
                 }
             });
         }
+        let card_check = approved_url.is_some();
+        let fresh_status = check.as_ref().map(|check| McpServerStatusView {
+            state: match check.state {
+                McpServerState::Ready => McpStatusState::Ok,
+                McpServerState::NeedsLogin => McpStatusState::NeedsLogin,
+                _ => McpStatusState::Failed,
+            },
+            source: Some(McpStatusSource::Cache),
+            sessions: None,
+            tools: (check.state == McpServerState::Ready).then_some(check.summaries.len() as u32),
+            error: check.error.clone(),
+            checked_at: None,
+            elapsed_ms: check.elapsed_ms,
+        });
+        if card_check && fresh_status.is_none() {
+            return Err(RpcError::invalid_params("The approved connector is no longer available."));
+        }
         let tools = check.map(|c| c.summaries).unwrap_or_default();
         let server = self.clone();
         let name = params.name.clone();
         let view = tokio::task::spawn_blocking(move || {
             let original = ws.mcp_servers.iter().find(|s| s.name == name).cloned().unwrap_or_default();
             let live = server.live_mcp(&views::workspace_dir(&ws));
-            views::view(&ws, &server.0.home, &original, live.get(&name))
+            let mut view = views::view(&ws, &server.0.home, &original, live.get(&name));
+            if card_check && let Some(mut status) = fresh_status {
+                status.checked_at = view.status.checked_at;
+                view.status = status;
+            }
+            view
         })
         .await
         .map_err(blocking_error)?;

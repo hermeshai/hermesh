@@ -31,6 +31,7 @@ final class DemoUITests: XCTestCase {
         tap("menu"); tap("account")
         reachInSheet("account-privacy-policy")
         openPolicy("account-privacy-policy")
+        XCTAssertFalse(app.buttons["delete-hosted-account"].exists)
     }
 
     func testTaskAndExit() {
@@ -320,15 +321,25 @@ final class DemoUITests: XCTestCase {
     }
 
     func testReviewFreeAnswerAndInterrupt() {
+        let holdTask = "-HermeshHoldDemoWorkTask"
+        app.terminate()
+        app.launchArguments.append(holdTask)
+        app.launch()
+
         enterWorkDemo(); tap("run-demo-task")
-        replace(app.textFields["answer-text"], with: "Reviewer says hello")
-        tap("answer")
+        answerWithText("Reviewer says hello")
         tap("interrupt"); tap("interrupt-confirm")
         XCTAssertTrue(contains("The simulated task was stopped.").waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["interrupt"].exists)
-        tap("exit-demo"); enterWorkDemo(); tap("run-demo-task")
-        replace(app.textFields["answer-text"], with: "Reviewer says hello")
-        tap("answer")
+        XCTAssertFalse(contains("The sample page now says").exists)
+        tap("exit-demo")
+        XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 15))
+
+        app.terminate()
+        app.launchArguments.removeAll { $0 == holdTask }
+        app.launch()
+        enterWorkDemo(); tap("run-demo-task")
+        answerWithText("Reviewer says hello")
         XCTAssertTrue(contains("The sample page now says “Reviewer says hello”").waitForExistence(timeout: 15))
         app.terminate(); app.launch()
         XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 15))
@@ -597,6 +608,20 @@ final class DemoUITests: XCTestCase {
 
     private func contains(_ text: String) -> XCUIElement {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
+    private func answerWithText(_ text: String) {
+        let field = app.textFields["answer-text"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        XCTAssertTrue(field.wait(for: \.isHittable, toEqual: true, timeout: 5))
+        field.tap()
+        let keyboard = app.keyboards.firstMatch
+        if !keyboard.waitForExistence(timeout: 3) { field.tap() }
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 5), "the free answer field has the keyboard")
+        // A new question has an empty answer. Its accessibility value can be the placeholder.
+        field.typeText(text)
+        XCTAssertEqual(field.value as? String, text)
+        tap("answer")
     }
 
     private func replace(_ field: XCUIElement, with value: String) {

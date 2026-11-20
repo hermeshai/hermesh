@@ -11,6 +11,12 @@
       "$ref": "#/definitions/AiActionResult"
     },
     {
+      "$ref": "#/definitions/AiConsentAllowParams"
+    },
+    {
+      "$ref": "#/definitions/AiConsentStatusParams"
+    },
+    {
       "$ref": "#/definitions/AuthDeleteParams"
     },
     {
@@ -662,6 +668,9 @@
       "$ref": "#/definitions/SnapshotResult"
     },
     {
+      "$ref": "#/definitions/Status"
+    },
+    {
       "$ref": "#/definitions/StorageUsage"
     },
     {
@@ -1069,6 +1078,36 @@
         "checking"
       ],
       "type": "string"
+    },
+    "AiConsentAllowParams": {
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "recipient": {
+          "$ref": "#/definitions/Recipient"
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model",
+        "recipient",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "AiConsentStatusParams": {
+      "properties": {
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
     },
     "AiHandoff": {
       "description": "An action too large for an instant answer, handed to the conversation (§5.2.9).",
@@ -17154,6 +17193,21 @@
         }
       ]
     },
+    "Recipient": {
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "provider"
+      ],
+      "type": "object"
+    },
     "Rect": {
       "description": "A rectangle on a page: `x0 < x1`, `y0 < y1`.",
       "properties": {
@@ -19977,6 +20031,37 @@
       ],
       "type": "string"
     },
+    "Status": {
+      "properties": {
+        "allowed": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Recipient"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recipient": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Recipient"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "type": "object"
+    },
     "StopReason": {
       "enum": [
         "stop",
@@ -21984,6 +22069,17 @@
       "params": "AiActionParams",
       "result": "AiActionResult"
     },
+    "ai_consent/allow": {
+      "params": "AiConsentAllowParams",
+      "result": "Empty"
+    },
+    "ai_consent/revoke": {
+      "result": "Empty"
+    },
+    "ai_consent/status": {
+      "params": "AiConsentStatusParams",
+      "result": "Status"
+    },
     "auth/delete": {
       "params": "AuthDeleteParams",
       "result": "Empty"
@@ -22625,6 +22721,9 @@
   "x-stability": {
     "methods": {
       "ai/action": "stable",
+      "ai_consent/allow": "stable",
+      "ai_consent/revoke": "stable",
+      "ai_consent/status": "stable",
       "auth/delete": "stable",
       "auth/set": "stable",
       "bots/avatar": "experimental",

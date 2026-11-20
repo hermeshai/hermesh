@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import type { BrowserStatus, ChatGptStatus, ModelsListResult, ProviderSummary, SkillsFilesResult, SkillsListResult, StorageUsage, WebSearchSource, WebSearchStatus } from "@hermesh/her-protocol";
+import type { BrowserStatus, ChatGptStatus, ModelsListResult, ProviderSummary, SkillsFilesResult, SkillsListResult, Status, StorageUsage, WebSearchSource, WebSearchStatus } from "@hermesh/her-protocol";
 import type { SessionView } from "@hermesh/her-client";
 import { agoText } from "@hermesh/core";
 import { Icon } from "../icons";
 import { herAnswers } from "../skew";
 import { errorText, useNow, useStore } from "../store";
+import { useAISharingConfirmation } from "./AISharing";
 import type { SendOp } from "./Approval";
 import {
   allSitesEdits,
@@ -156,6 +157,10 @@ export function ModelPage({ view, op, onBack, onClose }: { view: SessionView | n
   const models = her.env.models;
   const read = useCallback(() => her.call("chatgpt/status", {}), [her.call]);
   const gpt = useRead<ChatGptStatus>(herAnswers(her.machine, "chatgpt/status") === false ? null : read, ["models/changed"]);
+  const consentModel = view?.info.model;
+  const readSharing = useCallback(() => her.call("ai_consent/status", { model: consentModel }), [her.call, consentModel]);
+  const sharing = useRead<Status>(herAnswers(her.machine, "ai_consent/status") === true ? readSharing : null, ["models/changed"]);
+  const confirmAISharing = useAISharingConfirmation();
   const [signingIn, setSigningIn] = useState(false);
   const g = group(models.providers);
   const status = gpt.value;
@@ -201,6 +206,18 @@ export function ModelPage({ view, op, onBack, onClose }: { view: SessionView | n
             <ModelRows below model={view.info.model} thinking={view.info.thinking} onModel={(ref) => void op({ type: "set_model", model: ref })} onThinking={(l) => void op({ type: "set_model", model: view.info.model, thinking: l })} />
           </section>
         )}
+        {sharing.value?.allowed || sharing.value?.recipient ? (
+          <section className="fgroup">
+            {sharing.value.allowed ? (
+              <button className="frow" onClick={() => void her.run(async () => {
+                await her.call("ai_consent/revoke", {});
+                await sharing.again();
+              })}>{t("aiSharing.revoke")}</button>
+            ) : consentModel && sharing.value.recipient ? (
+              <button className="frow" onClick={() => confirmAISharing(consentModel, sharing.value!, sharing.again)}>{t("aiSharing.review")}</button>
+            ) : null}
+          </section>
+        ) : null}
         {herAnswers(her.machine, "chatgpt/status") !== false && (
           <section>
             <h3 className="fhead">{t("hp.subscription")}</h3>

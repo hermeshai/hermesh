@@ -646,7 +646,11 @@ func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error)
 		switch l.row.Status {
 		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // the answer to the agent's question
 			l.mu.Unlock()
-			if s.answerWithText(l, m.by, m.answerText()) {
+			answered, err := s.answerWithText(l, m.by, m.answerText())
+			if err != nil {
+				return "", err
+			}
+			if answered {
 				return "answer", nil
 			}
 			continue // answered meanwhile

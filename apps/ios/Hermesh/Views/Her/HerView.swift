@@ -123,6 +123,7 @@ private struct HerPage: View {
         }
         // Nothing is unread while the owner looks.
         .task(id: [chat.bot?.unread ?? 0, chat.envUp ? 1 : 0, phase == .active ? 1 : 0]) { if phase == .active { await chat.markRead() } }
+        .herAISharingAlert(chat)
     }
 
     private func header(_ chat: HerChat, state: HerEnvState) -> some View {
@@ -659,5 +660,28 @@ private struct HerWayOut: View {
                 .accessibilityIdentifier("her-status-another")
         }
         .sheet(isPresented: $adding) { HerAddSheet().environment(model) }
+    }
+}
+
+
+extension View {
+    func herAISharingAlert(_ chat: HerChat) -> some View {
+        modifier(HerAISharingAlert(chat: chat))
+    }
+}
+
+private struct HerAISharingAlert: ViewModifier {
+    let chat: HerChat
+
+    func body(content: Content) -> some View {
+        content.alert("Share data with third-party AI?", isPresented: Binding(
+            get: { chat.aiConsentPrompt != nil },
+            set: { if !$0 { chat.aiConsentPrompt = nil } }
+        ), presenting: chat.aiConsentPrompt) { consent in
+            Button("Allow AI Sharing") { Task { await consent.allow() } }
+            Button("Don’t Allow", role: .cancel) {}
+        } message: { consent in
+            Text("Provider: \(consent.provider) · \(consent.endpoint)\nModel: \(consent.model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing in Her → Settings.")
+        }
     }
 }

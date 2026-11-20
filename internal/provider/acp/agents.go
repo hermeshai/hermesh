@@ -27,19 +27,29 @@ var Agents = []Agent{
 	{Name: "grok", Command: "grok", Args: []string{"--no-auto-update", "agent", "stdio"}, Auth: []string{"cached_token", "xai.api_key"}},
 }
 
-// Google's ACP distribution is separate from both the desktop app and agy.
-// Keep localharness_external beside the server when installing the archive.
+// Official Antigravity ACP is built into the agy CLI (`agy acp`), with the
+// standalone ACP registry archive (`agy_acp_server.par` / `.exe`) kept as a
+// fallback for existing installations. Keep localharness_external beside the
+// standalone server when using that archive.
 func antigravityAgent(goos string) Agent {
-	command := "agy_acp_server.par"
-	var args []string
+	standalone := "agy_acp_server.par"
+	var standaloneArgs []string
 	if goos == "windows" {
-		command = "agy_acp_server.exe"
+		standalone = "agy_acp_server.exe"
 	} else if goos == "linux" {
-		args = []string{"--uid="} // the entry point in Google's ACP registry
+		standaloneArgs = []string{"--uid="} // the entry point in Google's ACP registry
 	}
-	return Agent{Name: "antigravity", Command: command, Args: args,
-		Paths:       []string{".local/share/antigravity-acp/" + command},
-		DesktopApps: []string{"Antigravity.app"}}
+	return Agent{
+		Name:        "antigravity",
+		Command:     "agy",
+		Args:        []string{"acp"},
+		DesktopApps: []string{"Antigravity.app"},
+		fallback: &fallbackAgent{
+			command: standalone,
+			args:    standaloneArgs,
+			paths:   []string{".local/share/antigravity-acp/" + standalone},
+		},
+	}
 }
 
 // Providers returns a provider for every known ACP agent.

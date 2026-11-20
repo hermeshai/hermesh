@@ -639,6 +639,7 @@ struct ProgressAgentPage: View {
     @State private var sourceNext = false
     @State private var atEnd = true
     @State private var position = ScrollPosition(edge: .bottom)
+    @State private var scrollBox = ConversationScrollBox()
 
     var body: some View {
         if let machine = herPick(herEnvironments(model.machines), remembered: model.her.machine) {
@@ -734,9 +735,10 @@ struct ProgressAgentPage: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
+            .background(ConversationScrollFinder(box: scrollBox))
         }
         .accessibilityIdentifier("progress-record")
-        .followsEnd(atEnd: $atEnd, position: $position) {
+        .followsEnd(id: agent.id, ready: true, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             // What it asks is answered here, as under Her's conversation.
             if let asking, mine {
                 HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)

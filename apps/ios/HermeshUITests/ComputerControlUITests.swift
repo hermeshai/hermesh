@@ -100,6 +100,18 @@ extension HermeshUITests {
         surface.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).press(forDuration: 0.8)
         let right = try waitFor("the right click on the Mac") { try screenEvents("button").first { ($0["button"] as? String) == "MOUSE_BUTTON_RIGHT" } }
         XCTAssertEqual(right["x"] as? Double ?? -1, 0.75, accuracy: 0.02)
+        // Tapping in the blank letterbox outside the picture sends no remote click; dragging upward pans
+        // the bottom bar toward center and shows the one-tap Fit button.
+        let beforeBlank = try screenEvents("button").count
+        surface.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.12)).tap()
+        usleep(300_000)
+        XCTAssertEqual(try screenEvents("button").count, beforeBlank, "blank area tap sends no click")
+        surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: surface.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)))
+        let fit = app.buttons["screen-fit"]
+        XCTAssertTrue(fit.waitForExistence(timeout: 5), "Fit Screen button appears after panning")
+        fit.tap()
+        XCTAssertTrue(fit.waitForNonExistence(timeout: 5), "Fit Screen restores fitted view")
     }
 
     func controlKeyboard() throws {

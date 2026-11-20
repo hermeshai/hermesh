@@ -1,12 +1,13 @@
 //! The entry point for callers: resolves models, credentials and adapters, converts history,
 //! retries, and prices the usage.
 
-use futures::StreamExt;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::task::Poll;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -17,6 +18,7 @@ use crate::api::anthropic::AnthropicApi;
 use crate::api::openai_chat::OpenAiChatApi;
 use crate::catalog::Catalog;
 use crate::catalog::ProviderConfig;
+use crate::consent::{Consent, Recipient, Status};
 use crate::directory::ModelDirectory;
 use crate::discovery::ListError;
 use crate::discovery::ListSource;
@@ -162,6 +164,7 @@ pub struct ModelRegistry {
     http: OnceLock<Result<reqwest::Client, LlmError>>,
     directory: ModelDirectory,
     options: RegistryOptions,
+    consent: Option<Arc<Consent>>,
 }
 
 impl ModelRegistry {
@@ -177,11 +180,71 @@ impl ModelRegistry {
             http: OnceLock::new(),
             directory: ModelDirectory::new(options.models_dir.clone()),
             options,
+            consent: None,
         };
         registry.register_api(Arc::new(OpenAiChatApi));
         registry.register_api(Arc::new(crate::api::openai_responses::OpenAiResponsesApi));
         registry.register_api(Arc::new(AnthropicApi));
         registry
+    }
+
+    pub fn require_ai_consent(&mut self) {
+        self.require_ai_consent_at(None);
+    }
+
+    pub fn require_ai_consent_at(&mut self, path: Option<PathBuf>) {
+        self.consent = Some(Arc::new(Consent::new(path)));
+    }
+
+    pub fn ai_consent(&self, reference: Option<&str>) -> Option<Status> {
+        self.consent.as_ref().map(|consent| consent.status(reference.and_then(|reference| self.recipient_for(reference))))
+    }
+
+    pub fn check_ai_consent(&self, reference: &str) -> Result<(), LlmError> {
+        if let Some(consent) = &self.consent {
+            consent.lease(self.recipient_for(reference).as_ref())?;
+        }
+        Ok(())
+    }
+
+    fn recipient_for(&self, reference: &str) -> Option<Recipient> {
+        let resolved = self.resolve(reference).ok()?;
+        self.recipient(&resolved.model)
+    }
+
+    fn recipient(&self, model: &Model) -> Option<Recipient> {
+        // Only built-in HTTP adapters have a verified single destination.
+        // Qoder can fall back to a second transport; do not offer consent for that route.
+        if !matches!(model.api.as_str(), "anthropic-messages" | "openai-chat" | "openai-responses")
+            || self.provider(&model.provider).is_some_and(|p| matches!(p.auth, crate::AuthConfig::Managed) && p.name == "Qoder")
+        {
+            return None;
+        }
+        Recipient::of(model)
+    }
+
+    pub fn allow_ai(&self, reference: &str, recipient: Recipient, revision: &str) -> bool {
+        let Some(status) = self.ai_consent(Some(reference)) else { return false };
+        status.recipient.as_ref() == Some(&recipient)
+            && self.consent.as_ref().is_some_and(|consent| consent.allow(recipient, revision))
+    }
+
+    /// A session switching away from the approved recipient ends that approval.
+    pub fn ai_model_changed(&self, previous: &Model, next: &Model) -> std::io::Result<()> {
+        if let Some(consent) = &self.consent {
+            let previous = self.recipient(previous);
+            if previous != self.recipient(next) {
+                consent.revoke_if(|granted| Some(granted) == previous.as_ref())?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn revoke_ai(&self) -> std::io::Result<()> {
+        if let Some(consent) = &self.consent {
+            consent.revoke()?;
+        }
+        Ok(())
     }
 
     /// What reading the catalog left to say: settings it did not know.
@@ -241,10 +304,18 @@ impl ModelRegistry {
             }
         }
         let mut custom = self.custom.write();
-        for id in custom.keys().chain(providers.iter().map(|p| &p.id)) {
+        let providers: BTreeMap<_, _> = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
+        if let Some(consent) = &self.consent {
+            consent.revoke_if(|recipient| custom.get(&recipient.provider).is_some_and(|old| {
+                providers.get(&recipient.provider).is_none_or(|new| {
+                    old.api != new.api || old.base_url != new.base_url || old.endpoints != new.endpoints
+                })
+            })).map_err(|err| format!("cannot remove saved AI sharing consent: {err}"))?;
+        }
+        for id in custom.keys().chain(providers.keys()) {
             self.directory.forget(id);
         }
-        *custom = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
+        *custom = providers;
         Ok(())
     }
 
@@ -464,11 +535,14 @@ impl ModelRegistry {
         // Capture the current route and its credential together, even for a running
         // conversation whose original Model predates a sidecar restart.
         let provider = self.provider(&model.provider);
-        let model = provider
-            .as_ref()
-            .and_then(|p| self.lookup(p, &model.id))
-            .unwrap_or(model);
+        let consent = self.consent.clone();
+        let model = provider.as_ref().and_then(|p| {
+            self.lookup(p, &model.id).or_else(|| {
+                consent.as_ref().map(|_| Arc::new(p.ad_hoc_model(&model.id)))
+            })
+        }).unwrap_or(model);
         let api = self.apis.get(&model.api).cloned();
+        let recipient = consent.as_ref().and_then(|_| self.recipient(&model));
         let auth = provider.map(|p| p.auth);
         let authorizer = self.authorizer.get().cloned();
         let http = self.http.get_or_init(|| build_http(&self.options)).clone();
@@ -476,6 +550,13 @@ impl ModelRegistry {
         let missing = self.directory.missing_handle();
         Box::pin(async_stream::stream! {
             let base = MessageAccumulator::for_model(&model);
+            let consent_lease = match &consent {
+                Some(consent) => match consent.lease(recipient.as_ref()) {
+                    Ok(lease) => lease,
+                    Err(error) => { yield StreamEvent::Failed(base.fail(error)); return; }
+                },
+                None => tokio_util::sync::CancellationToken::new(),
+            };
             let http = match http {
                 Ok(http) => http,
                 Err(err) => {
@@ -521,6 +602,10 @@ impl ModelRegistry {
             // The retry window counts from the first failure.
             let mut first_failure: Option<Instant> = None;
             'requests: loop {
+                if consent_lease.is_cancelled() {
+                    yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                    return;
+                }
                 let error = 'attempt: {
                     if let Some(authorizer) = &authorizer && managed.is_none() {
                         match authorizer.begin(&model.provider, &model.id, http.clone()).await {
@@ -531,11 +616,17 @@ impl ModelRegistry {
                     let cancellation = managed.as_ref().map(|m| m.cancellation()).unwrap_or_default();
                     let (request_model, request_credentials, request_api) = if let Some(managed) = &managed {
                         let authorization = tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => Err(crate::consent::blocked()),
                             _ = cancellation.cancelled() => Err(LlmError::new(ErrorKind::Auth, "connection cancelled")),
                             value = managed.authorize(refresh_auth) => value,
                         };
                         refresh_auth = false;
                         match authorization {
+                            Ok(a) if consent.is_some() && a.transport.is_some() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
                             Ok(a) => { let mut current = (*model).clone(); current.base_url = a.base_url; (Arc::new(current), a.credentials, a.transport.unwrap_or_else(|| api.clone())) }
                             Err(error) => {
                                 if error.kind.is_retryable() && retry.allows(attempt, *first_failure.get_or_insert_with(Instant::now)) {
@@ -546,6 +637,10 @@ impl ModelRegistry {
                             }
                         }
                     } else { (model.clone(), credentials.clone(), api.clone()) };
+                    if consent.is_some() && (consent_lease.is_cancelled() || Recipient::of(&request_model) != recipient) {
+                        yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                        return;
+                    }
                     let request = WireRequest {
                         model: request_model,
                         credentials: request_credentials,
@@ -558,12 +653,25 @@ impl ModelRegistry {
                     let mut produced = false;
                     loop {
                         let event = tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
                             _ = cancellation.cancelled() => {
                                 yield StreamEvent::Failed(base.fail(LlmError::new(ErrorKind::Auth, "connection cancelled")));
                                 return;
                             }
-                            event = inner.next() => event,
+                            event = std::future::poll_fn(|cx| match &consent {
+                                Some(consent) => consent.dispatch(&consent_lease, || inner.as_mut().poll_next(cx))
+                                    .unwrap_or(Poll::Ready(None)),
+                                None => inner.as_mut().poll_next(cx),
+                            }) => event,
                         };
+                        if consent_lease.is_cancelled() {
+                            yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                            return;
+                        }
                         let Some(event) = event else {
                             yield StreamEvent::Failed(base.fail(LlmError::new(
                                 ErrorKind::Protocol,
@@ -617,7 +725,14 @@ impl ModelRegistry {
                         attempt += 1;
                         tracing::info!(attempt, ?delay, kind = %error.kind, "retrying model request");
                         yield StreamEvent::Retrying { attempt, delay, error };
-                        tokio::time::sleep(delay).await;
+                        tokio::select! {
+                            biased;
+                            _ = consent_lease.cancelled() => {
+                                yield StreamEvent::Failed(base.fail(crate::consent::blocked()));
+                                return;
+                            }
+                            () = tokio::time::sleep(delay) => {}
+                        }
                     }
                     Err(requested) => {
                         let mut error = error;
@@ -638,6 +753,7 @@ impl ModelRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::StreamExt;
     use crate::api::scripted::Script;
     use crate::api::scripted::ScriptedApi;
     use crate::types::Message;

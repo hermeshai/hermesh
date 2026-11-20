@@ -82,3 +82,299 @@ for (const carried of [false, true]) test(`recovery from ${carried ? "carried" :
   await waitFor(() => saved.her.agentTabs.length === 0);
   assert.deepEqual((await call(2, "Target.getTargets", { herSession: "s1" })).result.targetInfos, []);
 });
+
+test("her-connect alarm waits for ready so restored tabs are not wiped", async (t) => {
+  const old = { agentTabs: [[11, { session: "s1", url: "https://alarm.test/", title: "Saved" }]] };
+  let saved = { her: old };
+  let local = {};
+  let releaseSession;
+  const sessionGate = new Promise((resolve) => { releaseSession = resolve; });
+  let connects = 0;
+  const messages = [];
+  const port = { onMessage: event(), onDisconnect: event(), postMessage: (m) => messages.push(m) };
+  const area = (read, write, gate) => ({
+    get: async () => { if (gate) await gate; return structuredClone(read()); },
+    set: async (value) => write({ ...read(), ...structuredClone(value) }),
+    remove: async (key) => { const value = { ...read() }; delete value[key]; write(value); },
+  });
+  const chrome = {
+    storage: { session: area(() => saved, (v) => { saved = v; }, sessionGate), local: area(() => local, (v) => { local = v; }) },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => { connects++; return port; },
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: {
+      query: async () => [{ id: 11 }],
+      onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(),
+      remove: async () => {},
+    },
+    debugger: { onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {}, sendCommand: async () => ({}) },
+    windows: { WINDOW_ID_NONE: -1, onCreated: event(), onFocusChanged: event(), onRemoved: event() },
+    tabGroups: { update: async () => {} },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not fetch with a store manifest"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+
+  await import("./background.js?test=alarm-ready");
+  // Alarm fires immediately while ready is still restoring storage.
+  chrome.alarms.onAlarm.emit({ name: "her-connect" });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(connects, 0, "alarm must wait for ready before connecting");
+
+  releaseSession();
+  await waitFor(() => messages.some((m) => m.hello));
+  assert.equal(connects, 1);
+  port.onMessage.emit({ status: "connected" });
+  await waitFor(() => messages.some((m) => m.control?.kind === "tabs"));
+  const report = messages.filter((m) => m.control?.kind === "tabs").at(-1);
+  assert.deepEqual(report.control.sessions.s1.map((v) => v.target_id), ["T11"]);
+});
+
+test("stale port hello and disconnect do not corrupt a newer port", async (t) => {
+  let saved = {};
+  let local = {};
+  const ports = [];
+  let releaseFirstIdentity;
+  let identityCalls = 0;
+  const area = (read, write) => ({
+    get: async () => structuredClone(read()),
+    set: async (value) => write({ ...read(), ...structuredClone(value) }),
+    remove: async (key) => { const value = { ...read() }; delete value[key]; write(value); },
+  });
+  const chrome = {
+    storage: { session: area(() => saved, (v) => { saved = v; }), local: area(() => local, (v) => { local = v; }) },
+    identity: {
+      getProfileUserInfo: () => {
+        identityCalls++;
+        if (identityCalls === 1) return new Promise((resolve) => { releaseFirstIdentity = () => resolve({ email: "stale@test" }); });
+        return Promise.resolve({ email: "fresh@test" });
+      },
+    },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => {
+        const p = { onMessage: event(), onDisconnect: event(), messages: [], postMessage(m) { this.messages.push(m); } };
+        ports.push(p);
+        return p;
+      },
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: { query: async () => [], onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(), remove: async () => {} },
+    debugger: { onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {}, sendCommand: async () => ({}) },
+    windows: { WINDOW_ID_NONE: -1, onCreated: event(), onFocusChanged: event(), onRemoved: event() },
+    tabGroups: { update: async () => {} },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not fetch with a store manifest"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+
+  await import("./background.js?test=stale-port");
+  await waitFor(() => ports.length === 1);
+  const first = ports[0];
+  // First port disconnects before its async hello resolves, then alarm opens a fresh port.
+  first.onDisconnect.emit();
+  chrome.alarms.onAlarm.emit({ name: "her-connect" });
+  await waitFor(() => ports.length === 2);
+  const second = ports[1];
+  await waitFor(() => second.messages.some((m) => m.hello));
+
+  // Now the stale first port finishes hello() and emits a late message/disconnect.
+  releaseFirstIdentity();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  first.onMessage.emit({ status: "not_open" });
+  first.onDisconnect.emit();
+
+  assert.equal(first.messages.filter((m) => m.hello).length, 0);
+  assert.equal(second.messages.filter((m) => m.hello).length, 1);
+  assert.equal(second.messages[0].hello.account, "fresh@test");
+  // Second port is still active and responds to status/control.
+  second.onMessage.emit({ status: "connected" });
+  await waitFor(() => second.messages.some((m) => m.control?.kind === "tabs"));
+});
+
+test("in-flight replies stay with their original port and browser stream", async (t) => {
+  const ports = [];
+  const pending = [];
+  const storage = (value) => ({ get: async () => value, set: async () => {} });
+  const chrome = {
+    storage: {
+      session: storage({ her: { agentTabs: [[1, { session: "test", url: "about:blank", title: "Test tab" }]] } }),
+      local: storage({ herInstance: "test-profile" }),
+    },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => {
+        const current = { onMessage: event(), onDisconnect: event(), sent: [], postMessage(message) { this.sent.push(message); } };
+        ports.push(current);
+        return current;
+      },
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: { query: async () => [{ id: 1 }], onCreated: event(), onUpdated: event(), onRemoved: event() },
+    debugger: {
+      onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {},
+      sendCommand: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+    },
+    windows: { onRemoved: event() },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not make network requests"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+  await import("./background.js?test=connection-replies");
+  await waitFor(() => ports[0]?.sent.some((message) => message.hello));
+
+  let nextId = 0;
+  const send = (port, stream, method, params = {}, sessionId) => {
+    const id = ++nextId;
+    port.onMessage.emit({ stream, data: { id, method, params, ...(sessionId ? { sessionId } : {}) } });
+    return id;
+  };
+  const reply = async (port, id) => {
+    await waitFor(() => port.sent.some((message) => message.data?.id === id));
+    return port.sent.find((message) => message.data?.id === id).data;
+  };
+  const attach = async (port, stream) => {
+    const listed = await reply(port, send(port, stream, "Target.getTargets", { herSession: "test" }));
+    const targetId = listed.result.targetInfos[0].targetId;
+    const attached = await reply(port, send(port, stream, "Target.attachToTarget", { targetId }));
+    return attached.result.sessionId;
+  };
+
+  let port = ports[0];
+  let stream = 1;
+  port.onMessage.emit({ status: "connected" });
+  let session = await attach(port, stream);
+  for (const reset of ["native port", "service connection", "browser stream"]) {
+    const staleResult = send(port, stream, "Page.getFrameTree", {}, session);
+    const staleError = send(port, stream, "Page.getFrameTree", {}, session);
+    assert.equal(pending.length, 2);
+    const [result, error] = pending.splice(0);
+    let staleClose;
+
+    if (reset === "native port") {
+      port.onDisconnect.emit();
+      chrome.alarms.onAlarm.emit({ name: "her-connect" });
+      await waitFor(() => ports[1]?.sent.some((message) => message.hello));
+      port = ports[1];
+      port.onMessage.emit({ status: "connected" });
+    } else if (reset === "service connection") {
+      port.onMessage.emit({ status: "waiting" });
+      port.onMessage.emit({ status: "connected" });
+    } else {
+      staleClose = send(port, stream, "Browser.close");
+      stream++;
+    }
+    session = await attach(port, stream);
+
+    const current = send(port, stream, "Page.getFrameTree", {}, session);
+    assert.equal(pending.length, 1);
+    pending.shift().resolve({ marker: "current" });
+    result.resolve({ marker: "expired" });
+    error.reject(new Error("expired result"));
+    assert.deepEqual((await reply(port, current)).result, { marker: "current" });
+    const retired = [staleResult, staleError];
+    if (staleClose !== undefined) retired.push(staleClose);
+    assert.equal(ports.flatMap((candidate) => candidate.sent).some((message) =>
+      retired.includes(message.data?.id)), false, reset);
+  }
+  await waitFor(() => port.sent.some((message) => message.control?.kind === "tabs"));
+});
+
+test("browser activity reconnects immediately out of backoff while respecting cooldown", async (t) => {
+  let now = 100_000;
+  t.mock.method(Date, "now", () => now);
+  let saved = {};
+  let local = {};
+  const ports = [];
+  const area = (read, write) => ({
+    get: async () => structuredClone(read()),
+    set: async (value) => write({ ...read(), ...structuredClone(value) }),
+    remove: async (key) => { const value = { ...read() }; delete value[key]; write(value); },
+  });
+  const chrome = {
+    storage: { session: area(() => saved, (v) => { saved = v; }), local: area(() => local, (v) => { local = v; }) },
+    runtime: {
+      lastError: null,
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => {
+        const p = { onMessage: event(), onDisconnect: event(), messages: [], postMessage(m) { this.messages.push(m); } };
+        ports.push(p);
+        return p;
+      },
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: { query: async () => [], onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(), remove: async () => {} },
+    debugger: { onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {}, sendCommand: async () => ({}) },
+    windows: { WINDOW_ID_NONE: -1, onCreated: event(), onFocusChanged: event(), onRemoved: event() },
+    tabGroups: { update: async () => {} },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not fetch with a store manifest"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+
+  await import("./background.js?test=activity-reconnect");
+  await waitFor(() => ports.length === 1);
+  // Disconnect twice so exponential backoff timer is > 1s (and won't fire during this test).
+  ports[0].onDisconnect.emit();
+  chrome.alarms.onAlarm.emit({ name: "her-connect" });
+  await waitFor(() => ports.length === 2);
+  ports[1].onDisconnect.emit();
+
+  // Within cooldown (< 1000ms): activity is ignored.
+  now += 500;
+  chrome.windows.onCreated.emit({ id: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(ports.length, 2);
+
+  // WINDOW_ID_NONE does not reconnect even after cooldown.
+  now += 1500;
+  chrome.windows.onFocusChanged.emit(-1);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(ports.length, 2);
+
+  // Focusing/opening a real window bursts multiple events -> exactly one immediate reconnect.
+  chrome.windows.onCreated.emit({ id: 2 });
+  chrome.windows.onFocusChanged.emit(2);
+  chrome.tabs.onCreated.emit({ id: 50 });
+  chrome.tabs.onActivated.emit({ tabId: 50, windowId: 2 });
+  await waitFor(() => ports.length === 3);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(ports.length, 3);
+
+  // When host is missing ("not found"), cooldown is 10s so normal tab switching doesn't spam.
+  chrome.runtime.lastError = { message: "Specified native messaging host not found." };
+  ports[2].onDisconnect.emit();
+  chrome.runtime.lastError = null;
+  now += 2000;
+  chrome.tabs.onActivated.emit({ tabId: 51, windowId: 2 });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(ports.length, 3);
+  now += 9000;
+  chrome.tabs.onActivated.emit({ tabId: 52, windowId: 2 });
+  await waitFor(() => ports.length === 4);
+  ports[3].onMessage.emit({ status: "connected" });
+  await waitFor(() => ports[3].messages.some((m) => m.control?.kind === "tabs"));
+});
+

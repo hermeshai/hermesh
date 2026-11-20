@@ -35,6 +35,7 @@ use her_protocol::customize::McpProbeParams;
 use her_protocol::customize::McpProbeResult;
 use her_protocol::customize::McpServerParams;
 use her_protocol::customize::McpStatusState;
+use her_protocol::mcp::McpTransportKind;
 use her_rpc::RpcError;
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -83,18 +84,12 @@ impl ConnectorHost for Connectors {
                 .iter()
                 .map(|config| {
                     let view = views::view(&ws, &server.0.home, config, live.get(&config.name));
-                    let credential_header = config.headers.iter().find_map(|(header, value)| {
-                        her_core::config_edit::credential_refs(value)
-                            .into_iter()
-                            .find(|name| name.starts_with("mcp."))
-                            .map(|name| (name, header.clone()))
-                    });
                     ConnectorInfo {
                         name: config.name.clone(),
                         url: config.url.clone(),
                         enabled: view.enabled,
                         oauth: config.uses_oauth(),
-                        credential_header,
+                        credential_header: credential_header(config),
                         state: view.status.state,
                         tools: view.status.tools,
                     }
@@ -110,6 +105,18 @@ impl ConnectorHost for Connectors {
         let params = McpProbeParams { probe_id: format!("card:{name}"), server: config, cwd: None };
         self.server()?.probe(params, Arc::new(|_| {})).await.map_err(|e| e.message)
     }
+}
+
+fn credential_header(config: &McpServerConfig) -> Option<(String, String)> {
+    if config.transport() != Ok(McpTransportKind::Http) {
+        return None;
+    }
+    config.headers.iter().find_map(|(header, value)| {
+        her_core::config_edit::credential_refs(value)
+            .into_iter()
+            .find(|name| name.starts_with("mcp."))
+            .map(|name| (name, header.clone()))
+    })
 }
 
 fn card_ended(id: &str, state: CardState) -> RpcError {
@@ -230,15 +237,29 @@ impl Server {
                         return Err(no_card(id));
                     }
                 }
-                let (to, note) = self.carry_out(&p.session_id, &card, &values).await;
+                let mut prior_credentials = Vec::new();
+                let (to, note) = self.carry_out(&p.session_id, &card, &values, &mut prior_credentials).await;
                 for v in values.values_mut() {
                     zeroize_string(v);
                 }
                 match cards.set(id, &[CardState::Working], to, note.clone()) {
-                    Ok(_) => Ok(CardsAnswerResult { state: to, note }),
+                    Ok(_) => {
+                        for (_, old) in &mut prior_credentials {
+                            if let Some(old) = old {
+                                zeroize_string(old);
+                            }
+                        }
+                        Ok(CardsAnswerResult { state: to, note })
+                    }
                     // It ended meanwhile, declined or expired: what this wrote goes too.
                     Err(now) => {
                         self.undo(&card).await;
+                        self.restore_credentials(&mut prior_credentials).await;
+                        if to == CardState::Done
+                            && let Some(body) = card.connect_body().filter(|body| body.reconnect && !body.fields.is_empty())
+                        {
+                            self.add_to_conversation(&p.session_id, &body.name, Some(&body.url)).await;
+                        }
                         let now = now.ok_or_else(|| no_card(id))?;
                         Ok(CardsAnswerResult { state: now, note: None })
                     }
@@ -326,14 +347,30 @@ impl Server {
 
     /// Runs an approved card's ops through the console's handlers, then follows the connector
     /// to where the card goes next, with her's words.
-    async fn carry_out(&self, session: &str, card: &Card, values: &HashMap<String, String>) -> (CardState, Option<String>) {
+    async fn carry_out(
+        &self,
+        session: &str,
+        card: &Card,
+        values: &HashMap<String, String>,
+        prior_credentials: &mut Vec<(String, Option<String>)>,
+    ) -> (CardState, Option<String>) {
         let Some(body) = card.connect_body() else {
             return (CardState::Failed, Some("Invalid card body.".into()));
         };
         let name = her_core::connect::display_name(&body.name);
-        let secrets: Vec<&str> = values.values().map(String::as_str).collect();
-        // Snapshot prior credential values on key rotation so a refused key never overwrites a working one.
-        let mut prior_credentials: Vec<(String, Option<String>)> = Vec::new();
+        let secrets: Vec<&str> = values.values().map(|value| value.trim()).collect();
+        if body.reconnect && let Some(field) = body.fields.first() {
+            let credential = card.ops.first().and_then(|op| op.params.get("name")).and_then(Value::as_str);
+            let current = self.connectors().connectors().await.ok();
+            let still_matches = current.as_ref().is_some_and(|connectors| connectors.iter().any(|existing| {
+                existing.name == body.name && existing.url.as_deref() == Some(body.url.as_str()) && !existing.oauth
+                    && existing.credential_header.as_ref().is_some_and(|(name, header)| Some(name.as_str()) == credential && header == &field.label)
+            }));
+            if !still_matches {
+                return (CardState::Failed, Some("The connector changed. Ask for a new card.".into()));
+            }
+        }
+        // Keep the previous credential until the card has committed its outcome.
         for op in card.ops.iter().filter(|op| op.method == "credentials/set") {
             if let Some(cred_name) = op.params.get("name").and_then(Value::as_str) {
                 let prev = tokio::task::spawn_blocking({
@@ -360,8 +397,8 @@ impl Server {
                 other => Err(RpcError::internal(format!("a card does not call {other}"))),
             };
             if let Err(err) = done {
-                self.restore_credentials(&mut prior_credentials).await;
                 self.undo(card).await;
+                self.restore_credentials(prior_credentials).await;
                 return (CardState::Failed, Some(format!("{name} could not be added: {}", redact_secrets(&err.message, &secrets))));
             }
         }
@@ -372,24 +409,18 @@ impl Server {
         let (state, note) = self.connected(session, card, &secrets).await;
         if state != CardState::Done {
             // Never leave an unverified/refused key in the credential store.
-            self.restore_credentials(&mut prior_credentials).await;
-        } else {
-            for (_, prev) in &mut prior_credentials {
-                if let Some(v) = prev {
-                    zeroize_string(v);
-                }
-            }
+            self.restore_credentials(prior_credentials).await;
         }
         (state, note)
     }
 
-    async fn restore_credentials(&self, prior: &mut [(String, Option<String>)]) {
-        for (cred_name, prev) in prior.iter_mut() {
-            match prev.take() {
+    async fn restore_credentials(&self, prior: &mut Vec<(String, Option<String>)>) {
+        for (cred_name, prev) in prior.drain(..) {
+            match prev {
                 Some(mut old) => {
                     let _ = self
                         .credentials_set(her_protocol::customize::CredentialsSetParams {
-                            name: cred_name.clone(),
+                            name: cred_name,
                             value: old.clone(),
                         })
                         .await;
@@ -397,7 +428,7 @@ impl Server {
                 }
                 None => {
                     let _ = self
-                        .credentials_delete(CredentialsDeleteParams { name: cred_name.clone() })
+                        .credentials_delete(CredentialsDeleteParams { name: cred_name })
                         .await;
                 }
             }
@@ -411,16 +442,16 @@ impl Server {
             return (CardState::Failed, Some("Invalid card body.".into()));
         };
         let name = her_core::connect::display_name(&body.name);
-        match self.mcp_check(McpServerParams { name: body.name.clone(), cwd: None }).await {
+        match self.mcp_check_target(McpServerParams { name: body.name.clone(), cwd: None }, Some(&body.url)).await {
             Ok(checked) if checked.server.status.state == McpStatusState::Ok => {
-                self.add_to_conversation(session, &body.name).await;
+                self.add_to_conversation(session, &body.name, Some(&body.url)).await;
                 let mut named: Vec<&str> = checked.tools.iter().take(NAMED_TOOLS).map(|tool| tool.name.as_str()).collect();
                 if checked.tools.len() > NAMED_TOOLS {
                     named.push("…");
                 }
                 let tools = if named.is_empty() { String::new() } else { format!(" ({})", named.join(", ")) };
                 let verb = if body.reconnect && !body.fields.is_empty() { "key updated" } else { "connected" };
-                (CardState::Done, Some(format!("{name} {verb}: {} tools{tools}.", checked.tools.len())))
+                (CardState::Done, Some(redact_secrets(&format!("{name} {verb}: {} tools{tools}.", checked.tools.len()), secrets)))
             }
             Ok(checked) => {
                 let raw = checked.server.status.error.unwrap_or_else(|| "no answer".into());
@@ -433,7 +464,7 @@ impl Server {
     /// Her's conversation takes up the connector as the configuration has it now, and connects
     /// it, so that the turn the card's end wakes knows its tools: one it does not know yet would
     /// wait for the owner's approval.
-    pub(crate) async fn add_to_conversation(&self, session: &str, connector: &str) {
+    pub(crate) async fn add_to_conversation(&self, session: &str, connector: &str, approved_url: Option<&str>) {
         let Some(hub) = self.hub(session) else {
             return;
         };
@@ -446,7 +477,9 @@ impl Server {
         .await
         .ok()
         .flatten();
-        if let Some(config) = config {
+        if let Some(config) = config
+            && approved_url.is_none_or(|url| config.url.as_deref() == Some(url))
+        {
             let (reply, added) = oneshot::channel();
             if hub.send(HubCmd::AddMcpServer { server: Box::new(config), reply }).await.is_ok()
                 && let Ok(Some(settled)) = added.await

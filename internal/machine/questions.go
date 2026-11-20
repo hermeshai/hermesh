@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -27,10 +28,12 @@ const (
 
 // question is a question waiting for an answer.
 type question struct {
-	q     *sessionv1.Question
-	ref   string // the provider's id
-	ps    provider.Session
-	since time.Time
+	q        *sessionv1.Question
+	ref      string // the provider's id
+	ps       provider.Session
+	since    time.Time
+	mu       sync.Mutex
+	resolved bool
 }
 
 // turnActive: a turn is under way (running, or paused on a question).
@@ -51,7 +54,8 @@ func (s *Sessions) ask(l *live, ps provider.Session, pq *provider.Question) {
 	now := time.Now()
 	l.mu.Lock()
 	l.questionSeq++
-	q := &sessionv1.Question{QuestionId: fmt.Sprintf("q_%d_%d", l.turn, l.questionSeq), Turn: l.turn, AskedAt: timestamppb.New(now)}
+	q := &sessionv1.Question{QuestionId: fmt.Sprintf("q_%d_%d", l.turn, l.questionSeq), Turn: l.turn, AskedAt: timestamppb.New(now),
+		LocalAnswerAvailable: true}
 	for _, it := range pq.Items {
 		pi := &sessionv1.QuestionItem{Id: it.ID, Header: it.Header, Text: it.Text, MultiSelect: it.MultiSelect,
 			AllowOther: it.AllowOther || len(it.Options) == 0, Secret: it.Secret, Optional: it.Optional}
@@ -87,6 +91,23 @@ func (s *Sessions) ask(l *live, ps provider.Session, pq *provider.Question) {
 
 // reply sends a question's resolution to the agent; the turn goes on.
 func (s *Sessions) reply(l *live, w *question, r provider.Reply, res sessionv1.QuestionResolution, by string, answers []*sessionv1.Answer) {
+	_ = s.replyChecked(l, w, r, res, by, answers)
+}
+
+func (s *Sessions) replyChecked(l *live, w *question, r provider.Reply, res sessionv1.QuestionResolution, by string, answers []*sessionv1.Answer) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.resolved {
+		return cerr(connect.CodeFailedPrecondition, "the question was already resolved")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if !r.Declined {
+		if err := w.ps.Answer(ctx, w.ref, r); err != nil {
+			return fmt.Errorf("could not answer the agent's question: %w", err)
+		}
+	}
+	w.resolved = true
 	now := time.Now()
 	l.mu.Lock()
 	for i, x := range l.questions {
@@ -103,8 +124,7 @@ func (s *Sessions) reply(l *live, w *question, r provider.Reply, res sessionv1.Q
 	l.turnStarted = l.turnStarted.Add(now.Sub(w.since))
 	l.lastProgress = now
 	var changed bool
-	if len(l.questions) == 0 && l.row.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
-		// Before the agent goes on: its turn may end right after.
+	if len(l.questions) == 0 && l.row.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT && !l.finishing {
 		changed = s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
 	}
 	sessionID := l.row.ID
@@ -112,16 +132,16 @@ func (s *Sessions) reply(l *live, w *question, r provider.Reply, res sessionv1.Q
 	if changed {
 		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	err := w.ps.Answer(ctx, w.ref, r)
-	cancel()
-	if err != nil {
-		s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
+	if r.Declined {
+		if err := w.ps.Answer(ctx, w.ref, r); err != nil {
+			s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
+		}
 	}
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_QuestionResolved{QuestionResolved: &sessionv1.QuestionResolved{
 		QuestionId: w.q.QuestionId, Resolution: res, By: by, Answers: redactAnswers(w.q, answers)}}})
 	s.audit.Log(AuditRecord{Kind: "session.question", Subject: by, Session: sessionID, Action: w.q.QuestionId,
 		Decision: strings.ToLower(strings.TrimPrefix(res.String(), "QUESTION_RESOLUTION_")), Detail: answersDetail(answers)})
+	return nil
 }
 
 // dropQuestions forgets the questions of a turn that ended or stopped.
@@ -132,6 +152,14 @@ func (s *Sessions) dropQuestions(l *live) {
 	l.row.Progress.PendingQuestion = nil
 	l.mu.Unlock()
 	for _, w := range qs {
+		// An answer in flight may be accepted while the turn is ending.
+		w.mu.Lock()
+		resolved := w.resolved
+		w.resolved = true
+		w.mu.Unlock()
+		if resolved {
+			continue
+		}
 		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_QuestionResolved{QuestionResolved: &sessionv1.QuestionResolved{
 			QuestionId: w.q.QuestionId, Resolution: sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED}}})
 	}
@@ -160,6 +188,9 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 	if err != nil {
 		return nil, err
 	}
+	if req.Decline && len(req.Answers) != 0 {
+		return nil, cerr(connect.CodeInvalidArgument, "declining a question takes no answer content")
+	}
 	// The owner, the session's creator, or whoever asked for the turn.
 	if p.Kind != PrincipalOwner && !s.canWrite(p, r) && (l == nil || !l.askedBy(p.ID())) {
 		return nil, cerr(connect.CodePermissionDenied, "only who asked for the turn may answer its question")
@@ -183,13 +214,17 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 		return nil, cerr(connect.CodeFailedPrecondition, "the agent is not waiting for an answer")
 	}
 	if req.Decline {
-		s.reply(l, w, provider.Reply{Declined: true, Message: declinedMessage}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED, p.ID(), nil)
+		if err := s.replyChecked(l, w, provider.Reply{Declined: true, Message: declinedMessage}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED, p.ID(), nil); err != nil {
+			return nil, err
+		}
 	} else {
 		answers, err := checkAnswers(w.q, req.Answers)
 		if err != nil {
 			return nil, err
 		}
-		s.reply(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, p.ID(), answers)
+		if err := s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, p.ID(), answers); err != nil {
+			return nil, err
+		}
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -198,11 +233,11 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 
 // answerWithText answers the pending question with a message's text (a
 // message sent while the agent waits is its answer). false: no question.
-func (s *Sessions) answerWithText(l *live, by, text string) bool {
+func (s *Sessions) answerWithText(l *live, by, text string) (bool, error) {
 	l.mu.Lock()
 	if len(l.questions) == 0 {
 		l.mu.Unlock()
-		return false
+		return false, nil
 	}
 	w := l.questions[0]
 	l.mu.Unlock()
@@ -216,8 +251,22 @@ func (s *Sessions) answerWithText(l *live, by, text string) bool {
 		}
 		answers = append(answers, a)
 	}
-	s.reply(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, by, answers)
-	return true
+	err := s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, by, answers)
+	return err == nil, err
+}
+
+// codingConsentCompat handles the legacy v0.1.7 CodingConsent RPC for
+// already-installed owner clients after coding-specific consent was removed.
+func (s *Sessions) codingConsentCompat(p *Principal, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	if p.Kind != PrincipalOwner {
+		return nil, cerr(connect.CodePermissionDenied, "only an owner device manages coding consent")
+	}
+	if req.GetSessionId() != "" {
+		if _, _, err := s.find(p, req.GetSessionId(), false); err != nil {
+			return nil, err
+		}
+	}
+	return &sessionv1.CodingConsentResponse{MachineId: s.machineID, Approved: !req.GetRevoke()}, nil
 }
 
 // checkAnswers validates answers against the question: every item is

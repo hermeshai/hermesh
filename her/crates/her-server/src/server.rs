@@ -176,11 +176,19 @@ pub(crate) struct Inner {
 
 impl Server {
     pub fn new(options: ServerOptions) -> Result<Server, RuntimeError> {
+        Self::with_ai_consent(options, false)
+    }
+
+    pub fn with_ai_consent(options: ServerOptions, required: bool) -> Result<Server, RuntimeError> {
         let workspace = Workspace::open(&options.home, &options.cwd, &options.overrides)?;
         for warning in &workspace.warnings {
             tracing::warn!("{warning}");
         }
-        let llm = Arc::new(runtime::model_registry(&options.home, &workspace.config)?);
+        let mut registry = runtime::model_registry(&options.home, &workspace.config)?;
+        if required {
+            registry.require_ai_consent_at(Some(options.home.root().join("ai-consent.json")));
+        }
+        let llm = Arc::new(registry);
         for warning in llm.warnings() {
             tracing::warn!("{warning}");
         }

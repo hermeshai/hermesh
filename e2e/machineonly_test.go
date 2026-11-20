@@ -17,8 +17,34 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
+
+// geminiCodingFixtureEnv lets the real ACP adapter talk only to the test
+// executable, with a known route regardless of the host's installed agents.
+func geminiCodingFixtureEnv(t *testing.T, homeDir string) []string {
+	t.Helper()
+	var env []string
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(strings.ToUpper(key), "GOOGLE_") || strings.HasPrefix(strings.ToUpper(key), "GEMINI_") {
+			env = append(env, key+"=")
+		}
+	}
+	missing := filepath.Join(homeDir, "no-other-coding-agent")
+	for _, agent := range machine.AgentNames() {
+		if agent != "gemini" {
+			env = append(env, "HERMESH_"+strings.ToUpper(agent)+"_BIN="+missing)
+		}
+	}
+	return append(env, "HOME="+homeDir, "USERPROFILE="+homeDir, "GEMINI_CLI_HOME="+homeDir,
+		"GEMINI_CLI_SYSTEM_SETTINGS_PATH="+filepath.Join(homeDir, "system.json"),
+		"GEMINI_CLI_SYSTEM_DEFAULTS_PATH="+filepath.Join(homeDir, "defaults.json"),
+		"HTTP_PROXY=", "HTTPS_PROXY=", "ALL_PROXY=", "SSL_CERT_FILE=", "NODE_EXTRA_CA_CERTS=",
+		"HERMESH_FAKE_PROVIDERS=", "HERMESH_GEMINI_BIN="+filepath.Join(binaries(t), "fakeacp"+exe),
+		"FAKE_ACP_STATE="+filepath.Join(homeDir, "state"))
+}
 
 // TestMachineOnlyMac: a Mac joins its owner as a machine only (a work Mac):
 // approved on a trusted device and, because the owner id came from the
@@ -31,7 +57,7 @@ func TestMachineOnlyMac(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
 	}
-	env := []string{"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"), "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")}
+	env := geminiCodingFixtureEnv(t, t.TempDir())
 	w := newOwnerMac(t, env, &localv1.GrantSpec{Agents: []string{"gemini"}}) // all machines, as the app's default
 	ctx := context.Background()
 	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
@@ -125,6 +151,18 @@ func TestMachineOnlyMac(t *testing.T) {
 	}
 	if _, err := work.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("a machine only lists pairing requests: %v", err)
+	}
+	coding := &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: &sessionv1.CodingConsentRequest{
+		Agent: "gemini", ProjectId: "billing", Scope: sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_HER,
+	}}
+	for _, action := range []*sessionv1.CodingConsentRequest{coding.Consent, {Agent: "gemini", Scope: coding.Consent.Scope, Revoke: true}} {
+		if _, err := work.CodingConsent(ctx, &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: action}); connect.CodeOf(err) != connect.CodePermissionDenied {
+			t.Fatalf("machine-only local API managed coding consent: %v", err)
+		}
+	}
+	compat, err := w.app.client.CodingConsent(ctx, coding)
+	if err != nil || !compat.Approved {
+		t.Fatalf("trusted owner legacy coding consent compat: %v %v", compat, err)
 	}
 	watch, err := work.WatchSessions(ctx, &localv1.WatchSessionsRequest{})
 	if err != nil || !watch.Receive() || !watch.Msg().MachinesChanged {

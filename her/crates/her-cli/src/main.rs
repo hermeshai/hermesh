@@ -367,6 +367,9 @@ enum Command {
         /// With --listen: exit after this many seconds without clients or running tasks
         #[arg(long, value_name = "SECS", requires = "listen")]
         idle_exit: Option<u64>,
+        /// Require the Hermesh owner's consent for model requests
+        #[arg(long)]
+        require_ai_consent: bool,
     },
     /// Serve ACP on stdio, for editors such as Zed
     ///
@@ -932,7 +935,7 @@ async fn run(overrides: &[String], command: Command) -> anyhow::Result<u8> {
         Command::Upgrade { check, version, json } => cmd_install::upgrade(check, version, json).await,
         Command::WebSearch { action: WebSearchAction::SetKey { service } } => cmd_web_search::set_key(overrides, &service).await,
         Command::WebSearch { action: WebSearchAction::Check { service, json } } => cmd_web_search::check(overrides, service, json).await,
-        Command::Serve { listen, idle_exit, .. } => cmd_serve::serve(overrides, listen, idle_exit).await,
+        Command::Serve { listen, idle_exit, require_ai_consent, .. } => cmd_serve::serve(overrides, listen, idle_exit, require_ai_consent).await,
         Command::Acp { login: true } => cmd_login::login(overrides, Default::default()).await,
         Command::Acp { login: false } => cmd_serve::acp(overrides).await,
         Command::Browser {
@@ -1220,9 +1223,9 @@ fn main() -> ExitCode {
     };
     // A server on a socket outlives its clients: one that goes away while her writes to it must
     // cost that connection an error, not the process. Linux raises SIGPIPE for a socket; macOS's
-    // sockets don't, which hid it.
+    // sockets don't, which hid it. The native host also handles Chrome closing its pipes.
     #[cfg(unix)]
-    if matches!(command, Command::Serve { listen: Some(_), .. }) {
+    if matches!(command, Command::Serve { listen: Some(_), .. } | Command::Browser { command: BrowserCommand::NativeHost { .. } }) {
         // SAFETY: still before any thread is started.
         unsafe {
             libc::signal(libc::SIGPIPE, libc::SIG_IGN);

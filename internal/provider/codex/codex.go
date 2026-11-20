@@ -420,6 +420,9 @@ func (s *session) call(ctx context.Context, method string, params any) (json.Raw
 	s.mu.Unlock()
 	b, _ := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
 	if err := s.proc.WriteLine(b); err != nil {
+		s.mu.Lock()
+		delete(s.pending, id)
+		s.mu.Unlock()
 		return nil, err
 	}
 	select {

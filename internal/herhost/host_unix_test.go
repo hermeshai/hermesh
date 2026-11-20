@@ -73,6 +73,13 @@ func call(t *testing.T, h *Host, conn, method string, params any) json.RawMessag
 	return res.Response.Result
 }
 
+func approveMockModel(t *testing.T, h *Host) {
+	t.Helper()
+	hertest.ApproveModel(t, "mock/mock-1", func(method string, params any) []byte {
+		return call(t, h, "", method, params)
+	})
+}
+
 // defaultBot is the id of her's default assistant in a bots/subscribe result.
 func defaultBot(t *testing.T, result []byte) string {
 	var list struct {
@@ -108,6 +115,7 @@ const hello = "[[mock:send:hello]] hi"
 // started again; Her off stops her.
 func TestHost(t *testing.T) {
 	h, home, sock := startHost(t)
+	approveMockModel(t, h)
 	ctx := context.Background()
 	if st := h.Status(); !st.Enabled || st.Version == "" || st.Error != "" {
 		t.Fatalf("status %v", st)
@@ -209,6 +217,15 @@ answered:
 		t.Fatalf("still there: %v", s)
 	}
 	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "a.b", Command: "/bin/cat"}), connect.CodeInvalidArgument)
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "badcmd", Command: "${HOME}/bin/cat"}), connect.CodeInvalidArgument)
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "badbat", Command: "npx.cmd"}), connect.CodeInvalidArgument)
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "badarg", Command: "/bin/cat", Args: []string{"${credential:mcp.badarg.TOKEN}"}}), connect.CodeInvalidArgument)
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "badenv", Command: "/bin/cat", Env: map[string]string{"LD_PRELOAD": "/tmp/x.so"}}), connect.CodeInvalidArgument)
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "badcred", Command: "/bin/cat", Env: map[string]string{"API_KEY": "${credential:mcp.other.API_KEY}"}}), connect.CodeInvalidArgument)
+	// Existing HTTP connector cannot be implicitly overwritten by a command connector of the same name.
+	call(t, h, "", "config/write", map[string]any{"layer": "user", "edits": []any{map[string]any{"key_path": "mcp_servers.remote", "value": map[string]any{"url": "https://example.com/mcp"}}}})
+	code(t, h.CommandConnector(ctx, &identityv1.SetHerCommandConnector{Name: "remote", Command: "/bin/cat"}), connect.CodeFailedPrecondition)
+	call(t, h, "", "config/write", map[string]any{"layer": "user", "edits": []any{map[string]any{"key_path": "mcp_servers.remote", "value": nil}}})
 
 	// Files into the assistant's folder and back.
 	p, err := upload(h, botID, "a.txt", 3, "abc")
@@ -327,6 +344,7 @@ func TestHostTurnsComputerUseOn(t *testing.T) {
 // connection of their own when it names none still open.
 func TestConsoleWithHer(t *testing.T) {
 	h, _, _ := startHost(t)
+	approveMockModel(t, h)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	res, err := http.Get(srv.URL + "/her/console/events")

@@ -12,6 +12,12 @@ import (
 // call, on HerService and on the console's routes alike (docs/her-server.md
 // §6.1). Anything else is refused as unimplemented: a device newer than this
 // hermeshd tells it from a refusal (docs/version-skew.md §6.3).
+const (
+	aiConsentStatus = "ai_consent/status"
+	aiConsentAllow  = "ai_consent/allow"
+	aiConsentRevoke = "ai_consent/revoke"
+)
+
 var allowed = map[string]bool{}
 
 func init() {
@@ -21,6 +27,7 @@ func init() {
 		"bots/avatar", "bots/clear", "bots/delete", "bots/memory", "bots/memory_clear", "bots/routine", "bots/routine_delete", "bots/routine_run",
 		"bots/routine_run_now", "bots/routine_runs", "bots/routine_set_enabled", "bots/routine_stop",
 		"session/op", "session/history", "session/detach", "models/list", "files/list", "files/read",
+		aiConsentStatus, aiConsentAllow, aiConsentRevoke,
 		// The files an assistant sent, in a list of their own (docs/her-deliverables.md §4.3).
 		"deliveries/list", "deliveries/seen", "deliveries/sources",
 		// The owner's answer to a secure card (docs/her-secure-cards.md §3.3).
@@ -167,8 +174,11 @@ func refuse(method string, params any) error {
 			for _, op := range ops {
 				op, _ := op.(map[string]any)
 				m, _ := op["method"].(string)
-				if m == "cards/answer" {
+				switch m {
+				case "cards/answer":
 					return denied("a card's op can't answer a card")
+				case aiConsentAllow, aiConsentRevoke:
+					return denied("AI sharing can only be changed through its own controls")
 				}
 				if !allowed[m] {
 					return denied("a card's op %q is not open to the owner's devices", m)
@@ -193,7 +203,7 @@ func refuse(method string, params any) error {
 				}
 			}
 		default:
-			return denied("unknown card answer decision %q", decision)
+			return denied("unknown card answer decision")
 		}
 	}
 	return nil

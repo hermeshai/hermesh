@@ -170,6 +170,12 @@ async fn a_service_added_by_its_address_is_probed_saved_and_used() {
     assert_eq!(renamed["provider"]["name"], "Acme Corp");
     assert_eq!(renamed["provider"]["custom"]["protocols"].as_array().unwrap().len(), 2);
 
+    let new_receiver = TestEnv::new("manual", "").await;
+    let changed = client.request("providers/update", json!({"id": "acme", "base_url": new_receiver.mock.base_url()})).await.unwrap_err();
+    assert_eq!(changed.code, -32602);
+    assert!(changed.message.contains("API key"));
+    assert_eq!(new_receiver.mock.stats().requests.load(std::sync::atomic::Ordering::Relaxed), 0);
+
     client.request("providers/remove", json!({"id": "acme"})).await.unwrap();
     let after = client.request("models/list", json!({})).await.unwrap();
     assert!(provider(&after, "acme").is_null());

@@ -323,8 +323,16 @@ func TestPushHerNotices(t *testing.T) {
 	// before is no news.
 	w.restartOwner(false)
 	c = w.app.client
-	eventually(t, 2*time.Minute, "her running again", func() bool { return listedMachine(t, c, mac).GetHer().GetRunning() })
+	eventually(t, 2*time.Minute, "Her running again with a model", func() bool {
+		h := listedMachine(t, c, mac).GetHer()
+		return h.GetRunning() && h.GetModelReady()
+	})
 	none("a notice for what her had before she started")
+
+	// Approval persists across Her restarts for the same recipient, so sending
+	// immediately after restart succeeds without re-prompting.
+	send(mockSend("重启后仍有效"))
+	one("message", "重启后仍有效")
 
 	// An approval: asking before each command, she waits for the owner.
 	if _, err := c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: mac, BotId: bot.ID, PermissionMode: "manual"}); err != nil {

@@ -1513,10 +1513,7 @@ async fn list(ctx: &ToolCtx) -> Result<String, ToolError> {
         let place = if builtin && yours { format!(" in the {}", which.name()) } else { String::new() };
         lines.push(format!("{} tab{}{place}:", tabs.len(), if tabs.len() == 1 { "" } else { "s" }));
         for tab in tabs {
-            let (url, title) = {
-                let state = tab.state.lock();
-                (state.url.clone(), state.title.clone())
-            };
+            let (url, title) = session.page_metadata(&tab);
             let marker = if current_tab.as_deref() == Some(tab.id.as_str()) { " (current)" } else { "" };
             lines.push(format!("- tab {}{marker}: \"{}\" {url}", tab.id, title.replace('"', "'")));
         }
