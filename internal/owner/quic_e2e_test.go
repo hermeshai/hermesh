@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/internal/machine"
@@ -314,5 +315,70 @@ func TestDirectQUICEndToEndConnectRPCAndCellularFilter(t *testing.T) {
 	client.ProbeOrForgetDirect(ctx)
 	if _, _, ok := client.MachineTunnel(machID); ok {
 		t.Fatal("dead QUIC tunnel was not evicted by ProbeOrForgetDirect")
+	}
+}
+
+func TestMachinesListedEvictsTunnelOnOfflineOrReconnect(t *testing.T) {
+	d, err := Open(Config{DataDir: t.TempDir(), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	o := d.owner()
+	r := o.rep
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &sources{
+		ctx:     ctx,
+		cancel:  cancel,
+		settled: make(chan struct{}),
+		listed:  make(chan struct{}),
+		feeds:   map[string]*feed{},
+	}
+	// Pre-mark running so machinesListedLocked does not spawn follow goroutines.
+	t1 := time.Now().Add(-10 * time.Second).UTC().Truncate(time.Millisecond)
+	t2 := t1.Add(5 * time.Second)
+	s.feeds["m_remote"] = &feed{online: true, running: true, lastSeen: t1}
+
+	// Same LastSeen while online: no eviction.
+	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: true, LastSeen: timestamppb.New(t1)}}
+	s.machines.err = nil
+	r.mu.Lock()
+	evict := r.machinesListedLocked(s)
+	r.mu.Unlock()
+	if len(evict) != 0 {
+		t.Fatalf("unexpected eviction with unchanged LastSeen: %v", evict)
+	}
+
+	// Non-authoritative error listing (relay unreachable): must NOT evict.
+	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: false, LastSeen: timestamppb.New(t1)}}
+	s.machines.err = context.DeadlineExceeded
+	r.mu.Lock()
+	evict = r.machinesListedLocked(s)
+	r.mu.Unlock()
+	if len(evict) != 0 {
+		t.Fatalf("unexpected eviction on non-authoritative listing: %v", evict)
+	}
+
+	// Authoritative fast reconnect (LastSeen advanced while Online stayed true):
+	// must evict stale QUIC tunnel.
+	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: true, LastSeen: timestamppb.New(t2)}}
+	s.machines.err = nil
+	r.mu.Lock()
+	evict = r.machinesListedLocked(s)
+	r.mu.Unlock()
+	if !slices.Equal(evict, []string{"m_remote"}) {
+		t.Fatalf("expected eviction on LastSeen advance, got %v", evict)
+	}
+
+	// Authoritative offline transition: must evict.
+	s.machines.list = []*localv1.Machine{{MachineId: "m_remote", MachineName: "vps", Online: false, LastSeen: timestamppb.New(t2)}}
+	s.machines.err = nil
+	r.mu.Lock()
+	evict = r.machinesListedLocked(s)
+	r.mu.Unlock()
+	if !slices.Equal(evict, []string{"m_remote"}) {
+		t.Fatalf("expected eviction on offline transition, got %v", evict)
 	}
 }

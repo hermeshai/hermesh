@@ -320,13 +320,25 @@ final class DemoUITests: XCTestCase {
     }
 
     func testReviewFreeAnswerAndInterrupt() {
+        let holdTask = "-HermeshHoldDemoWorkTask"
+        app.terminate()
+        app.launchArguments.append(holdTask)
+        app.launch()
+
         enterWorkDemo(); tap("run-demo-task")
         replace(app.textFields["answer-text"], with: "Reviewer says hello")
         tap("answer")
         tap("interrupt"); tap("interrupt-confirm")
         XCTAssertTrue(contains("The simulated task was stopped.").waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["interrupt"].exists)
-        tap("exit-demo"); enterWorkDemo(); tap("run-demo-task")
+        XCTAssertFalse(contains("The sample page now says").exists)
+        tap("exit-demo")
+        XCTAssertTrue(app.buttons["try-demo"].waitForExistence(timeout: 15))
+
+        app.terminate()
+        app.launchArguments.removeAll { $0 == holdTask }
+        app.launch()
+        enterWorkDemo(); tap("run-demo-task")
         replace(app.textFields["answer-text"], with: "Reviewer says hello")
         tap("answer")
         XCTAssertTrue(contains("The sample page now says “Reviewer says hello”").waitForExistence(timeout: 15))

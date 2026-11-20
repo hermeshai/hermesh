@@ -15,7 +15,8 @@ func TestInProcessBinaryProtobufFFIUnaryAndStreamAcrossPause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { c.Pause() })
+	t.Cleanup(c.o.Close) // after Pause, before TempDir is removed
+	t.Cleanup(c.Pause)
 
 	// Pause closes the 127.0.0.1 loopback TCP listener (TN2277 mitigation),
 	// yet in-process binary Protobuf FFI must continue serving LocalService
