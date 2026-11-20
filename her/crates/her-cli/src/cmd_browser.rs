@@ -82,15 +82,15 @@ pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
     tracing::info!(socket = %socket.display(), "extension host started");
 
     let (to_chrome, mut outbox) = mpsc::unbounded_channel::<String>();
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(message) = outbox.recv().await {
             for frame in frames(&message) {
-                if stdout.write_all(&frame).await.is_err() || stdout.flush().await.is_err() {
-                    return;
-                }
+                stdout.write_all(&frame).await?;
+                stdout.flush().await?;
             }
         }
+        Ok::<(), std::io::Error>(())
     });
 
     // Messages from the extension go to the service connection of the moment.
@@ -105,9 +105,12 @@ pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
     });
 
     let mut relay = tokio::spawn(relay(socket, to_chrome, inbox));
-    tokio::select! {
+    let exit_now = tokio::select! {
         // Chrome closed the port (the extension stopped, or Chrome quit).
-        _ = reader => relay.abort(),
+        _ = reader => {
+            relay.abort();
+            false
+        },
         ended = &mut relay => {
             if let Ok(Some(reason)) = ended {
                 tracing::info!(%reason, "extension host refused; exiting for the extension to start the current one");
@@ -115,10 +118,18 @@ pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
                 drop(_guard);
                 std::process::exit(REFUSED_EXIT);
             }
-        }
-    }
+            false
+        },
+        // Chrome can close its read end first, while a write or flush is in flight.
+        Ok(Err(_)) = &mut writer => true,
+    };
     writer.abort();
     tracing::info!("extension host stopped");
+    if exit_now {
+        // stdin may still be open, so returning would wait for its blocking read.
+        drop(_guard);
+        std::process::exit(0);
+    }
     Ok(0)
 }
 
