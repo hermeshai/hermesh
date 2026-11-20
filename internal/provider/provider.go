@@ -217,6 +217,8 @@ type StartSpec struct {
 	Gate  Gate
 	// GuardInput checks authorization around the first content-bearing write.
 	GuardInput func(func() error) error
+	// CodingRoute is the inspected route before starting the adapter.
+	CodingRoute CodingRoute
 	// MCPServers are tools Hermesh gives the agent, as stdio MCP servers:
 	// the session's messages (docs/agent-messages.md §7.4).
 	MCPServers []MCPServer

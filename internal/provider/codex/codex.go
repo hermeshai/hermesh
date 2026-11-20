@@ -327,7 +327,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	s.threadID = tr.Thread.ID
 	s.modelProvider = cmp.Or(tr.ModelProvider, tr.Thread.ModelProvider)
-	if spec.GuardInput != nil && !s.CodingRouteMatches("OpenAI") {
+	if spec.GuardInput != nil && !s.CodingRouteMatches(spec.CodingRoute) {
 		return fail(errors.New("Codex did not report its built-in OpenAI provider"))
 	}
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID, Model: tr.Model, Effort: tr.ReasoningEffort})
@@ -358,8 +358,8 @@ type rpcResult struct {
 
 // CodingRouteMatches compares the observed configuration with the app-server's
 // report about this specific thread, including when it was resumed.
-func (s *session) CodingRouteMatches(recipient string) bool {
-	return recipient == "OpenAI" && s.modelProvider == "openai"
+func (s *session) CodingRouteMatches(route provider.CodingRoute) bool {
+	return route.Recipient == "OpenAI" && s.modelProvider == "openai"
 }
 
 type session struct {

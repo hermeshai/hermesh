@@ -247,3 +247,22 @@ func TestLocalMachineNotHere(t *testing.T) {
 		t.Fatalf("the relay connection the machine needed: %v", err)
 	}
 }
+
+func TestMachineRecordRTTSubTickSample(t *testing.T) {
+	var m Machine
+	if got := m.RTT(); got != 0 {
+		t.Fatalf("unmeasured RTT = %v, want 0", got)
+	}
+	m.RecordRTT(-time.Millisecond)
+	if got := m.RTT(); got != 0 {
+		t.Fatalf("negative sample RTT = %v, want 0", got)
+	}
+	m.RecordRTT(0)
+	if got := m.RTT(); got <= 0 {
+		t.Fatalf("zero-duration measured RTT = %v, want > 0", got)
+	}
+	m.RecordRTT(8 * time.Millisecond)
+	if got := m.RTT(); got < time.Millisecond {
+		t.Fatalf("smoothed RTT after 8ms sample = %v, want >= 1ms", got)
+	}
+}

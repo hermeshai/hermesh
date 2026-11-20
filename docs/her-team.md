@@ -1175,7 +1175,7 @@ code's word.
 | Part | Rows | Marks |
 |---|---|---|
 | Top band (Mac) | The sidebar toggle after the traffic lights; Search (⌘K) at its end | |
-| Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner, a ring while anything runs |
+| Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner. The Mac sidebar and the iPhone’s collapsed rail can also show a ring while tasks run. |
 | Sessions | The heading "Sessions" with the view menu at its end; every session, as the view lays them out | Per row, below |
 | Foot | The account (Mac: "Connected", no count of machines) | A dot only when not connected |
 

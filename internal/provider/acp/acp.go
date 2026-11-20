@@ -17,11 +17,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
@@ -45,6 +47,15 @@ type Agent struct {
 	// Auth lists `authenticate` method ids in order of preference. When
 	// set, the first one the agent offers is sent before any session call.
 	Auth []string
+	// fallback is a secondary CLI entry point when Command is absent or
+	// incompatible (e.g. Antigravity's standalone ACP archive).
+	fallback *fallbackAgent
+}
+
+type fallbackAgent struct {
+	command string
+	args    []string
+	paths   []string
 }
 
 // App is a desktop app (Electron, macOS or Windows) that keeps the agent's
@@ -60,10 +71,33 @@ type Provider struct {
 	// PathEnv is the PATH used to find binaries ("": the login shell's).
 	PathEnv string
 	// Binary overrides discovery (tests use a fake agent).
-	Binary   string
-	modelsMu sync.Mutex
-	list     *modelList
+	Binary       string
+	modelsMu     sync.Mutex
+	list         *modelList
+	acpMu        sync.Mutex
+	acpProbe     map[string]bool
+	chosenStamp  string
+	chosenLaunch launch
 }
+
+type launch struct {
+	bin      string
+	pre      []string
+	args     []string
+	env      []string
+	mode     antigravityMode
+	probeErr error // inconclusive Antigravity capability check
+}
+
+func (l launch) probeArgs() []string {
+	return append(slices.Clone(l.pre), "--version")
+}
+
+func (l launch) acpArgs() []string {
+	return append(slices.Clone(l.pre), l.args...)
+}
+
+var systemBinDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 
 func (p *Provider) Name() string { return p.Agent.Name }
 
@@ -72,7 +106,11 @@ func (p *Provider) binary() string {
 		return p.Binary
 	}
 	home, _ := os.UserHomeDir()
-	extra := []string{"/opt/homebrew/bin/" + p.Command, "/usr/local/bin/" + p.Command, filepath.Join(home, ".local/bin", p.Command)}
+	var extra []string
+	for _, dir := range systemBinDirs {
+		extra = append(extra, filepath.Join(dir, p.Command))
+	}
+	extra = append(extra, filepath.Join(home, ".local/bin", p.Command))
 	for _, x := range p.Paths {
 		if !filepath.IsAbs(x) {
 			x = filepath.Join(home, x)
@@ -80,6 +118,79 @@ func (p *Provider) binary() string {
 		extra = append(extra, x)
 	}
 	return provider.LookPath(p.Command, provider.SearchPath(p.PathEnv), extra...)
+}
+
+// lookAll returns every matching executable for command across PATH, standard
+// bin directories, and extra paths, preserving search order without duplicates.
+func (p *Provider) lookAll(command string, paths ...string) []string {
+	home, _ := os.UserHomeDir()
+	var candidates []string
+	for _, dir := range filepath.SplitList(provider.SearchPath(p.PathEnv)) {
+		if dir != "" {
+			candidates = append(candidates, filepath.Join(dir, command))
+		}
+	}
+	for _, dir := range systemBinDirs {
+		candidates = append(candidates, filepath.Join(dir, command))
+	}
+	if home != "" {
+		candidates = append(candidates, filepath.Join(home, ".local/bin", command))
+	}
+	for _, x := range paths {
+		if !filepath.IsAbs(x) {
+			x = filepath.Join(home, x)
+		}
+		candidates = append(candidates, x)
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range candidates {
+		found := provider.LookPath("", "", c)
+		if found == "" {
+			continue
+		}
+		key := filepath.Clean(found)
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, found)
+	}
+	return out
+}
+
+func (p *Provider) resolve(ctx context.Context) launch {
+	if p.Name() == "antigravity" {
+		return p.resolveAntigravityLogin(ctx)
+	}
+	bin, pre, env := p.command()
+	return launch{bin: bin, pre: pre, args: p.Args, env: env}
+}
+
+func (p *Provider) resolveForStart(ctx context.Context, env []string) launch {
+	if p.Name() == "antigravity" {
+		return p.resolveAntigravityStart(ctx, env)
+	}
+	bin, pre, extraEnv := p.command()
+	return launch{bin: bin, pre: pre, args: p.Args, env: extraEnv}
+}
+
+func (p *Provider) notFoundDetail() string {
+	if p.Name() == "antigravity" && p.fallback != nil {
+		return p.Command + " or " + p.fallback.command + " not found"
+	}
+	return p.Command + " not found"
+}
+
+func (p *Provider) notFoundInfo() provider.Info {
+	info := provider.Info{Name: p.Name(), Problem: provider.ProblemNotFound, Detail: p.notFoundDetail()}
+	if app := provider.AppWithoutCLI(p.DesktopApps...); app != "" && p.Binary == "" {
+		info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+	}
+	return info
 }
 
 // command is how to start the CLI: its binary, the arguments ahead of the
@@ -129,20 +240,32 @@ func scriptThere(script string) bool {
 var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
 
 func (p *Provider) Discover(ctx context.Context) provider.Info {
+	if p.Name() == "antigravity" {
+		return p.discoverAntigravity(ctx)
+	}
+	return p.discoverLaunch(ctx, p.resolve(ctx), provider.ProbeEnv(p.PathEnv))
+}
+
+func (p *Provider) discoverLaunch(ctx context.Context, cmd launch, baseEnv []string) provider.Info {
 	info := provider.Info{Name: p.Name()}
-	bin, pre, env := p.command()
-	if !provider.Exists(bin) {
-		info.Problem, info.Detail = provider.ProblemNotFound, p.Command+" not found"
-		if app := provider.AppWithoutCLI(p.DesktopApps...); app != "" && p.Binary == "" {
-			info.Problem, info.Detail = provider.ProblemAppWithoutCLI, app
+	if !provider.Exists(cmd.bin) {
+		return p.notFoundInfo()
+	}
+	info.Binary = cmd.bin
+	if cmd.probeErr != nil {
+		info.Problem, info.Detail = provider.ProblemFailed, cmd.probeErr.Error()
+		switch {
+		case errors.Is(cmd.probeErr, context.DeadlineExceeded):
+			info.Problem = provider.ProblemTimedOut
+		case errors.Is(cmd.probeErr, syscall.EAGAIN):
+			info.Problem = provider.ProblemNoProcesses
 		}
 		return info
 	}
-	info.Binary = bin
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	env = append(provider.ProbeEnv(p.PathEnv), env...)
-	out, problem, detail := provider.Probe(ctx, env, bin, append(pre, "--version")...)
+	env := append(slices.Clip(baseEnv), cmd.env...)
+	out, problem, detail := provider.Probe(ctx, env, cmd.bin, cmd.probeArgs()...)
 	if problem != provider.ProblemNone {
 		info.Problem, info.Detail = problem, detail
 		return info
@@ -152,11 +275,11 @@ func (p *Provider) Discover(ctx context.Context) provider.Info {
 	// ACP has no way to ask for the login state before a session: reading
 	// the models tells, as a missing login fails the session.
 	info.LoggedIn = true
-	if p.Name() == "antigravity" {
-		info.LoggedIn = antigravityConfigured(env)
+	if cmd.mode == antigravityStandalone {
+		info.LoggedIn = antigravityStandaloneConfigured(env)
 	}
 	if info.LoggedIn {
-		p.fillModels(ctx, &info, bin, pre, env)
+		p.fillModels(ctx, &info, cmd, env)
 	} else {
 		info.ModelsState, info.ModelsAt = provider.ModelsAuthRequired, time.Now()
 	}
@@ -173,26 +296,42 @@ func withPath(env []string, path string) []string {
 }
 
 func (p *Provider) CodingRoute(dir string, env []string) provider.CodingRoute {
-	bin, _, extra := p.command()
-	return provider.InspectCodingRoute(p.Name(), bin, dir, append(slices.Clip(env), extra...))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	cmd := p.resolveForStart(ctx, env)
+	return p.codingRoute(cmd, dir, append(slices.Clone(env), cmd.env...))
+}
+
+func (p *Provider) codingRoute(cmd launch, dir string, env []string) provider.CodingRoute {
+	if cmd.probeErr != nil {
+		return provider.CodingRoute{}
+	}
+	return provider.InspectCodingRoute(p.Name(), cmd.bin, dir, env, cmd.acpArgs()...)
 }
 
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
-	bin, pre, env := p.command()
-	if bin == "" {
-		return nil, errors.New(p.Command + " not found")
+	cmd := p.resolveForStart(ctx, spec.Env)
+	if cmd.probeErr != nil {
+		return nil, cmd.probeErr
 	}
-	if env != nil {
+	if cmd.bin == "" {
+		return nil, errors.New(p.notFoundDetail())
+	}
+	if cmd.env != nil {
 		if spec.Env == nil {
 			spec.Env = os.Environ()
 		}
-		spec.Env = append(slices.Clip(spec.Env), env...)
+		spec.Env = append(slices.Clip(spec.Env), cmd.env...)
 	}
-	proc, err := spec.Launch(ctx, bin, append(pre, p.Args...))
+	route := p.codingRoute(cmd, spec.WorkDir, spec.Env)
+	if spec.GuardInput != nil && (route.Fingerprint == "" || route.Fingerprint != spec.CodingRoute.Fingerprint) {
+		return nil, errors.New("coding agent route changed before launch; review its disclosure again")
+	}
+	proc, err := spec.Launch(ctx, cmd.bin, cmd.acpArgs())
 	if err != nil {
 		return nil, err
 	}
-	s := &session{name: p.Name(), proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
+	s := &session{name: p.Name(), route: route, proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
 		gate: spec.Gate, ctx: ctx, known: map[string]*toolCall{}, calls: map[string]provider.Decision{}, finished: map[string]bool{}}
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
@@ -290,7 +429,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	// What the session offers refreshes the models listed; a new one's
 	// selection is the agent's own.
-	key := modelContext(bin, spec.Env)
+	key := modelContext(cmd.bin, spec.Env)
 	o := optionsOf(res)
 	p.learn(key, o, spec.ResumeRef == "")
 	if spec.Model != "" {
@@ -423,7 +562,13 @@ type rpcResult struct {
 	err    error
 }
 
+// CodingRouteMatches checks the command this session actually started.
+func (s *session) CodingRouteMatches(route provider.CodingRoute) bool {
+	return s.route.Fingerprint == route.Fingerprint
+}
+
 type session struct {
+	route     provider.CodingRoute
 	name      string
 	proc      *provider.Proc
 	events    chan provider.Event

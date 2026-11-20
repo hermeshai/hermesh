@@ -52,10 +52,13 @@ func modelContext(bin string, env []string) string {
 	home, _ := os.UserHomeDir()
 	values := map[string]string{"HOME": home}
 	for _, e := range env {
-		for _, k := range []string{"HOME", "GEMINI_HOME", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "CLOUDSDK_CONFIG"} {
+		for _, k := range []string{"HOME", "GEMINI_HOME", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_CLOUD_QUOTA_PROJECT", "CLOUDSDK_CONFIG", "AGY_ADC_AUTH"} {
 			if v, ok := strings.CutPrefix(e, k+"="); ok {
 				values[k] = v
 			}
+		}
+		if v, ok := strings.CutPrefix(e, "GEMINI_API_KEY="); ok && v != "" {
+			values["GEMINI_API_KEY"] = modelHash(v)
 		}
 	}
 	stamp := bin
@@ -218,11 +221,11 @@ func (p *Provider) learn(key string, o sessionOptions, initial bool) {
 
 // fillModels gives info the agent's models: as read within modelsFresh,
 // else read now (readModels).
-func (p *Provider) fillModels(ctx context.Context, info *provider.Info, bin string, pre, env []string) {
-	key := modelContext(bin, env)
+func (p *Provider) fillModels(ctx context.Context, info *provider.Info, cmd launch, env []string) {
+	key := modelContext(cmd.bin, env)
 	l, fresh := p.models(key)
 	if !fresh {
-		state := p.readModels(ctx, key, bin, pre, env)
+		state := p.readModels(ctx, key, cmd, env)
 		if l, fresh = p.models(key); !fresh {
 			l = modelList{state: state, at: time.Now()}
 			if state == provider.ModelsUnsupported {
@@ -245,13 +248,13 @@ func (p *Provider) fillModels(ctx context.Context, info *provider.Info, bin stri
 // the agent can close sessions (one it cannot is left empty in its list).
 // It says the state when it learned nothing. ctx bounds it (the agent
 // check's time), and the agent is stopped with all it started.
-func (p *Provider) readModels(ctx context.Context, key, bin string, pre, env []string) string {
+func (p *Provider) readModels(ctx context.Context, key string, cmd launch, env []string) string {
 	dir, err := os.MkdirTemp("", "hermesh-models-")
 	if err != nil {
 		return provider.ModelsError
 	}
 	defer os.RemoveAll(dir)
-	proc, err := provider.StartProc(ctx, bin, append(slices.Clone(pre), p.Args...), dir, env)
+	proc, err := provider.StartProc(ctx, cmd.bin, cmd.acpArgs(), dir, env)
 	if err != nil {
 		return provider.ModelsError
 	}
