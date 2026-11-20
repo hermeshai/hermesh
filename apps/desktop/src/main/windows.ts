@@ -99,10 +99,12 @@ export function showMain(): BrowserWindow {
   });
   secure(main);
   main.once("ready-to-show", () => main?.show());
-  main.webContents.on("did-start-loading", () => (visibleHer = undefined));
+  const clearHer = () => (visibleHer = undefined);
+  main.webContents.on("did-start-loading", clearHer);
+  main.webContents.on("render-process-gone", clearHer);
   main.on("closed", () => {
     main = undefined;
-    visibleHer = undefined;
+    clearHer();
   });
   main.loadURL(page());
   return main;

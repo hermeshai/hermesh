@@ -208,7 +208,7 @@ func TestDesktopHer(t *testing.T) {
 	herSpec(t, f, "her.spec.ts")
 }
 
-// TestDesktopHerNotifications exercises the real focused Mac window and Her's notifications.
+// TestDesktopHerNotifications exercises the Mac window’s focus, visibility and Her notifications.
 func TestDesktopHerNotifications(t *testing.T) {
 	if testing.Short() || runtime.GOOS != "darwin" {
 		t.Skip("e2e on macOS")
