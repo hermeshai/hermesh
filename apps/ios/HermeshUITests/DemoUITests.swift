@@ -45,9 +45,11 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["answer"].exists)
         tap("session-info")
-        let file = app.staticTexts["src/welcome.ts"]
-        for _ in 0..<4 where !file.isHittable { app.swipeUp() }
-        tap("src/welcome.ts")
+        XCTAssertTrue(app.buttons["close"].waitForExistence(timeout: 10), "Task Info sheet")
+        let file = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "src/welcome.ts")).firstMatch
+        for _ in 0..<5 where !file.exists || !file.isHittable || file.frame.maxY > app.frame.height - 120 { app.swipeUp() }
+        XCTAssertTrue(file.exists, "src/welcome.ts")
+        file.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "+export const greeting = \"Welcome aboard!\"")).firstMatch.waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
