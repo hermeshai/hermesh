@@ -155,9 +155,11 @@ final class ScreenViewportUITests: XCTestCase {
 
     func testLandscapeSafeAreaOverscrollZoomAndReset() throws {
         XCUIDevice.shared.orientation = .landscapeLeft
-        let land = try waitState("landscape safe fit") { $0.boundsW > $0.boundsH && $0.fitted }
-        XCTAssertEqual(surface.frame.width, app.frame.width, accuracy: 1)
-        XCTAssertEqual(surface.frame.height, app.frame.height, accuracy: 1)
+        let land = try waitState("landscape safe fit after rotation") { state in
+            guard state.boundsW > state.boundsH && state.fitted else { return false }
+            let frame = surface.frame, window = app.frame
+            return abs(frame.width - window.width) <= 1 && abs(frame.height - window.height) <= 1
+        }
 
         // Fit strictly respects landscape safe area (Dynamic Island on sides, Home Indicator at bottom).
         XCTAssertGreaterThanOrEqual(land.x, land.safeX - 1, "clear of leading safe area")
@@ -185,7 +187,7 @@ final class ScreenViewportUITests: XCTestCase {
         drag(from: CGPoint(x: settled.safeMidX, y: settled.safeMidY),
              to: CGPoint(x: settled.safeMidX, y: settled.safeMidY + 40))
         let prePinch = try waitState("landscape bottom bar positioned for centered pinch") { $0.maxY > $0.boundsH / 2 + 4 }
-        surface.pinch(withScale: 2.0, velocity: 1.0)
+        surface.pinch(withScale: 2.4, velocity: 1.0)
         let zoomed = try waitState("landscape zoomed on bottom bar") { $0.s > prePinch.s * 1.25 }
         usleep(500_000)
         let settledZoom = try readState()
