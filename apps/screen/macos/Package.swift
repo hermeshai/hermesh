@@ -12,5 +12,6 @@ let package = Package(
             path: "Sources/HermeshScreen",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(name: "HermeshScreenTests", dependencies: ["hermesh-screen"]),
     ]
 )

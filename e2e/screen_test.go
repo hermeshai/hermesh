@@ -442,6 +442,10 @@ func TestScreen(t *testing.T) {
 		t.Errorf("the phone was told %q", why)
 	}
 	eventually(t, 30*time.Second, "nobody in control", func() bool { v, ok := viewer(); return ok && v == "" })
+
+	// Opening Computer Control again starts a fresh helper and yields a picture.
+	reopened := openScreen(t, m, machineID)
+	reopened.live(t)
 }
 
 // TestScreenLatency measures where the picture's delay comes from, against
