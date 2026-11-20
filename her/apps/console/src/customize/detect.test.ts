@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { detect, suggestName } from "./detect.ts";
+import { detect, parseMcpJson, sanitizeServerName, suggestName } from "./detect.ts";
 
 // What the add sheet makes of its address box, and the name it offers.
 
@@ -46,4 +46,48 @@ test("the name offered: the host's telling part, the package's, or none for an a
   assert.equal(suggestName(detect("http://127.0.0.1:8080/mcp")), "");
   assert.equal(suggestName(detect("http://[::1]:8080/mcp")), "");
   assert.equal(suggestName(detect("ftp://x")), "");
+});
+
+test("parseMcpJson: parses single, multi-server, and remote MCP JSON with validation and secret auto-locking", () => {
+  assert.deepEqual(parseMcpJson("   "), { ok: false, error: "empty" });
+  assert.deepEqual(parseMcpJson("{bad"), { ok: false, error: "json" });
+  assert.deepEqual(parseMcpJson('["not-an-object"]'), { ok: false, error: "json" });
+  assert.deepEqual(parseMcpJson('{"mcpServers": {}}'), { ok: false, error: "jsonServer" });
+  assert.deepEqual(parseMcpJson('{"command": "node", "args": "--port 3000"}'), { ok: false, error: "badArgs" });
+  assert.deepEqual(parseMcpJson('{"command": "node", "args": [123]}'), { ok: false, error: "badArgs" });
+  assert.deepEqual(parseMcpJson('{"command": "node", "env": ["A=1"]}'), { ok: false, error: "badEnv" });
+
+  assert.deepEqual(
+    parseMcpJson('{"mcpServers": {"demo": {"type": "stdio", "command": "uvx", "args": ["mcp-server-fetch"], "env": {"API_TOKEN": "tok", "MODE": "ro"}, "cwd": "/tmp"}}}'),
+    {
+      ok: true,
+      servers: [
+        {
+          kind: "local",
+          name: "demo",
+          command: "uvx",
+          args: ["mcp-server-fetch"],
+          env: [
+            { key: "API_TOKEN", value: "tok", locked: true },
+            { key: "MODE", value: "ro", locked: false },
+          ],
+          skipped: ["cwd"],
+        },
+      ],
+    },
+  );
+
+  const multi = parseMcpJson(
+    '{"mcpServers": {"one": {"command": "node", "args": ["a.js"]}, "two": {"url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer x"}}}}',
+  );
+  assert.equal(multi.ok, true);
+  if (multi.ok) {
+    assert.equal(multi.servers.length, 2);
+    assert.equal(multi.servers[0].kind, "local");
+    assert.equal(multi.servers[0].name, "one");
+    assert.equal(multi.servers[1].kind, "remote");
+    assert.equal(multi.servers[1].name, "two");
+  }
+
+  assert.equal(sanitizeServerName("  My Local Server! "), "my-local-server");
 });
