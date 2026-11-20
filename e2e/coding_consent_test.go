@@ -265,6 +265,25 @@ func TestCodingAgentAnswerRejection(t *testing.T) {
 	if s := w.get(id); s.Status != "waiting_input" {
 		t.Fatalf("rejected mobile answer changed the session: %+v", s)
 	}
+	if _, err := c.InterruptSession(ctx, &localv1.InterruptSessionRequest{SessionId: id}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 10*time.Second, "the owner sees the interrupted session idle", func() bool {
+		return w.get(id).Status == "idle"
+	})
+	history, err := c.ListSessionEvents(ctx, &localv1.ListSessionEventsRequest{SessionId: id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var resolutions []sessionv1.QuestionResolution
+	for _, event := range history.Events {
+		if resolution := event.GetQuestionResolved(); resolution.GetQuestionId() == questionID {
+			resolutions = append(resolutions, resolution.Resolution)
+		}
+	}
+	if len(resolutions) != 1 || resolutions[0] != sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED {
+		t.Fatalf("want one cancellation after the rejected answer, got %v", resolutions)
+	}
 
 	id = start()
 	asked, said := tellHer(t, env, meshCall("session_answer", map[string]any{
