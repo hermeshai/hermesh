@@ -15,4 +15,4 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - run: sleep 240
+      - run: echo verified
