@@ -7,10 +7,16 @@ on:
     branches: [main]
     paths:
       - 'her/**'
+      - '!her/docs/**'
+      - '!her/README.md'
+      - 'her/docs/cli/protocol-reference.md'
       - '.github/workflows/her-ci.yml'
   pull_request:
     paths:
       - 'her/**'
+      - '!her/docs/**'
+      - '!her/README.md'
+      - 'her/docs/cli/protocol-reference.md'
       - '.github/workflows/her-ci.yml'
 
 permissions:

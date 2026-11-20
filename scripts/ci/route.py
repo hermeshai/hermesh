@@ -1,4 +1,4 @@
-"""Select CI jobs from the paths changed by GitHub's PR test merge."""
+"""Select CI jobs from PR test merges and pushed commit ranges."""
 
 import argparse
 import os
@@ -6,69 +6,64 @@ import re
 import subprocess
 
 
-DESKTOP = ("app", "windows_app")
-HER = (*DESKTOP, "windows_e2e", "win_package")
-FLAGS = ("go", "screen_linux", "windows", "windows_arm", "windows_e2e",
-         "app", "windows_app", "ios", "win_package")
-
-# Check shared inputs before these component prefixes.
-FULL_PREFIXES = (".github/", "scripts/", "cmd/", "internal/", "pkg/",
-                 "third_party/", "gen/", "proto/", "packages/proto/",
-                 "packages/her-protocol/", "packages/HermeshKit/Sources/HermeshProto/",
-                 "her/crates/her-protocol/", "her/.cargo/")
-FULL_BASENAMES = {
-    ".dockerignore", ".gitattributes", ".gitignore", ".gitmodules",
-    ".node-version", ".nvmrc", ".python-version", ".tool-versions",
-    "bun.lockb", "go.mod", "go.sum", "go.work", "go.work.sum",
-    "npm-shrinkwrap.json", "Package.resolved", "pnpm-workspace.yaml",
-    "rust-toolchain", "rust-toolchain.toml",
-}
+FLAGS = ("go", "go_macos", "go_e2e", "screen_linux", "windows", "windows_arm",
+         "windows_e2e", "app", "desktop_e2e", "her_integration", "windows_app",
+         "mac_native", "ios", "packaging")
 DOC_FILES = {"AGENTS.md", "LICENSE", "README.md", "README.zh-CN.md"}
-PREFIXES = (
+# First match wins. Keep shared inputs ahead of the directory that owns them.
+RULES = (
     (("docs/", "her/docs/"), ()),
-    (("e2e/", "bench/"), ("go", "screen_linux", "windows", "windows_e2e", *DESKTOP)),
+    ((".github/workflows/release.yml", ".github/workflows/promote.yml",
+      ".github/workflows/relay-image.yml", "apps/ios/scripts/testflight.sh",
+      "apps/desktop/scripts/", "apps/desktop/build/", "scripts/release"), ("packaging",)),
+    (("proto/", "gen/", "packages/proto/", "packages/her-protocol/",
+      "her/crates/her-protocol/", "internal/preview/testdata/", "internal/owner/testdata/",
+      "packages/her-client/testdata/"), ("go", "app", "her_integration", "ios", "mac_native", "windows")),
+    (("apps/desktop/src/renderer/src/session/markdown/", "apps/desktop/package.json",
+      "pnpm-lock.yaml", "pnpm-workspace.yaml"), ("app", "ios", "windows_app")),
     (("apps/ios/",), ("ios",)),
-    (("packages/HermeshKit/",), ("ios", "app")),
-    (("apps/signer/macos/", "apps/screen/macos/"), ("app", "go")),
+    (("packages/HermeshKit/",), ("ios", "mac_native")),
+    (("apps/signer/macos/", "apps/screen/macos/"), ("mac_native",)),
     (("apps/screen/linux/",), ("screen_linux",)),
-    (("apps/desktop/src/renderer/src/session/markdown/",), (*DESKTOP, "ios")),
-    (("apps/desktop/scripts/", "apps/desktop/build/"),
-     (*DESKTOP, "go", "windows_e2e", "win_package")),
-    (("apps/desktop/", "packages/core/", "packages/her-client/", "packages/ui/",
-      "her/apps/console/"), DESKTOP),
-    (("deploy/",), ("go",)),
-    # Her embeds the browser extension in her-cli.
-    (("her/apps/chrome-extension/", "her/crates/", "her/examples/", "her/tools/"), HER),
+    (("apps/desktop/e2e/", "e2e/desktop_"), ("app", "desktop_e2e", "windows_app")),
+    (("apps/desktop/src/main/", "apps/desktop/src/preload/"), ("app", "windows_app")),
+    (("apps/desktop/", "packages/core/", "packages/her-client/", "packages/ui/"), ("app",)),
+    (("her/apps/console/", "internal/herhost/", "internal/herlink/"), ("app", "her_integration", "go")),
+    (("her/crates/", "her/apps/chrome-extension/", "her/tools/", "her/examples/",
+      "her/Cargo.", "her/.cargo/", "her/rust-toolchain"), ()),  # her-ci.yml
+    (("cmd/hermesh-mobile/", "internal/mobile/"), ("go", "ios")),
+    (("cmd/hermesh-signer/",), ("windows", "windows_arm")),
+    (("scripts/install.ps1", "e2e/install_windows", "e2e/windows_signer"), ("windows",)),
+    (("e2e/linux_screen",), ("screen_linux",)),
+    (("e2e/iphone", "e2e/mcp_iphone"), ("go", "go_macos", "ios")),
+    (("e2e/", "bench/"), ("go", "go_e2e")),
+    (("internal/paths/", "internal/flock/", "internal/localipc/", "internal/service/",
+      "internal/peercred/", "internal/spawn/"), ("go", "go_macos", "windows")),
+    (("cmd/", "internal/", "pkg/", "deploy/", "scripts/install.sh", "scripts/test_install.py"), ("go",)),
 )
 
 
 def route(paths):
-    """Return selected flags, or None for full CI."""
+    """Return selected flags, or None when affected components are unknown."""
     if not paths or len(paths) > 300:
         return None
-
     selected = set()
     for path in paths:
-        name = path.rsplit("/", 1)[-1]
-        if (path.startswith(FULL_PREFIXES) or name in FULL_BASENAMES
-                or re.search(r"(?i)(?:^|[-.])lock(?:\.(?:json|yaml|yml|toml))?$", name)
-                or (path.startswith("packages/") and "/testdata/" in path)
-                or path == "her/Cargo.toml"):
-            return None
         if path in DOC_FILES:
             continue
-        if path == "apps/desktop/package.json":
-            selected.update((*DESKTOP, "ios", "win_package"))
-            continue
-        # A workspace manifest can affect frozen installs across apps.
-        if name == "package.json":
-            return None
-        for prefixes, jobs in PREFIXES:
+        for prefixes, jobs in RULES:
             if path.startswith(prefixes):
                 selected.update(jobs)
                 break
         else:
             return None
+        if path.endswith(".go"):
+            if "_windows" in path or path.startswith("e2e/harness"):
+                selected.add("windows")
+                if path.startswith("e2e/"):
+                    selected.add("windows_e2e")
+            if "_darwin" in path or "_unix" in path:
+                selected.update(("go", "go_macos"))
     return selected
 
 
@@ -76,15 +71,20 @@ def git(*args):
     return subprocess.check_output(["git", *args], stderr=subprocess.DEVNULL)
 
 
-def changed_paths(base, head):
-    # GitHub checks out its two-parent test merge, even for fork PRs.
-    merge = git("rev-parse", "HEAD").strip()
-    parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
-    if parents != [merge, os.fsencode(base), os.fsencode(head)]:
+def changed_paths(event, base, head):
+    if not all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in (base, head)):
+        return []
+    tip = git("rev-parse", "HEAD").strip()
+    if event == "pull_request":
+        # A fork PR cannot substitute its own routing rules or merge parents.
+        parents = git("rev-list", "--parents", "-n", "1", "HEAD").split()
+        if parents != [tip, os.fsencode(base), os.fsencode(head)]:
+            return []
+    elif event not in ("push", "workflow_dispatch") or os.fsencode(head) != tip:
         return []
     # Disabling rename detection exposes both the old and new paths.
     paths = git("diff", "--no-ext-diff", "--no-renames", "--name-only",
-                "--ignore-submodules=none", "-z", "HEAD^1", "HEAD", "--")
+                "--ignore-submodules=none", "-z", base, "HEAD", "--")
     return os.fsdecode(paths[:-1]).split("\0") if paths.endswith(b"\0") else []
 
 
@@ -96,16 +96,28 @@ def main():
     args = parser.parse_args()
 
     selected = None
-    if args.event == "pull_request":
-        try:
-            selected = route(changed_paths(args.base, args.head))
-        except (OSError, subprocess.CalledProcessError):
-            pass
+    try:
+        paths = changed_paths(args.event, args.base, args.head)
+        selected = route(paths)
+    except (OSError, subprocess.CalledProcessError):
+        pass
 
     if selected is None:
         print("mode=full")
     else:
         print("mode=routed")
+        # These suites run on a fresh simulator without an external fixture server.
+        suites = []
+        for prefix, name in (("apps/ios/Hermesh/Views/Screen/", "ScreenViewportUITests"),
+                             ("apps/ios/Hermesh/Views/Session/", "SessionDetailUITests"),
+                             ("apps/ios/Hermesh/Views/Her/", "HerReviewUITests")):
+            if any(path.startswith(prefix) or path == f"apps/ios/HermeshUITests/{name}.swift"
+                   for path in paths):
+                suites.append(name)
+        if "apps/ios/HermeshUITests/DemoUITests.swift" in paths:
+            print("ios_suite=full")
+        elif suites:
+            print("ios_suite=" + " ".join(suites))
         for flag in FLAGS:
             print(f"{flag}={'true' if flag in selected else 'false'}")
 
