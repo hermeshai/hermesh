@@ -54,6 +54,11 @@ type herEnvironment struct {
 // console. herVars are more of her's environment there.
 func newHerEnvironment(t *testing.T, herVars ...string) *herEnvironment {
 	t.Helper()
+	return newHerEnvironmentWithCodingAgents(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, herVars...)
+}
+
+func newHerEnvironmentWithCodingAgents(t *testing.T, codingEnv []string, herVars ...string) *herEnvironment {
+	t.Helper()
 	if testing.Short() {
 		t.Skip("e2e")
 	}
@@ -66,7 +71,7 @@ func newHerEnvironment(t *testing.T, herVars ...string) *herEnvironment {
 	mock := startHerMock(t, mockBin)
 	// The scripted coding agents, never the ones installed here: the
 	// sessions Her starts follow their scripts (sleep, ask, say).
-	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	w := newOwnerMac(t, codingEnv, &localv1.GrantSpec{})
 	env := &herEnvironment{w: w, c: w.app.client, mac: "127.0.0.1"}
 	ctx := context.Background()
 	if docker {

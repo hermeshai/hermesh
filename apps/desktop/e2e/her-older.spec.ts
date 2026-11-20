@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -12,19 +11,11 @@ import { fixture, launch, snap } from "./app";
 // one that lists them, without bots/memory: the row says so before it is opened. Then her has it, and the
 // open page loads the memory by itself.
 
-/** The socket of this Mac's her: the test's her program, serving (never the installed app's). */
-function herSocket(): string {
-  const ps = execFileSync("ps", ["-Ao", "command"], { encoding: "utf8" });
-  const line = ps.split("\n").find((l) => l.startsWith(`${fixture.herBin} serve `));
-  const sock = line?.match(/--listen unix:\/\/(\S+)/)?.[1];
-  if (!sock) throw new Error(`no her serving:\n${ps}`);
-  return sock;
-}
-
 /** Restarts this Mac's her as an update does: it stops, and hermeshd starts the program anew. */
 async function restartHer(without: string) {
   fs.writeFileSync(fixture.herWithout!, without);
-  const sock = herSocket();
+  if (!fixture.herSocket) throw new Error("Missing fixture Her socket");
+  const sock = fixture.herSocket;
   await new Promise<void>((resolve, reject) => {
     const s = net.connect(sock);
     let got = "";

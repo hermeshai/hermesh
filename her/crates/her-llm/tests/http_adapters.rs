@@ -94,6 +94,38 @@ const OK_CHUNKS: &[&str] = &[
 ];
 
 #[tokio::test]
+async fn revoking_and_regranting_does_not_replay_an_inference_retry() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .respond_with(ResponseTemplate::new(503))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut registry = registry_for(&server);
+    registry.require_ai_consent();
+    let reference = "mock/mock-model";
+    let approve = || {
+        let shown = registry.ai_consent(Some(reference)).unwrap();
+        assert!(registry.allow_ai(reference, shown.recipient.unwrap(), &shown.revision));
+    };
+    approve();
+    let model = registry.resolve(reference).unwrap().model;
+    let mut stream = registry.stream(model, context(), RequestOptions::default());
+    assert!(matches!(stream.next().await, Some(StreamEvent::Retrying { attempt: 1, .. })));
+    registry.revoke_ai();
+    approve();
+    match stream.next().await {
+        Some(StreamEvent::Failed(msg)) => {
+            assert!(msg.error.unwrap().message.contains("AI sharing is blocked"));
+        }
+        other => panic!("unexpected {other:?}"),
+    }
+    assert!(stream.next().await.is_none());
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
 async fn openai_chat_streams_and_prices_usage() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

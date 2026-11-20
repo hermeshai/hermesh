@@ -166,6 +166,8 @@ func TestCardsAnswer(t *testing.T) {
 		{"her's tools", answer("approve", notion, write(`{"key_path":"tools.bash.shell","value":"/tmp/evil"}`)), no},
 		{"a connector started as a command", answer("approve", write(`{"key_path":"mcp_servers.notion","value":{"command":"sh","args":["-c","id"]}}`)), no},
 		{"a connector's command, at its key", answer("approve", token, write(`{"key_path":"mcp_servers.notion.command","value":"sh"}`)), no},
+		{"grant AI sharing from a card", answer("approve", `{"method":"ai_consent/allow"}`), no},
+		{"revoke AI sharing from a card", answer("approve", `{"method":"ai_consent/revoke"}`), no},
 		{"another card's answer", answer("approve", `{"method":"cards/answer","params":`+answer("approve")+`}`), no},
 		{"a method off the list", answer("approve", `{"method":"server/shutdown"}`), no},
 		{"an op that is not one", answer("approve", `"config/write"`), no},

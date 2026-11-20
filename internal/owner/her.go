@@ -528,6 +528,10 @@ func (o *Owner) HerCall(ctx context.Context, machineID string, req *herv1.CallRe
 	return res, err
 }
 
+var errHerConsent = errors.New("her: AI sharing is blocked. Review the current recipient in Her’s settings.")
+
+const heldHerConsent = "AI sharing was blocked. Discard this waiting message before sending its content again."
+
 // herResult is what a her request returned, or her's error.
 func herResult(r *herv1.Response) ([]byte, error) {
 	e := r.GetError()
@@ -536,6 +540,13 @@ func herResult(r *herv1.Response) ([]byte, error) {
 		return r.GetResult(), nil
 	case e.Code == -32040: // bot_not_found
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("her: %s", e.Message))
+	}
+	var data struct {
+		Kind string `json:"kind"`
+	}
+	_ = json.Unmarshal(e.Data, &data)
+	if data.Kind == "ai_consent_required" || "her: "+e.Message == errHerConsent.Error() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errHerConsent)
 	}
 	return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("her: %s", e.Message))
 }
@@ -734,8 +745,12 @@ func (o *Owner) flushBot(ctx context.Context, machineID, botID, mine string, fre
 		return nil, true
 	}
 	for _, w := range list {
+		if w.Error == heldHerConsent || w.Error == "failed_precondition: "+errHerConsent.Error() {
+			// An earlier refusal must never be replayed under a later approval.
+			return nil, false
+		}
 		err := o.herDeliver(ctx, w, on)
-		if ctx.Err() != nil {
+		if ctx.Err() != nil && !errors.Is(err, errHerConsent) {
 			return nil, false // asked again later, by its id
 		}
 		if err == nil {
@@ -754,6 +769,9 @@ func (o *Owner) flushBot(ctx context.Context, machineID, botID, mine string, fre
 			return err, false
 		}
 		w.Error = err.Error()
+		if errors.Is(err, errHerConsent) {
+			w.Error = heldHerConsent
+		}
 		o.keepWaiting(w)
 		return nil, lost
 	}
@@ -808,7 +826,7 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 	defer cancel()
 	if on.conn != "" && on.session != "" {
 		err := herOp(octx, h, on.conn, on.session, op)
-		if err == nil || ctx.Err() != nil || octx.Err() != nil || tunnelError(err) {
+		if err == nil || errors.Is(err, errHerConsent) || ctx.Err() != nil || octx.Err() != nil || tunnelError(err) {
 			return o.herLate(ctx, octx, h, err)
 		}
 		// Not on the way: that connection is gone, or no longer on the
@@ -825,6 +843,9 @@ func (o *Owner) herDeliver(ctx context.Context, w *localv1.HerWaiting, on herCon
 // message waits; the machine that stopped answering is dialled again next
 // time.
 func (o *Owner) herLate(ctx, octx context.Context, h herMachine, err error) error {
+	if errors.Is(err, errHerConsent) {
+		return err
+	}
 	if err != nil && ctx.Err() == nil && (octx.Err() != nil || connect.CodeOf(err) == connect.CodeDeadlineExceeded) {
 		if r, ok := h.(herRemote); ok {
 			r.forget()

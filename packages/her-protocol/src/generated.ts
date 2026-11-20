@@ -87,6 +87,16 @@ export type AiActionResult = {
 
 export type AiActionStage = "reading" | "writing" | "laying_out" | "checking";
 
+export type AiConsentAllowParams = {
+  model: string;
+  recipient: Recipient;
+  revision: string;
+};
+
+export type AiConsentStatusParams = {
+  model?: string | null;
+};
+
 /** An action too large for an instant answer, handed to the conversation (§5.2.9). */
 export type AiHandoff = {
   /** The message to start the conversation turn with, context included. */
@@ -3936,6 +3946,11 @@ export type QueuedInput = {
 
 export type ReadDetail = "brief" | "full";
 
+export type Recipient = {
+  endpoint: string;
+  provider: string;
+};
+
 /** A rectangle on a page: `x0 < x1`, `y0 < y1`. */
 export type Rect = {
   x0: number;
@@ -4665,6 +4680,12 @@ export type SnapshotResult = {
 
 export type Speaker = "user" | "bot";
 
+export type Status = {
+  allowed?: Recipient | null;
+  recipient?: Recipient | null;
+  revision: string;
+};
+
 export type StopReason = "stop" | "length" | "tool_use" | "error" | "aborted";
 
 export type StorageKind = "files" | "sent" | "conversations" | "trash" | "memory" | "browser" | "cache" | "other";
@@ -5100,6 +5121,9 @@ export type ZOrder = "front" | "back" | "forward" | "backward";
 
 /** Requests: [params, result]. */
 export interface Methods {
+  "ai_consent/allow": [AiConsentAllowParams, Empty];
+  "ai_consent/revoke": [Record<string, never>, Empty];
+  "ai_consent/status": [AiConsentStatusParams, Status];
   "ai/action": [AiActionParams, AiActionResult];
   "auth/delete": [AuthDeleteParams, Empty];
   "auth/set": [AuthSetParams, AuthSetResult];

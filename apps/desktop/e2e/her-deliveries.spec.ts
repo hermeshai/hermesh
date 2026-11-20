@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { fixture, launch, snap } from "./app";
+import { allowFixtureAISharing, fixture, launch, snap } from "./app";
 
 // The files Her sent, in a list of their own (docs/her-deliverables.md), as the owner uses it, against her itself
 // with her-mock as its model. Run by TestDesktopHerDeliveries, which needs her built. One story: Her is turned on
@@ -33,6 +33,7 @@ test("Her: the files she sent, listed apart, each version as sent, and the way b
   // Sent: the button counts one new file.
   fs.writeFileSync(report, "# 季度报告\n\n初稿：只有营收。\n");
   await send("[[mock:attach:季度报告.md]] 发我报告");
+  await allowFixtureAISharing(page);
   await expect(log.getByRole("button", { name: "查看 季度报告.md" })).toBeVisible({ timeout: 60_000 });
   // The Files card of Her's page counts it; the page opens beside the conversation, on its Work tab.
   const herPage = page.getByRole("complementary", { name: "助手设置" });

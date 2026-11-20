@@ -193,6 +193,7 @@ service LocalService {
   rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
   rpc RenameSession(RenameSessionRequest) returns (SessionResponse);
   rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
+  rpc CodingConsent(CodingConsentRequest) returns (hermesh.session.v1.CodingConsentResponse);
   rpc GetDiff(GetDiffRequest) returns (hermesh.session.v1.GetDiffResponse);
   // QueryWork counts the work done over a range, by hour or day, from what
   // this device holds of every machine's counts: no machine is asked
@@ -1085,6 +1086,12 @@ message AnswerQuestionRequest {
   string question_id = 2;
   repeated hermesh.session.v1.Answer answers = 3;
   bool decline = 4;
+  string coding_consent_version = 5;
+}
+
+message CodingConsentRequest {
+  string machine_id = 1;
+  hermesh.session.v1.CodingConsentRequest consent = 2;
 }
 
 message AnswerQuestionResponse {
