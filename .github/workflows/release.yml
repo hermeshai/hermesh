@@ -389,6 +389,19 @@ jobs:
         if: matrix.arch == 'x64'
         shell: pwsh
         run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
+      # Two builds, the older updating to the newer from a feed signed with a key of the test's.
+      - name: update between two builds
+        if: matrix.arch == 'x64'
+        shell: bash
+        run: |
+          openssl ecparam -name prime256v1 -genkey -noout -out "$RUNNER_TEMP/test.key"
+          openssl ec -in "$RUNNER_TEMP/test.key" -pubout -out "$RUNNER_TEMP/test.pub"
+          export HERMESH_UPDATE_FEED=http://127.0.0.1:8765 HERMESH_RELEASE_URL=http://127.0.0.1:8765
+          export HERMESH_RELEASE_PUBKEY_FILE="$RUNNER_TEMP/test.pub" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/test.key"
+          export HER="$RUNNER_TEMP/her/her-windows-amd64.exe"
+          VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
+          VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
+          pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
       - shell: bash
         run: gh release upload "$TAG" dist/Hermesh-windows-${{ matrix.arch }}-setup.exe dist/Hermesh-windows-${{ matrix.arch }}.nupkg dist/RELEASES-win32-${{ matrix.arch }}.json dist/RELEASES-win32-${{ matrix.arch }}.json.sig dist/Hermesh.ico --clobber
   # The Linux app (docs/linux.md §7.2): .deb, .rpm and .tar.gz, and its signed
