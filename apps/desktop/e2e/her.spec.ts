@@ -139,13 +139,37 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(team).toBeHidden();
   await expect(tag).toBeFocused();
 
-  // A chat: the message, then Her's reply in a bubble of its own.
-  await send(mockSend("你好，主人"));
+  // A chat: declining first-time disclosure keeps the draft and blocks sending; approving delivers the reply,
+  // and the Model page exposes no user-facing revoke action.
+  const firstDraft = mockSend("你好，主人");
+  await send(firstDraft);
+  const disclosure = page.getByRole("dialog", { name: "与第三方 AI 共享数据？" });
+  await expect(disclosure).toContainText("供应商：", { timeout: 15_000 });
+  await expect(disclosure).toContainText("127.0.0.1:");
+  await expect(disclosure).toContainText("模型：");
+  await expect(disclosure).toContainText("数据：");
+  await expect(disclosure).toContainText("用途：");
+  await expect(disclosure).not.toContainText("撤回");
+  await disclosure.getByRole("button", { name: "取消" }).click();
+  await expect(disclosure).toBeHidden();
+  await expect(composer).toHaveValue(firstDraft);
+  await expect(log).not.toContainText("你好，主人");
+  await composer.press("Enter");
   await allowFixtureAISharing(page);
   await expect(log).toContainText("你好，主人", { timeout: 60_000 });
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
   await snap(page, "her-chat");
+  await avatar.click();
+  await settings.getByRole("tab", { name: "设置" }).click();
+  await settings.getByTestId("her-model-page").click();
+  const modelsPage = page.getByTestId("her-models-page");
+  await expect(modelsPage).toBeVisible({ timeout: 30_000 });
+  await expect(modelsPage).not.toContainText("撤回第三方 AI 共享授权");
+  await expect(modelsPage).not.toContainText("Revoke Third-Party AI Sharing");
+  await expect(modelsPage).not.toContainText("查看第三方 AI 共享授权");
+  await modelsPage.getByRole("button", { name: "关闭" }).click();
+  await expect(modelsPage).toBeHidden();
   // The owner's bubble is a session page's: the brand blue with white words, as on the iPhone.
   await expect(log.locator(".um .bub").first()).toHaveCSS("background-color", "rgb(61, 91, 255)");
   await expect(log.locator(".um .bub").first()).toHaveCSS("color", "rgb(255, 255, 255)");
