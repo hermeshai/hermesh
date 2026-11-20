@@ -93,6 +93,14 @@ final class ScreenPictureView: UIView {
         CATransaction.commit()
     }
 
+    /// Shows a locally generated synthetic frame (used only by -HermeshTestScreen UI tests).
+    func showSynthetic(_ image: CGImage) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        picture.contents = image
+        CATransaction.commit()
+    }
+
     /// Shows one frame. Any thread, one at a time.
     nonisolated func show(key: Bool, annexB: Data) {
         if let ask = showLocked(key: key, annexB: annexB) {

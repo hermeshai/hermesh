@@ -67,7 +67,7 @@ private struct PageView: View {
     switch route {
     case .machines: MachinesView(isRoot: false)
     case .grants: GrantsView(isRoot: false)
-    case .session(let id): SessionView(id: id) // the sync line in its title's second line
+    case .session(let id): SessionView(id: id).id(id) // the sync line in its title's second line
     case .grant(let id): GrantView(id: id).syncSubtitle()
     case .machine(let id): MachineView(id: id).syncSubtitle()
     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
@@ -77,7 +77,7 @@ private struct PageView: View {
     case .herConnectorTools(let name): HerConnectorToolsPage(name: name)
     case .herConnectorGroup(let id): HerConnectorGroupPage(id: id)
     case .progress: ProgressPage()
-    case .progressAgent(let id): ProgressAgentPage(agentID: id)
+    case .progressAgent(let id): ProgressAgentPage(agentID: id).id(id)
     case .routines: RoutinesPage()
     case .herFiles: HerFilesPage()
     case .routine(let id): RoutinePage(routineID: id)

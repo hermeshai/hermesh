@@ -4,6 +4,7 @@
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::task::Poll;
@@ -188,7 +189,11 @@ impl ModelRegistry {
     }
 
     pub fn require_ai_consent(&mut self) {
-        self.consent = Some(Arc::new(Consent::default()));
+        self.require_ai_consent_at(None);
+    }
+
+    pub fn require_ai_consent_at(&mut self, path: Option<PathBuf>) {
+        self.consent = Some(Arc::new(Consent::new(path)));
     }
 
     pub fn ai_consent(&self, reference: Option<&str>) -> Option<Status> {
@@ -225,19 +230,21 @@ impl ModelRegistry {
     }
 
     /// A session switching away from the approved recipient ends that approval.
-    pub fn ai_model_changed(&self, previous: &Model, next: &Model) {
+    pub fn ai_model_changed(&self, previous: &Model, next: &Model) -> std::io::Result<()> {
         if let Some(consent) = &self.consent {
             let previous = self.recipient(previous);
             if previous != self.recipient(next) {
-                consent.revoke_if(|granted| Some(granted) == previous.as_ref());
+                consent.revoke_if(|granted| Some(granted) == previous.as_ref())?;
             }
         }
+        Ok(())
     }
 
-    pub fn revoke_ai(&self) {
+    pub fn revoke_ai(&self) -> std::io::Result<()> {
         if let Some(consent) = &self.consent {
-            consent.revoke();
+            consent.revoke()?;
         }
+        Ok(())
     }
 
     /// What reading the catalog left to say: settings it did not know.
@@ -297,16 +304,16 @@ impl ModelRegistry {
             }
         }
         let mut custom = self.custom.write();
-        for id in custom.keys().chain(providers.iter().map(|p| &p.id)) {
-            self.directory.forget(id);
-        }
         let providers: BTreeMap<_, _> = providers.into_iter().map(|p| (p.id.clone(), p)).collect();
         if let Some(consent) = &self.consent {
             consent.revoke_if(|recipient| custom.get(&recipient.provider).is_some_and(|old| {
                 providers.get(&recipient.provider).is_none_or(|new| {
                     old.api != new.api || old.base_url != new.base_url || old.endpoints != new.endpoints
                 })
-            }));
+            })).map_err(|err| format!("cannot remove saved AI sharing consent: {err}"))?;
+        }
+        for id in custom.keys().chain(providers.keys()) {
+            self.directory.forget(id);
         }
         *custom = providers;
         Ok(())
