@@ -115,6 +115,7 @@ type Out = mpsc::UnboundedSender<Value>;
 
 struct State {
     options: McpTestOptions,
+    auth: Mutex<McpTestAuth>,
     simulation: crate::simulation::ToolService,
     extra: Mutex<Vec<Value>>,
     /// In-flight calls by request id, woken by `notifications/cancelled`.
@@ -132,8 +133,10 @@ struct State {
 
 impl State {
     fn new(options: McpTestOptions) -> Arc<State> {
+        let auth = Mutex::new(options.auth.clone());
         Arc::new(State {
             options,
+            auth,
             simulation: crate::simulation::ToolService::default(),
             extra: Mutex::new(Vec::new()),
             running: Mutex::new(HashMap::new()),
@@ -490,6 +493,11 @@ impl McpHttpServer {
     pub fn last_client(&self) -> Option<String> {
         self.state.oauth.last_client.lock().clone()
     }
+
+    /// Rotates the bearer token accepted by this server.
+    pub fn set_token(&self, token: impl Into<String>) {
+        *self.state.auth.lock() = McpTestAuth::Token(token.into());
+    }
 }
 
 /// Binds `addr` (for example `127.0.0.1:0`) and serves Streamable HTTP at `/mcp`.
@@ -568,8 +576,9 @@ async fn serve_http_connection(mut stream: TcpStream, state: Arc<State>, session
     while let Ok(Some(request)) = read_http(&mut stream, &mut buf).await {
         let (path, query) = request.path.split_once('?').map(|(p, q)| (p.to_string(), q.to_string())).unwrap_or((request.path.clone(), String::new()));
         let base = state.base.lock().clone();
+        let auth = state.auth.lock().clone();
         let endpoint = if state.options.legacy_sse { "/sse" } else { "/mcp" };
-        let site = crate::mcp_auth::Site { auth: &state.options.auth, oauth: &state.oauth, base: &base, resource_path: endpoint };
+        let site = crate::mcp_auth::Site { auth: &auth, oauth: &state.oauth, base: &base, resource_path: endpoint };
         if let Some(result) = crate::mcp_auth::route(&mut stream, &request, &path, &query, &site).await {
             if result.is_err() {
                 return;
@@ -586,7 +595,7 @@ async fn serve_http_connection(mut stream: TcpStream, state: Arc<State>, session
                 }
                 continue;
             }
-            match crate::mcp_auth::admit(&mut stream, &request, &state.options.auth, &state.oauth, &base, if path == "/stream" { "/stream" } else { "/sse" }).await {
+            match crate::mcp_auth::admit(&mut stream, &request, &auth, &state.oauth, &base, if path == "/stream" { "/stream" } else { "/sse" }).await {
                 Ok(true) => {}
                 Ok(false) => continue,
                 Err(_) => return,
@@ -611,7 +620,7 @@ async fn serve_http_connection(mut stream: TcpStream, state: Arc<State>, session
             continue;
         }
         if request.path.split('?').next() == Some("/mcp") {
-            match crate::mcp_auth::admit(&mut stream, &request, &state.options.auth, &state.oauth, &base, "/mcp").await {
+            match crate::mcp_auth::admit(&mut stream, &request, &auth, &state.oauth, &base, "/mcp").await {
                 Ok(true) => {}
                 Ok(false) => continue,
                 Err(_) => return,
