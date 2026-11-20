@@ -185,6 +185,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: ci-windows-e2e-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: Build Her for its end-to-end tests
         shell: bash
         env:
@@ -214,6 +220,12 @@ jobs:
       - run: corepack enable
       - name: types and unit tests
         run: make test-app
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: ci-app-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: Build Her for its dedicated desktop fixtures
         env:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
@@ -266,6 +278,12 @@ jobs:
           fi
           git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: ci-windows-app-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       # her is built once, with the profile that takes the least of this job's time.
       - name: package
         run: node apps/desktop/scripts/package-win.mjs
@@ -282,7 +300,7 @@ jobs:
           openssl ec -in "$RUNNER_TEMP/test.key" -pubout -out "$RUNNER_TEMP/test.pub"
           export HERMESH_UPDATE_FEED=http://127.0.0.1:8765 HERMESH_RELEASE_URL=http://127.0.0.1:8765
           export HERMESH_RELEASE_PUBKEY_FILE="$RUNNER_TEMP/test.pub" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/test.key"
-          export HERMESH_HER_PROFILE=release
+          export HER=her/target/x86_64-pc-windows-msvc/release/her.exe
           VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
           VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
           pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
