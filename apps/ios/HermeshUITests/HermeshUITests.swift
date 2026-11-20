@@ -16,15 +16,10 @@ final class HermeshUITests: XCTestCase {
         app.launch()
     }
 
-    func testCodingAnswerDisclosure() throws {
-        try join()
-        try answerFromOverview()
-    }
-
     func testTheIPhoneApp() throws {
         try XCTContext.runActivity(named: "joins the owner by its connection address") { _ in try join() }
         try XCTContext.runActivity(named: "the menu: the logo, Her and the overview, every session, and the account as a round picture") { _ in try menu() }
-        try XCTContext.runActivity(named: "lists what needs the owner on Work") { _ in try answerFromOverview() }
+        try XCTContext.runActivity(named: "lists what needs the owner on Work, and answers a question there") { _ in try answerFromOverview() }
         try XCTContext.runActivity(named: "interrupts a running session") { _ in try interrupt() }
         try XCTContext.runActivity(named: "shows a reply as the agent writes it") { _ in try streamedReply() }
         try XCTContext.runActivity(named: "shows a conversation as the Mac does: Markdown, code, and tool details folded") { _ in try richConversation() }
@@ -228,21 +223,9 @@ final class HermeshUITests: XCTestCase {
         for _ in 0..<6 where !card.isHittable { app.swipeUp() }
         XCTAssertTrue(card.label.contains("→"), card.label)
         XCTAssertTrue(text("需要你处理").exists)
-        XCTAssertFalse(app.buttons["quick-answer-蓝"].exists, "sharing needs approval before the first answer")
-        card.tap()
-        let option = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "蓝")).firstMatch
-        XCTAssertTrue(option.waitForExistence(timeout: 10))
-        option.tap()
-        tap("answer")
-        let disclosure = app.alerts.firstMatch
-        XCTAssertTrue(disclosure.waitForExistence(timeout: 10))
-        XCTAssertTrue(disclosure.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "Google", "Typed answers", "Answer coding agent questions")).firstMatch.exists)
-        disclosure.buttons["取消"].tap()
-        XCTAssertEqual(try sessionStatus("选颜色"), "waiting_input")
-        tap("answer")
-        disclosure.buttons["允许并发送"].tap()
-        try waitFor("the answer reaches the coding agent") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("quick-answer-蓝")
+        XCTAssertTrue(toast(containing: "已回答"))
+        try waitFor("the question is answered") { try self.sessionStatus("选颜色") != "waiting_input" ? true : nil }
     }
 
     func interrupt() throws {
@@ -1126,7 +1109,8 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
         let panel = app.descendants(matching: .any)["question"]
         XCTAssertTrue(panel.waitForExistence(timeout: 30), "its session opens with the question")
-        tap("decline")
+        panel.buttons["发布"].tap()
+        tap("answer")
         try waitFor("answered") { try self.sessionStatus("要发布吗") != "waiting_input" ? true : nil }
     }
 

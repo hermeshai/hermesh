@@ -10,6 +10,7 @@ import SwiftUI
 /// on this iPhone. Once it ended, one line stays.
 struct HerSecureCard: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     let chat: HerChat
     let card: HerCard?
     let machine: HerMachine
@@ -17,42 +18,57 @@ struct HerSecureCard: View {
     @State private var sending = false
 
     var body: some View {
-        if let card, let connect = card.connect, let session = chat.session {
+        if let card, let session = chat.session, card.connect != nil || card.siteLogin != nil {
             let here = chat.answered[card.id] != nil
             let shown = herCardShown(herCardNow(card, session, answered: chat.answered[card.id], now: model.now), here: here)
-            let name = herConnectorName(connect.name)
             Group {
-                if case .ended(let outcome, let tools, _) = shown {
-                    HStack(spacing: 10) {
-                        ended(outcome, tools: tools, name: name)
-                        // Connected: its page is a tap away.
-                        if outcome == "done" {
-                            Button("Manage") { model.path.append(.herConnector(connect.name)) }
-                                .font(.footnote).buttonStyle(.bordered).controlSize(.small)
-                                .accessibilityIdentifier("her-card-manage")
+                if let connect = card.connect {
+                    let name = herConnectorName(connect.name)
+                    if case .ended(let outcome, let tools, _) = shown {
+                        HStack(spacing: 10) {
+                            endedConnect(outcome, tools: tools, name: name, rotated: connect.isKeyRotate)
+                            // Connected: its page is a tap away.
+                            if outcome == "done" {
+                                Button("Manage") { model.path.append(.herConnector(connect.name)) }
+                                    .font(.footnote).buttonStyle(.bordered).controlSize(.small)
+                                    .accessibilityIdentifier("her-card-manage")
+                            }
                         }
+                    } else {
+                        connectForm(card, connect, shown: shown, name: name)
                     }
-                } else {
-                    form(card, connect, shown: shown, name: name)
+                } else if let site = card.siteLogin {
+                    if case .ended(let outcome, _, let note) = shown {
+                        endedSiteLogin(outcome, host: site.host, note: note)
+                    } else {
+                        siteLoginForm(card, site, shown: shown)
+                    }
                 }
             }
             // her waits for the owner to sign in: the browser opens here, once for each answer.
             .task(id: shown == .signIn) {
-                if shown == .signIn, !chat.signInStarted.contains(card.id) {
+                if card.connect != nil, shown == .signIn, !chat.signInStarted.contains(card.id) {
                     chat.signInStarted.insert(card.id)
                     chat.signIn(card)
                 }
             }
-            // Nothing typed stays once the form is gone.
+            // Nothing typed stays once the form is gone, disconnected, or app leaves foreground.
             .onChange(of: shown) { if case .form = shown {} else { values = [:] } }
+            .onChange(of: chat.convUp) { if !chat.convUp { values = [:] } }
+            .onChange(of: scenePhase) { if scenePhase != .active { values = [:] } }
         } else {
             Label("Update Hermesh to answer this request", systemImage: "lock").font(.footnote).foregroundStyle(.secondary)
         }
     }
 
-    private func ended(_ outcome: String, tools: Int?, name: String) -> some View {
+    private func endedConnect(_ outcome: String, tools: Int?, name: String, rotated: Bool) -> some View {
         let text: String = switch outcome {
-        case "done": tools.map { String(localized: "\(name) connected · \($0) tools") } ?? String(localized: "\(name) connected")
+        case "done":
+            if rotated {
+                tools.map { String(localized: "\(name) key updated · \($0) tools") } ?? String(localized: "\(name) key updated")
+            } else {
+                tools.map { String(localized: "\(name) connected · \($0) tools") } ?? String(localized: "\(name) connected")
+            }
         case "failed": String(localized: "Couldn’t connect to \(name)")
         case "declined": String(localized: "Declined")
         case "replaced": String(localized: "Replaced by a newer request")
@@ -64,9 +80,28 @@ struct HerSecureCard: View {
             .accessibilityIdentifier("her-card-ended")
     }
 
-    private func form(_ card: HerCard, _ connect: HerCard.Connect, shown: HerCardShown, name: String) -> some View {
+    private func endedSiteLogin(_ outcome: String, host: String, note: String?) -> some View {
+        let text: String = switch outcome {
+        case "done": String(localized: "Filled in on \(host) (not submitted)")
+        case "failed": note ?? String(localized: "Couldn’t fill in on \(host)")
+        case "declined": String(localized: "Declined")
+        case "replaced": String(localized: "Replaced by a newer request")
+        case "elsewhere": String(localized: "Answered on another device")
+        default: String(localized: "Expired")
+        }
+        return Label(text, systemImage: outcome == "done" ? "checkmark" : "lock")
+            .font(.footnote).foregroundStyle(.secondary)
+            .accessibilityIdentifier("her-card-ended")
+    }
+
+    private func connectForm(_ card: HerCard, _ connect: HerCard.Connect, shown: HerCardShown, name: String) -> some View {
         let busy = sending || shown == .form(note: nil, busy: true)
         let ready = connect.fields.allSatisfy { !(values[$0.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        let titleText: String = connect.isKeyRotate
+            ? String(localized: "Update key for \(name)")
+            : connect.reconnect
+                ? String(localized: "Her needs to sign in to \(name) again")
+                : String(localized: "Her wants to connect to \(name)")
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
                 Image(systemName: "lock.fill")
@@ -78,11 +113,17 @@ struct HerSecureCard: View {
             .font(.caption).foregroundStyle(.secondary)
             // Who wants to connect to what, then the address, large: where what Her sends goes.
             VStack(alignment: .leading, spacing: 2) {
-                Text(connect.reconnect ? String(localized: "Her needs to sign in to \(name) again") : String(localized: "Her wants to connect to \(name)"))
-                    .font(.subheadline).foregroundStyle(.secondary)
-                Text(connect.host).font(.headline).textSelection(.enabled)
+                Text(titleText).font(.subheadline).foregroundStyle(.secondary)
+                Text(connect.host).font(.headline).textSelection(.enabled).accessibilityIdentifier("her-card-target")
+                if !connect.url.isEmpty {
+                    Text(connect.url).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
             }
-            Text("Once connected, Her can use its tools and sends them what they need. Only connect services you trust.").font(.subheadline).foregroundStyle(.secondary)
+            if connect.fields.isEmpty {
+                Text("Once connected, Her can use its tools and sends them what they need. Only connect services you trust.").font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Text("Encrypted in transit to \(machine.machineName)’s credential store and never shown to the AI model. Only connect services you trust.").font(.subheadline).foregroundStyle(.secondary)
+            }
             if shown == .signIn {
                 HStack(spacing: 8) {
                     ProgressView()
@@ -100,22 +141,26 @@ struct HerSecureCard: View {
                         .textContentType(.oneTimeCode).autocorrectionDisabled().textInputAutocapitalization(.never)
                         .padding(.horizontal, 12).padding(.vertical, 10)
                         .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .disabled(busy)
+                        .disabled(busy || !chat.convUp)
+                }
+                if !chat.convUp {
+                    Text("\(machine.machineName) is offline. Secrets are not queued offline.").font(.footnote).foregroundStyle(.secondary)
                 }
                 if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
                 HStack(spacing: 8) {
                     Button { cancel(card, signingIn: false) } label: { Text("Deny").frame(maxWidth: .infinity) }
                         .buttonStyle(.glass)
+                        .accessibilityIdentifier("her-card-deny")
                     Button {
                         let typed = Dictionary(uniqueKeysWithValues: connect.fields.map { ($0.id, (values[$0.id] ?? "").trimmingCharacters(in: .whitespaces)) })
                         values = [:]
                         chat.signInStarted.remove(card.id)
                         answer(card, card.approve(typed))
                     } label: {
-                        Text(busy ? String(localized: "Connecting…") : connect.reconnect ? String(localized: "Sign In Again") : String(localized: "Authorize")).frame(maxWidth: .infinity)
+                        Text(busy ? String(localized: "Connecting…") : connect.isKeyRotate ? String(localized: "Update Key") : connect.reconnect ? String(localized: "Sign In Again") : String(localized: "Authorize")).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.glassProminent)
-                    .disabled(busy || !ready)
+                    .disabled(busy || !ready || !chat.convUp)
                     .accessibilityIdentifier("her-card-connect")
                 }
             }
@@ -129,7 +174,77 @@ struct HerSecureCard: View {
         .herSide()
     }
 
+    private func siteLoginForm(_ card: HerCard, _ site: HerCard.SiteLogin, shown: HerCardShown) -> some View {
+        let busy = sending || shown == .form(note: nil, busy: true)
+        let ready = site.fields.allSatisfy { !(values[$0.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.fill")
+                Text("Website Sign-In · \(machine.machineName)")
+                if card.askedBy == "her" {
+                    Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sign in to").font(.subheadline).foregroundStyle(.secondary)
+                Text(site.origin).font(.headline).textSelection(.enabled).accessibilityIdentifier("her-card-target")
+                if let title = site.title, !title.isEmpty {
+                    Text(title).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
+                .font(.subheadline).foregroundStyle(.secondary)
+            ForEach(site.fields, id: \.id) { f in
+                if f.secret {
+                    SecureField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))
+                        .textContentType(.oneTimeCode).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .disabled(busy || !chat.convUp)
+                } else {
+                    TextField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))
+                        .keyboardType(f.kind == "email" ? .emailAddress : .default)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .disabled(busy || !chat.convUp)
+                }
+            }
+            if !chat.convUp {
+                Text("\(machine.machineName) is offline. Secrets are not queued offline.").font(.footnote).foregroundStyle(.secondary)
+            }
+            if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
+            HStack(spacing: 8) {
+                Button {
+                    values = [:]
+                    cancel(card, signingIn: false)
+                } label: { Text("Skip").frame(maxWidth: .infinity) }
+                    .buttonStyle(.glass)
+                    .accessibilityIdentifier("her-card-deny")
+                Button {
+                    let typed = Dictionary(uniqueKeysWithValues: site.fields.map { ($0.id, (values[$0.id] ?? "").trimmingCharacters(in: .whitespaces)) })
+                    values = [:]
+                    answer(card, card.fill(typed))
+                } label: {
+                    Text(busy ? String(localized: "Filling…") : String(localized: "Fill Once")).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                .disabled(busy || !ready || !chat.convUp)
+                .accessibilityIdentifier("her-card-fill")
+            }
+        }
+        .controlSize(.large)
+        .disabled(!chat.convUp)
+        .padding(14)
+        .herReply()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("her-card")
+        .herSide()
+    }
+
     private func cancel(_ card: HerCard, signingIn: Bool) {
+        values = [:]
         if signingIn { chat.stopSignIn(card) }
         answer(card, HerCard.decline)
     }

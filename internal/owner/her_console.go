@@ -74,6 +74,9 @@ func (o *Owner) serveConsole(c *herConsole) http.Handler {
 			return
 		}
 		switch {
+		case rest == "host" && r.Method == http.MethodGet:
+			o.consoleHost(w, machineID)
+			return
 		case rest == "signin" && r.Method == http.MethodPost:
 			c.startSignin(w, r)
 			return
@@ -294,6 +297,30 @@ func (c *herConsole) pollSignin(w http.ResponseWriter, r *http.Request, id strin
 		return
 	}
 	writeJSON(w, http.StatusOK, s.result)
+}
+
+// consoleHost returns the target Her Server's identity so the console can
+// display where local stdio commands execute.
+func (o *Owner) consoleHost(w http.ResponseWriter, machineID string) {
+	name := o.herMachineName(machineID)
+	writeJSON(w, http.StatusOK, map[string]string{"machine_id": machineID, "machine_name": name})
+}
+
+func (o *Owner) herMachineName(machineID string) string {
+	if l := o.local(); l != nil {
+		if info := l.Info(); info != nil && info.MachineId == machineID && info.MachineName != "" {
+			return info.MachineName
+		}
+	}
+	var name string
+	if o.rep != nil {
+		o.rep.feeds(func(feeds map[string]*feed) {
+			if f := feeds[machineID]; f != nil && f.name != "" {
+				name = f.name
+			}
+		})
+	}
+	return name
 }
 
 // ---------------------------------------------------------------------------

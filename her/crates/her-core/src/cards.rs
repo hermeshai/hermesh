@@ -8,6 +8,7 @@ use her_protocol::EventMsg;
 use her_protocol::TaskTrigger;
 use her_protocol::card::AskedBy;
 use her_protocol::card::Card;
+use her_protocol::card::CardKind;
 use her_protocol::card::CardState;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -20,8 +21,32 @@ use crate::session::Internal;
 use crate::store::CardResolvedEntry;
 use crate::store::EntryKind;
 
-/// How long a card waits for the owner.
+/// How long a `connect` card waits for the owner.
 pub(crate) const LIFE_HOURS: i64 = 24;
+
+/// How long a `site_login` card waits for the owner (5 minutes).
+pub(crate) const SITE_LOGIN_LIFE_SECS: i64 = 300;
+
+/// Server-only target binding for a `site_login` card (never sent to the model, never holds values).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SiteLoginBinding {
+    pub tab: String,
+    pub frame: String,
+    pub loader: String,
+    pub origin: String,
+    pub fields: Vec<SiteLoginFieldBinding>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SiteLoginFieldBinding {
+    pub id: String,
+    pub backend: i64,
+    pub tag: String,
+    pub input_type: String,
+    pub secret: bool,
+}
+
+type EndHook = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// A session's cards.
 pub struct Cards {
@@ -36,6 +61,16 @@ struct Kept {
     card: Card,
     /// `None` while it is prepared and not shown.
     state: Option<CardState>,
+    binding: Option<SiteLoginBinding>,
+    on_end: Option<EndHook>,
+}
+
+fn target_key(card: &Card) -> Option<String> {
+    if let Some(body) = card.connect_body() {
+        Some(body.name.clone())
+    } else {
+        card.site_login_body().map(|body| body.origin.clone())
+    }
 }
 
 impl Cards {
@@ -54,15 +89,36 @@ impl Cards {
 
     /// A task ended: what it prepared and never showed goes.
     pub(crate) fn task_ended(&self) {
-        self.kept.lock().retain(|kept| kept.state.is_some());
+        let dropped: Vec<(String, Option<EndHook>)> = {
+            let mut kept = self.kept.lock();
+            let mut dropped = Vec::new();
+            kept.retain(|item| {
+                if item.state.is_some() {
+                    true
+                } else {
+                    dropped.push((item.card.id.clone(), item.on_end.clone()));
+                    false
+                }
+            });
+            dropped
+        };
+        for (id, hook) in dropped {
+            if let Some(hook) = hook {
+                hook(&id);
+            }
+        }
     }
 
     pub(crate) fn prepare(&self, card: Card) {
-        self.kept.lock().push(Kept { card, state: None });
+        self.prepare_with_binding(card, None, None);
+    }
+
+    pub(crate) fn prepare_with_binding(&self, card: Card, binding: Option<SiteLoginBinding>, on_end: Option<EndHook>) {
+        self.kept.lock().push(Kept { card, state: None, binding, on_end });
     }
 
     /// `send_to_user` shows a card this session prepared: it is open from now on, and an open one
-    /// for the same connector is replaced. Errors are one sentence for the model.
+    /// for the same target is replaced. Errors are one sentence for the model.
     pub(crate) fn show(self: &Arc<Self>, id: &str) -> Result<Card, String> {
         let (card, older) = {
             let mut kept = self.kept.lock();
@@ -77,10 +133,11 @@ impl Cards {
             }
             shown.state = Some(CardState::Open);
             let card = shown.card.clone();
+            let key = target_key(&card);
             self.emitter.emit(EventMsg::CardChanged { card_id: card.id.clone(), state: CardState::Open, note: None });
             let older: Vec<String> = kept
                 .iter()
-                .filter(|other| other.state == Some(CardState::Open) && other.card.id != card.id && other.card.kind == card.kind && other.card.body.name == card.body.name)
+                .filter(|other| other.state == Some(CardState::Open) && other.card.id != card.id && other.card.kind == card.kind && target_key(&other.card) == key)
                 .map(|other| other.card.id.clone())
                 .collect();
             (card, older)
@@ -93,10 +150,13 @@ impl Cards {
     }
 
     /// A card shown before the session was loaded, whose end the history does not have: open
-    /// again.
+    /// again. `site_login` cards are bound to a live browser document and are never reopened.
     pub(crate) fn take_back(self: &Arc<Self>, card: Card) {
+        if card.kind != CardKind::Connect {
+            return;
+        }
         self.expire_later(&card);
-        self.kept.lock().push(Kept { card, state: Some(CardState::Open) });
+        self.kept.lock().push(Kept { card, state: Some(CardState::Open), binding: None, on_end: None });
     }
 
     pub(crate) fn has(&self, id: &str) -> bool {
@@ -108,29 +168,44 @@ impl Cards {
         self.kept.lock().iter().find(|kept| kept.card.id == id).and_then(|kept| Some((kept.card.clone(), kept.state?)))
     }
 
+    /// The server-only `site_login` target binding for a shown card.
+    pub fn binding(&self, id: &str) -> Option<SiteLoginBinding> {
+        self.kept.lock().iter().find(|kept| kept.card.id == id && kept.state.is_some()).and_then(|kept| kept.binding.clone())
+    }
+
     /// Moves a shown card from one of `from` to `to`, with her's words, and returns the state it
     /// left. `Err` holds where it stands when that is none of `from`, or `None` for no such card.
     /// An end is told to the model, the note with it.
     pub fn set(&self, id: &str, from: &[CardState], to: CardState, note: Option<String>) -> Result<CardState, Option<CardState>> {
-        let mut kept = self.kept.lock();
-        let Some(card) = kept.iter_mut().find(|kept| kept.card.id == id) else {
-            return Err(None);
-        };
-        let left = card.state.ok_or(None)?;
-        if !from.contains(&left) {
-            return Err(Some(left));
-        }
-        card.state = Some(to);
-        // Under the lock: the events go out in the order of the changes.
-        self.emitter.emit(EventMsg::CardChanged { card_id: id.to_string(), state: to, note: note.clone() });
-        if to.is_ended() {
-            let entry = CardResolvedEntry {
-                card_id: id.to_string(),
-                kind: card.card.kind.as_str().to_string(),
-                outcome: to.as_str().to_string(),
-                note: note.unwrap_or_else(|| to.as_str().to_string()),
+        let (left, hook) = {
+            let mut kept = self.kept.lock();
+            let Some(card) = kept.iter_mut().find(|kept| kept.card.id == id) else {
+                return Err(None);
             };
-            let _ = self.internal.send(Box::new(Internal::Card(Box::new(entry))));
+            let left = card.state.ok_or(None)?;
+            if !from.contains(&left) {
+                return Err(Some(left));
+            }
+            card.state = Some(to);
+            // Under the lock: the events go out in the order of the changes.
+            self.emitter.emit(EventMsg::CardChanged { card_id: id.to_string(), state: to, note: note.clone() });
+            let hook = if to.is_ended() {
+                let entry = CardResolvedEntry {
+                    card_id: id.to_string(),
+                    kind: card.card.kind.as_str().to_string(),
+                    outcome: to.as_str().to_string(),
+                    note: note.unwrap_or_else(|| to.as_str().to_string()),
+                };
+                let _ = self.internal.send(Box::new(Internal::Card(Box::new(entry))));
+                // Release pending sensitive guard if the card ended without filling.
+                if to != CardState::Done { card.on_end.take() } else { None }
+            } else {
+                None
+            };
+            (left, hook)
+        };
+        if let Some(hook) = hook {
+            hook(id);
         }
         Ok(left)
     }
@@ -162,12 +237,13 @@ fn time_left(card: &Card) -> Duration {
 }
 
 /// The card of that id that `send_to_user` showed on the current branch, if no end of it follows.
+/// Only `connect` cards are recoverable across restarts; `site_login` cards bind to live browser documents.
 pub(crate) fn unresolved(history: &History, id: &str) -> Option<Card> {
     let mut found = None;
     for entry in history.branch() {
         match &entry.kind {
             EntryKind::Message { message: Message::ToolResult(result), .. } if result.tool_name == crate::bot::SEND_TO_USER && !result.is_error => {
-                if let Some((card, _)) = result.details.as_ref().and_then(|details| crate::bot::shown_card(details.as_str())).filter(|(card, _)| card.id == id) {
+                if let Some((card, _)) = result.details.as_ref().and_then(|details| crate::bot::shown_card(details.as_str())).filter(|(card, _)| card.id == id && card.kind == CardKind::Connect) {
                     found = Some(card);
                 }
             }

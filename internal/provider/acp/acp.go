@@ -295,20 +295,6 @@ func withPath(env []string, path string) []string {
 	return append(shellenv.Without(env, "PATH"), "PATH="+path)
 }
 
-func (p *Provider) CodingRoute(dir string, env []string) provider.CodingRoute {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	cmd := p.resolveForStart(ctx, env)
-	return p.codingRoute(cmd, dir, append(slices.Clone(env), cmd.env...))
-}
-
-func (p *Provider) codingRoute(cmd launch, dir string, env []string) provider.CodingRoute {
-	if cmd.probeErr != nil {
-		return provider.CodingRoute{}
-	}
-	return provider.InspectCodingRoute(p.Name(), cmd.bin, dir, env, cmd.acpArgs()...)
-}
-
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	cmd := p.resolveForStart(ctx, spec.Env)
 	if cmd.probeErr != nil {
@@ -323,15 +309,11 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		}
 		spec.Env = append(slices.Clip(spec.Env), cmd.env...)
 	}
-	route := p.codingRoute(cmd, spec.WorkDir, spec.Env)
-	if spec.GuardInput != nil && (route.Fingerprint == "" || route.Fingerprint != spec.CodingRoute.Fingerprint) {
-		return nil, errors.New("coding agent route changed before launch; review its disclosure again")
-	}
-	proc, err := spec.Launch(ctx, cmd.bin, cmd.acpArgs())
+	proc, err := provider.StartProc(ctx, cmd.bin, cmd.acpArgs(), spec.WorkDir, spec.Env)
 	if err != nil {
 		return nil, err
 	}
-	s := &session{name: p.Name(), route: route, proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
+	s := &session{name: p.Name(), proc: proc, events: make(chan provider.Event, 256), pending: map[int64]func(rpcResult){},
 		gate: spec.Gate, ctx: ctx, known: map[string]*toolCall{}, calls: map[string]provider.Decision{}, finished: map[string]bool{}}
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
@@ -390,11 +372,11 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		// History replay arrives as session/update before the load response.
 		s.replaying.Store(true)
 		defer s.replaying.Store(false)
-		return s.callGuarded(ctx, spec.Submit, "session/load", params)
+		return s.call(ctx, "session/load", params)
 	}
 	switch {
 	case spec.ResumeRef == "":
-		res, err = s.callGuarded(ctx, spec.Submit, "session/new", params)
+		res, err = s.call(ctx, "session/new", params)
 		if err != nil {
 			return fail(fmt.Errorf("session/new: %w", classified(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)))
 		}
@@ -408,7 +390,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		s.sessionID = r.SessionID
 	case len(caps.SessionCapabilities.Resume) > 0 && string(caps.SessionCapabilities.Resume) != "null":
 		params["sessionId"] = spec.ResumeRef
-		if res, err = s.callGuarded(ctx, spec.Submit, "session/resume", params); err != nil {
+		if res, err = s.call(ctx, "session/resume", params); err != nil {
 			var rpc *rpcError
 			if p.Name() != "antigravity" || !caps.LoadSession || !errors.As(err, &rpc) ||
 				rpc.Code != codeInternalError || !strings.Contains(rpc.Message, "load it with session/load") {
@@ -471,10 +453,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		ref.Effort = o.thought.current()
 	}
 	s.emit(ref)
-	if err := spec.Submit(func() error {
-
-		return s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images})
-	}); err != nil {
+	if err := s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
 		return fail(err)
 	}
 	return s, nil
@@ -577,13 +556,7 @@ type rpcResult struct {
 	err    error
 }
 
-// CodingRouteMatches checks the command this session actually started.
-func (s *session) CodingRouteMatches(route provider.CodingRoute) bool {
-	return s.route.Fingerprint == route.Fingerprint
-}
-
 type session struct {
-	route     provider.CodingRoute
 	name      string
 	proc      *provider.Proc
 	events    chan provider.Event
@@ -835,13 +808,9 @@ func (s *session) request(method string, params any, done func(rpcResult)) error
 }
 
 func (s *session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
-	return s.callGuarded(ctx, provider.StartSpec{}.Submit, method, params)
-}
-
-func (s *session) callGuarded(ctx context.Context, guard func(func() error) error, method string, params any) (json.RawMessage, error) {
 	ch := make(chan rpcResult, 1)
-	if err := guard(func() error {
-		return s.request(method, params, func(r rpcResult) { ch <- r })
+	if err := s.request(method, params, func(r rpcResult) {
+		ch <- r
 	}); err != nil {
 		return nil, err
 	}

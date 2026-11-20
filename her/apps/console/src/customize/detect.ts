@@ -1,4 +1,4 @@
-import { joinCommand, splitCommand } from "./model.ts";
+import { splitCommand } from "./model.ts";
 
 // What the add sheet's address box holds (customize-design §10.9): a remote address, a command
 // line with leading VAR=value, or a server's JSON as other apps write it; and the name to
@@ -10,10 +10,102 @@ export type Row = { key: string; value: string; locked: boolean; saved?: string 
 export const secretish = /token|key|secret|password|passwd|auth|cookie|credential/i;
 export const row = (key: string, value: string): Row => ({ key, value, locked: secretish.test(key) && !!value });
 
+/** Loader/interpreter injection variables refused by herhost for command connectors. */
+export const blockedEnvVars = new Set([
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "LD_AUDIT",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "DYLD_FRAMEWORK_PATH",
+  "DYLD_FALLBACK_LIBRARY_PATH",
+  "NODE_OPTIONS",
+  "PYTHONSTARTUP",
+  "PYTHONPATH",
+  "PYTHONHOME",
+  "PERL5OPT",
+  "RUBYOPT",
+  "BASH_ENV",
+  "ENV",
+  "IFS",
+  "ZDOTDIR",
+]);
+
+export const envVarName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/** Detects unquoted shell operators (pipes, chaining, redirects, subshells) in a pasted command line. */
+export function hasShellSyntax(line: string): boolean {
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < line.length) i++;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      quote = c;
+      continue;
+    }
+    if (c === "\\" && i + 1 < line.length) {
+      i++;
+      continue;
+    }
+    if (c === "|" || c === ";" || c === ">" || c === "<" || c === "`") return true;
+    if (c === "&" && (line[i + 1] === "&" || i === line.length - 1 || /\s/.test(line[i + 1] ?? ""))) return true;
+    if (c === "$" && line[i + 1] === "(") return true;
+  }
+  return false;
+}
+
+export type ProgramIssue = "empty" | "space" | "var" | "batch" | null;
+
+/** Validates the executable name/path of a local stdio connector (no shell, no interpolation). */
+export function validateProgram(program: string): ProgramIssue {
+  const p = program.trim();
+  if (!p) return "empty";
+  if (/[\x00-\x1f\x7f]/.test(p) || (!/^(\/|\.\.?\/|~\/|[A-Za-z]:[\\/])/.test(p) && /\s/.test(p))) return "space";
+  if (p.includes("${")) return "var";
+  if (/\.(bat|cmd)$/i.test(p)) return "batch";
+  return null;
+}
+
+/** Validates local stdio args and env rows before submitting to the signer. */
+export function validateLocalRows(
+  name: string,
+  args: string[],
+  env: Row[],
+): { argsError?: "cred" | "nul"; envError?: { kind: "name" | "blocked" | "nul" | "scope" | "path" | "duplicate"; key: string } } {
+  for (const a of args) {
+    if (a.includes("\0")) return { argsError: "nul" };
+    if (/\$\{credential:[^}]+\}/.test(a)) return { argsError: "cred" };
+  }
+  const prefix = `mcp.${name}`;
+  const keys = new Set<string>();
+  for (const r of env) {
+    const k = r.key.trim();
+    if (!k) continue;
+    if (!envVarName.test(k)) return { envError: { kind: "name", key: k } };
+    if (keys.has(k)) return { envError: { kind: "duplicate", key: k } };
+    keys.add(k);
+    if (blockedEnvVars.has(k.toUpperCase())) return { envError: { kind: "blocked", key: k } };
+    const val = r.value || r.saved || "";
+    if (val.includes("\0")) return { envError: { kind: "nul", key: k } };
+    if (k.toUpperCase() === "PATH" && ((r.locked && r.value) || val.includes("${credential:"))) return { envError: { kind: "path", key: k } };
+    for (const m of val.matchAll(/\$\{credential:([^}]+)\}/g)) {
+      const cred = m[1];
+      if (cred !== prefix && !cred.startsWith(`${prefix}.`) && !cred.startsWith(`mcp-stdio.${name}.`)) {
+        return { envError: { kind: "scope", key: k } };
+      }
+    }
+  }
+  return {};
+}
+
 export type Detected =
   | { kind: "remote"; url: string; host: string; insecure: boolean; sse: boolean; json?: boolean; name?: string; headers: Row[] }
   | { kind: "local"; argv: string[]; env: Row[]; json?: boolean; name?: string }
-  | { kind: "bad"; why: "json" | "jsonServer" | "url" | "scheme" | "onlyVars" };
+  | { kind: "bad"; why: "json" | "jsonServer" | "url" | "scheme" | "onlyVars" | "shell" };
 
 export function detect(text: string): Detected | null {
   const t = text.trim();
@@ -32,9 +124,15 @@ export function detect(text: string): Detected | null {
     if (!found) return { kind: "bad", why: "jsonServer" };
     const [name, s] = found;
     const rows = (m: unknown) => Object.entries((m as Record<string, unknown>) ?? {}).map(([k, val]) => row(k, String(val ?? "")));
-    const inner = typeof s.url === "string" ? detect(s.url) : detect(joinCommand(String(s.command), Array.isArray(s.args) ? s.args.map(String) : []));
-    if (!inner || inner.kind === "bad") return inner;
-    return inner.kind === "remote" ? { ...inner, json: true, name: name || undefined, headers: rows(s.headers) } : { ...inner, json: true, name: name || undefined, env: rows(s.env) };
+    if (typeof s.url === "string") {
+      const inner = detect(s.url);
+      if (!inner || inner.kind !== "remote") return inner ?? { kind: "bad", why: "url" };
+      return { ...inner, json: true, name: name || undefined, headers: rows(s.headers) };
+    }
+    const cmd = typeof s.command === "string" ? s.command.trim() : "";
+    if (!cmd) return { kind: "bad", why: "jsonServer" };
+    const args = Array.isArray(s.args) ? s.args.map(String) : [];
+    return { kind: "local", argv: [cmd, ...args], json: true, name: name || undefined, env: rows(s.env) };
   }
   if (/^https?:\/\//i.test(t)) {
     let u: URL;
@@ -47,6 +145,7 @@ export function detect(text: string): Detected | null {
     return { kind: "remote", url: t, host: u.hostname, insecure: u.protocol === "http:" && !local, sse: /\/sse\/?$/.test(u.pathname), headers: [] };
   }
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) return { kind: "bad", why: "scheme" };
+  if (hasShellSyntax(t)) return { kind: "bad", why: "shell" };
   const argv = splitCommand(t);
   const env: Row[] = [];
   while (argv.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[0])) {

@@ -16,6 +16,7 @@ use her_browser::session::Action;
 use her_browser::session::Place;
 use her_browser::session::SnapshotMode;
 use her_browser::session::SnapshotRequest;
+use her_browser::session::WaitFor;
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -236,6 +237,35 @@ async fn act(session: &BrowserSession, action: Action, reference: &str) -> Resul
         .act(&action, &Place::Element(element), &CancellationToken::new())
         .await
         .map(|r| r.text)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn secure_card_fills_the_login_document_and_waits_for_user_navigation() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+    let opened = session.navigate(None, &fx.url("/login"), false).await.unwrap();
+    let refs = [ref_of(&opened.text, "textbox \"Email\""), ref_of(&opened.text, "textbox \"Password\"")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|field| field.backend).collect();
+    session.begin_sensitive_card("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
+    let tab = session.resolve_tab(None).unwrap();
+    assert_eq!(session.page_metadata(&tab), (inspected.origin.clone(), String::new()));
+    let fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "dummy-password"])
+        .map(|(field, value)| (field.backend, field.input_type.clone(), value.to_string()))
+        .collect();
+    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.unwrap();
+    assert_eq!(session.page(None).unwrap().loader, inspected.loader);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
+    assert!(session.wait(None, &WaitFor::Url("/login".into()), Duration::ZERO).await.is_err());
+    assert!(act(&session, Action::Click, &ref_of(&opened.text, "button \"Continue\"")).await.is_err());
+    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.is_err());
+
+    let recovered = session.navigate(None, &fx.url("/welcome"), false).await.unwrap();
+    assert!(recovered.text.contains("Welcome back"), "{}", recovered.text);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_ok());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

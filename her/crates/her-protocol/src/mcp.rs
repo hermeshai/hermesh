@@ -103,9 +103,11 @@ pub enum McpApproval {
 
 impl McpServerConfig {
     /// Whether a tool of this server runs without asking in the modes that ask. `read_only` is
-    /// the tool's `readOnlyHint`, which is the server's own claim.
+    /// the tool's `readOnlyHint`, which is the server's own claim. Local stdio commands never
+    /// skip approval on a self-reported `readOnlyHint`.
     pub fn runs_unasked(&self, read_only: bool) -> bool {
-        self.approval == Some(McpApproval::Never) || (read_only && !self.project_defined)
+        self.approval == Some(McpApproval::Never)
+            || (read_only && !self.project_defined && self.command.is_none())
     }
 }
 
@@ -328,5 +330,27 @@ mod tests {
         assert_eq!(config.exposure, Some(McpExposure::Direct));
         assert!(config.parallel_tools);
         assert_eq!(serde_json::to_value(&config).unwrap(), json);
+    }
+
+    #[test]
+    fn stdio_servers_never_skip_approval_on_read_only_hint() {
+        let stdio = McpServerConfig {
+            name: "local".into(),
+            command: Some("node".into()),
+            ..Default::default()
+        };
+        assert!(!stdio.runs_unasked(true), "self-reported readOnlyHint must not skip approval for stdio");
+        assert!(!stdio.runs_unasked(false));
+        let mut trusted = stdio.clone();
+        trusted.approval = Some(McpApproval::Never);
+        assert!(trusted.runs_unasked(false));
+
+        let http = McpServerConfig {
+            name: "remote".into(),
+            url: Some("https://example.com/mcp".into()),
+            ..Default::default()
+        };
+        assert!(http.runs_unasked(true), "existing HTTP read-only behavior is preserved");
+        assert!(!http.runs_unasked(false));
     }
 }

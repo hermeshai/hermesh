@@ -8,8 +8,10 @@ use std::sync::OnceLock;
 use std::sync::Weak;
 
 use async_trait::async_trait;
+use her_browser::BrowserError;
 use her_core::Workspace;
 use her_core::cards::Cards;
+use her_core::cards::SiteLoginBinding;
 use her_core::connect::ConnectorHost;
 use her_core::connect::ConnectorInfo;
 use her_core::mcp::views;
@@ -17,6 +19,7 @@ use her_protocol::McpServerConfig;
 use her_protocol::api::error_code;
 use her_protocol::card::Card;
 use her_protocol::card::CardAnswer;
+use her_protocol::card::CardKind;
 use her_protocol::card::CardOp;
 use her_protocol::card::CardState;
 use her_protocol::card::CardsAnswerParams;
@@ -32,6 +35,7 @@ use her_protocol::customize::McpProbeParams;
 use her_protocol::customize::McpProbeResult;
 use her_protocol::customize::McpServerParams;
 use her_protocol::customize::McpStatusState;
+use her_protocol::mcp::McpTransportKind;
 use her_rpc::RpcError;
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -85,6 +89,7 @@ impl ConnectorHost for Connectors {
                         url: config.url.clone(),
                         enabled: view.enabled,
                         oauth: config.uses_oauth(),
+                        credential_header: credential_header(config),
                         state: view.status.state,
                         tools: view.status.tools,
                     }
@@ -100,6 +105,18 @@ impl ConnectorHost for Connectors {
         let params = McpProbeParams { probe_id: format!("card:{name}"), server: config, cwd: None };
         self.server()?.probe(params, Arc::new(|_| {})).await.map_err(|e| e.message)
     }
+}
+
+fn credential_header(config: &McpServerConfig) -> Option<(String, String)> {
+    if config.transport() != Ok(McpTransportKind::Http) {
+        return None;
+    }
+    config.headers.iter().find_map(|(header, value)| {
+        her_core::config_edit::credential_refs(value)
+            .into_iter()
+            .find(|name| name.starts_with("mcp."))
+            .map(|name| (name, header.clone()))
+    })
 }
 
 fn card_ended(id: &str, state: CardState) -> RpcError {
@@ -159,8 +176,16 @@ impl Server {
         answer.await.map_err(|_| errors::session_closed(session))?.ok_or_else(|| no_card(card))
     }
 
+    async fn builtin_browser_of(&self, session: &str) -> Option<Arc<her_browser::BrowserSession>> {
+        let hub = self.hub(session)?;
+        let (reply, answer) = oneshot::channel();
+        hub.send(HubCmd::BuiltinBrowser { reply }).await.ok()?;
+        answer.await.ok().flatten()
+    }
+
     /// `cards/answer`: the owner's answer to a card. An approval carries out the card's ops as
-    /// the console would send them; what a card wrote goes again when it is declined or fails.
+    /// the console would send them; a `site_login` fill types once into the bound isolated page
+    /// without submitting or saving; what a card wrote goes again when it is declined or fails.
     pub async fn cards_answer(&self, p: CardsAnswerParams) -> Result<CardsAnswerResult, RpcError> {
         let id = p.card_id.as_str();
         let cards = self.cards_of(&p.session_id, id).await?;
@@ -169,41 +194,195 @@ impl Server {
         if state.is_ended() {
             return Err(card_ended(id, state));
         }
-        let ops = match p.answer {
+        match p.answer {
             CardAnswer::Decline => {
                 let note = "The owner declined.".to_string();
                 let left = cards.set(id, &WAITING, CardState::Declined, Some(note.clone())).map_err(|now| now.map_or_else(|| no_card(id), |now| card_ended(id, now)))?;
-                if left != CardState::Open {
+                if card.kind == CardKind::Connect && left != CardState::Open {
                     self.undo(&card).await;
                 }
-                return Ok(CardsAnswerResult { state: CardState::Declined, note: Some(note) });
+                Ok(CardsAnswerResult { state: CardState::Declined, note: Some(note) })
             }
-            CardAnswer::Approve { ops } => ops,
+            CardAnswer::Fill { mut fields } => {
+                let answer = self.answer_site_login(&p.session_id, &cards, &card, &mut fields).await;
+                for value in fields.values_mut() {
+                    zeroize_string(value);
+                }
+                answer
+            }
+            CardAnswer::Approve { ops } => {
+                if card.kind != CardKind::Connect || card.connect_body().is_none() {
+                    return Err(RpcError::invalid_params("only a connect card can be approved with ops"));
+                }
+                let mut values = filled(&card.ops, &ops).ok_or_else(|| RpcError::invalid_params("the ops are not the card's, with each value filled in"))?;
+                match cards.set(id, &[CardState::Open, CardState::Retry], CardState::Working, None) {
+                    Ok(_) => {}
+                    // Already under way: the same answer again.
+                    Err(Some(now @ (CardState::Working | CardState::SignIn))) => {
+                        for v in values.values_mut() {
+                            zeroize_string(v);
+                        }
+                        return Ok(CardsAnswerResult { state: now, note: None });
+                    }
+                    Err(Some(now)) => {
+                        for v in values.values_mut() {
+                            zeroize_string(v);
+                        }
+                        return Err(card_ended(id, now));
+                    }
+                    Err(None) => {
+                        for v in values.values_mut() {
+                            zeroize_string(v);
+                        }
+                        return Err(no_card(id));
+                    }
+                }
+                let mut prior_credentials = Vec::new();
+                let (to, note) = self.carry_out(&p.session_id, &card, &values, &mut prior_credentials).await;
+                for v in values.values_mut() {
+                    zeroize_string(v);
+                }
+                match cards.set(id, &[CardState::Working], to, note.clone()) {
+                    Ok(_) => {
+                        for (_, old) in &mut prior_credentials {
+                            if let Some(old) = old {
+                                zeroize_string(old);
+                            }
+                        }
+                        Ok(CardsAnswerResult { state: to, note })
+                    }
+                    // It ended meanwhile, declined or expired: what this wrote goes too.
+                    Err(now) => {
+                        self.undo(&card).await;
+                        self.restore_credentials(&mut prior_credentials).await;
+                        if to == CardState::Done
+                            && let Some(body) = card.connect_body().filter(|body| body.reconnect && !body.fields.is_empty())
+                        {
+                            self.add_to_conversation(&p.session_id, &body.name, Some(&body.url)).await;
+                        }
+                        let now = now.ok_or_else(|| no_card(id))?;
+                        Ok(CardsAnswerResult { state: now, note: None })
+                    }
+                }
+            }
+        }
+    }
+
+    async fn answer_site_login(
+        &self,
+        session_id: &str,
+        cards: &Arc<Cards>,
+        card: &Card,
+        fields: &mut HashMap<String, String>,
+    ) -> Result<CardsAnswerResult, RpcError> {
+        let id = card.id.as_str();
+        let Some(body) = card.site_login_body() else {
+            return Err(RpcError::invalid_params("only a site_login card can be answered with fill"));
         };
-        let values = filled(&card.ops, &ops).ok_or_else(|| RpcError::invalid_params("the ops are not the card's, with each value filled in"))?;
-        match cards.set(id, &[CardState::Open, CardState::Retry], CardState::Working, None) {
+        let Some(binding) = cards.binding(id) else {
+            let note = "The page changed before the fields could be filled.".to_string();
+            let _ = cards.set(id, &[CardState::Open], CardState::Failed, Some(note.clone()));
+            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+        };
+        if fields.len() != binding.fields.len()
+            || !binding.fields.iter().all(|f| fields.get(&f.id).is_some_and(|v| !v.is_empty()))
+        {
+            return Err(RpcError::invalid_params("the fields do not match the card's sign-in fields"));
+        }
+        match cards.set(id, &[CardState::Open], CardState::Working, None) {
             Ok(_) => {}
-            // Already under way: the same answer again.
-            Err(Some(now @ (CardState::Working | CardState::SignIn))) => return Ok(CardsAnswerResult { state: now, note: None }),
+            Err(Some(now @ CardState::Working)) => return Ok(CardsAnswerResult { state: now, note: None }),
             Err(Some(now)) => return Err(card_ended(id, now)),
             Err(None) => return Err(no_card(id)),
         }
-        let (to, note) = self.carry_out(&p.session_id, &card, &values).await;
+        let (to, note) = self.carry_out_site_login(session_id, id, &body.origin, &binding, fields).await;
         match cards.set(id, &[CardState::Working], to, note.clone()) {
             Ok(_) => Ok(CardsAnswerResult { state: to, note }),
-            // It ended meanwhile, declined or expired: what this wrote goes too.
             Err(now) => {
-                self.undo(&card).await;
                 let now = now.ok_or_else(|| no_card(id))?;
                 Ok(CardsAnswerResult { state: now, note: None })
             }
         }
     }
 
+    async fn carry_out_site_login(
+        &self,
+        session_id: &str,
+        card_id: &str,
+        origin: &str,
+        binding: &SiteLoginBinding,
+        fields: &HashMap<String, String>,
+    ) -> (CardState, Option<String>) {
+        let Some(browser) = self.builtin_browser_of(session_id).await else {
+            return (CardState::Failed, Some("The page changed before the fields could be filled.".into()));
+        };
+        let mut pairs: Vec<(i64, String, String)> = Vec::with_capacity(binding.fields.len());
+        for f in &binding.fields {
+            let Some(value) = fields.get(&f.id) else {
+                return (CardState::Failed, Some("The fields do not match the card.".into()));
+            };
+            pairs.push((f.backend, f.input_type.clone(), value.clone()));
+        }
+        let outcome = browser
+            .fill_site_login(card_id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &pairs)
+            .await;
+        for (_, _, value) in &mut pairs {
+            zeroize_string(value);
+        }
+        match outcome {
+            Ok(()) => (
+                CardState::Done,
+                Some(format!("Filled the requested sign-in fields on {origin}. The form was not submitted.")),
+            ),
+            Err(BrowserError::PageChanged { .. } | BrowserError::StaleRef(_)) => (
+                CardState::Failed,
+                Some("The page changed before the fields could be filled.".into()),
+            ),
+            Err(_) => (
+                CardState::Failed,
+                Some(format!("Could not fill the sign-in fields on {origin}. Use browser_wait with user so the owner can sign in directly.")),
+            ),
+        }
+    }
+
     /// Runs an approved card's ops through the console's handlers, then follows the connector
     /// to where the card goes next, with her's words.
-    async fn carry_out(&self, session: &str, card: &Card, values: &HashMap<String, String>) -> (CardState, Option<String>) {
-        let name = her_core::connect::display_name(&card.body.name);
+    async fn carry_out(
+        &self,
+        session: &str,
+        card: &Card,
+        values: &HashMap<String, String>,
+        prior_credentials: &mut Vec<(String, Option<String>)>,
+    ) -> (CardState, Option<String>) {
+        let Some(body) = card.connect_body() else {
+            return (CardState::Failed, Some("Invalid card body.".into()));
+        };
+        let name = her_core::connect::display_name(&body.name);
+        let secrets: Vec<&str> = values.values().map(|value| value.trim()).collect();
+        if body.reconnect && let Some(field) = body.fields.first() {
+            let credential = card.ops.first().and_then(|op| op.params.get("name")).and_then(Value::as_str);
+            let current = self.connectors().connectors().await.ok();
+            let still_matches = current.as_ref().is_some_and(|connectors| connectors.iter().any(|existing| {
+                existing.name == body.name && existing.url.as_deref() == Some(body.url.as_str()) && !existing.oauth
+                    && existing.credential_header.as_ref().is_some_and(|(name, header)| Some(name.as_str()) == credential && header == &field.label)
+            }));
+            if !still_matches {
+                return (CardState::Failed, Some("The connector changed. Ask for a new card.".into()));
+            }
+        }
+        // Keep the previous credential until the card has committed its outcome.
+        for op in card.ops.iter().filter(|op| op.method == "credentials/set") {
+            if let Some(cred_name) = op.params.get("name").and_then(Value::as_str) {
+                let prev = tokio::task::spawn_blocking({
+                    let cred_name = cred_name.to_string();
+                    move || her_llm::credentials::get(&cred_name)
+                })
+                .await
+                .ok()
+                .flatten();
+                prior_credentials.push((cred_name.to_string(), prev));
+            }
+        }
         for op in &card.ops {
             let params = fill(&op.params, values);
             let done = match op.method.as_str() {
@@ -219,39 +398,73 @@ impl Server {
             };
             if let Err(err) = done {
                 self.undo(card).await;
-                return (CardState::Failed, Some(format!("{name} could not be added: {}", err.message)));
+                self.restore_credentials(prior_credentials).await;
+                return (CardState::Failed, Some(format!("{name} could not be added: {}", redact_secrets(&err.message, &secrets))));
             }
         }
-        if card.body.sign_in == SignIn::Oauth {
-            self.connectors().signing_in.lock().insert(card.body.name.clone(), (session.to_string(), card.id.clone()));
+        if body.sign_in == SignIn::Oauth {
+            self.connectors().signing_in.lock().insert(body.name.clone(), (session.to_string(), card.id.clone()));
             return (CardState::SignIn, None);
         }
-        self.connected(session, card).await
+        let (state, note) = self.connected(session, card, &secrets).await;
+        if state != CardState::Done {
+            // Never leave an unverified/refused key in the credential store.
+            self.restore_credentials(prior_credentials).await;
+        }
+        (state, note)
+    }
+
+    async fn restore_credentials(&self, prior: &mut Vec<(String, Option<String>)>) {
+        for (cred_name, prev) in prior.drain(..) {
+            match prev {
+                Some(mut old) => {
+                    let _ = self
+                        .credentials_set(her_protocol::customize::CredentialsSetParams {
+                            name: cred_name,
+                            value: old.clone(),
+                        })
+                        .await;
+                    zeroize_string(&mut old);
+                }
+                None => {
+                    let _ = self
+                        .credentials_delete(CredentialsDeleteParams { name: cred_name })
+                        .await;
+                }
+            }
+        }
     }
 
     /// Done once the connector connects and lists its tools, and Her's conversation has it; another
     /// try with why it did not.
-    async fn connected(&self, session: &str, card: &Card) -> (CardState, Option<String>) {
-        let name = her_core::connect::display_name(&card.body.name);
-        match self.mcp_check(McpServerParams { name: card.body.name.clone(), cwd: None }).await {
+    async fn connected(&self, session: &str, card: &Card, secrets: &[&str]) -> (CardState, Option<String>) {
+        let Some(body) = card.connect_body() else {
+            return (CardState::Failed, Some("Invalid card body.".into()));
+        };
+        let name = her_core::connect::display_name(&body.name);
+        match self.mcp_check_target(McpServerParams { name: body.name.clone(), cwd: None }, Some(&body.url)).await {
             Ok(checked) if checked.server.status.state == McpStatusState::Ok => {
-                self.add_to_conversation(session, &card.body.name).await;
+                self.add_to_conversation(session, &body.name, Some(&body.url)).await;
                 let mut named: Vec<&str> = checked.tools.iter().take(NAMED_TOOLS).map(|tool| tool.name.as_str()).collect();
                 if checked.tools.len() > NAMED_TOOLS {
                     named.push("…");
                 }
                 let tools = if named.is_empty() { String::new() } else { format!(" ({})", named.join(", ")) };
-                (CardState::Done, Some(format!("{name} connected: {} tools{tools}.", checked.tools.len())))
+                let verb = if body.reconnect && !body.fields.is_empty() { "key updated" } else { "connected" };
+                (CardState::Done, Some(redact_secrets(&format!("{name} {verb}: {} tools{tools}.", checked.tools.len()), secrets)))
             }
-            Ok(checked) => (CardState::Retry, Some(format!("{name} did not connect: {}", checked.server.status.error.unwrap_or_else(|| "no answer".into())))),
-            Err(err) => (CardState::Retry, Some(format!("{name} did not connect: {}", err.message))),
+            Ok(checked) => {
+                let raw = checked.server.status.error.unwrap_or_else(|| "no answer".into());
+                (CardState::Retry, Some(format!("{name} did not connect: {}", redact_secrets(&raw, secrets))))
+            }
+            Err(err) => (CardState::Retry, Some(format!("{name} did not connect: {}", redact_secrets(&err.message, secrets)))),
         }
     }
 
     /// Her's conversation takes up the connector as the configuration has it now, and connects
     /// it, so that the turn the card's end wakes knows its tools: one it does not know yet would
     /// wait for the owner's approval.
-    pub(crate) async fn add_to_conversation(&self, session: &str, connector: &str) {
+    pub(crate) async fn add_to_conversation(&self, session: &str, connector: &str, approved_url: Option<&str>) {
         let Some(hub) = self.hub(session) else {
             return;
         };
@@ -264,7 +477,9 @@ impl Server {
         .await
         .ok()
         .flatten();
-        if let Some(config) = config {
+        if let Some(config) = config
+            && approved_url.is_none_or(|url| config.url.as_deref() == Some(url))
+        {
             let (reply, added) = oneshot::channel();
             if hub.send(HubCmd::AddMcpServer { server: Box::new(config), reply }).await.is_ok()
                 && let Ok(Some(settled)) = added.await
@@ -277,18 +492,23 @@ impl Server {
     /// Takes back what a card wrote: the connector it added and the values saved for it, and a
     /// sign-in in progress with what it saved. A connector that signs in again keeps what it had.
     async fn undo(&self, card: &Card) {
-        let name = card.body.name.clone();
+        let Some(body) = card.connect_body() else {
+            return;
+        };
+        let name = body.name.clone();
         {
             let mut signing_in = self.connectors().signing_in.lock();
             if signing_in.get(&name).is_some_and(|(_, id)| *id == card.id) {
                 signing_in.remove(&name);
             }
         }
-        if card.body.reconnect {
-            let _ = self.mcp_login_cancel(McpLogoutParams { name }).await;
+        if body.reconnect {
+            if body.sign_in == SignIn::Oauth {
+                let _ = self.mcp_login_cancel(McpLogoutParams { name }).await;
+            }
             return;
         }
-        if card.body.sign_in == SignIn::Oauth
+        if body.sign_in == SignIn::Oauth
             && let Err(err) = self.mcp_logout(McpLogoutParams { name: name.clone() }).await
         {
             tracing::warn!(connector = %name, "cannot sign out of a connector a card added: {}", err.message);
@@ -322,11 +542,33 @@ impl Server {
             return;
         };
         let (to, note) = match outcome {
-            Ok(()) => self.connected(&session, &card).await,
+            Ok(()) => self.connected(&session, &card, &[]).await,
             Err(error) => (CardState::Retry, Some(format!("The sign-in did not finish: {error}"))),
         };
         let _ = cards.set(&id, &[CardState::SignIn], to, note);
     }
+}
+
+fn zeroize_string(s: &mut String) {
+    // SAFETY: writing ASCII NUL bytes over the string's valid UTF-8 capacity keeps it valid UTF-8 before clearing.
+    unsafe {
+        for b in s.as_bytes_mut() {
+            std::ptr::write_volatile(b, 0);
+        }
+    }
+    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+    s.clear();
+}
+
+/// Ensures no submitted secret value can ever be echoed back into a card note, history, or model turn.
+fn redact_secrets(text: &str, secrets: &[&str]) -> String {
+    let mut out = text.to_string();
+    for secret in secrets {
+        if !secret.is_empty() && out.contains(secret) {
+            out = out.replace(secret, "[redacted]");
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -362,5 +604,12 @@ mod tests {
         let mut renamed = answer("t-123", "http://127.0.0.1:9/mcp");
         renamed[0].params["name"] = json!("mcp.other");
         assert!(filled(&card, &renamed).is_none(), "a value where the card has none");
+    }
+
+    #[test]
+    fn secret_values_are_redacted_from_error_notes() {
+        let note = redact_secrets("HTTP 401: invalid bearer DUMMY_SECRET_99x in header", &["DUMMY_SECRET_99x", ""]);
+        assert!(!note.contains("DUMMY_SECRET_99x"), "{note}");
+        assert!(note.contains("[redacted]"), "{note}");
     }
 }

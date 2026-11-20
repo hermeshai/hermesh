@@ -6,6 +6,7 @@
 use async_trait::async_trait;
 use her_protocol::McpServerConfig;
 use her_protocol::card::Card;
+use her_protocol::card::CardBody;
 use her_protocol::card::CardField;
 use her_protocol::card::CardKind;
 use her_protocol::card::CardOp;
@@ -37,7 +38,8 @@ pub(crate) const GROUP_SUMMARY: &str = "add a connector (an MCP server) by its a
 
 const GUIDELINES: &[&str] = &[
     "Nothing changes until the owner answers the card: never say a connector is connected before you hear it is.",
-    "Never ask for a key, a token or a password in a message: the card asks, and you never see it.",
+    "Never ask for or accept an API key, token, password or verification code in ordinary chat: always prepare a secure card so you never see the secret.",
+    "To rotate or replace an existing token/API-key connector's key, call connector_connect with its name alone.",
 ];
 
 /// The field a bearer token is typed in, and the credential it is saved under.
@@ -61,6 +63,8 @@ pub struct ConnectorInfo {
     pub enabled: bool,
     /// It signs in with OAuth.
     pub oauth: bool,
+    /// If the connector uses a stored header credential (`${credential:mcp.*}`), `(credential_name, header_name)`.
+    pub credential_header: Option<(String, String)>,
     pub state: McpStatusState,
     pub tools: Option<u32>,
 }
@@ -185,11 +189,22 @@ impl TypedTool for ConnectorConnect {
             }
         };
         card.asked_by = cards.asked_by();
-        let sign_in = if card.body.sign_in == SignIn::Oauth { " and sign in" } else { "" };
+        let (card_url, sign_in) = match card.connect_body() {
+            Some(body) => (
+                body.url.clone(),
+                if body.sign_in == SignIn::Oauth {
+                    " and sign in"
+                } else if body.reconnect && !body.fields.is_empty() {
+                    " with a new key"
+                } else {
+                    ""
+                },
+            ),
+            None => (String::new(), ""),
+        };
         let text = format!(
-            "Nothing changed yet. Card {id} asks the owner to connect {name} ({url}){sign_in}. Show it with send_to_user {{type: \"card\", card: \"{id}\"}}: that ends your turn, and you hear how it went.",
+            "Nothing changed yet. Card {id} asks the owner to connect {name} ({card_url}){sign_in}. Show it with send_to_user {{type: \"card\", card: \"{id}\"}}: that ends your turn, and you hear how it went.",
             id = card.id,
-            url = card.body.url,
         );
         cards.prepare(card);
         Ok(ToolOutput::text(text))
@@ -218,11 +233,30 @@ fn check_address(url: &str) -> Result<(), ToolError> {
     }
 }
 
-/// A card that signs an existing connector in again.
+/// A card that signs an existing connector in again (OAuth) or updates its stored API key/token.
 fn again(existing: &ConnectorInfo) -> Result<Card, ToolError> {
-    let url = existing.url.clone().filter(|_| existing.oauth).ok_or_else(|| ToolError::InvalidArgs(format!("{} has no sign-in to do again", existing.name)))?;
-    let body = ConnectBody { name: existing.name.clone(), host: host_of(&url), url, reconnect: true, sign_in: SignIn::Oauth, server_name: None, fields: Vec::new() };
-    Ok(card(format!("Sign in to {} again", display_name(&existing.name)), Vec::new(), body))
+    let url = existing.url.clone().ok_or_else(|| ToolError::InvalidArgs(format!("{} has no remote address to sign in or update a key for", existing.name)))?;
+    if existing.oauth {
+        let body = ConnectBody { name: existing.name.clone(), host: host_of(&url), url, reconnect: true, sign_in: SignIn::Oauth, server_name: None, fields: Vec::new() };
+        return Ok(card(format!("Sign in to {} again", display_name(&existing.name)), Vec::new(), body));
+    }
+    if let Some((credential, header)) = &existing.credential_header {
+        let ops = vec![CardOp {
+            method: "credentials/set".into(),
+            params: json!({ "name": credential, "value": format!("<value:{TOKEN_FIELD}>") }),
+        }];
+        let body = ConnectBody {
+            name: existing.name.clone(),
+            host: host_of(&url),
+            url,
+            reconnect: true,
+            sign_in: SignIn::None,
+            server_name: None,
+            fields: vec![CardField { id: TOKEN_FIELD.into(), label: header.clone(), secret: true }],
+        };
+        return Ok(card(format!("Update key for {}", display_name(&existing.name)), ops, body));
+    }
+    Err(ToolError::InvalidArgs(format!("{} has no sign-in or stored key to update", existing.name)))
 }
 
 /// A card that adds a connector as the console's Add Connector writes it: OAuth signs in after
@@ -285,7 +319,7 @@ fn card(title: String, ops: Vec<CardOp>, body: ConnectBody) -> Card {
         asked_by: her_protocol::card::AskedBy::Owner,
         expires_at: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ops,
-        body,
+        body: CardBody::Connect(body),
     }
 }
 
@@ -316,8 +350,9 @@ mod tests {
         let card = new_card("notion", "https://mcp.notion.com/mcp", &probed(McpSuggestedAuth::Oauth, McpRemoteTransport::StreamableHttp));
         assert!(card.id.starts_with("c_") && card.id.len() == 12, "{}", card.id);
         assert_eq!(card.title, "Connect Notion");
-        assert_eq!((card.body.host.as_str(), card.body.sign_in, card.body.reconnect), ("mcp.notion.com", SignIn::Oauth, false));
-        assert_eq!(card.body.server_name.as_deref(), Some("Notion MCP"));
+        let body = card.connect_body().unwrap();
+        assert_eq!((body.host.as_str(), body.sign_in, body.reconnect), ("mcp.notion.com", SignIn::Oauth, false));
+        assert_eq!(body.server_name.as_deref(), Some("Notion MCP"));
         let ops = serde_json::to_value(&card.ops).unwrap();
         assert_eq!(
             ops,
@@ -334,8 +369,9 @@ mod tests {
                     "url": "https://example.com/sse", "transport": "streamable_http", "headers": {"Authorization": "Bearer ${credential:mcp.tracker}"}}}]}},
             ])
         );
-        assert_eq!(card.body.fields, vec![CardField { id: "f1".into(), label: "Authorization".into(), secret: true }]);
-        assert_eq!(card.body.sign_in, SignIn::None);
+        let body = card.connect_body().unwrap();
+        assert_eq!(body.fields, vec![CardField { id: "f1".into(), label: "Authorization".into(), secret: true }]);
+        assert_eq!(body.sign_in, SignIn::None);
     }
 
     #[test]
@@ -351,18 +387,25 @@ mod tests {
     }
 
     #[test]
-    fn signing_in_again_needs_a_sign_in() {
+    fn signing_in_again_needs_a_sign_in_or_key() {
         let mut existing = ConnectorInfo {
             name: "notion".into(),
             url: Some("https://mcp.notion.com/mcp".into()),
             enabled: true,
             oauth: true,
+            credential_header: None,
             state: McpStatusState::NeedsLogin,
             tools: None,
         };
         let card = again(&existing).unwrap();
-        assert_eq!((card.title.as_str(), card.body.reconnect, card.ops.is_empty()), ("Sign in to Notion again", true, true));
+        assert_eq!((card.title.as_str(), card.connect_body().unwrap().reconnect, card.ops.is_empty()), ("Sign in to Notion again", true, true));
         existing.oauth = false;
         assert!(again(&existing).is_err());
+        existing.credential_header = Some(("mcp.notion".into(), "X-API-Key".into()));
+        let rotate = again(&existing).unwrap();
+        let body = rotate.connect_body().unwrap();
+        assert_eq!((rotate.title.as_str(), body.reconnect, body.sign_in, rotate.ops.len()), ("Update key for Notion", true, SignIn::None, 1));
+        assert_eq!(body.fields, vec![CardField { id: "f1".into(), label: "X-API-Key".into(), secret: true }]);
+        assert_eq!(rotate.ops[0].method, "credentials/set");
     }
 }

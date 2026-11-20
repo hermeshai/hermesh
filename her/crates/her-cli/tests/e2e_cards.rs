@@ -479,3 +479,86 @@ async fn a_declined_card_takes_back_what_it_wrote() {
     assert!(!user_config(&env).contains("other"));
     her.stop().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_token_connector_rotates_its_key_and_preserves_working_key_on_refusal_or_cancel() {
+    const INITIAL: &str = "tok-initial-9f3a7c";
+    const ROTATED: &str = "tok-rotated-77b4e2";
+    const WRONG: &str = "tok-wrong-rotate-4b8x";
+    let env = TestEnv::new("manual", "").await;
+    let mock = her_mock::mcp::serve_http("127.0.0.1:0", McpTestOptions { auth: McpTestAuth::Token(INITIAL.into()), ..Default::default() }).await.unwrap();
+    let mut her = her(&env).await;
+
+    // 1. Connect initially with a dummy token.
+    let (card, _) = her.ask_for("docs", &mock.url()).await;
+    let done = her.answer(&card, json!({"decision": "approve", "ops": Her::filled(&card, INITIAL)})).await.unwrap();
+    assert_eq!(done["state"], "done", "{done}");
+    her.passed_on(&card, "done").await;
+
+    // 2. Ask to update/rotate the existing token connector's key without passing its URL.
+    her.say("[[mock:connect:docs]] Rotate key.").await;
+    let events = until(&mut her.wire, ended).await;
+    let details = events
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"].clone())
+        .expect("rotation card");
+    let rotate = details["card"].clone();
+    assert_eq!(rotate["kind"], "connect");
+    assert_eq!(rotate["body"]["reconnect"], true);
+    assert_eq!(rotate["body"]["sign_in"], "none");
+    assert_eq!(rotate["ops"].as_array().map(Vec::len), Some(1));
+    assert_eq!(rotate["ops"][0]["method"], "credentials/set");
+
+    // 3. Submitting a refused key enters retry (expected 401) and restores the previous working key immediately.
+    let refused = her.answer(&rotate, json!({"decision": "approve", "ops": Her::filled(&rotate, WRONG)})).await.unwrap();
+    assert_eq!(refused["state"], "retry", "{refused}");
+    assert!(refused["note"].as_str().is_some_and(|n| n.contains("401") && !n.contains(WRONG)), "{refused}");
+    until(&mut her.wire, changed_to(rotate["id"].as_str().unwrap(), "retry")).await;
+    let creds = std::fs::read_to_string(env.home.path().join("credentials.toml")).unwrap();
+    assert!(creds.contains(INITIAL) && !creds.contains(WRONG), "wrong key must never replace working key: {creds}");
+
+    // 4. Declining the rotation leaves the existing connector & working key intact and still authenticating.
+    let declined = her.answer(&rotate, json!({"decision": "decline"})).await.unwrap();
+    assert_eq!(declined["state"], "declined");
+    her.passed_on(&rotate, "declined").await;
+    let creds = std::fs::read_to_string(env.home.path().join("credentials.toml")).unwrap();
+    assert!(creds.contains(INITIAL) && !creds.contains(WRONG));
+    let checked = her.client.request("mcp/check", json!({"name": "docs"})).await.unwrap();
+    assert_eq!(checked["server"]["status"]["state"].as_str(), Some("ok"), "preserved old key must keep authenticating: {checked:#}");
+
+    // 5. Rotate the server's accepted key, reject a wrong key with 401 retry, then authenticate end-to-end with the valid new key.
+    mock.set_token(ROTATED);
+    her.say("[[mock:connect:docs]] Rotate to new key.").await;
+    let events = until(&mut her.wire, ended).await;
+    let rotate2 = events
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .expect("second rotation card");
+    let refused2 = her.answer(&rotate2, json!({"decision": "approve", "ops": Her::filled(&rotate2, WRONG)})).await.unwrap();
+    assert_eq!(refused2["state"], "retry", "{refused2}");
+    assert!(refused2["note"].as_str().is_some_and(|n| n.contains("401") && !n.contains(WRONG)), "{refused2}");
+    until(&mut her.wire, changed_to(rotate2["id"].as_str().unwrap(), "retry")).await;
+
+    let updated = her.answer(&rotate2, json!({"decision": "approve", "ops": Her::filled(&rotate2, ROTATED)})).await.unwrap();
+    assert_eq!(updated["state"], "done", "{updated}");
+    let note = her.passed_on(&rotate2, "done").await;
+    assert!(note.starts_with("Docs key updated: "), "{note}");
+    let checked = her.client.request("mcp/check", json!({"name": "docs"})).await.unwrap();
+    assert_eq!(checked["server"]["status"]["state"].as_str(), Some("ok"), "rotated key must authenticate: {checked:#}");
+    let creds = std::fs::read_to_string(env.home.path().join("credentials.toml")).unwrap();
+    assert!(creds.contains(ROTATED) && !creds.contains(INITIAL) && !creds.contains(WRONG), "rotated key must replace old key: {creds}");
+
+    // 6. None of the secrets appear anywhere in stderr, logs, config, or session files.
+    let stderr = her.stop().await;
+    for secret in [INITIAL, ROTATED, WRONG] {
+        assert!(!stderr.contains(secret), "stderr leaked {secret}");
+        for (path, text) in files(env.home.path()) {
+            if path.file_name().is_some_and(|n| n == "credentials.toml") {
+                continue;
+            }
+            assert!(!text.contains(secret), "{} leaked {secret}", path.display());
+        }
+    }
+}

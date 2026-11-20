@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 use serde_json::json;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -216,6 +217,46 @@ impl NavigationGuard for SessionGuard {
     }
 }
 
+/// Verified login field inspected directly from the page DOM for a `site_login` card.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LoginFieldKind {
+    Email,
+    Username,
+    Password,
+    OneTimeCode,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InspectedLoginField {
+    pub backend: i64,
+    pub tag: String,
+    pub input_type: String,
+    pub label: String,
+    pub kind: LoginFieldKind,
+    pub secret: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SiteLoginInspection {
+    pub tab: String,
+    pub frame: String,
+    pub loader: String,
+    pub origin: String,
+    pub host: String,
+    pub title: Option<String>,
+    pub fields: Vec<InspectedLoginField>,
+}
+
+/// Active sensitive sign-in guard on a tab (pending card or filled unsubmitted fields).
+struct SensitiveTab {
+    frame: String,
+    origin: String,
+    backends: HashSet<i64>,
+    pending_cards: HashSet<String>,
+    filled: bool,
+    discard_logs: bool,
+}
+
 pub struct BrowserSession {
     browser: Arc<Browser>,
     owner: OwnerId,
@@ -229,6 +270,8 @@ pub struct BrowserSession {
     worlds: Mutex<HashMap<(String, String), i64>>,
     /// Said once, in the first result.
     pending_note: Mutex<Option<String>>,
+    /// Sensitive documents by tab and loader, including filled documents in browser history.
+    sensitive: Mutex<HashMap<String, HashMap<String, SensitiveTab>>>,
 }
 
 impl BrowserSession {
@@ -255,6 +298,7 @@ impl BrowserSession {
             last: Mutex::new(HashMap::new()),
             worlds: Mutex::new(HashMap::new()),
             pending_note,
+            sensitive: Mutex::new(HashMap::new()),
         }
     }
 
@@ -493,6 +537,349 @@ impl BrowserSession {
         }
     }
 
+    /// Registers a pending `site_login` card on `tab`, blocking model observation until the card
+    /// is cancelled/expired without filling or the page safely navigates away.
+    pub fn begin_sensitive_card(&self, card_id: &str, tab: &str, frame: &str, loader: &str, origin: &str, backends: &[i64]) {
+        let mut sensitive = self.sensitive.lock();
+        let entry = sensitive
+            .entry(tab.to_string())
+            .or_default()
+            .entry(loader.to_string())
+            .or_insert_with(|| SensitiveTab {
+                frame: frame.to_string(),
+                origin: origin.to_string(),
+                backends: HashSet::new(),
+                pending_cards: HashSet::new(),
+                filled: false,
+                discard_logs: false,
+            });
+        entry.backends.extend(backends.iter().copied());
+        entry.pending_cards.insert(card_id.to_string());
+    }
+
+    /// Releases a card that ended without filling.
+    pub fn end_sensitive_card(&self, card_id: &str) {
+        self.sensitive.lock().retain(|_, documents| {
+            documents.retain(|_, entry| {
+                entry.pending_cards.remove(card_id);
+                entry.filled || !entry.pending_cards.is_empty()
+            });
+            !documents.is_empty()
+        });
+    }
+
+    fn sensitive_active(&self, tab: &Tab) -> Option<HashSet<i64>> {
+        let mut sensitive = self.sensitive.lock();
+        if tab.is_closed() {
+            sensitive.remove(&tab.id);
+            return None;
+        }
+        let documents = sensitive.get_mut(&tab.id)?;
+        let mut state = tab.state.lock();
+        let mut active = None;
+        let mut discard_logs = false;
+        for (loader, entry) in documents {
+            if state.frames.get(&entry.frame).is_some_and(|f| &f.loader == loader && url_origin(&f.url) == entry.origin) {
+                entry.discard_logs = entry.filled;
+                active = Some(entry.backends.clone());
+            } else {
+                discard_logs |= std::mem::take(&mut entry.discard_logs);
+            }
+        }
+        if discard_logs {
+            state.console.clear();
+            state.notes.clear();
+        }
+        active
+    }
+
+    /// Inspects `refs` directly in the isolated browser DOM to prepare a `site_login` card.
+    /// Refuses unless reliable isolation holds: isolated built-in browser, HTTPS or loopback
+    /// origin, top-level same-origin document, no CAPTCHA/Passkey challenge, and 1–3 visible
+    /// login inputs including at least one password or one-time code field.
+    pub async fn inspect_site_login(&self, refs: &[String]) -> Result<SiteLoginInspection, BrowserError> {
+        if self.keeps_tabs() {
+            return Err(BrowserError::failed(
+                "Secure sign-in cards are disabled in your own Chrome because it already has your password manager and does not provide isolated card autofill. Use browser_wait with user so the owner can sign in directly.",
+            ));
+        }
+        if refs.is_empty() || refs.len() > 3 {
+            return Err(BrowserError::failed(
+                "ask_owner takes 1 to 3 login field refs (such as email/username, password, or one-time code).",
+            ));
+        }
+        let mut seen = HashSet::new();
+        let mut elements = Vec::with_capacity(refs.len());
+        for reference in refs {
+            if !seen.insert(reference.as_str()) {
+                return Err(BrowserError::failed(format!("duplicate ref {reference} in ask_owner")));
+            }
+            elements.push(self.element(reference).await?);
+        }
+        let first_page = &elements[0].page;
+        if elements.iter().any(|e| &e.page != first_page) {
+            return Err(BrowserError::failed(
+                "All sign-in fields must be on the same page and same-origin frame. Use browser_wait with user instead.",
+            ));
+        }
+        let (tab, _) = self.verify(first_page)?;
+        let _busy = tab.busy.lock().await;
+        let (tab, frame) = self.verify(first_page)?;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
+        }
+        let (main_id, main_frame) = self.main_frame(&tab)?;
+        let top_origin = url_origin(&main_frame.url);
+        if first_page.frame != main_id || top_origin != first_page.origin {
+            return Err(BrowserError::failed(
+                "Secure sign-in cards are disabled for cross-origin or nested iframes. Use browser_wait with user so the owner can sign in directly.",
+            ));
+        }
+        let parsed = Url::parse(&main_frame.url).map_err(|_| BrowserError::failed("cannot verify the page URL; use browser_wait with user"))?;
+        let loopback = match parsed.host() {
+            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+            Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+            None => false,
+        };
+        if !(parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback)) {
+            return Err(BrowserError::failed(format!(
+                "Secure sign-in cards require HTTPS (found {}). Use browser_wait with user so the owner can sign in directly.",
+                first_page.origin
+            )));
+        }
+        let host = match (parsed.host_str(), parsed.port()) {
+            (Some(h), Some(p)) => format!("{h}:{p}"),
+            (Some(h), None) => h.to_string(),
+            _ => first_page.origin.clone(),
+        };
+        self.check_no_challenge(&main_id, &frame).await?;
+        let mut fields = Vec::with_capacity(elements.len());
+        for element in &elements {
+            let inspected = self.inspect_login_input(&tab, &main_id, &frame, element).await?;
+            fields.push(inspected);
+        }
+        let has_secret = fields
+            .iter()
+            .any(|f| matches!(f.kind, LoginFieldKind::Password | LoginFieldKind::OneTimeCode));
+        if !has_secret {
+            return Err(BrowserError::failed(
+                "Secure sign-in cards are only for login credentials (must include a password or one-time code field), not general form collection.",
+            ));
+        }
+        // If any plain text field was accepted as username, require a password field alongside it.
+        let has_password = fields.iter().any(|f| f.kind == LoginFieldKind::Password);
+        if !has_password && fields.iter().any(|f| f.kind == LoginFieldKind::Username && f.input_type == "text") {
+            return Err(BrowserError::failed(
+                "A plain text field can only be included alongside a password field on a sign-in form.",
+            ));
+        }
+        self.refresh(&tab).await;
+        let raw_title = tab.state.lock().title.clone();
+        let title = {
+            let cleaned = snapshot::clean(&raw_title);
+            let clipped: String = cleaned.chars().take(80).collect();
+            (!clipped.is_empty()).then_some(clipped)
+        };
+        Ok(SiteLoginInspection {
+            tab: tab.id.clone(),
+            frame: main_id,
+            loader: frame.loader,
+            origin: first_page.origin.clone(),
+            host,
+            title,
+            fields,
+        })
+    }
+
+    async fn check_no_challenge(&self, frame_id: &str, frame: &Frame) -> Result<(), BrowserError> {
+        let world = self.world(frame_id, frame).await?;
+        let res = self
+            .conn()
+            .send(
+                Some(&frame.session),
+                "Runtime.evaluate",
+                json!({
+                    "expression": CHALLENGE_CHECK_SCRIPT,
+                    "contextId": world,
+                    "returnByValue": true,
+                }),
+            )
+            .await?;
+        if let Some(reason) = res["result"]["value"].as_str().filter(|s| !s.is_empty()) {
+            return Err(BrowserError::failed(format!(
+                "Secure sign-in cards are disabled on pages with {reason}. Use browser_wait with user so the owner can complete sign-in directly."
+            )));
+        }
+        Ok(())
+    }
+
+    async fn inspect_login_input(
+        &self,
+        tab: &Tab,
+        frame_id: &str,
+        frame: &Frame,
+        element: &ElementTarget,
+    ) -> Result<InspectedLoginField, BrowserError> {
+        // Ensure visible & not obscured by another element.
+        let _ = self.clickable_point(tab, element).await?;
+        let info = self
+            .call_on(frame_id, frame, element.backend, INSPECT_LOGIN_INPUT_SCRIPT, vec![])
+            .await?;
+        if let Some(err) = info.get("error").and_then(Value::as_str) {
+            return Err(BrowserError::failed(format!(
+                "Field {} cannot be used on a sign-in card: {err}. Use browser_wait with user instead.",
+                element.label
+            )));
+        }
+        let tag = info["tag"].as_str().unwrap_or("").to_string();
+        let input_type = info["type"].as_str().unwrap_or("text").to_string();
+        let raw_label = info["label"].as_str().unwrap_or("");
+        let kind = match info["kind"].as_str() {
+            Some("password") => LoginFieldKind::Password,
+            Some("one_time_code") => LoginFieldKind::OneTimeCode,
+            Some("email") => LoginFieldKind::Email,
+            Some("username") => LoginFieldKind::Username,
+            _ => {
+                return Err(BrowserError::failed(format!(
+                    "Field {} is not a recognized sign-in field (email, username, password, or one-time code).",
+                    element.label
+                )));
+            }
+        };
+        let secret = matches!(kind, LoginFieldKind::Password | LoginFieldKind::OneTimeCode);
+        let fallback = match kind {
+            LoginFieldKind::Email => "Email",
+            LoginFieldKind::Username => "Username",
+            LoginFieldKind::Password => "Password",
+            LoginFieldKind::OneTimeCode => "Verification code",
+        };
+        let clean_label: String = snapshot::clean(raw_label)
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(60)
+            .collect();
+        let label = if clean_label.is_empty() { fallback.to_string() } else { clean_label };
+        Ok(InspectedLoginField {
+            backend: element.backend,
+            tag,
+            input_type,
+            label,
+            kind,
+            secret,
+        })
+    }
+
+    /// Atomically verifies the bound page and fields, fills each field without submitting, and
+    /// keeps the tab's sensitive observation guard active until safe navigation recovery.
+    pub async fn fill_site_login(
+        &self,
+        card_id: &str,
+        tab_id: &str,
+        frame_id: &str,
+        loader: &str,
+        origin: &str,
+        fields: &[(i64, String, String)],
+    ) -> Result<(), BrowserError> {
+        if self.keeps_tabs() {
+            return Err(BrowserError::failed("site_login is disabled for non-isolated browser sessions"));
+        }
+        let page = PageTarget {
+            tab: tab_id.to_string(),
+            frame: frame_id.to_string(),
+            loader: loader.to_string(),
+            origin: origin.to_string(),
+        };
+        let (tab, _) = self.verify(&page)?;
+        let _busy = tab.busy.lock().await;
+        let (tab, frame) = self.verify(&page)?;
+        let (main_id, main_frame) = self.main_frame(&tab)?;
+        if main_id != frame_id || url_origin(&main_frame.url) != origin {
+            return Err(BrowserError::PageChanged { now: main_frame.url });
+        }
+        self.check_no_challenge(frame_id, &frame).await?;
+
+        // Re-verify every bound element BEFORE typing a single character.
+        for (backend, expected_type, _) in fields {
+            let target = ElementTarget {
+                page: page.clone(),
+                backend: *backend,
+                label: "sign-in field".into(),
+            };
+            let _ = self.clickable_point(&tab, &target).await.map_err(|_| BrowserError::PageChanged {
+                now: main_frame.url.clone(),
+            })?;
+            let info = self
+                .call_on(frame_id, &frame, *backend, INSPECT_LOGIN_INPUT_SCRIPT, vec![])
+                .await
+                .map_err(|_| BrowserError::PageChanged {
+                    now: main_frame.url.clone(),
+                })?;
+            if info.get("error").is_some()
+                || info["tag"].as_str() != Some("INPUT")
+                || info["type"].as_str() != Some(expected_type.as_str())
+            {
+                return Err(BrowserError::PageChanged {
+                    now: main_frame.url.clone(),
+                });
+            }
+        }
+
+        // Keep observation blocked even if the card ends during a write or the page handles
+        // input before a later field can be filled.
+        {
+            let mut sensitive = self.sensitive.lock();
+            let entry = sensitive
+                .get_mut(&tab.id)
+                .and_then(|documents| documents.get_mut(loader))
+                .filter(|entry| entry.frame == frame_id && entry.origin == origin)
+                .ok_or_else(|| BrowserError::failed("The sign-in card is no longer open."))?;
+            if !entry.pending_cards.remove(card_id) {
+                return Err(BrowserError::failed("The sign-in card is no longer open."));
+            }
+            entry.filled = true;
+            entry.discard_logs = true;
+        }
+
+        // Write to the bound DOM node without relying on the renderer's current focus.
+        let mut filled_backends = Vec::with_capacity(fields.len());
+        for (backend, input_type, value) in fields {
+            if self.verify(&page).is_err() {
+                self.clear_inputs(frame_id, &frame, &filled_backends).await;
+                return Err(BrowserError::PageChanged { now: main_frame.url });
+            }
+            let result = self
+                .call_on(
+                    frame_id,
+                    &frame,
+                    *backend,
+                    FILL_LOGIN_INPUT_SCRIPT,
+                    vec![json!(origin), json!(input_type), json!(value)],
+                )
+                .await;
+            if !matches!(result, Ok(Value::Bool(true))) {
+                self.clear_inputs(frame_id, &frame, &filled_backends).await;
+                return Err(BrowserError::PageChanged { now: main_frame.url });
+            }
+            filled_backends.push(*backend);
+        }
+        Ok(())
+    }
+
+    async fn clear_inputs(&self, frame_id: &str, frame: &Frame, backends: &[i64]) {
+        for backend in backends {
+            let _ = self
+                .call_on(
+                    frame_id,
+                    frame,
+                    *backend,
+                    "function(){ if ('value' in this) { this.value = ''; this.dispatchEvent(new Event('input', {bubbles: true})); } }",
+                    vec![],
+                )
+                .await;
+        }
+    }
+
     // ---- Navigation ----
 
     /// Opens `url` in the tab (a new one when none is open). `private_ok`: the approval was
@@ -633,6 +1020,11 @@ impl BrowserSession {
     pub async fn snapshot(&self, request: &SnapshotRequest) -> Result<Report, BrowserError> {
         let tab = self.resolve_tab(request.tab.as_deref())?;
         let _busy = tab.busy.lock().await;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed(
+                "Page observation is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
+            ));
+        }
         let (frame_id, frame) = match &request.frame {
             Some(reference) => self.iframe_content(reference).await?,
             None => self.main_frame(&tab)?,
@@ -761,7 +1153,8 @@ impl BrowserSession {
     ) -> Result<Vec<String>, BrowserError> {
         self.prune(&tab.id, frame_id, &frame.loader);
         let nodes = tree["nodes"].as_array().map(Vec::as_slice).unwrap_or_default();
-        let items = snapshot::build(nodes, attrs, root);
+        let redacted = self.sensitive_active(tab).unwrap_or_default();
+        let items = snapshot::build_with_redacted(nodes, attrs, root, &redacted);
         // The frames behind the iframes, looked up all at once.
         let iframes: Vec<i64> = items.iter().filter(|i| i.iframe).filter_map(|i| i.backend).collect();
         let found = futures::future::join_all(iframes.iter().map(|b| self.child_frame(tab, &frame.session, *b))).await;
@@ -1003,13 +1396,18 @@ impl BrowserSession {
         let (tab, _) = self.verify(place.page())?;
         let _busy = tab.busy.lock().await;
         let (tab, frame) = self.verify(place.page())?;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed(
+                "Cannot act on this page during sensitive sign-in. Use browser_wait with user so the owner can continue.",
+            ));
+        }
         let frame_id = place.page().frame.clone();
         // The state to diff against: the last snapshot of this document, else one now.
-        let before = match self.last.lock().get(&(tab.id.clone(), frame_id.clone())) {
+        let cached = match self.last.lock().get(&(tab.id.clone(), frame_id.clone())) {
             Some((loader, lines)) if *loader == frame.loader => Some(lines.clone()),
             _ => None,
         };
-        let before = match before {
+        let before = match cached {
             Some(lines) => lines,
             None => self.fresh_tree(&tab, &frame_id, &frame).await,
         };
@@ -1055,6 +1453,11 @@ impl BrowserSession {
         let (tab, _) = self.verify(page)?;
         let _busy = tab.busy.lock().await;
         let (tab, frame) = self.verify(page)?;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed(
+                "Running scripts is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
+            ));
+        }
         let before = match self.last.lock().get(&(tab.id.clone(), page.frame.clone())) {
             Some((loader, lines)) if *loader == frame.loader => Some(lines.clone()),
             _ => None,
@@ -1612,6 +2015,11 @@ impl BrowserSession {
             None => self.resolve_tab(tab)?,
         };
         let _busy = tab.busy.lock().await;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed(
+                "Screenshots are blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
+            ));
+        }
         let s = Some(tab.session.as_str());
         let mut params = json!({ "format": "png" });
         if let Some(element) = element {
@@ -1673,6 +2081,11 @@ impl BrowserSession {
         let tab = self.resolve_tab(tab)?;
         let deadline = Instant::now() + timeout;
         let met = loop {
+            if matches!(condition, WaitFor::Text(_) | WaitFor::TextGone(_) | WaitFor::Url(_))
+                && self.sensitive_active(&tab).is_some()
+            {
+                return Err(BrowserError::failed("Reading the page is blocked during sensitive sign-in."));
+            }
             let met = match condition {
                 WaitFor::Time => false,
                 WaitFor::Url(part) => tab.state.lock().url.contains(part.as_str()),
@@ -1732,6 +2145,11 @@ impl BrowserSession {
     /// Console entries since the last read, optionally only `level` and worse.
     pub fn console(&self, tab: Option<&str>, min_level: Option<&str>, from_start: bool) -> Result<Report, BrowserError> {
         let tab = self.resolve_tab(tab)?;
+        if self.sensitive_active(&tab).is_some() {
+            return Err(BrowserError::failed(
+                "Reading the browser console is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
+            ));
+        }
         let rank = |level: &str| match level {
             "error" => 3,
             "warning" => 2,
@@ -1788,14 +2206,20 @@ impl BrowserSession {
 
     /// `Page: <title> — <url> (tab 1 of 2)`.
     pub fn header(&self, tab: &Tab) -> String {
-        let (url, title) = {
-            let state = tab.state.lock();
-            (state.url.clone(), state.title.clone())
-        };
+        let (url, title) = self.page_metadata(tab);
         let count = self.tabs().len();
         let title = snapshot::clean(&title);
         let page = if title.is_empty() { url } else { format!("\"{}\" {url}", title.replace('"', "'")) };
         format!("Page: {page} (tab {} of {count})", tab.id)
+    }
+
+    pub fn page_metadata(&self, tab: &Tab) -> (String, String) {
+        let sensitive = self.sensitive_active(tab).is_some();
+        let state = tab.state.lock();
+        if sensitive {
+            return (url_origin(&state.url), String::new());
+        }
+        (state.url.clone(), state.title.clone())
     }
 
     /// The result of a call that may have changed the page: what was done, where things
@@ -1842,6 +2266,9 @@ impl BrowserSession {
     }
 
     async fn report_page(&self, tab: &Tab, same_document: Option<(String, Frame, Vec<String>)>) -> String {
+        if self.sensitive_active(tab).is_some() {
+            return "\nPage observation remains blocked while sensitive sign-in fields stay on this document.".into();
+        }
         if let Some((frame_id, frame, before)) = same_document {
             let still = tab.state.lock().frames.get(&frame_id).is_some_and(|f| f.loader == frame.loader);
             if still {
@@ -1875,11 +2302,12 @@ impl BrowserSession {
 
     /// Adds what happened on the side, then the page's details.
     fn finish(&self, tab: &Tab, mut text: String) -> Report {
-        let (notes, errors, url, title) = {
+        let (url, title) = self.page_metadata(tab);
+        let (notes, errors) = if self.sensitive_active(tab).is_some() {
+            (Vec::new(), 0)
+        } else {
             let mut state = tab.state.lock();
-            let notes = std::mem::take(&mut state.notes);
-            let errors = state.take_new_errors();
-            (notes, errors, state.url.clone(), state.title.clone())
+            (std::mem::take(&mut state.notes), state.take_new_errors())
         };
         let mut side = Vec::new();
         if let Some(note) = self.pending_note.lock().take() {
@@ -2009,6 +2437,15 @@ const SELECT_ALL_SCRIPT: &str = r#"function(){
   return 'ok';
 }"#;
 
+const FILL_LOGIN_INPUT_SCRIPT: &str = r#"function(origin, type, value) {
+  if (!this.isConnected || this.ownerDocument !== document || location.origin !== origin ||
+      this.tagName !== 'INPUT' || (this.getAttribute('type') || 'text').toLowerCase() !== type ||
+      this.disabled || this.readOnly) return false;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, value);
+  this.dispatchEvent(new InputEvent('input', {bubbles: true, composed: true}));
+  return true;
+}"#;
+
 const SELECT_SCRIPT: &str = r#"function(values){
   if (this.tagName !== 'SELECT') return {error: 'it is not a <select>; click the option instead'};
   const options = [...this.options];
@@ -2028,6 +2465,55 @@ const SELECT_SCRIPT: &str = r#"function(values){
 const NATIVE_POPUP_SCRIPT: &str = "function(){ if (this.tagName === 'SELECT' && !this.multiple && this.size <= 1) return 'select'; if (this.tagName === 'INPUT' && this.type === 'color') return 'color'; return null; }";
 
 const FILE_INPUT_SCRIPT: &str = "function(){ return this.tagName === 'INPUT' && this.type === 'file'; }";
+
+const CHALLENGE_CHECK_SCRIPT: &str = r#"(() => {
+  const selectors = [
+    '.g-recaptcha', '#recaptcha', '.h-captcha', '.cf-turnstile',
+    '[data-sitekey]', '[data-hcaptcha-sitekey]', '[data-turnstile-sitekey]',
+    'iframe[src*="recaptcha"]', 'iframe[src*="hcaptcha"]', 'iframe[src*="turnstile"]',
+    'iframe[src*="arkoselabs"]', 'iframe[src*="challenges.cloudflare"]'
+  ];
+  for (const sel of selectors) {
+    if (document.querySelector(sel)) return 'a CAPTCHA or anti-bot challenge';
+  }
+  return '';
+})()"#;
+
+const INSPECT_LOGIN_INPUT_SCRIPT: &str = r#"function(){
+  if (!this || this.tagName !== 'INPUT') return {error: 'it is not an <input> element'};
+  if (this.disabled) return {error: 'it is disabled'};
+  if (this.readOnly) return {error: 'it is read-only'};
+  const style = getComputedStyle(this);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return {error: 'it is not visible'};
+  const rect = this.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return {error: 'it has no visible box'};
+  const type = (this.getAttribute('type') || 'text').toLowerCase();
+  const blocked = new Set(['hidden','file','submit','button','reset','image','checkbox','radio','range','color','date','datetime-local','month','week','time']);
+  if (blocked.has(type)) return {error: 'input type ' + type + ' is not allowed'};
+  const ac = (this.getAttribute('autocomplete') || '').toLowerCase().split(/\s+/);
+  const name = (this.getAttribute('name') || '').toLowerCase();
+  const id = (this.getAttribute('id') || '').toLowerCase();
+  const aria = (this.getAttribute('aria-label') || '').trim();
+  const placeholder = (this.getAttribute('placeholder') || '').trim();
+  let labelText = '';
+  if (this.labels && this.labels.length > 0) {
+    labelText = [...this.labels].map(l => (l.textContent || '').trim()).filter(Boolean).join(' ');
+  }
+  const label = aria || labelText || placeholder || '';
+  const hint = (name + ' ' + id + ' ' + label).toLowerCase();
+  let kind = null;
+  if (type === 'password' || ac.includes('current-password') || ac.includes('new-password')) {
+    kind = 'password';
+  } else if (ac.includes('one-time-code') || /\b(otp|totp|2fa|mfa|passcode|verification.?code|auth.?code|one.?time)\b/.test(hint)) {
+    kind = 'one_time_code';
+  } else if (type === 'email' || ac.includes('email')) {
+    kind = 'email';
+  } else if ((type === 'text' || type === 'tel') && (ac.includes('username') || ac.includes('tel') || /\b(user|username|login|account|email|phone|mobile|identifier)\b/.test(hint) || (this.form && this.form.querySelector('input[type="password"]')))) {
+    kind = 'username';
+  }
+  if (!kind) return {error: 'field is not a recognized sign-in input'};
+  return {tag: 'INPUT', type, kind, label};
+}"#;
 
 /// The main text of the document as Markdown. Links become `[text](url)` followed by a marker
 /// `\x01<index>\x01` that the session turns into the link's ref.

@@ -204,7 +204,7 @@ async fn local(config: McpServerConfig, ctx: &ProbeContext, steps: &Arc<Steps>, 
 
 /// The address and the configured headers, expanded as a connection would.
 fn target(config: &McpServerConfig) -> Result<(String, Vec<(String, String)>), String> {
-    let names = crate::env::credential_names(config.url.iter().map(String::as_str).chain(config.headers.values().map(String::as_str)));
+    let names = crate::env::remote_credential_names(config.url.iter().map(String::as_str).chain(config.headers.values().map(String::as_str)));
     let credentials: std::collections::HashMap<String, String> = names.into_iter().filter_map(|n| her_llm::credentials::get(&n).map(|v| (n, v))).collect();
     let lookup = |name: &str| match name.strip_prefix("credential:") {
         Some(c) => credentials.get(c).cloned(),

@@ -151,24 +151,59 @@ func refuse(method string, params any) error {
 	case "cards/answer":
 		// What a card does on approve is console calls, each checked as the
 		// console's are: a card never changes more than the console could.
-		answer, _ := p["answer"].(map[string]any)
-		ops, _ := answer["ops"].([]any)
-		for _, op := range ops {
-			op, _ := op.(map[string]any)
-			m, _ := op["method"].(string)
-			switch m {
-			case "cards/answer":
-				return denied("a card's op can't answer a card")
-			case aiConsentAllow, aiConsentRevoke:
-				return denied("AI sharing can only be changed through its own controls")
+		// A site_login card carries `decision: "fill"` with bounded `fields`
+		// and never any console ops.
+		answer, ok := p["answer"].(map[string]any)
+		if !ok {
+			return denied("cards/answer requires an answer object")
+		}
+		decision, _ := answer["decision"].(string)
+		switch decision {
+		case "decline":
+			if _, hasOps := answer["ops"]; hasOps {
+				return denied("a declined card answer may not carry ops")
 			}
-			if !allowed[m] {
-				return denied("a card's op %q is not open to the owner's devices", m)
+			if _, hasFields := answer["fields"]; hasFields {
+				return denied("a declined card answer may not carry fields")
 			}
-			params, _ := json.Marshal(op["params"])
-			if _, err := check(m, params); err != nil {
-				return err
+		case "approve":
+			if _, hasFields := answer["fields"]; hasFields {
+				return denied("an approved card answer may not carry site_login fields")
 			}
+			ops, _ := answer["ops"].([]any)
+			for _, op := range ops {
+				op, _ := op.(map[string]any)
+				m, _ := op["method"].(string)
+				switch m {
+				case "cards/answer":
+					return denied("a card's op can't answer a card")
+				case aiConsentAllow, aiConsentRevoke:
+					return denied("AI sharing can only be changed through its own controls")
+				}
+				if !allowed[m] {
+					return denied("a card's op %q is not open to the owner's devices", m)
+				}
+				params, _ := json.Marshal(op["params"])
+				if _, err := check(m, params); err != nil {
+					return err
+				}
+			}
+		case "fill":
+			if _, hasOps := answer["ops"]; hasOps {
+				return denied("a site_login fill answer may not carry console ops")
+			}
+			fields, ok := answer["fields"].(map[string]any)
+			if !ok || len(fields) == 0 || len(fields) > 3 {
+				return denied("a site_login fill answer must carry 1 to 3 fields")
+			}
+			for k, v := range fields {
+				s, ok := v.(string)
+				if k == "" || len(k) > 16 || !ok || s == "" || len(s) > 4096 {
+					return denied("a site_login fill field value is invalid")
+				}
+			}
+		default:
+			return denied("unknown card answer decision")
 		}
 	}
 	return nil

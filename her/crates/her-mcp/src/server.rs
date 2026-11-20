@@ -219,13 +219,19 @@ impl McpServer {
 
     /// Starts connecting in the background, unless an attempt is running or it is closed.
     pub fn connect(self: &Arc<Self>) {
-        {
+        let previous = {
             let mut inner = self.inner.lock();
             if inner.connecting || matches!(inner.state, State::Closed) {
                 return;
             }
             inner.connecting = true;
-            inner.state = State::Starting;
+            match std::mem::replace(&mut inner.state, State::Starting) {
+                State::Ready(client) => Some(client),
+                _ => None,
+            }
+        };
+        if let Some(client) = previous {
+            tokio::spawn(async move { client.close().await });
         }
         self.publish(ServerStatus {
             state: McpServerState::Starting,
@@ -300,15 +306,19 @@ impl McpServer {
             }
         };
         // Saved credentials are read from the keychain off the async threads, once per attempt.
-        let names = env::credential_names(
-            [&self.config.command, &self.config.url]
-                .into_iter()
-                .flatten()
-                .map(String::as_str)
-                .chain(self.config.args.iter().map(String::as_str))
-                .chain(self.config.env.values().map(String::as_str))
-                .chain(self.config.headers.values().map(String::as_str)),
-        );
+        let kind = self.config.transport().map_err(|e| (e, Failure::Permanent))?;
+        let names = match kind {
+            McpTransportKind::Stdio => {
+                let scope = format!("{}{}.", env::STDIO_CREDENTIAL_PREFIX, self.config.name);
+                env::credential_names(self.config.env.values().map(String::as_str))
+                    .into_iter()
+                    .filter(|name| !name.starts_with(env::STDIO_CREDENTIAL_PREFIX) || name.starts_with(&scope))
+                    .collect()
+            }
+            McpTransportKind::Http => env::remote_credential_names(
+                self.config.url.iter().map(String::as_str).chain(self.config.headers.values().map(String::as_str)),
+            ),
+        };
         let credentials: std::collections::HashMap<String, String> = if names.is_empty() {
             Default::default()
         } else {
@@ -324,14 +334,34 @@ impl McpServer {
         };
         let expand = |value: &str| env::expand(value, &lookup).map_err(|e| (e, Failure::Permanent));
         let (inbound_tx, inbound_rx) = mpsc::unbounded_channel();
-        let kind = self.config.transport().map_err(|e| (e, Failure::Permanent))?;
         let mut stderr_hint: Option<Arc<stdio::StdioTransport>> = None;
         let transport: Arc<dyn Transport> = match kind {
             McpTransportKind::Stdio => {
-                let program = expand(self.config.command.as_deref().unwrap_or_default())?;
+                let program = self.config.command.clone().unwrap_or_default();
+                if program.contains("${") {
+                    return Err(("command cannot contain variable or credential references".into(), Failure::Permanent));
+                }
+                if !env::credential_names(self.config.args.iter().map(String::as_str)).is_empty() {
+                    return Err((
+                        "credentials cannot be passed in command arguments; pass them in env instead".into(),
+                        Failure::Permanent,
+                    ));
+                }
                 let args = self.config.args.iter().map(|a| expand(a)).collect::<Result<Vec<_>, _>>()?;
                 let env = env::server_env(&self.config.env_vars, &self.config.env, &lookup, std::env::vars())
                     .map_err(|e| (e, Failure::Permanent))?;
+                let mut secrets: Vec<String> = credentials.values()
+                    .flat_map(|secret| std::iter::once(secret.as_str()).chain(secret.lines()))
+                    .filter(|secret| !secret.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+                let escaped: Vec<String> = secrets.iter()
+                    .filter_map(|secret| serde_json::to_string(secret).ok())
+                    .map(|json| json[1..json.len() - 1].to_owned())
+                    .collect();
+                secrets.extend(escaped);
+                secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
+                secrets.dedup();
                 let cwd = match &self.config.cwd {
                     Some(cwd) => {
                         let cwd = PathBuf::from(expand(&cwd.to_string_lossy())?);
@@ -349,6 +379,7 @@ impl McpServer {
                     args,
                     env,
                     cwd,
+                    secrets,
                 };
                 let transport = stdio::spawn(spec, inbound_tx).map_err(|e| (e.message, if e.permanent { Failure::Permanent } else { Failure::Retry }))?;
                 stderr_hint = Some(transport.clone());
@@ -395,7 +426,7 @@ impl McpServer {
         let failed = |err: McpError| {
             let message = err.to_string();
             let message = match &stderr_hint {
-                Some(stdio) => stdio.stderr_tail(message),
+                Some(stdio) => stdio.diagnostic(message),
                 None => message,
             };
             (message, self.classify(err).1)

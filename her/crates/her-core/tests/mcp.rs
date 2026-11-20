@@ -677,3 +677,42 @@ async fn tools_from_servers_are_asked_about_unless_they_only_read_or_the_user_tr
         "a rule that forbids it holds in every mode: {events:?}"
     );
 }
+
+#[tokio::test]
+async fn stdio_read_only_tool_still_requires_approval() {
+    // Build the trusted in-repo test MCP server binary and run it over stdio.
+    let exe = std::env::current_exe().unwrap();
+    let profile_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".into());
+    let mut build = std::process::Command::new(cargo);
+    build.args(["build", "-q", "-p", "her-mock", "--bin", "her-mcp-server"]);
+    if profile_dir.ends_with("release") {
+        build.arg("--release");
+    }
+    assert!(build.status().expect("cargo build").success());
+    let bin = profile_dir.join(format!("her-mcp-server{}", std::env::consts::EXE_SUFFIX));
+
+    let config = McpServerConfig {
+        name: "local".into(),
+        command: Some(bin.to_string_lossy().into_owned()),
+        ..Default::default()
+    };
+    let mut h = Harness::start_with(
+        Config { permission_mode: PermissionMode::AcceptEdits, ..Config::default() },
+        vec![config],
+        None,
+        |api| {
+            api.push(Script::tool_call("t0", "tool_search", json!({ "query": "repeat" })));
+            // `echo` declares `annotations.readOnlyHint = true`, which must NOT bypass approval for stdio.
+            api.push(Script::tool_call("t1", "call_tool", json!({ "name": "mcp__local__echo", "arguments": { "text": "hi" } })));
+            api.push(Script::text("done"));
+        },
+    )
+    .await;
+    let (_, events) = h.run("go").await;
+    assert!(
+        events.iter().any(|e| matches!(e, EventMsg::ApprovalRefused { .. })),
+        "stdio server must not skip approval via readOnlyHint: {events:?}"
+    );
+    let _ = h.kernel.shutdown().await;
+}

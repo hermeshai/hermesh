@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import type { McpProbeResult } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { secretish, type Row } from "./detect";
-import { splitCommand } from "./model";
 import { PopUp, type Choice } from "./parts";
 
 // A connector's settings as grouped forms (customize-design §10.9, §10.11): the sign-in, the
@@ -23,7 +22,7 @@ export function Rows({ rows, set, keyHint, valueHint }: { rows: Row[]; set: (row
     <div className="cz-kvs">
       {rows.map((r, i) => (
         <div key={i} className="cz-kvrow">
-          <input className="field mono" value={r.key} placeholder={keyHint} aria-label={keyHint} spellCheck={false} onChange={(e) => change(i, { key: e.target.value, locked: r.locked || (secretish.test(e.target.value) && !r.value) })} />
+          <input className="field mono" value={r.key} placeholder={keyHint} aria-label={keyHint} spellCheck={false} onChange={(e) => change(i, { key: e.target.value, locked: r.locked || secretish.test(e.target.value) })} />
           <input
             className="field mono"
             type={r.locked ? "password" : "text"}
@@ -33,15 +32,15 @@ export function Rows({ rows, set, keyHint, valueHint }: { rows: Row[]; set: (row
             spellCheck={false}
             onChange={(e) => change(i, { value: e.target.value })}
           />
-          <button className={`cz-lock ${r.locked ? "on" : ""}`} title={r.locked ? t("addc.locked") : t("addc.unlocked")} aria-label={r.locked ? t("addc.locked") : t("addc.unlocked")} onClick={() => change(i, { locked: !r.locked })}>
+          <button type="button" className={`cz-lock ${r.locked ? "on" : ""}`} title={r.locked ? t("addc.locked") : t("addc.unlocked")} aria-label={r.locked ? t("addc.locked") : t("addc.unlocked")} onClick={() => change(i, { locked: !r.locked })}>
             <Icon name={r.locked ? "lock" : "unlock"} />
           </button>
-          <button className="cz-lock" title={t("addc.removeRow")} aria-label={t("addc.removeRow")} onClick={() => set(rows.filter((_, j) => j !== i))}>
+          <button type="button" className="cz-lock" title={t("addc.removeRow")} aria-label={t("addc.removeRow")} onClick={() => set(rows.filter((_, j) => j !== i))}>
             <Icon name="x" />
           </button>
         </div>
       ))}
-      <button className="link cz-addrow" onClick={() => set([...rows, { key: "", value: "", locked: false }])}>
+      <button type="button" className="link cz-addrow" onClick={() => set([...rows, { key: "", value: "", locked: false }])}>
         <Icon name="plus" />
         {t("addc.addRow")}
       </button>
@@ -214,32 +213,99 @@ export function RemoteFields({ s, probed, probing, host, saved }: { s: RemoteSta
   );
 }
 
-/** A command connector's command line and its variables. */
-export function LocalFields({ command, setCommand, env, setEnv }: { command: string; setCommand: (v: string) => void; env: Row[]; setEnv: (rows: Row[]) => void }) {
+/** A local stdio command connector's execution host, structured executable/args, and environment variables. */
+export function LocalFields({
+  program,
+  setProgram,
+  args,
+  setArgs,
+  env,
+  setEnv,
+  hostName,
+  programError,
+  argsError,
+  envError,
+}: {
+  program: string;
+  setProgram: (v: string) => void;
+  args: string[];
+  setArgs: (v: string[]) => void;
+  env: Row[];
+  setEnv: (rows: Row[]) => void;
+  hostName?: string;
+  programError?: string;
+  argsError?: string;
+  envError?: string;
+}) {
   const { t } = useTranslation("customize");
-  const argv = splitCommand(command);
+  const trimmed = program.trim();
+  const argv = trimmed ? [trimmed, ...args] : [];
   return (
     <>
-      <div className="cz-gh">{t("addc.command")}</div>
+      <div className="cz-callout cz-gap">
+        <Icon name="terminal" />
+        <span>{hostName ? t("addc.execHost", { host: hostName }) : t("addc.execHostGeneric")}</span>
+      </div>
+      <div className="cz-gh">{t("addc.executable")}</div>
       <div className="fgroup">
         <div className="frow stack">
-          <input className="field mono" value={command} aria-label={t("addc.command")} spellCheck={false} onChange={(e) => setCommand(e.target.value)} />
-          <div className="cz-cmdline">
-            {argv.map((a, i) => (
-              <span key={i} className={i === 0 ? "tok p" : "tok"}>
-                {a}
-              </span>
-            ))}
-          </div>
+          <input
+            id="cz-local-program"
+            className={`field mono ${programError ? "bad" : ""}`}
+            value={program}
+            placeholder={t("addc.executablePlaceholder")}
+            aria-label={t("addc.executable")}
+            spellCheck={false}
+            onChange={(e) => setProgram(e.target.value)}
+          />
         </div>
       </div>
-      {["npx", "uvx", "bunx", "pnpm", "docker"].includes(argv[0] ?? "") && <p className="cz-fn">{t("addc.download", { program: argv[0] })}</p>}
+      {programError && <div className="cz-ferr">{programError}</div>}
+      {["npx", "uvx", "bunx", "pnpm", "docker"].includes(trimmed) && <p className="cz-fn">{t("addc.download", { program: trimmed })}</p>}
+      <div className="cz-gh">{t("addc.args")}</div>
+      <div className="fgroup">
+        <div className="frow stack">
+          <div className="cz-args">
+            {args.map((arg, i) => (
+              <div key={i} className="cz-argrow">
+                <input
+                  className="field mono"
+                  value={arg}
+                  placeholder={t("addc.argPlaceholder", { index: i + 1 })}
+                  aria-label={t("addc.argLabel", { index: i + 1 })}
+                  spellCheck={false}
+                  onChange={(e) => setArgs(args.map((a, j) => (j === i ? e.target.value : a)))}
+                />
+                <button type="button" className="cz-lock" title={t("addc.removeRow")} aria-label={t("addc.removeRow")} onClick={() => setArgs(args.filter((_, j) => j !== i))}>
+                  <Icon name="x" />
+                </button>
+              </div>
+            ))}
+            <button type="button" className="link cz-addrow" onClick={() => setArgs([...args, ""])}>
+              <Icon name="plus" />
+              {t("addc.addArg")}
+            </button>
+          </div>
+          {argv.length > 0 && (
+            <div className="cz-cmdline" aria-label={t("addc.argvPreview")}>
+              {argv.map((a, i) => (
+                <span key={i} className={i === 0 ? "tok p" : "tok"}>
+                  {a === "" ? '""' : a}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {argsError && <div className="cz-ferr">{argsError}</div>}
+      <p className="cz-fn">{t("addc.argsNote")}</p>
       <div className="cz-gh">{t("addc.env")}</div>
       <div className="fgroup">
         <div className="frow stack">
           <Rows rows={env} set={setEnv} keyHint={t("addc.varName")} valueHint={t("addc.value")} />
         </div>
       </div>
+      {envError && <div className="cz-ferr">{envError}</div>}
       <p className="cz-fn">{t("addc.envNote")}</p>
     </>
   );
