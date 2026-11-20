@@ -26,19 +26,20 @@ final class SessionDetailUITests: XCTestCase {
         openOverview()
     }
 
-    /// Session Info must not show the unreliable "Turns" row even when underlying turnCount > 0.
+    /// Task Info (SessionInfoSheet) must not show the unreliable "Turns" row even when underlying turnCount > 0.
     func testSessionInfoHidesTurnsRow() {
         openSessionFromOverview("Long history session")
         tap("session-info")
-        XCTAssertTrue(app.navigationBars["Session Info"].waitForExistence(timeout: 10), "Session Info sheet")
+        XCTAssertTrue(app.buttons["close"].waitForExistence(timeout: 10), "Task Info sheet")
+        XCTAssertTrue(app.navigationBars["Task Info"].waitForExistence(timeout: 5), "Task Info navigation bar")
         XCTAssertTrue(element(containing: "Started by").waitForExistence(timeout: 10), "Started by row")
         XCTAssertTrue(element(containing: "Coding agent").exists, "Coding agent row")
-        XCTAssertFalse(element(containing: "Turns").exists, "Session Info should not display unreliable Turns row")
-        XCTAssertFalse(element(containing: "轮数").exists, "Session Info should not display Chinese Turns row")
+        XCTAssertFalse(element(containing: "Turns").exists, "Task Info should not display unreliable Turns row")
+        XCTAssertFalse(element(containing: "轮数").exists, "Task Info should not display Chinese Turns row")
         app.swipeUp()
         XCTAssertTrue(element(containing: "Started").exists, "Started row")
-        XCTAssertFalse(element(containing: "Turns").exists, "Session Info should not display Turns row after scrolling")
-        XCTAssertFalse(element(containing: "轮数").exists, "Session Info should not display Chinese Turns row after scrolling")
+        XCTAssertFalse(element(containing: "Turns").exists, "Task Info should not display Turns row after scrolling")
+        XCTAssertFalse(element(containing: "轮数").exists, "Task Info should not display Chinese Turns row after scrolling")
         tap("close")
     }
 
