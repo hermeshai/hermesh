@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyEvents, botChat, fromSnapshot } from "@hermesh/her-client";
 import type { Event, SessionSnapshot } from "@hermesh/her-protocol";
-import { cardNow, cardOf, cardShown, connectBody, filled, toolCount, type Card } from "./cards.ts";
+import { cardNow, cardOf, cardShown, connectBody, filled, isKeyRotate, siteLoginBody, toolCount, type Card, type ConnectBody } from "./cards.ts";
 
 const usage = { input: 1, output: 1, cache_read: 0, cache_write: 0, cost: { currency: "USD", input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 } };
 
@@ -44,6 +44,30 @@ test("a card is read from what send_to_user's result carries; one that isn't a c
   assert.equal(connectBody(card), card.body);
   for (const bad of [null, "c_1", { id: "c_1" }, { ...card, ops: undefined }, { ...card, body: null }]) assert.equal(cardOf(bad), null);
   assert.equal(connectBody({ ...card, kind: "site_login" }), null, "a kind this app doesn't know");
+  assert.equal(isKeyRotate(card.body as ConnectBody), false);
+  assert.equal(isKeyRotate({ ...(card.body as ConnectBody), reconnect: true, sign_in: "none" }), true);
+  assert.equal(isKeyRotate({ ...(card.body as ConnectBody), reconnect: true, sign_in: "oauth", fields: [] }), false);
+  const loginCard: Card = {
+    id: "c_login00001",
+    kind: "site_login",
+    title: "Sign in to 127.0.0.1:4100",
+    asked_by: "owner",
+    expires_at: "2026-11-10T09:05:00Z",
+    ops: [],
+    body: {
+      origin: "http://127.0.0.1:4100",
+      host: "127.0.0.1:4100",
+      title: "Fixture Sign In",
+      fields: [
+        { id: "f1", label: "Email", kind: "email", secret: false },
+        { id: "f2", label: "Password", kind: "password", secret: true },
+      ],
+    },
+  };
+  assert.deepEqual(siteLoginBody(loginCard), loginCard.body);
+  assert.equal(connectBody(loginCard), null);
+  assert.equal(siteLoginBody(card), null);
+  assert.equal(siteLoginBody({ ...loginCard, body: { origin: "http://127.0.0.1:4100", host: "127.0.0.1:4100", fields: [] } }), null, "empty fields rejected");
   assert.equal(toolCount("Notion connected: 14 tools (notion_search, notion_fetch, …)"), 14);
   assert.equal(toolCount("Tracker connected: 1 tool (echo)"), 1);
   assert.equal(toolCount("Notion connected"), undefined);
