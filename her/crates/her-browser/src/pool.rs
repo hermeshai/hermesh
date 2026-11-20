@@ -34,6 +34,9 @@ const CLOSE_WAIT: Duration = Duration::from_secs(15);
 const RECONNECT_WAIT: Duration = Duration::from_secs(35);
 /// The file that keeps which extension the user chose, in the pool's root.
 const IN_USE_FILE: &str = "extension-in-use";
+/// Marker kept in the pool's root once an extension has connected, so a service restart still
+/// waits for it to reconnect before failing an unwatched call.
+const EXTENSION_SEEN_FILE: &str = "extension-seen";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Headless {
@@ -171,6 +174,7 @@ impl BrowserPool {
 
     pub fn with_launcher(root: PathBuf, auto_headless_off: bool, launcher: Arc<dyn Launcher>) -> Self {
         let chosen = std::fs::read_to_string(root.join(IN_USE_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+        let seen = chosen.is_some() || root.join(EXTENSION_SEEN_FILE).exists();
         Self {
             root,
             auto_headless: Some(!auto_headless_off),
@@ -178,7 +182,7 @@ impl BrowserPool {
             host: Mutex::new(None),
             extensions: Mutex::new(Vec::new()),
             chosen: Mutex::new(chosen),
-            ever_connected: AtomicBool::new(false),
+            ever_connected: AtomicBool::new(seen),
             watched: AtomicBool::new(false),
             waiting: Mutex::new(HashMap::new()),
             declined: Mutex::new(HashSet::new()),
@@ -213,7 +217,12 @@ impl BrowserPool {
     /// (§8.4.7).
     pub fn add_extension(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>) {
         self.extensions.lock().push(ExtensionLink { host, instance });
-        self.ever_connected.store(true, Ordering::Relaxed);
+        if !self.ever_connected.swap(true, Ordering::Relaxed) {
+            let _ = std::fs::create_dir_all(&self.root);
+            if let Err(err) = std::fs::write(self.root.join(EXTENSION_SEEN_FILE), "") {
+                tracing::warn!(%err, "cannot record that the extension connected");
+            }
+        }
         self.changed.notify_waiters();
     }
 
@@ -271,6 +280,10 @@ impl BrowserPool {
     /// Waits for an extension the agent can use, for as long as a client can tell the user;
     /// else for as long as one may come back by itself.
     pub async fn wait_for_extension(&self, label: &str) -> ExtensionWait {
+        self.wait_for_extension_for(label, RECONNECT_WAIT).await
+    }
+
+    async fn wait_for_extension_for(&self, label: &str, reconnect_wait: Duration) -> ExtensionWait {
         if self.has_extension() {
             return ExtensionWait::Connected;
         }
@@ -286,7 +299,7 @@ impl BrowserPool {
                 return ExtensionWait::Declined;
             }
             if !self.watched.load(Ordering::Relaxed)
-                && (!self.ever_connected.load(Ordering::Relaxed) || started.elapsed() >= RECONNECT_WAIT)
+                && (!self.ever_connected.load(Ordering::Relaxed) || started.elapsed() >= reconnect_wait)
             {
                 return ExtensionWait::NoOne;
             }
@@ -684,7 +697,28 @@ async fn close(conn: Arc<Conn>, mut closing: Closing) {
 
 #[cfg(test)]
 mod tests {
+    use super::Backend;
+    use super::BrowserConfig;
+    use super::BrowserError;
+    use super::BrowserPool;
+    use super::EmbeddedHost;
+    use super::ExtensionWait;
+    use super::Stream;
     use super::display_in;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    struct DummyHost(u64);
+
+    impl EmbeddedHost for DummyHost {
+        fn id(&self) -> u64 {
+            self.0
+        }
+
+        fn connect(&self) -> Result<Stream, BrowserError> {
+            Err(BrowserError::Launch("unused in test".into()))
+        }
+    }
 
     #[test]
     fn the_sessions_display_is_what_the_users_systemd_holds() {
@@ -697,5 +731,46 @@ mod tests {
         // Before anyone logs in, and on a server: nothing to show a window on.
         assert!(display_in("HOME=/home/alice\nXAUTHORITY=/home/alice/.Xauthority\nXDG_SESSION_TYPE=tty\nPATH=/usr/bin\n").is_empty());
         assert!(display_in("").is_empty());
+    }
+
+    #[tokio::test]
+    async fn extension_seen_persists_across_restarts_and_truly_absent_chrome_still_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("browser");
+
+        // Fresh home where no extension ever connected: unwatched call returns NoOne immediately.
+        let fresh = BrowserPool::new(root.clone(), false);
+        let started = tokio::time::Instant::now();
+        assert_eq!(fresh.wait_for_extension_for("s1", Duration::from_secs(5)).await, ExtensionWait::NoOne);
+        assert!(started.elapsed() < Duration::from_millis(500), "fresh pool waited {:?}", started.elapsed());
+
+        // Once an extension connects, a restarted pool remembers it and waits for reconnect.
+        fresh.add_extension(Arc::new(DummyHost(1)), Some("inst-1".into()));
+        fresh.remove_extension(1);
+        drop(fresh);
+
+        let restarted = Arc::new(BrowserPool::new(root.clone(), false));
+        let waiter_pool = restarted.clone();
+        let reconnect = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            waiter_pool.add_extension(Arc::new(DummyHost(2)), Some("inst-1".into()));
+        });
+        assert_eq!(restarted.wait_for_extension_for("s1", Duration::from_secs(5)).await, ExtensionWait::Connected);
+        reconnect.await.unwrap();
+
+        // When Chrome is truly quit and never reconnects, wait expires cleanly and acquire reports NO_EXTENSION.
+        let quit_pool = BrowserPool::new(root, false);
+        let started = tokio::time::Instant::now();
+        assert_eq!(quit_pool.wait_for_extension_for("s1", Duration::from_millis(250)).await, ExtensionWait::NoOne);
+        assert!(started.elapsed() >= Duration::from_millis(200), "restarted pool did not wait: {:?}", started.elapsed());
+        let err = quit_pool
+            .acquire(&BrowserConfig {
+                backend: Backend::Extension,
+                ..BrowserConfig::default()
+            })
+            .await
+            .err()
+            .expect("must fail when Chrome is not connected");
+        assert!(err.to_string().contains("extension is not connected"), "{err}");
     }
 }
