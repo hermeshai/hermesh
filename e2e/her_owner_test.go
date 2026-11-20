@@ -22,6 +22,7 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
+	"github.com/hermeshai/hermesh/internal/herhost/hertest"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
 )
@@ -149,6 +150,11 @@ func listedMachine(t *testing.T, c localv1connect.LocalServiceClient, machineID 
 // waits until Machine.her says her runs with a model ready.
 func turnHerOn(t *testing.T, c localv1connect.LocalServiceClient, machineID string) {
 	t.Helper()
+	turnHerOnWithModel(t, c, machineID, "mock/mock-1")
+}
+
+func turnHerOnWithModel(t *testing.T, c localv1connect.LocalServiceClient, machineID, model string) {
+	t.Helper()
 	if _, err := c.SetHer(context.Background(), &localv1.SetHerRequest{MachineId: machineID, Enabled: true}); err != nil {
 		t.Fatalf("SetHer: %v", err)
 	}
@@ -159,6 +165,7 @@ func turnHerOn(t *testing.T, c localv1connect.LocalServiceClient, machineID stri
 			her = m.Her
 		}
 		if her.GetRunning() && her.GetModelReady() {
+			approveHerTestModel(t, c, machineID, model)
 			return
 		}
 		if time.Now().After(deadline) {
@@ -166,6 +173,14 @@ func turnHerOn(t *testing.T, c localv1connect.LocalServiceClient, machineID stri
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func approveHerTestModel(t *testing.T, c localv1connect.LocalServiceClient, machineID, model string) {
+	t.Helper()
+	env := &herEnvironment{c: c, machine: machineID}
+	hertest.ApproveModel(t, model, func(method string, params any) []byte {
+		return herCall(t, env, "", method, params)
+	})
 }
 
 // herSetup is one her request, as HerOpen's setup takes it.

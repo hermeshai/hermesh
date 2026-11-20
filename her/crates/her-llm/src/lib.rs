@@ -10,6 +10,7 @@ pub mod canonical;
 pub mod catalog;
 pub mod credentials;
 pub mod connection;
+pub mod consent;
 pub mod directory;
 pub mod discovery;
 pub mod error;

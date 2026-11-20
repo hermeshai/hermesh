@@ -26,8 +26,8 @@ export type Fixture = {
   chatgpt?: string;
   /** The file of the methods this Mac's her acts as if it lacked, read when her starts (TestDesktopHerOlder). */
   herWithout?: string;
-  /** The her program this Mac runs, for the spec to restart it as an update does (TestDesktopHerOlder). */
-  herBin?: string;
+  /** The socket of this fixture’s Her instance, for the spec to restart it as an update does (TestDesktopHerOlder). */
+  herSocket?: string;
   /**
    * old-box, a machine from before Her (TestDesktopHerBeforeHer): the file that says so while it holds 1, and the
    * start of its hermeshd's command line, for the spec to stop it so that it starts again as it is now.
@@ -164,4 +164,11 @@ export async function clickToClose(button: Locator): Promise<void> {
       if (!page.isClosed() || !(error instanceof Error) || !/^locator\.click: Target page, context or browser has been closed(?:\n|$)/.test(error.message)) throw error;
     }),
   ]);
+}
+
+
+export async function allowFixtureAISharing(page: Page) {
+  const dialog = page.getByRole("dialog", { name: "与第三方 AI 共享数据？" });
+  await expect(dialog).toContainText("127.0.0.1:", { timeout: 15_000 });
+  await dialog.getByRole("button", { name: "允许与 AI 共享" }).click();
 }

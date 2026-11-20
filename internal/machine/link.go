@@ -224,6 +224,20 @@ func principalFrom(ctx context.Context) *Principal {
 	return p
 }
 
+// tunnelPrincipal applies the same signed identity rules on every transport.
+func (n *Machine) tunnelPrincipal(sub *identity.Subject) *Principal {
+	if sub.Kind == identity.SubjectClient {
+		n.rememberClient(sub.ID, sub.Grant)
+		return &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
+	}
+	p := &Principal{Kind: PrincipalOwner}
+	switch sub.DevicePlatform {
+	case "macos", "windows", "linux":
+		p.DesktopAnswersAllowed = true
+	}
+	return p
+}
+
 // serveTunnel serves an agent or an owner device over raw, a tunnel the
 // relay spliced or, with via non-empty, a local or direct connection
 // (serveLocal / serveDirect): the end-to-end handshake, then their calls.
@@ -247,11 +261,7 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, own
 	mHandshake.Since(hsStart)
 	mTunnels.Add(1)
 	defer mTunnels.Add(-1)
-	p := &Principal{Kind: PrincipalOwner}
-	if sub.Kind == identity.SubjectClient {
-		p = &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
-		n.rememberClient(sub.ID, sub.Grant)
-	}
+	p := n.tunnelPrincipal(sub)
 	t := &tunnel{principal: p, conn: tc}
 	n.mu.Lock()
 	n.tunnels[t] = struct{}{}
@@ -279,11 +289,7 @@ func (n *Machine) serveQUICTunnel(ctx context.Context, qconn *quic.Conn, via str
 	}
 	mTunnels.Add(1)
 	defer mTunnels.Add(-1)
-	p := &Principal{Kind: PrincipalOwner}
-	if sub.Kind == identity.SubjectClient {
-		p = &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
-		n.rememberClient(sub.ID, sub.Grant)
-	}
+	p := n.tunnelPrincipal(sub)
 	t := &tunnel{principal: p, conn: quicCloser{qconn}}
 	n.mu.Lock()
 	n.tunnels[t] = struct{}{}

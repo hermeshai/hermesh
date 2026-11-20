@@ -238,6 +238,9 @@ const (
 	// LocalServiceAnswerQuestionProcedure is the fully-qualified name of the LocalService's
 	// AnswerQuestion RPC.
 	LocalServiceAnswerQuestionProcedure = "/hermesh.local.v1.LocalService/AnswerQuestion"
+	// LocalServiceCodingConsentProcedure is the fully-qualified name of the LocalService's
+	// CodingConsent RPC.
+	LocalServiceCodingConsentProcedure = "/hermesh.local.v1.LocalService/CodingConsent"
 	// LocalServiceGetDiffProcedure is the fully-qualified name of the LocalService's GetDiff RPC.
 	LocalServiceGetDiffProcedure = "/hermesh.local.v1.LocalService/GetDiff"
 	// LocalServiceQueryWorkProcedure is the fully-qualified name of the LocalService's QueryWork RPC.
@@ -417,6 +420,7 @@ type LocalServiceClient interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
+	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
@@ -883,6 +887,12 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
 			connect.WithClientOptions(opts...),
 		),
+		codingConsent: connect.NewClient[v1.CodingConsentRequest, v13.CodingConsentResponse](
+			httpClient,
+			baseURL+LocalServiceCodingConsentProcedure,
+			connect.WithSchema(localServiceMethods.ByName("CodingConsent")),
+			connect.WithClientOptions(opts...),
+		),
 		getDiff: connect.NewClient[v1.GetDiffRequest, v13.GetDiffResponse](
 			httpClient,
 			baseURL+LocalServiceGetDiffProcedure,
@@ -980,6 +990,7 @@ type localServiceClient struct {
 	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
 	renameSession          *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
 	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
+	codingConsent          *connect.Client[v1.CodingConsentRequest, v13.CodingConsentResponse]
 	getDiff                *connect.Client[v1.GetDiffRequest, v13.GetDiffResponse]
 	queryWork              *connect.Client[v1.QueryWorkRequest, v1.QueryWorkResponse]
 	registerPush           *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
@@ -1627,6 +1638,15 @@ func (c *localServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQ
 	return nil, err
 }
 
+// CodingConsent calls hermesh.local.v1.LocalService.CodingConsent.
+func (c *localServiceClient) CodingConsent(ctx context.Context, req *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error) {
+	response, err := c.codingConsent.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // GetDiff calls hermesh.local.v1.LocalService.GetDiff.
 func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {
 	response, err := c.getDiff.CallUnary(ctx, connect.NewRequest(req))
@@ -1824,6 +1844,7 @@ type LocalServiceHandler interface {
 	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
 	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
+	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
@@ -2286,6 +2307,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
 		connect.WithHandlerOptions(opts...),
 	)
+	localServiceCodingConsentHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceCodingConsentProcedure,
+		svc.CodingConsent,
+		connect.WithSchema(localServiceMethods.ByName("CodingConsent")),
+		connect.WithHandlerOptions(opts...),
+	)
 	localServiceGetDiffHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceGetDiffProcedure,
 		svc.GetDiff,
@@ -2454,6 +2481,8 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceRenameSessionHandler.ServeHTTP(w, r)
 		case LocalServiceAnswerQuestionProcedure:
 			localServiceAnswerQuestionHandler.ServeHTTP(w, r)
+		case LocalServiceCodingConsentProcedure:
+			localServiceCodingConsentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiffProcedure:
 			localServiceGetDiffHandler.ServeHTTP(w, r)
 		case LocalServiceQueryWorkProcedure:
@@ -2763,6 +2792,10 @@ func (UnimplementedLocalServiceHandler) RenameSession(context.Context, *v1.Renam
 
 func (UnimplementedLocalServiceHandler) AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.AnswerQuestion is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CodingConsent is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {

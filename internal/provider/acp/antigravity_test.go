@@ -301,6 +301,64 @@ func TestAntigravityStandaloneFallback(t *testing.T) {
 	}
 }
 
+func TestAntigravityCodingConsentFollowsSelectedEntryPoint(t *testing.T) {
+	home, gemini, _ := isolateAntigravityEnv(t)
+	for _, key := range []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "AGY_ADC_AUTH", "GOOGLE_ENDPOINT", "GEMINI_BASE_URL"} {
+		t.Setenv(key, "")
+	}
+	agyDir := t.TempDir()
+	installFakeBinary(t, agyDir, agyExeName(), "acp", "1.5.9")
+	setFakeFile(t, agyDir, "fakeacp.auth", "oauth-personal")
+	installFakeBinary(t, filepath.Join(home, ".local", "share", "antigravity-acp"), standaloneExeName(), "", "1.4.5")
+	writeAntigravitySettings(t, gemini, antigravityACPDir, `{"auth":{"type":"oauth-personal"}}`)
+	writeAntigravitySettings(t, gemini, "antigravity-cli", `{"modelProvider":"gemini"}`)
+
+	ctx := t.Context()
+	p := &Provider{Agent: antigravityAgent(runtime.GOOS), PathEnv: agyDir}
+	spec := provider.StartSpec{WorkDir: t.TempDir(), Env: os.Environ(), Prompt: "say fictional protected task",
+		GuardInput: func(send func() error) error { return send() }}
+	_ = p.Discover(ctx) // Select the legacy route when agy is not authenticated.
+	spec.CodingRoute = p.CodingRoute(spec.WorkDir, spec.Env)
+	if spec.CodingRoute.Recipient != "Google" || !strings.Contains(spec.CodingRoute.Description, "standalone") {
+		t.Fatalf("standalone disclosure: %+v", spec.CodingRoute)
+	}
+	legacy, err := p.Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, done := collect(t, legacy)
+	legacy.Close()
+	if done.IsError {
+		t.Fatalf("standalone task: %+v", done)
+	}
+
+	setFakeFile(t, agyDir, "fakeacp.auth", "")
+	_ = p.Discover(ctx)
+	official := p.CodingRoute(spec.WorkDir, spec.Env)
+	if official.Recipient != "Google" || !strings.Contains(official.Description, "Official agy") ||
+		official.Fingerprint == spec.CodingRoute.Fingerprint {
+		t.Fatalf("official disclosure: %+v", official)
+	}
+	if session, err := p.Start(ctx, spec); err == nil {
+		session.Close()
+		t.Fatal("the standalone grant was used to launch official agy")
+	}
+	spec.CodingRoute = official
+	session, err := p.Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, done := collect(t, session)
+	session.Close()
+	if messages := of(events, provider.EventAgentMessage); done.IsError || len(messages) != 1 || messages[0].Text != "fictional protected task" {
+		t.Fatalf("official task: done=%+v messages=%+v", done, messages)
+	}
+	writeAntigravitySettings(t, gemini, "antigravity-cli", `{"modelProvider":"gateway"}`)
+	if got := p.CodingRoute(spec.WorkDir, spec.Env); got.Fingerprint != "" {
+		t.Fatalf("unidentified provider was accepted: %+v", got)
+	}
+}
+
 func TestAntigravityPrecedenceAndIncompatibleAgy(t *testing.T) {
 	t.Run("prefers_ready_agy_over_standalone_without_settings_json", func(t *testing.T) {
 		home, gemini, _ := isolateAntigravityEnv(t)

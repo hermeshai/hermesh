@@ -5,6 +5,7 @@ package codex
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -225,12 +226,16 @@ func catalogFrom(call func(method string, params, v any) error) ([]provider.Mode
 	return models, own, nil
 }
 
+func (p *Provider) CodingRoute(dir string, env []string) provider.CodingRoute {
+	return provider.InspectCodingRoute(p.Name(), p.binary(), dir, env)
+}
+
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	bin := p.binary()
 	if bin == "" {
 		return nil, errors.New("codex not found")
 	}
-	proc, err := provider.StartProc(ctx, bin, []string{"app-server"}, spec.WorkDir, spec.Env)
+	proc, err := spec.Launch(ctx, bin, []string{"app-server"})
 	if err != nil {
 		return nil, err
 	}
@@ -278,9 +283,9 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		// or by the user in the Codex app, comes back first. An error is
 		// left to the resume to report (a thread not archived, or a Codex
 		// without the method).
-		s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeRef})
+		s.callGuarded(ctx, spec.Submit, "thread/unarchive", map[string]any{"threadId": spec.ResumeRef})
 	}
-	res, err := s.call(ctx, method, params)
+	res, err := s.callGuarded(ctx, spec.Submit, method, params)
 	copied := false
 	if method == "thread/resume" && isOpenElsewhere(err) {
 		// Codex (0.169) lets one process write a thread, and that process
@@ -290,11 +295,11 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		case <-time.After(time.Second):
 		case <-ctx.Done():
 		}
-		if res, err = s.call(ctx, method, params); isOpenElsewhere(err) {
+		if res, err = s.callGuarded(ctx, spec.Submit, method, params); isOpenElsewhere(err) {
 			// Another Codex program has it (the Codex app, once the user
 			// opens the thread there, for as long as it runs): go on in a
 			// copy, which has the whole conversation.
-			if r, ferr := s.call(ctx, "thread/fork", params); ferr == nil {
+			if r, ferr := s.callGuarded(ctx, spec.Submit, "thread/fork", params); ferr == nil {
 				res, err, copied = r, nil, true
 			} else {
 				err = fmt.Errorf("%w; it is open in another Codex program on this machine (the Codex app?), and copying it failed: %v", err, ferr)
@@ -309,8 +314,10 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	var tr struct {
 		Thread struct {
-			ID string `json:"id"`
+			ID            string `json:"id"`
+			ModelProvider string `json:"modelProvider"`
 		} `json:"thread"`
+		ModelProvider   string `json:"modelProvider"`
 		Model           string `json:"model"`
 		ReasoningEffort string `json:"reasoningEffort"`
 	}
@@ -319,15 +326,20 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		return fail(errors.New("codex did not return a thread id"))
 	}
 	s.threadID = tr.Thread.ID
+	s.modelProvider = cmp.Or(tr.ModelProvider, tr.Thread.ModelProvider)
+	if spec.GuardInput != nil && !s.CodingRouteMatches(spec.CodingRoute) {
+		return fail(errors.New("Codex did not report its built-in OpenAI provider"))
+	}
 	s.emit(provider.Event{Kind: provider.EventRef, Ref: s.threadID, Model: tr.Model, Effort: tr.ReasoningEffort})
 	if copied {
 		s.emit(provider.Event{Kind: provider.EventError, Text: "the session's Codex conversation is open in another Codex program on this machine (the Codex app?), which keeps it to itself; the session goes on in a copy of it, with everything so far"})
 	}
-	if spec.Title != "" {
-		// The Codex apps list the thread by this name, not by its directory.
-		s.SetTitle(ctx, spec.Title)
-	}
-	if err := s.send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
+	if err := spec.Submit(func() error {
+		if spec.Title != "" {
+			s.SetTitle(ctx, spec.Title)
+		}
+		return s.send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images})
+	}); err != nil {
 		return fail(err)
 	}
 	return s, nil
@@ -344,12 +356,19 @@ type rpcResult struct {
 	err    error
 }
 
+// CodingRouteMatches compares the observed configuration with the app-server's
+// report about this specific thread, including when it was resumed.
+func (s *session) CodingRouteMatches(route provider.CodingRoute) bool {
+	return route.Recipient == "OpenAI" && s.modelProvider == "openai"
+}
+
 type session struct {
-	proc    *provider.Proc
-	events  chan provider.Event
-	gate    provider.Gate
-	ctx     context.Context
-	workDir string
+	modelProvider string
+	proc          *provider.Proc
+	events        chan provider.Event
+	gate          provider.Gate
+	ctx           context.Context
+	workDir       string
 
 	mu       sync.Mutex
 	nextID   int64
@@ -412,6 +431,10 @@ func (s *session) notify(method string, params any) error {
 }
 
 func (s *session) call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	return s.callGuarded(ctx, provider.StartSpec{}.Submit, method, params)
+}
+
+func (s *session) callGuarded(ctx context.Context, guard func(func() error) error, method string, params any) (json.RawMessage, error) {
 	s.mu.Lock()
 	s.nextID++
 	id := s.nextID
@@ -419,7 +442,10 @@ func (s *session) call(ctx context.Context, method string, params any) (json.Raw
 	s.pending[id] = ch
 	s.mu.Unlock()
 	b, _ := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
-	if err := s.proc.WriteLine(b); err != nil {
+	if err := guard(func() error { return s.proc.WriteLine(b) }); err != nil {
+		s.mu.Lock()
+		delete(s.pending, id)
+		s.mu.Unlock()
 		return nil, err
 	}
 	select {
