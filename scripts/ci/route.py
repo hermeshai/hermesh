@@ -9,6 +9,10 @@ import subprocess
 FLAGS = ("go", "go_macos", "go_e2e", "screen_linux", "windows", "windows_arm",
          "windows_e2e", "app", "desktop_e2e", "her_integration", "windows_app",
          "mac_native", "ios", "packaging")
+# Unknown files exercise all component smoke tests. Known files in the same diff
+# can still request a deeper suite, such as a changed desktop or Go E2E test.
+COMPONENTS = {"go", "go_macos", "screen_linux", "windows", "windows_arm", "app",
+              "windows_app", "mac_native", "ios", "packaging"}
 DOC_FILES = {"AGENTS.md", "LICENSE", "README.md", "README.zh-CN.md"}
 # First match wins. Keep shared inputs ahead of the directory that owns them.
 RULES = (
@@ -52,7 +56,7 @@ RULES = (
 
 
 def route(paths):
-    """Return selected flags, or None when affected components are unknown."""
+    """Select component and integration checks, or all suites for an unavailable diff."""
     if not paths or len(paths) > 300:
         return None
     selected = set()
@@ -64,7 +68,7 @@ def route(paths):
                 selected.update(jobs)
                 break
         else:
-            return None
+            selected.update(COMPONENTS)
         if path.endswith(".go"):
             if "_windows" in path:
                 selected.add("windows")
