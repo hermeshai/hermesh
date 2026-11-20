@@ -1,56 +1,6 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Share answers with this coding agent?": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "与此编码代理共享回答？"
-          }
-        }
-      }
-    },
-    "Allow and Send": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "允许并发送"
-          }
-        }
-      }
-    },
-    "Revoke iPhone Answer Sharing": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "撤回 iPhone 回答共享授权"
-          }
-        }
-      }
-    },
-    "iPhone answer sharing revoked.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已撤回 iPhone 回答共享授权。"
-          }
-        }
-      }
-    },
-    "%@ · %@\n%@\n\nData: %@\nPurpose: %@\n\nRevoke future sharing on this agent’s device settings. Data already sent cannot be recalled.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · %2$@\n%3$@\n\n数据：%4$@\n用途：%5$@\n\n可在设备的代理设置中撤回后续共享。已发送的数据无法收回。"
-          }
-        }
-      }
-    },
     "Update Her’s computer to review third-party AI sharing." : {
       "localizations" : {
         "zh-Hans" : {
@@ -71,22 +21,12 @@
         }
       }
     },
-    "Recipient: %@ · %@\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing in Her → Settings. Sharing expires when Her restarts." : {
+    "Provider: %@ · %@\nModel: %@\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing in Her → Settings." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "接收方：%1$@ · %2$@\n\n数据：消息、聊天记录、图片、附件内容、记忆和工具结果，其中可能包含已连接服务的数据。\n\n用途：生成回复并执行 Her 的任务，包括这台电脑上的计划任务。可在 Her → 设置中撤回授权。Her 重启后授权失效。"
-          }
-        }
-      }
-    },
-    "The coding agent’s AI recipient can’t be verified. Answers are blocked on iPhone." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法验证编码代理的 AI 接收方，iPhone 已阻止发送回答。"
+            "value" : "供应商：%1$@ · %2$@\n模型：%3$@\n\n数据：消息、聊天记录、图片、附件内容、记忆和工具结果，其中可能包含已连接服务的数据。\n\n用途：生成回复并执行 Her 的任务，包括这台电脑上的计划任务。可在 Her → 设置中撤回授权。"
           }
         }
       }
@@ -8699,6 +8639,16 @@
         }
       }
     },
+    "Fit Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "适配屏幕"
+          }
+        }
+      }
+    },
     "Pan Screen": {
       "localizations": {
         "zh-Hans": {
@@ -13819,14 +13769,8 @@
         }
       }
     },
-    "Her can read coding sessions on your computers. Starting tasks, sending follow-ups and answering agents require a verifiable AI recipient. Turn Her off to end access.": {
+    "Her can use all your computers: start coding agents in any project, read their sessions and answer them. This doesn’t expire. Turn Her off to end it.": {
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value" : "Her 可以读取你的电脑上的编码会话。启动任务、发送跟进消息或回答代理，都需要可验证的 AI 接收方。关闭 Her 即可结束访问。"
-          }
-        },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",

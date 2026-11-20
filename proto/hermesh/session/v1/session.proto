@@ -76,17 +76,18 @@ service SessionService {
   rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
-  // to AnswerQuestion on older hosts.
+  // AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
+  // and applies the same authorization and validation rules as AnswerQuestion.
   rpc AnswerLocalQuestion(AnswerQuestionRequest) returns (Session) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // CheckLocalCodingRecipient checks the destination before Her forwards
-  // content. The subsequent write still checks the authenticated Her grant.
+  // CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
+  // Her clients after coding-specific consent was removed.
   rpc CheckLocalCodingRecipient(CheckLocalCodingRecipientRequest) returns (CheckLocalCodingRecipientResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  // CodingConsent reads or changes an execution host's coding consent.
+  // CodingConsent is retained for wire compatibility with v0.1.7 owner clients
+  // after coding-specific consent was removed.
   rpc CodingConsent(CodingConsentRequest) returns (CodingConsentResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }

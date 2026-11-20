@@ -230,12 +230,7 @@ func (n *Machine) tunnelPrincipal(sub *identity.Subject) *Principal {
 		n.rememberClient(sub.ID, sub.Grant)
 		return &Principal{Kind: PrincipalClient, ClientID: sub.ID, Grant: sub.Grant}
 	}
-	p := &Principal{Kind: PrincipalOwner}
-	switch sub.DevicePlatform {
-	case "macos", "windows", "linux":
-		p.DesktopAnswersAllowed = true
-	}
-	return p
+	return &Principal{Kind: PrincipalOwner}
 }
 
 // serveTunnel serves an agent or an owner device over raw, a tunnel the

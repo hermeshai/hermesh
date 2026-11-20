@@ -47,7 +47,6 @@ typealias GrantSpec = Hermesh_Local_V1_GrantSpec
 typealias Unreachable = Hermesh_Local_V1_Unreachable
 typealias MachineAck = Hermesh_Local_V1_MachineAck
 typealias AgentStatus = Hermesh_Machine_V1_AgentStatus
-typealias CodingConsent = Hermesh_Session_V1_CodingConsentResponse
 typealias Answer = Hermesh_Session_V1_Answer
 typealias Wake = Hermesh_Local_V1_Wake
 typealias WakeCheck = Hermesh_Local_V1_WakeCheck
@@ -92,30 +91,12 @@ extension AppAPI {
         return stream("ReadToolOutput", r)
     }
 
-    func codingAnswerConsent(_ sessionID: String, approve: String = "") async throws -> CodingConsent {
-        var r = Hermesh_Local_V1_CodingConsentRequest()
-        r.consent.sessionID = sessionID
-        r.consent.scope = .mobileAnswer
-        r.consent.approveVersion = approve
-        return try await call("CodingConsent", r)
-    }
-
-    func revokeCodingAnswerConsent(machine: String, agent: String) async throws {
-        var r = Hermesh_Local_V1_CodingConsentRequest()
-        r.machineID = machine
-        r.consent.agent = agent
-        r.consent.scope = .mobileAnswer
-        r.consent.revoke = true
-        _ = try await call("CodingConsent", r, as: CodingConsent.self)
-    }
-
-    func answer(_ sessionID: String, question: String, answers: [Answer], decline: Bool, consentVersion: String = "") async throws -> Hermesh_Session_V1_Session {
+    func answer(_ sessionID: String, question: String, answers: [Answer], decline: Bool) async throws -> Hermesh_Session_V1_Session {
         var r = Hermesh_Local_V1_AnswerQuestionRequest()
         r.sessionID = sessionID
         r.questionID = question
         r.answers = answers
         r.decline = decline
-        r.codingConsentVersion = consentVersion
         let res: Hermesh_Local_V1_AnswerQuestionResponse = try await call("AnswerQuestion", r)
         return res.session
     }

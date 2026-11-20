@@ -129,20 +129,6 @@ struct MachineAgentView: View {
             } footer: {
                 Text("One short turn, in a folder of its own, to show \(title) works on \(m.machineName). It keeps no session.")
             }
-            if !model.isDemo {
-                Section {
-                    Button("Revoke iPhone Answer Sharing", role: .destructive) {
-                        Task {
-                            guard let api = model.api else { return }
-                            do {
-                                try await api.revokeCodingAnswerConsent(machine: machineID, agent: agent)
-                                model.show(String(localized: "iPhone answer sharing revoked."))
-                            } catch { model.report(error) }
-                        }
-                    }
-                    .disabled(!editable)
-                }
-            }
             if !a.models.isEmpty {
                 defaults(m, a, title: title).disabled(!editable)
             } else if a.loggedIn && (a.modelsState == "unsupported" || a.modelsState == "error") {
