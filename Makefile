@@ -17,7 +17,7 @@ test:
 	go test ./cmd/... ./internal/... ./pkg/... -count=1
 
 # The desktop app's pure logic and types, Her's client packages, the shared Swift
-# package, and the macOS signer.
+# package, and the macOS screen helper and signer.
 test-app:
 	pnpm install --frozen-lockfile
 	pnpm -r typecheck
@@ -26,6 +26,7 @@ test-app:
 	pnpm --filter @hermesh/her-client test
 	pnpm --filter @hermesh/desktop test
 	cd packages/HermeshKit && swift test
+	cd apps/screen/macos && swift test
 	cd apps/signer/macos && swift test
 
 # End-to-end with real binaries and scripted agents.
