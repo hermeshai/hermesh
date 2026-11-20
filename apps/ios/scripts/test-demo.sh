@@ -20,12 +20,11 @@ sandbox-exec -p '(version 1) (allow default) (deny network*)' \
   swift test --package-path packages/HermeshKit --disable-sandbox -c release --skip-build --filter reviewDemo > "$OUT/offline.log" 2>&1
 RUNTIME="$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")))')"
 DEVICE="$(xcrun simctl create 'Hermesh Release Review' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro "$RUNTIME")"
-# Let the simulator boot while Xcode and Go build the app.
-xcrun simctl boot "$DEVICE"
 apps/ios/scripts/build-core.sh > "$OUT/core.log" 2>&1
 BUILD=(-project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Release
        -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$OUT/derived" CODE_SIGNING_ALLOWED=NO)
 xcodebuild build-for-testing "${BUILD[@]}" > "$OUT/build.log" 2>&1
+xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
 APP="$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
 plutil -lint "$APP/PrivacyInfo.xcprivacy"
