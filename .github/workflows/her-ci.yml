@@ -49,6 +49,12 @@ jobs:
           fi
           git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: her-ci-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: PDFium for the document tests
         run: |
           case "$RUNNER_OS" in
@@ -61,7 +67,7 @@ jobs:
       - name: Rust tests, every crate
         run: cargo test --workspace --no-fail-fast
       - name: Word saved through the desktop app's serializer
-        run: HER_WORD_SAVE=desktop cargo test -p her-server --lib docx_host -- --ignored
+        run: HER_WORD_SAVE=desktop cargo test --workspace --lib docx_host -- --ignored
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -94,6 +100,12 @@ jobs:
           fi
           git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: her-ci-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: PDFium for the document tests
         run: |
           # tar takes "D:" for a host's name: the folder as bash names it.

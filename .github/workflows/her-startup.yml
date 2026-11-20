@@ -53,6 +53,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y hyperfine musl-tools
           rustup target add x86_64-unknown-linux-musl
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: her-startup-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: Verify persisted summaries and compiled assets
         run: cargo test -p her-core -p her-llm --lib
       # The gate and the measurements depend on this build alone: a failed test does not hide
