@@ -17,6 +17,9 @@ struct SessionView: View {
     /// Whether the conversation shows its end, so it follows what comes.
     @State private var atEnd = true
     @State private var position = ScrollPosition(edge: .bottom)
+    @State private var scrollBox = ConversationScrollBox()
+    /// Whether `follow()` has loaded the cached history for the current session `id`.
+    @State private var initialized = false
     @State private var confirmInterrupt = false
     @State private var renaming = false
     @State private var deleting = false
@@ -61,6 +64,13 @@ struct SessionView: View {
     /// Whether the conversation holds every event the session has had.
     private func caughtUp(_ s: Session) -> Bool { (events.last?.seq ?? 0) >= s.progress.lastEventSeq }
 
+    /// Whether the initial history for this session is loaded and ready for first-time bottom positioning.
+    private func historyReady(_ s: Session) -> Bool {
+        guard initialized else { return false }
+        if caughtUp(s) { return true }
+        return !events.isEmpty && unreadable(s) != nil
+    }
+
     private func content(_ s: Session) -> some View {
         let grant = model.grantLabel(s)
         return ScrollView {
@@ -82,8 +92,9 @@ struct SessionView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 13).padding(.bottom, 21)
+            .background(ConversationScrollFinder(box: scrollBox))
         }
-        .followsEnd(atEnd: $atEnd, position: $position) {
+        .followsEnd(id: id, ready: historyReady(s), atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if let q = s.pendingQuestion {
                 QuestionPanel(session: s, question: q).id(q.questionID)
             } else if s.isInterruptible {
@@ -256,11 +267,12 @@ struct SessionView: View {
     /// together are shown together: a long conversation read at once is laid
     /// out a few times, not once per event.
     private func follow() async {
+        initialized = false
         atEnd = true
-        position.scrollTo(edge: .bottom)
         events = model.conversations.events(id)
         draft = ""
         rebuild(running: model.session(id)?.isActive ?? false)
+        initialized = true
         guard let api = model.api else { return }
         var pending: [SessionEvent] = []
         var flush: Task<Void, Never>?
@@ -510,52 +522,208 @@ struct LiveBar<Lead: View, Words: View>: View {
     }
 }
 
+/// The UIScrollView backing a conversation ScrollView, once mounted.
+final class ConversationScrollBox {
+    weak var view: UIScrollView?
+}
+
+/// Finds the UIScrollView hosting the conversation content.
+struct ConversationScrollFinder: UIViewRepresentable {
+    let box: ConversationScrollBox
+
+    func makeUIView(context: Context) -> UIView { Finder(box: box) }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    private final class Finder: UIView {
+        let box: ConversationScrollBox
+        init(box: ConversationScrollBox) {
+            self.box = box
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var v = superview
+            while let view = v, !(view is UIScrollView) { v = view.superview }
+            box.view = v as? UIScrollView
+        }
+    }
+}
+
+private struct ScrollLayout: Equatable {
+    let contentHeight: CGFloat
+    let containerHeight: CGFloat
+    let topInset: CGFloat
+    let bottomInset: CGFloat
+}
+
 extension View {
-    /// A conversation's scrolling, as a session's page and a sub-agent's record have it: it opens at its end and
-    /// stays there as it grows unless the owner scrolled up; `bottom` stands over its bottom edge, and scrolled well
-    /// up, a button over that takes them back down.
-    func followsEnd<Bottom: View>(atEnd: Binding<Bool>, position: Binding<ScrollPosition>, @ViewBuilder bottom: @escaping () -> Bottom) -> some View {
-        modifier(FollowsEnd(atEnd: atEnd, position: position, bottom: bottom))
+    /// A conversation's scrolling, as a session's page and a sub-agent's record have it: once history is loaded and
+    /// laid out, it positions at the latest content at the bottom and stays there as updates arrive unless the owner
+    /// actively scrolls up; `bottom` stands over its bottom edge, and scrolled well up, a button over that takes them
+    /// back down.
+    func followsEnd<Bottom: View>(
+        id: String,
+        ready: Bool,
+        atEnd: Binding<Bool>,
+        position: Binding<ScrollPosition>,
+        scrollBox: ConversationScrollBox,
+        @ViewBuilder bottom: @escaping () -> Bottom
+    ) -> some View {
+        modifier(FollowsEnd(id: id, ready: ready, atEnd: atEnd, position: position, scrollBox: scrollBox, bottom: bottom))
     }
 }
 
 private struct FollowsEnd<Bottom: View>: ViewModifier {
+    let id: String
+    let ready: Bool
     @Binding var atEnd: Bool
     @Binding var position: ScrollPosition
+    let scrollBox: ConversationScrollBox
     let bottom: () -> Bottom
     /// Whether it was scrolled well up from its end, where a button brings it back.
     @State private var away = false
     /// The owner is scrolling (dragging, or the list still moving from it).
     @State private var scrolling = false
+    /// Whether initial bottom positioning after history loading and layout has settled.
+    @State private var positioned = false
+    @State private var layout = ScrollLayout(contentHeight: 0, containerHeight: 0, topInset: 0, bottomInset: 0)
+    @State private var alignTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var still
+
+    /// Distance from the bottom edge that still counts as staying at the end.
+    private let endThreshold: CGFloat = 24
+
+    private var userInteracting: Bool {
+        if scrolling { return true }
+        guard let sv = scrollBox.view else { return false }
+        return sv.isTracking || sv.isDragging || sv.isDecelerating
+    }
 
     func body(content: Content) -> some View {
         content
-            // Open at the end, and stay there as it grows unless the owner scrolled
-            // up: each time it grows, it is scrolled to its end again. Anchoring
-            // the scroll at the bottom was not enough: a conversation read in one
-            // go grew from nothing to thousands of points and stayed at its top.
-            // Only the owner's scrolling moves it off the end (right after a batch
-            // the end is briefly out of view).
             .scrollPosition($position)
             .defaultScrollAnchor(.bottom, for: .initialOffset)
-            .onScrollPhaseChange { _, phase in scrolling = phase == .interacting || phase == .decelerating }
-            .onScrollGeometryChange(for: Bool.self) { fromEnd($0) < 80 } action: { _, end in
-                if scrolling { atEnd = end }
+            .onChange(of: id) { _, _ in
+                reset()
             }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, _ in
-                if atEnd && !scrolling { position.scrollTo(edge: .bottom) }
+            .onChange(of: ready, initial: true) { _, isReady in
+                if isReady && !positioned {
+                    scheduleInitialAlign()
+                }
+            }
+            .onScrollPhaseChange { oldPhase, newPhase, context in
+                let active = newPhase == .interacting || newPhase == .decelerating
+                let wasActive = oldPhase == .interacting || oldPhase == .decelerating
+                scrolling = active
+                guard active || wasActive else { return }
+                let gap = fromEnd(context.geometry)
+                if gap > endThreshold {
+                    detachFromEnd()
+                } else if !active {
+                    atEnd = true
+                }
+            }
+            .onScrollGeometryChange(for: Bool.self) { fromEnd($0) <= endThreshold } action: { _, near in
+                guard userInteracting else { return }
+                if !near {
+                    detachFromEnd()
+                } else {
+                    atEnd = true
+                }
+            }
+            .onScrollGeometryChange(for: ScrollLayout.self) { g in
+                ScrollLayout(
+                    contentHeight: g.contentSize.height,
+                    containerHeight: g.containerSize.height,
+                    topInset: g.contentInsets.top,
+                    bottomInset: g.contentInsets.bottom
+                )
+            } action: { _, next in
+                layout = next
+                guard atEnd, !userInteracting else { return }
+                if ready {
+                    if !positioned {
+                        scheduleInitialAlign()
+                    } else {
+                        alignToBottom()
+                    }
+                } else if next.contentHeight > 0 {
+                    // Keep the bottom in view while multi-batch history is still arriving unless the owner scrolled up.
+                    alignToBottom()
+                }
             }
             .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, far in away = far }
+            .onDisappear {
+                alignTask?.cancel()
+                alignTask = nil
+            }
             .safeAreaInset(edge: .bottom) {
                 // A stack, there even with nothing in it, for the button back to the end to stand on.
                 VStack(spacing: 0) { bottom() }
                     .frame(maxWidth: .infinity)
-                    .toEndButton(away) {
+                    .toEndButton(away && !atEnd) {
                         atEnd = true
+                        positioned = true
+                        alignTask?.cancel()
+                        alignTask = nil
                         withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
                     }
             }
+    }
+
+    private func reset() {
+        alignTask?.cancel()
+        alignTask = nil
+        atEnd = true
+        away = false
+        scrolling = false
+        positioned = false
+        if ready { scheduleInitialAlign() }
+    }
+
+    private func detachFromEnd() {
+        atEnd = false
+        positioned = true
+        alignTask?.cancel()
+        alignTask = nil
+    }
+
+    /// Waits for history layout passes (text wrapping, Markdown, safeAreaInset) to settle,
+    /// then positions to the latest content at the bottom once without overriding user scroll.
+    private func scheduleInitialAlign() {
+        guard atEnd, !userInteracting else { return }
+        alignTask?.cancel()
+        alignTask = Task { @MainActor in
+            alignToBottom()
+            for delay in [0, 32, 100] {
+                if delay > 0 {
+                    try? await Task.sleep(for: .milliseconds(delay))
+                } else {
+                    await Task.yield()
+                }
+                guard !Task.isCancelled, atEnd, !userInteracting else { return }
+                alignToBottom()
+            }
+            if !Task.isCancelled, ready, layout.containerHeight > 0 {
+                positioned = true
+            }
+        }
+    }
+
+    private func alignToBottom() {
+        guard atEnd, !userInteracting else { return }
+        if let sv = scrollBox.view {
+            sv.layoutIfNeeded()
+            guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
+            let targetY = max(-sv.adjustedContentInset.top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
+                sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
+            }
+        } else {
+            position.scrollTo(edge: .bottom)
+        }
     }
 }
 
