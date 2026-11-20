@@ -223,6 +223,11 @@ jobs:
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
+      - name: end-to-end (Her consent and coding agents)
+        run: |
+          test -x her/target/debug/her
+          test -x her/target/debug/her-mock
+          go test ./e2e -run '^Test(HerConsentRefusalAllowsDirectCodingAndMobileAnswers|HerCodingHandoffRespectsApprovalAndGrant|PushHerNotices)$' -count=1 -v -timeout 10m
       - name: end-to-end (desktop app and signer)
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
   # The desktop app on Windows (docs/windows.md, W2): its end-to-end spec

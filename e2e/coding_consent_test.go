@@ -42,16 +42,21 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 		t.Skip("e2e")
 	}
 	f := recordingACP(t)
-	env := newHerEnvironmentWithCodingAgents(t, f.env)
-	w, c := env.w, env.c
+	her, mockBin := herBinaries(t)
+	mock := startHerMock(t, mockBin)
+	w := newOwnerMac(t, append(f.env, herEnv(her, herConsole(t), herHome(t, mock.models), mock.base)...), &localv1.GrantSpec{})
+	t.Cleanup(func() { w.owner.stop() })
+	c := w.app.client
+	mac := localMachine(t, c)
+	turnHerOn(t, c, mac)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
 	// Revoke Her model sharing so Her inference is unapproved.
-	herCall(t, env, "", "ai_consent/revoke", map[string]any{})
-	bot := defaultBot(t, c, env.machine)
+	herCall(t, &herEnvironment{c: c, machine: mac}, "", "ai_consent/revoke", map[string]any{})
+	bot := defaultBot(t, c, mac)
 	if _, err := c.HerSend(ctx, &localv1.HerSendRequest{
-		MachineId: env.machine, BotId: bot.ID, Text: mockSend("fictional blocked Her prompt"),
+		MachineId: mac, BotId: bot.ID, Text: mockSend("fictional blocked Her prompt"),
 	}); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "AI sharing is blocked") {
 		t.Fatalf("Her inference should be blocked without consent: %v", err)
 	}
@@ -129,19 +134,14 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 
 	// Re-approve Her model inference, restart the owner daemon (and Her with it),
 	// and verify the approval persists across restart for the same recipient.
-	approveHerTestModel(t, c, env.machine, "mock/mock-1")
+	approveHerTestModel(t, c, mac, "mock/mock-1")
 	w.restartOwner(false)
 	c = w.app.client
-	env.c = c
 	eventually(t, 2*time.Minute, "Her running again after restart", func() bool {
-		h := listedMachine(t, c, env.machine).GetHer()
+		h := listedMachine(t, c, mac).GetHer()
 		return h.GetRunning() && h.GetModelReady()
 	})
-	if _, err := c.HerSend(ctx, &localv1.HerSendRequest{
-		MachineId: env.machine, BotId: bot.ID, Text: mockSend("fictional allowed after restart"),
-	}); err != nil {
-		t.Fatalf("Her consent did not persist across restart: %v", err)
-	}
+	talk(t, c, mac, bot.ID, "fictional allowed after restart")
 }
 
 // TestHerCodingHandoffRespectsApprovalAndGrant verifies that Her delegates to

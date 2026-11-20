@@ -331,8 +331,8 @@ func TestPushHerNotices(t *testing.T) {
 
 	// Approval persists across Her restarts for the same recipient, so sending
 	// immediately after restart succeeds without re-prompting.
-	send("[[mock:send:重启后仍有效]] 重启后")
-	one("reply", "重启后仍有效")
+	send(mockSend("重启后仍有效"))
+	one("message", "重启后仍有效")
 
 	// An approval: asking before each command, she waits for the owner.
 	if _, err := c.SetHerAssistantMode(ctx, &localv1.SetHerAssistantModeRequest{MachineId: mac, BotId: bot.ID, PermissionMode: "manual"}); err != nil {
