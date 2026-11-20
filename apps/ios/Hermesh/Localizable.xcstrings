@@ -8699,6 +8699,16 @@
         }
       }
     },
+    "Fit Screen": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "适配屏幕"
+          }
+        }
+      }
+    },
     "Pan Screen": {
       "localizations": {
         "zh-Hans": {
