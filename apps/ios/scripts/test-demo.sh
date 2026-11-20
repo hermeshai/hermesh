@@ -74,6 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
 PYSEED
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
+  -only-testing:HermeshUITests/ScreenViewportUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
   -only-testing:HermeshUITests/DemoUITests/testPrivacyPolicy \
   -only-testing:HermeshUITests/DemoUITests/testChineseEntry \
