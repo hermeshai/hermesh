@@ -46,8 +46,9 @@ final class HerReviewUITests: XCTestCase {
         XCTAssertTrue(words("Welcome from Her!").waitForExistence(timeout: 15))
         tap("session-info")
         XCTAssertTrue(words("Linux Studio").waitForExistence(timeout: 10), "Her's Mac delegated to the sample Linux computer")
-        let file = app.staticTexts["src/welcome.ts"]
-        for _ in 0..<4 where !file.isHittable { app.swipeUp() }
+        let file = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "src/welcome.ts")).firstMatch
+        for _ in 0..<5 where !file.exists || !file.isHittable || file.frame.maxY > app.frame.height - 120 { app.swipeUp() }
+        XCTAssertTrue(file.exists, "src/welcome.ts")
         file.tap()
         XCTAssertTrue(words("+export const greeting").waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
