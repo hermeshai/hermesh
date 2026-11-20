@@ -187,6 +187,23 @@ pub fn write(target: &Target<'_>, edits: &[ConfigEdit], expected_version: Option
     // The file alone, then everything together.
     let first_key = edits.first().map(|e| e.key_path.as_str()).unwrap_or("");
     let table = config::check_file(&new_text, path).map_err(|e| WriteError::Invalid(vec![FieldError::new(first_key, e.to_string())]))?;
+    let old_table = toml::from_str::<toml::Table>(&old_text).unwrap_or_default();
+    if let (Some(old_servers), Some(new_servers)) = (
+        old_table.get("mcp_servers").and_then(toml::Value::as_table),
+        table.get("mcp_servers").and_then(toml::Value::as_table),
+    ) {
+        for (name, old) in old_servers {
+            if let Some(new) = new_servers.get(name)
+                && let (Some(old), Some(new)) = (server_kind(old), server_kind(new))
+                && old != new
+            {
+                return Err(WriteError::Invalid(vec![FieldError::new(
+                    &config::join_key("mcp_servers", name),
+                    format!("cannot overwrite connector '{name}' with a different transport; remove it first or choose another name"),
+                )]));
+            }
+        }
+    }
     let loaded = config::load_layers_with(&target.files, target.trusted, target.overrides, Some((target.layer, table)))
         .map_err(|e| WriteError::Invalid(vec![FieldError::new(first_key, e.to_string())]))?;
     let problems = server_problems(&loaded, edits, target.files.user.parent().unwrap_or(Path::new(".")));
@@ -209,7 +226,27 @@ pub fn write(target: &Target<'_>, edits: &[ConfigEdit], expected_version: Option
     })
 }
 
-/// Edited servers that would not start: a missing command or URL, a bad name.
+/// The kind of connector defined in a configuration layer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ServerKind {
+    Stdio,
+    Http,
+    Managed,
+}
+
+fn server_kind(server: &toml::Value) -> Option<ServerKind> {
+    if server.get("connector").is_some() {
+        Some(ServerKind::Managed)
+    } else if server.get("command").is_some() {
+        Some(ServerKind::Stdio)
+    } else if server.get("url").is_some() {
+        Some(ServerKind::Http)
+    } else {
+        None
+    }
+}
+
+/// Edited servers that would not start: a missing command or URL, or a bad name.
 fn server_problems(loaded: &LoadedConfig, edits: &[ConfigEdit], home: &Path) -> Vec<FieldError> {
     let mut problems = Vec::new();
     let mut seen = BTreeSet::new();
@@ -549,10 +586,10 @@ pub fn credential_refs(text: &str) -> BTreeSet<String> {
     names
 }
 
-/// A name `credentials/set` takes: `mcp.`, `mcp-oauth.` or `web-search.`, then 1-96 letters,
+/// A name `credentials/set` takes: `mcp.`, `mcp-stdio.`, `mcp-oauth.` or `web-search.`, then 1-96 letters,
 /// digits, `.`, `_` or `-`.
 pub fn valid_credential_name(name: &str) -> bool {
-    let rest = name.strip_prefix("mcp.").or_else(|| name.strip_prefix("mcp-oauth.")).or_else(|| name.strip_prefix(crate::web_search::CREDENTIAL_PREFIX));
+    let rest = name.strip_prefix("mcp.").or_else(|| name.strip_prefix(her_mcp::env::STDIO_CREDENTIAL_PREFIX)).or_else(|| name.strip_prefix("mcp-oauth.")).or_else(|| name.strip_prefix(crate::web_search::CREDENTIAL_PREFIX));
     rest.is_some_and(|rest| {
         !rest.is_empty() && rest.len() <= 96 && rest.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
     })
@@ -783,6 +820,29 @@ mod tests {
         let text = std::fs::read_to_string(&user).unwrap();
         for i in 0..8 {
             assert!(text.contains(&format!("[mcp_servers.s{i}]")), "{text}");
+        }
+    }
+
+    #[test]
+    fn refuses_implicit_cross_transport_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let user = dir.path().join("config.toml");
+        let t = target(&user, None, None, ConfigLayer::User);
+
+        write(&t, &[edit("mcp_servers.svc", json!({"url": "https://example.com/mcp"}))], None).unwrap();
+        let err = write(&t, &[edit("mcp_servers.svc", json!({"command": "node", "args": ["srv.js"]}))], None).unwrap_err();
+        assert!(err.to_string().contains("different transport"), "{err}");
+
+        // Removing first, then adding with the other transport is explicit and allowed.
+        write(&t, &[edit("mcp_servers.svc", Json::Null)], None).unwrap();
+        write(&t, &[edit("mcp_servers.svc", json!({"command": "node", "args": ["srv.js"]}))], None).unwrap();
+
+        for change in [
+            edit("mcp_servers.svc", json!({"url": "https://example.com/mcp"})),
+            edit("mcp_servers", json!({"svc": {"url": "https://example.com/mcp"}})),
+        ] {
+            let err = write(&t, &[change], None).unwrap_err();
+            assert!(err.to_string().contains("different transport"), "{err}");
         }
     }
 }

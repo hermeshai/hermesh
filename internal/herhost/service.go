@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
+	"unicode"
 
 	"connectrpc.com/connect"
 
@@ -175,19 +177,116 @@ func (h *Host) OpenBotSnapshot(ctx context.Context, botID string) ([]byte, error
 
 // connectorName is a name her takes for an MCP server.
 var connectorName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
+var envVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var credRefRe = regexp.MustCompile(`\$\{credential:([^}]+)\}`)
+
+// blockedCommandEnv are loader/interpreter injection variables that a command
+// connector must never set, so device-level credential updates or misconfigured
+// env rows cannot hijack process execution.
+var blockedCommandEnv = map[string]bool{
+	"LD_PRELOAD":                 true,
+	"LD_LIBRARY_PATH":            true,
+	"LD_AUDIT":                   true,
+	"DYLD_INSERT_LIBRARIES":      true,
+	"DYLD_LIBRARY_PATH":          true,
+	"DYLD_FRAMEWORK_PATH":        true,
+	"DYLD_FALLBACK_LIBRARY_PATH": true,
+	"NODE_OPTIONS":               true,
+	"PYTHONSTARTUP":              true,
+	"PYTHONPATH":                 true,
+	"PYTHONHOME":                 true,
+	"PERL5OPT":                   true,
+	"RUBYOPT":                    true,
+	"BASH_ENV":                   true,
+	"ENV":                        true,
+	"IFS":                        true,
+	"ZDOTDIR":                    true,
+}
+
+// ValidateCommandConnector checks the command settings before signing and applying them.
+func ValidateCommandConnector(cc *identityv1.SetHerCommandConnector) error {
+	name := cc.GetName()
+	if !connectorName.MatchString(name) {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector's name is 1 to 32 letters, digits, '_' or '-'"))
+	}
+	if cc.GetRemove() {
+		return nil
+	}
+	cmd := cc.GetCommand()
+	if cmd == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector started as a command needs its command"))
+	}
+	if strings.TrimSpace(cmd) != cmd || strings.Contains(cmd, "${") || strings.ContainsFunc(cmd, func(r rune) bool { return unicode.IsControl(r) }) {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("command must be a single executable name or path without control characters or variable references"))
+	}
+	if strings.HasSuffix(strings.ToLower(cmd), ".bat") || strings.HasSuffix(strings.ToLower(cmd), ".cmd") {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("batch scripts (.bat/.cmd) are not allowed; specify the executable binary directly"))
+	}
+	for _, arg := range cc.GetArgs() {
+		if strings.ContainsRune(arg, '\x00') {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("command arguments cannot contain NUL bytes"))
+		}
+		if credRefRe.MatchString(arg) {
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("credentials cannot be passed in command arguments; pass them in env instead"))
+		}
+	}
+	prefix := "mcp." + name
+	for k, v := range cc.GetEnv() {
+		if !envVarName.MatchString(k) {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid environment variable name %q", k))
+		}
+		if blockedCommandEnv[strings.ToUpper(k)] {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("environment variable %q is not allowed for command connectors", k))
+		}
+		if strings.ContainsRune(v, '\x00') {
+			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("environment variable %q contains NUL bytes", k))
+		}
+		for _, m := range credRefRe.FindAllStringSubmatch(v, -1) {
+			if strings.EqualFold(k, "PATH") {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("PATH cannot contain a saved credential"))
+			}
+			cred := m[1]
+			if cred != prefix && !strings.HasPrefix(cred, prefix+".") && !strings.HasPrefix(cred, "mcp-stdio."+name+".") {
+				return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("environment variable %q can only reference credentials for this connector", k))
+			}
+		}
+	}
+	return nil
+}
 
 // CommandConnector adds, changes or removes a connector her starts as a
 // command (SetHerCommandConnector): mcp_servers.<name> in her's user
 // configuration, its other settings kept.
 func (h *Host) CommandConnector(ctx context.Context, cc *identityv1.SetHerCommandConnector) error {
-	if !connectorName.MatchString(cc.GetName()) {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector's name is 1 to 32 letters, digits, '_' or '-'"))
+	if err := ValidateCommandConnector(cc); err != nil {
+		return err
+	}
+	c, err := h.dial(ctx, false)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if !cc.GetRemove() {
+		res, err := c.call(ctx, "config/read", []byte("{}"))
+		if err := answered("config/read", res, err); err != nil {
+			return err
+		}
+		var cfg struct {
+			Config struct {
+				MCPServers map[string]struct {
+					URL       string `json:"url"`
+					Connector string `json:"connector"`
+				} `json:"mcp_servers"`
+			} `json:"config"`
+		}
+		if json.Unmarshal(res.Result, &cfg) == nil {
+			if prev, ok := cfg.Config.MCPServers[cc.GetName()]; ok && (prev.URL != "" || prev.Connector != "") {
+				return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("connector %q already exists as a remote or managed connector; remove it first or choose another name", cc.GetName()))
+			}
+		}
 	}
 	edit := map[string]any{"key_path": "mcp_servers." + cc.GetName(), "value": nil}
 	if !cc.GetRemove() {
-		if cc.GetCommand() == "" {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector started as a command needs its command"))
-		}
 		// Empty fields go: null removes a field in an upsert.
 		server := map[string]any{"command": cc.GetCommand(), "args": nil, "env": nil}
 		if len(cc.GetArgs()) > 0 {
@@ -198,11 +297,6 @@ func (h *Host) CommandConnector(ctx context.Context, cc *identityv1.SetHerComman
 		}
 		edit["value"], edit["merge"] = server, "upsert"
 	}
-	c, err := h.dial(ctx, false)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
 	params, _ := json.Marshal(map[string]any{"layer": "user", "edits": []any{edit}})
 	res, err := c.call(ctx, "config/write", params)
 	return answered("config/write", res, err)

@@ -138,6 +138,14 @@ pub fn process_lookup(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
+/// Credential names reserved for the environment of a local stdio connector.
+pub const STDIO_CREDENTIAL_PREFIX: &str = "mcp-stdio.";
+
+/// Credentials that a remote connector can expand.
+pub fn remote_credential_names<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    credential_names(values).into_iter().filter(|name| !name.starts_with(STDIO_CREDENTIAL_PREFIX)).collect()
+}
+
 /// The `${credential:<name>}` names in `values`.
 pub fn credential_names<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut names = Vec::new();
@@ -159,6 +167,14 @@ pub fn credential_names<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_connectors_only_resolve_remote_credentials() {
+        assert_eq!(
+            remote_credential_names(["Bearer ${credential:mcp.service}", "${credential:mcp-stdio.local.saved}"]),
+            ["mcp.service"],
+        );
+    }
 
     fn lookup(name: &str) -> Option<String> {
         match name {

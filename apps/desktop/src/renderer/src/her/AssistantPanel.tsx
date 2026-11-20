@@ -313,8 +313,8 @@ function ConnectorTray() {
   const needs = (s: McpServerView) => s.status.state === "failed" || s.status.state === "needs_login" || (!!s.connector && s.auth_state !== "logged_in");
   const attention = on.filter(needs).length;
   const room = on.length > 4 ? 3 : 4;
-  // The console takes a page and an item of lowercase letters (main's her-console); others open its list.
-  const open = (name?: string) => her.openConsole(name && /^[a-z]+$/.test(name) ? `connectors/${name}` : "connectors");
+  // The console takes a page and a valid connector name; others open its list.
+  const open = (name?: string) => her.openConsole(name && /^[A-Za-z0-9_-]{1,32}$/.test(name) ? `connectors/${encodeURIComponent(name)}` : "connectors");
   return (
     <div className="hp-card wide hp-tray" data-testid="her-connectors-tray">
       <button className="hp-tray-head" data-testid="her-connectors" onClick={() => open()}>

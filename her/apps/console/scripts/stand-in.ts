@@ -4,10 +4,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { connect, type Socket } from "node:net";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { PROTOCOL_VERSION } from "@hermesh/her-protocol";
+import { validateLocalRows } from "../src/customize/detect.ts";
 
 // The console's routes as hermeshd serves them, in front of a real `her serve --listen unix://…`
 // (as packages/her-client/src/http.e2e.test.ts stands in for hermeshd in front of the mock her):
@@ -411,15 +412,45 @@ export async function startStandIn(opts: { port?: number; bin?: string; dist?: s
         return send(res, 200, result);
       }
 
+      if (route === "host" && req.method === "GET") {
+        return send(res, 200, { machine_id: "local", machine_name: hostname() });
+      }
+
       if (route === "command-connector" && req.method === "POST") {
         // The owner's device would show this to its signer, and apply it once signed.
         const c = JSON.parse((await body(req)).toString("utf8")) as { name: string; command?: string; args?: string[]; env?: Record<string, string>; remove?: boolean };
-        const value = c.remove ? null : { command: c.command, ...(c.args?.length ? { args: c.args } : {}), ...(c.env && Object.keys(c.env).length ? { env: c.env } : {}) };
+        if (!/^[A-Za-z0-9_-]{1,32}$/.test(c.name ?? "")) return refuse(res, 400, "a connector's name is 1 to 32 letters, digits, '_' or '-'");
+        if (!c.remove) {
+          const cmd = c.command ?? "";
+          if (!cmd || cmd.trim() !== cmd || cmd.includes("${") || /[\x00-\x1f\x7f]/.test(cmd))
+            return refuse(res, 400, "command must be a single executable name or path without control characters or variable references");
+          if (/\.(bat|cmd)$/i.test(cmd)) return refuse(res, 400, "batch scripts (.bat/.cmd) are not allowed; specify the executable binary directly");
+          for (const a of c.args ?? []) {
+            if (a.includes("\0")) return refuse(res, 400, "command arguments cannot contain NUL bytes");
+            if (/\$\{credential:[^}]+\}/.test(a)) return refuse(res, 400, "credentials cannot be passed in command arguments; pass them in env instead");
+          }
+          const rows = Object.entries(c.env ?? {}).map(([key, value]) => ({ key, value, locked: false }));
+          const { argsError, envError } = validateLocalRows(c.name, c.args ?? [], rows);
+          if (argsError || envError) return refuse(res, 400, "invalid arguments or environment");
+        }
         const own = await HerConnection.open(socketPath);
-        const answer = await own.call("config/write", { layer: "user", edits: [{ key_path: `mcp_servers.${JSON.stringify(c.name)}`, value, merge: "replace" }] });
-        own.close();
-        if (answer.error) return refuse(res, 400, (answer.error as { message: string }).message);
-        return send(res, 200, {});
+        try {
+          if (!c.remove) {
+            const cur = await own.call("config/read", {});
+            const prev = (cur.result as { config?: { mcp_servers?: Record<string, { url?: string; connector?: string }> } })?.config?.mcp_servers?.[c.name];
+            if (prev && (prev.url || prev.connector))
+              return refuse(res, 400, `connector ${JSON.stringify(c.name)} already exists as a remote or managed connector; remove it first or choose another name`);
+          }
+          const value = c.remove ? null : { command: c.command, args: c.args?.length ? c.args : null, env: c.env && Object.keys(c.env).length ? c.env : null };
+          const answer = await own.call("config/write", {
+            layer: "user",
+            edits: [{ key_path: `mcp_servers.${JSON.stringify(c.name)}`, value, merge: c.remove ? "replace" : "upsert" }],
+          });
+          if (answer.error) return refuse(res, 400, (answer.error as { message: string }).message);
+          return send(res, 200, {});
+        } finally {
+          own.close();
+        }
       }
 
       if (req.method !== "GET") return refuse(res, 405, "GET only");

@@ -223,6 +223,10 @@ jobs:
             export CARGO_NET_GIT_FETCH_WITH_CLI=true
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
+      - name: Custom MCP connectors through the owner and execution host
+        run: go test ./e2e -run '^TestHerCommandConnector$' -count=1 -v -timeout 5m
+      - name: Custom MCP connectors in the console
+        run: pnpm --filter @hermesh/her-console e2e --grep 'custom HTTP and stdio connectors'
       - name: end-to-end (desktop app and signer)
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
   # The desktop app on Windows (docs/windows.md, W2): its end-to-end spec

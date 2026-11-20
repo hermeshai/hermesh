@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { McpServerView, SkillEntry, SkillsListResult } from "@hermesh/her-protocol";
+import { detect, hasShellSyntax, validateLocalRows, validateProgram } from "./detect.ts";
 import { brokenSkills, credentialName, credentialRef, isCommand, joinCommand, monogram, nextInLine, quoteKey, skillItems, splitCommand, statusOf, withCredential } from "./model.ts";
 
 // The Connectors and Skills pages' reading of her's answers.
@@ -93,4 +94,36 @@ test("names: a tile's letters, and a key path's segment", () => {
   assert.equal(monogram("sim"), "SI");
   assert.equal(quoteKey("github_2"), "github_2");
   assert.equal(quoteKey("my.server"), '"my.server"');
+});
+
+test("stdio validation: rejects shell syntax, batch scripts, interpolated programs, credentials in args, and blocked env vars", () => {
+  assert.equal(hasShellSyntax("npx -y @scope/server | cat"), true);
+  assert.equal(hasShellSyntax("node server.js && whoami"), true);
+  assert.equal(hasShellSyntax("node $(pwd)/server.js"), true);
+  assert.equal(hasShellSyntax('node "a|b" --flag'), false);
+  assert.deepEqual(detect("node server.js && id"), { kind: "bad", why: "shell" });
+  assert.deepEqual(detect('{"mcpServers":{"demo":{"command":"node","args":["a b","--port","3000"]}}}'), {
+    kind: "local",
+    argv: ["node", "a b", "--port", "3000"],
+    env: [],
+    json: true,
+    name: "demo",
+  });
+
+  assert.equal(validateProgram(""), "empty");
+  assert.equal(validateProgram("npx -y @scope/server"), "space");
+  assert.equal(validateProgram("/Applications/My App.app/Contents/MacOS/mcp"), null);
+  assert.equal(validateProgram("${HOME}/bin/mcp"), "var");
+  assert.equal(validateProgram("npx.cmd"), "batch");
+  assert.equal(validateProgram("run.bat"), "batch");
+  assert.equal(validateProgram("node"), null);
+
+  assert.deepEqual(validateLocalRows("demo", ["--token=${credential:mcp.demo.API_KEY}"], []), { argsError: "cred" });
+  assert.deepEqual(validateLocalRows("demo", [], [{ key: "LD_PRELOAD", value: "/tmp/x.so", locked: false }]), {
+    envError: { kind: "blocked", key: "LD_PRELOAD" },
+  });
+  assert.deepEqual(validateLocalRows("demo", [], [{ key: "TOKEN", value: "${credential:mcp.other.TOKEN}", locked: false }]), {
+    envError: { kind: "scope", key: "TOKEN" },
+  });
+  assert.deepEqual(validateLocalRows("demo", ["--flag"], [{ key: "API_KEY", value: "secret", locked: true }]), {});
 });
