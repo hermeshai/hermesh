@@ -92,6 +92,29 @@ import Testing
     // In the conversation: the card once her let it through, with Her's words.
     let sent = snapshot([said("u1", "notion", ts: 1), reply("a1", [call("k1", "send_to_user", ["type": "card", "text": "Connect it?"])], ts: 2), result("k1", details: ["card": raw])])
     #expect(herChat(sent).last?.kind == .card(raw, text: "Connect it?"))
+
+    // Key rotation card for an existing token connector.
+    let rotateRaw: JSON = ["id": "card_rot", "kind": "connect", "title": "Update key for Docs", "asked_by": "owner", "expires_at": "2026-11-09T12:00:00Z",
+                           "ops": [["method": "credentials/set", "params": ["name": "mcp.docs", "value": "<value:f1>"]]],
+                           "body": ["name": "docs", "url": "https://docs.example.test/mcp", "host": "docs.example.test", "reconnect": true, "sign_in": "none", "fields": [["id": "f1", "label": "Authorization", "secret": true]]]]
+    let rotate = try #require(HerCard(rotateRaw))
+    #expect(rotate.connect?.isKeyRotate == true && rotate.connect?.url == "https://docs.example.test/mcp")
+
+    // Site login card: parsed from real origin & DOM-inspected fields, answered with fill (no ops).
+    let siteRaw: JSON = ["id": "card_site", "kind": "site_login", "title": "Sign in to 127.0.0.1:4100", "asked_by": "her", "expires_at": "2026-11-09T12:05:00Z",
+                         "ops": [],
+                         "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "title": "Fixture Sign In",
+                                  "fields": [["id": "f1", "label": "Email", "kind": "email", "secret": false],
+                                             ["id": "f2", "label": "Password", "kind": "password", "secret": true]]]]
+    let site = try #require(HerCard(siteRaw))
+    #expect(site.connect == nil && site.siteLogin?.origin == "http://127.0.0.1:4100" && site.siteLogin?.fields.count == 2)
+    #expect(site.askedBy == "her")
+    let fillAnswer = site.fill(["f1": "dummy@example.test", "f2": "DUMMY_PASS_1"])
+    #expect(fillAnswer["decision"].string == "fill" && fillAnswer["ops"].isNull && fillAnswer["fields"]["f2"].string == "DUMMY_PASS_1")
+    // Empty site_login fields are rejected.
+    let emptySite: JSON = ["id": "card_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                           "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "fields": []]]
+    #expect(HerCard(emptySite)?.siteLogin == nil)
 }
 
 @Test func theOnboardingConnectsAModelInTheConversation() {

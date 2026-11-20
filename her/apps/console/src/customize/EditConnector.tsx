@@ -6,9 +6,9 @@ import { Dialog } from "../components";
 import { errorText } from "../format";
 import { useHer } from "../her";
 import { LocalFields, RemoteFields, type Auth, type Client, type RemoteState, type Transport } from "./ConnectorFields";
-import type { Row } from "./detect";
+import { validateLocalRows, validateProgram, type Row } from "./detect";
 import { localIdentity, remoteIdentity } from "./identity";
-import { credentialName, credentialRef, isCommand, joinCommand, splitCommand, withCredential } from "./model";
+import { credentialName, credentialRef, isCommand, withCredential } from "./model";
 import { ServerTile } from "./parts";
 import type { Customize } from "./useCustomize";
 
@@ -59,7 +59,7 @@ const PROBE_DELAY = 600;
 
 export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; server: McpServerView; onClose: () => void; onSaved: (name: string) => void }) {
   const { t } = useTranslation("customize");
-  const { rpc, show } = useHer();
+  const { rpc, show, host } = useHer();
   const name = server.name;
   // What the file says about the server, references kept (config/read).
   const raw = ((c.config?.config as { mcp_servers?: Record<string, Raw> })?.mcp_servers?.[name] ?? {}) as Raw;
@@ -82,11 +82,12 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
   const [prefix, setPrefix] = useState(tokenEntry ? String(tokenEntry[1]).slice(0, String(tokenEntry[1]).indexOf("${credential:")) : "Bearer ");
   const [headers, setHeaders] = useState<Row[]>(() => rowsOf(Object.fromEntries(Object.entries(raw.headers ?? {}).filter(([k]) => k !== tokenEntry?.[0]))));
   const [transport, setTransport] = useState<Transport>(raw.transport ?? urlSays(raw.url ?? ""));
-  const [command, setCommand] = useState(raw.command ? joinCommand(raw.command, raw.args ?? []) : "");
+  const [program, setProgram] = useState(raw.command ?? "");
+  const [args, setArgs] = useState<string[]>(raw.args ?? []);
   const [env, setEnv] = useState<Row[]>(() => rowsOf(raw.env));
   const [probed, setProbed] = useState<McpProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
-  const [errors, setErrors] = useState<{ url?: string; command?: string; other?: string }>({});
+  const [errors, setErrors] = useState<{ url?: string; command?: string; args?: string; env?: string; other?: string }>({});
   const [busy, setBusy] = useState(false);
   const probeId = useRef<string | null>(null);
 
@@ -136,16 +137,22 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
   const secretSaved = !!raw.oauth?.client_secret && credentialRef(raw.oauth.client_secret) !== null;
   // Signing in is due when OAuth is newly chosen, or what it signs in to or as has changed.
   const signIn = remote && auth === "oauth" && (startAuth !== "oauth" || url.trim() !== (raw.url ?? "") || client !== startClient || clientId.trim() !== (raw.oauth?.client_id ?? "") || server.status.state === "needs_login");
-  const okToSave = remote ? (auth === "token" ? !!token.trim() || tokenSaved : auth === "oauth" && client === "own" ? !!clientId.trim() : true) : splitCommand(command).length > 0;
+  const okToSave = remote ? (auth === "token" ? !!token.trim() || tokenSaved : auth === "oauth" && client === "own" ? !!clientId.trim() : true) : !!program.trim();
 
   const save = async () => {
     const e: typeof errors = {};
-    const argv = splitCommand(command);
+    const trimmedProgram = program.trim();
     if (remote && !/^https?:\/\//i.test(url.trim())) e.url = t("edit.errUrl");
-    if (!remote && !argv.length) e.command = t("edit.errCommand");
+    if (!remote) {
+      const pIssue = validateProgram(program);
+      if (pIssue) e.command = t(`addc.errProgram.${pIssue}`);
+      const rowCheck = validateLocalRows(name, args, env);
+      if (rowCheck.argsError) e.args = t(`addc.errArgs.${rowCheck.argsError}`);
+      if (rowCheck.envError) e.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
+    }
     // One service, one connector (mcp-design §13.10); only a change of address counts, so
     // entries that were alike already can still be edited.
-    const id = remote ? remoteIdentity(url) : argv.length ? localIdentity(argv[0], argv.slice(1)) : null;
+    const id = remote ? remoteIdentity(url) : trimmedProgram ? localIdentity(trimmedProgram, args) : null;
     const same = id && id !== server.identity && c.servers.find((s) => s.identity === id && s.name !== name);
     if (same) e[remote ? "url" : "command"] = t("addc.duplicate", { name: same.name });
     setErrors(e);
@@ -178,9 +185,7 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
         if (startAuth === "token" && auth !== "token") void rpc?.request("credentials/delete", { name: tokenCredential }).catch(() => {});
         if (startAuth === "oauth" && auth !== "oauth") void rpc?.request("mcp/logout", { name }).catch(() => {});
       } else {
-        const vars = tableOf(env, (key) => credentialName(name, key), secrets) ?? {};
-        for (const [credential, value] of secrets) await rpc!.request("credentials/set", { name: credential, value });
-        check = await c.saveCommand({ name, command: argv[0], args: argv.slice(1), env: vars });
+        check = await c.saveCommand({ name, command: trimmedProgram, args }, env);
       }
       onSaved(name);
       close();
@@ -206,7 +211,7 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
   const fields: RemoteState = { auth, setAuth, client, setClient, clientId, setClientId, clientSecret, setClientSecret, token, setToken, header, setHeader, prefix, setPrefix, headers, setHeaders, transport, setTransport };
   const title = t("edit.title", { name });
   return (
-    <Dialog label={title} width={520} className="cz-sheet cz-add" onClose={close}>
+    <Dialog label={title} width={520} className="cz-sheet cz-add" onClose={busy ? () => {} : close}>
       <h3>{title}</h3>
       <div className="cz-add-body" data-step={remote ? "remote" : "local"}>
         <div className="cz-summary">
@@ -232,8 +237,18 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
           </>
         ) : (
           <>
-            <LocalFields command={command} setCommand={(v) => (setCommand(v), setErrors({}))} env={env} setEnv={setEnv} />
-            {errors.command && <div className="cz-ferr">{errors.command}</div>}
+            <LocalFields
+              program={program}
+              setProgram={(v) => (setProgram(v), setErrors((prev) => ({ ...prev, command: undefined })))}
+              args={args}
+              setArgs={(v) => (setArgs(v), setErrors((prev) => ({ ...prev, args: undefined })))}
+              env={env}
+              setEnv={(v) => (setEnv(v), setErrors((prev) => ({ ...prev, env: undefined })))}
+              hostName={host?.machine_name}
+              programError={errors.command}
+              argsError={errors.args}
+              envError={errors.env}
+            />
             <p className="cz-trust">{t("addc.localTrust")}</p>
           </>
         )}
@@ -241,7 +256,7 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
       </div>
       <div className="sheet-foot">
         <div className="left" />
-        <button className="btn" onClick={close}>
+        <button className="btn" disabled={busy} onClick={close}>
           {t("edit.cancel")}
         </button>
         <button className="btn primary" disabled={busy || !okToSave} onClick={() => void save()}>

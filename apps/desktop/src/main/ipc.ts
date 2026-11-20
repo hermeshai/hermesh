@@ -171,8 +171,8 @@ export function registerIPC() {
       const m = id(machineId);
       if (!m) throw new Error("no machine");
       const name = world.machines.find((x) => x.machineId === m)?.machineName ?? m;
-      // A console page and item by its address's hash, e.g. "browser/connect"; nothing else.
-      const at = typeof page === "string" && /^[a-z]+(\/[a-z]+)?$/.test(page) ? page : undefined;
+      // A console page and item by its address's hash, e.g. "browser/connect" or "connectors/my-mcp"; nothing else.
+      const at = typeof page === "string" && /^[a-z]+(\/[A-Za-z0-9_-]{1,32})?$/.test(page) ? page : undefined;
       return showHerConsole(m, i18n.t("main:herConsole", { name }), () => herConsoleURL(m), at);
     }),
   );

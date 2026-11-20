@@ -6,6 +6,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashMap;
 
 /// A card as the apps draw it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -17,27 +18,53 @@ pub struct Card {
     /// they know from `body`, in the owner's language.
     pub title: String,
     pub asked_by: AskedBy,
-    /// RFC 3339: 24 hours after the card was prepared.
+    /// RFC 3339: when the card expires (24 hours for `connect`, 5 minutes for `site_login`).
     pub expires_at: String,
     /// The console calls approving makes, in order, as the console sends them. A value the owner
-    /// types stands as the whole string `"<value:FIELD_ID>"`.
+    /// types stands as the whole string `"<value:FIELD_ID>"`. Empty for `site_login`.
     pub ops: Vec<CardOp>,
-    pub body: ConnectBody,
+    pub body: CardBody,
+}
+
+impl Card {
+    pub fn connect_body(&self) -> Option<&ConnectBody> {
+        match &self.body {
+            CardBody::Connect(body) if self.kind == CardKind::Connect => Some(body),
+            _ => None,
+        }
+    }
+
+    pub fn site_login_body(&self) -> Option<&SiteLoginBody> {
+        match &self.body {
+            CardBody::SiteLogin(body) if self.kind == CardKind::SiteLogin => Some(body),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CardKind {
-    /// A connector added by its address, or one that signs in again.
+    /// A connector added by its address, or one that signs in again / updates its key.
     Connect,
+    /// A website's sign-in form filled once in an isolated browser, never saved or auto-submitted.
+    SiteLogin,
 }
 
 impl CardKind {
     pub fn as_str(self) -> &'static str {
         match self {
             CardKind::Connect => "connect",
+            CardKind::SiteLogin => "site_login",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(untagged)]
+pub enum CardBody {
+    Connect(ConnectBody),
+    SiteLogin(SiteLoginBody),
 }
 
 /// What began the task that made the card: the owner's message, or something else that reached
@@ -88,6 +115,38 @@ pub struct CardField {
     pub id: String,
     pub label: String,
     /// Masked as it is typed.
+    pub secret: bool,
+}
+
+/// A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SiteLoginBody {
+    /// Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures).
+    pub origin: String,
+    /// The origin's host (with non-default port), shown large on the card.
+    pub host: String,
+    /// The page's title, sanitized and clipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Verified login fields on the page (never authored by the model).
+    pub fields: Vec<SiteLoginField>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SiteLoginFieldKind {
+    Email,
+    Username,
+    Password,
+    OneTimeCode,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SiteLoginField {
+    pub id: String,
+    pub label: String,
+    pub kind: SiteLoginFieldKind,
+    /// Masked as it is typed (`password` and `one_time_code`).
     pub secret: bool,
 }
 
@@ -145,6 +204,8 @@ pub struct CardsAnswerParams {
 pub enum CardAnswer {
     /// `ops` are the card's, each `"<value:ID>"` replaced by what the owner typed.
     Approve { ops: Vec<CardOp> },
+    /// For `site_login`: values keyed by field id (`f1`, `f2`, …); carries no `ops`.
+    Fill { fields: HashMap<String, String> },
     Decline,
 }
 
@@ -153,6 +214,7 @@ impl std::fmt::Debug for CardAnswer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CardAnswer::Approve { ops } => f.debug_struct("Approve").field("ops", &ops.len()).finish_non_exhaustive(),
+            CardAnswer::Fill { fields } => f.debug_struct("Fill").field("fields", &fields.len()).finish_non_exhaustive(),
             CardAnswer::Decline => f.write_str("Decline"),
         }
     }

@@ -181,6 +181,10 @@ pub(crate) enum HubCmd {
         card_id: String,
         reply: oneshot::Sender<Option<Arc<her_core::cards::Cards>>>,
     },
+    /// The conversation's live isolated built-in browser session, for `site_login` cards.
+    BuiltinBrowser {
+        reply: oneshot::Sender<Option<Arc<her_browser::BrowserSession>>>,
+    },
     /// A run started here has ended.
     RunEnded,
     /// A bot's conversation: news from the mesh host (`mesh/news`). The receiver in the reply
@@ -785,6 +789,9 @@ impl Hub {
             }
             HubCmd::Cards { card_id, reply } => {
                 let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.cards(&card_id)));
+            }
+            HubCmd::BuiltinBrowser { reply } => {
+                let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.builtin_browser()));
             }
             HubCmd::RunEnded => {
                 self.shared.routine_runs.fetch_sub(1, Ordering::Relaxed);

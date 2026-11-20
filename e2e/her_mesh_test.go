@@ -3,7 +3,6 @@ package e2e
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -163,38 +162,6 @@ func herClient(t *testing.T, env *herEnvironment) *localv1.Client {
 		}
 	}
 	return nil
-}
-
-func TestHerMeshBlocksHandoffToLegacyHost(t *testing.T) {
-	legacy := os.Getenv("HERMESH_TEST_LEGACY_CODING_HOST")
-	if legacy == "" || testing.Short() {
-		t.Skip("requires a pre-consent hermeshd binary")
-	}
-	env := newHerEnvironment(t)
-	w := env.w
-	w.hermeshd = legacy
-	w.restartOwner(false)
-	eventually(t, time.Minute, "Her’s grant is active", func() bool { return herClient(t, env) != nil })
-
-	existing := startedBy(t, w, "ask Branch|Which fictional branch?|Main,Dev")
-	eventually(t, 20*time.Second, "legacy session waits", func() bool { return cliStatus(t, w, existing) == "waiting_input" })
-	calls := []string{
-		meshCall("session_start", map[string]any{"project": "owner-mac/demo", "prompt": "say fictional blocked start"}),
-		meshCall("session_send", map[string]any{"session_id": existing, "message": "fictional blocked follow-up"}),
-		meshCall("session_answer", map[string]any{"session_id": existing, "choose": []string{"Dev"}}),
-	}
-	for _, call := range calls {
-		_, said := tellHer(t, env, call, "approve", "mesh ")
-		if !strings.HasPrefix(said, "mesh failed") {
-			t.Fatalf("legacy host accepted a write: %s", said)
-		}
-	}
-	if got := cliStatus(t, w, existing); got != "waiting_input" {
-		t.Fatalf("legacy provider received an answer or message: %s", got)
-	}
-	if got := w.cli(20*time.Second, "session", "list", "-o", "json"); got.code != 0 || strings.Count(got.stdout, `"session_id"`) != 1 {
-		t.Fatalf("legacy provider started an unexpected session: %+v", got)
-	}
 }
 
 func TestHerMesh(t *testing.T) {

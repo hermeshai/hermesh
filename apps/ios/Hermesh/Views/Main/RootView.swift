@@ -9,16 +9,20 @@ struct RootView: View {
     var body: some View {
         @Bindable var model = model
         Group {
-            switch model.phase {
-            case .starting:
-                MovingMark(size: 72).frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .failed(let message):
-                ContentUnavailableView("Hermesh couldn’t start", systemImage: "exclamationmark.triangle", description: Text(message))
-            case .onboarding:
-                OnboardingView()
-            case .ready:
-                // Set up here: the guide until it is done or put off.
-                if guide == Guide.on { GuideView() } else { MainView() }
+            if ProcessInfo.processInfo.arguments.contains("-HermeshTestScreen") {
+                ScreenTestHostView()
+            } else {
+                switch model.phase {
+                case .starting:
+                    MovingMark(size: 72).frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .failed(let message):
+                    ContentUnavailableView("Hermesh couldn’t start", systemImage: "exclamationmark.triangle", description: Text(message))
+                case .onboarding:
+                    OnboardingView()
+                case .ready:
+                    // Set up here: the guide until it is done or put off.
+                    if guide == Guide.on { GuideView() } else { MainView() }
+                }
             }
         }
         // Signing: the confirmation for a batch the app had not asked for,

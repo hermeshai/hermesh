@@ -2,6 +2,7 @@ package machine
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,7 +11,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider/fake"
+	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 const waiting = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
@@ -70,6 +71,97 @@ func TestQuestionIsAnswered(t *testing.T) {
 	}
 }
 
+type delayedQuestionAnswer struct {
+	provider.Session
+	started chan struct{}
+	result  chan error
+}
+
+func (s delayedQuestionAnswer) Answer(ctx context.Context, _ string, _ provider.Reply) error {
+	close(s.started)
+	select {
+	case err := <-s.result:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func TestQuestionAnswerRacingTurnCompletion(t *testing.T) {
+	rejected := errors.New("the provider rejected the answer")
+	for _, tc := range []struct {
+		name string
+		err  error
+		want sessionv1.QuestionResolution
+	}{
+		{"accepted", nil, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED},
+		{"rejected", rejected, sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, DefaultLimits())
+			id := h.start("ask Color|Which color?|Red,Blue")
+			h.wait(id, waiting)
+			h.s.mu.Lock()
+			l := h.s.live[id]
+			h.s.mu.Unlock()
+			l.mu.Lock()
+			q := l.questions[0]
+			answer := delayedQuestionAnswer{Session: q.ps, started: make(chan struct{}), result: make(chan error, 1)}
+			q.ps = answer
+			l.mu.Unlock()
+			defer close(answer.result)
+
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			replied := make(chan error, 1)
+			go func() {
+				_, err := h.s.AnswerQuestion(ctx, h.p, &sessionv1.AnswerQuestionRequest{
+					SessionId: id, QuestionId: q.q.QuestionId, Answers: []*sessionv1.Answer{{Selected: []string{"Blue"}}},
+				})
+				replied <- err
+			}()
+			select {
+			case <-answer.started:
+			case <-ctx.Done():
+				t.Fatal("the answer did not reach the provider")
+			}
+			go h.s.completeTurn(l, provider.Event{Kind: provider.EventTurnCompleted, Text: "done"}, idle)
+			// Let the turn detach the question while the adapter reply is still pending.
+			tick := time.NewTicker(time.Millisecond)
+			defer tick.Stop()
+			for {
+				l.mu.Lock()
+				detached := len(l.questions) == 0
+				l.mu.Unlock()
+				if detached {
+					break
+				}
+				select {
+				case <-tick.C:
+				case <-ctx.Done():
+					t.Fatal("turn completion did not detach the question")
+				}
+			}
+			answer.result <- tc.err
+			select {
+			case err := <-replied:
+				if !errors.Is(err, tc.err) {
+					t.Fatalf("answer error = %v, want %v", err, tc.err)
+				}
+			case <-ctx.Done():
+				t.Fatal("answer did not return")
+			}
+			h.wait(id, idle)
+			if err := h.s.w.sync(writeOp{}); err != nil {
+				t.Fatal(err)
+			}
+			if r := h.resolved(id); len(r) != 1 || r[0].Resolution != tc.want {
+				t.Fatalf("want one %v resolution, got %v", tc.want, r)
+			}
+		})
+	}
+}
+
 // A message sent while the agent waits is the answer (an option it names,
 // or free text); the owner may answer too.
 func TestMessageAnswersTheQuestion(t *testing.T) {
@@ -79,7 +171,7 @@ func TestMessageAnswersTheQuestion(t *testing.T) {
 	h.sendNow(id, "red")
 	h.said(id, "answer: Red")
 	h.wait(id, waiting)
-	owner := &Principal{Kind: PrincipalOwner, DesktopAnswersAllowed: true}
+	owner := &Principal{Kind: PrincipalOwner}
 	if _, err := h.s.AnswerQuestion(context.Background(), owner, &sessionv1.AnswerQuestionRequest{SessionId: id, Answers: []*sessionv1.Answer{{Text: "extra large"}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +270,6 @@ func TestInterruptWithdrawsQuestion(t *testing.T) {
 // every task does none of it; renaming and deleting stay the owner's.
 func TestHerActsOnEverySession(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
-	h.s.providers["fake"] = fake.Provider{}
 	ctx := context.Background()
 	all := func(id string, her string) *Principal {
 		return &Principal{Kind: PrincipalClient, ClientID: id, Grant: &identityv1.Grant{GrantId: "g_" + id, MachineIds: []string{"*"}, ProjectIds: []string{"*"},

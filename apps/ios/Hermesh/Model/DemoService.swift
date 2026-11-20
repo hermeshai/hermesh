@@ -89,6 +89,11 @@ final class DemoService {
             world.status.relayConnected = false
         }
         #endif
+        #if targetEnvironment(simulator)
+        if Self.sessionDetailRegression {
+            seedSessionDetailRegression()
+        }
+        #endif
         _ = pairing(.client)
     }
 
@@ -210,6 +215,15 @@ final class DemoService {
     private static let holdWorkTaskForUITest: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for SessionDetailUITests (runs in both Debug and Release CI).
+    private static let sessionDetailRegression: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoSessionDetailRegression")
         #else
         false
         #endif
@@ -464,6 +478,12 @@ final class DemoService {
             let request = try Hermesh_Local_V1_StreamSessionEventsRequest(jsonUTF8Data: data)
             return AsyncThrowingStream { c in
                 followers[token] = (request.sessionID, c)
+                #if targetEnvironment(simulator)
+                if Self.sessionDetailRegression,
+                   streamSessionDetailRegression(request: request, token: token, continuation: c) {
+                    return
+                }
+                #endif
                 do {
                     for e in events[request.sessionID, default: []] where e.seq > request.afterSeq { c.yield(try e.jsonUTF8Data()) }
                 } catch { c.finish(throwing: error) }
@@ -472,4 +492,101 @@ final class DemoService {
         }
         throw APIError(code: "unimplemented", message: String(localized: "This action needs a real connection. Exit the demo to set up your own workspace."))
     }
+
+    #if targetEnvironment(simulator)
+    private func seedSessionDetailRegression() {
+        let now = Date.now
+
+        func addHistory(id: String, title: String, prefix: String, turns: Int, status: SessionStatus, updatedOffset: TimeInterval) {
+            var s = session(id, title: title, machine: "demo-mac", status: status)
+            s.agent = "codex"
+            s.updatedAt = .init(date: now.addingTimeInterval(updatedOffset))
+            s.progress.turnCount = UInt32(status == .running ? max(0, turns - 1) : turns)
+            if status == .running { s.progress.turnStartedAt = .init(date: now) }
+            world.sessions.append(s)
+
+            for t in 1 ... turns {
+                append(id, .with { $0.turnStarted = .with { $0.turn = UInt32(t); $0.asker = "demo-client" } })
+                append(id, .with { $0.userMessage.text = "\(prefix) prompt #\(t): inspect module \(t) and report the current status." })
+                let marker = t == 1 ? "\(prefix) start #1" : (t == turns ? "\(prefix) latest #\(turns)" : "\(prefix) item #\(t)")
+                append(id, .with {
+                    $0.agentMessage.text = """
+                    \(marker): completed check for step \(t).
+
+                    Reviewed the implementation details and verified layout spacing, event ordering, and scrolling behavior across paragraphs for entry \(t).
+                    """
+                })
+                if status != .running || t < turns {
+                    append(id, .with { $0.turnCompleted = .with { $0.turn = UInt32(t) } })
+                }
+            }
+        }
+
+        addHistory(id: "demo-long-history", title: "Long history session", prefix: "Long", turns: 24, status: .idle, updatedOffset: 20)
+        addHistory(id: "demo-delayed-history", title: "Delayed history session", prefix: "Delayed", turns: 24, status: .idle, updatedOffset: 10)
+        addHistory(id: "demo-streaming-session", title: "Streaming session", prefix: "Stream", turns: 20, status: .running, updatedOffset: 30)
+    }
+
+    private func streamSessionDetailRegression(
+        request: Hermesh_Local_V1_StreamSessionEventsRequest,
+        token: UUID,
+        continuation c: AsyncThrowingStream<Data, Error>.Continuation
+    ) -> Bool {
+        if request.sessionID == "demo-delayed-history", request.afterSeq == 0 {
+            let pending = events[request.sessionID, default: []]
+            let mid = pending.count / 2
+            let delayTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(550))
+                guard !Task.isCancelled, self?.followers[token] != nil else { return }
+                for e in pending[..<mid] {
+                    if let data = try? e.jsonUTF8Data() { c.yield(data) }
+                }
+                try? await Task.sleep(for: .milliseconds(350))
+                guard !Task.isCancelled, self?.followers[token] != nil else { return }
+                for e in pending[mid...] {
+                    if let data = try? e.jsonUTF8Data() { c.yield(data) }
+                }
+            }
+            c.onTermination = { [weak self] _ in
+                delayTask.cancel()
+                Task { @MainActor in self?.followers[token] = nil }
+            }
+            return true
+        }
+        if request.sessionID == "demo-streaming-session" {
+            do {
+                for e in events[request.sessionID, default: []] where e.seq > request.afterSeq { c.yield(try e.jsonUTF8Data()) }
+            } catch { c.finish(throwing: error) }
+            c.onTermination = { [weak self] _ in Task { @MainActor in self?.followers[token] = nil } }
+            if tasks[request.sessionID] == nil {
+                let id = request.sessionID
+                tasks[id] = Task { @MainActor [weak self] in
+                    for n in 1 ... 60 {
+                        try? await Task.sleep(for: .milliseconds(350))
+                        guard !Task.isCancelled, let self else { return }
+                        var draft = SessionEvent()
+                        draft.agentDraft = .with {
+                            $0.whole = true
+                            $0.text = "Live draft #\(n): streaming incremental analysis line 1.\n\nContinuing with additional context for chunk \(n)."
+                        }
+                        if let data = try? draft.jsonUTF8Data() {
+                            for (_, (session, stream)) in self.followers where session == id { stream.yield(data) }
+                        }
+                        try? await Task.sleep(for: .milliseconds(250))
+                        guard !Task.isCancelled else { return }
+                        self.append(id, .with {
+                            $0.agentMessage.text = """
+                            Live update #\(n): committed streamed message body for step \(n).
+
+                            This paragraph grows the bottom of the session while verifying auto-follow and scroll-up stability.
+                            """
+                        })
+                    }
+                }
+            }
+            return true
+        }
+        return false
+    }
+    #endif
 }

@@ -831,8 +831,10 @@ impl NativeProtocol {
                 Ok(json!({}))
             }),
             method::AI_CONSENT_REVOKE => {
-                server.models().revoke_ai();
-                conn.send(reply(id, Ok::<_, RpcError>(json!({}))));
+                let result = server.models().revoke_ai()
+                    .map(|()| json!({}))
+                    .map_err(|err| RpcError::internal(format!("cannot remove saved AI sharing consent: {err}")));
+                conn.send(reply(id, result));
             }
             method::STORAGE_USAGE => {
                 let reply_id = id.clone();

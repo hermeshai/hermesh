@@ -702,7 +702,8 @@ final class HerChat {
             }
             if status["allowed"] == status["recipient"] { return true }
             let label = models.providers.first(where: { $0.id == provider })?.name(language: Locale.current.identifier) ?? provider
-            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, allow: { [weak self] in
+            let modelLabel = models.title(reference)
+            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, model: modelLabel, allow: { [weak self] in
                 guard let self, self.live?.model == reference else { return }
                 do {
                     _ = try await self.callAlone("ai_consent/allow", [
@@ -998,9 +999,9 @@ final class HerChat {
 
     // MARK: Secure cards
 
-    /// The owner's answer to a card (cards/answer); a connect card that needs a sign-in has it run here.
+    /// The owner's answer to a card (cards/answer); strictly live, never queued offline.
     func answer(_ card: HerCard, _ answer: JSON) async {
-        guard let conv, let id = live?.sessionID else { return report(notConnected) }
+        guard convUp, let conv, let id = live?.sessionID else { return report(notConnected) }
         do {
             let r = try await conv.call("cards/answer", ["session_id": .string(id), "card_id": .string(card.id), "answer": answer])
             answered[card.id] = HerCardStatus(state: r["state"].string ?? "open", note: r["note"].string)
@@ -1077,6 +1078,7 @@ final class HerChat {
 struct HerAIConsentPrompt {
     let provider: String
     let endpoint: String
+    let model: String
     let allow: () async -> Void
 }
 

@@ -48,10 +48,16 @@ final class ScreenSession: Identifiable {
         }
     }
 
+    /// Synthetic local fixture session for UI tests (-HermeshTestScreen): no network, no core, no UserDefaults writes.
+    let synthetic: Bool
+    var testStateJSON = ""
+    var testLogJSON = "[]"
+    @ObservationIgnored private var testEvents: [[String: Any]] = []
+
     var mode: ScreenMode {
         didSet {
             guard mode != oldValue else { return }
-            UserDefaults.standard.set(mode.rawValue, forKey: "screen-mode")
+            if !synthetic { UserDefaults.standard.set(mode.rawValue, forKey: "screen-mode") }
             surface.mode = mode
             if mode == .direct { panning = false }
             // In trackpad mode the pointer is drawn here, so the picture leaves it out.
@@ -63,11 +69,16 @@ final class ScreenSession: Identifiable {
         }
     }
 
-    /// True when the user pinched larger than fit-to-screen.
-    var zoomed = false
-    /// True in trackpad mode while one-finger drag pans the zoomed screen instead of moving the pointer.
+    /// True when the user has panned or zoomed away from the default fitted placement.
+    var viewTransformed = false
+    /// True in trackpad mode while one-finger drag pans the canvas instead of moving the pointer.
     var panning = false {
         didSet { surface.panning = panning }
+    }
+
+    func resetView() {
+        surface.resetView()
+        panning = false
     }
 
     /// A word the page shows for a moment (text copied from the machine), and its identifier.
@@ -88,20 +99,27 @@ final class ScreenSession: Identifiable {
     @ObservationIgnored private var connection: ScreenConnection?
     @ObservationIgnored private var endpoint: (port: Int, token: String)?
 
-    init(machineID: String, machineName: String, linux: Bool = false) {
+    init(machineID: String, machineName: String, linux: Bool = false, synthetic: Bool = false) {
         self.machineID = machineID
         self.machineName = machineName
         self.linux = linux
-        mode = ScreenMode(rawValue: UserDefaults.standard.string(forKey: "screen-mode") ?? "") ?? .direct
+        self.synthetic = synthetic
+        mode = synthetic ? .direct : (ScreenMode(rawValue: UserDefaults.standard.string(forKey: "screen-mode") ?? "") ?? .direct)
         surface.mode = mode
-        surface.onZoomChanged = { [weak self] zoomed in
+        surface.onViewChanged = { [weak self] transformed in
             Task { @MainActor [weak self] in
-                guard let self, self.zoomed != zoomed else { return }
-                self.zoomed = zoomed
-                if !zoomed { self.panning = false }
+                guard let self, self.viewTransformed != transformed else { return }
+                self.viewTransformed = transformed
             }
         }
-        surface.send = { [weak self] in self?.connection?.send($0) }
+        surface.send = { [weak self] input in
+            guard let self else { return }
+            if self.synthetic {
+                self.recordSyntheticInput(input)
+            } else {
+                self.connection?.send(input)
+            }
+        }
         surface.keys.send = { [weak self] in self?.connection?.send($0) }
         surface.keys.onDismiss = { [weak self] in self?.keyboard = false }
         surface.keys.onPasteTooLong = { [weak self] in self?.flash(String(localized: "Too much text to paste"), id: "screen-clipboard-too-long") }
@@ -110,6 +128,81 @@ final class ScreenSession: Identifiable {
             self?.live = true
             self?.surface.accessibilityValue = "live"
         }
+        if synthetic {
+            surface.contentSize = CGSize(width: 960, height: 600)
+            if let img = Self.makeSyntheticFrame(width: 960, height: 600) {
+                surface.picture.showSynthetic(img)
+            }
+            live = true
+            link = ScreenLink(phase: "connected", path: "direct", rtt_ms: 8)
+            surface.accessibilityValue = "live"
+            surface.onStateUpdated = { [weak self] in
+                Task { @MainActor [weak self] in self?.updateTestState() }
+            }
+            updateTestState()
+        }
+    }
+
+    private func updateTestState() {
+        let vp = surface.viewport
+        let f = vp.pictureFrame
+        let s = vp.safeRect
+        let obj: [String: Any] = [
+            "x": Double(f.minX), "y": Double(f.minY), "w": Double(f.width), "h": Double(f.height),
+            "s": Double(vp.scale), "minScale": Double(vp.minScale), "fitted": vp.fitted,
+            "safeX": Double(s.minX), "safeY": Double(s.minY), "safeW": Double(s.width), "safeH": Double(s.height),
+            "boundsW": Double(vp.bounds.width), "boundsH": Double(vp.bounds.height),
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: obj),
+           let json = String(data: data, encoding: .utf8),
+           json != testStateJSON {
+            testStateJSON = json
+        }
+    }
+
+    private func recordSyntheticInput(_ input: Hermesh_Screen_V1_Input) {
+        var entry: [String: Any]?
+        switch input.event {
+        case .button(let b):
+            entry = [
+                "kind": "button",
+                "x": b.x, "y": b.y,
+                "button": b.button == .right ? "right" : "left",
+                "down": b.down,
+                "clicks": Int(b.clicks),
+            ]
+        case .move(let m):
+            entry = ["kind": "move", "x": m.x, "y": m.y]
+        case .wheel(let w):
+            entry = ["kind": "wheel", "x": w.x, "y": w.y, "dx": w.dx, "dy": w.dy]
+        default:
+            break
+        }
+        guard let entry else { return }
+        testEvents.append(entry)
+        if let data = try? JSONSerialization.data(withJSONObject: testEvents), let json = String(data: data, encoding: .utf8) {
+            testLogJSON = json
+        }
+    }
+
+    private static func makeSyntheticFrame(width: Int, height: Int) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        // Desktop background.
+        ctx.setFillColor(red: 0.12, green: 0.16, blue: 0.24, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        // CoreGraphics origin is bottom-left: draw bottom bar (remote y in [0.92, 1.0]) at CG y in [0, 0.08 * height].
+        let barH = CGFloat(height) * 0.08
+        ctx.setFillColor(red: 0.14, green: 0.56, blue: 0.62, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: barH))
+        ctx.setFillColor(red: 0.96, green: 0.78, blue: 0.22, alpha: 1)
+        ctx.fill(CGRect(x: CGFloat(width) * 0.45, y: 4, width: CGFloat(width) * 0.10, height: barH - 8))
+        // Top menu bar (remote y in [0, 0.05]).
+        let topH = CGFloat(height) * 0.05
+        ctx.setFillColor(red: 0.22, green: 0.26, blue: 0.36, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: CGFloat(height) - topH, width: CGFloat(width), height: topH))
+        return ctx.makeImage()
     }
 
     /// Opens the session (again, after it ended).
@@ -287,13 +380,28 @@ struct ScreenControlView: View {
             .padding(.top, 8).padding(.horizontal, 16)
         }
         .overlay { bar }
+        .overlay(alignment: .topLeading) {
+            if session.synthetic {
+                VStack(spacing: 0) {
+                    Color.clear.frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier("screen-test-state")
+                        .accessibilityValue(session.testStateJSON)
+                    Color.clear.frame(width: 1, height: 1)
+                        .accessibilityElement()
+                        .accessibilityIdentifier("screen-test-log")
+                        .accessibilityValue(session.testLogJSON)
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .statusBarHidden()
         .persistentSystemOverlays(.hidden)
         .defersSystemGestures(on: .all)
         .preferredColorScheme(.dark)
         .onAppear {
             ScreenOrientation.allowed = .allButUpsideDown
-            if let api = model.api?.live { session.start(api: api) }
+            if !session.synthetic, let api = model.api?.live { session.start(api: api) }
         }
         .onDisappear {
             session.stop()
@@ -302,6 +410,7 @@ struct ScreenControlView: View {
         // In the background the core stops serving, and nobody is looking: the session ends there,
         // and opens again when the app is back in front.
         .onChange(of: phase) { _, phase in
+            guard !session.synthetic else { return }
             if phase == .background, session.ended == nil {
                 away = true
                 session.stop()
@@ -406,10 +515,12 @@ struct ScreenControlView: View {
                 }
                 .accessibilityLabel(Text("Hide Controls"))
                 .accessibilityIdentifier("screen-fold")
-                // Down a side the dot alone: its colour says how the connection is.
+                // Down a side, or when the horizontal bar holds both Pan and Fit, show the dot alone so the bar stays compact.
                 HStack(spacing: 6) {
                     Circle().fill(health).frame(width: 7, height: 7)
-                    if !vertical, !quality.isEmpty { Text(quality).font(.caption).monospacedDigit().foregroundStyle(.white.opacity(0.8)) }
+                    if !vertical, !quality.isEmpty, !(session.mode == .trackpad && session.viewTransformed) {
+                        Text(quality).font(.caption).monospacedDigit().lineLimit(1).foregroundStyle(.white.opacity(0.8))
+                    }
                 }
                 .padding(vertical ? .vertical : .horizontal, 6)
                 .accessibilityElement(children: .combine)
@@ -421,7 +532,7 @@ struct ScreenControlView: View {
                 }
                 .accessibilityLabel(session.mode == .trackpad ? Text("Trackpad Mode") : Text("Direct Touch"))
                 .accessibilityIdentifier("screen-mode")
-                if session.mode == .trackpad && session.zoomed {
+                if session.mode == .trackpad {
                     Button { session.panning.toggle() } label: {
                         Image(systemName: session.panning ? "hand.raised.fill" : "hand.raised")
                             .frame(width: 38, height: 38)
@@ -430,6 +541,14 @@ struct ScreenControlView: View {
                     .accessibilityLabel(Text("Pan Screen"))
                     .accessibilityValue(session.panning ? Text("On") : Text("Off"))
                     .accessibilityIdentifier("screen-pan")
+                }
+                if session.viewTransformed {
+                    Button { session.resetView() } label: {
+                        Image(systemName: "viewfinder")
+                            .frame(width: 38, height: 38)
+                    }
+                    .accessibilityLabel(Text("Fit Screen"))
+                    .accessibilityIdentifier("screen-fit")
                 }
                 Button { session.keyboard.toggle() } label: {
                     Image(systemName: session.keyboard ? "keyboard.fill" : "keyboard").frame(width: 38, height: 38)
@@ -460,5 +579,14 @@ struct ScreenControlView: View {
             .accessibilityValue(Text(quality.isEmpty ? String(localized: "Connected") : quality))
             .accessibilityIdentifier("screen-unfold")
         }
+    }
+}
+
+/// Hosts ScreenControlView with a local synthetic picture and input recorder for -HermeshTestScreen UI tests.
+struct ScreenTestHostView: View {
+    @State private var session = ScreenSession(machineID: "synthetic", machineName: "Test Mac", synthetic: true)
+
+    var body: some View {
+        ScreenControlView(session: session)
     }
 }

@@ -74,6 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
 PYSEED
 xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
   -only-testing:HermeshUITests/HerReviewUITests \
+  -only-testing:HermeshUITests/ScreenViewportUITests \
   -only-testing:HermeshUITests/DemoUITests/testTaskAndExit \
   -only-testing:HermeshUITests/DemoUITests/testPrivacyPolicy \
   -only-testing:HermeshUITests/DemoUITests/testChineseEntry \
@@ -81,7 +82,8 @@ xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -res
   -only-testing:HermeshUITests/DemoUITests/testReviewBackgroundAndReset \
   -only-testing:HermeshUITests/DemoUITests/testReviewFreeAnswerAndInterrupt \
   -only-testing:HermeshUITests/DemoUITests/testReviewGrantLifecycle \
-  -only-testing:HermeshUITests/DemoUITests/testReviewHerAndHerTeam > "$OUT/ui.log" 2>&1
+  -only-testing:HermeshUITests/DemoUITests/testReviewHerAndHerTeam \
+  -only-testing:HermeshUITests/SessionDetailUITests > "$OUT/ui.log" 2>&1
 xcrun simctl terminate "$DEVICE" io.hermesh.ios >/dev/null 2>&1 || true
 # Xcode can migrate the data-container UUID during installation; inspect the current one.
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"

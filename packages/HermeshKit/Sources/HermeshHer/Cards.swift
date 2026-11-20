@@ -13,21 +13,41 @@ public struct HerCard: Equatable, Sendable {
     public var expiresAt: Date?
     /// Console calls made when the owner agrees; a value goes where a string is "<value:FIELD_ID>".
     public var ops: JSON
-    /// A `connect` card's: a connector added by its address, or signed in to again.
+    /// A `connect` card's: a connector added by its address, signed in to again, or having its key updated.
     public var connect: Connect?
+    /// A `site_login` card's: verified login fields inspected from an isolated browser page.
+    public var siteLogin: SiteLogin?
 
     public struct Connect: Equatable, Sendable {
         public var name: String
+        public var url: String
         public var host: String
-        /// Signing in again: no ops.
+        /// Signing in again or updating a stored key.
         public var reconnect: Bool
+        public var signIn: String
         /// A header's value for each, masked.
         public var fields: [Field]
+
+        public var isKeyRotate: Bool { reconnect && signIn == "none" && !fields.isEmpty }
+    }
+
+    public struct SiteLogin: Equatable, Sendable {
+        public var origin: String
+        public var host: String
+        public var title: String?
+        public var fields: [SiteLoginField]
     }
 
     public struct Field: Equatable, Sendable {
         public var id: String
         public var label: String
+    }
+
+    public struct SiteLoginField: Equatable, Sendable {
+        public var id: String
+        public var label: String
+        public var kind: String
+        public var secret: Bool
     }
 
     public init?(_ c: JSON) {
@@ -39,14 +59,28 @@ public struct HerCard: Equatable, Sendable {
         ops = c["ops"]
         let b = c["body"]
         if kind == "connect", let name = b["name"].string, let host = b["host"].string, let fields = b["fields"].array {
-            connect = Connect(name: name, host: host, reconnect: b["reconnect"].bool ?? false,
+            connect = Connect(name: name, url: b["url"].string ?? "", host: host, reconnect: b["reconnect"].bool ?? false,
+                              signIn: b["sign_in"].string ?? "none",
                               fields: fields.compactMap { f in f["id"].string.map { Field(id: $0, label: f["label"].string ?? $0) } })
+        } else if kind == "site_login", let origin = b["origin"].string, let host = b["host"].string, let fields = b["fields"].array, !fields.isEmpty {
+            let parsed = fields.compactMap { f -> SiteLoginField? in
+                guard let fid = f["id"].string else { return nil }
+                return SiteLoginField(id: fid, label: f["label"].string ?? fid, kind: f["kind"].string ?? "password", secret: f["secret"].bool ?? true)
+            }
+            if !parsed.isEmpty {
+                siteLogin = SiteLogin(origin: origin, host: host, title: b["title"].string, fields: parsed)
+            }
         }
     }
 
     /// The answer that approves: the ops with each "<value:ID>" filled with the owner's value for that field.
     public func approve(_ values: [String: String]) -> JSON {
         ["decision": "approve", "ops": herFilled(ops, values)]
+    }
+
+    /// The answer that fills a `site_login` card once without auto-submitting or saving credentials.
+    public func fill(_ values: [String: String]) -> JSON {
+        ["decision": "fill", "fields": .object(values.mapValues(JSON.string))]
     }
 
     public static let decline: JSON = ["decision": "decline"]
