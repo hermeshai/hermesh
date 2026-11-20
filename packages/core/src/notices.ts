@@ -157,6 +157,7 @@ export function herSnapshots(machines: Machine[]): Map<string, HerSnapshot> {
 export interface HerNotice {
   machineId: string;
   botId: string;
+  kind: HerLatestKind;
   title: string;
   body: string;
 }
@@ -180,6 +181,7 @@ export function herNotices(previous: ReadonlyMap<string, HerSnapshot>, machines:
     out.push({
       machineId: m.machineId,
       botId: latest.botId,
+      kind: latest.kind,
       title: environments.length > 1 ? t("notice.herTitle", { name, environment: m.machineName }) : name,
       body:
         latest.kind === HerLatestKind.APPROVAL

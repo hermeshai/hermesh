@@ -548,6 +548,16 @@ final class AppModel {
         return false
     }
 
+    /// The Her conversation visible on this iPhone when a reply arrives.
+    func isShowingHer(machineID: String, botID: String) -> Bool {
+        guard UIApplication.shared.applicationState == .active, phase == .ready,
+              root == .her, path.isEmpty, !drawerOpen, sheet == nil, !accountPresented,
+              !machineID.isEmpty, !botID.isEmpty,
+              herPick(herEnvironments(machines), remembered: her.machine)?.machineID == machineID,
+              let chat = her.existingChat(machineID), chat.session != nil else { return false }
+        return chat.bot?.id == botID
+    }
+
     /// A tap or an action on a notification: answer the question with the
     /// option or text chosen, or open what it is about.
     func handle(_ response: UNNotificationResponse) async {

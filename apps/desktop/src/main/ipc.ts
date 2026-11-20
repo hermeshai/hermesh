@@ -8,7 +8,7 @@ import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
-import { mainWindow, ours, setMode, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
+import { mainWindow, ours, setMode, setVisibleHer, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
 
 // The page's requests to the main process (see shared/bridge.ts). Each
 // handler checks the request comes from one of our own pages.
@@ -88,6 +88,10 @@ export function registerIPC() {
       pending = undefined;
     }
     menuStateListeners.forEach((f) => f());
+  });
+  ipcMain.on("visible-her", (e, machineId: unknown, botId: unknown) => {
+    if (!trusted(e) || e.senderFrame !== e.sender.mainFrame || e.sender !== mainWindow()?.webContents) return;
+    if (typeof machineId === "string" && typeof botId === "string") setVisibleHer(machineId, botId);
   });
   ipcMain.on("wait-pairings", (e, on: boolean) => {
     if (!trusted(e)) return;

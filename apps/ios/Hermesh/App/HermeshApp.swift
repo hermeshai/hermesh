@@ -59,11 +59,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         UserDefaults.standard.bool(forKey: "HermeshTestTurns") ? .allButUpsideDown : ScreenOrientation.allowed
     }
 
-    /// In front: show it, unless it is about the session on screen. A new
-    /// session shows in the list as it comes, so it only goes to the list.
+    /// A new session goes to the list. A Her reply stays quiet in its
+    /// active conversation, even when the notification extension didn't run.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         let info = notification.request.content.userInfo
-        if (info["hermesh"] as? [String: Any])?["k"] as? String == "session_started" { return [.list] }
+        let envelope = info["hermesh"] as? [String: Any]
+        let kind = envelope?["k"] as? String
+        if kind == "session_started" { return [.list] }
+        if kind == "her", let encoded = envelope?["n"] as? String,
+           let sealed = Data(base64Encoded: encoded), let notice = try? NoticeKey.open(sealed),
+           notice.kind == "her", notice.herKind == "message",
+           await AppModel.shared.isShowingHer(machineID: notice.machineID, botID: notice.botID) {
+            return []
+        }
         let session = info["session"] as? String
         if let session, await AppModel.shared.isShowing(session: session) { return [] }
         return [.banner, .list, .sound]
