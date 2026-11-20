@@ -999,9 +999,9 @@ final class HerChat {
 
     // MARK: Secure cards
 
-    /// The owner's answer to a card (cards/answer); a connect card that needs a sign-in has it run here.
+    /// The owner's answer to a card (cards/answer); strictly live, never queued offline.
     func answer(_ card: HerCard, _ answer: JSON) async {
-        guard let conv, let id = live?.sessionID else { return report(notConnected) }
+        guard convUp, let conv, let id = live?.sessionID else { return report(notConnected) }
         do {
             let r = try await conv.call("cards/answer", ["session_id": .string(id), "card_id": .string(card.id), "answer": answer])
             answered[card.id] = HerCardStatus(state: r["state"].string ?? "open", note: r["note"].string)

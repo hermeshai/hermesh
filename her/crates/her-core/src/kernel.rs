@@ -1110,6 +1110,12 @@ impl Kernel {
         Some(cards)
     }
 
+    /// The session's live isolated built-in browser session, if started.
+    pub fn builtin_browser(&self) -> Option<Arc<her_browser::BrowserSession>> {
+        let session = self.session.upgrade()?;
+        session.tool_state.get::<her_browser::BrowserSession>()
+    }
+
     /// Her's conversation takes up a connector added after it started, which the owner just
     /// connected on a card: its tools are there from the next turn on. The future ends once it
     /// has connected, or failed, or after the MCP startup wait: the turn the card's end wakes then

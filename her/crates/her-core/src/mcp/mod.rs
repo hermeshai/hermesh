@@ -177,15 +177,17 @@ impl McpManager {
     }
 
     /// Adds a server configured after the session started, and connects it once the session
-    /// has: the owner just connected it, or signed in to it (docs/her-secure-cards.md §6). A
-    /// name the session has already is kept, and connected again unless it is ready: it may
-    /// have been taken up from the configuration before its sign-in was done (`sync`).
+    /// has: the owner just connected it, rotated its key, or signed in to it
+    /// (docs/her-secure-cards.md §6). A name the session has already is kept and reconnected so
+    /// updated credentials take effect immediately.
     /// Returns the server under that name.
     pub(crate) fn add(&self, config: McpServerConfig) -> Arc<McpServer> {
         let server = {
             let mut servers = self.servers.lock();
             if let Some(had) = servers.iter().find(|s| s.name() == config.name) {
-                if had.status().state != McpServerState::Ready && self.events.lock().is_some() {
+                if had.config() == &config && self.events.lock().is_some()
+                    && (config.url.is_some() || had.status().state != McpServerState::Ready)
+                {
                     had.connect();
                 }
                 return had.clone();

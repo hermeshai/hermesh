@@ -2957,10 +2957,10 @@
           "$ref": "#/definitions/AskedBy"
         },
         "body": {
-          "$ref": "#/definitions/ConnectBody"
+          "$ref": "#/definitions/CardBody"
         },
         "expires_at": {
-          "description": "RFC 3339: 24 hours after the card was prepared.",
+          "description": "RFC 3339: when the card expires (24 hours for `connect`, 5 minutes for `site_login`).",
           "type": "string"
         },
         "id": {
@@ -2971,7 +2971,7 @@
           "$ref": "#/definitions/CardKind"
         },
         "ops": {
-          "description": "The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `\"<value:FIELD_ID>\"`.",
+          "description": "The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `\"<value:FIELD_ID>\"`. Empty for `site_login`.",
           "items": {
             "$ref": "#/definitions/CardOp"
           },
@@ -3018,6 +3018,28 @@
           "type": "object"
         },
         {
+          "description": "For `site_login`: values keyed by field id (`f1`, `f2`, …); carries no `ops`.",
+          "properties": {
+            "decision": {
+              "enum": [
+                "fill"
+              ],
+              "type": "string"
+            },
+            "fields": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "decision",
+            "fields"
+          ],
+          "type": "object"
+        },
+        {
           "properties": {
             "decision": {
               "enum": [
@@ -3030,6 +3052,16 @@
             "decision"
           ],
           "type": "object"
+        }
+      ]
+    },
+    "CardBody": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ConnectBody"
+        },
+        {
+          "$ref": "#/definitions/SiteLoginBody"
         }
       ]
     },
@@ -3057,9 +3089,16 @@
     "CardKind": {
       "oneOf": [
         {
-          "description": "A connector added by its address, or one that signs in again.",
+          "description": "A connector added by its address, or one that signs in again / updates its key.",
           "enum": [
             "connect"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "A website's sign-in form filled once in an isolated browser, never saved or auto-submitted.",
+          "enum": [
+            "site_login"
           ],
           "type": "string"
         }
@@ -19044,6 +19083,72 @@
         "origin"
       ],
       "type": "object"
+    },
+    "SiteLoginBody": {
+      "description": "A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser.",
+      "properties": {
+        "fields": {
+          "description": "Verified login fields on the page (never authored by the model).",
+          "items": {
+            "$ref": "#/definitions/SiteLoginField"
+          },
+          "type": "array"
+        },
+        "host": {
+          "description": "The origin's host (with non-default port), shown large on the card.",
+          "type": "string"
+        },
+        "origin": {
+          "description": "Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures).",
+          "type": "string"
+        },
+        "title": {
+          "description": "The page's title, sanitized and clipped.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fields",
+        "host",
+        "origin"
+      ],
+      "type": "object"
+    },
+    "SiteLoginField": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/definitions/SiteLoginFieldKind"
+        },
+        "label": {
+          "type": "string"
+        },
+        "secret": {
+          "description": "Masked as it is typed (`password` and `one_time_code`).",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "secret"
+      ],
+      "type": "object"
+    },
+    "SiteLoginFieldKind": {
+      "enum": [
+        "email",
+        "username",
+        "password",
+        "one_time_code"
+      ],
+      "type": "string"
     },
     "SkillEntry": {
       "description": "One `SKILL.md` that was found, and what became of it.",

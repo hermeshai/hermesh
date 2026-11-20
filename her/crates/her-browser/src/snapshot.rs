@@ -4,6 +4,7 @@
 
 use serde_json::Value;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 /// Longest name or value shown, in characters.
 const MAX_TEXT: usize = 200;
@@ -136,6 +137,17 @@ const VALUED: &[&str] = &["textbox", "searchbox", "combobox", "spinbutton", "sli
 /// Builds the items of `getFullAXTree` output. `root_backend` limits it to one element's
 /// subtree (the `ref` option).
 pub fn build(nodes: &[Value], attrs: &HashMap<i64, Attrs>, root_backend: Option<i64>) -> Vec<Item> {
+    build_with_redacted(nodes, attrs, root_backend, &HashSet::new())
+}
+
+/// Like [`build`], additionally forcing every `backendDOMNodeId` in `redacted` to be treated as
+/// sensitive (`[value=<hidden>]`), even if the page later changes its `type` attribute.
+pub fn build_with_redacted(
+    nodes: &[Value],
+    attrs: &HashMap<i64, Attrs>,
+    root_backend: Option<i64>,
+    redacted: &HashSet<i64>,
+) -> Vec<Item> {
     let by_id: HashMap<&str, &Value> = nodes.iter().filter_map(|n| Some((n.get("nodeId")?.as_str()?, n))).collect();
     let root = match root_backend {
         Some(backend) => nodes
@@ -145,7 +157,7 @@ pub fn build(nodes: &[Value], attrs: &HashMap<i64, Attrs>, root_backend: Option<
     };
     let mut items = Vec::new();
     if let Some(root) = root {
-        walk(root, &by_id, attrs, 0, "", root_backend.is_some(), false, &mut items);
+        walk(root, &by_id, attrs, redacted, 0, "", root_backend.is_some(), false, &mut items);
     }
     items
 }
@@ -200,6 +212,7 @@ fn walk(
     node: &Value,
     by_id: &HashMap<&str, &Value>,
     attrs: &HashMap<i64, Attrs>,
+    redacted: &HashSet<i64>,
     depth: usize,
     parent_name: &str,
     keep_root: bool,
@@ -237,7 +250,7 @@ fn walk(
                 "" => false,
                 _ => true,
             });
-    let sensitive = attr.is_some_and(Attrs::is_sensitive);
+    let sensitive = attr.is_some_and(Attrs::is_sensitive) || backend.is_some_and(|b| redacted.contains(&b));
     let mut next_depth = depth;
     let mut name_for_children = parent_name.to_string();
     if shown {
@@ -301,7 +314,7 @@ fn walk(
     if let Some(children) = node.get("childIds").and_then(Value::as_array) {
         for child in children.iter().filter_map(Value::as_str).filter_map(|id| by_id.get(id)) {
             let under = under_ref || (interactive && backend.is_some());
-            walk(child, by_id, attrs, next_depth, &name_for_children, false, under, items);
+            walk(child, by_id, attrs, redacted, next_depth, &name_for_children, false, under, items);
         }
     }
 }
@@ -676,5 +689,21 @@ mod tests {
         assert!(attrs(None, Some("one-time-code")).is_sensitive());
         assert!(attrs(None, Some("billing cc-number")).is_sensitive());
         assert!(!attrs(Some("email"), Some("email")).is_sensitive());
+    }
+
+    #[test]
+    fn runtime_redacted_nodes_stay_hidden_even_as_plain_text() {
+        let nodes = vec![
+            json!({ "nodeId": "1", "role": { "value": "RootWebArea" }, "childIds": ["2"] }),
+            json!({ "nodeId": "2", "parentId": "1", "role": { "value": "textbox" }, "name": { "value": "Code" }, "value": { "value": "DUMMY_OTP_9911" }, "backendDOMNodeId": 77 }),
+        ];
+        let mut attrs = HashMap::new();
+        attrs.insert(77, Attrs { tag: "INPUT".into(), input_type: Some("text".into()), ..Attrs::default() });
+        let mut redacted = HashSet::new();
+        redacted.insert(77);
+        let items = build_with_redacted(&nodes, &attrs, None, &redacted);
+        let rendered = items.iter().map(|i| i.render(None)).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("[value=<hidden>]"), "{rendered}");
+        assert!(!rendered.contains("DUMMY_OTP_9911"), "{rendered}");
     }
 }
