@@ -3,6 +3,7 @@ import { httpTransport, RpcClient } from "@hermesh/her-client";
 import type { Methods, ModelsListResult } from "@hermesh/her-protocol";
 import { errorText } from "./format";
 import { i18n } from "./i18n";
+import { readHost, type ConsoleHost } from "./routes";
 
 // The page's one connection to her, through hermeshd's console routes (the events and rpc
 // beside the page): every page asks on it, so a read on one page subscribes the connection to
@@ -20,6 +21,8 @@ export type Her = {
   rpc: RpcClient | null;
   /** Why the last connection ended before it answered anything. */
   lost: string | null;
+  /** The target Her Server this console manages, where local commands execute. */
+  host: ConsoleHost | null;
   /** models/list: the providers, their models and what new assistants start with. */
   models: ModelsListResult | null;
   refreshModels: () => Promise<void>;
@@ -46,9 +49,18 @@ export const TOAST_MS = 5200;
 export function HerProvider({ children }: { children: ReactNode }) {
   const [rpc, setRpc] = useState<RpcClient | null>(null);
   const [lost, setLost] = useState<string | null>(null);
+  const [host, setHost] = useState<ConsoleHost | null>(null);
   const [models, setModels] = useState<ModelsListResult | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [ask, confirm] = useState<Ask | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void readHost().then((h) => live && setHost(h));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -106,8 +118,8 @@ export function HerProvider({ children }: { children: ReactNode }) {
   }, [toast]);
 
   const her = useMemo<Her>(
-    () => ({ rpc, lost, models, refreshModels, call, toast, show, dismiss, ask, confirm }),
-    [rpc, lost, models, refreshModels, call, toast, show, dismiss, ask],
+    () => ({ rpc, lost, host, models, refreshModels, call, toast, show, dismiss, ask, confirm }),
+    [rpc, lost, host, models, refreshModels, call, toast, show, dismiss, ask],
   );
   return <Context.Provider value={her}>{children}</Context.Provider>;
 }

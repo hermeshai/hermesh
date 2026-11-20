@@ -294,11 +294,7 @@ impl Inner {
                 let result = match value.get("error").filter(|e| !e.is_null()) {
                     Some(error) => Err(McpError::Rpc {
                         code: error.get("code").and_then(Value::as_i64).unwrap_or(-32603),
-                        message: error
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("unknown error")
-                            .to_string(),
+                        message: self.transport.redact(error.get("message").and_then(Value::as_str).unwrap_or("unknown error")),
                     }),
                     None => Ok(value.get("result").cloned().unwrap_or(Value::Null)),
                 };
@@ -338,7 +334,7 @@ impl Inner {
                 *activity.lock() = Instant::now();
                 if let Some(progress) = progress {
                     let text = match params.get("message").and_then(Value::as_str) {
-                        Some(message) => message.to_string(),
+                        Some(message) => self.transport.redact(message),
                         None => {
                             let done = params.get("progress").map(number).unwrap_or_default();
                             match params.get("total") {
@@ -355,7 +351,9 @@ impl Inner {
             }
             "notifications/message" => {
                 let level = params.and_then(|p| p.get("level")).and_then(Value::as_str).unwrap_or("info");
-                let data = params.and_then(|p| p.get("data")).map(|d| d.to_string()).unwrap_or_default();
+                let data = params.and_then(|p| p.get("data")).map(|d| d.as_str().map(str::to_owned).unwrap_or_else(|| d.to_string())).unwrap_or_default();
+                let level = self.transport.redact(level);
+                let data = self.transport.redact(&data);
                 tracing::info!(target: "her_mcp::log", server = %self.server, level, "{data}");
             }
             _ => {}
