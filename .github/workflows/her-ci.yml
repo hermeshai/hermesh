@@ -10,7 +10,6 @@ on:
       - '!her/docs/**'
       - '!her/README.md'
       - '!her/apps/console/**'
-      - 'her/docs/cli/protocol-reference.md'
       - '.github/workflows/her-ci.yml'
   pull_request:
     paths:
@@ -18,7 +17,6 @@ on:
       - '!her/docs/**'
       - '!her/README.md'
       - '!her/apps/console/**'
-      - 'her/docs/cli/protocol-reference.md'
       - '.github/workflows/her-ci.yml'
 
 permissions:
