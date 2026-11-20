@@ -6,8 +6,55 @@ on:
   # By hand, on any branch: Windows work is tried on Windows runners there
   # before it reaches main (docs/windows.md).
   workflow_dispatch:
+
+concurrency:
+  # Only the opening run and fresh commits share the PR's group.
+  group: ci-${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action != 'reopened' && format('pr-{0}', github.event.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action == 'synchronize' }}
+
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.route.outputs.mode }}
+      go: ${{ steps.route.outputs.go }}
+      screen_linux: ${{ steps.route.outputs.screen_linux }}
+      windows: ${{ steps.route.outputs.windows }}
+      windows_arm: ${{ steps.route.outputs.windows_arm }}
+      windows_e2e: ${{ steps.route.outputs.windows_e2e }}
+      app: ${{ steps.route.outputs.app }}
+      windows_app: ${{ steps.route.outputs.windows_app }}
+      ios: ${{ steps.route.outputs.ios }}
+      win_package: ${{ steps.route.outputs.win_package }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Select jobs
+        id: route
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # Use the base revision's rules. The first PR to add them runs in full.
+          router="$RUNNER_TEMP/ci-route.py"
+          decision=mode=full
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] &&
+             git show "$PR_BASE_SHA:scripts/ci/route.py" > "$router" 2>/dev/null &&
+             result=$(python3 -I "$router" "$GITHUB_EVENT_NAME" "$PR_BASE_SHA" "$PR_HEAD_SHA"); then
+            decision="$result"
+          fi
+          printf '%s\n' "$decision" | tee -a "$GITHUB_OUTPUT"
+      - name: Routing regression tests
+        run: python3 -I scripts/ci/test_route.py
+
   ios-demo:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.ios == 'true'
     # The app already uses iOS 27.1 layout APIs; macos-latest still selects the 26.x SDK.
     runs-on: xcode-27
     timeout-minutes: 60
@@ -31,6 +78,8 @@ jobs:
             ${{ runner.temp }}/ios-demo/review.xcresult
           if-no-files-found: ignore
   go:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.go == 'true'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -59,6 +108,8 @@ jobs:
   # Computer Control's helper for Linux (docs/computer-control-linux.md): its
   # own tests, then end to end on X11, Sway and GNOME in containers.
   screen-linux:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.screen_linux == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +127,8 @@ jobs:
           HERMESH_DOCKER: "1"
   # Windows (docs/windows.md): what is ported so far.
   windows:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +152,8 @@ jobs:
         run: go test ./e2e -run '^(TestWindowsInstall|TestWindowsSigner)$' -count=1 -v
   # Windows on Arm: the signer, whose panel draws through Windows' own APIs.
   windows-arm:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_arm == 'true'
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -118,6 +173,8 @@ jobs:
   # The end-to-end suite on Windows, being ported (docs/windows.md, W1): its
   # failures do not fail the run yet.
   windows-e2e:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_e2e == 'true'
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -143,6 +200,8 @@ jobs:
   # The desktop app (Electron) and the macOS signer: types, unit tests, and
   # their end-to-end tests driving the real app against the real daemon.
   app:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.app == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,6 +229,8 @@ jobs:
   # against the real daemon, then the package, installed in Developer Mode
   # with its aliases checked. Its failures do not fail the run yet.
   windows-app:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_app == 'true'
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -218,6 +279,7 @@ jobs:
           pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
       # For Windows on Arm PCs and VMs (this runner can't run it).
       - name: package for arm64
+        if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true'
         run: node apps/desktop/scripts/package-win.mjs
         env:
           HERMESH_ARCH: arm64
@@ -226,3 +288,37 @@ jobs:
         with:
           name: Hermesh-windows-setup
           path: dist/Hermesh-windows-*-setup.exe
+
+  ci-ok:
+    if: always()
+    needs: [changes, go, screen-linux, windows, windows-arm, app, ios-demo]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Reject cancelled runs
+        if: cancelled()
+        run: |
+          echo "::error::CI was cancelled"
+          exit 1
+      - name: Check required job results
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '
+            . as $needs | .changes as $changes | $changes.outputs.mode as $mode
+            | if $changes.result != "success" then error("changes: \($changes.result)")
+              elif $mode != "full" and $mode != "routed" then error("Invalid CI mode: \($mode)")
+              else
+                {go: "go", "screen-linux": "screen_linux", windows: "windows",
+                 "windows-arm": "windows_arm", app: "app", "ios-demo": "ios"}
+                | to_entries
+                | map(.key as $job
+                    | $changes.outputs[.value] as $flag
+                    | (if $mode == "full" or $flag == "true" then "success"
+                       elif $flag == "false" then "skipped"
+                       else error("\($job): missing or invalid routing flag") end) as $expected
+                    | $needs[$job].result as $actual
+                    | if $actual == $expected then "\($job): \($actual)"
+                      else error("\($job): expected \($expected), got \($actual)") end)
+              end
+          ' <<< "$NEEDS"
