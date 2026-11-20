@@ -215,33 +215,9 @@ type StartSpec struct {
 	Title string
 	Env   []string
 	Gate  Gate
-	// GuardInput checks authorization around the first content-bearing write.
-	GuardInput func(func() error) error
-	// CodingRoute is the inspected route before starting the adapter.
-	CodingRoute CodingRoute
 	// MCPServers are tools Hermesh gives the agent, as stdio MCP servers:
 	// the session's messages (docs/agent-messages.md §7.4).
 	MCPServers []MCPServer
-}
-
-// Submit performs the first input with the execution host's consent check.
-func (s StartSpec) Submit(send func() error) error {
-	if s.GuardInput != nil {
-		return s.GuardInput(send)
-	}
-	return send()
-}
-
-// Launch starts the configured adapter while the startup disclosure still
-// applies to the executable, its directory and its arguments.
-func (s StartSpec) Launch(ctx context.Context, bin string, args []string) (*Proc, error) {
-	var p *Proc
-	err := s.Submit(func() error {
-		var err error
-		p, err = StartProc(ctx, bin, args, s.WorkDir, s.Env)
-		return err
-	})
-	return p, err
 }
 
 // MCPServer is a stdio MCP server the agent starts.

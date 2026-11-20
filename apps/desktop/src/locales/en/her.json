@@ -1,7 +1,7 @@
 {
   "aiSharing": {
     "title": "Share data with third-party AI?",
-    "disclosure": "Recipient: {{provider}} · {{endpoint}}\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing on the Model page. Sharing expires when Her restarts.",
+    "disclosure": "Provider: {{provider}} · {{endpoint}}\nModel: {{model}}\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing on the Model page.",
     "allow": "Allow AI Sharing",
     "revoke": "Revoke Third-Party AI Sharing",
     "review": "Review Third-Party AI Sharing",
@@ -46,7 +46,7 @@
   },
   "grant": {
     "runs": "Her runs on this computer and works whenever it is on.",
-    "desc": "Her can read coding sessions on your computers. Starting tasks, sending follow-ups and answering agents require a verifiable AI recipient. Turn Her off to end access.",
+    "desc": "Her can use all your computers: start coding agents in any project, read their tasks and answer them. This doesn't expire. Turn Her off to end it.",
     "allow": "Let Her use your computers"
   },
   "line": {

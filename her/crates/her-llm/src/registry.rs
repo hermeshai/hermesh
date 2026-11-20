@@ -4,6 +4,7 @@
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::task::Poll;
@@ -188,7 +189,11 @@ impl ModelRegistry {
     }
 
     pub fn require_ai_consent(&mut self) {
-        self.consent = Some(Arc::new(Consent::default()));
+        self.require_ai_consent_at(None);
+    }
+
+    pub fn require_ai_consent_at(&mut self, path: Option<PathBuf>) {
+        self.consent = Some(Arc::new(Consent::new(path)));
     }
 
     pub fn ai_consent(&self, reference: Option<&str>) -> Option<Status> {

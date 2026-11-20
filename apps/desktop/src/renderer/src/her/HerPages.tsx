@@ -8,7 +8,6 @@ import { Icon } from "../icons";
 import { herAnswers } from "../skew";
 import { errorText, useNow, useStore } from "../store";
 import { useAISharingConfirmation } from "./AISharing";
-import { CodingSharing } from "./CodingSharing";
 import type { SendOp } from "./Approval";
 import {
   allSitesEdits,
@@ -219,7 +218,6 @@ export function ModelPage({ view, op, onBack, onClose }: { view: SessionView | n
             ) : null}
           </section>
         ) : null}
-        <CodingSharing />
         {herAnswers(her.machine, "chatgpt/status") !== false && (
           <section>
             <h3 className="fhead">{t("hp.subscription")}</h3>

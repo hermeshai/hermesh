@@ -861,15 +861,10 @@ final class AppModel {
 
     private func replace(_ s: Session) { heldSessions = mergeSessions(heldSessions, [s]) }
 
-    func codingAnswerConsent(_ s: Session, approve: String = "") async throws -> CodingConsent {
-        guard let api else { throw CancellationError() }
-        return try await api.codingAnswerConsent(s.sessionID, approve: approve)
-    }
-
-    func answer(_ s: Session, answers: [Answer], decline: Bool, consentVersion: String = "") async -> Bool {
+    func answer(_ s: Session, answers: [Answer], decline: Bool) async -> Bool {
         guard let api, let q = s.pendingQuestion else { return false }
         do {
-            replace(try await api.answer(s.sessionID, question: q.questionID, answers: answers, decline: decline, consentVersion: consentVersion))
+            replace(try await api.answer(s.sessionID, question: q.questionID, answers: answers, decline: decline))
             show(decline ? String(localized: "Told it to decide by itself") : String(localized: "Answered; \(agentTitle(s.agent)) is working again"))
             Haptic.success.play()
             return true
