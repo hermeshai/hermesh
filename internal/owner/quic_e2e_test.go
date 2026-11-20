@@ -187,19 +187,19 @@ func TestDirectQUICEndToEndConnectRPCAndCellularFilter(t *testing.T) {
 		t.Fatalf("concurrent Connect RPC over QUIC/H3 failed: %v", err)
 	}
 
-	// Verify ProbeOrForgetDirect keeps a healthy QUIC tunnel alive (no spurious
+	// Verify ProbeOrForgetTunnels keeps a healthy QUIC tunnel alive (no spurious
 	// local close on transient mobile path events) and drops it once the peer stops.
 	client := dialer.Detached()
 	defer client.Close()
 	if !client.AdoptDirect(machID, m) {
 		t.Fatal("AdoptDirect rejected live QUIC tunnel")
 	}
-	client.ProbeOrForgetDirect(ctx)
+	client.ProbeOrForgetTunnels(ctx)
 	if !m.Alive() {
-		t.Fatal("ProbeOrForgetDirect unexpectedly closed a healthy QUIC tunnel")
+		t.Fatal("ProbeOrForgetTunnels unexpectedly closed a healthy QUIC tunnel")
 	}
 	if path, _, ok := client.MachineTunnel(machID); !ok || (path != "quic_lan" && path != "quic_ipv6") {
-		t.Fatalf("healthy QUIC tunnel evicted after ProbeOrForgetDirect: ok=%v path=%q", ok, path)
+		t.Fatalf("healthy QUIC tunnel evicted after ProbeOrForgetTunnels: ok=%v path=%q", ok, path)
 	}
 
 	// Verify directFastMachine singleflight: 8 concurrent callers while relay is
@@ -312,9 +312,9 @@ func TestDirectQUICEndToEndConnectRPCAndCellularFilter(t *testing.T) {
 
 	machCancel()
 	<-machDone
-	client.ProbeOrForgetDirect(ctx)
+	client.ProbeOrForgetTunnels(ctx)
 	if _, _, ok := client.MachineTunnel(machID); ok {
-		t.Fatal("dead QUIC tunnel was not evicted by ProbeOrForgetDirect")
+		t.Fatal("dead QUIC tunnel was not evicted by ProbeOrForgetTunnels")
 	}
 }
 

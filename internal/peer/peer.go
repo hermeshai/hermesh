@@ -590,8 +590,8 @@ func (c *Client) RelayMachine(ctx context.Context, machineID string) (*Machine, 
 }
 
 // Warm connects to machines in the background, ahead of the calls likely to
-// need them.
-func (c *Client) Warm(machineIDs []string) {
+// need them. onError can recover the relay that a background dial timed out on.
+func (c *Client) Warm(machineIDs []string, onError func(string, error)) {
 	for _, id := range machineIDs {
 		c.mu.Lock()
 		if c.warming[id] != nil {
@@ -611,8 +611,11 @@ func (c *Client) Warm(machineIDs []string) {
 		c.mu.Unlock()
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			c.dialMachine(ctx, id)
+			_, err := c.dialMachine(ctx, id)
 			cancel()
+			if err != nil && onError != nil {
+				onError(id, err)
+			}
 			c.mu.Lock()
 			delete(c.warming, id)
 			c.mu.Unlock()
@@ -1308,36 +1311,32 @@ func (c *Client) ForgetDirect() {
 	c.mu.Unlock()
 }
 
-// ProbeOrForgetDirect probes each cached direct tunnel with a lightweight
-// GetInfo RPC and drops only those that fail, avoiding unnecessary teardown of
-// healthy QUIC/TCP direct tunnels on transient mobile network path events.
-func (c *Client) ProbeOrForgetDirect(ctx context.Context) {
+// ProbeOrForgetTunnels checks each cached machine with GetInfo after a
+// network change. A healthy relay can still carry an unresponsive tunnel.
+func (c *Client) ProbeOrForgetTunnels(ctx context.Context) {
 	c.mu.Lock()
-	var directs []*Machine
+	tunnels := make([]*Machine, 0, len(c.machines))
 	for _, n := range c.machines {
-		if n.direct {
-			directs = append(directs, n)
-		}
+		tunnels = append(tunnels, n)
 	}
 	c.mu.Unlock()
-	if len(directs) == 0 {
-		return
-	}
 	var wg sync.WaitGroup
-	for _, n := range directs {
-		wg.Add(1)
-		go func(n *Machine) {
-			defer wg.Done()
-			pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+	for _, n := range tunnels {
+		wg.Go(func() {
+			timeout := 1500 * time.Millisecond
+			if !n.direct {
+				timeout = max(timeout, 3*n.RTT())
+			}
+			pctx, cancel := context.WithTimeout(ctx, timeout)
+			defer cancel()
 			started := time.Now()
 			_, err := n.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
-			cancel()
 			if err != nil {
 				c.ForgetMachine(n)
 				return
 			}
 			n.RecordRTT(time.Since(started))
-		}(n)
+		})
 	}
 	wg.Wait()
 }
