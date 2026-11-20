@@ -8,11 +8,11 @@ import subprocess
 
 FLAGS = ("go", "go_macos", "go_e2e", "screen_linux", "windows", "windows_arm",
          "windows_e2e", "app", "desktop_e2e", "her_integration", "windows_app",
-         "mac_native", "ios", "packaging")
+         "mac_native", "ios", "hermeshkit", "packaging")
 # Unknown files exercise all component smoke tests. Known files in the same diff
 # can still request a deeper suite, such as a changed desktop or Go E2E test.
 COMPONENTS = {"go", "go_macos", "screen_linux", "windows", "windows_arm", "app",
-              "windows_app", "mac_native", "ios", "packaging"}
+              "windows_app", "mac_native", "ios", "hermeshkit", "packaging"}
 DOC_FILES = {"AGENTS.md", "LICENSE", "README.md", "README.zh-CN.md"}
 # First match wins. Keep shared inputs ahead of the directory that owns them.
 RULES = (
@@ -24,11 +24,13 @@ RULES = (
       "apps/desktop/scripts/", "apps/desktop/build/", "scripts/release"), ("packaging",)),
     (("proto/", "gen/", "packages/proto/", "packages/her-protocol/",
       "her/crates/her-protocol/", "internal/preview/testdata/", "internal/owner/testdata/",
-      "packages/her-client/testdata/"), ("go", "app", "her_integration", "ios", "mac_native", "windows")),
+      "packages/her-client/testdata/"), ("go", "app", "her_integration", "ios", "hermeshkit", "mac_native", "windows")),
     (("apps/desktop/src/renderer/src/session/markdown/", "apps/desktop/package.json",
       "pnpm-lock.yaml", "pnpm-workspace.yaml"), ("app", "ios", "windows_app")),
+    (("apps/ios/scripts/test-demo.sh",), ("ios", "hermeshkit")),
     (("apps/ios/",), ("ios",)),
-    (("packages/HermeshKit/",), ("ios", "mac_native")),
+    (("packages/HermeshKit/Tests/", "packages/HermeshKit/test.sh"), ("hermeshkit",)),
+    (("packages/HermeshKit/",), ("ios", "hermeshkit", "mac_native")),
     (("apps/signer/macos/", "apps/screen/macos/"), ("mac_native",)),
     (("apps/screen/linux/",), ("screen_linux",)),
     (("e2e/harness", "e2e/main_test.go"), ("go", "go_e2e", "go_macos", "app", "desktop_e2e",

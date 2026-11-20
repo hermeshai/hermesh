@@ -24,7 +24,9 @@ A new commit on a PR supersedes the earlier run. Each push to `main` finishes it
 
 Documentation changes run routing checks. Her documentation also gets its public-content and generated-reference checks. Go changes run vet, units and a relay/daemon/CLI and mobile smoke test.
 Desktop renderer changes run type checks, unit tests and an Electron smoke test against the daemon.
-iOS changes run Swift tests and a simulator reviewer task, with additional UI suites for affected screens.
+Changes under `packages/HermeshKit/Tests/` run the Swift package tests and offline demo checks on macOS.
+iOS app changes run the simulator reviewer task, with additional UI suites for affected screens.
+Changes to the shared Swift package itself check both the package and its app consumers.
 Protocol and fixture changes check their consumers together. Unknown files add all component smoke checks. An unavailable diff runs the full integration suites.
 `ci-ok` verifies the results. Windows desktop and Windows E2E also report separately.
 
