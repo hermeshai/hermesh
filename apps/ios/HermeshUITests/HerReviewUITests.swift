@@ -102,7 +102,8 @@ final class HerReviewUITests: XCTestCase {
         XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 10))
         XCTAssertFalse(words("Welcome from Her!").exists, "stopping never emits the preset completion")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(words("The simulated task was stopped.").exists)
+        XCTAssertTrue(app.buttons["Retry sample task"].waitForExistence(timeout: 10), "Her shows the stopped task after returning")
+        XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 5))
         XCTAssertFalse(words("Sample task complete.").exists)
     }
 
