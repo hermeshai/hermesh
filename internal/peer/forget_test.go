@@ -151,3 +151,78 @@ func TestConcurrentMachineDialsCoalesce(t *testing.T) {
 		}
 	}
 }
+
+func TestFanOutRetriesOnceOnDeadCachedTunnel(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var dials atomic.Int32
+	var serverConnsMu sync.Mutex
+	var serverConns []net.Conn
+	d := &Dialer{Link: func(context.Context, string) (net.Conn, string, error) {
+		dials.Add(1)
+		a, b := net.Pipe()
+		serverConnsMu.Lock()
+		serverConns = append(serverConns, b)
+		serverConnsMu.Unlock()
+		go transport.ServeH2(ctx, b, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			io.WriteString(w, "ok")
+		}))
+		return a, "machine", nil
+	}}
+	c, err := d.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	first, err := c.Machine(ctx, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.HasReplacement("m", first) {
+		t.Fatal("HasReplacement should be false while first is still current")
+	}
+
+	// Simulate the cached tunnel dying mid-call (e.g. QUIC idle timeout after
+	// peer restart): fn sees a closed tunnel on first attempt and FanOut must
+	// drop it and retry once on a fresh tunnel.
+	var attempts atomic.Int32
+	errs := c.FanOut(ctx, []string{"m"}, func(callCtx context.Context, n *Machine) error {
+		if attempts.Add(1) == 1 {
+			// Tear down the cached connection during the first RPC.
+			_ = n.Close()
+			return io.EOF
+		}
+		req, _ := http.NewRequestWithContext(callCtx, "GET", "https://machine/ok", nil)
+		res, err := n.HTTP().Do(req)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		_, err = io.ReadAll(res.Body)
+		return err
+	})
+	if len(errs) != 0 {
+		t.Fatalf("FanOut failed after cached tunnel died: %v", errs)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("FanOut attempts = %d, want 2", got)
+	}
+	if got := dials.Load(); got != 2 {
+		t.Fatalf("FanOut dials = %d, want 2", got)
+	}
+	if !c.HasReplacement("m", first) {
+		t.Fatal("HasReplacement should be true after replacement tunnel is cached")
+	}
+
+	// Application errors on a live tunnel must NOT trigger a retry.
+	attempts.Store(0)
+	appErr := io.ErrUnexpectedEOF
+	errs = c.FanOut(ctx, []string{"m"}, func(context.Context, *Machine) error {
+		attempts.Add(1)
+		return appErr
+	})
+	if errs["m"] != appErr || attempts.Load() != 1 {
+		t.Fatalf("live tunnel application error retried unexpectedly: errs=%v attempts=%d", errs, attempts.Load())
+	}
+}

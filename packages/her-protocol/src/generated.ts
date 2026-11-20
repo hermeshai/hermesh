@@ -266,11 +266,17 @@ export type BotMemoryResult = {
   text: string;
 };
 
-/** Parameters of `bots/open`, which answers as `session/new` does. */
+/** Parameters of `bots/open`, which answers as `session/new` does (or with an incremental event list when `session_id`, `resume_epoch`, and `after_seq` match the loaded session hub). */
 export type BotOpenParams = {
+  /** Client's last applied event sequence number. */
+  after_seq?: number | null;
   bot_id: string;
   events?: EventFilter;
   history_limit?: number | null;
+  /** Server-issued epoch from the previous `bots/open` reply, preventing sequence collisions across `her` restarts or session unloads. */
+  resume_epoch?: string | null;
+  /** Client's currently held session id for incremental resume. */
+  session_id?: string | null;
 };
 
 /** Result of `bots/create` and `bots/update`. */
