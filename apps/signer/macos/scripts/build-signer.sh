@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and sign Hermesh Signer.app (universal) into a directory:
+# Build and sign Hermesh Signer.app into a directory:
 #   apps/signer/macos/scripts/build-signer.sh <output-dir>   →  <output-dir>/Hermesh Signer.app
 # The desktop app bundles it as Contents/Helpers/Hermesh Signer.app.
 #
@@ -23,9 +23,16 @@ PROFILE="${HERMESH_SIGNER_PROFILE:-}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "› building HermeshSigner (universal)"
-swift build -c release --arch arm64 --arch x86_64 2>&1 | grep -v "x86_64 architecture is deprecated"
-BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)"
+arch="${HERMESH_ARCH:-universal}"
+case "$arch" in
+  arm64) archs=(--arch arm64) ;;
+  x64) archs=(--arch x86_64) ;;
+  universal) archs=(--arch arm64 --arch x86_64) ;;
+  *) echo "Invalid HERMESH_ARCH: $arch" >&2; exit 1 ;;
+esac
+echo "› building HermeshSigner ($arch)"
+swift build -c release "${archs[@]}"
+BIN_DIR="$(swift build -c release "${archs[@]}" --show-bin-path)"
 BIN="$BIN_DIR/HermeshSigner"
 
 echo "› assembling $APP"
