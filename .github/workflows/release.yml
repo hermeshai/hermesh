@@ -70,9 +70,26 @@ jobs:
             sh -c 'apk add --no-cache build-base perl linux-headers git >/dev/null && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo build --profile dist --locked -p her-cli --bin her --no-default-features'
           cp her/target/dist/her her-linux-${{ matrix.arch }}
           ./her-linux-${{ matrix.arch }} --version
-      # her's PDF worker (docs/linux.md §4): the static her cannot load PDFium, so
-      # this second program does, linked against glibc 2.28 with cargo-zigbuild,
-      # as her's own release builds it (her/tools/release/release.mjs).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: her-linux-${{ matrix.arch }}
+          path: her-linux-${{ matrix.arch }}
+          if-no-files-found: error
+  # her's PDF worker (docs/linux.md §4): the static her cannot load PDFium, so
+  # this second program does, linked against glibc 2.28 with cargo-zigbuild,
+  # as her's own release builds it (her/tools/release/release.mjs). Built in
+  # parallel with her so it stays off the Linux release critical path.
+  her-pdf-worker:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
       - name: build her PDF worker
         env:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
@@ -81,11 +98,6 @@ jobs:
           docker run --rm -v "$PWD/her:/src" -w /src -e NIMBLEOFFICE_TOKEN -e CARGO_NET_GIT_FETCH_WITH_CLI=true -e RUSTUP_TOOLCHAIN="$toolchain-$(uname -m)-unknown-linux-gnu" "rust:$toolchain-bookworm" \
             sh -c 'apt-get update -qq >/dev/null && apt-get install -y -qq python3-pip >/dev/null && pip3 install --quiet --break-system-packages cargo-zigbuild && { [ -z "$NIMBLEOFFICE_TOKEN" ] || git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf https://github.com/Eliseowzy/nimbleoffice; } && cargo zigbuild --profile dist --locked -p her-docs --bin her-doc-worker --target "$(uname -m)-unknown-linux-gnu.2.28"'
           cp "her/target/$(uname -m)-unknown-linux-gnu/dist/her-doc-worker" her-doc-worker-linux-${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: her-linux-${{ matrix.arch }}
-          path: her-linux-${{ matrix.arch }}
-          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: her-doc-worker-linux-${{ matrix.arch }}
@@ -116,10 +128,18 @@ jobs:
             git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           fi
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: Add Rust target
+        working-directory: her
+        run: rustup target add ${{ matrix.triple }}
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: release-her-win-${{ matrix.arch }}-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: build her
         working-directory: her
         run: |
-          rustup target add ${{ matrix.triple }}
           cargo build --profile dist --locked -p her-cli --bin her --no-default-features --target ${{ matrix.triple }}
           cp target/${{ matrix.triple }}/dist/her.exe ../her-windows-${{ matrix.arch }}.exe
       - if: matrix.arch == 'amd64'
@@ -153,7 +173,7 @@ jobs:
           path: hermesh-screen-linux-${{ matrix.arch }}
           if-no-files-found: error
   binaries:
-    needs: [notes, her, her-windows, screen]
+    needs: [notes, her, her-pdf-worker, her-windows, screen]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -306,6 +326,15 @@ jobs:
           fi
           git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
           echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - name: Add Rust target
+        working-directory: her
+        run: rustup target add ${{ matrix.arch == 'x64' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: her -> target
+          key: release-mac-app-${{ matrix.arch }}-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
+          cache-on-failure: true
       - name: build, sign, notarize
         run: VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} node apps/desktop/scripts/build-app.mjs
       # The runner is Apple silicon: it can run the arm64 app. her-mock is the
@@ -325,10 +354,14 @@ jobs:
   # package, and its feed, signed with the release key as the app checks it. x64 is installed,
   # opened and uninstalled on the runner.
   windows-app:
-    needs: notes
+    needs: [notes, her-windows]
     strategy:
       matrix:
-        arch: [arm64, x64]
+        include:
+          - arch: arm64
+            go: arm64
+          - arch: x64
+            go: amd64
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -339,18 +372,10 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable && pnpm install --frozen-lockfile
-      # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
-      - name: Read access to the NimbleOffice fork
-        shell: bash
-        env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
-        run: |
-          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
-            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
-            exit 0
-          fi
-          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: her-windows-${{ matrix.go }}
+          path: ${{ runner.temp }}/her
       - name: build, and sign the feed
         shell: bash
         env:
@@ -358,7 +383,7 @@ jobs:
         run: |
           umask 077
           printf '%s\n' "$RELEASE_SIGNING_KEY" > "$RUNNER_TEMP/release.key"
-          VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/release.key" node apps/desktop/scripts/package-win.mjs
+          VERSION="${GITHUB_REF_NAME#v}" HERMESH_ARCH=${{ matrix.arch }} HER="$RUNNER_TEMP/her/her-windows-${{ matrix.go }}.exe" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/release.key" node apps/desktop/scripts/package-win.mjs
           rm -f "$RUNNER_TEMP/release.key"
       - name: check the installer
         if: matrix.arch == 'x64'
@@ -369,7 +394,7 @@ jobs:
   # The Linux app (docs/linux.md §7.2): .deb, .rpm and .tar.gz, and its signed
   # feed, on a runner of each architecture, with Her's programs the her job built.
   linux-app:
-    needs: [notes, her]
+    needs: [notes, her, her-pdf-worker]
     strategy:
       matrix:
         include:

@@ -32,6 +32,7 @@
 //   RELEASE_SIGNING_KEY_FILE    the release key (ECDSA P-256, PEM), to sign the feed
 //   HERMESH_UPDATE_FEED         test builds only: where the app looks for updates (default: the latest GitHub release)
 //   HERMESH_RELEASE_PUBKEY_FILE test builds only: the key the app checks the feed with (default: scripts/release-pubkey.pem)
+//   HER                         her.exe for Windows, built beforehand (optional; built from her/ when unset)
 //   HERMESH_HER_PROFILE         test builds only: the cargo profile her is built with (default: dist, as her's releases)
 //   HER_GITHUB_OAUTH_CLIENT_SECRET   the secret of her's GitHub OAuth app, built into her, as for the Mac app (build-app.mjs)
 import { packager } from "@electron/packager";
@@ -95,15 +96,20 @@ let pdfium = null;
 if (onWindows) {
   const triple = { x64: "x86_64-pc-windows-msvc", arm64: "aarch64-pc-windows-msvc" }[arch];
   const profile = process.env.HERMESH_HER_PROFILE || "dist";
-  step(`building her (${arch})`);
-  const githubSecret = process.env.HER_GITHUB_OAUTH_CLIENT_SECRET || "";
-  if (!githubSecret) console.warn("⚠️  no HER_GITHUB_OAUTH_CLIENT_SECRET: this her signs in to GitHub with a token only.");
-  sh("rustup", ["target", "add", triple], { cwd: herRoot });
-  sh("cargo", ["build", "--profile", profile, "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triple], {
-    cwd: herRoot,
-    env: { ...process.env, HER_GITHUB_OAUTH_CLIENT_SECRET: githubSecret },
-  });
-  fs.copyFileSync(path.join(herRoot, "target", triple, profile, "her.exe"), path.join(bin, "her.exe"));
+  if (process.env.HER) {
+    step(`using prebuilt her (${arch})`);
+    fs.copyFileSync(path.resolve(process.env.HER), path.join(bin, "her.exe"));
+  } else {
+    step(`building her (${arch})`);
+    const githubSecret = process.env.HER_GITHUB_OAUTH_CLIENT_SECRET || "";
+    if (!githubSecret) console.warn("⚠️  no HER_GITHUB_OAUTH_CLIENT_SECRET: this her signs in to GitHub with a token only.");
+    sh("rustup", ["target", "add", triple], { cwd: herRoot });
+    sh("cargo", ["build", "--profile", profile, "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triple], {
+      cwd: herRoot,
+      env: { ...process.env, HER_GITHUB_OAUTH_CLIENT_SECRET: githubSecret },
+    });
+    fs.copyFileSync(path.join(herRoot, "target", triple, profile, "her.exe"), path.join(bin, "her.exe"));
+  }
 
   step(`fetching PDFium ${pdfiumRelease.tag} and agent-desktop ${agentDesktopRelease.version}`);
   pdfium = pdfiumFor(arch, path.join(cache, "pdfium"), pdfiumRelease, undefined, "win");
