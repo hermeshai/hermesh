@@ -77,6 +77,40 @@ extension HermeshUITests {
         try herRoutines()
     }
 
+    @objc func testHerAISharing() throws {
+        guard ProcessInfo.processInfo.environment["HERMESH_E2E_HER"] != nil else { throw XCTSkip("run with Her built") }
+        try join()
+        try herTurnOn()
+        try herOnboarding()
+
+        let draft = "[[mock:send:收到虚构样例]] fictional"
+        let composer = app.descendants(matching: .any)["her-composer"].firstMatch
+        let disclosure = app.alerts["与第三方 AI 共享数据？"]
+        herSend(draft, approveAI: false)
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
+        XCTAssertTrue(disclosure.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "127.0.0.1", "数据：", "用途：")).firstMatch.exists)
+        disclosure.buttons["不允许"].tap()
+        XCTAssertEqual(composer.value as? String, draft)
+        XCTAssertFalse(app.staticTexts["收到虚构样例"].exists)
+
+        tap("her-send")
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
+        disclosure.buttons["允许与 AI 共享"].tap()
+        XCTAssertTrue(app.staticTexts["收到虚构样例"].waitForExistence(timeout: 30))
+
+        herPage("settings")
+        let revoke = app.buttons["her-ai-sharing-revoke"]
+        for _ in 0..<3 where !revoke.isHittable { app.swipeUp() }
+        XCTAssertTrue(revoke.waitForExistence(timeout: 10))
+        revoke.tap()
+        XCTAssertTrue(revoke.waitForNonExistence(timeout: 10))
+        herBackToConversation()
+        herSend("fictional draft after withdrawal", approveAI: false)
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
+        disclosure.buttons["不允许"].tap()
+        XCTAssertEqual(composer.value as? String, "fictional draft after withdrawal")
+    }
+
     /// Sending (docs/her-sending.md) on its own: a message leaves the composer at once and shows once.
     ///
     ///     HERMESH_IPHONE_E2E=1 HERMESH_IPHONE_GREP=testHerSending go test ./e2e -run TestIPhone -v -timeout 40m
@@ -514,14 +548,15 @@ extension HermeshUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { app.keyboards.count > 0 }, "the field has the keyboard again")
         herShot("Her: sent while Pinyin composed")
 
-        // The connection gone: the message shows at once, waits, and goes once the relay is back.
+        // A disconnected iPhone keeps the draft until it can check the recipient.
         _ = try control("relay?up=0", method: "POST")
-        herSend("[[mock:send:断线后送达]] hi")
-        XCTAssertTrue(waitUntil(timeout: 2) { typed().isEmpty }, "emptied at once: \(typed())")
-        let row = app.descendants(matching: .any).matching(NSPredicate(format: "identifier IN %@", ["her-sending", "her-waiting"])).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "shown as being sent, then waiting")
-        herShot("Her: sent with the relay down")
+        herSend("[[mock:send:断线后送达]] hi", approveAI: false)
+        XCTAssertEqual(typed(), "[[mock:send:断线后送达]] hi")
+        XCTAssertFalse(app.descendants(matching: .any)["her-waiting"].exists)
+        herShot("Her: draft kept with the relay down")
         _ = try control("relay?up=1", method: "POST")
+        XCTAssertTrue(app.descendants(matching: .any)["her-offline"].firstMatch.waitForNonExistence(timeout: 60))
+        tap("her-send")
         XCTAssertTrue(app.staticTexts["断线后送达"].waitForExistence(timeout: 180), "delivered once the relay is back, and answered")
         XCTAssertEqual(shown("[[mock:send:断线后送达]] hi"), 1, "the message once")
         XCTAssertTrue(waitUntil(timeout: 30) { !app.descendants(matching: .any)["her-waiting"].exists && !app.descendants(matching: .any)["her-sending"].exists })
@@ -886,13 +921,14 @@ extension HermeshUITests {
         XCTAssertTrue(line.label.contains("owner-mac 离线"), line.label)
         XCTAssertTrue(app.staticTexts["你好，主人"].exists, "what was said stays")
         herSend("[[mock:send:回来了]] hi")
-        let waiting = app.descendants(matching: .any)["her-waiting"].firstMatch
-        XCTAssertTrue(waiting.waitForExistence(timeout: 30), "the message waits here")
-        XCTAssertTrue(text("等 owner-mac 在线后送达").exists && app.buttons["her-discard"].exists)
-        herShot("Her: the Mac offline")
+        XCTAssertFalse(app.descendants(matching: .any)["her-waiting"].exists)
+        herShot("Her: draft while the Mac is offline")
         _ = try control("machine?up=1", method: "POST")
-        XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 180), "delivered once the Mac is back, and answered")
-        XCTAssertTrue(waiting.waitForNonExistence(timeout: 60))
+        XCTAssertTrue(line.waitForNonExistence(timeout: 120))
+        tap("her-send")
+        let allow = app.alerts["与第三方 AI 共享数据？"].buttons["允许与 AI 共享"]
+        if allow.waitForExistence(timeout: 10) { allow.tap() }
+        XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 180), "sent after checking the recipient again")
         XCTAssertFalse(line.exists)
     }
 
@@ -1555,13 +1591,15 @@ extension HermeshUITests {
         if app.descendants(matching: .any)["her-approval"].firstMatch.waitForExistence(timeout: 30) { tap("her-allow-once") }
     }
 
-    func herSend(_ text: String) {
+    func herSend(_ text: String, approveAI: Bool = true) {
         let composer = app.descendants(matching: .any)["her-composer"].firstMatch
         XCTAssertTrue(composer.waitForExistence(timeout: 30), "the composer")
         composer.tap()
         composer.typeText(text)
         XCTAssertTrue(waitUntil { self.app.buttons["her-send"].isHittable }, "Send is reachable above the keyboard")
         tap("her-send")
+        let allow = app.alerts["与第三方 AI 共享数据？"].buttons["允许与 AI 共享"]
+        if approveAI, allow.waitForExistence(timeout: 2) { allow.tap() }
     }
 
     func herShot(_ name: String) {

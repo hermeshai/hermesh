@@ -562,8 +562,55 @@ func (l *localService) ReadToolOutput(ctx context.Context, req *localv1.ReadTool
 	return l.o().ReadToolOutput(ctx, req, stream.Send)
 }
 
+func (l *localService) CodingConsent(ctx context.Context, req *localv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
+	consent := req.GetConsent()
+	if consent == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("choose a coding agent or session"))
+	}
+	o := l.o()
+	if !o.Initialized() {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("coding consent requires a trusted owner device"))
+	}
+	host := req.GetMachineId()
+	if consent.GetSessionId() != "" {
+		if local := o.localSession(consent.SessionId); local != nil {
+			return local.CodingConsent(consent)
+		}
+		n, err := o.sessionMachine(ctx, consent.SessionId)
+		if err != nil {
+			return nil, err
+		}
+		return codingConsentResult(n.Session.CodingConsent(ctx, consent))
+	}
+	if host == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("choose an execution host"))
+	}
+	if local := o.local(); local != nil && local.MachineID() == host {
+		return local.CodingConsent(consent)
+	}
+	c, err := o.relay(ctx)
+	if err != nil {
+		return nil, err
+	}
+	n, err := c.Machine(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	return codingConsentResult(n.Session.CodingConsent(ctx, consent))
+}
+
+func codingConsentResult(out *sessionv1.CodingConsentResponse, err error) (*sessionv1.CodingConsentResponse, error) {
+	if connect.CodeOf(err) == connect.CodeUnimplemented {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host for coding agent consent"))
+	}
+	return out, err
+}
+
 func (l *localService) AnswerQuestion(ctx context.Context, req *localv1.AnswerQuestionRequest) (*localv1.AnswerQuestionResponse, error) {
-	answer := &sessionv1.AnswerQuestionRequest{SessionId: req.SessionId, QuestionId: req.QuestionId, Answers: req.Answers, Decline: req.Decline}
+	if req.Decline && len(req.Answers) != 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("declining a question takes no answer content"))
+	}
+	answer := &sessionv1.AnswerQuestionRequest{SessionId: req.SessionId, QuestionId: req.QuestionId, Answers: req.Answers, Decline: req.Decline, CodingConsentVersion: req.CodingConsentVersion}
 	answerer := l.o().AnswerQuestion
 	if m, ok, err := l.o().onlyMachine(); ok {
 		if err != nil {

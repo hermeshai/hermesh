@@ -16,6 +16,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/oklog/ulid/v2 v2.1.2
+	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pion/ice/v4 v4.4.8
 	github.com/pion/interceptor v0.1.51
 	github.com/pion/logging v0.2.4

@@ -238,12 +238,16 @@ func Args(spec provider.StartSpec) []string {
 	return args
 }
 
+func (p *Provider) CodingRoute(dir string, env []string) provider.CodingRoute {
+	return provider.InspectCodingRoute(p.Name(), p.binary(), dir, env)
+}
+
 func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider.Session, error) {
 	bin := p.binary()
 	if bin == "" {
 		return nil, errors.New("claude not found")
 	}
-	proc, err := provider.StartProc(ctx, bin, Args(spec), spec.WorkDir, spec.Env)
+	proc, err := spec.Launch(ctx, bin, Args(spec))
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +261,10 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 		proc.Stop(time.Second)
 		return nil, err
 	}
-	if err := s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images}); err != nil {
+	if err := spec.Submit(func() error {
+
+		return s.Send(ctx, provider.Input{Text: spec.Prompt, Images: spec.Images})
+	}); err != nil {
 		proc.Stop(time.Second)
 		return nil, err
 	}

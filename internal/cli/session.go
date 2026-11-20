@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -113,6 +114,19 @@ func readPrompt(flag, text, file string, files int) (string, error) {
 	return "", fail(exitUsage, "give the %s with --%s, or --%s-file (- reads stdin), or attach --file", flag, flag, flag)
 }
 
+// requireLocalCodingRecipient checks the destination on the same verified tunnel
+// before any Her task or message is written. An older host cannot confirm it.
+func (a *app) requireLocalCodingRecipient(ctx context.Context, n *peer.Machine, req *sessionv1.CheckLocalCodingRecipientRequest) (string, error) {
+	if a.g.GetHerMachineId() == "" {
+		return "", nil
+	}
+	out, err := n.Session.CheckLocalCodingRecipient(ctx, req)
+	if connect.CodeOf(err) == connect.CodeUnimplemented {
+		return "", connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host for coding agent consent"))
+	}
+	return out.GetVersion(), err
+}
+
 func (a *app) startCmd() *cobra.Command {
 	var project, agent, base, model, effort, prompt, promptFile, title, idem string
 	var questionTimeout time.Duration
@@ -155,9 +169,15 @@ func (a *app) startCmd() *cobra.Command {
 				return err
 			}
 			return a.onMachine(ctx, c, ref, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
+				version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+					Destination: &sessionv1.CheckLocalCodingRecipientRequest_Agent{Agent: agent}, ProjectId: projectID,
+				})
+				if err != nil {
+					return err
+				}
 				res, err := n.Session.StartSession(ctx, &sessionv1.StartSessionRequest{IdempotencyKey: idem, ProjectId: projectID,
 					Agent: agent, Prompt: text, BaseRef: base, Model: model, Effort: effort, Attachments: atts, QuestionTimeoutSeconds: qt, Title: title,
-					Conversation: a.as})
+					Conversation: a.as, CodingConsentVersion: version})
 				if connect.CodeOf(err) == connect.CodeNotFound {
 					return &exitError{code: exitUsage, kind: "not_found", err: err, hint: "see `hermesh project list`"}
 				}
@@ -583,7 +603,18 @@ A message sent with ` + "`hermesh session send`" + ` while the agent waits also 
 					}
 					req.Answers = answers
 				}
-				res, err := n.Session.AnswerQuestion(ctx, req)
+				answer := n.Session.AnswerQuestion
+				if !decline && a.g.GetHerMachineId() != "" {
+					version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+						Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: args[0]},
+					})
+					if err != nil {
+						return err
+					}
+					req.CodingConsentVersion = version
+					answer = n.Session.AnswerLocalQuestion
+				}
+				res, err := answer(ctx, req)
 				if err != nil {
 					return err
 				}
@@ -912,7 +943,13 @@ take input only between turns (ACP) run it as the next turn, right after.
 					return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", args[0]),
 						hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", args[0])}
 				}
-				res, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: args[0], Text: text, Attachments: atts})
+				version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
+					Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: args[0]},
+				})
+				if err != nil {
+					return err
+				}
+				res, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: args[0], Text: text, Attachments: atts, CodingConsentVersion: version})
 				if err != nil {
 					return err
 				}

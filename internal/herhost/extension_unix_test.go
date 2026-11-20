@@ -34,7 +34,7 @@ func TestExtensionHost(t *testing.T) {
 	user := t.TempDir()
 	t.Setenv("HOME", user)
 	sock := shortSocket(t)
-	install, serve, uninstall := "/hers browser extension install --socket "+sock+" --folder "+ExtensionFolder(user), "/hers serve --listen unix://"+sock, "/hers browser extension uninstall"
+	install, serve, uninstall := "/hers browser extension install --socket "+sock+" --folder "+ExtensionFolder(user), "/hers serve --require-ai-consent --listen unix://"+sock, "/hers browser extension uninstall"
 	bin, calls := hertest.Fake(t)
 	runs := func(want ...string) func() bool {
 		return func() bool { return slices.Equal(hertest.Calls(calls), want) }
