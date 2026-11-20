@@ -752,9 +752,11 @@ func (r *replica) followRemote(s *sources, id string, f *feed, ready func()) err
 	}
 	for {
 		ctx, cancel := context.WithCancel(s.ctx)
-		timer := time.AfterFunc(followTimeout, cancel)
+		deadline := time.Now().Add(followTimeout)
+		timer := time.AfterFunc(time.Until(deadline), cancel)
 		late := func(err error) error {
-			if s.ctx.Err() == nil && ctx.Err() != nil {
+			// The transport may time out before our timer's cancel runs.
+			if s.ctx.Err() == nil && !time.Now().Before(deadline) {
 				return errors.New("did not answer in time")
 			}
 			return err
