@@ -7,7 +7,7 @@ import { agoText } from "@hermesh/core";
 import { Icon } from "../icons";
 import { herAnswers } from "../skew";
 import { errorText, useNow, useStore } from "../store";
-import { useAISharingConfirmation } from "./AISharing";
+import { aiSharingAllowed, useAISharingConfirmation } from "./AISharing";
 import type { SendOp } from "./Approval";
 import {
   allSitesEdits,
@@ -206,16 +206,9 @@ export function ModelPage({ view, op, onBack, onClose }: { view: SessionView | n
             <ModelRows below model={view.info.model} thinking={view.info.thinking} onModel={(ref) => void op({ type: "set_model", model: ref })} onThinking={(l) => void op({ type: "set_model", model: view.info.model, thinking: l })} />
           </section>
         )}
-        {sharing.value?.allowed || sharing.value?.recipient ? (
+        {consentModel && sharing.value?.recipient && !aiSharingAllowed(sharing.value) ? (
           <section className="fgroup">
-            {sharing.value.allowed ? (
-              <button className="frow" onClick={() => void her.run(async () => {
-                await her.call("ai_consent/revoke", {});
-                await sharing.again();
-              })}>{t("aiSharing.revoke")}</button>
-            ) : consentModel && sharing.value.recipient ? (
-              <button className="frow" onClick={() => confirmAISharing(consentModel, sharing.value!, sharing.again)}>{t("aiSharing.review")}</button>
-            ) : null}
+            <button className="frow" onClick={() => confirmAISharing(consentModel, sharing.value!, sharing.again)}>{t("aiSharing.review")}</button>
           </section>
         ) : null}
         {herAnswers(her.machine, "chatgpt/status") !== false && (

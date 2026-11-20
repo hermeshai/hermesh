@@ -89,6 +89,7 @@ extension HermeshUITests {
         herSend(draft, approveAI: false)
         XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
         XCTAssertTrue(disclosure.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "供应商：", "127.0.0.1", "模型：", "数据：", "用途：")).firstMatch.exists)
+        XCTAssertFalse(disclosure.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ OR label CONTAINS[c] %@", "撤回", "revoke")).firstMatch.exists)
         disclosure.buttons["不允许"].tap()
         XCTAssertEqual(composer.value as? String, draft)
         XCTAssertFalse(app.staticTexts["收到虚构样例"].exists)
@@ -99,16 +100,14 @@ extension HermeshUITests {
         XCTAssertTrue(app.staticTexts["收到虚构样例"].waitForExistence(timeout: 30))
 
         herPage("settings")
-        let revoke = app.buttons["her-ai-sharing-revoke"]
-        for _ in 0..<3 where !revoke.isHittable { app.swipeUp() }
-        XCTAssertTrue(revoke.waitForExistence(timeout: 10))
-        revoke.tap()
-        XCTAssertTrue(revoke.waitForNonExistence(timeout: 10))
+        let clear = app.buttons["her-clear"]
+        for _ in 0..<3 where !clear.isHittable { app.swipeUp() }
+        XCTAssertTrue(clear.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["her-ai-sharing-revoke"].exists)
+        XCTAssertFalse(app.buttons["撤回第三方 AI 共享授权"].exists)
+        XCTAssertFalse(app.buttons["Revoke Third-Party AI Sharing"].exists)
+        XCTAssertFalse(app.buttons["her-ai-sharing-review"].exists)
         herBackToConversation()
-        herSend("fictional draft after withdrawal", approveAI: false)
-        XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
-        disclosure.buttons["不允许"].tap()
-        XCTAssertEqual(composer.value as? String, "fictional draft after withdrawal")
     }
 
     @objc func testHerNotifications() throws {

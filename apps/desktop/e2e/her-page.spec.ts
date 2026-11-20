@@ -12,7 +12,7 @@ import { fixture, launch, snap } from "./app";
 
 test("Her's page: its tabs, and the pages its cards and rows open beside the conversation", async () => {
   test.setTimeout(240_000);
-  const { page } = await launch(fixture.socket, {});
+  const { app, page } = await launch(fixture.socket, {});
   await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
   const choices = page.getByRole("list", { name: "选择 Her 在哪里运行" });
   await choices.getByRole("listitem").filter({ hasText: "work-mac" }).getByRole("button", { name: "开启 Her" }).click({ timeout: 60_000 });
@@ -103,6 +103,8 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
   const models = page.getByTestId("her-models-page");
   await expect(models).toContainText("使用订阅");
   await expect(models).toContainText("API 与自定义服务");
+  await expect(models).not.toContainText("撤回第三方 AI 共享授权");
+  await expect(models).not.toContainText("Revoke Third-Party AI Sharing");
   await expect(models.getByTestId("her-chatgpt-sign-in")).toBeVisible();
   const provider = models.getByTestId("her-provider-tencent-token-plan");
   await expect(provider).toContainText("腾讯云 Token Plan", { timeout: 30_000 });
@@ -140,4 +142,48 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
   await expect(herPage.getByRole("tab", { name: "设置" })).toHaveAttribute("aria-selected", "true");
   await herPage.getByRole("button", { name: "关闭" }).click();
   await expect(herPage).toBeHidden();
+  await app.close();
+
+  // English UI against the same Her environment: first-time disclosure covers provider/model/data/purpose with
+  // no revoke hint, declining keeps the draft and blocks sending, approving succeeds, and the Model page has no
+  // revoke entry.
+  const en = await launch(fixture.socket, { systemLanguages: ["en"] });
+  try {
+    const enPage = en.page;
+    await enPage.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
+    const enLog = enPage.getByRole("log", { name: "Conversation" });
+    const enComposer = enPage.getByRole("textbox", { name: "Message" });
+    await expect(enComposer).toBeEnabled({ timeout: 60_000 });
+    const draft = "[[mock:send:English consent ok]] hi";
+    await enComposer.fill(draft);
+    await enComposer.press("Enter");
+    const enDialog = enPage.getByRole("dialog", { name: "Share data with third-party AI?" });
+    await expect(enDialog).toContainText("Provider:", { timeout: 15_000 });
+    await expect(enDialog).toContainText("127.0.0.1:");
+    await expect(enDialog).toContainText("Model:");
+    await expect(enDialog).toContainText("Data:");
+    await expect(enDialog).toContainText("Purpose:");
+    await expect(enDialog).not.toContainText(/revoke/i);
+    await enDialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(enDialog).toBeHidden();
+    await expect(enComposer).toHaveValue(draft);
+    await expect(enLog).not.toContainText("English consent ok");
+
+    await enComposer.press("Enter");
+    await expect(enDialog).toBeVisible({ timeout: 15_000 });
+    await enDialog.getByRole("button", { name: "Allow AI Sharing" }).click();
+    await expect(enLog).toContainText("English consent ok", { timeout: 60_000 });
+
+    const enHerPage = enPage.getByRole("complementary", { name: "Assistant Settings" });
+    await enPage.getByTestId("her-avatar").click();
+    await enHerPage.getByRole("tab", { name: "Settings" }).click();
+    await enHerPage.getByTestId("her-model-page").click();
+    const enModels = enPage.getByTestId("her-models-page");
+    await expect(enModels).toContainText("Use a Subscription", { timeout: 30_000 });
+    await expect(enModels).not.toContainText("Revoke Third-Party AI Sharing");
+    await expect(enModels).not.toContainText("撤回第三方 AI 共享授权");
+    await expect(enModels).not.toContainText("Review Third-Party AI Sharing");
+  } finally {
+    await en.app.close();
+  }
 });
