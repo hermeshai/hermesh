@@ -717,12 +717,6 @@ final class HerChat {
         return false
     }
 
-    func revokeAISharing() async throws {
-        aiConsentPrompt = nil
-        _ = try await callAlone("ai_consent/revoke", [:])
-        aiSharingChanged += 1
-    }
-
     // MARK: Sending
 
     /// Sends the draft (docs/her-sending.md): the composer is empty at once and the message shows as being sent, under

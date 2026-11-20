@@ -681,7 +681,7 @@ private struct HerAISharingAlert: ViewModifier {
             Button("Allow AI Sharing") { Task { await consent.allow() } }
             Button("Don’t Allow", role: .cancel) {}
         } message: { consent in
-            Text("Provider: \(consent.provider) · \(consent.endpoint)\nModel: \(consent.model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing in Her → Settings.")
+            Text("Provider: \(consent.provider) · \(consent.endpoint)\nModel: \(consent.model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer.")
         }
     }
 }

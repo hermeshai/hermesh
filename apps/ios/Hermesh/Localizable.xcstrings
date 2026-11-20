@@ -21,12 +21,12 @@
         }
       }
     },
-    "Provider: %@ · %@\nModel: %@\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing in Her → Settings." : {
+    "Provider: %@ · %@\nModel: %@\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "供应商：%1$@ · %2$@\n模型：%3$@\n\n数据：消息、聊天记录、图片、附件内容、记忆和工具结果，其中可能包含已连接服务的数据。\n\n用途：生成回复并执行 Her 的任务，包括这台电脑上的计划任务。可在 Her → 设置中撤回授权。"
+            "value" : "供应商：%1$@ · %2$@\n模型：%3$@\n\n数据：消息、聊天记录、图片、附件内容、记忆和工具结果，其中可能包含已连接服务的数据。\n\n用途：生成回复并执行 Her 的任务，包括这台电脑上的计划任务。"
           }
         }
       }
@@ -47,16 +47,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请连接运行 Her 的电脑，以确认数据接收方。"
-          }
-        }
-      }
-    },
-    "Revoke Third-Party AI Sharing" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "撤回第三方 AI 共享授权"
           }
         }
       }
