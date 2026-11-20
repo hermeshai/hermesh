@@ -26,10 +26,7 @@ func recordingACP(t *testing.T) codingFixture {
 	t.Helper()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls.log")
-	return codingFixture{home: dir, log: log, env: []string{
-		"HOME=" + dir, "HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"),
-		"FAKE_ACP_LOG=" + log, "FAKE_ACP_STATE=" + filepath.Join(dir, "state"),
-	}}
+	return codingFixture{home: dir, log: log, env: append(geminiCodingFixtureEnv(t, dir), "FAKE_ACP_LOG="+log)}
 }
 
 func (f codingFixture) prompts() int {
