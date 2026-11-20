@@ -1223,9 +1223,9 @@ fn main() -> ExitCode {
     };
     // A server on a socket outlives its clients: one that goes away while her writes to it must
     // cost that connection an error, not the process. Linux raises SIGPIPE for a socket; macOS's
-    // sockets don't, which hid it.
+    // sockets don't, which hid it. The native host also handles Chrome closing its pipes.
     #[cfg(unix)]
-    if matches!(command, Command::Serve { listen: Some(_), .. }) {
+    if matches!(command, Command::Serve { listen: Some(_), .. } | Command::Browser { command: BrowserCommand::NativeHost { .. } }) {
         // SAFETY: still before any thread is started.
         unsafe {
             libc::signal(libc::SIGPIPE, libc::SIG_IGN);

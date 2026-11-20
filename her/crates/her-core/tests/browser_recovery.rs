@@ -3,21 +3,31 @@
 
 use her_browser::pool::Stream;
 use her_browser::router::{OpenGuard, TabNumbers};
-use her_browser::session::SnapshotRequest;
+use her_browser::session::{Action, Place, SnapshotRequest};
 use her_browser::{Backend, BrowserConfig, BrowserError, BrowserPool, BrowserSession, CdpError, EmbeddedHost, SessionOptions};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio_util::sync::CancellationToken;
 
 struct Host {
     targets: Vec<&'static str>,
     error: &'static str,
+    navigate_while_reporting: bool,
 }
 
 fn info(id: &str) -> Value {
     json!({"targetId": id, "type": "page", "url": "https://recovery.test/", "title": "Kept page"})
+}
+
+fn frame(navigated: bool) -> Value {
+    if navigated {
+        json!({"id": "frame", "loaderId": "next", "url": "https://recovery.test/welcome"})
+    } else {
+        json!({"id": "frame", "loaderId": "document", "url": "https://recovery.test/"})
+    }
 }
 
 impl EmbeddedHost for Host {
@@ -33,9 +43,12 @@ impl EmbeddedHost for Host {
         let (read, mut write) = tokio::io::split(server);
         let targets = self.targets.clone();
         let error = self.error;
+        let navigate_while_reporting = self.navigate_while_reporting;
         tokio::spawn(async move {
             let mut read = BufReader::new(read);
             let mut attached = HashSet::new();
+            let mut submitted = false;
+            let mut navigated = false;
             loop {
                 let mut bytes = Vec::new();
                 if read.read_until(0, &mut bytes).await.unwrap_or(0) == 0 {
@@ -71,12 +84,40 @@ impl EmbeddedHost for Host {
                         attached.remove(target);
                     }
                     "Target.createTarget" => reply["result"] = json!({"targetId": "T100"}),
-                    "Target.getTargetInfo" => reply["result"] = json!({"targetInfo": info(target)}),
-                    "Page.getFrameTree" => {
-                        reply["result"] = json!({"frameTree": {"frame": {"id": "frame", "loaderId": "document", "url": "https://recovery.test/"}}})
+                    "Target.getTargetInfo" => {
+                        let mut info = info(target);
+                        if navigated {
+                            info["url"] = frame(true)["url"].clone();
+                            info["title"] = json!("Welcome");
+                        }
+                        reply["result"] = json!({"targetInfo": info});
                     }
+                    "Page.getFrameTree" => {
+                        reply["result"] = json!({"frameTree": {"frame": frame(navigated)}});
+                    }
+                    "Input.dispatchKeyEvent" if navigate_while_reporting => submitted = true,
                     "Accessibility.getFullAXTree" => {
-                        reply["result"] = json!({"nodes": [{"nodeId": "1", "role": {"value": "RootWebArea"}, "name": {"value": "Kept page"}}]})
+                        // The submit commits during the post-action snapshot, after an earlier
+                        // Target.getTargetInfo could already have returned the old document.
+                        if submitted && !navigated {
+                            navigated = true;
+                            for (method, params) in [
+                                ("Page.frameNavigated", json!({"frame": frame(true)})),
+                                ("Page.loadEventFired", json!({})),
+                            ] {
+                                let event = json!({"method": method, "sessionId": c["sessionId"], "params": params});
+                                let mut bytes = serde_json::to_vec(&event).unwrap();
+                                bytes.push(0);
+                                if write.write_all(&bytes).await.is_err() {
+                                    return;
+                                }
+                            }
+                        }
+                        let title = if navigated { "Welcome back" } else { "Kept page" };
+                        reply["result"] = json!({"nodes": [
+                            {"nodeId": "1", "role": {"value": "RootWebArea"}, "childIds": ["2"]},
+                            {"nodeId": "2", "role": {"value": "heading"}, "name": {"value": title}},
+                        ]});
                     }
                     _ => {}
                 }
@@ -107,7 +148,7 @@ fn options(dir: &std::path::Path, numbers: TabNumbers) -> SessionOptions {
 
 fn pool(dir: &std::path::Path, targets: Vec<&'static str>, error: &'static str) -> BrowserPool {
     let pool = BrowserPool::new(dir.join("browser"), false);
-    pool.add_extension(Arc::new(Host { targets, error }), None);
+    pool.add_extension(Arc::new(Host { targets, error, navigate_while_reporting: false }), None);
     pool
 }
 
@@ -116,6 +157,24 @@ fn config() -> BrowserConfig {
         backend: Backend::Extension,
         ..Default::default()
     }
+}
+
+#[tokio::test]
+async fn a_navigation_during_the_action_snapshot_reports_the_new_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let pool = BrowserPool::new(dir.path().join("browser"), false);
+    pool.add_extension(Arc::new(Host { targets: vec![], error: "", navigate_while_reporting: true }), None);
+    let browser = pool.acquire(&config()).await.unwrap();
+    let session = BrowserSession::new(browser, options(dir.path(), TabNumbers::default()));
+    session.open_tab().await.unwrap();
+    let page = session.page(None).unwrap();
+    session.snapshot(&SnapshotRequest::default()).await.unwrap();
+
+    let result = session.act(&Action::Press("Enter".into()), &Place::Page(page), &CancellationToken::new()).await.unwrap();
+    assert_eq!(result.title, "Welcome");
+    assert_eq!(result.url, "https://recovery.test/welcome");
+    assert!(result.text.contains("Page: \"Welcome\" https://recovery.test/welcome"), "{}", result.text);
+    assert!(result.text.contains("Snapshot:\n") && result.text.contains("Welcome back"), "{}", result.text);
 }
 
 #[tokio::test]
