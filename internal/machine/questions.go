@@ -100,6 +100,13 @@ func (s *Sessions) replyChecked(l *live, w *question, r provider.Reply, res sess
 	if w.resolved {
 		return cerr(connect.CodeFailedPrecondition, "the question was already resolved")
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if !r.Declined {
+		if err := w.ps.Answer(ctx, w.ref, r); err != nil {
+			return fmt.Errorf("could not answer the agent's question: %w", err)
+		}
+	}
 	w.resolved = true
 	now := time.Now()
 	l.mu.Lock()
@@ -126,10 +133,10 @@ func (s *Sessions) replyChecked(l *live, w *question, r provider.Reply, res sess
 	if changed {
 		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := w.ps.Answer(ctx, w.ref, r); err != nil {
-		s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
+	if r.Declined {
+		if err := w.ps.Answer(ctx, w.ref, r); err != nil {
+			s.log.Warn("could not answer the agent's question", "session", sessionID, "question", w.q.QuestionId, "err", err)
+		}
 	}
 	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_QuestionResolved{QuestionResolved: &sessionv1.QuestionResolved{
 		QuestionId: w.q.QuestionId, Resolution: res, By: by, Answers: redactAnswers(w.q, answers)}}})
@@ -219,11 +226,11 @@ func (s *Sessions) AnswerQuestion(ctx context.Context, p *Principal, req *sessio
 
 // answerWithText answers the pending question with a message's text (a
 // message sent while the agent waits is its answer). false: no question.
-func (s *Sessions) answerWithText(l *live, by, text string) bool {
+func (s *Sessions) answerWithText(l *live, by, text string) (bool, error) {
 	l.mu.Lock()
 	if len(l.questions) == 0 {
 		l.mu.Unlock()
-		return false
+		return false, nil
 	}
 	w := l.questions[0]
 	l.mu.Unlock()
@@ -237,7 +244,8 @@ func (s *Sessions) answerWithText(l *live, by, text string) bool {
 		}
 		answers = append(answers, a)
 	}
-	return s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, by, answers) == nil
+	err := s.replyChecked(l, w, provider.Reply{Answers: providerAnswers(answers)}, sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED, by, answers)
+	return err == nil, err
 }
 
 // codingConsentCompat handles the legacy v0.1.7 CodingConsent RPC for

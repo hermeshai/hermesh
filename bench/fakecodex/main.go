@@ -9,6 +9,7 @@
 //	FAKE_CODEX_WRITE         files written per turn (default 1)
 //	FAKE_CODEX_MESSAGES      agent messages between commands (default 0)
 //	FAKE_CODEX_BALLAST_MB    resident memory to hold, like a real CLI (default 0)
+//	FAKE_CODEX_REJECT_ANSWER  ask an async question and reject input sent to answer it
 //	FAKE_CODEX_LOG           file to append each thread/start's params to
 //	FAKE_CODEX_START_MS      time thread/start takes to answer (default 0)
 //	FAKE_CODEX_FAIL_START    a file: while it exists, thread/start removes
@@ -250,6 +251,12 @@ func main() {
 				text = p.Input[0].Text
 			}
 			go runTurn(st, turnID, text, cancel)
+		case "turn/steer":
+			if os.Getenv("FAKE_CODEX_REJECT_ANSWER") == "1" {
+				fail(m.ID, "this turn cannot accept an answer")
+				continue
+			}
+			reply(m.ID, map[string]any{})
 		case "turn/interrupt":
 			st.mu.Lock()
 			if st.cancel != nil {
@@ -287,6 +294,15 @@ func runTurn(st *state, turnID, prompt string, cancel chan struct{}) {
 	}
 	interrupted := func() {
 		notify("turn/completed", map[string]any{"turn": map[string]any{"id": turnID, "status": "interrupted"}})
+	}
+	if os.Getenv("FAKE_CODEX_REJECT_ANSWER") == "1" {
+		notify("item/completed", map[string]any{"item": map[string]any{
+			"id": st.item(), "type": "agentMessage", "delivery": "async",
+			"questions": []any{map[string]any{"title": "Which color?", "options": []string{"Red", "Blue"}}},
+		}})
+		<-cancel
+		interrupted()
+		return
 	}
 	output := strings.Repeat("x", outBytes)
 	for i := 0; i < commands; i++ {

@@ -147,8 +147,37 @@ async fn her_persists_consent_across_restart_for_matching_recipient_only() {
         refused_prompt(&client, session, "fictional mismatched recipient after restart").await;
         assert_eq!(counts(), (2, 0));
 
-        // Explicitly revoking clears the persisted grant.
+        // Explicit revoke starts with a fresh grant, separate from the model switch.
+        let offer = status(&client, second_model).await;
+        assert!(offer["allowed"].is_null());
+        allow(&client, second_model, &offer).await.unwrap();
+        let saved = env.home.path().join("ai-consent.json");
+        assert!(saved.is_file());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let permissions = std::fs::metadata(env.home.path()).unwrap().permissions();
+            std::fs::set_permissions(env.home.path(), std::fs::Permissions::from_mode(0o500)).unwrap();
+            // A privileged test process may still be able to write here.
+            let failed = if tempfile::NamedTempFile::new_in(env.home.path()).is_err() {
+                Some(client.request("ai_consent/revoke", json!({})).await)
+            } else {
+                None
+            };
+            std::fs::set_permissions(env.home.path(), permissions).unwrap();
+            if let Some(result) = failed {
+                let error = result.unwrap_err();
+                assert!(error.message.contains("cannot remove saved AI sharing consent"), "{error:?}");
+                assert!(saved.is_file());
+                assert!(status(&client, second_model).await["allowed"].is_null());
+                refused_prompt(&client, session, "fictional after failed disk revoke").await;
+                assert_eq!(counts(), (2, 0));
+            }
+        }
+
         client.request("ai_consent/revoke", json!({})).await.unwrap();
+        assert!(!saved.exists());
         let _ = child.kill().await;
     }
 
@@ -162,8 +191,9 @@ async fn her_persists_consent_across_restart_for_matching_recipient_only() {
         let opened = client.request("bots/open", json!({"bot_id": bot})).await.unwrap();
         let session = opened["session_id"].as_str().unwrap();
 
-        let revoked_status = status(&client, first).await;
+        let revoked_status = status(&client, second_model).await;
         assert!(revoked_status["allowed"].is_null());
+        client.request("session/op", json!({"session_id": session, "op": {"type": "set_model", "model": second_model}})).await.unwrap();
         refused_prompt(&client, session, "fictional after revoke restart").await;
         assert_eq!(counts(), (2, 0));
         let _ = child.kill().await;
