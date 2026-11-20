@@ -15,19 +15,25 @@ cleanup() {
 }
 trap cleanup EXIT
 
+echo "› HermeshKit unit and offline tests"
 swift test --package-path packages/HermeshKit -c release > "$OUT/unit.log" 2>&1
 # Disable SwiftPM's nested manifest sandbox, retaining the outer deny-network sandbox for all test processes.
 sandbox-exec -p '(version 1) (allow default) (deny network*)' \
   swift test --package-path packages/HermeshKit --disable-sandbox -c release --skip-build --filter reviewDemo > "$OUT/offline.log" 2>&1
+echo "› Prepare simulator"
 RUNTIME="$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; print(next(r["identifier"] for r in json.load(sys.stdin)["runtimes"] if r["isAvailable"] and r["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")))')"
 DEVICE="$(xcrun simctl create 'Hermesh Release Review' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro "$RUNTIME")"
+echo "› Build Go core"
 apps/ios/scripts/build-core.sh > "$OUT/core.log" 2>&1
 BUILD=(-project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Release
        -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$OUT/derived" CODE_SIGNING_ALLOWED=NO)
+echo "› Build app and UI tests"
 xcodebuild build-for-testing "${BUILD[@]}" > "$OUT/build.log" 2>&1
+echo "› Boot simulator"
 xcrun simctl boot "$DEVICE"
 xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
 APP="$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
+echo "› Check privacy manifest and binary imports"
 plutil -lint "$APP/PrivacyInfo.xcprivacy"
 DISK_IMPORTS="$(xcrun nm -u "$APP/Hermesh" | awk '$NF ~ /^_f?stat(fs|vfs)(\$.*)?$/ {print $NF}')"
 if [[ -n "$DISK_IMPORTS" ]]; then
@@ -43,6 +49,7 @@ if [[ "$SUITE" != full ]]; then
       *) echo "Unknown demo suite: $suite" >&2; exit 2 ;;
     esac
   done
+  echo "› Run selected UI tests"
   xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
     "${tests[@]}" > "$OUT/ui.log" 2>&1
   exit 0
