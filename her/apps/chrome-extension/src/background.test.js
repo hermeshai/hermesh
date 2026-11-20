@@ -204,6 +204,99 @@ test("stale port hello and disconnect do not corrupt a newer port", async (t) =>
   await waitFor(() => second.messages.some((m) => m.control?.kind === "tabs"));
 });
 
+test("in-flight replies stay with their original port and browser stream", async (t) => {
+  const ports = [];
+  const pending = [];
+  const storage = (value) => ({ get: async () => value, set: async () => {} });
+  const chrome = {
+    storage: {
+      session: storage({ her: { agentTabs: [[1, { session: "test", url: "about:blank", title: "Test tab" }]] } }),
+      local: storage({ herInstance: "test-profile" }),
+    },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => {
+        const current = { onMessage: event(), onDisconnect: event(), sent: [], postMessage(message) { this.sent.push(message); } };
+        ports.push(current);
+        return current;
+      },
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: { query: async () => [{ id: 1 }], onCreated: event(), onUpdated: event(), onRemoved: event() },
+    debugger: {
+      onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {},
+      sendCommand: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+    },
+    windows: { onRemoved: event() },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not make network requests"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+  await import("./background.js?test=connection-replies");
+  await waitFor(() => ports[0]?.sent.some((message) => message.hello));
+
+  let nextId = 0;
+  const send = (port, stream, method, params = {}, sessionId) => {
+    const id = ++nextId;
+    port.onMessage.emit({ stream, data: { id, method, params, ...(sessionId ? { sessionId } : {}) } });
+    return id;
+  };
+  const reply = async (port, id) => {
+    await waitFor(() => port.sent.some((message) => message.data?.id === id));
+    return port.sent.find((message) => message.data?.id === id).data;
+  };
+  const attach = async (port, stream) => {
+    const listed = await reply(port, send(port, stream, "Target.getTargets", { herSession: "test" }));
+    const targetId = listed.result.targetInfos[0].targetId;
+    const attached = await reply(port, send(port, stream, "Target.attachToTarget", { targetId }));
+    return attached.result.sessionId;
+  };
+
+  let port = ports[0];
+  let stream = 1;
+  port.onMessage.emit({ status: "connected" });
+  let session = await attach(port, stream);
+  for (const reset of ["native port", "service connection", "browser stream"]) {
+    const staleResult = send(port, stream, "Page.getFrameTree", {}, session);
+    const staleError = send(port, stream, "Page.getFrameTree", {}, session);
+    assert.equal(pending.length, 2);
+    const [result, error] = pending.splice(0);
+    let staleClose;
+
+    if (reset === "native port") {
+      port.onDisconnect.emit();
+      chrome.alarms.onAlarm.emit({ name: "her-connect" });
+      await waitFor(() => ports[1]?.sent.some((message) => message.hello));
+      port = ports[1];
+      port.onMessage.emit({ status: "connected" });
+    } else if (reset === "service connection") {
+      port.onMessage.emit({ status: "waiting" });
+      port.onMessage.emit({ status: "connected" });
+    } else {
+      staleClose = send(port, stream, "Browser.close");
+      stream++;
+    }
+    session = await attach(port, stream);
+
+    const current = send(port, stream, "Page.getFrameTree", {}, session);
+    assert.equal(pending.length, 1);
+    pending.shift().resolve({ marker: "current" });
+    result.resolve({ marker: "expired" });
+    error.reject(new Error("expired result"));
+    assert.deepEqual((await reply(port, current)).result, { marker: "current" });
+    const retired = [staleResult, staleError];
+    if (staleClose !== undefined) retired.push(staleClose);
+    assert.equal(ports.flatMap((candidate) => candidate.sent).some((message) =>
+      retired.includes(message.data?.id)), false, reset);
+  }
+  await waitFor(() => port.sent.some((message) => message.control?.kind === "tabs"));
+});
+
 test("browser activity reconnects immediately out of backoff while respecting cooldown", async (t) => {
   let now = 100_000;
   t.mock.method(Date, "now", () => now);

@@ -375,9 +375,10 @@ function show() {
 }
 
 function letGo() {
-  live?.browser.close();
+  const browser = live?.browser;
   live = null;
   pieces.clear();
+  browser?.close();
 }
 
 // ---- Updates ----
@@ -415,7 +416,7 @@ async function checkFiles() {
   }
 }
 
-function onMessage(message) {
+function onMessage(current, message) {
   if (message.control) {
     onControl(message.control);
     return;
@@ -463,14 +464,16 @@ function onMessage(message) {
   if (typeof data !== "object" || data === null) return;
   if (live?.stream !== stream) {
     letGo();
-    const out = (message) => {
+    const browser = new ExtensionBrowser(tabs, (message) => {
+      // A port can reconnect, and the service can reuse stream numbers on the same port.
+      if (port !== current || live?.browser !== browser) return;
       try {
-        port?.postMessage({ stream, data: message });
+        current.postMessage({ stream, data: message });
       } catch {
         // The port closed mid-stream; onDisconnect clears the live browser.
       }
-    };
-    live = { stream, browser: new ExtensionBrowser(tabs, out) };
+    });
+    live = { stream, browser };
   }
   live.browser.receive(data);
 }
@@ -547,7 +550,7 @@ function connect() {
   port = current;
   helloSent = false;
   current.onMessage.addListener((message) => {
-    if (port === current) onMessage(message);
+    if (port === current) onMessage(current, message);
   });
   void hello(current);
   current.onDisconnect.addListener(() => {

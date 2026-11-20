@@ -130,6 +130,20 @@ test("closing, the user taking a tab back, and the kernel leaving", async () => 
   void third;
 });
 
+test("closing the browser acknowledges the close and drops earlier pending replies", async () => {
+  const { b, fake, out, call, open } = browser();
+  const { sessionId } = await open("s1");
+  let complete;
+  fake.tabs.send = () => new Promise((resolve) => { complete = resolve; });
+  b.receive({ id: 1000, method: "Page.getFrameTree", sessionId });
+  assert.equal(typeof complete, "function");
+
+  assert.deepEqual((await call("Browser.close")).result, {});
+  complete({ marker: "expired" });
+  await new Promise(setImmediate);
+  assert.equal(out.some((message) => message.id === 1000), false);
+});
+
 test("a tab closed while the kernel attaches is not left attached", async () => {
   const { b, fake, call } = browser();
   const targetId = (await call("Target.createTarget", { url: "about:blank" })).result.targetId;
