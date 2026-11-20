@@ -97,16 +97,22 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 		t.Fatal("pending question should remain quick-answerable for v0.1.7 iPhone compatibility")
 	}
 
-	// Legacy v0.1.7 owner CodingConsent compat call reports approved cleanly.
-	compat, err := phone.client.CodingConsent(ctx, &localv1.CodingConsentRequest{
-		Consent: &sessionv1.CodingConsentRequest{
-			SessionId: id.SessionID,
-			Scope:     sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_MOBILE_ANSWER,
-		},
+	// The phone may replace its first tunnel while this legacy status read is in flight.
+	eventually(t, 10*time.Second, "legacy v0.1.7 CodingConsent reports approval", func() bool {
+		compat, err := phone.client.CodingConsent(ctx, &localv1.CodingConsentRequest{
+			Consent: &sessionv1.CodingConsentRequest{
+				SessionId: id.SessionID,
+				Scope:     sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_MOBILE_ANSWER,
+			},
+		})
+		if connect.CodeOf(err) == connect.CodeUnavailable {
+			return false
+		}
+		if err != nil || !compat.Approved {
+			t.Fatalf("legacy v0.1.7 CodingConsent compat: %v %v", compat, err)
+		}
+		return true
 	})
-	if err != nil || !compat.Approved {
-		t.Fatalf("legacy v0.1.7 CodingConsent compat: %v %v", compat, err)
-	}
 
 	// Decline with non-empty answer content is still rejected.
 	badDecline := &localv1.AnswerQuestionRequest{
