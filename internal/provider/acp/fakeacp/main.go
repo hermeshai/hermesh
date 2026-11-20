@@ -142,10 +142,52 @@ func save(sid string, h *history) {
 	os.WriteFile(filepath.Join(stateDir, sid+".json"), b, 0o600)
 }
 
+func fakeSetting(envKey, fileName string) string {
+	if exe, err := os.Executable(); err == nil {
+		if b, err := os.ReadFile(filepath.Join(filepath.Dir(exe), fileName)); err == nil {
+			return strings.TrimSpace(string(b))
+		}
+	}
+	return strings.TrimSpace(os.Getenv(envKey))
+}
+
 func main() {
+	authID = fakeSetting("FAKE_ACP_AUTH", "fakeacp.auth")
+	if path := os.Getenv("FAKE_ACP_ARGS_LOG"); path != "" {
+		if f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600); err == nil {
+			b, _ := json.Marshal(os.Args[1:])
+			f.Write(append(b, '\n'))
+			f.Close()
+		}
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--version" {
-		fmt.Println("fakeacp 1.2.3")
+		if fakeSetting("FAKE_ACP_VERSION_FAIL", "fakeacp.version_fail") == "1" {
+			fmt.Fprintln(os.Stderr, "version failed")
+			os.Exit(1)
+		}
+		fmt.Println(cmp.Or(fakeSetting("FAKE_ACP_VERSION", "fakeacp.version"), "fakeacp 1.2.3"))
 		return
+	}
+	agyMode := fakeSetting("FAKE_ACP_AGY_MODE", "fakeacp.mode")
+	if len(os.Args) > 2 && os.Args[1] == "acp" && os.Args[2] == "--help" {
+		switch agyMode {
+		case "help-hangs":
+			time.Sleep(time.Minute)
+			return
+		case "legacy-error":
+			fmt.Fprintln(os.Stderr, "unknown command: acp")
+			os.Exit(1)
+		case "ide-launcher":
+			fmt.Println("Usage: agy [paths...]\nOpen files in Antigravity.")
+			return
+		default:
+			fmt.Fprintln(os.Stderr, "Usage: agy acp [options]\nStart the ACP stdio server.")
+			return
+		}
+	}
+	if agyMode == "acp" && !slices.Equal(os.Args[1:], []string{"acp"}) {
+		fmt.Fprintf(os.Stderr, "expected args [acp], got %v\n", os.Args[1:])
+		os.Exit(2)
 	}
 	if stateDir == "" {
 		stateDir = filepath.Join(os.TempDir(), "fakeacp")
@@ -217,7 +259,7 @@ func handle(m msg) {
 		if os.Getenv("FAKE_ACP_OPTIONS") == "1" {
 			sessionCaps["options"] = map[string]any{}
 		}
-		if os.Getenv("FAKE_ACP_CLOSE") == "1" {
+		if fakeSetting("FAKE_ACP_CLOSE", "fakeacp.close") == "1" {
 			sessionCaps["close"] = map[string]any{}
 		}
 		caps["sessionCapabilities"] = sessionCaps
@@ -262,12 +304,17 @@ func handle(m msg) {
 		curModel = ""
 		reply(m.ID, map[string]any{"configOptions": modelConfig()})
 	case "session/close":
-		if os.Getenv("FAKE_ACP_CLOSE") != "1" {
+		if fakeSetting("FAKE_ACP_CLOSE", "fakeacp.close") != "1" {
 			replyErr(m.ID, -32601, "not advertised")
 			return
 		}
 		reply(m.ID, map[string]any{})
 	case "session/new":
+		if code := fakeSetting("FAKE_ACP_NEW_ERROR", "fakeacp.new_error"); code != "" {
+			n, _ := strconv.Atoi(code)
+			replyErr(m.ID, n, "session/new failed")
+			return
+		}
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
 			return
@@ -277,12 +324,12 @@ func handle(m msg) {
 		save(sid, &history{})
 		res := map[string]any{"sessionId": sid}
 		curModel, curEffort = "", ""
-		if os.Getenv("FAKE_ACP_CONFIG") == "1" {
+		if fakeSetting("FAKE_ACP_CONFIG", "fakeacp.config") == "1" {
 			res["configOptions"] = modelConfig()
 		}
 		if os.Getenv("FAKE_ACP_LEGACY") == "1" {
 			var available []any
-			for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+			for _, x := range strings.Split(fakeSetting("FAKE_ACP_MODELS", "fakeacp.models"), ",") {
 				if x != "" {
 					available = append(available, map[string]any{"modelId": x, "name": strings.ToUpper(x)})
 					curModel = cmp.Or(curModel, x)
@@ -491,7 +538,7 @@ func modelConfig() any {
 		return json.RawMessage(b)
 	}
 	opts := []any{}
-	for _, x := range strings.Split(os.Getenv("FAKE_ACP_MODELS"), ",") {
+	for _, x := range strings.Split(fakeSetting("FAKE_ACP_MODELS", "fakeacp.models"), ",") {
 		if x == "" {
 			continue
 		}
