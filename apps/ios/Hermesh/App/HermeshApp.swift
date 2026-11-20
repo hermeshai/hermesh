@@ -19,7 +19,11 @@ struct HermeshApp: App {
             RootView()
                 .environment(model)
                 .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
-                .task { await model.start() }
+                .task {
+                    if !ProcessInfo.processInfo.arguments.contains("-HermeshTestScreen") {
+                        await model.start()
+                    }
+                }
                 .onOpenURL { url in model.open(url) }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     switch phase {

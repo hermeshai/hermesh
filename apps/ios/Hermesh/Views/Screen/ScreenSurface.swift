@@ -1,3 +1,4 @@
+import HermeshKit
 import HermeshProto
 import UIKit
 
@@ -26,15 +27,18 @@ final class ScreenSurfaceView: UIView {
     let picture = ScreenPictureView()
     let keys = ScreenKeyField()
     var send: ((Hermesh_Screen_V1_Input) -> Void)?
-    var onZoomChanged: ((Bool) -> Void)?
+    var onViewChanged: ((Bool) -> Void)?
+    var onStateUpdated: (() -> Void)?
     var panning = false
 
     /// The picture's size in its own pixels.
-    var contentSize = CGSize(width: 1920, height: 1200) {
-        didSet {
-            guard contentSize != oldValue else { return }
-            fit = true
-            loc = CGPoint(x: contentSize.width / 2, y: contentSize.height / 2)
+    var contentSize: CGSize {
+        get { viewport.contentSize }
+        set {
+            guard newValue != viewport.contentSize else { return }
+            viewport.setContentSize(newValue)
+            loc = CGPoint(x: newValue.width / 2, y: newValue.height / 2)
+            syncTransformed()
             setNeedsLayout()
         }
     }
@@ -44,17 +48,19 @@ final class ScreenSurfaceView: UIView {
             guard mode != oldValue else { return }
             if mode == .direct { panning = false }
             pointer.isHidden = mode != .trackpad
-            if mode == .trackpad { follow() }
+            if mode == .trackpad {
+                let safe = currentSafeRect()
+                if !safe.contains(viewport.onScreen(loc)) {
+                    loc = viewport.visiblePointerTarget()
+                }
+            }
             place()
+            onStateUpdated?()
         }
     }
 
-    // Where the picture sits: scale, and the offset of its top left corner.
-    private var s: CGFloat = 1, tx: CGFloat = 0, ty: CGFloat = 0
-    private var fit = true
-    private var zoomed = false
-    private var minScale: CGFloat = 1
-    private var maxScale: CGFloat { max(minScale * 6, 1.5) }
+    private(set) var viewport = ScreenViewport()
+    private var transformed = false
     /// The trackpad's pointer, in the picture's pixels.
     private var loc = CGPoint(x: 960, y: 600)
 
@@ -140,61 +146,70 @@ final class ScreenSurfaceView: UIView {
 
     @objc private func refreshed() {}
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        minScale = min(bounds.width / contentSize.width, bounds.height / contentSize.height)
-        if fit { s = minScale }
-        clampView()
-        if mode == .trackpad && fit { follow() }
-        place()
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
     }
 
-    private func clampView() {
-        s = min(maxScale, max(minScale, s))
-        fit = s <= minScale * 1.001
-        let nowZoomed = !fit
-        if nowZoomed != zoomed {
-            zoomed = nowZoomed
-            if !nowZoomed { panning = false }
-            onZoomChanged?(nowZoomed)
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        viewport.layout(bounds: bounds.size, safeRect: currentSafeRect())
+        syncTransformed()
+        place()
+        onStateUpdated?()
+    }
+
+    /// Restores the picture to its default fitted placement inside the safe area.
+    func resetView() {
+        viewport.resetFit()
+        panning = false
+        syncTransformed()
+        place()
+        onStateUpdated?()
+    }
+
+    private func currentSafeRect() -> CGRect {
+        guard bounds.width > 0, bounds.height > 0 else { return .zero }
+        guard let window else {
+            let r = bounds.inset(by: safeAreaInsets)
+            return r.width > 0 && r.height > 0 ? r : bounds
         }
-        let cw = contentSize.width * s, ch = contentSize.height * s
-        tx = cw <= bounds.width ? (bounds.width - cw) / 2 : min(0, max(bounds.width - cw, tx))
-        ty = ch <= bounds.height ? (bounds.height - ch) / 2 : min(0, max(bounds.height - ch, ty))
+        let windowSafe = convert(window.bounds.inset(by: window.safeAreaInsets), from: window)
+        let r = bounds.intersection(windowSafe)
+        return !r.isNull && r.width > 0 && r.height > 0 ? r : bounds
+    }
+
+    private func syncTransformed() {
+        let nowTransformed = viewport.isTransformed
+        if nowTransformed != transformed {
+            transformed = nowTransformed
+            onViewChanged?(nowTransformed)
+        }
     }
 
     private func place() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        picture.frame = CGRect(x: tx, y: ty, width: contentSize.width * s, height: contentSize.height * s)
-        pointer.position = onScreen(loc)
+        picture.frame = viewport.pictureFrame
+        pointer.position = viewport.onScreen(loc)
         CATransaction.commit()
     }
 
-    private func zoom(at p: CGPoint, by f: CGFloat) {
-        let s2 = min(maxScale, max(minScale, s * f)), k = s2 / s
-        tx = p.x - (p.x - tx) * k
-        ty = p.y - (p.y - ty) * k
-        s = s2
-        clampView()
+    /// Where on the machine an initiated gesture at `p` lands, or nil when it should not fire.
+    /// Direct touch strictly requires hitting inside the picture; trackpad mode requires not panning
+    /// and the virtual pointer being visible on screen.
+    private func actionTarget(at p: CGPoint) -> CGPoint? {
+        if mode == .trackpad {
+            guard !panning, bounds.contains(viewport.onScreen(loc)) else { return nil }
+            return loc
+        }
+        return viewport.picturePoint(at: p)
     }
 
-    /// Keeps the trackpad's pointer on screen.
-    private func follow() {
-        let m: CGFloat = 36, p = onScreen(loc)
-        if p.x < m { tx += m - p.x } else if p.x > bounds.width - m { tx -= p.x - (bounds.width - m) }
-        if p.y < m { ty += m - p.y } else if p.y > bounds.height - m { ty -= p.y - (bounds.height - m) }
-        clampView()
+    /// Fallback coordinate for finishing or continuing a remote drag that already started inside the picture.
+    private func dragTarget(at p: CGPoint) -> CGPoint {
+        mode == .trackpad ? loc : viewport.clampedPicturePoint(at: p)
     }
-
-    private func onScreen(_ c: CGPoint) -> CGPoint { CGPoint(x: tx + c.x * s, y: ty + c.y * s) }
-
-    private func inPicture(_ p: CGPoint) -> CGPoint {
-        CGPoint(x: min(contentSize.width - 1, max(0, (p.x - tx) / s)), y: min(contentSize.height - 1, max(0, (p.y - ty) / s)))
-    }
-
-    /// Where on the machine a gesture at p lands: under the finger, or at the pointer.
-    private func target(_ p: CGPoint) -> CGPoint { mode == .trackpad ? loc : inPicture(p) }
 
     // MARK: What is sent
 
@@ -320,7 +335,7 @@ final class ScreenSurfaceView: UIView {
     private func cancelOne(_ g: One) {
         g.timer?.cancel()
         showRing(nil)
-        if g.drag { button(target(g.last), down: false) }
+        if g.drag { button(dragTarget(at: g.last), down: false) }
     }
 
     private func pruneTouches() {
@@ -342,12 +357,13 @@ final class ScreenSurfaceView: UIView {
             g.last = g.start
             g.began = now
             g.lastTime = now
-            if !(mode == .trackpad && panning) {
+            if actionTarget(at: g.start) != nil {
                 let work = DispatchWorkItem { [weak self, weak g] in
                     guard let self, let g, case .one(let cur) = self.gesture, cur === g, !g.moved else { return }
+                    guard self.actionTarget(at: g.start) != nil else { return }
                     g.long = true
                     self.haptic.impactOccurred()
-                    self.showRing(self.mode == .trackpad ? self.onScreen(self.loc) : g.start)
+                    self.showRing(self.mode == .trackpad ? self.viewport.onScreen(self.loc) : g.start)
                 }
                 g.timer = work
                 DispatchQueue.main.asyncAfter(deadline: .now() + longPress, execute: work)
@@ -378,36 +394,41 @@ final class ScreenSurfaceView: UIView {
                 g.moved = true
                 if !g.long { g.timer?.cancel() }
                 // If the user panned away so the pointer is off-screen, bring it into the visible area instead of snapping back.
-                if mode == .trackpad && !panning && !bounds.contains(onScreen(loc)) {
-                    loc = inPicture(CGPoint(x: bounds.midX, y: bounds.midY))
+                if mode == .trackpad && !panning && !currentSafeRect().contains(viewport.onScreen(loc)) {
+                    loc = viewport.visiblePointerTarget()
                 }
             }
             let dx = p.x - g.last.x, dy = p.y - g.last.y, dt = max(0.001, now - g.lastTime)
             g.last = p
             g.lastTime = now
             if g.long && !g.drag {
-                g.drag = true
-                button(target(g.start), down: true)
+                if let target = actionTarget(at: g.start) {
+                    g.drag = true
+                    button(target, down: true)
+                }
             }
             if mode == .direct || (panning && !g.drag) {
                 if g.drag {
-                    move(inPicture(p))
+                    move(viewport.clampedPicturePoint(at: p))
                     showRing(p)
                 } else {
-                    tx += dx
-                    ty += dy
-                    clampView()
+                    viewport.pan(dx: dx, dy: dy)
+                    syncTransformed()
                     place()
+                    onStateUpdated?()
                 }
             } else {
                 // Faster fingers move the pointer further.
                 let gain = 1 + min(2, hypot(dx, dy) / CGFloat(dt * 1000) * 1.4)
-                loc.x = min(contentSize.width - 1, max(0, loc.x + dx * gain / s))
-                loc.y = min(contentSize.height - 1, max(0, loc.y + dy * gain / s))
-                follow()
+                let scale = max(viewport.scale, 0.0001)
+                loc.x = min(contentSize.width - 1, max(0, loc.x + dx * gain / scale))
+                loc.y = min(contentSize.height - 1, max(0, loc.y + dy * gain / scale))
+                viewport.follow(pointer: loc)
+                syncTransformed()
                 place()
+                onStateUpdated?()
                 move(loc)
-                if g.drag { showRing(onScreen(loc)) }
+                if g.drag { showRing(viewport.onScreen(loc)) }
             }
         case .two(let g):
             guard touches.count == 2 else { return }
@@ -417,14 +438,16 @@ final class ScreenSurfaceView: UIView {
             }
             switch g.kind {
             case .pinch:
-                zoom(at: c, by: d / max(1, g.distance))
-                tx += c.x - g.center.x
-                ty += c.y - g.center.y
-                clampView()
+                viewport.pinch(from: g.center, to: c, factor: d / max(1, g.distance))
+                syncTransformed()
                 place()
+                onStateUpdated?()
             case .scroll:
                 // The content follows the fingers.
-                wheel(target(g.center0), dx: -(c.x - g.center.x) / s, dy: -(c.y - g.center.y) / s)
+                if let target = actionTarget(at: g.center0) {
+                    let scale = max(viewport.scale, 0.0001)
+                    wheel(target, dx: -(c.x - g.center.x) / scale, dy: -(c.y - g.center.y) / scale)
+                }
             case .undecided:
                 break
             }
@@ -432,10 +455,10 @@ final class ScreenSurfaceView: UIView {
             g.distance = d
         case .pan(let prev):
             let c = averageCenter()
-            tx += c.x - prev.x
-            ty += c.y - prev.y
-            clampView()
+            viewport.pan(dx: c.x - prev.x, dy: c.y - prev.y)
+            syncTransformed()
             place()
+            onStateUpdated?()
             gesture = .pan(c)
         default:
             break
@@ -453,20 +476,22 @@ final class ScreenSurfaceView: UIView {
             g.timer?.cancel()
             showRing(nil)
             if g.drag {
-                button(target(g.last), down: false)
+                button(dragTarget(at: g.last), down: false)
             } else if g.long && !g.moved {
-                if !cancelled { click(target(g.start), right: true) }
-            } else if !g.moved && !cancelled, !(mode == .trackpad && panning) {
+                if !cancelled, let target = actionTarget(at: g.start) { click(target, right: true) }
+            } else if !g.moved && !cancelled, let target = actionTarget(at: g.start) {
                 let double = now - lastTap.time < 0.32 && hypot(g.start.x - lastTap.at.x, g.start.y - lastTap.at.y) < 28
                 lastTap = double ? (0, .zero) : (now, g.start)
-                ripple(mode == .trackpad ? onScreen(loc) : g.start)
-                click(target(g.start), clicks: double ? 2 : 1)
+                ripple(mode == .trackpad ? viewport.onScreen(loc) : g.start)
+                click(target, clicks: double ? 2 : 1)
             }
             gesture = .none
         case .two(let g):
             if g.kind == .undecided && now - g.began < 0.35 && !cancelled {
-                ripple(mode == .trackpad ? onScreen(loc) : g.center0)
-                click(target(g.center0), right: true)
+                if let target = actionTarget(at: g.center0) {
+                    ripple(mode == .trackpad ? viewport.onScreen(loc) : g.center0)
+                    click(target, right: true)
+                }
                 gesture = .done
             } else if g.kind == .pinch && (mode == .direct || panning) && touches.count == 1 && !cancelled {
                 // Lifting one finger after a pinch keeps one-finger panning continuous.
