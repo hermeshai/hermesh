@@ -85,6 +85,7 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
   const [program, setProgram] = useState(raw.command ?? "");
   const [args, setArgs] = useState<string[]>(raw.args ?? []);
   const [env, setEnv] = useState<Row[]>(() => rowsOf(raw.env));
+  const [localAdv, setLocalAdv] = useState(() => Object.keys(raw.env ?? {}).length > 0);
   const [probed, setProbed] = useState<McpProbeResult | null>(null);
   const [probing, setProbing] = useState(false);
   const [errors, setErrors] = useState<{ url?: string; command?: string; args?: string; env?: string; other?: string }>({});
@@ -148,7 +149,10 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
       if (pIssue) e.command = t(`addc.errProgram.${pIssue}`);
       const rowCheck = validateLocalRows(name, args, env);
       if (rowCheck.argsError) e.args = t(`addc.errArgs.${rowCheck.argsError}`);
-      if (rowCheck.envError) e.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
+      if (rowCheck.envError) {
+        e.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
+        setLocalAdv(true);
+      }
     }
     // One service, one connector (mcp-design §13.10); only a change of address counts, so
     // entries that were alike already can still be edited.
@@ -236,7 +240,7 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
             <RemoteFields s={fields} probed={probed} probing={probing} host={URL.parse(url.trim())?.hostname ?? ""} saved={{ token: tokenSaved, secret: secretSaved }} />
           </>
         ) : (
-          <>
+          <div className="cz-form cz-gap">
             <LocalFields
               program={program}
               setProgram={(v) => (setProgram(v), setErrors((prev) => ({ ...prev, command: undefined })))}
@@ -248,9 +252,11 @@ export function EditConnector({ c, server, onClose, onSaved }: { c: Customize; s
               programError={errors.command}
               argsError={errors.args}
               envError={errors.env}
+              advOpen={localAdv}
+              setAdvOpen={setLocalAdv}
             />
             <p className="cz-trust">{t("addc.localTrust")}</p>
-          </>
+          </div>
         )}
         {errors.other && <div className="cz-errbox cz-gap">{errors.other}</div>}
       </div>
