@@ -76,8 +76,6 @@ jobs:
           path: |
             ${{ runner.temp }}/ios-demo/*.log
             ${{ runner.temp }}/ios-demo/review.xcresult
-            ${{ runner.temp }}/ios-demo/interaction/*.log
-            ${{ runner.temp }}/ios-demo/interaction/review.xcresult
           if-no-files-found: ignore
   go:
     needs: changes
