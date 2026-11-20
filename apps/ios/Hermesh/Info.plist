@@ -18,6 +18,8 @@
 			</array>
 		</dict>
 	</array>
+	<key>HermeshAccountDeletionOrigins</key>
+	<string>$(HERMESH_ACCOUNT_DELETION_ORIGINS)</string>
 	<key>HermeshKeychainGroup</key>
 	<string>$(AppIdentifierPrefix)io.hermesh.ios.shared</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
