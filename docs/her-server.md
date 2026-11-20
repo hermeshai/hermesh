@@ -910,8 +910,10 @@ While no machine runs Her, the Her entry shows the first run:
   written meanwhile show as waiting.
 - **A login expired.** A card appears in the conversation; the fix is in
   the console.
-- **Notifications** arrive while the app is in the background. They name
-  the assistant, and the environment too when there is more than one.
+- **Notifications** name the assistant, and the environment too when there
+  is more than one. A reply appears quietly in its conversation while that
+  conversation is visible and focused on the device. Questions and approvals
+  can still notify there.
 
 ### 9.4 iPhone app
 

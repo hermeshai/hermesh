@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { runningAgents } from "@hermesh/her-client";
 import { useTranslation } from "react-i18next";
 import type { Methods, Op } from "@hermesh/her-protocol";
@@ -137,6 +137,12 @@ function Environment({ machine, envs, choose }: { machine: Machine; envs: Machin
   const sel = st.selection;
   const progress = sel.kind === "progress" && !!bot;
   const shown = bot && !progress ? panel : null;
+  const visibleBot = !progress && !sheet && !st.sheet && !st.searching && conv.view ? bot?.id : undefined;
+  useLayoutEffect(() => {
+    if (!visibleBot) return;
+    window.hermesh?.setVisibleHer(id, visibleBot);
+    return () => window.hermesh?.setVisibleHer("", "");
+  }, [id, visibleBot]);
   // Back to Her's page, from a page it opened.
   const home = () => setPanel({ kind: "settings" });
   return (

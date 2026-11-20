@@ -651,6 +651,29 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 		}
 		reply(rw, map[string]int{"assistants": len(bots)})
 	})
+	// A prompt sent from the Mac while the iPhone is on another page or in the background.
+	mux.HandleFunc("POST /her-send", func(rw http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		if err != nil {
+			http.Error(rw, err.Error(), 500)
+			return
+		}
+		for _, m := range res.Machines {
+			bot := m.GetHer().GetLatest().GetBotId()
+			if bot == "" {
+				continue
+			}
+			sent, err := w.app.client.HerSend(ctx, &localv1.HerSendRequest{MachineId: m.MachineId, BotId: bot, Text: r.URL.Query().Get("text")})
+			if err != nil || !sent.GetDelivered() {
+				http.Error(rw, fmt.Sprintf("HerSend: %v %v", sent, err), 500)
+				return
+			}
+			reply(rw, map[string]bool{"delivered": true})
+			return
+		}
+		http.Error(rw, "no Her conversation", 500)
+	})
 	// Files the owner sends Her from the Mac (testHer): a PDF and a note,
 	// uploaded into her assistant's folder and named in the message, as the
 	// Mac app sends them, for the iPhone to open from the owner's bubble.
