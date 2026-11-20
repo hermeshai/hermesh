@@ -54,7 +54,7 @@ BUILD_INFO="$(xcrun vtool -show-build "$MAIN")"
 MIN_OS="$(awk '$1 == "minos" { print $2; exit }' <<<"$BUILD_INFO")"
 RECORDED_SDK="$(awk '$1 == "sdk" { print $2; exit }' <<<"$BUILD_INFO")"
 if [ -n "$MIN_OS" ] && [ -n "$SDK_VERSION" ] && [ "$RECORDED_SDK" != "$SDK_VERSION" ]; then
-  for a in arm64 x86_64; do
+  for a in $(lipo -archs "$MAIN"); do
     xcrun vtool -arch "$a" -set-build-version macos "$MIN_OS" "$SDK_VERSION" -replace -output "$MAIN" "$MAIN"
   done
   echo "› linked SDK version $RECORDED_SDK → $SDK_VERSION (min OS $MIN_OS)"

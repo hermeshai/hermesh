@@ -316,8 +316,22 @@ jobs:
           pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.arch == 'x64' && 'Hermesh-windows-setup' || 'Hermesh-windows-setup-arm64' }}
+          name: ${{ strategy.job-total == 1 && 'Hermesh-windows-setup' || format('windows-setup-part-{0}', matrix.arch) }}
+          compression-level: 0
           path: dist/Hermesh-windows-*-setup.exe
+
+  windows-installers:
+    needs: [changes, windows-app]
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: Hermesh-windows-setup
+          pattern: windows-setup-part-*
+          compression-level: 0
+          delete-merged: true
 
   ci-ok:
     if: always()

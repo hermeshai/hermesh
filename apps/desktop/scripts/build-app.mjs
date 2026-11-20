@@ -56,7 +56,8 @@ import zhNotes from "../src/locales/zh-CN/releases.json" with { type: "json" };
 
 const desktop = path.resolve(import.meta.dirname, "..");
 const root = path.resolve(desktop, "../..");
-const dist = path.resolve(process.env.HERMESH_DIST || path.join(root, "dist"));
+const dev = process.argv.includes("--dev");
+const dist = path.resolve(process.env.HERMESH_DIST || path.join(root, dev ? "dist/dev" : "dist"));
 const tmp = path.join(dist, "tmp");
 const pkg = JSON.parse(fs.readFileSync(path.join(desktop, "package.json"), "utf8"));
 const version = process.env.VERSION || pkg.version;
@@ -84,7 +85,7 @@ fs.writeFileSync(
   JSON.stringify({ name: "hermesh", productName: "Hermesh", version, main: "main/index.js", type: "module" }, null, 2),
 );
 
-const arch = process.env.HERMESH_ARCH || "universal";
+const arch = dev ? process.arch : process.env.HERMESH_ARCH || "universal";
 if (!["universal", "arm64", "x64"].includes(arch)) throw new Error(`HERMESH_ARCH: ${arch}`);
 const goArchs = arch === "universal" ? ["arm64", "amd64"] : [arch === "x64" ? "amd64" : "arm64"];
 for (const name of ["hermeshd", "hermesh"]) {
@@ -108,12 +109,12 @@ const githubSecret = process.env.HER_GITHUB_OAUTH_CLIENT_SECRET || dotenv(path.j
 if (!githubSecret) console.warn("⚠️  no HER_GITHUB_OAUTH_CLIENT_SECRET, here or in .env: this her signs in to GitHub with a token only.");
 sh("rustup", ["target", "add", ...archs.map((a) => triples[a])], { cwd: herRoot });
 for (const a of archs) {
-  sh("cargo", ["build", "--profile", "dist", "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triples[a]], {
+  sh("cargo", ["build", "--profile", dev ? "dev" : "dist", "--locked", "-p", "her-cli", "--bin", "her", "--no-default-features", "--target", triples[a]], {
     cwd: herRoot,
     env: { ...process.env, HER_GITHUB_OAUTH_CLIENT_SECRET: githubSecret },
   });
 }
-fat(archs.map((a) => path.join(herRoot, "target", triples[a], "dist/her")), path.join(tmp, "her"));
+fat(archs.map((a) => path.join(herRoot, "target", triples[a], dev ? "debug/her" : "dist/her")), path.join(tmp, "her"));
 
 step(`fetching PDFium ${pdfiumRelease.tag} and agent-desktop ${agentDesktopRelease.version}`);
 const cache = path.join(desktop, "node_modules/.cache");
@@ -139,7 +140,7 @@ sh("swift", ["build", "-c", "release", "--product", "hermesh-screen", ...swiftAr
 fs.copyFileSync(path.join(out("swift", ["build", "-c", "release", ...swiftArchs, "--show-bin-path", "--package-path", screenRoot]), "hermesh-screen"), path.join(tmp, "hermesh-screen"));
 
 step("building Hermesh Signer.app");
-sh(path.join(root, "apps/signer/macos/scripts/build-signer.sh"), [tmp], { env: { ...process.env, HERMESH_SIGNING_IDENTITY: identity, VERSION: version } });
+sh(path.join(root, "apps/signer/macos/scripts/build-signer.sh"), [tmp], { env: { ...process.env, HERMESH_ARCH: arch, HERMESH_SIGNING_IDENTITY: identity, VERSION: version } });
 const signerApp = path.join(tmp, "Hermesh Signer.app");
 
 step("compiling the app icon");
@@ -269,6 +270,11 @@ if (archs.includes(process.arch)) {
   // The version command starts a background service; --version leaves no process behind.
   const said = out(path.join(contents, "Helpers/agent-desktop"), ["--version"]).trim();
   if (said !== `agent-desktop ${agentDesktopRelease.version}`) throw new Error(`the bundled agent-desktop says ${JSON.stringify(said)}, not ${agentDesktopRelease.version}`);
+}
+
+if (dev) {
+  console.log(`✓ ${app}`);
+  process.exit(0);
 }
 
 const auth = process.env.HERMESH_NOTARY_PROFILE
