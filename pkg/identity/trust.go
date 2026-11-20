@@ -301,9 +301,10 @@ type Subject struct {
 	// MachineName is the name a machine presented with its credentials:
 	// authenticated only where the credentials came in a handshake the
 	// machine's key made (an end-to-end connection).
-	MachineName string
-	Grant       *identityv1.Grant
-	Device      *identityv1.OwnerDeviceCert
+	MachineName    string
+	Grant          *identityv1.Grant
+	Device         *identityv1.OwnerDeviceCert
+	DevicePlatform string // from the verified device cert signer
 }
 
 // VerifyCredentials adopts a longer root chain carried in c and then
@@ -336,7 +337,14 @@ func (t *Trust) VerifyCredentials(c *identityv1.Credentials, now time.Time) (*Su
 		if err != nil {
 			return nil, err
 		}
-		return &Subject{Kind: SubjectOwnerDevice, ID: d.OwnerId, PublicKey: pub, Device: d}, nil
+		var platform string
+		for _, root := range t.Root().GetRootKeys() {
+			if key, err := ParsePublicKey(root.PublicKey); err == nil && KeyID(key) == s.DeviceCert.SignerKeyId {
+				platform = root.Platform
+				break
+			}
+		}
+		return &Subject{Kind: SubjectOwnerDevice, ID: d.OwnerId, PublicKey: pub, Device: d, DevicePlatform: platform}, nil
 	}
 	return nil, errors.New("credentials carry no subject")
 }

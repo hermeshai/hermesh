@@ -5,6 +5,7 @@ package hertest
 
 import (
 	"bufio"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -118,4 +119,24 @@ func Home(t testing.TB, bin string) string {
 		t.Setenv(k, v)
 	}
 	return home
+}
+
+// ApproveModel explicitly enables inference for a test's loopback receiver.
+func ApproveModel(t testing.TB, model string, call func(string, any) []byte) {
+	t.Helper()
+	var offer struct {
+		Recipient json.RawMessage `json:"recipient"`
+		Revision  string          `json:"revision"`
+	}
+	status := call("ai_consent/status", map[string]string{"model": model})
+	var recipient struct {
+		Endpoint string `json:"endpoint"`
+	}
+	if err := json.Unmarshal(status, &offer); err != nil {
+		t.Fatalf("consent status: %s (%v)", status, err)
+	}
+	if err := json.Unmarshal(offer.Recipient, &recipient); err != nil || !strings.HasPrefix(recipient.Endpoint, "http://127.0.0.1:") {
+		t.Fatalf("expected a loopback model recipient: %s (%v)", status, err)
+	}
+	call("ai_consent/allow", map[string]any{"model": model, "recipient": offer.Recipient, "revision": offer.Revision})
 }

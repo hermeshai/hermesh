@@ -43,7 +43,7 @@ func (s *sessionService) DeliverMessage(ctx context.Context, req *sessionv1.Deli
 	if err := s.n.checkLetter(m, p.ClientID, req.SessionId); err != nil {
 		return nil, err
 	}
-	sess, delivered, err := s.n.deliverLetter(ctx, p, m, p.Grant.ClientLabel, req.Attachments)
+	sess, delivered, err := s.n.deliverLetter(ctx, p, m, p.Grant.ClientLabel, req.Attachments, req.CodingConsentVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (n *Machine) checkLetter(m *inboxv1.Message, from, session string) error {
 }
 
 // deliverLetter hands a checked message to its session.
-func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Message, name string, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
+func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Message, name string, atts []*sessionv1.Attachment, consentVersion ...string) (*sessionv1.Session, string, error) {
 	n.mu.Lock()
 	if _, seen := n.lettersSeen[m.MessageId]; seen {
 		n.mu.Unlock()
@@ -92,7 +92,7 @@ func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Me
 		creator = r.CreatedBy == p.ClientID
 	}
 	rec := &sessionv1.MessageReceived{MessageId: m.MessageId, From: inboxAddress(m.From), FromName: name, Text: m.Text, InReplyTo: m.InReplyTo}
-	sess, delivered, err := n.sessions.Deliver(ctx, p, m.To.Session, m.From.GetSession(), letterText(m, name, creator), rec, atts)
+	sess, delivered, err := n.sessions.Deliver(ctx, p, m.To.Session, m.From.GetSession(), letterText(m, name, creator), rec, atts, consentVersion...)
 	if err != nil {
 		n.mu.Lock()
 		delete(n.lettersSeen, m.MessageId) // it may come again

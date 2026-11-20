@@ -43,9 +43,10 @@ type message struct {
 	// it answers a question: its text without the words Hermesh puts
 	// around it. events, for one joined from quiet and other messages,
 	// are what its turn records of the others.
-	quiet  bool
-	answer string
-	events []*sessionv1.SessionEvent
+	quiet         bool
+	answer        string
+	events        []*sessionv1.SessionEvent
+	codingVersion string
 }
 
 func (m message) input() provider.Input {
@@ -64,6 +65,13 @@ func (m message) join(o message) message {
 	}
 	j := message{text: m.text + "\n\n" + o.text, files: append(append([]*sessionv1.AttachmentInfo{}, m.files...), o.files...), by: m.by, conv: m.conv,
 		quiet: m.quiet && o.quiet, answer: m.answerText() + "\n\n" + o.answerText()}
+	j.codingVersion = m.codingVersion
+	if j.codingVersion == "" {
+		j.codingVersion = o.codingVersion
+	} else if o.codingVersion != "" && o.codingVersion != m.codingVersion {
+		// Two independently authorized messages cannot be replayed as one.
+		j.codingVersion = "expired"
+	}
 	if m.quiet != o.quiet || m.events != nil || o.events != nil {
 		j.events = append(m.userEvents(), o.userEvents()...)
 	}

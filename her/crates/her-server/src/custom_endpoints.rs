@@ -243,6 +243,12 @@ impl Server {
                 tokio::task::spawn_blocking(move || her_llm::credentials::get(&id)).await.map_err(blocking_error)?
             }
         };
+        // A stored credential was provided for the old address. Never probe
+        // a new recipient with it, even if the provider ID stays the same.
+        let address = |url: &str| her_llm::probe::normalize(url).ok().map(|a| a.url());
+        if stored.is_some() && address(&base_url) != address(&provider.base_url) {
+            return Err(RpcError::invalid_params("Enter an API key for the new model service address."));
+        }
         let probe_key = key.clone().or(stored);
         let report = self.probe_endpoint(&base_url, probe_key.as_deref(), params.api.as_deref()).await?;
         let entry = ServiceEntry::from_probe(&params.id, name.as_deref().unwrap_or(&provider.name), &report, probe_key.is_none(), &[])

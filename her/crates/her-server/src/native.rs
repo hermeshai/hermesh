@@ -821,6 +821,19 @@ impl NativeProtocol {
                 let reply_id = id.clone();
                 self.spawn(id.clone(), conn, async move { Some(reply(&reply_id, server.desktop_status().await)) });
             }
+            method::AI_CONSENT_STATUS => self.call(id, params, conn, |server, p: her_protocol::api::AiConsentStatusParams| async move {
+                server.models().ai_consent(p.model.as_deref()).ok_or_else(|| RpcError::invalid_params("AI sharing controls require a Hermesh execution host"))
+            }),
+            method::AI_CONSENT_ALLOW => self.call(id, params, conn, |server, p: her_protocol::api::AiConsentAllowParams| async move {
+                if !server.models().allow_ai(&p.model, p.recipient, &p.revision) {
+                    return Err(RpcError::invalid_params("AI sharing changed. Review the current recipient and try again."));
+                }
+                Ok(json!({}))
+            }),
+            method::AI_CONSENT_REVOKE => {
+                server.models().revoke_ai();
+                conn.send(reply(id, Ok::<_, RpcError>(json!({}))));
+            }
             method::STORAGE_USAGE => {
                 let reply_id = id.clone();
                 self.spawn(id.clone(), conn, async move { Some(reply(&reply_id, server.storage_usage().await)) });
