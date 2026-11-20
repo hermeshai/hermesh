@@ -368,6 +368,12 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	}
 	params := map[string]any{"cwd": spec.WorkDir, "mcpServers": servers}
 	caps := init.AgentCapabilities
+	loadSession := func() (json.RawMessage, error) {
+		// History replay arrives as session/update before the load response.
+		s.replaying.Store(true)
+		defer s.replaying.Store(false)
+		return s.call(ctx, "session/load", params)
+	}
 	switch {
 	case spec.ResumeRef == "":
 		res, err = s.call(ctx, "session/new", params)
@@ -385,16 +391,24 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	case len(caps.SessionCapabilities.Resume) > 0 && string(caps.SessionCapabilities.Resume) != "null":
 		params["sessionId"] = spec.ResumeRef
 		if res, err = s.call(ctx, "session/resume", params); err != nil {
-			return fail(fmt.Errorf("session/resume: %w", resumeError(err)))
+			var rpc *rpcError
+			if p.Name() != "antigravity" || !caps.LoadSession || !errors.As(err, &rpc) ||
+				rpc.Code != codeInternalError || !strings.Contains(rpc.Message, "load it with session/load") {
+				return fail(fmt.Errorf("session/resume: %w", resumeError(err)))
+			}
+			loaded, loadErr := loadSession()
+			if loadErr != nil {
+				// The read failure can be transient. Keep the provider reference
+				// even if the fallback reports that it cannot find the session.
+				return fail(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_START_FAILED,
+					fmt.Sprintf("session/resume: %v (session/load: %v)", err, loadErr)))
+			}
+			res = loaded
 		}
 		s.sessionID = spec.ResumeRef
 	case caps.LoadSession:
-		// session/load replays the conversation as session/update
-		// notifications before it answers; they are not new events.
 		params["sessionId"] = spec.ResumeRef
-		s.replaying.Store(true)
-		res, err = s.call(ctx, "session/load", params)
-		s.replaying.Store(false)
+		res, err = loadSession()
 		if err != nil {
 			return fail(fmt.Errorf("session/load: %w", resumeError(err)))
 		}
@@ -512,6 +526,7 @@ func (e *rpcError) Error() string { return fmt.Sprintf("%s (code %d)", e.Message
 const (
 	codeAuthRequired     = -32000
 	codeResourceNotFound = -32002
+	codeInternalError    = -32603
 )
 
 // classified gives an agent error its failure kind: auth_required by code,

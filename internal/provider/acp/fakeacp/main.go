@@ -25,7 +25,7 @@
 // Sessions are kept under $FAKE_ACP_STATE (default $TMPDIR/fakeacp) so a
 // new process can load them. Environment:
 //
-//	FAKE_ACP_RESUME=load|resume|none  how sessions resume (default load)
+//	FAKE_ACP_RESUME=load|resume|none|load-fallback  how sessions resume (default load)
 //	FAKE_ACP_AUTH=<id>                require `authenticate` with this method
 //	FAKE_ACP_MODELS=a,b               models session/set_model accepts
 //	FAKE_ACP_CONFIG=1                 offer the models as a "model" config
@@ -251,9 +251,9 @@ func handle(m msg) {
 		}
 		json.Unmarshal(m.Params, &ip)
 		canElicit = ip.ClientCapabilities.Elicitation.Form != nil
-		caps := map[string]any{"loadSession": resume == "load"}
+		caps := map[string]any{"loadSession": resume == "load" || resume == "load-fallback"}
 		sessionCaps := map[string]any{}
-		if resume == "resume" {
+		if resume == "resume" || resume == "load-fallback" {
 			sessionCaps["resume"] = map[string]any{}
 		}
 		if os.Getenv("FAKE_ACP_OPTIONS") == "1" {
@@ -341,6 +341,10 @@ func handle(m msg) {
 	case "session/load", "session/resume":
 		if needAuth {
 			replyErr(m.ID, -32000, "Authentication required")
+			return
+		}
+		if m.Method == "session/resume" && resume == "load-fallback" {
+			replyErr(m.ID, -32603, "Failed to read session "+p.SessionID+"; retry, or load it with session/load")
 			return
 		}
 		h, err := load(p.SessionID)
