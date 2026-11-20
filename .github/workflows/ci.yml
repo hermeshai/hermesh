@@ -237,7 +237,7 @@ jobs:
   app:
     needs: changes
     if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.app == 'true'
-    runs-on: macos-latest
+    runs-on: ${{ needs.changes.outputs.console_only == 'true' && 'ubuntu-24.04' || 'macos-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
