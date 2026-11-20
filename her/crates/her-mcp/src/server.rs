@@ -219,13 +219,19 @@ impl McpServer {
 
     /// Starts connecting in the background, unless an attempt is running or it is closed.
     pub fn connect(self: &Arc<Self>) {
-        {
+        let previous = {
             let mut inner = self.inner.lock();
             if inner.connecting || matches!(inner.state, State::Closed) {
                 return;
             }
             inner.connecting = true;
-            inner.state = State::Starting;
+            match std::mem::replace(&mut inner.state, State::Starting) {
+                State::Ready(client) => Some(client),
+                _ => None,
+            }
+        };
+        if let Some(client) = previous {
+            tokio::spawn(async move { client.close().await });
         }
         self.publish(ServerStatus {
             state: McpServerState::Starting,

@@ -575,13 +575,13 @@ export type Capability = "view" | "text" | "search" | "outline" | "edit_values" 
 /** A card as the apps draw it. */
 export type Card = {
   asked_by: AskedBy;
-  body: ConnectBody;
-  /** RFC 3339: 24 hours after the card was prepared. */
+  body: CardBody;
+  /** RFC 3339: when the card expires (24 hours for `connect`, 5 minutes for `site_login`). */
   expires_at: string;
   /** `c_` and 10 random letters and digits. It means something only in its session. */
   id: string;
   kind: CardKind;
-  /** The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `"<value:FIELD_ID>"`. */
+  /** The console calls approving makes, in order, as the console sends them. A value the owner types stands as the whole string `"<value:FIELD_ID>"`. Empty for `site_login`. */
   ops: CardOp[];
   /** In English: for a kind the app does not know, and for notifications. Apps draw the kinds they know from `body`, in the owner's language. */
   title: string;
@@ -591,8 +591,13 @@ export type CardAnswer = {
   decision: "approve";
   ops: CardOp[];
 } | {
+  decision: "fill";
+  fields: { [key: string]: string };
+} | {
   decision: "decline";
 };
+
+export type CardBody = ConnectBody | SiteLoginBody;
 
 /** A value the owner types into the card. */
 export type CardField = {
@@ -602,7 +607,7 @@ export type CardField = {
   secret: boolean;
 };
 
-export type CardKind = "connect";
+export type CardKind = "connect" | "site_login";
 
 /** One console call: its method and its params. */
 export type CardOp = {
@@ -4435,6 +4440,28 @@ export type SiteGrant = {
   /** `https://example.com`, or `*` for every site (navigation only). */
   origin: string;
 };
+
+/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser. */
+export type SiteLoginBody = {
+  /** Verified login fields on the page (never authored by the model). */
+  fields: SiteLoginField[];
+  /** The origin's host (with non-default port), shown large on the card. */
+  host: string;
+  /** Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures). */
+  origin: string;
+  /** The page's title, sanitized and clipped. */
+  title?: string | null;
+};
+
+export type SiteLoginField = {
+  id: string;
+  kind: SiteLoginFieldKind;
+  label: string;
+  /** Masked as it is typed (`password` and `one_time_code`). */
+  secret: boolean;
+};
+
+export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_code";
 
 /** One `SKILL.md` that was found, and what became of it. */
 export type SkillEntry = {

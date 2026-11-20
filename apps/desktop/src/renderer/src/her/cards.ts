@@ -8,11 +8,18 @@ import type { SessionView } from "@hermesh/her-client";
 /** A console call the card makes when the owner agrees, exactly as the console sends it; a value goes where a string is "<value:FIELD_ID>". */
 export type CardOp = { method: string; params: unknown };
 
-/** A value the owner types into the card: a header's, for a connector. */
+/** A value the owner types into a connect card: a header's, for a connector. */
 export type CardField = { id: string; label: string; secret: boolean };
 
-/** A `connect` card's: a connector added by its address, or one signed in to again (`reconnect`, no ops). */
+/** A `connect` card's: a connector added by its address, signed in to again, or having its key updated. */
 export type ConnectBody = { name: string; url: string; host: string; reconnect: boolean; sign_in: "oauth" | "none"; server_name?: string; fields: CardField[] };
+
+export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_code";
+
+export type SiteLoginField = { id: string; label: string; kind: SiteLoginFieldKind; secret: boolean };
+
+/** A `site_login` card's: verified login fields inspected from an isolated browser page. */
+export type SiteLoginBody = { origin: string; host: string; title?: string; fields: SiteLoginField[] };
 
 export type Card = {
   id: string;
@@ -23,13 +30,16 @@ export type Card = {
   asked_by: "owner" | "her";
   expires_at: string;
   ops: CardOp[];
-  body: ConnectBody;
+  body: ConnectBody | SiteLoginBody;
 };
 
 export type CardState = "open" | "working" | "sign_in" | "retry" | "done" | "declined" | "failed" | "expired" | "replaced";
 
 /** The answer to a card, by cards/answer. */
-export type CardAnswer = { decision: "approve"; ops: CardOp[] } | { decision: "decline" };
+export type CardAnswer =
+  | { decision: "approve"; ops: CardOp[] }
+  | { decision: "fill"; fields: Record<string, string> }
+  | { decision: "decline" };
 
 /** How a card stands, with her's words: a refusal for `retry`, the outcome once it ended. */
 export type CardStatus = { state: CardState; note?: string };
@@ -47,8 +57,21 @@ export function cardOf(raw: unknown): Card | null {
 
 /** A `connect` card's body, when it has what the card draws. */
 export function connectBody(card: Card): ConnectBody | null {
-  const b = card.body;
-  return card.kind === "connect" && typeof b.name === "string" && typeof b.host === "string" && Array.isArray(b.fields) ? b : null;
+  const b = card.body as Partial<ConnectBody>;
+  return card.kind === "connect" && typeof b.name === "string" && typeof b.host === "string" && Array.isArray(b.fields) ? (b as ConnectBody) : null;
+}
+
+/** A `site_login` card's body, when it has verified origin and login fields. */
+export function siteLoginBody(card: Card): SiteLoginBody | null {
+  const b = card.body as Partial<SiteLoginBody>;
+  return card.kind === "site_login" && typeof b.origin === "string" && typeof b.host === "string" && Array.isArray(b.fields) && b.fields.length > 0
+    ? (b as SiteLoginBody)
+    : null;
+}
+
+/** Whether a `connect` card updates an existing connector's stored key/token. */
+export function isKeyRotate(body: ConnectBody): boolean {
+  return body.reconnect && body.sign_in === "none" && body.fields.length > 0;
 }
 
 /** The card's ops with each "<value:ID>" string filled with the owner's value for that field: a copy, the card's own left as they are. */
