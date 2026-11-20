@@ -1,4 +1,4 @@
-.PHONY: generate lint test test-app e2e e2e-real e2e-chaos build app app-windows release clean
+.PHONY: generate lint test test-app e2e e2e-real e2e-chaos build app app-dev app-windows release clean
 
 generate:
 	go tool buf generate
@@ -49,6 +49,10 @@ build:
 app:
 	pnpm install --frozen-lockfile
 	node apps/desktop/scripts/build-app.mjs
+
+app-dev:
+	pnpm install --frozen-lockfile
+	node apps/desktop/scripts/build-app.mjs --dev
 
 # The Windows app: its files from any system, the .msix on Windows (docs/windows.md §6.1).
 app-windows:

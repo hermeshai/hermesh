@@ -8,6 +8,7 @@ make e2e        # full user flows and malicious-relay tests with real binaries a
 make e2e-real   # the same flows with the real Claude Code and Codex on this machine (uses quota)
 HERMESH_DOCKER=1 go test ./e2e -run Linux   # a Linux machine (Docker)
 HERMESH_IPHONE_E2E=1 go test ./e2e -run TestIPhone -timeout 60m   # the iPhone app in the Simulator
+make app-dev    # signed native app in dist/dev/ with a debug Her kernel
 make app        # build and sign dist/Hermesh.app (see below for a release build)
 pnpm --dir apps/desktop dev   # the desktop app against the local hermeshd (HERMESH_SOCKET to choose one)
 ```
