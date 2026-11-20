@@ -69,6 +69,24 @@ func TestIPhone(t *testing.T) {
 		t.Cleanup(func() { w.owner.stop() }) // stopped as a service is, so that it stops her (the daemon of the moment)
 	}
 	sessions := desktopSessions(t, w)
+	only := os.Getenv("HERMESH_IPHONE_GREP")
+	if only == "" {
+		only = "testTheIPhoneApp"
+	}
+	if only == "testHostedAccountDeletion" {
+		// Trust the browser fixture only on a new, disposable simulator. The
+		// same model as the Release demo supports the installed iOS 26 runtime.
+		r := run(t, nil, time.Minute, "xcrun", "simctl", "create", "Hermesh Hosted Deletion", "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro")
+		if r.code != 0 {
+			t.Fatalf("create hosted-deletion simulator: %+v", r)
+		}
+		id := strings.TrimSpace(r.stdout)
+		t.Cleanup(func() {
+			exec.Command("xcrun", "simctl", "shutdown", id).Run()
+			exec.Command("xcrun", "simctl", "delete", id).Run()
+		})
+		t.Setenv("HERMESH_IPHONE_SIMULATOR", id)
+	}
 	device := simulator(t)
 	// Notifications: the relay spools them, and this test hands each to the
 	// Simulator as APNs would (simctl push), where the app's notification
@@ -84,6 +102,10 @@ func TestIPhone(t *testing.T) {
 		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
 	})
 	go deliverToSimulator(t, spool, device)
+	var deletionOrigin string
+	if only == "testHostedAccountDeletion" {
+		deletionOrigin = iphoneHostedDeletion(t, w, device)
+	}
 	control := newIPhoneControl(t, w, sessions)
 	// HERMESH_IPHONE_PREVIEW=<seconds> keeps the world up instead, to look
 	// at the app against it (build and run it on the Simulator it names).
@@ -104,9 +126,8 @@ func TestIPhone(t *testing.T) {
 	args := []string{"test", "-project", filepath.Join(dir, "Hermesh.xcodeproj"), "-scheme", "Hermesh",
 		"-destination", "platform=iOS Simulator,id=" + device, "-derivedDataPath", derived, "-resultBundlePath", results,
 		"-parallel-testing-enabled", "NO", "-jobs", "4"}
-	only := "testTheIPhoneApp"
-	if g := os.Getenv("HERMESH_IPHONE_GREP"); g != "" {
-		only = g
+	if deletionOrigin != "" {
+		args = append(args, "HERMESH_ACCOUNT_DELETION_ORIGINS="+deletionOrigin)
 	}
 	args = append(args, "-only-testing:HermeshUITests/HermeshUITests/"+only)
 	// Folders for Add a Project to browse to: a repository by the name of
