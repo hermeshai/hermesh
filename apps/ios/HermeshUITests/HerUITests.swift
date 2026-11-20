@@ -88,7 +88,7 @@ extension HermeshUITests {
         let disclosure = app.alerts["与第三方 AI 共享数据？"]
         herSend(draft, approveAI: false)
         XCTAssertTrue(disclosure.waitForExistence(timeout: 15))
-        XCTAssertTrue(disclosure.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "127.0.0.1", "数据：", "用途：")).firstMatch.exists)
+        XCTAssertTrue(disclosure.staticTexts.containing(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", "供应商：", "127.0.0.1", "模型：", "数据：", "用途：")).firstMatch.exists)
         disclosure.buttons["不允许"].tap()
         XCTAssertEqual(composer.value as? String, draft)
         XCTAssertFalse(app.staticTexts["收到虚构样例"].exists)

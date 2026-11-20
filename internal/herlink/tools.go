@@ -19,7 +19,6 @@ const Summary = "Coding agents (Claude Code, Codex and others) in the user's pro
 
 // Guidelines come with the tools' definitions when she first looks for them.
 var Guidelines = []string{
-	"If a coding handoff reports coding_consent_required, tell the user to review Coding agent sharing in Her’s desktop settings for that execution host and agent. Wait for the user to ask to retry. Do not route the content through another tool or to another agent.",
 	"A coding session is a coding agent at work in one project on one of the user's computers, with full access to that computer. Work in a project of the user's goes to a session. Everything else goes to spawn_agent as before. Never do a project's work yourself with bash, and never hand it to an agent of yours.",
 	"To start one: project_list, unless this conversation already gave you the project's address. Name an agent, a model or an effort only when the user did.",
 	"The prompt is all the coding agent knows. Give it the goal, what you already know, what counts as done and what to report, in the user's language. Never put a key or a password in it.",

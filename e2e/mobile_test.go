@@ -312,47 +312,6 @@ func TestMobileAnswersVerifiedLocalCodingAgent(t *testing.T) {
 	})
 }
 
-// Run this skew case with a daemon built before AnswerLocalQuestion existed.
-func TestMobileBlocksCodingAnswerToLegacyHost(t *testing.T) {
-	legacy := os.Getenv("HERMESH_TEST_LEGACY_CODING_HOST")
-	if legacy == "" || testing.Short() {
-		t.Skip("requires a pre-consent hermeshd binary")
-	}
-	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
-	w.hermeshd = legacy
-	w.restartOwner(false)
-	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
-	defer cancel()
-	st, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	root, err := identity.GenerateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := joinMobile(t, w, st.RelayUrl, t.TempDir(), root)
-	session, started := w.startSession(30*time.Second, "--prompt", "ask Branch|Which fictional branch?|Main,Dev")
-	if started.code != 0 || session.SessionID == "" {
-		t.Fatalf("start: %+v", started)
-	}
-	eventually(t, 20*time.Second, "legacy host waits for an answer", func() bool {
-		return w.get(session.SessionID).Status == "waiting_input"
-	})
-	answer := &localv1.AnswerQuestionRequest{SessionId: session.SessionID, Answers: []*sessionv1.Answer{{Selected: []string{"Dev"}}}}
-	if _, err := m.client.AnswerQuestion(ctx, answer); connect.CodeOf(err) != connect.CodeFailedPrecondition ||
-		!strings.Contains(err.Error(), "update the execution host") {
-		t.Fatalf("legacy host answer: %v", err)
-	}
-	if got := w.get(session.SessionID); got.Status != "waiting_input" {
-		t.Fatalf("the answer reached the old handler: %+v", got)
-	}
-	answer.Answers, answer.Decline = nil, true
-	if _, err := m.client.AnswerQuestion(ctx, answer); err != nil {
-		t.Fatalf("fixed decline on legacy host: %v", err)
-	}
-}
-
 // within is how long cond took to hold, or -1 when it did not in timeout.
 func within(timeout time.Duration, cond func() bool) time.Duration {
 	began := time.Now()

@@ -160,17 +160,9 @@ func TestMachineOnlyMac(t *testing.T) {
 			t.Fatalf("machine-only local API managed coding consent: %v", err)
 		}
 	}
-	disclosure, err := w.app.client.CodingConsent(ctx, coding)
-	if err != nil || disclosure.Approved || disclosure.Recipient != "Google" {
-		t.Fatalf("trusted owner reads the remote coding route: %v %v", disclosure, err)
-	}
-	coding.Consent.ApproveVersion = disclosure.Version
-	if grant, err := w.app.client.CodingConsent(ctx, coding); err != nil || !grant.Approved {
-		t.Fatalf("trusted owner approves the remote coding route: %v %v", grant, err)
-	}
-	coding.Consent.ApproveVersion, coding.Consent.Revoke = "", true
-	if _, err := w.app.client.CodingConsent(ctx, coding); err != nil {
-		t.Fatalf("trusted owner revokes the remote coding route: %v", err)
+	compat, err := w.app.client.CodingConsent(ctx, coding)
+	if err != nil || !compat.Approved {
+		t.Fatalf("trusted owner legacy coding consent compat: %v %v", compat, err)
 	}
 	watch, err := work.WatchSessions(ctx, &localv1.WatchSessionsRequest{})
 	if err != nil || !watch.Receive() || !watch.Msg().MachinesChanged {
