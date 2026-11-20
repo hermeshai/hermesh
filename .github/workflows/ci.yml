@@ -11,9 +11,9 @@ on:
         default: false
 
 concurrency:
-  # Only the opening run and fresh commits share the PR's group.
-  group: ci-${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action != 'reopened' && format('pr-{0}', github.event.number) || github.event_name == 'push' && github.run_attempt == '1' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action == 'synchronize' || github.event_name == 'push' && github.run_attempt == '1' }}
+  # A refreshed PR includes its previous changes. Each push has a separate diff.
+  group: ci-${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action != 'reopened' && format('pr-{0}', github.event.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == '1' && github.event.action == 'synchronize' }}
 
 permissions:
   contents: read
@@ -41,8 +41,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
-          persist-credentials: false
+          fetch-depth: 2
+          persist-credentials: ${{ github.event_name == 'push' }}
       - name: Select jobs
         id: route
         env:
@@ -54,6 +54,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             router="$RUNNER_TEMP/ci-route.py"
             git show "$BASE:scripts/ci/route.py" > "$router" || true
+          elif [ "$GITHUB_EVENT_NAME" = push ] && ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE" || true
           elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
             BASE=$(git rev-parse HEAD^ 2>/dev/null) || BASE=''
           fi
@@ -224,8 +226,7 @@ jobs:
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
       - name: end-to-end (scripted agents)
         run: go test ./e2e -count=1 -timeout 30m
-  # The desktop app (Electron) and the macOS signer: types, unit tests, and
-  # their end-to-end tests driving the real app against the real daemon.
+  # Type checks, desktop unit tests and Electron against the real daemon.
   app:
     needs: changes
     if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.app == 'true'
