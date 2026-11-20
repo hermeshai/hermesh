@@ -2,6 +2,7 @@ import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
 import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type HerSnapshot, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
+import { HerLatestKind } from "@hermesh/proto/machine";
 import type { Session } from "@hermesh/proto/session";
 import { app, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
@@ -10,7 +11,7 @@ import type { Command, Preferences } from "../shared/bridge";
 import { i18n, languages, type Language } from "../shared/i18n";
 import { command } from "./ipc";
 import { socketPath } from "./paths";
-import { mainWindow } from "./windows";
+import { focusedHer } from "./windows";
 
 // What reaches the owner while no window may be open: the main process
 // follows hermeshd itself (LocalService.Watch: everything once, then each
@@ -112,17 +113,18 @@ function noticeSessions() {
 }
 
 // What Her's assistants send (docs/her-server.md §9.3), from each machine's
-// Her as Watch brings it: notified while the main window is not in front,
-// unless the assistant is muted, and clicked, opening the Her entry at it.
+// Her as Watch brings it. A reply stays quiet in its visible, focused
+// conversation. Clicking a notice opens the Her entry at its environment.
 // An environment whose messages were all read, here or on another device,
 // takes its notifications back. Nothing before the first look is news.
 let herSeen: Map<string, HerSnapshot> | undefined;
 
 function noticeHer() {
   if (herSeen) {
-    const looking = mainWindow()?.isFocused() ?? false;
+    const looking = focusedHer();
     for (const n of herNotices(herSeen, world.machines)) {
-      if (!looking) post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}`);
+      if (n.kind === HerLatestKind.MESSAGE && looking?.machineId === n.machineId && looking.botId === n.botId) continue;
+      post(`her-${n.machineId}-${n.botId}`, n.title, n.body, `her:${n.machineId}`);
     }
     for (const m of world.machines) {
       if (m.her?.enabled && m.her.unread === 0) for (const p of posted.filter((x) => x.id.startsWith(`her-${m.machineId}-`))) withdraw(p.id);

@@ -143,7 +143,7 @@ describe("Her notices", () => {
   test("a new message that grows the unread count is noticed once, named by its assistant", () => {
     const before = [env("m1", "Mac mini", 0, { text: "早", seconds: -600 })];
     const after = [env("m1", "Mac mini", 1, { name: "研究员", bot: "b2", text: "查好了，见附件", seconds: 0 })];
-    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "b2", title: "研究员", body: "查好了，见附件" }]);
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "b2", kind: HerLatestKind.MESSAGE, title: "研究员", body: "查好了，见附件" }]);
     // Looked at again: no news.
     expect(herNotices(herSnapshots(after), after)).toEqual([]);
   });
@@ -151,13 +151,13 @@ describe("Her notices", () => {
   test("with two environments, the title names the environment too; an approval says it waits", () => {
     const before = [env("m1", "Mac mini", 0, null), env("m2", "cloud", 2, { text: "旧的", seconds: -60 })];
     const after = [env("m1", "Mac mini", 0, null), env("m2", "cloud", 3, { text: "重启 nginx", seconds: 0, kind: HerLatestKind.APPROVAL })];
-    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m2", botId: "her", title: "Her · cloud", body: "等你批准：重启 nginx" }]);
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m2", botId: "her", kind: HerLatestKind.APPROVAL, title: "Her · cloud", body: "等你批准：重启 nginx" }]);
   });
 
   test("a question says it waits for an answer", () => {
     const before = [env("m1", "Mac mini", 0, { text: "早", seconds: -600 })];
     const after = [env("m1", "Mac mini", 1, { text: "现在就发吗？", seconds: 0, kind: HerLatestKind.QUESTION })];
-    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "her", title: "Her", body: "等你回答：现在就发吗？" }]);
+    expect(herNotices(herSnapshots(before), after)).toEqual([{ machineId: "m1", botId: "her", kind: HerLatestKind.QUESTION, title: "Her", body: "等你回答：现在就发吗？" }]);
   });
 
   test("no news: an environment seen for the first time, a muted assistant, unread that fell or stayed, the same message, Her turned off", () => {

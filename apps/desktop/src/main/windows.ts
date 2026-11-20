@@ -11,6 +11,7 @@ export const origin = "app://hermesh";
 export const devURL = !app.isPackaged ? process.env.ELECTRON_RENDERER_URL : undefined;
 
 let main: BrowserWindow | undefined;
+let visibleHer: { machineId: string; botId: string } | undefined;
 let settings: BrowserWindow | undefined;
 const auxiliary = new Map<string, BrowserWindow>();
 // The window opens at the size it had last time (the main window's on a
@@ -74,6 +75,14 @@ export function mainWindow(): BrowserWindow | undefined {
   return main;
 }
 
+export function setVisibleHer(machineId: string, botId: string) {
+  visibleHer = machineId && botId ? { machineId, botId } : undefined;
+}
+
+export function focusedHer() {
+  if (main?.isVisible() && !main.isMinimized() && main.isFocused()) return visibleHer;
+}
+
 export function showMain(): BrowserWindow {
   if (main) {
     main.show();
@@ -90,7 +99,11 @@ export function showMain(): BrowserWindow {
   });
   secure(main);
   main.once("ready-to-show", () => main?.show());
-  main.on("closed", () => (main = undefined));
+  main.webContents.on("did-start-loading", () => (visibleHer = undefined));
+  main.on("closed", () => {
+    main = undefined;
+    visibleHer = undefined;
+  });
   main.loadURL(page());
   return main;
 }
