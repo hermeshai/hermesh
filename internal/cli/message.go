@@ -891,10 +891,6 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 			if t.session != "" && t.machine != nil && t.machine.Online {
 				return a.deliverDirect(ctx, cmd, c, t, signed, m, atts, wait)
 			}
-			if t.session != "" && a.g.GetHerMachineId() != "" {
-				return &exitError{code: exitUnavailable, kind: "ai_recipient_unverified", retryable: true,
-					err: errors.New("the execution host must be online to verify the coding agent’s AI recipient")}
-			}
 			if len(atts) > 0 {
 				what := "an agent"
 				if t.machine != nil {
@@ -972,17 +968,11 @@ func (a *app) deliverDirect(ctx context.Context, cmd *cobra.Command, c *peer.Cli
 			return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", t.session),
 				hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", t.session)}
 		}
-		version, err := a.requireLocalCodingRecipient(ctx, n, &sessionv1.CheckLocalCodingRecipientRequest{
-			Destination: &sessionv1.CheckLocalCodingRecipientRequest_SessionId{SessionId: t.session},
-		})
-		if err != nil {
-			return err
-		}
-		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts, CodingConsentVersion: version})
+		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts})
 		delivered := ""
 		var sess *sessionv1.Session
 		switch {
-		case connect.CodeOf(err) == connect.CodeUnimplemented && a.g.GetHerMachineId() == "" && before.CreatedBy == a.g.ClientId:
+		case connect.CodeOf(err) == connect.CodeUnimplemented && before.CreatedBy == a.g.ClientId:
 			// A machine older than messages: as session send.
 			r, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: t.session, Text: m.Text, Attachments: atts})
 			if err != nil {

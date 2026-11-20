@@ -702,7 +702,8 @@ final class HerChat {
             }
             if status["allowed"] == status["recipient"] { return true }
             let label = models.providers.first(where: { $0.id == provider })?.name(language: Locale.current.identifier) ?? provider
-            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, allow: { [weak self] in
+            let modelLabel = models.title(reference)
+            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, model: modelLabel, allow: { [weak self] in
                 guard let self, self.live?.model == reference else { return }
                 do {
                     _ = try await self.callAlone("ai_consent/allow", [
@@ -1077,6 +1078,7 @@ final class HerChat {
 struct HerAIConsentPrompt {
     let provider: String
     let endpoint: String
+    let model: String
     let allow: () async -> Void
 }
 

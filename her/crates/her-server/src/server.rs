@@ -186,7 +186,7 @@ impl Server {
         }
         let mut registry = runtime::model_registry(&options.home, &workspace.config)?;
         if required {
-            registry.require_ai_consent();
+            registry.require_ai_consent_at(Some(options.home.root().join("ai-consent.json")));
         }
         let llm = Arc::new(registry);
         for warning in llm.warnings() {

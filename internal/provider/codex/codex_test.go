@@ -1,10 +1,14 @@
 package codex
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"testing"
+	"time"
 
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 // Values from the app-server schema (codex app-server generate-json-schema,
@@ -47,5 +51,30 @@ func TestNotProgress(t *testing.T) {
 		if notProgress(m) != want {
 			t.Errorf("notProgress(%q) = %v", m, !want)
 		}
+	}
+}
+
+func TestCallDropsPendingRequestWhenWriteFails(t *testing.T) {
+	bin, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc, err := provider.StartProc(t.Context(), bin, []string{"-test.run=^$"}, t.TempDir(), os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { proc.Stop(time.Second) })
+	go proc.Lines(func([]byte) {})
+	select {
+	case <-proc.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("test process did not exit")
+	}
+	s := &session{proc: proc, pending: map[int64]chan rpcResult{}}
+	if _, err := s.call(context.Background(), "turn/steer", nil); err == nil {
+		t.Fatal("write to the exited process succeeded")
+	}
+	if len(s.pending) != 0 {
+		t.Fatalf("failed write left %d pending requests", len(s.pending))
 	}
 }
