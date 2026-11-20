@@ -297,7 +297,7 @@ func TestAntigravityResumeLoadFallback(t *testing.T) {
 	if r.code != 0 || resumed.Ref != s.Ref || resumed.Result != "history: 3 turns" {
 		t.Fatalf("resumed with history: %+v", r)
 	}
-	if r := w.cli(time.Minute, "session", "events", s.SessionID, "--limit", "1000"); r.code != 0 || strings.Contains(r.stdout, "replayed first reply") {
+	if r := w.cli(time.Minute, "session", "events", s.SessionID, "--limit", "1000"); r.code != 0 || strings.Contains(r.stdout, "replayed say first reply") {
 		t.Fatalf("history replay was stored as a new message: %+v", r)
 	}
 }
