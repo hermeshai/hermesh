@@ -827,6 +827,19 @@ func TestHerCommandConnector(t *testing.T) {
 		return s
 	}
 
+	// Console exposes the target execution host identity.
+	if code, body := httpDo(t, http.MethodGet, env.console+"host", ""); code != http.StatusOK {
+		t.Fatalf("console host: %d %s", code, body)
+	} else {
+		var h struct {
+			MachineID   string `json:"machine_id"`
+			MachineName string `json:"machine_name"`
+		}
+		if err := json.Unmarshal([]byte(body), &h); err != nil || h.MachineID != env.machine || h.MachineName == "" {
+			t.Fatalf("console host payload: %s (%v)", body, err)
+		}
+	}
+
 	// Straight through the console's JSON-RPC: refused, and not written.
 	a := page.rpc("config/write", map[string]any{"layer": "user", "edits": []any{map[string]any{"key_path": "mcp_servers.notes",
 		"value": map[string]any{"command": mcpServer, "args": []string{"--name", "notes"}}}}})
@@ -835,6 +848,38 @@ func TestHerCommandConnector(t *testing.T) {
 	}
 	if _, ok := connectors()["notes"]; ok {
 		t.Fatalf("written anyway: %v", connectors())
+	}
+
+	// Invalid settings never reach the signer.
+	for _, key := range []string{"LD_PRELOAD", "PATH"} {
+		before := len(env.w.app.signedTypes())
+		payload, _ := json.Marshal(map[string]any{
+			"name": "notes", "command": mcpServer,
+			"env": map[string]string{key: "${credential:mcp-stdio.notes.fixture}"},
+		})
+		if code, text := httpDo(t, http.MethodPost, env.console+"command-connector", string(payload)); code != http.StatusBadRequest {
+			t.Fatalf("rejecting %s before signing: %d %s", key, code, text)
+		}
+		if got := len(env.w.app.signedTypes()); got != before {
+			t.Fatalf("invalid settings reached the signer: %v", env.w.app.signedTypes()[before:])
+		}
+	}
+
+	// Declining approval keeps the connector out of configuration.
+	app := env.w.app
+	app.mu.Lock()
+	app.reject = true
+	app.mu.Unlock()
+	payload, _ := json.Marshal(map[string]string{"name": "notes", "command": mcpServer})
+	code, body := httpDo(t, http.MethodPost, env.console+"command-connector", string(payload))
+	app.mu.Lock()
+	app.reject = false
+	app.mu.Unlock()
+	if code != http.StatusForbidden || !strings.Contains(body, "declined") {
+		t.Fatalf("declining the command: %d %s", code, body)
+	}
+	if _, exists := connectors()["notes"]; exists {
+		t.Fatal("declined connector was written")
 	}
 
 	// Through hermeshd's route: signed here, applied there.
@@ -854,6 +899,12 @@ func TestHerCommandConnector(t *testing.T) {
 	var checked mcpChecked
 	if page.call("mcp/check", map[string]string{"name": "notes"}, &checked); checked.Server.Status.State != "ok" || !checked.has("echo") {
 		t.Fatalf("her starting the connector: %+v", checked)
+	}
+
+	// Implicit cross-transport overwrite (HTTP over existing stdio connector) is refused.
+	if over := page.rpc("config/write", map[string]any{"layer": "user", "edits": []any{map[string]any{"key_path": "mcp_servers.notes",
+		"value": map[string]any{"url": "https://example.invalid/mcp"}}}}); over.Error == nil || !strings.Contains(over.Error.Message, "different transport") {
+		t.Fatalf("implicit HTTP overwrite of stdio connector: %+v %s", over.Error, over.Result)
 	}
 
 	// Removed the same way.

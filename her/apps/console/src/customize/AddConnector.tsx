@@ -7,28 +7,34 @@ import { useHer } from "../her";
 import { Icon } from "../icons";
 import { openPage, signInRemotely } from "../signin";
 import { LocalFields, RemoteFields, type Auth, type Client, type RemoteState, type Transport } from "./ConnectorFields";
-import { detect, suggestName, type Detected, type Row } from "./detect";
+import { detect, suggestName, validateLocalRows, validateProgram, type Detected, type Row } from "./detect";
 import { localIdentity, remoteIdentity } from "./identity";
-import { credentialName, joinCommand, serverName, splitCommand } from "./model";
+import { credentialName, serverName } from "./model";
 import { ServerTile } from "./parts";
 import type { Customize } from "./useCustomize";
 
 // Add Connector:
-// a name and an address first. A remote address is checked (mcp/probe), then its sign-in is
-// set up with what the check found, and nothing is written before a check passes unless the
-// person adds it anyway. A command gets its form, then the owner's Mac signs it with Touch ID
-// (docs/her-server.md §8) and it is checked once added: a command is never run before that.
+// explicit choice between Remote URL (HTTP/SSE) and Local Program (stdio). A remote address is
+// checked (mcp/probe), then its sign-in is set up with what the check found, and nothing is
+// written before a check passes unless the person adds it anyway. A local stdio program shows
+// its execution host and structured executable/args/env, then the owner's device signs it with
+// the root key (docs/her-server.md §8) and checks it once added: a command is never run before that.
 
-type Step = "entry" | "check" | "remote" | "local" | "login" | "approve" | "done";
+type Mode = "remote" | "local";
+type Step = "entry" | "check" | "remote" | "login" | "approve" | "done";
 const REMOTE_STEPS: McpProbeStepId[] = ["connect", "resource", "auth_server"];
 
 export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; onClose: () => void; onAdded: (name: string) => void; onOpen: (name: string) => void }) {
   const { t } = useTranslation("customize");
-  const { rpc, show } = useHer();
+  const { rpc, show, host } = useHer();
+  const [mode, setMode] = useState<Mode>("remote");
   const [step, setStep] = useState<Step>("entry");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [errors, setErrors] = useState<{ name?: string; address?: string }>({});
+  const [paste, setPaste] = useState("");
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteRemote, setPasteRemote] = useState<Extract<Detected, { kind: "remote" }> | null>(null);
+  const [errors, setErrors] = useState<{ name?: string; address?: string; program?: string; args?: string; env?: string }>({});
   const [d, setD] = useState<Detected | null>(null);
   const [steps, setSteps] = useState<McpProbeStep[]>([]);
   const [probed, setProbed] = useState<McpProbeResult | null>(null);
@@ -42,7 +48,8 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
   const [prefix, setPrefix] = useState("Bearer ");
   const [headers, setHeaders] = useState<Row[]>([]);
   const [transport, setTransport] = useState<Transport>("streamable_http");
-  const [command, setCommand] = useState("");
+  const [program, setProgram] = useState("");
+  const [args, setArgs] = useState<string[]>([]);
   const [env, setEnv] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
   const [back, setBack] = useState<Step>("entry");
@@ -76,15 +83,57 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     const id = det.kind === "remote" ? remoteIdentity(det.url) : localIdentity(det.argv[0], det.argv.slice(1));
     return c.servers.find((s) => s.identity === id) ?? null;
   };
-  const detected = detect(address);
-  const duplicate = sameAs(detected);
-  const suggested = name ? "" : suggestName(detected);
+  const detected = mode === "remote" ? detect(address) : null;
+  const localDetected: Detected | null = mode === "local" && program.trim() ? { kind: "local", argv: [program.trim(), ...args], env } : null;
+  const duplicate = mode === "remote" ? sameAs(detected) : sameAs(localDetected);
+  const suggested = name ? "" : suggestName(mode === "remote" ? (detected?.kind === "remote" ? detected : null) : localDetected);
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setErrors({});
+    setFailure(null);
+    setPasteError(null);
+    setPasteRemote(null);
+  };
+
+  const applyLocalDetected = (det: Extract<Detected, { kind: "local" }>) => {
+    setProgram(det.argv[0] ?? "");
+    setArgs(det.argv.slice(1));
+    setEnv(det.env);
+    if (!name.trim()) {
+      const sug = suggestName(det);
+      if (sug) setName(sug);
+    }
+    setMode("local");
+    setErrors({});
+    setFailure(null);
+    setPaste("");
+    setPasteError(null);
+    setPasteRemote(null);
+  };
+
+  const applyQuickPaste = () => {
+    setPasteError(null);
+    setPasteRemote(null);
+    const det = detect(paste);
+    if (!det) return;
+    if (det.kind === "bad") {
+      setPasteError(t(`addc.bad.${det.why}`));
+      return;
+    }
+    if (det.kind === "remote") {
+      setPasteRemote(det);
+      return;
+    }
+    applyLocalDetected(det);
+  };
 
   const discard = async () => {
     for (const credential of staged.current) await rpc?.request("credentials/delete", { name: credential }).catch(() => {});
     staged.current = [];
   };
   const close = () => {
+    if (mode === "local" && busy) return;
     alive.current = false;
     if (probeId.current) void rpc?.request("mcp/probe_cancel", { probe_id: probeId.current }).catch(() => {});
     login.current?.abort();
@@ -111,22 +160,17 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
 
   const connect = async () => {
     const det = detect(address);
-    const n = (name || suggestName(det)).trim();
+    const n = (name || suggestName(det?.kind === "remote" ? det : null)).trim();
     const errs: typeof errors = {};
     if (!serverName.test(n)) errs.name = t("addc.badName");
     else if (existing.has(n)) errs.name = t("addc.taken", { name: n });
     if (!det || det.kind === "bad") errs.address = t(`addc.bad.${det?.kind === "bad" ? det.why : "empty"}`);
+    else if (det.kind === "local") errs.address = t("addc.looksLikeLocal");
     else if (sameAs(det)) return;
     setErrors(errs);
-    if (errs.name || errs.address || !det || det.kind === "bad" || !rpc) return;
+    if (errs.name || errs.address || !det || det.kind !== "remote" || !rpc) return;
     setName(n);
     setD(det);
-    if (det.kind === "local") {
-      setCommand(joinCommand(det.argv[0], det.argv.slice(1)));
-      setEnv(det.env);
-      setStep("local");
-      return;
-    }
     setHeaders(det.headers);
     setTransport(det.sse ? "sse" : "streamable_http");
     await checkRemote(n, det);
@@ -177,43 +221,58 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     void _name;
     const { check } = await c.saveServer(name, settings as Record<string, unknown>, []);
     staged.current = [];
-    done(check?.tools.map((tool) => tool.name) ?? []);
+    done(name, check?.tools.map((tool) => tool.name) ?? []);
   };
 
-  const done = (listed: string[]) => {
+  const done = (addedName: string, listed: string[]) => {
     setTools(listed);
     setStep("done");
-    onAdded(name);
-    show(t("toast.serverAdded", { name, count: listed.length }));
+    onAdded(addedName);
+    show(t("toast.serverAdded", { name: addedName, count: listed.length }));
   };
 
-  /** The command, signed on the owner's device; then checked once. A refusal goes back to the form. */
+  /** The local stdio command, validated and signed on the owner's device; then checked once. */
   const addCommand = async () => {
-    const argv = splitCommand(command);
-    const vars: Record<string, string> = {};
-    for (const r of env.filter((r) => r.key.trim())) vars[r.key.trim()] = r.locked && r.value ? await stage(credentialName(name, r.key.trim()), r.value) : r.value;
-    setStep("approve");
+    if (!rpc) return;
+    const trimmedProgram = program.trim();
+    const n = (name || suggestName(localDetected)).trim();
+    const errs: typeof errors = {};
+    if (!serverName.test(n)) errs.name = t("addc.badName");
+    else if (existing.has(n)) errs.name = t("addc.taken", { name: n });
+    const pIssue = validateProgram(program);
+    if (pIssue) errs.program = t(`addc.errProgram.${pIssue}`);
+    const rowCheck = validateLocalRows(n || "connector", args, env);
+    if (rowCheck.argsError) errs.args = t(`addc.errArgs.${rowCheck.argsError}`);
+    if (rowCheck.envError) errs.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
+    if (!errs.program && duplicate) errs.program = t("addc.duplicate", { name: duplicate.name });
+    setErrors(errs);
+    if (Object.keys(errs).length) return;
+
+    setName(n);
+    setBusy(true);
+    setFailure(null);
     try {
-      const check = await c.saveCommand({ name, command: argv[0], args: argv.slice(1), env: vars });
-      staged.current = [];
+      setStep("approve");
+      const check = await c.saveCommand({ name: n, command: trimmedProgram, args }, env);
       if (!alive.current) return;
-      if (check?.server.status.state === "ok") return done(check.tools.map((tool) => tool.name));
+      if (check?.server.status.state === "ok") return done(n, check.tools.map((tool) => tool.name));
       // Added, but it does not work yet: its page says why, with Retry.
-      onOpen(name);
-      show(t("toast.serverAddedFailed", { name, error: check?.server.status.error ?? "" }), undefined, true);
+      onOpen(n);
+      show(t("toast.serverAddedFailed", { name: n, error: check?.server.status.error ?? "" }), undefined, true);
     } catch (e) {
       if (!alive.current) return;
       setFailure(errorText(e));
-      setStep("local");
+      setStep("entry");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const add = async (mode: Step = step) => {
+  const add = async () => {
     if (!rpc) return;
     setBusy(true);
     setFailure(null);
     try {
-      if (mode === "local") return await addCommand();
       const server = await remoteServer();
       if (auth === "oauth") {
         const abort = new AbortController();
@@ -277,7 +336,7 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
   const retry = () => {
     if (back === "remote") {
       setStep(back);
-      void add(back);
+      void add();
     } else if (d?.kind === "remote") {
       void checkRemote(name, d);
     }
@@ -293,7 +352,7 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     <div className="cz-detect bad">
       <Icon name="warn" />
       <span>{t("addc.duplicate", { name: duplicate.name })}</span>
-      <button className="link" onClick={() => onOpen(duplicate.name)}>
+      <button type="button" className="link" onClick={() => onOpen(duplicate.name)}>
         {t("addc.openIt", { name: duplicate.name })}
       </button>
     </div>
@@ -312,39 +371,36 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
   ) : (
     <div className="cz-detect">
       <Icon name="terminal" />
-      <span>
-        <b>{t("addc.local")}</b> · {detected.argv[0]}
-        {detected.env.length > 0 && ` · ${t("addc.vars", { count: detected.env.length })}`}
-      </span>
+      <span>{t("addc.looksLikeLocal")}</span>
+      <button type="button" className="link" onClick={() => applyLocalDetected(detected)}>
+        {t("addc.switchToLocal")}
+      </button>
     </div>
   );
 
-  const summary = (editable: boolean) => {
-    const remote = d?.kind === "remote";
-    return (
-      <div className="cz-summary">
-        {probed?.icon ? (
-          <ServerTile name={name} icon={probed.icon} />
-        ) : (
-          <div className="cz-tile">
-            <Icon name={remote ? "web" : "terminal"} />
-          </div>
-        )}
-        <div className="t">
-          <div className="n">
-            {name}
-            <span className="badge">{remote ? (transport === "sse" ? t("addc.remoteSse") : t("addc.remoteShort")) : t("addc.local")}</span>
-          </div>
-          {(remote || step !== "local") && <div className="a mono">{remote ? (d as { url: string }).url : command}</div>}
+  const summary = (editable: boolean) => (
+    <div className="cz-summary">
+      {probed?.icon ? (
+        <ServerTile name={name} icon={probed.icon} />
+      ) : (
+        <div className="cz-tile">
+          <Icon name="web" />
         </div>
-        {editable && (
-          <button className="link" onClick={edit}>
-            {t("addc.change")}
-          </button>
-        )}
+      )}
+      <div className="t">
+        <div className="n">
+          {name}
+          <span className="badge">{transport === "sse" ? t("addc.remoteSse") : t("addc.remoteShort")}</span>
+        </div>
+        <div className="a mono">{(d as { url?: string } | null)?.url ?? address}</div>
       </div>
-    );
-  };
+      {editable && (
+        <button type="button" className="link" onClick={edit}>
+          {t("addc.change")}
+        </button>
+      )}
+    </div>
+  );
 
   const stepNote = (s: McpProbeStep | undefined): string | null => {
     if (!s?.detail && !(s?.state === "ok" && s.id === "connect")) return s?.detail ?? null;
@@ -431,16 +487,6 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     </>
   );
 
-  const argv = splitCommand(command);
-  const localView = (
-    <>
-      {summary(true)}
-      <LocalFields command={command} setCommand={setCommand} env={env} setEnv={setEnv} />
-      {failure && <div className="cz-errbox cz-gap">{failure}</div>}
-      <p className="cz-trust">{t("addc.localTrust")}</p>
-    </>
-  );
-
   const loginView = (
     <div className="cz-center">
       <div className="big">
@@ -462,7 +508,7 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
         <span className="mini-spin" />
       </div>
       <b>{t("addc.approveTitle")}</b>
-      <p>{t("addc.approveText", { name })}</p>
+      <p>{host?.machine_name ? t("addc.approveTextHost", { name, host: host.machine_name }) : t("addc.approveText", { name })}</p>
     </div>
   );
 
@@ -484,7 +530,17 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
 
   const entryView = (
     <>
-      <p className="sub">{t("addc.sub")}</p>
+      <div className="seg cz-modeseg" role="group" aria-label={t("addc.modeLabel")}>
+        <button type="button" className={mode === "remote" ? "on" : ""} aria-pressed={mode === "remote"} onClick={() => switchMode("remote")}>
+          <Icon name="web" />
+          {t("addc.modeRemote")}
+        </button>
+        <button type="button" className={mode === "local" ? "on" : ""} aria-pressed={mode === "local"} onClick={() => switchMode("local")}>
+          <Icon name="terminal" />
+          {t("addc.modeLocal")}
+        </button>
+      </div>
+      <p className="sub">{mode === "remote" ? t("addc.subRemote") : t("addc.subLocal")}</p>
       <div className="cz-form">
         <div className="cz-fi">
           <label htmlFor="cz-add-name">{t("addc.name")}</label>
@@ -495,60 +551,148 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
             placeholder={suggested || t("addc.namePlaceholder")}
             spellCheck={false}
             autoComplete="off"
-            onChange={(e) => (setName(e.target.value), setErrors({}))}
+            onChange={(e) => (setName(e.target.value), setErrors((prev) => ({ ...prev, name: undefined })))}
             onKeyDown={(e) => {
-              if (e.key === "Enter") void connect();
+              if (e.key === "Enter" && mode === "remote") void connect();
               // Tab takes the suggestion, as a completion does; with a name typed it moves on.
               if (e.key === "Tab" && !e.shiftKey && !name && suggested) {
                 e.preventDefault();
                 setName(suggested);
-                setErrors({});
+                setErrors((prev) => ({ ...prev, name: undefined }));
               }
             }}
           />
           {errors.name ? <div className="cz-ferr">{errors.name}</div> : <div className="note">{suggested ? t("addc.nameNoteSuggested", { name: suggested }) : t("addc.nameNote")}</div>}
         </div>
-        <div className="cz-fi">
-          <label htmlFor="cz-add-address">{t("addc.address")}</label>
-          <textarea
-            id="cz-add-address"
-            rows={1}
-            className={`field mono cz-grow ${errors.address ? "bad" : ""}`}
-            value={address}
-            placeholder={t("addc.addressPlaceholder")}
-            spellCheck={false}
-            autoFocus
-            onChange={(e) => {
-              setAddress(e.target.value);
-              setErrors({});
-              e.target.style.height = "auto";
-              e.target.style.height = `${e.target.scrollHeight + 2}px`;
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void connect();
-              }
-            }}
-          />
-          {errors.address ? <div className="cz-ferr">{errors.address}</div> : hint}
-        </div>
+        {mode === "remote" ? (
+          <div className="cz-fi">
+            <label htmlFor="cz-add-address">{t("addc.address")}</label>
+            <textarea
+              id="cz-add-address"
+              rows={1}
+              className={`field mono cz-grow ${errors.address ? "bad" : ""}`}
+              value={address}
+              placeholder={t("addc.addressPlaceholderRemote")}
+              spellCheck={false}
+              autoFocus
+              onChange={(e) => {
+                setAddress(e.target.value);
+                setErrors((prev) => ({ ...prev, address: undefined }));
+                e.target.style.height = "auto";
+                e.target.style.height = `${e.target.scrollHeight + 2}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void connect();
+                }
+              }}
+            />
+            {errors.address ? <div className="cz-ferr">{errors.address}</div> : hint}
+          </div>
+        ) : (
+          <>
+            <div className="cz-fi">
+              <label htmlFor="cz-quick-paste">{t("addc.quickPaste")}</label>
+              <div className="cz-paste-row">
+                <textarea
+                  id="cz-quick-paste"
+                  rows={1}
+                  className={`field mono cz-grow ${pasteError ? "bad" : ""}`}
+                  value={paste}
+                  placeholder={t("addc.quickPastePlaceholder")}
+                  spellCheck={false}
+                  onChange={(e) => {
+                    setPaste(e.target.value);
+                    setPasteError(null);
+                    setPasteRemote(null);
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight + 2}px`;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      applyQuickPaste();
+                    }
+                  }}
+                />
+                <button type="button" className="btn" disabled={!paste.trim()} onClick={applyQuickPaste}>
+                  {t("addc.fillFields")}
+                </button>
+              </div>
+              {pasteError && <div className="cz-ferr">{pasteError}</div>}
+              {pasteRemote && (
+                <div className="cz-detect">
+                  <Icon name="web" />
+                  <span>{t("addc.looksLikeRemote")}</span>
+                  <button
+                    type="button"
+                    className="link"
+                    onClick={() => {
+                      setAddress(pasteRemote.url);
+                      if (!name.trim() && suggestName(pasteRemote)) setName(suggestName(pasteRemote));
+                      switchMode("remote");
+                    }}
+                  >
+                    {t("addc.switchToRemote")}
+                  </button>
+                </div>
+              )}
+            </div>
+            <LocalFields
+              program={program}
+              setProgram={(v) => (setProgram(v), setErrors((prev) => ({ ...prev, program: undefined })))}
+              args={args}
+              setArgs={(v) => (setArgs(v), setErrors((prev) => ({ ...prev, args: undefined })))}
+              env={env}
+              setEnv={(v) => (setEnv(v), setErrors((prev) => ({ ...prev, env: undefined })))}
+              hostName={host?.machine_name}
+              programError={errors.program}
+              argsError={errors.args}
+              envError={errors.env}
+            />
+            {duplicate && (
+              <div className="cz-detect bad">
+                <Icon name="warn" />
+                <span>{t("addc.duplicate", { name: duplicate.name })}</span>
+                <button type="button" className="link" onClick={() => onOpen(duplicate.name)}>
+                  {t("addc.openIt", { name: duplicate.name })}
+                </button>
+              </div>
+            )}
+            {failure && <div className="cz-errbox cz-gap">{failure}</div>}
+            <p className="cz-trust">{t("addc.localTrust")}</p>
+          </>
+        )}
       </div>
     </>
   );
 
-  const okToAdd = step === "local" ? argv.length > 0 : auth === "token" ? !!token.trim() || headers.some((h) => h.value) : auth === "oauth" && client === "own" ? !!clientId.trim() : true;
+  const okToAddRemote = auth === "token" ? !!token.trim() || headers.some((h) => h.value) : auth === "oauth" && client === "own" ? !!clientId.trim() : true;
   const foot =
     step === "entry" ? (
-      <>
-        <div className="left" />
-        <button className="btn" onClick={close}>
-          {t("addc.cancel")}
-        </button>
-        <button className="btn primary" disabled={!detected || detected.kind === "bad" || !!duplicate} onClick={() => void connect()}>
-          {t("addc.connect")}
-        </button>
-      </>
+      mode === "remote" ? (
+        <>
+          <div className="left" />
+          <button className="btn" onClick={close}>
+            {t("addc.cancel")}
+          </button>
+          <button className="btn primary" disabled={!detected || detected.kind !== "remote" || !!duplicate} onClick={() => void connect()}>
+            {t("addc.connect")}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="left" />
+          <button className="btn" onClick={close}>
+            {t("addc.cancel")}
+          </button>
+          <button className="btn primary" disabled={busy || !program.trim() || !!duplicate} onClick={() => void addCommand()}>
+            {busy && <span className="mini-spin cz-spin-solid" />}
+            {t("addc.addAndApprove")}
+          </button>
+        </>
+      )
     ) : step === "check" ? (
       failure ? (
         <>
@@ -589,19 +733,19 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
         <button className="btn" onClick={edit}>
           {t("addc.back")}
         </button>
-        <button className="btn primary" disabled={busy || !okToAdd} onClick={() => void add(step)}>
+        <button className="btn primary" disabled={busy || !okToAddRemote} onClick={() => void add()}>
           {busy && <span className="mini-spin cz-spin-solid" />}
-          {step === "remote" && auth === "oauth" ? t("addc.addAndLogin") : step === "local" ? t("addc.addAndApprove") : t("addc.add")}
+          {auth === "oauth" ? t("addc.addAndLogin") : t("addc.add")}
         </button>
       </>
     );
 
-  const title = step !== "entry" && d?.kind === "local" ? t("addc.titleLocal") : t("addc.title");
+  const title = mode === "local" ? t("addc.titleLocal") : t("addc.title");
   return (
     <Dialog label={title} width={520} className="cz-sheet cz-add" onClose={step === "approve" ? () => {} : close}>
       <h3>{title}</h3>
-      <div className="cz-add-body" data-step={step}>
-        {step === "entry" ? entryView : step === "check" ? checkView : step === "remote" ? remoteView : step === "local" ? localView : step === "login" ? loginView : step === "approve" ? approveView : doneView}
+      <div className="cz-add-body" data-step={step === "entry" && mode === "local" ? "local" : step}>
+        {step === "entry" ? entryView : step === "check" ? checkView : step === "remote" ? remoteView : step === "login" ? loginView : step === "approve" ? approveView : doneView}
       </div>
       <div className="sheet-foot">{foot}</div>
     </Dialog>

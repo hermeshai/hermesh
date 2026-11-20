@@ -27,27 +27,8 @@ const read = (file: string) => {
 };
 const nav = (page: Page, name: string) => page.getByRole("navigation", { name: "Pages" }).getByRole("button", { name, exact: true }).click();
 
-test("an environment set up from its console", async ({ page }) => {
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(e.message));
+test("custom HTTP and stdio connectors", async ({ page }) => {
   await page.goto(site.url);
-
-  // The mock's service is in models.toml without a key: a service of the person's own, listed as
-  // one; its key is set from its models, and her asks the service again with it.
-  await test.step("an API key connects a model service, on the page the console opens on", async () => {
-    await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("button", { name: "Models", exact: true })).toHaveAttribute("aria-current", "page");
-    const row = page.locator(".mrow", { hasText: "Mock" });
-    await row.getByRole("button", { name: "Manage Models" }).click();
-    const manage = page.getByRole("dialog", { name: /Mock/ });
-    await manage.getByRole("button", { name: "Set Key…" }).click();
-    const sheet = page.getByRole("dialog", { name: "Set Key" });
-    await sheet.getByLabel("API Key").fill("sk-e2e");
-    await sheet.getByRole("button", { name: "Save" }).click();
-    await expect(sheet).toBeHidden();
-    await expect(page.getByText("Key saved")).toBeVisible();
-    await expect(row).toContainText(new URL(site.modelUrl).host);
-  });
-
   await test.step("a connector added by address, checked, its tools listed", async () => {
     await nav(page, "Connectors");
     await page.getByRole("button", { name: "Add Connector" }).click();
@@ -74,19 +55,120 @@ test("an environment set up from its console", async ({ page }) => {
   await test.step("a connector started as a command, signed on the owner's device, never written by the page", async () => {
     await page.getByRole("button", { name: "Add Connector" }).click();
     const sheet = page.getByRole("dialog", { name: "Add Connector" });
-    await sheet.getByLabel("Name").fill("hello");
-    await sheet.getByLabel("Address").fill(`GREETING=hi "${process.execPath}" "${path.join(import.meta.dirname, "mcp-stdio.mjs")}"`);
-    await expect(sheet.getByText("Command", { exact: true })).toBeVisible();
-    await sheet.getByRole("button", { name: "Connect" }).click();
-    const command = page.getByRole("dialog", { name: "Add Connector Started as a Command" });
-    await command.getByRole("button", { name: "Add and Approve" }).click();
-    await expect(command.getByText("Added hello", { exact: true })).toBeVisible();
-    await expect(command.getByText("say_hello")).toBeVisible();
-    await command.getByRole("button", { name: "Done" }).click();
-    await expect(page.locator(".cz-row", { hasText: "hello" })).toContainText("Ready · 1 tool");
+    // Explicit transport switcher: Remote URL (HTTP) vs Local Program (stdio).
+    await sheet.getByRole("button", { name: "Local Program (stdio)" }).click();
+    const local = page.getByRole("dialog", { name: "Add Local Program (stdio)" });
+    // Shows execution host callout.
+    await expect(local).toContainText("Runs directly on");
+    await expect(local).toContainText("(stdio, no shell)");
+    // Quick paste rejects shell operators.
+    await local.getByLabel("Quick paste (optional)").fill("node server.js && whoami");
+    await local.getByRole("button", { name: "Fill fields" }).click();
+    await expect(local).toContainText("Shell operators");
+    // Fill structured Name, Executable, Arguments, and Environment variables (including a locked secret).
+    await local.getByLabel("Name", { exact: true }).fill("hello");
+    await local.getByLabel("Executable").fill(process.execPath);
+    await local.getByRole("button", { name: "Add argument" }).click();
+    await local.getByLabel("Argument 1").fill(path.join(import.meta.dirname, "mcp-stdio.mjs"));
+    await local.getByRole("button", { name: "Add a row" }).click();
+    await local.getByLabel("Name", { exact: true }).nth(1).fill("GREETING");
+    await local.getByLabel("Value").fill("hi");
+    await local.getByRole("button", { name: "Add a row" }).click();
+    await local.getByLabel("Name", { exact: true }).nth(2).fill("API_TOKEN");
+    await local.getByLabel("Value").nth(1).fill("secret-e2e-token-12345");
+    await local.getByRole("button", { name: "Add and Approve" }).click();
+    await expect(local.getByText("Added hello", { exact: true })).toBeVisible();
+    await expect(local.getByText("say_hello")).toBeVisible();
+    await local.getByRole("button", { name: "Done" }).click();
+    const row = page.locator(".cz-row", { hasText: "hello" });
+    await expect(row).toContainText("Ready · 1 tool");
     expect(read("config.toml")).toContain("[mcp_servers.hello]");
     expect(read("config.toml")).toContain(`command = ${JSON.stringify(process.execPath)}`);
     expect(read("config.toml")).toContain('GREETING = "hi"');
+    // Secret value is never written in plaintext to config.toml; only its credential reference is stored.
+    const original = read("config.toml").match(/API_TOKEN = "(\$\{credential:mcp-stdio\.hello\.[a-f0-9-]+\})"/)?.[1];
+    expect(original).toBeDefined();
+    expect(read("config.toml")).not.toContain("secret-e2e-token-12345");
+    // Detail page shows execution host and allows structured editing.
+    await row.click();
+    await expect(page.getByText("Execution host")).toBeVisible();
+    await page.getByRole("button", { name: "More" }).click();
+    await page.getByRole("menuitem", { name: "Edit Configuration…" }).click();
+    const edit = page.getByRole("dialog", { name: "Edit hello" });
+    await expect(edit.getByLabel("Executable")).toHaveValue(process.execPath);
+    await expect(edit.getByLabel("Argument 1")).toHaveValue(path.join(import.meta.dirname, "mcp-stdio.mjs"));
+    const token = edit.getByLabel("Value").nth(1);
+    await expect(token).toHaveAttribute("type", "password");
+    await expect(token).toHaveValue("");
+    await token.fill("rotated-e2e-token");
+    await page.route("**/command-connector", (route) => route.fulfill({ status: 403, body: "The owner declined to sign" }), { times: 1 });
+    await edit.getByRole("button", { name: "Save and Approve" }).click();
+    await expect(edit.getByText("The owner declined to sign")).toBeVisible();
+    expect(read("config.toml")).toContain(original!);
+    expect(read("credentials.toml")).toContain("secret-e2e-token-12345");
+    expect(read("credentials.toml")).not.toContain("rotated-e2e-token");
+    await edit.getByRole("button", { name: "Save and Approve" }).click();
+    await expect(edit).toBeHidden();
+    expect(read("config.toml")).not.toContain(original!);
+    expect(read("config.toml")).not.toContain("rotated-e2e-token");
+    expect(read("credentials.toml")).toContain("rotated-e2e-token");
+    expect(read("credentials.toml")).not.toContain("secret-e2e-token-12345");
+    await page.getByRole("button", { name: "Back to Connectors" }).click();
+  });
+
+});
+
+test.describe("iPhone console layout", () => {
+  test.use({ viewport: { width: 393, height: 852 }, hasTouch: true });
+  test("custom HTTP and stdio connectors on an iPhone-sized screen", async ({ page }) => {
+    await page.goto(site.url + "#connectors");
+    await page.getByRole("button", { name: "Add Connector" }).tap();
+    const remote = page.getByRole("dialog", { name: "Add Connector" });
+    await expect(remote.getByRole("button", { name: "Remote URL (HTTP)" })).toHaveAttribute("aria-pressed", "true");
+    await remote.getByLabel("Name", { exact: true }).fill("mobile-http");
+    await remote.getByLabel("Address").fill(site.mcpUrl + "?mobile=1");
+    await remote.getByRole("button", { name: "Connect" }).tap();
+    await expect(remote.getByText("Checked: the server accepted the connection; no authentication needed.")).toBeVisible();
+    await remote.getByRole("button", { name: "Add", exact: true }).tap();
+    await remote.getByRole("button", { name: "Done" }).tap();
+    await expect(page.locator(".cz-row", { hasText: "mobile-http" })).toContainText("Ready · 17 tools");
+    await page.getByRole("button", { name: "Add Connector" }).tap();
+    await remote.getByRole("button", { name: "Local Program (stdio)" }).tap();
+    const local = page.getByRole("dialog", { name: "Add Local Program (stdio)" });
+    await expect(local).toContainText("(stdio, no shell)");
+    await local.getByLabel("Name", { exact: true }).fill("Phone_stdio-1");
+    await local.getByLabel("Quick paste (optional)").fill(JSON.stringify({
+      command: process.execPath,
+      args: [path.join(import.meta.dirname, "mcp-stdio.mjs"), "mobile"],
+    }));
+    await local.getByRole("button", { name: "Fill fields" }).tap();
+    await expect(local.getByLabel("Executable")).toHaveValue(process.execPath);
+    await local.getByRole("button", { name: "Add and Approve" }).tap();
+    await expect(local.getByText("say_hello")).toBeVisible();
+    await local.getByRole("button", { name: "Done" }).tap();
+    await expect(page.locator(".cz-row", { hasText: "Phone_stdio-1" })).toContainText("Ready · 1 tool");
+  });
+});
+
+test("an environment set up from its console", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto(site.url);
+
+  // The mock's service is in models.toml without a key: a service of the person's own, listed as
+  // one; its key is set from its models, and her asks the service again with it.
+  await test.step("an API key connects a model service, on the page the console opens on", async () => {
+    await expect(page.getByRole("navigation", { name: "Pages" }).getByRole("button", { name: "Models", exact: true })).toHaveAttribute("aria-current", "page");
+    const row = page.locator(".mrow", { hasText: "Mock" });
+    await row.getByRole("button", { name: "Manage Models" }).click();
+    const manage = page.getByRole("dialog", { name: /Mock/ });
+    await manage.getByRole("button", { name: "Set Key…" }).click();
+    const sheet = page.getByRole("dialog", { name: "Set Key" });
+    await sheet.getByLabel("API Key").fill("sk-e2e");
+    await sheet.getByRole("button", { name: "Save" }).click();
+    await expect(sheet).toBeHidden();
+    await expect(page.getByText("Key saved")).toBeVisible();
+    await expect(row).toContainText(new URL(site.modelUrl).host);
   });
 
   await test.step("a skill uploaded as an archive, read, and turned off", async () => {

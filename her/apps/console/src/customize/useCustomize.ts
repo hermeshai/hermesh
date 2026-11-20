@@ -6,7 +6,8 @@ import { TOAST_MS, useHer } from "../her";
 import { i18n } from "../i18n";
 import { signCommandConnector, type CommandConnector } from "../routes";
 import { openPage, signInRemotely } from "../signin";
-import { quoteKey, skillItems, type SkillItem } from "./model";
+import { quoteKey, skillItems, withCredential, type SkillItem } from "./model";
+import type { Row } from "./detect";
 
 const t = i18n.getFixedT(null, "customize");
 
@@ -307,14 +308,33 @@ export function useCustomize() {
     [rpc, write, readServers, check],
   );
 
-  /** Adds or changes a server started as a command: the owner's Mac signs it with Touch ID, then it is checked once. */
+  /** Saves new credential values under fresh references, then signs the settings that use them. */
   const saveCommand = useCallback(
-    async (c: CommandConnector) => {
-      await signCommandConnector(c);
-      await readServers();
+    async (c: Omit<CommandConnector, "env">, rows: Row[]) => {
+      if (!rpc) throw new Error(i18n.t("console:error.notConnected"));
+      const staged: string[] = [];
+      const env: Record<string, string> = Object.create(null);
+      try {
+        for (const row of rows) {
+          const key = row.key.trim();
+          if (!key) continue;
+          if (row.locked && row.value) {
+            const credential = `mcp-stdio.${c.name}.${crypto.randomUUID()}`;
+            await rpc.request("credentials/set", { name: credential, value: row.value });
+            staged.push(credential);
+            env[key] = withCredential(row.saved ?? null, credential);
+          } else {
+            env[key] = row.value || row.saved || "";
+          }
+        }
+        await signCommandConnector({ ...c, env });
+      } catch (e) {
+        for (const name of staged) await rpc.request("credentials/delete", { name }).catch(() => {});
+        throw e;
+      }
       return check(c.name);
     },
-    [readServers, check],
+    [rpc, check],
   );
 
   return {

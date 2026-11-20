@@ -29,6 +29,7 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
+	"github.com/hermeshai/hermesh/internal/herhost"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -442,11 +443,8 @@ func (o *Owner) revokeHer(ctx context.Context, machineID string) {
 // SetHerCommandConnector adds, changes or removes a connector her starts as
 // a command on a machine, signed by the root key.
 func (o *Owner) SetHerCommandConnector(ctx context.Context, machineID string, c *identityv1.SetHerCommandConnector) error {
-	switch {
-	case c.GetName() == "":
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector needs a name"))
-	case !c.Remove && c.Command == "":
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("a connector needs a command"))
+	if err := herhost.ValidateCommandConnector(c); err != nil {
+		return err
 	}
 	if _, ok, _ := o.onlyMachine(); ok {
 		return errNoRootKey("add or remove connectors started as commands")

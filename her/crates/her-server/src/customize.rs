@@ -102,7 +102,7 @@ fn own_client(server: &her_protocol::McpServerConfig) -> Result<Option<her_proto
     let Some(own) = server.oauth.clone() else { return Ok(None) };
     let secret = match &own.client_secret {
         Some(value) => {
-            let names = her_mcp::env::credential_names([value.as_str()]);
+            let names = her_mcp::env::remote_credential_names([value.as_str()]);
             let saved: HashMap<String, String> = names.into_iter().filter_map(|n| her_llm::credentials::get(&n).map(|v| (n, v))).collect();
             let lookup = |name: &str| match name.strip_prefix("credential:") {
                 Some(c) => saved.get(c).cloned(),
