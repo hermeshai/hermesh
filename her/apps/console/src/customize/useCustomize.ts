@@ -4,7 +4,7 @@ import type { ConfigEdit, ConfigReadResult, McpCheckResult, McpListResult, McpSe
 import { errorText } from "../format";
 import { TOAST_MS, useHer } from "../her";
 import { i18n } from "../i18n";
-import { signCommandConnector, type CommandConnector } from "../routes";
+import { CommandConnectorRefusal, signCommandConnector, type CommandConnector } from "../routes";
 import { openPage, signInRemotely } from "../signin";
 import { quoteKey, skillItems, withCredential, type SkillItem } from "./model";
 import type { Row } from "./detect";
@@ -314,12 +314,15 @@ export function useCustomize() {
       if (!rpc) throw new Error(i18n.t("console:error.notConnected"));
       const staged: string[] = [];
       const env: Record<string, string> = Object.create(null);
+      let submitted = false;
       try {
         for (const row of rows) {
           const key = row.key.trim();
           if (!key) continue;
           if (row.locked && row.value) {
-            const credential = `mcp-stdio.${c.name}.${crypto.randomUUID()}`;
+            // The credential store allows up to 64 characters, including the prefix and connector name.
+            const suffix = crypto.randomUUID().replaceAll("-", "").slice(-20);
+            const credential = `mcp-stdio.${c.name}.${suffix}`;
             await rpc.request("credentials/set", { name: credential, value: row.value });
             staged.push(credential);
             env[key] = withCredential(row.saved ?? null, credential);
@@ -327,9 +330,13 @@ export function useCustomize() {
             env[key] = row.value || row.saved || "";
           }
         }
+        submitted = true;
         await signCommandConnector({ ...c, env });
       } catch (e) {
-        for (const name of staged) await rpc.request("credentials/delete", { name }).catch(() => {});
+        // A lost response can follow a successful write. Keep any credentials it may have committed.
+        if (!submitted || e instanceof CommandConnectorRefusal) {
+          for (const name of staged) await rpc.request("credentials/delete", { name }).catch(() => {});
+        }
         throw e;
       }
       return check(c.name);

@@ -629,7 +629,8 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
                     type="button"
                     className="link"
                     onClick={() => {
-                      setAddress(pasteRemote.url);
+                      setAddress(pasteRemote.json ? paste : pasteRemote.url);
+                      setPaste("");
                       if (!name.trim() && suggestName(pasteRemote)) setName(suggestName(pasteRemote));
                       switchMode("remote");
                     }}
