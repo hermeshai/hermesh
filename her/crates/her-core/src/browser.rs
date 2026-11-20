@@ -22,12 +22,19 @@ use her_browser::policy::origin_of;
 use her_browser::policy::url_kind;
 use her_browser::session::Action;
 use her_browser::session::ElementTarget;
+use her_browser::session::LoginFieldKind;
 use her_browser::session::Place;
 use her_browser::session::SnapshotMode;
 use her_browser::session::SnapshotRequest;
 use her_browser::session::WaitFor;
 use her_llm::UserContent;
 use her_protocol::SiteGrant;
+use her_protocol::card::Card;
+use her_protocol::card::CardBody;
+use her_protocol::card::CardKind;
+use her_protocol::card::SiteLoginBody;
+use her_protocol::card::SiteLoginField;
+use her_protocol::card::SiteLoginFieldKind;
 use her_tools::Authority;
 use her_tools::Environment;
 use her_tools::PageTarget;
@@ -668,7 +675,11 @@ impl TypedTool for BrowserNavigate {
              changing account settings or permissions, or submitting forms with personal information. Typing \
              passwords, ID or card numbers into a page counts as sending them to the site: ask first. A general \
              request such as \"fill in this form\" does not cover these steps.",
-            "Leave CAPTCHAs and sign-in pages to the user: browser_wait with user hands them the page.",
+            "Leave CAPTCHAs, Passkeys, SSO and sign-ins in the user's own browser to the user: prefer browser_wait with \
+             user so they can use their own browser or password manager directly. Never ask for or accept passwords or \
+             verification codes in ordinary chat. Only when signing in to a standard HTTPS login form inside the \
+             isolated built-in browser may you prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; \
+             the card fills fields once without auto-submitting or saving passwords.",
             "Work from browser_snapshot and refs; use screenshots to check how a page looks, and coordinates only \
              when the snapshot has no element for what you need.",
         ]
@@ -811,11 +822,14 @@ impl TypedTool for BrowserSnapshot {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub(crate) struct ActArgs {
-    /// One of: click, dblclick, hover, fill, type, press, select, check, uncheck, scroll, upload.
+    /// One of: click, dblclick, hover, fill, type, press, select, check, uncheck, scroll, upload, ask_owner.
     action: String,
     /// The element, by its ref from a snapshot.
     #[serde(rename = "ref", default)]
     reference: Option<String>,
+    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on the isolated built-in browser page.
+    #[serde(default)]
+    refs: Option<Vec<String>>,
     /// Viewport x in CSS pixels, with y: only when the snapshot has no element for the target.
     #[serde(default)]
     x: Option<f64>,
@@ -894,16 +908,29 @@ impl TypedTool for BrowserAct {
     type Args = ActArgs;
     const NAME: &'static str = "browser_act";
     const DESCRIPTION: &'static str = "Act on the page: click, dblclick, hover, fill, type, press, select, check, \
-        uncheck, scroll or upload, on an element by its ref from the latest snapshot. press, type and scroll without \
+        uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without \
         a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot \
-        name. The result says what changed on the page. If the page changed since the call was approved, nothing \
-        is sent: take a snapshot and try again.";
+        name. ask_owner prepares a secure site_login card for verified login refs in the isolated built-in browser \
+        without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
+        changed since the call was approved, nothing is sent: take a snapshot and try again.";
 
     fn kind(&self) -> ToolKind {
         ToolKind::Mutating
     }
 
+    fn kind_for(&self, args: &Value) -> ToolKind {
+        if str_arg(args, "action") == Some("ask_owner") {
+            ToolKind::ReadOnly
+        } else {
+            ToolKind::Mutating
+        }
+    }
+
     async fn authorities(&self, args: &ActArgs, ctx: &ToolCtx) -> Result<Vec<Authority>, ToolError> {
+        if args.action == "ask_owner" {
+            // Prepares a card only; changes nothing until the owner answers the card.
+            return Ok(Vec::new());
+        }
         let action = args.action(ctx.env.as_ref())?;
         let which = pick(ctx, None, args.tab.as_deref().or(args.reference.as_deref()))?;
         let session = ensure(ctx, which).await?;
@@ -948,6 +975,9 @@ impl TypedTool for BrowserAct {
     }
 
     async fn run(&self, args: ActArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        if args.action == "ask_owner" {
+            return prepare_site_login(&args, &ctx).await;
+        }
         let action = args.action(ctx.env.as_ref())?;
         let (page, which) = approved(&ctx).ok_or_else(|| ToolError::Failed("the call has no approved page".into()))?;
         let session = in_use(&ctx, which).await?;
@@ -983,6 +1013,100 @@ impl TypedTool for BrowserAct {
         let report = session.act(&action, &place, &ctx.cancel).await.map_err(failed)?;
         Ok(output(report, None))
     }
+}
+
+async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput, ToolError> {
+    let cards = ctx.session_state.get::<crate::cards::Cards>().ok_or_else(|| {
+        ToolError::Failed("only Her's own conversation can ask the owner with a sign-in card; say in your report what is needed".into())
+    })?;
+    let refs: Vec<String> = args
+        .refs
+        .as_ref()
+        .map(|list| list.iter().map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect())
+        .unwrap_or_default();
+    if refs.is_empty() {
+        return Err(ToolError::InvalidArgs("ask_owner needs refs (1 to 3 login field refs from the latest snapshot)".into()));
+    }
+    let first_which = pick(ctx, None, Some(&refs[0]))?;
+    if refs.iter().skip(1).any(|r| Which::of(r) != first_which) {
+        return Err(ToolError::InvalidArgs("all refs in ask_owner must belong to the same browser".into()));
+    }
+    if first_which == Which::Yours {
+        return Err(ToolError::Failed(
+            "Secure sign-in cards are disabled in the user's own Chrome because it already has their password manager and does not provide isolated card autofill. Use browser_wait with user so they can sign in directly.".into(),
+        ));
+    }
+    let session = in_use(ctx, Which::Builtin).await?;
+    let inspected = session.inspect_site_login(&refs).await.map_err(failed)?;
+
+    let mut fields = Vec::with_capacity(inspected.fields.len());
+    let mut bindings = Vec::with_capacity(inspected.fields.len());
+    let mut backends = Vec::with_capacity(inspected.fields.len());
+    for (idx, field) in inspected.fields.into_iter().enumerate() {
+        let id = format!("f{}", idx + 1);
+        let kind = match field.kind {
+            LoginFieldKind::Email => SiteLoginFieldKind::Email,
+            LoginFieldKind::Username => SiteLoginFieldKind::Username,
+            LoginFieldKind::Password => SiteLoginFieldKind::Password,
+            LoginFieldKind::OneTimeCode => SiteLoginFieldKind::OneTimeCode,
+        };
+        backends.push(field.backend);
+        fields.push(SiteLoginField {
+            id: id.clone(),
+            label: field.label,
+            kind,
+            secret: field.secret,
+        });
+        bindings.push(crate::cards::SiteLoginFieldBinding {
+            id,
+            backend: field.backend,
+            tag: field.tag,
+            input_type: field.input_type,
+            secret: field.secret,
+        });
+    }
+
+    const DIGITS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bits = rand::random::<u128>();
+    let mut card_id = String::from("c_");
+    for _ in 0..10 {
+        card_id.push(DIGITS[(bits % DIGITS.len() as u128) as usize] as char);
+        bits /= DIGITS.len() as u128;
+    }
+    let expires = chrono::Utc::now() + chrono::TimeDelta::seconds(crate::cards::SITE_LOGIN_LIFE_SECS);
+    let card = Card {
+        id: card_id.clone(),
+        kind: CardKind::SiteLogin,
+        title: format!("Sign in to {}", inspected.host),
+        asked_by: cards.asked_by(),
+        expires_at: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ops: Vec::new(),
+        body: CardBody::SiteLogin(SiteLoginBody {
+            origin: inspected.origin.clone(),
+            host: inspected.host,
+            title: inspected.title,
+            fields,
+        }),
+    };
+    let binding = crate::cards::SiteLoginBinding {
+        tab: inspected.tab.clone(),
+        frame: inspected.frame.clone(),
+        loader: inspected.loader.clone(),
+        origin: inspected.origin.clone(),
+        fields: bindings,
+    };
+    session.begin_sensitive_card(&card_id, &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
+    let weak_session = Arc::downgrade(&session);
+    let cleanup = Arc::new(move |id: &str| {
+        if let Some(session) = weak_session.upgrade() {
+            session.end_sensitive_card(id);
+        }
+    });
+    cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+    Ok(ToolOutput::text(format!(
+        "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
+        inspected.origin
+    )))
 }
 
 // ---- browser_screenshot ----
