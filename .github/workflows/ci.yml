@@ -32,6 +32,7 @@ jobs:
       app: ${{ steps.route.outputs.app }}
       windows_app: ${{ steps.route.outputs.windows_app }}
       ios: ${{ steps.route.outputs.ios }}
+      hermeshkit: ${{ steps.route.outputs.hermeshkit }}
       ios_suite: ${{ steps.route.outputs.ios_suite }}
       packaging: ${{ steps.route.outputs.packaging }}
       mac_native: ${{ steps.route.outputs.mac_native }}
@@ -64,7 +65,7 @@ jobs:
           decision=mode=full
           if [ "$FULL" != true ] &&
              result=$(python3 -I "$router" "$GITHUB_EVENT_NAME" "$BASE" "$HEAD_SHA") &&
-             grep -Eq '^packaging=(true|false)$' <<< "$result"; then
+             grep -Eq '^hermeshkit=(true|false)$' <<< "$result"; then
             decision="$result"
           fi
           printf '%s\n' "$decision" | tee -a "$GITHUB_OUTPUT"
@@ -75,6 +76,15 @@ jobs:
           node her/tools/gen-protocol-docs.mjs --check
       - name: Routing regression tests
         run: python3 -I scripts/ci/test_route.py
+
+  hermeshkit:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.hermeshkit == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Swift package tests and offline demo checks
+        run: packages/HermeshKit/test.sh "$RUNNER_TEMP/hermeshkit"
 
   ios-demo:
     needs: changes
@@ -94,7 +104,7 @@ jobs:
       - name: Review demo on the simulator
         env:
           SUITE: ${{ needs.changes.outputs.exhaustive == 'true' && 'full' || needs.changes.outputs.ios_suite || 'smoke' }}
-        run: apps/ios/scripts/test-demo.sh "$RUNNER_TEMP/ios-demo" "$SUITE"
+        run: apps/ios/scripts/test-demo-ui.sh "$RUNNER_TEMP/ios-demo" "$SUITE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -353,7 +363,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [changes, go, screen-linux, windows, windows-arm, app, ios-demo, mac-native, packaging]
+    needs: [changes, go, screen-linux, windows, windows-arm, app, ios-demo, hermeshkit, mac-native, packaging]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -372,7 +382,7 @@ jobs:
               elif $mode != "full" and $mode != "routed" then error("Invalid CI mode: \($mode)")
               else
                 {go: "go", "screen-linux": "screen_linux", windows: "windows",
-                 "windows-arm": "windows_arm", app: "app", "ios-demo": "ios",
+                 "windows-arm": "windows_arm", app: "app", "ios-demo": "ios", hermeshkit: "hermeshkit",
                  "mac-native": "mac_native", packaging: "packaging"}
                 | to_entries
                 | map(.key as $job
