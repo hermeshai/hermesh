@@ -112,6 +112,10 @@ function report() {
 }
 
 function reportNow() {
+  if (reporting) {
+    clearTimeout(reporting);
+    reporting = null;
+  }
   const out = {};
   for (const [tabId, tab] of agentTabs) {
     (out[tab.session] ??= []).push({
@@ -225,7 +229,7 @@ const tabs = {
   },
   async attach(tabId) {
     await chrome.debugger.attach({ tabId }, PROTOCOL);
-    report();
+    reportNow();
   },
   detach(tabId) {
     chrome.debugger.detach({ tabId }).catch(() => {}).finally(() => reportNow());

@@ -317,6 +317,19 @@ impl Server {
         }
     }
 
+    fn fail_chrome_takeover(
+        cards: &Arc<Cards>,
+        id: &str,
+        expected: &[CardState],
+        note: String,
+    ) -> Result<CardsAnswerResult, RpcError> {
+        match cards.set(id, expected, CardState::Failed, Some(note.clone())) {
+            Ok(_) => Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) }),
+            Err(Some(now)) => Err(card_ended(id, now)),
+            Err(None) => Err(no_card(id)),
+        }
+    }
+
     fn answer_chrome_takeover_start(
         &self,
         session_id: &str,
@@ -329,22 +342,26 @@ impl Server {
             return Err(RpcError::invalid_params("only a Chrome takeover site_login card can be answered with takeover_start"));
         };
         let Some(SiteLoginBinding::ChromeTakeover(binding)) = cards.binding(id) else {
-            let note = "Chrome sign-in target binding is no longer available. Fall back to manual login.".to_string();
-            let _ = cards.set(id, &[CardState::Open, CardState::SignIn], CardState::Failed, Some(note.clone()));
-            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            return Self::fail_chrome_takeover(
+                cards,
+                id,
+                &[CardState::Open, CardState::SignIn],
+                "Chrome sign-in target binding is no longer available. Fall back to manual login.".to_string(),
+            );
         };
         let (conn, tab) = match self.chrome_takeover_tab(binding.extension_host, session_id, &binding.target_id) {
             Ok(found) => found,
             Err(reason) => {
-                let note = reason.to_string();
-                let _ = cards.set(id, &[CardState::Open, CardState::SignIn], CardState::Failed, Some(note.clone()));
-                return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+                return Self::fail_chrome_takeover(cards, id, &[CardState::Open, CardState::SignIn], reason.to_string());
             }
         };
         if tab.attached {
-            let note = "Chrome isolation could not be verified (debugger attached). Sign-in card invalidated; fall back to manual login.".to_string();
-            let _ = cards.set(id, &[CardState::Open, CardState::SignIn], CardState::Failed, Some(note.clone()));
-            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            return Self::fail_chrome_takeover(
+                cards,
+                id,
+                &[CardState::Open, CardState::SignIn],
+                "Chrome isolation could not be verified (debugger attached). Sign-in card invalidated; fall back to manual login.".to_string(),
+            );
         }
         let valid_target = match state {
             CardState::Open => {
@@ -356,9 +373,12 @@ impl Server {
             _ => false,
         };
         if !valid_target {
-            let note = "The Chrome page or target changed before sign-in. Sign-in card invalidated; fall back to manual login.".to_string();
-            let _ = cards.set(id, &[CardState::Open, CardState::SignIn], CardState::Failed, Some(note.clone()));
-            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            return Self::fail_chrome_takeover(
+                cards,
+                id,
+                &[CardState::Open, CardState::SignIn],
+                "The Chrome page or target changed before sign-in. Sign-in card invalidated; fall back to manual login.".to_string(),
+            );
         }
         if state == CardState::Open {
             match cards.set(id, &[CardState::Open], CardState::SignIn, None) {
@@ -369,6 +389,12 @@ impl Server {
                 }
                 Err(Some(now)) => return Err(card_ended(id, now)),
                 Err(None) => return Err(no_card(id)),
+            }
+        } else {
+            match cards.get(id) {
+                Some((_, CardState::SignIn)) => {}
+                Some((_, now)) => return Err(card_ended(id, now)),
+                None => return Err(no_card(id)),
             }
         }
         // Only reveal the exact verified bound tab on the bound extension host; never touch passwords/cookies.
@@ -392,25 +418,29 @@ impl Server {
             return Err(RpcError::invalid_params("confirm and open the Chrome tab before completing sign-in"));
         }
         let Some(SiteLoginBinding::ChromeTakeover(binding)) = cards.binding(id) else {
-            let note = "Chrome sign-in target binding is no longer available. Fall back to manual login.".to_string();
-            let _ = cards.set(id, &[CardState::SignIn], CardState::Failed, Some(note.clone()));
-            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            return Self::fail_chrome_takeover(
+                cards,
+                id,
+                &[CardState::SignIn],
+                "Chrome sign-in target binding is no longer available. Fall back to manual login.".to_string(),
+            );
         };
         let (_, tab) = match self.chrome_takeover_tab(binding.extension_host, session_id, &binding.target_id) {
             Ok(found) => found,
             Err(reason) => {
-                let note = reason.to_string();
-                let _ = cards.set(id, &[CardState::SignIn], CardState::Failed, Some(note.clone()));
-                return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+                return Self::fail_chrome_takeover(cards, id, &[CardState::SignIn], reason.to_string());
             }
         };
         if tab.attached
             || !her_browser::session::is_allowed_login_url(&tab.url)
             || her_browser::session::url_origin(&tab.url) != binding.origin
         {
-            let note = "The Chrome tab changed origin or lost isolation before sign-in finished. Sign-in card invalidated; fall back to manual login.".to_string();
-            let _ = cards.set(id, &[CardState::SignIn], CardState::Failed, Some(note.clone()));
-            return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            return Self::fail_chrome_takeover(
+                cards,
+                id,
+                &[CardState::SignIn],
+                "The Chrome tab changed origin or lost isolation before sign-in finished. Sign-in card invalidated; fall back to manual login.".to_string(),
+            );
         }
         // Fixed status only: never includes URL path/query, page title, DOM, cookies, or credentials.
         let note = format!(

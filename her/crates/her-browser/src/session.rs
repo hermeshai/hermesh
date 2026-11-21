@@ -721,7 +721,7 @@ impl BrowserSession {
         if !self.keeps_tabs() {
             return Err(BrowserError::failed("chrome takeover sign-in cards require the user's own Chrome extension"));
         }
-        let target_tab = if !refs.is_empty() {
+        let (target_tab, first_page) = if !refs.is_empty() {
             let mut seen = HashSet::new();
             let mut elements = Vec::with_capacity(refs.len());
             for reference in refs {
@@ -730,8 +730,8 @@ impl BrowserSession {
                 }
                 elements.push(self.element(reference).await?);
             }
-            let first_page = &elements[0].page;
-            if elements.iter().any(|e| &e.page != first_page) {
+            let first_page = elements[0].page.clone();
+            if elements.iter().any(|e| e.page != first_page) {
                 return Err(BrowserError::failed(
                     "All refs in ask_owner must belong to the same page and top-level frame. Fall back to manual login.",
                 ));
@@ -744,7 +744,7 @@ impl BrowserSession {
                     first_page.tab
                 )));
             }
-            let (tab_arc, _) = self.verify(first_page)?;
+            let (tab_arc, _) = self.verify(&first_page)?;
             let (main_id, main_frame) = self.main_frame(&tab_arc)?;
             let top_origin = url_origin(&main_frame.url);
             if first_page.frame != main_id || top_origin != first_page.origin {
@@ -752,15 +752,18 @@ impl BrowserSession {
                     "Chrome sign-in cards are disabled for cross-origin or nested iframes. Fall back to manual login.",
                 ));
             }
-            tab_arc
+            (tab_arc, Some(first_page))
         } else {
-            self.resolve_tab(tab)?
+            (self.resolve_tab(tab)?, None)
         };
         let _busy = target_tab.busy.lock().await;
         if self.sensitive_active(&target_tab).is_some() {
             return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
         }
         self.refresh(&target_tab).await;
+        if let Some(page) = &first_page {
+            self.verify(page)?;
+        }
         let (main_id, main_frame) = self.main_frame(&target_tab)?;
         let origin = url_origin(&main_frame.url);
         let parsed = Url::parse(&main_frame.url)

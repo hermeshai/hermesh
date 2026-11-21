@@ -1869,7 +1869,15 @@ async fn chrome_login_card_isolated_takeover_in_temp_profile() {
     let sign_in_ev = wait_events(&mut events, &mut all_events, |e| e["type"] == "card_changed" && e["state"] == "sign_in").await;
     schema.check("Event", sign_in_ev.last().unwrap());
     assert_eq!(submits.load(Ordering::SeqCst), 0, "must never auto-submit on takeover_start");
-    let active_in_chrome = worker(&chrome, &format!("chrome.tabs.query({{url: {}}}).then(t => t[0]?.active)", json!(format!("{origin}/login")))).await;
+    let active_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut active_in_chrome = Value::Bool(false);
+    while tokio::time::Instant::now() < active_deadline {
+        active_in_chrome = worker(&chrome, &format!("chrome.tabs.query({{url: {}}}).then(t => t[0]?.active)", json!(format!("{origin}/login")))).await;
+        if active_in_chrome == true {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     assert_eq!(active_in_chrome, true, "takeover_start must bring bound tab to front");
 
     // Model attempts to observe/act while card is SignIn -> STILL blocked, debugger STILL detached!

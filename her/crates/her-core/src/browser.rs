@@ -208,8 +208,6 @@ pub(crate) struct BrowserHandle {
     label: String,
     /// How the session numbered the tabs it let go in the user's own browser.
     yours_numbers: Mutex<Option<her_browser::router::TabNumbers>>,
-    /// Active local Chrome takeover card ids pausing all `Which::Yours` model access & debugger attach.
-    chrome_takeover: Mutex<std::collections::HashSet<String>>,
     /// Set by the kernel once the session exists.
     judge: std::sync::OnceLock<Judge>,
 }
@@ -274,7 +272,6 @@ impl BrowserHandle {
             starting: tokio::sync::Mutex::new(()),
             label,
             yours_numbers: Mutex::new(None),
-            chrome_takeover: Mutex::new(std::collections::HashSet::new()),
             judge: std::sync::OnceLock::new(),
         }
     }
@@ -319,15 +316,15 @@ impl BrowserHandle {
     }
 
     pub(crate) fn begin_chrome_takeover(&self, card_id: String) {
-        self.chrome_takeover.lock().insert(card_id);
+        self.pool.begin_takeover(&self.label, card_id);
     }
 
     pub(crate) fn end_chrome_takeover(&self, card_id: &str) {
-        self.chrome_takeover.lock().remove(card_id);
+        self.pool.end_takeover(&self.label, card_id);
     }
 
     pub(crate) fn is_chrome_takeover_active(&self) -> bool {
-        !self.chrome_takeover.lock().is_empty()
+        self.pool.is_takeover_active(&self.label)
     }
 }
 
@@ -522,6 +519,9 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
         return Err(ToolError::Failed(YOURS_DECLINED.into()));
     }
     let _starting = handle.starting.lock().await;
+    if which == Which::Yours && handle.is_chrome_takeover_active() {
+        return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
+    }
     let mut note = None;
     if let Some(session) = session_of(ctx, which) {
         if !session.is_dead() {
@@ -1158,6 +1158,30 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
     )))
 }
 
+struct TakeoverGuard {
+    handle: Arc<BrowserHandle>,
+    card_id: Option<String>,
+}
+
+impl TakeoverGuard {
+    fn begin(handle: Arc<BrowserHandle>, card_id: String) -> Self {
+        handle.begin_chrome_takeover(card_id.clone());
+        Self { handle, card_id: Some(card_id) }
+    }
+
+    fn disarm(&mut self) {
+        self.card_id = None;
+    }
+}
+
+impl Drop for TakeoverGuard {
+    fn drop(&mut self) {
+        if let Some(card_id) = self.card_id.take() {
+            self.handle.end_chrome_takeover(&card_id);
+        }
+    }
+}
+
 async fn prepare_chrome_takeover(
     args: &ActArgs,
     ctx: &ToolCtx,
@@ -1184,15 +1208,16 @@ async fn prepare_chrome_takeover(
     let browser_label = handle.pool.extension_browser();
     let card_id = new_card_id();
 
-    // Pause all model access to local Chrome BEFORE detaching, then explicitly detach the Chrome
-    // debugger and close the CDP session so zero page/screenshot/debug output reaches the model.
-    handle.begin_chrome_takeover(card_id.clone());
+    // Serialize with `start()` so a parallel read-only call cannot re-attach while detaching,
+    // and guard the pause with RAII so async cancellation never leaves Chrome permanently locked.
+    let _starting = handle.starting.lock().await;
+    let mut takeover_guard = TakeoverGuard::begin(handle.clone(), card_id.clone());
     let detached = session.release_all_tabs().await;
     *handle.yours_numbers.lock() = Some(numbers);
     drop(ctx.session_state.remove::<YoursSession>());
     drop(session);
+    drop(_starting);
     if detached.is_err() || handle.pool.extension_in_use() != Some(extension_host) || handle.pool.is_revoked(&handle.label) {
-        handle.end_chrome_takeover(&card_id);
         return Err(ToolError::Failed(
             "Could not reliably detach Chrome debugging before sign-in. Fall back to manual login.".into(),
         ));
@@ -1223,13 +1248,13 @@ async fn prepare_chrome_takeover(
         url: inspected.url,
         extension_host,
     });
-    let weak_handle = Arc::downgrade(&handle);
+    let pool = handle.pool.clone();
+    let label = handle.label.clone();
     let cleanup = Arc::new(move |id: &str, _state: CardState| {
-        if let Some(handle) = weak_handle.upgrade() {
-            handle.end_chrome_takeover(id);
-        }
+        pool.end_takeover(&label, id);
     });
     cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+    takeover_guard.disarm();
     Ok(ToolOutput::text(format!(
         "Nothing changed yet. Card {card_id} asks the owner to confirm {} (tab {}) and sign in natively in their local Chrome (using Chrome's login or password manager). Local Chrome access and debugging are paused while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only a fixed status.",
         inspected.origin, inspected.tab
