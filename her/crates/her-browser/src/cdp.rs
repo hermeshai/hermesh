@@ -133,11 +133,27 @@ impl Conn {
     }
 
     /// Fails every waiting command; later ones fail at once.
-    fn close(&self) {
+    pub fn close(&self) {
         self.closed.store(true, Ordering::Release);
         let pending: Vec<(String, Reply)> = self.pending.lock().drain().map(|(_, v)| v).collect();
         for (_, reply) in pending {
             let _ = reply.send(Err(CdpError::Closed));
+        }
+    }
+
+    /// Probes whether the browser still answers CDP commands within `timeout`.
+    /// Closes the connection on timeout so callers stop reusing an unresponsive browser.
+    pub async fn check_alive(&self, timeout: Duration) -> bool {
+        if self.is_closed() {
+            return false;
+        }
+        match self.send_with_timeout(None, "Target.getTargets", json!({}), timeout).await {
+            Ok(_) | Err(CdpError::Protocol { .. }) => true,
+            Err(CdpError::Closed) => false,
+            Err(CdpError::Timeout { .. }) => {
+                self.close();
+                false
+            }
         }
     }
 
@@ -300,5 +316,14 @@ mod tests {
             theirs_out.write_all(part).await.unwrap();
         }
         assert_eq!(call.await.unwrap().unwrap()["text"].as_str().unwrap().len(), 200_000);
+    }
+
+    #[tokio::test]
+    async fn check_alive_closes_an_unresponsive_connection() {
+        let (conn, _events, _theirs_in, _theirs_out) = pair();
+        assert!(!conn.is_closed());
+        assert!(!conn.check_alive(Duration::from_millis(50)).await);
+        assert!(conn.is_closed());
+        assert_eq!(conn.send(None, "After.probe", json!({})).await.unwrap_err(), CdpError::Closed);
     }
 }

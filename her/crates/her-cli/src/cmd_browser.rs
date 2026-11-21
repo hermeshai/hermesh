@@ -56,6 +56,10 @@ const RETRY: Duration = Duration::from_secs(2);
 /// How long the host waits for the extension's hello before connecting without it. A worker that
 /// has just started on a busy machine can take seconds, and a hello that comes late is lost.
 const HELLO_WAIT: Duration = Duration::from_secs(30);
+/// Keeps Chrome's MV3 service worker awake and detects a frozen or half-open native port.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
+/// Consecutive unanswered pings before the host exits so the service drops the dead extension.
+const MAX_MISSED_PONGS: u32 = 2;
 /// The host's exit code when the service refused it.
 const REFUSED_EXIT: i32 = 3;
 
@@ -118,7 +122,8 @@ pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
                 drop(_guard);
                 std::process::exit(REFUSED_EXIT);
             }
-            false
+            // Relay may exit while stdin is still open (e.g. heartbeat timeout on a frozen worker).
+            true
         },
         // Chrome can close its read end first, while a write or flush is in flight.
         Ok(Err(_)) = &mut writer => true,
@@ -135,7 +140,16 @@ pub async fn native_host(socket: Option<PathBuf>) -> anyhow::Result<u8> {
 
 /// Connects to the service again and again, relaying while connected. Ends when Chrome closed the
 /// port, or with why the service refused this host.
-async fn relay(socket: PathBuf, to_chrome: mpsc::UnboundedSender<String>, mut inbox: mpsc::UnboundedReceiver<String>) -> Option<String> {
+async fn relay(socket: PathBuf, to_chrome: mpsc::UnboundedSender<String>, inbox: mpsc::UnboundedReceiver<String>) -> Option<String> {
+    relay_with_heartbeat(socket, to_chrome, inbox, HEARTBEAT_INTERVAL).await
+}
+
+async fn relay_with_heartbeat(
+    socket: PathBuf,
+    to_chrome: mpsc::UnboundedSender<String>,
+    mut inbox: mpsc::UnboundedReceiver<String>,
+    heartbeat_interval: Duration,
+) -> Option<String> {
     // The extension says who it is as soon as it connects.
     let hello = match tokio::time::timeout(HELLO_WAIT, inbox.recv()).await {
         Ok(None) => return None,
@@ -150,7 +164,7 @@ async fn relay(socket: PathBuf, to_chrome: mpsc::UnboundedSender<String>, mut in
     };
     let mut said = String::new();
     loop {
-        let status = match serve_once(&socket, &hello, &to_chrome, &mut inbox).await {
+        let status = match serve_once(&socket, &hello, &to_chrome, &mut inbox, heartbeat_interval).await {
             Ok(ServeEnd::ChromeClosed) => return None,
             Ok(ServeEnd::ServiceClosed) => "Hermesh stopped".to_string(),
             Err(err) => {
@@ -193,6 +207,7 @@ async fn serve_once(
     hello: &Value,
     to_chrome: &mpsc::UnboundedSender<String>,
     inbox: &mut mpsc::UnboundedReceiver<String>,
+    heartbeat_interval: Duration,
 ) -> anyhow::Result<ServeEnd> {
     let stream = her_server::endpoint::connect(socket)
         .await
@@ -239,8 +254,23 @@ async fn serve_once(
     }
     tracing::info!(bridge = %result["bridge"], "extension host connected");
     let _ = to_chrome.send(json!({"status": "connected", "bridge": result["bridge"]}).to_string());
+    let expect_pong = hello["heartbeat"].as_bool().unwrap_or(false);
+    let mut heartbeat = tokio::time::interval(heartbeat_interval);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.tick().await;
+    let mut ping_seq: u64 = 0;
+    let mut missed_pongs: u32 = 0;
     loop {
         tokio::select! {
+            _ = heartbeat.tick() => {
+                if expect_pong && missed_pongs >= MAX_MISSED_PONGS {
+                    tracing::warn!(missed_pongs, "extension stopped answering heartbeats; closing host");
+                    return Ok(ServeEnd::ChromeClosed);
+                }
+                ping_seq += 1;
+                missed_pongs += 1;
+                let _ = to_chrome.send(json!({"ping": ping_seq}).to_string());
+            }
             next = lines.next_line() => {
                 let Some(text) = next? else { return Ok(ServeEnd::ServiceClosed) };
                 let Ok(message) = serde_json::from_str::<Incoming>(&text) else { continue };
@@ -256,7 +286,8 @@ async fn serve_once(
             }
             message = inbox.recv() => {
                 let Some(message) = message else { return Ok(ServeEnd::ChromeClosed) };
-                if host_action(&message) {
+                missed_pongs = 0;
+                if is_pong(&message) || host_action(&message) {
                     continue;
                 }
                 if let Some(line) = cdp_line(&message).or_else(|| control_line(&message)) {
@@ -265,6 +296,12 @@ async fn serve_once(
             }
         }
     }
+}
+
+fn is_pong(message: &str) -> bool {
+    serde_json::from_str::<Value>(message)
+        .ok()
+        .is_some_and(|v| v.get("pong").is_some())
 }
 
 /// What the host does itself, without the service: opening the app, which may not be running.
@@ -868,6 +905,35 @@ mod tests {
         assert_eq!(second["reason"], "Hermesh stopped");
 
         drop(from_chrome);
+        let ended = tokio::time::timeout(Duration::from_secs(5), task).await.unwrap().unwrap();
+        assert_eq!(ended, None);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn relay_exits_when_extension_stops_answering_heartbeats() {
+        let dir = tempfile::Builder::new().prefix("her-").tempdir_in("/tmp").unwrap();
+        let socket = dir.path().join("s");
+        let _server = mock_extension_service(&socket, false).await;
+
+        let (to_chrome, mut outbox) = mpsc::unbounded_channel();
+        let (from_chrome, inbox) = mpsc::unbounded_channel();
+        let task = tokio::spawn(relay_with_heartbeat(socket, to_chrome, inbox, Duration::from_millis(40)));
+        from_chrome
+            .send(r#"{"hello":{"browser":"Chrome 157","extension_version":"0.2.2","bridge":{"min":1,"max":2},"heartbeat":true}}"#.into())
+            .unwrap();
+
+        let first: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(first["status"], "connected");
+
+        // Answer the first ping: relay stays alive.
+        let ping1: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(ping1["ping"], json!(1));
+        from_chrome.send(json!({"pong": 1}).to_string()).unwrap();
+
+        // Stop answering pings: after MAX_MISSED_PONGS, relay exits cleanly so the dead extension is dropped.
+        let ping2: Value = serde_json::from_str(&tokio::time::timeout(Duration::from_secs(5), outbox.recv()).await.unwrap().unwrap()).unwrap();
+        assert_eq!(ping2["ping"], json!(2));
         let ended = tokio::time::timeout(Duration::from_secs(5), task).await.unwrap().unwrap();
         assert_eq!(ended, None);
     }
