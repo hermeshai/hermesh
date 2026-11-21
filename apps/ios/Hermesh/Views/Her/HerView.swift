@@ -678,10 +678,14 @@ private struct HerAISharingAlert: ViewModifier {
             get: { chat.aiConsentPrompt != nil },
             set: { if !$0 { chat.aiConsentPrompt = nil } }
         ), presenting: chat.aiConsentPrompt) { consent in
-            Button("Allow AI Sharing") { Task { await consent.allow() } }
+            Button("Allow AI Sharing") { consent.allow() }
             Button("Don’t Allow", role: .cancel) {}
         } message: { consent in
-            Text("Provider: \(consent.provider) · \(consent.endpoint)\nModel: \(consent.model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer.")
+            if let provider = consent.provider, let model = consent.model {
+                Text("Provider: \(provider)\nModel: \(model)\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway.")
+            } else {
+                Text("Data: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway.")
+            }
         }
     }
 }

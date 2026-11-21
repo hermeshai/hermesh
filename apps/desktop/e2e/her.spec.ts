@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { allowFixtureAISharing, fixture, launch, snap, navTo, sessionList, sys, thisComputer } from "./app";
+import { fixture, launch, snap, navTo, sessionList, sys, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -139,24 +139,11 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(team).toBeHidden();
   await expect(tag).toBeFocused();
 
-  // A chat: declining first-time disclosure keeps the draft and blocks sending; approving delivers the reply,
-  // and the Model page exposes no user-facing revoke action.
+  // A chat: desktop sends directly without a backend AI-sharing consent modal,
+  // and the Model page exposes no user-facing AI sharing review or revoke entry.
   const firstDraft = mockSend("你好，主人");
   await send(firstDraft);
-  const disclosure = page.getByRole("dialog", { name: "与第三方 AI 共享数据？" });
-  await expect(disclosure).toContainText("供应商：", { timeout: 15_000 });
-  await expect(disclosure).toContainText("127.0.0.1:");
-  await expect(disclosure).toContainText("模型：");
-  await expect(disclosure).toContainText("数据：");
-  await expect(disclosure).toContainText("用途：");
-  await expect(disclosure).not.toContainText("撤回");
-  await disclosure.getByRole("button", { name: "取消" }).click();
-  await expect(disclosure).toBeHidden();
-  await expect(composer).toHaveValue(firstDraft);
-  await expect(log).toHaveCount(0);
-  await expect(page.locator(".dbody")).not.toContainText("你好，主人");
-  await composer.press("Enter");
-  await allowFixtureAISharing(page);
+  await expect(page.getByRole("dialog", { name: "与第三方 AI 共享数据？" })).toHaveCount(0);
   await expect(log).toContainText("你好，主人", { timeout: 60_000 });
   // The window is behind (tests open it so): the reply is unread, and notified, by the assistant's name.
   await expect.poll(posted, { timeout: 60_000 }).toContainEqual(expect.objectContaining({ title: expect.stringMatching(/^Her/), body: "你好，主人" }));
@@ -544,7 +531,6 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(composer).toHaveValue("");
   await snap(page, "her-onboarding-done");
   await send(mockSend("来自 work-mac"));
-  await allowFixtureAISharing(page);
   await expect(log).toContainText("来自 work-mac", { timeout: 60_000 });
 
   // Back to this Mac, its own conversation, with no onboarding of its own; then to work-mac again, which

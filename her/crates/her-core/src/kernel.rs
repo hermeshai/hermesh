@@ -1223,13 +1223,6 @@ impl Kernel {
     }
 
     /// Current settings. After the session closed, only the id and the file are meaningful.
-    pub fn check_ai_consent(&self) -> Result<(), her_llm::LlmError> {
-        if let Some(session) = self.session.upgrade() {
-            session.llm.check_ai_consent(&session.current_model().0.reference())?;
-        }
-        Ok(())
-    }
-
     pub fn info(&self) -> SessionInfo {
         let mut info = SessionInfo {
             session_id: self.session_id.clone(),

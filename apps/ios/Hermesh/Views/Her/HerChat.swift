@@ -16,12 +16,17 @@ final class HerPlace {
     var machine: String? {
         didSet { if persistent { UserDefaults.standard.set(machine, forKey: "her-env") } }
     }
+    /// Whether the owner accepted iPhone's local first-use Her AI data-sharing disclosure.
+    var aiConsentAccepted: Bool {
+        didSet { if persistent { UserDefaults.standard.set(aiConsentAccepted, forKey: "her-ai-consent") } }
+    }
     @ObservationIgnored private let persistent: Bool
     @ObservationIgnored private var chats: [String: HerChat] = [:]
 
     init(persistent: Bool) {
         self.persistent = persistent
         machine = persistent ? UserDefaults.standard.string(forKey: "her-env") : nil
+        aiConsentAccepted = persistent ? UserDefaults.standard.bool(forKey: "her-ai-consent") : false
     }
 
     /// An environment's chat: the one kept, or a new one.
@@ -100,8 +105,6 @@ final class HerChat {
     /// What the owner wrote and has not sent.
     var draft = HerDraft()
     var aiConsentPrompt: HerAIConsentPrompt?
-    private(set) var aiSharingChanged = 0
-    @ObservationIgnored private var checkingConsent = false
     /// The composer is to take the keyboard: something put words in it for the owner to finish.
     var wantsFocus = false
     /// The routine's run whose message the conversation is to bring into view, and mark.
@@ -614,7 +617,7 @@ final class HerChat {
 
     /// A tapped answer to a question is the owner's message: while Her works, it waits for the step under way.
     func say(_ text: String) async -> Bool {
-        guard await checkAISharing(then: { [weak self] in
+        guard checkAISharing(then: { [weak self] in
             Task { _ = await self?.sendAnswer(text) }
         }) else { return false }
         return await sendAnswer(text)
@@ -665,55 +668,21 @@ final class HerChat {
         await refreshWaiting()
     }
 
-    // MARK: Third-party AI sharing
+    // MARK: First-use local AI sharing disclosure
 
-    func aiSharingStatus() async throws -> JSON {
+    /// First-use informed consent kept locally on this iPhone. Declining keeps the draft and sends no data.
+    private func checkAISharing(then send: @escaping () -> Void) -> Bool {
+        if model?.isDemo == true || model?.her.aiConsentAccepted == true { return true }
+        guard aiConsentPrompt == nil else { return false }
         let reference = live?.model
-        return try await callAlone("ai_consent/status", ["model": reference.map(JSON.string) ?? .null])
-    }
-
-    func reviewAISharing() {
-        Task { _ = await checkAISharing(then: {}) }
-    }
-
-    /// The draft and any retry stay put while the owner decides. The host checks again at inference.
-    private func checkAISharing(then send: @escaping () -> Void) async -> Bool {
-        if model?.isDemo == true { return true }
-        guard !checkingConsent, aiConsentPrompt == nil else { return false }
-        if let machine = model?.machines.first(where: { $0.machineID == machineID }),
-           herAnswers(machine.her, "ai_consent/status") == false {
-            model?.show(String(localized: "Update Her’s computer to review third-party AI sharing."))
-            return false
-        }
-        guard let reference = live?.model, convUp else {
-            model?.show(String(localized: "Connect to Her’s computer to check who will receive your data."))
-            return false
-        }
-        checkingConsent = true
-        defer { checkingConsent = false }
-        do {
-            let status = try await callAlone("ai_consent/status", ["model": .string(reference)])
-            guard live?.model == reference, convUp else { return false }
-            guard let endpoint = status["recipient"]["endpoint"].string,
-                  let provider = status["recipient"]["provider"].string,
-                  let revision = status["revision"].string else {
-                model?.show(String(localized: "Her can’t verify a single recipient for this model. Choose another model to send."))
-                return false
-            }
-            if status["allowed"] == status["recipient"] { return true }
-            let label = models.providers.first(where: { $0.id == provider })?.name(language: Locale.current.identifier) ?? provider
-            let modelLabel = models.title(reference)
-            aiConsentPrompt = HerAIConsentPrompt(provider: label, endpoint: endpoint, model: modelLabel, allow: { [weak self] in
-                guard let self, self.live?.model == reference else { return }
-                do {
-                    _ = try await self.callAlone("ai_consent/allow", [
-                        "model": .string(reference), "recipient": status["recipient"], "revision": .string(revision),
-                    ])
-                    self.aiSharingChanged += 1
-                    if self.live?.model == reference, self.convUp { send() }
-                } catch { self.report(error) }
-            })
-        } catch { report(error) }
+        let providerLabel = reference
+            .flatMap { $0.split(separator: "/", maxSplits: 1).first.map(String.init) }
+            .map { id in models.providers.first(where: { $0.id == id })?.name(language: Locale.current.identifier) ?? id }
+        let modelLabel = reference.map { models.title($0) }
+        aiConsentPrompt = HerAIConsentPrompt(provider: providerLabel, model: modelLabel, allow: { [weak self] in
+            self?.model?.her.aiConsentAccepted = true
+            send()
+        })
         return false
     }
 
@@ -725,10 +694,8 @@ final class HerChat {
     func send() {
         let sent = draft
         guard bot != nil, api != nil, !sent.isEmpty else { return }
-        Task {
-            if await checkAISharing(then: { [weak self] in self?.sendIfCurrent(sent) }) {
-                sendIfCurrent(sent)
-            }
+        if checkAISharing(then: { [weak self] in self?.sendIfCurrent(sent) }) {
+            sendIfCurrent(sent)
         }
     }
 
@@ -747,10 +714,8 @@ final class HerChat {
 
     /// A message that was not sent, sent again as it was.
     func retry(_ id: String) {
-        Task {
-            let resend = { [weak self] in self?.retryIfPending(id) ?? () }
-            if await checkAISharing(then: resend) { resend() }
-        }
+        let resend = { [weak self] in self?.retryIfPending(id) ?? () }
+        if checkAISharing(then: resend) { resend() }
     }
 
     private func retryIfPending(_ id: String) {
@@ -1070,10 +1035,9 @@ final class HerChat {
 }
 
 struct HerAIConsentPrompt {
-    let provider: String
-    let endpoint: String
-    let model: String
-    let allow: () async -> Void
+    let provider: String?
+    let model: String?
+    let allow: () -> Void
 }
 
 /// A connector's sign-in under way, for the browser's closing to stop.
