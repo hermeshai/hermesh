@@ -127,6 +127,15 @@ class GitRouteTests(unittest.TestCase):
         self.assertEqual(result["ios"], "true")
         self.assertEqual(result["go"], "false")
 
+    def test_console_skips_desktop_only_for_isolated_changes(self):
+        file = self.repo / "her/apps/console/src/editor.ts"
+        file.parent.mkdir(parents=True)
+        file.touch()
+        tip = self.commit()
+        self.assertEqual(self.output(self.repo, "push", tip)["console_only"], "true")
+        (self.repo / "apps/desktop/src/x.ts").unlink()
+        self.assertNotIn("console_only", self.output(self.repo, "push", self.commit()))
+
     def test_file_mode_only(self):
         (self.repo / "scripts/install.sh").chmod(0o755)
         self.assertEqual(self.output(self.merge())["go"], "true")
