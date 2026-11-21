@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 OUT="${1:-$(mktemp -d)}"
+SUITE="${2:-full}"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 DEVICE=""
@@ -32,6 +33,19 @@ DISK_IMPORTS="$(xcrun nm -u "$APP/Hermesh" | awk '$NF ~ /^_f?stat(fs|vfs)(\$.*)?
 if [[ -n "$DISK_IMPORTS" ]]; then
   printf 'iOS imports unexpected disk-space APIs:\n%s\n' "$DISK_IMPORTS" >&2
   exit 1
+fi
+if [[ "$SUITE" != full ]]; then
+  tests=(-only-testing:HermeshUITests/DemoUITests/testTaskAndExit)
+  for suite in $SUITE; do
+    case "$suite" in
+      smoke) ;;
+      ScreenViewportUITests|SessionDetailUITests|HerReviewUITests) tests+=("-only-testing:HermeshUITests/$suite") ;;
+      *) echo "Unknown demo suite: $suite" >&2; exit 2 ;;
+    esac
+  done
+  xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
+    "${tests[@]}" > "$OUT/ui.log" 2>&1
+  exit 0
 fi
 xcrun simctl install "$DEVICE" "$APP"
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"
