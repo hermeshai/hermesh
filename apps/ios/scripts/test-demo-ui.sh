@@ -22,25 +22,11 @@ echo "› Build Go core"
 apps/ios/scripts/build-core.sh > "$OUT/core.log" 2>&1
 BUILD=(-project apps/ios/Hermesh.xcodeproj -scheme Hermesh -configuration Release
        -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$OUT/derived" CODE_SIGNING_ALLOWED=NO)
-if [[ "$SUITE" == full ]]; then
-  echo "› Build app and UI tests"
-  xcodebuild build-for-testing "${BUILD[@]}" > "$OUT/build.log" 2>&1
-  echo "› Boot simulator"
-  xcrun simctl boot "$DEVICE"
-  xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
-else
-  tests=(-only-testing:HermeshUITests/DemoUITests/testTaskAndExit)
-  for suite in $SUITE; do
-    case "$suite" in
-      smoke) ;;
-      ScreenViewportUITests|SessionDetailUITests|HerReviewUITests) tests+=("-only-testing:HermeshUITests/$suite") ;;
-      *) echo "Unknown demo suite: $suite" >&2; exit 2 ;;
-    esac
-  done
-  echo "› Build and run selected UI tests"
-  xcodebuild test "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
-    "${tests[@]}" > "$OUT/ui.log" 2>&1
-fi
+echo "› Build app and UI tests"
+xcodebuild build-for-testing "${BUILD[@]}" > "$OUT/build.log" 2>&1
+echo "› Boot simulator"
+xcrun simctl boot "$DEVICE"
+xcrun simctl bootstatus "$DEVICE" -b > "$OUT/boot.log"
 APP="$OUT/derived/Build/Products/Release-iphonesimulator/Hermesh.app"
 echo "› Check privacy manifest and binary imports"
 plutil -lint "$APP/PrivacyInfo.xcprivacy"
@@ -50,6 +36,17 @@ if [[ -n "$DISK_IMPORTS" ]]; then
   exit 1
 fi
 if [[ "$SUITE" != full ]]; then
+  tests=(-only-testing:HermeshUITests/DemoUITests/testTaskAndExit)
+  for suite in $SUITE; do
+    case "$suite" in
+      smoke) ;;
+      ScreenViewportUITests|SessionDetailUITests|HerReviewUITests) tests+=("-only-testing:HermeshUITests/$suite") ;;
+      *) echo "Unknown demo suite: $suite" >&2; exit 2 ;;
+    esac
+  done
+  echo "› Run selected UI tests"
+  xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -resultBundlePath "$OUT/review.xcresult" \
+    "${tests[@]}" > "$OUT/ui.log" 2>&1
   exit 0
 fi
 xcrun simctl install "$DEVICE" "$APP"
