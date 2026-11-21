@@ -229,7 +229,9 @@ const tabs = {
   },
   async attach(tabId) {
     await chrome.debugger.attach({ tabId }, PROTOCOL);
-    reportNow();
+    // Defer to the next turn so Relay.dispatch sets `t.sessionId` before `reportNow` inspects it.
+    clearTimeout(reporting);
+    reporting = setTimeout(reportNow, 0);
   },
   detach(tabId) {
     chrome.debugger.detach({ tabId }).catch(() => {}).finally(() => reportNow());

@@ -456,6 +456,12 @@ test("reveal with target_id activates only the exact session tab and detach/url 
   };
   await call(1, "Target.getTargets", { herSession: "s1" });
   await call(2, "Target.attachToTarget", { targetId: "T21" });
+  await waitFor(() =>
+    messages
+      .filter((m) => m.control?.kind === "tabs")
+      .at(-1)
+      ?.control?.sessions?.s1?.find((x) => x.target_id === "T21")?.attached === true,
+  );
   const beforeDetach = messages.filter((m) => m.control?.kind === "tabs").length;
   await call(3, "Target.detachFromTarget", { targetId: "T21", herRelease: true });
   assert.deepEqual(detached, [21]);
