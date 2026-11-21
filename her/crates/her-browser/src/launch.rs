@@ -104,6 +104,92 @@ pub fn find_executable() -> Option<PathBuf> {
     candidates().into_iter().find(|path| path.is_file())
 }
 
+/// Launches the user's own Chromium-family browser (in the background on macOS) so the Hermesh
+/// extension can reconnect after the browser was closed.
+pub fn launch_user_browser(browser_label: Option<&str>) -> bool {
+    if std::env::var_os("HER_NO_BROWSER").is_some() {
+        return false;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let app = macos_app_name(browser_label);
+        return std::process::Command::new("/usr/bin/open")
+            .args(["-g", "-a", &app])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .is_ok();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Some(exe) = find_executable_for(browser_label) else {
+            return false;
+        };
+        let mut cmd = std::process::Command::new(exe);
+        cmd.envs(crate::pool::session_display())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        cmd.spawn().is_ok()
+    }
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn macos_app_name(browser_label: Option<&str>) -> String {
+    let lower = browser_label.unwrap_or("").trim().to_ascii_lowercase();
+    if lower.contains("canary") {
+        return "Google Chrome Canary".into();
+    }
+    if lower.contains("beta") && lower.contains("chrome") {
+        return "Google Chrome Beta".into();
+    }
+    if lower.contains("edge") {
+        return "Microsoft Edge".into();
+    }
+    if lower.contains("brave") {
+        return "Brave Browser".into();
+    }
+    if lower == "chromium" {
+        return "Chromium".into();
+    }
+    if lower.contains("chrome") {
+        return "Google Chrome".into();
+    }
+    if let Some(exe) = find_executable()
+        && let Some(app) = exe.ancestors().find(|p| p.extension().is_some_and(|e| e == "app"))
+        && let Some(stem) = app.file_stem().and_then(|s| s.to_str())
+    {
+        return stem.to_string();
+    }
+    "Google Chrome".into()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn find_executable_for(browser_label: Option<&str>) -> Option<PathBuf> {
+    let lower = browser_label.unwrap_or("").trim().to_ascii_lowercase();
+    let needle = if lower.contains("edge") {
+        Some("edge")
+    } else if lower.contains("brave") {
+        Some("brave")
+    } else if lower == "chromium" {
+        Some("chromium")
+    } else if lower.contains("chrome") {
+        Some("chrome")
+    } else {
+        None
+    };
+    let all = candidates();
+    if let Some(needle) = needle
+        && let Some(found) = all
+            .iter()
+            .find(|p| p.is_file() && p.to_string_lossy().to_ascii_lowercase().contains(needle))
+    {
+        return Some(found.clone());
+    }
+    all.into_iter().find(|p| p.is_file())
+}
+
 fn candidates() -> Vec<PathBuf> {
     let mut out = Vec::new();
     if cfg!(target_os = "macos") {
@@ -189,9 +275,13 @@ fn arguments(options: &LaunchOptions, root: bool) -> Vec<String> {
         "--no-default-browser-check".into(),
         "--disable-sync".into(),
         "--disable-background-networking".into(),
+        "--disable-background-timer-throttling".into(),
+        "--disable-backgrounding-occluded-windows".into(),
+        "--disable-renderer-backgrounding".into(),
+        "--disable-ipc-flooding-protection".into(),
         "--disable-component-update".into(),
         "--disable-default-apps".into(),
-        "--disable-features=Translate,MediaRouter,OptimizationHints".into(),
+        "--disable-features=Translate,MediaRouter,OptimizationHints,CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,BackForwardCache".into(),
         // The profile is her's own: no prompt for the system keychain.
         "--password-store=basic".into(),
         "--use-mock-keychain".into(),
@@ -463,5 +553,18 @@ mod tests {
         assert!(!args.contains(&"--no-sandbox".to_string()));
         // As root, without the sandbox Chrome refuses to start in.
         assert!(arguments(&options, true).contains(&"--no-sandbox".to_string()));
+        assert!(args.contains(&"--disable-background-timer-throttling".to_string()));
+        assert!(args.contains(&"--disable-backgrounding-occluded-windows".to_string()));
+        assert!(args.contains(&"--disable-renderer-backgrounding".to_string()));
+    }
+
+    #[test]
+    fn macos_app_name_maps_known_browsers() {
+        assert_eq!(macos_app_name(Some("Google Chrome")), "Google Chrome");
+        assert_eq!(macos_app_name(Some("Chrome")), "Google Chrome");
+        assert_eq!(macos_app_name(Some("Microsoft Edge")), "Microsoft Edge");
+        assert_eq!(macos_app_name(Some("Brave")), "Brave Browser");
+        assert_eq!(macos_app_name(Some("Chromium")), "Chromium");
+        assert_eq!(macos_app_name(Some("Google Chrome Canary")), "Google Chrome Canary");
     }
 }

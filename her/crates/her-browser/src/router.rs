@@ -415,7 +415,25 @@ impl Router {
         {
             params["herSession"] = Value::String(label);
         }
-        let created = self.conn.send(None, "Target.createTarget", params).await?;
+        let created = match self.conn.send(None, "Target.createTarget", params).await {
+            Ok(created) => created,
+            Err(CdpError::Protocol { .. }) if !self.embedded => {
+                // On macOS a managed Chrome stays alive with zero open windows after the user
+                // closes the last window: ask for a new window before giving up on the browser.
+                match self
+                    .conn
+                    .send(None, "Target.createTarget", json!({ "url": "about:blank", "newWindow": true }))
+                    .await
+                {
+                    Ok(created) => created,
+                    Err(err) => {
+                        self.conn.close();
+                        return Err(err.into());
+                    }
+                }
+            }
+            Err(err) => return Err(err.into()),
+        };
         let target_id = str_of(&created, "targetId").to_string();
         self.attach(owner, &target_id, None).await
     }
@@ -1108,5 +1126,64 @@ async fn route(router: std::sync::Weak<Router>, mut events: mpsc::UnboundedRecei
             tab.state.lock().closed.get_or_insert_with(|| why.to_string());
             tab.changed.notify_waiters();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    #[tokio::test]
+    async fn create_tab_falls_back_to_new_window_for_managed_browser() {
+        let (client, server) = tokio::io::duplex(65536);
+        let (c_read, c_write) = tokio::io::split(client);
+        let (s_read, mut s_write) = tokio::io::split(server);
+        let (conn, events) = Conn::start(c_read, c_write, Duration::from_secs(5));
+        let router = Router::start(conn.clone(), events, PathBuf::from("/tmp"), false, false);
+        let owner = router.add_owner(Arc::new(OpenGuard), PathBuf::from("/tmp"), None, "", &TabNumbers::default());
+
+        let fake = tokio::spawn(async move {
+            let mut reader = BufReader::new(s_read);
+            loop {
+                let mut bytes = Vec::new();
+                if reader.read_until(0, &mut bytes).await.unwrap_or(0) == 0 {
+                    break;
+                }
+                bytes.pop();
+                let req: Value = serde_json::from_slice(&bytes).unwrap();
+                let method = req["method"].as_str().unwrap_or("");
+                let reply = match method {
+                    "Target.createTarget" if req["params"]["newWindow"].as_bool() != Some(true) => {
+                        json!({"id": req["id"], "error": {"code": -32000, "message": "Failed to open new tab - no browser is open"}})
+                    }
+                    "Target.createTarget" => json!({"id": req["id"], "result": {"targetId": "T-new"}}),
+                    "Target.attachToTarget" => {
+                        let event = json!({
+                            "method": "Target.attachedToTarget",
+                            "params": {
+                                "sessionId": "S-new",
+                                "targetInfo": {"targetId": "T-new", "type": "page", "url": "about:blank", "title": ""},
+                                "waitingForDebugger": false
+                            }
+                        });
+                        let mut eb = serde_json::to_vec(&event).unwrap();
+                        eb.push(0);
+                        let _ = s_write.write_all(&eb).await;
+                        json!({"id": req["id"], "result": {"sessionId": "S-new"}})
+                    }
+                    _ => json!({"id": req["id"], "result": {}}),
+                };
+                let mut rb = serde_json::to_vec(&reply).unwrap();
+                rb.push(0);
+                if s_write.write_all(&rb).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let tab = router.create_tab(owner).await.expect("recovered by opening a new window");
+        assert_eq!(tab.target_id, "T-new");
+        fake.abort();
     }
 }

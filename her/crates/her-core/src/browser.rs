@@ -74,6 +74,7 @@ const MAX_WAIT: Duration = Duration::from_secs(60);
 const NO_PAGE: &str = "No page is open in this session. Open one with browser_navigate. \
     (Tabs from before the session was resumed are closed.)";
 const RESTARTED: &str = "The browser had stopped, so it was started again: earlier tabs and refs are gone.";
+const STOPPED: &str = "The browser stopped, so earlier tabs and refs are gone. Open a page with browser_navigate.";
 const BUILTIN_OFF: &str = "The built-in browser is turned off in Hermesh's settings.";
 const YOURS_OFF: &str = "The user's own browser is turned off. If the task needs their accounts, ask the user to \
     turn it on in Hermesh; the built-in browser does not have their sign-ins.";
@@ -601,6 +602,23 @@ fn failed(err: BrowserError) -> ToolError {
     }
 }
 
+/// True if `err` means the browser connection dropped, or timed out because the browser became
+/// unresponsive (in which case the connection is closed so the next call starts fresh).
+async fn is_lost_connection(session: &BrowserSession, err: &BrowserError) -> bool {
+    match err {
+        BrowserError::Cdp(her_browser::CdpError::Closed) => true,
+        BrowserError::Cdp(her_browser::CdpError::Timeout { .. }) => !session.check_alive().await,
+        _ => false,
+    }
+}
+
+async fn failed_or_probe(session: &BrowserSession, err: BrowserError) -> ToolError {
+    if matches!(err, BrowserError::Cdp(her_browser::CdpError::Timeout { .. })) && !session.check_alive().await {
+        return ToolError::Failed(CONNECTION_LOST.into());
+    }
+    failed(err)
+}
+
 fn handle(ctx: &ToolCtx) -> Result<Arc<BrowserHandle>, ToolError> {
     ctx.session_state
         .get::<BrowserHandle>()
@@ -659,7 +677,10 @@ fn pick_new(ctx: &ToolCtx, asked: Option<Which>, tab: Option<&str>) -> Result<Wh
 fn existing(ctx: &ToolCtx, which: Which) -> Result<Arc<BrowserSession>, ToolError> {
     match session_of(ctx, which) {
         Some(session) if !session.is_dead() => Ok(session),
-        Some(_) => Err(ToolError::Failed(format!("{RESTARTED} Open a page with browser_navigate."))),
+        Some(_) => {
+            forget(&ctx.session_state, which);
+            Err(ToolError::Failed(STOPPED.into()))
+        }
         None if which == Which::Yours => Err(ToolError::Failed(
             "No page is open in the user's own browser. Open one with browser_navigate.".into(),
         )),
@@ -677,7 +698,8 @@ async fn ensure(ctx: &ToolCtx, which: Which) -> Result<Arc<BrowserSession>, Tool
         }
         let session = session_of(ctx, which);
         let alive = session.as_ref().is_some_and(|s| !s.is_dead());
-        if !alive && (session.is_some() || handle.pool.tabs_of(&handle.label) > 0 || !handle.pool.has_extension()) {
+        let had_tabs = handle.yours_numbers.lock().as_ref().is_some_and(|n| !n.tabs.is_empty());
+        if !alive && (session.is_some() || had_tabs || handle.pool.tabs_of(&handle.label) > 0 || !handle.pool.has_extension()) {
             return Ok(start(ctx, which).await?.0);
         }
     }
@@ -698,6 +720,13 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
     if which == Which::Yours && handle.is_chrome_takeover_active() {
         return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
     }
+    let mut probed_dead = false;
+    if let Some(session) = session_of(ctx, which)
+        && !session.is_dead()
+        && !session.check_alive().await
+    {
+        probed_dead = true;
+    }
     if which == Which::Yours && !session_of(ctx, which).is_some_and(|s| !s.is_dead())
         && handle.pool.wait_for_extension(&handle.label).await == her_browser::pool::ExtensionWait::Declined
     {
@@ -709,7 +738,7 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
     }
     let mut note = None;
     if let Some(session) = session_of(ctx, which) {
-        if !session.is_dead() {
+        if !probed_dead && !session.is_dead() {
             return Ok((session, None));
         }
         forget(&ctx.session_state, which);
@@ -727,8 +756,9 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
         },
     };
     let browser = handle.pool.acquire(&config).await.map_err(failed)?;
-    let kept = which == Which::Yours && handle.pool.tabs_of(&handle.label) > 0;
     let numbers = if which == Which::Yours { handle.yours_numbers.lock().take() } else { None };
+    let kept = which == Which::Yours
+        && (handle.pool.tabs_of(&handle.label) > 0 || numbers.as_ref().is_some_and(|n| !n.tabs.is_empty()));
     let guard = Arc::new(KernelGuard {
         policy: handle.policy.clone(),
         roots: handle.roots.clone(),
@@ -987,20 +1017,49 @@ impl TypedTool for BrowserNavigate {
 
     async fn run(&self, args: NavigateArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
         let which = args.browser(&ctx)?;
-        let (session, note) = browser(&ctx, which).await?;
+        let (session, mut note) = browser(&ctx, which).await?;
         let tab = args.tab.as_deref();
         let report = match (&args.url, args.action.as_deref()) {
             (Some(url), _) => {
                 let url = parse_url(url)?;
                 // The call passed the gates: a private address in it was allowed.
                 let private_ok = classify_url(&url).await == AddressClass::Private;
-                session.navigate(tab, &url, private_ok).await
+                let had_tab = tab.is_some() || !session.tabs().is_empty();
+                match session.navigate(tab, &url, private_ok).await {
+                    Ok(report) => report,
+                    // Only retry if no tab existed yet on the built-in browser (e.g. a windowless
+                    // Chrome died during create_tab before Page.navigate was sent). Never repeat a
+                    // navigation that dropped mid-flight after it may have taken effect.
+                    Err(err)
+                        if which == Which::Builtin
+                            && !had_tab
+                            && session.tabs().is_empty()
+                            && is_lost_connection(&session, &err).await =>
+                    {
+                        forget(&ctx.session_state, which);
+                        let (fresh, retry_note) = browser(&ctx, which).await?;
+                        note = note.or(retry_note);
+                        match fresh.navigate(tab, &url, private_ok).await {
+                            Ok(report) => report,
+                            Err(err) => return Err(failed_or_probe(&fresh, err).await),
+                        }
+                    }
+                    Err(err) => return Err(failed_or_probe(&session, err).await),
+                }
             }
-            (None, Some("back")) => session.history(tab, -1).await,
-            (None, Some("forward")) => session.history(tab, 1).await,
-            _ => session.reload(tab).await,
-        }
-        .map_err(failed)?;
+            (None, Some("back")) => match session.history(tab, -1).await {
+                Ok(report) => report,
+                Err(err) => return Err(failed_or_probe(&session, err).await),
+            },
+            (None, Some("forward")) => match session.history(tab, 1).await {
+                Ok(report) => report,
+                Err(err) => return Err(failed_or_probe(&session, err).await),
+            },
+            _ => match session.reload(tab).await {
+                Ok(report) => report,
+                Err(err) => return Err(failed_or_probe(&session, err).await),
+            },
+        };
         Ok(output(report, note))
     }
 }
@@ -1061,22 +1120,33 @@ impl TypedTool for BrowserSnapshot {
     }
 
     async fn run(&self, args: SnapshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
-        let session = in_use(&ctx, pick(&ctx, None, args.id())?).await?;
+        let which = pick(&ctx, None, args.id())?;
+        let session = in_use(&ctx, which).await?;
         let mode = match args.mode.as_deref() {
             None | Some("tree") => SnapshotMode::Tree,
             Some("text") => SnapshotMode::Text,
             Some(other) => return Err(ToolError::InvalidArgs(format!("mode must be tree or text, got \"{other}\""))),
         };
-        let report = session
-            .snapshot(&SnapshotRequest {
-                tab: args.tab,
-                mode,
-                query: args.query.filter(|q| !q.trim().is_empty()),
-                root: args.reference,
-                frame: args.frame,
-            })
-            .await
-            .map_err(failed)?;
+        let can_retry = which == Which::Yours && args.reference.is_none() && args.frame.is_none();
+        let request = SnapshotRequest {
+            tab: args.tab,
+            mode,
+            query: args.query.filter(|q| !q.trim().is_empty()),
+            root: args.reference,
+            frame: args.frame,
+        };
+        let report = match session.snapshot(&request).await {
+            Ok(report) => report,
+            Err(err) if can_retry && is_lost_connection(&session, &err).await => {
+                forget(&ctx.session_state, which);
+                let fresh = in_use(&ctx, which).await?;
+                match fresh.snapshot(&request).await {
+                    Ok(report) => report,
+                    Err(err) => return Err(failed_or_probe(&fresh, err).await),
+                }
+            }
+            Err(err) => return Err(failed_or_probe(&session, err).await),
+        };
         Ok(output(report, None))
     }
 }
@@ -1275,7 +1345,10 @@ impl TypedTool for BrowserAct {
             }
             (None, None) => Place::Page(page),
         };
-        let report = session.act(&action, &place, &ctx.cancel).await.map_err(failed)?;
+        let report = match session.act(&action, &place, &ctx.cancel).await {
+            Ok(report) => report,
+            Err(err) => return Err(failed_or_probe(&session, err).await),
+        };
         Ok(output(report, None))
     }
 }
@@ -1656,15 +1729,24 @@ impl TypedTool for BrowserScreenshot {
 
     async fn run(&self, args: ScreenshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
         no_images(&ctx)?;
-        let session = in_use(&ctx, pick(&ctx, None, args.tab.as_deref().or(args.reference.as_deref()))?).await?;
+        let which = pick(&ctx, None, args.tab.as_deref().or(args.reference.as_deref()))?;
+        let session = in_use(&ctx, which).await?;
         let element = match &args.reference {
             Some(reference) => Some(session.element(reference).await.map_err(failed)?),
             None => None,
         };
-        let (png, report) = session
-            .screenshot(args.tab.as_deref(), args.full_page, element.as_ref())
-            .await
-            .map_err(failed)?;
+        let (png, report) = match session.screenshot(args.tab.as_deref(), args.full_page, element.as_ref()).await {
+            Ok(captured) => captured,
+            Err(err) if which == Which::Yours && args.reference.is_none() && is_lost_connection(&session, &err).await => {
+                forget(&ctx.session_state, which);
+                let fresh = in_use(&ctx, which).await?;
+                match fresh.screenshot(args.tab.as_deref(), args.full_page, None).await {
+                    Ok(captured) => captured,
+                    Err(err) => return Err(failed_or_probe(&fresh, err).await),
+                }
+            }
+            Err(err) => return Err(failed_or_probe(&session, err).await),
+        };
         // Kept as a file for user interfaces; events carry the path, not the image.
         let path = ctx.output_dir.join(format!("{}.png", ctx.call_id));
         let saved = std::fs::create_dir_all(&ctx.output_dir)
@@ -1948,13 +2030,30 @@ impl TypedTool for BrowserTabs {
         match args.action.as_deref().unwrap_or("list") {
             "list" => Ok(ToolOutput::text(list(&ctx).await?)),
             "open" => {
-                let (session, note) = browser(&ctx, pick_new(&ctx, args.browser, None)?).await?;
-                let tab = session.open_tab().await.map_err(failed)?;
+                let which = pick_new(&ctx, args.browser, None)?;
+                let (mut session, mut note) = browser(&ctx, which).await?;
+                let tab = match session.open_tab().await {
+                    Ok(tab) => tab,
+                    Err(err) if is_lost_connection(&session, &err).await => {
+                        forget(&ctx.session_state, which);
+                        let (fresh, retry_note) = browser(&ctx, which).await?;
+                        session = fresh;
+                        note = note.or(retry_note);
+                        match session.open_tab().await {
+                            Ok(tab) => tab,
+                            Err(err) => return Err(failed_or_probe(&session, err).await),
+                        }
+                    }
+                    Err(err) => return Err(failed_or_probe(&session, err).await),
+                };
                 match &args.url {
                     Some(url) => {
                         let url = parse_url(url)?;
                         let private_ok = classify_url(&url).await == AddressClass::Private;
-                        let report = session.navigate(Some(&tab.id), &url, private_ok).await.map_err(failed)?;
+                        let report = match session.navigate(Some(&tab.id), &url, private_ok).await {
+                            Ok(report) => report,
+                            Err(err) => return Err(failed_or_probe(&session, err).await),
+                        };
                         Ok(output(report, note))
                     }
                     None => {
@@ -2010,7 +2109,12 @@ async fn list(ctx: &ToolCtx) -> Result<String, ToolError> {
             // An embedded host may have pages the user handed over before any tool ran.
             None if which == Which::Builtin && handle.pool.has_host() => Some(start(ctx, which).await?.0),
             // In the user's own browser, the tabs it let go or the user offered.
-            None if which == Which::Yours && handle.pool.tabs_of(&handle.label) > 0 => Some(start(ctx, which).await?.0),
+            None if which == Which::Yours
+                && (handle.pool.tabs_of(&handle.label) > 0
+                    || handle.yours_numbers.lock().as_ref().is_some_and(|n| !n.tabs.is_empty())) =>
+            {
+                Some(start(ctx, which).await?.0)
+            }
             None => None,
         };
         let tabs = session.as_ref().map(|s| s.tabs()).unwrap_or_default();
@@ -2086,7 +2190,10 @@ impl TypedTool for BrowserEval {
     async fn run(&self, args: EvalArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
         let (page, which) = approved(&ctx).ok_or_else(|| ToolError::Failed("the call has no approved page".into()))?;
         let session = in_use(&ctx, which).await?;
-        let report = session.eval(&page, &args.expression).await.map_err(failed)?;
+        let report = match session.eval(&page, &args.expression).await {
+            Ok(report) => report,
+            Err(err) => return Err(failed_or_probe(&session, err).await),
+        };
         Ok(output(report, None))
     }
 }

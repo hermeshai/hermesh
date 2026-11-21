@@ -1388,6 +1388,22 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
             0 => Plan::Step(Step::calls(vec![("browser_snapshot", json!({"tab": arg.trim()}))])),
             _ => Plan::Step(Step::text(format!("yours read: {}", last_tool_result(messages)))),
         },
+        "yours_inactive_act" => match step {
+            0 => Plan::Step(Step::calls(vec![("browser_snapshot", json!({"tab": arg.trim()}))])),
+            1 => {
+                let page = last_tool_result(messages);
+                let button = page
+                    .lines()
+                    .find(|line| line.contains("button"))
+                    .and_then(|line| line.split("[ref=").nth(1))
+                    .and_then(|rest| rest.split(']').next())
+                    .unwrap_or("ye1")
+                    .to_string();
+                Plan::Step(Step::calls(vec![("browser_act", json!({"ref": button, "action": "click"}))]))
+            }
+            2 => Plan::Step(Step::calls(vec![("browser_screenshot", json!({"tab": arg.trim()}))])),
+            _ => Plan::Step(Step::text(format!("inactive act done: {}", last_tool_result(messages)))),
+        },
         // A sub-agent opens a page there, and reports.
         "yours_agent" => match step {
             0 => {

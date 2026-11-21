@@ -226,7 +226,9 @@ test("in-flight replies stay with their original port and browser stream", async
     tabs: { query: async () => [{ id: 1 }], onCreated: event(), onUpdated: event(), onRemoved: event() },
     debugger: {
       onEvent: event(), onDetach: event(), attach: async () => {}, detach: async () => {},
-      sendCommand: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+      sendCommand: (_target, method) => method === "Page.getFrameTree"
+        ? new Promise((resolve, reject) => pending.push({ resolve, reject }))
+        : Promise.resolve({}),
     },
     windows: { onRemoved: event() },
     alarms: { create: () => {}, onAlarm: event() },
@@ -482,6 +484,168 @@ test("reveal with target_id activates only the exact session tab and detach/url 
   assert.ok(afterRemove.length > beforeRemove);
   assert.equal(afterRemove.at(-1).control.sessions.s1.find((x) => x.target_id === "T21"), undefined);
   await waitFor(() => saved.her.agentTabs.length === 2);
+});
+
+test("inactive and minimized tabs stay alive, emulate focus, un-discard, and wake stalled screenshots", async (t) => {
+  let saved = {};
+  let local = {};
+  const messages = [];
+  const tabUpdates = [];
+  const winUpdates = [];
+  const reloaded = [];
+  const cdpCalls = [];
+  let winState = "minimized";
+  let failCreateInExisting = false;
+  let tabDiscarded = true;
+  let resolveScreenshot;
+  const port = { onMessage: event(), onDisconnect: event(), postMessage: (m) => messages.push(m) };
+  const area = (read, write) => ({
+    get: async () => structuredClone(read()),
+    set: async (value) => write({ ...read(), ...structuredClone(value) }),
+    remove: async (key) => { const value = { ...read() }; delete value[key]; write(value); },
+  });
+  let nextWin = 10;
+  let nextTab = 20;
+  const chrome = {
+    storage: { session: area(() => saved, (v) => { saved = v; }), local: area(() => local, (v) => { local = v; }) },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => port,
+      getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: {
+      query: async () => [],
+      get: async (id) => ({ id, windowId: nextWin, discarded: tabDiscarded }),
+      create: async (opts) => {
+        if (failCreateInExisting) throw new Error("No window with id");
+        return { id: ++nextTab, windowId: opts.windowId, url: opts.url };
+      },
+      update: async (id, props) => { tabUpdates.push([id, props]); return { id, windowId: nextWin }; },
+      reload: async (id) => { reloaded.push(id); tabDiscarded = false; },
+      group: async () => 1,
+      remove: async () => {},
+      onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(),
+    },
+    debugger: {
+      onEvent: event(), onDetach: event(),
+      attach: async () => {},
+      detach: async () => {},
+      sendCommand: (target, method, params) => {
+        cdpCalls.push({ target, method, params });
+        if (method === "Page.captureScreenshot") {
+          return new Promise((resolve) => { resolveScreenshot = resolve; });
+        }
+        return Promise.resolve({});
+      },
+    },
+    windows: {
+      WINDOW_ID_NONE: -1,
+      get: async (id) => ({ id, state: winState }),
+      create: async ({ url }) => {
+        const id = ++nextWin;
+        winState = "normal";
+        return { id, tabs: [{ id: ++nextTab, windowId: id, url }] };
+      },
+      update: async (id, props) => {
+        winUpdates.push([id, props]);
+        if (props.state) winState = props.state;
+        return { id, state: winState };
+      },
+      onCreated: event(), onFocusChanged: event(), onRemoved: event(),
+    },
+    tabGroups: { update: async () => {} },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not fetch with a store manifest"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+
+  await import("./background.js?test=inactive-hardening");
+  await waitFor(() => messages.some((m) => m.hello));
+  assert.equal(messages.find((m) => m.hello).hello.heartbeat, true);
+
+  // Heartbeat ping gets immediate pong without touching streams.
+  port.onMessage.emit({ ping: 42 });
+  assert.ok(messages.some((m) => m.pong === 42));
+
+  port.onMessage.emit({ status: "connected" });
+  let id = 0;
+  const call = async (method, params = {}, sessionId) => {
+    const n = ++id;
+    port.onMessage.emit({ stream: 1, data: { id: n, method, params, ...(sessionId ? { sessionId } : {}) } });
+    await waitFor(() => messages.some((m) => m.stream === 1 && m.data?.id === n));
+    return messages.find((m) => m.stream === 1 && m.data?.id === n).data;
+  };
+
+  // Creating a tab sets autoDiscardable: false; attaching reloads a discarded tab and enables focus emulation.
+  const created = await call("Target.createTarget", { url: "about:blank", herSession: "s1" });
+  const tabId = Number(created.result.targetId.slice(1));
+  assert.ok(tabUpdates.some(([tId, props]) => tId === tabId && props.autoDiscardable === false));
+
+  const attached = await call("Target.attachToTarget", { targetId: created.result.targetId });
+  const sessionId = attached.result.sessionId;
+  assert.deepEqual(reloaded, [tabId], "discarded tab is reloaded before debugger attach");
+  assert.ok(cdpCalls.some((c) => c.target.tabId === tabId && c.method === "Emulation.setFocusEmulationEnabled" && c.params.enabled === true));
+
+  // Minimized window is restored without stealing focus on Target.activateTarget.
+  winState = "minimized";
+  winUpdates.length = 0;
+  await call("Target.activateTarget", { targetId: created.result.targetId });
+  assert.deepEqual(winUpdates, [[nextWin, { state: "normal", focused: false }]]);
+  assert.ok(tabUpdates.some(([tId, props]) => tId === tabId && props.active === true));
+
+  // If the existing agent window vanished right as createTarget runs, it falls back to a fresh window.
+  failCreateInExisting = true;
+  const second = await call("Target.createTarget", { url: "about:blank", herSession: "s1" });
+  assert.ok(second.result.targetId);
+  failCreateInExisting = false;
+
+  // Fast screenshot finishes without focusing the OS window.
+  winUpdates.length = 0;
+  const fastId = ++id;
+  port.onMessage.emit({ stream: 1, data: { id: fastId, method: "Page.captureScreenshot", params: { format: "png" }, sessionId } });
+  await waitFor(() => typeof resolveScreenshot === "function");
+  resolveScreenshot({ data: "ZmFzdA==" });
+  resolveScreenshot = null;
+  await waitFor(() => messages.some((m) => m.stream === 1 && m.data?.id === fastId));
+  assert.equal(winUpdates.length, 0, "fast screenshot does not steal focus");
+  assert.equal(cdpCalls.some((c) => c.method === "Page.bringToFront"), false);
+
+  // A stalled screenshot (e.g. occluded window) wakes the window once after the wake delay.
+  const origSetTimeout = globalThis.setTimeout;
+  const scheduled = [];
+  t.mock.method(globalThis, "setTimeout", (fn, delay, ...args) => {
+    if (delay === 4000) {
+      const handle = { cancelled: false, fn: () => { if (!handle.cancelled) fn(...args); } };
+      scheduled.push(handle);
+      return handle;
+    }
+    return origSetTimeout(fn, delay, ...args);
+  });
+  const origClearTimeout = globalThis.clearTimeout;
+  t.mock.method(globalThis, "clearTimeout", (handle) => {
+    if (handle && typeof handle === "object" && "cancelled" in handle) {
+      handle.cancelled = true;
+      return;
+    }
+    return origClearTimeout(handle);
+  });
+  const slowId = ++id;
+  port.onMessage.emit({ stream: 1, data: { id: slowId, method: "Page.captureScreenshot", params: { format: "png" }, sessionId } });
+  await waitFor(() => typeof resolveScreenshot === "function" && scheduled.length === 1);
+  scheduled[0].fn();
+  await waitFor(() => cdpCalls.some((c) => c.method === "Page.bringToFront"));
+  assert.ok(winUpdates.some(([, props]) => props.state === "normal" && props.focused === true));
+  resolveScreenshot({ data: "d29rZQ==" });
+  resolveScreenshot = null;
+  await waitFor(() => messages.some((m) => m.stream === 1 && m.data?.id === slowId));
+
+  // Let debounced storage/tab reports finish before tearing down globalThis.chrome.
+  await waitFor(() => saved.her?.agentTabs?.length === 2);
 });
 
 
