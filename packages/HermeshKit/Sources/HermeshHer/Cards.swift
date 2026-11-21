@@ -36,8 +36,8 @@ public struct HerCard: Equatable, Sendable {
         public var origin: String
         public var host: String
         public var title: String?
-        public var tab: String?
         public var browser: String?
+        public var tab: String?
         public var fields: [SiteLoginField]
 
         public var isChromeTakeover: Bool { mode == "chrome_takeover" }
@@ -71,7 +71,7 @@ public struct HerCard: Equatable, Sendable {
             let mode = b["mode"].string ?? "fill"
             if mode == "chrome_takeover" {
                 if let tab = b["tab"].string, !tab.isEmpty {
-                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, tab: tab, browser: b["browser"].string, fields: [])
+                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, browser: b["browser"].string, tab: tab, fields: [])
                 }
             } else if let fields = b["fields"].array, !fields.isEmpty {
                 let parsed = fields.compactMap { f -> SiteLoginField? in
@@ -79,7 +79,7 @@ public struct HerCard: Equatable, Sendable {
                     return SiteLoginField(id: fid, label: f["label"].string ?? fid, kind: f["kind"].string ?? "password", secret: f["secret"].bool ?? true)
                 }
                 if !parsed.isEmpty {
-                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, tab: b["tab"].string, browser: b["browser"].string, fields: parsed)
+                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, browser: b["browser"].string, tab: b["tab"].string, fields: parsed)
                 }
             }
         }
@@ -148,7 +148,9 @@ public func herCardShown(_ s: (status: HerCardStatus, live: Bool), here: Bool) -
     case "sign_in": here ? .signIn : .ended(outcome: "elsewhere", tools: nil, note: nil)
     case "done": .ended(outcome: "done", tools: herToolCount(s.status.note), note: s.status.note)
     // Ended while this device looked on, by another's answer.
-    case "declined", "failed": s.live && !here ? .ended(outcome: "elsewhere", tools: nil, note: nil) : .ended(outcome: s.status.state, tools: nil, note: s.status.note)
+    case "declined": s.live && !here ? .ended(outcome: "elsewhere", tools: nil, note: nil) : .ended(outcome: "declined", tools: nil, note: s.status.note)
+    // A failure may come from server invalidation (e.g. bound page navigated or browser disconnected) without another device answering.
+    case "failed": .ended(outcome: "failed", tools: nil, note: s.status.note)
     case "replaced": .ended(outcome: "replaced", tools: nil, note: nil)
     default: .ended(outcome: "expired", tools: nil, note: nil)
     }

@@ -65,6 +65,24 @@ test("a card is read from what send_to_user's result carries; one that isn't a c
     },
   };
   assert.deepEqual(siteLoginBody(loginCard), loginCard.body);
+  const chromeLoginCard: Card = {
+    ...loginCard,
+    id: "c_login00002",
+    body: {
+      origin: "https://login.example.test",
+      host: "login.example.test",
+      title: "Example Sign In",
+      browser: "Google Chrome",
+      tab: "y1",
+      fields: [
+        { id: "f1", label: "Username", kind: "username", secret: false },
+        { id: "f2", label: "Password", kind: "password", secret: true },
+      ],
+    },
+  };
+  assert.deepEqual(siteLoginBody(chromeLoginCard), chromeLoginCard.body);
+  assert.equal(siteLoginBody(chromeLoginCard)?.browser, "Google Chrome");
+  assert.equal(siteLoginBody(chromeLoginCard)?.tab, "y1");
   assert.equal(connectBody(loginCard), null);
   assert.equal(siteLoginBody(card), null);
   assert.equal(siteLoginBody({ ...loginCard, body: { origin: "http://127.0.0.1:4100", host: "127.0.0.1:4100", fields: [] } }), null, "empty fields rejected");
@@ -167,6 +185,7 @@ test("what the card shows: its form, the sign-in on the device that answered, or
   assert.deepEqual(cardShown(live("declined"), true), { kind: "ended", outcome: "declined", note: undefined });
   assert.deepEqual(cardShown(live("declined"), false), { kind: "ended", outcome: "elsewhere" });
   assert.deepEqual(cardShown(read("declined"), false), { kind: "ended", outcome: "declined", note: undefined }, "read later, the outcome itself");
+  assert.deepEqual(cardShown(live("failed", "The page changed before the fields could be filled."), false), { kind: "ended", outcome: "failed", note: "The page changed before the fields could be filled." }, "live server invalidation keeps its reason instead of blaming another device");
   assert.deepEqual(cardShown(read("failed", "no tools"), false), { kind: "ended", outcome: "failed", note: "no tools" });
   assert.deepEqual(cardShown(read("expired"), false), { kind: "ended", outcome: "expired" });
   assert.deepEqual(cardShown(live("replaced"), true), { kind: "ended", outcome: "replaced" });

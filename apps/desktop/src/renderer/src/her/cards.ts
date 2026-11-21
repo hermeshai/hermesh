@@ -20,14 +20,14 @@ export type SiteLoginField = { id: string; label: string; kind: SiteLoginFieldKi
 
 export type SiteLoginMode = "fill" | "chrome_takeover";
 
-/** A `site_login` card's: verified login fields in the isolated browser, or a verified local Chrome takeover target. */
+/** A `site_login` card's: verified login fields inspected from a bound browser page (`fill`), or a verified local Chrome takeover target (`chrome_takeover`). */
 export type SiteLoginBody = {
   mode?: SiteLoginMode;
   origin: string;
   host: string;
   title?: string;
-  tab?: string;
   browser?: string;
+  tab?: string;
   fields: SiteLoginField[];
 };
 
@@ -155,9 +155,11 @@ export function cardShown(s: CardNow, here: boolean): CardShown {
     case "done":
       return { kind: "ended", outcome: "done", tools: toolCount(s.note) };
     case "declined":
-    case "failed":
       // Ended while this device looked on, by another's answer.
-      return s.live && !here ? { kind: "ended", outcome: "elsewhere" } : { kind: "ended", outcome: s.state, note: s.note };
+      return s.live && !here ? { kind: "ended", outcome: "elsewhere" } : { kind: "ended", outcome: "declined", note: s.note };
+    case "failed":
+      // A failure may come from server invalidation (e.g. bound page navigated or browser disconnected) without another device answering.
+      return { kind: "ended", outcome: "failed", note: s.note };
     default:
       return { kind: "ended", outcome: s.state === "replaced" ? "replaced" : "expired" };
   }

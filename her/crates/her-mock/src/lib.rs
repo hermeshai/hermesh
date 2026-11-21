@@ -1257,6 +1257,123 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
                 _ => Plan::Step(Step::text(format!("browsers done: {}", last_tool_result(messages)))),
             }
         }
+        // Her prepares a `site_login` input card in the user's own Chrome without switching browser.default.
+        "chrome_site_login" => {
+            if last_user_text(messages).starts_with("<card ") {
+                let (outcome, note) = card_end(messages).unwrap_or_default();
+                return last_words(bot, format!("卡片结果：{outcome}|{note}"));
+            }
+            match step {
+                0 => Plan::Step(Step::calls(vec![(
+                    "call_tool",
+                    json!({ "name": "browser_navigate", "arguments": { "url": arg.trim(), "browser": "yours" } }),
+                )])),
+                1 => {
+                    let snap = last_tool_result(messages);
+                    let mut refs: Vec<String> = Vec::new();
+                    for line in snap.lines() {
+                        if (line.contains("Email")
+                            || line.contains("Password")
+                            || line.contains("Username")
+                            || line.contains("Feedback")
+                            || line.contains("textbox"))
+                            && let Some(rest) = line.split("[ref=").nth(1)
+                            && let Some(id) = rest.split(']').next()
+                        {
+                            refs.push(id.to_string());
+                        }
+                    }
+                    if refs.is_empty() {
+                        refs.push("ye1".to_string());
+                    }
+                    Plan::Step(Step::calls(vec![(
+                        "call_tool",
+                        json!({ "name": "browser_act", "arguments": { "action": "ask_owner", "refs": refs } }),
+                    )]))
+                }
+                2 => {
+                    let result = last_tool_result(messages);
+                    match result.split("Card ").nth(1).and_then(|rest| rest.split_whitespace().next()) {
+                        Some(card) => Plan::Step(Step::calls(vec![(
+                            "send_to_user",
+                            json!({ "type": "card", "card": card, "text": "请在安全卡片中输入登录信息。" }),
+                        )])),
+                        None => last_words(bot, format!("拒绝：{result}")),
+                    }
+                }
+                _ => {
+                    let (outcome, note) = card_end(messages).unwrap_or_default();
+                    last_words(bot, format!("卡片结果：{outcome}|{note}"))
+                }
+            }
+        }
+        // Attempts to prepare a `site_login` card from a cross-origin iframe inside Chrome (must fail).
+        "chrome_site_login_iframe" => match step {
+            0 => Plan::Step(Step::calls(vec![(
+                "call_tool",
+                json!({ "name": "browser_navigate", "arguments": { "url": arg.trim(), "browser": "yours" } }),
+            )])),
+            1 => {
+                let snap = last_tool_result(messages);
+                let frame_ref = snap
+                    .lines()
+                    .find(|line| line.to_ascii_lowercase().contains("iframe"))
+                    .and_then(|line| line.split("[ref=").nth(1))
+                    .and_then(|rest| rest.split(']').next())
+                    .unwrap_or("ye1")
+                    .to_string();
+                Plan::Step(Step::calls(vec![(
+                    "call_tool",
+                    json!({ "name": "browser_snapshot", "arguments": { "frame": frame_ref } }),
+                )]))
+            }
+            2 => {
+                let snap = last_tool_result(messages);
+                let refs: Vec<String> = snap
+                    .lines()
+                    .filter(|line| line.contains("Email") || line.contains("Password"))
+                    .filter_map(|line| line.split("[ref=").nth(1)?.split(']').next().map(str::to_string))
+                    .collect();
+                Plan::Step(Step::calls(vec![(
+                    "call_tool",
+                    json!({ "name": "browser_act", "arguments": { "action": "ask_owner", "refs": refs } }),
+                )]))
+            }
+            _ => last_words(bot, format!("拒绝：{}", last_tool_result(messages))),
+        },
+        // Probes observation, screenshot, script, console, wait, and act on a Chrome tab (must all fail while sensitive).
+        "chrome_probe_blocked" => {
+            if last_user_text(messages).starts_with("<card ") {
+                let (outcome, note) = card_end(messages).unwrap_or_default();
+                return last_words(bot, format!("卡片结果：{outcome}|{note}"));
+            }
+            let tab = arg.trim();
+            match step {
+                0 => Plan::Step(Step::calls(vec![
+                    ("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_screenshot", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_eval", "arguments": { "tab": tab, "expression": "document.getElementById('p')?.value || document.title" } })),
+                    ("call_tool", json!({ "name": "browser_console", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_wait", "arguments": { "tab": tab, "text": "Email", "seconds": 1 } })),
+                    ("call_tool", json!({ "name": "browser_act", "arguments": { "tab": tab, "action": "press", "keys": "Enter" } })),
+                ])),
+                _ => last_words(bot, format!("探测结束：{}", last_tool_result(messages))),
+            }
+        }
+        // Reads a Chrome tab via browser_snapshot in a bot conversation (used to verify recovery after nav/cancel).
+        "chrome_read_tab" => {
+            if last_user_text(messages).starts_with("<card ") {
+                let (outcome, note) = card_end(messages).unwrap_or_default();
+                return last_words(bot, format!("卡片结果：{outcome}|{note}"));
+            }
+            match step {
+                0 => Plan::Step(Step::calls(vec![(
+                    "call_tool",
+                    json!({ "name": "browser_snapshot", "arguments": { "tab": arg.trim() } }),
+                )])),
+                _ => last_words(bot, format!("读取：{}", last_tool_result(messages))),
+            }
+        }
         // The user's own browser: a page opened there, its tabs, what a tab shows, and handing
         // the page to the user (browser-design §8.4.7).
         "yours" => match step {

@@ -90,7 +90,11 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
       const takeover = isChromeTakeover(siteLogin);
       const line =
         shown.outcome === "done"
-          ? t(takeover ? "card.chromeTakeoverDone" : "card.siteLoginDone", { host: siteLogin.host })
+          ? takeover
+            ? t("card.chromeTakeoverDone", { host: siteLogin.host })
+            : siteLogin.browser
+              ? t("card.siteLoginDoneBrowser", { host: siteLogin.host, browser: siteLogin.browser })
+              : t("card.siteLoginDone", { host: siteLogin.host })
           : shown.outcome === "failed"
             ? shown.note || t(takeover ? "card.chromeTakeoverFailed" : "card.siteLoginFailed", { host: siteLogin.host })
             : shown.outcome === "declined" && takeover
@@ -338,6 +342,12 @@ function SiteLoginForm({
         <span>{t("card.siteLogin")}</span>
         <span>·</span>
         <span className="sc-env">{machineName}</span>
+        {body.browser && (
+          <>
+            <span>·</span>
+            <span className="sc-env">{body.tab ? `${body.browser} (${body.tab})` : body.browser}</span>
+          </>
+        )}
         {card.asked_by === "her" && (
           <span className="sc-who">
             <Icon name="alert" />
@@ -350,7 +360,11 @@ function SiteLoginForm({
         <b className="sel-text">{body.origin}</b>
         {body.title && <span className="sc-url sel-text">{body.title}</span>}
       </div>
-      <p className="sc-what">{t("card.siteLoginWhat", { machine: machineName, origin: body.origin })}</p>
+      <p className="sc-what">
+        {body.browser
+          ? t("card.siteLoginWhatBrowser", { machine: machineName, browser: body.browser, origin: body.origin })
+          : t("card.siteLoginWhat", { machine: machineName, origin: body.origin })}
+      </p>
       <form
         className="sc-form"
         onSubmit={(e) => {

@@ -122,7 +122,7 @@ pub struct CardField {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SiteLoginMode {
-    /// Isolated built-in browser: fill 1–3 DOM-verified fields once without auto-submitting.
+    /// Bound form fill: fill 1–3 DOM-verified login fields once without auto-submitting or saving.
     #[default]
     Fill,
     /// Local Chrome isolated user takeover: owner confirms actual HTTPS origin and target tab,
@@ -130,11 +130,11 @@ pub enum SiteLoginMode {
     ChromeTakeover,
 }
 
-/// A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser,
-/// or from a verified local Chrome tab for isolated user takeover.
+/// A `site_login` card's body: inspected directly from the page's real DOM in a bound browser tab
+/// (`fill`), or from a verified local Chrome tab for isolated user takeover (`chrome_takeover`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SiteLoginBody {
-    /// How the sign-in card works: `fill` (isolated built-in browser) or `chrome_takeover` (local Chrome).
+    /// How the sign-in card works: `fill` (one-time form fill) or `chrome_takeover` (isolated local Chrome takeover).
     #[serde(default)]
     pub mode: SiteLoginMode,
     /// Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures).
@@ -144,12 +144,12 @@ pub struct SiteLoginBody {
     /// The page's title, sanitized and clipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Verified target tab id (e.g. `y1`) for `chrome_takeover`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tab: Option<String>,
-    /// Verified local Chrome browser label (e.g. `Google Chrome 141`) when available.
+    /// The browser holding the bound tab when targeting the owner's own Chrome (omitted for the built-in browser).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub browser: Option<String>,
+    /// The session's bound tab id (for example `y1` in the owner's own Chrome).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
     /// Verified login fields on the page (never authored by the model; empty for `chrome_takeover`).
     #[serde(default)]
     pub fields: Vec<SiteLoginField>,

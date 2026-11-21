@@ -731,7 +731,7 @@ impl NativeProtocol {
                             BridgeMismatch::ExtensionTooOld => ExtensionProblem::UpdateExtension,
                             BridgeMismatch::HerTooOld => ExtensionProblem::UpdateHer,
                         });
-                        let browser_label = p.browser.clone();
+                        let browser_name = p.browser.clone();
                         let status = her_protocol::api::ExtensionStatus {
                             browser: p.browser,
                             extension_version: p.extension_version,
@@ -742,7 +742,7 @@ impl NativeProtocol {
                         };
                         server.extension_connected(link.id(), conn.clone(), status);
                         if bridge.is_ok() {
-                            server.0.browser_pool.add_extension_with_browser(link, p.instance, browser_label);
+                            server.0.browser_pool.add_extension_named(link, p.instance, browser_name);
                         } else {
                             tracing::warn!(?range, ?problem, "an extension her cannot use connected");
                         }

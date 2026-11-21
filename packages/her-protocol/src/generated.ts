@@ -4445,19 +4445,19 @@ export type SiteGrant = {
   origin: string;
 };
 
-/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser, or from a verified local Chrome tab for isolated user takeover. */
+/** A `site_login` card's body: inspected directly from the page's real DOM in a bound browser tab (`fill`), or from a verified local Chrome tab for isolated user takeover (`chrome_takeover`). */
 export type SiteLoginBody = {
-  /** Verified local Chrome browser label (e.g. `Google Chrome 141`) when available. */
+  /** The browser holding the bound tab when targeting the owner's own Chrome (omitted for the built-in browser). */
   browser?: string | null;
   /** Verified login fields on the page (never authored by the model; empty for `chrome_takeover`). */
   fields: SiteLoginField[];
   /** The origin's host (with non-default port), shown large on the card. */
   host: string;
-  /** How the sign-in card works: `fill` (isolated built-in browser) or `chrome_takeover` (local Chrome). */
+  /** How the sign-in card works: `fill` (one-time form fill) or `chrome_takeover` (isolated local Chrome takeover). */
   mode: SiteLoginMode;
   /** Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures). */
   origin: string;
-  /** Verified target tab id (e.g. `y1`) for `chrome_takeover`. */
+  /** The session's bound tab id (for example `y1` in the owner's own Chrome). */
   tab?: string | null;
   /** The page's title, sanitized and clipped. */
   title?: string | null;

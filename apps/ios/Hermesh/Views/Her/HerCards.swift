@@ -86,9 +86,13 @@ struct HerSecureCard: View {
         let host = site.host
         let text: String = switch outcome {
         case "done":
-            site.isChromeTakeover
-                ? String(localized: "Signed in via Chrome on \(host)")
-                : String(localized: "Filled in on \(host) (not submitted)")
+            if site.isChromeTakeover {
+                String(localized: "Signed in via Chrome on \(host)")
+            } else if let browser = site.browser, !browser.isEmpty {
+                String(localized: "Filled once in \(browser) on \(host) (not submitted)")
+            } else {
+                String(localized: "Filled in on \(host) (not submitted)")
+            }
         case "failed":
             note ?? (site.isChromeTakeover
                 ? String(localized: "Chrome sign-in invalidated on \(host)")
@@ -251,10 +255,19 @@ struct HerSecureCard: View {
     private func siteLoginForm(_ card: HerCard, _ site: HerCard.SiteLogin, shown: HerCardShown) -> some View {
         let busy = sending || shown == .form(note: nil, busy: true)
         let ready = site.fields.allSatisfy { !(values[$0.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        let browserTarget: String? = site.browser.flatMap { browser in
+            guard !browser.isEmpty else { return nil }
+            if let tab = site.tab, !tab.isEmpty { return "\(browser) (\(tab))" }
+            return browser
+        }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
                 Image(systemName: "lock.fill")
-                Text("Website Sign-In · \(machine.machineName)")
+                if let browserTarget {
+                    Text("Website Sign-In · \(machine.machineName) · \(browserTarget)")
+                } else {
+                    Text("Website Sign-In · \(machine.machineName)")
+                }
                 if card.askedBy == "her" {
                     Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
@@ -267,8 +280,13 @@ struct HerSecureCard: View {
                     Text(title).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
-                .font(.subheadline).foregroundStyle(.secondary)
+            if let browser = site.browser, !browser.isEmpty {
+                Text("Encrypted in transit to \(machine.machineName) and filled once into \(browser) on \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in \(browser).")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
             ForEach(site.fields, id: \.id) { f in
                 if f.secret {
                     SecureField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))

@@ -137,12 +137,36 @@ impl Server {
     }
 
     pub(crate) fn extension_gone(&self, host: u64) {
-        self.0.extensions.lock().retain(|entry| entry.host != host);
+        let affected: Vec<String> = {
+            let mut entries = self.0.extensions.lock();
+            let sessions = entries
+                .iter()
+                .find(|entry| entry.host == host)
+                .map(|entry| entry.tabs.keys().cloned().collect())
+                .unwrap_or_default();
+            entries.retain(|entry| entry.host != host);
+            sessions
+        };
         self.count_session_tabs();
         self.invalidate_chrome_takeovers_for_host(
             host,
             "Chrome extension disconnected. Sign-in card invalidated; fall back to manual login.",
         );
+        if !affected.is_empty() || !self.0.browser_pool.has_extension() {
+            self.invalidate_chrome_site_login(&affected, "The browser disconnected before the fields could be filled.");
+        }
+    }
+
+    fn invalidate_chrome_site_login(&self, sessions: &[String], reason: &str) {
+        let hubs = self.hubs();
+        for hub in hubs {
+            if sessions.is_empty() || sessions.iter().any(|s| s == &*hub.shared.session.id) {
+                let reason = reason.to_string();
+                tokio::spawn(async move {
+                    let _ = hub.send(HubCmd::InvalidateSiteLogin { own: Some(true), reason }).await;
+                });
+            }
+        }
     }
 
     /// How many hosts of extensions are connected.
@@ -296,6 +320,7 @@ impl Server {
                     &sessions,
                     "Chrome control was revoked. Sign-in card invalidated; fall back to manual login.",
                 );
+                self.invalidate_chrome_site_login(&sessions, "Control of Chrome was revoked before the fields could be filled.");
                 self.browser_changed();
             }
             ExtensionMessage::OpenSession { session_id } => self.browser_request(&BrowserRequest::OpenSession { session_id }),
