@@ -153,7 +153,8 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await disclosure.getByRole("button", { name: "取消" }).click();
   await expect(disclosure).toBeHidden();
   await expect(composer).toHaveValue(firstDraft);
-  await expect(log).not.toContainText("你好，主人");
+  await expect(log).toHaveCount(0);
+  await expect(page.locator(".dbody")).not.toContainText("你好，主人");
   await composer.press("Enter");
   await allowFixtureAISharing(page);
   await expect(log).toContainText("你好，主人", { timeout: 60_000 });

@@ -167,7 +167,8 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
     await enDialog.getByRole("button", { name: "Cancel" }).click();
     await expect(enDialog).toBeHidden();
     await expect(enComposer).toHaveValue(draft);
-    await expect(enLog).not.toContainText("English consent ok");
+    await expect(enLog).toHaveCount(0);
+    await expect(enPage.locator(".dbody")).not.toContainText("English consent ok");
 
     await enComposer.press("Enter");
     await expect(enDialog).toBeVisible({ timeout: 15_000 });

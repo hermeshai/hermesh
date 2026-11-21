@@ -52,8 +52,14 @@ impl Site {
         let task = tokio::spawn({
             let log = log.clone();
             async move {
-                while let Ok((stream, _)) = listener.accept().await {
-                    tokio::spawn(serve(stream, root.clone(), log.clone()));
+                loop {
+                    match listener.accept().await {
+                        Ok((stream, _)) => {
+                            tokio::spawn(serve(stream, root.clone(), log.clone()));
+                        }
+                        Err(err) if is_transient_accept_error(&err) => continue,
+                        Err(_) => break,
+                    }
                 }
             }
         });
@@ -69,6 +75,17 @@ impl Drop for Site {
     fn drop(&mut self) {
         self.task.abort();
     }
+}
+
+fn is_transient_accept_error(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionRefused
+            | std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::WouldBlock
+    )
 }
 
 async fn serve(mut stream: TcpStream, root: PathBuf, log: Arc<Mutex<Vec<Request>>>) {
@@ -224,5 +241,19 @@ mod tests {
         assert_eq!(requests[0].fields["ref"], "home");
         assert_eq!(requests[1].fields["id"], "b7");
         assert_eq!(requests[1].fields["qty"], "2");
+    }
+
+    #[test]
+    fn transient_accept_errors_do_not_stop_the_site() {
+        for kind in [
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::ConnectionAborted,
+            std::io::ErrorKind::ConnectionRefused,
+            std::io::ErrorKind::Interrupted,
+            std::io::ErrorKind::WouldBlock,
+        ] {
+            assert!(is_transient_accept_error(&std::io::Error::from(kind)));
+        }
+        assert!(!is_transient_accept_error(&std::io::Error::from(std::io::ErrorKind::InvalidInput)));
     }
 }

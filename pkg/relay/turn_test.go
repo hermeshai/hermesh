@@ -41,23 +41,52 @@ func allocate(t *testing.T, addr, user, pass string) (net.PacketConn, error) {
 }
 
 // Reserve a port available to both TURN transports. Windows can reserve
-// different port ranges for TCP and UDP.
+// contiguous 100-port Hyper-V exclusion blocks separately for TCP and UDP, so
+// sequential ephemeral probes can all land inside one excluded block.
 func reserveTURNAddress(t *testing.T) (string, func()) {
 	t.Helper()
-	for attempt := 0; attempt < 100; attempt++ {
-		tcp, err := net.Listen("tcp4", "127.0.0.1:0")
+	tryPair := func(addr string) (string, func(), bool) {
+		tcp, err := net.Listen("tcp4", addr)
 		if err != nil {
-			t.Fatal(err)
+			return "", nil, false
 		}
-		addr := tcp.Addr().String()
-		udp, err := net.ListenPacket("udp4", addr)
+		udp, err := net.ListenPacket("udp4", tcp.Addr().String())
 		if err != nil {
 			tcp.Close()
+			return "", nil, false
+		}
+		bound := tcp.Addr().String()
+		release := func() { tcp.Close(); udp.Close() }
+		t.Cleanup(release)
+		return bound, release, true
+	}
+	for attempt := 0; attempt < 64; attempt++ {
+		if attempt%2 == 0 {
+			if addr, release, ok := tryPair("127.0.0.1:0"); ok {
+				return addr, release
+			}
+			continue
+		}
+		udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
+		if err != nil {
+			continue
+		}
+		addr := udp.LocalAddr().String()
+		tcp, err := net.Listen("tcp4", addr)
+		if err != nil {
+			udp.Close()
 			continue
 		}
 		release := func() { tcp.Close(); udp.Close() }
 		t.Cleanup(release)
 		return addr, release
+	}
+	// Jump across the port space with a stride > 100 to step out of any
+	// contiguous Windows Hyper-V excluded port block.
+	for port := 20000; port < 60000; port += 137 {
+		if addr, release, ok := tryPair(net.JoinHostPort("127.0.0.1", strconv.Itoa(port))); ok {
+			return addr, release
+		}
 	}
 	t.Fatal("no available TCP and UDP TURN port")
 	return "", nil

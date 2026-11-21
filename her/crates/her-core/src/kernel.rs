@@ -1057,7 +1057,7 @@ impl Kernel {
                 cards.invalidate_open_site_login(Some(true), "The browser was turned off before the fields could be filled.");
             }
             cards.invalidate_open_site_login_where(
-                |b| url::Url::parse(&b.url).ok().is_none_or(|u| policy.refusal(&u).is_some()),
+                |b| url::Url::parse(b.url()).ok().is_none_or(|u| policy.refusal(&u).is_some()),
                 "This site is not allowed by browser policy.",
             );
         }
@@ -1129,6 +1129,11 @@ impl Kernel {
             }
         }
         Some(cards)
+    }
+
+    /// The session's live secure cards registry, if this is Her's own conversation.
+    pub fn session_cards(&self) -> Option<Arc<Cards>> {
+        self.session.upgrade()?.tool_state.get::<Cards>()
     }
 
     /// The session's live isolated built-in browser session, if started.
