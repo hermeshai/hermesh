@@ -174,5 +174,6 @@ export async function allowFixtureAISharing(page: Page) {
   await expect(dialog).toContainText("模型：");
   await expect(dialog).toContainText("数据：");
   await expect(dialog).toContainText("用途：");
+  await expect(dialog).not.toContainText("撤回");
   await dialog.getByRole("button", { name: "允许与 AI 共享" }).click();
 }

@@ -1,9 +1,8 @@
 {
   "aiSharing": {
     "title": "Share data with third-party AI?",
-    "disclosure": "Provider: {{provider}} · {{endpoint}}\nModel: {{model}}\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer. You can revoke sharing on the Model page.",
+    "disclosure": "Provider: {{provider}} · {{endpoint}}\nModel: {{model}}\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on this computer.",
     "allow": "Allow AI Sharing",
-    "revoke": "Revoke Third-Party AI Sharing",
     "review": "Review Third-Party AI Sharing",
     "unverified": "Her can’t verify a single recipient for this model. Choose another model to send."
   },
