@@ -22,7 +22,7 @@ Pull requests use the test merge diff and the base revision's routing rules.
 Pushes to `main` check the entire pushed range, including both paths of a rename.
 A new commit on a PR supersedes the earlier run. Each push to `main` finishes its own checks.
 
-Documentation changes run routing checks. Go changes run vet, units and a relay/daemon/CLI and mobile smoke test.
+Documentation changes run routing checks. Her documentation also gets its public-content and generated-reference checks. Go changes run vet, units and a relay/daemon/CLI and mobile smoke test.
 Desktop renderer changes run type checks, unit tests and an Electron smoke test against the daemon.
 iOS changes run Swift tests and a simulator reviewer task, with additional UI suites for affected screens.
 Protocol and fixture changes check their consumers together. Unknown changes enable all blocking component jobs.
