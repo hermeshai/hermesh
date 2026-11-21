@@ -69,18 +69,18 @@ test("hermeshd of another version: once no session is busy, launchd loads its jo
   const advance = () => app.evaluate(() => (globalThis as unknown as Hook).installTest.advance(30_000));
   // A session runs and another waits for an answer: restarting would end their turns.
   await advance();
-  expect(await seen()).toMatchObject({ launchctl: [], loginItems: [{ openAtLogin: true }] });
+  expect(await seen()).toMatchObject({ launchctl: [["kickstart", expect.stringMatching(/^gui\/\d+\/com\.hermesh\.app\.daemon$/)]], loginItems: [{ openAtLogin: true }] });
   await cli("session", "interrupt", fixture.sessions["跑很久"]);
   await cli("session", "interrupt", fixture.sessions["选颜色"]);
   await expect.poll(async () => {
     await advance();
     return (await seen()).loginItems.length;
   }).toBe(2);
+  await expect.poll(async () => (await seen()).launchctl.map(([verb]) => verb)).toEqual(["kickstart", "bootout", "print", "print", "kickstart"]);
   const { launchctl, loginItems } = await seen();
-  // A kickstart would run the new binary under the plist launchd loaded. Registering again blocks while the old process exits, so the app waits for that first.
-  expect(launchctl.map(([verb]) => verb)).toEqual(["bootout", "print", "print"]);
+  // A kickstart would run the new binary under the plist launchd loaded. Registering again blocks while the old process exits, so the app waits for that first, then kickstarts the newly loaded RunAtLoad=false job.
   expect(new Set(launchctl.map(([, job]) => job)).size).toBe(1);
-  expect(launchctl[0][1]).toMatch(/^gui\/\d+\/com\.hermesh\.app\.daemon$/);
+  expect(launchctl[1][1]).toMatch(/^gui\/\d+\/com\.hermesh\.app\.daemon$/);
   expect(loginItems[1]).toEqual({ type: "agentService", serviceName: "com.hermesh.app.daemon.plist", openAtLogin: true });
 });
 

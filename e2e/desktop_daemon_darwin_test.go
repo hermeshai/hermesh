@@ -85,6 +85,145 @@ func TestDesktopDaemonUnderLoad(t *testing.T) {
 	t.Logf("four sessions checked out %d files each and answered in %s behind %d busy loops", len(files), time.Since(begin).Round(time.Millisecond), loops)
 }
 
+// TestDesktopDaemonLifecycle runs the real shipped plist under real macOS launchd
+// and verifies the full managed lifecycle:
+//   - RunAtLoad=false: bootstrapping does not start hermeshd automatically
+//   - kickstart: starts hermeshd and its spawn helpers
+//   - crash (SIGKILL): KeepAlive.SuccessfulExit=false restarts hermeshd automatically
+//   - clean stop (launchctl kill SIGTERM): exits 0, cleans up spawn helpers, and stays stopped
+//   - kickstart again: brings hermeshd back cleanly
+func TestDesktopDaemonLifecycle(t *testing.T) {
+	if testing.Short() {
+		t.Skip("e2e")
+	}
+	domain := launchdDomain(t)
+	w := newOwnerMac(t, []string{"HERMESH_FAKE_PROVIDERS=1"}, &localv1.GrantSpec{})
+	w.owner.stop()
+	w.app.cancel()
+
+	const label = "com.hermesh.test.daemon.lifecycle"
+	target := domain + "/" + label
+	exec.Command("launchctl", "bootout", target).Run()
+
+	shipped := filepath.Join("apps", "desktop", "build", "com.hermesh.app.daemon.plist")
+	out, err := exec.Command("plutil", "-convert", "json", "-o", "-", shipped).Output()
+	if err != nil {
+		t.Fatalf("plutil %s: %v", shipped, err)
+	}
+	var job map[string]any
+	if err := json.Unmarshal(out, &job); err != nil {
+		t.Fatal(err)
+	}
+	delete(job, "BundleProgram")
+	delete(job, "AssociatedBundleIdentifiers")
+	env := map[string]string{}
+	for _, kv := range w.daemonEnv {
+		k, v, _ := strings.Cut(kv, "=")
+		env[k] = v
+	}
+	log := filepath.Join(w.tmp, "launchd-lifecycle.log")
+	job["Label"], job["Program"], job["EnvironmentVariables"] = label, filepath.Join(w.bin, "hermeshd"), env
+	job["ProgramArguments"] = []string{"hermeshd", "run", "--owner", "--data-dir", filepath.Join(w.tmp, "owner-mac"), "--socket", w.sock}
+	job["StandardOutPath"], job["StandardErrorPath"] = log, log
+	text, err := json.Marshal(job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plist := filepath.Join(w.tmp, label+".plist")
+	if err := os.WriteFile(plist, text, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("plutil", "-convert", "xml1", plist).CombinedOutput(); err != nil {
+		t.Fatalf("plutil: %v: %s", err, out)
+	}
+	if out, err := exec.Command("launchctl", "bootstrap", domain, plist).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl bootstrap: %v: %s", err, out)
+	}
+	t.Cleanup(func() {
+		exec.Command("launchctl", "bootout", target).Run()
+		if t.Failed() {
+			b, _ := os.ReadFile(log)
+			t.Logf("==== hermeshd lifecycle under launchd ====\n%s", b)
+		}
+	})
+
+	pidOf := func() int {
+		out, err := exec.Command("launchctl", "print", target).Output()
+		if err != nil {
+			return 0
+		}
+		m := launchdPid.FindSubmatch(out)
+		if m == nil {
+			return 0
+		}
+		pid, _ := strconv.Atoi(string(m[1]))
+		return pid
+	}
+
+	// 1. RunAtLoad=false: bootstrapping alone must not launch hermeshd.
+	time.Sleep(1500 * time.Millisecond)
+	if p := pidOf(); p != 0 {
+		t.Fatalf("RunAtLoad=false plist started hermeshd automatically (pid %d)", p)
+	}
+
+	// 2. kickstart starts hermeshd and its spawn helpers.
+	if out, err := exec.Command("launchctl", "kickstart", target).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl kickstart: %v: %s", err, out)
+	}
+	var firstPID int
+	eventually(t, 30*time.Second, "launchd starting hermeshd via kickstart", func() bool {
+		firstPID = pidOf()
+		return firstPID != 0
+	})
+	w.app = newTestApp(t, w.sock, w.root)
+	eventually(t, 30*time.Second, "hermeshd serving after kickstart", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+	})
+	helpers := childrenOf(t, firstPID)
+	if len(helpers) == 0 {
+		t.Fatalf("expected spawn-helper children under hermeshd pid %d", firstPID)
+	}
+
+	// 3. Crash recovery: SIGKILL triggers KeepAlive.SuccessfulExit=false restart.
+	if out, err := exec.Command("launchctl", "kill", "SIGKILL", target).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl kill SIGKILL: %v: %s", err, out)
+	}
+	var crashedPID int
+	eventually(t, 30*time.Second, "launchd restarting hermeshd after SIGKILL", func() bool {
+		crashedPID = pidOf()
+		return crashedPID != 0 && crashedPID != firstPID
+	})
+
+	// 4. Clean stop: launchctl kill SIGTERM makes hermeshd exit 0 and stay stopped.
+	if out, err := exec.Command("launchctl", "kill", "SIGTERM", target).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl kill SIGTERM: %v: %s", err, out)
+	}
+	eventually(t, 15*time.Second, "hermeshd exiting cleanly on SIGTERM", func() bool {
+		return pidOf() == 0
+	})
+	// Verify launchd does NOT respawn it (SuccessfulExit=false) and spawn helpers are gone.
+	time.Sleep(2500 * time.Millisecond)
+	if p := pidOf(); p != 0 {
+		t.Fatalf("hermeshd respawned after clean SIGTERM stop (pid %d)", p)
+	}
+	if left := childrenOf(t, crashedPID); len(left) != 0 {
+		t.Fatalf("spawn helpers left behind after clean stop: %v", left)
+	}
+
+	// 5. Starting again via kickstart brings hermeshd back without re-registering.
+	if out, err := exec.Command("launchctl", "kickstart", target).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl kickstart after stop: %v: %s", err, out)
+	}
+	eventually(t, 30*time.Second, "hermeshd running again after second kickstart", func() bool {
+		return pidOf() != 0
+	})
+	eventually(t, 30*time.Second, "hermeshd serving again after second kickstart", func() bool {
+		r := w.cli(30*time.Second, "project", "list")
+		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
+	})
+}
+
 // `hermeshd service install`, the other way a Mac runs hermeshd, makes the
 // same kind of job.
 func TestDesktopServiceInstallPriority(t *testing.T) {
@@ -228,6 +367,9 @@ func loadLaunchAgent(t *testing.T, w *ownerMac, domain string) (pid int) {
 	}
 	if out, err := exec.Command("launchctl", "bootstrap", domain, plist).CombinedOutput(); err != nil {
 		t.Fatalf("launchctl bootstrap: %v: %s", err, out)
+	}
+	if out, err := exec.Command("launchctl", "kickstart", target).CombinedOutput(); err != nil {
+		t.Fatalf("launchctl kickstart: %v: %s", err, out)
 	}
 	t.Cleanup(func() {
 		exec.Command("launchctl", "bootout", target).Run()

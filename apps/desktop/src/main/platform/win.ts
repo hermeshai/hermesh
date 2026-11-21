@@ -269,6 +269,16 @@ export const win: Platform = {
     });
   },
 
+  async startDaemon() {
+    if (!installed) return;
+    await promisify(execFile)(hermeshd, ["service", "install", "--owner"], { windowsHide: true }).catch((err) => console.warn("starting hermeshd:", err));
+  },
+
+  async stopDaemon() {
+    if (!installed) return;
+    await promisify(execFile)(hermeshd, ["service", "uninstall"], { windowsHide: true }).catch((err) => console.warn("stopping hermeshd:", err));
+  },
+
   restartDaemon(why) {
     if (!installed) return;
     console.warn(`restarting hermeshd: ${why}`);
