@@ -61,7 +61,6 @@ private struct HerPageBody: View {
     @State private var clearing = false
     @State private var granting = false
     @State private var aiSharing: JSON?
-    @State private var revokingAISharing = false
     /// The Computer Control session on screen (docs/computer-control.md).
     @State private var control: ScreenSession?
 
@@ -237,25 +236,9 @@ private struct HerPageBody: View {
                 .buttonStyle(HerRowStyle())
                 .accessibilityIdentifier("her-environment")
             }
-            if let recipient = aiSharing?["allowed"], let endpoint = recipient["endpoint"].string {
-                HerGroup(footer: endpoint) {
-                    Button(role: .destructive) {
-                        revokingAISharing = true
-                        Task {
-                            defer { revokingAISharing = false }
-                            do {
-                                try await chat.revokeAISharing()
-                                aiSharing = nil
-                            } catch { model.show(error.localizedDescription) }
-                        }
-                    } label: {
-                        HerRowLabel { Text("Revoke Third-Party AI Sharing").foregroundStyle(.red) }
-                    }
-                    .buttonStyle(HerRowStyle())
-                    .disabled(revokingAISharing || !herReachable(machine))
-                    .accessibilityIdentifier("her-ai-sharing-revoke")
-                }
-            } else if let endpoint = aiSharing?["recipient"]["endpoint"].string {
+            if let status = aiSharing,
+               let endpoint = status["recipient"]["endpoint"].string,
+               status["allowed"] != status["recipient"] {
                 HerGroup(footer: endpoint) {
                     Button { chat.reviewAISharing() } label: {
                         HerRowLabel(chevron: true) { Text("Review Third-Party AI Sharing") }
