@@ -4441,14 +4441,18 @@ export type SiteGrant = {
   origin: string;
 };
 
-/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser. */
+/** A `site_login` card's body: inspected directly from the page's real DOM in a bound browser tab. */
 export type SiteLoginBody = {
+  /** The browser holding the bound form when targeting the owner's own Chrome (omitted for the built-in browser). */
+  browser?: string | null;
   /** Verified login fields on the page (never authored by the model). */
   fields: SiteLoginField[];
   /** The origin's host (with non-default port), shown large on the card. */
   host: string;
   /** Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures). */
   origin: string;
+  /** The session's bound tab id (for example `y1` in the owner's own Chrome). */
+  tab?: string | null;
   /** The page's title, sanitized and clipped. */
   title?: string | null;
 };

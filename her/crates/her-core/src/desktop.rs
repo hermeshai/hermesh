@@ -265,6 +265,16 @@ async fn attempt(ctx: &ToolCtx, command: &str, args: Vec<String>) -> Result<Resu
     }
 }
 
+fn blocked_by_sensitive(ctx: &ToolCtx) -> Result<(), ToolError> {
+    let label = handle(ctx)?.label.clone();
+    if crate::browser::is_sensitive_active(&label) {
+        return Err(ToolError::Failed(
+            "Computer control is blocked during a sensitive sign-in step until the login page navigates away or the card is cancelled.".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
     args.get(key).and_then(Value::as_str).unwrap_or("")
 }
@@ -467,6 +477,7 @@ impl TypedTool for DesktopLaunch {
     }
 
     async fn run(&self, args: LaunchArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         let launch = vec![key.clone(), "--activate".into(), "--timeout".into(), LAUNCH_TIMEOUT_MS.to_string()];
         run(&ctx, "launch", launch).await?;
@@ -540,6 +551,7 @@ impl TypedTool for DesktopSnapshot {
     }
 
     async fn run(&self, args: SnapshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         let mut cli_args = vec!["--app".into(), key.clone(), "--compact".into()];
         if !args.all {
@@ -843,6 +855,7 @@ impl TypedTool for DesktopAct {
     }
 
     async fn run(&self, args: ActArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         if !args.action.physical() {
             let data = run(&ctx, args.action.command(), args.ref_args()).await?;
@@ -1187,6 +1200,7 @@ impl TypedTool for DesktopScreenshot {
     }
 
     async fn run(&self, args: ScreenshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         let handle = handle(&ctx)?;
         let found = windows(&ctx, &key).await?;

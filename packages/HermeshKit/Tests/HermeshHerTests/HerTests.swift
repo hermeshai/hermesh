@@ -104,13 +104,19 @@ import Testing
     let siteRaw: JSON = ["id": "card_site", "kind": "site_login", "title": "Sign in to 127.0.0.1:4100", "asked_by": "her", "expires_at": "2026-11-09T12:05:00Z",
                          "ops": [],
                          "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "title": "Fixture Sign In",
+                                  "browser": "Google Chrome", "tab": "y1",
                                   "fields": [["id": "f1", "label": "Email", "kind": "email", "secret": false],
                                              ["id": "f2", "label": "Password", "kind": "password", "secret": true]]]]
     let site = try #require(HerCard(siteRaw))
     #expect(site.connect == nil && site.siteLogin?.origin == "http://127.0.0.1:4100" && site.siteLogin?.fields.count == 2)
+    #expect(site.siteLogin?.browser == "Google Chrome" && site.siteLogin?.tab == "y1")
     #expect(site.askedBy == "her")
     let fillAnswer = site.fill(["f1": "dummy@example.test", "f2": "DUMMY_PASS_1"])
     #expect(fillAnswer["decision"].string == "fill" && fillAnswer["ops"].isNull && fillAnswer["fields"]["f2"].string == "DUMMY_PASS_1")
+    // Live server-side invalidation of a site_login card keeps its failure reason instead of blaming another device.
+    var liveFailed = snapshot([])
+    liveFailed.apply(["seq": 14, "ts": 4, "type": "card_changed", "card_id": "card_site", "state": "failed", "note": "The page changed before the fields could be filled."])
+    #expect(herCardShown(herCardNow(site, liveFailed, answered: nil, now: before), here: false) == .ended(outcome: "failed", tools: nil, note: "The page changed before the fields could be filled."))
     // Empty site_login fields are rejected.
     let emptySite: JSON = ["id": "card_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
                            "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "fields": []]]
