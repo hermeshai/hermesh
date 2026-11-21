@@ -38,6 +38,10 @@ func TestMCPResumeMissingWorktree(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, "MCP approved", func() bool { return app.consentState() == "active" })
 	client := app.mcpSession(app.finish(app.get(app.consentURL)).Access)
+	slowly(t, 30*time.Second, "machine online via MCP after relay restart", func() bool {
+		d := callTool(t, client, "project_list", nil)
+		return d.OK && len(projectsOf(d).Projects) == 1
+	})
 	gitOut(t, w.repo, "branch", "task-base", w.repoHead)
 	gitOut(t, w.repo, "checkout", "-b", "project-default")
 	if err := os.WriteFile(filepath.Join(w.repo, "default-only.txt"), []byte("not in task-base\n"), 0o644); err != nil {
