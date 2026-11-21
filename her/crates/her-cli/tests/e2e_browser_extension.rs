@@ -2108,7 +2108,6 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
     }
 }
 
-
 /// Complete isolated temporary Chrome profile interactive regression for local Chrome `site_login`
 /// (`chrome_takeover`) cards in Her's conversation:
 /// - Does NOT switch `browser.default` (stays `"builtin"`).
@@ -2527,4 +2526,87 @@ async fn chrome_login_card_isolated_takeover_in_temp_profile() {
             assert!(!text.contains(secret), "disk file {} leaked {secret}", path.display());
         }
     }
+}
+
+/// Real Chrome + real Hermesh extension E2E: an agent tab pushed into the background by another
+/// active tab keeps `autoDiscardable: false`, emulates document focus for actions, activates
+/// reliably for click & screenshot, and persists the connected browser label for auto-relaunch.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn extension_controls_inactive_tab_with_auto_discardable_and_focus_emulation() {
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+    let env = TestEnv::new("bypass-permissions", "[browser]\nextension = true\n").await;
+    let home = env.home.path().to_path_buf();
+    let socket = home.join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let installed = env
+        .her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap()])
+        .output()
+        .await
+        .unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let (chrome, _chrome_process) = chrome_with_extension(&env, &profile, &chrome_exe).await;
+    status_until(&client, "the extension", |s| s["extension"]["in_use"] == true).await;
+
+    // Connected browser display label is persisted so a closed Chrome can be relaunched later.
+    let saved_browser = std::fs::read_to_string(home.join("browser/extension-browser")).unwrap_or_default();
+    assert!(!saved_browser.trim().is_empty(), "expected extension-browser label to be persisted");
+
+    let cwd = env.workspace("ext");
+    let created = client.request("session/new", json!({"cwd": cwd})).await.unwrap();
+    let session = created["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+
+    let target_page = serve_page(
+        "<title>Background Target</title><h1>Inactive tab test</h1>\
+         <button onclick=\"document.body.insertAdjacentHTML('beforeend','<p>clicked focus=' + document.hasFocus() + '</p>')\">Trigger</button>",
+    )
+    .await;
+    let turn = native_prompt(&client, &mut events, &session, &format!("[[mock:yours:{target_page}]] open"), true).await;
+    assert_eq!(turn.end["type"], "task_completed", "{:?}", turn.events);
+    assert!(tool_results(&turn).contains("Inactive tab test"), "{}", tool_results(&turn));
+
+    // Check autoDiscardable === false on the agent tab, then open a foreground decoy tab in the
+    // same window so the agent tab becomes an inactive background tab.
+    let decoy = serve_page("<title>Decoy</title><p>user switched here</p>").await;
+    let setup = worker(
+        &chrome,
+        &format!(
+            "(async () => {{ \
+                const all = await chrome.tabs.query({{}}); \
+                const agent = all.find(t => t.url === {}); \
+                if (!agent) return {{ error: 'agent tab not found' }}; \
+                const autoDiscardable = agent.autoDiscardable; \
+                await chrome.tabs.create({{ windowId: agent.windowId, url: {}, active: true }}); \
+                const after = await chrome.tabs.get(agent.id); \
+                return {{ id: agent.id, autoDiscardable, activeAfterSwitch: after.active }}; \
+            }})()",
+            json!(target_page),
+            json!(decoy),
+        ),
+    )
+    .await;
+    assert_eq!(setup["autoDiscardable"], json!(false), "agent tab must disable Memory Saver discarding: {setup}");
+    assert_eq!(setup["activeAfterSwitch"], json!(false), "agent tab should be inactive before acting: {setup}");
+    let agent_tab_id = setup["id"].as_i64().unwrap();
+
+    // Acting and screenshotting on the inactive tab must activate it, emulate focus, and succeed.
+    let turn = native_prompt(&client, &mut events, &session, "[[mock:yours_inactive_act:y1]] act on inactive tab", true).await;
+    assert_eq!(turn.end["type"], "task_completed", "{:?}", turn.events);
+    let results = tool_results(&turn);
+    assert!(results.contains("clicked focus=true"), "expected click with focus emulation: {results}");
+    assert!(results.contains("Saved to ") && results.contains(".png"), "expected screenshot saved: {results}");
+
+    let after_act = worker(
+        &chrome,
+        &format!("(async () => (await chrome.tabs.get({agent_tab_id})).active)()"),
+    )
+    .await;
+    assert_eq!(after_act, json!(true), "agent tab should be activated by act/screenshot");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }

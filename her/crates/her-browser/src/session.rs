@@ -351,6 +351,25 @@ impl BrowserSession {
         self.browser.is_dead()
     }
 
+    /// Probes whether the underlying browser connection still responds; closes it on timeout.
+    pub async fn check_alive(&self) -> bool {
+        self.browser.check_alive(Duration::from_secs(2)).await
+    }
+
+    /// Ensures the tab is active in its window before input or screenshot commands that stall or
+    /// drop events on inactive/minimized tabs.
+    async fn activate(&self, tab: &Tab) {
+        let _ = self
+            .conn()
+            .send_with_timeout(
+                None,
+                "Target.activateTarget",
+                json!({ "targetId": tab.target_id }),
+                Duration::from_secs(3),
+            )
+            .await;
+    }
+
     /// The tabs are the user's and stay when the session lets them go.
     pub fn keeps_tabs(&self) -> bool {
         self.browser.router.keeps_tabs()
@@ -1086,6 +1105,7 @@ impl BrowserSession {
         {
             return Err(BrowserError::PageChanged { now: main_frame.url });
         }
+        self.activate(&tab).await;
         self.check_no_challenge(frame_id, &frame).await?;
 
         // Re-verify every bound element BEFORE typing a single character.
@@ -1705,6 +1725,7 @@ impl BrowserSession {
                 "Cannot act on this page during sensitive sign-in. Use browser_wait with user so the owner can continue.",
             ));
         }
+        self.activate(&tab).await;
         let frame_id = place.page().frame.clone();
         // The state to diff against: the last snapshot of this document, else one now.
         let cached = match self.last.lock().get(&(tab.id.clone(), frame_id.clone())) {
@@ -2324,6 +2345,7 @@ impl BrowserSession {
                 "Screenshots are blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
             ));
         }
+        self.activate(&tab).await;
         let s = Some(tab.session.as_str());
         let mut params = json!({ "format": "png" });
         if let Some(element) = element {
