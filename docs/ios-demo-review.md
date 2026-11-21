@@ -50,7 +50,8 @@ scenario works without networking, not real E2EE, third-party sign-in, push,
 remote desktop, or real model behavior. The app's normal onboarding core may
 still use its local loopback API; it is not a production connection.
 
-The `ios-demo` CI job retains the unit/offline logs and Release `.xcresult`.
+The `hermeshkit-tests` CI artifact retains the unit and offline logs. The
+`ios-demo-release` artifact retains the simulator logs and Release `.xcresult`.
 Preference comparison uses decoded JSON values: normal startup may reorder
 encoding without changing a setting. Depending on scene activation, normal
 signed-out onboarding may save an empty world cache. Any such cache must decode
