@@ -265,7 +265,7 @@ What signing would take, checked 2026-10-30:
 
 - `package-win.mjs` builds the app's files on any system (the page, main, Go for the target, the fuses the Mac has) and, on Windows, Setup.exe, the update's package and its feed, signed when given the release key (electron-winstaller); `windows-icons.mjs` draws the program's icon from the Mac icon's mark. `build-app.mjs` stays the Mac's.
 - The Go programs carry version resources and the icon: Task Manager, Startup apps and Defender show them.
-- `ci.yml`: `windows` runs the Go unit tests, `TestWindowsInstall` and `TestWindowsSigner`; `windows-e2e` the whole Go suite; `windows-app` the desktop spec for Windows, then makes Setup.exe and installs, opens and uninstalls it (`check-windows-setup.ps1`), updates between two builds (`check-windows-update.ps1`), and makes the arm64 Setup.exe for Arm PCs and VMs. First of all (W0) came a compile check, `GOOS=windows go vet ./...`.
+- `ci.yml` runs affected Go, signer and desktop tests on Windows. The release workflow builds Setup.exe for x64 and Arm64. On x64 it installs, opens and uninstalls the app (`check-windows-setup.ps1`) and updates between signed builds (`check-windows-update.ps1`) before uploading the release files.
 - `release.yml`: a Windows job per architecture makes Setup.exe, the package and the feed, signed with the release key; on x64 it installs, opens and uninstalls the app; it uploads them, with the icon Installed apps shows (`Hermesh.ico`). `release-check.sh` checks the feeds' signatures, versions and packages' hashes.
 
 ## 7. A trusted device on Windows
@@ -436,7 +436,7 @@ her (her/, the kernel of Her: [her-server.md](her-server.md)) runs on Windows as
 |---|---|
 | her builds with MSVC, and its own tests run: the endpoint (two clients at once, the client's process, a client gone), commands in Git for Windows' bash and in PowerShell (exit codes, UTF-8, a tree ended at its time), an MCP server's tree ended with it, session logs written, read while written and cut, the managed browser in a real Chrome over its inherited pipes, the extension host's registry entries | her-ci.yml's `windows` |
 | hermeshd starts her; Her is turned on by a signed command, talks, takes and sends files both ways, remembers across a cleared conversation, installs a skill and sends one to the Recycle Bin, signs in to ChatGPT through this computer, lists what she sent; her stops with hermeshd | ci.yml's `windows-e2e`, with her built there |
-| Setup.exe carries her: the packaged her starts and opens a PDF with the app's PDFium, agent-desktop answers with the pinned version, and installed, her is beside hermeshd with her console | ci.yml's `windows-app` (package-win.mjs, check-windows-setup.ps1) |
+| Setup.exe carries her: the packaged her starts and opens a PDF with the app's PDFium, agent-desktop answers with the pinned version, and installed, her is beside hermeshd with her console | release.yml's `windows-app` (package-win.mjs, check-windows-setup.ps1) |
 
 **Left**, each its own change:
 
