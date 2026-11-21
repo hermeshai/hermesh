@@ -113,6 +113,10 @@ import Testing
     #expect(site.askedBy == "her")
     let fillAnswer = site.fill(["f1": "dummy@example.test", "f2": "DUMMY_PASS_1"])
     #expect(fillAnswer["decision"].string == "fill" && fillAnswer["ops"].isNull && fillAnswer["fields"]["f2"].string == "DUMMY_PASS_1")
+    // Live server-side invalidation of a site_login card keeps its failure reason instead of blaming another device.
+    var liveFailed = snapshot([])
+    liveFailed.apply(["seq": 14, "ts": 4, "type": "card_changed", "card_id": "card_site", "state": "failed", "note": "The page changed before the fields could be filled."])
+    #expect(herCardShown(herCardNow(site, liveFailed, answered: nil, now: before), here: false) == .ended(outcome: "failed", tools: nil, note: "The page changed before the fields could be filled."))
     // Empty site_login fields are rejected.
     let emptySite: JSON = ["id": "card_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
                            "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "fields": []]]

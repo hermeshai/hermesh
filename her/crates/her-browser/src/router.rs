@@ -1036,14 +1036,15 @@ fn seed_frames(state: &mut TabState, tree: &Value, session: &str) {
     let id = str_of(frame, "id").to_string();
     if !id.is_empty() {
         let parent = frame.get("parentId").and_then(Value::as_str).map(str::to_string);
+        let url = format!("{}{}", str_of(frame, "url"), str_of(frame, "urlFragment"));
         if parent.is_none() && state.main_frame.is_none() {
             state.main_frame = Some(id.clone());
-            state.url = str_of(frame, "url").to_string();
+            state.url = url.clone();
         }
         state.frames.entry(id).or_insert_with(|| Frame {
             parent,
             loader: str_of(frame, "loaderId").to_string(),
-            url: str_of(frame, "url").to_string(),
+            url,
             origin: str_of(frame, "securityOrigin").to_string(),
             session: session.to_string(),
         });

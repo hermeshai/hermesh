@@ -282,6 +282,9 @@ pub struct BrowserSession {
     pending_note: Mutex<Option<String>>,
     /// Sensitive documents by tab and loader, including filled documents in browser history.
     sensitive: Mutex<HashMap<String, HashMap<String, SensitiveTab>>>,
+    /// Filled tabs adopted on reconnect before their `main_frame` was seeded (`tab.id -> origin`);
+    /// fail-closed until `main_frame` arrives and promotes to `sensitive` or proves a new origin.
+    filled_unseeded: Mutex<HashMap<String, String>>,
 }
 
 impl BrowserSession {
@@ -309,6 +312,7 @@ impl BrowserSession {
             worlds: Mutex::new(HashMap::new()),
             pending_note,
             sensitive: Mutex::new(HashMap::new()),
+            filled_unseeded: Mutex::new(HashMap::new()),
         }
     }
 
@@ -349,9 +353,35 @@ impl BrowserSession {
         self.tabs().iter().any(|tab| self.sensitive_active(tab).is_some())
     }
 
+    /// True while the open tab matching `target_id` still has an active `site_login` sensitive guard.
+    pub fn has_active_sensitive_target(&self, target_id: &str) -> bool {
+        self.tabs()
+            .iter()
+            .find(|tab| tab.target_id == target_id)
+            .is_some_and(|tab| self.sensitive_active(tab).is_some())
+    }
+
+    /// True while the open tab matching `target_id` has a filled-unsubmitted `site_login` guard.
+    pub fn has_filled_target(&self, target_id: &str) -> bool {
+        let Some(tab) = self.tabs().into_iter().find(|t| t.target_id == target_id) else {
+            return false;
+        };
+        if self.sensitive_active(&tab).is_none() {
+            return false;
+        }
+        if self.filled_unseeded.lock().contains_key(&tab.id) {
+            return true;
+        }
+        let sensitive = self.sensitive.lock();
+        sensitive
+            .get(&tab.id)
+            .is_some_and(|docs| docs.values().any(|entry| entry.filled))
+    }
+
     /// Re-installs a filled-document observation guard (for example if an extension session
     /// reconnects while a previously filled login page is still loaded).
     pub fn mark_filled_document(&self, tab: &str, frame: &str, loader: &str, origin: &str) {
+        self.filled_unseeded.lock().remove(tab);
         let mut sensitive = self.sensitive.lock();
         let entry = sensitive
             .entry(tab.to_string())
@@ -367,6 +397,15 @@ impl BrowserSession {
             });
         entry.filled = true;
         entry.discard_logs = true;
+    }
+
+    /// Installs a fail-closed tab-level filled guard when a reconnect adopts a filled tab before
+    /// its `main_frame` has been seeded; promotes to a document guard once `main_frame` arrives
+    /// on the same origin, or clears once a different origin loads or the tab closes.
+    pub fn mark_filled_unseeded(&self, tab: &str, origin: &str) {
+        self.filled_unseeded
+            .lock()
+            .insert(tab.to_string(), origin.to_string());
     }
 
     pub fn tab_handle(&self, id: &str) -> Option<Arc<Tab>> {
@@ -649,10 +688,47 @@ impl BrowserSession {
 
     fn sensitive_active(&self, tab: &Tab) -> Option<HashSet<i64>> {
         let mut sensitive = self.sensitive.lock();
+        let mut unseeded = self.filled_unseeded.lock();
         if tab.is_closed() {
             sensitive.remove(&tab.id);
+            unseeded.remove(&tab.id);
             return None;
         }
+        if let Some(origin) = unseeded.get(&tab.id).cloned() {
+            let mut state = tab.state.lock();
+            let seeded = state.main_frame.as_ref().and_then(|fid| {
+                state.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
+            });
+            match seeded {
+                None => {
+                    return Some(HashSet::new());
+                }
+                Some((frame_id, loader, current_url)) if url_origin(&current_url) == origin => {
+                    unseeded.remove(&tab.id);
+                    let entry = sensitive
+                        .entry(tab.id.clone())
+                        .or_default()
+                        .entry(loader)
+                        .or_insert_with(|| SensitiveTab {
+                            frame: frame_id,
+                            origin,
+                            backends: HashSet::new(),
+                            pending_cards: HashSet::new(),
+                            filled: true,
+                            discard_logs: true,
+                        });
+                    entry.filled = true;
+                    entry.discard_logs = true;
+                    return Some(entry.backends.clone());
+                }
+                Some(_) => {
+                    unseeded.remove(&tab.id);
+                    state.console.clear();
+                    state.notes.clear();
+                }
+            }
+        }
+        drop(unseeded);
         let documents = sensitive.get_mut(&tab.id)?;
         let mut state = tab.state.lock();
         let mut active = None;
@@ -1110,15 +1186,28 @@ impl BrowserSession {
     // ---- Snapshots ----
 
     pub async fn snapshot(&self, request: &SnapshotRequest) -> Result<Report, BrowserError> {
-        let tab = self.resolve_tab(request.tab.as_deref())?;
+        let requested_tab = self.resolve_tab(request.tab.as_deref())?;
+        let (tab, frame_override) = match &request.frame {
+            Some(reference) => {
+                let (iframe_tab, frame_id, frame) = self.iframe_content(reference).await?;
+                if request.tab.is_some() && iframe_tab.id != requested_tab.id {
+                    return Err(BrowserError::failed(format!(
+                        "{reference} is in tab {}, not tab {}",
+                        iframe_tab.id, requested_tab.id
+                    )));
+                }
+                (iframe_tab, Some((frame_id, frame)))
+            }
+            None => (requested_tab.clone(), None),
+        };
         let _busy = tab.busy.lock().await;
-        if self.sensitive_active(&tab).is_some() {
+        if self.sensitive_active(&tab).is_some() || self.sensitive_active(&requested_tab).is_some() {
             return Err(BrowserError::failed(
                 "Page observation is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
             ));
         }
-        let (frame_id, frame) = match &request.frame {
-            Some(reference) => self.iframe_content(reference).await?,
+        let (frame_id, frame) = match frame_override {
+            Some(found) => found,
             None => self.main_frame(&tab)?,
         };
         let origin = url_origin(&frame.url);
@@ -1181,8 +1270,8 @@ impl BrowserSession {
         Ok((id, frame))
     }
 
-    /// The frame inside the iframe that `reference` names.
-    async fn iframe_content(&self, reference: &str) -> Result<(String, Frame), BrowserError> {
+    /// The frame inside the iframe that `reference` names, and the tab that owns it.
+    async fn iframe_content(&self, reference: &str) -> Result<(Arc<Tab>, String, Frame), BrowserError> {
         let element = self.element(reference).await?;
         let tab = self.tab(&element.page.tab)?;
         let session = tab
@@ -1206,7 +1295,7 @@ impl BrowserSession {
             .await;
         let frame = tab.state.lock().frames.get(&child).cloned();
         match (found, frame) {
-            (true, Some(frame)) => Ok((child, frame)),
+            (true, Some(frame)) => Ok((tab, child, frame)),
             _ => Err(BrowserError::failed(format!("the iframe {reference} has no document yet"))),
         }
     }
@@ -2590,18 +2679,33 @@ const INSPECT_LOGIN_INPUT_SCRIPT: &str = r#"function(){
   if (!this || this.tagName !== 'INPUT') return {error: 'it is not an <input> element'};
   if (this.disabled) return {error: 'it is disabled'};
   if (this.readOnly) return {error: 'it is read-only'};
-  if (this.form && this.form.hasAttribute('action')) {
+  const checkAction = (raw) => {
+    try {
+      const resolved = new URL(raw, document.baseURI);
+      const loopback = resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1' || resolved.hostname === '[::1]';
+      const schemeOk = resolved.protocol === 'https:' || (location.protocol === 'http:' && resolved.protocol === 'http:' && loopback);
+      if (!schemeOk) return 'form action is not HTTPS';
+      if (resolved.origin !== location.origin) return 'form action points to a different origin';
+      return null;
+    } catch (_) {
+      return 'form action is invalid';
+    }
+  };
+  if (this.form) {
     const rawAction = (this.form.getAttribute('action') || '').trim();
-    if (rawAction) {
-      try {
-        const resolved = new URL(rawAction, location.href);
-        const loopback = resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1' || resolved.hostname === '[::1]';
-        if (!(resolved.protocol === 'https:' || (resolved.protocol === 'http:' && loopback))) {
-          return {error: 'form action is not HTTPS'};
-        }
-      } catch (_) {
-        return {error: 'form action is invalid'};
+    const formErr = checkAction(rawAction || document.baseURI);
+    if (formErr) return {error: formErr};
+    const controls = [...this.form.querySelectorAll('[formaction]')];
+    const formId = (this.form.getAttribute('id') || '').trim();
+    if (formId) {
+      for (const el of document.querySelectorAll('[form][formaction]')) {
+        if (el.getAttribute('form') === formId) controls.push(el);
       }
+    }
+    for (const ctrl of controls) {
+      const fa = (ctrl.getAttribute('formaction') || '').trim();
+      const ctrlErr = checkAction(fa || document.baseURI);
+      if (ctrlErr) return {error: ctrlErr};
     }
   }
   const style = getComputedStyle(this);

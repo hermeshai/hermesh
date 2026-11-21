@@ -159,6 +159,7 @@ test("what the card shows: its form, the sign-in on the device that answered, or
   assert.deepEqual(cardShown(live("declined"), true), { kind: "ended", outcome: "declined", note: undefined });
   assert.deepEqual(cardShown(live("declined"), false), { kind: "ended", outcome: "elsewhere" });
   assert.deepEqual(cardShown(read("declined"), false), { kind: "ended", outcome: "declined", note: undefined }, "read later, the outcome itself");
+  assert.deepEqual(cardShown(live("failed", "The page changed before the fields could be filled."), false), { kind: "ended", outcome: "failed", note: "The page changed before the fields could be filled." }, "live server invalidation keeps its reason instead of blaming another device");
   assert.deepEqual(cardShown(read("failed", "no tools"), false), { kind: "ended", outcome: "failed", note: "no tools" });
   assert.deepEqual(cardShown(read("expired"), false), { kind: "ended", outcome: "expired" });
   assert.deepEqual(cardShown(live("replaced"), true), { kind: "ended", outcome: "replaced" });

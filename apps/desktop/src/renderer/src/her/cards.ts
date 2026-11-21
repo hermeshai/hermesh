@@ -136,9 +136,11 @@ export function cardShown(s: CardNow, here: boolean): CardShown {
     case "done":
       return { kind: "ended", outcome: "done", tools: toolCount(s.note) };
     case "declined":
-    case "failed":
       // Ended while this device looked on, by another's answer.
-      return s.live && !here ? { kind: "ended", outcome: "elsewhere" } : { kind: "ended", outcome: s.state, note: s.note };
+      return s.live && !here ? { kind: "ended", outcome: "elsewhere" } : { kind: "ended", outcome: "declined", note: s.note };
+    case "failed":
+      // A failure may come from server invalidation (e.g. bound page navigated or browser disconnected) without another device answering.
+      return { kind: "ended", outcome: "failed", note: s.note };
     default:
       return { kind: "ended", outcome: s.state === "replaced" ? "replaced" : "expired" };
   }
