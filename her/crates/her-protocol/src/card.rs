@@ -118,9 +118,25 @@ pub struct CardField {
     pub secret: bool,
 }
 
-/// A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser.
+/// A `site_login` card's mode.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SiteLoginMode {
+    /// Isolated built-in browser: fill 1–3 DOM-verified fields once without auto-submitting.
+    #[default]
+    Fill,
+    /// Local Chrome isolated user takeover: owner confirms actual HTTPS origin and target tab,
+    /// then signs in natively in Chrome while model access and debugger are paused/detached.
+    ChromeTakeover,
+}
+
+/// A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser,
+/// or from a verified local Chrome tab for isolated user takeover.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SiteLoginBody {
+    /// How the sign-in card works: `fill` (isolated built-in browser) or `chrome_takeover` (local Chrome).
+    #[serde(default)]
+    pub mode: SiteLoginMode,
     /// Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures).
     pub origin: String,
     /// The origin's host (with non-default port), shown large on the card.
@@ -128,7 +144,14 @@ pub struct SiteLoginBody {
     /// The page's title, sanitized and clipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// Verified login fields on the page (never authored by the model).
+    /// Verified target tab id (e.g. `y1`) for `chrome_takeover`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
+    /// Verified local Chrome browser label (e.g. `Google Chrome 141`) when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    /// Verified login fields on the page (never authored by the model; empty for `chrome_takeover`).
+    #[serde(default)]
     pub fields: Vec<SiteLoginField>,
 }
 
@@ -204,8 +227,13 @@ pub struct CardsAnswerParams {
 pub enum CardAnswer {
     /// `ops` are the card's, each `"<value:ID>"` replaced by what the owner typed.
     Approve { ops: Vec<CardOp> },
-    /// For `site_login`: values keyed by field id (`f1`, `f2`, …); carries no `ops`.
+    /// For `site_login` (`fill` mode): values keyed by field id (`f1`, `f2`, …); carries no `ops`.
     Fill { fields: HashMap<String, String> },
+    /// For `site_login` (`chrome_takeover` mode): owner confirmed the verified HTTPS origin and
+    /// target tab and wants to bring that Chrome tab to the front to sign in natively.
+    TakeoverStart,
+    /// For `site_login` (`chrome_takeover` mode): owner finished signing in natively in Chrome.
+    TakeoverDone,
     Decline,
 }
 
@@ -215,6 +243,8 @@ impl std::fmt::Debug for CardAnswer {
         match self {
             CardAnswer::Approve { ops } => f.debug_struct("Approve").field("ops", &ops.len()).finish_non_exhaustive(),
             CardAnswer::Fill { fields } => f.debug_struct("Fill").field("fields", &fields.len()).finish_non_exhaustive(),
+            CardAnswer::TakeoverStart => f.write_str("TakeoverStart"),
+            CardAnswer::TakeoverDone => f.write_str("TakeoverDone"),
             CardAnswer::Decline => f.write_str("Decline"),
         }
     }

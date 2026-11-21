@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { RpcClient, SessionView } from "@hermesh/her-client";
 import { Icon } from "../icons";
 import { errorText, useNow, useStore } from "../store";
-import { cardNow, cardShown, connectBody, filled, isKeyRotate, siteLoginBody, type Card, type CardAnswer, type CardStatus, type ConnectBody, type SiteLoginBody } from "./cards";
+import { cardNow, cardShown, connectBody, filled, isChromeTakeover, isKeyRotate, siteLoginBody, type Card, type CardAnswer, type CardStatus, type ConnectBody, type SiteLoginBody } from "./cards";
 import { useHer } from "./context";
 import { SecretInput } from "./ModelOnboarding";
 
@@ -87,12 +87,15 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
 
   if (shown.kind === "ended") {
     if (siteLogin) {
+      const takeover = isChromeTakeover(siteLogin);
       const line =
         shown.outcome === "done"
-          ? t("card.siteLoginDone", { host: siteLogin.host })
+          ? t(takeover ? "card.chromeTakeoverDone" : "card.siteLoginDone", { host: siteLogin.host })
           : shown.outcome === "failed"
-            ? shown.note || t("card.siteLoginFailed", { host: siteLogin.host })
-            : t(`card.${shown.outcome}`);
+            ? shown.note || t(takeover ? "card.chromeTakeoverFailed" : "card.siteLoginFailed", { host: siteLogin.host })
+            : shown.outcome === "declined" && takeover
+              ? t("card.chromeTakeoverDeclined")
+              : t(`card.${shown.outcome}`);
       return (
         <div className={`sc-end ${shown.outcome}`} role="status" title={shown.note}>
           <Icon name={shown.outcome === "done" ? "check" : "lock"} className="sm" />
@@ -124,6 +127,21 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
   }
 
   if (siteLogin) {
+    if (isChromeTakeover(siteLogin)) {
+      return (
+        <ChromeTakeoverCard
+          card={card}
+          body={siteLogin}
+          machineName={machineName}
+          shown={shown}
+          online={online}
+          sending={sending}
+          onStart={() => void answer({ decision: "takeover_start" })}
+          onDone={() => void answer({ decision: "takeover_done" })}
+          onDecline={() => void answer({ decision: "decline" })}
+        />
+      );
+    }
     return (
       <SiteLoginForm
         card={card}
@@ -377,6 +395,101 @@ function SiteLoginForm({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ChromeTakeoverCard({
+  card,
+  body,
+  machineName,
+  shown,
+  online,
+  sending,
+  onStart,
+  onDone,
+  onDecline,
+}: {
+  card: Card;
+  body: SiteLoginBody;
+  machineName: string;
+  shown: Extract<ReturnType<typeof cardShown>, { kind: "form" | "signIn" }>;
+  online: boolean;
+  sending: boolean;
+  onStart: () => void;
+  onDone: () => void;
+  onDecline: () => void;
+}) {
+  const { t } = useTranslation("her");
+  const busy = sending || (shown.kind === "form" && shown.busy);
+  const tabLabel = [
+    body.tab ? t("card.chromeTargetTab", { tab: body.tab }) : "",
+    body.title ?? "",
+    body.browser ?? "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="scard" role="group" aria-label={t("card.chromeTakeover")}>
+      <div className="sc-h">
+        <Icon name="lock" />
+        <span>{t("card.chromeTakeover")}</span>
+        <span>·</span>
+        <span className="sc-env">{machineName}</span>
+        {card.asked_by === "her" && (
+          <span className="sc-who">
+            <Icon name="alert" />
+            {t("card.notAsked")}
+          </span>
+        )}
+      </div>
+      <div className="sc-t">
+        <span>{t("card.chromeTakeoverTitle")}</span>
+        <b className="sel-text">{body.origin}</b>
+        {tabLabel && <span className="sc-url sel-text">{tabLabel}</span>}
+      </div>
+      <p className="sc-what">{t("card.chromeTakeoverWhat", { machine: machineName })}</p>
+      {!online && (
+        <p className="sc-note" role="status">
+          {t("card.offlineNoQueue", { name: machineName })}
+        </p>
+      )}
+      {shown.kind === "signIn" ? (
+        <>
+          <div className="sc-wait" role="status">
+            <span className="mini-spin" />
+            {t("card.chromeTakeoverWaiting", { origin: body.origin, tab: body.tab ?? "" })}
+          </div>
+          <div className="sc-f">
+            <button type="button" className="btn" disabled={busy || !online} onClick={onDecline}>
+              {t("card.cancel")}
+            </button>
+            <button type="button" className="btn" disabled={busy || !online} onClick={onStart}>
+              {t("card.chromeTakeoverReopen")}
+            </button>
+            <button type="button" className="btn primary" disabled={busy || !online} onClick={onDone}>
+              {t("card.chromeTakeoverDoneButton")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {shown.note && (
+            <p className="sc-note sel-text" role="alert">
+              {shown.note}
+            </p>
+          )}
+          <div className="sc-f">
+            <button type="button" className="btn" disabled={busy || !online} onClick={onDecline}>
+              {t("card.chromeTakeoverCancelButton")}
+            </button>
+            <button type="button" className="btn primary" disabled={busy || !online} onClick={onStart}>
+              {t("card.chromeTakeoverOpenButton")}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -29,12 +29,32 @@ pub(crate) const SITE_LOGIN_LIFE_SECS: i64 = 300;
 
 /// Server-only target binding for a `site_login` card (never sent to the model, never holds values).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SiteLoginBinding {
+pub enum SiteLoginBinding {
+    Fill(SiteLoginFillBinding),
+    ChromeTakeover(ChromeTakeoverBinding),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SiteLoginFillBinding {
     pub tab: String,
     pub frame: String,
     pub loader: String,
     pub origin: String,
     pub fields: Vec<SiteLoginFieldBinding>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChromeTakeoverBinding {
+    /// Session tab id (e.g. `y1`).
+    pub tab: String,
+    /// Extension target id (e.g. `T42`).
+    pub target_id: String,
+    /// Verified top-level origin (`https://...` or loopback fixture).
+    pub origin: String,
+    /// Exact URL at the moment the card was prepared.
+    pub url: String,
+    /// Bound extension host id in `BrowserPool` / `Server`.
+    pub extension_host: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,7 +66,7 @@ pub struct SiteLoginFieldBinding {
     pub secret: bool,
 }
 
-type EndHook = Arc<dyn Fn(&str) + Send + Sync>;
+type EndHook = Arc<dyn Fn(&str, CardState) + Send + Sync>;
 
 /// A session's cards.
 pub struct Cards {
@@ -104,7 +124,7 @@ impl Cards {
         };
         for (id, hook) in dropped {
             if let Some(hook) = hook {
-                hook(&id);
+                hook(&id, CardState::Expired);
             }
         }
     }
@@ -173,6 +193,26 @@ impl Cards {
         self.kept.lock().iter().find(|kept| kept.card.id == id && kept.state.is_some()).and_then(|kept| kept.binding.clone())
     }
 
+    /// Active (`open` or `sign_in`) local Chrome takeover cards for real-time invalidation.
+    pub fn active_chrome_takeovers(&self) -> Vec<(String, CardState, ChromeTakeoverBinding)> {
+        self.kept
+            .lock()
+            .iter()
+            .filter_map(|kept| {
+                let state = kept.state?;
+                if !matches!(state, CardState::Open | CardState::SignIn) {
+                    return None;
+                }
+                match &kept.binding {
+                    Some(SiteLoginBinding::ChromeTakeover(binding)) => {
+                        Some((kept.card.id.clone(), state, binding.clone()))
+                    }
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
     /// Moves a shown card from one of `from` to `to`, with her's words, and returns the state it
     /// left. `Err` holds where it stands when that is none of `from`, or `None` for no such card.
     /// An end is told to the model, the note with it.
@@ -197,15 +237,14 @@ impl Cards {
                     note: note.unwrap_or_else(|| to.as_str().to_string()),
                 };
                 let _ = self.internal.send(Box::new(Internal::Card(Box::new(entry))));
-                // Release pending sensitive guard if the card ended without filling.
-                if to != CardState::Done { card.on_end.take() } else { None }
+                card.on_end.take()
             } else {
                 None
             };
             (left, hook)
         };
         if let Some(hook) = hook {
-            hook(id);
+            hook(id, to);
         }
         Ok(left)
     }

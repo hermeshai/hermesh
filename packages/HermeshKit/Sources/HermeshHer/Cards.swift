@@ -32,10 +32,15 @@ public struct HerCard: Equatable, Sendable {
     }
 
     public struct SiteLogin: Equatable, Sendable {
+        public var mode: String
         public var origin: String
         public var host: String
         public var title: String?
+        public var tab: String?
+        public var browser: String?
         public var fields: [SiteLoginField]
+
+        public var isChromeTakeover: Bool { mode == "chrome_takeover" }
     }
 
     public struct Field: Equatable, Sendable {
@@ -62,13 +67,20 @@ public struct HerCard: Equatable, Sendable {
             connect = Connect(name: name, url: b["url"].string ?? "", host: host, reconnect: b["reconnect"].bool ?? false,
                               signIn: b["sign_in"].string ?? "none",
                               fields: fields.compactMap { f in f["id"].string.map { Field(id: $0, label: f["label"].string ?? $0) } })
-        } else if kind == "site_login", let origin = b["origin"].string, let host = b["host"].string, let fields = b["fields"].array, !fields.isEmpty {
-            let parsed = fields.compactMap { f -> SiteLoginField? in
-                guard let fid = f["id"].string else { return nil }
-                return SiteLoginField(id: fid, label: f["label"].string ?? fid, kind: f["kind"].string ?? "password", secret: f["secret"].bool ?? true)
-            }
-            if !parsed.isEmpty {
-                siteLogin = SiteLogin(origin: origin, host: host, title: b["title"].string, fields: parsed)
+        } else if kind == "site_login", let origin = b["origin"].string, let host = b["host"].string {
+            let mode = b["mode"].string ?? "fill"
+            if mode == "chrome_takeover" {
+                if let tab = b["tab"].string, !tab.isEmpty {
+                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, tab: tab, browser: b["browser"].string, fields: [])
+                }
+            } else if let fields = b["fields"].array, !fields.isEmpty {
+                let parsed = fields.compactMap { f -> SiteLoginField? in
+                    guard let fid = f["id"].string else { return nil }
+                    return SiteLoginField(id: fid, label: f["label"].string ?? fid, kind: f["kind"].string ?? "password", secret: f["secret"].bool ?? true)
+                }
+                if !parsed.isEmpty {
+                    siteLogin = SiteLogin(mode: mode, origin: origin, host: host, title: b["title"].string, tab: b["tab"].string, browser: b["browser"].string, fields: parsed)
+                }
             }
         }
     }
@@ -83,6 +95,8 @@ public struct HerCard: Equatable, Sendable {
         ["decision": "fill", "fields": .object(values.mapValues(JSON.string))]
     }
 
+    public static let takeoverStart: JSON = ["decision": "takeover_start"]
+    public static let takeoverDone: JSON = ["decision": "takeover_done"]
     public static let decline: JSON = ["decision": "decline"]
 }
 

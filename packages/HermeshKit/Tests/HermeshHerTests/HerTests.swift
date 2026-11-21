@@ -111,10 +111,20 @@ import Testing
     #expect(site.askedBy == "her")
     let fillAnswer = site.fill(["f1": "dummy@example.test", "f2": "DUMMY_PASS_1"])
     #expect(fillAnswer["decision"].string == "fill" && fillAnswer["ops"].isNull && fillAnswer["fields"]["f2"].string == "DUMMY_PASS_1")
-    // Empty site_login fields are rejected.
+    // Empty site_login fields are rejected for fill mode.
     let emptySite: JSON = ["id": "card_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
                            "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "fields": []]]
     #expect(HerCard(emptySite)?.siteLogin == nil)
+
+    // Local Chrome isolated takeover card: verified HTTPS origin + target tab, zero credential fields.
+    let chromeRaw: JSON = ["id": "card_chrome", "kind": "site_login", "title": "Sign in to example.test in Chrome", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                           "body": ["mode": "chrome_takeover", "origin": "https://example.test", "host": "example.test", "title": "Fixture Sign In", "tab": "y1", "browser": "Google Chrome 141", "fields": []]]
+    let chrome = try #require(HerCard(chromeRaw))
+    #expect(chrome.siteLogin?.isChromeTakeover == true && chrome.siteLogin?.tab == "y1" && chrome.siteLogin?.fields.isEmpty == true)
+    #expect(HerCard.takeoverStart["decision"].string == "takeover_start" && HerCard.takeoverDone["decision"].string == "takeover_done")
+    let badChrome: JSON = ["id": "card_chrome_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                           "body": ["mode": "chrome_takeover", "origin": "https://example.test", "host": "example.test", "fields": []]]
+    #expect(HerCard(badChrome)?.siteLogin == nil)
 }
 
 @Test func theOnboardingConnectsAModelInTheConversation() {

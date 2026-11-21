@@ -139,11 +139,133 @@ impl Server {
     pub(crate) fn extension_gone(&self, host: u64) {
         self.0.extensions.lock().retain(|entry| entry.host != host);
         self.count_session_tabs();
+        self.invalidate_chrome_takeovers_for_host(
+            host,
+            "Chrome extension disconnected. Sign-in card invalidated; fall back to manual login.",
+        );
     }
 
     /// How many hosts of extensions are connected.
     pub(crate) fn extension_hosts(&self) -> usize {
         self.0.extensions.lock().len()
+    }
+
+    /// Verifies the bound Chrome extension host and target tab for an active takeover card.
+    pub(crate) fn chrome_takeover_tab(
+        &self,
+        host: u64,
+        session_id: &str,
+        target_id: &str,
+    ) -> Result<(ConnHandle, YoursTab), &'static str> {
+        if self.0.browser_pool.is_revoked(session_id) {
+            return Err("Chrome control was revoked. Sign-in card invalidated; fall back to manual login.");
+        }
+        if self.0.browser_pool.extension_in_use() != Some(host) {
+            return Err("Chrome extension disconnected or changed. Sign-in card invalidated; fall back to manual login.");
+        }
+        let entries = self.0.extensions.lock();
+        let Some(entry) = entries.iter().find(|e| e.host == host) else {
+            return Err("Chrome extension disconnected. Sign-in card invalidated; fall back to manual login.");
+        };
+        if entry.status.problem.is_some() {
+            return Err("Chrome extension needs an update before sign-in. Sign-in card invalidated; fall back to manual login.");
+        }
+        let Some(tab) = entry
+            .tabs
+            .get(session_id)
+            .and_then(|tabs| tabs.iter().find(|t| t.target_id == target_id))
+            .cloned()
+        else {
+            return Err("The target Chrome tab is no longer available. Sign-in card invalidated; fall back to manual login.");
+        };
+        Ok((entry.conn.clone(), tab))
+    }
+
+    /// Brings the exact verified target tab on the bound extension host to the front.
+    pub(crate) fn reveal_bound_tab(&self, conn: &ConnHandle, session_id: &str, target_id: &str) {
+        send_control(
+            conn,
+            &BrowserControl::Reveal {
+                session_id: Some(session_id.to_string()),
+                target_id: Some(target_id.to_string()),
+            },
+        );
+    }
+
+    fn invalidate_chrome_takeovers_for_host(&self, host: u64, note: &str) {
+        for hub in self.hubs() {
+            let Some(cards) = &hub.shared.cards else { continue };
+            for (card_id, _, binding) in cards.active_chrome_takeovers() {
+                if binding.extension_host == host {
+                    let _ = cards.set(
+                        &card_id,
+                        &[her_protocol::card::CardState::Open, her_protocol::card::CardState::SignIn],
+                        her_protocol::card::CardState::Failed,
+                        Some(note.to_string()),
+                    );
+                }
+            }
+        }
+    }
+
+    fn invalidate_chrome_takeovers_for_sessions(&self, sessions: &[String], note: &str) {
+        for hub in self.hubs() {
+            if !sessions.iter().any(|id| id == hub.shared.session.id.as_ref()) {
+                continue;
+            }
+            let Some(cards) = &hub.shared.cards else { continue };
+            for (card_id, _, _) in cards.active_chrome_takeovers() {
+                let _ = cards.set(
+                    &card_id,
+                    &[her_protocol::card::CardState::Open, her_protocol::card::CardState::SignIn],
+                    her_protocol::card::CardState::Failed,
+                    Some(note.to_string()),
+                );
+            }
+        }
+    }
+
+    fn reconcile_chrome_takeovers_on_tabs(&self, host: u64, sessions: &BTreeMap<String, Vec<YoursTab>>) {
+        for hub in self.hubs() {
+            let Some(cards) = &hub.shared.cards else { continue };
+            let session_id = hub.shared.session.id.as_ref();
+            for (card_id, state, binding) in cards.active_chrome_takeovers() {
+                if binding.extension_host != host {
+                    continue;
+                }
+                let tab = sessions
+                    .get(session_id)
+                    .and_then(|list| list.iter().find(|t| t.target_id == binding.target_id));
+                let invalidation = match tab {
+                    None => Some("The target Chrome tab is no longer available. Sign-in card invalidated; fall back to manual login."),
+                    Some(tab) if tab.attached => {
+                        Some("Chrome isolation could not be maintained. Sign-in card invalidated; fall back to manual login.")
+                    }
+                    Some(tab) if state == her_protocol::card::CardState::Open => {
+                        let same_page = tab.url == binding.url
+                            && her_browser::session::url_origin(&tab.url) == binding.origin
+                            && her_browser::session::is_allowed_login_url(&tab.url);
+                        (!same_page).then_some(
+                            "The Chrome page or target changed before sign-in started. Sign-in card invalidated; fall back to manual login.",
+                        )
+                    }
+                    Some(tab) if state == her_protocol::card::CardState::SignIn => {
+                        (!her_browser::session::is_allowed_login_url(&tab.url)).then_some(
+                            "The Chrome tab left a verified HTTPS origin. Sign-in card invalidated; fall back to manual login.",
+                        )
+                    }
+                    _ => None,
+                };
+                if let Some(reason) = invalidation {
+                    let _ = cards.set(
+                        &card_id,
+                        &[her_protocol::card::CardState::Open, her_protocol::card::CardState::SignIn],
+                        her_protocol::card::CardState::Failed,
+                        Some(reason.to_string()),
+                    );
+                }
+            }
+        }
     }
 
     fn count_session_tabs(&self) {
@@ -161,14 +283,19 @@ impl Server {
         match message {
             ExtensionMessage::Tabs { sessions } => {
                 if let Some(entry) = self.0.extensions.lock().iter_mut().find(|e| e.host == host) {
-                    entry.tabs = sessions;
+                    entry.tabs = sessions.clone();
                 }
+                self.reconcile_chrome_takeovers_on_tabs(host, &sessions);
                 self.count_session_tabs();
                 self.browser_changed();
                 self.tell_extensions();
             }
             ExtensionMessage::Revoked { sessions } => {
                 self.0.browser_pool.revoke(&sessions);
+                self.invalidate_chrome_takeovers_for_sessions(
+                    &sessions,
+                    "Chrome control was revoked. Sign-in card invalidated; fall back to manual login.",
+                );
                 self.browser_changed();
             }
             ExtensionMessage::OpenSession { session_id } => self.browser_request(&BrowserRequest::OpenSession { session_id }),

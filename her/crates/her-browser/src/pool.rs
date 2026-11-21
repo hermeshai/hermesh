@@ -109,6 +109,7 @@ pub enum ExtensionWait {
 struct ExtensionLink {
     host: Arc<dyn EmbeddedHost>,
     instance: Option<String>,
+    browser: Option<String>,
 }
 
 const NO_HOST: &str = "No desktop app is connected to show the embedded browser. Open Hermesh, \
@@ -216,7 +217,11 @@ impl BrowserPool {
     /// agent stays with the one it uses, so a later one never moves it to another account
     /// (§8.4.7).
     pub fn add_extension(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>) {
-        self.extensions.lock().push(ExtensionLink { host, instance });
+        self.add_extension_with_browser(host, instance, None);
+    }
+
+    pub fn add_extension_with_browser(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>, browser: Option<String>) {
+        self.extensions.lock().push(ExtensionLink { host, instance, browser });
         if !self.ever_connected.swap(true, Ordering::Relaxed) {
             let _ = std::fs::create_dir_all(&self.root);
             if let Err(err) = std::fs::write(self.root.join(EXTENSION_SEEN_FILE), "") {
@@ -232,12 +237,17 @@ impl BrowserPool {
 
     /// The extension the agent uses: the one chosen, else the oldest connected. The one chosen
     /// being away moves nobody to another: the user's accounts differ.
-    fn picked(&self) -> Option<Arc<dyn EmbeddedHost>> {
+    fn picked_link(&self) -> Option<(Arc<dyn EmbeddedHost>, Option<String>)> {
         let links = self.extensions.lock();
-        match &*self.chosen.lock() {
-            Some(chosen) => links.iter().find(|l| l.instance.as_ref() == Some(chosen)).map(|l| l.host.clone()),
-            None => links.first().map(|l| l.host.clone()),
-        }
+        let link = match &*self.chosen.lock() {
+            Some(chosen) => links.iter().find(|l| l.instance.as_ref() == Some(chosen)),
+            None => links.first(),
+        }?;
+        Some((link.host.clone(), link.browser.clone()))
+    }
+
+    fn picked(&self) -> Option<Arc<dyn EmbeddedHost>> {
+        self.picked_link().map(|(host, _)| host)
     }
 
     /// An extension the agent can use is connected.
@@ -248,6 +258,11 @@ impl BrowserPool {
     /// Which host the agent uses.
     pub fn extension_in_use(&self) -> Option<u64> {
         self.picked().map(|host| host.id())
+    }
+
+    /// Browser label of the extension in use (e.g. `Google Chrome 141`), when known.
+    pub fn extension_browser(&self) -> Option<String> {
+        self.picked_link().and_then(|(_, browser)| browser)
     }
 
     /// The extension the user chose, from now on and after a restart.

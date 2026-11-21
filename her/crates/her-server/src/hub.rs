@@ -243,6 +243,8 @@ pub struct HubShared {
     pub handoff: parking_lot::Mutex<Option<Handoff>>,
     /// How the user's latest message starts: the task its tab group in their browser is named for.
     pub task: parking_lot::Mutex<Option<String>>,
+    /// The session's live secure cards (for real-time Chrome takeover invalidation).
+    pub cards: Option<Arc<her_core::cards::Cards>>,
     done: watch::Receiver<bool>,
 }
 
@@ -402,6 +404,7 @@ pub(crate) fn spawn(
         mcp: parking_lot::Mutex::new(std::collections::BTreeMap::new()),
         handoff: parking_lot::Mutex::new(None),
         task: parking_lot::Mutex::new(mirror.last_user_text().map(|text| preview(&text))),
+        cards: kernel.session_cards(),
         done: done_rx,
     });
     let initial_seq = mirror.last_seq();

@@ -18,8 +18,18 @@ export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_c
 
 export type SiteLoginField = { id: string; label: string; kind: SiteLoginFieldKind; secret: boolean };
 
-/** A `site_login` card's: verified login fields inspected from an isolated browser page. */
-export type SiteLoginBody = { origin: string; host: string; title?: string; fields: SiteLoginField[] };
+export type SiteLoginMode = "fill" | "chrome_takeover";
+
+/** A `site_login` card's: verified login fields in the isolated browser, or a verified local Chrome takeover target. */
+export type SiteLoginBody = {
+  mode?: SiteLoginMode;
+  origin: string;
+  host: string;
+  title?: string;
+  tab?: string;
+  browser?: string;
+  fields: SiteLoginField[];
+};
 
 export type Card = {
   id: string;
@@ -39,6 +49,8 @@ export type CardState = "open" | "working" | "sign_in" | "retry" | "done" | "dec
 export type CardAnswer =
   | { decision: "approve"; ops: CardOp[] }
   | { decision: "fill"; fields: Record<string, string> }
+  | { decision: "takeover_start" }
+  | { decision: "takeover_done" }
   | { decision: "decline" };
 
 /** How a card stands, with her's words: a refusal for `retry`, the outcome once it ended. */
@@ -61,12 +73,19 @@ export function connectBody(card: Card): ConnectBody | null {
   return card.kind === "connect" && typeof b.name === "string" && typeof b.host === "string" && Array.isArray(b.fields) ? (b as ConnectBody) : null;
 }
 
-/** A `site_login` card's body, when it has verified origin and login fields. */
+/** Whether a `site_login` card uses isolated local Chrome user takeover. */
+export function isChromeTakeover(body: SiteLoginBody): boolean {
+  return body.mode === "chrome_takeover";
+}
+
+/** A `site_login` card's body, when it has a verified origin and either a Chrome takeover tab or login fields. */
 export function siteLoginBody(card: Card): SiteLoginBody | null {
   const b = card.body as Partial<SiteLoginBody>;
-  return card.kind === "site_login" && typeof b.origin === "string" && typeof b.host === "string" && Array.isArray(b.fields) && b.fields.length > 0
-    ? (b as SiteLoginBody)
-    : null;
+  if (card.kind !== "site_login" || typeof b.origin !== "string" || typeof b.host !== "string") return null;
+  if (b.mode === "chrome_takeover") {
+    return typeof b.tab === "string" && b.tab.length > 0 ? ({ ...b, fields: Array.isArray(b.fields) ? b.fields : [] } as SiteLoginBody) : null;
+  }
+  return Array.isArray(b.fields) && b.fields.length > 0 ? (b as SiteLoginBody) : null;
 }
 
 /** Whether a `connect` card updates an existing connector's stored key/token. */

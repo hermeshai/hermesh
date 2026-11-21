@@ -247,6 +247,34 @@ pub struct SiteLoginInspection {
     pub fields: Vec<InspectedLoginField>,
 }
 
+/// Verified top-level target inspected from a local Chrome extension tab for isolated user takeover.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChromeTakeoverInspection {
+    pub tab: String,
+    pub target_id: String,
+    pub frame: String,
+    pub loader: String,
+    pub origin: String,
+    pub host: String,
+    pub url: String,
+    pub title: Option<String>,
+}
+
+/// Whether `url` is an allowed login origin: HTTPS, or loopback HTTP (`127.0.0.1`, `::1`, `localhost`)
+/// for local harmless test fixtures. Plain non-loopback HTTP and non-web schemes are always refused.
+pub fn is_allowed_login_url(raw: &str) -> bool {
+    let Ok(parsed) = Url::parse(raw) else {
+        return false;
+    };
+    let loopback = match parsed.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    };
+    parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback)
+}
+
 /// Active sensitive sign-in guard on a tab (pending card or filled unsubmitted fields).
 struct SensitiveTab {
     frame: String,
@@ -636,13 +664,7 @@ impl BrowserSession {
             ));
         }
         let parsed = Url::parse(&main_frame.url).map_err(|_| BrowserError::failed("cannot verify the page URL; use browser_wait with user"))?;
-        let loopback = match parsed.host() {
-            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-            Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
-            None => false,
-        };
-        if !(parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback)) {
+        if !is_allowed_login_url(&main_frame.url) {
             return Err(BrowserError::failed(format!(
                 "Secure sign-in cards require HTTPS (found {}). Use browser_wait with user so the owner can sign in directly.",
                 first_page.origin
@@ -690,6 +712,113 @@ impl BrowserSession {
             title,
             fields,
         })
+    }
+
+    /// Inspects a local Chrome extension tab to prepare an isolated user-takeover `site_login`
+    /// card. Never reads form values, passwords, or cookies; enforces top-level HTTPS (or loopback
+    /// test fixture) origin and rejects cross-origin/nested iframe targets.
+    pub async fn inspect_chrome_takeover(&self, tab: Option<&str>, refs: &[String]) -> Result<ChromeTakeoverInspection, BrowserError> {
+        if !self.keeps_tabs() {
+            return Err(BrowserError::failed("chrome takeover sign-in cards require the user's own Chrome extension"));
+        }
+        let target_tab = if !refs.is_empty() {
+            let mut seen = HashSet::new();
+            let mut elements = Vec::with_capacity(refs.len());
+            for reference in refs {
+                if !seen.insert(reference.as_str()) {
+                    return Err(BrowserError::failed(format!("duplicate ref {reference} in ask_owner")));
+                }
+                elements.push(self.element(reference).await?);
+            }
+            let first_page = &elements[0].page;
+            if elements.iter().any(|e| &e.page != first_page) {
+                return Err(BrowserError::failed(
+                    "All refs in ask_owner must belong to the same page and top-level frame. Fall back to manual login.",
+                ));
+            }
+            if let Some(requested_tab) = tab
+                && requested_tab != first_page.tab
+            {
+                return Err(BrowserError::failed(format!(
+                    "Tab {requested_tab} does not match ref tab {}. Fall back to manual login.",
+                    first_page.tab
+                )));
+            }
+            let (tab_arc, _) = self.verify(first_page)?;
+            let (main_id, main_frame) = self.main_frame(&tab_arc)?;
+            let top_origin = url_origin(&main_frame.url);
+            if first_page.frame != main_id || top_origin != first_page.origin {
+                return Err(BrowserError::failed(
+                    "Chrome sign-in cards are disabled for cross-origin or nested iframes. Fall back to manual login.",
+                ));
+            }
+            tab_arc
+        } else {
+            self.resolve_tab(tab)?
+        };
+        let _busy = target_tab.busy.lock().await;
+        if self.sensitive_active(&target_tab).is_some() {
+            return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
+        }
+        self.refresh(&target_tab).await;
+        let (main_id, main_frame) = self.main_frame(&target_tab)?;
+        let origin = url_origin(&main_frame.url);
+        let parsed = Url::parse(&main_frame.url)
+            .map_err(|_| BrowserError::failed("Cannot verify the Chrome page URL; fall back to manual login."))?;
+        if !is_allowed_login_url(&main_frame.url) {
+            return Err(BrowserError::failed(format!(
+                "Chrome sign-in cards require an HTTPS origin (found {origin}). Fall back to manual login."
+            )));
+        }
+        // Re-check tab-level URL reported by Target.getTargetInfo matches the main frame origin.
+        let tab_url = target_tab.state.lock().url.clone();
+        if !tab_url.is_empty() && url_origin(&tab_url) != origin {
+            return Err(BrowserError::PageChanged { now: tab_url });
+        }
+        let host = match (parsed.host_str(), parsed.port()) {
+            (Some(h), Some(p)) => format!("{h}:{p}"),
+            (Some(h), None) => h.to_string(),
+            _ => origin.clone(),
+        };
+        let raw_title = target_tab.state.lock().title.clone();
+        let title = {
+            let cleaned = snapshot::clean(&raw_title);
+            let clipped: String = cleaned.chars().take(80).collect();
+            (!clipped.is_empty()).then_some(clipped)
+        };
+        Ok(ChromeTakeoverInspection {
+            tab: target_tab.id.clone(),
+            target_id: target_tab.target_id.clone(),
+            frame: main_id,
+            loader: main_frame.loader,
+            origin,
+            host,
+            url: main_frame.url,
+            title,
+        })
+    }
+
+    /// Explicitly detaches Chrome's debugger from every open tab owned by this extension session
+    /// and awaits acknowledgement so sensitive sign-in starts only after reliable isolation holds.
+    pub async fn release_all_tabs(&self) -> Result<(), BrowserError> {
+        if !self.keeps_tabs() {
+            return Err(BrowserError::failed("release_all_tabs requires an extension session"));
+        }
+        let open = self.tabs();
+        for tab in open {
+            if tab.is_closed() {
+                continue;
+            }
+            self.conn()
+                .send_with_timeout(
+                    None,
+                    "Target.detachFromTarget",
+                    json!({ "targetId": tab.target_id, "herRelease": true }),
+                    Duration::from_secs(5),
+                )
+                .await?;
+        }
+        Ok(())
     }
 
     async fn check_no_challenge(&self, frame_id: &str, frame: &Frame) -> Result<(), BrowserError> {
@@ -2573,3 +2702,26 @@ const TEXT_SCRIPT: &str = r#"(() => {
   const text = (document.title ? '# ' + document.title + '\n' : '') + out.join('\n').replace(/\n{3,}/g, '\n\n');
   return { text, links };
 })()"#;
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_login_url;
+
+    #[test]
+    fn allowed_login_urls_require_https_or_loopback_fixture() {
+        assert!(is_allowed_login_url("https://example.com/login"));
+        assert!(is_allowed_login_url("https://accounts.example.org:8443/signin"));
+        assert!(is_allowed_login_url("http://127.0.0.1:41234/login"));
+        assert!(is_allowed_login_url("http://localhost:8080/login"));
+        assert!(is_allowed_login_url("http://[::1]:8080/login"));
+
+        assert!(!is_allowed_login_url("http://example.com/login"));
+        assert!(!is_allowed_login_url("http://192.168.1.50/login"));
+        assert!(!is_allowed_login_url("file:///tmp/login.html"));
+        assert!(!is_allowed_login_url("chrome://settings"));
+        assert!(!is_allowed_login_url("chrome-extension://abc/popup.html"));
+        assert!(!is_allowed_login_url("about:blank"));
+        assert!(!is_allowed_login_url("javascript:alert(1)"));
+        assert!(!is_allowed_login_url("not a url"));
+    }
+}

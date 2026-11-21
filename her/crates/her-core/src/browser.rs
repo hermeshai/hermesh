@@ -32,9 +32,11 @@ use her_protocol::SiteGrant;
 use her_protocol::card::Card;
 use her_protocol::card::CardBody;
 use her_protocol::card::CardKind;
+use her_protocol::card::CardState;
 use her_protocol::card::SiteLoginBody;
 use her_protocol::card::SiteLoginField;
 use her_protocol::card::SiteLoginFieldKind;
+use her_protocol::card::SiteLoginMode;
 use her_tools::Authority;
 use her_tools::Environment;
 use her_tools::PageTarget;
@@ -79,6 +81,8 @@ const YOURS_KEPT: &str = "The tabs in the user's own browser are still open, but
     new snapshot before acting.";
 const CONNECTION_LOST: &str = "The connection to the browser dropped during this call, so it may or may not have taken \
     effect. Check the page before repeating it.";
+const YOURS_TAKEOVER_PAUSED: &str = "Local Chrome access (page content, screenshots, scripts, and debugging) is paused \
+    while a Chrome sign-in card is active. Wait for the card to finish or be cancelled.";
 
 /// Most steps a `browser_batch` runs.
 const MAX_STEPS: usize = 20;
@@ -204,6 +208,8 @@ pub(crate) struct BrowserHandle {
     label: String,
     /// How the session numbered the tabs it let go in the user's own browser.
     yours_numbers: Mutex<Option<her_browser::router::TabNumbers>>,
+    /// Active local Chrome takeover card ids pausing all `Which::Yours` model access & debugger attach.
+    chrome_takeover: Mutex<std::collections::HashSet<String>>,
     /// Set by the kernel once the session exists.
     judge: std::sync::OnceLock<Judge>,
 }
@@ -268,6 +274,7 @@ impl BrowserHandle {
             starting: tokio::sync::Mutex::new(()),
             label,
             yours_numbers: Mutex::new(None),
+            chrome_takeover: Mutex::new(std::collections::HashSet::new()),
             judge: std::sync::OnceLock::new(),
         }
     }
@@ -309,6 +316,18 @@ impl BrowserHandle {
 
     fn touch(&self, which: Which) {
         self.state.lock().current = which;
+    }
+
+    pub(crate) fn begin_chrome_takeover(&self, card_id: String) {
+        self.chrome_takeover.lock().insert(card_id);
+    }
+
+    pub(crate) fn end_chrome_takeover(&self, card_id: &str) {
+        self.chrome_takeover.lock().remove(card_id);
+    }
+
+    pub(crate) fn is_chrome_takeover_active(&self) -> bool {
+        !self.chrome_takeover.lock().is_empty()
     }
 }
 
@@ -430,6 +449,9 @@ fn pick(ctx: &ToolCtx, asked: Option<Which>, id: Option<&str>) -> Result<Which, 
         )));
     }
     let which = asked.or(named).unwrap_or(state.current);
+    if which == Which::Yours && handle.is_chrome_takeover_active() {
+        return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
+    }
     if which == Which::Yours && state.on(which) && handle.pool.is_revoked(&handle.label) {
         return Err(ToolError::Failed(YOURS_REVOKED.into()));
     }
@@ -468,6 +490,9 @@ fn existing(ctx: &ToolCtx, which: Which) -> Result<Arc<BrowserSession>, ToolErro
 async fn ensure(ctx: &ToolCtx, which: Which) -> Result<Arc<BrowserSession>, ToolError> {
     if which == Which::Yours {
         let handle = handle(ctx)?;
+        if handle.is_chrome_takeover_active() {
+            return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
+        }
         let session = session_of(ctx, which);
         let alive = session.as_ref().is_some_and(|s| !s.is_dead());
         if !alive && (session.is_some() || handle.pool.tabs_of(&handle.label) > 0 || !handle.pool.has_extension()) {
@@ -488,6 +513,9 @@ async fn in_use(ctx: &ToolCtx, which: Which) -> Result<Arc<BrowserSession>, Tool
 /// on when it was restarted.
 async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Option<&'static str>), ToolError> {
     let handle = handle(ctx)?;
+    if which == Which::Yours && handle.is_chrome_takeover_active() {
+        return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
+    }
     if which == Which::Yours && !session_of(ctx, which).is_some_and(|s| !s.is_dead())
         && handle.pool.wait_for_extension(&handle.label).await == her_browser::pool::ExtensionWait::Declined
     {
@@ -675,11 +703,13 @@ impl TypedTool for BrowserNavigate {
              changing account settings or permissions, or submitting forms with personal information. Typing \
              passwords, ID or card numbers into a page counts as sending them to the site: ask first. A general \
              request such as \"fill in this form\" does not cover these steps.",
-            "Leave CAPTCHAs, Passkeys, SSO and sign-ins in the user's own browser to the user: prefer browser_wait with \
-             user so they can use their own browser or password manager directly. Never ask for or accept passwords or \
-             verification codes in ordinary chat. Only when signing in to a standard HTTPS login form inside the \
-             isolated built-in browser may you prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; \
-             the card fills fields once without auto-submitting or saving passwords.",
+            "Leave CAPTCHAs, Passkeys, SSO and QR sign-ins to the user — never bypass or auto-submit them, and never \
+             ask for or accept passwords or verification codes in ordinary chat. For a sign-in page in the user's own \
+             Chrome (without switching the default browser), prepare a sign-in takeover card with browser_act \
+             {action: \"ask_owner\", tab: \"y1\"} so the user confirms the verified HTTPS origin and target tab and \
+             signs in natively with Chrome's login or password manager while your access is paused. For a standard HTTPS \
+             login form in the isolated built-in browser, you may prepare a sign-in card with browser_act \
+             {action: \"ask_owner\", refs: [...]}; it fills fields once without auto-submitting or saving passwords.",
             "Work from browser_snapshot and refs; use screenshots to check how a page looks, and coordinates only \
              when the snapshot has no element for what you need.",
         ]
@@ -827,7 +857,7 @@ pub(crate) struct ActArgs {
     /// The element, by its ref from a snapshot.
     #[serde(rename = "ref", default)]
     reference: Option<String>,
-    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on the isolated built-in browser page.
+    /// For ask_owner in the isolated built-in browser: 1 to 3 login field refs (must include a password or one-time code field). Optional in the user's own Chrome (tab alone prepares an isolated native Chrome takeover card).
     #[serde(default)]
     refs: Option<Vec<String>>,
     /// Viewport x in CSS pixels, with y: only when the snapshot has no element for the target.
@@ -910,9 +940,10 @@ impl TypedTool for BrowserAct {
     const DESCRIPTION: &'static str = "Act on the page: click, dblclick, hover, fill, type, press, select, check, \
         uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without \
         a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot \
-        name. ask_owner prepares a secure site_login card for verified login refs in the isolated built-in browser \
-        without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
-        changed since the call was approved, nothing is sent: take a snapshot and try again.";
+        name. ask_owner prepares a secure site_login card without changing the page: in the user's own Chrome (tab or \
+        refs) it prepares an isolated native takeover card and pauses Chrome access until done or cancelled; in the \
+        isolated built-in browser (refs) it prepares a one-time fill card. Show it with send_to_user. The result says \
+        what changed on the page. If the page changed since the call was approved, nothing is sent: take a snapshot and try again.";
 
     fn kind(&self) -> ToolKind {
         ToolKind::Mutating
@@ -1015,6 +1046,17 @@ impl TypedTool for BrowserAct {
     }
 }
 
+fn new_card_id() -> String {
+    const DIGITS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bits = rand::random::<u128>();
+    let mut card_id = String::from("c_");
+    for _ in 0..10 {
+        card_id.push(DIGITS[(bits % DIGITS.len() as u128) as usize] as char);
+        bits /= DIGITS.len() as u128;
+    }
+    card_id
+}
+
 async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput, ToolError> {
     let cards = ctx.session_state.get::<crate::cards::Cards>().ok_or_else(|| {
         ToolError::Failed("only Her's own conversation can ask the owner with a sign-in card; say in your report what is needed".into())
@@ -1024,17 +1066,25 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
         .as_ref()
         .map(|list| list.iter().map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect())
         .unwrap_or_default();
+    let which = if !refs.is_empty() {
+        let first_which = pick(ctx, None, Some(&refs[0]))?;
+        if refs.iter().skip(1).any(|r| Which::of(r) != first_which) {
+            return Err(ToolError::InvalidArgs("all refs in ask_owner must belong to the same browser".into()));
+        }
+        if let Some(tab) = args.tab.as_deref()
+            && Which::of(tab) != first_which
+        {
+            return Err(ToolError::InvalidArgs("tab and refs in ask_owner must belong to the same browser".into()));
+        }
+        first_which
+    } else {
+        pick(ctx, None, args.tab.as_deref())?
+    };
+    if which == Which::Yours {
+        return prepare_chrome_takeover(args, ctx, &cards, &refs).await;
+    }
     if refs.is_empty() {
         return Err(ToolError::InvalidArgs("ask_owner needs refs (1 to 3 login field refs from the latest snapshot)".into()));
-    }
-    let first_which = pick(ctx, None, Some(&refs[0]))?;
-    if refs.iter().skip(1).any(|r| Which::of(r) != first_which) {
-        return Err(ToolError::InvalidArgs("all refs in ask_owner must belong to the same browser".into()));
-    }
-    if first_which == Which::Yours {
-        return Err(ToolError::Failed(
-            "Secure sign-in cards are disabled in the user's own Chrome because it already has their password manager and does not provide isolated card autofill. Use browser_wait with user so they can sign in directly.".into(),
-        ));
     }
     let session = in_use(ctx, Which::Builtin).await?;
     let inspected = session.inspect_site_login(&refs).await.map_err(failed)?;
@@ -1066,13 +1116,7 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
         });
     }
 
-    const DIGITS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut bits = rand::random::<u128>();
-    let mut card_id = String::from("c_");
-    for _ in 0..10 {
-        card_id.push(DIGITS[(bits % DIGITS.len() as u128) as usize] as char);
-        bits /= DIGITS.len() as u128;
-    }
+    let card_id = new_card_id();
     let expires = chrono::Utc::now() + chrono::TimeDelta::seconds(crate::cards::SITE_LOGIN_LIFE_SECS);
     let card = Card {
         id: card_id.clone(),
@@ -1082,23 +1126,28 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
         expires_at: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         ops: Vec::new(),
         body: CardBody::SiteLogin(SiteLoginBody {
+            mode: SiteLoginMode::Fill,
             origin: inspected.origin.clone(),
             host: inspected.host,
             title: inspected.title,
+            tab: None,
+            browser: None,
             fields,
         }),
     };
-    let binding = crate::cards::SiteLoginBinding {
+    let binding = crate::cards::SiteLoginBinding::Fill(crate::cards::SiteLoginFillBinding {
         tab: inspected.tab.clone(),
         frame: inspected.frame.clone(),
         loader: inspected.loader.clone(),
         origin: inspected.origin.clone(),
         fields: bindings,
-    };
+    });
     session.begin_sensitive_card(&card_id, &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
     let weak_session = Arc::downgrade(&session);
-    let cleanup = Arc::new(move |id: &str| {
-        if let Some(session) = weak_session.upgrade() {
+    let cleanup = Arc::new(move |id: &str, state: CardState| {
+        if state != CardState::Done
+            && let Some(session) = weak_session.upgrade()
+        {
             session.end_sensitive_card(id);
         }
     });
@@ -1106,6 +1155,84 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
     Ok(ToolOutput::text(format!(
         "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
         inspected.origin
+    )))
+}
+
+async fn prepare_chrome_takeover(
+    args: &ActArgs,
+    ctx: &ToolCtx,
+    cards: &Arc<crate::cards::Cards>,
+    refs: &[String],
+) -> Result<ToolOutput, ToolError> {
+    let handle = handle(ctx)?;
+    let Some(extension_host) = handle.pool.extension_in_use() else {
+        return Err(ToolError::Failed(
+            "The Hermesh Chrome extension is not connected. Fall back to manual login in Chrome.".into(),
+        ));
+    };
+    if handle.pool.is_revoked(&handle.label) {
+        return Err(ToolError::Failed(YOURS_REVOKED.into()));
+    }
+    let session = in_use(ctx, Which::Yours).await?;
+    if !session.keeps_tabs() {
+        return Err(ToolError::Failed(
+            "Cannot reliably isolate this Chrome connection. Fall back to manual login.".into(),
+        ));
+    }
+    let inspected = session.inspect_chrome_takeover(args.tab.as_deref(), refs).await.map_err(failed)?;
+    let numbers = session.numbers();
+    let browser_label = handle.pool.extension_browser();
+    let card_id = new_card_id();
+
+    // Pause all model access to local Chrome BEFORE detaching, then explicitly detach the Chrome
+    // debugger and close the CDP session so zero page/screenshot/debug output reaches the model.
+    handle.begin_chrome_takeover(card_id.clone());
+    let detached = session.release_all_tabs().await;
+    *handle.yours_numbers.lock() = Some(numbers);
+    drop(ctx.session_state.remove::<YoursSession>());
+    drop(session);
+    if detached.is_err() || handle.pool.extension_in_use() != Some(extension_host) || handle.pool.is_revoked(&handle.label) {
+        handle.end_chrome_takeover(&card_id);
+        return Err(ToolError::Failed(
+            "Could not reliably detach Chrome debugging before sign-in. Fall back to manual login.".into(),
+        ));
+    }
+
+    let expires = chrono::Utc::now() + chrono::TimeDelta::seconds(crate::cards::SITE_LOGIN_LIFE_SECS);
+    let card = Card {
+        id: card_id.clone(),
+        kind: CardKind::SiteLogin,
+        title: format!("Sign in to {} in Chrome", inspected.host),
+        asked_by: cards.asked_by(),
+        expires_at: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ops: Vec::new(),
+        body: CardBody::SiteLogin(SiteLoginBody {
+            mode: SiteLoginMode::ChromeTakeover,
+            origin: inspected.origin.clone(),
+            host: inspected.host,
+            title: inspected.title,
+            tab: Some(inspected.tab.clone()),
+            browser: browser_label,
+            fields: Vec::new(),
+        }),
+    };
+    let binding = crate::cards::SiteLoginBinding::ChromeTakeover(crate::cards::ChromeTakeoverBinding {
+        tab: inspected.tab.clone(),
+        target_id: inspected.target_id,
+        origin: inspected.origin.clone(),
+        url: inspected.url,
+        extension_host,
+    });
+    let weak_handle = Arc::downgrade(&handle);
+    let cleanup = Arc::new(move |id: &str, _state: CardState| {
+        if let Some(handle) = weak_handle.upgrade() {
+            handle.end_chrome_takeover(id);
+        }
+    });
+    cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+    Ok(ToolOutput::text(format!(
+        "Nothing changed yet. Card {card_id} asks the owner to confirm {} (tab {}) and sign in natively in their local Chrome (using Chrome's login or password manager). Local Chrome access and debugging are paused while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only a fixed status.",
+        inspected.origin, inspected.tab
     )))
 }
 
@@ -1494,6 +1621,10 @@ async fn list(ctx: &ToolCtx) -> Result<String, ToolError> {
     let mut lines = Vec::new();
     for which in [Which::Builtin, Which::Yours] {
         if !(if which == Which::Builtin { builtin } else { yours }) {
+            continue;
+        }
+        if which == Which::Yours && handle.is_chrome_takeover_active() {
+            lines.push("(user's own browser is paused during an active sign-in card)".into());
             continue;
         }
         let session = match session_of(ctx, which).filter(|s| !s.is_dead()) {

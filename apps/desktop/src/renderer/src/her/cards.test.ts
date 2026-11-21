@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyEvents, botChat, fromSnapshot } from "@hermesh/her-client";
 import type { Event, SessionSnapshot } from "@hermesh/her-protocol";
-import { cardNow, cardOf, cardShown, connectBody, filled, isKeyRotate, siteLoginBody, toolCount, type Card, type ConnectBody } from "./cards.ts";
+import { cardNow, cardOf, cardShown, connectBody, filled, isChromeTakeover, isKeyRotate, siteLoginBody, toolCount, type Card, type ConnectBody } from "./cards.ts";
 
 const usage = { input: 1, output: 1, cache_read: 0, cache_write: 0, cost: { currency: "USD", input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 } };
 
@@ -68,6 +68,32 @@ test("a card is read from what send_to_user's result carries; one that isn't a c
   assert.equal(connectBody(loginCard), null);
   assert.equal(siteLoginBody(card), null);
   assert.equal(siteLoginBody({ ...loginCard, body: { origin: "http://127.0.0.1:4100", host: "127.0.0.1:4100", fields: [] } }), null, "empty fields rejected");
+  const chromeTakeoverCard: Card = {
+    id: "c_chrome0001",
+    kind: "site_login",
+    title: "Sign in to example.test in Chrome",
+    asked_by: "owner",
+    expires_at: "2026-11-10T09:05:00Z",
+    ops: [],
+    body: {
+      mode: "chrome_takeover",
+      origin: "https://example.test",
+      host: "example.test",
+      title: "Example Sign In",
+      tab: "y1",
+      browser: "Google Chrome 141",
+      fields: [],
+    },
+  };
+  const parsedChrome = siteLoginBody(chromeTakeoverCard);
+  assert.ok(parsedChrome && isChromeTakeover(parsedChrome));
+  assert.equal(parsedChrome?.tab, "y1");
+  assert.equal(parsedChrome?.fields.length, 0);
+  assert.equal(
+    siteLoginBody({ ...chromeTakeoverCard, body: { mode: "chrome_takeover", origin: "https://example.test", host: "example.test", fields: [] } }),
+    null,
+    "chrome_takeover requires verified target tab",
+  );
   assert.equal(toolCount("Notion connected: 14 tools (notion_search, notion_fetch, …)"), 14);
   assert.equal(toolCount("Tracker connected: 1 tool (echo)"), 1);
   assert.equal(toolCount("Notion connected"), undefined);

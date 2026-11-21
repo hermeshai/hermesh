@@ -228,8 +228,8 @@ const tabs = {
     report();
   },
   detach(tabId) {
-    chrome.debugger.detach({ tabId }).catch(() => {});
-    report();
+    chrome.debugger.detach({ tabId }).catch(() => {}).finally(() => reportNow());
+    reportNow();
   },
   send(tabId, child, method, params) {
     const tab = agentTabs.get(tabId);
@@ -263,13 +263,18 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.url !== undefined || change.title !== undefined) {
     live?.browser.tabUpdated(tabId, change);
     const tab = agentTabs.get(tabId);
-    if (tab) remember(tabId, tab.session, change.url, change.title);
+    if (tab) {
+      remember(tabId, tab.session, change.url, change.title);
+      if (change.url !== undefined) reportNow();
+    }
   }
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   live?.browser.tabRemoved(tabId);
   offered.delete(tabId);
+  const had = agentTabs.has(tabId);
   forget(tabId);
+  if (had) reportNow();
 });
 chrome.windows?.onCreated?.addListener(() => reconnectOnActivity());
 chrome.windows?.onFocusChanged?.addListener((id) => {
@@ -281,10 +286,18 @@ chrome.windows.onRemoved.addListener((id) => {
 
 // ---- What the service asks for ----
 
-/** A session's tab in front: the one named, else the one the agent used last. */
+/** A session's tab in front: the exact bound targetId when named, else the one the agent used last. */
 async function reveal(sessionId, targetId) {
-  let tabId = targetId ? tabOf(targetId) : lastUsed.get(sessionId);
-  if (!agentTabs.has(tabId)) tabId = tabs.released(sessionId)[0]?.tabId;
+  let tabId;
+  if (targetId) {
+    const candidate = tabOf(targetId);
+    const entry = agentTabs.get(candidate);
+    if (!entry || (sessionId && entry.session !== sessionId)) return;
+    tabId = candidate;
+  } else {
+    tabId = lastUsed.get(sessionId);
+    if (!agentTabs.has(tabId)) tabId = tabs.released(sessionId)[0]?.tabId;
+  }
   if (tabId === undefined) return;
   const tab = await chrome.tabs.update(tabId, { active: true });
   await chrome.windows.update(tab.windowId, { focused: true });

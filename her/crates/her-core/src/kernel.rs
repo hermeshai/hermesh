@@ -1110,6 +1110,11 @@ impl Kernel {
         Some(cards)
     }
 
+    /// The session's live secure cards registry, if this is Her's own conversation.
+    pub fn session_cards(&self) -> Option<Arc<Cards>> {
+        self.session.upgrade()?.tool_state.get::<Cards>()
+    }
+
     /// The session's live isolated built-in browser session, if started.
     pub fn builtin_browser(&self) -> Option<Arc<her_browser::BrowserSession>> {
         let session = self.session.upgrade()?;

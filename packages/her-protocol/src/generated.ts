@@ -594,6 +594,10 @@ export type CardAnswer = {
   decision: "fill";
   fields: { [key: string]: string };
 } | {
+  decision: "takeover_start";
+} | {
+  decision: "takeover_done";
+} | {
   decision: "decline";
 };
 
@@ -4441,14 +4445,20 @@ export type SiteGrant = {
   origin: string;
 };
 
-/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser. */
+/** A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser, or from a verified local Chrome tab for isolated user takeover. */
 export type SiteLoginBody = {
-  /** Verified login fields on the page (never authored by the model). */
+  /** Verified local Chrome browser label (e.g. `Google Chrome 141`) when available. */
+  browser?: string | null;
+  /** Verified login fields on the page (never authored by the model; empty for `chrome_takeover`). */
   fields: SiteLoginField[];
   /** The origin's host (with non-default port), shown large on the card. */
   host: string;
+  /** How the sign-in card works: `fill` (isolated built-in browser) or `chrome_takeover` (local Chrome). */
+  mode: SiteLoginMode;
   /** Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures). */
   origin: string;
+  /** Verified target tab id (e.g. `y1`) for `chrome_takeover`. */
+  tab?: string | null;
   /** The page's title, sanitized and clipped. */
   title?: string | null;
 };
@@ -4462,6 +4472,9 @@ export type SiteLoginField = {
 };
 
 export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_code";
+
+/** A `site_login` card's mode. */
+export type SiteLoginMode = "fill" | "chrome_takeover";
 
 /** One `SKILL.md` that was found, and what became of it. */
 export type SkillEntry = {

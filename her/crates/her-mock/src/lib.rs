@@ -1292,6 +1292,61 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
             0 => Plan::Step(Step::calls(vec![("call_tool", json!({"name": "browser_wait", "arguments": {"user": arg.trim()}}))])),
             _ => Plan::Step(Step::text(format!("handoff done: {}", last_tool_result(messages)))),
         },
+        // Local Chrome isolated user takeover card in Her's conversation.
+        "chrome_login" => match step {
+            0 => {
+                let (url, tab) = arg.split_once('|').unwrap_or((arg.trim(), ""));
+                let arguments = if tab.is_empty() {
+                    json!({ "url": url.trim(), "browser": "yours" })
+                } else {
+                    json!({ "url": url.trim(), "tab": tab.trim() })
+                };
+                Plan::Step(Step::calls(vec![("call_tool", json!({ "name": "browser_navigate", "arguments": arguments }))]))
+            }
+            1 => {
+                let result = last_tool_result(messages);
+                let tab = result
+                    .split("(tab ")
+                    .nth(1)
+                    .and_then(|rest| rest.split_whitespace().next())
+                    .unwrap_or("y1")
+                    .to_string();
+                Plan::Step(Step::calls(vec![("call_tool", json!({ "name": "browser_act", "arguments": { "action": "ask_owner", "tab": tab } }))]))
+            }
+            2 => {
+                let result = last_tool_result(messages);
+                match result.split("Card ").nth(1).and_then(|rest| rest.split_whitespace().next()) {
+                    Some(card) => Plan::Step(Step::calls(vec![("send_to_user", json!({ "type": "card", "card": card, "text": "请确认来源与标签页后，在 Chrome 中完成登录。" }))])),
+                    None => last_words(bot, format!("登录卡未创建：{result}")),
+                }
+            }
+            _ => {
+                let (outcome, note) = card_end(messages).unwrap_or_default();
+                let tried = messages.last().and_then(|m| m.get("role")).and_then(Value::as_str) == Some("tool");
+                if outcome == "done" && !tried {
+                    Plan::Step(Step::calls(vec![("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": "y1" } }))]))
+                } else if tried {
+                    last_words(bot, format!("转告：{note}\n{}", last_tool_result(messages)))
+                } else {
+                    last_words(bot, format!("转告：{note}"))
+                }
+            }
+        },
+        // Attempts to observe/act on a local Chrome tab while a takeover card is active.
+        "chrome_probe" => {
+            let tab = arg.trim();
+            match step {
+                0 => Plan::Step(Step::calls(vec![
+                    ("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_screenshot", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_console", "arguments": { "tab": tab } })),
+                    ("call_tool", json!({ "name": "browser_wait", "arguments": { "tab": tab, "text": "Sign In", "seconds": 0.2 } })),
+                    ("call_tool", json!({ "name": "browser_act", "arguments": { "tab": tab, "action": "click", "x": 10, "y": 10 } })),
+                    ("call_tool", json!({ "name": "browser_tabs", "arguments": { "action": "list" } })),
+                ])),
+                _ => last_words(bot, format!("probe: {}", last_tool_result(messages))),
+            }
+        },
         // A page opened without naming a browser: where the user's default sends it.
         "default_browser" => match step {
             0 => Plan::Step(Step::calls(vec![("browser_navigate", json!({"url": arg.trim()}))])),
