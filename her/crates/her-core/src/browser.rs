@@ -562,6 +562,9 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
             note: kept.then(|| YOURS_KEPT.to_string()),
         },
     ));
+    if which == Which::Yours && handle.is_chrome_takeover_active() {
+        return Err(ToolError::Failed(YOURS_TAKEOVER_PAUSED.into()));
+    }
     session.adopt_pending().await.map_err(failed)?;
     match which {
         Which::Builtin => ctx.session_state.insert(session.clone()),

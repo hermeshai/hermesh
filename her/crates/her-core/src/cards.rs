@@ -267,6 +267,16 @@ impl Cards {
     }
 }
 
+impl Drop for Cards {
+    fn drop(&mut self) {
+        for item in self.kept.get_mut().drain(..) {
+            if let Some(hook) = item.on_end {
+                hook(&item.card.id, CardState::Expired);
+            }
+        }
+    }
+}
+
 /// How long the card has before it expires; zero once it has, or when its time cannot be read.
 fn time_left(card: &Card) -> Duration {
     chrono::DateTime::parse_from_rfc3339(&card.expires_at)
@@ -291,4 +301,75 @@ pub(crate) fn unresolved(history: &History, id: &str) -> Option<Card> {
         }
     }
     found
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use her_protocol::card::CardBody;
+    use her_protocol::card::SiteLoginBody;
+    use her_protocol::card::SiteLoginMode;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    #[test]
+    fn dropping_cards_runs_pending_end_hooks_once() {
+        let (ev_tx, _ev_rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let cards = Cards::new(Arc::new(Emitter::new(ev_tx)), tx);
+        let pending_calls = Arc::new(AtomicUsize::new(0));
+        let ended_calls = Arc::new(AtomicUsize::new(0));
+
+        let make_card = |id: &str| Card {
+            id: id.into(),
+            kind: CardKind::SiteLogin,
+            title: "Sign in".into(),
+            asked_by: AskedBy::Owner,
+            expires_at: "2099-01-01T00:00:00Z".into(),
+            ops: Vec::new(),
+            body: CardBody::SiteLogin(SiteLoginBody {
+                mode: SiteLoginMode::ChromeTakeover,
+                origin: "https://example.com".into(),
+                host: "example.com".into(),
+                title: None,
+                tab: Some("y1".into()),
+                browser: None,
+                fields: Vec::new(),
+            }),
+        };
+
+        let p = pending_calls.clone();
+        cards.prepare_with_binding(
+            make_card("c_pending"),
+            None,
+            Some(Arc::new(move |id, state| {
+                assert_eq!(id, "c_pending");
+                assert_eq!(state, CardState::Expired);
+                p.fetch_add(1, Ordering::SeqCst);
+            })),
+        );
+
+        let e = ended_calls.clone();
+        cards.prepare_with_binding(
+            make_card("c_ended"),
+            None,
+            Some(Arc::new(move |id, state| {
+                assert_eq!(id, "c_ended");
+                assert_eq!(state, CardState::Declined);
+                e.fetch_add(1, Ordering::SeqCst);
+            })),
+        );
+        // Simulate an already-ended card whose hook ran via Cards::set().
+        let mut kept = cards.kept.lock();
+        if let Some(item) = kept.iter_mut().find(|k| k.card.id == "c_ended") {
+            item.state = Some(CardState::Open);
+        }
+        drop(kept);
+        cards.set("c_ended", &[CardState::Open], CardState::Declined, None).unwrap();
+        assert_eq!(ended_calls.load(Ordering::SeqCst), 1);
+
+        drop(cards);
+        assert_eq!(pending_calls.load(Ordering::SeqCst), 1, "Drop must run pending on_end hooks");
+        assert_eq!(ended_calls.load(Ordering::SeqCst), 1, "Drop must not double-run ended hooks");
+    }
 }
