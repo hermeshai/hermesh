@@ -118,7 +118,7 @@ pub struct CardField {
     pub secret: bool,
 }
 
-/// A `site_login` card's body: inspected directly from the page's real DOM in an isolated browser.
+/// A `site_login` card's body: inspected directly from the page's real DOM in a bound browser tab.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SiteLoginBody {
     /// Verified top-level and frame origin (`https://example.com`, or loopback for local fixtures).
@@ -128,6 +128,12 @@ pub struct SiteLoginBody {
     /// The page's title, sanitized and clipped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// The browser holding the bound form when targeting the owner's own Chrome (omitted for the built-in browser).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser: Option<String>,
+    /// The session's bound tab id (for example `y1` in the owner's own Chrome).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab: Option<String>,
     /// Verified login fields on the page (never authored by the model).
     pub fields: Vec<SiteLoginField>,
 }

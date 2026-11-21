@@ -39,7 +39,7 @@ struct HerSecureCard: View {
                     }
                 } else if let site = card.siteLogin {
                     if case .ended(let outcome, _, let note) = shown {
-                        endedSiteLogin(outcome, host: site.host, note: note)
+                        endedSiteLogin(outcome, site: site, note: note)
                     } else {
                         siteLoginForm(card, site, shown: shown)
                     }
@@ -80,10 +80,15 @@ struct HerSecureCard: View {
             .accessibilityIdentifier("her-card-ended")
     }
 
-    private func endedSiteLogin(_ outcome: String, host: String, note: String?) -> some View {
+    private func endedSiteLogin(_ outcome: String, site: HerCard.SiteLogin, note: String?) -> some View {
         let text: String = switch outcome {
-        case "done": String(localized: "Filled in on \(host) (not submitted)")
-        case "failed": note ?? String(localized: "Couldn’t fill in on \(host)")
+        case "done":
+            if let browser = site.browser, !browser.isEmpty {
+                String(localized: "Filled once in \(browser) on \(site.host) (not submitted)")
+            } else {
+                String(localized: "Filled in on \(site.host) (not submitted)")
+            }
+        case "failed": note ?? String(localized: "Couldn’t fill in on \(site.host)")
         case "declined": String(localized: "Declined")
         case "replaced": String(localized: "Replaced by a newer request")
         case "elsewhere": String(localized: "Answered on another device")
@@ -177,10 +182,19 @@ struct HerSecureCard: View {
     private func siteLoginForm(_ card: HerCard, _ site: HerCard.SiteLogin, shown: HerCardShown) -> some View {
         let busy = sending || shown == .form(note: nil, busy: true)
         let ready = site.fields.allSatisfy { !(values[$0.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
+        let browserTarget: String? = site.browser.flatMap { browser in
+            guard !browser.isEmpty else { return nil }
+            if let tab = site.tab, !tab.isEmpty { return "\(browser) (\(tab))" }
+            return browser
+        }
         return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 5) {
                 Image(systemName: "lock.fill")
-                Text("Website Sign-In · \(machine.machineName)")
+                if let browserTarget {
+                    Text("Website Sign-In · \(machine.machineName) · \(browserTarget)")
+                } else {
+                    Text("Website Sign-In · \(machine.machineName)")
+                }
                 if card.askedBy == "her" {
                     Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 }
@@ -193,8 +207,13 @@ struct HerSecureCard: View {
                     Text(title).font(.caption).foregroundStyle(.secondary)
                 }
             }
-            Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
-                .font(.subheadline).foregroundStyle(.secondary)
+            if let browser = site.browser, !browser.isEmpty {
+                Text("Encrypted in transit to \(machine.machineName) and filled once into \(browser) on \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in \(browser).")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
             ForEach(site.fields, id: \.id) { f in
                 if f.secret {
                     SecureField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))

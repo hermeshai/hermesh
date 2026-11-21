@@ -181,9 +181,30 @@ pub(crate) enum HubCmd {
         card_id: String,
         reply: oneshot::Sender<Option<Arc<her_core::cards::Cards>>>,
     },
-    /// The conversation's live isolated built-in browser session, for `site_login` cards.
-    BuiltinBrowser {
-        reply: oneshot::Sender<Option<Arc<her_browser::BrowserSession>>>,
+    /// The conversation's live bound browser session for a `site_login` card (`own == true` for local Chrome).
+    SiteLoginBrowser {
+        own: bool,
+        url: String,
+        reply: oneshot::Sender<Result<Arc<her_browser::BrowserSession>, &'static str>>,
+    },
+    /// Records a filled `site_login` document so observation stays blocked across extension reconnects.
+    RecordSiteLoginFill {
+        own: bool,
+        target_id: String,
+        origin: String,
+        url: String,
+        reply: oneshot::Sender<()>,
+    },
+    /// Clears a pre-recorded `site_login` fill entry when pre-write validation failed before writing.
+    ClearSiteLoginFill {
+        own: bool,
+        target_id: String,
+        reply: oneshot::Sender<()>,
+    },
+    /// Invalidates any open `site_login` cards (for example on Chrome disconnect or revocation).
+    InvalidateSiteLogin {
+        own: Option<bool>,
+        reason: String,
     },
     /// A run started here has ended.
     RunEnded,
@@ -790,8 +811,30 @@ impl Hub {
             HubCmd::Cards { card_id, reply } => {
                 let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.cards(&card_id)));
             }
-            HubCmd::BuiltinBrowser { reply } => {
-                let _ = reply.send(self.kernel.as_ref().and_then(|kernel| kernel.builtin_browser()));
+            HubCmd::SiteLoginBrowser { own, url, reply } => {
+                let result = self
+                    .kernel
+                    .as_ref()
+                    .ok_or("The conversation is closed.")
+                    .and_then(|kernel| kernel.site_login_browser(own, &url));
+                let _ = reply.send(result);
+            }
+            HubCmd::RecordSiteLoginFill { own, target_id, origin, url, reply } => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.record_filled_site_login(own, &target_id, &origin, &url);
+                }
+                let _ = reply.send(());
+            }
+            HubCmd::ClearSiteLoginFill { own, target_id, reply } => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.clear_filled_site_login(own, &target_id);
+                }
+                let _ = reply.send(());
+            }
+            HubCmd::InvalidateSiteLogin { own, reason } => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.invalidate_open_site_login(own, &reason);
+                }
             }
             HubCmd::RunEnded => {
                 self.shared.routine_runs.fetch_sub(1, Ordering::Relaxed);

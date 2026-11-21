@@ -176,17 +176,67 @@ impl Server {
         answer.await.map_err(|_| errors::session_closed(session))?.ok_or_else(|| no_card(card))
     }
 
-    async fn builtin_browser_of(&self, session: &str) -> Option<Arc<her_browser::BrowserSession>> {
-        let hub = self.hub(session)?;
+    async fn site_login_browser_of(
+        &self,
+        session: &str,
+        own: bool,
+        url: &str,
+    ) -> Result<Arc<her_browser::BrowserSession>, &'static str> {
+        let Some(hub) = self.hub(session) else {
+            return Err("The conversation is closed.");
+        };
         let (reply, answer) = oneshot::channel();
-        hub.send(HubCmd::BuiltinBrowser { reply }).await.ok()?;
-        answer.await.ok().flatten()
+        if hub
+            .send(HubCmd::SiteLoginBrowser { own, url: url.to_string(), reply })
+            .await
+            .is_err()
+        {
+            return Err("The conversation is closed.");
+        }
+        answer.await.map_err(|_| "The conversation is closed.")?
+    }
+
+    async fn record_site_login_fill(&self, session: &str, own: bool, target_id: &str, origin: &str, url: &str) {
+        if let Some(hub) = self.hub(session) {
+            let (reply, ack) = oneshot::channel();
+            if hub
+                .send(HubCmd::RecordSiteLoginFill {
+                    own,
+                    target_id: target_id.to_string(),
+                    origin: origin.to_string(),
+                    url: url.to_string(),
+                    reply,
+                })
+                .await
+                .is_ok()
+            {
+                let _ = ack.await;
+            }
+        }
+    }
+
+    async fn clear_site_login_fill(&self, session: &str, own: bool, target_id: &str) {
+        if let Some(hub) = self.hub(session) {
+            let (reply, ack) = oneshot::channel();
+            if hub
+                .send(HubCmd::ClearSiteLoginFill {
+                    own,
+                    target_id: target_id.to_string(),
+                    reply,
+                })
+                .await
+                .is_ok()
+            {
+                let _ = ack.await;
+            }
+        }
     }
 
     /// `cards/answer`: the owner's answer to a card. An approval carries out the card's ops as
     /// the console would send them; a `site_login` fill types once into the bound isolated page
     /// without submitting or saving; what a card wrote goes again when it is declined or fails.
     pub async fn cards_answer(&self, p: CardsAnswerParams) -> Result<CardsAnswerResult, RpcError> {
+        let mut answer = ZeroizingAnswer(p.answer);
         let id = p.card_id.as_str();
         let cards = self.cards_of(&p.session_id, id).await?;
         cards.expire_if_due(id);
@@ -194,27 +244,28 @@ impl Server {
         if state.is_ended() {
             return Err(card_ended(id, state));
         }
-        match p.answer {
+        match &mut answer.0 {
             CardAnswer::Decline => {
                 let note = "The owner declined.".to_string();
-                let left = cards.set(id, &WAITING, CardState::Declined, Some(note.clone())).map_err(|now| now.map_or_else(|| no_card(id), |now| card_ended(id, now)))?;
+                let from: &[CardState] = if card.kind == CardKind::SiteLogin {
+                    &[CardState::Open]
+                } else {
+                    &WAITING
+                };
+                let left = cards.set(id, from, CardState::Declined, Some(note.clone())).map_err(|now| now.map_or_else(|| no_card(id), |now| card_ended(id, now)))?;
                 if card.kind == CardKind::Connect && left != CardState::Open {
                     self.undo(&card).await;
                 }
                 Ok(CardsAnswerResult { state: CardState::Declined, note: Some(note) })
             }
-            CardAnswer::Fill { mut fields } => {
-                let answer = self.answer_site_login(&p.session_id, &cards, &card, &mut fields).await;
-                for value in fields.values_mut() {
-                    zeroize_string(value);
-                }
-                answer
+            CardAnswer::Fill { fields } => {
+                self.answer_site_login(&p.session_id, &cards, &card, fields).await
             }
             CardAnswer::Approve { ops } => {
                 if card.kind != CardKind::Connect || card.connect_body().is_none() {
                     return Err(RpcError::invalid_params("only a connect card can be approved with ops"));
                 }
-                let mut values = filled(&card.ops, &ops).ok_or_else(|| RpcError::invalid_params("the ops are not the card's, with each value filled in"))?;
+                let mut values = filled(&card.ops, ops).ok_or_else(|| RpcError::invalid_params("the ops are not the card's, with each value filled in"))?;
                 match cards.set(id, &[CardState::Open, CardState::Retry], CardState::Working, None) {
                     Ok(_) => {}
                     // Already under way: the same answer again.
@@ -313,26 +364,59 @@ impl Server {
         binding: &SiteLoginBinding,
         fields: &HashMap<String, String>,
     ) -> (CardState, Option<String>) {
-        let Some(browser) = self.builtin_browser_of(session_id).await else {
-            return (CardState::Failed, Some("The page changed before the fields could be filled.".into()));
+        let browser = match self
+            .site_login_browser_of(session_id, binding.own_browser, &binding.url)
+            .await
+        {
+            Ok(browser) => browser,
+            Err(reason) => return (CardState::Failed, Some(reason.into())),
         };
-        let mut pairs: Vec<(i64, String, String)> = Vec::with_capacity(binding.fields.len());
+        let mut pairs = ZeroizingPairs(Vec::with_capacity(binding.fields.len()));
         for f in &binding.fields {
             let Some(value) = fields.get(&f.id) else {
                 return (CardState::Failed, Some("The fields do not match the card.".into()));
             };
-            pairs.push((f.backend, f.input_type.clone(), value.clone()));
+            pairs.0.push((f.backend, f.input_type.clone(), value.clone()));
         }
+        // Record the filled target synchronously BEFORE writing so an extension disconnect mid-fill
+        // cannot bypass the reconnect observation / desktop guard.
+        self.record_site_login_fill(
+            session_id,
+            binding.own_browser,
+            &binding.target_id,
+            &binding.origin,
+            &binding.url,
+        )
+        .await;
         let outcome = browser
-            .fill_site_login(card_id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &pairs)
+            .fill_site_login(
+                card_id,
+                &binding.tab,
+                &binding.frame,
+                &binding.loader,
+                &binding.origin,
+                &binding.url,
+                &pairs.0,
+            )
             .await;
-        for (_, _, value) in &mut pairs {
-            zeroize_string(value);
+        drop(pairs);
+        if outcome.is_err() && !browser.is_dead() && !browser.has_filled_target(&binding.target_id) {
+            self.clear_site_login_fill(session_id, binding.own_browser, &binding.target_id).await;
         }
         match outcome {
-            Ok(()) => (
-                CardState::Done,
-                Some(format!("Filled the requested sign-in fields on {origin}. The form was not submitted.")),
+            Ok(()) => {
+                let note = match &binding.browser_label {
+                    Some(browser) => format!(
+                        "Filled the requested sign-in fields on {origin} in {browser} (tab {}). The form was not submitted.",
+                        binding.tab
+                    ),
+                    None => format!("Filled the requested sign-in fields on {origin}. The form was not submitted."),
+                };
+                (CardState::Done, Some(note))
+            }
+            Err(BrowserError::Cdp(her_browser::CdpError::Closed)) => (
+                CardState::Failed,
+                Some("The browser disconnected before the fields could be filled.".into()),
             ),
             Err(BrowserError::PageChanged { .. } | BrowserError::StaleRef(_)) => (
                 CardState::Failed,
@@ -546,6 +630,28 @@ impl Server {
             Err(error) => (CardState::Retry, Some(format!("The sign-in did not finish: {error}"))),
         };
         let _ = cards.set(&id, &[CardState::SignIn], to, note);
+    }
+}
+
+struct ZeroizingAnswer(CardAnswer);
+
+impl Drop for ZeroizingAnswer {
+    fn drop(&mut self) {
+        if let CardAnswer::Fill { fields } = &mut self.0 {
+            for value in fields.values_mut() {
+                zeroize_string(value);
+            }
+        }
+    }
+}
+
+struct ZeroizingPairs(Vec<(i64, String, String)>);
+
+impl Drop for ZeroizingPairs {
+    fn drop(&mut self) {
+        for (_, _, value) in &mut self.0 {
+            zeroize_string(value);
+        }
     }
 }
 

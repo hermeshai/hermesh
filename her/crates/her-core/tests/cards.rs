@@ -520,7 +520,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         (binding.fields[0].backend, binding.fields[0].input_type.clone(), DUMMY_EMAIL.into()),
         (binding.fields[1].backend, binding.fields[1].input_type.clone(), DUMMY_PASS.into()),
     ];
-    browser.fill_site_login(&card.id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &pairs).await.unwrap();
+    browser.fill_site_login(&card.id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &binding.url, &pairs).await.unwrap();
     cards.set(&card.id, &[CardState::Open], CardState::Done, Some(format!("Filled the requested sign-in fields on {origin}. The form was not submitted."))).unwrap();
     let _ = until(&mut kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
 
@@ -561,6 +561,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         &inspected.frame,
         &inspected.loader,
         &inspected.origin,
+        &inspected.url,
         &[(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), DUMMY_EMAIL.into()), (inspected.fields[1].backend, inspected.fields[1].input_type.clone(), DUMMY_PASS.into())],
     ).await;
     assert!(matches!(toctou, Err(her_browser::BrowserError::PageChanged { .. })), "TOCTOU must fail safely: {toctou:?}");

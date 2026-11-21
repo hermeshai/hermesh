@@ -23,6 +23,7 @@ use her_browser::policy::url_kind;
 use her_browser::session::Action;
 use her_browser::session::ElementTarget;
 use her_browser::session::LoginFieldKind;
+use her_browser::session::LoginTargetStatus;
 use her_browser::session::Place;
 use her_browser::session::SnapshotMode;
 use her_browser::session::SnapshotRequest;
@@ -32,6 +33,7 @@ use her_protocol::SiteGrant;
 use her_protocol::card::Card;
 use her_protocol::card::CardBody;
 use her_protocol::card::CardKind;
+use her_protocol::card::CardState;
 use her_protocol::card::SiteLoginBody;
 use her_protocol::card::SiteLoginField;
 use her_protocol::card::SiteLoginFieldKind;
@@ -53,9 +55,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::Weak;
 use std::time::Duration;
 use url::Url;
 
@@ -184,11 +189,77 @@ fn step_tools(both: bool) -> Vec<Arc<dyn Tool>> {
 /// judges its steps after the first (§12.1).
 pub(crate) type Judge = Arc<dyn Fn(Vec<Authority>) -> futures::future::BoxFuture<'static, Gate> + Send + Sync>;
 
+/// Sensitive `site_login` state shared across a main session and all of its sub-agents (keyed by `root_id`).
+#[derive(Default)]
+struct RootSensitive {
+    /// Live browser sessions started under this root session (both built-in and local Chrome).
+    sessions: Mutex<Vec<Weak<BrowserSession>>>,
+    /// Filled `site_login` documents in local Chrome (`target_id -> origin`), kept across
+    /// extension disconnects/reconnects so observation and desktop control stay blocked until the
+    /// filled tab navigates away or closes.
+    filled_yours: Mutex<HashMap<String, String>>,
+}
+
+fn root_sensitive_map() -> &'static Mutex<HashMap<String, Weak<RootSensitive>>> {
+    static ALL: OnceLock<Mutex<HashMap<String, Weak<RootSensitive>>>> = OnceLock::new();
+    ALL.get_or_init(Default::default)
+}
+
+fn root_sensitive(label: &str) -> Arc<RootSensitive> {
+    let mut all = root_sensitive_map().lock();
+    all.retain(|_, shared| shared.strong_count() > 0);
+    if let Some(shared) = all.get(label).and_then(Weak::upgrade) {
+        return shared;
+    }
+    let shared = Arc::new(RootSensitive::default());
+    all.insert(label.to_string(), Arc::downgrade(&shared));
+    shared
+}
+
+impl RootSensitive {
+    fn track(&self, session: &Arc<BrowserSession>) {
+        let mut sessions = self.sessions.lock();
+        sessions.retain(|w| w.upgrade().is_some_and(|s| !s.is_dead()));
+        if !sessions.iter().any(|w| w.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session))) {
+            sessions.push(Arc::downgrade(session));
+        }
+    }
+
+    fn live_sessions(&self) -> Vec<Arc<BrowserSession>> {
+        let mut sessions = self.sessions.lock();
+        sessions.retain(|w| w.upgrade().is_some_and(|s| !s.is_dead()));
+        sessions.iter().filter_map(Weak::upgrade).collect()
+    }
+
+    fn prune_filled(&self, live: &[Arc<BrowserSession>]) {
+        let yours: Vec<&Arc<BrowserSession>> = live.iter().filter(|s| s.keeps_tabs()).collect();
+        if yours.is_empty() {
+            // Local Chrome is currently disconnected: keep `filled_yours` fail-closed.
+            return;
+        }
+        let mut filled = self.filled_yours.lock();
+        if filled.is_empty() {
+            return;
+        }
+        filled.retain(|target_id, _| yours.iter().any(|s| s.has_active_sensitive_target(target_id)));
+    }
+
+    fn is_active(&self) -> bool {
+        let live = self.live_sessions();
+        if live.iter().any(|s| s.has_active_sensitive()) {
+            return true;
+        }
+        self.prune_filled(&live);
+        !self.filled_yours.lock().is_empty()
+    }
+}
+
 /// What a session's browser tools need: the process's pool and the session's `[browser]`
 /// settings (D-207), which change when the configuration does (connectors-entry-design §9.4).
 /// Without it in the session's state the tools refuse.
 pub(crate) struct BrowserHandle {
     pool: Arc<BrowserPool>,
+    system: Arc<crate::system::SystemCell>,
     state: Mutex<Browsers>,
     /// The `[browser]` policy, shared with the guards of the browsers already started, so that a
     /// change reaches the pages the session has open.
@@ -204,6 +275,8 @@ pub(crate) struct BrowserHandle {
     label: String,
     /// How the session numbered the tabs it let go in the user's own browser.
     yours_numbers: Mutex<Option<her_browser::router::TabNumbers>>,
+    /// Shared sensitive `site_login` guard across the root session and all sub-agents.
+    root_sensitive: Arc<RootSensitive>,
     /// Set by the kernel once the session exists.
     judge: std::sync::OnceLock<Judge>,
 }
@@ -242,8 +315,10 @@ impl Browsers {
 
 impl BrowserHandle {
     /// `embedded`: a desktop app shows browsers, where the built-in browser is on by default.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         pool: Arc<BrowserPool>,
+        system: Arc<crate::system::SystemCell>,
         settings: BrowserSettings,
         embedded: bool,
         downloads: PathBuf,
@@ -260,12 +335,14 @@ impl BrowserHandle {
         browsers.current = browsers.default(pool.has_extension());
         Self {
             pool,
+            system,
             policy: Arc::new(Mutex::new(settings.policy.clone())),
             state: Mutex::new(browsers),
             downloads,
             roots,
             grants: Arc::new(Mutex::new(grants)),
             starting: tokio::sync::Mutex::new(()),
+            root_sensitive: root_sensitive(&label),
             label,
             yours_numbers: Mutex::new(None),
             judge: std::sync::OnceLock::new(),
@@ -330,10 +407,111 @@ pub(crate) fn forget(state: &her_tools::SessionState, which: Which) {
 }
 
 /// A task ended and none follows: the agent lets go of the user's browser, whose debugging bar
-/// shows only while a task uses it (§8.4.7).
+/// shows only while a task uses it (§8.4.7), except while a `site_login` sensitive guard is still
+/// active on an open card or filled login document (so target binding and observation blocking
+/// remain intact across turns until the page navigates away or the card is cancelled).
 pub(crate) fn task_ended(state: &her_tools::SessionState) {
-    if state.get::<YoursSession>().is_some_and(|s| s.0.keeps_tabs()) {
-        forget(state, Which::Yours);
+    if let Some(yours) = state.get::<YoursSession>()
+        && !yours.0.is_dead()
+        && !yours.0.has_active_sensitive()
+    {
+        if let Some(handle) = state.get::<BrowserHandle>() {
+            let live = handle.root_sensitive.live_sessions();
+            handle.root_sensitive.prune_filled(&live);
+        }
+        if yours.0.keeps_tabs() {
+            forget(state, Which::Yours);
+        }
+    }
+}
+
+/// True while the root session (or any of its sub-agents) has a pending or filled-unsubmitted
+/// `site_login` document whose observation and desktop control must remain blocked.
+pub(crate) fn is_sensitive_active(label: &str) -> bool {
+    let shared = {
+        let mut all = root_sensitive_map().lock();
+        all.retain(|_, shared| shared.strong_count() > 0);
+        all.get(label).and_then(Weak::upgrade)
+    };
+    shared.is_some_and(|s| s.is_active())
+}
+
+/// Checks live `[browser]` settings and `SitePolicy` (without waiting for the next model turn).
+fn live_site_login_allowed(handle: &BrowserHandle, own: bool, url: &str) -> Result<(), &'static str> {
+    let settings = handle.system.get();
+    let embedded = handle.pool.has_host();
+    let enabled = if own {
+        settings.browser.yours_on(embedded)
+    } else {
+        settings.browser.builtin_on(embedded)
+    };
+    if !enabled {
+        return Err("The browser was turned off before the fields could be filled.");
+    }
+    if own {
+        if handle.pool.is_revoked(&handle.label) {
+            return Err("Control of Chrome was revoked before the fields could be filled.");
+        }
+        if !handle.pool.has_extension() {
+            return Err("Chrome disconnected before the fields could be filled.");
+        }
+    }
+    let parsed = Url::parse(url).map_err(|_| "The page URL could not be verified.")?;
+    if settings.browser.policy.refusal(&parsed).is_some() {
+        return Err("This site is not allowed by browser policy.");
+    }
+    Ok(())
+}
+
+/// The live bound browser session for a `site_login` card, checking that the browser is still
+/// enabled, connected, unrevoked, and permitted by the latest site policy.
+pub(crate) fn site_login_browser(
+    state: &her_tools::SessionState,
+    own: bool,
+    url: &str,
+) -> Result<Arc<BrowserSession>, &'static str> {
+    let handle = state
+        .get::<BrowserHandle>()
+        .ok_or("The browser tools are no longer enabled in this conversation.")?;
+    live_site_login_allowed(&handle, own, url)?;
+    let which = if own { Which::Yours } else { Which::Builtin };
+    let session = match which {
+        Which::Builtin => state.get::<BrowserSession>(),
+        Which::Yours => state.get::<YoursSession>().map(|s| s.0.clone()),
+    }
+    .ok_or("The browser disconnected before the fields could be filled.")?;
+    if session.is_dead() {
+        return Err("The browser disconnected before the fields could be filled.");
+    }
+    Ok(session)
+}
+
+/// Records a filled `site_login` document on local Chrome so observation and desktop control stay
+/// blocked across extension disconnects/reconnects until that tab navigates away or closes.
+pub(crate) fn record_filled_site_login(
+    state: &her_tools::SessionState,
+    own: bool,
+    target_id: &str,
+    origin: &str,
+    _url: &str,
+) {
+    if own && let Some(handle) = state.get::<BrowserHandle>() {
+        handle
+            .root_sensitive
+            .filled_yours
+            .lock()
+            .insert(target_id.to_string(), origin.to_string());
+    }
+}
+
+/// Clears a pre-recorded `site_login` fill entry when pre-write checks failed before writing.
+pub(crate) fn clear_filled_site_login(
+    state: &her_tools::SessionState,
+    own: bool,
+    target_id: &str,
+) {
+    if own && let Some(handle) = state.get::<BrowserHandle>() {
+        handle.root_sensitive.filled_yours.lock().remove(target_id);
     }
 }
 
@@ -535,6 +713,50 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
         },
     ));
     session.adopt_pending().await.map_err(failed)?;
+    handle.root_sensitive.track(&session);
+    if which == Which::Yours {
+        let other_live: Vec<Arc<BrowserSession>> = handle
+            .root_sensitive
+            .live_sessions()
+            .into_iter()
+            .filter(|s| s.keeps_tabs() && !Arc::ptr_eq(s, &session))
+            .collect();
+        let mut filled = handle.root_sensitive.filled_yours.lock();
+        if !filled.is_empty() {
+            let tabs = session.tabs();
+            let mut keep = HashMap::new();
+            for (target_id, origin) in filled.drain() {
+                let Some(tab) = tabs.iter().find(|t| t.target_id == target_id) else {
+                    if other_live.iter().any(|s| s.has_active_sensitive_target(&target_id)) {
+                        keep.insert(target_id, origin);
+                    }
+                    continue;
+                };
+                let still_same = {
+                    let st = tab.state.lock();
+                    st.main_frame.as_ref().and_then(|fid| {
+                        st.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
+                    })
+                };
+                match still_same {
+                    Some((frame_id, loader, current_url))
+                        if her_browser::session::url_origin(&current_url) == origin =>
+                    {
+                        session.mark_filled_document(&tab.id, &frame_id, &loader, &origin);
+                        keep.insert(target_id, origin);
+                    }
+                    // Fail closed if the frame tree has not been seeded yet after adopt_pending:
+                    // install a tab-level unseeded guard so browser observation and cua_* stay blocked.
+                    None => {
+                        session.mark_filled_unseeded(&tab.id, &origin);
+                        keep.insert(target_id, origin);
+                    }
+                    Some(_) => {}
+                }
+            }
+            *filled = keep;
+        }
+    }
     match which {
         Which::Builtin => ctx.session_state.insert(session.clone()),
         Which::Yours => ctx.session_state.insert(Arc::new(YoursSession(session.clone()))),
@@ -675,11 +897,11 @@ impl TypedTool for BrowserNavigate {
              changing account settings or permissions, or submitting forms with personal information. Typing \
              passwords, ID or card numbers into a page counts as sending them to the site: ask first. A general \
              request such as \"fill in this form\" does not cover these steps.",
-            "Leave CAPTCHAs, Passkeys, SSO and sign-ins in the user's own browser to the user: prefer browser_wait with \
-             user so they can use their own browser or password manager directly. Never ask for or accept passwords or \
-             verification codes in ordinary chat. Only when signing in to a standard HTTPS login form inside the \
-             isolated built-in browser may you prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; \
-             the card fills fields once without auto-submitting or saving passwords.",
+            "Leave CAPTCHAs, Passkeys, SSO, cross-origin login frames, and unverified targets to the user with \
+             browser_wait {user}. Never ask for or accept passwords or verification codes in ordinary chat. For a \
+             standard verified HTTPS login form in the built-in browser or a bound tab of the user's own Chrome, \
+             prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; the card fills the bound \
+             fields once without switching default browsers, auto-submitting, or saving passwords.",
             "Work from browser_snapshot and refs; use screenshots to check how a page looks, and coordinates only \
              when the snapshot has no element for what you need.",
         ]
@@ -827,7 +1049,7 @@ pub(crate) struct ActArgs {
     /// The element, by its ref from a snapshot.
     #[serde(rename = "ref", default)]
     reference: Option<String>,
-    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on the isolated built-in browser page.
+    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on a verified HTTPS page in the built-in browser or a bound local Chrome tab.
     #[serde(default)]
     refs: Option<Vec<String>>,
     /// Viewport x in CSS pixels, with y: only when the snapshot has no element for the target.
@@ -910,8 +1132,8 @@ impl TypedTool for BrowserAct {
     const DESCRIPTION: &'static str = "Act on the page: click, dblclick, hover, fill, type, press, select, check, \
         uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without \
         a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot \
-        name. ask_owner prepares a secure site_login card for verified login refs in the isolated built-in browser \
-        without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
+        name. ask_owner prepares a secure site_login card for verified HTTPS login refs in the built-in browser or \
+        a bound local Chrome tab without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
         changed since the call was approved, nothing is sent: take a snapshot and try again.";
 
     fn kind(&self) -> ToolKind {
@@ -1031,13 +1253,18 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
     if refs.iter().skip(1).any(|r| Which::of(r) != first_which) {
         return Err(ToolError::InvalidArgs("all refs in ask_owner must belong to the same browser".into()));
     }
-    if first_which == Which::Yours {
+    let handle = handle(ctx)?;
+    if first_which == Which::Yours && !handle.pool.has_extension() {
         return Err(ToolError::Failed(
-            "Secure sign-in cards are disabled in the user's own Chrome because it already has their password manager and does not provide isolated card autofill. Use browser_wait with user so they can sign in directly.".into(),
+            "Chrome disconnected before the sign-in target could be verified.".into(),
         ));
     }
-    let session = in_use(ctx, Which::Builtin).await?;
+    let session = existing(ctx, first_which)?;
     let inspected = session.inspect_site_login(&refs).await.map_err(failed)?;
+    let own_browser = first_which == Which::Yours;
+    live_site_login_allowed(&handle, own_browser, &inspected.url).map_err(|e| ToolError::Failed(e.into()))?;
+    let browser_label = own_browser.then(|| handle.pool.extension_browser_label());
+    let bound_tab = own_browser.then(|| inspected.tab.clone());
 
     let mut fields = Vec::with_capacity(inspected.fields.len());
     let mut bindings = Vec::with_capacity(inspected.fields.len());
@@ -1085,16 +1312,25 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
             origin: inspected.origin.clone(),
             host: inspected.host,
             title: inspected.title,
+            browser: browser_label.clone(),
+            tab: bound_tab,
             fields,
         }),
     };
     let binding = crate::cards::SiteLoginBinding {
+        own_browser,
+        target_id: inspected.target_id,
         tab: inspected.tab.clone(),
         frame: inspected.frame.clone(),
         loader: inspected.loader.clone(),
         origin: inspected.origin.clone(),
+        url: inspected.url.clone(),
+        browser_label: browser_label.clone(),
         fields: bindings,
     };
+    let tab_handle = session.tab_handle(&inspected.tab).ok_or_else(|| {
+        ToolError::Failed("The browser disconnected before the sign-in card could be prepared.".into())
+    })?;
     session.begin_sensitive_card(&card_id, &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
     let weak_session = Arc::downgrade(&session);
     let cleanup = Arc::new(move |id: &str| {
@@ -1102,10 +1338,87 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
             session.end_sensitive_card(id);
         }
     });
-    cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+    let before_show: Arc<dyn Fn() -> Result<(), String> + Send + Sync> = {
+        let tab = tab_handle.clone();
+        let weak_session = Arc::downgrade(&session);
+        let weak_handle = Arc::downgrade(&handle);
+        let frame_id = inspected.frame.clone();
+        let loader = inspected.loader.clone();
+        let origin = inspected.origin.clone();
+        let url = inspected.url.clone();
+        Arc::new(move || {
+            let (Some(session), Some(handle)) = (weak_session.upgrade(), weak_handle.upgrade()) else {
+                return Err("The browser disconnected before the sign-in card could be shown.".into());
+            };
+            live_site_login_allowed(&handle, own_browser, &url).map_err(str::to_string)?;
+            match session.check_login_target(&tab, &frame_id, &loader, &origin, &url) {
+                LoginTargetStatus::Valid => Ok(()),
+                LoginTargetStatus::Changed => Err("The page changed before the sign-in card could be shown.".into()),
+                LoginTargetStatus::Disconnected => Err("The browser disconnected before the sign-in card could be shown.".into()),
+            }
+        })
+    };
+    cards.prepare_with_binding(card, Some(binding), Some(cleanup), Some(before_show));
+
+    // Watch the bound tab while the card waits so navigation, SPA jumps, tab close, debugger detach,
+    // revocation, policy/config changes, or extension disconnect invalidate an open card immediately.
+    {
+        let tab = tab_handle;
+        let weak_cards = Arc::downgrade(&cards);
+        let weak_session = Arc::downgrade(&session);
+        let weak_handle = Arc::downgrade(&handle);
+        let watch_id = card_id.clone();
+        let frame_id = inspected.frame;
+        let loader = inspected.loader;
+        let origin = inspected.origin.clone();
+        let url = inspected.url;
+        tokio::spawn(async move {
+            loop {
+                let notified = tab.changed.notified();
+                let Some(cards) = weak_cards.upgrade() else {
+                    break;
+                };
+                if !cards.has(&watch_id) {
+                    break;
+                }
+                let card_state = cards.get(&watch_id).map(|(_, s)| s);
+                if let Some(state) = card_state
+                    && state != CardState::Open
+                {
+                    break;
+                }
+                let failure = match (weak_session.upgrade(), weak_handle.upgrade()) {
+                    (Some(session), Some(handle)) => {
+                        if let Err(reason) = live_site_login_allowed(&handle, own_browser, &url) {
+                            Some(reason)
+                        } else {
+                            match session.check_login_target(&tab, &frame_id, &loader, &origin, &url) {
+                                LoginTargetStatus::Valid => None,
+                                LoginTargetStatus::Changed => Some("The page changed before the fields could be filled."),
+                                LoginTargetStatus::Disconnected => Some("The browser disconnected before the fields could be filled."),
+                            }
+                        }
+                    }
+                    _ => Some("The browser disconnected before the fields could be filled."),
+                };
+                if let Some(reason) = failure {
+                    if card_state == Some(CardState::Open) {
+                        let _ = cards.set(&watch_id, &[CardState::Open], CardState::Failed, Some(reason.to_string()));
+                        break;
+                    }
+                    // Still prepared (before send_to_user): wait briefly until either shown or dropped.
+                }
+                let _ = tokio::time::timeout(Duration::from_millis(200), notified).await;
+            }
+        });
+    }
+
+    let where_label = match &browser_label {
+        Some(browser) => format!("{} in {browser} (tab {})", inspected.origin, inspected.tab),
+        None => inspected.origin.clone(),
+    };
     Ok(ToolOutput::text(format!(
-        "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
-        inspected.origin
+        "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {where_label}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
     )))
 }
 
@@ -1829,5 +2142,22 @@ mod tests {
         let rebound = url("https://rebind.example/");
         assert!(guard.check_address(&rebound, "10.0.0.5".parse().unwrap()).is_err());
         assert!(guard.check_address(&rebound, "93.184.215.14".parse().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn root_sensitive_shares_across_subagents_and_stays_fail_closed_while_disconnected() {
+        let label = "root-sensitive-test-session";
+        assert!(!is_sensitive_active(label));
+        let main_guard = root_sensitive(label);
+        let subagent_guard = root_sensitive(label);
+        assert!(Arc::ptr_eq(&main_guard, &subagent_guard));
+        // Simulate a filled local-Chrome tab while no live Chrome session is attached (disconnected).
+        main_guard
+            .filled_yours
+            .lock()
+            .insert("target-1".into(), "https://login.example".into());
+        assert!(is_sensitive_active(label), "cua_* must stay blocked for root and sub-agents while disconnected");
+        main_guard.filled_yours.lock().remove("target-1");
+        assert!(!is_sensitive_active(label));
     }
 }
