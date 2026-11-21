@@ -201,6 +201,9 @@ struct RootSensitive {
     /// extension disconnects/reconnects so observation and desktop control stay blocked until the
     /// filled tab navigates away or closes.
     filled_yours: Mutex<HashMap<String, String>>,
+    /// Active local Chrome takeover sign-in card ids (`Open` or `SignIn`) blocking desktop control
+    /// (`cua_*`) across the root session and all sub-agents.
+    takeovers: Mutex<std::collections::HashSet<String>>,
 }
 
 fn root_sensitive_map() -> &'static Mutex<HashMap<String, Weak<RootSensitive>>> {
@@ -248,6 +251,9 @@ impl RootSensitive {
     }
 
     fn is_active(&self) -> bool {
+        if !self.takeovers.lock().is_empty() {
+            return true;
+        }
         let live = self.live_sessions();
         if live.iter().any(|s| s.has_active_sensitive()) {
             return true;
@@ -392,11 +398,13 @@ impl BrowserHandle {
     }
 
     pub(crate) fn begin_chrome_takeover(&self, card_id: String) {
+        self.root_sensitive.takeovers.lock().insert(card_id.clone());
         self.pool.begin_takeover(&self.label, card_id);
     }
 
     pub(crate) fn end_chrome_takeover(&self, card_id: &str) {
         self.pool.end_takeover(&self.label, card_id);
+        self.root_sensitive.takeovers.lock().remove(card_id);
     }
 
     pub(crate) fn is_chrome_takeover_active(&self) -> bool {
@@ -1532,6 +1540,11 @@ async fn prepare_chrome_takeover(
     // Serialize with `start()` so a parallel read-only call cannot re-attach while detaching,
     // and guard the pause with RAII so async cancellation never leaves Chrome permanently locked.
     let _starting = handle.starting.lock().await;
+    if session.has_active_sensitive() {
+        return Err(ToolError::Failed(
+            "Another sensitive sign-in step is already active in Chrome. Finish or cancel it first.".into(),
+        ));
+    }
     let mut takeover_guard = TakeoverGuard::begin(handle.clone(), card_id.clone());
     let detached = session.release_all_tabs().await;
     *handle.yours_numbers.lock() = Some(numbers);
@@ -1571,8 +1584,10 @@ async fn prepare_chrome_takeover(
     });
     let pool = handle.pool.clone();
     let label = handle.label.clone();
+    let root_sensitive = handle.root_sensitive.clone();
     let cleanup = Arc::new(move |id: &str, _state: CardState| {
         pool.end_takeover(&label, id);
+        root_sensitive.takeovers.lock().remove(id);
     });
     let before_show: Arc<dyn Fn() -> Result<(), String> + Send + Sync> = {
         let weak_handle = Arc::downgrade(&handle);
@@ -2339,6 +2354,13 @@ mod tests {
             .insert("target-1".into(), "https://login.example".into());
         assert!(is_sensitive_active(label), "cua_* must stay blocked for root and sub-agents while disconnected");
         main_guard.filled_yours.lock().remove("target-1");
+        assert!(!is_sensitive_active(label));
+
+        // Active Chrome takeover card must also block cua_* across root and sub-agents until it ends.
+        main_guard.takeovers.lock().insert("c_takeover_1".into());
+        assert!(is_sensitive_active(label), "cua_* must stay blocked during chrome_takeover");
+        assert!(subagent_guard.is_active(), "sub-agent must observe chrome_takeover sensitivity");
+        main_guard.takeovers.lock().remove("c_takeover_1");
         assert!(!is_sensitive_active(label));
     }
 }

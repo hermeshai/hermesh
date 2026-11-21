@@ -458,6 +458,20 @@ impl Server {
     /// The extension the agent uses from now on.
     pub(crate) fn use_extension(&self, instance: &str) {
         self.0.browser_pool.choose_extension(instance);
+        let in_use = self.0.browser_pool.extension_in_use();
+        for hub in self.hubs() {
+            let Some(cards) = hub.shared.cards.as_ref().and_then(std::sync::Weak::upgrade) else { continue };
+            for (card_id, _, binding) in cards.active_chrome_takeovers() {
+                if Some(binding.extension_host) != in_use {
+                    let _ = cards.set(
+                        &card_id,
+                        &[her_protocol::card::CardState::Open, her_protocol::card::CardState::SignIn],
+                        her_protocol::card::CardState::Failed,
+                        Some("Chrome extension changed. Sign-in card invalidated; fall back to manual login.".to_string()),
+                    );
+                }
+            }
+        }
         self.browser_changed();
         self.tell_extensions();
     }

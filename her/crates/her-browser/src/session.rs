@@ -906,8 +906,8 @@ impl BrowserSession {
             (self.resolve_tab(tab)?, None)
         };
         let _busy = target_tab.busy.lock().await;
-        if self.sensitive_active(&target_tab).is_some() {
-            return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
+        if self.has_active_sensitive() {
+            return Err(BrowserError::failed("A sensitive sign-in step is already active in Chrome."));
         }
         self.refresh(&target_tab).await;
         if let Some(page) = &first_page {
