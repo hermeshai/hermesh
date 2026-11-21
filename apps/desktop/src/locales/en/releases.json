@@ -3,6 +3,21 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.8": {
+    "improvements": [
+      "Her can ask you to sign in to a site from the conversation. On the computer running Her, Chrome opens an isolated sign-in window while your default browser stays the same.",
+      "Her can use local MCP programs. Add one in her console by entering its command and arguments or importing a JSON configuration. Secure input cards let you replace a connector’s API key from the conversation.",
+      "Hermesh uses end-to-end encrypted QUIC with direct IPv6 paths. On iPhone, Network Diagnostics shows the active path and round-trip time, and the offline Her demo lets you try a sample task.",
+      "On iPhone, you can zoom around your fingers, pan beyond the edges of the remote desktop, and fit the full screen with one tap.",
+      "Her supports custom model endpoints. Hermesh asks before sharing data with an external AI model and remembers your decision. Coding agents have default models, and Antigravity supports the official agy CLI."
+    ],
+    "fixes": [
+      "Antigravity can recover a session by loading it again when resume reports a recoverable error.",
+      "On desktop, Her sends a notification when her conversation is out of view, even if another Hermesh window is open.",
+      "On iPhone, reconnecting restores stalled task updates, and existing owner databases migrate to system SQLite.",
+      "Her’s Chrome extension reconnects more reliably after browser activity or a Her restart. Linux machines can repair missing components of Her."
+    ]
+  },
   "0.1.7": {
     "improvements": [
       "Mobile and desktop connections use end-to-end encrypted QUIC, support direct IPv6 paths, and can return to a direct connection after switching back to Wi-Fi. A relayed encrypted mailbox can fill in missing Her history after a device reconnects.",
