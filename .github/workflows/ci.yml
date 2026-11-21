@@ -66,6 +66,11 @@ jobs:
             decision="$result"
           fi
           printf '%s\n' "$decision" | tee -a "$GITHUB_OUTPUT"
+      - name: Validate Her public content and generated reference
+        if: steps.route.outputs.mode == 'full' || steps.route.outputs.her_static == 'true'
+        run: |
+          sh her/tools/check-public.sh
+          node her/tools/gen-protocol-docs.mjs --check
       - name: Routing regression tests
         run: python3 -I scripts/ci/test_route.py
 

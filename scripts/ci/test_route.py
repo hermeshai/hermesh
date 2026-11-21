@@ -114,6 +114,17 @@ class GitRouteTests(unittest.TestCase):
         self.assertEqual(result["mode"], "routed")
         self.assertEqual({k for k, v in result.items() if v == "true"}, {"ios", "screen_linux", "app"})
 
+    def test_affected_simulator_suite_and_her_docs(self):
+        for path in ("apps/ios/Hermesh/Views/Screen/Frame.swift", "her/docs/cli/protocol-reference.md"):
+            file = self.repo / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.touch()
+        result = self.output(self.merge())
+        self.assertEqual(result["ios_suite"], "ScreenViewportUITests")
+        self.assertEqual(result["her_static"], "true")
+        self.assertEqual(result["ios"], "true")
+        self.assertEqual(result["go"], "false")
+
     def test_file_mode_only(self):
         (self.repo / "scripts/install.sh").chmod(0o755)
         self.assertEqual(self.output(self.merge())["go"], "true")

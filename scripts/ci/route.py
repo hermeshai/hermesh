@@ -66,7 +66,7 @@ def route(paths):
         else:
             return None
         if path.endswith(".go"):
-            if "_windows" in path or path.startswith("e2e/harness"):
+            if "_windows" in path:
                 selected.add("windows")
                 if path.startswith("e2e/"):
                     selected.add("windows_e2e")
@@ -114,6 +114,8 @@ def main():
         print("mode=full")
     else:
         print("mode=routed")
+        if any(path.startswith(("her/docs/", "her/apps/console/")) or path == "her/README.md" for path in paths):
+            print("her_static=true")
         # These suites run on a fresh simulator without an external fixture server.
         suites = []
         for prefix, name in (("apps/ios/Hermesh/Views/Screen/", "ScreenViewportUITests"),
