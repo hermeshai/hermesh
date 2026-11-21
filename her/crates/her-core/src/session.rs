@@ -903,11 +903,6 @@ impl Session {
     fn change_model(&self, model: Arc<Model>, thinking: ThinkingLevel) {
         {
             let mut state = self.state.lock();
-            if let Err(err) = self.llm.ai_model_changed(&state.model, &model) {
-                drop(state);
-                self.warn(format!("cannot switch model: cannot remove saved AI sharing consent: {err}"));
-                return;
-            }
             state.model = model.clone();
             state.thinking = thinking;
         }

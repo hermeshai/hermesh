@@ -4,7 +4,7 @@ import { LocalService } from "@hermesh/proto/local";
 import type { BotResult } from "@hermesh/her-protocol";
 import { expect, test } from "@playwright/test";
 import type { BrowserWindow } from "electron";
-import { allowFixtureAISharing, fixture, launch, openWork, thisComputer } from "./app";
+import { fixture, launch, openWork, thisComputer } from "./app";
 
 type Hook = { mainWindow(): BrowserWindow; notifications(): { id: string; body: string }[] };
 declare const hermeshTest: Hook;
@@ -44,7 +44,6 @@ test("Her notifications follow the visible, focused conversation", async () => {
     const replies = page.getByRole("log", { name: "对话" }).locator(".bm");
     await composer.fill("[[mock:send:foreground synthetic reply]] hi");
     await composer.press("Enter");
-    await allowFixtureAISharing(page);
     await expect(replies.filter({ hasText: "foreground synthetic reply" })).toBeVisible({ timeout: 60_000 });
     await expect.poll(focused).toBe(true);
     expect(await app.evaluate(() => shownNotices)).not.toContain("foreground synthetic reply");

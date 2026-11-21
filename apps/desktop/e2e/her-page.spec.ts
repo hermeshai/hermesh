@@ -144,9 +144,8 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
   await expect(herPage).toBeHidden();
   await app.close();
 
-  // English UI against the same Her environment: first-time disclosure covers provider/model/data/purpose with
-  // no revoke hint, declining keeps the draft and blocks sending, approving succeeds, and the Model page has no
-  // revoke entry.
+  // English UI against the same Her environment: desktop sends directly without a backend AI-sharing modal,
+  // and the Model page has no AI sharing review or revoke entry.
   const en = await launch(fixture.socket, { systemLanguages: ["en"] });
   try {
     const enPage = en.page;
@@ -157,22 +156,7 @@ test("Her's page: its tabs, and the pages its cards and rows open beside the con
     const draft = "[[mock:send:English consent ok]] hi";
     await enComposer.fill(draft);
     await enComposer.press("Enter");
-    const enDialog = enPage.getByRole("dialog", { name: "Share data with third-party AI?" });
-    await expect(enDialog).toContainText("Provider:", { timeout: 15_000 });
-    await expect(enDialog).toContainText("127.0.0.1:");
-    await expect(enDialog).toContainText("Model:");
-    await expect(enDialog).toContainText("Data:");
-    await expect(enDialog).toContainText("Purpose:");
-    await expect(enDialog).not.toContainText(/revoke/i);
-    await enDialog.getByRole("button", { name: "Cancel" }).click();
-    await expect(enDialog).toBeHidden();
-    await expect(enComposer).toHaveValue(draft);
-    await expect(enLog).toHaveCount(0);
-    await expect(enPage.locator(".dbody")).not.toContainText("English consent ok");
-
-    await enComposer.press("Enter");
-    await expect(enDialog).toBeVisible({ timeout: 15_000 });
-    await enDialog.getByRole("button", { name: "Allow AI Sharing" }).click();
+    await expect(enPage.getByRole("dialog", { name: "Share data with third-party AI?" })).toHaveCount(0);
     await expect(enLog).toContainText("English consent ok", { timeout: 60_000 });
 
     const enHerPage = enPage.getByRole("complementary", { name: "Assistant Settings" });

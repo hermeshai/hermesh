@@ -204,7 +204,7 @@ func (h *Host) serve(ctx context.Context) error {
 	h.home = herHome(env, home)
 	h.mu.Unlock()
 	stopStale(filepath.Join(filepath.Dir(h.cfg.Socket), "her.lock"))
-	p, err := provider.StartProc(ctx, h.cfg.Bin, []string{"serve", "--require-ai-consent", "--listen", "unix://" + h.cfg.Socket}, home, env)
+	p, err := provider.StartProc(ctx, h.cfg.Bin, []string{"serve", "--listen", "unix://" + h.cfg.Socket}, home, env)
 	if err != nil {
 		return fmt.Errorf("her could not start: %w", err)
 	}

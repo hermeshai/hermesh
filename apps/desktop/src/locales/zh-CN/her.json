@@ -1,11 +1,4 @@
 {
-  "aiSharing": {
-    "title": "与第三方 AI 共享数据？",
-    "disclosure": "供应商：{{provider}} · {{endpoint}}\n模型：{{model}}\n\n数据：消息、聊天记录、图片、附件内容、记忆和工具结果，其中可能包含已连接服务的数据。\n\n用途：生成回复并执行 Her 的任务，包括这台电脑上的计划任务。",
-    "allow": "允许与 AI 共享",
-    "review": "查看第三方 AI 共享授权",
-    "unverified": "Her 无法验证此模型的接收方。请选择其他模型后再发送。"
-  },
   "page": {
     "more": "更多",
     "manage": "管理「{{name}}」…",

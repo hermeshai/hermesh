@@ -73,13 +73,6 @@ func call(t *testing.T, h *Host, conn, method string, params any) json.RawMessag
 	return res.Response.Result
 }
 
-func approveMockModel(t *testing.T, h *Host) {
-	t.Helper()
-	hertest.ApproveModel(t, "mock/mock-1", func(method string, params any) []byte {
-		return call(t, h, "", method, params)
-	})
-}
-
 // defaultBot is the id of her's default assistant in a bots/subscribe result.
 func defaultBot(t *testing.T, result []byte) string {
 	var list struct {
@@ -115,13 +108,12 @@ const hello = "[[mock:send:hello]] hi"
 // started again; Her off stops her.
 func TestHost(t *testing.T) {
 	h, home, sock := startHost(t)
-	approveMockModel(t, h)
 	ctx := context.Background()
 	if st := h.Status(); !st.Enabled || st.Version == "" || st.Error != "" {
 		t.Fatalf("status %v", st)
 	}
 	// What the owner's devices may call here: her's methods the list allows (docs/version-skew.md §6.1).
-	if m := h.Status().Methods; !slices.Contains(m, "bots/memory") || slices.Contains(m, "server/shutdown") {
+	if m := h.Status().Methods; !slices.Contains(m, "bots/memory") || slices.Contains(m, "server/shutdown") || slices.Contains(m, "ai_consent/status") {
 		t.Fatalf("methods %v", m)
 	}
 	eventually(t, func() bool { return h.Status().ModelReady })
@@ -344,7 +336,6 @@ func TestHostTurnsComputerUseOn(t *testing.T) {
 // connection of their own when it names none still open.
 func TestConsoleWithHer(t *testing.T) {
 	h, _, _ := startHost(t)
-	approveMockModel(t, h)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	res, err := http.Get(srv.URL + "/her/console/events")

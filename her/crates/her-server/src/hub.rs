@@ -878,15 +878,6 @@ impl Hub {
         if require_idle && self.mirror.busy() {
             return Err(errors::prompt_in_progress(id));
         }
-        // A failed attempt should not leave unapproved input in the history
-        // that a later, approved request will send. The adapter checks again.
-        if matches!(op, Op::Prompt { .. } | Op::Resend { .. })
-            && let Some(kernel) = &self.kernel
-        {
-            kernel.check_ai_consent().map_err(|error| {
-                RpcError::with_kind(her_rpc::code::INVALID_REQUEST, "ai_consent_required", error.message)
-            })?;
-        }
         match &op {
             Op::Prompt { id: Some(id), .. } if !her_protocol::valid_input_id(id) => {
                 return Err(RpcError::invalid_params("a prompt's id is 1 to 64 of A-Z a-z 0-9 _ -"));

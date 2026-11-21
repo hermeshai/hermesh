@@ -34,9 +34,10 @@ func (f codingFixture) prompts() int {
 	return strings.Count(string(b), "session/prompt")
 }
 
-// TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers verifies that
-// withholding or revoking Her's third-party model consent blocks only Her
-// inference and never blocks direct coding agent sessions or iPhone answers.
+// TestHerAndDirectCodingMobileAnswers verifies that Her inference works without
+// a backend AI consent gate, direct coding agent sessions and mobile answers
+// keep working (including v0.1.7 wire compatibility and decline validation),
+// and Her continues working across daemon restarts.
 func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -52,14 +53,8 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 
-	// Revoke Her model sharing so Her inference is unapproved.
-	herCall(t, &herEnvironment{c: c, machine: mac}, "", "ai_consent/revoke", map[string]any{})
 	bot := defaultBot(t, c, mac)
-	if _, err := c.HerSend(ctx, &localv1.HerSendRequest{
-		MachineId: mac, BotId: bot.ID, Text: mockSend("fictional blocked Her prompt"),
-	}); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "AI sharing is blocked") {
-		t.Fatalf("Her inference should be blocked without consent: %v", err)
-	}
+	talk(t, c, mac, bot.ID, "fictional direct Her prompt")
 
 	// Pair an iPhone owner device and verify direct coding agent sessions and
 	// mobile answers work without any coding-specific consent gate.
@@ -138,9 +133,7 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 		t.Fatalf("recorded %d prompts, want 1", n)
 	}
 
-	// Re-approve Her model inference, restart the owner daemon (and Her with it),
-	// and verify the approval persists across restart for the same recipient.
-	approveHerTestModel(t, c, mac, "mock/mock-1")
+	// Restart the owner daemon (and Her with it) and verify Her still answers directly.
 	w.restartOwner(false)
 	c = w.app.client
 	eventually(t, 2*time.Minute, "Her running again after restart", func() bool {

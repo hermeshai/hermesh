@@ -99,38 +99,33 @@ test("a Windows or Linux variant stands in for a key that exists, and takes its 
   assert.deepEqual(systemWords(words, "linux"), { thisMac: "This Computer", n: { files_one: "a file", files_other: "files" } });
 });
 
-test("Her third-party AI disclosure covers provider, model, data and purpose in both English and Chinese", () => {
+test("iPhone first-use Her local AI consent covers provider, model, data and purpose in EN and ZH while desktop has no backend consent gate", () => {
   const enHer = JSON.parse(fs.readFileSync(path.join(desktop, "en", "her.json"), "utf8"));
   const zhHer = JSON.parse(fs.readFileSync(path.join(desktop, "zh-CN", "her.json"), "utf8"));
-  assert.match(enHer.aiSharing.disclosure, /Provider: \{\{provider\}\} · \{\{endpoint\}\}/);
-  assert.match(enHer.aiSharing.disclosure, /Model: \{\{model\}\}/);
-  assert.match(enHer.aiSharing.disclosure, /Data:/);
-  assert.match(enHer.aiSharing.disclosure, /Purpose:/);
-  assert.doesNotMatch(enHer.aiSharing.disclosure, /expires when Her restarts/i);
-  assert.doesNotMatch(enHer.aiSharing.disclosure, /revoke/i);
-  assert.equal(enHer.aiSharing.revoke, undefined);
-
-  assert.match(zhHer.aiSharing.disclosure, /供应商：\{\{provider\}\} · \{\{endpoint\}\}/);
-  assert.match(zhHer.aiSharing.disclosure, /模型：\{\{model\}\}/);
-  assert.match(zhHer.aiSharing.disclosure, /数据：/);
-  assert.match(zhHer.aiSharing.disclosure, /用途：/);
-  assert.doesNotMatch(zhHer.aiSharing.disclosure, /重启后授权失效/);
-  assert.doesNotMatch(zhHer.aiSharing.disclosure, /撤回/);
-  assert.equal(zhHer.aiSharing.revoke, undefined);
+  assert.equal(enHer.aiSharing, undefined);
+  assert.equal(zhHer.aiSharing, undefined);
 
   const iosStringsPath = path.join(import.meta.dirname, "..", "..", "..", "ios", "Hermesh", "Localizable.xcstrings");
   const xc = JSON.parse(fs.readFileSync(iosStringsPath, "utf8")).strings as Record<string, { localizations?: Record<string, { stringUnit?: { value?: string } }> }>;
-  const iosKey = Object.keys(xc).find((k) => k.startsWith("Provider: %@ · %@\nModel: %@\n\nData:"));
-  assert.ok(iosKey, "iOS Localizable.xcstrings must contain the Her provider/model/data/purpose disclosure");
+  const iosKey = Object.keys(xc).find((k) => k.startsWith("Provider: %@\nModel: %@\n\nData:"));
+  assert.ok(iosKey, "iOS Localizable.xcstrings must contain the Her local first-use provider/model/data/purpose disclosure");
   assert.match(iosKey, /Purpose:/);
   assert.doesNotMatch(iosKey, /expires when Her restarts/i);
   assert.doesNotMatch(iosKey, /revoke/i);
   assert.equal(xc["Revoke Third-Party AI Sharing"], undefined);
+  assert.equal(xc["Review Third-Party AI Sharing"], undefined);
   const zhIOS = xc[iosKey]?.localizations?.["zh-Hans"]?.stringUnit?.value ?? "";
-  assert.match(zhIOS, /供应商：%1\$@ · %2\$@/);
-  assert.match(zhIOS, /模型：%3\$@/);
+  assert.match(zhIOS, /供应商：%1\$@/);
+  assert.match(zhIOS, /模型：%2\$@/);
   assert.match(zhIOS, /数据：/);
   assert.match(zhIOS, /用途：/);
   assert.doesNotMatch(zhIOS, /重启后授权失效/);
   assert.doesNotMatch(zhIOS, /撤回/);
+
+  const iosFallbackKey = Object.keys(xc).find((k) => k.startsWith("Data: messages, chat history, images, attachment contents"));
+  assert.ok(iosFallbackKey, "iOS Localizable.xcstrings must contain the fallback local first-use disclosure");
+  assert.match(iosFallbackKey, /Purpose:/);
+  const zhIOSFallback = xc[iosFallbackKey]?.localizations?.["zh-Hans"]?.stringUnit?.value ?? "";
+  assert.match(zhIOSFallback, /数据：/);
+  assert.match(zhIOSFallback, /用途：/);
 });

@@ -314,10 +314,6 @@ func TestHerInProcess(t *testing.T) {
 		}
 		return res.Response.Result
 	}
-	hertest.ApproveModel(t, "mock/mock-1", func(method string, params any) []byte {
-		b, _ := json.Marshal(params)
-		return herCall("", method, string(b))
-	})
 	var open struct {
 		SessionID string `json:"session_id"`
 	}
