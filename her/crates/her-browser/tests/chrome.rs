@@ -584,3 +584,36 @@ async fn a_browser_closes_with_its_last_session_and_starts_again() {
     assert!(opened.text.contains("Welcome back"));
     assert!(!opened.text.contains("temporary profile"), "{}", opened.text);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn inactive_tab_activates_for_screenshot_and_act_and_recovers_after_closing_all_tabs() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+
+    // Open tab 1 on /login, then open tab 2 on /welcome so tab 1 becomes an inactive background tab.
+    let login = session.navigate(None, &fx.url("/login"), false).await.unwrap();
+    let tab1 = login.tab.clone();
+    let email = ref_of(&login.text, "textbox \"Email\"");
+    let button = ref_of(&login.text, "button \"Continue\"");
+
+    let tab2 = session.open_tab().await.unwrap();
+    session.navigate(Some(&tab2.id), &fx.url("/welcome"), false).await.unwrap();
+
+    // Screenshot and act directly on inactive tab 1: activateTarget brings it live and both succeed.
+    let (png, shot) = session.screenshot(Some(&tab1), false, None).await.unwrap();
+    assert!(png.starts_with(b"\x89PNG"), "expected PNG screenshot bytes");
+    assert_eq!(shot.tab, tab1);
+
+    let filled = act(&session, Action::Fill("ada@example.com".into()), &email).await.unwrap();
+    assert!(filled.contains("ada@example.com"), "{filled}");
+    let submitted = act(&session, Action::Click, &button).await.unwrap();
+    assert!(submitted.contains("Welcome back"), "{submitted}");
+
+    // Closing every tab in the session still lets the next navigate open a fresh tab cleanly.
+    for t in session.tabs() {
+        session.close_tab(&t.id).await.unwrap();
+    }
+    assert!(session.tabs().is_empty());
+    let reopened = session.navigate(None, &fx.url("/welcome"), false).await.unwrap();
+    assert!(reopened.text.contains("Welcome back"), "{}", reopened.text);
+}

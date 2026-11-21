@@ -107,7 +107,7 @@ export class TargetRelay {
         this.drop(this.target(params.targetId), "the tab was closed", "close");
         return { success: true };
       case "Target.activateTarget":
-        this.activate(this.target(params.targetId));
+        await this.activate(this.target(params.targetId));
         return {};
       case "Target.getTargets":
         return { targetInfos: this.listTargets(params) };

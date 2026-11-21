@@ -118,7 +118,7 @@ export class ExtensionBrowser extends TargetRelay {
   }
 
   activate(t) {
-    this.tabs.activate(t.tabId);
+    return this.tabs.activate(t.tabId);
   }
 
   // Downloads go where the user's Chrome puts them; the kernel is not told.

@@ -352,3 +352,203 @@ async fn kernel_tools_list_snapshot_and_open_after_recovering_stale_tabs() {
         kernel.shutdown().await;
     }
 }
+
+/// A host that drops the connection once on the first snapshot (simulating a transient extension
+/// worker restart), then succeeds on the reconnect while keeping the session's tab.
+struct DropOnceSnapshotHost {
+    id: u64,
+    dropped: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl EmbeddedHost for DropOnceSnapshotHost {
+    fn id(&self) -> u64 {
+        self.id
+    }
+    fn keeps_tabs(&self) -> bool {
+        true
+    }
+    fn connect(&self) -> Result<Stream, BrowserError> {
+        let (client, server) = tokio::io::duplex(65536);
+        let (read, mut write) = tokio::io::split(server);
+        let dropped = self.dropped.clone();
+        tokio::spawn(async move {
+            let mut read = BufReader::new(read);
+            let mut attached = HashSet::new();
+            let mut targets: Vec<String> = vec!["T10".into()];
+            loop {
+                let mut bytes = Vec::new();
+                if read.read_until(0, &mut bytes).await.unwrap_or(0) == 0 {
+                    break;
+                }
+                bytes.pop();
+                let c: Value = serde_json::from_slice(&bytes).unwrap();
+                let method = c["method"].as_str().unwrap();
+                let target = c["params"]["targetId"].as_str().unwrap_or("");
+                if method == "Accessibility.getFullAXTree"
+                    && !dropped.swap(true, std::sync::atomic::Ordering::SeqCst)
+                {
+                    // Drop the stream mid-snapshot once; the tool should reconnect and retry.
+                    break;
+                }
+                let mut reply = json!({"id": c["id"], "result": {}});
+                match method {
+                    "Target.getTargets" => {
+                        reply["result"] = json!({"targetInfos": targets.iter().filter(|t| !attached.contains(*t)).map(|t| info(t)).collect::<Vec<_>>()})
+                    }
+                    "Target.createTarget" => {
+                        if !targets.iter().any(|t| t == "T10") {
+                            targets.push("T10".into());
+                        }
+                        reply["result"] = json!({"targetId": "T10"});
+                    }
+                    "Target.attachToTarget" => {
+                        attached.insert(target.to_string());
+                        let session = format!("S{target}");
+                        let event = json!({"method": "Target.attachedToTarget", "params": {"sessionId": session, "targetInfo": info(target), "waitingForDebugger": false}});
+                        let mut eb = serde_json::to_vec(&event).unwrap();
+                        eb.push(0);
+                        if write.write_all(&eb).await.is_err() {
+                            break;
+                        }
+                        reply["result"] = json!({"sessionId": session});
+                    }
+                    "Target.getTargetInfo" => reply["result"] = json!({"targetInfo": info(target)}),
+                    "Page.getFrameTree" => reply["result"] = json!({"frameTree": {"frame": frame(false)}}),
+                    "Page.navigate" => reply["result"] = json!({"frameId": "frame", "loaderId": "document"}),
+                    "Accessibility.getFullAXTree" => {
+                        reply["result"] = json!({"nodes": [
+                            {"nodeId": "1", "role": {"value": "RootWebArea"}, "childIds": ["2"]},
+                            {"nodeId": "2", "role": {"value": "heading"}, "name": {"value": "Auto relaunched page"}},
+                        ]});
+                    }
+                    _ => {}
+                }
+                let mut rb = serde_json::to_vec(&reply).unwrap();
+                rb.push(0);
+                if write.write_all(&rb).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let (read, write) = tokio::io::split(client);
+        Ok((Box::new(read), Box::new(write)))
+    }
+}
+
+#[tokio::test]
+async fn kernel_auto_launches_closed_extension_browser_and_retries_transient_snapshot_drop() {
+    use her_core::{HerHome, JsonlStore, Kernel, KernelDeps, StartOptions, TaskEnd};
+    use her_llm::api::scripted::{Script, ScriptedApi};
+    use her_llm::{Catalog, Message, ModelRegistry, RegistryOptions, ThinkingLevel, UserContent};
+    use her_protocol::PermissionMode;
+    use her_tools::{BashTool, LocalEnvironment, builtin_registry};
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = HerHome::new(dir.path().join("home"));
+    home.ensure().unwrap();
+    let user = home.config_file();
+    std::fs::write(&user, "[browser]\nextension = true\n[browser.sites]\n\"https://recovery.test\" = \"act\"\n").unwrap();
+    let config = her_core::config::load_layers(
+        &her_core::config::LayerFiles {
+            user: &user,
+            project: None,
+            user_project: None,
+            project_root: None,
+        },
+        true,
+        &[],
+    )
+    .unwrap()
+    .config;
+    let api = ScriptedApi::new();
+    let mut registry = ModelRegistry::new(Catalog::default(), RegistryOptions::default());
+    registry.register_api(api.clone());
+    registry.insert_provider(ScriptedApi::provider());
+
+    // Simulate Chrome previously connected, then closed before the task begins.
+    let pool = Arc::new(BrowserPool::new(dir.path().join("browser"), false));
+    let dropped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    pool.add_extension_named(
+        Arc::new(DropOnceSnapshotHost { id: 1, dropped: dropped.clone() }),
+        Some("inst-1".into()),
+        Some("Google Chrome 131.0.0.1".into()),
+    );
+    pool.remove_extension(1);
+
+    let launches = Arc::new(parking_lot::Mutex::new(Vec::<Option<String>>::new()));
+    let launches_ref = launches.clone();
+    let pool_ref = pool.clone();
+    let dropped_ref = dropped.clone();
+    pool.set_extension_launcher(Arc::new(move |browser| {
+        launches_ref.lock().push(browser.map(str::to_string));
+        let p = pool_ref.clone();
+        let d = dropped_ref.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            p.add_extension_named(
+                Arc::new(DropOnceSnapshotHost { id: 2, dropped: d }),
+                Some("inst-1".into()),
+                Some("Google Chrome 131.0.0.1".into()),
+            );
+        });
+        true
+    }));
+
+    let deps = KernelDeps {
+        llm: Arc::new(registry),
+        tools: Arc::new(builtin_registry(BashTool::default())),
+        env: Arc::new(LocalEnvironment::new(dir.path().into())),
+        store: Arc::new(JsonlStore::new(home.sessions_dir())),
+        hooks: vec![],
+        mcp_servers: Vec::new(),
+        browser_pool: Some(pool.clone()),
+        docs: None,
+        decks: None,
+        words: None,
+        routines: None,
+        connectors: None,
+        mesh: None,
+    };
+    let options = StartOptions {
+        model: "test/scripted".into(),
+        thinking: ThinkingLevel::Off,
+        permission_mode: PermissionMode::Manual,
+        cwd: dir.path().into(),
+        home,
+        config: Arc::new(config),
+        project_root: None,
+        trusted: true,
+        interactive_approvals: false,
+        bot: None,
+    };
+    let mut kernel = Kernel::start(options, deps).await.unwrap();
+    pool.set_session_tabs([(kernel.session_id().into(), 1)].into());
+
+    // First call: Chrome is closed -> auto-launches Chrome -> adopts tab -> snapshot drops once mid-call -> transparently retries and succeeds!
+    api.push(Script::tool_call("search", "tool_search", json!({"query": "browser"})));
+    api.push(Script::tool_call("snap", "call_tool", json!({"name": "browser_snapshot", "arguments": {}})));
+    api.push(Script::text("done"));
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        kernel.run(vec![UserContent::Text { text: "read page".into() }]),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(matches!(result.end, TaskEnd::Completed { .. }));
+    assert_eq!(*launches.lock(), vec![Some("Google Chrome".to_string())]);
+    let last_result = api
+        .requests()
+        .last()
+        .unwrap()
+        .messages
+        .iter()
+        .filter_map(|m| match m {
+            Message::ToolResult(r) => Some(r.text_content()),
+            _ => None,
+        })
+        .last()
+        .unwrap();
+    assert!(last_result.contains("Auto relaunched page"), "{last_result}");
+    kernel.shutdown().await;
+}

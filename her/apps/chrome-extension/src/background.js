@@ -27,6 +27,8 @@ const RETRY_MIN = 1000;
 const RETRY_MAX = 30000;
 /** Reconnecting takes seconds (§8.4.7). Past this, as long as the app waits, it is worth saying. */
 const STUCK_AFTER = 10000;
+/** If a screenshot stays pending this long (occluded window), wake the window once to force a frame. */
+const SCREENSHOT_WAKE_MS = 4000;
 
 const msg = (name, ...args) => chrome.i18n.getMessage(name, args.map(String)) || name;
 
@@ -156,14 +158,41 @@ function forget(tabId) {
 
 // ---- The tabs of the agent ----
 
+function keepAliveTab(tabId) {
+  chrome.tabs.update?.(tabId, { autoDiscardable: false }).catch(() => {});
+}
+
+async function ensureWindowNormal(winId) {
+  if (winId === undefined || winId === null) return false;
+  if (!chrome.windows?.get) return true;
+  try {
+    const win = await chrome.windows.get(winId);
+    if (win?.state === "minimized") {
+      await chrome.windows.update?.(winId, { state: "normal", focused: false });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function wakeForScreenshot(tabId) {
+  try {
+    const tab = await chrome.tabs.get?.(tabId);
+    if (tab?.windowId !== undefined) {
+      await chrome.windows.update?.(tab.windowId, { state: "normal", focused: true });
+    }
+    await chrome.tabs.update?.(tabId, { active: true });
+  } catch {
+    // Best-effort window wake; still try Page.bringToFront below.
+  }
+  await chrome.debugger.sendCommand({ tabId }, "Page.bringToFront", {}).catch(() => {});
+}
+
 async function agentWindow() {
   if (windowId !== null) {
-    try {
-      await chrome.windows.get(windowId);
-      return windowId;
-    } catch {
-      windowId = null;
-    }
+    if (await ensureWindowNormal(windowId)) return windowId;
+    windowId = null;
   }
   return null;
 }
@@ -204,18 +233,25 @@ const tabs = {
   async create(url, label) {
     let tab;
     const existing = await agentWindow();
-    if (existing === null) {
+    if (existing !== null) {
+      try {
+        tab = await chrome.tabs.create({ windowId: existing, url, active: true });
+      } catch {
+        windowId = null;
+      }
+    }
+    if (!tab) {
       const win = await chrome.windows.create({ url, focused: false, type: "normal" });
       windowId = win.id;
       tab = win.tabs[0];
-    } else {
-      tab = await chrome.tabs.create({ windowId: existing, url, active: true });
     }
+    keepAliveTab(tab.id);
     if (label) remember(tab.id, label, tab.pendingUrl ?? tab.url ?? url, tab.title);
     await group(tab.id, label);
     return tab.id;
   },
   adopt(tabId, label) {
+    keepAliveTab(tabId);
     if (label) remember(tabId, label);
     void group(tabId, label);
   },
@@ -224,11 +260,26 @@ const tabs = {
     chrome.tabs.remove(tabId).catch(() => {});
   },
   forget,
-  activate(tabId) {
-    chrome.tabs.update(tabId, { active: true }).catch(() => {});
+  async activate(tabId) {
+    try {
+      const tab = await chrome.tabs.get?.(tabId);
+      if (tab?.windowId !== undefined) await ensureWindowNormal(tab.windowId);
+      await chrome.tabs.update?.(tabId, { active: true });
+    } catch {
+      // The tab or its window closed.
+    }
   },
   async attach(tabId) {
+    try {
+      const tab = await chrome.tabs.get?.(tabId);
+      if (tab?.discarded) await chrome.tabs.reload?.(tabId);
+    } catch {
+      // Let chrome.debugger.attach report whether the tab is gone.
+    }
     await chrome.debugger.attach({ tabId }, PROTOCOL);
+    keepAliveTab(tabId);
+    // Keep DOM.focus and keyboard input working while the window stays behind other apps.
+    chrome.debugger.sendCommand({ tabId }, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => {});
     // Defer to the next turn so Relay.dispatch sets `t.sessionId` before `reportNow` inspects it.
     clearTimeout(reporting);
     reporting = setTimeout(reportNow, 0);
@@ -241,7 +292,16 @@ const tabs = {
     const tab = agentTabs.get(tabId);
     if (tab) lastUsed.set(tab.session, tabId);
     const target = child ? { tabId, sessionId: child } : { tabId };
-    return chrome.debugger.sendCommand(target, method, params);
+    const call = chrome.debugger.sendCommand(target, method, params);
+    if (method !== "Page.captureScreenshot" || child) return call;
+    let timer = null;
+    return new Promise((resolve, reject) => {
+      timer = setTimeout(() => { void wakeForScreenshot(tabId); }, SCREENSHOT_WAKE_MS);
+      Promise.resolve(call).then(
+        (value) => { clearTimeout(timer); resolve(value); },
+        (err) => { clearTimeout(timer); reject(err); },
+      );
+    });
   },
   released(label) {
     return [...agentTabs].filter(([, tab]) => tab.session === label).map(([tabId, tab]) => ({ tabId, url: tab.url, title: tab.title }));
@@ -436,6 +496,14 @@ async function checkFiles() {
 }
 
 function onMessage(current, message) {
+  if (message.ping !== undefined) {
+    try {
+      current.postMessage({ pong: message.ping });
+    } catch {
+      // The port closed; onDisconnect schedules a reconnect.
+    }
+    return;
+  }
   if (message.control) {
     onControl(message.control);
     return;
@@ -529,6 +597,7 @@ async function hello(current) {
         bridge: { min: BRIDGE_MIN, max: bridge },
         instance: id,
         account: account || undefined,
+        heartbeat: true,
       },
     });
     helloSent = true;
@@ -583,7 +652,7 @@ function connect() {
     hostState = error?.includes("not found") ? "missing" : "connecting";
     show();
     clearTimeout(retryTimer);
-    retryTimer = setTimeout(connect, Math.min(RETRY_MAX, RETRY_MIN * 2 ** retries++));
+    retryTimer = setTimeout(() => ready.then(connect), Math.min(RETRY_MAX, RETRY_MIN * 2 ** retries++));
   });
   // A host not installed stays that until one answers: each retry is not news.
   if (hostState !== "missing") hostState = "connecting";
@@ -637,7 +706,7 @@ function pageAction(action) {
       break;
     case "open_app":
       postControl({ kind: "open_app" });
-      connect();
+      void ready.then(connect);
       break;
     case "use_this":
       postControl({ kind: "use_this" });
@@ -648,7 +717,7 @@ function pageAction(action) {
       stuckTimer = null;
       stuck = false;
       retries = 0;
-      connect();
+      void ready.then(connect);
       show();
       break;
     case "update":
