@@ -284,11 +284,36 @@ textarea.field.cz-grow{height:auto;min-height:30px;padding:6px 9px;line-height:1
 .seg.cz-modeseg{display:grid;grid-template-columns:1fr 1fr;width:100%;margin-bottom:var(--sp-2)}
 .seg.cz-modeseg button{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;font-size:12.5px}
 .seg.cz-modeseg .ic{width:13px;height:13px}
-.cz-paste-row{display:flex;gap:6px;align-items:flex-start}
-.cz-paste-row .field{flex:1;min-width:0}
-.cz-paste-row .btn{flex:none;height:30px}
+.cz-host-callout{padding:8px 12px;font-size:12px}
+.cz-host-callout b{font-weight:600;color:var(--l1)}
+.cz-fi-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cz-fi-head>label{font-size:12px;color:var(--l2);display:flex;align-items:center;gap:6px}
+.cz-import-btn{display:inline-flex;align-items:center;gap:4px;font-size:12px;flex:none}
+.cz-import-btn .ic{width:13px;height:13px}
+.cz-imported{display:flex;align-items:flex-start;gap:7px;font-size:12px;line-height:1.45;color:var(--green);background:var(--green-bg);border-radius:var(--r-md);padding:7px 11px}
+.cz-imported .ic{width:13px;height:13px;margin-top:2px;flex:none}
 .cz-args{display:flex;flex-direction:column;gap:6px}
 .cz-argrow{display:grid;grid-template-columns:1fr 24px;gap:6px;align-items:center}
+.cz-argrow.single{grid-template-columns:1fr}
+.cz-kvrow .field,.cz-argrow .field{min-width:0}
+.cz-form .cz-fold{margin:2px 2px 0;align-self:flex-start}
+.cz-form .cz-advgroup{margin-top:0}
+.cz-form .cz-trust{margin:2px 2px 0}
+.cz-form .sub{margin-bottom:0}
+textarea.field.cz-import-area{height:auto;min-height:186px;padding:9px 11px;font-size:12px;line-height:1.5;resize:vertical}
+.cz-import-pick{display:flex;flex-direction:column;gap:6px}
+.cz-import-pick .note{font-size:12px;color:var(--l2)}
+.cz-pick-row{width:100%;border:0;background:none;text-align:left;cursor:pointer;border-radius:0}
+.cz-pick-row:first-child{border-radius:var(--r-card) var(--r-card) 0 0}
+.cz-pick-row:last-child{border-radius:0 0 var(--r-card) var(--r-card)}
+.cz-pick-row:hover{background:var(--fill)}
+.cz-pick-row .fdesc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:640px){
+  .sheet.cz-add h3{padding:18px 16px 12px}
+  .cz-add-body{padding:0 16px 16px}
+  .sheet.cz-add .sheet-foot{padding:12px 16px}
+  .seg.cz-modeseg button{font-size:12px;padding:0 8px}
+}
 .cz-center{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:var(--sp-4) var(--sp-3) var(--sp-2)}
 .cz-center .big{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin-bottom:6px}
 .cz-center .big.ok{background:var(--green);color:#fff}

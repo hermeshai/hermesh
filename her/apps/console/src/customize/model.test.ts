@@ -112,6 +112,8 @@ test("stdio validation: rejects shell syntax, batch scripts, interpolated progra
 
   assert.equal(validateProgram(""), "empty");
   assert.equal(validateProgram("npx -y @scope/server"), "space");
+  assert.equal(validateProgram("node server.js && whoami"), "shell");
+  assert.equal(validateProgram("node|cat"), "shell");
   assert.equal(validateProgram("/Applications/My App.app/Contents/MacOS/mcp"), null);
   assert.equal(validateProgram("${HOME}/bin/mcp"), "var");
   assert.equal(validateProgram("npx.cmd"), "batch");

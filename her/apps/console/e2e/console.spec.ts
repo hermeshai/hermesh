@@ -52,25 +52,34 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     await expect(row).toBeVisible();
   });
 
-  await test.step("a connector started as a command, signed on the owner's device, never written by the page", async () => {
+  await test.step("manual local stdio connector: simple default fields, collapsible advanced, error prompts, and signed approval", async () => {
     const name = "hello-" + "a".repeat(26);
     await page.getByRole("button", { name: "Add Connector" }).click();
     const sheet = page.getByRole("dialog", { name: "Add Connector" });
     // Explicit transport switcher: Remote URL (HTTP) vs Local Program (stdio).
     await sheet.getByRole("button", { name: "Local Program (stdio)" }).click();
     const local = page.getByRole("dialog", { name: "Add Local Program (stdio)" });
-    // Shows execution host callout.
-    await expect(local).toContainText("Runs directly on");
+    // Shows execution device callout clearly; JSON box and Advanced fields are NOT cluttering the default view.
+    await expect(local).toContainText("Runs on");
     await expect(local).toContainText("(stdio, no shell)");
-    // Quick paste rejects shell operators.
-    await local.getByLabel("Quick paste (optional)").fill("node server.js && whoami");
-    await local.getByRole("button", { name: "Fill fields" }).click();
+    await expect(local.getByLabel("MCP JSON")).toHaveCount(0);
+    await expect(local.getByRole("button", { name: /Advanced/ })).toHaveAttribute("aria-expanded", "false");
+    await expect(local.getByRole("button", { name: "Import JSON…" })).toBeVisible();
+
+    // Error prompts: reject shell syntax in Executable and credential references in Arguments.
+    await local.getByLabel("Executable").fill("node server.js && whoami");
+    await local.getByRole("button", { name: "Add and Approve" }).click();
     await expect(local).toContainText("Shell operators");
-    // Fill structured Name, Executable, Arguments, and Environment variables (including a locked secret).
-    await local.getByLabel("Name", { exact: true }).fill(name);
     await local.getByLabel("Executable").fill(process.execPath);
-    await local.getByRole("button", { name: "Add argument" }).click();
+    await local.getByLabel("Argument 1").fill("--token=${credential:mcp.hello.TOKEN}");
+    await local.getByRole("button", { name: "Add and Approve" }).click();
+    await expect(local).toContainText("Do not put ${credential:...} in arguments");
+
+    // Fill structured Executable, Argument 1, and expand Advanced for Name & Environment variables (including a locked secret).
     await local.getByLabel("Argument 1").fill(path.join(import.meta.dirname, "mcp-stdio.mjs"));
+    await local.getByRole("button", { name: /Advanced/ }).click();
+    await expect(local.getByRole("button", { name: /Advanced/ })).toHaveAttribute("aria-expanded", "true");
+    await local.getByLabel("Name", { exact: true }).fill(name);
     await local.getByRole("button", { name: "Add a row" }).click();
     await local.getByLabel("Name", { exact: true }).nth(1).fill("GREETING");
     await local.getByLabel("Value").fill("hi");
@@ -90,14 +99,25 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     const original = read("config.toml").match(/API_TOKEN = "(\$\{credential:mcp-stdio\.[A-Za-z0-9_-]{32}\.[a-f0-9]{20}\})"/)?.[1];
     expect(original).toBeDefined();
     expect(read("config.toml")).not.toContain("secret-e2e-token-12345");
-    // Detail page shows execution host and allows structured editing.
+
+    // Add extra existing TOML fields to verify editing does not drop unrelated fields.
+    const cfgPath = path.join(site.home, "config.toml");
+    writeFileSync(
+      cfgPath,
+      read("config.toml").replace(`[mcp_servers.${name}]\n`, `[mcp_servers.${name}]\ndescription = "Keep existing description"\nstartup_timeout_secs = 45\n`),
+    );
+
+    // Detail page shows execution host and allows structured editing without losing existing fields.
     await row.click();
     await expect(page.getByText("Execution host")).toBeVisible();
     await page.getByRole("button", { name: "More" }).click();
     await page.getByRole("menuitem", { name: "Edit Configuration…" }).click();
     const edit = page.getByRole("dialog", { name: `Edit ${name}` });
+    await expect(edit).toContainText("Runs on");
     await expect(edit.getByLabel("Executable")).toHaveValue(process.execPath);
     await expect(edit.getByLabel("Argument 1")).toHaveValue(path.join(import.meta.dirname, "mcp-stdio.mjs"));
+    // Existing env vars auto-expand Advanced on edit so nothing is hidden or lost.
+    await expect(edit.getByRole("button", { name: /Advanced/ })).toHaveAttribute("aria-expanded", "true");
     const token = edit.getByLabel("Value").and(edit.locator('input[type="password"]'));
     await expect(token).toHaveAttribute("type", "password");
     await expect(token).toHaveValue("");
@@ -112,9 +132,86 @@ test("custom HTTP and stdio connectors", async ({ page }) => {
     await expect(edit).toBeHidden();
     expect(read("config.toml")).not.toContain(original!);
     expect(read("config.toml")).not.toContain("rotated-e2e-token");
+    expect(read("config.toml")).toContain('GREETING = "hi"');
+    expect(read("config.toml")).toContain('description = "Keep existing description"');
+    expect(read("config.toml")).toContain("startup_timeout_secs = 45");
     expect(read("credentials.toml")).toContain("rotated-e2e-token");
     expect(read("credentials.toml")).not.toContain("secret-e2e-token-12345");
     await page.getByRole("button", { name: "Back to Connectors" }).click();
+  });
+
+  await test.step("independent JSON import pre-fills the same form without auto-starting or writing before approval", async () => {
+    let commandCalls = 0;
+    const countCommand = () => {
+      commandCalls++;
+    };
+    const onReq = (req: { url: () => string; method: () => string }) => {
+      if (req.method() === "POST" && req.url().includes("/command-connector")) countCommand();
+    };
+    page.on("request", onReq);
+    try {
+      await page.getByRole("button", { name: "Add Connector" }).click();
+      const sheet = page.getByRole("dialog", { name: "Add Connector" });
+      await sheet.getByRole("button", { name: "Local Program (stdio)" }).click();
+      const local = page.getByRole("dialog", { name: "Add Local Program (stdio)" });
+      await local.getByRole("button", { name: "Import JSON…" }).click();
+      const importer = page.getByRole("dialog", { name: "Import MCP JSON" });
+      // Manual fields are not shown simultaneously with JSON import.
+      await expect(importer.getByLabel("Executable")).toHaveCount(0);
+      await expect(importer).toContainText("Runs on");
+
+      // Invalid JSON & bad structure errors.
+      await importer.getByLabel("MCP JSON").fill("{not valid");
+      await importer.getByRole("button", { name: "Parse & Fill Form" }).click();
+      await expect(importer).toContainText("not valid JSON");
+      await importer.getByLabel("MCP JSON").fill(JSON.stringify({ command: process.execPath, args: "not-an-array" }));
+      await importer.getByRole("button", { name: "Parse & Fill Form" }).click();
+      await expect(importer).toContainText("args must be an array of strings");
+
+      // Valid harmless fixture JSON with secret-looking env var & unsupported field (cwd).
+      await importer.getByLabel("MCP JSON").fill(
+        JSON.stringify({
+          mcpServers: {
+            "imported-stdio": {
+              command: process.execPath,
+              args: [path.join(import.meta.dirname, "mcp-stdio.mjs"), "from-json"],
+              env: { IMPORT_TOKEN: "import-secret-999", MODE: "safe" },
+              cwd: "/tmp",
+            },
+          },
+        }),
+      );
+      await importer.getByRole("button", { name: "Parse & Fill Form" }).click();
+
+      // Pre-fills the same manual form for review, auto-expands Advanced because env was imported, and NEVER auto-starts.
+      await expect(local.getByText(/Pre-filled from JSON.*cwd/)).toBeVisible();
+      await expect(local.getByLabel("Executable")).toHaveValue(process.execPath);
+      await expect(local.getByLabel("Argument 1")).toHaveValue(path.join(import.meta.dirname, "mcp-stdio.mjs"));
+      await expect(local.getByLabel("Argument 2")).toHaveValue("from-json");
+      await expect(local.getByRole("button", { name: /Advanced/ })).toHaveAttribute("aria-expanded", "true");
+      await expect(local.getByLabel("Name", { exact: true }).first()).toHaveValue("imported-stdio");
+      const secretInput = local.getByLabel("Value").and(local.locator('input[type="password"]'));
+      await expect(secretInput).toHaveValue("import-secret-999");
+
+      // Verify import did NOT call command-connector, did NOT write config.toml, and did NOT write credentials.toml.
+      expect(commandCalls).toBe(0);
+      expect(read("config.toml")).not.toContain("[mcp_servers.imported-stdio]");
+      expect(read("credentials.toml")).not.toContain("import-secret-999");
+
+      // Now explicitly approve to save and start.
+      await local.getByRole("button", { name: "Add and Approve" }).click();
+      await expect(local.getByText("Added imported-stdio", { exact: true })).toBeVisible();
+      await expect(local.getByText("say_hello")).toBeVisible();
+      await local.getByRole("button", { name: "Done" }).click();
+      expect(commandCalls).toBe(1);
+      await expect(page.locator(".cz-row", { hasText: "imported-stdio" })).toContainText("Ready · 1 tool");
+      expect(read("config.toml")).toContain("[mcp_servers.imported-stdio]");
+      expect(read("config.toml")).toContain('MODE = "safe"');
+      expect(read("config.toml")).not.toContain("import-secret-999");
+      expect(read("credentials.toml")).toContain("import-secret-999");
+    } finally {
+      page.off("request", onReq);
+    }
   });
 
 });
@@ -137,13 +234,22 @@ test.describe("iPhone console layout", () => {
     await remote.getByRole("button", { name: "Local Program (stdio)" }).tap();
     const local = page.getByRole("dialog", { name: "Add Local Program (stdio)" });
     await expect(local).toContainText("(stdio, no shell)");
-    await local.getByLabel("Name", { exact: true }).fill("Phone_stdio-1");
-    await local.getByLabel("Quick paste (optional)").fill(JSON.stringify({
-      command: process.execPath,
-      args: [path.join(import.meta.dirname, "mcp-stdio.mjs"), "mobile"],
-    }));
-    await local.getByRole("button", { name: "Fill fields" }).tap();
+    await expect(local.getByLabel("MCP JSON")).toHaveCount(0);
+    await local.getByRole("button", { name: "Import JSON…" }).tap();
+    const importer = page.getByRole("dialog", { name: "Import MCP JSON" });
+    await importer.getByLabel("MCP JSON").fill(
+      JSON.stringify({
+        mcpServers: {
+          "Phone_stdio-1": {
+            command: process.execPath,
+            args: [path.join(import.meta.dirname, "mcp-stdio.mjs"), "mobile"],
+          },
+        },
+      }),
+    );
+    await importer.getByRole("button", { name: "Parse & Fill Form" }).tap();
     await expect(local.getByLabel("Executable")).toHaveValue(process.execPath);
+    await expect(local.getByLabel("Argument 1")).toHaveValue(path.join(import.meta.dirname, "mcp-stdio.mjs"));
     await local.getByRole("button", { name: "Add and Approve" }).tap();
     await expect(local.getByText("say_hello")).toBeVisible();
     await local.getByRole("button", { name: "Done" }).tap();
