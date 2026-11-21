@@ -58,16 +58,89 @@ export function hasShellSyntax(line: string): boolean {
   return false;
 }
 
-export type ProgramIssue = "empty" | "space" | "var" | "batch" | null;
+export type ProgramIssue = "empty" | "space" | "shell" | "var" | "batch" | null;
 
 /** Validates the executable name/path of a local stdio connector (no shell, no interpolation). */
 export function validateProgram(program: string): ProgramIssue {
   const p = program.trim();
   if (!p) return "empty";
-  if (/[\x00-\x1f\x7f]/.test(p) || (!/^(\/|\.\.?\/|~\/|[A-Za-z]:[\\/])/.test(p) && /\s/.test(p))) return "space";
   if (p.includes("${")) return "var";
+  if (hasShellSyntax(p)) return "shell";
+  if (/[\x00-\x1f\x7f]/.test(p) || (!/^(\/|\.\.?\/|~\/|[A-Za-z]:[\\/])/.test(p) && /\s/.test(p))) return "space";
   if (/\.(bat|cmd)$/i.test(p)) return "batch";
   return null;
+}
+
+/** Normalizes a candidate name into a valid connector identifier (1-32 chars of [a-z0-9_-]). */
+export function sanitizeServerName(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
+const isRecord = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x);
+const KNOWN_LOCAL_JSON_KEYS = new Set(["command", "args", "env", "type", "transport", "name", "disabled", "enabled"]);
+
+export type ImportedServer =
+  | { kind: "local"; name?: string; command: string; args: string[]; env: Row[]; skipped: string[] }
+  | { kind: "remote"; name?: string; url: string; host: string; insecure: boolean; sse: boolean; headers: Row[] };
+
+export type JsonImportResult =
+  | { ok: true; servers: ImportedServer[] }
+  | { ok: false; error: "empty" | "json" | "jsonServer" | "badArgs" | "badEnv" };
+
+/** Parses an MCP server JSON snippet (single server or mcpServers/mcp_servers/servers map) for form pre-fill. */
+export function parseMcpJson(text: string): JsonImportResult {
+  const t = text.trim();
+  if (!t) return { ok: false, error: "empty" };
+  let v: unknown;
+  try {
+    v = JSON.parse(t);
+  } catch {
+    return { ok: false, error: "json" };
+  }
+  if (!isRecord(v)) return { ok: false, error: "json" };
+  const isServer = (x: unknown): x is Record<string, unknown> => isRecord(x) && ("command" in x || "url" in x);
+  const rawTable = isServer(v) ? { "": v } : (v["mcpServers"] ?? v["mcp_servers"] ?? v["servers"] ?? v);
+  if (!isRecord(rawTable)) return { ok: false, error: "jsonServer" };
+  const entries = Object.entries(rawTable).filter(([, s]) => isServer(s)) as [string, Record<string, unknown>][];
+  if (!entries.length) return { ok: false, error: "jsonServer" };
+
+  const servers: ImportedServer[] = [];
+  for (const [entryName, s] of entries) {
+    if (typeof s.url === "string" && typeof s.command !== "string") {
+      const inner = detect(s.url);
+      if (!inner || inner.kind !== "remote") return { ok: false, error: "jsonServer" };
+      if (s.headers !== undefined && !isRecord(s.headers)) return { ok: false, error: "badEnv" };
+      const headers = isRecord(s.headers) ? Object.entries(s.headers).map(([k, val]) => row(k, String(val ?? ""))) : [];
+      servers.push({
+        kind: "remote",
+        name: entryName || undefined,
+        url: inner.url,
+        host: inner.host,
+        insecure: inner.insecure,
+        sse: inner.sse,
+        headers,
+      });
+      continue;
+    }
+    const command = typeof s.command === "string" ? s.command.trim() : "";
+    if (!command) return { ok: false, error: "jsonServer" };
+    if (s.args !== undefined && (!Array.isArray(s.args) || !s.args.every((a) => typeof a === "string"))) {
+      return { ok: false, error: "badArgs" };
+    }
+    if (s.env !== undefined && !isRecord(s.env)) {
+      return { ok: false, error: "badEnv" };
+    }
+    const args = Array.isArray(s.args) ? [...s.args] : [];
+    const env = isRecord(s.env) ? Object.entries(s.env).map(([k, val]) => row(k, String(val ?? ""))) : [];
+    const skipped = Object.keys(s).filter((k) => !KNOWN_LOCAL_JSON_KEYS.has(k));
+    servers.push({ kind: "local", name: entryName || undefined, command, args, env, skipped });
+  }
+  return { ok: true, servers };
 }
 
 /** Validates local stdio args and env rows before submitting to the signer. */
