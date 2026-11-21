@@ -220,6 +220,33 @@ html.blurred .her-id-n{color:var(--l2)}
 .sc-end{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;line-height:18px;color:var(--l2)}
 .bline+.sc-end{margin-top:5px;padding-left:2px}
 .sc-end .ic{width:13px;height:13px;color:var(--l3)}
+.sc-end.done .ic{color:var(--green)}
+/* Site login secure card: compact verified-domain header, comfortable fields with reveal toggle, single-line trust bar. */
+.scard-login{width:min(368px,100%);padding:0;gap:0;overflow:hidden;box-shadow:inset 0 0 0 .5px var(--sep),0 1px 3px rgba(0,0,0,.05)}
+.scl-body{display:flex;flex-direction:column;gap:12px;padding:14px 15px 13px}
+.scl-head{display:flex;align-items:center;gap:10px;min-width:0}
+.scl-badge{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--fill2);color:var(--l2)}
+.scl-badge.verified{background:var(--green-bg);color:var(--green)}
+.scl-badge .ic{width:17px;height:17px;stroke-width:1.6}
+.scl-id{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.scl-host-row{display:flex;align-items:center;gap:6px;min-width:0}
+.scl-host{font-size:15px;font-weight:600;line-height:20px;color:var(--l1);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scl-https{flex:none;padding:1px 6px;border-radius:999px;background:var(--green-bg);color:var(--green);font-size:10.5px;font-weight:600;line-height:15px;letter-spacing:.03em}
+.scl-meta{font-size:12px;line-height:16px;color:var(--l3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.scl-warn{display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:var(--r-sm);background:var(--orange-bg);color:var(--orange);font-size:12px;font-weight:500;line-height:16px}
+.scl-warn .ic{width:13px;height:13px;flex:none}
+.scl-form{gap:9px}
+.scl-form .field{height:34px;padding:0 11px;border-radius:var(--r-md);font-size:13.5px}
+.scl-secret{position:relative;display:flex;align-items:center}
+.scl-secret .field{padding-right:34px}
+.scl-eye{position:absolute;right:4px;width:26px;height:26px;border:0;border-radius:var(--r-sm);background:transparent;color:var(--l3);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.scl-eye:hover{background:var(--fill);color:var(--l1)}
+.scl-eye:disabled{opacity:.4;pointer-events:none}
+.scl-actions{margin-top:3px;gap:8px}
+.scl-actions .btn{height:32px;padding:0 14px;font-size:13px}
+.scl-actions .btn.primary .ic{width:12.5px;height:12.5px}
+.scl-trust{display:flex;align-items:center;gap:6px;padding:8px 15px;border-top:.5px solid var(--sep);background:var(--fill);font-size:11.5px;line-height:15px;color:var(--l3)}
+.scl-trust .ic{width:12px;height:12px;flex:none;color:var(--green)}
 
 /* Words at work elsewhere (a routine's run): a band of the page's colour sweeping across them. */
 .shimmer{position:relative;overflow:clip}

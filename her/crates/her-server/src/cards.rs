@@ -9,6 +9,7 @@ use std::sync::Weak;
 
 use async_trait::async_trait;
 use her_browser::BrowserError;
+use her_browser::session::SiteLoginFillOutcome;
 use her_core::Workspace;
 use her_core::cards::Cards;
 use her_core::cards::SiteLoginBinding;
@@ -249,8 +250,31 @@ impl Server {
         match &mut answer.0 {
             CardAnswer::Decline => {
                 let takeover = card.site_login_body().is_some_and(|b| b.mode == SiteLoginMode::ChromeTakeover);
+                let app_fill = card.site_login_body().is_some_and(|b| b.mode == SiteLoginMode::AppFill);
                 let note = if takeover {
                     "The owner cancelled Chrome sign-in. Fall back to manual login.".to_string()
+                } else if app_fill {
+                    let suffix = match cards.binding(id) {
+                        Some(SiteLoginBinding::AppFill(b)) => b
+                            .agent_name
+                            .map(|name| format!(" Notify sub-agent \"{name}\" with send_message to continue."))
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    format!(
+                        "The owner chose to enter the credentials directly in the desktop app instead of using the card.{suffix}"
+                    )
+                } else if card.kind == CardKind::SiteLogin {
+                    let suffix = match cards.binding(id) {
+                        Some(SiteLoginBinding::Fill(b)) => b
+                            .agent_name
+                            .map(|name| format!(" Notify sub-agent \"{name}\" with send_message to continue."))
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    format!(
+                        "The owner skipped the secure input card. If they want to complete it directly in the browser, call browser_wait with user.{suffix}"
+                    )
                 } else {
                     "The owner declined.".to_string()
                 };
@@ -342,9 +366,65 @@ impl Server {
         fields: &mut HashMap<String, String>,
     ) -> Result<CardsAnswerResult, RpcError> {
         let id = card.id.as_str();
-        let Some(body) = card.site_login_body().filter(|b| b.mode == SiteLoginMode::Fill) else {
-            return Err(RpcError::invalid_params("only a site_login fill card can be answered with fill"));
+        let Some(body) = card
+            .site_login_body()
+            .filter(|b| matches!(b.mode, SiteLoginMode::Fill | SiteLoginMode::AppFill))
+        else {
+            return Err(RpcError::invalid_params("only a site_login fill or app_fill card can be answered with fill"));
         };
+        if body.mode == SiteLoginMode::AppFill {
+            let Some(SiteLoginBinding::AppFill(binding)) = cards.binding(id) else {
+                let note = "The target desktop window changed before the fields could be filled.".to_string();
+                let _ = cards.set(id, &[CardState::Open], CardState::Failed, Some(note.clone()));
+                return Ok(CardsAnswerResult { state: CardState::Failed, note: Some(note) });
+            };
+            if fields.len() != binding.fields.len()
+                || !binding.fields.iter().all(|f| fields.get(&f.id).is_some_and(|v| !v.is_empty()))
+            {
+                return Err(RpcError::invalid_params("the fields do not match the card's input fields"));
+            }
+            match cards.set(id, &[CardState::Open], CardState::Working, None) {
+                Ok(_) => {}
+                Err(Some(now @ CardState::Working)) => return Ok(CardsAnswerResult { state: now, note: None }),
+                Err(Some(now)) => return Err(card_ended(id, now)),
+                Err(None) => return Err(no_card(id)),
+            }
+            let values = std::mem::take(fields);
+            let outcome = cards.fill_desktop_secret(id, values).await;
+            let agent_suffix = binding
+                .agent_name
+                .as_deref()
+                .map(|name| format!(" Notify sub-agent \"{name}\" with send_message to continue."))
+                .unwrap_or_default();
+            let (to, note) = match outcome {
+                Some(Ok(her_core::cards::DesktopFillOutcome::SubmittedAndAdvanced)) => (
+                    CardState::Done,
+                    Some(format!(
+                        "Filled and submitted the sensitive input in {}; the dialog moved on. Take a cua_snapshot to verify.{agent_suffix}",
+                        binding.app_name
+                    )),
+                ),
+                Some(Ok(her_core::cards::DesktopFillOutcome::FilledStayedOnWindow)) => (
+                    CardState::Done,
+                    Some(format!(
+                        "Filled and attempted to submit in {}, but the sensitive field still appears in the same window. Computer control stays paused until the dialog closes or changes; ask the owner to verify directly if needed.{agent_suffix}",
+                        binding.app_name
+                    )),
+                ),
+                Some(Err(reason)) => (CardState::Failed, Some(format!("{reason}{agent_suffix}"))),
+                None => (
+                    CardState::Failed,
+                    Some(format!("The desktop secure input handler is no longer available.{agent_suffix}")),
+                ),
+            };
+            return match cards.set(id, &[CardState::Working], to, note.clone()) {
+                Ok(_) => Ok(CardsAnswerResult { state: to, note }),
+                Err(now) => {
+                    let now = now.ok_or_else(|| no_card(id))?;
+                    Ok(CardsAnswerResult { state: now, note: None })
+                }
+            };
+        }
         let Some(SiteLoginBinding::Fill(binding)) = cards.binding(id) else {
             let note = "The page changed before the fields could be filled.".to_string();
             let _ = cards.set(id, &[CardState::Open], CardState::Failed, Some(note.clone()));
@@ -361,7 +441,9 @@ impl Server {
             Err(Some(now)) => return Err(card_ended(id, now)),
             Err(None) => return Err(no_card(id)),
         }
-        let (to, note) = self.carry_out_site_login(session_id, id, &body.origin, &binding, fields).await;
+        let (to, note) = self
+            .carry_out_site_login(session_id, cards, id, &body.origin, &binding, fields)
+            .await;
         match cards.set(id, &[CardState::Working], to, note.clone()) {
             Ok(_) => Ok(CardsAnswerResult { state: to, note }),
             Err(now) => {
@@ -511,17 +593,22 @@ impl Server {
     async fn carry_out_site_login(
         &self,
         session_id: &str,
+        cards: &Arc<Cards>,
         card_id: &str,
         origin: &str,
         binding: &SiteLoginFillBinding,
         fields: &HashMap<String, String>,
     ) -> (CardState, Option<String>) {
-        let browser = match self
-            .site_login_browser_of(session_id, binding.own_browser, &binding.url)
-            .await
-        {
-            Ok(browser) => browser,
-            Err(reason) => return (CardState::Failed, Some(reason.into())),
+        let browser = match cards.site_login_browser(card_id) {
+            Some(Ok(browser)) => browser,
+            Some(Err(reason)) => return (CardState::Failed, Some(reason.into())),
+            None => match self
+                .site_login_browser_of(session_id, binding.own_browser, &binding.url)
+                .await
+            {
+                Ok(browser) => browser,
+                Err(reason) => return (CardState::Failed, Some(reason.into())),
+            },
         };
         let mut pairs = ZeroizingPairs(Vec::with_capacity(binding.fields.len()));
         for f in &binding.fields {
@@ -549,34 +636,51 @@ impl Server {
                 &binding.origin,
                 &binding.url,
                 &pairs.0,
+                true,
             )
             .await;
         drop(pairs);
-        if outcome.is_err() && !browser.is_dead() && !browser.has_filled_target(&binding.target_id) {
+        let clear_guard = match &outcome {
+            Ok(SiteLoginFillOutcome::SubmittedAndAdvanced) => true,
+            Err(_) => !browser.is_dead() && !browser.has_filled_target(&binding.target_id),
+            Ok(SiteLoginFillOutcome::FilledStayedOnPage) => false,
+        };
+        if clear_guard {
             self.clear_site_login_fill(session_id, binding.own_browser, &binding.target_id).await;
         }
+        let agent_suffix = binding
+            .agent_name
+            .as_deref()
+            .map(|name| format!(" Notify sub-agent \"{name}\" with send_message to continue."))
+            .unwrap_or_default();
+        let place = match &binding.browser_label {
+            Some(browser) => format!("{origin} in {browser} (tab {})", binding.tab),
+            None => origin.to_string(),
+        };
         match outcome {
-            Ok(()) => {
-                let note = match &binding.browser_label {
-                    Some(browser) => format!(
-                        "Filled the requested sign-in fields on {origin} in {browser} (tab {}). The form was not submitted.",
-                        binding.tab
-                    ),
-                    None => format!("Filled the requested sign-in fields on {origin}. The form was not submitted."),
-                };
-                (CardState::Done, Some(note))
-            }
+            Ok(SiteLoginFillOutcome::SubmittedAndAdvanced) => (
+                CardState::Done,
+                Some(format!(
+                    "Filled and submitted the sign-in form on {place}; the page moved on. Take a snapshot to see the current page.{agent_suffix}"
+                )),
+            ),
+            Ok(SiteLoginFillOutcome::FilledStayedOnPage) => (
+                CardState::Done,
+                Some(format!(
+                    "Filled and attempted to submit the sign-in form on {place}, but the page stayed on the sign-in form (for example: wrong credentials, extra verification, or a custom submit control). Page observation stays blocked until the page moves on; call browser_wait with user so the owner can check or finish sign-in directly.{agent_suffix}"
+                )),
+            ),
             Err(BrowserError::Cdp(her_browser::CdpError::Closed)) => (
                 CardState::Failed,
-                Some("The browser disconnected before the fields could be filled.".into()),
+                Some(format!("The browser disconnected before the fields could be filled.{agent_suffix}")),
             ),
             Err(BrowserError::PageChanged { .. } | BrowserError::StaleRef(_)) => (
                 CardState::Failed,
-                Some("The page changed before the fields could be filled.".into()),
+                Some(format!("The page changed before the fields could be filled.{agent_suffix}")),
             ),
             Err(_) => (
                 CardState::Failed,
-                Some(format!("Could not fill the sign-in fields on {origin}. Use browser_wait with user so the owner can sign in directly.")),
+                Some(format!("Could not fill the sign-in fields on {origin}. Use browser_wait with user so the owner can sign in directly.{agent_suffix}")),
             ),
         }
     }

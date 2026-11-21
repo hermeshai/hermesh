@@ -15,6 +15,7 @@ struct HerSecureCard: View {
     let card: HerCard?
     let machine: HerMachine
     @State private var values: [String: String] = [:]
+    @State private var revealed: Set<String> = []
     @State private var sending = false
 
     var body: some View {
@@ -55,9 +56,9 @@ struct HerSecureCard: View {
                 }
             }
             // Nothing typed stays once the form is gone, disconnected, or app leaves foreground.
-            .onChange(of: shown) { if case .form = shown {} else { values = [:] } }
-            .onChange(of: chat.convUp) { if !chat.convUp { values = [:] } }
-            .onChange(of: scenePhase) { if scenePhase != .active { values = [:] } }
+            .onChange(of: shown) { if case .form = shown {} else { values = [:]; revealed = [] } }
+            .onChange(of: chat.convUp) { if !chat.convUp { values = [:]; revealed = [] } }
+            .onChange(of: scenePhase) { if scenePhase != .active { values = [:]; revealed = [] } }
         } else {
             Label("Update Hermesh to answer this request", systemImage: "lock").font(.footnote).foregroundStyle(.secondary)
         }
@@ -88,24 +89,46 @@ struct HerSecureCard: View {
         case "done":
             if site.isChromeTakeover {
                 String(localized: "Signed in via Chrome on \(host)")
+            } else if site.isAppFill {
+                site.isVerifyOnly
+                    ? String(localized: "Verification submitted in \(host)")
+                    : String(localized: "Submitted securely in \(host)")
+            } else if site.isVerifyOnly {
+                if let browser = site.browser, !browser.isEmpty {
+                    String(localized: "Verification submitted on \(host) (\(browser))")
+                } else {
+                    String(localized: "Verification submitted on \(host)")
+                }
             } else if let browser = site.browser, !browser.isEmpty {
-                String(localized: "Filled once in \(browser) on \(host) (not submitted)")
+                String(localized: "Sign-in submitted on \(host) (\(browser))")
             } else {
-                String(localized: "Filled in on \(host) (not submitted)")
+                String(localized: "Sign-in submitted on \(host)")
             }
         case "failed":
             note ?? (site.isChromeTakeover
                 ? String(localized: "Chrome sign-in invalidated on \(host)")
-                : String(localized: "Couldn’t fill in on \(host)"))
+                : site.isAppFill
+                    ? String(localized: "Couldn’t fill fields in \(host)")
+                    : String(localized: "Couldn’t fill sign-in for \(host)"))
         case "declined":
-            site.isChromeTakeover ? String(localized: "Cancelled — fall back to manual login") : String(localized: "Declined")
+            site.isChromeTakeover
+                ? String(localized: "Cancelled — fall back to manual login")
+                : site.isAppFill
+                    ? String(localized: "Switched to manual entry")
+                    : site.isVerifyOnly
+                        ? String(localized: "Switched to manual verification")
+                        : String(localized: "Switched to manual sign-in")
         case "replaced": String(localized: "Replaced by a newer request")
         case "elsewhere": String(localized: "Answered on another device")
         default: String(localized: "Expired")
         }
-        return Label(text, systemImage: outcome == "done" ? "checkmark" : "lock")
-            .font(.footnote).foregroundStyle(.secondary)
-            .accessibilityIdentifier("her-card-ended")
+        return HStack(spacing: 6) {
+            Image(systemName: outcome == "done" ? "checkmark.circle.fill" : "lock.fill")
+                .foregroundStyle(outcome == "done" ? Color.green : Color.secondary)
+            Text(text).foregroundStyle(.secondary)
+        }
+        .font(.footnote)
+        .accessibilityIdentifier("her-card-ended")
     }
 
     private func connectForm(_ card: HerCard, _ connect: HerCard.Connect, shown: HerCardShown, name: String) -> some View {
@@ -158,7 +181,7 @@ struct HerSecureCard: View {
                         .disabled(busy || !chat.convUp)
                 }
                 if !chat.convUp {
-                    Text("\(machine.machineName) is offline. Secrets are not queued offline.").font(.footnote).foregroundStyle(.secondary)
+                    Text("\(machine.machineName) is offline. Credentials aren’t saved or queued offline.").font(.footnote).foregroundStyle(.secondary)
                 }
                 if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
                 HStack(spacing: 8) {
@@ -254,81 +277,191 @@ struct HerSecureCard: View {
 
     private func siteLoginForm(_ card: HerCard, _ site: HerCard.SiteLogin, shown: HerCardShown) -> some View {
         let busy = sending || shown == .form(note: nil, busy: true)
-        let ready = site.fields.allSatisfy { !(values[$0.id] ?? "").trimmingCharacters(in: .whitespaces).isEmpty }
-        let browserTarget: String? = site.browser.flatMap { browser in
-            guard !browser.isEmpty else { return nil }
-            if let tab = site.tab, !tab.isEmpty { return "\(browser) (\(tab))" }
-            return browser
+        let ready = site.fields.allSatisfy { field in
+            let raw = values[field.id] ?? ""
+            return field.secret ? !raw.isEmpty : !raw.trimmingCharacters(in: .whitespaces).isEmpty
         }
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 5) {
-                Image(systemName: "lock.fill")
-                if let browserTarget {
-                    Text("Website Sign-In · \(machine.machineName) · \(browserTarget)")
-                } else {
-                    Text("Website Sign-In · \(machine.machineName)")
+        let appFill = site.isAppFill
+        let verifyOnly = site.isVerifyOnly
+        let isHttps = !appFill && site.origin.hasPrefix("https://")
+        let targetMeta: String = {
+            if appFill {
+                return [site.title, machine.machineName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            }
+            let browser = (site.browser?.isEmpty == false) ? site.browser! : String(localized: "Built-in Browser")
+            return "\(browser) · \(machine.machineName)"
+        }()
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill((isHttps || appFill) ? Color.green.opacity(0.14) : Palette.fill2)
+                        Image(systemName: appFill ? "macwindow" : isHttps ? "checkmark.shield.fill" : "lock.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle((isHttps || appFill) ? Color.green : Color.secondary)
+                    }
+                    .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(site.host)
+                                .font(.headline)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("her-card-target")
+                            if isHttps || appFill {
+                                Text(appFill ? String(localized: "App") : "HTTPS")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.green)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.green.opacity(0.14), in: Capsule())
+                                    .fixedSize()
+                            }
+                        }
+                        Text(verbatim: targetMeta)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
+
                 if card.askedBy == "her" {
-                    Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                    Label("You didn’t request this", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Sign in to").font(.subheadline).foregroundStyle(.secondary)
-                Text(site.origin).font(.headline).textSelection(.enabled).accessibilityIdentifier("her-card-target")
-                if let title = site.title, !title.isEmpty {
-                    Text(title).font(.caption).foregroundStyle(.secondary)
+
+                VStack(spacing: 9) {
+                    ForEach(site.fields, id: \.id) { f in
+                        let binding = Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 })
+                        if f.secret {
+                            let isShown = revealed.contains(f.id)
+                            HStack(spacing: 6) {
+                                Group {
+                                    if isShown {
+                                        TextField(f.label, text: binding)
+                                    } else {
+                                        SecureField(f.label, text: binding)
+                                    }
+                                }
+                                .textContentType(.oneTimeCode)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .disabled(busy || !chat.convUp)
+
+                                Button {
+                                    if isShown {
+                                        revealed.remove(f.id)
+                                    } else {
+                                        revealed.insert(f.id)
+                                    }
+                                } label: {
+                                    Image(systemName: isShown ? "eye.slash" : "eye")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 28, height: 28)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(busy || !chat.convUp)
+                                .accessibilityLabel(isShown ? String(localized: "Hide password") : String(localized: "Show password"))
+                            }
+                            .padding(.leading, 12)
+                            .padding(.trailing, 6)
+                            .padding(.vertical, 7)
+                            .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        } else {
+                            TextField(f.label, text: binding)
+                                .keyboardType(f.kind == "email" ? .emailAddress : .default)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .disabled(busy || !chat.convUp)
+                        }
+                    }
                 }
-            }
-            if let browser = site.browser, !browser.isEmpty {
-                Text("Encrypted in transit to \(machine.machineName) and filled once into \(browser) on \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in \(browser).")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                Text("Encrypted in transit to \(machine.machineName) and filled once into \(site.origin) without auto-submitting or saving your password. Never shown to the AI model. Skip to sign in directly in your browser or password manager.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            }
-            ForEach(site.fields, id: \.id) { f in
-                if f.secret {
-                    SecureField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))
-                        .textContentType(.oneTimeCode).autocorrectionDisabled().textInputAutocapitalization(.never)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .disabled(busy || !chat.convUp)
-                } else {
-                    TextField(f.label, text: Binding(get: { values[f.id] ?? "" }, set: { values[f.id] = $0 }))
-                        .keyboardType(f.kind == "email" ? .emailAddress : .default)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .disabled(busy || !chat.convUp)
+
+                if !chat.convUp {
+                    Text("\(machine.machineName) is offline. Credentials aren’t saved or queued offline.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
-            }
-            if !chat.convUp {
-                Text("\(machine.machineName) is offline. Secrets are not queued offline.").font(.footnote).foregroundStyle(.secondary)
-            }
-            if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
-            HStack(spacing: 8) {
-                Button {
-                    values = [:]
-                    cancel(card, signingIn: false)
-                } label: { Text("Skip").frame(maxWidth: .infinity) }
+                if case .form(let note?, _) = shown {
+                    Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        values = [:]
+                        revealed = []
+                        cancel(card, signingIn: false)
+                    } label: {
+                        Text(appFill ? String(localized: "Enter Manually") : verifyOnly ? String(localized: "Verify Manually") : String(localized: "Sign In Manually"))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .frame(maxWidth: .infinity)
+                    }
                     .buttonStyle(.glass)
                     .accessibilityIdentifier("her-card-deny")
-                Button {
-                    let typed = Dictionary(uniqueKeysWithValues: site.fields.map { ($0.id, (values[$0.id] ?? "").trimmingCharacters(in: .whitespaces)) })
-                    values = [:]
-                    answer(card, card.fill(typed))
-                } label: {
-                    Text(busy ? String(localized: "Filling…") : String(localized: "Fill Once")).frame(maxWidth: .infinity)
+
+                    Button {
+                        let typed = Dictionary(uniqueKeysWithValues: site.fields.map { f in
+                            let raw = values[f.id] ?? ""
+                            return (f.id, f.secret ? raw : raw.trimmingCharacters(in: .whitespaces))
+                        })
+                        values = [:]
+                        revealed = []
+                        answer(card, card.fill(typed))
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "lock.fill").font(.caption)
+                            Text(
+                                busy
+                                    ? (verifyOnly ? String(localized: "Verifying…") : appFill ? String(localized: "Submitting…") : String(localized: "Signing in…"))
+                                    : (verifyOnly ? String(localized: "Fill & Verify") : appFill ? String(localized: "Fill & Submit") : String(localized: "Fill & Sign In"))
+                            )
+                        }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .disabled(busy || !ready || !chat.convUp)
+                    .accessibilityIdentifier("her-card-fill")
                 }
-                .buttonStyle(.glassProminent)
-                .disabled(busy || !ready || !chat.convUp)
-                .accessibilityIdentifier("her-card-fill")
+                .controlSize(.regular)
             }
+            .padding(14)
+
+            Rectangle()
+                .fill(Palette.separator)
+                .frame(height: 0.5)
+
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.green)
+                Text(appFill ? String(localized: "Filled directly into app · never saved or seen by AI") : String(localized: "Filled directly · never saved or seen by AI"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Palette.fill)
         }
-        .controlSize(.large)
         .disabled(!chat.convUp)
-        .padding(14)
         .herReply()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("her-card")

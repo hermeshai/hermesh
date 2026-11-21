@@ -389,7 +389,15 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
                           <button type="submit">Sign In</button>
                         </form>
                       </body></html>"#.to_string(),
-                    "/after" => "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Welcome</h1></body></html>".to_string(),
+                    "/after" | "/submit" => "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Welcome</h1></body></html>".to_string(),
+                    "/login-stay" => r#"<!doctype html><html><head><title>Fixture Stay Sign In</title></head><body>
+                        <form id="f" onsubmit="event.preventDefault(); document.getElementById('err').textContent='Invalid password';">
+                          <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+                          <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password">
+                          <button type="submit">Sign In</button>
+                          <p id="err"></p>
+                        </form>
+                      </body></html>"#.to_string(),
                     "/captcha" => r#"<!doctype html><html><head><title>Captcha Gate</title></head><body>
                         <div class="g-recaptcha" data-sitekey="dummy-sitekey"></div>
                         <form><label for="p">Password</label><input id="p" type="password"></form>
@@ -522,22 +530,67 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         (binding.fields[0].backend, binding.fields[0].input_type.clone(), DUMMY_EMAIL.into()),
         (binding.fields[1].backend, binding.fields[1].input_type.clone(), DUMMY_PASS.into()),
     ];
-    browser.fill_site_login(&card.id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &binding.url, &pairs).await.unwrap();
-    cards.set(&card.id, &[CardState::Open], CardState::Done, Some(format!("Filled the requested sign-in fields on {origin}. The form was not submitted."))).unwrap();
+    let resolved_browser = cards.site_login_browser(&card.id).expect("resolver").expect("live browser");
+    cards.set(&card.id, &[CardState::Open], CardState::Working, None).unwrap();
+    let fill_out = resolved_browser
+        .fill_site_login(&card.id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &binding.url, &pairs, true)
+        .await
+        .unwrap();
+    assert_eq!(fill_out, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    cards.set(&card.id, &[CardState::Working], CardState::Done, Some(format!("Filled and submitted the sign-in form on {origin}; the page moved on."))).unwrap();
     let _ = until(&mut kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
 
-    // Must NOT have auto-submitted!
-    assert_eq!(submits.load(Ordering::SeqCst), 0, "site_login must never auto-submit");
-
-    // After fill, before navigation: ALL model observations remain blocked!
-    assert!(browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.is_err());
-    assert!(browser.screenshot(None, false, None).await.is_err());
-    assert!(browser.console(None, None, false).is_err());
-    assert!(browser.eval(&page, "document.getElementById('p').value").await.is_err());
-    assert!(browser.wait(None, &her_browser::session::WaitFor::Text("Welcome".into()), Duration::from_millis(200)).await.is_err());
+    // Submitted once and automatically moved to /submit -> observation unlocked immediately!
+    assert_eq!(submits.load(Ordering::SeqCst), 1, "site_login must submit once on Fill & Sign In");
+    let snap = browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.unwrap();
+    assert!(snap.text.contains("Welcome"), "{}", snap.text);
 
     // One-time consumption: cannot transition Done card again.
     assert!(cards.set(&card.id, &[CardState::Open], CardState::Working, None).is_err());
+
+    // 3b. When submission stays on the login page (e.g. wrong password), ALL model observations
+    // remain strictly blocked until the page navigates away.
+    let stay_url = url::Url::parse(&format!("{origin}/login-stay")).unwrap();
+    browser.navigate(None, &stay_url, true).await.unwrap();
+    let snap = browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.unwrap();
+    let refs: Vec<String> = snap.text.lines()
+        .filter(|l| l.contains("Email") || l.contains("Password"))
+        .filter_map(|l| l.split("[ref=").nth(1)?.split(']').next().map(str::to_string))
+        .collect();
+    let inspected = browser.inspect_site_login(&refs).await.unwrap();
+    browser.begin_sensitive_card(
+        "c_stay00001",
+        &inspected.tab,
+        &inspected.frame,
+        &inspected.loader,
+        &inspected.origin,
+        &inspected.url,
+        &[inspected.fields[0].backend, inspected.fields[1].backend],
+        &[inspected.fields[1].backend],
+    );
+    let stay_out = browser
+        .fill_site_login(
+            "c_stay00001",
+            &inspected.tab,
+            &inspected.frame,
+            &inspected.loader,
+            &inspected.origin,
+            &inspected.url,
+            &[
+                (inspected.fields[0].backend, inspected.fields[0].input_type.clone(), DUMMY_EMAIL.into()),
+                (inspected.fields[1].backend, inspected.fields[1].input_type.clone(), DUMMY_PASS.into()),
+            ],
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(stay_out, her_browser::session::SiteLoginFillOutcome::FilledStayedOnPage);
+    assert!(browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.is_err());
+    assert!(browser.screenshot(None, false, None).await.is_err());
+    assert!(browser.console(None, None, false).is_err());
+    let stay_page = browser.page(None).unwrap();
+    assert!(browser.eval(&stay_page, "document.getElementById('p').value").await.is_err());
+    assert!(browser.wait(None, &her_browser::session::WaitFor::Text("Welcome".into()), Duration::from_millis(200)).await.is_err());
 
     // Safe recovery: navigating to /after clears the sensitive guard and observation resumes.
     let after_url = url::Url::parse(&format!("{origin}/after")).unwrap();
@@ -554,7 +607,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         .filter_map(|l| l.split("[ref=").nth(1)?.split(']').next().map(str::to_string))
         .collect();
     let inspected = browser.inspect_site_login(&refs).await.unwrap();
-    browser.begin_sensitive_card("c_toctou0001", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &[inspected.fields[0].backend, inspected.fields[1].backend]);
+    browser.begin_sensitive_card("c_toctou0001", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &[inspected.fields[0].backend, inspected.fields[1].backend], &[inspected.fields[1].backend]);
     // Page moves away before user submits!
     browser.navigate(None, &after_url, true).await.unwrap();
     let toctou = browser.fill_site_login(
@@ -565,6 +618,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         &inspected.origin,
         &inspected.url,
         &[(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), DUMMY_EMAIL.into()), (inspected.fields[1].backend, inspected.fields[1].input_type.clone(), DUMMY_PASS.into())],
+        true,
     ).await;
     assert!(matches!(toctou, Err(her_browser::BrowserError::PageChanged { .. })), "TOCTOU must fail safely: {toctou:?}");
 
@@ -576,7 +630,7 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
         .filter_map(|l| l.split("[ref=").nth(1)?.split(']').next().map(str::to_string))
         .collect();
     let inspected = browser.inspect_site_login(&refs).await.unwrap();
-    browser.begin_sensitive_card("c_cancel0001", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &[inspected.fields[0].backend, inspected.fields[1].backend]);
+    browser.begin_sensitive_card("c_cancel0001", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &[inspected.fields[0].backend, inspected.fields[1].backend], &[inspected.fields[1].backend]);
     assert!(browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.is_err());
     browser.end_sensitive_card("c_cancel0001");
     assert!(browser.snapshot(&her_browser::session::SnapshotRequest::default()).await.is_ok());
@@ -603,6 +657,188 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
     for path in disk_files {
         let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).into_owned();
         assert!(!text.contains(DUMMY_PASS), "password leaked to disk file {}", path.display());
-        assert!(!text.contains(DUMMY_EMAIL), "email leaked to disk file {}", path.display());
+        // Chrome's own Autofill Web Data stores submitted non-secret email inputs on form POST;
+        // verify email never leaks into Her's own sessions, logs, or credentials.
+        let in_chrome_profile = path.starts_with(home.browser_dir());
+        if !in_chrome_profile {
+            assert!(!text.contains(DUMMY_EMAIL), "email leaked to disk file {}", path.display());
+        }
     }
+}
+
+/// Real isolated headless Chromium end-to-end test verifying a sub-agent can prepare a
+/// `site_login` card on its own browser tab, relay the card id to Her's main conversation to show
+/// via `send_to_user`, and have `cards.site_login_browser` fill & submit directly into the
+/// sub-agent's tab.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn subagent_prepares_site_login_card_and_main_conversation_shows_and_fills_subagent_tab() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(chrome) = her_browser::launch::find_executable() else {
+        eprintln!("skipping subagent site_login test: no Chromium found");
+        return;
+    };
+
+    const SUB_EMAIL: &str = "subagent-owner@example.test";
+    const SUB_PASS: &str = "SubAgentDummyPass!77z";
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let origin = format!("http://127.0.0.1:{port}");
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else { break };
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req.split_whitespace().nth(1).unwrap_or("/");
+                let body = match path {
+                    "/login" => r#"<!doctype html><html><head><title>Subagent Sign In</title></head><body>
+                        <form action="/submit" method="post">
+                          <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+                          <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password">
+                          <button type="submit">Sign In</button>
+                        </form>
+                      </body></html>"#,
+                    "/submit" => "<!doctype html><html><head><title>Dashboard</title></head><body><h1>Subagent Logged In</h1></body></html>",
+                    _ => "<!doctype html><html><body>OK</body></html>",
+                };
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            });
+        }
+    });
+
+    let dir = tempfile::tempdir().unwrap();
+    let home = HerHome::new(dunce::canonicalize(dir.path()).unwrap().join("home"));
+    home.ensure().unwrap();
+    let folder = home.bot_files_dir("b_sub");
+    std::fs::create_dir_all(&folder).unwrap();
+    let folder = dunce::canonicalize(folder).unwrap();
+    let api = ScriptedApi::new();
+    let mut cfg = Config::default();
+    cfg.browser.enabled = Some(true);
+    cfg.browser.config.headless = her_browser::Headless::On;
+    cfg.browser.config.executable = Some(chrome);
+    let mut d = deps(&api, &folder, &home);
+    d.browser_pool = Some(Arc::new(her_core::BrowserPool::new(home.browser_dir(), false)));
+    let options = StartOptions {
+        model: "test/scripted".into(),
+        thinking: ThinkingLevel::Off,
+        permission_mode: PermissionMode::BypassPermissions,
+        cwd: folder.clone(),
+        home: home.clone(),
+        config: Arc::new(cfg),
+        project_root: None,
+        trusted: true,
+        interactive_approvals: false,
+        bot: Some(BotIdentity { id: "b_sub".into(), name: "Her".into() }),
+    };
+    let mut kernel = Kernel::start(options, d).await.unwrap();
+
+    let login_url = format!("{origin}/login");
+    api.respond_with(move |ctx| {
+        let last = ctx.messages.last()?;
+        let mut text = text_of(last);
+        if text.starts_with("<reminder>") && ctx.messages.len() >= 2 {
+            text = text_of(&ctx.messages[ctx.messages.len() - 2]);
+        }
+        let is_subagent = ctx.system.starts_with("You are Her, a general-purpose agent.");
+        if is_subagent {
+            if text.contains("open login page") {
+                return Some(Script::tool_call("s1", "call_tool", json!({"name": "browser_navigate", "arguments": {"url": login_url}})));
+            }
+            if let Message::ToolResult(r) = last {
+                if r.call_id == "s1" {
+                    let mut refs = Vec::new();
+                    for line in text.lines() {
+                        if (line.contains("Email") || line.contains("Password"))
+                            && let Some(rest) = line.split("[ref=").nth(1)
+                            && let Some(id) = rest.split(']').next()
+                        {
+                            refs.push(id.to_string());
+                        }
+                    }
+                    return Some(Script::tool_call("s2", "call_tool", json!({"name": "browser_act", "arguments": {"action": "ask_owner", "refs": refs}})));
+                }
+                if r.call_id == "s2" {
+                    let id = text.split("Card ").nth(1)?.split_whitespace().next()?;
+                    return Some(Script::tool_call("s3", "send_message", json!({"to": "main", "message": format!("CARD:{id}")})));
+                }
+                if r.call_id == "s3" {
+                    return Some(Script::text("Waiting for sign-in."));
+                }
+                if r.call_id == "s4" {
+                    return Some(Script::text(format!("SUBAGENT_DONE:{text}")));
+                }
+            }
+            if text.contains("SIGNED_IN_CONTINUE") {
+                return Some(Script::tool_call("s4", "call_tool", json!({"name": "browser_snapshot", "arguments": {}})));
+            }
+            return None;
+        }
+        // Main bot turns:
+        if text.contains("delegate login") {
+            return Some(Script::tool_call("m0", "send_to_user", json!({"text": "On it."})));
+        }
+        if let Message::ToolResult(r) = last && r.call_id == "m0" {
+            return Some(Script::tool_call("m1", "spawn_agent", json!({"name": "web", "description": "open login", "task": "open login page"})));
+        }
+        if let Message::ToolResult(r) = last && r.call_id == "m1" {
+            return Some(Script::text("delegated"));
+        }
+        if let Some(rest) = text.split("CARD:").nth(1) {
+            let id = rest.split(|c: char| !c.is_alphanumeric() && c != '_').next()?;
+            return Some(Script::tool_call("m2", "send_to_user", json!({"type": "card", "card": id, "text": "Please sign in."})));
+        }
+        if text.starts_with("<card ") {
+            return Some(Script::tool_call("m3", "send_message", json!({"to": "web", "message": "SIGNED_IN_CONTINUE"})));
+        }
+        if let Message::ToolResult(r) = last && r.call_id == "m3" {
+            return Some(Script::text("notified subagent"));
+        }
+        if text.contains("SUBAGENT_DONE:") {
+            return Some(send_last("m4", &text));
+        }
+        None
+    });
+
+    // 1. Main spawns sub-agent -> sub-agent prepares card -> messages main -> main shows card!
+    let _ = kernel.run(prompt("delegate login")).await.unwrap();
+    let card_events = until(&mut kernel, |m| {
+        matches!(m, EventMsg::ToolCompleted { result, .. } if result.tool_name == "send_to_user" && result.details.as_ref().is_some_and(|d| d.as_str().contains("\"site_login\"")))
+    }).await;
+    let details = shown(&card_events);
+    let card: her_protocol::card::Card = serde_json::from_value(details["card"].clone()).unwrap();
+    assert_eq!(card.kind, her_protocol::card::CardKind::SiteLogin);
+    let _ = until(&mut kernel, |m| matches!(m, EventMsg::TaskCompleted { .. })).await;
+
+    // 2. Owner fills & submits card -> resolves directly to the sub-agent's browser session!
+    let cards = kernel.cards(&card.id).expect("cards");
+    let her_core::cards::SiteLoginBinding::Fill(binding) = cards.binding(&card.id).expect("binding") else {
+        panic!("expected Fill binding");
+    };
+    assert_eq!(binding.agent_name.as_deref(), Some("web"));
+    let sub_browser = cards.site_login_browser(&card.id).expect("resolver").expect("subagent browser");
+    let pairs = vec![
+        (binding.fields[0].backend, binding.fields[0].input_type.clone(), SUB_EMAIL.into()),
+        (binding.fields[1].backend, binding.fields[1].input_type.clone(), SUB_PASS.into()),
+    ];
+    cards.set(&card.id, &[CardState::Open], CardState::Working, None).unwrap();
+    let out = sub_browser
+        .fill_site_login(&card.id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &binding.url, &pairs, true)
+        .await
+        .unwrap();
+    assert_eq!(out, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    cards.set(&card.id, &[CardState::Working], CardState::Done, Some("Signed in; notify web.".into())).unwrap();
+
+    // 3. Main wakes on <card>, messages sub-agent, sub-agent snapshots its logged-in tab and reports back!
+    let done_events = until(&mut kernel, |m| {
+        matches!(m, EventMsg::ToolStarted { name, args, .. } if name == "send_to_user" && args.to_string().contains("Subagent Logged In"))
+    }).await;
+    assert!(!done_events.is_empty());
+    kernel.shutdown().await;
 }

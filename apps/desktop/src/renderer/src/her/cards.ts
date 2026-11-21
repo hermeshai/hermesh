@@ -18,7 +18,7 @@ export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_c
 
 export type SiteLoginField = { id: string; label: string; kind: SiteLoginFieldKind; secret: boolean };
 
-export type SiteLoginMode = "fill" | "chrome_takeover";
+export type SiteLoginMode = "fill" | "chrome_takeover" | "app_fill";
 
 /** A `site_login` card's: verified login fields inspected from a bound browser page (`fill`), or a verified local Chrome takeover target (`chrome_takeover`). */
 export type SiteLoginBody = {
@@ -76,6 +76,16 @@ export function connectBody(card: Card): ConnectBody | null {
 /** Whether a `site_login` card uses isolated local Chrome user takeover. */
 export function isChromeTakeover(body: SiteLoginBody): boolean {
   return body.mode === "chrome_takeover";
+}
+
+/** Whether a `site_login` card fills a native desktop app window (`cua_act ask_owner`). */
+export function isAppFill(body: SiteLoginBody): boolean {
+  return body.mode === "app_fill";
+}
+
+/** Whether every input on a fill card is a one-time verification code (MFA/OTP check). */
+export function isVerifyOnly(body: SiteLoginBody): boolean {
+  return body.fields.length > 0 && body.fields.every((f) => f.kind === "one_time_code");
 }
 
 /** A `site_login` card's body, when it has a verified origin and either a Chrome takeover tab or login fields. */
