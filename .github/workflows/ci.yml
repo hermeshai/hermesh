@@ -3,9 +3,12 @@ on:
   push:
     branches: [main]
   pull_request:
-  # By hand, on any branch: Windows work is tried on Windows runners there
-  # before it reaches main (docs/windows.md).
   workflow_dispatch:
+    inputs:
+      full:
+        description: Run all checks and the full integration suites
+        type: boolean
+        default: false
 
 concurrency:
   # Only the opening run and fresh commits share the PR's group.
@@ -28,24 +31,36 @@ jobs:
       app: ${{ steps.route.outputs.app }}
       windows_app: ${{ steps.route.outputs.windows_app }}
       ios: ${{ steps.route.outputs.ios }}
-      win_package: ${{ steps.route.outputs.win_package }}
+      ios_suite: ${{ steps.route.outputs.ios_suite }}
+      packaging: ${{ steps.route.outputs.packaging }}
+      mac_native: ${{ steps.route.outputs.mac_native }}
+      go_macos: ${{ steps.route.outputs.go_macos }}
+      go_e2e: ${{ steps.route.outputs.go_e2e }}
+      her_integration: ${{ steps.route.outputs.her_integration }}
+      desktop_e2e: ${{ steps.route.outputs.desktop_e2e }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
           persist-credentials: false
       - name: Select jobs
         id: route
         env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          FULL: ${{ inputs.full }}
         run: |
-          # Use the base revision's rules. The first PR to add them runs in full.
-          router="$RUNNER_TEMP/ci-route.py"
+          router=scripts/ci/route.py
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            router="$RUNNER_TEMP/ci-route.py"
+            git show "$BASE:scripts/ci/route.py" > "$router" || true
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            BASE=$(git rev-parse HEAD^ 2>/dev/null) || BASE=''
+          fi
           decision=mode=full
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] &&
-             git show "$PR_BASE_SHA:scripts/ci/route.py" > "$router" 2>/dev/null &&
-             result=$(python3 -I "$router" "$GITHUB_EVENT_NAME" "$PR_BASE_SHA" "$PR_HEAD_SHA"); then
+          if [ "$FULL" != true ] &&
+             result=$(python3 -I "$router" "$GITHUB_EVENT_NAME" "$BASE" "$HEAD_SHA") &&
+             grep -Eq '^packaging=(true|false)$' <<< "$result"; then
             decision="$result"
           fi
           printf '%s\n' "$decision" | tee -a "$GITHUB_OUTPUT"
@@ -67,8 +82,10 @@ jobs:
         with:
           node-version: 24
       - run: corepack enable
-      - name: Release reviewer demo, offline state tests and preference isolation
-        run: apps/ios/scripts/test-demo.sh "$RUNNER_TEMP/ios-demo"
+      - name: Review demo on the simulator
+        env:
+          SUITE: ${{ inputs.full && 'full' || needs.changes.outputs.ios_suite || 'smoke' }}
+        run: apps/ios/scripts/test-demo.sh "$RUNNER_TEMP/ios-demo" "$SUITE"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -82,7 +99,7 @@ jobs:
     if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.go == 'true'
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: ${{ fromJSON((needs.changes.outputs.mode == 'full' || needs.changes.outputs.go_macos == 'true') && '["ubuntu-latest","macos-latest"]' || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -101,10 +118,14 @@ jobs:
       - name: installer terminal interaction
         run: python3 scripts/test_install.py
       - name: end-to-end (scripted agents)
+        if: inputs.full || needs.changes.outputs.go_e2e == 'true'
         run: make e2e
         env:
           # Race-detector binaries on one runner: a data race fails the test.
           HERMESH_E2E_RACE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
+      - name: Relay, daemon and CLI user journey
+        if: ${{ !inputs.full && needs.changes.outputs.go_e2e != 'true' }}
+        run: go test ./e2e -run '^Test(UserJourney|MobileNetwork)$' -count=1 -timeout 10m
   # Computer Control's helper for Linux (docs/computer-control-linux.md): its
   # own tests, then end to end on X11, Sway and GNOME in containers.
   screen-linux:
@@ -174,7 +195,7 @@ jobs:
   # failures do not fail the run yet.
   windows-e2e:
     needs: changes
-    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_e2e == 'true'
+    if: inputs.full || needs.changes.outputs.windows_e2e == 'true'
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -219,14 +240,16 @@ jobs:
           node-version: 24
       - run: corepack enable
       - name: types and unit tests
-        run: make test-app
+        run: make test-app-js
       - name: Cache Cargo dependencies
+        if: inputs.full || needs.changes.outputs.her_integration == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: her -> target
           key: ci-app-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
           cache-on-failure: true
       - name: Build Her for its dedicated desktop fixtures
+        if: inputs.full || needs.changes.outputs.her_integration == 'true'
         env:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
@@ -236,26 +259,26 @@ jobs:
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
       - name: end-to-end (Her consent and coding agents)
+        if: inputs.full || needs.changes.outputs.her_integration == 'true'
         run: |
           test -x her/target/debug/her
           test -x her/target/debug/her-mock
           go test ./e2e -run '^Test(HerConsentRefusalAllowsDirectCodingAndMobileAnswers|HerCodingHandoffRespectsApprovalAndGrant|CodingAgentAnswerRejection|PushHerNotices)$' -count=1 -v -timeout 10m
       - name: Custom MCP connectors through the owner and execution host
+        if: inputs.full || needs.changes.outputs.her_integration == 'true'
         run: go test ./e2e -run '^TestHerCommandConnector$' -count=1 -v -timeout 5m
       - name: Custom MCP connectors in the console
+        if: inputs.full || needs.changes.outputs.her_integration == 'true'
         run: pnpm --filter @hermesh/her-console e2e --grep 'custom HTTP and stdio connectors'
+      - name: Electron shell against the daemon
+        if: ${{ !inputs.full && needs.changes.outputs.desktop_e2e != 'true' }}
+        run: go test ./e2e -run '^TestDesktop$/^shell$' -count=1 -v -timeout 10m
       - name: end-to-end (desktop app and signer)
+        if: inputs.full || needs.changes.outputs.desktop_e2e == 'true'
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
-  # The desktop app on Windows (docs/windows.md, W2): its end-to-end spec
-  # against the real daemon, then the package, installed in Developer Mode
-  # with its aliases checked. Its failures do not fail the run yet.
   windows-app:
     needs: changes
     if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.windows_app == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ${{ fromJSON((needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true') && '["x64","arm64"]' || '["x64"]') }}
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -269,71 +292,49 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: end-to-end (desktop app)
-        if: matrix.arch == 'x64'
         run: go test ./e2e -run '^TestDesktop$' -count=1 -v -timeout 30m
-      # The PPT and Word engines are a private repository (her/Cargo.toml): cargo fetches it with this token.
-      - name: Read access to the NimbleOffice fork
-        shell: bash
-        env:
-          NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
-        run: |
-          if [ -z "$NIMBLEOFFICE_TOKEN" ]; then
-            echo "::warning::NIMBLEOFFICE_TOKEN is not set: cargo cannot fetch github.com/Eliseowzy/nimbleoffice"
-            exit 0
-          fi
-          git config --global url."https://x-access-token:${NIMBLEOFFICE_TOKEN}@github.com/Eliseowzy/nimbleoffice".insteadOf "https://github.com/Eliseowzy/nimbleoffice"
-          echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> "$GITHUB_ENV"
-      - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: her -> target
-          key: ci-windows-app-${{ matrix.arch }}-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
-          cache-on-failure: true
-      # her is built once, with the profile that takes the least of this job's time.
-      - name: package
-        run: node apps/desktop/scripts/package-win.mjs
-        env:
-          HERMESH_HER_PROFILE: release
-          HERMESH_ARCH: ${{ matrix.arch }}
-      - name: install it, open it, uninstall it
-        if: matrix.arch == 'x64'
-        shell: pwsh
-        run: apps/desktop/scripts/check-windows-setup.ps1 dist/Hermesh-windows-x64-setup.exe
-      # Two builds, the older updating to the newer from a feed signed with a key of the test's.
-      - name: update between two builds
-        if: matrix.arch == 'x64'
-        shell: bash
-        run: |
-          openssl ecparam -name prime256v1 -genkey -noout -out "$RUNNER_TEMP/test.key"
-          openssl ec -in "$RUNNER_TEMP/test.key" -pubout -out "$RUNNER_TEMP/test.pub"
-          export HERMESH_UPDATE_FEED=http://127.0.0.1:8765 HERMESH_RELEASE_URL=http://127.0.0.1:8765
-          export HERMESH_RELEASE_PUBKEY_FILE="$RUNNER_TEMP/test.pub" RELEASE_SIGNING_KEY_FILE="$RUNNER_TEMP/test.key"
-          export HER=her/target/x86_64-pc-windows-msvc/release/her.exe
-          VERSION=0.0.1 HERMESH_DIST=dist/older node apps/desktop/scripts/package-win.mjs
-          VERSION=0.0.2 HERMESH_DIST=dist/newer node apps/desktop/scripts/package-win.mjs
-          pwsh -File apps/desktop/scripts/check-windows-update.ps1 dist/older/Hermesh-windows-x64-setup.exe dist/newer 0.0.2
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ strategy.job-total == 1 && 'Hermesh-windows-setup' || format('windows-setup-part-{0}', matrix.arch) }}
-          compression-level: 0
-          path: dist/Hermesh-windows-*-setup.exe
 
-  windows-installers:
-    needs: [changes, windows-app]
-    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.win_package == 'true'
-    runs-on: ubuntu-latest
-    continue-on-error: true
+  mac-native:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.mac_native == 'true'
+    runs-on: macos-latest
     steps:
-      - uses: actions/upload-artifact/merge@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          name: Hermesh-windows-setup
-          pattern: windows-setup-part-*
-          compression-level: 0
-          delete-merged: true
+          go-version-file: go.mod
+      - run: swift test --package-path apps/screen/macos
+      - run: swift test --package-path apps/signer/macos
+      - run: go test ./e2e -run '^TestSignerApp$' -count=1 -v -timeout 10m
+
+  packaging:
+    needs: changes
+    if: needs.changes.outputs.mode == 'full' || needs.changes.outputs.packaging == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Validate release workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -shellcheck= -pyflakes= .github/workflows/{release,relay-image,promote}.yml
+      - name: Check packaging scripts and test their dependencies
+        run: |
+          for file in apps/desktop/scripts/*.mjs; do node --check "$file"; done
+          for file in scripts/release*.sh apps/ios/scripts/testflight.sh; do bash -n "$file"; done
+          node --test apps/desktop/scripts/*.test.mjs
+      - name: Parse installer checks
+        shell: pwsh
+        run: |
+          Get-ChildItem apps/desktop/scripts/*.ps1 | ForEach-Object {
+            $errors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errors)
+            if ($errors) { throw ($errors -join "`n") }
+          }
 
   ci-ok:
     if: always()
-    needs: [changes, go, screen-linux, windows, windows-arm, app, ios-demo]
+    needs: [changes, go, screen-linux, windows, windows-arm, app, ios-demo, mac-native, packaging]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -352,7 +353,8 @@ jobs:
               elif $mode != "full" and $mode != "routed" then error("Invalid CI mode: \($mode)")
               else
                 {go: "go", "screen-linux": "screen_linux", windows: "windows",
-                 "windows-arm": "windows_arm", app: "app", "ios-demo": "ios"}
+                 "windows-arm": "windows_arm", app: "app", "ios-demo": "ios",
+                 "mac-native": "mac_native", packaging: "packaging"}
                 | to_entries
                 | map(.key as $job
                     | $changes.outputs[.value] as $flag
