@@ -37,6 +37,13 @@ const IN_USE_FILE: &str = "extension-in-use";
 /// Marker kept in the pool's root once an extension has connected, so a service restart still
 /// waits for it to reconnect before failing an unwatched call.
 const EXTENSION_SEEN_FILE: &str = "extension-seen";
+/// Display label of the last connected extension browser (e.g. "Google Chrome"), so a closed
+/// browser can be relaunched automatically when the agent needs it.
+const EXTENSION_BROWSER_FILE: &str = "extension-browser";
+/// Minimum gap between automatic relaunches of the user's closed browser.
+const EXTENSION_LAUNCH_COOLDOWN: Duration = Duration::from_secs(30);
+/// How long `acquire` probes an existing browser before treating it as hung.
+const ALIVE_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Headless {
@@ -137,6 +144,12 @@ pub struct BrowserPool {
     chosen: Mutex<Option<String>>,
     /// An extension connected at some point, so it may well come back.
     ever_connected: AtomicBool,
+    /// Last connected extension browser label, persisted across restarts.
+    last_extension_browser: Mutex<Option<String>>,
+    /// When we last tried to auto-launch the user's closed browser.
+    last_extension_launch: Mutex<Option<std::time::Instant>>,
+    /// Optional override for launching the user's browser (for tests).
+    extension_launcher: Mutex<Option<Arc<dyn Fn(Option<&str>) -> bool + Send + Sync>>>,
     /// A client follows the browsers' status, and can tell the user what is awaited.
     watched: AtomicBool,
     /// Sessions waiting for the extension, and how many calls of each.
@@ -177,7 +190,11 @@ impl BrowserPool {
 
     pub fn with_launcher(root: PathBuf, auto_headless_off: bool, launcher: Arc<dyn Launcher>) -> Self {
         let chosen = std::fs::read_to_string(root.join(IN_USE_FILE)).ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-        let seen = chosen.is_some() || root.join(EXTENSION_SEEN_FILE).exists();
+        let last_browser = std::fs::read_to_string(root.join(EXTENSION_BROWSER_FILE))
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+        let seen = chosen.is_some() || last_browser.is_some() || root.join(EXTENSION_SEEN_FILE).exists();
         Self {
             root,
             auto_headless: Some(!auto_headless_off),
@@ -186,6 +203,9 @@ impl BrowserPool {
             extensions: Mutex::new(Vec::new()),
             chosen: Mutex::new(chosen),
             ever_connected: AtomicBool::new(seen),
+            last_extension_browser: Mutex::new(last_browser),
+            last_extension_launch: Mutex::new(None),
+            extension_launcher: Mutex::new(None),
             watched: AtomicBool::new(false),
             waiting: Mutex::new(HashMap::new()),
             declined: Mutex::new(HashSet::new()),
@@ -225,6 +245,18 @@ impl BrowserPool {
 
     /// Like [`Self::add_extension`], also recording the connected browser's display label.
     pub fn add_extension_named(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>, browser: Option<String>) {
+        if let Some(raw) = browser.as_deref() {
+            let label = short_browser_label(raw);
+            let mut last = self.last_extension_browser.lock();
+            if last.as_deref() != Some(label.as_str()) {
+                *last = Some(label.clone());
+                drop(last);
+                let _ = std::fs::create_dir_all(&self.root);
+                if let Err(err) = std::fs::write(self.root.join(EXTENSION_BROWSER_FILE), &label) {
+                    tracing::warn!(%err, "cannot keep which extension browser connected");
+                }
+            }
+        }
         self.extensions.lock().push(ExtensionLink { host, instance, browser });
         if !self.ever_connected.swap(true, Ordering::Relaxed) {
             let _ = std::fs::create_dir_all(&self.root);
@@ -233,6 +265,37 @@ impl BrowserPool {
             }
         }
         self.changed.notify_waiters();
+    }
+
+    /// Overrides how a closed extension browser is auto-launched (for tests).
+    pub fn set_extension_launcher(&self, launcher: Arc<dyn Fn(Option<&str>) -> bool + Send + Sync>) {
+        *self.extension_launcher.lock() = Some(launcher);
+    }
+
+    fn maybe_launch_extension_browser(&self, label: &str) {
+        if !self.ever_connected.load(Ordering::Relaxed) || self.is_revoked(label) {
+            return;
+        }
+        {
+            let mut last = self.last_extension_launch.lock();
+            if last.is_some_and(|at| at.elapsed() < EXTENSION_LAUNCH_COOLDOWN) {
+                return;
+            }
+            *last = Some(std::time::Instant::now());
+        }
+        let browser = self.last_extension_browser.lock().clone();
+        if let Some(launcher) = self.extension_launcher.lock().clone() {
+            launcher(browser.as_deref());
+            return;
+        }
+        if !self.shows_window() {
+            return;
+        }
+        tracing::info!(
+            browser = browser.as_deref().unwrap_or("Chrome"),
+            "extension is disconnected; launching user browser in background"
+        );
+        crate::launch::launch_user_browser(browser.as_deref());
     }
 
     pub fn remove_extension(&self, id: u64) {
@@ -348,6 +411,7 @@ impl BrowserPool {
             return ExtensionWait::Connected;
         }
         let _waiting = Waiting::new(self, label);
+        self.maybe_launch_extension_browser(label);
         let started = tokio::time::Instant::now();
         loop {
             let changed = self.changed.notified();
@@ -435,11 +499,10 @@ impl BrowserPool {
         let _started = gate.lock().await;
         let existing = self.inner.browsers.lock().get(&key).and_then(Weak::upgrade);
         if let Some(browser) = existing {
-            if !browser.is_dead() {
+            if !browser.is_dead() && browser.check_alive(ALIVE_PROBE_TIMEOUT).await {
                 return Ok(browser);
             }
-            // Crashed or closed by the user: release the profile now, not when the last
-            // session lets go of it.
+            // Crashed, closed by the user, or hung: release it now instead of reusing a dead browser.
             browser.shut_down();
         }
         let closing = self.inner.closing.lock().get(&key).cloned();
@@ -696,7 +759,25 @@ struct Closing {
 impl Browser {
     /// The process exited or the connection broke: every holder starts over.
     pub fn is_dead(&self) -> bool {
-        self.conn.is_closed()
+        if self.conn.is_closed() {
+            return true;
+        }
+        if let Some(closing) = self.close.lock().as_mut()
+            && let Some(child) = closing.child.as_mut()
+            && matches!(child.try_wait(), Ok(Some(_)))
+        {
+            self.conn.close();
+            return true;
+        }
+        false
+    }
+
+    /// Probes whether the browser still answers CDP commands within `timeout`.
+    pub async fn check_alive(&self, timeout: Duration) -> bool {
+        if self.is_dead() {
+            return false;
+        }
+        self.conn.check_alive(timeout).await
     }
 
     pub fn note(&self) -> Option<&str> {
@@ -876,5 +957,50 @@ mod tests {
         assert!(pool.is_takeover_active("s1"), "second active card must keep pause enabled");
         pool.end_takeover("s1", "c_2");
         assert!(!pool.is_takeover_active("s1"), "all cards ended must release pause");
+    }
+
+    #[tokio::test]
+    async fn wait_for_extension_auto_launches_closed_browser_once_per_cooldown_and_skips_when_revoked() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("browser");
+
+        let pool = Arc::new(BrowserPool::new(root.clone(), false));
+        pool.add_extension_named(Arc::new(DummyHost(1)), Some("inst-1".into()), Some("Microsoft Edge 131.0.0.1".into()));
+        pool.remove_extension(1);
+        drop(pool);
+
+        // Fresh pool after restart loads the persisted browser label and launches it when disconnected.
+        let restarted = Arc::new(BrowserPool::new(root.clone(), false));
+        let launched = Arc::new(parking_lot::Mutex::new(Vec::<Option<String>>::new()));
+        let launched_ref = launched.clone();
+        let pool_ref = restarted.clone();
+        restarted.set_extension_launcher(Arc::new(move |browser| {
+            launched_ref.lock().push(browser.map(str::to_string));
+            let p = pool_ref.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                p.add_extension_named(Arc::new(DummyHost(2)), Some("inst-1".into()), Some("Microsoft Edge 131.0.0.1".into()));
+            });
+            true
+        }));
+        assert_eq!(restarted.wait_for_extension_for("s1", Duration::from_secs(5)).await, ExtensionWait::Connected);
+        assert_eq!(*launched.lock(), vec![Some("Microsoft Edge".to_string())]);
+
+        // Disconnecting again inside the cooldown window must not spam launches.
+        restarted.remove_extension(2);
+        assert_eq!(restarted.wait_for_extension_for("s1", Duration::from_millis(80)).await, ExtensionWait::NoOne);
+        assert_eq!(launched.lock().len(), 1);
+
+        // A revoked session must never auto-launch Chrome.
+        let revoked_pool = BrowserPool::new(root, false);
+        let revoked_launches = Arc::new(parking_lot::Mutex::new(0usize));
+        let counter = revoked_launches.clone();
+        revoked_pool.set_extension_launcher(Arc::new(move |_| {
+            *counter.lock() += 1;
+            true
+        }));
+        revoked_pool.revoke(&["s-revoked".to_string()]);
+        assert_eq!(revoked_pool.wait_for_extension_for("s-revoked", Duration::from_millis(80)).await, ExtensionWait::NoOne);
+        assert_eq!(*revoked_launches.lock(), 0);
     }
 }
