@@ -176,11 +176,37 @@ impl Server {
         answer.await.map_err(|_| errors::session_closed(session))?.ok_or_else(|| no_card(card))
     }
 
-    async fn builtin_browser_of(&self, session: &str) -> Option<Arc<her_browser::BrowserSession>> {
-        let hub = self.hub(session)?;
+    async fn site_login_browser_of(
+        &self,
+        session: &str,
+        own: bool,
+        url: &str,
+    ) -> Result<Arc<her_browser::BrowserSession>, &'static str> {
+        let Some(hub) = self.hub(session) else {
+            return Err("The conversation is closed.");
+        };
         let (reply, answer) = oneshot::channel();
-        hub.send(HubCmd::BuiltinBrowser { reply }).await.ok()?;
-        answer.await.ok().flatten()
+        if hub
+            .send(HubCmd::SiteLoginBrowser { own, url: url.to_string(), reply })
+            .await
+            .is_err()
+        {
+            return Err("The conversation is closed.");
+        }
+        answer.await.map_err(|_| "The conversation is closed.")?
+    }
+
+    async fn record_site_login_fill(&self, session: &str, own: bool, target_id: &str, origin: &str, url: &str) {
+        if let Some(hub) = self.hub(session) {
+            let _ = hub
+                .send(HubCmd::RecordSiteLoginFill {
+                    own,
+                    target_id: target_id.to_string(),
+                    origin: origin.to_string(),
+                    url: url.to_string(),
+                })
+                .await;
+        }
     }
 
     /// `cards/answer`: the owner's answer to a card. An approval carries out the card's ops as
@@ -313,8 +339,12 @@ impl Server {
         binding: &SiteLoginBinding,
         fields: &HashMap<String, String>,
     ) -> (CardState, Option<String>) {
-        let Some(browser) = self.builtin_browser_of(session_id).await else {
-            return (CardState::Failed, Some("The page changed before the fields could be filled.".into()));
+        let browser = match self
+            .site_login_browser_of(session_id, binding.own_browser, &binding.url)
+            .await
+        {
+            Ok(browser) => browser,
+            Err(reason) => return (CardState::Failed, Some(reason.into())),
         };
         let mut pairs: Vec<(i64, String, String)> = Vec::with_capacity(binding.fields.len());
         for f in &binding.fields {
@@ -324,15 +354,41 @@ impl Server {
             pairs.push((f.backend, f.input_type.clone(), value.clone()));
         }
         let outcome = browser
-            .fill_site_login(card_id, &binding.tab, &binding.frame, &binding.loader, &binding.origin, &pairs)
+            .fill_site_login(
+                card_id,
+                &binding.tab,
+                &binding.frame,
+                &binding.loader,
+                &binding.origin,
+                &binding.url,
+                &pairs,
+            )
             .await;
         for (_, _, value) in &mut pairs {
             zeroize_string(value);
         }
         match outcome {
-            Ok(()) => (
-                CardState::Done,
-                Some(format!("Filled the requested sign-in fields on {origin}. The form was not submitted.")),
+            Ok(()) => {
+                self.record_site_login_fill(
+                    session_id,
+                    binding.own_browser,
+                    &binding.target_id,
+                    &binding.origin,
+                    &binding.url,
+                )
+                .await;
+                let note = match &binding.browser_label {
+                    Some(browser) => format!(
+                        "Filled the requested sign-in fields on {origin} in {browser} (tab {}). The form was not submitted.",
+                        binding.tab
+                    ),
+                    None => format!("Filled the requested sign-in fields on {origin}. The form was not submitted."),
+                };
+                (CardState::Done, Some(note))
+            }
+            Err(BrowserError::Cdp(her_browser::CdpError::Closed)) => (
+                CardState::Failed,
+                Some("The browser disconnected before the fields could be filled.".into()),
             ),
             Err(BrowserError::PageChanged { .. } | BrowserError::StaleRef(_)) => (
                 CardState::Failed,

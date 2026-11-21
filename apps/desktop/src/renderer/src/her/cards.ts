@@ -18,8 +18,8 @@ export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_c
 
 export type SiteLoginField = { id: string; label: string; kind: SiteLoginFieldKind; secret: boolean };
 
-/** A `site_login` card's: verified login fields inspected from an isolated browser page. */
-export type SiteLoginBody = { origin: string; host: string; title?: string; fields: SiteLoginField[] };
+/** A `site_login` card's: verified login fields inspected from a bound browser page. */
+export type SiteLoginBody = { origin: string; host: string; title?: string; browser?: string; tab?: string; fields: SiteLoginField[] };
 
 export type Card = {
   id: string;

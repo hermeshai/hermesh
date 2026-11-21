@@ -109,6 +109,7 @@ pub enum ExtensionWait {
 struct ExtensionLink {
     host: Arc<dyn EmbeddedHost>,
     instance: Option<String>,
+    browser: Option<String>,
 }
 
 const NO_HOST: &str = "No desktop app is connected to show the embedded browser. Open Hermesh, \
@@ -216,7 +217,12 @@ impl BrowserPool {
     /// agent stays with the one it uses, so a later one never moves it to another account
     /// (§8.4.7).
     pub fn add_extension(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>) {
-        self.extensions.lock().push(ExtensionLink { host, instance });
+        self.add_extension_named(host, instance, None);
+    }
+
+    /// Like [`Self::add_extension`], also recording the connected browser's display label.
+    pub fn add_extension_named(&self, host: Arc<dyn EmbeddedHost>, instance: Option<String>, browser: Option<String>) {
+        self.extensions.lock().push(ExtensionLink { host, instance, browser });
         if !self.ever_connected.swap(true, Ordering::Relaxed) {
             let _ = std::fs::create_dir_all(&self.root);
             if let Err(err) = std::fs::write(self.root.join(EXTENSION_SEEN_FILE), "") {
@@ -238,6 +244,18 @@ impl BrowserPool {
             Some(chosen) => links.iter().find(|l| l.instance.as_ref() == Some(chosen)).map(|l| l.host.clone()),
             None => links.first().map(|l| l.host.clone()),
         }
+    }
+
+    /// Display label for the connected extension browser (e.g. `"Google Chrome"` or `"Chrome"`).
+    pub fn extension_browser_label(&self) -> String {
+        let links = self.extensions.lock();
+        let chosen = self.chosen.lock();
+        let link = match &*chosen {
+            Some(c) => links.iter().find(|l| l.instance.as_ref() == Some(c)),
+            None => links.first(),
+        };
+        let raw = link.and_then(|l| l.browser.as_deref()).unwrap_or("");
+        short_browser_label(raw)
     }
 
     /// An extension the agent can use is connected.
@@ -533,6 +551,23 @@ impl Drop for Waiting<'_> {
     }
 }
 
+fn short_browser_label(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.contains("Mozilla/") {
+        return "Chrome".to_string();
+    }
+    // Strip trailing version token such as "131.0.6778.86".
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    let label = if parts.len() > 1 && parts.last().is_some_and(|p| p.chars().all(|c| c.is_ascii_digit() || c == '.')) {
+        parts[..parts.len() - 1].join(" ")
+    } else {
+        trimmed.to_string()
+    };
+    let clean: String = label.chars().filter(|c| !c.is_control()).take(40).collect();
+    let clean = clean.trim();
+    if clean.is_empty() { "Chrome".to_string() } else { clean.to_string() }
+}
+
 fn short_key(path: &std::path::Path) -> String {
     use std::hash::Hash;
     use std::hash::Hasher;
@@ -705,6 +740,7 @@ mod tests {
     use super::ExtensionWait;
     use super::Stream;
     use super::display_in;
+    use super::short_browser_label;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -718,6 +754,14 @@ mod tests {
         fn connect(&self) -> Result<Stream, BrowserError> {
             Err(BrowserError::Launch("unused in test".into()))
         }
+    }
+
+    #[test]
+    fn short_browser_label_strips_version_and_falls_back_to_chrome() {
+        assert_eq!(short_browser_label("Google Chrome 131.0.6778.86"), "Google Chrome");
+        assert_eq!(short_browser_label("Chrome"), "Chrome");
+        assert_eq!(short_browser_label("Mozilla/5.0 (Macintosh; Intel Mac OS X)"), "Chrome");
+        assert_eq!(short_browser_label(""), "Chrome");
     }
 
     #[test]

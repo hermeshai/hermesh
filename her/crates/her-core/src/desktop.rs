@@ -540,6 +540,11 @@ impl TypedTool for DesktopSnapshot {
     }
 
     async fn run(&self, args: SnapshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        if crate::browser::has_active_sensitive(&ctx.session_state) {
+            return Err(ToolError::Failed(
+                "Computer control is blocked during a sensitive sign-in step until the login page navigates away or the card is cancelled.".into(),
+            ));
+        }
         let key = approved(&ctx)?;
         let mut cli_args = vec!["--app".into(), key.clone(), "--compact".into()];
         if !args.all {
@@ -843,6 +848,11 @@ impl TypedTool for DesktopAct {
     }
 
     async fn run(&self, args: ActArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        if crate::browser::has_active_sensitive(&ctx.session_state) {
+            return Err(ToolError::Failed(
+                "Computer control is blocked during a sensitive sign-in step until the login page navigates away or the card is cancelled.".into(),
+            ));
+        }
         let key = approved(&ctx)?;
         if !args.action.physical() {
             let data = run(&ctx, args.action.command(), args.ref_args()).await?;
@@ -1187,6 +1197,11 @@ impl TypedTool for DesktopScreenshot {
     }
 
     async fn run(&self, args: ScreenshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        if crate::browser::has_active_sensitive(&ctx.session_state) {
+            return Err(ToolError::Failed(
+                "Computer control is blocked during a sensitive sign-in step until the login page navigates away or the card is cancelled.".into(),
+            ));
+        }
         let key = approved(&ctx)?;
         let handle = handle(&ctx)?;
         let found = windows(&ctx, &key).await?;

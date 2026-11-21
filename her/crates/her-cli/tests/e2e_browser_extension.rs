@@ -1656,3 +1656,405 @@ async fn extension_reconnects_after_restart_and_activity_and_reports_true_chrome
     client.request("server/shutdown", json!({})).await.unwrap();
     let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
 }
+
+/// Real isolated temporary Chrome profile + real Her conversation (`bots/open`) E2E test for
+/// `site_login` **input card** filling directly into a bound local Chrome login form:
+/// - Does NOT switch `browser.default` (`builtin` stays `builtin`).
+/// - Shows trusted `site_login` input card with verified origin, Chrome browser label, bound tab,
+///   and DOM-inspected fields (no takeover substitute, no new model-callable collection APIs).
+/// - Blocks snapshot, screenshot, script (`browser_eval`), console, wait, and act both while the
+///   card is open AND after filling while the filled document stays loaded.
+/// - Fills bound Chrome inputs once with zero auto-submit (`submits == 0`) and one-time consumption.
+/// - Invalidates immediately on cancel (`decline`), navigation, SPA `pushState` jump, and disconnect.
+/// - Rejects cross-origin iframes, generic non-login forms, and CAPTCHA pages explicitly.
+/// - Leaks ZERO dummy credentials across all RPC events, session history, and all files under `HER_HOME`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+
+    const DUMMY_EMAIL: &str = "dummy-chrome-card@example.test";
+    const DUMMY_PASS: &str = "DUMMY_CHROME_PASS_CANARY_9x4q2m";
+
+    let submits = Arc::new(AtomicUsize::new(0));
+    let submits_srv = submits.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let origin = format!("http://127.0.0.1:{port}");
+    let localhost_origin = format!("http://localhost:{port}");
+
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let submits_srv = submits_srv.clone();
+            let localhost_origin = localhost_origin.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req.split_whitespace().nth(1).unwrap_or("/");
+                if path.starts_with("/submit") {
+                    submits_srv.fetch_add(1, Ordering::SeqCst);
+                }
+                let body = match path {
+                    "/login" => r#"<!doctype html><html><head><title>Fixture Chrome Sign In</title></head><body>
+                        <form id="f" action="/submit" method="post">
+                          <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+                          <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password">
+                          <button type="submit">Sign In</button>
+                        </form>
+                        <script>
+                          window.__inputEvents = [];
+                          for (const id of ['u', 'p']) {
+                            document.getElementById(id).addEventListener('input', () => window.__inputEvents.push(id));
+                          }
+                        </script>
+                      </body></html>"#.to_string(),
+                    "/after" => "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Welcome Dashboard</h1></body></html>".to_string(),
+                    "/captcha" => r#"<!doctype html><html><head><title>Captcha Gate</title></head><body>
+                        <div class="g-recaptcha" data-sitekey="dummy-sitekey"></div>
+                        <form><label for="p">Password</label><input id="p" type="password"></form>
+                      </body></html>"#.to_string(),
+                    "/generic" => r#"<!doctype html><html><head><title>Notes</title></head><body>
+                        <form><label for="n">Feedback</label><input id="n" name="note" type="text"></form>
+                      </body></html>"#.to_string(),
+                    "/iframe" => format!(r#"<!doctype html><html><head><title>Iframe Host</title></head><body>
+                        <iframe src="{localhost_origin}/login" width="400" height="300"></iframe>
+                      </body></html>"#),
+                    _ => "<!doctype html><html><head><title>Other</title></head><body>OK</body></html>".to_string(),
+                };
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(resp.as_bytes()).await;
+            });
+        }
+    });
+
+    // Built-in browser stays the default (`default = "builtin"`): never switch default browser!
+    let cfg = format!(
+        "[browser]\nenabled = true\nheadless = true\nexecutable = {:?}\nextension = true\ndefault = \"builtin\"\nscript_enabled = true\n",
+        chrome_exe.display().to_string()
+    );
+    let env = TestEnv::new("bypass-permissions", &cfg).await;
+    let home = env.home.path().to_path_buf();
+    let socket = home.join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let installed = env
+        .her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap()])
+        .output()
+        .await
+        .unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let (chrome, mut chrome_process) = chrome_with_extension(&env, &profile, &chrome_exe).await;
+    status_until(&client, "the extension", |s| s["extension"]["in_use"] == true).await;
+
+    // Open the real Her conversation entry point (`bots/subscribe` -> `bots/open`).
+    let listed = client.request("bots/subscribe", Value::Null).await.unwrap();
+    let bot_id = listed["bots"][0]["id"].as_str().unwrap().to_string();
+    let opened = client
+        .request(
+            "bots/open",
+            json!({"bot_id": bot_id, "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]}}),
+        )
+        .await
+        .unwrap();
+    let session = opened["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let mut all_events: Vec<Value> = Vec::new();
+    let schema = common::SchemaCheck::new(&["Card"]);
+
+    async fn read_turn(
+        events: &mut her_rpc::IncomingRx,
+        all_events: &mut Vec<Value>,
+    ) -> Vec<Value> {
+        let mut turn = Vec::new();
+        loop {
+            let msg = tokio::time::timeout(Duration::from_secs(30), events.recv())
+                .await
+                .expect("timed out waiting for turn event")
+                .expect("event stream closed");
+            let ev = msg.params()["event"].clone();
+            all_events.push(ev.clone());
+            let done = matches!(ev["type"].as_str(), Some("task_completed" | "task_failed" | "task_interrupted"));
+            turn.push(ev);
+            if done {
+                return turn;
+            }
+        }
+    }
+
+    async fn send_bot(
+        client: &Client,
+        events: &mut her_rpc::IncomingRx,
+        all_events: &mut Vec<Value>,
+        session: &str,
+        text: &str,
+    ) -> Vec<Value> {
+        client
+            .request("session/op", json!({"session_id": session, "op": {"type": "prompt", "input": [{"type": "text", "text": text}]}}))
+            .await
+            .unwrap();
+        read_turn(events, all_events).await
+    }
+
+    fn shown_card(turn: &[Value]) -> Value {
+        turn.iter()
+            .find_map(|e| {
+                (e["type"] == "tool_completed"
+                    && e["result"]["tool_name"] == "send_to_user"
+                    && e["result"]["is_error"] == false)
+                    .then(|| e["result"]["details"]["card"].clone())
+            })
+            .unwrap_or_else(|| panic!("expected a card in turn: {turn:#?}"))
+    }
+
+    fn sent_texts(turn: &[Value]) -> Vec<String> {
+        turn.iter()
+            .filter(|e| e["type"] == "tool_started" && e["name"] == "send_to_user")
+            .filter_map(|e| e["args"]["text"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    async fn page_target_for(chrome: &her_browser::cdp::Conn, url: &str) -> String {
+        let targets = chrome.send(None, "Target.getTargets", json!({})).await.unwrap();
+        targets["targetInfos"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|t| t["type"] == "page" && t["url"].as_str() == Some(url))
+            .and_then(|t| t["targetId"].as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| panic!("no Chrome page target for {url}: {targets}"))
+    }
+
+    async fn wait_card_state(
+        events: &mut her_rpc::IncomingRx,
+        all_events: &mut Vec<Value>,
+        card_id: &str,
+        want: &str,
+    ) -> Value {
+        loop {
+            let msg = tokio::time::timeout(Duration::from_secs(20), events.recv())
+                .await
+                .unwrap_or_else(|_| panic!("timed out waiting for card {card_id} -> {want}"))
+                .expect("event stream closed");
+            let ev = msg.params()["event"].clone();
+            all_events.push(ev.clone());
+            if ev["type"] == "card_changed" && ev["card_id"] == card_id && ev["state"] == want {
+                return ev;
+            }
+        }
+    }
+
+    let read_default = || async {
+        let cfg = client.request("config/read", json!({})).await.unwrap();
+        cfg["config"]["browser"]["default"].as_str().unwrap_or("").to_string()
+    };
+    assert_eq!(read_default().await, "builtin");
+
+    // 1. Cross-origin iframe, generic form, and CAPTCHA must fail explicitly (no card shown).
+    let iframe_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login_iframe:{origin}/iframe]] iframe")).await;
+    assert!(sent_texts(&iframe_turn).iter().any(|t| t.starts_with("拒绝：")), "cross-origin iframe must be rejected: {iframe_turn:#?}");
+    assert!(!iframe_turn.iter().any(|e| e["type"] == "card_changed"), "no card for cross-origin iframe");
+
+    let generic_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{origin}/generic]] generic")).await;
+    assert!(sent_texts(&generic_turn).iter().any(|t| t.starts_with("拒绝：")), "generic form must be rejected: {generic_turn:#?}");
+    assert!(!generic_turn.iter().any(|e| e["type"] == "card_changed"), "no card for generic form");
+
+    let captcha_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{origin}/captcha]] captcha")).await;
+    assert!(sent_texts(&captcha_turn).iter().any(|t| t.starts_with("拒绝：")), "CAPTCHA must be rejected: {captcha_turn:#?}");
+    assert!(!captcha_turn.iter().any(|e| e["type"] == "card_changed"), "no card for CAPTCHA");
+
+    // 2. Real login page in local Chrome: card appears with verified origin, Chrome browser label,
+    //    bound tab `y1`, and DOM-inspected fields.
+    let login_url = format!("{origin}/login");
+    let turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] sign in")).await;
+    let card = shown_card(&turn);
+    schema.check("Card", &card);
+    let card_id = card["id"].as_str().unwrap().to_string();
+    assert_eq!(card["kind"], "site_login", "{card}");
+    assert_eq!(card["ops"], json!([]), "{card}");
+    assert_eq!(card["body"]["origin"], origin, "{card}");
+    assert_eq!(card["body"]["host"], format!("127.0.0.1:{port}"), "{card}");
+    assert!(card["body"]["browser"].as_str().is_some_and(|b| !b.is_empty()), "must identify Chrome: {card}");
+    assert_eq!(card["body"]["tab"], "y1", "{card}");
+    let fields = card["body"]["fields"].as_array().unwrap();
+    assert_eq!(fields.len(), 2, "{card}");
+    assert_eq!(fields[0]["secret"], false);
+    assert_eq!(fields[1]["secret"], true);
+    assert_eq!(read_default().await, "builtin", "browser.default must stay builtin");
+
+    // 3. While card is Open: snapshot, screenshot, eval, console, wait, and act MUST ALL BE BLOCKED.
+    let probe_open = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_probe_blocked:y1]] probe").await;
+    let probe_results: Vec<&Value> = probe_open
+        .iter()
+        .filter(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "call_tool")
+        .collect();
+    assert_eq!(probe_results.len(), 6, "expected 6 blocked probe tool calls: {probe_open:#?}");
+    for r in &probe_results {
+        assert_eq!(r["result"]["is_error"], true, "must be blocked while card is Open: {r}");
+    }
+
+    // 4. Owner enters dummy credentials in the trusted card (`cards/answer { decision: "fill" }`).
+    let answer = client
+        .request(
+            "cards/answer",
+            json!({
+                "session_id": session,
+                "card_id": card_id,
+                "answer": { "decision": "fill", "fields": { "f1": DUMMY_EMAIL, "f2": DUMMY_PASS } }
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(answer["state"], "done", "{answer}");
+    let woke = read_turn(&mut events, &mut all_events).await;
+    let woke_text = sent_texts(&woke).join("\n");
+    assert!(woke_text.contains("卡片结果：done|"), "{woke_text}");
+    assert!(!woke_text.contains(DUMMY_PASS) && !woke_text.contains(DUMMY_EMAIL), "secret leaked to Her: {woke_text}");
+
+    // Verify directly in Chrome DOM that values were filled accurately, input events fired, and ZERO submits occurred!
+    let target_id = page_target_for(&chrome, &login_url).await;
+    let dom = evaluate_in(
+        &chrome,
+        &target_id,
+        "({email: document.getElementById('u').value, pass: document.getElementById('p').value, events: window.__inputEvents})",
+    )
+    .await;
+    assert_eq!(dom["email"], DUMMY_EMAIL, "{dom}");
+    assert_eq!(dom["pass"], DUMMY_PASS, "{dom}");
+    assert_eq!(dom["events"], json!(["u", "p"]), "{dom}");
+    assert_eq!(submits.load(Ordering::SeqCst), 0, "must NEVER auto-submit");
+
+    // One-time consumption: answering the done card again must fail with `card_ended`.
+    let replay = client
+        .request(
+            "cards/answer",
+            json!({
+                "session_id": session,
+                "card_id": card_id,
+                "answer": { "decision": "fill", "fields": { "f1": DUMMY_EMAIL, "f2": DUMMY_PASS } }
+            }),
+        )
+        .await;
+    assert!(replay.is_err(), "one-time card must reject replay: {replay:?}");
+
+    // 5. After fill (before navigation): ALL 6 tools MUST REMAIN BLOCKED!
+    let probe_filled = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_probe_blocked:y1]] probe after fill").await;
+    let probe_results: Vec<&Value> = probe_filled
+        .iter()
+        .filter(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "call_tool")
+        .collect();
+    assert_eq!(probe_results.len(), 6, "{probe_filled:#?}");
+    for r in &probe_results {
+        assert_eq!(r["result"]["is_error"], true, "must remain blocked after fill: {r}");
+    }
+
+    // Safe recovery: once Chrome navigates away to `/after`, observation resumes safely.
+    let after_url = format!("{origin}/after");
+    let _ = evaluate_in(&chrome, &target_id, &format!("location.href = {}", json!(after_url))).await;
+    for _ in 0..50 {
+        if pages(&chrome).await.contains(&after_url) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let read_after = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_read_tab:y1]] read after").await;
+    assert!(sent_texts(&read_after).join("\n").contains("Welcome Dashboard"), "recovery failed: {read_after:#?}");
+
+    // 6. Cancel (`decline`): inputs remain empty, observation resumes immediately.
+    let cancel_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] cancel test")).await;
+    let cancel_card = shown_card(&cancel_turn);
+    let cancel_id = cancel_card["id"].as_str().unwrap().to_string();
+    let declined = client
+        .request("cards/answer", json!({"session_id": session, "card_id": cancel_id, "answer": {"decision": "decline"}}))
+        .await
+        .unwrap();
+    assert_eq!(declined["state"], "declined", "{declined}");
+    let woke_cancel = read_turn(&mut events, &mut all_events).await;
+    assert!(sent_texts(&woke_cancel).join("\n").contains("卡片结果：declined|"), "{woke_cancel:#?}");
+    let target_id = page_target_for(&chrome, &login_url).await;
+    let dom = evaluate_in(&chrome, &target_id, "({email: document.getElementById('u').value, pass: document.getElementById('p').value})").await;
+    assert_eq!(dom, json!({"email": "", "pass": ""}), "cancel must write nothing: {dom}");
+    let read_resumed = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_read_tab:y1]] read after cancel").await;
+    assert!(sent_texts(&read_resumed).join("\n").contains("Fixture Chrome Sign In"), "cancel must lift guard: {read_resumed:#?}");
+
+    // 7. Target change (full navigation): invalidates open card immediately, zero fill.
+    let nav_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] nav invalidation")).await;
+    let nav_card_id = shown_card(&nav_turn)["id"].as_str().unwrap().to_string();
+    let target_id = page_target_for(&chrome, &login_url).await;
+    let _ = evaluate_in(&chrome, &target_id, &format!("location.href = {}", json!(after_url))).await;
+    let failed_ev = wait_card_state(&mut events, &mut all_events, &nav_card_id, "failed").await;
+    assert!(failed_ev["note"].as_str().unwrap_or("").contains("changed"), "{failed_ev}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+    let after_nav_fill = client
+        .request("cards/answer", json!({"session_id": session, "card_id": nav_card_id, "answer": {"decision": "fill", "fields": {"f1": DUMMY_EMAIL, "f2": DUMMY_PASS}}}))
+        .await;
+    assert!(after_nav_fill.is_err(), "navigated card must reject fill: {after_nav_fill:?}");
+
+    // 8. Target change (same-origin SPA `history.pushState` jump): invalidates open card immediately, zero fill.
+    let spa_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] spa invalidation")).await;
+    let spa_card_id = shown_card(&spa_turn)["id"].as_str().unwrap().to_string();
+    let target_id = page_target_for(&chrome, &login_url).await;
+    let _ = evaluate_in(&chrome, &target_id, "history.pushState({}, '', '/settings')").await;
+    let failed_spa = wait_card_state(&mut events, &mut all_events, &spa_card_id, "failed").await;
+    assert!(failed_spa["note"].as_str().unwrap_or("").contains("changed"), "{failed_spa}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+    let dom = evaluate_in(&chrome, &target_id, "({email: document.getElementById('u').value, pass: document.getElementById('p').value})").await;
+    assert_eq!(dom, json!({"email": "", "pass": ""}), "SPA jump must leave inputs empty: {dom}");
+
+    // 9. Disconnect invalidation: Chrome closes while card is open -> card invalidates to `failed`.
+    let disc_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] disconnect invalidation")).await;
+    let disc_card_id = shown_card(&disc_turn)["id"].as_str().unwrap().to_string();
+    let _ = chrome.send(None, "Browser.close", json!({})).await;
+    let _ = tokio::time::timeout(Duration::from_secs(10), chrome_process.wait()).await;
+    let failed_disc = wait_card_state(&mut events, &mut all_events, &disc_card_id, "failed").await;
+    assert!(failed_disc["note"].as_str().unwrap_or("").contains("disconnected"), "{failed_disc}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+    let after_disc_fill = client
+        .request("cards/answer", json!({"session_id": session, "card_id": disc_card_id, "answer": {"decision": "fill", "fields": {"f1": DUMMY_EMAIL, "f2": DUMMY_PASS}}}))
+        .await;
+    assert!(after_disc_fill.is_err(), "disconnected card must reject fill: {after_disc_fill:?}");
+
+    assert_eq!(submits.load(Ordering::SeqCst), 0, "total submits across entire test must be 0");
+    assert_eq!(read_default().await, "builtin", "browser.default must NEVER be switched");
+
+    let snapshot = client.request("bots/open", json!({"bot_id": bot_id, "history_limit": 1000})).await.unwrap();
+    let history_dump = serde_json::to_string(&snapshot).unwrap();
+    assert!(!history_dump.contains(DUMMY_PASS), "password leaked into session history!");
+    assert!(!history_dump.contains(DUMMY_EMAIL), "email leaked into session history!");
+
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+
+    // 10. Zero secret leakage across all RPC events AND every file under HER_HOME.
+    let dumped_events = serde_json::to_string(&all_events).unwrap();
+    assert!(!dumped_events.contains(DUMMY_PASS), "password leaked into RPC events!");
+    assert!(!dumped_events.contains(DUMMY_EMAIL), "email leaked into RPC events!");
+
+    fn walk_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk_files(&p, out);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    let mut disk_files = Vec::new();
+    walk_files(&home, &mut disk_files);
+    for path in disk_files {
+        let bytes = std::fs::read(&path).unwrap_or_default();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(!text.contains(DUMMY_PASS), "password leaked into {}", path.display());
+        assert!(!text.contains(DUMMY_EMAIL), "email leaked into {}", path.display());
+    }
+}

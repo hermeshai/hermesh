@@ -104,10 +104,12 @@ import Testing
     let siteRaw: JSON = ["id": "card_site", "kind": "site_login", "title": "Sign in to 127.0.0.1:4100", "asked_by": "her", "expires_at": "2026-11-09T12:05:00Z",
                          "ops": [],
                          "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "title": "Fixture Sign In",
+                                  "browser": "Google Chrome", "tab": "y1",
                                   "fields": [["id": "f1", "label": "Email", "kind": "email", "secret": false],
                                              ["id": "f2", "label": "Password", "kind": "password", "secret": true]]]]
     let site = try #require(HerCard(siteRaw))
     #expect(site.connect == nil && site.siteLogin?.origin == "http://127.0.0.1:4100" && site.siteLogin?.fields.count == 2)
+    #expect(site.siteLogin?.browser == "Google Chrome" && site.siteLogin?.tab == "y1")
     #expect(site.askedBy == "her")
     let fillAnswer = site.fill(["f1": "dummy@example.test", "f2": "DUMMY_PASS_1"])
     #expect(fillAnswer["decision"].string == "fill" && fillAnswer["ops"].isNull && fillAnswer["fields"]["f2"].string == "DUMMY_PASS_1")

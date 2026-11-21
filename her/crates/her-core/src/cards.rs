@@ -30,10 +30,14 @@ pub(crate) const SITE_LOGIN_LIFE_SECS: i64 = 300;
 /// Server-only target binding for a `site_login` card (never sent to the model, never holds values).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SiteLoginBinding {
+    pub own_browser: bool,
+    pub target_id: String,
     pub tab: String,
     pub frame: String,
     pub loader: String,
     pub origin: String,
+    pub url: String,
+    pub browser_label: Option<String>,
     pub fields: Vec<SiteLoginFieldBinding>,
 }
 
@@ -69,7 +73,10 @@ fn target_key(card: &Card) -> Option<String> {
     if let Some(body) = card.connect_body() {
         Some(body.name.clone())
     } else {
-        card.site_login_body().map(|body| body.origin.clone())
+        card.site_login_body().map(|body| match &body.browser {
+            Some(browser) => format!("{browser}:{}", body.origin),
+            None => body.origin.clone(),
+        })
     }
 }
 
@@ -171,6 +178,25 @@ impl Cards {
     /// The server-only `site_login` target binding for a shown card.
     pub fn binding(&self, id: &str) -> Option<SiteLoginBinding> {
         self.kept.lock().iter().find(|kept| kept.card.id == id && kept.state.is_some()).and_then(|kept| kept.binding.clone())
+    }
+
+    /// Fails every open `site_login` card matching `own_browser` (or all when `None`), releasing its
+    /// pending sensitive guard.
+    pub fn invalidate_open_site_login(&self, own_browser: Option<bool>, reason: &str) {
+        let ids: Vec<String> = self
+            .kept
+            .lock()
+            .iter()
+            .filter(|kept| {
+                kept.card.kind == CardKind::SiteLogin
+                    && kept.state == Some(CardState::Open)
+                    && own_browser.is_none_or(|own| kept.binding.as_ref().is_some_and(|b| b.own_browser == own))
+            })
+            .map(|kept| kept.card.id.clone())
+            .collect();
+        for id in ids {
+            let _ = self.set(&id, &[CardState::Open], CardState::Failed, Some(reason.to_string()));
+        }
     }
 
     /// Moves a shown card from one of `from` to `to`, with her's words, and returns the state it

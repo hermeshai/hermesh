@@ -1116,6 +1116,30 @@ impl Kernel {
         session.tool_state.get::<her_browser::BrowserSession>()
     }
 
+    /// The session's live bound browser session for a `site_login` card (`own == true` for local Chrome),
+    /// verifying that the browser is still enabled, connected, unrevoked, and allowed by site policy.
+    pub fn site_login_browser(&self, own: bool, url: &str) -> Result<Arc<her_browser::BrowserSession>, &'static str> {
+        let session = self.session.upgrade().ok_or("The conversation is closed.")?;
+        crate::browser::site_login_browser(&session.tool_state, own, url)
+    }
+
+    /// Records a filled `site_login` document so observation stays blocked even if the Chrome extension
+    /// session reconnects while the filled login page is still loaded.
+    pub fn record_filled_site_login(&self, own: bool, target_id: &str, origin: &str, url: &str) {
+        if let Some(session) = self.session.upgrade() {
+            crate::browser::record_filled_site_login(&session.tool_state, own, target_id, origin, url);
+        }
+    }
+
+    /// Invalidates open `site_login` cards bound to local Chrome (for example on extension disconnect or revocation).
+    pub fn invalidate_open_site_login(&self, own: Option<bool>, reason: &str) {
+        if let Some(session) = self.session.upgrade()
+            && let Some(cards) = session.tool_state.get::<Cards>()
+        {
+            cards.invalidate_open_site_login(own, reason);
+        }
+    }
+
     /// Her's conversation takes up a connector added after it started, which the owner just
     /// connected on a card: its tools are there from the next turn on. The future ends once it
     /// has connected, or failed, or after the MCP startup wait: the turn the card's end wakes then
