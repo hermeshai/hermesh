@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.route.outputs.mode }}
+      exhaustive: ${{ inputs.full || steps.route.outputs.mode == 'full' }}
       go: ${{ steps.route.outputs.go }}
       screen_linux: ${{ steps.route.outputs.screen_linux }}
       windows: ${{ steps.route.outputs.windows }}
@@ -91,7 +92,7 @@ jobs:
       - run: corepack enable
       - name: Review demo on the simulator
         env:
-          SUITE: ${{ inputs.full && 'full' || needs.changes.outputs.ios_suite || 'smoke' }}
+          SUITE: ${{ needs.changes.outputs.exhaustive == 'true' && 'full' || needs.changes.outputs.ios_suite || 'smoke' }}
         run: apps/ios/scripts/test-demo.sh "$RUNNER_TEMP/ios-demo" "$SUITE"
       - uses: actions/upload-artifact@v4
         if: always()
@@ -125,13 +126,13 @@ jobs:
       - name: installer terminal interaction
         run: python3 scripts/test_install.py
       - name: end-to-end (scripted agents)
-        if: inputs.full || needs.changes.outputs.go_e2e == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.go_e2e == 'true'
         run: make e2e
         env:
           # Race-detector binaries on one runner: a data race fails the test.
           HERMESH_E2E_RACE: ${{ matrix.os == 'ubuntu-latest' && '1' || '' }}
       - name: Relay, daemon and CLI user journey
-        if: ${{ !inputs.full && needs.changes.outputs.go_e2e != 'true' }}
+        if: ${{ needs.changes.outputs.exhaustive != 'true' && needs.changes.outputs.go_e2e != 'true' }}
         run: go test ./e2e -run '^Test(UserJourney|MobileNetwork)$' -count=1 -timeout 10m
   # Computer Control's helper for Linux (docs/computer-control-linux.md): its
   # own tests, then end to end on X11, Sway and GNOME in containers.
@@ -202,7 +203,7 @@ jobs:
   # failures do not fail the run yet.
   windows-e2e:
     needs: changes
-    if: inputs.full || needs.changes.outputs.windows_e2e == 'true'
+    if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.windows_e2e == 'true'
     runs-on: windows-latest
     continue-on-error: true
     steps:
@@ -248,14 +249,14 @@ jobs:
       - name: types and unit tests
         run: make test-app-js
       - name: Cache Cargo dependencies
-        if: inputs.full || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: her -> target
           key: ci-app-${{ hashFiles('her/rust-toolchain.toml', 'her/.cargo/config.toml') }}
           cache-on-failure: true
       - name: Build Her for its dedicated desktop fixtures
-        if: inputs.full || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         env:
           NIMBLEOFFICE_TOKEN: ${{ secrets.NIMBLEOFFICE_TOKEN }}
         run: |
@@ -265,22 +266,22 @@ jobs:
           fi
           cargo build --manifest-path her/Cargo.toml -p her-cli -p her-mock
       - name: end-to-end (Her consent and coding agents)
-        if: inputs.full || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         run: |
           test -x her/target/debug/her
           test -x her/target/debug/her-mock
           go test ./e2e -run '^Test(HerConsentRefusalAllowsDirectCodingAndMobileAnswers|HerCodingHandoffRespectsApprovalAndGrant|CodingAgentAnswerRejection|PushHerNotices)$' -count=1 -v -timeout 10m
       - name: Custom MCP connectors through the owner and execution host
-        if: inputs.full || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         run: go test ./e2e -run '^TestHerCommandConnector$' -count=1 -v -timeout 5m
       - name: Custom MCP connectors in the console
-        if: inputs.full || needs.changes.outputs.her_integration == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.her_integration == 'true'
         run: pnpm --filter @hermesh/her-console e2e --grep 'custom HTTP and stdio connectors'
       - name: Electron shell against the daemon
-        if: ${{ !inputs.full && needs.changes.outputs.desktop_e2e != 'true' }}
+        if: ${{ needs.changes.outputs.exhaustive != 'true' && needs.changes.outputs.desktop_e2e != 'true' }}
         run: go test ./e2e -run '^TestDesktop$/^shell$' -count=1 -v -timeout 10m
       - name: end-to-end (desktop app and signer)
-        if: inputs.full || needs.changes.outputs.desktop_e2e == 'true'
+        if: needs.changes.outputs.exhaustive == 'true' || needs.changes.outputs.desktop_e2e == 'true'
         run: go test ./e2e -run 'TestDesktop|TestSigner' -count=1 -v -timeout 30m
   windows-app:
     needs: changes
@@ -328,6 +329,8 @@ jobs:
         run: |
           for file in apps/desktop/scripts/*.mjs; do node --check "$file"; done
           for file in scripts/release*.sh apps/ios/scripts/testflight.sh; do bash -n "$file"; done
+          for file in apps/desktop/build/linux/{postinst,postrm,prerm}; do sh -n "$file"; done
+          python3 -m py_compile apps/desktop/build/dmg/settings.py
           node --test apps/desktop/scripts/*.test.mjs
       - name: Parse installer checks
         shell: pwsh

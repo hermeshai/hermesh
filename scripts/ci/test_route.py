@@ -10,7 +10,8 @@ import unittest
 
 
 ROUTER = Path(__file__).with_name("route.py").resolve()
-route = runpy.run_path(str(ROUTER))["route"]
+rules = runpy.run_path(str(ROUTER))
+route = rules["route"]
 
 
 class RouteTests(unittest.TestCase):
@@ -47,7 +48,8 @@ class RouteTests(unittest.TestCase):
             "skills/foo/SKILL.md", "apps/new/x", "packages/new/src/x.ts", "her/new/src/x.rs",
         ]:
             with self.subTest(path=path):
-                self.assertIsNone(route(["docs/x.md", path]))
+                self.assertEqual(route(["docs/x.md", path]), rules["COMPONENTS"])
+        self.assertEqual(route(["Makefile", "e2e/acp_test.go"]), rules["COMPONENTS"] | {"go_e2e"})
         self.assertIsNone(route([]))
         self.assertEqual(route([f"docs/{i}.md" for i in range(300)]), set())
         self.assertIsNone(route([f"docs/{i}.md" for i in range(301)]))
