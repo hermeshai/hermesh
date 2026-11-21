@@ -270,11 +270,26 @@ pub enum LoginTargetStatus {
     Disconnected,
 }
 
-/// Active sensitive sign-in guard on a tab (pending card or filled unsubmitted fields).
+/// Outcome of filling (and optionally submitting) a bound `site_login` form.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SiteLoginFillOutcome {
+    /// Fields were filled, the form was submitted, and the page moved past the filled secret
+    /// inputs (document navigation, SPA route change, or secret inputs removed/cleared).
+    /// Observation is safely unlocked.
+    SubmittedAndAdvanced,
+    /// Fields were filled (and submit attempted if requested), but the filled secret inputs
+    /// remain on the same page. Observation stays blocked until the page moves on.
+    FilledStayedOnPage,
+}
+
+/// Active sensitive sign-in guard on a tab (pending card or filled fields).
 struct SensitiveTab {
     frame: String,
+    main_loader: String,
     origin: String,
+    url: String,
     backends: HashSet<i64>,
+    secret_backends: HashSet<i64>,
     pending_cards: HashSet<String>,
     filled: bool,
     discard_logs: bool,
@@ -298,6 +313,9 @@ pub struct BrowserSession {
     /// Filled tabs adopted on reconnect before their `main_frame` was seeded (`tab.id -> origin`);
     /// fail-closed until `main_frame` arrives and promotes to `sensitive` or proves a new origin.
     filled_unseeded: Mutex<HashMap<String, String>>,
+    /// Keeps a sub-agent's browser tabs alive across `settle()` when a `site_login` fill succeeded
+    /// and cleared `sensitive` *before* the sub-agent finished its turn after messaging `main`.
+    keep_after_fill: std::sync::atomic::AtomicBool,
 }
 
 impl BrowserSession {
@@ -326,6 +344,7 @@ impl BrowserSession {
             pending_note,
             sensitive: Mutex::new(HashMap::new()),
             filled_unseeded: Mutex::new(HashMap::new()),
+            keep_after_fill: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -385,6 +404,14 @@ impl BrowserSession {
         self.tabs().iter().any(|tab| self.sensitive_active(tab).is_some())
     }
 
+    /// True if a settling sub-agent should retain its browser tabs — either because a `site_login`
+    /// card/guard is still active, or because a `site_login` fill just succeeded before the
+    /// sub-agent finished settling and needs its post-login tab intact on resume.
+    pub fn keep_across_settle(&self) -> bool {
+        self.has_active_sensitive()
+            || self.keep_after_fill.swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
     /// True while the open tab matching `target_id` still has an active `site_login` sensitive guard.
     pub fn has_active_sensitive_target(&self, target_id: &str) -> bool {
         self.tabs()
@@ -412,8 +439,13 @@ impl BrowserSession {
 
     /// Re-installs a filled-document observation guard (for example if an extension session
     /// reconnects while a previously filled login page is still loaded).
-    pub fn mark_filled_document(&self, tab: &str, frame: &str, loader: &str, origin: &str) {
+    pub fn mark_filled_document(&self, tab: &str, frame: &str, loader: &str, origin: &str, url: &str) {
         self.filled_unseeded.lock().remove(tab);
+        let main_loader = self
+            .tab(tab)
+            .ok()
+            .and_then(|t| t.state.lock().main().map(|m| m.loader.clone()))
+            .unwrap_or_default();
         let mut sensitive = self.sensitive.lock();
         let entry = sensitive
             .entry(tab.to_string())
@@ -421,12 +453,16 @@ impl BrowserSession {
             .entry(loader.to_string())
             .or_insert_with(|| SensitiveTab {
                 frame: frame.to_string(),
+                main_loader: main_loader.clone(),
                 origin: origin.to_string(),
+                url: url.to_string(),
                 backends: HashSet::new(),
+                secret_backends: HashSet::new(),
                 pending_cards: HashSet::new(),
                 filled: true,
                 discard_logs: true,
             });
+        entry.main_loader = main_loader;
         entry.filled = true;
         entry.discard_logs = true;
     }
@@ -444,7 +480,8 @@ impl BrowserSession {
         self.tabs().into_iter().find(|t| t.id == id)
     }
 
-    /// Checks whether a bound `site_login` tab still points to the exact verified document.
+    /// Checks whether a bound `site_login` tab still points to the exact verified document
+    /// (top-level page or a verified same-site HTTPS / same-origin login iframe).
     pub fn check_login_target(
         &self,
         tab: &Tab,
@@ -460,13 +497,7 @@ impl BrowserSession {
         if state.closed.is_some() {
             return LoginTargetStatus::Disconnected;
         }
-        let Some(main_id) = state.main_frame.as_deref() else {
-            return LoginTargetStatus::Changed;
-        };
-        if main_id != frame_id {
-            return LoginTargetStatus::Changed;
-        }
-        let Some(frame) = state.frames.get(frame_id) else {
+        let Some((_, _, frame)) = verify_login_frame_chain_in_state(&state, frame_id) else {
             return LoginTargetStatus::Changed;
         };
         if frame.loader != loader
@@ -688,8 +719,25 @@ impl BrowserSession {
     }
 
     /// Registers a pending `site_login` card on `tab`, blocking model observation until the card
-    /// is cancelled/expired without filling or the page safely navigates away.
-    pub fn begin_sensitive_card(&self, card_id: &str, tab: &str, frame: &str, loader: &str, origin: &str, backends: &[i64]) {
+    /// is cancelled/expired without filling or the page safely moves past the filled login form.
+    #[allow(clippy::too_many_arguments)]
+    pub fn begin_sensitive_card(
+        &self,
+        card_id: &str,
+        tab: &str,
+        frame: &str,
+        loader: &str,
+        origin: &str,
+        url: &str,
+        backends: &[i64],
+        secret_backends: &[i64],
+    ) {
+        self.keep_after_fill.store(false, std::sync::atomic::Ordering::SeqCst);
+        let main_loader = self
+            .tab(tab)
+            .ok()
+            .and_then(|t| t.state.lock().main().map(|m| m.loader.clone()))
+            .unwrap_or_default();
         let mut sensitive = self.sensitive.lock();
         let entry = sensitive
             .entry(tab.to_string())
@@ -697,13 +745,19 @@ impl BrowserSession {
             .entry(loader.to_string())
             .or_insert_with(|| SensitiveTab {
                 frame: frame.to_string(),
+                main_loader: main_loader.clone(),
                 origin: origin.to_string(),
+                url: url.to_string(),
                 backends: HashSet::new(),
+                secret_backends: HashSet::new(),
                 pending_cards: HashSet::new(),
                 filled: false,
                 discard_logs: false,
             });
+        entry.main_loader = main_loader;
+        entry.url = url.to_string();
         entry.backends.extend(backends.iter().copied());
+        entry.secret_backends.extend(secret_backends.iter().copied());
         entry.pending_cards.insert(card_id.to_string());
     }
 
@@ -718,6 +772,91 @@ impl BrowserSession {
         });
     }
 
+    /// Re-checks an active filled sensitive guard in the live DOM (for example after form submit
+    /// or `browser_wait {user}`): if the page moved to a different SPA route or none of the filled
+    /// secret inputs remain connected/visible/non-empty in the document, clears the guard and
+    /// discards logs from the sensitive step.
+    pub async fn recheck_sensitive_cleared(&self, tab: Option<&str>) -> bool {
+        let Ok(tab) = self.resolve_tab(tab) else {
+            return true;
+        };
+        if self.sensitive_active(&tab).is_none() {
+            return true;
+        }
+        let checks: Vec<(String, String, Frame, Vec<i64>, bool)> = {
+            let sensitive = self.sensitive.lock();
+            let state = tab.state.lock();
+            sensitive
+                .get(&tab.id)
+                .map(|docs| {
+                    docs.iter()
+                        .filter_map(|(loader, entry)| {
+                            if !entry.pending_cards.is_empty() || !entry.filled {
+                                return None;
+                            }
+                            let frame = state.frames.get(&entry.frame)?.clone();
+                            if &frame.loader != loader {
+                                return None;
+                            }
+                            Some((
+                                loader.clone(),
+                                entry.frame.clone(),
+                                frame,
+                                entry.secret_backends.iter().copied().collect(),
+                                !entry.secret_backends.is_empty(),
+                            ))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        if checks.is_empty() {
+            return self.sensitive_active(&tab).is_none();
+        }
+        for (loader, frame_id, frame, secret_backends, had_secrets) in checks {
+            let still_holding_secret = if !had_secrets {
+                false
+            } else {
+                let mut present = false;
+                for backend in &secret_backends {
+                    let res = self
+                        .call_on(&frame_id, &frame, *backend, SECRET_INPUT_PRESENT_SCRIPT, vec![])
+                        .await;
+                    if matches!(res, Ok(Value::Bool(true))) {
+                        present = true;
+                        break;
+                    }
+                }
+                present
+            };
+            if !still_holding_secret {
+                self.clear_sensitive_document(&tab, &loader);
+            }
+        }
+        self.sensitive_active(&tab).is_none()
+    }
+
+    fn clear_sensitive_document(&self, tab: &Tab, loader: &str) {
+        let mut discard = false;
+        {
+            let mut sensitive = self.sensitive.lock();
+            if let Some(docs) = sensitive.get_mut(&tab.id) {
+                if let Some(entry) = docs.remove(loader) {
+                    discard = entry.discard_logs || entry.filled;
+                }
+                if docs.is_empty() {
+                    sensitive.remove(&tab.id);
+                }
+            }
+        }
+        self.filled_unseeded.lock().remove(&tab.id);
+        if discard {
+            let mut state = tab.state.lock();
+            state.console.clear();
+            state.notes.clear();
+        }
+    }
+
     fn sensitive_active(&self, tab: &Tab) -> Option<HashSet<i64>> {
         let mut sensitive = self.sensitive.lock();
         let mut unseeded = self.filled_unseeded.lock();
@@ -728,14 +867,23 @@ impl BrowserSession {
         }
         if let Some(origin) = unseeded.get(&tab.id).cloned() {
             let mut state = tab.state.lock();
-            let seeded = state.main_frame.as_ref().and_then(|fid| {
-                state.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
-            });
+            let seeded = if state.main_frame.is_none() {
+                None
+            } else {
+                Some(
+                    state
+                        .frames
+                        .iter()
+                        .find(|(_, f)| url_origin(&f.url) == origin)
+                        .map(|(fid, f)| (fid.clone(), f.loader.clone(), f.url.clone())),
+                )
+            };
             match seeded {
                 None => {
                     return Some(HashSet::new());
                 }
-                Some((frame_id, loader, current_url)) if url_origin(&current_url) == origin => {
+                Some(Some((frame_id, loader, current_url))) => {
+                    let main_loader = state.main().map(|m| m.loader.clone()).unwrap_or_default();
                     unseeded.remove(&tab.id);
                     let entry = sensitive
                         .entry(tab.id.clone())
@@ -743,17 +891,21 @@ impl BrowserSession {
                         .entry(loader)
                         .or_insert_with(|| SensitiveTab {
                             frame: frame_id,
+                            main_loader: main_loader.clone(),
                             origin,
+                            url: current_url,
                             backends: HashSet::new(),
+                            secret_backends: HashSet::new(),
                             pending_cards: HashSet::new(),
                             filled: true,
                             discard_logs: true,
                         });
+                    entry.main_loader = main_loader;
                     entry.filled = true;
                     entry.discard_logs = true;
                     return Some(entry.backends.clone());
                 }
-                Some(_) => {
+                Some(None) => {
                     unseeded.remove(&tab.id);
                     state.console.clear();
                     state.notes.clear();
@@ -765,13 +917,31 @@ impl BrowserSession {
         let mut state = tab.state.lock();
         let mut active = None;
         let mut discard_logs = false;
-        for (loader, entry) in documents {
-            if state.frames.get(&entry.frame).is_some_and(|f| &f.loader == loader && url_origin(&f.url) == entry.origin) {
+        let mut stale_loaders = Vec::new();
+        for (loader, entry) in documents.iter_mut() {
+            let main_still_same = entry.main_loader.is_empty()
+                || state.main().is_some_and(|m| m.loader == entry.main_loader);
+            let still_same = main_still_same
+                && state.frames.get(&entry.frame).is_some_and(|f| {
+                    &f.loader == loader
+                        && url_origin(&f.url) == entry.origin
+                        && (!entry.filled || entry.url.is_empty() || same_spa_route(&f.url, &entry.url))
+                });
+            if still_same {
                 entry.discard_logs = entry.filled;
                 active = Some(entry.backends.clone());
             } else {
                 discard_logs |= std::mem::take(&mut entry.discard_logs);
+                if entry.pending_cards.is_empty() {
+                    stale_loaders.push(loader.clone());
+                }
             }
+        }
+        for loader in stale_loaders {
+            documents.remove(&loader);
+        }
+        if documents.is_empty() {
+            sensitive.remove(&tab.id);
         }
         if discard_logs {
             state.console.clear();
@@ -782,8 +952,10 @@ impl BrowserSession {
 
     /// Inspects `refs` directly in the bound browser DOM to prepare a `site_login` card.
     /// Refuses unless reliable target verification & isolation hold: live session, HTTPS or
-    /// loopback origin, top-level same-origin document, no CAPTCHA/anti-bot challenge, and 1–3
-    /// visible login inputs including at least one password or one-time code field.
+    /// loopback origin, top-level document or same-site HTTPS / same-origin login iframe (with
+    /// every ancestor frame verified), no visible CAPTCHA/anti-bot challenge, and 1–3 visible
+    /// sign-in inputs (password/one-time code, or a two-step email/username input on a sign-in
+    /// page).
     pub async fn inspect_site_login(&self, refs: &[String]) -> Result<SiteLoginInspection, BrowserError> {
         if self.is_dead() {
             return Err(CdpError::Closed.into());
@@ -804,7 +976,7 @@ impl BrowserSession {
         let first_page = &elements[0].page;
         if elements.iter().any(|e| &e.page != first_page) {
             return Err(BrowserError::failed(
-                "All sign-in fields must be on the same page and same-origin frame. Use browser_wait with user instead.",
+                "All sign-in fields must be on the same page and frame. Use browser_wait with user instead.",
             ));
         }
         let (tab, _) = self.verify(first_page)?;
@@ -814,52 +986,77 @@ impl BrowserSession {
             return Err(BrowserError::failed("A sensitive sign-in step is already active on this page."));
         }
         let (main_id, main_frame) = self.main_frame(&tab)?;
-        let top_origin = url_origin(&main_frame.url);
-        if first_page.frame != main_id || top_origin != first_page.origin || first_page.origin == "null" {
-            return Err(BrowserError::failed(
-                "Secure sign-in cards are disabled for cross-origin or nested iframes. Use browser_wait with user so the owner can sign in directly.",
-            ));
-        }
-        let parsed = Url::parse(&main_frame.url).map_err(|_| BrowserError::failed("cannot verify the page URL; use browser_wait with user"))?;
         if !is_allowed_login_url(&main_frame.url) {
+            return Err(BrowserError::failed(format!(
+                "Secure sign-in cards require HTTPS (found {}). Use browser_wait with user so the owner can sign in directly.",
+                url_origin(&main_frame.url)
+            )));
+        }
+        if !is_allowed_login_url(&frame.url) {
             return Err(BrowserError::failed(format!(
                 "Secure sign-in cards require HTTPS (found {}). Use browser_wait with user so the owner can sign in directly.",
                 first_page.origin
             )));
         }
+        let verified_chain = {
+            let state = tab.state.lock();
+            verify_login_frame_chain_in_state(&state, &first_page.frame)
+        };
+        let Some((verified_main_id, verified_main_frame, verified_frame)) = verified_chain else {
+            return Err(BrowserError::failed(
+                "Secure sign-in cards are disabled for third-party cross-site iframes. Use browser_wait with user so the owner can sign in directly.",
+            ));
+        };
+        let parsed = Url::parse(&verified_frame.url)
+            .map_err(|_| BrowserError::failed("cannot verify the page URL; use browser_wait with user"))?;
         let host = match (parsed.host_str(), parsed.port()) {
             (Some(h), Some(p)) => format!("{h}:{p}"),
             (Some(h), None) => h.to_string(),
             _ => first_page.origin.clone(),
         };
-        self.check_no_challenge(&main_id, &frame).await?;
+        self.check_no_challenge(&first_page.frame, &verified_frame).await?;
+        if first_page.frame != verified_main_id {
+            self.check_no_challenge(&verified_main_id, &verified_main_frame).await?;
+        }
         let mut fields = Vec::with_capacity(elements.len());
+        let mut login_context = false;
         for element in &elements {
-            let inspected = self.inspect_login_input(&tab, &main_id, &frame, element).await?;
+            let (inspected, in_login_ctx) = self
+                .inspect_login_input(&first_page.frame, &verified_frame, element)
+                .await?;
+            login_context |= in_login_ctx;
             fields.push(inspected);
         }
         let has_secret = fields
             .iter()
             .any(|f| matches!(f.kind, LoginFieldKind::Password | LoginFieldKind::OneTimeCode));
         if !has_secret {
-            return Err(BrowserError::failed(
-                "Secure sign-in cards are only for login credentials (must include a password or one-time code field), not general form collection.",
-            ));
-        }
-        // If any plain text field was accepted as username, require a password field alongside it.
-        let has_password = fields.iter().any(|f| f.kind == LoginFieldKind::Password);
-        if !has_password && fields.iter().any(|f| f.kind == LoginFieldKind::Username && f.input_type == "text") {
-            return Err(BrowserError::failed(
-                "A plain text field can only be included alongside a password field on a sign-in form.",
-            ));
+            // Allow a single email/username field on a genuine two-step sign-in page, while still
+            // rejecting general form collection (feedback, search, newsletter, etc.).
+            let two_step_ok = fields.len() == 1
+                && matches!(fields[0].kind, LoginFieldKind::Email | LoginFieldKind::Username)
+                && login_context;
+            if !two_step_ok {
+                return Err(BrowserError::failed(
+                    "Secure sign-in cards are only for login credentials (password, one-time code, or a two-step sign-in identifier on a login page), not general form collection.",
+                ));
+            }
         }
         self.refresh(&tab).await;
-        // Re-verify the exact bound document did not jump while inspecting fields.
-        let (latest_main_id, latest_main_frame) = self.main_frame(&tab)?;
+        // Re-verify the exact bound document and its ancestor chain did not jump while inspecting.
+        let latest = {
+            let state = tab.state.lock();
+            (verify_login_frame_chain_in_state(&state, &first_page.frame), state.url.clone())
+        };
+        let Some((latest_main_id, latest_main_frame, latest_frame)) = latest.0 else {
+            return Err(BrowserError::PageChanged { now: latest.1 });
+        };
         if latest_main_id != main_id
-            || latest_main_frame.loader != frame.loader
-            || latest_main_frame.url != main_frame.url
-            || url_origin(&latest_main_frame.url) != first_page.origin
+            || latest_main_frame.loader != main_frame.loader
+            || url_origin(&latest_main_frame.url) != url_origin(&main_frame.url)
+            || latest_frame.loader != frame.loader
+            || latest_frame.url != frame.url
+            || url_origin(&latest_frame.url) != first_page.origin
         {
             return Err(BrowserError::PageChanged { now: latest_main_frame.url });
         }
@@ -872,10 +1069,10 @@ impl BrowserSession {
         Ok(SiteLoginInspection {
             tab: tab.id.clone(),
             target_id: tab.target_id.clone(),
-            frame: main_id,
-            loader: frame.loader,
+            frame: first_page.frame.clone(),
+            loader: latest_frame.loader,
             origin: first_page.origin.clone(),
-            url: main_frame.url,
+            url: latest_frame.url,
             host,
             title,
             fields,
@@ -1014,15 +1211,37 @@ impl BrowserSession {
         Ok(())
     }
 
+    async fn ensure_login_input_visible(&self, frame: &Frame, element: &ElementTarget) -> Result<(), BrowserError> {
+        let s = Some(frame.session.as_str());
+        let _ = self
+            .conn()
+            .send(s, "DOM.scrollIntoViewIfNeeded", json!({ "backendNodeId": element.backend }))
+            .await;
+        self.verify(&element.page)?;
+        let quads = self
+            .conn()
+            .send(s, "DOM.getContentQuads", json!({ "backendNodeId": element.backend }))
+            .await
+            .map_err(|_| BrowserError::failed(format!("{} is not visible on the page", element.label)))?;
+        let has_box = quads["quads"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|q| quad_center(q).is_some());
+        if !has_box {
+            return Err(BrowserError::failed(format!("{} is not visible on the page", element.label)));
+        }
+        Ok(())
+    }
+
     async fn inspect_login_input(
         &self,
-        tab: &Tab,
         frame_id: &str,
         frame: &Frame,
         element: &ElementTarget,
-    ) -> Result<InspectedLoginField, BrowserError> {
-        // Ensure visible & not obscured by another element.
-        let _ = self.clickable_point(tab, element).await?;
+    ) -> Result<(InspectedLoginField, bool), BrowserError> {
+        // Ensure visible in layout without rejecting floating-label overlays that sit above <input>.
+        self.ensure_login_input_visible(frame, element).await?;
         let info = self
             .call_on(frame_id, frame, element.backend, INSPECT_LOGIN_INPUT_SCRIPT, vec![])
             .await?;
@@ -1035,6 +1254,7 @@ impl BrowserSession {
         let tag = info["tag"].as_str().unwrap_or("").to_string();
         let input_type = info["type"].as_str().unwrap_or("text").to_string();
         let raw_label = info["label"].as_str().unwrap_or("");
+        let login_context = info["loginContext"].as_bool().unwrap_or(false);
         let kind = match info["kind"].as_str() {
             Some("password") => LoginFieldKind::Password,
             Some("one_time_code") => LoginFieldKind::OneTimeCode,
@@ -1060,18 +1280,24 @@ impl BrowserSession {
             .take(60)
             .collect();
         let label = if clean_label.is_empty() { fallback.to_string() } else { clean_label };
-        Ok(InspectedLoginField {
-            backend: element.backend,
-            tag,
-            input_type,
-            label,
-            kind,
-            secret,
-        })
+        Ok((
+            InspectedLoginField {
+                backend: element.backend,
+                tag,
+                input_type,
+                label,
+                kind,
+                secret,
+            },
+            login_context,
+        ))
     }
 
-    /// Atomically verifies the bound page and fields, fills each field without submitting, and
-    /// keeps the tab's sensitive observation guard active until safe navigation recovery.
+    /// Atomically verifies the bound page and fields, fills each field, and when `submit` is true
+    /// triggers the bound login form's submission and waits briefly for the page to advance.
+    /// Unlocks observation only once the document navigates, the SPA route changes, or no filled
+    /// secret inputs remain connected/visible/non-empty.
+    #[allow(clippy::too_many_arguments)]
     pub async fn fill_site_login(
         &self,
         card_id: &str,
@@ -1081,7 +1307,8 @@ impl BrowserSession {
         origin: &str,
         expected_url: &str,
         fields: &[(i64, String, String)],
-    ) -> Result<(), BrowserError> {
+        submit: bool,
+    ) -> Result<SiteLoginFillOutcome, BrowserError> {
         if self.is_dead() {
             return Err(CdpError::Closed.into());
         }
@@ -1097,16 +1324,24 @@ impl BrowserSession {
             return Err(CdpError::Closed.into());
         }
         let (tab, frame) = self.verify(&page)?;
-        let (main_id, main_frame) = self.main_frame(&tab)?;
-        if main_id != frame_id
-            || url_origin(&main_frame.url) != origin
-            || main_frame.url != expected_url
-            || !is_allowed_login_url(&main_frame.url)
+        let verified_chain = {
+            let state = tab.state.lock();
+            (verify_login_frame_chain_in_state(&state, frame_id), state.url.clone())
+        };
+        let Some((main_id, main_frame, _)) = verified_chain.0 else {
+            return Err(BrowserError::PageChanged { now: verified_chain.1 });
+        };
+        if url_origin(&frame.url) != origin
+            || frame.url != expected_url
+            || !is_allowed_login_url(&frame.url)
         {
-            return Err(BrowserError::PageChanged { now: main_frame.url });
+            return Err(BrowserError::PageChanged { now: frame.url });
         }
         self.activate(&tab).await;
         self.check_no_challenge(frame_id, &frame).await?;
+        if frame_id != main_id {
+            self.check_no_challenge(&main_id, &main_frame).await?;
+        }
 
         // Re-verify every bound element BEFORE typing a single character.
         for (backend, expected_type, _) in fields {
@@ -1115,28 +1350,30 @@ impl BrowserSession {
                 backend: *backend,
                 label: "sign-in field".into(),
             };
-            let _ = self.clickable_point(&tab, &target).await.map_err(|_| BrowserError::PageChanged {
-                now: main_frame.url.clone(),
-            })?;
+            self.ensure_login_input_visible(&frame, &target)
+                .await
+                .map_err(|_| BrowserError::PageChanged {
+                    now: frame.url.clone(),
+                })?;
             let info = self
                 .call_on(frame_id, &frame, *backend, INSPECT_LOGIN_INPUT_SCRIPT, vec![])
                 .await
                 .map_err(|_| BrowserError::PageChanged {
-                    now: main_frame.url.clone(),
+                    now: frame.url.clone(),
                 })?;
             if info.get("error").is_some()
                 || info["tag"].as_str() != Some("INPUT")
                 || info["type"].as_str() != Some(expected_type.as_str())
             {
                 return Err(BrowserError::PageChanged {
-                    now: main_frame.url.clone(),
+                    now: frame.url.clone(),
                 });
             }
         }
 
         // Keep observation blocked even if the card ends during a write or the page handles
         // input before a later field can be filled.
-        {
+        let (had_secrets, secret_backends) = {
             let mut sensitive = self.sensitive.lock();
             let entry = sensitive
                 .get_mut(&tab.id)
@@ -1146,18 +1383,25 @@ impl BrowserSession {
             if !entry.pending_cards.remove(card_id) {
                 return Err(BrowserError::failed("The sign-in card is no longer open."));
             }
+            entry.url = expected_url.to_string();
             entry.filled = true;
             entry.discard_logs = true;
-        }
+            let secrets: Vec<i64> = entry.secret_backends.iter().copied().collect();
+            (!secrets.is_empty(), secrets)
+        };
 
         // Write to the bound DOM node without relying on the renderer's current focus.
         let mut filled_backends = Vec::with_capacity(fields.len());
         for (backend, input_type, value) in fields {
-            if self.verify(&page).is_err()
-                || self.main_frame(&tab).map(|(_, f)| f.url != expected_url).unwrap_or(true)
-            {
+            let still_valid = {
+                let state = tab.state.lock();
+                verify_login_frame_chain_in_state(&state, frame_id).is_some_and(|(_, _, f)| {
+                    f.loader == loader && f.url == expected_url && url_origin(&f.url) == origin
+                })
+            };
+            if self.verify(&page).is_err() || !still_valid {
                 self.clear_inputs(frame_id, &frame, &filled_backends).await;
-                return Err(BrowserError::PageChanged { now: main_frame.url });
+                return Err(BrowserError::PageChanged { now: frame.url });
             }
             let result = self
                 .call_on(
@@ -1170,11 +1414,160 @@ impl BrowserSession {
                 .await;
             if !matches!(result, Ok(Value::Bool(true))) {
                 self.clear_inputs(frame_id, &frame, &filled_backends).await;
-                return Err(BrowserError::PageChanged { now: main_frame.url });
+                return Err(BrowserError::PageChanged { now: frame.url });
             }
             filled_backends.push(*backend);
         }
-        Ok(())
+
+        if !submit {
+            return Ok(SiteLoginFillOutcome::FilledStayedOnPage);
+        }
+
+        let main_before = Some(main_frame.loader.clone());
+        let main_url_before = main_frame.url.clone();
+        let since = Instant::now();
+        if let Some(&last_backend) = filled_backends.last() {
+            self.submit_login_form(&tab, frame_id, &frame, last_backend, origin, expected_url)
+                .await;
+        }
+        self.settle_login(
+            &tab,
+            main_before,
+            &main_url_before,
+            frame_id,
+            loader,
+            expected_url,
+            since,
+        )
+        .await;
+        self.refresh(&tab).await;
+
+        if self.sensitive_active(&tab).is_none() {
+            self.keep_after_fill.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Ok(SiteLoginFillOutcome::SubmittedAndAdvanced);
+        }
+        if !had_secrets {
+            self.clear_sensitive_document(&tab, loader);
+            self.keep_after_fill.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Ok(SiteLoginFillOutcome::SubmittedAndAdvanced);
+        }
+        let latest_frame = tab
+            .state
+            .lock()
+            .frames
+            .get(frame_id)
+            .filter(|f| f.loader == loader)
+            .cloned();
+        let still_holding_secret = if let Some(latest_frame) = latest_frame {
+            let mut present = false;
+            for backend in &secret_backends {
+                let res = self
+                    .call_on(frame_id, &latest_frame, *backend, SECRET_INPUT_PRESENT_SCRIPT, vec![])
+                    .await;
+                if matches!(res, Ok(Value::Bool(true))) {
+                    present = true;
+                    break;
+                }
+            }
+            present
+        } else {
+            false
+        };
+        if !still_holding_secret {
+            self.clear_sensitive_document(&tab, loader);
+            self.keep_after_fill.store(true, std::sync::atomic::Ordering::SeqCst);
+            return Ok(SiteLoginFillOutcome::SubmittedAndAdvanced);
+        }
+        Ok(SiteLoginFillOutcome::FilledStayedOnPage)
+    }
+
+    async fn submit_login_form(
+        &self,
+        tab: &Tab,
+        frame_id: &str,
+        frame: &Frame,
+        last_backend: i64,
+        origin: &str,
+        expected_url: &str,
+    ) {
+        let res = self
+            .call_on(
+                frame_id,
+                frame,
+                last_backend,
+                SUBMIT_LOGIN_FORM_SCRIPT,
+                vec![json!(origin), json!(expected_url)],
+            )
+            .await;
+        let need_enter = match res.as_ref().ok().and_then(Value::as_str) {
+            Some("clicked_form_button" | "request_submit" | "clicked_container_button") => false,
+            _ => true,
+        };
+        if need_enter {
+            let _ = self
+                .conn()
+                .send(Some(&frame.session), "DOM.focus", json!({ "backendNodeId": last_backend }))
+                .await;
+            if let Some(enter) = input::key_for("Enter") {
+                let _ = self.key(tab, &enter, 0).await;
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn settle_login(
+        &self,
+        tab: &Arc<Tab>,
+        main_loader_before: Option<String>,
+        main_url_before: &str,
+        frame_id: &str,
+        frame_loader_before: &str,
+        frame_url_before: &str,
+        since: Instant,
+    ) {
+        let frame_changed = |state: &crate::router::TabState| {
+            state.loading
+                || state.main().map(|f| f.loader.clone()) != main_loader_before
+                || state
+                    .frames
+                    .get(frame_id)
+                    .is_none_or(|f| f.loader != frame_loader_before)
+        };
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let nav_timeout = self.options.navigation_timeout.min(Duration::from_secs(8));
+        let navigating = {
+            let state = tab.state.lock();
+            frame_changed(&state)
+        };
+        if navigating {
+            self.wait_for(tab, nav_timeout, |state| !state.loading).await;
+        }
+        self.wait_for(tab, Duration::from_millis(2000), |state| state.requests_done_since(since))
+            .await;
+        let post_nav = {
+            let state = tab.state.lock();
+            frame_changed(&state)
+        };
+        if post_nav {
+            self.wait_for(tab, nav_timeout, |state| !state.loading).await;
+        }
+        // Brief window for SPA router / postMessage top-redirect / modal unmount after fetch resolves.
+        let route_changed = {
+            let state = tab.state.lock();
+            state
+                .main()
+                .is_none_or(|f| !same_spa_route(&f.url, main_url_before))
+                || state
+                    .frames
+                    .get(frame_id)
+                    .is_none_or(|f| !same_spa_route(&f.url, frame_url_before))
+        };
+        if !route_changed {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            if tab.state.lock().loading {
+                self.wait_for(tab, nav_timeout, |state| !state.loading).await;
+            }
+        }
     }
 
     async fn clear_inputs(&self, frame_id: &str, frame: &Frame, backends: &[i64]) {
@@ -1349,6 +1742,7 @@ impl BrowserSession {
                 "Page observation is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
             ));
         }
+        self.keep_after_fill.store(false, std::sync::atomic::Ordering::SeqCst);
         let (frame_id, frame) = match frame_override {
             Some(found) => found,
             None => self.main_frame(&tab)?,
@@ -2703,6 +3097,94 @@ pub fn is_allowed_login_url(raw: &str) -> bool {
     (parsed.scheme() == "https" && parsed.host_str().is_some()) || (parsed.scheme() == "http" && loopback)
 }
 
+/// Registrable site (eTLD+1) for domain hosts; returns `None` for IPs, `localhost`, or bare
+/// public suffixes so two unrelated domains under a shared suffix never match.
+fn registrable_site(host: &str) -> Option<String> {
+    let trimmed = host.trim_end_matches('.').to_ascii_lowercase();
+    if trimmed.is_empty()
+        || trimmed == "localhost"
+        || trimmed.starts_with('[')
+        || trimmed.parse::<std::net::IpAddr>().is_ok()
+    {
+        return None;
+    }
+    let labels: Vec<&str> = trimmed.split('.').collect();
+    if labels.len() < 2 || labels.iter().any(|l| l.is_empty()) {
+        return None;
+    }
+    const TWO_LEVEL_SUFFIXES: &[(&str, &str)] = &[
+        ("com", "cn"), ("net", "cn"), ("org", "cn"), ("gov", "cn"), ("edu", "cn"),
+        ("co", "uk"), ("org", "uk"), ("ac", "uk"), ("gov", "uk"),
+        ("co", "jp"), ("ne", "jp"), ("or", "jp"), ("go", "jp"), ("ac", "jp"),
+        ("com", "hk"), ("org", "hk"), ("edu", "hk"), ("gov", "hk"),
+        ("com", "tw"), ("org", "tw"), ("edu", "tw"), ("gov", "tw"),
+        ("com", "sg"), ("org", "sg"), ("edu", "sg"), ("gov", "sg"),
+        ("com", "au"), ("net", "au"), ("org", "au"), ("edu", "au"), ("gov", "au"),
+        ("co", "kr"), ("or", "kr"), ("go", "kr"), ("ac", "kr"),
+        ("com", "br"), ("net", "br"), ("org", "br"), ("gov", "br"),
+        ("co", "in"), ("org", "in"), ("gov", "in"),
+        ("co", "nz"), ("org", "nz"),
+        ("co", "za"),
+    ];
+    let n = labels.len();
+    if TWO_LEVEL_SUFFIXES.contains(&(labels[n - 2], labels[n - 1])) {
+        if n < 3 {
+            return None;
+        }
+        return Some(format!("{}.{}.{}", labels[n - 3], labels[n - 2], labels[n - 1]));
+    }
+    Some(format!("{}.{}", labels[n - 2], labels[n - 1]))
+}
+
+/// Whether `frame_url` is allowed to host a `site_login` card inside `top_url`: either exact
+/// same-origin (including loopback test pages) or same registrable site over HTTPS (such as
+/// `https://passport.aliyun.com` embedded inside `https://account.aliyun.com`).
+pub fn is_same_site_login_url(top_url: &str, frame_url: &str) -> bool {
+    if !is_allowed_login_url(top_url) || !is_allowed_login_url(frame_url) {
+        return false;
+    }
+    let (Ok(top), Ok(frame)) = (Url::parse(top_url), Url::parse(frame_url)) else {
+        return false;
+    };
+    if top.origin() == frame.origin() {
+        return true;
+    }
+    if top.scheme() != "https" || frame.scheme() != "https" {
+        return false;
+    }
+    matches!(
+        (top.host_str().and_then(registrable_site), frame.host_str().and_then(registrable_site)),
+        (Some(a), Some(b)) if a == b
+    )
+}
+
+/// Verifies `frame_id` is either the tab's main frame or a nested frame whose entire ancestor
+/// chain up to `main_frame` consists of verified same-site login URLs (preventing sandwich
+/// attacks like `account.example.com` -> `evil.com` -> `passport.example.com`).
+fn verify_login_frame_chain_in_state(
+    state: &crate::router::TabState,
+    frame_id: &str,
+) -> Option<(String, Frame, Frame)> {
+    let main_id = state.main_frame.as_ref()?;
+    let main_frame = state.frames.get(main_id)?;
+    if !is_allowed_login_url(&main_frame.url) || url_origin(&main_frame.url) == "null" {
+        return None;
+    }
+    let target_frame = state.frames.get(frame_id)?;
+    let mut cur_id = frame_id;
+    for _ in 0..16 {
+        let cur = state.frames.get(cur_id)?;
+        if url_origin(&cur.url) == "null" || !is_same_site_login_url(&main_frame.url, &cur.url) {
+            return None;
+        }
+        if cur_id == main_id {
+            return Some((main_id.clone(), main_frame.clone(), target_frame.clone()));
+        }
+        cur_id = cur.parent.as_deref()?;
+    }
+    None
+}
+
 /// The policy's origin of a frame's URL: `null` for `about:blank`.
 pub fn url_origin(url: &str) -> String {
     Url::parse(url).map(|u| origin_of(&u)).unwrap_or_else(|_| "null".into())
@@ -2777,14 +3259,105 @@ const SELECT_ALL_SCRIPT: &str = r#"function(){
   return 'ok';
 }"#;
 
+/// True when two URLs refer to the same SPA route (same origin, path, and hash fragment).
+/// Query parameter changes alone (e.g. `?error=invalid`) keep the route identical; path or
+/// hash-route changes (e.g. `/login` -> `/dashboard` or `#/login` -> `#/home`) count as leaving.
+fn same_spa_route(current: &str, expected: &str) -> bool {
+    let (Ok(a), Ok(b)) = (Url::parse(current), Url::parse(expected)) else {
+        return current == expected;
+    };
+    a.origin() == b.origin() && a.path() == b.path() && a.fragment() == b.fragment()
+}
+
 const FILL_LOGIN_INPUT_SCRIPT: &str = r#"function(origin, expectedUrl, type, value) {
   if (!this.isConnected || this.ownerDocument !== document || location.origin !== origin ||
       location.href !== expectedUrl ||
       this.tagName !== 'INPUT' || (this.getAttribute('type') || 'text').toLowerCase() !== type ||
       this.disabled || this.readOnly) return false;
+  this.focus();
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, value);
   this.dispatchEvent(new InputEvent('input', {bubbles: true, composed: true}));
+  this.dispatchEvent(new Event('change', {bubbles: true}));
   return true;
+}"#;
+
+const SECRET_INPUT_PRESENT_SCRIPT: &str = r#"function() {
+  if (!this || !this.isConnected || this.ownerDocument !== document) return false;
+  const style = getComputedStyle(this);
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+  const rect = this.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  return typeof this.value === 'string' && this.value.length > 0;
+}"#;
+
+const SUBMIT_LOGIN_FORM_SCRIPT: &str = r#"function(origin, expectedUrl) {
+  if (!this || !this.isConnected || this.ownerDocument !== document ||
+      location.origin !== origin || location.href !== expectedUrl) return 'changed';
+  const visibleEnabled = (el) => {
+    if (!el || !el.isConnected || el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+    const style = getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+  const labelOf = (el) => ((el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('title') || '') + '').trim();
+  const skipRe = /(show|hide|toggle|visibility|reveal|eye|clear|reset|forgot|recover|register|sign.?up|create.?account|cancel|back|google|github|apple|microsoft|wechat|qq|sso|passkey|qr|显示|隐藏|忘记|找回|注册|取消|返回|清除|扫码|二维码|发送验证码|获取验证码|重新发送|重发|^\d+\s*s$)/i;
+  const submitRe = /(sign.?in|log.?in|login|submit|continue|next|verify|confirm|unlock|\bok\b|登录|登陆|登入|提交|下一步|继续|验证|确认|确定|解锁)/i;
+  const checkFormAction = (el) => {
+    const raw = (el.getAttribute('formaction') || '').trim();
+    if (!raw) return true;
+    try {
+      const resolved = new URL(raw, document.baseURI);
+      const loopback = resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1' || resolved.hostname === '[::1]';
+      const schemeOk = resolved.protocol === 'https:' || (location.protocol === 'http:' && resolved.protocol === 'http:' && loopback);
+      return schemeOk && resolved.origin === location.origin;
+    } catch (_) {
+      return false;
+    }
+  };
+  if (this.form) {
+    const form = this.form;
+    const controls = [...form.querySelectorAll('button[type="submit"], input[type="submit"], button:not([type])')];
+    const formId = (form.getAttribute('id') || '').trim();
+    if (formId) {
+      for (const el of document.querySelectorAll('button[form], input[type="submit"][form]')) {
+        if (el.getAttribute('form') === formId && !controls.includes(el)) controls.push(el);
+      }
+    }
+    const pick = (list) => list.find(el => visibleEnabled(el) && checkFormAction(el) && !skipRe.test(labelOf(el)));
+    const explicit = pick(controls.filter(el => (el.getAttribute('type') || '').toLowerCase() === 'submit'));
+    const btn = explicit || pick(controls) || [...form.querySelectorAll('button[type="button"], [role="button"]')].find(el => {
+      if (!visibleEnabled(el) || !checkFormAction(el)) return false;
+      const lbl = labelOf(el);
+      return !skipRe.test(lbl) && submitRe.test(lbl);
+    });
+    if (btn) {
+      btn.click();
+      return 'clicked_form_button';
+    }
+    if (typeof form.requestSubmit === 'function') {
+      form.requestSubmit();
+      return 'request_submit';
+    }
+    return 'need_enter';
+  }
+  let container = this.parentElement;
+  for (let depth = 0; depth < 6 && container && container !== document.body && container !== document.documentElement; depth++) {
+    if (container.querySelectorAll('input[type="password"]').length > 1) break;
+    const btns = [...container.querySelectorAll('button, input[type="submit"], [role="button"]')];
+    const matched = btns.find(el => {
+      if (!visibleEnabled(el) || !checkFormAction(el)) return false;
+      const lbl = labelOf(el);
+      if (skipRe.test(lbl)) return false;
+      return (el.getAttribute('type') || '').toLowerCase() === 'submit' || submitRe.test(lbl);
+    });
+    if (matched) {
+      matched.click();
+      return 'clicked_container_button';
+    }
+    container = container.parentElement;
+  }
+  return 'need_enter';
 }"#;
 
 const SELECT_SCRIPT: &str = r#"function(values){
@@ -2808,6 +3381,18 @@ const NATIVE_POPUP_SCRIPT: &str = "function(){ if (this.tagName === 'SELECT' && 
 const FILE_INPUT_SCRIPT: &str = "function(){ return this.tagName === 'INPUT' && this.type === 'file'; }";
 
 const CHALLENGE_CHECK_SCRIPT: &str = r#"(() => {
+  const isExplicitlyHidden = (el) => {
+    if (el.closest('.grecaptcha-badge')) return true;
+    if ((el.getAttribute('data-size') || '').toLowerCase() === 'invisible') return true;
+    if (el.tagName === 'IFRAME' && /size=invisible/i.test(el.getAttribute('src') || '')) return true;
+    let cur = el;
+    while (cur && cur.nodeType === 1) {
+      const s = getComputedStyle(cur);
+      if (s.display === 'none' || s.visibility === 'hidden' || s.opacity === '0') return true;
+      cur = cur.parentElement;
+    }
+    return false;
+  };
   const selectors = [
     '.g-recaptcha', '#recaptcha', '.h-captcha', '.cf-turnstile',
     '[data-sitekey]', '[data-hcaptcha-sitekey]', '[data-turnstile-sitekey]',
@@ -2815,7 +3400,12 @@ const CHALLENGE_CHECK_SCRIPT: &str = r#"(() => {
     'iframe[src*="arkoselabs"]', 'iframe[src*="challenges.cloudflare"]'
   ];
   for (const sel of selectors) {
-    if (document.querySelector(sel)) return 'a CAPTCHA or anti-bot challenge';
+    for (const el of document.querySelectorAll(sel)) {
+      if (isExplicitlyHidden(el)) continue;
+      // Ignore invisible reCAPTCHA v3/Enterprise buttons that only carry data-sitekey on a submit button.
+      if (sel === '[data-sitekey]' && (el.tagName === 'BUTTON' || el.tagName === 'INPUT') && !el.classList.contains('g-recaptcha')) continue;
+      return 'a CAPTCHA or anti-bot challenge';
+    }
   }
   return '';
 })()"#;
@@ -2869,20 +3459,70 @@ const INSPECT_LOGIN_INPUT_SCRIPT: &str = r#"function(){
   if (this.labels && this.labels.length > 0) {
     labelText = [...this.labels].map(l => (l.textContent || '').trim()).filter(Boolean).join(' ');
   }
-  const label = aria || labelText || placeholder || '';
-  const hint = (name + ' ' + id + ' ' + label).toLowerCase();
+  if (!labelText) {
+    const labelledBy = (this.getAttribute('aria-labelledby') || '').trim();
+    if (labelledBy) {
+      labelText = labelledBy.split(/\s+/).map(ref => {
+        const node = document.getElementById(ref);
+        return node ? (node.textContent || '').trim() : '';
+      }).filter(Boolean).join(' ');
+    }
+  }
+  if (!labelText && this.closest('label')) {
+    labelText = (this.closest('label').textContent || '').trim();
+  }
+  if (!labelText) {
+    // Check immediate previous sibling label or single-input row label (e.g. Aliyun's <label>校验码：</label><input placeholder="6位数字">).
+    const prev = this.previousElementSibling;
+    if (prev && (prev.tagName === 'LABEL' || /label/i.test(prev.className || ''))) {
+      labelText = (prev.textContent || '').trim();
+    }
+    if (!labelText && this.parentElement) {
+      let row = this.parentElement;
+      for (let d = 0; d < 3 && row && row !== document.body && row !== document.documentElement; d++) {
+        if (row.querySelectorAll('input:not([type="hidden"])').length === 1) {
+          const cand = row.querySelector('label, th, dt, [class*="label"]');
+          if (cand && cand !== this) {
+            const t = (cand.textContent || '').trim();
+            if (t && t.length <= 40) { labelText = t; break; }
+          }
+        }
+        row = row.parentElement;
+      }
+    }
+  }
+  const cleanLabel = labelText.replace(/[：:]\s*$/, '').trim();
+  const label = aria || cleanLabel || placeholder || '';
+  const hint = (name + ' ' + id + ' ' + label + ' ' + placeholder).toLowerCase();
+  const inputMode = (this.getAttribute('inputmode') || '').toLowerCase();
+  const pageSignals = [
+    location.pathname + ' ' + location.hash,
+    document.title || '',
+    ...[...document.querySelectorAll('h1, h2, h3, h4, p, label, button, input[type="submit"]')].slice(0, 16).map(el => el.innerText || el.value || '')
+  ].join(' ').toLowerCase();
+  const verifyContext = /(\b(verify|verification|identity.?verify|two.?factor|2fa|mfa|otp|totp|security.?check|authenticate)\b|安全验证|身份验证|手机短信验证|邮箱验证|二次验证|短信校验|校验码|验证码)/.test(pageSignals);
+  const loginContext = ac.includes('username') || /(\b(log.?in|sign.?in|auth|sso|oauth|authenticate)\b|登录|登陆|登入|验证身份)/.test(pageSignals);
+  const otpRe = /(\b(otp|totp|2fa|mfa|passcode|check.?code|verification.?code|auth.?code|sms.?code|verify.?code|security.?code|one.?time|pin.?code|auth.?token)\b|验证码|校验码|动态码|短信码|安全码|两步验证|双重验证|口令码|动态口令)/;
+  const digitPlaceholderRe = /^(\d+\s*位\s*数字|\d+-?\s*digit|enter\s+(the\s+)?code|input\s+code)$/i;
+  const secretPassRe = /(\b(pin|passphrase|security.?password|trade.?password|pay.?password|payment.?password)\b|支付密码|交易密码|安全密码|操作密码|资金密码|管理密码|解锁密码)/;
+  const userRe = /(\b(user|username|userid|uid|login|login.?id|account|email|phone|mobile|identifier)\b|账号|帐号|用户名|手机号|手机|电话|邮箱|电子邮箱|登录名|工号|学号)/;
   let kind = null;
-  if (type === 'password' || ac.includes('current-password') || ac.includes('new-password')) {
+  if (type === 'password' || ac.includes('current-password') || ac.includes('new-password') || secretPassRe.test(hint)) {
     kind = 'password';
-  } else if (ac.includes('one-time-code') || /\b(otp|totp|2fa|mfa|passcode|verification.?code|auth.?code|one.?time)\b/.test(hint)) {
+  } else if (
+    ac.includes('one-time-code') ||
+    otpRe.test(hint) ||
+    (inputMode === 'numeric' && /(code|码|数字)/.test(hint)) ||
+    (verifyContext && (digitPlaceholderRe.test(placeholder) || (/\d+\s*位/.test(placeholder) && /(text|tel|number)/.test(type))))
+  ) {
     kind = 'one_time_code';
   } else if (type === 'email' || ac.includes('email')) {
     kind = 'email';
-  } else if ((type === 'text' || type === 'tel') && (ac.includes('username') || ac.includes('tel') || /\b(user|username|login|account|email|phone|mobile|identifier)\b/.test(hint) || (this.form && this.form.querySelector('input[type="password"]')))) {
+  } else if ((type === 'text' || type === 'tel' || type === 'number') && (ac.includes('username') || ac.includes('tel') || userRe.test(hint) || (this.form && this.form.querySelector('input[type="password"]')))) {
     kind = 'username';
   }
-  if (!kind) return {error: 'field is not a recognized sign-in input'};
-  return {tag: 'INPUT', type, kind, label};
+  if (!kind) return {error: 'field is not a recognized sensitive credential or verification input'};
+  return {tag: 'INPUT', type, kind, label, loginContext};
 }"#;
 
 /// The main text of the document as Markdown. Links become `[text](url)` followed by a marker
@@ -2947,6 +3587,10 @@ const TEXT_SCRIPT: &str = r#"(() => {
 #[cfg(test)]
 mod tests {
     use super::is_allowed_login_url;
+    use super::is_same_site_login_url;
+    use super::same_spa_route;
+    use super::verify_login_frame_chain_in_state;
+    use crate::router::{Frame, TabState};
 
     #[test]
     fn allowed_login_urls_require_https_or_loopback_fixture() {
@@ -2965,5 +3609,109 @@ mod tests {
         assert!(!is_allowed_login_url("javascript:alert(1)"));
         assert!(!is_allowed_login_url("data:text/html,<input type=password>"));
         assert!(!is_allowed_login_url("not a url"));
+    }
+
+    #[test]
+    fn same_site_login_url_allows_same_site_https_subdomains_and_blocks_third_party() {
+        // Same-site HTTPS subdomains (Aliyun / enterprise passport SSO pattern).
+        assert!(is_same_site_login_url(
+            "https://account.aliyun.com/login/login.htm",
+            "https://passport.aliyun.com/mini_login.htm"
+        ));
+        assert!(is_same_site_login_url(
+            "https://aliyun.com/login",
+            "https://passport.aliyun.com/login"
+        ));
+        assert!(is_same_site_login_url(
+            "https://portal.example.com.cn/signin",
+            "https://auth.example.com.cn/form"
+        ));
+        assert!(is_same_site_login_url(
+            "https://app.company.co.uk/login",
+            "https://id.company.co.uk/login"
+        ));
+        // Same-origin loopback iframe allowed.
+        assert!(is_same_site_login_url(
+            "http://127.0.0.1:4100/host",
+            "http://127.0.0.1:4100/login-frame"
+        ));
+
+        // Third-party cross-site domains strictly rejected.
+        assert!(!is_same_site_login_url(
+            "https://evil.com/phish",
+            "https://passport.aliyun.com/mini_login.htm"
+        ));
+        assert!(!is_same_site_login_url(
+            "https://account.aliyun.com/login/login.htm",
+            "https://evil.com/steal"
+        ));
+        // Unrelated domains sharing a 2-level public suffix must NOT match.
+        assert!(!is_same_site_login_url(
+            "https://evil.com.cn/login",
+            "https://victim.com.cn/login"
+        ));
+        assert!(!is_same_site_login_url(
+            "https://com.cn/login",
+            "https://victim.com.cn/login"
+        ));
+        // Cross-origin loopback hosts (127.0.0.1 vs localhost) remain rejected.
+        assert!(!is_same_site_login_url(
+            "http://127.0.0.1:4100/iframe",
+            "http://localhost:4100/login"
+        ));
+        // Mixed HTTP/HTTPS rejected.
+        assert!(!is_same_site_login_url(
+            "http://account.aliyun.com/login",
+            "https://passport.aliyun.com/login"
+        ));
+    }
+
+    #[test]
+    fn frame_chain_rejects_third_party_sandwich_ancestor() {
+        let mut state = TabState::default();
+        state.main_frame = Some("f_main".into());
+        state.frames.insert(
+            "f_main".into(),
+            Frame {
+                parent: None,
+                loader: "l1".into(),
+                url: "https://account.aliyun.com/login/login.htm".into(),
+                origin: "https://account.aliyun.com".into(),
+                session: "s1".into(),
+            },
+        );
+        state.frames.insert(
+            "f_mid".into(),
+            Frame {
+                parent: Some("f_main".into()),
+                loader: "l2".into(),
+                url: "https://evil.example/wrap".into(),
+                origin: "https://evil.example".into(),
+                session: "s2".into(),
+            },
+        );
+        state.frames.insert(
+            "f_inner".into(),
+            Frame {
+                parent: Some("f_mid".into()),
+                loader: "l3".into(),
+                url: "https://passport.aliyun.com/mini_login.htm".into(),
+                origin: "https://passport.aliyun.com".into(),
+                session: "s3".into(),
+            },
+        );
+        assert!(verify_login_frame_chain_in_state(&state, "f_inner").is_none());
+
+        // Direct same-site child passes.
+        state.frames.get_mut("f_inner").unwrap().parent = Some("f_main".into());
+        assert!(verify_login_frame_chain_in_state(&state, "f_inner").is_some());
+    }
+
+    #[test]
+    fn spa_route_detects_path_or_hash_navigation_but_keeps_query_errors_same() {
+        assert!(same_spa_route("https://app.example.com/login?error=1", "https://app.example.com/login"));
+        assert!(!same_spa_route("https://app.example.com/dashboard", "https://app.example.com/login"));
+        assert!(!same_spa_route("https://app.example.com/#/dashboard", "https://app.example.com/#/login"));
+        assert!(!same_spa_route("https://other.example.com/login", "https://app.example.com/login"));
     }
 }

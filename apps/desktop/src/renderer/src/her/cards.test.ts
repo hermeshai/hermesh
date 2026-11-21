@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyEvents, botChat, fromSnapshot } from "@hermesh/her-client";
 import type { Event, SessionSnapshot } from "@hermesh/her-protocol";
-import { cardNow, cardOf, cardShown, connectBody, filled, isChromeTakeover, isKeyRotate, siteLoginBody, toolCount, type Card, type ConnectBody } from "./cards.ts";
+import { cardNow, cardOf, cardShown, connectBody, filled, isAppFill, isChromeTakeover, isKeyRotate, isVerifyOnly, siteLoginBody, toolCount, type Card, type ConnectBody } from "./cards.ts";
 
 const usage = { input: 1, output: 1, cache_read: 0, cache_write: 0, cost: { currency: "USD", input: 0, output: 0, cache_read: 0, cache_write: 0, total: 0 } };
 
@@ -189,4 +189,48 @@ test("what the card shows: its form, the sign-in on the device that answered, or
   assert.deepEqual(cardShown(read("failed", "no tools"), false), { kind: "ended", outcome: "failed", note: "no tools" });
   assert.deepEqual(cardShown(read("expired"), false), { kind: "ended", outcome: "expired" });
   assert.deepEqual(cardShown(live("replaced"), true), { kind: "ended", outcome: "replaced" });
+});
+
+test("site_login parses fill, app_fill, and verify-only cards accurately", () => {
+  const mfa = cardOf({
+    id: "c_mfa",
+    kind: "site_login",
+    title: "Verify on passport.aliyun.com",
+    asked_by: "owner",
+    expires_at: "2026-11-10T09:00:00Z",
+    ops: [],
+    body: {
+      mode: "fill",
+      origin: "https://passport.aliyun.com",
+      host: "passport.aliyun.com",
+      title: "安全验证",
+      fields: [{ id: "f1", label: "6位数字", kind: "one_time_code", secret: true }],
+    },
+  });
+  const mfaBody = mfa && siteLoginBody(mfa);
+  assert.ok(mfaBody);
+  assert.equal(mfaBody.mode, "fill");
+  assert.equal(isVerifyOnly(mfaBody), true);
+  assert.equal(isAppFill(mfaBody), false);
+
+  const appFill = cardOf({
+    id: "c_app",
+    kind: "site_login",
+    title: "Enter credentials in Demo Vault",
+    asked_by: "owner",
+    expires_at: "2026-11-10T09:00:00Z",
+    ops: [],
+    body: {
+      mode: "app_fill",
+      origin: "app://com.example.vault",
+      host: "Demo Vault",
+      title: "安全验证",
+      fields: [{ id: "f1", label: "主密码", kind: "password", secret: true }],
+    },
+  });
+  const appBody = appFill && siteLoginBody(appFill);
+  assert.ok(appBody);
+  assert.equal(isAppFill(appBody), true);
+  assert.equal(isVerifyOnly(appBody), false);
+  assert.equal(appBody.host, "Demo Vault");
 });

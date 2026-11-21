@@ -131,6 +131,19 @@ import Testing
     let badChrome: JSON = ["id": "card_chrome_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
                            "body": ["mode": "chrome_takeover", "origin": "https://example.test", "host": "example.test", "fields": []]]
     #expect(HerCard(badChrome)?.siteLogin == nil)
+
+    // MFA secondary verification card & desktop app_fill card.
+    let mfaRaw: JSON = ["id": "card_mfa", "kind": "site_login", "title": "Verify on passport.aliyun.com", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                        "body": ["mode": "fill", "origin": "https://passport.aliyun.com", "host": "passport.aliyun.com", "title": "安全验证",
+                                 "fields": [["id": "f1", "label": "6位数字", "kind": "one_time_code", "secret": true]]]]
+    let mfa = try #require(HerCard(mfaRaw))
+    #expect(mfa.siteLogin?.isVerifyOnly == true && mfa.siteLogin?.isAppFill == false)
+
+    let appRaw: JSON = ["id": "card_app", "kind": "site_login", "title": "Enter credentials in Demo Vault", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                        "body": ["mode": "app_fill", "origin": "app://com.example.vault", "host": "Demo Vault", "title": "安全验证",
+                                 "fields": [["id": "f1", "label": "主密码", "kind": "password", "secret": true]]]]
+    let appCard = try #require(HerCard(appRaw))
+    #expect(appCard.siteLogin?.isAppFill == true && appCard.siteLogin?.isVerifyOnly == false && appCard.siteLogin?.host == "Demo Vault")
 }
 
 @Test func theOnboardingConnectsAModelInTheConversation() {

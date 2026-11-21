@@ -122,6 +122,122 @@ fn pages() -> HashMap<&'static str, String> {
         <iframe src="/welcome" width="300" height="120"></iframe>"#
             .to_string(),
     );
+    pages.insert(
+        "/login-spa",
+        r#"<title>SPA Sign In</title>
+        <div id="root">
+          <h1>Sign In</h1>
+          <input id="e" type="email" placeholder="Email">
+          <input id="p" type="password" placeholder="Password">
+          <button id="go" type="button">Sign in</button>
+        </div>
+        <script>
+          window.__events = [];
+          for (const id of ['e', 'p']) {
+            document.getElementById(id).addEventListener('input', () => window.__events.push(id + ':input'));
+            document.getElementById(id).addEventListener('change', () => window.__events.push(id + ':change'));
+          }
+          document.getElementById('go').addEventListener('click', () => {
+            if (document.getElementById('p').value === 'right-pass') {
+              history.pushState({}, '', '/dashboard');
+              document.getElementById('root').innerHTML = '<h1>SPA Dashboard</h1><p>Logged in via SPA</p>';
+            } else {
+              const err = document.createElement('p');
+              err.textContent = 'Invalid password';
+              document.getElementById('root').appendChild(err);
+            }
+          });
+        </script>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-cn-otp",
+        r#"<title>手机号登录</title>
+        <div>
+          <h1>登录账号</h1>
+          <input id="phone" type="text" placeholder="请输入手机号">
+          <input id="code" type="text" inputmode="numeric" placeholder="请输入验证码">
+          <button type="button">获取验证码</button>
+          <button type="button" data-sitekey="invisible-key" data-size="invisible" onclick="history.pushState({}, '', '/dashboard'); document.body.innerHTML='<h1>已登录</h1>'">登录</button>
+        </div>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-two-step",
+        r#"<title>Sign in</title>
+        <h1>Sign in to your account</h1>
+        <div id="step">
+          <input id="email" type="email" autocomplete="username" placeholder="Work email">
+          <button id="next" type="button" onclick="document.getElementById('step').innerHTML='<label>Password <input id=pw type=password></label><button type=button onclick=location.href=\'/welcome\'>Sign in</button>'">Continue</button>
+        </div>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-iframe-host",
+        r#"<title>Account Login</title>
+        <h1>Account Sign In</h1>
+        <iframe src="/login-iframe-inner" width="420" height="320"></iframe>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/login-iframe-inner",
+        r#"<title>Passport Frame</title>
+        <div id="box">
+          <label>Account <input id="u" name="loginId" type="text" placeholder="账号名/邮箱/手机号"></label>
+          <label>Password <input id="p" name="password" type="password" placeholder="请输入登录密码"></label>
+          <button id="submit" type="button" onclick="if (document.getElementById('p').value === 'frame-secret') { window.top.location.href = '/welcome'; } else { document.getElementById('err').textContent = 'Wrong password'; }">登录</button>
+          <p id="err"></p>
+        </div>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/mfa-verify-host",
+        r#"<title>ECS 控制台</title>
+        <h1>快照管理</h1>
+        <p id="status">快照 snap-001 存在</p>
+        <button id="del" type="button" onclick="document.getElementById('modal').innerHTML='<iframe src=/mfa-verify-iframe width=420 height=280></iframe>'">删除快照</button>
+        <div id="modal"></div>
+        <script>
+          window.addEventListener('message', (e) => {
+            if (e.data === 'mfa-ok') {
+              document.getElementById('modal').innerHTML = '';
+              document.getElementById('status').textContent = '快照已删除';
+            }
+          });
+        </script>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/mfa-verify-iframe",
+        r#"<title>安全验证</title>
+        <form onsubmit="return false;">
+          <div class="row">
+            <label>校验码：</label>
+            <input id="otp" type="text" placeholder="6位数字">
+            <button id="send" type="button" onclick="window.__sent = (window.__sent || 0) + 1; this.textContent = '59s';">点击获取验证码</button>
+          </div>
+          <button id="ok" type="button" onclick="if (document.getElementById('otp').value === '654321') { window.parent.postMessage('mfa-ok', '*'); } else { document.getElementById('err').textContent = '校验码错误'; }">确定</button>
+          <p id="err"></p>
+        </form>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/pay-pin",
+        r#"<title>支付安全验证</title>
+        <div id="paybox">
+          <h1>支付安全验证</h1>
+          <input id="pin" type="text" placeholder="请输入6位支付密码">
+          <button id="go" type="button" onclick="if (document.getElementById('pin').value === '884422') { document.getElementById('paybox').innerHTML='<h1>支付已确认</h1>'; } else { document.getElementById('err').textContent='支付密码错误'; }">确认支付</button>
+          <p id="err"></p>
+        </div>"#
+            .to_string(),
+    );
+    pages.insert(
+        "/search-form",
+        r#"<title>文档搜索</title>
+        <form><input id="q" type="text" placeholder="搜索文章"><button type="submit">搜索</button></form>"#
+            .to_string(),
+    );
     pages.insert("/slow-welcome", "<title>Welcome</title><h1>Welcome back</h1>".to_string());
     pages.insert("/slow-request", "waiting".to_string());
     pages.insert(
@@ -278,7 +394,8 @@ async fn secure_card_fills_the_login_document_and_waits_for_user_navigation() {
     let refs = [ref_of(&opened.text, "textbox \"Email\""), ref_of(&opened.text, "textbox \"Password\"")];
     let inspected = session.inspect_site_login(&refs).await.unwrap();
     let backends: Vec<_> = inspected.fields.iter().map(|field| field.backend).collect();
-    session.begin_sensitive_card("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
     let tab = session.resolve_tab(None).unwrap();
     assert_eq!(session.page_metadata(&tab), (inspected.origin.clone(), String::new()));
     let fields: Vec<_> = inspected
@@ -287,16 +404,196 @@ async fn secure_card_fills_the_login_document_and_waits_for_user_navigation() {
         .zip(["owner@example.test", "dummy-password"])
         .map(|(field, value)| (field.backend, field.input_type.clone(), value.to_string()))
         .collect();
-    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.unwrap();
+    let out = session
+        .fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields, false)
+        .await
+        .unwrap();
+    assert_eq!(out, her_browser::session::SiteLoginFillOutcome::FilledStayedOnPage);
     assert_eq!(session.page(None).unwrap().loader, inspected.loader);
     assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
     assert!(session.wait(None, &WaitFor::Url("/login".into()), Duration::ZERO).await.is_err());
     assert!(act(&session, Action::Click, &ref_of(&opened.text, "button \"Continue\"")).await.is_err());
-    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.is_err());
+    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields, false).await.is_err());
 
     let recovered = session.navigate(None, &fx.url("/welcome"), false).await.unwrap();
     assert!(recovered.text.contains("Welcome back"), "{}", recovered.text);
     assert!(session.snapshot(&SnapshotRequest::default()).await.is_ok());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn secure_card_submits_traditional_and_spa_login_and_recognizes_chinese_and_two_step_forms() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+
+    // 1. Traditional form: fill + auto-submit navigates to /welcome and unlocks observation.
+    let opened = session.navigate(None, &fx.url("/login"), false).await.unwrap();
+    let refs = [ref_of(&opened.text, "textbox \"Email\""), ref_of(&opened.text, "textbox \"Password\"")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_trad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "dummy-password"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_trad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let snap = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(snap.text.contains("Welcome back"), "{}", snap.text);
+
+    // 2. Div-based SPA login with wrong password stays on /login-spa and keeps observation blocked.
+    let spa = session.navigate(None, &fx.url("/login-spa"), false).await.unwrap();
+    let refs = [ref_of(&spa.text, "textbox \"Email\""), ref_of(&spa.text, "textbox \"Password\"")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_spa_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let bad_fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "wrong-pass"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_spa_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &bad_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::FilledStayedOnPage);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_err(), "wrong password must stay blocked");
+
+    // 3. Div-based SPA login with right password pushes /dashboard and unlocks without full reload!
+    let spa = session.navigate(None, &fx.url("/login-spa"), false).await.unwrap();
+    let refs = [ref_of(&spa.text, "textbox \"Email\""), ref_of(&spa.text, "textbox \"Password\"")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_spa_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let ok_fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "right-pass"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_spa_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &ok_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let snap = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(snap.text.contains("SPA Dashboard"), "{}", snap.text);
+
+    // 4. Chinese SMS OTP login with invisible reCAPTCHA button: recognized, skips "获取验证码", clicks "登录".
+    let cn = session.navigate(None, &fx.url("/login-cn-otp"), false).await.unwrap();
+    let refs = [ref_of(&cn.text, "请输入手机号"), ref_of(&cn.text, "请输入验证码")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    assert_eq!(inspected.fields[0].kind, her_browser::session::LoginFieldKind::Username);
+    assert_eq!(inspected.fields[1].kind, her_browser::session::LoginFieldKind::OneTimeCode);
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_cn", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let cn_fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["13800138000", "654321"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_cn", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &cn_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let snap = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(snap.text.contains("已登录"), "{}", snap.text);
+
+    // 5. Two-step login: Step 1 (email only) submits and reveals Step 2 (password) inline on the same URL.
+    let step1 = session.navigate(None, &fx.url("/login-two-step"), false).await.unwrap();
+    let refs = [ref_of(&step1.text, "Work email")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    assert_eq!(inspected.fields.len(), 1);
+    assert_eq!(inspected.fields[0].kind, her_browser::session::LoginFieldKind::Email);
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_step1", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &[]);
+    let step1_fields = vec![(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), "owner@example.test".into())];
+    let outcome = session
+        .fill_site_login("c_step1", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &step1_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let step2 = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(step2.text.contains("Password"), "step 2 password field must be visible: {}", step2.text);
+
+    // 6. Same-origin login iframe (mirrors Aliyun passport iframe flow): snapshot iframe, bind
+    //    inputs inside the iframe, stay blocked on wrong password, then advance & unlock when
+    //    iframe redirects `window.top.location` on correct password.
+    let host = session.navigate(None, &fx.url("/login-iframe-host"), false).await.unwrap();
+    let iframe_ref = ref_of(&host.text, "iframe");
+    let frame_snap = session
+        .snapshot(&SnapshotRequest {
+            frame: Some(iframe_ref),
+            ..SnapshotRequest::default()
+        })
+        .await
+        .unwrap();
+    let refs = [ref_of(&frame_snap.text, "Account"), ref_of(&frame_snap.text, "Password")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    assert_ne!(
+        inspected.frame,
+        session.page(None).unwrap().frame,
+        "bound frame must be the login iframe, not main_frame"
+    );
+    assert!(inspected.url.ends_with("/login-iframe-inner"), "{}", inspected.url);
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+
+    // 6a. Wrong password inside iframe keeps observation blocked.
+    session.begin_sensitive_card("c_iframe_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
+    let bad_fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "wrong-pass"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_iframe_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &bad_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::FilledStayedOnPage);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
+
+    // 6b. Reload host and submit correct password inside iframe -> top-level navigates to /welcome and guard clears.
+    let host = session.navigate(None, &fx.url("/login-iframe-host"), false).await.unwrap();
+    let iframe_ref = ref_of(&host.text, "iframe");
+    let frame_snap = session
+        .snapshot(&SnapshotRequest {
+            frame: Some(iframe_ref),
+            ..SnapshotRequest::default()
+        })
+        .await
+        .unwrap();
+    let refs = [ref_of(&frame_snap.text, "Account"), ref_of(&frame_snap.text, "Password")];
+    let inspected = session.inspect_site_login(&refs).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_iframe_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let ok_fields: Vec<_> = inspected
+        .fields
+        .iter()
+        .zip(["owner@example.test", "frame-secret"])
+        .map(|(f, v)| (f.backend, f.input_type.clone(), v.to_string()))
+        .collect();
+    let outcome = session
+        .fill_site_login("c_iframe_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &ok_fields, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let snap = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(snap.text.contains("Welcome back"), "{}", snap.text);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -322,7 +619,8 @@ async fn secure_card_rejects_cross_origin_form_targets_and_blocks_cross_tab_fram
     let refs = [ref_of(&login.text, "textbox \"Email\""), ref_of(&login.text, "textbox \"Password\"")];
     let inspected = session.inspect_site_login(&refs).await.unwrap();
     let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
-    session.begin_sensitive_card("c_frame", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_frame", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
 
     let other_tab = session.open_tab().await.unwrap();
     let other_page = session.navigate(Some(&other_tab.id), &fx.url("/welcome"), false).await.unwrap();
@@ -369,6 +667,94 @@ async fn secure_card_rejects_cross_origin_form_targets_and_blocks_cross_tab_fram
     let after = session.navigate(Some(&inspected.tab), &fx.url("/welcome"), false).await.unwrap();
     assert!(after.text.contains("Welcome back"), "{}", after.text);
     assert!(!session.has_active_sensitive());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn secure_card_handles_mfa_secondary_verification_iframe_and_security_pin() {
+    let Some(fx) = Fixture::new().await else { return };
+    let session = fx.session().await;
+
+    // 1. Aliyun-style destructive action modal with same-origin MFA verification iframe:
+    // sibling `<label>校验码：</label><input placeholder="6位数字">`, `<button>点击获取验证码</button>`, `<button>确定</button>`.
+    let host = session.navigate(None, &fx.url("/mfa-verify-host"), false).await.unwrap();
+    let del_btn = ref_of(&host.text, "button \"删除快照\"");
+    let after_del = act(&session, Action::Click, &del_btn).await.unwrap();
+    let iframe_ref = ref_of(&after_del, "iframe");
+    let frame_snap = session
+        .snapshot(&SnapshotRequest {
+            frame: Some(iframe_ref),
+            ..SnapshotRequest::default()
+        })
+        .await
+        .unwrap();
+    let otp_ref = ref_of(&frame_snap.text, "6位数字");
+    let inspected = session.inspect_site_login(&[otp_ref]).await.unwrap();
+    assert_eq!(inspected.fields.len(), 1);
+    assert_eq!(inspected.fields[0].kind, her_browser::session::LoginFieldKind::OneTimeCode);
+    assert!(inspected.fields[0].secret);
+    assert!(inspected.url.ends_with("/mfa-verify-iframe"), "{}", inspected.url);
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+
+    // 1a. Wrong OTP clicks `确定` (skipping `点击获取验证码`), stays on modal, keeps observation blocked.
+    session.begin_sensitive_card("c_mfa_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let bad = vec![(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), "000000".to_string())];
+    let outcome = session
+        .fill_site_login("c_mfa_bad", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &bad, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::FilledStayedOnPage);
+    assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
+
+    // 1b. Reload and submit correct OTP -> clicks `确定`, removes modal iframe in-place, unlocks observation.
+    let host = session.navigate(None, &fx.url("/mfa-verify-host"), false).await.unwrap();
+    let del_btn = ref_of(&host.text, "button \"删除快照\"");
+    let after_del = act(&session, Action::Click, &del_btn).await.unwrap();
+    let iframe_ref = ref_of(&after_del, "iframe");
+    let frame_snap = session
+        .snapshot(&SnapshotRequest {
+            frame: Some(iframe_ref),
+            ..SnapshotRequest::default()
+        })
+        .await
+        .unwrap();
+    let otp_ref = ref_of(&frame_snap.text, "6位数字");
+    let inspected = session.inspect_site_login(&[otp_ref]).await.unwrap();
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_mfa_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let ok = vec![(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), "654321".to_string())];
+    let outcome = session
+        .fill_site_login("c_mfa_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &ok, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let after = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(after.text.contains("快照已删除"), "{}", after.text);
+
+    // 2. Payment PIN / security password (`支付密码` on type="text" input) is classified as secret Password.
+    let pay = session.navigate(None, &fx.url("/pay-pin"), false).await.unwrap();
+    let pin_ref = ref_of(&pay.text, "支付密码");
+    let inspected = session.inspect_site_login(&[pin_ref]).await.unwrap();
+    assert_eq!(inspected.fields.len(), 1);
+    assert_eq!(inspected.fields[0].kind, her_browser::session::LoginFieldKind::Password);
+    assert!(inspected.fields[0].secret);
+    let backends: Vec<_> = inspected.fields.iter().map(|f| f.backend).collect();
+    let secrets: Vec<_> = inspected.fields.iter().filter(|f| f.secret).map(|f| f.backend).collect();
+    session.begin_sensitive_card("c_pin_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &backends, &secrets);
+    let ok = vec![(inspected.fields[0].backend, inspected.fields[0].input_type.clone(), "884422".to_string())];
+    let outcome = session
+        .fill_site_login("c_pin_ok", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &ok, true)
+        .await
+        .unwrap();
+    assert_eq!(outcome, her_browser::session::SiteLoginFillOutcome::SubmittedAndAdvanced);
+    let after = session.snapshot(&SnapshotRequest::default()).await.unwrap();
+    assert!(after.text.contains("支付已确认"), "{}", after.text);
+
+    // 3. Generic search box is still rejected.
+    let search = session.navigate(None, &fx.url("/search-form"), false).await.unwrap();
+    let q_ref = ref_of(&search.text, "搜索文章");
+    assert!(session.inspect_site_login(&[q_ref]).await.is_err());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

@@ -13,9 +13,19 @@
 
 use async_trait::async_trait;
 use base64::Engine;
+use futures::FutureExt;
 use her_desktop::Cli;
 use her_desktop::DesktopError;
+use her_desktop::DesktopFieldKind;
 use her_llm::UserContent;
+use her_protocol::card::Card;
+use her_protocol::card::CardBody;
+use her_protocol::card::CardKind;
+use her_protocol::card::CardState;
+use her_protocol::card::SiteLoginBody;
+use her_protocol::card::SiteLoginField;
+use her_protocol::card::SiteLoginFieldKind;
+use her_protocol::card::SiteLoginMode;
 use her_tools::Authority;
 use her_tools::Environment;
 use her_tools::Tool;
@@ -67,6 +77,7 @@ struct Snap {
     asked: String,
     named: String,
     key: String,
+    index: her_desktop::DesktopSnapshotIndex,
 }
 
 /// One screenshot taken in a session: the app, the window, and where the window was, in
@@ -96,6 +107,16 @@ impl Shot {
     }
 }
 
+#[derive(Clone, Debug)]
+struct DesktopSensitiveEntry {
+    app_key: String,
+    window_id: Option<String>,
+    window_title: Option<String>,
+    secret_refs: Vec<String>,
+    pending: bool,
+    filled: bool,
+}
+
 /// What a main session and its sub-agents share: snapshots and screenshots, by id, and the
 /// apps already resolved, by the name the model used.
 #[derive(Default)]
@@ -106,6 +127,8 @@ struct Shared {
     /// Apps, by key, whose text fields took nothing written through accessibility: type_text
     /// pastes into them from then on.
     ignores_typing: Mutex<HashSet<String>>,
+    /// Active desktop `app_fill` sensitive input cards (pending or filled-and-still-on-screen).
+    sensitive: Mutex<HashMap<String, DesktopSensitiveEntry>>,
     next_shot: AtomicU64,
 }
 
@@ -266,13 +289,107 @@ async fn attempt(ctx: &ToolCtx, command: &str, args: Vec<String>) -> Result<Resu
 }
 
 fn blocked_by_sensitive(ctx: &ToolCtx) -> Result<(), ToolError> {
-    let label = handle(ctx)?.label.clone();
-    if crate::browser::is_sensitive_active(&label) {
+    let h = handle(ctx)?;
+    if crate::browser::is_sensitive_active(&h.label) {
         return Err(ToolError::Failed(
-            "Computer control is blocked during a sensitive sign-in step until the login page navigates away or the card is cancelled.".into(),
+            "Computer control is blocked during a sensitive browser sign-in or verification step until the page moves on or the card is cancelled.".into(),
+        ));
+    }
+    if !h.shared.sensitive.lock().is_empty() {
+        return Err(ToolError::Failed(
+            "Computer control is blocked while a desktop sensitive input card is active or its filled secret remains on screen.".into(),
         ));
     }
     Ok(())
+}
+
+/// Re-checks any filled desktop sensitive entries (with no pending card): if the bound window
+/// closed/changed title or the secret input is gone/empty, unlocks desktop observation automatically.
+async fn recheck_desktop_sensitive_cleared(ctx: &ToolCtx) {
+    let Ok(h) = handle(ctx) else { return };
+    let Ok(cli) = h.cli() else { return };
+    let entries: Vec<(String, DesktopSensitiveEntry)> = {
+        h.shared
+            .sensitive
+            .lock()
+            .iter()
+            .filter(|(_, e)| !e.pending && e.filled)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    };
+    if entries.is_empty() {
+        return;
+    }
+    let cancel = tokio_util::sync::CancellationToken::new();
+    for (card_id, entry) in entries {
+        if !desktop_secret_still_present(cli, &entry, &cancel).await {
+            h.shared.sensitive.lock().remove(&card_id);
+        }
+    }
+}
+
+async fn desktop_secret_still_present(
+    cli: &Cli,
+    entry: &DesktopSensitiveEntry,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> bool {
+    let win_ok = match cli
+        .run("list-windows", &["--app".into(), entry.app_key.clone()], cancel)
+        .await
+    {
+        Ok(data) => {
+            let list = parse_windows(&data);
+            match &entry.window_id {
+                Some(wid) => list.iter().any(|w| {
+                    w.id == *wid
+                        && entry
+                            .window_title
+                            .as_deref()
+                            .is_none_or(|t| t.is_empty() || w.title == t)
+                }),
+                None => !list.is_empty(),
+            }
+        }
+        Err(_) => false,
+    };
+    if !win_ok {
+        return false;
+    }
+    if entry.secret_refs.is_empty() {
+        return false;
+    }
+    for reference in &entry.secret_refs {
+        let states_ok = cli
+            .run("get", &[reference.clone(), "--property".into(), "states".into()], cancel)
+            .await
+            .is_ok();
+        if states_ok {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_blocked_system_auth_app(app_key: &str) -> bool {
+    let lower = app_key.to_ascii_lowercase();
+    [
+        "com.apple.securityagent",
+        "securityagent",
+        "com.apple.coreservicesuiagent",
+        "coreservicesuiagent",
+        "com.apple.loginwindow",
+        "loginwindow",
+        "com.apple.localauthentication",
+        "localauthentication",
+        "com.apple.usernotificationcenter",
+        "consent.exe",
+        "credentialuibroker.exe",
+        "logonui.exe",
+        "lockapp.exe",
+        "gcr-prompter",
+    ]
+    .iter()
+    .any(|blocked| lower == *blocked || lower.ends_with(&format!("/{blocked}")))
 }
 
 fn arg_str<'a>(args: &'a Value, key: &str) -> &'a str {
@@ -388,6 +505,11 @@ impl TypedTool for DesktopApps {
             "On the desktop, use only the desktop tools: no scripts or programs of your own to click or type. \
              Unless the user asked for exactly that, stop and ask before sending messages, deleting, paying, or \
              changing settings.",
+            "Never ask for or accept passwords, verification codes, PINs, or other secrets in ordinary chat, and never \
+             type them with cua_act type/set_value/type_text. When a desktop app shows a password, verification code, \
+             PIN, or login input with refs from cua_snapshot, call cua_act {action: \"ask_owner\", app, refs: [...]} \
+             to prepare a secure input card (never for OS system auth prompts such as Touch ID, Keychain, sudo, or \
+             UAC — ask the user to complete those directly on the computer).",
             "Computer use: start an app, or bring up its window, with cua_launch; it waits for the window, so never \
              sleep or retry for it.",
             "Computer use: read a window with cua_snapshot and act by ref. Refs belong to their snapshot: after an \
@@ -551,6 +673,7 @@ impl TypedTool for DesktopSnapshot {
     }
 
     async fn run(&self, args: SnapshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        recheck_desktop_sensitive_cleared(&ctx).await;
         blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         let mut cli_args = vec!["--app".into(), key.clone(), "--compact".into()];
@@ -574,10 +697,12 @@ impl TypedTool for DesktopSnapshot {
         let data = run(&ctx, "snapshot", cli_args).await?;
         let named = data.get("app").and_then(Value::as_str).unwrap_or(&args.app).to_string();
         if let Some(id) = data.get("snapshot_id").and_then(Value::as_str) {
+            let index = her_desktop::index_snapshot(&data);
             let snap = Snap {
                 asked: args.app.clone(),
                 named: named.clone(),
                 key,
+                index,
             };
             handle(&ctx)?.remember(id, snap);
         }
@@ -632,6 +757,9 @@ pub(crate) enum ActAction {
     Wheel,
     /// Types `text` where the app's keyboard focus is, in any language; needs no ref.
     TypeText,
+    /// Prepares a secure input card for 1 to 3 password, verification code, PIN, or sign-in refs
+    /// in `refs` from `cua_snapshot`, without changing the app.
+    AskOwner,
 }
 
 impl ActAction {
@@ -656,6 +784,7 @@ impl ActAction {
             Self::Drag => "drag",
             Self::Wheel => "mouse-wheel",
             Self::TypeText => "paste",
+            Self::AskOwner => "ask_owner",
         }
     }
 
@@ -671,6 +800,7 @@ impl ActAction {
             Self::DoubleClick => "double_click",
             Self::RightClick => "right_click",
             Self::SetValue => "set_value",
+            Self::AskOwner => "ask_owner",
             other => other.command(),
         }
     }
@@ -700,6 +830,9 @@ pub(crate) struct ActArgs {
     /// The element, a ref from cua_snapshot. For the actions that are not at a point, nor press or type_text.
     #[serde(default, rename = "ref")]
     reference: Option<String>,
+    /// For ask_owner: 1 to 3 sensitive input refs (password, verification code, PIN, or sign-in fields) from cua_snapshot.
+    #[serde(default)]
+    refs: Option<Vec<String>>,
     /// Text for type, set_value and type_text, the option for select, the key combo for press.
     #[serde(default)]
     text: Option<String>,
@@ -734,6 +867,19 @@ impl ActArgs {
     /// Why the call is incomplete, if it is.
     fn problem(&self) -> Option<String> {
         let name = self.action.name();
+        if self.action == ActAction::AskOwner {
+            let count = self
+                .refs
+                .as_ref()
+                .map(|r| r.iter().filter(|s| !s.trim().is_empty()).count())
+                .unwrap_or(0);
+            if count == 0 || count > 3 {
+                return Some(
+                    "ask_owner needs refs (1 to 3 sensitive input refs from cua_snapshot, such as password, verification code, PIN, or sign-in fields)".into(),
+                );
+            }
+            return None;
+        }
         if self.action.needs_text() && self.text.is_none() {
             return Some(format!("{name} needs text"));
         }
@@ -815,19 +961,34 @@ impl TypedTool for DesktopAct {
     type Args = ActArgs;
     const NAME: &'static str = "cua_act";
     const DESCRIPTION: &'static str = "Act in a desktop app. By ref from cua_snapshot: click, type, set a \
-        value, select, toggle, expand, scroll, through the accessibility API without moving the pointer. For apps \
-        whose snapshot shows no contents: click_at, double_click_at, right_click_at, drag and wheel at pixel \
-        coordinates of a screenshot, which bring the window to the front and move the pointer; and type_text \
-        where the keyboard focus is. press sends a key or key combo to the app. type_text and press leave the \
-        window where it is when they can. All of these return a new screenshot.";
+        value, select, toggle, expand, scroll, or ask_owner, through the accessibility API without moving the pointer. \
+        ask_owner prepares a secure input card for 1 to 3 password, verification code, PIN, or sign-in refs in the app \
+        without changing it; show it with send_to_user (or ask main via send_message when running as a sub-agent), and \
+        when answered it fills and submits the fields once without showing secrets to the model. For apps whose \
+        snapshot shows no contents: click_at, double_click_at, right_click_at, drag and wheel at pixel coordinates of \
+        a screenshot, which bring the window to the front and move the pointer; and type_text where the keyboard focus \
+        is. press sends a key or key combo to the app. type_text and press leave the window where it is when they can. \
+        All of these return a new screenshot.";
 
     fn kind(&self) -> ToolKind {
         ToolKind::Mutating
     }
 
+    fn kind_for(&self, args: &Value) -> ToolKind {
+        if arg_str(args, "action") == "ask_owner" {
+            ToolKind::ReadOnly
+        } else {
+            ToolKind::Mutating
+        }
+    }
+
     async fn authorities(&self, args: &ActArgs, ctx: &ToolCtx) -> Result<Vec<Authority>, ToolError> {
         if let Some(problem) = args.problem() {
             return Err(ToolError::InvalidArgs(problem));
+        }
+        if args.action == ActAction::AskOwner {
+            // Prepares a card only; changes nothing until the owner answers the card.
+            return Ok(Vec::new());
         }
         let handle = handle(ctx)?;
         let app = match (&args.shot, &args.reference) {
@@ -855,6 +1016,9 @@ impl TypedTool for DesktopAct {
     }
 
     async fn run(&self, args: ActArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        if args.action == ActAction::AskOwner {
+            return prepare_desktop_secret(&args, &ctx).await;
+        }
         blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         if !args.action.physical() {
@@ -925,6 +1089,413 @@ impl TypedTool for DesktopAct {
             ends_task: false,
         })
     }
+}
+
+fn new_desktop_card_id() -> String {
+    const DIGITS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bits = rand::random::<u128>();
+    let mut id = String::from("c_");
+    for _ in 0..10 {
+        id.push(DIGITS[(bits % DIGITS.len() as u128) as usize] as char);
+        bits /= DIGITS.len() as u128;
+    }
+    id
+}
+
+async fn prepare_desktop_secret(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput, ToolError> {
+    recheck_desktop_sensitive_cleared(ctx).await;
+    blocked_by_sensitive(ctx)?;
+    let (cards, agent_name) = if let Some(cards) = ctx.session_state.get::<crate::cards::Cards>() {
+        (cards, None)
+    } else if let Some((cards, name)) = ctx
+        .session_state
+        .get::<crate::agents::AgentLink>()
+        .and_then(|link| link.root_cards())
+    {
+        (cards, Some(name))
+    } else {
+        return Err(ToolError::Failed(
+            "only Her's own conversation can prepare a desktop secure input card; ask the user to enter it directly on the computer".into(),
+        ));
+    };
+
+    let refs: Vec<String> = args
+        .refs
+        .as_ref()
+        .map(|list| list.iter().map(|r| r.trim().to_string()).filter(|r| !r.is_empty()).collect())
+        .unwrap_or_default();
+    if refs.is_empty() || refs.len() > 3 {
+        return Err(ToolError::InvalidArgs(
+            "ask_owner needs refs (1 to 3 sensitive input refs from cua_snapshot)".into(),
+        ));
+    }
+    let mut seen = HashSet::new();
+    for r in &refs {
+        if !seen.insert(r.as_str()) {
+            return Err(ToolError::InvalidArgs(format!("duplicate ref {r} in ask_owner")));
+        }
+    }
+
+    let h = handle(ctx)?;
+    if is_blocked_system_auth_app(&args.app) {
+        return Err(ToolError::Failed(
+            "Secure input cards cannot fill OS system authentication dialogs (Touch ID, Keychain, sudo, UAC). Ask the owner to complete this directly on the computer.".into(),
+        ));
+    }
+    let cli = h.cli()?.clone();
+    let first_snap_id = her_desktop::snapshot_of(&refs[0]).ok_or_else(|| {
+        ToolError::InvalidArgs(format!(
+            "\"{}\" is not a ref: use one such as @s2efx:e6 from cua_snapshot",
+            refs[0]
+        ))
+    })?;
+    if refs.iter().skip(1).any(|r| her_desktop::snapshot_of(r) != Some(first_snap_id)) {
+        return Err(ToolError::InvalidArgs(
+            "all refs in ask_owner must come from the same cua_snapshot".into(),
+        ));
+    }
+    let snap = h
+        .shared
+        .snaps
+        .lock()
+        .get(first_snap_id)
+        .cloned()
+        .ok_or_else(|| {
+            ToolError::Failed("Those refs are not from a snapshot taken in this session. Take a new cua_snapshot.".into())
+        })?;
+    if ![&snap.asked, &snap.named, &snap.key].iter().any(|n| same_app(n, &args.app)) {
+        return Err(ToolError::Failed(format!(
+            "{} is from a snapshot of {}, not {}",
+            refs[0], snap.asked, args.app
+        )));
+    }
+    if is_blocked_system_auth_app(&snap.key) {
+        return Err(ToolError::Failed(
+            "Secure input cards cannot fill OS system authentication dialogs (Touch ID, Keychain, sudo, UAC). Ask the owner to complete this directly on the computer.".into(),
+        ));
+    }
+
+    let mut fields = Vec::with_capacity(refs.len());
+    let mut bindings = Vec::with_capacity(refs.len());
+    let mut secret_refs = Vec::new();
+    let mut auth_context = false;
+    for (idx, reference) in refs.iter().enumerate() {
+        let node = snap.index.nodes.get(reference).ok_or_else(|| {
+            ToolError::Failed(format!(
+                "Ref {reference} was not found in snapshot {first_snap_id}. Take a new cua_snapshot."
+            ))
+        })?;
+        let Some((kind, label, in_auth_ctx)) = her_desktop::classify_desktop_input(
+            node,
+            snap.index.window_title.as_deref(),
+            snap.index.has_password_input,
+        ) else {
+            return Err(ToolError::Failed(format!(
+                "Field {reference} is not a recognized sensitive credential or verification input (password, verification code, PIN, or sign-in field)."
+            )));
+        };
+        // Re-verify live that the ref is still present and enabled in the app.
+        let states_data = cli
+            .run("get", &[reference.clone(), "--property".into(), "states".into()], &ctx.cancel)
+            .await
+            .map_err(|_| ToolError::Failed(format!("Field {reference} is no longer available in {}. Take a new cua_snapshot.", snap.named)))?;
+        let disabled = states_data
+            .get("states")
+            .and_then(Value::as_array)
+            .is_some_and(|arr| arr.iter().any(|v| v.as_str().is_some_and(|s| s.eq_ignore_ascii_case("disabled"))));
+        if disabled {
+            return Err(ToolError::Failed(format!("Field {reference} is disabled.")));
+        }
+
+        auth_context |= in_auth_ctx;
+        let id = format!("f{}", idx + 1);
+        let (card_kind, secret) = match kind {
+            DesktopFieldKind::Email => (SiteLoginFieldKind::Email, false),
+            DesktopFieldKind::Username => (SiteLoginFieldKind::Username, false),
+            DesktopFieldKind::Password => (SiteLoginFieldKind::Password, true),
+            DesktopFieldKind::OneTimeCode => (SiteLoginFieldKind::OneTimeCode, true),
+        };
+        if secret {
+            secret_refs.push(reference.clone());
+        }
+        fields.push(SiteLoginField { id: id.clone(), label, kind: card_kind, secret });
+        bindings.push(crate::cards::DesktopFieldBinding { id, reference: reference.clone(), secret });
+    }
+    let has_secret = fields.iter().any(|f| f.secret);
+    if !has_secret {
+        let two_step_ok = fields.len() == 1
+            && matches!(fields[0].kind, SiteLoginFieldKind::Email | SiteLoginFieldKind::Username)
+            && auth_context;
+        if !two_step_ok {
+            return Err(ToolError::Failed(
+                "Desktop secure input cards are only for credentials or verification codes (password, verification code, PIN, or two-step sign-in identifier), not general form collection.".into(),
+            ));
+        }
+    }
+
+    // Verify target window is currently open.
+    let live_windows = windows(ctx, &snap.key).await?;
+    if let Some(wid) = &snap.index.window_id
+        && !live_windows.iter().any(|w| &w.id == wid)
+    {
+        return Err(ToolError::Failed(format!(
+            "The window of {} changed or closed. Take a new cua_snapshot.",
+            snap.named
+        )));
+    }
+    if live_windows.is_empty() {
+        return Err(ToolError::Failed(format!("{} has no open window.", snap.named)));
+    }
+
+    let card_id = new_desktop_card_id();
+    let expires = chrono::Utc::now() + chrono::TimeDelta::seconds(crate::cards::SITE_LOGIN_LIFE_SECS);
+    let origin = format!("app://{}", snap.key);
+    let clipped_title = snap
+        .index
+        .window_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(|t| t.chars().take(80).collect::<String>());
+    let card = Card {
+        id: card_id.clone(),
+        kind: CardKind::SiteLogin,
+        title: format!("Enter credentials for {}", snap.named),
+        asked_by: cards.asked_by(),
+        expires_at: expires.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ops: Vec::new(),
+        body: CardBody::SiteLogin(SiteLoginBody {
+            mode: SiteLoginMode::AppFill,
+            origin: origin.clone(),
+            host: snap.named.clone(),
+            title: clipped_title.clone(),
+            browser: None,
+            tab: None,
+            fields: fields.clone(),
+        }),
+    };
+    let binding = crate::cards::DesktopSecretBinding {
+        app_key: snap.key.clone(),
+        app_name: snap.named.clone(),
+        origin,
+        window_id: snap.index.window_id.clone(),
+        window_title: clipped_title,
+        submit_ref: snap.index.submit_ref.clone(),
+        agent_name: agent_name.clone(),
+        fields: bindings,
+    };
+
+    h.shared.sensitive.lock().insert(
+        card_id.clone(),
+        DesktopSensitiveEntry {
+            app_key: binding.app_key.clone(),
+            window_id: binding.window_id.clone(),
+            window_title: binding.window_title.clone(),
+            secret_refs: secret_refs.clone(),
+            pending: true,
+            filled: false,
+        },
+    );
+
+    let shared_for_end = h.shared.clone();
+    let cleanup = Arc::new(move |id: &str, state: CardState| {
+        if state != CardState::Done {
+            shared_for_end.sensitive.lock().remove(id);
+        }
+    });
+
+    let shared_for_show = h.shared.clone();
+    let card_id_for_show = card_id.clone();
+    let before_show = Arc::new(move || {
+        if !shared_for_show.sensitive.lock().contains_key(&card_id_for_show) {
+            return Err("The target app window closed before the secure input card could be shown.".into());
+        }
+        Ok(())
+    });
+
+    let shared_for_fill = h.shared.clone();
+    let cli_for_fill = cli.clone();
+    let binding_for_fill = binding.clone();
+    let card_id_for_fill = card_id.clone();
+    let filler: crate::cards::DesktopSecretFiller = Arc::new(move |values| {
+        let shared = shared_for_fill.clone();
+        let cli = cli_for_fill.clone();
+        let binding = binding_for_fill.clone();
+        let card_id = card_id_for_fill.clone();
+        async move {
+            let cancel = tokio_util::sync::CancellationToken::new();
+            // 1. Re-verify window is still open and matches before writing anything.
+            let win_data = cli
+                .run("list-windows", &["--app".into(), binding.app_key.clone()], &cancel)
+                .await
+                .map_err(|_| format!("{} is no longer reachable.", binding.app_name))?;
+            let list = parse_windows(&win_data);
+            let win_ok = match &binding.window_id {
+                Some(wid) => list.iter().any(|w| w.id == *wid),
+                None => !list.is_empty(),
+            };
+            if !win_ok {
+                shared.sensitive.lock().remove(&card_id);
+                return Err(format!("The window of {} closed before the fields could be filled.", binding.app_name));
+            }
+            // 2. Re-verify every bound ref is still alive and enabled.
+            for field in &binding.fields {
+                let st = cli
+                    .run("get", &[field.reference.clone(), "--property".into(), "states".into()], &cancel)
+                    .await
+                    .map_err(|_| format!("The target window of {} changed before the fields could be filled.", binding.app_name))?;
+                let disabled = st
+                    .get("states")
+                    .and_then(Value::as_array)
+                    .is_some_and(|arr| arr.iter().any(|v| v.as_str().is_some_and(|s| s.eq_ignore_ascii_case("disabled"))));
+                if disabled {
+                    shared.sensitive.lock().remove(&card_id);
+                    return Err(format!("The target input in {} is no longer editable.", binding.app_name));
+                }
+            }
+
+            // Mark filled before writing so observation stays blocked if anything interrupts mid-fill.
+            {
+                let mut sensitive = shared.sensitive.lock();
+                let Some(entry) = sensitive.get_mut(&card_id) else {
+                    return Err("The secure input card is no longer open.".into());
+                };
+                entry.pending = false;
+                entry.filled = true;
+            }
+
+            // 3. Write each field via headless AX `set-value` (fallback `type`), never echoing secrets.
+            for field in &binding.fields {
+                let Some(val) = values.get(&field.id) else {
+                    return Err("The submitted values do not match the card fields.".into());
+                };
+                let set_args = vec![field.reference.clone(), "--".into(), val.clone()];
+                if cli.run_secret("set-value", &set_args, val, &cancel).await.is_err() {
+                    let type_args = vec![field.reference.clone(), "--".into(), val.clone()];
+                    cli.run_secret("type", &type_args, val, &cancel)
+                        .await
+                        .map_err(|_| format!("Could not enter the credentials into {}.", binding.app_name))?;
+                }
+            }
+
+            // 4. Auto-submit via bound submit button, or focus last field + Return.
+            let mut submitted = false;
+            if let Some(submit_ref) = &binding.submit_ref
+                && cli.run("click", std::slice::from_ref(submit_ref), &cancel).await.is_ok()
+            {
+                submitted = true;
+            }
+            if !submitted {
+                if let Some(last) = binding.fields.last() {
+                    let _ = cli.run("focus", std::slice::from_ref(&last.reference), &cancel).await;
+                }
+                let _ = cli
+                    .run("press", &["return".into(), "--app".into(), binding.app_key.clone()], &cancel)
+                    .await;
+            }
+
+            // 5. Brief settle window, then unlock automatically if window closed/changed or secret gone.
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let entry = shared.sensitive.lock().get(&card_id).cloned();
+            let still_present = match entry {
+                Some(ref e) => desktop_secret_still_present(&cli, e, &cancel).await,
+                None => false,
+            };
+            if !still_present {
+                shared.sensitive.lock().remove(&card_id);
+                Ok(crate::cards::DesktopFillOutcome::SubmittedAndAdvanced)
+            } else {
+                Ok(crate::cards::DesktopFillOutcome::FilledStayedOnWindow)
+            }
+        }
+        .boxed()
+    });
+
+    cards.prepare_desktop_secret_card(
+        card,
+        binding.clone(),
+        Some(cleanup),
+        Some(before_show),
+        filler,
+        agent_name.is_some(),
+    );
+
+    // Background watcher: invalidate an Open desktop card immediately if its bound window closes.
+    {
+        let weak_cards = Arc::downgrade(&cards);
+        let shared = h.shared.clone();
+        let cli = cli.clone();
+        let watch_id = card_id.clone();
+        let app_key = binding.app_key.clone();
+        let app_name = binding.app_name.clone();
+        let window_id = binding.window_id.clone();
+        tokio::spawn(async move {
+            let cancel = tokio_util::sync::CancellationToken::new();
+            loop {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                let Some(cards) = weak_cards.upgrade() else { break };
+                if !cards.has(&watch_id) {
+                    break;
+                }
+                let card_state = cards.get(&watch_id).map(|(_, s)| s);
+                if let Some(state) = card_state
+                    && state != CardState::Open
+                {
+                    break;
+                }
+                let win_alive = cli
+                    .run("list-windows", &["--app".into(), app_key.clone()], &cancel)
+                    .await
+                    .ok()
+                    .is_some_and(|data| {
+                        let list = parse_windows(&data);
+                        match &window_id {
+                            Some(wid) => list.iter().any(|w| w.id == *wid),
+                            None => !list.is_empty(),
+                        }
+                    });
+                if !win_alive {
+                    shared.sensitive.lock().remove(&watch_id);
+                    let reason = format!("The window of {app_name} closed before the fields could be filled.");
+                    if card_state == Some(CardState::Open) {
+                        let _ = cards.set(&watch_id, &[CardState::Open], CardState::Failed, Some(reason));
+                    } else {
+                        cards.drop_prepared(&watch_id);
+                    }
+                    break;
+                }
+                if card_state.is_none() && chrono::Utc::now() >= expires {
+                    shared.sensitive.lock().remove(&watch_id);
+                    cards.drop_prepared(&watch_id);
+                    break;
+                }
+            }
+        });
+    }
+
+    let field_summary = fields
+        .iter()
+        .map(|f| {
+            let kind = match f.kind {
+                SiteLoginFieldKind::Email => "email",
+                SiteLoginFieldKind::Username => "username",
+                SiteLoginFieldKind::Password => "password",
+                SiteLoginFieldKind::OneTimeCode => "one_time_code",
+            };
+            format!("{} ({kind}{})", f.label, if f.secret { ", secret" } else { "" })
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    if agent_name.is_some() {
+        return Ok(ToolOutput::text(format!(
+            "Nothing changed yet. Card {card_id} is prepared for {} ({}) with server-verified fields [{field_summary}] and registered in the main conversation. Computer control is blocked while this card is active. Call send_message to \"main\" asking it to show card {card_id} with send_to_user {{type: \"card\", card: \"{card_id}\"}}, then stop your turn and wait for main to notify you once it finishes.",
+            binding.app_name, binding.app_key
+        )));
+    }
+    Ok(ToolOutput::text(format!(
+        "Nothing changed yet. Card {card_id} asks the owner to enter server-verified sensitive fields [{field_summary}] in {} ({}). Computer control is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
+        binding.app_name, binding.app_key
+    )))
 }
 
 /// How input without a ref reached the app.
@@ -1200,6 +1771,7 @@ impl TypedTool for DesktopScreenshot {
     }
 
     async fn run(&self, args: ScreenshotArgs, ctx: ToolCtx) -> Result<ToolOutput, ToolError> {
+        recheck_desktop_sensitive_cleared(&ctx).await;
         blocked_by_sensitive(&ctx)?;
         let key = approved(&ctx)?;
         let handle = handle(&ctx)?;
@@ -1333,6 +1905,7 @@ mod tests {
             asked: "TextEdit".into(),
             named: "文本编辑".into(),
             key: "com.apple.TextEdit".into(),
+            index: her_desktop::DesktopSnapshotIndex::default(),
         };
         handle.remember("s1", snap);
         assert_eq!(handle.ref_belongs_to("@s1:e2", "com.apple.TextEdit").unwrap(), "com.apple.TextEdit");
@@ -1396,11 +1969,13 @@ mod tests {
 echo "$*" >> "{d}/log"
 shift 2
 case "$1" in
-  list-apps) echo '{{"ok":true,"data":{{"apps":[{{"name":"Chat","bundle_id":"com.example.chat","presentation":"foreground"}}]}}}}' ;;
+  list-apps) if [ -f "{d}/apps.json" ]; then cat "{d}/apps.json"; else echo '{{"ok":true,"data":{{"apps":[{{"name":"Chat","bundle_id":"com.example.chat","presentation":"foreground"}}]}}}}'; fi ;;
   list-windows) cat "{d}/windows.json" ;;
   screenshot) for a; do last="$a"; done; cp "{d}/shot.png" "$last"; echo '{{"ok":true,"data":{{"scale_factor":2.0}}}}' ;;
   clipboard-get) if [ -f "{d}/clipboard.json" ]; then cat "{d}/clipboard.json"; else echo '{{"ok":true,"data":{{"type":"text","text":"mine"}}}}'; fi ;;
   snapshot) if [ -f "{d}/focused.json" ]; then cat "{d}/focused.json"; else echo '{{"ok":false,"error":{{"code":"ACTION_NOT_SUPPORTED","message":"Nothing shown","disposition":{{"delivery":"not_delivered","retry":"safe"}}}}}}'; fi ;;
+  set-value) if [ -f "{d}/set_value.json" ]; then cat "{d}/set_value.json"; else echo '{{"ok":true,"data":{{"disposition":{{"delivery":"delivered_verified"}}}}}}'; fi ;;
+  click) if [ -f "{d}/click.json" ]; then cat "{d}/click.json"; else echo '{{"ok":true,"data":{{"disposition":{{"delivery":"delivered_verified"}}}}}}'; fi ;;
   type) if [ -f "{d}/type.json" ]; then cat "{d}/type.json"; else echo '{{"ok":true,"data":{{"disposition":{{"delivery":"delivered_verified"}}}}}}'; fi ;;
   press) case "$*" in *--headed*) echo '{{"ok":true,"data":{{"disposition":{{"delivery":"delivered_unverified"}}}}}}' ;;
     *) if [ -f "{d}/press.json" ]; then cat "{d}/press.json"; else echo '{{"ok":true,"data":{{"disposition":{{"delivery":"delivered_unverified"}}}}}}'; fi ;; esac ;;
@@ -1696,5 +2271,148 @@ esac
             assert_eq!(installed_key("TextEdit").await, "com.apple.TextEdit");
             assert_eq!(installed_key("No Such App Anywhere").await, "No Such App Anywhere");
         }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn desktop_ask_owner_card_end_to_end_and_security_boundaries() {
+        let fake = FakeCli::new();
+        let ctx = fake.ctx("fake-cli-ask-owner");
+        let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let emitter = Arc::new(crate::emitter::Emitter::new(event_tx));
+        let cards = Arc::new(crate::cards::Cards::new(emitter, tx));
+        ctx.session_state.insert(cards.clone());
+
+        // 1. OS system auth dialog app is strictly refused.
+        fake.answer(
+            "windows",
+            json!({"ok": true, "data": [{"id": "w-1", "title": "安全验证", "is_focused": true, "accessible": true,
+                "bounds": {"x": 100.0, "y": 50.0, "width": 300.0, "height": 200.0}}]}),
+        );
+        fake.answer(
+            "apps",
+            json!({"ok": true, "data": {"apps": [
+                {"name": "Chat", "bundle_id": "com.example.chat", "presentation": "foreground"},
+                {"name": "SecurityAgent", "bundle_id": "com.apple.SecurityAgent", "presentation": "foreground"}
+            ]}}),
+        );
+        fake.answer(
+            "focused",
+            json!({"ok": true, "data": {
+                "snapshot_id": "s1",
+                "app": "Chat",
+                "window": {"id": "w-1", "title": "安全验证"},
+                "tree": {
+                    "role": "window",
+                    "children": [
+                        {"role": "statictext", "name": "校验码："},
+                        {"role": "textfield", "name": "6位数字", "ref_id": "@s1:e1", "states": ["enabled"], "available_actions": ["SetValue", "TypeText"]},
+                        {"role": "button", "name": "点击获取验证码", "ref_id": "@s1:e2", "states": ["enabled"]},
+                        {"role": "button", "name": "确定", "ref_id": "@s1:e3", "states": ["enabled"]},
+                        {"role": "securetextfield", "name": "主密码", "ref_id": "@s1:e4", "states": ["enabled"], "available_actions": ["TypeText"]},
+                        {"role": "textfield", "name": "搜索备注", "ref_id": "@s1:e5", "states": ["enabled"], "available_actions": ["SetValue"]}
+                    ]
+                }
+            }}),
+        );
+
+        let snap = Typed::new(DesktopSnapshot).execute(json!({"app": "Chat"}), ctx.clone()).await.unwrap();
+        assert!(text_of(&snap).contains("@s1:e1"), "{}", text_of(&snap));
+
+        // 1a. Refusing OS auth app.
+        let os_err = Typed::new(DesktopAct)
+            .execute(json!({"app": "SecurityAgent", "action": "ask_owner", "refs": ["@s1:e1"]}), ctx.clone())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(os_err.contains("OS system authentication"), "{os_err}");
+
+        // 1b. Refusing unrelated search input.
+        let search_err = Typed::new(DesktopAct)
+            .execute(json!({"app": "Chat", "action": "ask_owner", "refs": ["@s1:e5"]}), ctx.clone())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(search_err.contains("recognized"), "{search_err}");
+
+        // 2. Valid OTP + Password refs prepare an AppFill card and lock observation.
+        let prepared = Typed::new(DesktopAct)
+            .execute(json!({"app": "Chat", "action": "ask_owner", "refs": ["@s1:e4", "@s1:e1"]}), ctx.clone())
+            .await
+            .unwrap();
+        let prep_text = text_of(&prepared);
+        assert!(prep_text.contains("send_to_user"), "{prep_text}");
+        let card_id = prep_text
+            .split("Card ")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .unwrap()
+            .to_string();
+
+        // While card is pending, cua_snapshot / cua_screenshot / cua_act are ALL blocked.
+        assert!(Typed::new(DesktopSnapshot).execute(json!({"app": "Chat"}), ctx.clone()).await.is_err());
+        assert!(Typed::new(DesktopScreenshot).execute(json!({"app": "Chat"}), ctx.clone()).await.is_err());
+        assert!(
+            Typed::new(DesktopAct)
+                .execute(json!({"app": "Chat", "action": "click", "ref": "@s1:e3"}), ctx.clone())
+                .await
+                .is_err()
+        );
+
+        // Show card and inspect its protocol payload.
+        let card = cards.show(&card_id).unwrap();
+        let body = card.site_login_body().unwrap();
+        assert_eq!(body.mode, her_protocol::card::SiteLoginMode::AppFill);
+        assert_eq!(body.fields.len(), 2);
+        assert!(body.fields.iter().all(|f| f.secret));
+
+        // 3. Error path: if set-value fails with an error echoing the secret, Cli::run_secret scrubs it!
+        fake.answer(
+            "set_value",
+            json!({"ok": false, "error": {"code": "ACTION_FAILED", "message": "failed writing super-secret-otp-654321"}}),
+        );
+        fake.answer(
+            "type",
+            json!({"ok": false, "error": {"code": "ACTION_FAILED", "message": "failed typing super-secret-pw-999"}}),
+        );
+        let mut bad_vals = std::collections::HashMap::new();
+        bad_vals.insert(body.fields[0].id.clone(), "super-secret-pw-999".to_string());
+        bad_vals.insert(body.fields[1].id.clone(), "super-secret-otp-654321".to_string());
+        let err = cards.fill_desktop_secret(&card_id, bad_vals.clone()).await.unwrap().unwrap_err();
+        assert!(!err.contains("super-secret-pw-999"), "secret leaked in error: {err}");
+        assert!(!err.contains("super-secret-otp-654321"), "secret leaked in error: {err}");
+
+        // 4. Success path: if `set-value` fails, filler falls back to `type`, clicks `确定` (@s1:e3,
+        // NOT `点击获取验证码` @s1:e2), and unlocks when the dialog window transitions to the main view!
+        let _ = std::fs::remove_file(fake.dir.path().join("type.json"));
+        fake.calls(); // clear call log before fill
+        // After submit, the window transitions to the unlocked main view (title changes, no secret inputs).
+        fake.answer(
+            "windows",
+            json!({"ok": true, "data": [{"id": "w-1", "title": "主界面", "is_focused": true, "accessible": true,
+                "bounds": {"x": 100.0, "y": 50.0, "width": 300.0, "height": 200.0}}]}),
+        );
+        fake.answer(
+            "focused",
+            json!({"ok": true, "data": {
+                "snapshot_id": "s2",
+                "app": "Chat",
+                "window": {"id": "w-1", "title": "主界面"},
+                "tree": {"role": "window", "children": [{"role": "statictext", "name": "已解锁"}]}
+            }}),
+        );
+        let outcome = cards.fill_desktop_secret(&card_id, bad_vals).await.unwrap().unwrap();
+        assert_eq!(outcome, crate::cards::DesktopFillOutcome::SubmittedAndAdvanced);
+        let calls = fake.calls();
+        assert!(calls.iter().any(|c| c.starts_with("set-value @s1:e4")), "expected set-value attempt: {calls:?}");
+        assert!(calls.iter().any(|c| c.starts_with("type @s1:e4")), "expected type fallback when set-value fails: {calls:?}");
+        assert!(calls.iter().any(|c| c.starts_with("type @s1:e1")), "expected type fallback for e1: {calls:?}");
+        assert!(calls.iter().any(|c| c.starts_with("click @s1:e3")), "expected click on 确定 (@s1:e3): {calls:?}");
+        assert!(!calls.iter().any(|c| c.starts_with("click @s1:e2")), "must NOT click 获取验证码 (@s1:e2): {calls:?}");
+
+        // Observation is now unlocked!
+        let unlocked = Typed::new(DesktopSnapshot).execute(json!({"app": "Chat"}), ctx).await.unwrap();
+        assert!(text_of(&unlocked).contains("已解锁"), "{}", text_of(&unlocked));
     }
 }

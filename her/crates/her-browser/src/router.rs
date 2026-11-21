@@ -761,12 +761,16 @@ impl Router {
                 let url = format!("{}{}", str_of(frame, "url"), str_of(frame, "urlFragment"));
                 let mut state = tab.state.lock();
                 if target.page && parent.is_none() {
+                    let loader = str_of(frame, "loaderId");
+                    let new_doc = state.frames.get(&id).is_none_or(|prev| prev.loader != loader);
                     state.main_frame = Some(id.clone());
                     state.url = url.clone();
-                    // A new document: the old frames' children report their own detach.
+                    if new_doc {
+                        // A new main document replaces all child frames from the previous document.
+                        state.frames.retain(|fid, _| fid == &id);
+                    }
                     state.loading = true;
                     // The old document's requests may never report their end.
-                    let loader = str_of(frame, "loaderId");
                     state.inflight.retain(|_, r| r.loader == loader);
                 }
                 state.frames.insert(

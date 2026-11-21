@@ -126,6 +126,22 @@ impl AgentLink {
     fn tree(&self) -> Result<Arc<AgentTree>, ToolError> {
         self.tree.upgrade().ok_or_else(|| ToolError::Failed("the session is closing".into()))
     }
+
+    /// Her's main conversation's `Cards` and this sub-agent's name, if the main conversation
+    /// supports secure cards.
+    pub(crate) fn root_cards(&self) -> Option<(Arc<crate::cards::Cards>, String)> {
+        let tree = self.tree.upgrade()?;
+        let root = tree.root().ok()?;
+        let cards = root.tool_state.get::<crate::cards::Cards>()?;
+        let name = tree
+            .state
+            .lock()
+            .agents
+            .iter()
+            .find(|a| a.id == self.id)
+            .map(|a| a.name.clone())?;
+        Some((cards, name))
+    }
 }
 
 /// The main session, once it runs. Weak: the session owns the tree, not the other way round.
@@ -1010,9 +1026,15 @@ impl AgentTree {
             agent.status = report.status;
             agent.redirect = false;
             // A finished agent keeps its session for later messages, but not its tabs
-            // (browser-design D-206); a later browser call starts afresh.
+            // (browser-design D-206), unless a `site_login` sensitive guard is still waiting for
+            // the owner to fill & submit into that tab.
             if let Some(tool_state) = &agent.tool_state {
-                tool_state.remove::<her_browser::BrowserSession>();
+                let keep = tool_state
+                    .get::<her_browser::BrowserSession>()
+                    .is_some_and(|s| !s.is_dead() && s.keep_across_settle());
+                if !keep {
+                    tool_state.remove::<her_browser::BrowserSession>();
+                }
             }
             let route = std::mem::replace(&mut agent.route, Route::Mail);
             let name = agent.name.clone();
