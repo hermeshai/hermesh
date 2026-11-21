@@ -194,7 +194,7 @@ impl Server {
 
     fn invalidate_chrome_takeovers_for_host(&self, host: u64, note: &str) {
         for hub in self.hubs() {
-            let Some(cards) = &hub.shared.cards else { continue };
+            let Some(cards) = hub.shared.cards.as_ref().and_then(std::sync::Weak::upgrade) else { continue };
             for (card_id, _, binding) in cards.active_chrome_takeovers() {
                 if binding.extension_host == host {
                     let _ = cards.set(
@@ -213,7 +213,7 @@ impl Server {
             if !sessions.iter().any(|id| id == hub.shared.session.id.as_ref()) {
                 continue;
             }
-            let Some(cards) = &hub.shared.cards else { continue };
+            let Some(cards) = hub.shared.cards.as_ref().and_then(std::sync::Weak::upgrade) else { continue };
             for (card_id, _, _) in cards.active_chrome_takeovers() {
                 let _ = cards.set(
                     &card_id,
@@ -227,7 +227,7 @@ impl Server {
 
     fn reconcile_chrome_takeovers_on_tabs(&self, host: u64, sessions: &BTreeMap<String, Vec<YoursTab>>) {
         for hub in self.hubs() {
-            let Some(cards) = &hub.shared.cards else { continue };
+            let Some(cards) = hub.shared.cards.as_ref().and_then(std::sync::Weak::upgrade) else { continue };
             let session_id = hub.shared.session.id.as_ref();
             for (card_id, state, binding) in cards.active_chrome_takeovers() {
                 if binding.extension_host != host {
