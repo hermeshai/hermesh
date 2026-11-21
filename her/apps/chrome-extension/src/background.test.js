@@ -378,3 +378,110 @@ test("browser activity reconnects immediately out of backoff while respecting co
   await waitFor(() => ports[3].messages.some((m) => m.control?.kind === "tabs"));
 });
 
+test("reveal with target_id activates only the exact session tab and detach/url change report immediately", async (t) => {
+  const old = {
+    agentTabs: [
+      [21, { session: "s1", url: "https://one.example/login", title: "One" }],
+      [22, { session: "s1", url: "https://two.example/", title: "Two" }],
+      [23, { session: "s2", url: "https://other.example/", title: "Other" }],
+    ],
+  };
+  let saved = { her: old };
+  let local = {};
+  const messages = [];
+  const activated = [];
+  const focused = [];
+  let detached = [];
+  const port = { onMessage: event(), onDisconnect: event(), postMessage: (m) => messages.push(m) };
+  const area = (read, write) => ({
+    get: async () => structuredClone(read()),
+    set: async (value) => write({ ...read(), ...structuredClone(value) }),
+    remove: async (key) => { const value = { ...read() }; delete value[key]; write(value); },
+  });
+  const chrome = {
+    storage: { session: area(() => saved, (v) => { saved = v; }), local: area(() => local, (v) => { local = v; }) },
+    runtime: {
+      onMessage: event(), onStartup: event(), onInstalled: event(), onUpdateAvailable: event(),
+      connectNative: () => port, getManifest: () => ({ version: "0.2.2", update_url: "https://unused.test/" }),
+      sendMessage: async () => {},
+    },
+    tabs: {
+      query: async () => [{ id: 21 }, { id: 22 }, { id: 23 }],
+      update: async (tabId, props) => { activated.push({ tabId, props }); return { id: tabId, windowId: 700 + tabId }; },
+      onCreated: event(), onActivated: event(), onUpdated: event(), onRemoved: event(),
+      remove: async () => {},
+    },
+    debugger: {
+      onEvent: event(), onDetach: event(),
+      attach: async () => {},
+      detach: async ({ tabId }) => { detached.push(tabId); },
+      sendCommand: async () => ({}),
+    },
+    windows: {
+      WINDOW_ID_NONE: -1, onCreated: event(), onFocusChanged: event(), onRemoved: event(),
+      update: async (windowId, props) => { focused.push({ windowId, props }); },
+    },
+    tabGroups: { update: async () => {} },
+    alarms: { create: () => {}, onAlarm: event() },
+    action: { setTitle: async () => {}, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {} },
+    i18n: { getMessage: (name) => name },
+  };
+  t.mock.method(globalThis, "fetch", async () => assert.fail("the worker must not fetch with a store manifest"));
+  const before = globalThis.chrome;
+  globalThis.chrome = chrome;
+  t.after(() => { if (before === undefined) delete globalThis.chrome; else globalThis.chrome = before; });
+
+  await import("./background.js?test=chrome-takeover-isolation");
+  await waitFor(() => messages.some((m) => m.hello));
+  port.onMessage.emit({ status: "connected" });
+  await waitFor(() => messages.some((m) => m.control?.kind === "tabs"));
+
+  // Exact target_id reveals that exact tab.
+  port.onMessage.emit({ control: { kind: "reveal", session_id: "s1", target_id: "T21" } });
+  await waitFor(() => activated.length === 1 && focused.length === 1);
+  assert.equal(activated[0].tabId, 21);
+  assert.equal(focused[0].windowId, 721);
+
+  // Target owned by another session or missing target must NOT fall back to another tab.
+  port.onMessage.emit({ control: { kind: "reveal", session_id: "s1", target_id: "T23" } });
+  port.onMessage.emit({ control: { kind: "reveal", session_id: "s1", target_id: "T999" } });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(activated.length, 1);
+
+  // Attach then release via Target.detachFromTarget { herRelease: true } detaches & reports immediately.
+  const call = async (id, method, params = {}) => {
+    port.onMessage.emit({ stream: 1, data: { id, method, params } });
+    await waitFor(() => messages.some((m) => m.stream === 1 && m.data?.id === id));
+    return messages.find((m) => m.stream === 1 && m.data?.id === id).data;
+  };
+  await call(1, "Target.getTargets", { herSession: "s1" });
+  await call(2, "Target.attachToTarget", { targetId: "T21" });
+  await waitFor(() =>
+    messages
+      .filter((m) => m.control?.kind === "tabs")
+      .at(-1)
+      ?.control?.sessions?.s1?.find((x) => x.target_id === "T21")?.attached === true,
+  );
+  const beforeDetach = messages.filter((m) => m.control?.kind === "tabs").length;
+  await call(3, "Target.detachFromTarget", { targetId: "T21", herRelease: true });
+  assert.deepEqual(detached, [21]);
+  const afterDetach = messages.filter((m) => m.control?.kind === "tabs");
+  assert.ok(afterDetach.length > beforeDetach, "detach must report tabs immediately");
+  assert.equal(afterDetach.at(-1).control.sessions.s1.find((x) => x.target_id === "T21").attached, false);
+
+  // URL change and tab removal report immediately (no 100ms stale window).
+  const beforeUrl = messages.filter((m) => m.control?.kind === "tabs").length;
+  chrome.tabs.onUpdated.emit(21, { url: "https://evil.example/phish" });
+  const afterUrl = messages.filter((m) => m.control?.kind === "tabs");
+  assert.ok(afterUrl.length > beforeUrl);
+  assert.equal(afterUrl.at(-1).control.sessions.s1.find((x) => x.target_id === "T21").url, "https://evil.example/phish");
+
+  const beforeRemove = messages.filter((m) => m.control?.kind === "tabs").length;
+  chrome.tabs.onRemoved.emit(21);
+  const afterRemove = messages.filter((m) => m.control?.kind === "tabs");
+  assert.ok(afterRemove.length > beforeRemove);
+  assert.equal(afterRemove.at(-1).control.sessions.s1.find((x) => x.target_id === "T21"), undefined);
+  await waitFor(() => saved.her.agentTabs.length === 2);
+});
+
+

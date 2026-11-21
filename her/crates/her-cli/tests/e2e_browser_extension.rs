@@ -2107,3 +2107,424 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
         assert!(!text.contains(DUMMY_EMAIL), "email leaked into {}", path.display());
     }
 }
+
+
+/// Complete isolated temporary Chrome profile interactive regression for local Chrome `site_login`
+/// (`chrome_takeover`) cards in Her's conversation:
+/// - Does NOT switch `browser.default` (stays `"builtin"`).
+/// - Uses ONLY an isolated temporary Chrome profile and local harmless loopback fixture with
+///   fictional dummy credentials and a fictional HttpOnly cookie.
+/// - Verifies verified origin & target tab binding, debugger detachment before sensitive steps,
+///   model unobservability across all browser tools while `Open` and `SignIn`, no auto-submit,
+///   safe post-login recovery, cancellation, page/origin change invalidation, extension disconnect
+///   invalidation, and zero secret/cookie leakage in events, transcripts, session logs, and disk.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chrome_login_card_isolated_takeover_in_temp_profile() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::AsyncReadExt;
+
+    let Some(chrome_exe) = her_browser::launch::find_executable() else {
+        eprintln!("no Chromium-family browser installed; skipping");
+        return;
+    };
+
+    const DUMMY_USER: &str = "fictional-user-e2e@example.test";
+    const DUMMY_PASS: &str = "FICTIONAL_PASS_CANARY_9x4k7m2q";
+    const DUMMY_COOKIE: &str = "FICTIONAL_COOKIE_8p3z5w1v";
+
+    // Local harmless fixture server: login form -> sets HttpOnly dummy cookie -> dashboard.
+    let submits = Arc::new(AtomicUsize::new(0));
+    let submits_srv = submits.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let origin = format!("http://127.0.0.1:{port}");
+    let alt_origin = format!("http://localhost:{port}");
+
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let submits_srv = submits_srv.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 8192];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let mut lines = req.lines();
+                let first = lines.next().unwrap_or("");
+                let mut parts = first.split_whitespace();
+                let method = parts.next().unwrap_or("GET");
+                let path = parts.next().unwrap_or("/");
+                let has_cookie = req.contains(&format!("session_canary={DUMMY_COOKIE}"));
+                let resp = if method == "POST" && path == "/login" {
+                    submits_srv.fetch_add(1, Ordering::SeqCst);
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: /dashboard\r\nSet-Cookie: session_canary={DUMMY_COOKIE}; HttpOnly; Path=/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                } else if path == "/dashboard" {
+                    let body = if has_cookie {
+                        "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Signed In Dashboard</h1><p>Welcome fictional account</p></body></html>"
+                    } else {
+                        "<!doctype html><html><head><title>Not Signed In</title></head><body><h1>Please Sign In</h1></body></html>"
+                    };
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                } else if path == "/other" {
+                    let body = "<!doctype html><html><head><title>Other Page</title></head><body><h1>Redirected Elsewhere</h1></body></html>";
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                } else {
+                    let body = r#"<!doctype html><html><head><title>Fixture Chrome Sign In</title></head><body>
+                        <h1>Fixture Sign In</h1>
+                        <form id="login-form" action="/login" method="post">
+                          <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+                          <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password">
+                          <button id="submit-btn" type="submit">Sign In</button>
+                        </form>
+                      </body></html>"#;
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                };
+                let _ = stream.write_all(resp.as_bytes()).await;
+            });
+        }
+    });
+
+    // Keep default = "builtin" (never switch the default browser!).
+    let env = TestEnv::new(
+        "bypass-permissions",
+        &format!(
+            "[browser]\nenabled = true\nextension = true\ndefault = \"builtin\"\nheadless = true\nexecutable = {:?}\n",
+            chrome_exe.display().to_string()
+        ),
+    )
+    .await;
+    let socket = env.home.path().join("run").join("her.sock");
+    let profile = env.work().join("chrome-profile");
+    let (mut service, client, demux) = serve(&env, &socket, None).await;
+    let installed = env
+        .her(&["browser", "extension", "install", "--user-data-dir", profile.to_str().unwrap()])
+        .output()
+        .await
+        .unwrap();
+    assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+    let (chrome, chrome_process) = chrome_with_extension(&env, &profile, &chrome_exe).await;
+    status_until(&client, "extension connected", |s| s["extension"]["in_use"] == true).await;
+
+    // Open Her's bot conversation (where secure cards live).
+    let bots = client.request("bots/subscribe", Value::Null).await.unwrap();
+    let bot = bots["bots"][0]["id"].as_str().unwrap().to_string();
+    let opened = client
+        .request("bots/open", json!({"bot_id": bot, "events": {"exclude": ["text_delta", "thinking_delta", "tool_call_delta", "tool_progress"]}}))
+        .await
+        .unwrap();
+    let session = opened["session_id"].as_str().unwrap().to_string();
+    let mut events = demux.subscribe(&session);
+    let schema = common::SchemaCheck::new(&["Card", "CardsAnswerResult", "Event"]);
+    let mut all_events: Vec<Value> = Vec::new();
+
+    async fn wait_events(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<her_rpc::Incoming>,
+        all: &mut Vec<Value>,
+        stop: impl Fn(&Value) -> bool,
+    ) -> Vec<Value> {
+        let mut seen = Vec::new();
+        loop {
+            let incoming = common::recv(rx).await;
+            let event = incoming.params()["event"].clone();
+            all.push(event.clone());
+            let done = stop(&event);
+            seen.push(event);
+            if done {
+                return seen;
+            }
+        }
+    }
+
+    let ended = |e: &Value| matches!(e["type"].as_str(), Some("task_completed" | "task_failed" | "task_interrupted"));
+
+    // Confirm default browser is still "builtin".
+    let cfg_before = client.request("config/read", json!({})).await.unwrap();
+    assert_eq!(cfg_before["config"]["browser"]["default"], "builtin", "{cfg_before}");
+
+    // ---- 1. Happy path: verified origin & tab, debugger detached, model blocked during Open & SignIn, native sign-in, safe recovery ----
+    start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login]] sign in")).await;
+    let turn = wait_events(&mut events, &mut all_events, ended).await;
+    let card = turn
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .unwrap_or_else(|| panic!("expected chrome takeover card: {turn:#?}"));
+    schema.check("Card", &card);
+    assert_eq!(card["kind"], "site_login");
+    assert_eq!(card["ops"], json!([]));
+    assert_eq!(card["asked_by"], "owner");
+    assert_eq!(card["body"]["mode"], "chrome_takeover");
+    assert_eq!(card["body"]["origin"], origin);
+    assert_eq!(card["body"]["tab"], "y1");
+    assert_eq!(card["body"]["fields"], json!([]));
+    assert!(card["body"]["browser"].as_str().is_some_and(|b| b.contains("Chrome")), "{card}");
+
+    // Debugger must ALREADY be detached before the user even touches the card.
+    status_until(&client, "tab detached before takeover", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{origin}/login") && t.get("attached").is_none())
+    })
+    .await;
+    let target_id_for = |url_sub: &str, chrome: std::sync::Arc<her_browser::cdp::Conn>| {
+        let url_sub = url_sub.to_string();
+        async move {
+            let targets = chrome.send(None, "Target.getTargets", json!({})).await.unwrap();
+            targets["targetInfos"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["type"] == "page" && t["url"].as_str().unwrap_or("").contains(&url_sub))
+                .cloned()
+        }
+    };
+    let cdp_target = target_id_for("/login", chrome.clone()).await.expect("login tab in Chrome");
+    assert_eq!(cdp_target["attached"], false, "Chrome debugger must be detached while card is Open: {cdp_target}");
+
+    // Model attempts to observe/act while card is Open -> ALL blocked, debugger stays detached!
+    start_prompt(&client, &session, "[[mock:chrome_probe:y1]] probe open").await;
+    let probe_open = wait_events(&mut events, &mut all_events, ended).await;
+    let probe_results: Vec<&Value> = probe_open
+        .iter()
+        .filter(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "call_tool")
+        .collect();
+    assert_eq!(probe_results.len(), 6, "{probe_results:#?}");
+    for r in &probe_results[..5] {
+        assert_eq!(r["result"]["is_error"], true, "observation/action must be blocked while Open: {r}");
+        assert!(r["result"]["content"][0]["text"].as_str().unwrap_or("").contains("paused"), "{r}");
+    }
+    assert!(
+        probe_results[5]["result"]["content"][0]["text"].as_str().unwrap_or("").contains("paused"),
+        "browser_tabs must report Chrome paused without attaching: {}",
+        probe_results[5]
+    );
+    assert_eq!(target_id_for("/login", chrome.clone()).await.unwrap()["attached"], false);
+
+    // User confirms verified origin & target tab -> Open -> SignIn, tab brought to front, zero auto-submit!
+    let started = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card["id"], "answer": {"decision": "takeover_start"}}))
+        .await
+        .unwrap();
+    schema.check("CardsAnswerResult", &started);
+    assert_eq!(started["state"], "sign_in", "{started}");
+    let sign_in_ev = wait_events(&mut events, &mut all_events, |e| e["type"] == "card_changed" && e["state"] == "sign_in").await;
+    schema.check("Event", sign_in_ev.last().unwrap());
+    assert_eq!(submits.load(Ordering::SeqCst), 0, "must never auto-submit on takeover_start");
+    let active_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut active_in_chrome = Value::Bool(false);
+    while tokio::time::Instant::now() < active_deadline {
+        active_in_chrome = worker(&chrome, &format!("chrome.tabs.query({{url: {}}}).then(t => t[0]?.active)", json!(format!("{origin}/login")))).await;
+        if active_in_chrome == true {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(active_in_chrome, true, "takeover_start must bring bound tab to front");
+
+    // Model attempts to observe/act while card is SignIn -> STILL blocked, debugger STILL detached!
+    start_prompt(&client, &session, "[[mock:chrome_probe:y1]] probe signin").await;
+    let probe_signin = wait_events(&mut events, &mut all_events, ended).await;
+    let probe_results2: Vec<&Value> = probe_signin
+        .iter()
+        .filter(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "call_tool")
+        .collect();
+    for r in &probe_results2[..5] {
+        assert_eq!(r["result"]["is_error"], true, "observation/action must be blocked while SignIn: {r}");
+    }
+    assert_eq!(target_id_for("/login", chrome.clone()).await.unwrap()["attached"], false);
+
+    // Simulate user signing in natively in Chrome (completely outside Her, using fictional data).
+    let login_target = target_id_for("/login", chrome.clone()).await.unwrap()["targetId"].as_str().unwrap().to_string();
+    evaluate_in(
+        &chrome,
+        &login_target,
+        &format!(
+            "document.getElementById('u').value = {}; document.getElementById('p').value = {}; document.getElementById('login-form').submit(); true",
+            json!(DUMMY_USER),
+            json!(DUMMY_PASS)
+        ),
+    )
+    .await;
+    status_until(&client, "native Chrome sign-in reached dashboard", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{origin}/dashboard") && t.get("attached").is_none())
+    })
+    .await;
+    assert_eq!(submits.load(Ordering::SeqCst), 1);
+
+    // User clicks "I'm Signed In" -> SignIn -> Done with fixed status only -> Her wakes & safely reads dashboard!
+    let completed = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card["id"], "answer": {"decision": "takeover_done"}}))
+        .await
+        .unwrap();
+    schema.check("CardsAnswerResult", &completed);
+    assert_eq!(completed["state"], "done", "{completed}");
+    let note = completed["note"].as_str().unwrap();
+    assert_eq!(note, format!("The owner completed native Chrome sign-in on {origin} (tab y1)."));
+    let resumed = wait_events(&mut events, &mut all_events, ended).await;
+    let sent_text: String = resumed
+        .iter()
+        .filter(|e| e["type"] == "tool_started" && e["name"] == "send_to_user")
+        .filter_map(|e| e["args"]["text"].as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(sent_text.contains("Signed In Dashboard"), "Her must safely resume reading signed-in page: {sent_text}");
+
+    // Default browser STILL untouched!
+    let cfg_after = client.request("config/read", json!({})).await.unwrap();
+    assert_eq!(cfg_after["config"]["browser"]["default"], "builtin", "{cfg_after}");
+
+    // ---- 2. Cancel (decline) invalidates cleanly and falls back to manual login ----
+    start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login|y1]] cancel test")).await;
+    let turn = wait_events(&mut events, &mut all_events, ended).await;
+    let card_cancel = turn
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .unwrap();
+    let declined = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card_cancel["id"], "answer": {"decision": "decline"}}))
+        .await
+        .unwrap();
+    assert_eq!(declined["state"], "declined");
+    assert!(declined["note"].as_str().unwrap_or("").contains("manual login"), "{declined}");
+    let _ = wait_events(&mut events, &mut all_events, ended).await;
+
+    // ---- 3. Page/URL change while Open immediately invalidates card ----
+    start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login|y1]] page change")).await;
+    let turn = wait_events(&mut events, &mut all_events, ended).await;
+    let card_nav = turn
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .unwrap();
+    status_until(&client, "detached before redirect", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{origin}/login") && t.get("attached").is_none())
+    })
+    .await;
+    let tab_id_num = worker(&chrome, &format!("chrome.tabs.query({{url: {}}}).then(t => t[0].id)", json!(format!("{origin}/login")))).await;
+    worker(&chrome, &format!("chrome.tabs.update({tab_id_num}, {{url: {}}})", json!(format!("{origin}/other")))).await;
+    let failed_nav = wait_events(&mut events, &mut all_events, |e| {
+        e["type"] == "card_changed" && e["card_id"] == card_nav["id"] && e["state"] == "failed"
+    })
+    .await;
+    assert!(failed_nav.last().unwrap()["note"].as_str().unwrap_or("").contains("manual login"));
+    let _ = wait_events(&mut events, &mut all_events, ended).await;
+    let stale_err = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card_nav["id"], "answer": {"decision": "takeover_start"}}))
+        .await
+        .unwrap_err();
+    assert_eq!(stale_err.data.as_ref().and_then(|d| d["kind"].as_str()), Some("card_ended"));
+
+    // ---- 4. Origin changed while SignIn invalidates on takeover_done (no URL leak) ----
+    start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login|y1]] origin swap")).await;
+    let turn = wait_events(&mut events, &mut all_events, ended).await;
+    let card_origin = turn
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .unwrap();
+    status_until(&client, "detached before origin swap", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{origin}/login") && t.get("attached").is_none())
+    })
+    .await;
+    let started2 = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card_origin["id"], "answer": {"decision": "takeover_start"}}))
+        .await
+        .unwrap();
+    assert_eq!(started2["state"], "sign_in");
+    let tab_id_num = worker(&chrome, &format!("chrome.tabs.query({{url: {}}}).then(t => t[0].id)", json!(format!("{origin}/login")))).await;
+    worker(&chrome, &format!("chrome.tabs.update({tab_id_num}, {{url: {}}})", json!(format!("{alt_origin}/other")))).await;
+    status_until(&client, "tab moved to alt origin", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{alt_origin}/other"))
+    })
+    .await;
+    let bad_done = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card_origin["id"], "answer": {"decision": "takeover_done"}}))
+        .await
+        .unwrap();
+    assert_eq!(bad_done["state"], "failed", "{bad_done}");
+    assert!(bad_done["note"].as_str().unwrap_or("").contains("manual login"), "{bad_done}");
+    assert!(!bad_done["note"].as_str().unwrap_or("").contains(&alt_origin), "note must not leak new origin: {bad_done}");
+    let _ = wait_events(&mut events, &mut all_events, ended).await;
+
+    // ---- 5. Extension disconnect while card is SignIn immediately invalidates card ----
+    start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login|y1]] disconnect")).await;
+    let turn = wait_events(&mut events, &mut all_events, ended).await;
+    let card_disc = turn
+        .iter()
+        .find(|e| e["type"] == "tool_completed" && e["result"]["tool_name"] == "send_to_user" && e["result"]["is_error"] == false)
+        .map(|e| e["result"]["details"]["card"].clone())
+        .unwrap();
+    status_until(&client, "detached before disconnect", |s| {
+        s["tabs"][&session]
+            .as_array()
+            .and_then(|arr| arr.first())
+            .is_some_and(|t| t["url"] == format!("{origin}/login") && t.get("attached").is_none())
+    })
+    .await;
+    let started3 = client
+        .request("cards/answer", json!({"session_id": session, "card_id": card_disc["id"], "answer": {"decision": "takeover_start"}}))
+        .await
+        .unwrap();
+    assert_eq!(started3["state"], "sign_in");
+    let hosts = std::process::Command::new("/usr/bin/pgrep")
+        .args(["-P", &chrome_process.id().unwrap().to_string(), "-f", "native-host"])
+        .output()
+        .unwrap();
+    for pid in String::from_utf8_lossy(&hosts.stdout).lines().filter(|s| !s.is_empty()) {
+        let _ = std::process::Command::new("/bin/kill").args(["-9", pid]).status();
+    }
+    let failed_disc = wait_events(&mut events, &mut all_events, |e| {
+        e["type"] == "card_changed" && e["card_id"] == card_disc["id"] && e["state"] == "failed"
+    })
+    .await;
+    assert!(failed_disc.last().unwrap()["note"].as_str().unwrap_or("").contains("disconnected"));
+    let _ = wait_events(&mut events, &mut all_events, ended).await;
+
+    // ---- 6. Confidentiality: zero leakage of fictional password, cookie, or email anywhere ----
+    let _ = chrome.send(None, "Browser.close", json!({})).await;
+    client.request("server/shutdown", json!({})).await.unwrap();
+    let _ = tokio::time::timeout(Duration::from_secs(20), service.wait()).await;
+
+    let dumped_events = serde_json::to_string(&all_events).unwrap();
+    for secret in [DUMMY_PASS, DUMMY_COOKIE, DUMMY_USER] {
+        assert!(!dumped_events.contains(secret), "RPC events leaked {secret}");
+    }
+    fn walk_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let p = e.path();
+            if p.is_dir() { walk_files(&p, out); } else { out.push(p); }
+        }
+    }
+    let mut disk_files = Vec::new();
+    walk_files(env.home.path(), &mut disk_files);
+    for path in disk_files {
+        let text = String::from_utf8_lossy(&std::fs::read(&path).unwrap_or_default()).into_owned();
+        for secret in [DUMMY_PASS, DUMMY_COOKIE, DUMMY_USER] {
+            assert!(!text.contains(secret), "disk file {} leaked {secret}", path.display());
+        }
+    }
+}

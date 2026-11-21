@@ -117,10 +117,20 @@ import Testing
     var liveFailed = snapshot([])
     liveFailed.apply(["seq": 14, "ts": 4, "type": "card_changed", "card_id": "card_site", "state": "failed", "note": "The page changed before the fields could be filled."])
     #expect(herCardShown(herCardNow(site, liveFailed, answered: nil, now: before), here: false) == .ended(outcome: "failed", tools: nil, note: "The page changed before the fields could be filled."))
-    // Empty site_login fields are rejected.
+    // Empty site_login fields are rejected for fill mode.
     let emptySite: JSON = ["id": "card_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
                            "body": ["origin": "http://127.0.0.1:4100", "host": "127.0.0.1:4100", "fields": []]]
     #expect(HerCard(emptySite)?.siteLogin == nil)
+
+    // Local Chrome isolated takeover card: verified HTTPS origin + target tab, zero credential fields.
+    let chromeRaw: JSON = ["id": "card_chrome", "kind": "site_login", "title": "Sign in to example.test in Chrome", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                           "body": ["mode": "chrome_takeover", "origin": "https://example.test", "host": "example.test", "title": "Fixture Sign In", "tab": "y1", "browser": "Google Chrome 141", "fields": []]]
+    let chrome = try #require(HerCard(chromeRaw))
+    #expect(chrome.siteLogin?.isChromeTakeover == true && chrome.siteLogin?.tab == "y1" && chrome.siteLogin?.fields.isEmpty == true)
+    #expect(HerCard.takeoverStart["decision"].string == "takeover_start" && HerCard.takeoverDone["decision"].string == "takeover_done")
+    let badChrome: JSON = ["id": "card_chrome_bad", "kind": "site_login", "title": "Bad", "asked_by": "owner", "expires_at": "2026-11-09T12:05:00Z", "ops": [],
+                           "body": ["mode": "chrome_takeover", "origin": "https://example.test", "host": "example.test", "fields": []]]
+    #expect(HerCard(badChrome)?.siteLogin == nil)
 }
 
 @Test func theOnboardingConnectsAModelInTheConversation() {

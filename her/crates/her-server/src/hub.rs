@@ -21,6 +21,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use std::sync::Weak;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::AtomicU64;
@@ -264,6 +265,8 @@ pub struct HubShared {
     pub handoff: parking_lot::Mutex<Option<Handoff>>,
     /// How the user's latest message starts: the task its tab group in their browser is named for.
     pub task: parking_lot::Mutex<Option<String>>,
+    /// The session's live secure cards (weak so HubShared never keeps the kernel's internal channel alive).
+    pub cards: Option<Weak<her_core::cards::Cards>>,
     done: watch::Receiver<bool>,
 }
 
@@ -423,6 +426,7 @@ pub(crate) fn spawn(
         mcp: parking_lot::Mutex::new(std::collections::BTreeMap::new()),
         handoff: parking_lot::Mutex::new(None),
         task: parking_lot::Mutex::new(mirror.last_user_text().map(|text| preview(&text))),
+        cards: kernel.session_cards().as_ref().map(Arc::downgrade),
         done: done_rx,
     });
     let initial_seq = mirror.last_seq();

@@ -202,6 +202,13 @@ func refuse(method string, params any) error {
 					return denied("a site_login fill field value is invalid")
 				}
 			}
+		case "takeover_start", "takeover_done":
+			if _, hasOps := answer["ops"]; hasOps {
+				return denied("a site_login takeover answer may not carry console ops")
+			}
+			if _, hasFields := answer["fields"]; hasFields {
+				return denied("a site_login takeover answer may not carry fields")
+			}
 		default:
 			return denied("unknown card answer decision")
 		}

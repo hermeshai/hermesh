@@ -40,6 +40,8 @@ struct HerSecureCard: View {
                 } else if let site = card.siteLogin {
                     if case .ended(let outcome, _, let note) = shown {
                         endedSiteLogin(outcome, site: site, note: note)
+                    } else if site.isChromeTakeover {
+                        chromeTakeoverCard(card, site, shown: shown)
                     } else {
                         siteLoginForm(card, site, shown: shown)
                     }
@@ -81,15 +83,22 @@ struct HerSecureCard: View {
     }
 
     private func endedSiteLogin(_ outcome: String, site: HerCard.SiteLogin, note: String?) -> some View {
+        let host = site.host
         let text: String = switch outcome {
         case "done":
-            if let browser = site.browser, !browser.isEmpty {
-                String(localized: "Filled once in \(browser) on \(site.host) (not submitted)")
+            if site.isChromeTakeover {
+                String(localized: "Signed in via Chrome on \(host)")
+            } else if let browser = site.browser, !browser.isEmpty {
+                String(localized: "Filled once in \(browser) on \(host) (not submitted)")
             } else {
-                String(localized: "Filled in on \(site.host) (not submitted)")
+                String(localized: "Filled in on \(host) (not submitted)")
             }
-        case "failed": note ?? String(localized: "Couldn’t fill in on \(site.host)")
-        case "declined": String(localized: "Declined")
+        case "failed":
+            note ?? (site.isChromeTakeover
+                ? String(localized: "Chrome sign-in invalidated on \(host)")
+                : String(localized: "Couldn’t fill in on \(host)"))
+        case "declined":
+            site.isChromeTakeover ? String(localized: "Cancelled — fall back to manual login") : String(localized: "Declined")
         case "replaced": String(localized: "Replaced by a newer request")
         case "elsewhere": String(localized: "Answered on another device")
         default: String(localized: "Expired")
@@ -168,6 +177,70 @@ struct HerSecureCard: View {
                     .disabled(busy || !ready || !chat.convUp)
                     .accessibilityIdentifier("her-card-connect")
                 }
+            }
+        }
+        .controlSize(.large)
+        .disabled(!chat.convUp)
+        .padding(14)
+        .herReply()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("her-card")
+        .herSide()
+    }
+
+    private func chromeTakeoverCard(_ card: HerCard, _ site: HerCard.SiteLogin, shown: HerCardShown) -> some View {
+        let busy = sending || shown == .form(note: nil, busy: true)
+        let tabLine = [site.tab.map { String(localized: "Tab \($0)") }, site.title, site.browser]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 5) {
+                Image(systemName: "lock.fill")
+                Text("Chrome Sign-In · \(machine.machineName)")
+                if card.askedBy == "her" {
+                    Label("You didn’t request this", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                }
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Confirm Chrome sign-in target").font(.subheadline).foregroundStyle(.secondary)
+                Text(site.origin).font(.headline).textSelection(.enabled).accessibilityIdentifier("her-card-target")
+                if !tabLine.isEmpty {
+                    Text(tabLine).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+            Text("Opens this Chrome tab on \(machine.machineName) so you can sign in directly with Chrome’s login or password manager. Model access to the page, screenshots, and debugging is paused while active. Hermesh never reads, stores, or forwards Chrome passwords or cookies, and never auto-submits.")
+                .font(.subheadline).foregroundStyle(.secondary)
+            if !chat.convUp {
+                Text("\(machine.machineName) is offline. Secrets are not queued offline.").font(.footnote).foregroundStyle(.secondary)
+            }
+            if shown == .signIn {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Sign in natively in Chrome. Model access is paused.")
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button { cancel(card, signingIn: false) } label: { Text("Cancel").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                        .accessibilityIdentifier("her-card-deny")
+                    Button { answer(card, HerCard.takeoverStart) } label: { Text("Bring Tab to Front").frame(maxWidth: .infinity).lineLimit(1).minimumScaleFactor(0.8) }
+                        .buttonStyle(.glass)
+                    Button { answer(card, HerCard.takeoverDone) } label: { Text("I’m Signed In").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("her-card-done")
+                }
+                .disabled(busy || !chat.convUp)
+            } else {
+                if case .form(let note?, _) = shown { Text(note).font(.footnote).foregroundStyle(.red).textSelection(.enabled) }
+                HStack(spacing: 8) {
+                    Button { cancel(card, signingIn: false) } label: { Text("Cancel").frame(maxWidth: .infinity) }
+                        .buttonStyle(.glass)
+                        .accessibilityIdentifier("her-card-deny")
+                    Button { answer(card, HerCard.takeoverStart) } label: { Text("Confirm & Open in Chrome").frame(maxWidth: .infinity).lineLimit(1).minimumScaleFactor(0.8) }
+                        .buttonStyle(.glassProminent)
+                        .accessibilityIdentifier("her-card-open")
+                }
+                .disabled(busy || !chat.convUp)
             }
         }
         .controlSize(.large)

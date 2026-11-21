@@ -145,6 +145,8 @@ pub struct BrowserPool {
     declined: Mutex<HashSet<String>>,
     /// Sessions the user took their browser back from.
     revoked: Mutex<HashSet<String>>,
+    /// Sessions currently paused by an active local Chrome takeover sign-in card (label -> card ids).
+    takeovers: Mutex<HashMap<String, HashSet<String>>>,
     /// How many tabs each session has in the user's browser, as the extension last said.
     session_tabs: Mutex<HashMap<String, usize>>,
     /// Woken when any of the above changes.
@@ -188,6 +190,7 @@ impl BrowserPool {
             waiting: Mutex::new(HashMap::new()),
             declined: Mutex::new(HashSet::new()),
             revoked: Mutex::new(HashSet::new()),
+            takeovers: Mutex::new(HashMap::new()),
             session_tabs: Mutex::new(HashMap::new()),
             changed: Notify::new(),
             on_change: Mutex::new(None),
@@ -238,12 +241,17 @@ impl BrowserPool {
 
     /// The extension the agent uses: the one chosen, else the oldest connected. The one chosen
     /// being away moves nobody to another: the user's accounts differ.
-    fn picked(&self) -> Option<Arc<dyn EmbeddedHost>> {
+    fn picked_link(&self) -> Option<(Arc<dyn EmbeddedHost>, Option<String>)> {
         let links = self.extensions.lock();
-        match &*self.chosen.lock() {
-            Some(chosen) => links.iter().find(|l| l.instance.as_ref() == Some(chosen)).map(|l| l.host.clone()),
-            None => links.first().map(|l| l.host.clone()),
-        }
+        let link = match &*self.chosen.lock() {
+            Some(chosen) => links.iter().find(|l| l.instance.as_ref() == Some(chosen)),
+            None => links.first(),
+        }?;
+        Some((link.host.clone(), link.browser.clone()))
+    }
+
+    fn picked(&self) -> Option<Arc<dyn EmbeddedHost>> {
+        self.picked_link().map(|(host, _)| host)
     }
 
     /// Display label for the connected extension browser (e.g. `"Google Chrome"` or `"Chrome"`).
@@ -266,6 +274,40 @@ impl BrowserPool {
     /// Which host the agent uses.
     pub fn extension_in_use(&self) -> Option<u64> {
         self.picked().map(|host| host.id())
+    }
+
+    /// Browser label of the extension in use (e.g. `Google Chrome 141`), when known.
+    pub fn extension_browser(&self) -> Option<String> {
+        self.picked_link().and_then(|(_, browser)| browser)
+    }
+
+    /// Pauses all local Chrome (`Which::Yours`) access for every handle sharing `label` while
+    /// a Chrome takeover sign-in card is active.
+    pub fn begin_takeover(&self, label: &str, card_id: String) {
+        self.takeovers
+            .lock()
+            .entry(label.to_string())
+            .or_default()
+            .insert(card_id);
+    }
+
+    /// Releases the local Chrome takeover pause for `card_id` on `label`.
+    pub fn end_takeover(&self, label: &str, card_id: &str) {
+        let mut takeovers = self.takeovers.lock();
+        if let Some(ids) = takeovers.get_mut(label) {
+            ids.remove(card_id);
+            if ids.is_empty() {
+                takeovers.remove(label);
+            }
+        }
+    }
+
+    /// Whether any local Chrome takeover sign-in card is currently active for `label`.
+    pub fn is_takeover_active(&self, label: &str) -> bool {
+        self.takeovers
+            .lock()
+            .get(label)
+            .is_some_and(|ids| !ids.is_empty())
     }
 
     /// The extension the user chose, from now on and after a restart.
@@ -816,5 +858,23 @@ mod tests {
             .err()
             .expect("must fail when Chrome is not connected");
         assert!(err.to_string().contains("extension is not connected"), "{err}");
+    }
+
+    #[test]
+    fn takeover_pause_is_scoped_by_label_and_tracks_multiple_cards() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = BrowserPool::new(dir.path().join("browser"), false);
+        assert!(!pool.is_takeover_active("s1"));
+        assert!(!pool.is_takeover_active("s2"));
+
+        pool.begin_takeover("s1", "c_1".into());
+        pool.begin_takeover("s1", "c_2".into());
+        assert!(pool.is_takeover_active("s1"));
+        assert!(!pool.is_takeover_active("s2"));
+
+        pool.end_takeover("s1", "c_1");
+        assert!(pool.is_takeover_active("s1"), "second active card must keep pause enabled");
+        pool.end_takeover("s1", "c_2");
+        assert!(!pool.is_takeover_active("s1"), "all cards ended must release pause");
     }
 }

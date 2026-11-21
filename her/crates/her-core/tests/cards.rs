@@ -515,7 +515,9 @@ async fn site_login_card_enforces_isolation_observation_blocking_target_binding_
 
     // Fill via bound target (server-side path) — never auto-submits, never saves password.
     let cards = kernel.cards(&card.id).expect("cards");
-    let binding = cards.binding(&card.id).expect("binding");
+    let her_core::cards::SiteLoginBinding::Fill(binding) = cards.binding(&card.id).expect("binding") else {
+        panic!("expected Fill binding");
+    };
     let pairs: Vec<(i64, String, String)> = vec![
         (binding.fields[0].backend, binding.fields[0].input_type.clone(), DUMMY_EMAIL.into()),
         (binding.fields[1].backend, binding.fields[1].input_type.clone(), DUMMY_PASS.into()),
