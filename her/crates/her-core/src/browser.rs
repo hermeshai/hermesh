@@ -23,6 +23,7 @@ use her_browser::policy::url_kind;
 use her_browser::session::Action;
 use her_browser::session::ElementTarget;
 use her_browser::session::LoginFieldKind;
+use her_browser::session::LoginTargetStatus;
 use her_browser::session::Place;
 use her_browser::session::SnapshotMode;
 use her_browser::session::SnapshotRequest;
@@ -32,6 +33,7 @@ use her_protocol::SiteGrant;
 use her_protocol::card::Card;
 use her_protocol::card::CardBody;
 use her_protocol::card::CardKind;
+use her_protocol::card::CardState;
 use her_protocol::card::SiteLoginBody;
 use her_protocol::card::SiteLoginField;
 use her_protocol::card::SiteLoginFieldKind;
@@ -204,6 +206,9 @@ pub(crate) struct BrowserHandle {
     label: String,
     /// How the session numbered the tabs it let go in the user's own browser.
     yours_numbers: Mutex<Option<her_browser::router::TabNumbers>>,
+    /// Filled `site_login` documents in the user's own Chrome (`target_id -> (origin, url)`),
+    /// kept across extension reconnects so observation stays blocked until the tab navigates away.
+    filled_yours: Mutex<std::collections::HashMap<String, (String, String)>>,
     /// Set by the kernel once the session exists.
     judge: std::sync::OnceLock<Judge>,
 }
@@ -268,6 +273,7 @@ impl BrowserHandle {
             starting: tokio::sync::Mutex::new(()),
             label,
             yours_numbers: Mutex::new(None),
+            filled_yours: Mutex::new(std::collections::HashMap::new()),
             judge: std::sync::OnceLock::new(),
         }
     }
@@ -330,10 +336,80 @@ pub(crate) fn forget(state: &her_tools::SessionState, which: Which) {
 }
 
 /// A task ended and none follows: the agent lets go of the user's browser, whose debugging bar
-/// shows only while a task uses it (§8.4.7).
+/// shows only while a task uses it (§8.4.7), except while a `site_login` sensitive guard is still
+/// active on an open card or filled login document (so target binding and observation blocking
+/// remain intact across turns until the page navigates away or the card is cancelled).
 pub(crate) fn task_ended(state: &her_tools::SessionState) {
-    if state.get::<YoursSession>().is_some_and(|s| s.0.keeps_tabs()) {
+    if state
+        .get::<YoursSession>()
+        .is_some_and(|s| s.0.keeps_tabs() && !s.0.has_active_sensitive())
+    {
         forget(state, Which::Yours);
+    }
+}
+
+/// True while either browser in this session has a pending or filled-unsubmitted `site_login`
+/// document whose observation must remain blocked.
+pub(crate) fn has_active_sensitive(state: &her_tools::SessionState) -> bool {
+    state
+        .get::<BrowserSession>()
+        .is_some_and(|s| !s.is_dead() && s.has_active_sensitive())
+        || state
+            .get::<YoursSession>()
+            .is_some_and(|s| !s.0.is_dead() && s.0.has_active_sensitive())
+}
+
+/// The live bound browser session for a `site_login` card, checking that the browser is still
+/// enabled, connected, unrevoked, and permitted by site policy.
+pub(crate) fn site_login_browser(
+    state: &her_tools::SessionState,
+    own: bool,
+    url: &str,
+) -> Result<Arc<BrowserSession>, &'static str> {
+    let handle = state
+        .get::<BrowserHandle>()
+        .ok_or("The browser tools are no longer enabled in this conversation.")?;
+    let which = if own { Which::Yours } else { Which::Builtin };
+    if !handle.state.lock().on(which) {
+        return Err("The browser was turned off before the fields could be filled.");
+    }
+    if own {
+        if handle.pool.is_revoked(&handle.label) {
+            return Err("Control of Chrome was revoked before the fields could be filled.");
+        }
+        if !handle.pool.has_extension() {
+            return Err("Chrome disconnected before the fields could be filled.");
+        }
+    }
+    let parsed = Url::parse(url).map_err(|_| "The page URL could not be verified.")?;
+    if handle.policy.lock().refusal(&parsed).is_some() {
+        return Err("This site is not allowed by browser policy.");
+    }
+    let session = match which {
+        Which::Builtin => state.get::<BrowserSession>(),
+        Which::Yours => state.get::<YoursSession>().map(|s| s.0.clone()),
+    }
+    .ok_or("The browser disconnected before the fields could be filled.")?;
+    if session.is_dead() {
+        return Err("The browser disconnected before the fields could be filled.");
+    }
+    Ok(session)
+}
+
+/// Records a filled `site_login` document on local Chrome so observation stays blocked across
+/// extension reconnects while that exact login URL remains loaded.
+pub(crate) fn record_filled_site_login(
+    state: &her_tools::SessionState,
+    own: bool,
+    target_id: &str,
+    origin: &str,
+    url: &str,
+) {
+    if own && let Some(handle) = state.get::<BrowserHandle>() {
+        handle
+            .filled_yours
+            .lock()
+            .insert(target_id.to_string(), (origin.to_string(), url.to_string()));
     }
 }
 
@@ -535,6 +611,29 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
         },
     ));
     session.adopt_pending().await.map_err(failed)?;
+    if which == Which::Yours {
+        let mut filled = handle.filled_yours.lock();
+        if !filled.is_empty() {
+            for tab in session.tabs() {
+                if let Some((origin, url)) = filled.get(&tab.target_id).cloned() {
+                    let still_same = {
+                        let st = tab.state.lock();
+                        st.main_frame.as_ref().and_then(|fid| {
+                            st.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
+                        })
+                    };
+                    if let Some((frame_id, loader, current_url)) = still_same
+                        && her_browser::session::url_origin(&current_url) == origin
+                        && current_url == url
+                    {
+                        session.mark_filled_document(&tab.id, &frame_id, &loader, &origin);
+                    } else {
+                        filled.remove(&tab.target_id);
+                    }
+                }
+            }
+        }
+    }
     match which {
         Which::Builtin => ctx.session_state.insert(session.clone()),
         Which::Yours => ctx.session_state.insert(Arc::new(YoursSession(session.clone()))),
@@ -675,11 +774,11 @@ impl TypedTool for BrowserNavigate {
              changing account settings or permissions, or submitting forms with personal information. Typing \
              passwords, ID or card numbers into a page counts as sending them to the site: ask first. A general \
              request such as \"fill in this form\" does not cover these steps.",
-            "Leave CAPTCHAs, Passkeys, SSO and sign-ins in the user's own browser to the user: prefer browser_wait with \
-             user so they can use their own browser or password manager directly. Never ask for or accept passwords or \
-             verification codes in ordinary chat. Only when signing in to a standard HTTPS login form inside the \
-             isolated built-in browser may you prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; \
-             the card fills fields once without auto-submitting or saving passwords.",
+            "Leave CAPTCHAs, Passkeys, SSO, cross-origin login frames, and unverified targets to the user with \
+             browser_wait {user}. Never ask for or accept passwords or verification codes in ordinary chat. For a \
+             standard verified HTTPS login form in the built-in browser or a bound tab of the user's own Chrome, \
+             prepare a sign-in card with browser_act {action: \"ask_owner\", refs: [...]}; the card fills the bound \
+             fields once without switching default browsers, auto-submitting, or saving passwords.",
             "Work from browser_snapshot and refs; use screenshots to check how a page looks, and coordinates only \
              when the snapshot has no element for what you need.",
         ]
@@ -827,7 +926,7 @@ pub(crate) struct ActArgs {
     /// The element, by its ref from a snapshot.
     #[serde(rename = "ref", default)]
     reference: Option<String>,
-    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on the isolated built-in browser page.
+    /// For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) on a verified HTTPS page in the built-in browser or a bound local Chrome tab.
     #[serde(default)]
     refs: Option<Vec<String>>,
     /// Viewport x in CSS pixels, with y: only when the snapshot has no element for the target.
@@ -910,8 +1009,8 @@ impl TypedTool for BrowserAct {
     const DESCRIPTION: &'static str = "Act on the page: click, dblclick, hover, fill, type, press, select, check, \
         uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without \
         a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot \
-        name. ask_owner prepares a secure site_login card for verified login refs in the isolated built-in browser \
-        without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
+        name. ask_owner prepares a secure site_login card for verified HTTPS login refs in the built-in browser or \
+        a bound local Chrome tab without changing the page; show it with send_to_user. The result says what changed on the page. If the page \
         changed since the call was approved, nothing is sent: take a snapshot and try again.";
 
     fn kind(&self) -> ToolKind {
@@ -1031,13 +1130,23 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
     if refs.iter().skip(1).any(|r| Which::of(r) != first_which) {
         return Err(ToolError::InvalidArgs("all refs in ask_owner must belong to the same browser".into()));
     }
-    if first_which == Which::Yours {
+    let handle = handle(ctx)?;
+    if first_which == Which::Yours && !handle.pool.has_extension() {
         return Err(ToolError::Failed(
-            "Secure sign-in cards are disabled in the user's own Chrome because it already has their password manager and does not provide isolated card autofill. Use browser_wait with user so they can sign in directly.".into(),
+            "Chrome disconnected before the sign-in target could be verified.".into(),
         ));
     }
-    let session = in_use(ctx, Which::Builtin).await?;
+    let session = existing(ctx, first_which)?;
     let inspected = session.inspect_site_login(&refs).await.map_err(failed)?;
+    let parsed_url = Url::parse(&inspected.url)
+        .map_err(|_| ToolError::Failed("cannot verify the page URL; use browser_wait with user".into()))?;
+    if let Some(reason) = handle.policy.lock().refusal(&parsed_url) {
+        return Err(ToolError::Failed(reason));
+    }
+
+    let own_browser = first_which == Which::Yours;
+    let browser_label = own_browser.then(|| handle.pool.extension_browser_label());
+    let bound_tab = own_browser.then(|| inspected.tab.clone());
 
     let mut fields = Vec::with_capacity(inspected.fields.len());
     let mut bindings = Vec::with_capacity(inspected.fields.len());
@@ -1085,14 +1194,20 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
             origin: inspected.origin.clone(),
             host: inspected.host,
             title: inspected.title,
+            browser: browser_label.clone(),
+            tab: bound_tab,
             fields,
         }),
     };
     let binding = crate::cards::SiteLoginBinding {
+        own_browser,
+        target_id: inspected.target_id,
         tab: inspected.tab.clone(),
         frame: inspected.frame.clone(),
         loader: inspected.loader.clone(),
         origin: inspected.origin.clone(),
+        url: inspected.url.clone(),
+        browser_label: browser_label.clone(),
         fields: bindings,
     };
     session.begin_sensitive_card(&card_id, &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
@@ -1103,9 +1218,65 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
         }
     });
     cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+
+    // Watch the bound tab while the card waits so navigation, SPA jumps, tab close, debugger detach,
+    // revocation, or extension disconnect invalidate an open card immediately.
+    if let Some(tab) = session.tab_handle(&inspected.tab) {
+        let weak_cards = Arc::downgrade(&cards);
+        let weak_session = Arc::downgrade(&session);
+        let weak_handle = Arc::downgrade(&handle);
+        let watch_id = card_id.clone();
+        let frame_id = inspected.frame;
+        let loader = inspected.loader;
+        let origin = inspected.origin.clone();
+        let url = inspected.url;
+        tokio::spawn(async move {
+            loop {
+                let notified = tab.changed.notified();
+                let Some(cards) = weak_cards.upgrade() else {
+                    break;
+                };
+                if !cards.has(&watch_id) {
+                    break;
+                }
+                let card_state = cards.get(&watch_id).map(|(_, s)| s);
+                if let Some(state) = card_state
+                    && state != CardState::Open
+                {
+                    break;
+                }
+                let failure = match (weak_session.upgrade(), weak_handle.upgrade()) {
+                    (Some(session), Some(handle)) => {
+                        if own_browser && (handle.pool.is_revoked(&handle.label) || !handle.pool.has_extension()) {
+                            Some("The browser disconnected before the fields could be filled.")
+                        } else {
+                            match session.check_login_target(&tab, &frame_id, &loader, &origin, &url) {
+                                LoginTargetStatus::Valid => None,
+                                LoginTargetStatus::Changed => Some("The page changed before the fields could be filled."),
+                                LoginTargetStatus::Disconnected => Some("The browser disconnected before the fields could be filled."),
+                            }
+                        }
+                    }
+                    _ => Some("The browser disconnected before the fields could be filled."),
+                };
+                if let Some(reason) = failure {
+                    if card_state == Some(CardState::Open) {
+                        let _ = cards.set(&watch_id, &[CardState::Open], CardState::Failed, Some(reason.to_string()));
+                        break;
+                    }
+                    // Still prepared (before send_to_user): wait briefly until either shown or dropped.
+                }
+                let _ = tokio::time::timeout(Duration::from_millis(200), notified).await;
+            }
+        });
+    }
+
+    let where_label = match &browser_label {
+        Some(browser) => format!("{} in {browser} (tab {})", inspected.origin, inspected.tab),
+        None => inspected.origin.clone(),
+    };
     Ok(ToolOutput::text(format!(
-        "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
-        inspected.origin
+        "Nothing changed yet. Card {card_id} asks the owner to enter sign-in fields for {where_label}. Page observation is blocked while this card is active. Show it with send_to_user {{type: \"card\", card: \"{card_id}\"}}: that ends your turn, and you hear only the fixed outcome.",
     )))
 }
 

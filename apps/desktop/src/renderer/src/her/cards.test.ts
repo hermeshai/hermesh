@@ -65,6 +65,24 @@ test("a card is read from what send_to_user's result carries; one that isn't a c
     },
   };
   assert.deepEqual(siteLoginBody(loginCard), loginCard.body);
+  const chromeLoginCard: Card = {
+    ...loginCard,
+    id: "c_login00002",
+    body: {
+      origin: "https://login.example.test",
+      host: "login.example.test",
+      title: "Example Sign In",
+      browser: "Google Chrome",
+      tab: "y1",
+      fields: [
+        { id: "f1", label: "Username", kind: "username", secret: false },
+        { id: "f2", label: "Password", kind: "password", secret: true },
+      ],
+    },
+  };
+  assert.deepEqual(siteLoginBody(chromeLoginCard), chromeLoginCard.body);
+  assert.equal(siteLoginBody(chromeLoginCard)?.browser, "Google Chrome");
+  assert.equal(siteLoginBody(chromeLoginCard)?.tab, "y1");
   assert.equal(connectBody(loginCard), null);
   assert.equal(siteLoginBody(card), null);
   assert.equal(siteLoginBody({ ...loginCard, body: { origin: "http://127.0.0.1:4100", host: "127.0.0.1:4100", fields: [] } }), null, "empty fields rejected");

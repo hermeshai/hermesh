@@ -239,12 +239,22 @@ pub struct InspectedLoginField {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SiteLoginInspection {
     pub tab: String,
+    pub target_id: String,
     pub frame: String,
     pub loader: String,
     pub origin: String,
+    pub url: String,
     pub host: String,
     pub title: Option<String>,
     pub fields: Vec<InspectedLoginField>,
+}
+
+/// Live validity of a bound `site_login` target while its card waits for the owner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoginTargetStatus {
+    Valid,
+    Changed,
+    Disconnected,
 }
 
 /// Active sensitive sign-in guard on a tab (pending card or filled unsubmitted fields).
@@ -327,6 +337,75 @@ impl BrowserSession {
     /// The tabs are the user's and stay when the session lets them go.
     pub fn keeps_tabs(&self) -> bool {
         self.browser.router.keeps_tabs()
+    }
+
+    pub fn browser_kind(&self) -> crate::pool::BrowserKind {
+        self.browser.kind()
+    }
+
+    /// True while any open tab in this session has a pending or filled-unsubmitted `site_login`
+    /// document whose observation must remain blocked.
+    pub fn has_active_sensitive(&self) -> bool {
+        self.tabs().iter().any(|tab| self.sensitive_active(tab).is_some())
+    }
+
+    /// Re-installs a filled-document observation guard (for example if an extension session
+    /// reconnects while a previously filled login page is still loaded).
+    pub fn mark_filled_document(&self, tab: &str, frame: &str, loader: &str, origin: &str) {
+        let mut sensitive = self.sensitive.lock();
+        let entry = sensitive
+            .entry(tab.to_string())
+            .or_default()
+            .entry(loader.to_string())
+            .or_insert_with(|| SensitiveTab {
+                frame: frame.to_string(),
+                origin: origin.to_string(),
+                backends: HashSet::new(),
+                pending_cards: HashSet::new(),
+                filled: true,
+                discard_logs: true,
+            });
+        entry.filled = true;
+        entry.discard_logs = true;
+    }
+
+    pub fn tab_handle(&self, id: &str) -> Option<Arc<Tab>> {
+        self.tabs().into_iter().find(|t| t.id == id)
+    }
+
+    /// Checks whether a bound `site_login` tab still points to the exact verified document.
+    pub fn check_login_target(
+        &self,
+        tab: &Tab,
+        frame_id: &str,
+        loader: &str,
+        origin: &str,
+        expected_url: &str,
+    ) -> LoginTargetStatus {
+        if self.is_dead() || tab.connection_dropped() {
+            return LoginTargetStatus::Disconnected;
+        }
+        let state = tab.state.lock();
+        if state.closed.is_some() {
+            return LoginTargetStatus::Disconnected;
+        }
+        let Some(main_id) = state.main_frame.as_deref() else {
+            return LoginTargetStatus::Changed;
+        };
+        if main_id != frame_id {
+            return LoginTargetStatus::Changed;
+        }
+        let Some(frame) = state.frames.get(frame_id) else {
+            return LoginTargetStatus::Changed;
+        };
+        if frame.loader != loader
+            || url_origin(&frame.url) != origin
+            || frame.url != expected_url
+            || !is_allowed_login_url(&frame.url)
+        {
+            return LoginTargetStatus::Changed;
+        }
+        LoginTargetStatus::Valid
     }
 
     /// How this session numbered its tabs and refs, for a later session to go on from.
@@ -593,15 +672,13 @@ impl BrowserSession {
         active
     }
 
-    /// Inspects `refs` directly in the isolated browser DOM to prepare a `site_login` card.
-    /// Refuses unless reliable isolation holds: isolated built-in browser, HTTPS or loopback
-    /// origin, top-level same-origin document, no CAPTCHA/Passkey challenge, and 1–3 visible
-    /// login inputs including at least one password or one-time code field.
+    /// Inspects `refs` directly in the bound browser DOM to prepare a `site_login` card.
+    /// Refuses unless reliable target verification & isolation hold: live session, HTTPS or
+    /// loopback origin, top-level same-origin document, no CAPTCHA/anti-bot challenge, and 1–3
+    /// visible login inputs including at least one password or one-time code field.
     pub async fn inspect_site_login(&self, refs: &[String]) -> Result<SiteLoginInspection, BrowserError> {
-        if self.keeps_tabs() {
-            return Err(BrowserError::failed(
-                "Secure sign-in cards are disabled in your own Chrome because it already has your password manager and does not provide isolated card autofill. Use browser_wait with user so the owner can sign in directly.",
-            ));
+        if self.is_dead() {
+            return Err(CdpError::Closed.into());
         }
         if refs.is_empty() || refs.len() > 3 {
             return Err(BrowserError::failed(
@@ -630,19 +707,13 @@ impl BrowserSession {
         }
         let (main_id, main_frame) = self.main_frame(&tab)?;
         let top_origin = url_origin(&main_frame.url);
-        if first_page.frame != main_id || top_origin != first_page.origin {
+        if first_page.frame != main_id || top_origin != first_page.origin || first_page.origin == "null" {
             return Err(BrowserError::failed(
                 "Secure sign-in cards are disabled for cross-origin or nested iframes. Use browser_wait with user so the owner can sign in directly.",
             ));
         }
         let parsed = Url::parse(&main_frame.url).map_err(|_| BrowserError::failed("cannot verify the page URL; use browser_wait with user"))?;
-        let loopback = match parsed.host() {
-            Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
-            Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
-            Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
-            None => false,
-        };
-        if !(parsed.scheme() == "https" || (parsed.scheme() == "http" && loopback)) {
+        if !is_allowed_login_url(&main_frame.url) {
             return Err(BrowserError::failed(format!(
                 "Secure sign-in cards require HTTPS (found {}). Use browser_wait with user so the owner can sign in directly.",
                 first_page.origin
@@ -675,6 +746,15 @@ impl BrowserSession {
             ));
         }
         self.refresh(&tab).await;
+        // Re-verify the exact bound document did not jump while inspecting fields.
+        let (latest_main_id, latest_main_frame) = self.main_frame(&tab)?;
+        if latest_main_id != main_id
+            || latest_main_frame.loader != frame.loader
+            || latest_main_frame.url != main_frame.url
+            || url_origin(&latest_main_frame.url) != first_page.origin
+        {
+            return Err(BrowserError::PageChanged { now: latest_main_frame.url });
+        }
         let raw_title = tab.state.lock().title.clone();
         let title = {
             let cleaned = snapshot::clean(&raw_title);
@@ -683,9 +763,11 @@ impl BrowserSession {
         };
         Ok(SiteLoginInspection {
             tab: tab.id.clone(),
+            target_id: tab.target_id.clone(),
             frame: main_id,
             loader: frame.loader,
             origin: first_page.origin.clone(),
+            url: main_frame.url,
             host,
             title,
             fields,
@@ -779,10 +861,11 @@ impl BrowserSession {
         frame_id: &str,
         loader: &str,
         origin: &str,
+        expected_url: &str,
         fields: &[(i64, String, String)],
     ) -> Result<(), BrowserError> {
-        if self.keeps_tabs() {
-            return Err(BrowserError::failed("site_login is disabled for non-isolated browser sessions"));
+        if self.is_dead() {
+            return Err(CdpError::Closed.into());
         }
         let page = PageTarget {
             tab: tab_id.to_string(),
@@ -792,9 +875,16 @@ impl BrowserSession {
         };
         let (tab, _) = self.verify(&page)?;
         let _busy = tab.busy.lock().await;
+        if self.is_dead() || tab.connection_dropped() {
+            return Err(CdpError::Closed.into());
+        }
         let (tab, frame) = self.verify(&page)?;
         let (main_id, main_frame) = self.main_frame(&tab)?;
-        if main_id != frame_id || url_origin(&main_frame.url) != origin {
+        if main_id != frame_id
+            || url_origin(&main_frame.url) != origin
+            || main_frame.url != expected_url
+            || !is_allowed_login_url(&main_frame.url)
+        {
             return Err(BrowserError::PageChanged { now: main_frame.url });
         }
         self.check_no_challenge(frame_id, &frame).await?;
@@ -844,7 +934,9 @@ impl BrowserSession {
         // Write to the bound DOM node without relying on the renderer's current focus.
         let mut filled_backends = Vec::with_capacity(fields.len());
         for (backend, input_type, value) in fields {
-            if self.verify(&page).is_err() {
+            if self.verify(&page).is_err()
+                || self.main_frame(&tab).map(|(_, f)| f.url != expected_url).unwrap_or(true)
+            {
                 self.clear_inputs(frame_id, &frame, &filled_backends).await;
                 return Err(BrowserError::PageChanged { now: main_frame.url });
             }
@@ -854,7 +946,7 @@ impl BrowserSession {
                     &frame,
                     *backend,
                     FILL_LOGIN_INPUT_SCRIPT,
-                    vec![json!(origin), json!(input_type), json!(value)],
+                    vec![json!(origin), json!(expected_url), json!(input_type), json!(value)],
                 )
                 .await;
             if !matches!(result, Ok(Value::Bool(true))) {
@@ -1453,7 +1545,7 @@ impl BrowserSession {
         let (tab, _) = self.verify(page)?;
         let _busy = tab.busy.lock().await;
         let (tab, frame) = self.verify(page)?;
-        if self.sensitive_active(&tab).is_some() {
+        if self.sensitive_active(&tab).is_some() || self.has_active_sensitive() {
             return Err(BrowserError::failed(
                 "Running scripts is blocked during a sensitive sign-in step until the page navigates away or the step is cancelled.",
             ));
@@ -2363,6 +2455,20 @@ fn target_of(tab: &str, frame_id: &str, frame: &Frame) -> PageTarget {
     }
 }
 
+/// Whether `raw` is a verified HTTPS URL (or loopback HTTP for local test fixtures).
+pub fn is_allowed_login_url(raw: &str) -> bool {
+    let Ok(parsed) = Url::parse(raw) else {
+        return false;
+    };
+    let loopback = match parsed.host() {
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        Some(url::Host::Domain(name)) => name.eq_ignore_ascii_case("localhost"),
+        None => false,
+    };
+    (parsed.scheme() == "https" && parsed.host_str().is_some()) || (parsed.scheme() == "http" && loopback)
+}
+
 /// The policy's origin of a frame's URL: `null` for `about:blank`.
 pub fn url_origin(url: &str) -> String {
     Url::parse(url).map(|u| origin_of(&u)).unwrap_or_else(|_| "null".into())
@@ -2437,8 +2543,9 @@ const SELECT_ALL_SCRIPT: &str = r#"function(){
   return 'ok';
 }"#;
 
-const FILL_LOGIN_INPUT_SCRIPT: &str = r#"function(origin, type, value) {
+const FILL_LOGIN_INPUT_SCRIPT: &str = r#"function(origin, expectedUrl, type, value) {
   if (!this.isConnected || this.ownerDocument !== document || location.origin !== origin ||
+      location.href !== expectedUrl ||
       this.tagName !== 'INPUT' || (this.getAttribute('type') || 'text').toLowerCase() !== type ||
       this.disabled || this.readOnly) return false;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, value);
@@ -2483,6 +2590,20 @@ const INSPECT_LOGIN_INPUT_SCRIPT: &str = r#"function(){
   if (!this || this.tagName !== 'INPUT') return {error: 'it is not an <input> element'};
   if (this.disabled) return {error: 'it is disabled'};
   if (this.readOnly) return {error: 'it is read-only'};
+  if (this.form && this.form.hasAttribute('action')) {
+    const rawAction = (this.form.getAttribute('action') || '').trim();
+    if (rawAction) {
+      try {
+        const resolved = new URL(rawAction, location.href);
+        const loopback = resolved.hostname === 'localhost' || resolved.hostname === '127.0.0.1' || resolved.hostname === '[::1]';
+        if (!(resolved.protocol === 'https:' || (resolved.protocol === 'http:' && loopback))) {
+          return {error: 'form action is not HTTPS'};
+        }
+      } catch (_) {
+        return {error: 'form action is invalid'};
+      }
+    }
+  }
   const style = getComputedStyle(this);
   if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return {error: 'it is not visible'};
   const rect = this.getBoundingClientRect();
@@ -2573,3 +2694,25 @@ const TEXT_SCRIPT: &str = r#"(() => {
   const text = (document.title ? '# ' + document.title + '\n' : '') + out.join('\n').replace(/\n{3,}/g, '\n\n');
   return { text, links };
 })()"#;
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_login_url;
+
+    #[test]
+    fn login_url_requires_https_or_loopback() {
+        assert!(is_allowed_login_url("https://signin.example.com/login"));
+        assert!(is_allowed_login_url("https://example.com:8443/auth"));
+        assert!(is_allowed_login_url("http://127.0.0.1:4100/login"));
+        assert!(is_allowed_login_url("http://localhost:3000/login"));
+        assert!(is_allowed_login_url("http://[::1]:3000/login"));
+
+        assert!(!is_allowed_login_url("http://signin.example.com/login"));
+        assert!(!is_allowed_login_url("http://192.168.1.10/login"));
+        assert!(!is_allowed_login_url("file:///etc/passwd"));
+        assert!(!is_allowed_login_url("chrome://settings"));
+        assert!(!is_allowed_login_url("about:blank"));
+        assert!(!is_allowed_login_url("javascript:alert(1)"));
+        assert!(!is_allowed_login_url("data:text/html,<input type=password>"));
+    }
+}

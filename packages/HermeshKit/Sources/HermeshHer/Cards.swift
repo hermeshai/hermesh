@@ -35,6 +35,8 @@ public struct HerCard: Equatable, Sendable {
         public var origin: String
         public var host: String
         public var title: String?
+        public var browser: String?
+        public var tab: String?
         public var fields: [SiteLoginField]
     }
 
@@ -68,7 +70,7 @@ public struct HerCard: Equatable, Sendable {
                 return SiteLoginField(id: fid, label: f["label"].string ?? fid, kind: f["kind"].string ?? "password", secret: f["secret"].bool ?? true)
             }
             if !parsed.isEmpty {
-                siteLogin = SiteLogin(origin: origin, host: host, title: b["title"].string, fields: parsed)
+                siteLogin = SiteLogin(origin: origin, host: host, title: b["title"].string, browser: b["browser"].string, tab: b["tab"].string, fields: parsed)
             }
         }
     }
