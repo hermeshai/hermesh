@@ -19203,7 +19203,7 @@
       "description": "A `site_login` card's mode.",
       "oneOf": [
         {
-          "description": "Bound form fill: fill 1–3 DOM-verified login fields once without auto-submitting or saving.",
+          "description": "Bound form fill: fill 1–3 DOM-verified sensitive fields (login, OTP, MFA, PIN) once and submit.",
           "enum": [
             "fill"
           ],
@@ -19213,6 +19213,13 @@
           "description": "Local Chrome isolated user takeover: owner confirms actual HTTPS origin and target tab, then signs in natively in Chrome while model access and debugger are paused/detached.",
           "enum": [
             "chrome_takeover"
+          ],
+          "type": "string"
+        },
+        {
+          "description": "Desktop app sensitive input fill: fill 1–3 accessibility-verified password/OTP/PIN fields in a bound desktop app window once and submit without exposing secrets to the model.",
+          "enum": [
+            "app_fill"
           ],
           "type": "string"
         }

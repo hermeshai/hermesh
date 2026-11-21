@@ -122,12 +122,15 @@ pub struct CardField {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SiteLoginMode {
-    /// Bound form fill: fill 1–3 DOM-verified login fields once without auto-submitting or saving.
+    /// Bound form fill: fill 1–3 DOM-verified sensitive fields (login, OTP, MFA, PIN) once and submit.
     #[default]
     Fill,
     /// Local Chrome isolated user takeover: owner confirms actual HTTPS origin and target tab,
     /// then signs in natively in Chrome while model access and debugger are paused/detached.
     ChromeTakeover,
+    /// Desktop app sensitive input fill: fill 1–3 accessibility-verified password/OTP/PIN fields
+    /// in a bound desktop app window once and submit without exposing secrets to the model.
+    AppFill,
 }
 
 /// A `site_login` card's body: inspected directly from the page's real DOM in a bound browser tab

@@ -12246,6 +12246,116 @@
         }
       }
     },
+    "Filled directly · never saved or seen by AI": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直填网页 · 不保存 · AI 不可见"
+          }
+        }
+      }
+    },
+    "Show password": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示密码"
+          }
+        }
+      }
+    },
+    "Hide password": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "隐藏密码"
+          }
+        }
+      }
+    },
+    "Sign In Manually": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动登录"
+          }
+        }
+      }
+    },
+    "Fill & Sign In": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填入并登录"
+          }
+        }
+      }
+    },
+    "Signing in…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在登录…"
+          }
+        }
+      }
+    },
+    "Sign-in submitted on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 提交登录"
+          }
+        }
+      }
+    },
+    "Sign-in submitted on %@ (%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %1$@ 提交登录（%2$@）"
+          }
+        }
+      }
+    },
+    "Switched to manual sign-in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已改用手动登录"
+          }
+        }
+      }
+    },
+    "Couldn’t fill sign-in for %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未能填入 %@ 的登录信息"
+          }
+        }
+      }
+    },
+    "%@ is offline. Credentials aren’t saved or queued offline.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 已离线，敏感信息不会离线暂存。"
+          }
+        }
+      }
+    },
     "Her needs to sign in to %@ again": {
       "localizations": {
         "zh-Hans": {
@@ -16260,6 +16370,156 @@
           "stringUnit": {
             "state": "translated",
             "value": "助手"
+          }
+        }
+      }
+    },
+    "App": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "应用"
+          }
+        }
+      }
+    },
+    "Enter Manually": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动输入"
+          }
+        }
+      }
+    },
+    "Verify Manually": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动验证"
+          }
+        }
+      }
+    },
+    "Verifying…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在验证…"
+          }
+        }
+      }
+    },
+    "Submitting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在提交…"
+          }
+        }
+      }
+    },
+    "Fill & Verify": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填入并验证"
+          }
+        }
+      }
+    },
+    "Fill & Submit": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "填入并提交"
+          }
+        }
+      }
+    },
+    "Filled directly into app · never saved or seen by AI": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直填应用 · 不保存 · AI 不可见"
+          }
+        }
+      }
+    },
+    "Verification submitted on %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 提交验证"
+          }
+        }
+      }
+    },
+    "Verification submitted on %@ (%@)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %1$@ 提交验证（%2$@）"
+          }
+        }
+      }
+    },
+    "Verification submitted in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 提交验证"
+          }
+        }
+      }
+    },
+    "Submitted securely in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 安全提交"
+          }
+        }
+      }
+    },
+    "Switched to manual entry": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已改用手动输入"
+          }
+        }
+      }
+    },
+    "Switched to manual verification": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已改用手动验证"
+          }
+        }
+      }
+    },
+    "Couldn’t fill fields in %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法在 %@ 填入内容"
           }
         }
       }

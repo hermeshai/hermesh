@@ -2189,7 +2189,7 @@
     }
   },
   {
-    "description": "Act on the page: click, dblclick, hover, fill, type, press, select, check, uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot name. ask_owner prepares a secure site_login card without changing the page: in the user's own Chrome with tab alone (no refs) it prepares an isolated native takeover card and pauses Chrome access until done or cancelled; with 1 to 3 verified HTTPS login field refs (in the built-in browser or a bound local Chrome tab) it prepares a one-time fill card. Show it with send_to_user. The result says what changed on the page. If the page changed since the call was approved, nothing is sent: take a snapshot and try again.",
+    "description": "Act on the page: click, dblclick, hover, fill, type, press, select, check, uncheck, scroll, upload or ask_owner, on an element by its ref from the latest snapshot. press, type and scroll without a ref go to the focused element or the page. Coordinates (x, y) are a fallback for what the snapshot cannot name. ask_owner prepares a secure input card without changing the page: with 1 to 3 verified HTTPS sensitive input refs (sign-in credentials, SMS/email/TOTP verification codes, security PINs — including inside a same-site HTTPS iframe after browser_snapshot {frame}) in the built-in browser or a bound local Chrome tab, it prepares a one-time fill card that fills and submits the bound form once when answered; in the user's own Chrome with tab alone (no refs) it prepares an isolated native takeover card and pauses Chrome access until done or cancelled. Show it with send_to_user (or ask main via send_message when running as a sub-agent). The result says what changed on the page. If the page changed since the call was approved, nothing is sent: take a snapshot and try again.",
     "group": "browser",
     "kind": "mutating",
     "loaded": false,
@@ -2230,7 +2230,7 @@
         },
         "refs": {
           "default": null,
-          "description": "For ask_owner: 1 to 3 login field refs (must include a password or one-time code field) for a one-time fill card on a verified HTTPS page in the built-in browser or a bound local Chrome tab. Omit refs with a local Chrome tab (e.g. `tab: \"y1\"`) to prepare an isolated native Chrome takeover card.",
+          "description": "For ask_owner: 1 to 3 sensitive input refs (email/username, password, PIN, or SMS/email/TOTP verification code) on a verified HTTPS page or inside a same-site HTTPS iframe (snapshot the iframe first with browser_snapshot {frame}). Omit refs with a local Chrome tab (e.g. `tab: \"y1\"`) to prepare an isolated native Chrome takeover card.",
           "items": {
             "type": "string"
           },
@@ -2542,7 +2542,7 @@
     }
   },
   {
-    "description": "Act in a desktop app. By ref from cua_snapshot: click, type, set a value, select, toggle, expand, scroll, through the accessibility API without moving the pointer. For apps whose snapshot shows no contents: click_at, double_click_at, right_click_at, drag and wheel at pixel coordinates of a screenshot, which bring the window to the front and move the pointer; and type_text where the keyboard focus is. press sends a key or key combo to the app. type_text and press leave the window where it is when they can. All of these return a new screenshot.",
+    "description": "Act in a desktop app. By ref from cua_snapshot: click, type, set a value, select, toggle, expand, scroll, or ask_owner, through the accessibility API without moving the pointer. ask_owner prepares a secure input card for 1 to 3 password, verification code, PIN, or sign-in refs in the app without changing it; show it with send_to_user (or ask main via send_message when running as a sub-agent), and when answered it fills and submits the fields once without showing secrets to the model. For apps whose snapshot shows no contents: click_at, double_click_at, right_click_at, drag and wheel at pixel coordinates of a screenshot, which bring the window to the front and move the pointer; and type_text where the keyboard focus is. press sends a key or key combo to the app. type_text and press leave the window where it is when they can. All of these return a new screenshot.",
     "group": "cua",
     "kind": "mutating",
     "loaded": false,
@@ -2631,6 +2631,13 @@
                 "type_text"
               ],
               "type": "string"
+            },
+            {
+              "description": "Prepares a secure input card for 1 to 3 password, verification code, PIN, or sign-in refs in `refs` from `cua_snapshot`, without changing the app.",
+              "enum": [
+                "ask_owner"
+              ],
+              "type": "string"
             }
           ]
         },
@@ -2662,6 +2669,14 @@
           "default": null,
           "description": "The element, a ref from cua_snapshot. For the actions that are not at a point, nor press or type_text.",
           "type": "string"
+        },
+        "refs": {
+          "default": null,
+          "description": "For ask_owner: 1 to 3 sensitive input refs (password, verification code, PIN, or sign-in fields) from cua_snapshot.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "shot": {
           "default": null,

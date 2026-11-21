@@ -4474,7 +4474,7 @@ export type SiteLoginField = {
 export type SiteLoginFieldKind = "email" | "username" | "password" | "one_time_code";
 
 /** A `site_login` card's mode. */
-export type SiteLoginMode = "fill" | "chrome_takeover";
+export type SiteLoginMode = "fill" | "chrome_takeover" | "app_fill";
 
 /** One `SKILL.md` that was found, and what became of it. */
 export type SkillEntry = {
