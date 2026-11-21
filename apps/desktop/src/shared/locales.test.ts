@@ -107,12 +107,16 @@ test("Her third-party AI disclosure covers provider, model, data and purpose in 
   assert.match(enHer.aiSharing.disclosure, /Data:/);
   assert.match(enHer.aiSharing.disclosure, /Purpose:/);
   assert.doesNotMatch(enHer.aiSharing.disclosure, /expires when Her restarts/i);
+  assert.doesNotMatch(enHer.aiSharing.disclosure, /revoke/i);
+  assert.equal(enHer.aiSharing.revoke, undefined);
 
   assert.match(zhHer.aiSharing.disclosure, /供应商：\{\{provider\}\} · \{\{endpoint\}\}/);
   assert.match(zhHer.aiSharing.disclosure, /模型：\{\{model\}\}/);
   assert.match(zhHer.aiSharing.disclosure, /数据：/);
   assert.match(zhHer.aiSharing.disclosure, /用途：/);
   assert.doesNotMatch(zhHer.aiSharing.disclosure, /重启后授权失效/);
+  assert.doesNotMatch(zhHer.aiSharing.disclosure, /撤回/);
+  assert.equal(zhHer.aiSharing.revoke, undefined);
 
   const iosStringsPath = path.join(import.meta.dirname, "..", "..", "..", "ios", "Hermesh", "Localizable.xcstrings");
   const xc = JSON.parse(fs.readFileSync(iosStringsPath, "utf8")).strings as Record<string, { localizations?: Record<string, { stringUnit?: { value?: string } }> }>;
@@ -120,10 +124,13 @@ test("Her third-party AI disclosure covers provider, model, data and purpose in 
   assert.ok(iosKey, "iOS Localizable.xcstrings must contain the Her provider/model/data/purpose disclosure");
   assert.match(iosKey, /Purpose:/);
   assert.doesNotMatch(iosKey, /expires when Her restarts/i);
+  assert.doesNotMatch(iosKey, /revoke/i);
+  assert.equal(xc["Revoke Third-Party AI Sharing"], undefined);
   const zhIOS = xc[iosKey]?.localizations?.["zh-Hans"]?.stringUnit?.value ?? "";
   assert.match(zhIOS, /供应商：%1\$@ · %2\$@/);
   assert.match(zhIOS, /模型：%3\$@/);
   assert.match(zhIOS, /数据：/);
   assert.match(zhIOS, /用途：/);
   assert.doesNotMatch(zhIOS, /重启后授权失效/);
+  assert.doesNotMatch(zhIOS, /撤回/);
 });
