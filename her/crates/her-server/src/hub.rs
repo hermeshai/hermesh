@@ -193,6 +193,13 @@ pub(crate) enum HubCmd {
         target_id: String,
         origin: String,
         url: String,
+        reply: oneshot::Sender<()>,
+    },
+    /// Clears a pre-recorded `site_login` fill entry when pre-write validation failed before writing.
+    ClearSiteLoginFill {
+        own: bool,
+        target_id: String,
+        reply: oneshot::Sender<()>,
     },
     /// Invalidates any open `site_login` cards (for example on Chrome disconnect or revocation).
     InvalidateSiteLogin {
@@ -812,10 +819,17 @@ impl Hub {
                     .and_then(|kernel| kernel.site_login_browser(own, &url));
                 let _ = reply.send(result);
             }
-            HubCmd::RecordSiteLoginFill { own, target_id, origin, url } => {
+            HubCmd::RecordSiteLoginFill { own, target_id, origin, url, reply } => {
                 if let Some(kernel) = &self.kernel {
                     kernel.record_filled_site_login(own, &target_id, &origin, &url);
                 }
+                let _ = reply.send(());
+            }
+            HubCmd::ClearSiteLoginFill { own, target_id, reply } => {
+                if let Some(kernel) = &self.kernel {
+                    kernel.clear_filled_site_login(own, &target_id);
+                }
+                let _ = reply.send(());
             }
             HubCmd::InvalidateSiteLogin { own, reason } => {
                 if let Some(kernel) = &self.kernel {

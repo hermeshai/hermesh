@@ -136,7 +136,9 @@ public func herCardShown(_ s: (status: HerCardStatus, live: Bool), here: Bool) -
     case "sign_in": here ? .signIn : .ended(outcome: "elsewhere", tools: nil, note: nil)
     case "done": .ended(outcome: "done", tools: herToolCount(s.status.note), note: s.status.note)
     // Ended while this device looked on, by another's answer.
-    case "declined", "failed": s.live && !here ? .ended(outcome: "elsewhere", tools: nil, note: nil) : .ended(outcome: s.status.state, tools: nil, note: s.status.note)
+    case "declined": s.live && !here ? .ended(outcome: "elsewhere", tools: nil, note: nil) : .ended(outcome: "declined", tools: nil, note: s.status.note)
+    // A failure may come from server invalidation (e.g. bound page navigated or browser disconnected) without another device answering.
+    case "failed": .ended(outcome: "failed", tools: nil, note: s.status.note)
     case "replaced": .ended(outcome: "replaced", tools: nil, note: nil)
     default: .ended(outcome: "expired", tools: nil, note: nil)
     }

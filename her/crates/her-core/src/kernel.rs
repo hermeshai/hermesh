@@ -256,6 +256,7 @@ fn launch(launch: Launch) -> (Kernel, Arc<Session>) {
     if let Some(pool) = &pool {
         tool_state.insert(Arc::new(BrowserHandle::new(
             pool.clone(),
+            launch.system.clone(),
             settings.browser.clone(),
             embedded,
             session_dir.join("downloads"),
@@ -1040,7 +1041,27 @@ impl Kernel {
     /// session and its sub-agents take them up before their next request
     /// (connectors-entry-design §9.4). Returns whether they differ from the current ones.
     pub fn set_system_connectors(&self, settings: SystemSettings) -> bool {
-        self.session.upgrade().is_some_and(|session| session.system.set(settings))
+        let Some(session) = self.session.upgrade() else {
+            return false;
+        };
+        let embedded = session.browser_pool.as_ref().is_some_and(|p| p.has_host());
+        let builtin_on = settings.browser.builtin_on(embedded);
+        let yours_on = settings.browser.yours_on(embedded);
+        let policy = settings.browser.policy.clone();
+        let changed = session.system.set(settings);
+        if changed && let Some(cards) = session.tool_state.get::<Cards>() {
+            if !builtin_on {
+                cards.invalidate_open_site_login(Some(false), "The browser was turned off before the fields could be filled.");
+            }
+            if !yours_on {
+                cards.invalidate_open_site_login(Some(true), "The browser was turned off before the fields could be filled.");
+            }
+            cards.invalidate_open_site_login_where(
+                |b| url::Url::parse(&b.url).ok().is_none_or(|u| policy.refusal(&u).is_some()),
+                "This site is not allowed by browser policy.",
+            );
+        }
+        changed
     }
 
     /// A bot's new name, which the model is told at the next turn boundary (bot-design §2.4).
@@ -1128,6 +1149,14 @@ impl Kernel {
     pub fn record_filled_site_login(&self, own: bool, target_id: &str, origin: &str, url: &str) {
         if let Some(session) = self.session.upgrade() {
             crate::browser::record_filled_site_login(&session.tool_state, own, target_id, origin, url);
+        }
+    }
+
+    /// Removes a pre-recorded `site_login` fill entry when pre-write validation failed before any
+    /// field was written.
+    pub fn clear_filled_site_login(&self, own: bool, target_id: &str) {
+        if let Some(session) = self.session.upgrade() {
+            crate::browser::clear_filled_site_login(&session.tool_state, own, target_id);
         }
     }
 

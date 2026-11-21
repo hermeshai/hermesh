@@ -1809,7 +1809,8 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
             .find_map(|e| {
                 (e["type"] == "tool_completed"
                     && e["result"]["tool_name"] == "send_to_user"
-                    && e["result"]["is_error"] == false)
+                    && e["result"]["is_error"] == false
+                    && e["result"]["details"]["card"].is_object())
                     .then(|| e["result"]["details"]["card"].clone())
             })
             .unwrap_or_else(|| panic!("expected a card in turn: {turn:#?}"))
@@ -2010,8 +2011,56 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
     let dom = evaluate_in(&chrome, &target_id, "({email: document.getElementById('u').value, pass: document.getElementById('p').value})").await;
     assert_eq!(dom, json!({"email": "", "pass": ""}), "SPA jump must leave inputs empty: {dom}");
 
+    // 8b. Tab close invalidation: closing the bound tab invalidates the open card immediately.
+    let close_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] tab close test")).await;
+    let close_card_id = shown_card(&close_turn)["id"].as_str().unwrap().to_string();
+    let target_id = page_target_for(&chrome, &login_url).await;
+    let _ = chrome.send(None, "Target.closeTarget", json!({"targetId": target_id})).await;
+    let failed_close = wait_card_state(&mut events, &mut all_events, &close_card_id, "failed").await;
+    assert!(failed_close["note"].as_str().unwrap_or("").contains("disconnected"), "{failed_close}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+
+    // 8c. Mid-flight config disable (`browser.extension = false` while session is idle):
+    // invalidates open card immediately and blocks fill; re-enabling restores normal behavior.
+    let cfg_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] config disable test")).await;
+    let cfg_card_id = shown_card(&cfg_turn)["id"].as_str().unwrap().to_string();
+    client
+        .request(
+            "config/write",
+            json!({"layer": "user", "edits": [{"key_path": "browser.extension", "value": false, "merge": "replace"}]}),
+        )
+        .await
+        .unwrap();
+    let failed_cfg = wait_card_state(&mut events, &mut all_events, &cfg_card_id, "failed").await;
+    assert!(failed_cfg["note"].as_str().unwrap_or("").contains("turned off"), "{failed_cfg}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+    let after_cfg_fill = client
+        .request("cards/answer", json!({"session_id": session, "card_id": cfg_card_id, "answer": {"decision": "fill", "fields": {"f1": DUMMY_EMAIL, "f2": DUMMY_PASS}}}))
+        .await;
+    assert!(after_cfg_fill.is_err(), "disabled-browser card must reject fill: {after_cfg_fill:?}");
+    client
+        .request(
+            "config/write",
+            json!({"layer": "user", "edits": [{"key_path": "browser.extension", "value": true, "merge": "replace"}]}),
+        )
+        .await
+        .unwrap();
+
     // 9. Disconnect invalidation: Chrome closes while card is open -> card invalidates to `failed`.
-    let disc_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] disconnect invalidation")).await;
+    // (`config/write` pushes `SystemSettings` to hubs asynchronously; wait if the previous disable is still in flight.)
+    let mut disc_turn = Vec::new();
+    for _ in 0..20 {
+        disc_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{login_url}]] disconnect invalidation")).await;
+        if disc_turn.iter().any(|e| {
+            e["type"] == "tool_completed"
+                && e["result"]["tool_name"] == "send_to_user"
+                && e["result"]["is_error"] == false
+                && e["result"]["details"]["card"].is_object()
+        }) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
     let disc_card_id = shown_card(&disc_turn)["id"].as_str().unwrap().to_string();
     let _ = chrome.send(None, "Browser.close", json!({})).await;
     let _ = tokio::time::timeout(Duration::from_secs(10), chrome_process.wait()).await;

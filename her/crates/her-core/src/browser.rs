@@ -55,9 +55,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
+use std::collections::HashMap;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
+use std::sync::Weak;
 use std::time::Duration;
 use url::Url;
 
@@ -186,11 +189,77 @@ fn step_tools(both: bool) -> Vec<Arc<dyn Tool>> {
 /// judges its steps after the first (§12.1).
 pub(crate) type Judge = Arc<dyn Fn(Vec<Authority>) -> futures::future::BoxFuture<'static, Gate> + Send + Sync>;
 
+/// Sensitive `site_login` state shared across a main session and all of its sub-agents (keyed by `root_id`).
+#[derive(Default)]
+struct RootSensitive {
+    /// Live browser sessions started under this root session (both built-in and local Chrome).
+    sessions: Mutex<Vec<Weak<BrowserSession>>>,
+    /// Filled `site_login` documents in local Chrome (`target_id -> origin`), kept across
+    /// extension disconnects/reconnects so observation and desktop control stay blocked until the
+    /// filled tab navigates away or closes.
+    filled_yours: Mutex<HashMap<String, String>>,
+}
+
+fn root_sensitive_map() -> &'static Mutex<HashMap<String, Weak<RootSensitive>>> {
+    static ALL: OnceLock<Mutex<HashMap<String, Weak<RootSensitive>>>> = OnceLock::new();
+    ALL.get_or_init(Default::default)
+}
+
+fn root_sensitive(label: &str) -> Arc<RootSensitive> {
+    let mut all = root_sensitive_map().lock();
+    all.retain(|_, shared| shared.strong_count() > 0);
+    if let Some(shared) = all.get(label).and_then(Weak::upgrade) {
+        return shared;
+    }
+    let shared = Arc::new(RootSensitive::default());
+    all.insert(label.to_string(), Arc::downgrade(&shared));
+    shared
+}
+
+impl RootSensitive {
+    fn track(&self, session: &Arc<BrowserSession>) {
+        let mut sessions = self.sessions.lock();
+        sessions.retain(|w| w.upgrade().is_some_and(|s| !s.is_dead()));
+        if !sessions.iter().any(|w| w.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session))) {
+            sessions.push(Arc::downgrade(session));
+        }
+    }
+
+    fn live_sessions(&self) -> Vec<Arc<BrowserSession>> {
+        let mut sessions = self.sessions.lock();
+        sessions.retain(|w| w.upgrade().is_some_and(|s| !s.is_dead()));
+        sessions.iter().filter_map(Weak::upgrade).collect()
+    }
+
+    fn prune_filled(&self, live: &[Arc<BrowserSession>]) {
+        let yours: Vec<&Arc<BrowserSession>> = live.iter().filter(|s| s.keeps_tabs()).collect();
+        if yours.is_empty() {
+            // Local Chrome is currently disconnected: keep `filled_yours` fail-closed.
+            return;
+        }
+        let mut filled = self.filled_yours.lock();
+        if filled.is_empty() {
+            return;
+        }
+        filled.retain(|target_id, _| yours.iter().any(|s| s.has_active_sensitive_target(target_id)));
+    }
+
+    fn is_active(&self) -> bool {
+        let live = self.live_sessions();
+        if live.iter().any(|s| s.has_active_sensitive()) {
+            return true;
+        }
+        self.prune_filled(&live);
+        !self.filled_yours.lock().is_empty()
+    }
+}
+
 /// What a session's browser tools need: the process's pool and the session's `[browser]`
 /// settings (D-207), which change when the configuration does (connectors-entry-design §9.4).
 /// Without it in the session's state the tools refuse.
 pub(crate) struct BrowserHandle {
     pool: Arc<BrowserPool>,
+    system: Arc<crate::system::SystemCell>,
     state: Mutex<Browsers>,
     /// The `[browser]` policy, shared with the guards of the browsers already started, so that a
     /// change reaches the pages the session has open.
@@ -206,9 +275,8 @@ pub(crate) struct BrowserHandle {
     label: String,
     /// How the session numbered the tabs it let go in the user's own browser.
     yours_numbers: Mutex<Option<her_browser::router::TabNumbers>>,
-    /// Filled `site_login` documents in the user's own Chrome (`target_id -> (origin, url)`),
-    /// kept across extension reconnects so observation stays blocked until the tab navigates away.
-    filled_yours: Mutex<std::collections::HashMap<String, (String, String)>>,
+    /// Shared sensitive `site_login` guard across the root session and all sub-agents.
+    root_sensitive: Arc<RootSensitive>,
     /// Set by the kernel once the session exists.
     judge: std::sync::OnceLock<Judge>,
 }
@@ -247,8 +315,10 @@ impl Browsers {
 
 impl BrowserHandle {
     /// `embedded`: a desktop app shows browsers, where the built-in browser is on by default.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         pool: Arc<BrowserPool>,
+        system: Arc<crate::system::SystemCell>,
         settings: BrowserSettings,
         embedded: bool,
         downloads: PathBuf,
@@ -265,15 +335,16 @@ impl BrowserHandle {
         browsers.current = browsers.default(pool.has_extension());
         Self {
             pool,
+            system,
             policy: Arc::new(Mutex::new(settings.policy.clone())),
             state: Mutex::new(browsers),
             downloads,
             roots,
             grants: Arc::new(Mutex::new(grants)),
             starting: tokio::sync::Mutex::new(()),
+            root_sensitive: root_sensitive(&label),
             label,
             yours_numbers: Mutex::new(None),
-            filled_yours: Mutex::new(std::collections::HashMap::new()),
             judge: std::sync::OnceLock::new(),
         }
     }
@@ -340,37 +411,41 @@ pub(crate) fn forget(state: &her_tools::SessionState, which: Which) {
 /// active on an open card or filled login document (so target binding and observation blocking
 /// remain intact across turns until the page navigates away or the card is cancelled).
 pub(crate) fn task_ended(state: &her_tools::SessionState) {
-    if state
-        .get::<YoursSession>()
-        .is_some_and(|s| s.0.keeps_tabs() && !s.0.has_active_sensitive())
+    if let Some(yours) = state.get::<YoursSession>()
+        && !yours.0.is_dead()
+        && !yours.0.has_active_sensitive()
     {
-        forget(state, Which::Yours);
+        if let Some(handle) = state.get::<BrowserHandle>() {
+            let live = handle.root_sensitive.live_sessions();
+            handle.root_sensitive.prune_filled(&live);
+        }
+        if yours.0.keeps_tabs() {
+            forget(state, Which::Yours);
+        }
     }
 }
 
-/// True while either browser in this session has a pending or filled-unsubmitted `site_login`
-/// document whose observation must remain blocked.
-pub(crate) fn has_active_sensitive(state: &her_tools::SessionState) -> bool {
-    state
-        .get::<BrowserSession>()
-        .is_some_and(|s| !s.is_dead() && s.has_active_sensitive())
-        || state
-            .get::<YoursSession>()
-            .is_some_and(|s| !s.0.is_dead() && s.0.has_active_sensitive())
+/// True while the root session (or any of its sub-agents) has a pending or filled-unsubmitted
+/// `site_login` document whose observation and desktop control must remain blocked.
+pub(crate) fn is_sensitive_active(label: &str) -> bool {
+    let shared = {
+        let mut all = root_sensitive_map().lock();
+        all.retain(|_, shared| shared.strong_count() > 0);
+        all.get(label).and_then(Weak::upgrade)
+    };
+    shared.is_some_and(|s| s.is_active())
 }
 
-/// The live bound browser session for a `site_login` card, checking that the browser is still
-/// enabled, connected, unrevoked, and permitted by site policy.
-pub(crate) fn site_login_browser(
-    state: &her_tools::SessionState,
-    own: bool,
-    url: &str,
-) -> Result<Arc<BrowserSession>, &'static str> {
-    let handle = state
-        .get::<BrowserHandle>()
-        .ok_or("The browser tools are no longer enabled in this conversation.")?;
-    let which = if own { Which::Yours } else { Which::Builtin };
-    if !handle.state.lock().on(which) {
+/// Checks live `[browser]` settings and `SitePolicy` (without waiting for the next model turn).
+fn live_site_login_allowed(handle: &BrowserHandle, own: bool, url: &str) -> Result<(), &'static str> {
+    let settings = handle.system.get();
+    let embedded = handle.pool.has_host();
+    let enabled = if own {
+        settings.browser.yours_on(embedded)
+    } else {
+        settings.browser.builtin_on(embedded)
+    };
+    if !enabled {
         return Err("The browser was turned off before the fields could be filled.");
     }
     if own {
@@ -382,9 +457,24 @@ pub(crate) fn site_login_browser(
         }
     }
     let parsed = Url::parse(url).map_err(|_| "The page URL could not be verified.")?;
-    if handle.policy.lock().refusal(&parsed).is_some() {
+    if settings.browser.policy.refusal(&parsed).is_some() {
         return Err("This site is not allowed by browser policy.");
     }
+    Ok(())
+}
+
+/// The live bound browser session for a `site_login` card, checking that the browser is still
+/// enabled, connected, unrevoked, and permitted by the latest site policy.
+pub(crate) fn site_login_browser(
+    state: &her_tools::SessionState,
+    own: bool,
+    url: &str,
+) -> Result<Arc<BrowserSession>, &'static str> {
+    let handle = state
+        .get::<BrowserHandle>()
+        .ok_or("The browser tools are no longer enabled in this conversation.")?;
+    live_site_login_allowed(&handle, own, url)?;
+    let which = if own { Which::Yours } else { Which::Builtin };
     let session = match which {
         Which::Builtin => state.get::<BrowserSession>(),
         Which::Yours => state.get::<YoursSession>().map(|s| s.0.clone()),
@@ -396,20 +486,32 @@ pub(crate) fn site_login_browser(
     Ok(session)
 }
 
-/// Records a filled `site_login` document on local Chrome so observation stays blocked across
-/// extension reconnects while that exact login URL remains loaded.
+/// Records a filled `site_login` document on local Chrome so observation and desktop control stay
+/// blocked across extension disconnects/reconnects until that tab navigates away or closes.
 pub(crate) fn record_filled_site_login(
     state: &her_tools::SessionState,
     own: bool,
     target_id: &str,
     origin: &str,
-    url: &str,
+    _url: &str,
 ) {
     if own && let Some(handle) = state.get::<BrowserHandle>() {
         handle
+            .root_sensitive
             .filled_yours
             .lock()
-            .insert(target_id.to_string(), (origin.to_string(), url.to_string()));
+            .insert(target_id.to_string(), origin.to_string());
+    }
+}
+
+/// Clears a pre-recorded `site_login` fill entry when pre-write checks failed before writing.
+pub(crate) fn clear_filled_site_login(
+    state: &her_tools::SessionState,
+    own: bool,
+    target_id: &str,
+) {
+    if own && let Some(handle) = state.get::<BrowserHandle>() {
+        handle.root_sensitive.filled_yours.lock().remove(target_id);
     }
 }
 
@@ -611,27 +713,48 @@ async fn start(ctx: &ToolCtx, which: Which) -> Result<(Arc<BrowserSession>, Opti
         },
     ));
     session.adopt_pending().await.map_err(failed)?;
+    handle.root_sensitive.track(&session);
     if which == Which::Yours {
-        let mut filled = handle.filled_yours.lock();
+        let other_live: Vec<Arc<BrowserSession>> = handle
+            .root_sensitive
+            .live_sessions()
+            .into_iter()
+            .filter(|s| s.keeps_tabs() && !Arc::ptr_eq(s, &session))
+            .collect();
+        let mut filled = handle.root_sensitive.filled_yours.lock();
         if !filled.is_empty() {
-            for tab in session.tabs() {
-                if let Some((origin, url)) = filled.get(&tab.target_id).cloned() {
-                    let still_same = {
-                        let st = tab.state.lock();
-                        st.main_frame.as_ref().and_then(|fid| {
-                            st.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
-                        })
-                    };
-                    if let Some((frame_id, loader, current_url)) = still_same
-                        && her_browser::session::url_origin(&current_url) == origin
-                        && current_url == url
+            let tabs = session.tabs();
+            let mut keep = HashMap::new();
+            for (target_id, origin) in filled.drain() {
+                let Some(tab) = tabs.iter().find(|t| t.target_id == target_id) else {
+                    if other_live.iter().any(|s| s.has_active_sensitive_target(&target_id)) {
+                        keep.insert(target_id, origin);
+                    }
+                    continue;
+                };
+                let still_same = {
+                    let st = tab.state.lock();
+                    st.main_frame.as_ref().and_then(|fid| {
+                        st.frames.get(fid).map(|f| (fid.clone(), f.loader.clone(), f.url.clone()))
+                    })
+                };
+                match still_same {
+                    Some((frame_id, loader, current_url))
+                        if her_browser::session::url_origin(&current_url) == origin =>
                     {
                         session.mark_filled_document(&tab.id, &frame_id, &loader, &origin);
-                    } else {
-                        filled.remove(&tab.target_id);
+                        keep.insert(target_id, origin);
                     }
+                    // Fail closed if the frame tree has not been seeded yet after adopt_pending:
+                    // install a tab-level unseeded guard so browser observation and cua_* stay blocked.
+                    None => {
+                        session.mark_filled_unseeded(&tab.id, &origin);
+                        keep.insert(target_id, origin);
+                    }
+                    Some(_) => {}
                 }
             }
+            *filled = keep;
         }
     }
     match which {
@@ -1138,13 +1261,8 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
     }
     let session = existing(ctx, first_which)?;
     let inspected = session.inspect_site_login(&refs).await.map_err(failed)?;
-    let parsed_url = Url::parse(&inspected.url)
-        .map_err(|_| ToolError::Failed("cannot verify the page URL; use browser_wait with user".into()))?;
-    if let Some(reason) = handle.policy.lock().refusal(&parsed_url) {
-        return Err(ToolError::Failed(reason));
-    }
-
     let own_browser = first_which == Which::Yours;
+    live_site_login_allowed(&handle, own_browser, &inspected.url).map_err(|e| ToolError::Failed(e.into()))?;
     let browser_label = own_browser.then(|| handle.pool.extension_browser_label());
     let bound_tab = own_browser.then(|| inspected.tab.clone());
 
@@ -1210,6 +1328,9 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
         browser_label: browser_label.clone(),
         fields: bindings,
     };
+    let tab_handle = session.tab_handle(&inspected.tab).ok_or_else(|| {
+        ToolError::Failed("The browser disconnected before the sign-in card could be prepared.".into())
+    })?;
     session.begin_sensitive_card(&card_id, &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &backends);
     let weak_session = Arc::downgrade(&session);
     let cleanup = Arc::new(move |id: &str| {
@@ -1217,11 +1338,32 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
             session.end_sensitive_card(id);
         }
     });
-    cards.prepare_with_binding(card, Some(binding), Some(cleanup));
+    let before_show: Arc<dyn Fn() -> Result<(), String> + Send + Sync> = {
+        let tab = tab_handle.clone();
+        let weak_session = Arc::downgrade(&session);
+        let weak_handle = Arc::downgrade(&handle);
+        let frame_id = inspected.frame.clone();
+        let loader = inspected.loader.clone();
+        let origin = inspected.origin.clone();
+        let url = inspected.url.clone();
+        Arc::new(move || {
+            let (Some(session), Some(handle)) = (weak_session.upgrade(), weak_handle.upgrade()) else {
+                return Err("The browser disconnected before the sign-in card could be shown.".into());
+            };
+            live_site_login_allowed(&handle, own_browser, &url).map_err(str::to_string)?;
+            match session.check_login_target(&tab, &frame_id, &loader, &origin, &url) {
+                LoginTargetStatus::Valid => Ok(()),
+                LoginTargetStatus::Changed => Err("The page changed before the sign-in card could be shown.".into()),
+                LoginTargetStatus::Disconnected => Err("The browser disconnected before the sign-in card could be shown.".into()),
+            }
+        })
+    };
+    cards.prepare_with_binding(card, Some(binding), Some(cleanup), Some(before_show));
 
     // Watch the bound tab while the card waits so navigation, SPA jumps, tab close, debugger detach,
-    // revocation, or extension disconnect invalidate an open card immediately.
-    if let Some(tab) = session.tab_handle(&inspected.tab) {
+    // revocation, policy/config changes, or extension disconnect invalidate an open card immediately.
+    {
+        let tab = tab_handle;
         let weak_cards = Arc::downgrade(&cards);
         let weak_session = Arc::downgrade(&session);
         let weak_handle = Arc::downgrade(&handle);
@@ -1247,8 +1389,8 @@ async fn prepare_site_login(args: &ActArgs, ctx: &ToolCtx) -> Result<ToolOutput,
                 }
                 let failure = match (weak_session.upgrade(), weak_handle.upgrade()) {
                     (Some(session), Some(handle)) => {
-                        if own_browser && (handle.pool.is_revoked(&handle.label) || !handle.pool.has_extension()) {
-                            Some("The browser disconnected before the fields could be filled.")
+                        if let Err(reason) = live_site_login_allowed(&handle, own_browser, &url) {
+                            Some(reason)
                         } else {
                             match session.check_login_target(&tab, &frame_id, &loader, &origin, &url) {
                                 LoginTargetStatus::Valid => None,
@@ -2000,5 +2142,22 @@ mod tests {
         let rebound = url("https://rebind.example/");
         assert!(guard.check_address(&rebound, "10.0.0.5".parse().unwrap()).is_err());
         assert!(guard.check_address(&rebound, "93.184.215.14".parse().unwrap()).is_ok());
+    }
+
+    #[test]
+    fn root_sensitive_shares_across_subagents_and_stays_fail_closed_while_disconnected() {
+        let label = "root-sensitive-test-session";
+        assert!(!is_sensitive_active(label));
+        let main_guard = root_sensitive(label);
+        let subagent_guard = root_sensitive(label);
+        assert!(Arc::ptr_eq(&main_guard, &subagent_guard));
+        // Simulate a filled local-Chrome tab while no live Chrome session is attached (disconnected).
+        main_guard
+            .filled_yours
+            .lock()
+            .insert("target-1".into(), "https://login.example".into());
+        assert!(is_sensitive_active(label), "cua_* must stay blocked for root and sub-agents while disconnected");
+        main_guard.filled_yours.lock().remove("target-1");
+        assert!(!is_sensitive_active(label));
     }
 }
