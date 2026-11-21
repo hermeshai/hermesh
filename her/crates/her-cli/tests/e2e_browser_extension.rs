@@ -1797,7 +1797,7 @@ async fn chrome_login_card_isolated_takeover_in_temp_profile() {
 
     // Confirm default browser is still "builtin".
     let cfg_before = client.request("config/read", json!({})).await.unwrap();
-    assert_eq!(cfg_before["effective"]["browser"]["default"], "builtin", "{cfg_before}");
+    assert_eq!(cfg_before["config"]["browser"]["default"], "builtin", "{cfg_before}");
 
     // ---- 1. Happy path: verified origin & tab, debugger detached, model blocked during Open & SignIn, native sign-in, safe recovery ----
     start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login]] sign in")).await;
@@ -1925,7 +1925,7 @@ async fn chrome_login_card_isolated_takeover_in_temp_profile() {
 
     // Default browser STILL untouched!
     let cfg_after = client.request("config/read", json!({})).await.unwrap();
-    assert_eq!(cfg_after["effective"]["browser"]["default"], "builtin");
+    assert_eq!(cfg_after["config"]["browser"]["default"], "builtin", "{cfg_after}");
 
     // ---- 2. Cancel (decline) invalidates cleanly and falls back to manual login ----
     start_prompt(&client, &session, &format!("[[mock:chrome_login:{origin}/login|y1]] cancel test")).await;

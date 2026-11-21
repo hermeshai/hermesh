@@ -1335,16 +1335,28 @@ fn plan(shared: &Shared, messages: &[Value], name: &str, arg: &str, prompt: &str
         // Attempts to observe/act on a local Chrome tab while a takeover card is active.
         "chrome_probe" => {
             let tab = arg.trim();
-            match step {
-                0 => Plan::Step(Step::calls(vec![
-                    ("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": tab } })),
-                    ("call_tool", json!({ "name": "browser_screenshot", "arguments": { "tab": tab } })),
-                    ("call_tool", json!({ "name": "browser_console", "arguments": { "tab": tab } })),
-                    ("call_tool", json!({ "name": "browser_wait", "arguments": { "tab": tab, "text": "Sign In", "seconds": 0.2 } })),
-                    ("call_tool", json!({ "name": "browser_act", "arguments": { "tab": tab, "action": "click", "x": 10, "y": 10 } })),
-                    ("call_tool", json!({ "name": "browser_tabs", "arguments": { "action": "list" } })),
-                ])),
-                _ => last_words(bot, format!("probe: {}", last_tool_result(messages))),
+            if let Some((outcome, note)) = card_end(messages) {
+                let tried = messages.last().and_then(|m| m.get("role")).and_then(Value::as_str) == Some("tool")
+                    && !last_tool_result(messages).contains("Sent.");
+                if outcome == "done" && !tried {
+                    Plan::Step(Step::calls(vec![("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": tab } }))]))
+                } else if tried {
+                    last_words(bot, format!("转告：{note}\n{}", last_tool_result(messages)))
+                } else {
+                    last_words(bot, format!("转告：{note}"))
+                }
+            } else {
+                match step {
+                    0 => Plan::Step(Step::calls(vec![
+                        ("call_tool", json!({ "name": "browser_snapshot", "arguments": { "tab": tab } })),
+                        ("call_tool", json!({ "name": "browser_screenshot", "arguments": { "tab": tab } })),
+                        ("call_tool", json!({ "name": "browser_console", "arguments": { "tab": tab } })),
+                        ("call_tool", json!({ "name": "browser_wait", "arguments": { "tab": tab, "text": "Sign In", "seconds": 0.2 } })),
+                        ("call_tool", json!({ "name": "browser_act", "arguments": { "tab": tab, "action": "click", "x": 10, "y": 10 } })),
+                        ("call_tool", json!({ "name": "browser_tabs", "arguments": { "action": "list" } })),
+                    ])),
+                    _ => last_words(bot, format!("probe: {}", last_tool_result(messages))),
+                }
             }
         },
         // A page opened without naming a browser: where the user's default sends it.
