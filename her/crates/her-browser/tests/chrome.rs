@@ -256,12 +256,12 @@ async fn secure_card_fills_the_login_document_and_waits_for_user_navigation() {
         .zip(["owner@example.test", "dummy-password"])
         .map(|(field, value)| (field.backend, field.input_type.clone(), value.to_string()))
         .collect();
-    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.unwrap();
+    session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.unwrap();
     assert_eq!(session.page(None).unwrap().loader, inspected.loader);
     assert!(session.snapshot(&SnapshotRequest::default()).await.is_err());
     assert!(session.wait(None, &WaitFor::Url("/login".into()), Duration::ZERO).await.is_err());
     assert!(act(&session, Action::Click, &ref_of(&opened.text, "button \"Continue\"")).await.is_err());
-    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &fields).await.is_err());
+    assert!(session.fill_site_login("login", &inspected.tab, &inspected.frame, &inspected.loader, &inspected.origin, &inspected.url, &fields).await.is_err());
 
     let recovered = session.navigate(None, &fx.url("/welcome"), false).await.unwrap();
     assert!(recovered.text.contains("Welcome back"), "{}", recovered.text);
