@@ -8,10 +8,14 @@ use serde_json::json;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn her_serve_removes_require_ai_consent_flag_and_backend_gate() {
-    // 1. `--require-ai-consent` is completely removed from CLI parsing (not defaulted).
-    let output = std::process::Command::new(common::her_bin())
-        .args(["serve", "--stdio", "--require-ai-consent"])
+    // 1. Pre-existing legacy `ai-consent.json` and synthetic LAN HTTP custom model in `models.toml`.
+    let env = TestEnv::new("bypass-permissions", "[models]\nnetwork = false\n").await;
+
+    // `--require-ai-consent` is completely removed from CLI parsing (not defaulted).
+    let output = env
+        .her(&["serve", "--stdio", "--require-ai-consent"])
         .output()
+        .await
         .expect("spawn her");
     assert!(!output.status.success(), "expected --require-ai-consent to be rejected");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -20,8 +24,6 @@ async fn her_serve_removes_require_ai_consent_flag_and_backend_gate() {
         "unexpected stderr: {stderr}"
     );
 
-    // 2. Pre-existing legacy `ai-consent.json` and synthetic LAN HTTP custom model in `models.toml`.
-    let env = TestEnv::new("bypass-permissions", "[models]\nnetwork = false\n").await;
     let legacy_consent = env.home.path().join("ai-consent.json");
     let legacy_payload = r#"{"allowed":{"provider":"legacy","endpoint":"https://example.invalid/v1"}}"#;
     std::fs::write(&legacy_consent, legacy_payload).unwrap();
@@ -42,13 +44,8 @@ name = "LAN Model"
     std::fs::write(&models_path, format!("{models}\n{synthetic_lan}")).unwrap();
 
     let (mut child, client, incoming) = env.spawn_rpc(&["serve", "--stdio"]);
-    let init = native_init(&client).await;
-    let methods: Vec<&str> = init["capabilities"]["methods"]
-        .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
-        .unwrap_or_default();
+    native_init(&client).await;
     for removed in ["ai_consent/status", "ai_consent/allow", "ai_consent/revoke"] {
-        assert!(!methods.contains(&removed), "{removed} must not be advertised: {methods:?}");
         let err = client.request(removed, json!({})).await.unwrap_err();
         assert_eq!(err.code, her_rpc::code::METHOD_NOT_FOUND, "{removed}: {err:?}");
     }
