@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { McpProbeResult, McpProbeStep, McpProbeStepId, McpServerConfig } from "@hermesh/her-protocol";
 import { Dialog } from "../components";
 import { errorText } from "../format";
@@ -7,7 +7,7 @@ import { useHer } from "../her";
 import { Icon } from "../icons";
 import { openPage, signInRemotely } from "../signin";
 import { LocalFields, RemoteFields, type Auth, type Client, type RemoteState, type Transport } from "./ConnectorFields";
-import { detect, suggestName, validateLocalRows, validateProgram, type Detected, type Row } from "./detect";
+import { detect, parseMcpJson, sanitizeServerName, suggestName, validateLocalRows, validateProgram, type Detected, type ImportedServer, type Row } from "./detect";
 import { localIdentity, remoteIdentity } from "./identity";
 import { credentialName, serverName } from "./model";
 import { ServerTile } from "./parts";
@@ -17,11 +17,13 @@ import type { Customize } from "./useCustomize";
 // explicit choice between Remote URL (HTTP/SSE) and Local Program (stdio). A remote address is
 // checked (mcp/probe), then its sign-in is set up with what the check found, and nothing is
 // written before a check passes unless the person adds it anyway. A local stdio program shows
-// its execution host and structured executable/args/env, then the owner's device signs it with
-// the root key (docs/her-server.md §8) and checks it once added: a command is never run before that.
+// its execution host and structured executable/args (with optional Name & env under Advanced,
+// and an independent Import JSON view that pre-fills the same form without starting anything),
+// then the owner's device signs it with the root key (docs/her-server.md §8) and checks it once
+// added: a command is never run before that.
 
 type Mode = "remote" | "local";
-type Step = "entry" | "check" | "remote" | "login" | "approve" | "done";
+type Step = "entry" | "import" | "check" | "remote" | "login" | "approve" | "done";
 const REMOTE_STEPS: McpProbeStepId[] = ["connect", "resource", "auth_server"];
 
 export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; onClose: () => void; onAdded: (name: string) => void; onOpen: (name: string) => void }) {
@@ -31,9 +33,12 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
   const [step, setStep] = useState<Step>("entry");
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
-  const [paste, setPaste] = useState("");
-  const [pasteError, setPasteError] = useState<string | null>(null);
-  const [pasteRemote, setPasteRemote] = useState<Extract<Detected, { kind: "remote" }> | null>(null);
+  const [localAdv, setLocalAdv] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importChoices, setImportChoices] = useState<ImportedServer[] | null>(null);
+  const [importRemote, setImportRemote] = useState<Extract<ImportedServer, { kind: "remote" }> | null>(null);
+  const [importedInfo, setImportedInfo] = useState<{ skipped: string[] } | null>(null);
   const [errors, setErrors] = useState<{ name?: string; address?: string; program?: string; args?: string; env?: string }>({});
   const [d, setD] = useState<Detected | null>(null);
   const [steps, setSteps] = useState<McpProbeStep[]>([]);
@@ -92,40 +97,105 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     setMode(next);
     setErrors({});
     setFailure(null);
-    setPasteError(null);
-    setPasteRemote(null);
+    setImportError(null);
+    setImportChoices(null);
+    setImportRemote(null);
+  };
+
+  const validateLocalForm = (candidateName: string, candidateProgram: string, candidateArgs: string[], candidateEnv: Row[]) => {
+    const det: Detected | null = candidateProgram.trim() ? { kind: "local", argv: [candidateProgram.trim(), ...candidateArgs], env: candidateEnv } : null;
+    const n = (candidateName || suggestName(det)).trim();
+    const errs: typeof errors = {};
+    if (!serverName.test(n)) errs.name = t("addc.badName");
+    else if (existing.has(n)) errs.name = t("addc.taken", { name: n });
+    const pIssue = validateProgram(candidateProgram);
+    if (pIssue) errs.program = t(`addc.errProgram.${pIssue}`);
+    const rowCheck = validateLocalRows(n || "connector", candidateArgs, candidateEnv);
+    if (rowCheck.argsError) errs.args = t(`addc.errArgs.${rowCheck.argsError}`);
+    if (rowCheck.envError) errs.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
+    const dup = sameAs(det);
+    if (!errs.program && dup) errs.program = t("addc.duplicate", { name: dup.name });
+    return { n, errs };
   };
 
   const applyLocalDetected = (det: Extract<Detected, { kind: "local" }>) => {
-    setProgram(det.argv[0] ?? "");
-    setArgs(det.argv.slice(1));
+    const nextProgram = det.argv[0] ?? "";
+    const nextArgs = det.argv.slice(1);
+    const rawName = det.name ? (serverName.test(det.name) ? det.name : sanitizeServerName(det.name)) : "";
+    const nextName = rawName || name.trim();
+    setProgram(nextProgram);
+    setArgs(nextArgs);
     setEnv(det.env);
-    if (!name.trim()) {
-      const sug = suggestName(det);
-      if (sug) setName(sug);
-    }
+    setName(nextName);
+    const { errs } = validateLocalForm(nextName, nextProgram, nextArgs, det.env);
+    setErrors(errs);
+    setLocalAdv(det.env.length > 0 || !!errs.name || !!errs.env);
+    setImportedInfo(det.json ? { skipped: [] } : null);
     setMode("local");
-    setErrors({});
+    setStep("entry");
     setFailure(null);
-    setPaste("");
-    setPasteError(null);
-    setPasteRemote(null);
   };
 
-  const applyQuickPaste = () => {
-    setPasteError(null);
-    setPasteRemote(null);
-    const det = detect(paste);
-    if (!det) return;
-    if (det.kind === "bad") {
-      setPasteError(t(`addc.bad.${det.why}`));
+  const openImport = () => {
+    setImportError(null);
+    setImportChoices(null);
+    setImportRemote(null);
+    setStep("import");
+  };
+
+  const applyImportedServer = (entry: ImportedServer) => {
+    if (entry.kind === "remote") {
+      const nextName = entry.name ? (serverName.test(entry.name) ? entry.name : sanitizeServerName(entry.name)) : "";
+      const nextAddress = entry.headers.length
+        ? JSON.stringify({ url: entry.url, headers: Object.fromEntries(entry.headers.map((h) => [h.key, h.value])) })
+        : entry.url;
+      setAddress(nextAddress);
+      if (nextName) setName(nextName);
+      setImportText("");
+      setImportError(null);
+      setImportChoices(null);
+      setImportRemote(null);
+      setStep("entry");
+      switchMode("remote");
       return;
     }
-    if (det.kind === "remote") {
-      setPasteRemote(det);
+    const nextName = entry.name ? (serverName.test(entry.name) ? entry.name : sanitizeServerName(entry.name)) : "";
+    setProgram(entry.command);
+    setArgs(entry.args);
+    setEnv(entry.env);
+    setName(nextName);
+    const { errs } = validateLocalForm(nextName, entry.command, entry.args, entry.env);
+    setErrors(errs);
+    setLocalAdv(entry.env.length > 0 || !!errs.name || !!errs.env);
+    setImportedInfo({ skipped: entry.skipped });
+    setImportText("");
+    setImportError(null);
+    setImportChoices(null);
+    setImportRemote(null);
+    setFailure(null);
+    setMode("local");
+    setStep("entry");
+  };
+
+  const runImport = () => {
+    setImportError(null);
+    setImportChoices(null);
+    setImportRemote(null);
+    const parsed = parseMcpJson(importText);
+    if (!parsed.ok) {
+      setImportError(t(`addc.importErr.${parsed.error}`));
       return;
     }
-    applyLocalDetected(det);
+    if (parsed.servers.length > 1) {
+      setImportChoices(parsed.servers);
+      return;
+    }
+    const only = parsed.servers[0];
+    if (only.kind === "remote") {
+      setImportRemote(only);
+      return;
+    }
+    applyImportedServer(only);
   };
 
   const discard = async () => {
@@ -235,17 +305,9 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
   const addCommand = async () => {
     if (!rpc) return;
     const trimmedProgram = program.trim();
-    const n = (name || suggestName(localDetected)).trim();
-    const errs: typeof errors = {};
-    if (!serverName.test(n)) errs.name = t("addc.badName");
-    else if (existing.has(n)) errs.name = t("addc.taken", { name: n });
-    const pIssue = validateProgram(program);
-    if (pIssue) errs.program = t(`addc.errProgram.${pIssue}`);
-    const rowCheck = validateLocalRows(n || "connector", args, env);
-    if (rowCheck.argsError) errs.args = t(`addc.errArgs.${rowCheck.argsError}`);
-    if (rowCheck.envError) errs.env = t(`addc.errEnv.${rowCheck.envError.kind}`, { key: rowCheck.envError.key });
-    if (!errs.program && duplicate) errs.program = t("addc.duplicate", { name: duplicate.name });
+    const { n, errs } = validateLocalForm(name, program, args, env);
     setErrors(errs);
+    if (errs.name || errs.env) setLocalAdv(true);
     if (Object.keys(errs).length) return;
 
     setName(n);
@@ -528,6 +590,12 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
     </div>
   );
 
+  const importedNote = importedInfo
+    ? importedInfo.skipped.length > 0
+      ? t("addc.importedNoteSkipped", { fields: importedInfo.skipped.join(", ") })
+      : t("addc.importedNote")
+    : null;
+
   const entryView = (
     <>
       <div className="seg cz-modeseg" role="group" aria-label={t("addc.modeLabel")}>
@@ -540,133 +608,161 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
           {t("addc.modeLocal")}
         </button>
       </div>
-      <p className="sub">{mode === "remote" ? t("addc.subRemote") : t("addc.subLocal")}</p>
-      <div className="cz-form">
-        <div className="cz-fi">
-          <label htmlFor="cz-add-name">{t("addc.name")}</label>
-          <input
-            id="cz-add-name"
-            className={`field ${errors.name ? "bad" : ""}`}
-            value={name}
-            placeholder={suggested || t("addc.namePlaceholder")}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => (setName(e.target.value), setErrors((prev) => ({ ...prev, name: undefined })))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && mode === "remote") void connect();
-              // Tab takes the suggestion, as a completion does; with a name typed it moves on.
-              if (e.key === "Tab" && !e.shiftKey && !name && suggested) {
-                e.preventDefault();
-                setName(suggested);
-                setErrors((prev) => ({ ...prev, name: undefined }));
-              }
-            }}
-          />
-          {errors.name ? <div className="cz-ferr">{errors.name}</div> : <div className="note">{suggested ? t("addc.nameNoteSuggested", { name: suggested }) : t("addc.nameNote")}</div>}
-        </div>
-        {mode === "remote" ? (
-          <div className="cz-fi">
-            <label htmlFor="cz-add-address">{t("addc.address")}</label>
-            <textarea
-              id="cz-add-address"
-              rows={1}
-              className={`field mono cz-grow ${errors.address ? "bad" : ""}`}
-              value={address}
-              placeholder={t("addc.addressPlaceholderRemote")}
-              spellCheck={false}
-              autoFocus
-              onChange={(e) => {
-                setAddress(e.target.value);
-                setErrors((prev) => ({ ...prev, address: undefined }));
-                e.target.style.height = "auto";
-                e.target.style.height = `${e.target.scrollHeight + 2}px`;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void connect();
-                }
-              }}
-            />
-            {errors.address ? <div className="cz-ferr">{errors.address}</div> : hint}
-          </div>
-        ) : (
-          <>
+      {mode === "remote" ? (
+        <>
+          <p className="sub">{t("addc.subRemote")}</p>
+          <div className="cz-form">
             <div className="cz-fi">
-              <label htmlFor="cz-quick-paste">{t("addc.quickPaste")}</label>
-              <div className="cz-paste-row">
-                <textarea
-                  id="cz-quick-paste"
-                  rows={1}
-                  className={`field mono cz-grow ${pasteError ? "bad" : ""}`}
-                  value={paste}
-                  placeholder={t("addc.quickPastePlaceholder")}
-                  spellCheck={false}
-                  onChange={(e) => {
-                    setPaste(e.target.value);
-                    setPasteError(null);
-                    setPasteRemote(null);
-                    e.target.style.height = "auto";
-                    e.target.style.height = `${e.target.scrollHeight + 2}px`;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      applyQuickPaste();
-                    }
-                  }}
-                />
-                <button type="button" className="btn" disabled={!paste.trim()} onClick={applyQuickPaste}>
-                  {t("addc.fillFields")}
-                </button>
-              </div>
-              {pasteError && <div className="cz-ferr">{pasteError}</div>}
-              {pasteRemote && (
-                <div className="cz-detect">
-                  <Icon name="web" />
-                  <span>{t("addc.looksLikeRemote")}</span>
-                  <button
-                    type="button"
-                    className="link"
-                    onClick={() => {
-                      setAddress(pasteRemote.json ? paste : pasteRemote.url);
-                      setPaste("");
-                      if (!name.trim() && suggestName(pasteRemote)) setName(suggestName(pasteRemote));
-                      switchMode("remote");
-                    }}
-                  >
-                    {t("addc.switchToRemote")}
-                  </button>
-                </div>
-              )}
+              <label htmlFor="cz-add-name">{t("addc.name")}</label>
+              <input
+                id="cz-add-name"
+                className={`field ${errors.name ? "bad" : ""}`}
+                value={name}
+                placeholder={suggested || t("addc.namePlaceholder")}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => (setName(e.target.value), setErrors((prev) => ({ ...prev, name: undefined })))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void connect();
+                  // Tab takes the suggestion, as a completion does; with a name typed it moves on.
+                  if (e.key === "Tab" && !e.shiftKey && !name && suggested) {
+                    e.preventDefault();
+                    setName(suggested);
+                    setErrors((prev) => ({ ...prev, name: undefined }));
+                  }
+                }}
+              />
+              {errors.name ? <div className="cz-ferr">{errors.name}</div> : <div className="note">{suggested ? t("addc.nameNoteSuggested", { name: suggested }) : t("addc.nameNote")}</div>}
             </div>
-            <LocalFields
-              program={program}
-              setProgram={(v) => (setProgram(v), setErrors((prev) => ({ ...prev, program: undefined })))}
-              args={args}
-              setArgs={(v) => (setArgs(v), setErrors((prev) => ({ ...prev, args: undefined })))}
-              env={env}
-              setEnv={(v) => (setEnv(v), setErrors((prev) => ({ ...prev, env: undefined })))}
-              hostName={host?.machine_name}
-              programError={errors.program}
-              argsError={errors.args}
-              envError={errors.env}
-            />
-            {duplicate && (
-              <div className="cz-detect bad">
-                <Icon name="warn" />
-                <span>{t("addc.duplicate", { name: duplicate.name })}</span>
-                <button type="button" className="link" onClick={() => onOpen(duplicate.name)}>
-                  {t("addc.openIt", { name: duplicate.name })}
-                </button>
-              </div>
-            )}
-            {failure && <div className="cz-errbox cz-gap">{failure}</div>}
-            <p className="cz-trust">{t("addc.localTrust")}</p>
-          </>
+            <div className="cz-fi">
+              <label htmlFor="cz-add-address">{t("addc.address")}</label>
+              <textarea
+                id="cz-add-address"
+                rows={1}
+                className={`field mono cz-grow ${errors.address ? "bad" : ""}`}
+                value={address}
+                placeholder={t("addc.addressPlaceholderRemote")}
+                spellCheck={false}
+                autoFocus
+                onChange={(e) => {
+                  setAddress(e.target.value);
+                  setErrors((prev) => ({ ...prev, address: undefined }));
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${e.target.scrollHeight + 2}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void connect();
+                  }
+                }}
+              />
+              {errors.address ? <div className="cz-ferr">{errors.address}</div> : hint}
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="cz-form">
+          <LocalFields
+            program={program}
+            setProgram={(v) => (setProgram(v), setErrors((prev) => ({ ...prev, program: undefined })))}
+            args={args}
+            setArgs={(v) => (setArgs(v), setErrors((prev) => ({ ...prev, args: undefined })))}
+            env={env}
+            setEnv={(v) => (setEnv(v), setErrors((prev) => ({ ...prev, env: undefined })))}
+            hostName={host?.machine_name}
+            programError={errors.program}
+            argsError={errors.args}
+            envError={errors.env}
+            name={name}
+            setName={(v) => (setName(v), setErrors((prev) => ({ ...prev, name: undefined })))}
+            suggestedName={suggested}
+            nameError={errors.name}
+            onImportJson={openImport}
+            importedNote={importedNote}
+            advOpen={localAdv}
+            setAdvOpen={setLocalAdv}
+          />
+          {duplicate && (
+            <div className="cz-detect bad">
+              <Icon name="warn" />
+              <span>{t("addc.duplicate", { name: duplicate.name })}</span>
+              <button type="button" className="link" onClick={() => onOpen(duplicate.name)}>
+                {t("addc.openIt", { name: duplicate.name })}
+              </button>
+            </div>
+          )}
+          {failure && <div className="cz-errbox cz-gap">{failure}</div>}
+          <p className="cz-trust">{t("addc.localTrust")}</p>
+        </div>
+      )}
+    </>
+  );
+
+  const importView = (
+    <div className="cz-form">
+      <p className="sub">{t("addc.importSub")}</p>
+      <div className="cz-callout cz-host-callout">
+        <Icon name="terminal" />
+        <span>
+          {host?.machine_name ? (
+            <Trans t={t} i18nKey="addc.execHost" values={{ host: host.machine_name }} components={{ b: <b /> }} />
+          ) : (
+            t("addc.execHostGeneric")
+          )}
+        </span>
+      </div>
+      <div className="cz-fi">
+        <label htmlFor="cz-import-json">{t("addc.importLabel")}</label>
+        <textarea
+          id="cz-import-json"
+          rows={9}
+          className={`field mono cz-import-area ${importError ? "bad" : ""}`}
+          value={importText}
+          placeholder={t("addc.importPlaceholder")}
+          spellCheck={false}
+          autoFocus
+          onChange={(e) => {
+            setImportText(e.target.value);
+            setImportError(null);
+            setImportChoices(null);
+            setImportRemote(null);
+          }}
+          onKeyDown={(e) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+              e.preventDefault();
+              runImport();
+            }
+          }}
+        />
+        {importError && <div className="cz-ferr">{importError}</div>}
+        {importRemote && (
+          <div className="cz-detect">
+            <Icon name="web" />
+            <span>{t("addc.looksLikeRemote")}</span>
+            <button type="button" className="link" onClick={() => applyImportedServer(importRemote)}>
+              {t("addc.switchToRemote")}
+            </button>
+          </div>
         )}
       </div>
-    </>
+      {importChoices && (
+        <div className="cz-import-pick">
+          <div className="note">{t("addc.importPick", { count: importChoices.length })}</div>
+          <div className="fgroup">
+            {importChoices.map((srv, idx) => (
+              <button key={`${srv.name ?? idx}-${idx}`} type="button" className="frow cz-pick-row" onClick={() => applyImportedServer(srv)}>
+                <div className="ft">
+                  <span className="fn">{srv.name || (srv.kind === "local" ? srv.command : srv.host)}</span>
+                  <span className="fdesc mono">{srv.kind === "local" ? [srv.command, ...srv.args].join(" ") : srv.url}</span>
+                </div>
+                <span className="badge">{srv.kind === "local" ? t("addc.local") : t("addc.remoteShort")}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 
   const okToAddRemote = auth === "token" ? !!token.trim() || headers.some((h) => h.value) : auth === "oauth" && client === "own" ? !!clientId.trim() : true;
@@ -694,6 +790,16 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
           </button>
         </>
       )
+    ) : step === "import" ? (
+      <>
+        <div className="left" />
+        <button className="btn" onClick={() => setStep("entry")}>
+          {t("addc.back")}
+        </button>
+        <button className="btn primary" disabled={!importText.trim()} onClick={runImport}>
+          {t("addc.importApply")}
+        </button>
+      </>
     ) : step === "check" ? (
       failure ? (
         <>
@@ -741,12 +847,12 @@ export function AddConnector({ c, onClose, onAdded, onOpen }: { c: Customize; on
       </>
     );
 
-  const title = mode === "local" ? t("addc.titleLocal") : t("addc.title");
+  const title = step === "import" ? t("addc.importTitle") : mode === "local" ? t("addc.titleLocal") : t("addc.title");
   return (
     <Dialog label={title} width={520} className="cz-sheet cz-add" onClose={step === "approve" ? () => {} : close}>
       <h3>{title}</h3>
       <div className="cz-add-body" data-step={step === "entry" && mode === "local" ? "local" : step}>
-        {step === "entry" ? entryView : step === "check" ? checkView : step === "remote" ? remoteView : step === "login" ? loginView : step === "approve" ? approveView : doneView}
+        {step === "entry" ? entryView : step === "import" ? importView : step === "check" ? checkView : step === "remote" ? remoteView : step === "login" ? loginView : step === "approve" ? approveView : doneView}
       </div>
       <div className="sheet-foot">{foot}</div>
     </Dialog>

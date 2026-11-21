@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import type { McpProbeResult } from "@hermesh/her-protocol";
 import { Icon } from "../icons";
 import { secretish, type Row } from "./detect";
@@ -213,7 +213,7 @@ export function RemoteFields({ s, probed, probing, host, saved }: { s: RemoteSta
   );
 }
 
-/** A local stdio command connector's execution host, structured executable/args, and environment variables. */
+/** A local stdio command connector's execution host, structured executable/args, and collapsible advanced settings. */
 export function LocalFields({
   program,
   setProgram,
@@ -225,6 +225,14 @@ export function LocalFields({
   programError,
   argsError,
   envError,
+  name,
+  setName,
+  suggestedName,
+  nameError,
+  onImportJson,
+  importedNote,
+  advOpen,
+  setAdvOpen,
 }: {
   program: string;
   setProgram: (v: string) => void;
@@ -236,77 +244,168 @@ export function LocalFields({
   programError?: string;
   argsError?: string;
   envError?: string;
+  name?: string;
+  setName?: (v: string) => void;
+  suggestedName?: string;
+  nameError?: string;
+  onImportJson?: () => void;
+  importedNote?: string | null;
+  advOpen?: boolean;
+  setAdvOpen?: (open: boolean) => void;
 }) {
   const { t } = useTranslation("customize");
+  const [localAdv, setLocalAdv] = useState(() => env.length > 0);
+  const adv = advOpen ?? localAdv;
+  const toggleAdv = () => (setAdvOpen ?? setLocalAdv)(!adv);
   const trimmed = program.trim();
   const argv = trimmed ? [trimmed, ...args] : [];
+  // Keep one ready-to-type optional argument input when none are added yet, without emitting an empty arg.
+  const shownArgs = args.length > 0 ? args : [""];
+  const changeArg = (i: number, value: string) => {
+    if (args.length === 0) {
+      if (value !== "") setArgs([value]);
+      return;
+    }
+    const next = args.map((a, j) => (j === i ? value : a));
+    if (next.length === 1 && next[0] === "") setArgs([]);
+    else setArgs(next);
+  };
+  const envCount = env.filter((r) => r.key.trim() || r.value || r.saved).length;
+  const nameSummary = name?.trim()
+    ? name.trim()
+    : suggestedName
+      ? t("addc.nameAutoValue", { name: suggestedName })
+      : t("addc.nameAuto");
+  const advSummary = setName
+    ? t("addc.localAdvancedNow", { name: nameSummary, env: envCount || t("addc.noneShort") })
+    : t("addc.localAdvancedEditNow", { env: envCount || t("addc.noneShort") });
+
   return (
     <>
-      <div className="cz-callout cz-gap">
+      <div className="cz-callout cz-host-callout">
         <Icon name="terminal" />
-        <span>{hostName ? t("addc.execHost", { host: hostName }) : t("addc.execHostGeneric")}</span>
+        <span>
+          {hostName ? (
+            <Trans t={t} i18nKey="addc.execHost" values={{ host: hostName }} components={{ b: <b /> }} />
+          ) : (
+            t("addc.execHostGeneric")
+          )}
+        </span>
       </div>
-      <div className="cz-gh">{t("addc.executable")}</div>
-      <div className="fgroup">
-        <div className="frow stack">
-          <input
-            id="cz-local-program"
-            className={`field mono ${programError ? "bad" : ""}`}
-            value={program}
-            placeholder={t("addc.executablePlaceholder")}
-            aria-label={t("addc.executable")}
-            spellCheck={false}
-            onChange={(e) => setProgram(e.target.value)}
-          />
+      {importedNote && (
+        <div className="cz-imported" role="status">
+          <Icon name="check" />
+          <span>{importedNote}</span>
         </div>
+      )}
+      <div className="cz-fi">
+        <div className="cz-fi-head">
+          <label htmlFor="cz-local-program">{t("addc.executable")}</label>
+          {onImportJson && (
+            <button type="button" className="link cz-import-btn" onClick={onImportJson}>
+              <Icon name="code" />
+              {t("addc.importJson")}
+            </button>
+          )}
+        </div>
+        <input
+          id="cz-local-program"
+          className={`field mono ${programError ? "bad" : ""}`}
+          value={program}
+          placeholder={t("addc.executablePlaceholder")}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(e) => setProgram(e.target.value)}
+        />
+        {programError ? (
+          <div className="cz-ferr">{programError}</div>
+        ) : (
+          ["npx", "uvx", "bunx", "pnpm", "docker"].includes(trimmed) && <div className="note">{t("addc.download", { program: trimmed })}</div>
+        )}
       </div>
-      {programError && <div className="cz-ferr">{programError}</div>}
-      {["npx", "uvx", "bunx", "pnpm", "docker"].includes(trimmed) && <p className="cz-fn">{t("addc.download", { program: trimmed })}</p>}
-      <div className="cz-gh">{t("addc.args")}</div>
-      <div className="fgroup">
-        <div className="frow stack">
-          <div className="cz-args">
-            {args.map((arg, i) => (
-              <div key={i} className="cz-argrow">
-                <input
-                  className="field mono"
-                  value={arg}
-                  placeholder={t("addc.argPlaceholder", { index: i + 1 })}
-                  aria-label={t("addc.argLabel", { index: i + 1 })}
-                  spellCheck={false}
-                  onChange={(e) => setArgs(args.map((a, j) => (j === i ? e.target.value : a)))}
-                />
+      <div className="cz-fi">
+        <label htmlFor="cz-local-arg-0">{t("addc.args")}</label>
+        <div className="cz-args">
+          {shownArgs.map((arg, i) => (
+            <div key={i} className={`cz-argrow ${args.length === 0 ? "single" : ""}`}>
+              <input
+                id={i === 0 ? "cz-local-arg-0" : undefined}
+                className="field mono"
+                value={arg}
+                placeholder={args.length === 0 ? t("addc.argFirstPlaceholder") : t("addc.argPlaceholder", { index: i + 1 })}
+                aria-label={t("addc.argLabel", { index: i + 1 })}
+                spellCheck={false}
+                onChange={(e) => changeArg(i, e.target.value)}
+              />
+              {args.length > 0 && (
                 <button type="button" className="cz-lock" title={t("addc.removeRow")} aria-label={t("addc.removeRow")} onClick={() => setArgs(args.filter((_, j) => j !== i))}>
                   <Icon name="x" />
                 </button>
-              </div>
-            ))}
-            <button type="button" className="link cz-addrow" onClick={() => setArgs([...args, ""])}>
-              <Icon name="plus" />
-              {t("addc.addArg")}
-            </button>
+              )}
+            </div>
+          ))}
+          <button type="button" className="link cz-addrow" onClick={() => setArgs([...shownArgs, ""])}>
+            <Icon name="plus" />
+            {t("addc.addArg")}
+          </button>
+        </div>
+        {argsError && <div className="cz-ferr">{argsError}</div>}
+      </div>
+      <button type="button" className={`cz-fold ${adv ? "open" : ""}`} aria-expanded={adv} onClick={toggleAdv}>
+        <Icon name="chevR" />
+        {t("addc.advanced")}
+        {!adv && <small>{advSummary}</small>}
+      </button>
+      {adv && (
+        <div className="fgroup cz-advgroup">
+          {setName && (
+            <div className="frow stack">
+              <label className="fl" htmlFor="cz-add-name">
+                {t("addc.name")}
+              </label>
+              <input
+                id="cz-add-name"
+                className={`field ${nameError ? "bad" : ""}`}
+                value={name ?? ""}
+                placeholder={suggestedName || t("addc.namePlaceholder")}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Tab" && !e.shiftKey && !name && suggestedName) {
+                    e.preventDefault();
+                    setName(suggestedName);
+                  }
+                }}
+              />
+              {nameError ? (
+                <div className="cz-ferr">{nameError}</div>
+              ) : (
+                <p className="cz-fn">{suggestedName ? t("addc.nameNoteSuggested", { name: suggestedName }) : t("addc.nameNote")}</p>
+              )}
+            </div>
+          )}
+          <div className="frow stack">
+            <span className="fl">{t("addc.env")}</span>
+            <Rows rows={env} set={setEnv} keyHint={t("addc.varName")} valueHint={t("addc.value")} />
+            {envError && <div className="cz-ferr">{envError}</div>}
+            <p className="cz-fn">{t("addc.envNote")}</p>
           </div>
           {argv.length > 0 && (
-            <div className="cz-cmdline" aria-label={t("addc.argvPreview")}>
-              {argv.map((a, i) => (
-                <span key={i} className={i === 0 ? "tok p" : "tok"}>
-                  {a === "" ? '""' : a}
-                </span>
-              ))}
+            <div className="frow stack">
+              <span className="fl">{t("addc.argvPreview")}</span>
+              <div className="cz-cmdline" aria-label={t("addc.argvPreview")}>
+                {argv.map((a, i) => (
+                  <span key={i} className={i === 0 ? "tok p" : "tok"}>
+                    {a === "" ? '""' : a}
+                  </span>
+                ))}
+              </div>
+              <p className="cz-fn">{t("addc.argsNote")}</p>
             </div>
           )}
         </div>
-      </div>
-      {argsError && <div className="cz-ferr">{argsError}</div>}
-      <p className="cz-fn">{t("addc.argsNote")}</p>
-      <div className="cz-gh">{t("addc.env")}</div>
-      <div className="fgroup">
-        <div className="frow stack">
-          <Rows rows={env} set={setEnv} keyHint={t("addc.varName")} valueHint={t("addc.value")} />
-        </div>
-      </div>
-      {envError && <div className="cz-ferr">{envError}</div>}
-      <p className="cz-fn">{t("addc.envNote")}</p>
+      )}
     </>
   );
 }
