@@ -229,7 +229,7 @@ What MSIX would have given and Setup.exe doesn't: files that no program of the u
 - **A signed feed.** Squirrel.Mac checks the app's Developer ID signature; the Windows app has none. So each architecture's feed, `RELEASES-win32-<arch>.json`, is signed with the release key, which signs the checksum list too (`.sig`, openssl's DER signature), and the app carries the public key (a build-time constant, as the feed's address is). The feed names this version (`currentRelease`), its highlights (`hermeshNotes`, as the darwin feed has them) and its package: the `.nupkg`'s address, its SHA-256 and Squirrel's `RELEASES` line for it.
 - **Downloaded by the app.** The app reads the feed as on the Mac, checks its signature, downloads the package into `<data>\desktop\update`, checks its hash, writes the `RELEASES` line beside it, and points `autoUpdater` (Squirrel.Windows) at that folder. Squirrel installs the version beside the running one, at once; the app runs it from its next start, as Restart to Update does under the Mac's guard (desktop-app.md §6.5): never a restart under the owner.
 - **hermeshd after an update.** The new version places its programs (§6.1); hermeshd keeps running the old ones, which moved aside, until the app restarts it as on the Mac: once no approval is pending and no session on this PC is queued, preparing, running or waiting for an answer.
-- **Tested end to end** (`check-windows-update.ps1`, in CI): an older build, installed from its Setup.exe, finds, downloads and installs a newer one from a feed signed with a key of the test's, and opened again runs it, with hermeshd restarted on the new programs.
+- **Tested end to end** (`check-windows-update.ps1`, on release tags): an older build, installed from its Setup.exe, finds, downloads and installs a newer one from a feed signed with a key of the test's, and opened again runs it, with hermeshd restarted on the new programs.
 
 ### 6.3 Programs without the app
 
@@ -265,7 +265,7 @@ What signing would take, checked 2026-10-30:
 
 - `package-win.mjs` builds the app's files on any system (the page, main, Go for the target, the fuses the Mac has) and, on Windows, Setup.exe, the update's package and its feed, signed when given the release key (electron-winstaller); `windows-icons.mjs` draws the program's icon from the Mac icon's mark. `build-app.mjs` stays the Mac's.
 - The Go programs carry version resources and the icon: Task Manager, Startup apps and Defender show them.
-- `ci.yml`: `windows` runs the Go unit tests, `TestWindowsInstall` and `TestWindowsSigner`; `windows-e2e` the whole Go suite; `windows-app` the desktop spec for Windows, then makes Setup.exe and installs, opens and uninstalls it (`check-windows-setup.ps1`), updates between two builds (`check-windows-update.ps1`), and makes the arm64 Setup.exe for Arm PCs and VMs. First of all (W0) came a compile check, `GOOS=windows go vet ./...`.
+- `ci.yml` runs affected Go, signer and desktop tests on Windows. The release workflow builds Setup.exe for x64 and Arm64. On x64 it installs, opens and uninstalls the app (`check-windows-setup.ps1`) and updates between signed builds (`check-windows-update.ps1`) before uploading the release files.
 - `release.yml`: a Windows job per architecture makes Setup.exe, the package and the feed, signed with the release key; on x64 it installs, opens and uninstalls the app; it uploads them, with the icon Installed apps shows (`Hermesh.ico`). `release-check.sh` checks the feeds' signatures, versions and packages' hashes.
 
 ## 7. A trusted device on Windows
@@ -389,7 +389,7 @@ Taken by the owner on 2026-10-30: function first, and as much security as Window
 
 ## 14. Built, then checked on a real PC
 
-All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, the desktop spec for Windows against the real daemon, and the app installed, opened, updated and uninstalled from its Setup.exe. What only a real PC shows, checked in one pass:
+All of W0 to W3 is built (2026-10-30). CI checks on `windows-latest` what it can: the Go suite, `install.ps1`, the signer over its pipe with a test key, and the desktop spec for Windows against the real daemon. The release workflow installs, opens, updates and uninstalls the app from its Setup.exe. What only a real PC shows, checked in one pass:
 
 | Check | How |
 |---|---|
@@ -436,7 +436,7 @@ her (her/, the kernel of Her: [her-server.md](her-server.md)) runs on Windows as
 |---|---|
 | her builds with MSVC, and its own tests run: the endpoint (two clients at once, the client's process, a client gone), commands in Git for Windows' bash and in PowerShell (exit codes, UTF-8, a tree ended at its time), an MCP server's tree ended with it, session logs written, read while written and cut, the managed browser in a real Chrome over its inherited pipes, the extension host's registry entries | her-ci.yml's `windows` |
 | hermeshd starts her; Her is turned on by a signed command, talks, takes and sends files both ways, remembers across a cleared conversation, installs a skill and sends one to the Recycle Bin, signs in to ChatGPT through this computer, lists what she sent; her stops with hermeshd | ci.yml's `windows-e2e`, with her built there |
-| Setup.exe carries her: the packaged her starts and opens a PDF with the app's PDFium, agent-desktop answers with the pinned version, and installed, her is beside hermeshd with her console | ci.yml's `windows-app` (package-win.mjs, check-windows-setup.ps1) |
+| Setup.exe carries her: the packaged her starts and opens a PDF with the app's PDFium, agent-desktop answers with the pinned version, and installed, her is beside hermeshd with her console | release.yml's `windows-app` (package-win.mjs, check-windows-setup.ps1) |
 
 **Left**, each its own change:
 

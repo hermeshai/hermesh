@@ -1,4 +1,4 @@
-.PHONY: generate lint test test-app e2e e2e-real e2e-chaos build app app-windows release clean
+.PHONY: generate lint test test-app test-app-js e2e e2e-real e2e-chaos build app app-dev app-windows release clean
 
 generate:
 	go tool buf generate
@@ -18,13 +18,15 @@ test:
 
 # The desktop app's pure logic and types, Her's client packages, the shared Swift
 # package, and the macOS screen helper and signer.
-test-app:
+test-app-js:
 	pnpm install --frozen-lockfile
 	pnpm -r typecheck
 	pnpm --filter @hermesh/core test
 	pnpm --filter @hermesh/her-protocol test
 	pnpm --filter @hermesh/her-client test
 	pnpm --filter @hermesh/desktop test
+
+test-app: test-app-js
 	cd packages/HermeshKit && swift test
 	cd apps/screen/macos && swift test
 	cd apps/signer/macos && swift test
@@ -49,6 +51,10 @@ build:
 app:
 	pnpm install --frozen-lockfile
 	node apps/desktop/scripts/build-app.mjs
+
+app-dev:
+	pnpm install --frozen-lockfile
+	node apps/desktop/scripts/build-app.mjs --dev
 
 # The Windows app: its files from any system, the .msix on Windows (docs/windows.md §6.1).
 app-windows:

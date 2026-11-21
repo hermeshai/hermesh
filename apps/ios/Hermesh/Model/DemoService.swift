@@ -561,7 +561,8 @@ final class DemoService {
             if tasks[request.sessionID] == nil {
                 let id = request.sessionID
                 tasks[id] = Task { @MainActor [weak self] in
-                    for n in 1 ... 60 {
+                    // Keep the simulator fixture streaming until the test leaves the demo.
+                    for n in 1... {
                         try? await Task.sleep(for: .milliseconds(350))
                         guard !Task.isCancelled, let self else { return }
                         var draft = SessionEvent()

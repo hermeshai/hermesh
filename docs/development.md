@@ -8,6 +8,7 @@ make e2e        # full user flows and malicious-relay tests with real binaries a
 make e2e-real   # the same flows with the real Claude Code and Codex on this machine (uses quota)
 HERMESH_DOCKER=1 go test ./e2e -run Linux   # a Linux machine (Docker)
 HERMESH_IPHONE_E2E=1 go test ./e2e -run TestIPhone -timeout 60m   # the iPhone app in the Simulator
+make app-dev    # signed native app in dist/dev/ with a debug Her kernel
 make app        # build and sign dist/Hermesh.app (see below for a release build)
 pnpm --dir apps/desktop dev   # the desktop app against the local hermeshd (HERMESH_SOCKET to choose one)
 ```
@@ -17,16 +18,22 @@ pnpm --dir apps/desktop dev   # the desktop app against the local hermeshd (HERM
 
 ## CI
 
-The `ci` workflow selects PR jobs from the test merge's diff against its base.
-Both paths in a rename count. Changes to Go core, shared protocols and fixtures,
-lockfiles, workflows, or unrecognized paths run the full suite. Pushes to
-`main` and manual runs also run the full suite. To run it on a PR branch, use
-`gh workflow run ci.yml --ref <branch>`.
+Pull requests use the test merge diff and the base revision's routing rules.
+Pushes to `main` check the entire pushed range, including both paths of a rename.
+A new commit on a PR supersedes the earlier run. Each push to `main` finishes its own checks.
 
-`ci-ok` requires every selected blocking job to succeed and every unselected
-blocking job to be skipped. Windows desktop and Windows E2E report separately.
-The Windows desktop job packages x64 whenever it runs and also packages Arm64
-on full runs and when the change affects its build inputs.
+Documentation changes run routing checks. Her documentation also gets its public-content and generated-reference checks. Go changes run vet, units and a relay/daemon/CLI and mobile smoke test.
+Desktop renderer changes run type checks, unit tests and an Electron smoke test against the daemon.
+Changes under `packages/HermeshKit/Tests/` run the Swift package tests and offline demo checks on macOS.
+iOS app changes run the simulator reviewer task, with additional UI suites for affected screens.
+Changes to the shared Swift package itself check both the package and its app consumers.
+Protocol and fixture changes check their consumers together. Unknown files add all component smoke checks. An unavailable diff runs the full integration suites.
+`ci-ok` verifies the results. Windows desktop and Windows E2E also report separately.
+
+`gh workflow run ci.yml --ref <branch>` checks the tip against its first parent.
+Add `-f full=true` for the full integration suites, including the complete iOS reviewer demo.
+Changes to packaging scripts run syntax and fixture checks. A pushed `v*` tag builds
+the distributions and runs the Windows installation and signed update checks.
 
 ## Releases
 

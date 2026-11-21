@@ -1219,12 +1219,11 @@ func TestAgentsOnAComputer(t *testing.T) {
 	eventually(t, 30*time.Second, "the inbox empty", func() bool { return len(listMessages(t, w, w.cliEnv).Messages) == 0 })
 	// One addressed to no conversation is only counted, and the watch
 	// waits for the next one instead of fetching it again and again.
-	posts := len(inbox.posted())
 	if d, r := sendMessage(t, w, helper, 30*time.Second, "--to", "bot", "--message", "for whoever reads it"); !d.OK {
 		t.Fatalf("helper's message: %+v", r)
 	}
 	time.Sleep(2 * time.Second)
-	if n := len(inbox.posted()); n != posts {
+	if slices.ContainsFunc(inbox.posted(), func(p string) bool { return strings.Contains(p, "for whoever reads it") }) {
 		t.Fatalf("a message to no conversation was pushed: %q", inbox.posted())
 	}
 	before := cpuTime(t, pid)

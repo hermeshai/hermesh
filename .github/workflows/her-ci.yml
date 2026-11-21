@@ -7,10 +7,16 @@ on:
     branches: [main]
     paths:
       - 'her/**'
+      - '!her/docs/**'
+      - '!her/README.md'
+      - '!her/apps/console/**'
       - '.github/workflows/her-ci.yml'
   pull_request:
     paths:
       - 'her/**'
+      - '!her/docs/**'
+      - '!her/README.md'
+      - '!her/apps/console/**'
       - '.github/workflows/her-ci.yml'
 
 permissions:
@@ -65,9 +71,19 @@ jobs:
           curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 "https://github.com/bblanchon/pdfium-binaries/releases/download/$PDFIUM_TAG/$archive" | tar xz -C "$RUNNER_TEMP/pdfium"
           echo "HER_PDFIUM=$RUNNER_TEMP/pdfium/lib/$lib" >> "$GITHUB_ENV"
       - name: Rust tests, every crate
-        run: cargo test --workspace --no-fail-fast
+        shell: bash
+        run: |
+          cargo test --workspace --no-fail-fast --message-format=json-render-diagnostics |
+            tee "$RUNNER_TEMP/cargo-test.log" | sed '/^{"reason":/d'
       - name: Word saved through the desktop app's serializer
-        run: HER_WORD_SAVE=desktop cargo test --workspace --lib docx_host -- --ignored
+        shell: bash
+        run: |
+          # Reuse the test executable Cargo just ran, including with a cold cache.
+          test_bin=$(jq -Rner '[inputs | fromjson? | objects | select(.reason == "compiler-artifact" and .profile.test and
+              .target.name == "her_server" and .target.kind == ["lib"]) | .executable] |
+              if length == 1 then .[0] else error("expected one her-server test binary") end' "$RUNNER_TEMP/cargo-test.log")
+          cd crates/her-server
+          HER_WORD_SAVE=desktop "$test_bin" docx_host --ignored
       - uses: actions/setup-node@v4
         with:
           node-version: 22

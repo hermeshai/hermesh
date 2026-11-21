@@ -107,7 +107,7 @@ final class SessionDetailUITests: XCTestCase {
         // Pick an earlier message currently visible in the viewport as our position anchor.
         let anchor = try XCTUnwrap(visibleHistoryAnchor(), "expected an earlier Stream history message in view")
         let anchorBeforeY = anchor.frame.minY
-        let targetUpdateNumber = max(highestLiveUpdateNumber(), 1) + 4
+        let targetUpdateNumber = max(try liveUpdates().map(\.number).max() ?? 0, 1) + 4
 
         // Wait until at least 4 newer committed updates have streamed in while staying scrolled up.
         let laterUpdate = text(beginningWith: "Live update #\(targetUpdateNumber):")
@@ -183,36 +183,42 @@ final class SessionDetailUITests: XCTestCase {
         }
     }
 
-    private func highestLiveUpdateNumber() -> Int {
-        let items = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update #"))
-        return items.allElementsBoundByIndex.compactMap { el -> Int? in
-            guard el.exists else { return nil }
-            let rest = el.label.dropFirst("Live update #".count)
-            return Int(rest.prefix { $0.isNumber })
-        }.max() ?? 0
+    // A single accessibility snapshot keeps the labels and frames from the same live update.
+    private func liveUpdates() throws -> [(number: Int, frame: CGRect)] {
+        let prefix = "Live update #"
+        var nodes = [try app.snapshot()]
+        var updates: [(Int, CGRect)] = []
+        while let node = nodes.popLast() {
+            nodes.append(contentsOf: node.children)
+            if node.elementType == .staticText, node.label.hasPrefix(prefix),
+               let number = Int(node.label.dropFirst(prefix.count).prefix { $0.isNumber }) {
+                updates.append((number, node.frame))
+            }
+        }
+        return updates
     }
 
     private func hasVisibleLiveUpdate(atLeast minimum: Int) -> Bool {
-        let items = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Live update #"))
-        return items.allElementsBoundByIndex.contains { el in
-            guard el.exists, isVisibleInViewport(el) else { return false }
-            let rest = el.label.dropFirst("Live update #".count)
-            let digits = rest.prefix { $0.isNumber }
-            return (Int(digits) ?? 0) >= minimum
-        }
+        guard let updates = try? liveUpdates() else { return false }
+        let bounds = visibleVerticalBounds
+        return updates.contains { $0.number >= minimum && $0.frame.height > 0 &&
+            $0.frame.minY >= bounds.top && $0.frame.maxY <= bounds.bottom }
     }
 
     private func element(containing substring: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", substring)).firstMatch
     }
 
+    private var visibleVerticalBounds: (top: CGFloat, bottom: CGFloat) {
+        let win = app.windows.firstMatch.frame
+        let bottomLimit = app.buttons["interrupt"].exists ? app.buttons["interrupt"].frame.minY : win.maxY - 20
+        return (win.minY + 60, bottomLimit + 10)
+    }
+
     private func isVisibleInViewport(_ element: XCUIElement) -> Bool {
         guard element.exists else { return false }
-        let frame = element.frame
-        let win = app.windows.firstMatch.frame
-        guard frame.height > 0 else { return false }
-        let bottomLimit = app.buttons["interrupt"].exists ? app.buttons["interrupt"].frame.minY : win.maxY - 20
-        return frame.minY >= win.minY + 60 && frame.maxY <= bottomLimit + 10
+        let frame = element.frame, bounds = visibleVerticalBounds
+        return frame.height > 0 && frame.minY >= bounds.top && frame.maxY <= bounds.bottom
     }
 
     private func text(beginningWith prefix: String) -> XCUIElement {

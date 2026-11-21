@@ -10,7 +10,8 @@ import unittest
 
 
 ROUTER = Path(__file__).with_name("route.py").resolve()
-route = runpy.run_path(str(ROUTER))["route"]
+rules = runpy.run_path(str(ROUTER))
+route = rules["route"]
 
 
 class RouteTests(unittest.TestCase):
@@ -18,24 +19,26 @@ class RouteTests(unittest.TestCase):
         cases = [
             (["docs/x.md", "README.md", "README.zh-CN.md", "her/docs/x.md"], ""),
             (["docs/a b.md", "docs/中文.md", "docs/$(touch x)\nnotes.md"], ""),
+            (["packages/HermeshKit/Tests/HermeshHerTests/ChatTests.swift"], "hermeshkit"),
+            (["packages/HermeshKit/test.sh", "docs/x.md"], "hermeshkit"),
+            (["packages/HermeshKit/Tests/KitTests.swift", "apps/ios/Hermesh/App.swift"], "ios hermeshkit"),
+            (["apps/ios/scripts/test-demo.sh"], "ios hermeshkit"),
             (["apps/ios/Hermesh/Foo.swift"], "ios"),
-            (["packages/HermeshKit/Sources/HermeshKit/A.swift"], "ios app"),
-            (["apps/desktop/src/renderer/x.tsx"], "app windows_app"),
-            (["apps/desktop/src/renderer/src/session/markdown/theme.ts"], "app windows_app ios"),
-            (["apps/desktop/package.json"], "app windows_app ios win_package"),
-            (["apps/desktop/scripts/package-win.mjs"], "app windows_app go windows_e2e win_package"),
-            (["apps/desktop/build/config"], "app windows_app go windows_e2e win_package"),
-            (["packages/core/src/x.ts", "packages/her-client/src/x.ts", "packages/ui/src/x.ts"],
-             "app windows_app"),
-            (["her/crates/her-core/src/x.rs"], "app windows_e2e windows_app win_package"),
-            (["her/apps/chrome-extension/src/background.js"], "app windows_e2e windows_app win_package"),
-            (["her/apps/console/src/a.ts"], "app windows_app"),
-            (["e2e/x_test.go"], "go screen_linux windows windows_e2e app windows_app"),
-            (["bench/fakecodex/a.go"], "go screen_linux windows windows_e2e app windows_app"),
-            (["apps/screen/linux/src/a.rs"], "screen_linux"),
-            (["apps/screen/macos/A.swift"], "app go"),
-            (["apps/signer/macos/A.swift"], "app go"),
-            (["deploy/relay/Dockerfile"], "go"),
+            (["packages/HermeshKit/Sources/HermeshKit/A.swift"], "ios hermeshkit mac_native"),
+            (["apps/desktop/src/renderer/x.tsx"], "app"),
+            (["apps/desktop/src/main/ipc.ts"], "app windows_app"),
+            (["apps/desktop/src/renderer/src/session/markdown/theme.ts"], "app ios windows_app"),
+            (["apps/desktop/scripts/package-win.mjs", ".github/workflows/release.yml"], "packaging"),
+            (["her/crates/her-core/src/a.rs"], ""),
+            (["her/apps/console/src/a.ts"], "app her_integration"),
+            (["internal/provider/acp/acp.go"], "go"),
+            (["cmd/hermesh-mobile/main.go"], "go ios"),
+            (["cmd/hermesh-signer/panel_windows.go"], "windows windows_arm"),
+            (["packages/her-client/testdata/deliveries.json"], "go app her_integration ios hermeshkit mac_native windows"),
+            (["e2e/scenario_test.go"], "go go_e2e"),
+            (["apps/screen/linux/Cargo.lock"], "screen_linux"),
+            (["packages/HermeshKit/Package.resolved"], "ios hermeshkit mac_native"),
+            (["apps/signer/macos/A.swift"], "mac_native"),
             (["docs/x.md", "apps/ios/a.swift", "apps/screen/linux/a.rs"], "ios screen_linux"),
         ]
         for paths, jobs in cases:
@@ -44,23 +47,13 @@ class RouteTests(unittest.TestCase):
 
     def test_full_ci_inputs(self):
         for path in [
-            ".github/workflows/her-ci.yml", "scripts/ci/route.py", "scripts/install.sh",
-            "Makefile", "package.json", "tsconfig.base.json", "pnpm-workspace.yaml",
-            "go.mod", "her/go.mod", "buf.gen.yaml", "apps/ios/.gitattributes",
-            "internal/peer/x.go", "cmd/hermesh-mobile/main.go", "pkg/x.go",
-            "third_party/lib/a.go", "proto/local/v1/local.proto", "gen/go/a.pb.go",
-            "packages/HermeshKit/Sources/HermeshProto/a.pb.swift",
-            "packages/proto/a.ts", "packages/her-protocol/a.ts", "her/crates/her-protocol/schema.json",
-            "internal/preview/testdata/vectors.json", "internal/owner/testdata/her_reply.json",
-            "packages/her-client/testdata/deliveries.json",
-            "pnpm-lock.yaml", "her/Cargo.lock", "apps/screen/linux/Cargo.lock",
-            "packages/HermeshKit/Package.resolved", "apps/desktop/package-lock.json",
-            "docs/tools/uv.lock", "her/tools/go.sum", "her/rust-toolchain.toml",
-            "her/Cargo.toml", "her/.cargo/config.toml", "her/apps/console/package.json",
+            ".github/workflows/ci.yml", "scripts/ci/route.py", "Makefile",
+            "package.json", "tsconfig.base.json", "go.mod", "buf.gen.yaml", "third_party/lib/a.go",
             "skills/foo/SKILL.md", "apps/new/x", "packages/new/src/x.ts", "her/new/src/x.rs",
         ]:
             with self.subTest(path=path):
-                self.assertIsNone(route(["docs/x.md", path]))
+                self.assertEqual(route(["docs/x.md", path]), rules["COMPONENTS"])
+        self.assertEqual(route(["Makefile", "e2e/acp_test.go"]), rules["COMPONENTS"] | {"go_e2e"})
         self.assertIsNone(route([]))
         self.assertEqual(route([f"docs/{i}.md" for i in range(300)]), set())
         self.assertIsNone(route([f"docs/{i}.md" for i in range(301)]))
@@ -112,26 +105,44 @@ class GitRouteTests(unittest.TestCase):
 
     def test_rename_from_core_to_docs(self):
         self.git("mv", "internal/core.go", "docs/core.md")
-        self.assertEqual(self.output(self.merge()), {"mode": "full"})
+        self.assertEqual(self.output(self.merge())["go"], "true")
 
     def test_rename_from_ios_to_core(self):
         self.git("mv", "apps/ios/a.swift", "internal/a.go")
-        self.assertEqual(self.output(self.merge()), {"mode": "full"})
+        result = self.output(self.merge())
+        self.assertEqual((result["go"], result["ios"]), ("true", "true"))
 
     def test_rename_both_components_and_delete(self):
         (self.repo / "apps/screen/linux").mkdir(parents=True)
         self.git("mv", "apps/ios/a.swift", "apps/screen/linux/a.swift")
         self.git("rm", "-q", "apps/desktop/src/x.ts")
         result = self.output(self.merge())
-        self.assertEqual(result, {
-            "mode": "routed", "go": "false", "screen_linux": "true", "windows": "false",
-            "windows_arm": "false", "windows_e2e": "false", "app": "true",
-            "windows_app": "true", "ios": "true", "win_package": "false",
-        })
+        self.assertEqual(result["mode"], "routed")
+        self.assertEqual({k for k, v in result.items() if v == "true"}, {"ios", "screen_linux", "app"})
+
+    def test_affected_simulator_suite_and_her_docs(self):
+        for path in ("apps/ios/Hermesh/Views/Screen/Frame.swift", "her/docs/cli/protocol-reference.md"):
+            file = self.repo / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.touch()
+        result = self.output(self.merge())
+        self.assertEqual(result["ios_suite"], "ScreenViewportUITests")
+        self.assertEqual(result["her_static"], "true")
+        self.assertEqual(result["ios"], "true")
+        self.assertEqual(result["go"], "false")
+
+    def test_console_skips_desktop_only_for_isolated_changes(self):
+        file = self.repo / "her/apps/console/src/editor.ts"
+        file.parent.mkdir(parents=True)
+        file.touch()
+        tip = self.commit()
+        self.assertEqual(self.output(self.repo, "push", tip)["console_only"], "true")
+        (self.repo / "apps/desktop/src/x.ts").unlink()
+        self.assertNotIn("console_only", self.output(self.repo, "push", self.commit()))
 
     def test_file_mode_only(self):
         (self.repo / "scripts/install.sh").chmod(0o755)
-        self.assertEqual(self.output(self.merge()), {"mode": "full"})
+        self.assertEqual(self.output(self.merge())["go"], "true")
 
     def test_unusual_names_and_non_pr_events(self):
         (self.repo / "docs" / "中文 $(touch x)\nmode=full.md").touch()
@@ -143,6 +154,20 @@ class GitRouteTests(unittest.TestCase):
         for event in ("push", "workflow_dispatch", "merge_group"):
             with self.subTest(event=event):
                 self.assertEqual(self.output(checkout, event=event), {"mode": "full"})
+
+    def test_multi_commit_push_and_manual_tip(self):
+        (self.repo / "apps/ios/a.swift").unlink()
+        first = self.commit()
+        self.git("mv", "apps/desktop/src/x.ts", "docs/x.ts")
+        tip = self.commit()
+        for event, base, expected in [("push", self.base, {"app", "ios"}),
+                                      ("workflow_dispatch", first, {"app"})]:
+            result = self.command(sys.executable, "-I", str(ROUTER), event, base, tip)
+            self.assertIn("mode=routed", result.splitlines())
+            self.assertEqual({line.split("=")[0] for line in result.splitlines()
+                              if line.endswith("=true")}, expected)
+        for base in ("0" * 40, "bad"):
+            self.assertEqual(self.command(sys.executable, "-I", str(ROUTER), "push", base, tip), "mode=full")
 
     def test_missing_parent(self):
         (self.repo / "docs" / "x.md").unlink()
