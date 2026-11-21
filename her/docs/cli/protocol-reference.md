@@ -9,9 +9,6 @@ Protocol version 2. Generated from `her protocol schema` by `tools/gen-protocol-
 | Method | Parameters | Result | What it does |
 |---|---|---|---|
 | `ai/action` | `AiActionParams` | `AiActionResult` | `ai/action`. Answers when the proposal is ready; `ai/action_progress` goes out meanwhile, and `$/cancel_request` stops it. |
-| `ai_consent/allow` | `AiConsentAllowParams` | `Empty` |  |
-| `ai_consent/revoke` | — | `Empty` | The result of methods that return nothing: `{}`. |
-| `ai_consent/status` | `AiConsentStatusParams` | `Status` |  |
 | `auth/delete` | `AuthDeleteParams` | `Empty` | Parameters of `auth/delete`. |
 | `auth/set` | `AuthSetParams` | `AuthSetResult` | Parameters of `auth/set`. |
 | `chatgpt/cancel` | `ChatGptCancelParams` | `ChatGptStatus` |  |

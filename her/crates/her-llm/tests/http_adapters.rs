@@ -94,61 +94,6 @@ const OK_CHUNKS: &[&str] = &[
 ];
 
 #[tokio::test]
-async fn revoking_and_regranting_does_not_replay_an_inference_retry() {
-    assert_revocation_stops_inference_retry(false).await;
-}
-
-#[tokio::test]
-async fn failed_disk_revocation_still_stops_inference_retry() {
-    assert_revocation_stops_inference_retry(true).await;
-}
-
-async fn assert_revocation_stops_inference_retry(disk_failure: bool) {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/v1/chat/completions"))
-        .respond_with(ResponseTemplate::new(503))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let home = tempfile::tempdir().unwrap();
-    let saved = home.path().join("ai-consent.json");
-    let mut registry = registry_for(&server);
-    if disk_failure {
-        registry.require_ai_consent_at(Some(saved.clone()));
-    } else {
-        registry.require_ai_consent();
-    }
-    let reference = "mock/mock-model";
-    let approve = || {
-        let shown = registry.ai_consent(Some(reference)).unwrap();
-        assert!(registry.allow_ai(reference, shown.recipient.unwrap(), &shown.revision));
-    };
-    approve();
-    let model = registry.resolve(reference).unwrap().model;
-    let mut stream = registry.stream(model, context(), RequestOptions::default());
-    assert!(matches!(stream.next().await, Some(StreamEvent::Retrying { attempt: 1, .. })));
-    if disk_failure {
-        std::fs::remove_file(&saved).unwrap();
-        std::fs::create_dir(&saved).unwrap();
-        assert!(registry.revoke_ai().is_err());
-        assert!(registry.check_ai_consent(reference).is_err());
-        std::fs::remove_dir(&saved).unwrap();
-    } else {
-        registry.revoke_ai().unwrap();
-    }
-    approve();
-    match stream.next().await {
-        Some(StreamEvent::Failed(msg)) => {
-            assert!(msg.error.unwrap().message.contains("AI sharing is blocked"));
-        }
-        other => panic!("unexpected {other:?}"),
-    }
-    assert!(stream.next().await.is_none());
-    assert_eq!(server.received_requests().await.unwrap().len(), 1);
-}
-
-#[tokio::test]
 async fn openai_chat_streams_and_prices_usage() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

@@ -155,17 +155,9 @@ func TestHer(t *testing.T) {
 		t.Fatalf("bots/open: %s %v", result, err)
 	}
 	prompt := `{"session_id":"` + open.SessionID + `","op":{"type":"prompt","input":[{"type":"text","text":"[[mock:send:hello]] hi"}]}}`
-	if _, err := call(opened.ConnectionId, "session/op", prompt); err == nil || !strings.Contains(err.Error(), "AI sharing is blocked") {
-		t.Fatalf("the host accepted a prompt without consent: %v", err)
+	if _, err := call("", "ai_consent/status", `{}`); connect.CodeOf(err) != connect.CodeUnimplemented {
+		t.Fatalf("ai_consent/status should be removed/unimplemented: %v", err)
 	}
-	hertest.ApproveModel(t, "mock/mock-1", func(method string, params any) []byte {
-		b, _ := json.Marshal(params)
-		result, err := call("", method, string(b))
-		if err != nil {
-			t.Fatalf("%s: %v", method, err)
-		}
-		return result
-	})
 	if _, err := call(opened.ConnectionId, "session/op", prompt); err != nil {
 		t.Fatal(err)
 	}
