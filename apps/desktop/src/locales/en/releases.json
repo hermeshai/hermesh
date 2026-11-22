@@ -3,6 +3,17 @@
     "improvements": [],
     "fixes": []
   },
+  "0.1.9": {
+    "improvements": [
+      "Her uses the same secure input cards for websites and desktop apps. Enter sign-in details or verification codes in the card for Her to fill in the requested window.",
+      "Website cards support more verification steps, including one-time codes and compatible embedded sign-in forms. Desktop and iPhone cards show what kind of input Her is asking for and let you reveal the value before submitting.",
+      "On iPhone, Her explains what data goes to the configured AI service before you send your first message. Desktop Her sends to the configured model directly, and the host accepts custom model endpoints without a separate approval step."
+    ],
+    "fixes": [
+      "Her recovers more reliably when a Chrome tab, window, or browser session closes or becomes inactive.",
+      "A browser tab can stay open after a secure card completes a sub-agent’s sign-in, so the work can continue in the same session."
+    ]
+  },
   "0.1.8": {
     "improvements": [
       "Her can ask you to sign in to a site from the conversation. On the computer running Her, Chrome opens an isolated sign-in window while your default browser stays the same.",
