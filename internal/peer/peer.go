@@ -23,6 +23,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -98,6 +99,7 @@ type Machine struct {
 	// handshake (the relay cannot change it).
 	Name    string
 	Session sessionv1connect.SessionServiceClient
+	Thread  threadv2connect.ThreadServiceClient
 	Info    machinev1connect.MachineServiceClient
 	Admin   machinev1connect.MachineAdminServiceClient
 	Her     herv1connect.HerServiceClient
@@ -186,6 +188,7 @@ func newMachineWithConn(machineID, name string, tc tunnelConn, httpCli *http.Cli
 	const base = "https://machine"
 	return &Machine{MachineID: machineID, Name: name, h2: tc, httpCli: httpCli, path: "relay",
 		Session: sessionv1connect.NewSessionServiceClient(tc, base, transport.ClientNoCompression),
+		Thread:  threadv2connect.NewThreadServiceClient(tc, base, transport.ClientNoCompression),
 		Info:    machinev1connect.NewMachineServiceClient(tc, base, transport.ClientNoCompression),
 		Admin:   machinev1connect.NewMachineAdminServiceClient(tc, base, transport.ClientNoCompression),
 		Her:     herv1connect.NewHerServiceClient(tc, base, transport.ClientNoCompression),

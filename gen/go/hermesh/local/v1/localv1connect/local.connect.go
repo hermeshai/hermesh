@@ -129,6 +129,12 @@ const (
 	// LocalServiceListMachineFoldersProcedure is the fully-qualified name of the LocalService's
 	// ListMachineFolders RPC.
 	LocalServiceListMachineFoldersProcedure = "/hermesh.local.v1.LocalService/ListMachineFolders"
+	// LocalServiceCreateMachineFolderProcedure is the fully-qualified name of the LocalService's
+	// CreateMachineFolder RPC.
+	LocalServiceCreateMachineFolderProcedure = "/hermesh.local.v1.LocalService/CreateMachineFolder"
+	// LocalServiceSetMachineMaxRuntimeModeProcedure is the fully-qualified name of the LocalService's
+	// SetMachineMaxRuntimeMode RPC.
+	LocalServiceSetMachineMaxRuntimeModeProcedure = "/hermesh.local.v1.LocalService/SetMachineMaxRuntimeMode"
 	// LocalServiceTestMachineAgentProcedure is the fully-qualified name of the LocalService's
 	// TestMachineAgent RPC.
 	LocalServiceTestMachineAgentProcedure = "/hermesh.local.v1.LocalService/TestMachineAgent"
@@ -336,6 +342,10 @@ type LocalServiceClient interface {
 	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
 	// The folders in one of a machine's folders, for Add a Project.
 	ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error)
+	// A new empty folder on a machine, for Add a Project (CreateFolder).
+	CreateMachineFolder(context.Context, *v1.CreateMachineFolderRequest) (*v1.CreateMachineFolderResponse, error)
+	// The broadest permission mode a machine's threads may run in (SetMaxRuntimeMode).
+	SetMachineMaxRuntimeMode(context.Context, *v1.SetMachineMaxRuntimeModeRequest) (*v1.SetMachineMaxRuntimeModeResponse, error)
 	// One fixed turn of a coding agent on a machine (Test).
 	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
@@ -652,6 +662,18 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("ListMachineFolders")),
 			connect.WithClientOptions(opts...),
 		),
+		createMachineFolder: connect.NewClient[v1.CreateMachineFolderRequest, v1.CreateMachineFolderResponse](
+			httpClient,
+			baseURL+LocalServiceCreateMachineFolderProcedure,
+			connect.WithSchema(localServiceMethods.ByName("CreateMachineFolder")),
+			connect.WithClientOptions(opts...),
+		),
+		setMachineMaxRuntimeMode: connect.NewClient[v1.SetMachineMaxRuntimeModeRequest, v1.SetMachineMaxRuntimeModeResponse](
+			httpClient,
+			baseURL+LocalServiceSetMachineMaxRuntimeModeProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetMachineMaxRuntimeMode")),
+			connect.WithClientOptions(opts...),
+		),
 		testMachineAgent: connect.NewClient[v1.TestMachineAgentRequest, v11.TestAgentResponse](
 			httpClient,
 			baseURL+LocalServiceTestMachineAgentProcedure,
@@ -927,85 +949,87 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 
 // localServiceClient implements LocalServiceClient.
 type localServiceClient struct {
-	getStatus              *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
-	watch                  *connect.Client[v1.WatchRequest, v1.WatchResponse]
-	listProfiles           *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
-	switchProfile          *connect.Client[v1.SwitchProfileRequest, v1.SwitchProfileResponse]
-	addProfile             *connect.Client[v1.AddProfileRequest, v1.AddProfileResponse]
-	signOut                *connect.Client[v1.SignOutRequest, v1.SignOutResponse]
-	signIn                 *connect.Client[v1.SignInRequest, v1.SignInResponse]
-	setup                  *connect.Client[v1.SetupRequest, v1.SetupResponse]
-	requestJoin            *connect.Client[v1.RequestJoinRequest, v1.RequestJoinResponse]
-	waitJoin               *connect.Client[v1.WaitJoinRequest, v1.WaitJoinResponse]
-	confirmJoin            *connect.Client[v1.ConfirmJoinRequest, v1.ConfirmJoinResponse]
-	listDevices            *connect.Client[v1.ListDevicesRequest, v1.ListDevicesResponse]
-	approveDevicePairing   *connect.Client[v1.ApproveDevicePairingRequest, v1.ApproveDevicePairingResponse]
-	removeDevice           *connect.Client[v1.RemoveDeviceRequest, v1.RemoveDeviceResponse]
-	leave                  *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
-	eraseEverything        *connect.Client[v1.EraseEverythingRequest, v1.EraseEverythingResponse]
-	eraseStatus            *connect.Client[v1.EraseStatusRequest, v1.EraseStatusResponse]
-	finishErase            *connect.Client[v1.FinishEraseRequest, v1.FinishEraseResponse]
-	watchSigningRequests   *connect.Client[v1.WatchSigningRequestsRequest, v1.SigningRequest]
-	completeSigningRequest *connect.Client[v1.CompleteSigningRequestRequest, v1.CompleteSigningRequestResponse]
-	showSigner             *connect.Client[v1.ShowSignerRequest, v1.ShowSignerResponse]
-	setLocalMachine        *connect.Client[v1.SetLocalMachineRequest, v1.SetLocalMachineResponse]
-	lookupPairing          *connect.Client[v1.LookupPairingRequest, v1.LookupPairingResponse]
-	listPairingRequests    *connect.Client[v1.ListPairingRequestsRequest, v1.ListPairingRequestsResponse]
-	approveMachinePairing  *connect.Client[v1.ApproveMachinePairingRequest, v1.ApproveMachinePairingResponse]
-	approveClientPairing   *connect.Client[v1.ApproveClientPairingRequest, v1.ApproveClientPairingResponse]
-	listMachines           *connect.Client[v1.ListMachinesRequest, v1.ListMachinesResponse]
-	renameMachine          *connect.Client[v1.RenameMachineRequest, v1.RenameMachineResponse]
-	setMachinePaused       *connect.Client[v1.SetMachinePausedRequest, v1.SetMachinePausedResponse]
-	setAgentDefaults       *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
-	removeMachine          *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
-	checkAgents            *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
-	listMachineRepos       *connect.Client[v1.ListMachineReposRequest, v1.ListMachineReposResponse]
-	listMachineFolders     *connect.Client[v1.ListMachineFoldersRequest, v11.ListFoldersResponse]
-	testMachineAgent       *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
-	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
-	listWorkspaces         *connect.Client[v1.ListWorkspacesRequest, v11.ListWorkspacesResponse]
-	releaseWorkspaces      *connect.Client[v1.ReleaseWorkspacesRequest, v11.ReleaseWorkspacesResponse]
-	setWorkspacePolicy     *connect.Client[v1.SetWorkspacePolicyRequest, v1.SetWorkspacePolicyResponse]
-	setHer                 *connect.Client[v1.SetHerRequest, v1.SetHerResponse]
-	setHerAssistantMode    *connect.Client[v1.SetHerAssistantModeRequest, v1.SetHerAssistantModeResponse]
-	setHerCommandConnector *connect.Client[v1.SetHerCommandConnectorRequest, v1.SetHerCommandConnectorResponse]
-	herOpen                *connect.Client[v1.HerOpenRequest, v12.OpenEvent]
-	herCall                *connect.Client[v1.HerCallRequest, v12.CallResponse]
-	herSend                *connect.Client[v1.HerSendRequest, v1.HerSendResponse]
-	listHerWaiting         *connect.Client[v1.ListHerWaitingRequest, v1.ListHerWaitingResponse]
-	deleteHerWaiting       *connect.Client[v1.DeleteHerWaitingRequest, v1.DeleteHerWaitingResponse]
-	getHerConversation     *connect.Client[v1.GetHerConversationRequest, v1.GetHerConversationResponse]
-	herUpload              *connect.Client[v1.HerUploadRequest, v1.HerUploadResponse]
-	herDownload            *connect.Client[v1.HerDownloadRequest, v1.HerDownloadResponse]
-	getHerConsole          *connect.Client[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse]
-	stopScreen             *connect.Client[v1.StopScreenRequest, v1.StopScreenResponse]
-	listProjects           *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
-	addProject             *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
-	removeProject          *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
-	listClients            *connect.Client[v1.ListClientsRequest, v1.ListClientsResponse]
-	updateClient           *connect.Client[v1.UpdateClientRequest, v1.UpdateClientResponse]
-	renameClient           *connect.Client[v1.RenameClientRequest, v1.RenameClientResponse]
-	revokeClient           *connect.Client[v1.RevokeClientRequest, v1.RevokeClientResponse]
-	listWakes              *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
-	setWake                *connect.Client[v1.SetWakeRequest, v1.SetWakeResponse]
-	checkWake              *connect.Client[v1.CheckWakeRequest, v1.CheckWakeResponse]
-	clearWake              *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
-	openWakeLink           *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
-	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
-	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
-	streamSessionEvents    *connect.Client[v1.StreamSessionEventsRequest, v13.SessionEvent]
-	listSessionEvents      *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
-	readToolOutput         *connect.Client[v1.ReadToolOutputRequest, v13.ToolOutputChunk]
-	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
-	archiveSession         *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
-	unarchiveSession       *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
-	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
-	renameSession          *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
-	answerQuestion         *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
-	codingConsent          *connect.Client[v1.CodingConsentRequest, v13.CodingConsentResponse]
-	getDiff                *connect.Client[v1.GetDiffRequest, v13.GetDiffResponse]
-	queryWork              *connect.Client[v1.QueryWorkRequest, v1.QueryWorkResponse]
-	registerPush           *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
+	getStatus                *connect.Client[v1.GetStatusRequest, v1.GetStatusResponse]
+	watch                    *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	listProfiles             *connect.Client[v1.ListProfilesRequest, v1.ListProfilesResponse]
+	switchProfile            *connect.Client[v1.SwitchProfileRequest, v1.SwitchProfileResponse]
+	addProfile               *connect.Client[v1.AddProfileRequest, v1.AddProfileResponse]
+	signOut                  *connect.Client[v1.SignOutRequest, v1.SignOutResponse]
+	signIn                   *connect.Client[v1.SignInRequest, v1.SignInResponse]
+	setup                    *connect.Client[v1.SetupRequest, v1.SetupResponse]
+	requestJoin              *connect.Client[v1.RequestJoinRequest, v1.RequestJoinResponse]
+	waitJoin                 *connect.Client[v1.WaitJoinRequest, v1.WaitJoinResponse]
+	confirmJoin              *connect.Client[v1.ConfirmJoinRequest, v1.ConfirmJoinResponse]
+	listDevices              *connect.Client[v1.ListDevicesRequest, v1.ListDevicesResponse]
+	approveDevicePairing     *connect.Client[v1.ApproveDevicePairingRequest, v1.ApproveDevicePairingResponse]
+	removeDevice             *connect.Client[v1.RemoveDeviceRequest, v1.RemoveDeviceResponse]
+	leave                    *connect.Client[v1.LeaveRequest, v1.LeaveResponse]
+	eraseEverything          *connect.Client[v1.EraseEverythingRequest, v1.EraseEverythingResponse]
+	eraseStatus              *connect.Client[v1.EraseStatusRequest, v1.EraseStatusResponse]
+	finishErase              *connect.Client[v1.FinishEraseRequest, v1.FinishEraseResponse]
+	watchSigningRequests     *connect.Client[v1.WatchSigningRequestsRequest, v1.SigningRequest]
+	completeSigningRequest   *connect.Client[v1.CompleteSigningRequestRequest, v1.CompleteSigningRequestResponse]
+	showSigner               *connect.Client[v1.ShowSignerRequest, v1.ShowSignerResponse]
+	setLocalMachine          *connect.Client[v1.SetLocalMachineRequest, v1.SetLocalMachineResponse]
+	lookupPairing            *connect.Client[v1.LookupPairingRequest, v1.LookupPairingResponse]
+	listPairingRequests      *connect.Client[v1.ListPairingRequestsRequest, v1.ListPairingRequestsResponse]
+	approveMachinePairing    *connect.Client[v1.ApproveMachinePairingRequest, v1.ApproveMachinePairingResponse]
+	approveClientPairing     *connect.Client[v1.ApproveClientPairingRequest, v1.ApproveClientPairingResponse]
+	listMachines             *connect.Client[v1.ListMachinesRequest, v1.ListMachinesResponse]
+	renameMachine            *connect.Client[v1.RenameMachineRequest, v1.RenameMachineResponse]
+	setMachinePaused         *connect.Client[v1.SetMachinePausedRequest, v1.SetMachinePausedResponse]
+	setAgentDefaults         *connect.Client[v1.SetAgentDefaultsRequest, v1.SetAgentDefaultsResponse]
+	removeMachine            *connect.Client[v1.RemoveMachineRequest, v1.RemoveMachineResponse]
+	checkAgents              *connect.Client[v1.CheckAgentsRequest, v1.CheckAgentsResponse]
+	listMachineRepos         *connect.Client[v1.ListMachineReposRequest, v1.ListMachineReposResponse]
+	listMachineFolders       *connect.Client[v1.ListMachineFoldersRequest, v11.ListFoldersResponse]
+	createMachineFolder      *connect.Client[v1.CreateMachineFolderRequest, v1.CreateMachineFolderResponse]
+	setMachineMaxRuntimeMode *connect.Client[v1.SetMachineMaxRuntimeModeRequest, v1.SetMachineMaxRuntimeModeResponse]
+	testMachineAgent         *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
+	getDiagnostics           *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
+	listWorkspaces           *connect.Client[v1.ListWorkspacesRequest, v11.ListWorkspacesResponse]
+	releaseWorkspaces        *connect.Client[v1.ReleaseWorkspacesRequest, v11.ReleaseWorkspacesResponse]
+	setWorkspacePolicy       *connect.Client[v1.SetWorkspacePolicyRequest, v1.SetWorkspacePolicyResponse]
+	setHer                   *connect.Client[v1.SetHerRequest, v1.SetHerResponse]
+	setHerAssistantMode      *connect.Client[v1.SetHerAssistantModeRequest, v1.SetHerAssistantModeResponse]
+	setHerCommandConnector   *connect.Client[v1.SetHerCommandConnectorRequest, v1.SetHerCommandConnectorResponse]
+	herOpen                  *connect.Client[v1.HerOpenRequest, v12.OpenEvent]
+	herCall                  *connect.Client[v1.HerCallRequest, v12.CallResponse]
+	herSend                  *connect.Client[v1.HerSendRequest, v1.HerSendResponse]
+	listHerWaiting           *connect.Client[v1.ListHerWaitingRequest, v1.ListHerWaitingResponse]
+	deleteHerWaiting         *connect.Client[v1.DeleteHerWaitingRequest, v1.DeleteHerWaitingResponse]
+	getHerConversation       *connect.Client[v1.GetHerConversationRequest, v1.GetHerConversationResponse]
+	herUpload                *connect.Client[v1.HerUploadRequest, v1.HerUploadResponse]
+	herDownload              *connect.Client[v1.HerDownloadRequest, v1.HerDownloadResponse]
+	getHerConsole            *connect.Client[v1.GetHerConsoleRequest, v1.GetHerConsoleResponse]
+	stopScreen               *connect.Client[v1.StopScreenRequest, v1.StopScreenResponse]
+	listProjects             *connect.Client[v1.ListProjectsRequest, v1.ListProjectsResponse]
+	addProject               *connect.Client[v1.AddProjectRequest, v1.AddProjectResponse]
+	removeProject            *connect.Client[v1.RemoveProjectRequest, v1.RemoveProjectResponse]
+	listClients              *connect.Client[v1.ListClientsRequest, v1.ListClientsResponse]
+	updateClient             *connect.Client[v1.UpdateClientRequest, v1.UpdateClientResponse]
+	renameClient             *connect.Client[v1.RenameClientRequest, v1.RenameClientResponse]
+	revokeClient             *connect.Client[v1.RevokeClientRequest, v1.RevokeClientResponse]
+	listWakes                *connect.Client[v1.ListWakesRequest, v1.ListWakesResponse]
+	setWake                  *connect.Client[v1.SetWakeRequest, v1.SetWakeResponse]
+	checkWake                *connect.Client[v1.CheckWakeRequest, v1.CheckWakeResponse]
+	clearWake                *connect.Client[v1.ClearWakeRequest, v1.ClearWakeResponse]
+	openWakeLink             *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
+	listSessions             *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
+	watchSessions            *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
+	streamSessionEvents      *connect.Client[v1.StreamSessionEventsRequest, v13.SessionEvent]
+	listSessionEvents        *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
+	readToolOutput           *connect.Client[v1.ReadToolOutputRequest, v13.ToolOutputChunk]
+	interruptSession         *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
+	archiveSession           *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
+	unarchiveSession         *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
+	deleteSession            *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	renameSession            *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
+	answerQuestion           *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
+	codingConsent            *connect.Client[v1.CodingConsentRequest, v13.CodingConsentResponse]
+	getDiff                  *connect.Client[v1.GetDiffRequest, v13.GetDiffResponse]
+	queryWork                *connect.Client[v1.QueryWorkRequest, v1.QueryWorkResponse]
+	registerPush             *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 }
 
 // GetStatus calls hermesh.local.v1.LocalService.GetStatus.
@@ -1300,6 +1324,24 @@ func (c *localServiceClient) ListMachineRepos(ctx context.Context, req *v1.ListM
 // ListMachineFolders calls hermesh.local.v1.LocalService.ListMachineFolders.
 func (c *localServiceClient) ListMachineFolders(ctx context.Context, req *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error) {
 	response, err := c.listMachineFolders.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// CreateMachineFolder calls hermesh.local.v1.LocalService.CreateMachineFolder.
+func (c *localServiceClient) CreateMachineFolder(ctx context.Context, req *v1.CreateMachineFolderRequest) (*v1.CreateMachineFolderResponse, error) {
+	response, err := c.createMachineFolder.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetMachineMaxRuntimeMode calls hermesh.local.v1.LocalService.SetMachineMaxRuntimeMode.
+func (c *localServiceClient) SetMachineMaxRuntimeMode(ctx context.Context, req *v1.SetMachineMaxRuntimeModeRequest) (*v1.SetMachineMaxRuntimeModeResponse, error) {
+	response, err := c.setMachineMaxRuntimeMode.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1778,6 +1820,10 @@ type LocalServiceHandler interface {
 	ListMachineRepos(context.Context, *v1.ListMachineReposRequest) (*v1.ListMachineReposResponse, error)
 	// The folders in one of a machine's folders, for Add a Project.
 	ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error)
+	// A new empty folder on a machine, for Add a Project (CreateFolder).
+	CreateMachineFolder(context.Context, *v1.CreateMachineFolderRequest) (*v1.CreateMachineFolderResponse, error)
+	// The broadest permission mode a machine's threads may run in (SetMaxRuntimeMode).
+	SetMachineMaxRuntimeMode(context.Context, *v1.SetMachineMaxRuntimeModeRequest) (*v1.SetMachineMaxRuntimeModeResponse, error)
 	// One fixed turn of a coding agent on a machine (Test).
 	TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error)
 	// This Mac's diagnostics as text, for the person to copy and send when
@@ -2088,6 +2134,18 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		LocalServiceListMachineFoldersProcedure,
 		svc.ListMachineFolders,
 		connect.WithSchema(localServiceMethods.ByName("ListMachineFolders")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceCreateMachineFolderHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceCreateMachineFolderProcedure,
+		svc.CreateMachineFolder,
+		connect.WithSchema(localServiceMethods.ByName("CreateMachineFolder")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSetMachineMaxRuntimeModeHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetMachineMaxRuntimeModeProcedure,
+		svc.SetMachineMaxRuntimeMode,
+		connect.WithSchema(localServiceMethods.ByName("SetMachineMaxRuntimeMode")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceTestMachineAgentHandler := connect.NewUnaryHandlerSimple(
@@ -2430,6 +2488,10 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceListMachineReposHandler.ServeHTTP(w, r)
 		case LocalServiceListMachineFoldersProcedure:
 			localServiceListMachineFoldersHandler.ServeHTTP(w, r)
+		case LocalServiceCreateMachineFolderProcedure:
+			localServiceCreateMachineFolderHandler.ServeHTTP(w, r)
+		case LocalServiceSetMachineMaxRuntimeModeProcedure:
+			localServiceSetMachineMaxRuntimeModeHandler.ServeHTTP(w, r)
 		case LocalServiceTestMachineAgentProcedure:
 			localServiceTestMachineAgentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiagnosticsProcedure:
@@ -2663,6 +2725,14 @@ func (UnimplementedLocalServiceHandler) ListMachineRepos(context.Context, *v1.Li
 
 func (UnimplementedLocalServiceHandler) ListMachineFolders(context.Context, *v1.ListMachineFoldersRequest) (*v11.ListFoldersResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListMachineFolders is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) CreateMachineFolder(context.Context, *v1.CreateMachineFolderRequest) (*v1.CreateMachineFolderResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CreateMachineFolder is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetMachineMaxRuntimeMode(context.Context, *v1.SetMachineMaxRuntimeModeRequest) (*v1.SetMachineMaxRuntimeModeResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetMachineMaxRuntimeMode is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) TestMachineAgent(context.Context, *v1.TestMachineAgentRequest) (*v11.TestAgentResponse, error) {

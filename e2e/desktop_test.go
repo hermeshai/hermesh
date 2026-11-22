@@ -79,12 +79,12 @@ type freshOwner struct {
 // windowsSpecs are the specs that run on Windows too (docs/windows.md §14);
 // the others are the Mac's (its menu bar, Touch ID, moving to
 // Applications, the process limit).
-var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
+var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true, "thread-v2": true}
 
 // linuxSpecs are the specs that run on Linux too (docs/linux.md §7.1), under
 // a display such as Xvfb's and an init that reaps orphans (docker --init).
 var linuxSpecs = map[string]bool{"shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true,
-	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true}
+	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true, "thread-v2": true}
 
 // These specs read back what they copied. The clipboard is the whole
 // computer's, so they run one at a time, before the specs that run side by
@@ -149,6 +149,9 @@ func TestDesktop(t *testing.T) {
 			if name == "session" {
 				f.OtherMac = otherMacSession(t, f)
 				inPlaceSessions(t, f)
+			}
+			if name == "thread-composer" {
+				f.OtherMac = otherMacThreads(t, f)
 			}
 			if name == "windows" {
 				f.OldSigner = t.TempDir()
@@ -484,7 +487,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	codex := filepath.Join(t.TempDir(), "codex")
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
-	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro"}
+	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro", "HERMESH_INCLUDE_SCRIPTED=1"}
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}
@@ -510,6 +513,41 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 		f.Fresh = append(f.Fresh, newFreshOwner(t, w, fmt.Sprintf("fresh-%d", i), i == 0, i == 8))
 	}
 	return f
+}
+
+// otherMacThreads joins a second Mac, work-mac, as a machine only, with the
+// scripted agent for its threads, a home folder of its own and no project:
+// the spec adds them from the app (thread-composer.spec.ts); and old-mac, a
+// machine from before threads. It returns work-mac's daemon's process group,
+// for the spec to take it offline.
+func otherMacThreads(t *testing.T, f desktopFixture) int {
+	w := f.owner
+	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Its own home folder: what Add a Project lists, browses and makes folders in. ~/code/recent-app and
+	// ~/code/mono are repositories; ~/code/mono/web is a folder inside one.
+	workHome := t.TempDir()
+	for _, name := range []string{"recent-app", "mono"} {
+		dir := filepath.Join(workHome, "code", name)
+		os.MkdirAll(filepath.Join(dir, "web"), 0o755)
+		os.WriteFile(filepath.Join(dir, "web", "README.md"), []byte("# "+name+"\n"), 0o644)
+		for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, out)
+			}
+		}
+	}
+	work, _ := w.otherMac("work-mac", []string{"HERMESH_INCLUDE_SCRIPTED=1", "HOME=" + workHome})
+	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	w.joinTyped(work, home, "work-mac")
+	// old-mac: a hermeshd from before threads, for the composer to say it needs an update.
+	old, _ := w.otherMac("old-mac", []string{"HERMESH_TEST_BEFORE_THREADS=1"})
+	w.joinTyped(old, home, "old-mac")
+	return daemon.cmd.Process.Pid
 }
 
 // otherMacSession joins a second Mac, work-mac, as a machine only, runs two

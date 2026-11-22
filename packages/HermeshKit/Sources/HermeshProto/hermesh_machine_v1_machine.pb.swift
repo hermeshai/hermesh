@@ -629,6 +629,20 @@ public nonisolated struct Hermesh_Machine_V1_MachineStatus: @unchecked Sendable 
     set {_uniqueStorage()._directQuicAddrs = newValue}
   }
 
+  /// It serves hermesh.thread.v2.ThreadService (docs/thread-composer.md §5.2);
+  /// unset on a machine from before it, which the apps take as "update it".
+  public var threads: Bool {
+    get {_storage._threads}
+    set {_uniqueStorage()._threads = newValue}
+  }
+
+  /// The broadest permission mode its threads may run in, whoever starts them
+  /// (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
+  public var maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode {
+    get {_storage._maxRuntimeMode}
+    set {_uniqueStorage()._maxRuntimeMode = newValue}
+  }
+
   /// The MachineAdminService methods this hermeshd answers ("ListWorkspaces"),
   /// from the handlers it registers (docs/version-skew.md §6.1). Empty: a
   /// machine from before the list, which may answer some of them.
@@ -1026,6 +1040,10 @@ public nonisolated struct Hermesh_Machine_V1_Project: Sendable {
 
   /// The coding agents that may work in it; empty: all.
   public var agents: [String] = []
+
+  /// Its folder is a git repository's top level now, whatever its workspace:
+  /// a session of an in-place project may still take its own worktree.
+  public var repo: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2031,7 +2049,7 @@ nonisolated extension Hermesh_Machine_V1_GetInfoResponse: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".MachineStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{3}direct_quic_addrs\0\u{1}methods\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}protocol_version\0\u{1}platform\0\u{1}agents\0\u{3}running_sessions\0\u{3}max_sessions\0\u{1}paused\0\u{1}version\0\u{2}\u{2}sessions\0\u{2}\u{3}name\0\u{1}problems\0\u{1}her\0\u{1}screen\0\u{3}direct_addrs\0\u{3}direct_quic_addrs\0\u{1}threads\0\u{3}max_runtime_mode\0\u{1}methods\0\u{b}host\0\u{b}agent_processes\0\u{b}started_at\0\u{c}\u{8}\u{1}\u{c}\u{a}\u{1}\u{c}\u{b}\u{1}")
 
   fileprivate class _StorageClass {
     var _name: String = String()
@@ -2048,6 +2066,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
     var _screen: Hermesh_Machine_V1_ScreenStatus? = nil
     var _directAddrs: [String] = []
     var _directQuicAddrs: [String] = []
+    var _threads: Bool = false
+    var _maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
     var _methods: [String] = []
 
       // This property is used as the initial default value for new instances of the type.
@@ -2073,6 +2093,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       _screen = source._screen
       _directAddrs = source._directAddrs
       _directQuicAddrs = source._directQuicAddrs
+      _threads = source._threads
+      _maxRuntimeMode = source._maxRuntimeMode
       _methods = source._methods
     }
   }
@@ -2106,7 +2128,9 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
         case 15: try { try decoder.decodeSingularMessageField(value: &_storage._screen) }()
         case 16: try { try decoder.decodeRepeatedStringField(value: &_storage._directAddrs) }()
         case 17: try { try decoder.decodeRepeatedStringField(value: &_storage._directQuicAddrs) }()
-        case 18: try { try decoder.decodeRepeatedStringField(value: &_storage._methods) }()
+        case 18: try { try decoder.decodeSingularBoolField(value: &_storage._threads) }()
+        case 19: try { try decoder.decodeSingularEnumField(value: &_storage._maxRuntimeMode) }()
+        case 20: try { try decoder.decodeRepeatedStringField(value: &_storage._methods) }()
         default: break
         }
       }
@@ -2161,8 +2185,14 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
       if !_storage._directQuicAddrs.isEmpty {
         try visitor.visitRepeatedStringField(value: _storage._directQuicAddrs, fieldNumber: 17)
       }
+      if _storage._threads != false {
+        try visitor.visitSingularBoolField(value: _storage._threads, fieldNumber: 18)
+      }
+      if _storage._maxRuntimeMode != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._maxRuntimeMode, fieldNumber: 19)
+      }
       if !_storage._methods.isEmpty {
-        try visitor.visitRepeatedStringField(value: _storage._methods, fieldNumber: 18)
+        try visitor.visitRepeatedStringField(value: _storage._methods, fieldNumber: 20)
       }
     }
     try unknownFields.traverse(visitor: &visitor)
@@ -2187,6 +2217,8 @@ nonisolated extension Hermesh_Machine_V1_MachineStatus: SwiftProtobuf.Message, S
         if _storage._screen != rhs_storage._screen {return false}
         if _storage._directAddrs != rhs_storage._directAddrs {return false}
         if _storage._directQuicAddrs != rhs_storage._directQuicAddrs {return false}
+        if _storage._threads != rhs_storage._threads {return false}
+        if _storage._maxRuntimeMode != rhs_storage._maxRuntimeMode {return false}
         if _storage._methods != rhs_storage._methods {return false}
         return true
       }
@@ -2785,7 +2817,7 @@ nonisolated extension Hermesh_Machine_V1_ListProjectsRequest: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Machine_V1_Project: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Project"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}project_id\0\u{3}default_base_ref\0\u{1}workspace\0\u{1}path\0\u{1}description\0\u{1}base\0\u{3}active_sessions\0\u{1}agents\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}project_id\0\u{3}default_base_ref\0\u{1}workspace\0\u{1}path\0\u{1}description\0\u{1}base\0\u{3}active_sessions\0\u{1}agents\0\u{1}repo\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2801,6 +2833,7 @@ nonisolated extension Hermesh_Machine_V1_Project: SwiftProtobuf.Message, SwiftPr
       case 6: try { try decoder.decodeSingularStringField(value: &self.base) }()
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.activeSessions) }()
       case 8: try { try decoder.decodeRepeatedStringField(value: &self.agents) }()
+      case 9: try { try decoder.decodeSingularBoolField(value: &self.repo) }()
       default: break
       }
     }
@@ -2831,6 +2864,9 @@ nonisolated extension Hermesh_Machine_V1_Project: SwiftProtobuf.Message, SwiftPr
     if !self.agents.isEmpty {
       try visitor.visitRepeatedStringField(value: self.agents, fieldNumber: 8)
     }
+    if self.repo != false {
+      try visitor.visitSingularBoolField(value: self.repo, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2843,6 +2879,7 @@ nonisolated extension Hermesh_Machine_V1_Project: SwiftProtobuf.Message, SwiftPr
     if lhs.base != rhs.base {return false}
     if lhs.activeSessions != rhs.activeSessions {return false}
     if lhs.agents != rhs.agents {return false}
+    if lhs.repo != rhs.repo {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -137,6 +137,7 @@ export function projectIdFromFolder(name: string, taken: ReadonlySet<string>): s
   if (s === "") s = "project";
   s = s.slice(0, 60);
   let id = s;
-  for (let n = 2; taken.has(id); n++) id = `${s}-${n}`;
+  // "scratch" is each machine's temporary workspace for threads (docs/thread-composer.md §3.2).
+  for (let n = 2; taken.has(id) || id === "scratch"; n++) id = `${s}-${n}`;
   return id;
 }

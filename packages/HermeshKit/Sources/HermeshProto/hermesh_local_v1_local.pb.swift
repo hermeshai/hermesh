@@ -1459,6 +1459,8 @@ public nonisolated struct Hermesh_Local_V1_GrantSpec: Sendable {
 
   public var maxConcurrentSessions: UInt32 = 0
 
+  public var maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1770,6 +1772,58 @@ public nonisolated struct Hermesh_Local_V1_ListMachineFoldersRequest: Sendable {
   public init() {}
 }
 
+public nonisolated struct Hermesh_Local_V1_CreateMachineFolderRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var parent: String = String()
+
+  public var name: String = String()
+
+  public var gitInit: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_CreateMachineFolderResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_SetMachineMaxRuntimeModeRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var machineID: String = String()
+
+  public var mode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Local_V1_SetMachineMaxRuntimeModeResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
 public nonisolated struct Hermesh_Local_V1_TestMachineAgentRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -1854,6 +1908,9 @@ public nonisolated struct Hermesh_Local_V1_Project: Sendable {
 
   /// The project directory on the machine.
   public var path: String = String()
+
+  /// Its folder is a git repository (hermesh.machine.v1.Project.repo).
+  public var repo: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -6035,7 +6092,7 @@ nonisolated extension Hermesh_Local_V1_ApproveMachinePairingResponse: SwiftProto
 
 nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GrantSpec"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}ttl_days\0\u{3}max_concurrent_sessions\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}ttl_days\0\u{3}max_concurrent_sessions\0\u{3}max_runtime_mode\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6050,6 +6107,7 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
       case 6: try { try decoder.decodeSingularEnumField(value: &self.taskVisibility) }()
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.ttlDays) }()
       case 8: try { try decoder.decodeSingularUInt32Field(value: &self.maxConcurrentSessions) }()
+      case 9: try { try decoder.decodeSingularEnumField(value: &self.maxRuntimeMode) }()
       default: break
       }
     }
@@ -6077,6 +6135,9 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
     if self.maxConcurrentSessions != 0 {
       try visitor.visitSingularUInt32Field(value: self.maxConcurrentSessions, fieldNumber: 8)
     }
+    if self.maxRuntimeMode != .unspecified {
+      try visitor.visitSingularEnumField(value: self.maxRuntimeMode, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6088,6 +6149,7 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
     if lhs.taskVisibility != rhs.taskVisibility {return false}
     if lhs.ttlDays != rhs.ttlDays {return false}
     if lhs.maxConcurrentSessions != rhs.maxConcurrentSessions {return false}
+    if lhs.maxRuntimeMode != rhs.maxRuntimeMode {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6665,6 +6727,124 @@ nonisolated extension Hermesh_Local_V1_ListMachineFoldersRequest: SwiftProtobuf.
   }
 }
 
+nonisolated extension Hermesh_Local_V1_CreateMachineFolderRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateMachineFolderRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}parent\0\u{1}name\0\u{3}git_init\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.parent) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.gitInit) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    if !self.parent.isEmpty {
+      try visitor.visitSingularStringField(value: self.parent, fieldNumber: 2)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 3)
+    }
+    if self.gitInit != false {
+      try visitor.visitSingularBoolField(value: self.gitInit, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_CreateMachineFolderRequest, rhs: Hermesh_Local_V1_CreateMachineFolderRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.parent != rhs.parent {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.gitInit != rhs.gitInit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_CreateMachineFolderResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateMachineFolderResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_CreateMachineFolderResponse, rhs: Hermesh_Local_V1_CreateMachineFolderResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_SetMachineMaxRuntimeModeRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetMachineMaxRuntimeModeRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}mode\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.mode) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 1)
+    }
+    if self.mode != .unspecified {
+      try visitor.visitSingularEnumField(value: self.mode, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_SetMachineMaxRuntimeModeRequest, rhs: Hermesh_Local_V1_SetMachineMaxRuntimeModeRequest) -> Bool {
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.mode != rhs.mode {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Local_V1_SetMachineMaxRuntimeModeResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetMachineMaxRuntimeModeResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Local_V1_SetMachineMaxRuntimeModeResponse, rhs: Hermesh_Local_V1_SetMachineMaxRuntimeModeResponse) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Hermesh_Local_V1_TestMachineAgentRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TestMachineAgentRequest"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{1}agent\0")
@@ -6805,7 +6985,7 @@ nonisolated extension Hermesh_Local_V1_RemoveMachineResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Local_V1_Project: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Project"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}project_id\0\u{3}default_base_ref\0\u{1}workspace\0\u{1}description\0\u{1}agents\0\u{1}path\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}project_id\0\u{3}default_base_ref\0\u{1}workspace\0\u{1}description\0\u{1}agents\0\u{1}path\0\u{1}repo\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6820,6 +7000,7 @@ nonisolated extension Hermesh_Local_V1_Project: SwiftProtobuf.Message, SwiftProt
       case 5: try { try decoder.decodeSingularStringField(value: &self.description_p) }()
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.agents) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.repo) }()
       default: break
       }
     }
@@ -6847,6 +7028,9 @@ nonisolated extension Hermesh_Local_V1_Project: SwiftProtobuf.Message, SwiftProt
     if !self.path.isEmpty {
       try visitor.visitSingularStringField(value: self.path, fieldNumber: 7)
     }
+    if self.repo != false {
+      try visitor.visitSingularBoolField(value: self.repo, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6858,6 +7042,7 @@ nonisolated extension Hermesh_Local_V1_Project: SwiftProtobuf.Message, SwiftProt
     if lhs.description_p != rhs.description_p {return false}
     if lhs.agents != rhs.agents {return false}
     if lhs.path != rhs.path {return false}
+    if lhs.repo != rhs.repo {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

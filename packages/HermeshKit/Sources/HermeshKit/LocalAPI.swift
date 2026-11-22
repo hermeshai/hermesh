@@ -56,6 +56,7 @@ public final class LocalAPI: @unchecked Sendable {
     public let endpoint: LocalEndpoint
     private let ffi: (any LocalFFITransport)?
     private let service = "hermesh.local.v1.LocalService"
+    private let threadService = "hermesh.thread.v2.ThreadService"
     private let decodeOptions: JSONDecodingOptions = {
         var o = JSONDecodingOptions()
         o.ignoreUnknownFields = true
@@ -84,7 +85,7 @@ public final class LocalAPI: @unchecked Sendable {
             return try Res(serializedBytes: data)
         }
         let body = try req.jsonUTF8Data()
-        let path = "/\(service)/\(method)"
+        let path = method.hasPrefix("/") ? method : "/\(service)/\(method)"
         let endpoint = endpoint
         let (status, headers, data) = try await withCheckedThrowingContinuation { (k: CheckedContinuation<(Int, [String: String], Data), Error>) in
             Thread.detachNewThread {
@@ -95,6 +96,10 @@ public final class LocalAPI: @unchecked Sendable {
             throw Self.parseError(data, status: status, headers: headers)
         }
         return try Res(jsonUTF8Data: data, options: decodeOptions)
+    }
+
+    public func callThread<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 15) async throws -> Res {
+        try await call("/\(threadService)/\(method)", req, as: Res.self, timeout: timeout)
     }
 
     // MARK: Server streaming
@@ -135,7 +140,7 @@ public final class LocalAPI: @unchecked Sendable {
                 }
             }
         }
-        let path = "/\(service)/\(method)"
+        let path = method.hasPrefix("/") ? method : "/\(service)/\(method)"
         let options = decodeOptions
         return AsyncThrowingStream { continuation in
             let conn = HTTPOverUnix()
@@ -180,6 +185,95 @@ public final class LocalAPI: @unchecked Sendable {
             }
             continuation.onTermination = { _ in conn.close() }
         }
+    }
+
+    public func streamThread<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
+        stream("/\(threadService)/\(method)", req, as: Res.self)
+    }
+
+    // MARK: ThreadService v2 Convenience Wrappers
+
+    public func listThreadProviders(machineID: String, projectID: String = "", refresh: Bool = false) async throws -> Hermesh_Thread_V2_ListProvidersResponse {
+        var r = Hermesh_Thread_V2_ListProvidersRequest()
+        r.machineID = machineID
+        r.projectID = projectID
+        r.refresh = refresh
+        return try await callThread("ListProviders", r)
+    }
+
+    public func launchThread(_ req: Hermesh_Thread_V2_LaunchThreadRequest) async throws -> Hermesh_Thread_V2_LaunchThreadResponse {
+        try await callThread("LaunchThread", req, timeout: 30)
+    }
+
+    public func listThreads(_ req: Hermesh_Thread_V2_ListThreadsRequest = .init()) async throws -> Hermesh_Thread_V2_ListThreadsResponse {
+        try await callThread("ListThreads", req)
+    }
+
+    public func getThread(threadID: String) async throws -> Hermesh_Thread_V2_GetThreadResponse {
+        var r = Hermesh_Thread_V2_GetThreadRequest()
+        r.threadID = threadID
+        return try await callThread("GetThread", r)
+    }
+
+    public func subscribeThreads(machineID: String = "", includeArchived: Bool = false) -> AsyncThrowingStream<Hermesh_Thread_V2_SubscribeThreadsResponse, Error> {
+        var r = Hermesh_Thread_V2_SubscribeThreadsRequest()
+        r.machineID = machineID
+        r.includeArchived = includeArchived
+        return streamThread("SubscribeThreads", r)
+    }
+
+    public func subscribeThread(threadID: String, machineID: String = "", afterSeq: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Thread_V2_ThreadEvent, Error> {
+        var r = Hermesh_Thread_V2_SubscribeThreadRequest()
+        r.machineID = machineID
+        r.threadID = threadID
+        r.afterSeq = afterSeq
+        return streamThread("SubscribeThread", r)
+    }
+
+    public func dispatchThreadMessage(_ req: Hermesh_Thread_V2_DispatchMessageRequest) async throws -> Hermesh_Thread_V2_DispatchMessageResponse {
+        try await callThread("DispatchMessage", req, timeout: 20)
+    }
+
+    public func interruptThreadRun(threadID: String, runID: String = "", force: Bool = false) async throws -> Hermesh_Thread_V2_InterruptRunResponse {
+        var r = Hermesh_Thread_V2_InterruptRunRequest()
+        r.threadID = threadID
+        r.runID = runID
+        r.force = force
+        return try await callThread("InterruptRun", r)
+    }
+
+    public func manageThreadQueue(_ req: Hermesh_Thread_V2_ManageQueueRequest) async throws -> Hermesh_Thread_V2_ManageQueueResponse {
+        try await callThread("ManageQueue", req)
+    }
+
+    public func updateThreadConfig(_ req: Hermesh_Thread_V2_UpdateThreadConfigRequest) async throws -> Hermesh_Thread_V2_UpdateThreadConfigResponse {
+        try await callThread("UpdateThreadConfig", req)
+    }
+
+    public func respondThreadRuntimeRequest(_ req: Hermesh_Thread_V2_RespondRuntimeRequestRequest) async throws -> Hermesh_Thread_V2_RespondRuntimeRequestResponse {
+        try await callThread("RespondRuntimeRequest", req)
+    }
+
+    public func listThreadCheckpoints(threadID: String) async throws -> Hermesh_Thread_V2_ListCheckpointsResponse {
+        var r = Hermesh_Thread_V2_ListCheckpointsRequest()
+        r.threadID = threadID
+        return try await callThread("ListCheckpoints", r)
+    }
+
+    public func rollbackThreadCheckpoint(threadID: String, checkpointID: String, restoreFiles: Bool) async throws -> Hermesh_Thread_V2_RollbackCheckpointResponse {
+        var r = Hermesh_Thread_V2_RollbackCheckpointRequest()
+        r.threadID = threadID
+        r.checkpointID = checkpointID
+        r.restoreFiles = restoreFiles
+        return try await callThread("RollbackCheckpoint", r)
+    }
+
+    public func getThreadDiff(threadID: String, checkpointID: String = "", machineID: String = "") async throws -> Hermesh_Thread_V2_GetThreadDiffResponse {
+        var r = Hermesh_Thread_V2_GetThreadDiffRequest()
+        r.machineID = machineID
+        r.threadID = threadID
+        r.checkpointID = checkpointID
+        return try await callThread("GetThreadDiff", r)
     }
 
     // MARK: Plain HTTP on loopback

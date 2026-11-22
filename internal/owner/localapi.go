@@ -15,6 +15,7 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
 	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
@@ -49,7 +50,9 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 // its own listener and access control (the iPhone app's loopback server).
 func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))))
+	opts := connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))
+	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, opts))
+	mux.Handle(threadv2connect.NewThreadServiceHandler(&ownerThreadService{d: d}, opts))
 	return mux
 }
 
@@ -436,6 +439,37 @@ func (l *localService) AddProject(ctx context.Context, req *localv1.AddProjectRe
 	err := l.o().AddProject(ctx, req)
 	l.o().wrote(ctx, err, false, req.MachineId)
 	return &localv1.AddProjectResponse{}, err
+}
+
+// CreateMachineFolder makes a new empty folder on a machine, for a project (docs/thread-composer.md §4.3).
+func (l *localService) CreateMachineFolder(ctx context.Context, req *localv1.CreateMachineFolderRequest) (*localv1.CreateMachineFolderResponse, error) {
+	build := func(c *identityv1.AdminCommand) {
+		c.Command = &identityv1.AdminCommand_CreateFolder{CreateFolder: &identityv1.CreateFolder{Parent: req.Parent, Name: req.Name, GitInit: req.GitInit}}
+	}
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err == nil {
+			err = onlyMachineSettings(ctx, m, req.MachineId, build)
+		}
+		return &localv1.CreateMachineFolderResponse{}, err
+	}
+	_, err := l.o().admin(ctx, req.MachineId, build)
+	return &localv1.CreateMachineFolderResponse{}, err
+}
+
+// SetMachineMaxRuntimeMode limits the permission mode a machine's threads may run in.
+func (l *localService) SetMachineMaxRuntimeMode(ctx context.Context, req *localv1.SetMachineMaxRuntimeModeRequest) (*localv1.SetMachineMaxRuntimeModeResponse, error) {
+	build := func(c *identityv1.AdminCommand) {
+		c.Command = &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: req.Mode}}
+	}
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err == nil {
+			err = onlyMachineSettings(ctx, m, req.MachineId, build)
+		}
+		return &localv1.SetMachineMaxRuntimeModeResponse{}, err
+	}
+	_, err := l.o().admin(ctx, req.MachineId, build)
+	l.o().wrote(ctx, err, false, req.MachineId)
+	return &localv1.SetMachineMaxRuntimeModeResponse{}, err
 }
 
 func (l *localService) RemoveProject(ctx context.Context, req *localv1.RemoveProjectRequest) (*localv1.RemoveProjectResponse, error) {

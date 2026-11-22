@@ -245,3 +245,44 @@ func TestWords(t *testing.T) {
 		t.Fatalf("in Chinese: %+v %v", cs, err)
 	}
 }
+
+func TestGrantRuntimeModeCeiling(t *testing.T) {
+	pub := spki(t)
+	h := Hints{MachineNames: map[string]string{"m_1": "vps-1"}}
+	g := &identityv1.Grant{
+		OwnerId:         "o_x",
+		GrantId:         "g_1",
+		Version:         1,
+		ClientLabel:     "bot",
+		ClientPublicKey: pub,
+		ProjectIds:      []string{"app"},
+		MachineIds:      []string{"m_1"},
+		Agents:          []string{"claude"},
+		MaxRuntimeMode:  identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
+	}
+	cs, err := Cards([]*localv1.SigningRequest{request(t, g)}, h, "en")
+	if err != nil || !slices.Contains(cs[0].Lines, "Autonomy limit: changes files without asking, asks before other commands") {
+		t.Fatalf("auto_edits grant card: %+v %v", cs, err)
+	}
+	zhCards, err := Cards([]*localv1.SigningRequest{request(t, g)}, h, "zh-CN")
+	if err != nil || !slices.Contains(zhCards[0].Lines, "权限上限：改文件不问，运行其他命令前先问") {
+		t.Fatalf("zh-CN auto_edits grant card: %+v %v", zhCards, err)
+	}
+	// The machine's own limit, and a folder made for a project (settings, signed when a device asks to).
+	limit := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO}}}
+	folder := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_CreateFolder{CreateFolder: &identityv1.CreateFolder{Parent: "~/code", Name: "app", GitInit: true}}}
+	cs, err = Cards([]*localv1.SigningRequest{request(t, limit), request(t, folder)}, h, "zh-CN")
+	if err != nil || cs[0].Title != "限制环境 vps-1上会话的权限" || !slices.Contains(cs[0].Lines, "最多：改文件和运行常规检查不问，其余操作前先问") ||
+		cs[1].Title != "在环境 vps-1上新建文件夹“app”" || !slices.Contains(cs[1].Lines, "位置：~/code") {
+		t.Fatalf("machine limit and new folder: %+v %v", cs, err)
+	}
+	unknown := &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: identityv1.RuntimeMode(99)}}}
+	if _, err := Cards([]*localv1.SigningRequest{request(t, unknown)}, h, "en"); !errors.As(err, new(*Refused)) {
+		t.Fatalf("an unknown machine limit must be refused, got: %v", err)
+	}
+	bad := request(t, &identityv1.Grant{OwnerId: "o_x", ClientLabel: "bot", ClientPublicKey: pub, MaxRuntimeMode: identityv1.RuntimeMode(99)})
+	var refused *Refused
+	if _, err := Cards([]*localv1.SigningRequest{bad}, h, "en"); !errors.As(err, &refused) {
+		t.Fatalf("unknown runtime mode must be refused, got: %v", err)
+	}
+}

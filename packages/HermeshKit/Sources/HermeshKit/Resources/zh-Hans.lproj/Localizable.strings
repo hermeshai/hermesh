@@ -27,8 +27,10 @@
 "Approve “%@” to connect to your computer" = "批准「%@」连接你的电脑";
 "Ask before each file change and command" = "每次修改文件、运行命令前都先询问";
 "Assistant ID: %@" = "助手 ID：%@";
+"Autonomy limit: %@" = "权限上限：%@";
 "Base branch: %@" = "基准分支：%@";
 "Can also see other personal agents’ tasks in these projects" = "还能看到这些项目里其他个人 agent 的任务";
+"Change files and run routine checks without asking" = "修改文件和运行常规检查无需询问";
 "Change files without asking; ask before other commands" = "修改文件无需询问；运行其他命令前先询问";
 "Change the access of personal agent “%@”" = "修改个人 agent「%@」的权限";
 "Coding agents" = "Agent 提供方";
@@ -173,3 +175,12 @@
 "Once approved, tasks’ worktrees idle for 7 days with no local changes are deleted there; their branches stay." = "批准后，那里空闲 7 天以上、没有本地改动的任务工作目录会被删除，分支保留。";
 "Stop releasing idle worktrees on %@" = "让 %@ 不再自动释放空闲的工作目录";
 "Once approved, worktrees stay until released by hand." = "批准后，工作目录会一直保留，直到手动释放。";
+"In: %@" = "位置：%@";
+"A git repository with one empty commit" = "一个 git 仓库，带一个空提交";
+"Create folder “%@” on %@" = "在%2$@上新建文件夹「%1$@」";
+"Once approved, the machine makes the empty folder under its home folder, for a project." = "批准后，环境在主目录下新建这个空文件夹，用作项目。";
+"Lift the permission limit of %@" = "取消%@的权限上限";
+"Once approved, its threads run as their grants and you allow." = "批准后，它的会话按授权和你的设置运行。";
+"Limit what threads may do on %@" = "限制%@上会话的权限";
+"At most: %@" = "最多：%@";
+"Once approved, whoever starts them, its threads ask before anything beyond this." = "批准后，无论谁发起，超出这个范围的操作都要先问。";

@@ -14,11 +14,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
@@ -26,6 +28,7 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/herhost"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
@@ -70,6 +73,10 @@ type Config struct {
 	// machine (docs/version-skew.md §6.7): its status carries no Her, and
 	// Her's admin commands are unknown, answered as that version did.
 	TestBeforeHer bool
+	// TestBeforeThreads makes it act as a hermeshd from before v2 threads,
+	// for the end-to-end tests of the composer against an older machine
+	// (docs/thread-composer.md §5.2): no ThreadService, and its status says so.
+	TestBeforeThreads bool
 }
 
 func DefaultProviders() map[string]provider.Provider {
@@ -102,6 +109,7 @@ type Machine struct {
 	machineID string
 	audit     *Audit
 	sessions  *Sessions
+	threads   *kernel.Engine
 
 	mu          sync.Mutex
 	trust       *identity.Trust
@@ -178,6 +186,7 @@ const (
 	kRevocations = "revocations"
 	kPaused      = "paused"
 	kName        = "name"
+	kMaxMode     = "max_runtime_mode"
 )
 
 func KeyPath(dataDir string) string { return filepath.Join(dataDir, "keys", "machine.key") }
@@ -234,6 +243,11 @@ func Open(cfg Config) (*Machine, error) {
 		n.sessionNews(s, e)
 	}
 	n.sessions.registerMetrics()
+	if !cfg.TestBeforeThreads {
+		if err := n.openThreads(); err != nil {
+			return nil, err
+		}
+	}
 	return n, nil
 }
 
@@ -283,6 +297,9 @@ func (n *Machine) Close() error {
 	n.screen.Stop()
 	n.stopHerLink()
 	n.her.Stop()
+	if n.threads != nil {
+		_ = n.threads.Close()
+	}
 	n.sessions.w.close()
 	err := n.st.Close()
 	n.audit.Close()
@@ -320,6 +337,32 @@ func CleanName(s string) string {
 // agents' connections made under another name are closed: one kept from
 // command to command (the MCP gateway's, the CLI link's) would go on saying
 // the old name, and the agent refuse the machine under its new one.
+// maxRuntimeMode is the broadest permission mode the machine's threads may
+// run in (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
+func (n *Machine) maxRuntimeMode() identityv1.RuntimeMode {
+	b, _ := n.st.Get(kMaxMode)
+	if len(b) == 0 {
+		return identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED
+	}
+	v, _ := strconv.Atoi(string(b))
+	return identityv1.RuntimeMode(v)
+}
+
+// setMaxRuntimeMode keeps the machine's ceiling and applies it to the threads
+// from their next launch or message on.
+func (n *Machine) setMaxRuntimeMode(m identityv1.RuntimeMode) error {
+	if _, ok := identityv1.RuntimeMode_name[int32(m)]; !ok {
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("unknown permission mode %d", m))
+	}
+	if err := n.st.Set(kMaxMode, []byte(strconv.Itoa(int(m)))); err != nil {
+		return err
+	}
+	if n.threads != nil {
+		n.threads.SetMachineMaxMode(m)
+	}
+	return nil
+}
+
 func (n *Machine) SetName(name string) error {
 	name = SanitizeName(name)
 	if err := n.st.Set(kName, []byte(name)); err != nil {
@@ -483,7 +526,8 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	n.freshHealth()
 	n.mu.Lock()
 	st := &machinev1.MachineStatus{Name: n.machineName, ProtocolVersion: transport.ProtocolVersion, Platform: runtime.GOOS + "/" + runtime.GOARCH,
-		MaxSessions: uint32(n.cfg.Limits.MaxConcurrent), Paused: n.paused, Version: Version}
+		MaxSessions: uint32(n.cfg.Limits.MaxConcurrent), Paused: n.paused, Version: Version,
+		Threads: n.threads != nil, MaxRuntimeMode: n.maxRuntimeMode()}
 	for _, name := range append(AgentNames(), "fake") {
 		// Claude Code and Codex are always listed; other agents when found
 		// (working or not), when their app lacks the CLI, or while their

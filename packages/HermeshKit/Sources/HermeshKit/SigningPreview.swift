@@ -254,6 +254,7 @@ public enum SigningPreview {
         case grant:
             let g = try strict(r, Hermesh_Identity_V1_Grant.self)
             if case .UNRECOGNIZED = g.taskVisibility { throw Refusal.unsupported(r.type) }
+            if case .UNRECOGNIZED = g.maxRuntimeMode { throw Refusal.unsupported(r.type) }
             var c = describeGrant(g, hints, reissue: reissue)
             // The person already said, signed in to their account, that this
             // agent is theirs: its side shows no code to compare.
@@ -348,6 +349,14 @@ public enum SigningPreview {
         var limits: [String] = []
         if g.taskVisibility == .all { limits.append(String(localized: "Can also see other personal agents’ tasks in these projects", bundle: .module)) }
         if g.maxConcurrentSessions > 0 { limits.append(String(localized: "Tasks at once: up to \(Int(g.maxConcurrentSessions))", bundle: .module)) }
+        switch g.maxRuntimeMode {
+        case .unspecified: break
+        case .supervised: limits.append(String(localized: "Autonomy limit: \(String(localized: "Ask before each file change and command", bundle: .module))", bundle: .module))
+        case .autoEdits: limits.append(String(localized: "Autonomy limit: \(String(localized: "Change files without asking; ask before other commands", bundle: .module))", bundle: .module))
+        case .auto: limits.append(String(localized: "Autonomy limit: \(String(localized: "Change files and run routine checks without asking", bundle: .module))", bundle: .module))
+        case .fullAccess: limits.append(String(localized: "Autonomy limit: \(String(localized: "Full access: ask before nothing", bundle: .module))", bundle: .module))
+        case .UNRECOGNIZED: break
+        }
         var rows = [CardRow(kind: .project, value: projects), CardRow(kind: .codingAgent, value: agents),
                     CardRow(kind: .expires, value: String(localized: "Until \(day)", bundle: .module))]
         if !isAll(g.machineIds) { rows.insert(CardRow(kind: .machine, value: machines), at: 1) }
@@ -507,6 +516,26 @@ public enum SigningPreview {
                         lines: [String(localized: "Command: \(command)", bundle: .module)] + env,
                         why: String(localized: "Once approved, Her runs this command on the machine as its user whenever her assistants use the connector. It can do anything that user can: read and change files, run programs and reach the network.", bundle: .module),
                         warning: String(localized: "Approve only if you know this command and trust where it comes from.", bundle: .module))
+        case .createFolder(let f):
+            var lines = [String(localized: "In: \(f.parent.isEmpty ? "~" : f.parent)", bundle: .module)]
+            if f.gitInit { lines.append(String(localized: "A git repository with one empty commit", bundle: .module)) }
+            return Card(type: type, title: String(localized: "Create folder “\(f.name)” on \(target)", bundle: .module), who: who, lines: lines,
+                        why: String(localized: "Once approved, the machine makes the empty folder under its home folder, for a project.", bundle: .module))
+        case .setMaxRuntimeMode(let m):
+            let mode: String
+            switch m.mode {
+            case .unspecified:
+                return Card(type: type, title: String(localized: "Lift the permission limit of \(target)", bundle: .module), who: who, lines: [],
+                            why: String(localized: "Once approved, its threads run as their grants and you allow.", bundle: .module))
+            case .supervised: mode = String(localized: "Ask before each file change and command", bundle: .module)
+            case .autoEdits: mode = String(localized: "Change files without asking; ask before other commands", bundle: .module)
+            case .auto: mode = String(localized: "Change files and run routine checks without asking", bundle: .module)
+            case .fullAccess: mode = String(localized: "Full access: ask before nothing", bundle: .module)
+            case .UNRECOGNIZED: throw Refusal.unsupported(type)
+            }
+            return Card(type: type, title: String(localized: "Limit what threads may do on \(target)", bundle: .module), who: who,
+                        lines: [String(localized: "At most: \(mode)", bundle: .module)],
+                        why: String(localized: "Once approved, whoever starts them, its threads ask before anything beyond this.", bundle: .module))
         case .none:
             throw Refusal.unsupported(type)
         }

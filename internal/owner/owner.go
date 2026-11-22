@@ -34,6 +34,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
 	"github.com/hermeshai/hermesh/internal/connaddr"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/machine"
@@ -147,6 +148,10 @@ type Owner struct {
 	directMachines map[string]*peer.Machine // direct tunnels opened while relay isn't ready
 	directDialing  map[string]*directDial   // per-machine singleflight for directFastMachine
 	cellularOnly   atomic.Bool              // true when device has only cellular (no Wi-Fi/wired): skip RFC1918 LAN addrs
+
+	threadMu   sync.Mutex
+	threadWake chan struct{}
+	threadSubs map[chan *threadv2.SubscribeThreadsResponse]struct{}
 }
 
 type directDial struct {
@@ -188,7 +193,16 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 		lock.Release()
 		return nil, err
 	}
-	o := &Owner{cfg: cfg, log: cfg.Logger, st: st, lock: lock, hub: hub, herWake: make(chan struct{}, 1)}
+	o := &Owner{
+		cfg:        cfg,
+		log:        cfg.Logger,
+		st:         st,
+		lock:       lock,
+		hub:        hub,
+		herWake:    make(chan struct{}, 1),
+		threadWake: make(chan struct{}, 1),
+		threadSubs: map[chan *threadv2.SubscribeThreadsResponse]struct{}{},
+	}
 	o.rep = newReplica(o)
 	return o, o.load()
 }
@@ -280,6 +294,7 @@ func (o *Owner) Run(ctx context.Context) {
 	}
 	go o.namePending(ctx)
 	go o.deliverWaiting(ctx)
+	go o.flushThreadOutboxLoop(ctx)
 	o.stayConnected(ctx)
 	o.mu.Lock()
 	if o.client != nil && o.client != o.kept {
@@ -1957,6 +1972,7 @@ func grantFromSpec(base *identityv1.Grant, spec *localv1.GrantSpec) *identityv1.
 	g.ClientLabel = s.Label
 	g.MachineIds, g.ProjectIds, g.Agents = s.MachineIds, s.ProjectIds, s.Agents
 	g.TaskVisibility, g.MaxConcurrentSessions = s.TaskVisibility, s.MaxConcurrentSessions
+	g.MaxRuntimeMode = s.MaxRuntimeMode
 	g.NotBefore = timestamppb.New(time.Now().Add(-time.Minute))
 	g.ExpiresAt = timestamppb.New(time.Now().Add(time.Duration(s.TtlDays) * 24 * time.Hour))
 	return g
@@ -2205,7 +2221,7 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	req := &machinev1.ApplyAdminCommandRequest{}
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
-		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_SetWorkspacePolicy:
+		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_CreateFolder, *identityv1.AdminCommand_SetMaxRuntimeMode, *identityv1.AdminCommand_SetWorkspacePolicy:
 		if l := o.local(); l != nil && l.MachineID() == machineID {
 			return l.ApplySettings(ctx, build) // this device's own machine, in process
 		}
@@ -2500,7 +2516,7 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 		defer mu.Unlock()
 		for _, p := range res.Projects {
 			out.Projects = append(out.Projects, &localv1.Project{MachineId: meta.MachineId, ProjectId: p.ProjectId, DefaultBaseRef: p.DefaultBaseRef, Workspace: p.Workspace,
-				Description: p.Description, Agents: p.Agents, Path: p.Path})
+				Description: p.Description, Agents: p.Agents, Path: p.Path, Repo: p.Repo})
 		}
 	}
 	bad, err := o.fanOut(ctx, ask, func(l *machine.Local, meta *localv1.Machine) error {
@@ -2529,7 +2545,7 @@ func specFromGrant(g *identityv1.Grant) *localv1.GrantSpec {
 		ttl = uint32(g.ExpiresAt.AsTime().Sub(g.NotBefore.AsTime()).Hours()/24 + 0.5)
 	}
 	return &localv1.GrantSpec{Label: g.ClientLabel, MachineIds: g.MachineIds, ProjectIds: g.ProjectIds, Agents: g.Agents,
-		TaskVisibility: g.TaskVisibility, TtlDays: ttl, MaxConcurrentSessions: g.MaxConcurrentSessions}
+		TaskVisibility: g.TaskVisibility, TtlDays: ttl, MaxConcurrentSessions: g.MaxConcurrentSessions, MaxRuntimeMode: g.MaxRuntimeMode}
 }
 
 // ListClients lists the owner's agents, as the replica last polled them.

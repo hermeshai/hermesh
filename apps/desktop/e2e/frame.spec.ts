@@ -36,7 +36,7 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
   const centre = async (l: ReturnType<typeof page.locator>) => ((b) => b.y + b.height / 2)(await box(l));
   const hide = await centre(page.getByRole("button", { name: "收成窄栏" }));
   const nav = page.locator(".side-nav");
-  await expect(nav.getByRole("button")).toHaveText([/^Her/, /^概览/]);
+  await expect(nav.getByRole("button")).toHaveText([/^新建会话/, /^Her/, /^概览/]);
   const her = await box(nav.getByRole("button", { name: /^Her/ }));
   const overview = await box(nav.getByRole("button", { name: /^概览/ }));
   expect(overview.height).toBe(32);

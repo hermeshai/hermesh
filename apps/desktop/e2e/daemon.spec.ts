@@ -70,7 +70,7 @@ test("opened at login hides the Dock icon until a window opens; closing the wind
   await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
 
   await app.evaluate(() => (globalThis as unknown as MainHook).hermeshTest.mainWindow()?.close());
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents.getURL().endsWith("#tray")).length)).toBe(0);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents.isDestroyed() && !w.webContents.getURL().endsWith("#tray")).length)).toBe(0);
   expect(await app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
 
   // Both Dock right-click menu and Tray right-click menu expose background service status and controls.

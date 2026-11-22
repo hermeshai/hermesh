@@ -315,6 +315,16 @@ extension AppAPI {
         return try await call("ListMachineFolders", r, timeout: 60)
     }
 
+    /// A new empty folder on a machine, under its home folder (CreateFolder); a git repository with one empty commit when gitInit.
+    func createFolder(machine: String, parent: String, name: String, gitInit: Bool) async throws {
+        var r = Hermesh_Local_V1_CreateMachineFolderRequest()
+        r.machineID = machine
+        r.parent = parent
+        r.name = name
+        r.gitInit = gitInit
+        let _: Hermesh_Local_V1_CreateMachineFolderResponse = try await call("CreateMachineFolder", r, timeout: signingTimeout)
+    }
+
     /// Test: one fixed turn of a coding agent on a machine.
     func testAgent(machine: String, agent: String) async throws -> Hermesh_Machine_V1_TestAgentResponse {
         var r = Hermesh_Local_V1_TestMachineAgentRequest()

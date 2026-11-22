@@ -6,7 +6,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, sys, thisComputer } from "./app";
+import { answerMenu, cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, sys, thisComputer } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -424,6 +424,19 @@ test("settings 环境: this Mac's page names it, keeps it online, opens its prov
   await panel.locator(".set-banner").getByRole("button", { name: "恢复" }).click();
   await expect(panel.locator(".set-banner")).toHaveCount(0);
   await expect(nav(settings, thisComputer)).not.toContainText("已暂停");
+
+  // Its sessions' permission limit (docs/thread-composer.md §5.4): picked from a menu, kept on the machine.
+  const limit = panel.getByTestId("machine-max-mode");
+  await expect(limit).toHaveText("不限制");
+  await answerMenu(app, "2"); // RuntimeMode.AUTO_EDITS
+  await limit.click();
+  await expect(settings.getByRole("status")).toContainText("已把 owner-mac 的会话权限上限设为「自动接受编辑」");
+  await expect(limit).toHaveText("自动接受编辑");
+  const machines = await api<{ machines: { local?: boolean; status?: { maxRuntimeMode?: string } }[] }>(settings, "ListMachines");
+  expect(machines.machines.find((m) => m.local)?.status?.maxRuntimeMode).toBe("RUNTIME_MODE_AUTO_EDITS");
+  await answerMenu(app, "0");
+  await limit.click();
+  await expect(limit).toHaveText("不限制");
 
   // Stopping this Mac as an environment asks first.
   await panel.getByRole("button", { name: sys("停用这台 Mac…", "停用这台电脑…") }).click();

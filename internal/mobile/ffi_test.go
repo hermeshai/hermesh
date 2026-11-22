@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
 )
 
 func TestInProcessBinaryProtobufFFIUnaryAndStreamAcrossPause(t *testing.T) {
@@ -61,4 +62,27 @@ func TestInProcessBinaryProtobufFFIUnaryAndStreamAcrossPause(t *testing.T) {
 		t.Fatalf("expected initial WatchResponse with Status, got %+v", &w)
 	}
 	c.CloseStream(sid)
+
+	// Verify ThreadService v2 unary & streaming procedures work over FFI too!
+	ltReq, _ := proto.Marshal(&threadv2.ListThreadsRequest{})
+	ltResBytes, errCode, errMsg := c.InvokeUnary("/hermesh.thread.v2.ThreadService/ListThreads", ltReq, 5*time.Second)
+	if errCode != "" {
+		t.Fatalf("ThreadService/ListThreads FFI failed: %s %s", errCode, errMsg)
+	}
+	var ltRes threadv2.ListThreadsResponse
+	if err := proto.Unmarshal(ltResBytes, &ltRes); err != nil {
+		t.Fatalf("unmarshal ListThreadsResponse: %v", err)
+	}
+
+	subReq, _ := proto.Marshal(&threadv2.SubscribeThreadsRequest{})
+	tsid := c.OpenStream("/hermesh.thread.v2.ThreadService/SubscribeThreads", subReq)
+	tframe, tdone, errCode, errMsg := c.NextStreamFrame(tsid)
+	if tdone || errCode != "" {
+		t.Fatalf("SubscribeThreads first frame: done=%v code=%q msg=%q", tdone, errCode, errMsg)
+	}
+	var subSnap threadv2.SubscribeThreadsResponse
+	if err := proto.Unmarshal(tframe, &subSnap); err != nil || !subSnap.Snapshot {
+		t.Fatalf("expected SubscribeThreads initial snapshot, got %+v (err=%v)", &subSnap, err)
+	}
+	c.CloseStream(tsid)
 }

@@ -33,7 +33,7 @@ struct SheetHost: View {
             if model.isDemo { DemoPairingSheet(kind: .machine) } else { ScanSheet() }
         case .addDevice:
             if model.isDemo { DemoPairingSheet(kind: .device) } else { AddDeviceSheet() }
-        case .addProject(let machine): AddProjectSheet(machineID: machine)
+        case .addProject(let machine, let forSession): AddProjectSheet(machineID: machine, forSession: forSession)
         case .search: SearchSheet()
         case .wake(let client, let agent, let wake): WakeSheet(clientID: client, agent: agent, existing: wake)
         }

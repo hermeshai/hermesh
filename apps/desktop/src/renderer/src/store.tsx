@@ -2,12 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ConnectError } from "@connectrpc/connect";
 import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
-import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
+import type { Thread } from "@hermesh/proto/thread";
+import { isThreadId, sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
 import { i18n } from "../../shared/i18n";
 import { needsUpdate } from "./skew";
+import { threads as threadApi } from "./api";
 
 // What the window knows: the owner's world as hermeshd pushes it
 // (useWorld: no polling), plus the window's own state (selection, list
@@ -31,6 +33,8 @@ export type Data = {
 export type Selection =
   | { kind: "overview" }
   | { kind: "session"; id: string }
+  | { kind: "newThread"; machineId?: string; projectId?: string }
+  | { kind: "thread"; id: string }
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 
@@ -40,7 +44,8 @@ export type ProgressTaskRef = { agent: string; fromHer?: boolean };
 export type Sheet =
   | { kind: "newGrant" }
   | { kind: "addMachine" }
-  | { kind: "addProject"; machineId?: string; agent?: string }
+  /** then: the project was added (its id, and whether its sessions get their own worktree): a new session takes it. */
+  | { kind: "addProject"; machineId?: string; agent?: string; then?: (projectId: string, worktree: boolean) => void }
   | { kind: "addDevice" }
   | { kind: "enterCode" }
   /** details: from LookupPairing, until the poll lists the request. */
@@ -105,6 +110,8 @@ export type Store = Data &
     width: number;
     /** The sessions loaded so far: the newest page, older pages the list asked for, and every change since. */
     sessions: Session[];
+    /** Every machine's v2 threads, archived ones too, as they change (docs/thread-composer.md §4.7). */
+    threads: Thread[];
     /** Moves when the counts of work changed (QueryWork). */
     workVersion: number;
     sessionsUnreachable: Unreachable[];
@@ -276,13 +283,16 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     [refresh, show],
   );
 
-  const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: { kind: "session", id } })), []);
+  // A v2 thread opens on its own page; the rows of both kinds share the list (docs/thread-composer.md §4.7).
+  const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: isThreadId(id) ? { kind: "thread", id } : { kind: "session", id } })), []);
+  const threads = useThreads(!location.hash.startsWith("#settings"));
 
   const store = useMemo<Store>(
     () => ({
       ...data,
       pairings: data.pairings.filter((p) => !ui.dismissed.includes(p.code)),
       sessions,
+      threads,
       sessionsUnreachable: data.projectsUnreachable,
       sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly),
       moreSessions: world.next !== undefined,
@@ -296,9 +306,42 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       run,
       show,
     }),
-    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
+    [data, sessions, threads, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
+}
+
+/**
+ * Every machine's v2 threads as hermeshd pushes them (SubscribeThreads: a
+ * snapshot, then each change), in the main window only. The stream is opened
+ * again a moment after it ends (hermeshd restarting, an update).
+ */
+function useThreads(on: boolean): Thread[] {
+  const [list, setList] = useState<Thread[]>([]);
+  useEffect(() => {
+    if (!on) return;
+    const ctl = new AbortController();
+    (async () => {
+      while (!ctl.signal.aborted) {
+        try {
+          for await (const msg of threadApi.subscribeThreads({ includeArchived: true }, { signal: ctl.signal })) {
+            setList((prev) => {
+              if (msg.snapshot) return msg.threads;
+              const gone = new Set(msg.deletedThreadIds);
+              const byId = new Map(prev.filter((x) => !gone.has(x.threadId)).map((x) => [x.threadId, x]));
+              for (const t of msg.threads) byId.set(t.threadId, t);
+              return [...byId.values()];
+            });
+          }
+        } catch {
+          // hermeshd went away or the window closed: try again below, unless closed.
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    })();
+    return () => ctl.abort();
+  }, [on]);
+  return list;
 }
 
 /**

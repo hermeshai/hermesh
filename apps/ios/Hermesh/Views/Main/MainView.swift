@@ -59,6 +59,8 @@ private struct PageView: View {
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
+        case .newThread(let machine, let project): ThreadPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")
+        case .thread(let id): ThreadPage(threadID: id).id(id)
         }
     }
 }

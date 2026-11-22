@@ -147,6 +147,21 @@ enum TaskVisibility {
   TASK_VISIBILITY_ALL = 2;
 }
 
+// RuntimeMode bounds how much autonomy an agent session has before asking the
+// owner for approval. Ordered monotonically from narrowest (SUPERVISED) to
+// broadest (FULL_ACCESS). UNSPECIFIED means no additional grant ceiling.
+enum RuntimeMode {
+  RUNTIME_MODE_UNSPECIFIED = 0;
+  // Ask before every file edit, command, or external action.
+  RUNTIME_MODE_SUPERVISED = 1;
+  // Auto-approve file edits inside the workspace; ask before commands or outside writes.
+  RUNTIME_MODE_AUTO_EDITS = 2;
+  // Auto-approve workspace edits and routine read/build/test commands; ask before risky or outside actions.
+  RUNTIME_MODE_AUTO = 3;
+  // Allow commands and edits without interactive prompts (subject to explicit deny/secret gates).
+  RUNTIME_MODE_FULL_ACCESS = 4;
+}
+
 // Grant is signed by a root key. For a given grant_id, machines only accept
 // the highest version they have seen (and never below min_grant_versions).
 message Grant {
@@ -160,7 +175,7 @@ message Grant {
   repeated string machine_ids = 7;
   repeated string project_ids = 8;
   repeated string agents = 9;
-  // Was a permission preset; a grant now fully trusts its client.
+  // Was a permission preset; a grant now fully trusts its client unless max_runtime_mode caps it.
   reserved 10;
   reserved "preset";
   TaskVisibility task_visibility = 11;
@@ -181,6 +196,10 @@ message Grant {
   // on, whose hermeshd holds the client key. Turning Her off there or
   // removing that machine revokes it. "" for every other agent.
   string her_machine_id = 18;
+  // Optional cryptographic autonomy ceiling for sessions/threads started or
+  // operated under this grant. When set, effective runtime mode is clamped to
+  // at most max_runtime_mode, and actions above it pause for owner approval.
+  RuntimeMode max_runtime_mode = 19;
 }
 
 // EraseOrder is the owner's order to erase Hermesh everywhere
@@ -224,7 +243,9 @@ message AdminCommand {
     SetHer set_her = 16;
     SetHerAssistantMode set_her_assistant_mode = 17;
     SetHerCommandConnector set_her_command_connector = 18;
-    SetWorkspacePolicy set_workspace_policy = 19;
+    CreateFolder create_folder = 19;
+    SetMaxRuntimeMode set_max_runtime_mode = 20;
+    SetWorkspacePolicy set_workspace_policy = 21;
   }
   reserved 12;
   reserved "rename_machine";
@@ -428,4 +449,21 @@ message DeltaEnvelope {
   // Per-device wrapped DEKs so every trusted device decrypts independently.
   repeated WrappedKey keys = 7;
   google.protobuf.Timestamp created_at = 8;
+}
+
+// A setting: a new empty folder in a folder under the machine's home folder,
+// for a project (docs/thread-composer.md §4.3). git_init makes it a git
+// repository with one empty commit, so sessions can take worktrees of it.
+message CreateFolder {
+  // "~", "~/code", or a full path under the home folder.
+  string parent = 1;
+  // One folder name: no separator, not starting with ".".
+  string name = 2;
+  bool git_init = 3;
+}
+
+// A setting: the broadest permission mode the machine's threads may run in,
+// whoever starts them; UNSPECIFIED lifts the limit.
+message SetMaxRuntimeMode {
+  RuntimeMode mode = 1;
 }

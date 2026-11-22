@@ -58,11 +58,13 @@ export async function launch(
   o: { systemLanguages?: string[]; profile?: string; systemColors?: boolean; dark?: boolean; args?: string[]; env?: Record<string, string>; start?: boolean } = {},
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const languages = o.systemLanguages ?? ["zh-Hans"];
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
     args: ["-r", background, path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js"), "-AppleLanguages", `(${languages.join(", ")})`, ...(o.args ?? [])],
     // Its own profile, so app instances of parallel runs don't meet.
     env: {
-      ...process.env,
+      ...cleanEnv,
       HERMESH_SOCKET: socket,
       ...(process.platform !== "darwin" ? { HERMESH_TEST_LANGUAGES: languages.join(",") } : {}),
       HERMESH_USER_DATA: o.profile ?? fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-")),

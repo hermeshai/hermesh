@@ -197,7 +197,11 @@
     "herEraseTitle": "Erase Her’s data on “{{name}}”?",
     "herEraseMessage": "Her’s assistants, conversations, memory, routines, files, connectors and model logins on “{{name}}” are deleted. This can’t be undone.",
     "herEraseButton": "Erase",
-    "herErased": "Her’s data on “{{name}}” is erased"
+    "herErased": "Her’s data on “{{name}}” is erased",
+    "maxMode": "Session permission limit",
+    "maxModeDesc": "The broadest permission mode sessions on this machine may use, whoever starts them",
+    "maxModeNone": "No limit",
+    "maxModeSet": "{{name}}’s session permission limit is now “{{mode}}”"
   },
   "wake": {
     "title": "Wake on New Messages",
