@@ -16,6 +16,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -81,15 +82,22 @@ type cachedSnapshot struct {
 	inst *threadv2.ProviderInstance
 }
 
+// AgentModels gives the models a coding agent offers on this machine as the
+// agent itself lists them (the list the machine's settings show) and what its
+// sessions run with when none is named; ok is false when it could not tell.
+type AgentModels func(agent string) (models []provider.Model, def provider.Settings, ok bool)
+
 type Service struct {
 	mu      sync.Mutex
 	drivers map[string]runtime.Driver
+	models  AgentModels               // nil: the manifest's models only
 	cache   map[string]cachedSnapshot // instanceID + "\x00" + workdir
 }
 
-func NewService(drivers map[string]runtime.Driver) *Service {
+func NewService(drivers map[string]runtime.Driver, models AgentModels) *Service {
 	return &Service{
 		drivers: drivers,
+		models:  models,
 		cache:   map[string]cachedSnapshot{},
 	}
 }
@@ -233,6 +241,13 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 		inst.SlashCommands = probe.SlashCommands
 		inst.Skills = probe.Skills
 	}
+	// The agent's own list, where it gave one, is what it offers here; the
+	// manifest's is only for an agent that could not tell.
+	if s.models != nil {
+		if ms, def, ok := s.models(mKey); ok && len(ms) > 0 {
+			inst.Models = mergeModels(liveModels(cfg.Driver, ms, def), nil, cfg.CustomModels)
+		}
+	}
 
 	if workdir != "" {
 		wsCmds, wsSkills := scanWorkspaceCustomizations(workdir)
@@ -244,6 +259,46 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 	s.cache[cacheKey] = cachedSnapshot{at: time.Now(), inst: proto.Clone(inst).(*threadv2.ProviderInstance)}
 	s.mu.Unlock()
 	return inst
+}
+
+// liveModels are an agent's own models as catalog entries: def's model is
+// the default, and a model's reasoning efforts its reasoning option, under
+// the id the driver reads (the effort def names, else medium, chosen).
+func liveModels(driver string, ms []provider.Model, def provider.Settings) []*threadv2.ModelCatalogEntry {
+	effortID := "reasoningEffort"
+	if driver == "acp" {
+		effortID = "thought_level"
+	}
+	out := make([]*threadv2.ModelCatalogEntry, 0, len(ms))
+	for _, m := range ms {
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
+		e := &threadv2.ModelCatalogEntry{Slug: m.ID, Name: name, ShortName: name, IsDefault: m.ID == def.Model}
+		if len(m.Efforts) > 0 {
+			cur := m.Efforts[0]
+			if slices.Contains(m.Efforts, def.Effort) {
+				cur = def.Effort
+			} else if slices.Contains(m.Efforts, "medium") {
+				cur = "medium"
+			}
+			choices := make([]*threadv2.OptionChoice, 0, len(m.Efforts))
+			for _, id := range m.Efforts {
+				choices = append(choices, &threadv2.OptionChoice{Id: id, Label: id, IsDefault: id == cur})
+			}
+			e.OptionDescriptors = []*threadv2.OptionDescriptor{{
+				Id:           effortID,
+				Label:        "Reasoning",
+				Type:         threadv2.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_SELECT,
+				Role:         "reasoning",
+				Choices:      choices,
+				CurrentValue: &threadv2.OptionValue{Kind: &threadv2.OptionValue_StringValue{StringValue: cur}},
+			}}
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 func mergeModels(base []*threadv2.ModelCatalogEntry, discovered []*threadv2.ModelCatalogEntry, custom []string) []*threadv2.ModelCatalogEntry {

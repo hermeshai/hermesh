@@ -28,6 +28,16 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
 
+    // The box is one line, growing as what is written needs more, and back.
+    const input = page.getByTestId("thread-composer-input");
+    const height = async () => (await input.boundingBox())!.height;
+    expect(await height()).toBeLessThan(40);
+    await input.fill("第一行\n第二行\n第三行");
+    expect(await height()).toBeGreaterThan(60);
+    await snap(page, "composer-lines");
+    await input.fill("");
+    expect(await height()).toBeLessThan(40);
+
     // Add a Project from the project menu: work-mac's folders, browsed from here.
     await page.getByRole("button", { name: "项目" }).click();
     await page.getByTestId("project-add").click();
@@ -72,7 +82,6 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(panel).toBeHidden();
 
     // Start it: the session opens, runs on work-mac in the project, and is in the list.
-    const input = page.getByTestId("thread-composer-input");
     await input.fill("say hello_from_work_mac");
     await input.press("Enter");
     await expect(page.getByTestId("turn-item-assistant").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
