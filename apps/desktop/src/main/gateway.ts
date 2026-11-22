@@ -13,8 +13,18 @@ const blocked = new Set(["WatchSigningRequests", "CompleteSigningRequest"]);
 const forwardedHeaders = ["content-type", "connect-protocol-version", "connect-timeout-ms", "connect-content-encoding", "connect-accept-encoding"];
 
 let open = 0;
+let paused = false;
+const active = new Set<() => void>();
 /** Upstream requests in flight (for tests: a cancelled stream must not leak). */
 export const openUpstream = () => open;
+
+/** Pauses forwarding and drops open streams while the user has stopped hermeshd. */
+export function setGatewayPaused(on: boolean) {
+  paused = on;
+  if (on) {
+    for (const drop of active) drop();
+  }
+}
 
 const calls = new Map<string, number>();
 /** The calls forwarded so far, by method (for tests: idle windows make none, docs/state-sync.md §8). */
@@ -28,6 +38,12 @@ export function allowed(apiPath: string): boolean {
 export async function forward(req: Request, apiPath: string, socket: string, cors: Record<string, string>): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST" || !allowed(apiPath)) return new Response("not allowed", { status: 403, headers: cors });
+  if (paused) {
+    return new Response(JSON.stringify({ code: "unavailable", message: "hermeshd: stopped" }), {
+      status: 503,
+      headers: { ...cors, "content-type": "application/json" },
+    });
+  }
   const method = apiPath.slice(apiPath.lastIndexOf("/") + 1);
   calls.set(method, (calls.get(method) ?? 0) + 1);
   const body = Buffer.from(await req.arrayBuffer());
@@ -39,13 +55,21 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
   return new Promise<Response>((resolve) => {
     open++;
     let done = false;
+    let up: http.ClientRequest | undefined;
+    let down: http.IncomingMessage | undefined;
+    const drop = () => {
+      down?.destroy(new Error("hermeshd stopped"));
+      up?.destroy();
+    };
     const finish = () => {
+      active.delete(drop);
       if (!done) {
         done = true;
         open--;
       }
     };
-    const up = http.request({ socketPath: socket, path: apiPath, method: "POST", headers }, (res) => {
+    up = http.request({ socketPath: socket, path: apiPath, method: "POST", headers }, (res) => {
+      down = res;
       res.on("close", finish);
       const out = new Headers(cors);
       for (const [k, v] of Object.entries(res.headers)) {
@@ -54,6 +78,7 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
       const stream = Readable.toWeb(res) as ReadableStream<Uint8Array>;
       resolve(new Response(stream, { status: res.statusCode ?? 502, headers: out }));
     });
+    active.add(drop);
     up.on("error", (err) => {
       finish();
       resolve(new Response(JSON.stringify({ code: "unavailable", message: `hermeshd: ${err.message}` }), {
@@ -62,7 +87,7 @@ export async function forward(req: Request, apiPath: string, socket: string, cor
       }));
     });
     up.on("close", finish);
-    req.signal?.addEventListener("abort", () => up.destroy());
+    req.signal?.addEventListener("abort", () => up?.destroy());
     up.end(body);
   });
 }

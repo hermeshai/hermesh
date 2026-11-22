@@ -3,7 +3,14 @@
     "connecting": "正在连接后台服务…",
     "needsApproval": "Hermesh 的后台服务需要你在“系统设置 › 登录项”里允许后才能运行。",
     "openLoginItems": "打开登录项设置",
-    "noResponse": "Hermesh 的后台服务没有响应。它通常会自动启动；如果一直这样，请重新打开 Hermesh。"
+    "noResponse": "Hermesh 的后台服务没有响应。它通常会自动启动；如果一直这样，请重新打开 Hermesh。",
+    "stopped": "后台服务已停止",
+    "stoppedDesc": "启动后即可查看任务、使用 Her，并允许其他设备连接这台 Mac。",
+    "stoppedDesc_win": "启动后即可查看任务、使用 Her，并允许其他设备连接这台电脑。",
+    "stoppedDesc_linux": "启动后即可查看任务、使用 Her，并允许其他设备连接这台电脑。",
+    "start": "启动后台服务",
+    "starting": "正在启动后台服务…",
+    "stopping": "正在停止后台服务…"
   },
   "window": {
     "showSidebar": "展开边栏",
@@ -130,16 +137,25 @@
     "settings": "设置",
     "settingsTitle": "设置…",
     "quit": "退出 Hermesh",
+    "startService": "启动后台服务",
     "chip": {
       "ok": "正常",
       "down": "正在重连",
       "setup": "未设置",
+      "stopped": "已停止",
+      "starting": "正在启动",
+      "stopping": "正在停止",
       "daemon": "未运行"
     },
     "online_other": "你的 agent 能用 {{count}} 台机器",
     "noneOnline": "还没有在线的机器",
     "down": "已断开，agent 暂时用不了你的机器",
     "setup": "打开 Hermesh，完成设置",
+    "stopped": "后台服务已停止，其他设备暂时无法连接这台 Mac",
+    "stopped_win": "后台服务已停止，其他设备暂时无法连接这台电脑",
+    "stopped_linux": "后台服务已停止，其他设备暂时无法连接这台电脑",
+    "starting": "正在启动后台服务…",
+    "stopping": "正在停止后台服务…",
     "daemon": "后台服务没有响应"
   },
   "health": {

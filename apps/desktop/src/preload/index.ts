@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+import type { DaemonInfo } from "../shared/daemon";
 import type { Language } from "../shared/i18n";
 import type { Bridge, Command, ComputerPermission, MenuItem, MenuState, Preferences, TerminalCommand, TrayAction, TrayView } from "../shared/bridge";
 import type { UpdateInfo } from "../shared/update";
@@ -86,6 +87,10 @@ const bridge: Bridge = {
   loginItem: () => ipcRenderer.invoke("login-item"),
   setLoginItem: (on: boolean) => ipcRenderer.invoke("set-login-item", on),
   daemonNeedsApproval: () => ipcRenderer.invoke("daemon-needs-approval"),
+  daemonState: () => ipcRenderer.invoke("daemon-state"),
+  onDaemonState: (cb: (d: DaemonInfo) => void) => listen("daemon-state", cb),
+  startDaemon: () => ipcRenderer.invoke("start-daemon"),
+  stopDaemon: () => ipcRenderer.invoke("stop-daemon"),
   openLoginItems: () => ipcRenderer.send("open-login-items"),
   openActivityMonitor: () => ipcRenderer.send("open-activity-monitor"),
   openFolder: (path: string, to: "files" | "terminal") => ipcRenderer.send("open-folder", path, to),

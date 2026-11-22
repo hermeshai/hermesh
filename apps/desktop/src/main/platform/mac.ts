@@ -10,14 +10,32 @@ import { testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
 // The installed app runs hermeshd as a LaunchAgent (its plist in
-// Contents/Library/LaunchAgents), so it keeps running when the app quits,
-// and opens itself at login when the owner wants it to (Open Hermesh at login).
-// Development and test runs do neither: they use a daemon of their own,
-// and must not register the Electron binary to start at login. Nor does a
-// packaged app pointed at another daemon (HERMESH_DATA_DIR, as tests do).
+// Contents/Library/LaunchAgents, with RunAtLoad=false and KeepAlive only on
+// non-zero exit), so the app controls when it starts and stops while keeping
+// crash recovery, TCC attribution, and seamless updates. Development and test
+// runs use a daemon of their own, and must not register the Electron binary to
+// start at login. Nor does a packaged app pointed at another daemon
+// (HERMESH_DATA_DIR, as tests do).
 const installed = app.isPackaged && process.platform === "darwin" && !process.env.HERMESH_DATA_DIR && !testDataDir;
 const agent = { type: "agentService", serviceName: "com.hermesh.app.daemon.plist" } as const;
+const daemonJob = () => `gui/${process.getuid?.()}/com.hermesh.app.daemon`;
 let devLoginItem = false;
+
+function launchctl(args: string[]): Promise<{ ok: boolean; stdout: string }> {
+  return new Promise((resolve) => {
+    execFile("launchctl", args, (err, stdout) => resolve({ ok: !err, stdout: String(stdout ?? "") }));
+  });
+}
+
+async function kickstartDaemon() {
+  const job = daemonJob();
+  const deadline = Date.now() + 3_000;
+  for (;;) {
+    const r = await launchctl(["kickstart", job]);
+    if (r.ok || mac.daemonNeedsApproval() || Date.now() >= deadline) return;
+    await new Promise((res) => setTimeout(res, 200));
+  }
+}
 
 // The CLIs that come with the Claude and ChatGPT (Codex) desktop apps, after
 // the person's own PATH, as hermeshd finds them: for those who have only the app.
@@ -42,23 +60,47 @@ export const mac: Platform = {
   },
 
   registerDaemon() {
-    if (installed) app.setLoginItemSettings({ ...agent, openAtLogin: true });
+    if (!installed) return;
+    app.setLoginItemSettings({ ...agent, openAtLogin: true });
+    void kickstartDaemon();
+  },
+
+  async startDaemon() {
+    if (!installed) return;
+    app.setLoginItemSettings({ ...agent, openAtLogin: true });
+    await kickstartDaemon();
+  },
+
+  async stopDaemon() {
+    if (!installed) return;
+    const job = daemonJob();
+    await launchctl(["kill", "SIGTERM", job]);
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      const r = await launchctl(["print", job]);
+      if (!r.ok || !/^\s*pid = \d+/m.test(r.stdout)) return;
+      await new Promise((res) => setTimeout(res, 150));
+    }
+    // Fallback if hermeshd did not exit after SIGTERM.
+    await launchctl(["bootout", job]);
   },
 
   /**
    * Restarts the LaunchAgent from the bundle, plist included. launchd keeps a job as it
    * loaded it: a kickstart would run the new binary under the old plist. Booting the job
-   * out (SIGTERM) leaves it registered and allowed, and registering again loads the plist.
-   * Registering blocks until the old process has exited, so that waits for its exit.
+   * out (SIGTERM) leaves it registered and allowed, and registering again loads the plist;
+   * kickstart then starts it (RunAtLoad is false).
    */
   restartDaemon(why) {
     if (!installed) return;
     console.warn(`restarting hermeshd: ${why}`);
-    const job = `gui/${process.getuid?.()}/com.hermesh.app.daemon`;
+    const job = daemonJob();
     const deadline = Date.now() + 15_000; // launchd kills it 5 s after the SIGTERM
     const whenGone = () => execFile("launchctl", ["print", job], (notLoaded) => {
-      if (notLoaded) app.setLoginItemSettings({ ...agent, openAtLogin: true });
-      else if (Date.now() < deadline) setTimeout(whenGone, 200);
+      if (notLoaded) {
+        app.setLoginItemSettings({ ...agent, openAtLogin: true });
+        void kickstartDaemon();
+      } else if (Date.now() < deadline) setTimeout(whenGone, 200);
       else execFile("launchctl", ["kickstart", "-k", job], (err) => err && console.warn("restarting hermeshd:", err));
     });
     execFile("launchctl", ["bootout", job], (err) => {
