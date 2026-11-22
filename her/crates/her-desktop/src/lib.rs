@@ -145,6 +145,39 @@ impl Cli {
         };
         parse_envelope(&String::from_utf8_lossy(&out))
     }
+
+    /// Like [`Cli::run`], for commands carrying a secret value: discards any echoed `post_state`
+    /// value and scrubs `secret` from error messages so secrets never escape into logs or model text.
+    pub async fn run_secret(
+        &self,
+        command: &str,
+        args: &[String],
+        secret: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(), DesktopError> {
+        let scrub = |text: String| {
+            if secret.is_empty() {
+                text
+            } else {
+                text.replace(secret, HIDDEN)
+            }
+        };
+        match self.run(command, args, cancel).await {
+            Ok(_) => Ok(()),
+            Err(DesktopError::Command { code, message, suggestion, not_delivered, .. }) => {
+                Err(DesktopError::Command {
+                    code,
+                    message: scrub(message),
+                    suggestion: suggestion.map(scrub),
+                    not_delivered,
+                    value_after: None,
+                })
+            }
+            Err(DesktopError::BadOutput(s)) => Err(DesktopError::BadOutput(scrub(s))),
+            Err(DesktopError::Spawn(s)) => Err(DesktopError::Spawn(scrub(s))),
+            Err(other) => Err(other),
+        }
+    }
 }
 
 /// A call's deadline: its own `--timeout` / `--timeout-ms` / `--wait-timeout` (milliseconds)
@@ -564,14 +597,279 @@ fn render_node(node: &Value, depth: usize, lines: &mut Vec<String>) {
     }
 }
 
-/// Password fields: their values never leave, even where the OS would show them.
+/// Password, OTP, PIN and secret fields: their values never leave, even where the OS would show them.
 fn is_secret(node: &Value) -> bool {
     let mut words = vec![node.get("role"), node.get("name"), node.get("native_id").and_then(|n| n.get("value"))]
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
         .map(str::to_lowercase);
-    words.any(|w| w.contains("secure") || w.contains("password") || w.contains("passcode") || w.contains("密码"))
+    words.any(|w| {
+        w.contains("secure")
+            || w.contains("password")
+            || w.contains("passcode")
+            || w.contains("passphrase")
+            || w.contains("otp")
+            || w.contains("totp")
+            || w.contains("2fa")
+            || w.contains("mfa")
+            || w.contains("verification")
+            || w.contains("checkcode")
+            || w.contains("check_code")
+            || w.contains("pin")
+            || w.contains("密码")
+            || w.contains("验证码")
+            || w.contains("校验码")
+            || w.contains("口令")
+            || w.contains("动态码")
+            || w.contains("安全码")
+    })
+}
+
+/// Sensitive input classification for desktop `app_fill` secure cards.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesktopFieldKind {
+    Email,
+    Username,
+    Password,
+    OneTimeCode,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DesktopNode {
+    pub ref_id: String,
+    pub role: String,
+    pub name: String,
+    pub native_id: String,
+    pub nearby_label: String,
+    pub states: Vec<String>,
+    pub available_actions: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DesktopSnapshotIndex {
+    pub window_id: Option<String>,
+    pub window_title: Option<String>,
+    pub nodes: std::collections::HashMap<String, DesktopNode>,
+    pub has_password_input: bool,
+    pub submit_ref: Option<String>,
+}
+
+/// Indexes interactive nodes, nearby labels, and a candidate submit button from a `cua_snapshot` JSON payload.
+pub fn index_snapshot(data: &Value) -> DesktopSnapshotIndex {
+    let mut index = DesktopSnapshotIndex {
+        window_id: data.pointer("/window/id").and_then(Value::as_str).map(str::to_string),
+        window_title: data.pointer("/window/title").and_then(Value::as_str).map(str::to_string),
+        ..Default::default()
+    };
+    if let Some(tree) = data.get("tree") {
+        collect_nodes(tree, "", &mut index);
+    }
+    index
+}
+
+fn collect_nodes(node: &Value, inherited_label: &str, index: &mut DesktopSnapshotIndex) {
+    let text = |key: &str| node.get(key).and_then(Value::as_str).unwrap_or("").trim();
+    let role = text("role");
+    let name = text("name");
+    let ref_id = text("ref_id");
+    let native_id = node
+        .pointer("/native_id/value")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let states: Vec<String> = node
+        .get("states")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    let available_actions: Vec<String> = node
+        .get("available_actions")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+
+    if !ref_id.is_empty() {
+        let entry = DesktopNode {
+            ref_id: ref_id.to_string(),
+            role: role.to_string(),
+            name: name.to_string(),
+            native_id: native_id.to_string(),
+            nearby_label: inherited_label.to_string(),
+            states: states.clone(),
+            available_actions: available_actions.clone(),
+        };
+        if is_desktop_password(&entry) {
+            index.has_password_input = true;
+        }
+        if index.submit_ref.is_none() && is_desktop_submit_button(&entry) {
+            index.submit_ref = Some(ref_id.to_string());
+        }
+        index.nodes.insert(ref_id.to_string(), entry);
+    }
+
+    let mut prev_label = if is_label_role(role) && !name.is_empty() && name.chars().count() <= 40 {
+        name.to_string()
+    } else {
+        inherited_label.to_string()
+    };
+    if let Some(children) = node.get("children").and_then(Value::as_array) {
+        for child in children {
+            let child_role = child.get("role").and_then(Value::as_str).unwrap_or("").trim();
+            let child_name = child.get("name").and_then(Value::as_str).unwrap_or("").trim();
+            let child_val = child.get("value").and_then(Value::as_str).unwrap_or("").trim();
+            collect_nodes(child, &prev_label, index);
+            if is_label_role(child_role) {
+                let candidate = if !child_name.is_empty() { child_name } else { child_val };
+                if !candidate.is_empty() && candidate.chars().count() <= 40 {
+                    prev_label = candidate.trim_end_matches([':', '：']).trim().to_string();
+                } else {
+                    prev_label.clear();
+                }
+            } else {
+                prev_label.clear();
+            }
+        }
+    }
+}
+
+fn is_label_role(role: &str) -> bool {
+    let r = role.to_ascii_lowercase();
+    r.contains("statictext") || r.contains("label") || r == "text"
+}
+
+fn is_text_input_role(role: &str, actions: &[String]) -> bool {
+    let r = role.to_ascii_lowercase();
+    if r.contains("button") || r.contains("checkbox") || r.contains("radio") || r.contains("menu") || r.contains("link") {
+        return false;
+    }
+    r.contains("textfield")
+        || r.contains("textbox")
+        || r.contains("secure")
+        || r.contains("password")
+        || r == "edit"
+        || r == "combobox"
+        || actions.iter().any(|a| a == "SetValue" || a == "TypeText")
+}
+
+fn is_desktop_password(node: &DesktopNode) -> bool {
+    let r = node.role.to_ascii_lowercase();
+    if r.contains("secure") || r.contains("password") {
+        return true;
+    }
+    if !is_text_input_role(&node.role, &node.available_actions) {
+        return false;
+    }
+    let hint = format!("{} {} {}", node.name, node.native_id, node.nearby_label).to_lowercase();
+    ["password", "passphrase", "passcode", "pin", "密码", "口令", "解锁密码", "支付密码", "交易密码", "安全密码"]
+        .iter()
+        .any(|k| hint.contains(k))
+}
+
+fn is_desktop_submit_button(node: &DesktopNode) -> bool {
+    let r = node.role.to_ascii_lowercase();
+    if !r.contains("button") {
+        return false;
+    }
+    if node.states.iter().any(|s| s.eq_ignore_ascii_case("disabled")) {
+        return false;
+    }
+    let lbl = node.name.trim().to_lowercase();
+    if lbl.is_empty() {
+        return false;
+    }
+    let skip = [
+        "cancel", "back", "close", "forgot", "reset", "register", "sign up", "show", "hide",
+        "取消", "返回", "关闭", "忘记", "注册", "获取验证码", "发送验证码", "重新发送", "重发", "显示", "隐藏",
+    ];
+    if skip.iter().any(|k| lbl.contains(k)) {
+        return false;
+    }
+    let submit = [
+        "sign in", "log in", "login", "submit", "continue", "next", "verify", "confirm", "unlock", "connect", "ok",
+        "登录", "登陆", "提交", "下一步", "继续", "验证", "确认", "确定", "解锁", "连接",
+    ];
+    submit.iter().any(|k| lbl == *k || lbl.contains(k))
+}
+
+/// Classifies a desktop accessibility element for a secure `app_fill` card.
+/// Returns `None` for non-input elements, disabled elements, or unrecognized general text inputs.
+pub fn classify_desktop_input(
+    node: &DesktopNode,
+    window_title: Option<&str>,
+    has_password_sibling: bool,
+) -> Option<(DesktopFieldKind, String, bool)> {
+    if !is_text_input_role(&node.role, &node.available_actions) {
+        return None;
+    }
+    if node.states.iter().any(|s| s.eq_ignore_ascii_case("disabled")) {
+        return None;
+    }
+    let label_raw = if !node.name.is_empty() {
+        node.name.as_str()
+    } else {
+        node.nearby_label.as_str()
+    };
+    let clean_label: String = label_raw
+        .trim()
+        .trim_end_matches([':', '：'])
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(60)
+        .collect();
+    let hint = format!("{} {} {}", node.name, node.native_id, node.nearby_label).to_lowercase();
+    let win = window_title.unwrap_or("").to_lowercase();
+    let auth_window = [
+        "sign in", "log in", "login", "auth", "verify", "verification", "2fa", "mfa", "unlock", "password",
+        "登录", "登陆", "验证", "安全验证", "校验", "解锁", "身份验证",
+    ]
+    .iter()
+    .any(|k| win.contains(k));
+
+    let otp_keys = [
+        "otp", "totp", "2fa", "mfa", "one-time", "onetime", "verification code", "verify code",
+        "checkcode", "check_code", "security code", "sms code", "auth code",
+        "验证码", "校验码", "动态码", "短信码", "安全码", "两步验证", "双重验证", "动态口令",
+    ];
+    let digit_hint = hint.contains("位数字") || hint.contains("6-digit") || hint.contains("6 digit");
+    let non_auth_keys = [
+        "search", "filter", "query", "comment", "note", "message", "title", "subject",
+        "搜索", "筛选", "查找", "备注", "评论", "标题",
+    ];
+    let looks_non_auth = non_auth_keys.iter().any(|k| hint.contains(k));
+    let kind = if otp_keys.iter().any(|k| hint.contains(k)) || (auth_window && digit_hint) {
+        DesktopFieldKind::OneTimeCode
+    } else if is_desktop_password(node) {
+        DesktopFieldKind::Password
+    } else if !looks_non_auth && (hint.contains("email") || hint.contains("邮箱")) {
+        DesktopFieldKind::Email
+    } else if !looks_non_auth
+        && ([
+            "username", "user", "account", "login", "phone", "mobile", "账号", "帐号", "用户名", "手机", "登录名",
+        ]
+        .iter()
+        .any(|k| hint.contains(k))
+            || (has_password_sibling && clean_label.is_empty()))
+    {
+        DesktopFieldKind::Username
+    } else {
+        return None;
+    };
+
+    let fallback = match kind {
+        DesktopFieldKind::Email => "Email",
+        DesktopFieldKind::Username => "Username",
+        DesktopFieldKind::Password => "Password",
+        DesktopFieldKind::OneTimeCode => "Verification code",
+    };
+    let label = if clean_label.is_empty() { fallback.to_string() } else { clean_label };
+    Some((kind, label, auth_window || has_password_sibling))
 }
 
 /// What an action did, from its `disposition`: whether the app confirmed it.
@@ -881,5 +1179,64 @@ mod tests {
         assert_eq!(locate_in(None, Some(&app), Some(&home), path_var()).unwrap(), on_path);
         std::fs::remove_file(&on_path).unwrap();
         assert!(matches!(locate_in(None, Some(&app), Some(&home), path_var()), Err(DesktopError::NotInstalled)));
+    }
+
+    #[test]
+    fn desktop_snapshot_indexes_sensitive_fields_and_skips_otp_send_button() {
+        let data = json!({
+            "app": "Demo Vault",
+            "window": { "id": "w1", "title": "安全验证" },
+            "tree": {
+                "role": "window",
+                "children": [
+                    { "role": "statictext", "name": "校验码：" },
+                    { "role": "textfield", "name": "6位数字", "ref_id": "@s1:e1", "value": "123456", "states": ["enabled"], "available_actions": ["SetValue", "TypeText"] },
+                    { "role": "button", "name": "点击获取验证码", "ref_id": "@s1:e2", "states": ["enabled"] },
+                    { "role": "button", "name": "确定", "ref_id": "@s1:e3", "states": ["enabled"] },
+                    { "role": "textfield", "name": "Search notes", "ref_id": "@s1:e4", "states": ["enabled"], "available_actions": ["SetValue"] }
+                ]
+            }
+        });
+        let idx = index_snapshot(&data);
+        assert_eq!(idx.window_id.as_deref(), Some("w1"));
+        assert_eq!(idx.submit_ref.as_deref(), Some("@s1:e3"));
+        let otp_node = idx.nodes.get("@s1:e1").unwrap();
+        assert_eq!(otp_node.nearby_label, "校验码");
+        let (kind, label, ctx) = classify_desktop_input(otp_node, idx.window_title.as_deref(), idx.has_password_input).unwrap();
+        assert_eq!(kind, DesktopFieldKind::OneTimeCode);
+        assert_eq!(label, "6位数字");
+        assert!(ctx);
+        let search_node = idx.nodes.get("@s1:e4").unwrap();
+        assert!(classify_desktop_input(search_node, idx.window_title.as_deref(), idx.has_password_input).is_none());
+    }
+
+    #[test]
+    fn desktop_snapshot_redacts_otp_and_classifies_secure_password_field() {
+        let data = json!({
+            "app": "Vault",
+            "window": { "id": "w2", "title": "Sign In" },
+            "tree": {
+                "role": "window",
+                "children": [
+                    { "role": "textfield", "name": "Account", "ref_id": "@s2:e1", "states": ["enabled"], "available_actions": ["SetValue"] },
+                    { "role": "securetextfield", "name": "Master Password", "ref_id": "@s2:e2", "value": "topsecret", "states": ["enabled"], "available_actions": ["SetValue"] },
+                    { "role": "textfield", "name": "SMS OTP", "ref_id": "@s2:e3", "value": "998877", "states": ["enabled"], "available_actions": ["SetValue"] },
+                    { "role": "button", "name": "Unlock", "ref_id": "@s2:e4", "states": ["enabled"] }
+                ]
+            }
+        });
+        let rendered = render_snapshot(&data);
+        assert!(!rendered.contains("topsecret"), "{rendered}");
+        assert!(!rendered.contains("998877"), "{rendered}");
+        assert!(rendered.contains("[value=<hidden>]"), "{rendered}");
+        let idx = index_snapshot(&data);
+        assert!(idx.has_password_input);
+        assert_eq!(idx.submit_ref.as_deref(), Some("@s2:e4"));
+        let (k1, _, _) = classify_desktop_input(idx.nodes.get("@s2:e1").unwrap(), idx.window_title.as_deref(), idx.has_password_input).unwrap();
+        let (k2, _, _) = classify_desktop_input(idx.nodes.get("@s2:e2").unwrap(), idx.window_title.as_deref(), idx.has_password_input).unwrap();
+        let (k3, _, _) = classify_desktop_input(idx.nodes.get("@s2:e3").unwrap(), idx.window_title.as_deref(), idx.has_password_input).unwrap();
+        assert_eq!(k1, DesktopFieldKind::Username);
+        assert_eq!(k2, DesktopFieldKind::Password);
+        assert_eq!(k3, DesktopFieldKind::OneTimeCode);
     }
 }

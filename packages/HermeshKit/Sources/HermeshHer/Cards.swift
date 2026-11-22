@@ -41,6 +41,8 @@ public struct HerCard: Equatable, Sendable {
         public var fields: [SiteLoginField]
 
         public var isChromeTakeover: Bool { mode == "chrome_takeover" }
+        public var isAppFill: Bool { mode == "app_fill" }
+        public var isVerifyOnly: Bool { !fields.isEmpty && fields.allSatisfy { $0.kind == "one_time_code" } }
     }
 
     public struct Field: Equatable, Sendable {

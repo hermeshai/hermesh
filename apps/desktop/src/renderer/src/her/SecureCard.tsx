@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { RpcClient, SessionView } from "@hermesh/her-client";
 import { Icon } from "../icons";
 import { errorText, useNow, useStore } from "../store";
-import { cardNow, cardShown, connectBody, filled, isChromeTakeover, isKeyRotate, siteLoginBody, type Card, type CardAnswer, type CardStatus, type ConnectBody, type SiteLoginBody } from "./cards";
+import { cardNow, cardShown, connectBody, filled, isAppFill, isChromeTakeover, isKeyRotate, isVerifyOnly, siteLoginBody, type Card, type CardAnswer, type CardStatus, type ConnectBody, type SiteLoginBody } from "./cards";
 import { useHer } from "./context";
 import { SecretInput } from "./ModelOnboarding";
 
@@ -88,17 +88,25 @@ export function SecureCard({ card, view, rpc, session }: { card: Card; view: Ses
   if (shown.kind === "ended") {
     if (siteLogin) {
       const takeover = isChromeTakeover(siteLogin);
+      const appFill = isAppFill(siteLogin);
+      const verifyOnly = isVerifyOnly(siteLogin);
       const line =
         shown.outcome === "done"
           ? takeover
             ? t("card.chromeTakeoverDone", { host: siteLogin.host })
-            : siteLogin.browser
-              ? t("card.siteLoginDoneBrowser", { host: siteLogin.host, browser: siteLogin.browser })
-              : t("card.siteLoginDone", { host: siteLogin.host })
+            : appFill
+              ? t(verifyOnly ? "card.appVerifyDone" : "card.appFillDone", { host: siteLogin.host })
+              : verifyOnly
+                ? siteLogin.browser
+                  ? t("card.siteVerifyDoneBrowser", { host: siteLogin.host, browser: siteLogin.browser })
+                  : t("card.siteVerifyDone", { host: siteLogin.host })
+                : siteLogin.browser
+                  ? t("card.siteLoginDoneBrowser", { host: siteLogin.host, browser: siteLogin.browser })
+                  : t("card.siteLoginDone", { host: siteLogin.host })
           : shown.outcome === "failed"
-            ? shown.note || t(takeover ? "card.chromeTakeoverFailed" : "card.siteLoginFailed", { host: siteLogin.host })
-            : shown.outcome === "declined" && takeover
-              ? t("card.chromeTakeoverDeclined")
+            ? shown.note || t(takeover ? "card.chromeTakeoverFailed" : appFill ? "card.appFillFailed" : "card.siteLoginFailed", { host: siteLogin.host })
+            : shown.outcome === "declined"
+              ? t(takeover ? "card.chromeTakeoverDeclined" : appFill ? "card.appFillDeclined" : verifyOnly ? "card.siteVerifyDeclined" : "card.siteLoginDeclined")
               : t(`card.${shown.outcome}`);
       return (
         <div className={`sc-end ${shown.outcome}`} role="status" title={shown.note}>
@@ -328,87 +336,134 @@ function SiteLoginForm({
   onDecline: () => void;
 }) {
   const { t } = useTranslation("her");
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const busy = sending || (shown.kind === "form" && shown.busy);
-  const ready = body.fields.every((f) => (values[f.id] ?? "").trim() !== "");
+  const ready = body.fields.every((f) => (f.secret ? (values[f.id] ?? "").length > 0 : (values[f.id] ?? "").trim() !== ""));
+  const appFill = isAppFill(body);
+  const verifyOnly = isVerifyOnly(body);
+  const isHttps = !appFill && body.origin.startsWith("https://");
+  const targetMeta = appFill
+    ? [body.title, machineName].filter(Boolean).join(" · ")
+    : `${body.browser || t("card.siteLoginBuiltin")} · ${machineName}`;
+
+  useEffect(() => {
+    if (!online) setRevealed({});
+  }, [online]);
+
   const submit = () => {
     if (busy || !ready || !online) return;
-    onFill(Object.fromEntries(body.fields.map((f) => [f.id, values[f.id].trim()])));
+    setRevealed({});
+    onFill(Object.fromEntries(body.fields.map((f) => [f.id, f.secret ? values[f.id] : values[f.id].trim()])));
   };
 
   return (
-    <div className="scard" role="group" aria-label={t("card.siteLogin")}>
-      <div className="sc-h">
-        <Icon name="lock" />
-        <span>{t("card.siteLogin")}</span>
-        <span>·</span>
-        <span className="sc-env">{machineName}</span>
-        {body.browser && (
-          <>
-            <span>·</span>
-            <span className="sc-env">{body.tab ? `${body.browser} (${body.tab})` : body.browser}</span>
-          </>
-        )}
-        {card.asked_by === "her" && (
-          <span className="sc-who">
-            <Icon name="alert" />
-            {t("card.notAsked")}
-          </span>
-        )}
-      </div>
-      <div className="sc-t">
-        <span>{t("card.siteLoginTitle")}</span>
-        <b className="sel-text">{body.origin}</b>
-        {body.title && <span className="sc-url sel-text">{body.title}</span>}
-      </div>
-      <p className="sc-what">
-        {body.browser
-          ? t("card.siteLoginWhatBrowser", { machine: machineName, browser: body.browser, origin: body.origin })
-          : t("card.siteLoginWhat", { machine: machineName, origin: body.origin })}
-      </p>
-      <form
-        className="sc-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        {body.fields.map((f) =>
-          f.secret ? (
-            <SecretInput key={f.id} label={f.label} placeholder={f.label} disabled={busy || !online} value={values[f.id] ?? ""} onChange={(v) => setValues((x) => ({ ...x, [f.id]: v }))} />
-          ) : (
-            <input
-              key={f.id}
-              className="field"
-              type={f.kind === "email" ? "email" : "text"}
-              autoComplete="off"
-              spellCheck={false}
-              disabled={busy || !online}
-              aria-label={f.label}
-              placeholder={f.label}
-              value={values[f.id] ?? ""}
-              onChange={(e) => setValues((x) => ({ ...x, [f.id]: e.target.value }))}
-            />
-          ),
-        )}
-        {!online && (
-          <p className="sc-note" role="status">
-            {t("card.offlineNoQueue", { name: machineName })}
-          </p>
-        )}
-        {shown.kind === "form" && shown.note && (
-          <p className="sc-note sel-text" role="alert">
-            {shown.note}
-          </p>
-        )}
-        <div className="sc-f">
-          <button type="button" className="btn" disabled={busy || !online} onClick={onDecline}>
-            {t("card.skipTakeover")}
-          </button>
-          <button type="submit" className="btn primary" disabled={busy || !ready || !online}>
-            {busy ? t("card.filling") : t("card.fillButton")}
-          </button>
+    <div className="scard scard-login" role="group" aria-label={t(appFill ? "card.appFill" : verifyOnly ? "card.siteVerify" : "card.siteLogin")}>
+      <div className="scl-body">
+        <div className="scl-head">
+          <div className={`scl-badge${isHttps || appFill ? " verified" : ""}`} aria-hidden="true">
+            <Icon name={appFill ? "window" : isHttps ? "shield" : "lock"} />
+          </div>
+          <div className="scl-id">
+            <div className="scl-host-row">
+              <b className="scl-host sel-text" title={body.origin}>
+                {body.host}
+              </b>
+              {isHttps && <span className="scl-https">HTTPS</span>}
+              {appFill && <span className="scl-https">{t("card.appBadge")}</span>}
+            </div>
+            <span className="scl-meta" title={targetMeta}>
+              {targetMeta}
+            </span>
+          </div>
         </div>
-      </form>
+        {card.asked_by === "her" && (
+          <div className="scl-warn" role="status">
+            <Icon name="alert" className="sm" />
+            <span>{t("card.notAsked")}</span>
+          </div>
+        )}
+        <form
+          className="sc-form scl-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
+          {body.fields.map((f) =>
+            f.secret ? (
+              <div key={f.id} className="scl-secret">
+                <input
+                  className="field"
+                  type={revealed[f.id] ? "text" : "password"}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={busy || !online}
+                  aria-label={f.label}
+                  placeholder={f.label}
+                  value={values[f.id] ?? ""}
+                  onChange={(e) => setValues((x) => ({ ...x, [f.id]: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="scl-eye"
+                  tabIndex={-1}
+                  disabled={busy || !online}
+                  aria-label={revealed[f.id] ? t("card.hideSecret") : t("card.showSecret")}
+                  onClick={() => setRevealed((r) => ({ ...r, [f.id]: !r[f.id] }))}
+                >
+                  <Icon name={revealed[f.id] ? "eyeOff" : "eye"} className="sm" />
+                </button>
+              </div>
+            ) : (
+              <input
+                key={f.id}
+                className="field"
+                type={f.kind === "email" ? "email" : "text"}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={busy || !online}
+                aria-label={f.label}
+                placeholder={f.label}
+                value={values[f.id] ?? ""}
+                onChange={(e) => setValues((x) => ({ ...x, [f.id]: e.target.value }))}
+              />
+            ),
+          )}
+          {!online && (
+            <p className="sc-note" role="status">
+              {t("card.offlineNoQueue", { name: machineName })}
+            </p>
+          )}
+          {shown.kind === "form" && shown.note && (
+            <p className="sc-note sel-text" role="alert">
+              {shown.note}
+            </p>
+          )}
+          <div className="sc-f scl-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !online}
+              onClick={() => {
+                setRevealed({});
+                onDecline();
+              }}
+            >
+              {t(appFill ? "card.appSkipButton" : verifyOnly ? "card.verifySkipButton" : "card.skipTakeover")}
+            </button>
+            <button type="submit" className="btn primary" disabled={busy || !ready || !online}>
+              <Icon name="lock" className="sm" />
+              {busy
+                ? t(verifyOnly ? "card.verifying" : appFill ? "card.appFilling" : "card.filling")
+                : t(verifyOnly ? "card.verifyButton" : appFill ? "card.appFillButton" : "card.fillButton")}
+            </button>
+          </div>
+        </form>
+      </div>
+      <div className="scl-trust">
+        <Icon name="lock" className="sm" />
+        <span>{t(appFill ? "card.appFillTrust" : "card.siteLoginTrust")}</span>
+      </div>
     </div>
   );
 }

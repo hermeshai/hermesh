@@ -1714,7 +1714,22 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
                           }
                         </script>
                       </body></html>"#.to_string(),
-                    "/after" => "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Welcome Dashboard</h1></body></html>".to_string(),
+                    "/after" | "/submit" => "<!doctype html><html><head><title>Signed In Home</title></head><body><h1>Welcome Dashboard</h1></body></html>".to_string(),
+                    "/login-stay" => r#"<!doctype html><html><head><title>Fixture Stay Sign In</title></head><body>
+                        <form id="f" onsubmit="event.preventDefault(); document.getElementById('err').textContent='Invalid password';">
+                          <label for="u">Email</label><input id="u" name="email" type="email" autocomplete="username">
+                          <label for="p">Password</label><input id="p" name="password" type="password" autocomplete="current-password">
+                          <button type="submit">Sign In</button>
+                          <p id="err"></p>
+                        </form>
+                        <script>
+                          window.__inputEvents = [];
+                          for (const id of ['u', 'p']) {
+                            document.getElementById(id).addEventListener('input', () => window.__inputEvents.push(id));
+                            document.getElementById(id).addEventListener('change', () => window.__inputEvents.push(id + ':change'));
+                          }
+                        </script>
+                      </body></html>"#.to_string(),
                     "/captcha" => r#"<!doctype html><html><head><title>Captcha Gate</title></head><body>
                         <div class="g-recaptcha" data-sitekey="dummy-sitekey"></div>
                         <form><label for="p">Password</label><input id="p" type="password"></form>
@@ -1904,6 +1919,8 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
     }
 
     // 4. Owner enters dummy credentials in the trusted card (`cards/answer { decision: "fill" }`).
+    //    Card fills and submits the bound form once, navigates to `/submit` ("Welcome Dashboard"),
+    //    and unlocks observation automatically!
     let answer = client
         .request(
             "cards/answer",
@@ -1920,19 +1937,7 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
     let woke_text = sent_texts(&woke).join("\n");
     assert!(woke_text.contains("卡片结果：done|"), "{woke_text}");
     assert!(!woke_text.contains(DUMMY_PASS) && !woke_text.contains(DUMMY_EMAIL), "secret leaked to Her: {woke_text}");
-
-    // Verify directly in Chrome DOM that values were filled accurately, input events fired, and ZERO submits occurred!
-    let target_id = page_target_for(&chrome, &login_url).await;
-    let dom = evaluate_in(
-        &chrome,
-        &target_id,
-        "({email: document.getElementById('u').value, pass: document.getElementById('p').value, events: window.__inputEvents})",
-    )
-    .await;
-    assert_eq!(dom["email"], DUMMY_EMAIL, "{dom}");
-    assert_eq!(dom["pass"], DUMMY_PASS, "{dom}");
-    assert_eq!(dom["events"], json!(["u", "p"]), "{dom}");
-    assert_eq!(submits.load(Ordering::SeqCst), 0, "must NEVER auto-submit");
+    assert_eq!(submits.load(Ordering::SeqCst), 1, "Fill & Sign In must submit once");
 
     // One-time consumption: answering the done card again must fail with `card_ended`.
     let replay = client
@@ -1947,7 +1952,38 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
         .await;
     assert!(replay.is_err(), "one-time card must reject replay: {replay:?}");
 
-    // 5. After fill (before navigation): ALL 6 tools MUST REMAIN BLOCKED!
+    // Observation is automatically unlocked after submitting & navigating to `/submit`!
+    let read_after = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_read_tab:y1]] read after").await;
+    assert!(sent_texts(&read_after).join("\n").contains("Welcome Dashboard"), "auto-submit recovery failed: {read_after:#?}");
+
+    // 5. When submission stays on the login page (e.g. wrong password), verify DOM values + events
+    //    AND verify ALL 6 tools REMAIN BLOCKED until the page navigates away!
+    let stay_url = format!("{origin}/login-stay");
+    let stay_turn = send_bot(&client, &mut events, &mut all_events, &session, &format!("[[mock:chrome_site_login:{stay_url}]] stay")).await;
+    let stay_card_id = shown_card(&stay_turn)["id"].as_str().unwrap().to_string();
+    let stay_ans = client
+        .request(
+            "cards/answer",
+            json!({
+                "session_id": session,
+                "card_id": stay_card_id,
+                "answer": { "decision": "fill", "fields": { "f1": DUMMY_EMAIL, "f2": DUMMY_PASS } }
+            }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stay_ans["state"], "done", "{stay_ans}");
+    let _ = read_turn(&mut events, &mut all_events).await;
+    let target_id = page_target_for(&chrome, &stay_url).await;
+    let dom = evaluate_in(
+        &chrome,
+        &target_id,
+        "({email: document.getElementById('u').value, pass: document.getElementById('p').value, events: window.__inputEvents})",
+    )
+    .await;
+    assert_eq!(dom["email"], DUMMY_EMAIL, "{dom}");
+    assert_eq!(dom["pass"], DUMMY_PASS, "{dom}");
+    assert_eq!(dom["events"], json!(["u", "u:change", "p", "p:change"]), "{dom}");
     let probe_filled = send_bot(&client, &mut events, &mut all_events, &session, "[[mock:chrome_probe_blocked:y1]] probe after fill").await;
     let probe_results: Vec<&Value> = probe_filled
         .iter()
@@ -1955,7 +1991,7 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
         .collect();
     assert_eq!(probe_results.len(), 6, "{probe_filled:#?}");
     for r in &probe_results {
-        assert_eq!(r["result"]["is_error"], true, "must remain blocked after fill: {r}");
+        assert_eq!(r["result"]["is_error"], true, "must remain blocked when stayed on login page: {r}");
     }
 
     // Safe recovery: once Chrome navigates away to `/after`, observation resumes safely.
@@ -2072,7 +2108,7 @@ async fn chrome_site_login_input_card_fills_once_with_isolation_and_zero_leakage
         .await;
     assert!(after_disc_fill.is_err(), "disconnected card must reject fill: {after_disc_fill:?}");
 
-    assert_eq!(submits.load(Ordering::SeqCst), 0, "total submits across entire test must be 0");
+    assert_eq!(submits.load(Ordering::SeqCst), 1, "exactly one submit from Fill & Sign In across entire test");
     assert_eq!(read_default().await, "builtin", "browser.default must NEVER be switched");
 
     let snapshot = client.request("bots/open", json!({"bot_id": bot_id, "history_limit": 1000})).await.unwrap();

@@ -32,6 +32,7 @@ pub(crate) const SITE_LOGIN_LIFE_SECS: i64 = 300;
 pub enum SiteLoginBinding {
     Fill(SiteLoginFillBinding),
     ChromeTakeover(ChromeTakeoverBinding),
+    AppFill(DesktopSecretBinding),
 }
 
 impl SiteLoginBinding {
@@ -39,6 +40,7 @@ impl SiteLoginBinding {
         match self {
             SiteLoginBinding::Fill(b) => &b.url,
             SiteLoginBinding::ChromeTakeover(b) => &b.url,
+            SiteLoginBinding::AppFill(b) => &b.origin,
         }
     }
 }
@@ -53,6 +55,8 @@ pub struct SiteLoginFillBinding {
     pub origin: String,
     pub url: String,
     pub browser_label: Option<String>,
+    /// Name of the sub-agent that prepared this card on its own browser tab, if any.
+    pub agent_name: Option<String>,
     pub fields: Vec<SiteLoginFieldBinding>,
 }
 
@@ -79,8 +83,43 @@ pub struct SiteLoginFieldBinding {
     pub secret: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DesktopFieldBinding {
+    pub id: String,
+    pub reference: String,
+    pub secret: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DesktopSecretBinding {
+    pub app_key: String,
+    pub app_name: String,
+    pub origin: String,
+    pub window_id: Option<String>,
+    pub window_title: Option<String>,
+    pub submit_ref: Option<String>,
+    pub agent_name: Option<String>,
+    pub fields: Vec<DesktopFieldBinding>,
+}
+
+/// Outcome of filling and submitting a desktop app sensitive card (`mode == AppFill`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesktopFillOutcome {
+    /// Filled and submitted; the window closed/changed or secret input cleared. Observation unlocked.
+    SubmittedAndAdvanced,
+    /// Filled and attempted submit, but the secret input still remains in the same window.
+    FilledStayedOnWindow,
+}
+
 type EndHook = Arc<dyn Fn(&str, CardState) + Send + Sync>;
 type ShowCheck = Arc<dyn Fn() -> Result<(), String> + Send + Sync>;
+pub(crate) type BrowserResolver =
+    Arc<dyn Fn() -> Result<Arc<her_browser::BrowserSession>, &'static str> + Send + Sync>;
+pub(crate) type DesktopSecretFiller = Arc<
+    dyn Fn(std::collections::HashMap<String, String>) -> futures::future::BoxFuture<'static, Result<DesktopFillOutcome, String>>
+        + Send
+        + Sync,
+>;
 
 /// A session's cards.
 pub struct Cards {
@@ -95,9 +134,13 @@ struct Kept {
     card: Card,
     /// `None` while it is prepared and not shown.
     state: Option<CardState>,
+    /// Prepared by a sub-agent waiting for the main conversation to show it.
+    prepared_by_agent: bool,
     binding: Option<SiteLoginBinding>,
     on_end: Option<EndHook>,
     before_show: Option<ShowCheck>,
+    resolve_browser: Option<BrowserResolver>,
+    fill_desktop: Option<DesktopSecretFiller>,
 }
 
 fn target_key(card: &Card) -> Option<String> {
@@ -125,13 +168,14 @@ impl Cards {
         *self.asked_by.lock() = if trigger == TaskTrigger::User { AskedBy::Owner } else { AskedBy::Her };
     }
 
-    /// A task ended: what it prepared and never showed goes.
+    /// A task ended: what it prepared and never showed goes (except unshown cards prepared by
+    /// a live sub-agent that haven't expired yet, waiting for the main conversation to show them).
     pub(crate) fn task_ended(&self) {
         let dropped: Vec<(String, Option<EndHook>)> = {
             let mut kept = self.kept.lock();
             let mut dropped = Vec::new();
             kept.retain(|item| {
-                if item.state.is_some() {
+                if item.state.is_some() || (item.prepared_by_agent && !time_left(&item.card).is_zero()) {
                     true
                 } else {
                     dropped.push((item.card.id.clone(), item.on_end.clone()));
@@ -148,7 +192,7 @@ impl Cards {
     }
 
     pub(crate) fn prepare(&self, card: Card) {
-        self.prepare_with_binding(card, None, None, None);
+        self.prepare_with_binding(card, None, None, None, None, false);
     }
 
     pub(crate) fn prepare_with_binding(
@@ -157,8 +201,56 @@ impl Cards {
         binding: Option<SiteLoginBinding>,
         on_end: Option<EndHook>,
         before_show: Option<ShowCheck>,
+        resolve_browser: Option<BrowserResolver>,
+        prepared_by_agent: bool,
     ) {
-        self.kept.lock().push(Kept { card, state: None, binding, on_end, before_show });
+        self.kept.lock().push(Kept {
+            card,
+            state: None,
+            prepared_by_agent,
+            binding,
+            on_end,
+            before_show,
+            resolve_browser,
+            fill_desktop: None,
+        });
+    }
+
+    pub(crate) fn prepare_desktop_secret_card(
+        &self,
+        card: Card,
+        binding: DesktopSecretBinding,
+        on_end: Option<EndHook>,
+        before_show: Option<ShowCheck>,
+        filler: DesktopSecretFiller,
+        prepared_by_agent: bool,
+    ) {
+        self.kept.lock().push(Kept {
+            card,
+            state: None,
+            prepared_by_agent,
+            binding: Some(SiteLoginBinding::AppFill(binding)),
+            on_end,
+            before_show,
+            resolve_browser: None,
+            fill_desktop: Some(filler),
+        });
+    }
+
+    /// Drops an unshown prepared card and runs its cleanup hook (e.g. if its page changed or
+    /// expired before `send_to_user` showed it).
+    pub(crate) fn drop_prepared(&self, id: &str) {
+        let hook = {
+            let mut kept = self.kept.lock();
+            if let Some(pos) = kept.iter().position(|k| k.card.id == id && k.state.is_none()) {
+                kept.remove(pos).on_end
+            } else {
+                None
+            }
+        };
+        if let Some(hook) = hook {
+            hook(id, CardState::Failed);
+        }
     }
 
     /// `send_to_user` shows a card this session prepared: it is open from now on, and an open one
@@ -230,7 +322,16 @@ impl Cards {
             return;
         }
         self.expire_later(&card);
-        self.kept.lock().push(Kept { card, state: Some(CardState::Open), binding: None, on_end: None, before_show: None });
+        self.kept.lock().push(Kept {
+            card,
+            state: Some(CardState::Open),
+            prepared_by_agent: false,
+            binding: None,
+            on_end: None,
+            before_show: None,
+            resolve_browser: None,
+            fill_desktop: None,
+        });
     }
 
     pub(crate) fn has(&self, id: &str) -> bool {
@@ -267,6 +368,33 @@ impl Cards {
             .collect()
     }
 
+    /// Resolves the live bound `BrowserSession` for a shown `site_login` card (works for both
+    /// cards prepared by Her's main session and cards prepared by a sub-agent on its own tab).
+    pub fn site_login_browser(&self, id: &str) -> Option<Result<Arc<her_browser::BrowserSession>, &'static str>> {
+        let resolver = self
+            .kept
+            .lock()
+            .iter()
+            .find(|kept| kept.card.id == id && kept.state.is_some())
+            .and_then(|kept| kept.resolve_browser.clone())?;
+        Some(resolver())
+    }
+
+    /// Executes the server-side desktop sensitive fill for a shown `app_fill` card.
+    pub async fn fill_desktop_secret(
+        &self,
+        id: &str,
+        fields: std::collections::HashMap<String, String>,
+    ) -> Option<Result<DesktopFillOutcome, String>> {
+        let filler = self
+            .kept
+            .lock()
+            .iter()
+            .find(|kept| kept.card.id == id && kept.state.is_some())
+            .and_then(|kept| kept.fill_desktop.clone())?;
+        Some(filler(fields).await)
+    }
+
     /// Fails every open `site_login` card matching `own_browser` (or all when `None`), releasing its
     /// pending sensitive guard (and active takeover pause for `chrome_takeover` cards).
     pub fn invalidate_open_site_login(&self, own_browser: Option<bool>, reason: &str) {
@@ -274,6 +402,7 @@ impl Cards {
             |b| match b {
                 SiteLoginBinding::Fill(fill) => own_browser.is_none_or(|own| fill.own_browser == own),
                 SiteLoginBinding::ChromeTakeover(_) => own_browser != Some(false),
+                SiteLoginBinding::AppFill(_) => own_browser.is_none(),
             },
             reason,
         );
@@ -492,6 +621,8 @@ mod tests {
                 p.fetch_add(1, Ordering::SeqCst);
             })),
             None,
+            None,
+            false,
         );
 
         let e = ended_calls.clone();
@@ -504,6 +635,8 @@ mod tests {
                 e.fetch_add(1, Ordering::SeqCst);
             })),
             None,
+            None,
+            false,
         );
         // Simulate an already-ended card whose hook ran via Cards::set().
         let mut kept = cards.kept.lock();
@@ -533,6 +666,8 @@ mod tests {
             None,
             Some(Arc::new(move |_, _| cleaned_hook.store(true, Ordering::SeqCst))),
             Some(Arc::new(|| Err("The page changed before the sign-in card could be shown.".into()))),
+            None,
+            false,
         );
         let err = cards.show("c_stale").unwrap_err();
         assert!(err.contains("changed"), "{err}");
@@ -540,7 +675,7 @@ mod tests {
         assert!(!cards.has("c_stale"));
 
         // A SiteLogin fill card in Working state must not be expired mid-fill.
-        cards.prepare_with_binding(sample_site_login("c_work", &future), None, None, None);
+        cards.prepare_with_binding(sample_site_login("c_work", &future), None, None, None, None, false);
         cards.show("c_work").unwrap();
         cards.set("c_work", &[CardState::Open], CardState::Working, None).unwrap();
         // Force expires_at into the past to simulate timer firing during fill.
