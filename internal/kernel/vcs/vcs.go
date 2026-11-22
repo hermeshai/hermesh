@@ -203,22 +203,25 @@ func (m *Manager) RestoreTree(ctx context.Context, workdir, treeOID string) erro
 	if !IsGitRepo(ctx, workdir) || treeOID == "" {
 		return fmt.Errorf("cannot restore git tree %q in %q", treeOID, workdir)
 	}
-	// 1. Load target tree into index without failing on untracked collisions.
-	if _, err := runGit(ctx, workdir, nil, "read-tree", "--reset", treeOID); err != nil {
+	// Work through a throwaway index so the user's real .git/index (staged work)
+	// is never rewritten, matching how checkpoints are captured.
+	tmpDir, err := os.MkdirTemp("", "hermesh-restore-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmpDir)
+	env := []string{"GIT_INDEX_FILE=" + filepath.Join(tmpDir, "index")}
+	// 1. Load target tree into the shadow index.
+	if _, err := runGit(ctx, workdir, env, "read-tree", "--reset", treeOID); err != nil {
 		return fmt.Errorf("read-tree %s: %w", treeOID, err)
 	}
 	// 2. Force-write every file from treeOID to working directory.
-	if _, err := runGit(ctx, workdir, nil, "checkout-index", "-f", "-a"); err != nil {
+	if _, err := runGit(ctx, workdir, env, "checkout-index", "-f", "-a"); err != nil {
 		return fmt.Errorf("checkout-index %s: %w", treeOID, err)
 	}
 	// 3. Remove any file/dir on disk not present in treeOID (excluding gitignored).
-	if _, err := runGit(ctx, workdir, nil, "clean", "-fd"); err != nil {
+	if _, err := runGit(ctx, workdir, env, "clean", "-fd"); err != nil {
 		return fmt.Errorf("clean untracked files after restore: %w", err)
-	}
-	// 4. Restore real .git/index back to HEAD without modifying working tree files,
-	// so `git status` / `git diff` stays clean relative to HEAD.
-	if _, err := runGit(ctx, workdir, nil, "rev-parse", "--verify", "HEAD"); err == nil {
-		_, _ = runGit(ctx, workdir, nil, "read-tree", "HEAD")
 	}
 	return nil
 }

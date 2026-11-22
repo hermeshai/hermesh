@@ -60,6 +60,7 @@ func (n *Machine) openThreads() error {
 		Drivers:         drivers,
 		IncludeScripted: includeScripted,
 		IdleTTL:         idleTTL,
+		MachineMaxMode:  n.maxRuntimeMode(),
 		IsPaused:        n.isPaused,
 		OnNotice: func(_ *threadv2.Thread, _ *threadv2.ThreadEvent) {
 			n.kickStatus()
@@ -70,7 +71,7 @@ func (n *Machine) openThreads() error {
 	}
 	if projects, pErr := n.st.Projects(); pErr == nil {
 		for _, pr := range projects {
-			_ = eng.SyncWorkspace(pr.ID, pr.Path, pr.DefaultBaseRef, pr.Workspace, pr.Description)
+			_ = eng.SyncWorkspace(pr.ID, pr.Path, pr.DefaultBaseRef, pr.Workspace, pr.Description, pr.Agents)
 		}
 	}
 	n.threads = eng

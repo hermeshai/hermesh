@@ -12,12 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
@@ -136,6 +138,10 @@ CREATE TABLE thread_events (
   payload BLOB NOT NULL,
   PRIMARY KEY (thread_id, seq)
 );
+`, `
+ALTER TABLE runs ADD COLUMN grant_ceiling INTEGER NOT NULL DEFAULT 0;
+`, `
+ALTER TABLE workspaces ADD COLUMN agents TEXT NOT NULL DEFAULT '';
 `}
 
 type WorkspaceRow struct {
@@ -144,6 +150,9 @@ type WorkspaceRow struct {
 	DefaultBaseRef string
 	WorkspaceMode  int32
 	Description    string
+	// Agents are the coding agents the project is set up for (the machine's
+	// Project.agents); empty: all.
+	Agents []string
 }
 
 type Store struct {
@@ -224,12 +233,12 @@ func (s *Store) Mutate(fn func(tx *Tx) error) ([]*threadv2.ThreadEvent, error) {
 
 func (tx *Tx) PutWorkspace(w WorkspaceRow) error {
 	_, err := tx.tx.Exec(
-		`INSERT INTO workspaces(project_id, path, default_base_ref, workspace_mode, description, updated_at)
-		 VALUES(?, ?, ?, ?, ?, ?)
+		`INSERT INTO workspaces(project_id, path, default_base_ref, workspace_mode, description, agents, updated_at)
+		 VALUES(?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(project_id) DO UPDATE SET
 		   path=excluded.path, default_base_ref=excluded.default_base_ref,
-		   workspace_mode=excluded.workspace_mode, description=excluded.description, updated_at=excluded.updated_at`,
-		w.ProjectID, w.Path, w.DefaultBaseRef, w.WorkspaceMode, w.Description, time.Now().UnixMilli(),
+		   workspace_mode=excluded.workspace_mode, description=excluded.description, agents=excluded.agents, updated_at=excluded.updated_at`,
+		w.ProjectID, w.Path, w.DefaultBaseRef, w.WorkspaceMode, w.Description, strings.Join(w.Agents, ","), time.Now().UnixMilli(),
 	)
 	return err
 }
@@ -239,20 +248,29 @@ func (tx *Tx) RemoveWorkspace(projectID string) error {
 	return err
 }
 
+func splitAgents(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
+}
+
 func (s *Store) Workspace(projectID string) (WorkspaceRow, error) {
 	var w WorkspaceRow
+	var agents string
 	err := s.reader.QueryRow(
-		`SELECT project_id, path, default_base_ref, workspace_mode, description FROM workspaces WHERE project_id = ?`,
+		`SELECT project_id, path, default_base_ref, workspace_mode, description, agents FROM workspaces WHERE project_id = ?`,
 		projectID,
-	).Scan(&w.ProjectID, &w.Path, &w.DefaultBaseRef, &w.WorkspaceMode, &w.Description)
+	).Scan(&w.ProjectID, &w.Path, &w.DefaultBaseRef, &w.WorkspaceMode, &w.Description, &agents)
 	if errors.Is(err, sql.ErrNoRows) {
 		return WorkspaceRow{}, ErrNotFound
 	}
+	w.Agents = splitAgents(agents)
 	return w, err
 }
 
 func (s *Store) Workspaces() ([]WorkspaceRow, error) {
-	rows, err := s.reader.Query(`SELECT project_id, path, default_base_ref, workspace_mode, description FROM workspaces ORDER BY project_id ASC`)
+	rows, err := s.reader.Query(`SELECT project_id, path, default_base_ref, workspace_mode, description, agents FROM workspaces ORDER BY project_id ASC`)
 	if err != nil {
 		return nil, err
 	}
@@ -260,9 +278,11 @@ func (s *Store) Workspaces() ([]WorkspaceRow, error) {
 	var out []WorkspaceRow
 	for rows.Next() {
 		var w WorkspaceRow
-		if err := rows.Scan(&w.ProjectID, &w.Path, &w.DefaultBaseRef, &w.WorkspaceMode, &w.Description); err != nil {
+		var agents string
+		if err := rows.Scan(&w.ProjectID, &w.Path, &w.DefaultBaseRef, &w.WorkspaceMode, &w.Description, &agents); err != nil {
 			return nil, err
 		}
+		w.Agents = splitAgents(agents)
 		out = append(out, w)
 	}
 	return out, rows.Err()
@@ -541,6 +561,36 @@ func (tx *Tx) PutRun(r *threadv2.Run) error {
 		r.CreatedAt.AsTime().UnixMilli(), time.Now().UnixMilli(), b,
 	)
 	return err
+}
+
+// SetRunGrantCeiling records the cryptographic Grant ceiling of the principal
+// that authored runID; the policy gate enforces it for that run only.
+func (tx *Tx) SetRunGrantCeiling(runID string, ceiling identityv1.RuntimeMode) error {
+	_, err := tx.tx.Exec(`UPDATE runs SET grant_ceiling = ? WHERE run_id = ?`, int32(ceiling), runID)
+	return err
+}
+
+// Run loads one run by id.
+func (s *Store) Run(runID string) (*threadv2.Run, error) {
+	var b []byte
+	err := s.reader.QueryRow(`SELECT payload FROM runs WHERE run_id = ?`, runID).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	r := &threadv2.Run{}
+	return r, proto.Unmarshal(b, r)
+}
+
+// RunGrantCeiling returns the Grant ceiling recorded for runID (UNSPECIFIED for owner runs).
+func (s *Store) RunGrantCeiling(runID string) identityv1.RuntimeMode {
+	var v int32
+	if err := s.reader.QueryRow(`SELECT grant_ceiling FROM runs WHERE run_id = ?`, runID).Scan(&v); err != nil {
+		return identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED
+	}
+	return identityv1.RuntimeMode(v)
 }
 
 func (tx *Tx) GetRun(runID string) (*threadv2.Run, error) {

@@ -105,5 +105,14 @@
   "this signer doesn't know this kind of request: the signer is older than Hermesh; update the signer": "这个签名器不认识这类请求：签名器比 Hermesh 旧，请更新签名器",
   "Her turned on with her data erased": "开启 Her 的同时清除她的数据",
   "an unknown approval mode": "审批模式未知",
-  "an unknown command": "命令未知"
+  "an unknown command": "命令未知",
+  "In: %s": "位置：%s",
+  "A git repository with one empty commit": "一个 git 仓库，带一个空提交",
+  "Create folder “%s” on %s": "在%[2]s上新建文件夹“%[1]s”",
+  "Lift the permission limit of %s": "取消%s的权限上限",
+  "Its threads may run as their grants and the owner allow.": "它的会话按授权和你的设置运行。",
+  "Limit what threads may do on %s": "限制%s上会话的权限",
+  "At most: %s": "最多：%s",
+  "Whoever starts them, its threads ask before anything beyond this.": "无论谁发起，超出这个范围的操作都要先问。",
+  "an unknown permission mode": "未知的权限模式"
 }

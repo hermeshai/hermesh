@@ -40,6 +40,7 @@ struct DrawerView: View {
                 // The top stays: search and the menu's own button whatever the list's length.
                 top
                 List {
+                    newSessionPlace.plainRow()
                     herPlace.plainRow()
                     overviewPlace.plainRow()
                     sessionsHeading.plainRow()
@@ -92,6 +93,24 @@ struct DrawerView: View {
         }
         .frame(minHeight: button)
         .padding(.leading, model.menuBeside ? 16 : 24).padding(.trailing, 16).padding(.top, 8).padding(.bottom, 14)
+    }
+
+    /// New Session, over Her (docs/thread-composer.md §4.6): the composer, on the machine and project used last.
+    private var newSessionPlace: some View {
+        Button {
+            model.open(.newThread("", ""))
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.pencil").frame(width: 28)
+                Text("New Session")
+                Spacer(minLength: 0)
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
+        }
+        .buttonStyle(RowStyle(selected: { if case .newThread = model.root { model.path.isEmpty } else { false } }()))
+        .padding(.horizontal, 10)
+        .accessibilityIdentifier("new-session-place")
     }
 
     /// Her, first, as on the Mac: a dot while what she sent is unread, and "Off" while she runs nowhere.
@@ -180,7 +199,7 @@ private struct MenuSessions: View {
 
     var body: some View {
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
-        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
+        let sections = sessionSections(model.listedSessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
         ForEach(sections) { section in
             let open = !model.collapsed.contains(section.id)
             heading(section, open: open).plainRow()
@@ -226,6 +245,26 @@ private struct MenuSessions: View {
 
     /// A group's heading: its title and ▾ (▸ when collapsed), a row of its own; a tap collapses or opens it.
     private func heading(_ section: SessionSection, open: Bool) -> some View {
+        HStack(spacing: 0) {
+            headingToggle(section, open: open)
+            // A project's group: a new session in it, on the machine of its latest session there.
+            if section.grouping == .project {
+                Button {
+                    let latest = section.sessions.max { $0.updatedDate < $1.updatedDate }
+                    model.open(.newThread(latest?.machineID ?? "", section.key))
+                } label: {
+                    Image(systemName: "plus").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                        .frame(width: 44, height: 32).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 10).padding(.trailing, 10)
+                .accessibilityLabel(Text("New Session in \(title(section))"))
+                .accessibilityIdentifier("new-in-\(section.key)")
+            }
+        }
+    }
+
+    private func headingToggle(_ section: SessionSection, open: Bool) -> some View {
         Button {
             withAnimation(.snappy) {
                 if open { model.collapsed.insert(section.id) } else { model.collapsed.remove(section.id) }
@@ -249,7 +288,7 @@ private struct MenuSessions: View {
 
     private func title(_ s: SessionSection) -> String {
         switch s.grouping {
-        case .project: s.key
+        case .project: s.key == scratchProject ? String(localized: "Temporary Workspace") : s.key
         case .agent: agentTitle(s.key)
         case .machine: model.machineName(s.key)
         default: SessionBucket(rawValue: s.key)?.title ?? s.key

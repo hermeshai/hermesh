@@ -1330,6 +1330,8 @@ type AdminCommand struct {
 	//	*AdminCommand_SetHer
 	//	*AdminCommand_SetHerAssistantMode
 	//	*AdminCommand_SetHerCommandConnector
+	//	*AdminCommand_CreateFolder
+	//	*AdminCommand_SetMaxRuntimeMode
 	Command       isAdminCommand_Command `protobuf_oneof:"command"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1472,6 +1474,24 @@ func (x *AdminCommand) GetSetHerCommandConnector() *SetHerCommandConnector {
 	return nil
 }
 
+func (x *AdminCommand) GetCreateFolder() *CreateFolder {
+	if x != nil {
+		if x, ok := x.Command.(*AdminCommand_CreateFolder); ok {
+			return x.CreateFolder
+		}
+	}
+	return nil
+}
+
+func (x *AdminCommand) GetSetMaxRuntimeMode() *SetMaxRuntimeMode {
+	if x != nil {
+		if x, ok := x.Command.(*AdminCommand_SetMaxRuntimeMode); ok {
+			return x.SetMaxRuntimeMode
+		}
+	}
+	return nil
+}
+
 type isAdminCommand_Command interface {
 	isAdminCommand_Command()
 }
@@ -1508,6 +1528,14 @@ type AdminCommand_SetHerCommandConnector struct {
 	SetHerCommandConnector *SetHerCommandConnector `protobuf:"bytes,18,opt,name=set_her_command_connector,json=setHerCommandConnector,proto3,oneof"`
 }
 
+type AdminCommand_CreateFolder struct {
+	CreateFolder *CreateFolder `protobuf:"bytes,19,opt,name=create_folder,json=createFolder,proto3,oneof"`
+}
+
+type AdminCommand_SetMaxRuntimeMode struct {
+	SetMaxRuntimeMode *SetMaxRuntimeMode `protobuf:"bytes,20,opt,name=set_max_runtime_mode,json=setMaxRuntimeMode,proto3,oneof"`
+}
+
 func (*AdminCommand_AddProject) isAdminCommand_Command() {}
 
 func (*AdminCommand_RemoveProject) isAdminCommand_Command() {}
@@ -1523,6 +1551,10 @@ func (*AdminCommand_SetHer) isAdminCommand_Command() {}
 func (*AdminCommand_SetHerAssistantMode) isAdminCommand_Command() {}
 
 func (*AdminCommand_SetHerCommandConnector) isAdminCommand_Command() {}
+
+func (*AdminCommand_CreateFolder) isAdminCommand_Command() {}
+
+func (*AdminCommand_SetMaxRuntimeMode) isAdminCommand_Command() {}
 
 type AddProject struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
@@ -2689,6 +2721,117 @@ func (x *DeltaEnvelope) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// A setting: a new empty folder in a folder under the machine's home folder,
+// for a project (docs/thread-composer.md §4.3). git_init makes it a git
+// repository with one empty commit, so sessions can take worktrees of it.
+type CreateFolder struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// "~", "~/code", or a full path under the home folder.
+	Parent string `protobuf:"bytes,1,opt,name=parent,proto3" json:"parent,omitempty"`
+	// One folder name: no separator, not starting with ".".
+	Name          string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	GitInit       bool   `protobuf:"varint,3,opt,name=git_init,json=gitInit,proto3" json:"git_init,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateFolder) Reset() {
+	*x = CreateFolder{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateFolder) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateFolder) ProtoMessage() {}
+
+func (x *CreateFolder) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateFolder.ProtoReflect.Descriptor instead.
+func (*CreateFolder) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *CreateFolder) GetParent() string {
+	if x != nil {
+		return x.Parent
+	}
+	return ""
+}
+
+func (x *CreateFolder) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateFolder) GetGitInit() bool {
+	if x != nil {
+		return x.GitInit
+	}
+	return false
+}
+
+// A setting: the broadest permission mode the machine's threads may run in,
+// whoever starts them; UNSPECIFIED lifts the limit.
+type SetMaxRuntimeMode struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Mode          RuntimeMode            `protobuf:"varint,1,opt,name=mode,proto3,enum=hermesh.identity.v1.RuntimeMode" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetMaxRuntimeMode) Reset() {
+	*x = SetMaxRuntimeMode{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetMaxRuntimeMode) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetMaxRuntimeMode) ProtoMessage() {}
+
+func (x *SetMaxRuntimeMode) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetMaxRuntimeMode.ProtoReflect.Descriptor instead.
+func (*SetMaxRuntimeMode) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *SetMaxRuntimeMode) GetMode() RuntimeMode {
+	if x != nil {
+		return x.Mode
+	}
+	return RuntimeMode_RUNTIME_MODE_UNSPECIFIED
+}
+
 var File_hermesh_identity_v1_identity_proto protoreflect.FileDescriptor
 
 const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
@@ -2779,7 +2922,7 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12<\n" +
 	"\vdevice_cert\x18\x04 \x01(\v2\x1b.hermesh.identity.v1.SignedR\n" +
-	"deviceCert\"\xb4\x06\n" +
+	"deviceCert\"\xd9\a\n" +
 	"\fAdminCommand\x12\x19\n" +
 	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x1d\n" +
 	"\n" +
@@ -2797,7 +2940,9 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\x12set_agent_defaults\x18\x0f \x01(\v2\".hermesh.identity.v1.AgentDefaultsH\x00R\x10setAgentDefaults\x126\n" +
 	"\aset_her\x18\x10 \x01(\v2\x1b.hermesh.identity.v1.SetHerH\x00R\x06setHer\x12_\n" +
 	"\x16set_her_assistant_mode\x18\x11 \x01(\v2(.hermesh.identity.v1.SetHerAssistantModeH\x00R\x13setHerAssistantMode\x12h\n" +
-	"\x19set_her_command_connector\x18\x12 \x01(\v2+.hermesh.identity.v1.SetHerCommandConnectorH\x00R\x16setHerCommandConnectorB\t\n" +
+	"\x19set_her_command_connector\x18\x12 \x01(\v2+.hermesh.identity.v1.SetHerCommandConnectorH\x00R\x16setHerCommandConnector\x12H\n" +
+	"\rcreate_folder\x18\x13 \x01(\v2!.hermesh.identity.v1.CreateFolderH\x00R\fcreateFolder\x12Y\n" +
+	"\x14set_max_runtime_mode\x18\x14 \x01(\v2&.hermesh.identity.v1.SetMaxRuntimeModeH\x00R\x11setMaxRuntimeModeB\t\n" +
 	"\acommandJ\x04\b\f\x10\rR\x0erename_machine\"\xe1\x01\n" +
 	"\n" +
 	"AddProject\x12\x1d\n" +
@@ -2893,7 +3038,13 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"ciphertext\x123\n" +
 	"\x04keys\x18\a \x03(\v2\x1f.hermesh.identity.v1.WrappedKeyR\x04keys\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*d\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"U\n" +
+	"\fCreateFolder\x12\x16\n" +
+	"\x06parent\x18\x01 \x01(\tR\x06parent\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x19\n" +
+	"\bgit_init\x18\x03 \x01(\bR\agitInit\"I\n" +
+	"\x11SetMaxRuntimeMode\x124\n" +
+	"\x04mode\x18\x01 \x01(\x0e2 .hermesh.identity.v1.RuntimeModeR\x04mode*d\n" +
 	"\x12SignatureAlgorithm\x12#\n" +
 	"\x1fSIGNATURE_ALGORITHM_UNSPECIFIED\x10\x00\x12)\n" +
 	"%SIGNATURE_ALGORITHM_ECDSA_P256_SHA256\x10\x01*w\n" +
@@ -2936,7 +3087,7 @@ func file_hermesh_identity_v1_identity_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
-var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(SignatureAlgorithm)(0),        // 0: hermesh.identity.v1.SignatureAlgorithm
 	(PairingKind)(0),               // 1: hermesh.identity.v1.PairingKind
@@ -2972,27 +3123,29 @@ var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(*SyncRegistration)(nil),       // 31: hermesh.identity.v1.SyncRegistration
 	(*WrappedKey)(nil),             // 32: hermesh.identity.v1.WrappedKey
 	(*DeltaEnvelope)(nil),          // 33: hermesh.identity.v1.DeltaEnvelope
-	nil,                            // 34: hermesh.identity.v1.SetHerCommandConnector.EnvEntry
-	nil,                            // 35: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
-	(*timestamppb.Timestamp)(nil),  // 36: google.protobuf.Timestamp
+	(*CreateFolder)(nil),           // 34: hermesh.identity.v1.CreateFolder
+	(*SetMaxRuntimeMode)(nil),      // 35: hermesh.identity.v1.SetMaxRuntimeMode
+	nil,                            // 36: hermesh.identity.v1.SetHerCommandConnector.EnvEntry
+	nil,                            // 37: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	(*timestamppb.Timestamp)(nil),  // 38: google.protobuf.Timestamp
 }
 var file_hermesh_identity_v1_identity_proto_depIdxs = []int32{
 	0,  // 0: hermesh.identity.v1.Signed.alg:type_name -> hermesh.identity.v1.SignatureAlgorithm
 	7,  // 1: hermesh.identity.v1.RootCert.root_keys:type_name -> hermesh.identity.v1.RootKey
-	36, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
 	6,  // 3: hermesh.identity.v1.RootChain.certs:type_name -> hermesh.identity.v1.Signed
-	36, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
-	36, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
 	1,  // 6: hermesh.identity.v1.PairingRequest.kind:type_name -> hermesh.identity.v1.PairingKind
-	36, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
-	36, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
+	38, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
 	3,  // 9: hermesh.identity.v1.Grant.task_visibility:type_name -> hermesh.identity.v1.TaskVisibility
-	36, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
-	36, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
+	38, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
+	38, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
 	4,  // 12: hermesh.identity.v1.Grant.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	36, // 13: hermesh.identity.v1.EraseOrder.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 13: hermesh.identity.v1.EraseOrder.issued_at:type_name -> google.protobuf.Timestamp
 	6,  // 14: hermesh.identity.v1.EraseAck.device_cert:type_name -> hermesh.identity.v1.Signed
-	36, // 15: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
+	38, // 15: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
 	18, // 16: hermesh.identity.v1.AdminCommand.add_project:type_name -> hermesh.identity.v1.AddProject
 	19, // 17: hermesh.identity.v1.AdminCommand.remove_project:type_name -> hermesh.identity.v1.RemoveProject
 	21, // 18: hermesh.identity.v1.AdminCommand.set_paused:type_name -> hermesh.identity.v1.SetPaused
@@ -3001,28 +3154,31 @@ var file_hermesh_identity_v1_identity_proto_depIdxs = []int32{
 	22, // 21: hermesh.identity.v1.AdminCommand.set_her:type_name -> hermesh.identity.v1.SetHer
 	23, // 22: hermesh.identity.v1.AdminCommand.set_her_assistant_mode:type_name -> hermesh.identity.v1.SetHerAssistantMode
 	24, // 23: hermesh.identity.v1.AdminCommand.set_her_command_connector:type_name -> hermesh.identity.v1.SetHerCommandConnector
-	2,  // 24: hermesh.identity.v1.AddProject.workspace:type_name -> hermesh.identity.v1.Workspace
-	34, // 25: hermesh.identity.v1.SetHerCommandConnector.env:type_name -> hermesh.identity.v1.SetHerCommandConnector.EnvEntry
-	5,  // 26: hermesh.identity.v1.AgentDefaults.speed:type_name -> hermesh.identity.v1.AgentSpeed
-	35, // 27: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
-	9,  // 28: hermesh.identity.v1.Credentials.root_chain:type_name -> hermesh.identity.v1.RootChain
-	6,  // 29: hermesh.identity.v1.Credentials.machine_cert:type_name -> hermesh.identity.v1.Signed
-	6,  // 30: hermesh.identity.v1.Credentials.grant:type_name -> hermesh.identity.v1.Signed
-	6,  // 31: hermesh.identity.v1.Credentials.device_cert:type_name -> hermesh.identity.v1.Signed
-	36, // 32: hermesh.identity.v1.ContactCard.issued_at:type_name -> google.protobuf.Timestamp
-	36, // 33: hermesh.identity.v1.InboxRegistration.issued_at:type_name -> google.protobuf.Timestamp
-	6,  // 34: hermesh.identity.v1.Contact.card:type_name -> hermesh.identity.v1.Signed
-	6,  // 35: hermesh.identity.v1.Contact.device_cert:type_name -> hermesh.identity.v1.Signed
-	6,  // 36: hermesh.identity.v1.Contact.machine_cert:type_name -> hermesh.identity.v1.Signed
-	6,  // 37: hermesh.identity.v1.Contact.registration:type_name -> hermesh.identity.v1.Signed
-	36, // 38: hermesh.identity.v1.SyncRegistration.issued_at:type_name -> google.protobuf.Timestamp
-	32, // 39: hermesh.identity.v1.DeltaEnvelope.keys:type_name -> hermesh.identity.v1.WrappedKey
-	36, // 40: hermesh.identity.v1.DeltaEnvelope.created_at:type_name -> google.protobuf.Timestamp
-	41, // [41:41] is the sub-list for method output_type
-	41, // [41:41] is the sub-list for method input_type
-	41, // [41:41] is the sub-list for extension type_name
-	41, // [41:41] is the sub-list for extension extendee
-	0,  // [0:41] is the sub-list for field type_name
+	34, // 24: hermesh.identity.v1.AdminCommand.create_folder:type_name -> hermesh.identity.v1.CreateFolder
+	35, // 25: hermesh.identity.v1.AdminCommand.set_max_runtime_mode:type_name -> hermesh.identity.v1.SetMaxRuntimeMode
+	2,  // 26: hermesh.identity.v1.AddProject.workspace:type_name -> hermesh.identity.v1.Workspace
+	36, // 27: hermesh.identity.v1.SetHerCommandConnector.env:type_name -> hermesh.identity.v1.SetHerCommandConnector.EnvEntry
+	5,  // 28: hermesh.identity.v1.AgentDefaults.speed:type_name -> hermesh.identity.v1.AgentSpeed
+	37, // 29: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	9,  // 30: hermesh.identity.v1.Credentials.root_chain:type_name -> hermesh.identity.v1.RootChain
+	6,  // 31: hermesh.identity.v1.Credentials.machine_cert:type_name -> hermesh.identity.v1.Signed
+	6,  // 32: hermesh.identity.v1.Credentials.grant:type_name -> hermesh.identity.v1.Signed
+	6,  // 33: hermesh.identity.v1.Credentials.device_cert:type_name -> hermesh.identity.v1.Signed
+	38, // 34: hermesh.identity.v1.ContactCard.issued_at:type_name -> google.protobuf.Timestamp
+	38, // 35: hermesh.identity.v1.InboxRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	6,  // 36: hermesh.identity.v1.Contact.card:type_name -> hermesh.identity.v1.Signed
+	6,  // 37: hermesh.identity.v1.Contact.device_cert:type_name -> hermesh.identity.v1.Signed
+	6,  // 38: hermesh.identity.v1.Contact.machine_cert:type_name -> hermesh.identity.v1.Signed
+	6,  // 39: hermesh.identity.v1.Contact.registration:type_name -> hermesh.identity.v1.Signed
+	38, // 40: hermesh.identity.v1.SyncRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	32, // 41: hermesh.identity.v1.DeltaEnvelope.keys:type_name -> hermesh.identity.v1.WrappedKey
+	38, // 42: hermesh.identity.v1.DeltaEnvelope.created_at:type_name -> google.protobuf.Timestamp
+	4,  // 43: hermesh.identity.v1.SetMaxRuntimeMode.mode:type_name -> hermesh.identity.v1.RuntimeMode
+	44, // [44:44] is the sub-list for method output_type
+	44, // [44:44] is the sub-list for method input_type
+	44, // [44:44] is the sub-list for extension type_name
+	44, // [44:44] is the sub-list for extension extendee
+	0,  // [0:44] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_identity_v1_identity_proto_init() }
@@ -3039,6 +3195,8 @@ func file_hermesh_identity_v1_identity_proto_init() {
 		(*AdminCommand_SetHer)(nil),
 		(*AdminCommand_SetHerAssistantMode)(nil),
 		(*AdminCommand_SetHerCommandConnector)(nil),
+		(*AdminCommand_CreateFolder)(nil),
+		(*AdminCommand_SetMaxRuntimeMode)(nil),
 	}
 	file_hermesh_identity_v1_identity_proto_msgTypes[21].OneofWrappers = []any{
 		(*Credentials_MachineCert)(nil),
@@ -3051,7 +3209,7 @@ func file_hermesh_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_identity_v1_identity_proto_rawDesc), len(file_hermesh_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      6,
-			NumMessages:   30,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

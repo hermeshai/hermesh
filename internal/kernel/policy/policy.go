@@ -77,41 +77,43 @@ func CanonicalPath(baseDir, p string) (string, error) {
 	}
 	target := p
 	if !filepath.IsAbs(target) {
-		if baseDir == "" {
-			var err error
-			target, err = filepath.Abs(target)
+		base := baseDir
+		if base == "" {
+			wd, err := os.Getwd()
 			if err != nil {
 				return "", err
 			}
-		} else {
-			target = filepath.Join(baseDir, target)
+			base = wd
 		}
+		// No lexical cleaning here: "link/.." must be resolved against link's target, as the OS does.
+		target = base + string(filepath.Separator) + target
 	}
-	target = filepath.Clean(target)
-	return evalDeepestExisting(target)
+	return resolveLikeOS(target), nil
 }
 
-func evalDeepestExisting(cleanPath string) (string, error) {
-	cur := cleanPath
-	var tail []string
-	for {
-		resolved, err := filepath.EvalSymlinks(cur)
-		if err == nil {
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
+// resolveLikeOS walks absPath one component at a time in the order the kernel
+// does: each existing component is resolved through symlinks before a later
+// ".." is applied, so "link/../x" cannot be cleaned into the workspace while the
+// real write lands next to link's target. Components that do not exist yet are
+// kept lexically.
+func resolveLikeOS(absPath string) string {
+	vol := filepath.VolumeName(absPath)
+	parts := strings.FieldsFunc(absPath[len(vol):], func(r rune) bool { return r == '/' || r == filepath.Separator })
+	dest := vol + string(filepath.Separator)
+	for _, part := range parts {
+		switch part {
+		case ".":
+			continue
+		case "..":
+			dest = filepath.Dir(dest)
+		default:
+			dest = filepath.Join(dest, part)
+			if resolved, err := filepath.EvalSymlinks(dest); err == nil {
+				dest = resolved
 			}
-			return filepath.Clean(resolved), nil
 		}
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return cleanPath, nil
-		}
-		tail = append(tail, filepath.Base(cur))
-		cur = parent
 	}
+	return dest
 }
 
 // ContainsPath reports whether targetPath resolves inside WorkspaceRoot or ExtraRoots,
@@ -156,8 +158,10 @@ func isWithinRoot(root, target string) bool {
 }
 
 func isProtectedPath(root, target string) bool {
+	// Compare case-insensitively: on macOS and Windows ".GIT/hooks" is the real hooks directory.
+	root, target = strings.ToLower(root), strings.ToLower(target)
 	slash := filepath.ToSlash(target)
-	base := strings.ToLower(filepath.Base(target))
+	base := filepath.Base(target)
 	if base == ".env" || strings.HasPrefix(base, ".env.") && base != ".env.example" {
 		return true
 	}
@@ -190,7 +194,7 @@ var (
 	highRiskPatterns = []*regexp.Regexp{
 		regexp.MustCompile(`(?i)(^|\s|;|&&|\|\|)\s*sudo(\s|$)`),
 		regexp.MustCompile(`(?i)\brm\s+-[a-z]*r[a-z]*f\s+(/|~|\$HOME|\.\.)`),
-		regexp.MustCompile(`(?i)\bgit\s+push\b.*(--force|-f\b)`),
+		regexp.MustCompile(`(?i)\bgit\s+push\b.*(--force|-f\b|--mirror|--delete|\s\+\S)`),
 		regexp.MustCompile(`(?i)\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)`),
 		regexp.MustCompile(`(?i)\b(mkfs|dd\s+if=|shutdown|reboot)\b`),
 		regexp.MustCompile(`(?i)(curl|wget)\b.*\|\s*(sh|bash|zsh)\b`),
@@ -207,6 +211,24 @@ var routinePrefixes = []string{
 	"cargo test", "cargo check", "swift test", "pytest",
 }
 
+var readOnlyStagePrefixes = []string{"ls", "cat", "head", "tail", "wc", "rg", "grep", "find", "sort", "uniq", "git diff", "git log", "git status"}
+
+// unsafeFlags lists arguments that turn an otherwise read-only or routine
+// command into one that deletes, writes, or runs arbitrary programs.
+var unsafeFlags = map[string][]string{
+	"find":       {"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"},
+	"rg":         {"--pre"},
+	"go test":    {"-exec", "-toolexec", "-o"},
+	"go vet":     {"-vettool", "-toolexec"},
+	"go build":   {"-toolexec", "-o"},
+	"gofmt":      {"-w"},
+	"git branch": {"-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy", "-f", "--force", "-u", "--set-upstream-to", "--unset-upstream", "--edit-description"},
+	"git diff":   {"--output", "--ext-diff"},
+	"git log":    {"--output", "--ext-diff"},
+	"git show":   {"--output", "--ext-diff"},
+	"sort":       {"-o", "--output"},
+}
+
 // ClassifyCommand evaluates a shell command string conservatively.
 func ClassifyCommand(cmd string) CommandRisk {
 	trimmed := strings.TrimSpace(cmd)
@@ -221,36 +243,70 @@ func ClassifyCommand(cmd string) CommandRisk {
 	if shellRedirOrSubshell.MatchString(trimmed) {
 		return RiskStandard
 	}
-	// Split chained commands on && or ; and require every segment to be routine.
-	segments := strings.FieldsFunc(trimmed, func(r rune) bool {
-		return r == ';' || r == '\n'
-	})
-	for _, seg := range segments {
-		for _, part := range strings.Split(seg, "&&") {
-			if strings.Contains(part, "|") {
-				// Allow simple pipes only if every stage is read-only (ls/rg/grep/head/tail/wc/sort).
-				for _, stage := range strings.Split(part, "|") {
-					if !isReadOnlyStage(strings.TrimSpace(stage)) {
-						return RiskStandard
-					}
+	// Every command in a chain (;, newline, &&, ||, &) must be routine.
+	for _, seg := range splitCommandChain(trimmed) {
+		if strings.Contains(seg, "|") {
+			// Allow simple pipes only if every stage is read-only (ls/rg/grep/head/tail/wc/sort).
+			for _, stage := range strings.Split(seg, "|") {
+				if !isReadOnlyStage(strings.TrimSpace(stage)) {
+					return RiskStandard
 				}
-				continue
 			}
-			if !matchesPrefixList(strings.TrimSpace(part), routinePrefixes) {
-				return RiskStandard
-			}
+			continue
+		}
+		if !isSafeInvocation(seg, routinePrefixes) {
+			return RiskStandard
 		}
 	}
 	return RiskRoutine
 }
 
-func isReadOnlyStage(s string) bool {
-	return matchesPrefixList(s, []string{"ls", "cat", "head", "tail", "wc", "rg", "grep", "find", "sort", "uniq", "git diff", "git log", "git status"})
+// splitCommandChain splits on the shell list operators ;, newline, &&, || and a
+// background &, keeping single | pipes inside a segment. Empty segments are dropped.
+func splitCommandChain(cmd string) []string {
+	var segs []string
+	start := 0
+	for i := 0; i < len(cmd); i++ {
+		switch c := cmd[i]; {
+		case c == ';' || c == '\n' || c == '&':
+			segs = append(segs, cmd[start:i])
+			if c == '&' && i+1 < len(cmd) && cmd[i+1] == '&' {
+				i++
+			}
+			start = i + 1
+		case c == '|' && i+1 < len(cmd) && cmd[i+1] == '|':
+			segs = append(segs, cmd[start:i])
+			i++
+			start = i + 1
+		}
+	}
+	segs = append(segs, cmd[start:])
+	out := segs[:0]
+	for _, s := range segs {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
-func matchesPrefixList(cmd string, prefixes []string) bool {
+func isReadOnlyStage(s string) bool {
+	return isSafeInvocation(s, readOnlyStagePrefixes)
+}
+
+// isSafeInvocation reports whether cmd starts with one of prefixes and carries
+// none of that prefix's unsafe arguments.
+func isSafeInvocation(cmd string, prefixes []string) bool {
+	cmd = strings.TrimSpace(cmd)
 	for _, p := range prefixes {
 		if cmd == p || strings.HasPrefix(cmd, p+" ") || strings.HasPrefix(cmd, p+"\t") {
+			for _, tok := range strings.Fields(cmd[len(p):]) {
+				for _, f := range unsafeFlags[p] {
+					if tok == f || strings.HasPrefix(tok, f+"=") {
+						return false
+					}
+				}
+			}
 			return true
 		}
 	}
@@ -280,11 +336,27 @@ type ToolDecision struct {
 	Reason           string
 }
 
+// exactRuleCommands run arbitrary code from their arguments, so a thread rule
+// for them must match the whole command line.
+var exactRuleCommands = map[string]bool{
+	"sh": true, "bash": true, "zsh": true, "fish": true, "dash": true, "ksh": true,
+	"python": true, "python2": true, "python3": true, "node": true, "deno": true, "bun": true,
+	"ruby": true, "perl": true, "php": true, "lua": true, "osascript": true, "pwsh": true, "powershell": true,
+	"env": true, "xargs": true, "eval": true, "exec": true, "sudo": true, "doas": true, "su": true,
+	"nohup": true, "timeout": true, "time": true, "nice": true, "command": true, "builtin": true,
+}
+
 // RuleKeyFor builds a stable approval rule key for "accept_for_thread".
 func RuleKeyFor(category, toolName, command, resolvedPath string) string {
 	switch category {
 	case "command":
 		fields := strings.Fields(strings.TrimSpace(command))
+		// Interpreters, wrappers and chained/redirected commands get an exact-match key:
+		// "python -c" or "sudo ls" as a two-word family would allow arbitrary code.
+		if len(fields) > 0 && (exactRuleCommands[filepath.Base(fields[0])] ||
+			len(splitCommandChain(command)) > 1 || strings.Contains(command, "|") || shellRedirOrSubshell.MatchString(command)) {
+			return "cmd=" + strings.Join(fields, " ")
+		}
 		if len(fields) >= 2 {
 			return "cmd:" + fields[0] + " " + fields[1]
 		}
@@ -343,7 +415,13 @@ func EvaluateTool(in ToolEvalInput) ToolDecision {
 		inside = true
 	}
 	ruleKey := RuleKeyFor(in.Category, in.ToolName, in.Command, resolvedPath)
-	if in.AllowedRuleKeys[ruleKey] {
+	if in.Category == "file_write" && protected {
+		// A protected file is approved on its own; a directory rule never covers it.
+		ruleKey = "file:" + resolvedPath
+	}
+	// A thread rule never pre-approves a high-risk command (e.g. "cmd:git push" -> "git push --force").
+	ruleApplies := !(in.Category == "command" && ClassifyCommand(in.Command) == RiskHigh)
+	if ruleApplies && in.AllowedRuleKeys[ruleKey] {
 		return ToolDecision{Allow: true, RuleKey: ruleKey, OutsideWorkspace: !inside}
 	}
 

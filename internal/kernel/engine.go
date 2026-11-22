@@ -10,7 +10,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	"github.com/oklog/ulid/v2"
@@ -26,6 +28,11 @@ import (
 	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
+
+// ScratchProjectID is the workspace the kernel makes on every machine for
+// threads that name no project. It is not one of the machine's projects, so a
+// grant's "*" does not cover it: a grant must list it by name.
+const ScratchProjectID = "scratch"
 
 // Principal represents the verified cryptographic identity calling the kernel.
 type Principal struct {
@@ -85,6 +92,9 @@ func (p *Principal) allowsProject(projectID string) bool {
 	if p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_HER {
 		return true
 	}
+	if projectID == ScratchProjectID {
+		return slices.Contains(p.AllowedProjects, ScratchProjectID)
+	}
 	return identity.Allows(p.AllowedProjects, projectID)
 }
 
@@ -137,6 +147,7 @@ type shellSub struct {
 
 type Engine struct {
 	cfg        Config
+	maxMode    atomic.Int32 // the machine's ceiling (Config.MachineMaxMode, then SetMachineMaxMode)
 	log        *slog.Logger
 	st         *store.Store
 	vcs        *vcs.Manager
@@ -149,6 +160,7 @@ type Engine struct {
 	mu          sync.Mutex
 	wg          sync.WaitGroup
 	threadLocks map[string]*sync.Mutex
+	cmdLocks    map[string]*refLock                    // command_id -> in-flight idempotent command
 	waiters     map[string]chan runtime.ToolGateResult // request_id -> waiter
 	runCancels  map[string]context.CancelFunc          // run_id -> cancel
 	threadSubs  map[string]map[chan *threadv2.ThreadEvent]struct{}
@@ -178,11 +190,13 @@ func Open(cfg Config) (*Engine, error) {
 		bgCtx:       bgCtx,
 		bgCancel:    bgCancel,
 		threadLocks: map[string]*sync.Mutex{},
+		cmdLocks:    map[string]*refLock{},
 		waiters:     map[string]chan runtime.ToolGateResult{},
 		runCancels:  map[string]context.CancelFunc{},
 		threadSubs:  map[string]map[chan *threadv2.ThreadEvent]struct{}{},
 		shellSubs:   map[*shellSub]struct{}{},
 	}
+	e.maxMode.Store(int32(cfg.MachineMaxMode))
 	if err := e.seedDefaults(); err != nil {
 		bgCancel()
 		_ = st.Close()
@@ -201,7 +215,7 @@ func (e *Engine) Close() error {
 	return e.st.Close()
 }
 
-func (e *Engine) spawnRun(threadID, runID string, freshContext bool, grantCeiling identityv1.RuntimeMode) {
+func (e *Engine) spawnRun(threadID, runID string, freshContext bool) {
 	runCtx, cancelRun := context.WithCancel(e.bgCtx)
 	e.mu.Lock()
 	e.runCancels[runID] = cancelRun
@@ -216,9 +230,16 @@ func (e *Engine) spawnRun(threadID, runID string, freshContext bool, grantCeilin
 			delete(e.runCancels, runID)
 			e.mu.Unlock()
 		}()
-		e.driveRun(runCtx, threadID, runID, freshContext, grantCeiling)
+		e.driveRun(runCtx, threadID, runID, freshContext)
 	}()
 }
+
+// machineMax is the machine's own permission-mode ceiling (UNSPECIFIED: none).
+func (e *Engine) machineMax() identityv1.RuntimeMode { return identityv1.RuntimeMode(e.maxMode.Load()) }
+
+// SetMachineMaxMode changes the machine's ceiling: launches and dispatches from
+// now on are clamped to it (a run in flight keeps the mode it started with).
+func (e *Engine) SetMachineMaxMode(m identityv1.RuntimeMode) { e.maxMode.Store(int32(m)) }
 
 func (e *Engine) Store() *store.Store             { return e.st }
 func (e *Engine) Supervisor() *runtime.Supervisor { return e.sup }
@@ -252,9 +273,9 @@ func (e *Engine) seedDefaults() error {
 	}
 	_, err = e.st.Mutate(func(tx *store.Tx) error {
 		// Always register a default "scratch" workspace so ad-hoc threads work immediately.
-		if _, wErr := e.st.Workspace("scratch"); errors.Is(wErr, store.ErrNotFound) {
+		if _, wErr := e.st.Workspace(ScratchProjectID); errors.Is(wErr, store.ErrNotFound) {
 			if err := tx.PutWorkspace(store.WorkspaceRow{
-				ProjectID:     "scratch",
+				ProjectID:     ScratchProjectID,
 				Path:          e.scratchDir,
 				WorkspaceMode: int32(identityv1.Workspace_WORKSPACE_IN_PLACE),
 				Description:   "Scratch workspace",
@@ -275,7 +296,7 @@ func (e *Engine) seedDefaults() error {
 }
 
 // SyncWorkspace keeps v2 workspaces synchronized with Machine's configured projects.
-func (e *Engine) SyncWorkspace(projectID, path, defaultBaseRef string, mode identityv1.Workspace, description string) error {
+func (e *Engine) SyncWorkspace(projectID, path, defaultBaseRef string, mode identityv1.Workspace, description string, agents []string) error {
 	_, err := e.st.Mutate(func(tx *store.Tx) error {
 		return tx.PutWorkspace(store.WorkspaceRow{
 			ProjectID:      projectID,
@@ -283,6 +304,7 @@ func (e *Engine) SyncWorkspace(projectID, path, defaultBaseRef string, mode iden
 			DefaultBaseRef: defaultBaseRef,
 			WorkspaceMode:  int32(mode),
 			Description:    description,
+			Agents:         agents,
 		})
 	})
 	return err
@@ -387,6 +409,37 @@ func (e *Engine) lockThread(threadID string) func() {
 	e.mu.Unlock()
 	lk.Lock()
 	return lk.Unlock
+}
+
+type refLock struct {
+	mu sync.Mutex
+	n  int
+}
+
+// lockCommand serializes requests that share a command_id, so a retry that
+// arrives while the first attempt is still running waits and then replays its
+// receipt instead of executing the command a second time.
+func (e *Engine) lockCommand(commandID string) func() {
+	if commandID == "" {
+		return func() {}
+	}
+	e.mu.Lock()
+	l := e.cmdLocks[commandID]
+	if l == nil {
+		l = &refLock{}
+		e.cmdLocks[commandID] = l
+	}
+	l.n++
+	e.mu.Unlock()
+	l.mu.Lock()
+	return func() {
+		l.mu.Unlock()
+		e.mu.Lock()
+		if l.n--; l.n == 0 {
+			delete(e.cmdLocks, commandID)
+		}
+		e.mu.Unlock()
+	}
 }
 
 func newID(prefix string) string {
@@ -503,7 +556,7 @@ func (e *Engine) ListProviders(ctx context.Context, p *Principal, projectID stri
 	}
 	return &threadv2.ListProvidersResponse{
 		Providers:      out,
-		MaxRuntimeMode: policy.EffectiveCeiling(e.cfg.MachineMaxMode, p.GrantCeiling),
+		MaxRuntimeMode: policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling),
 	}, nil
 }
 
@@ -602,6 +655,40 @@ func (e *Engine) resolveInstanceConfig(p *Principal, instanceID string) (*thread
 	return chosen, drv, nil
 }
 
+// principalAllowsInstance reports whether p may run turns on the configured
+// provider instance instanceID (owner and Her are always allowed).
+func (e *Engine) principalAllowsInstance(p *Principal, instanceID string) bool {
+	cfgs, _ := e.st.ProviderInstances()
+	for _, c := range cfgs {
+		if c.InstanceId == instanceID {
+			return p.allowsAgent(c.InstanceId, c.Driver, c.AcpFlavor)
+		}
+	}
+	return p.allowsAgent(instanceID, "", "")
+}
+
+// projectAllowsInstance checks that the project is set up for the provider
+// instance (the machine's Project.agents, as v1 sessions check it): by
+// instance id, driver or ACP flavour. It holds for the owner too: it is the
+// project's own setting, not a grant's.
+func (e *Engine) projectAllowsInstance(projectID, instanceID string) error {
+	ws, err := e.st.Workspace(projectID)
+	if err != nil || len(ws.Agents) == 0 {
+		return nil
+	}
+	ok := slices.Contains(ws.Agents, instanceID)
+	cfgs, _ := e.st.ProviderInstances()
+	for _, c := range cfgs {
+		if c.InstanceId == instanceID {
+			ok = ok || slices.Contains(ws.Agents, c.Driver) || (c.AcpFlavor != "" && slices.Contains(ws.Agents, c.AcpFlavor))
+		}
+	}
+	if !ok {
+		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("project %q is not set up for %q (it is for: %s)", projectID, instanceID, strings.Join(ws.Agents, ", ")))
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Thread Launch & Dispatch
 
@@ -613,6 +700,7 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("machine is paused"))
 	}
 	var cached threadv2.LaunchThreadResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "LaunchThread", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -621,7 +709,7 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 
 	projectID := strings.TrimSpace(req.ProjectId)
 	if projectID == "" {
-		projectID = "scratch"
+		projectID = ScratchProjectID
 	}
 	if !p.allowsProject(projectID) {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("grant does not permit project %q", projectID))
@@ -645,6 +733,9 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 	if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
 		return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("grant does not permit provider %q", instCfg.InstanceId))
 	}
+	if err := e.projectAllowsInstance(projectID, instCfg.InstanceId); err != nil {
+		return nil, err
+	}
 	resolvedInst := e.cat.ResolveInstance(ctx, instCfg, ws.Path, false)
 	if sel.InstanceId == "" {
 		sel.InstanceId = instCfg.InstanceId
@@ -658,8 +749,8 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 	}
 
 	reqRuntimeMode := policy.NormalizeRequested(req.RuntimeMode)
-	maxMode := policy.EffectiveCeiling(e.cfg.MachineMaxMode, p.GrantCeiling)
-	effMode := policy.EffectiveMode(e.cfg.MachineMaxMode, p.GrantCeiling, reqRuntimeMode)
+	maxMode := policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling)
+	effMode := policy.EffectiveMode(e.machineMax(), p.GrantCeiling, reqRuntimeMode)
 
 	imode := req.InteractionMode
 	if imode == threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
@@ -771,6 +862,9 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 			if err := tx.PutRun(initRun); err != nil {
 				return err
 			}
+			if err := tx.SetRunGrantCeiling(initRun.RunId, p.GrantCeiling); err != nil {
+				return err
+			}
 			userItem := &threadv2.TurnItem{
 				ItemId:      newID("itm"),
 				ThreadId:    threadID,
@@ -809,7 +903,7 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 	e.publish(events, nil)
 
 	if initRun != nil {
-		e.spawnRun(threadID, initRun.RunId, false, p.GrantCeiling)
+		e.spawnRun(threadID, initRun.RunId, false)
 	}
 	return res, nil
 }
@@ -819,6 +913,7 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.DispatchMessageResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "DispatchMessage", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -865,12 +960,19 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
 		}
 		sel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
+	} else if !e.principalAllowsInstance(p, sel.GetInstanceId()) {
+		unlock()
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this thread's provider"))
+	}
+	if err := e.projectAllowsInstance(th.ProjectId, sel.GetInstanceId()); err != nil {
+		unlock()
+		return nil, err
 	}
 	reqMode := th.RuntimeMode
 	if req.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		reqMode = req.RuntimeMode
 	}
-	effMode := policy.EffectiveMode(e.cfg.MachineMaxMode, p.GrantCeiling, reqMode)
+	effMode := policy.EffectiveMode(e.machineMax(), p.GrantCeiling, reqMode)
 	imode := th.InteractionMode
 	if req.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
 		imode = req.InteractionMode
@@ -953,18 +1055,25 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 		if err != nil {
 			return err
 		}
-		tNow.ModelSelection = sel
-		tNow.RuntimeMode = reqMode
-		tNow.EffectiveRuntimeMode = effMode
-		tNow.InteractionMode = imode
+		if tNow.ActiveRunId == "" {
+			// While a run is active the thread fields describe that run; a queued
+			// message's selection and modes are applied when it starts.
+			tNow.ModelSelection = sel
+			tNow.RuntimeMode = reqMode
+			tNow.EffectiveRuntimeMode = effMode
+			tNow.InteractionMode = imode
+		}
 
 		queued, err := tx.QueuedRuns(tNow.ThreadId)
 		if err != nil {
 			return err
 		}
-		shouldQueue := intent == threadv2.DispatchIntent_DISPATCH_INTENT_QUEUE ||
-			tNow.ActiveRunId != "" ||
-			(tNow.QueueHeld && len(queued) > 0)
+		// QUEUE means "after what is running": with nothing running and the queue not held, that is now.
+		// (Parked behind nothing, it would never start, and the next message would pass it.)
+		queueIntent := intent == threadv2.DispatchIntent_DISPATCH_INTENT_QUEUE
+		shouldQueue := tNow.ActiveRunId != "" ||
+			(tNow.QueueHeld && (len(queued) > 0 || queueIntent)) ||
+			(queueIntent && len(queued) > 0)
 
 		if shouldQueue {
 			qOrder := 1000.0
@@ -990,6 +1099,9 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 				InteractionMode: imode,
 			}
 			if err := tx.PutRun(qRun); err != nil {
+				return err
+			}
+			if err := tx.SetRunGrantCeiling(qRun.RunId, p.GrantCeiling); err != nil {
 				return err
 			}
 			tNow.QueuedRunCount = uint32(len(queued) + 1)
@@ -1037,6 +1149,9 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 		if err := tx.PutRun(startedRun); err != nil {
 			return err
 		}
+		if err := tx.SetRunGrantCeiling(startedRun.RunId, p.GrantCeiling); err != nil {
+			return err
+		}
 		userItem := &threadv2.TurnItem{
 			ItemId:      newID("itm"),
 			ThreadId:    tNow.ThreadId,
@@ -1074,7 +1189,7 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 	}
 	e.publish(events, nil)
 	if startedRun != nil {
-		e.spawnRun(th.ThreadId, startedRun.RunId, freshCtx, p.GrantCeiling)
+		e.spawnRun(th.ThreadId, startedRun.RunId, freshCtx)
 	}
 	return res, nil
 }
@@ -1136,7 +1251,7 @@ func (e *Engine) loadTurnAttachments(refs []*threadv2.AttachmentRef) []runtime.T
 	return out
 }
 
-func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshContext bool, grantCeiling identityv1.RuntimeMode) {
+func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshContext bool) {
 	if runCtx.Err() != nil {
 		return
 	}
@@ -1286,7 +1401,7 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 			EffectiveMode:   curRun.RuntimeMode,
 			InteractionMode: curRun.InteractionMode,
 			ResumeCursor:    resumeCursor,
-			Gate:            e.makeGate(threadID, workdir, grantCeiling),
+			Gate:            e.makeGate(threadID, workdir),
 		})
 		if startErr != nil {
 			e.finishRunFailed(threadID, runID, "session_start_failed", startErr.Error())
@@ -1527,7 +1642,11 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				output := ev.Output
 				truncated := false
 				if len(output) > 32768 {
-					output = output[:32768] + "\n...[output truncated]..."
+					cut := 32768
+					for cut > 0 && !utf8.RuneStart(output[cut]) {
+						cut--
+					}
+					output = output[:cut] + "\n...[output truncated]..."
 					truncated = true
 				}
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
@@ -1673,7 +1792,7 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				if cp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), threadID, runID, curRun.Ordinal, prevTreeOID); cpErr == nil && cp != nil {
 					capturedCp = cp
 				}
-				e.finishRunCompleted(threadID, runID, activePT.ProviderThreadId, capturedCp, grantCeiling)
+				e.finishRunCompleted(threadID, runID, activePT.ProviderThreadId, capturedCp)
 				return
 
 			case runtime.EventTurnInterrupted:
@@ -1735,9 +1854,10 @@ func (e *Engine) recordSwitchItem(threadID, runID string, fromSel, toSel *thread
 	e.publish(evs, nil)
 }
 
-func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.Checkpoint, grantCeiling identityv1.RuntimeMode) {
+func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.Checkpoint) {
 	unlock := e.lockThread(threadID)
 	var nextQueued *threadv2.Run
+	var nextItem *threadv2.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		th, err := tx.GetThread(threadID)
 		if err != nil {
@@ -1786,7 +1906,7 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			if err := tx.PutRun(nextQueued); err != nil {
 				return err
 			}
-			userItem := &threadv2.TurnItem{
+			nextItem = &threadv2.TurnItem{
 				ItemId:      newID("itm"),
 				ThreadId:    threadID,
 				RunId:       nextQueued.RunId,
@@ -1796,7 +1916,7 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 				Text:        nextQueued.Prompt,
 				Attachments: nextQueued.Attachments,
 			}
-			_ = tx.PutTurnItem(userItem)
+			_ = tx.PutTurnItem(nextItem)
 			th.ActiveRunId = nextQueued.RunId
 			th.QueuedRunCount = uint32(len(queued) - 1)
 			th.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
@@ -1816,19 +1936,22 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 		if err := tx.PutThread(th); err != nil {
 			return err
 		}
-		return tx.AppendEvent(&threadv2.ThreadEvent{
+		if err := tx.AppendEvent(&threadv2.ThreadEvent{
 			ThreadId:   threadID,
 			Type:       "run.completed",
 			Thread:     th,
 			Run:        r,
 			Checkpoint: cp,
-		})
+		}); err != nil {
+			return err
+		}
+		return appendRunStarted(tx, th, nextQueued, nextItem)
 	})
 	unlock()
 	if err == nil {
 		e.publish(events, nil)
 		if nextQueued != nil {
-			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT, grantCeiling)
+			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 		}
 	}
 }
@@ -1836,6 +1959,7 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
 	unlock := e.lockThread(threadID)
 	var nextQueued *threadv2.Run
+	var nextItem *threadv2.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		th, err := tx.GetThread(threadID)
 		if err != nil {
@@ -1862,7 +1986,7 @@ func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
 			nextQueued.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
 			nextQueued.StartedAt = timestamppb.Now()
 			_ = tx.PutRun(nextQueued)
-			_ = tx.PutTurnItem(&threadv2.TurnItem{
+			nextItem = &threadv2.TurnItem{
 				ItemId:      newID("itm"),
 				ThreadId:    threadID,
 				RunId:       nextQueued.RunId,
@@ -1871,10 +1995,14 @@ func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
 				Actor:       nextQueued.Author,
 				Text:        nextQueued.Prompt,
 				Attachments: nextQueued.Attachments,
-			})
+			}
+			_ = tx.PutTurnItem(nextItem)
 			th.ActiveRunId = nextQueued.RunId
 			th.QueuedRunCount = uint32(len(queued) - 1)
 			th.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+			th.ModelSelection = nextQueued.ModelSelection
+			th.EffectiveRuntimeMode = nextQueued.RuntimeMode
+			th.InteractionMode = nextQueued.InteractionMode
 		} else {
 			th.ActiveRunId = ""
 			th.QueuedRunCount = uint32(len(queued))
@@ -1888,24 +2016,38 @@ func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
 		if err := tx.PutThread(th); err != nil {
 			return err
 		}
-		return tx.AppendEvent(&threadv2.ThreadEvent{
+		if err := tx.AppendEvent(&threadv2.ThreadEvent{
 			ThreadId: threadID,
 			Type:     "run.interrupted",
 			Thread:   th,
 			Run:      r,
-		})
+		}); err != nil {
+			return err
+		}
+		return appendRunStarted(tx, th, nextQueued, nextItem)
 	})
 	unlock()
 	if err == nil {
 		e.publish(events, nil)
 		if nextQueued != nil {
-			var ceiling identityv1.RuntimeMode
-			if th, tErr := e.st.Thread(threadID); tErr == nil && th.GetCreatedBy().GetGrantId() != "" {
-				ceiling = th.MaxRuntimeMode
-			}
-			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT, ceiling)
+			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 		}
 	}
+}
+
+// appendRunStarted tells subscribers that a queued run left the queue and
+// started (its run, and its message in the conversation), when one did.
+func appendRunStarted(tx *store.Tx, th *threadv2.Thread, run *threadv2.Run, item *threadv2.TurnItem) error {
+	if run == nil {
+		return nil
+	}
+	return tx.AppendEvent(&threadv2.ThreadEvent{
+		ThreadId: th.ThreadId,
+		Type:     "run.started",
+		Thread:   th,
+		Run:      run,
+		Item:     item,
+	})
 }
 
 func (e *Engine) finishRunFailed(threadID, runID, code, msg string) {
@@ -1970,7 +2112,7 @@ func (e *Engine) finishRunFailed(threadID, runID, code, msg string) {
 // ---------------------------------------------------------------------------
 // Policy Gate & Durable RuntimeRequest Lifecycle
 
-func (e *Engine) makeGate(threadID, workdir string, grantCeiling identityv1.RuntimeMode) runtime.GateFunc {
+func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 	return func(ctx context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
 		th, err := e.st.Thread(threadID)
 		if err != nil {
@@ -1979,15 +2121,22 @@ func (e *Engine) makeGate(threadID, workdir string, grantCeiling identityv1.Runt
 		runID := th.ActiveRunId
 
 		if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil {
+			// Judge the call by the run that is executing it: its mode was capped by its
+			// author's grant at dispatch, and later queued messages or config edits must
+			// not widen (or narrow) a turn that is already in flight.
+			mode, imode := th.EffectiveRuntimeMode, th.InteractionMode
+			if run, rErr := e.st.Run(runID); rErr == nil {
+				mode, imode = run.RuntimeMode, run.InteractionMode
+			}
 			rules, _ := e.st.AllowRules(threadID)
 			dec := policy.EvaluateTool(policy.ToolEvalInput{
 				Category:        req.Approval.ToolCategory,
 				ToolName:        req.Approval.ToolName,
 				Command:         req.Approval.Command,
 				TargetPath:      req.Approval.TargetPath,
-				EffectiveMode:   th.EffectiveRuntimeMode,
-				GrantCeiling:    grantCeiling,
-				InteractionMode: th.InteractionMode,
+				EffectiveMode:   mode,
+				GrantCeiling:    e.st.RunGrantCeiling(runID),
+				InteractionMode: imode,
 				Sandbox:         policy.SandboxScope{WorkspaceRoot: workdir},
 				AllowedRuleKeys: rules,
 			})
@@ -2098,6 +2247,7 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.RespondRuntimeRequestResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "RespondRuntimeRequest", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -2215,6 +2365,12 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 		}
 		if target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW && req.ApprovePlan {
 			tNow.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+			if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
+				rNow.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+				if err := tx.PutRun(rNow); err != nil {
+					return err
+				}
+			}
 			if lease := e.sup.Get(tNow.ActiveProviderThreadId); lease != nil {
 				_ = lease.Session.SetModes(ctx, tNow.EffectiveRuntimeMode, threadv2.InteractionMode_INTERACTION_MODE_CODE)
 				lease.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
@@ -2296,10 +2452,11 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	activeRunID := req.RunId
-	if activeRunID == "" {
-		activeRunID = th.ActiveRunId
+	if req.RunId != "" && req.RunId != th.ActiveRunId {
+		unlock()
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is not this thread's active run"))
 	}
+	activeRunID := th.ActiveRunId
 	ptID := th.ActiveProviderThreadId
 
 	if req.HoldQueue {
@@ -2344,6 +2501,7 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.ManageQueueResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "ManageQueue", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -2527,6 +2685,9 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 				_ = tx.PutTurnItem(startedItem)
 				tNow.ActiveRunId = startNow.RunId
 				tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+				tNow.ModelSelection = startNow.ModelSelection
+				tNow.EffectiveRuntimeMode = startNow.RuntimeMode
+				tNow.InteractionMode = startNow.InteractionMode
 				updatedRuns = []*threadv2.Run{startNow}
 			}
 
@@ -2582,7 +2743,7 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 	}
 	e.publish(events, nil)
 	if startNow != nil {
-		e.spawnRun(req.ThreadId, startNow.RunId, startNow.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT, p.GrantCeiling)
+		e.spawnRun(req.ThreadId, startNow.RunId, startNow.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 	}
 	return res, nil
 }
@@ -2592,6 +2753,7 @@ func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *thre
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.UpdateThreadConfigResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "UpdateThreadConfig", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -2618,14 +2780,19 @@ func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *thre
 		if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
 		}
+		if err := e.projectAllowsInstance(th.ProjectId, instCfg.InstanceId); err != nil {
+			return nil, err
+		}
 		nextSel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
 	}
 
-	nextReqMode := th.RuntimeMode
+	// Pinning, renaming or archiving must not recompute the ceiling with the caller's grant.
+	nextReqMode, nextEffMode, nextMaxMode := th.RuntimeMode, th.EffectiveRuntimeMode, th.MaxRuntimeMode
 	if req.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		nextReqMode = req.RuntimeMode
+		nextEffMode = policy.EffectiveMode(e.machineMax(), p.GrantCeiling, nextReqMode)
+		nextMaxMode = policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling)
 	}
-	nextEffMode := policy.EffectiveMode(e.cfg.MachineMaxMode, p.GrantCeiling, nextReqMode)
 
 	nextIMode := th.InteractionMode
 	if req.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
@@ -2687,7 +2854,7 @@ func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *thre
 		tNow.ModelSelection = nextSel
 		tNow.RuntimeMode = nextReqMode
 		tNow.EffectiveRuntimeMode = nextEffMode
-		tNow.MaxRuntimeMode = policy.EffectiveCeiling(e.cfg.MachineMaxMode, p.GrantCeiling)
+		tNow.MaxRuntimeMode = nextMaxMode
 		tNow.InteractionMode = nextIMode
 		if strings.TrimSpace(req.Title) != "" {
 			tNow.Title = strings.TrimSpace(req.Title)
@@ -2785,6 +2952,7 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.RollbackCheckpointResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "RollbackCheckpoint", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -2893,6 +3061,7 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	var cached threadv2.ForkThreadResponse
+	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "ForkThread", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
@@ -2940,11 +3109,31 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 		}
 		wsStrategy.WorktreePath = wtPath
 		wsStrategy.Branch = branch
+		// The branch HEAD lacks the source thread's uncommitted edits: lay down the
+		// files of the last checkpoint at or before the fork point.
+		if cp := forkCheckpoint(srcProj.Checkpoints, includedRuns, upTo); cp != nil {
+			if err := e.vcs.RestoreTree(ctx, wtPath, cp.GitTreeOid); err != nil {
+				_ = e.vcs.RemoveWorktree(ctx, ws.Path, wtPath)
+				return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("restore fork files: %w", err))
+			}
+		}
 	}
 
 	sel := proto.Clone(srcProj.Thread.ModelSelection).(*threadv2.ModelSelection)
 	if req.ModelSelection != nil && req.ModelSelection.InstanceId != "" {
+		instCfg, _, err := e.resolveInstanceConfig(p, req.ModelSelection.InstanceId)
+		if err != nil {
+			return nil, err
+		}
+		if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
+		}
 		sel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
+	} else if !e.principalAllowsInstance(p, sel.GetInstanceId()) {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this thread's provider"))
+	}
+	if err := e.projectAllowsInstance(srcProj.Thread.ProjectId, sel.GetInstanceId()); err != nil {
+		return nil, err
 	}
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
@@ -2960,8 +3149,8 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 		Status:               threadv2.ThreadStatus_THREAD_STATUS_IDLE,
 		ModelSelection:       sel,
 		RuntimeMode:          srcProj.Thread.RuntimeMode,
-		EffectiveRuntimeMode: policy.EffectiveMode(e.cfg.MachineMaxMode, p.GrantCeiling, srcProj.Thread.RuntimeMode),
-		MaxRuntimeMode:       policy.EffectiveCeiling(e.cfg.MachineMaxMode, p.GrantCeiling),
+		EffectiveRuntimeMode: policy.EffectiveMode(e.machineMax(), p.GrantCeiling, srcProj.Thread.RuntimeMode),
+		MaxRuntimeMode:       policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling),
 		InteractionMode:      srcProj.Thread.InteractionMode,
 		Workspace:            wsStrategy,
 		CreatedBy:            proto.Clone(p.Actor).(*threadv2.Actor),
@@ -3017,6 +3206,21 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 	}
 	e.publish(events, nil)
 	return res, nil
+}
+
+// forkCheckpoint picks the latest checkpoint at or before run ordinal upTo that
+// belongs to a surviving run (or the ordinal-0 baseline).
+func forkCheckpoint(ckpts []*threadv2.Checkpoint, includedRuns map[string]bool, upTo uint32) *threadv2.Checkpoint {
+	var best *threadv2.Checkpoint
+	for _, c := range ckpts {
+		if c.RunOrdinal > upTo || (c.RunOrdinal != 0 && !includedRuns[c.RunId]) {
+			continue
+		}
+		if best == nil || c.RunOrdinal >= best.RunOrdinal {
+			best = c
+		}
+	}
+	return best
 }
 
 func (e *Engine) DeleteThread(ctx context.Context, p *Principal, threadID string) error {

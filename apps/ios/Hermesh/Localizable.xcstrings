@@ -1,6 +1,646 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Update key for %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 %@ 的密钥"
+          }
+        }
+      }
+    },
+    "Signed in via Chrome on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 Chrome 完成 %@ 登录"
+          }
+        }
+      }
+    },
+    "Cancelled — fall back to manual login" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消（退回手动登录）"
+          }
+        }
+      }
+    },
+    "%@ key updated · %lld tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的密钥已更新 · %lld 个工具"
+          }
+        }
+      }
+    },
+    "%@ key updated" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的密钥已更新"
+          }
+        }
+      }
+    },
+    "Chrome sign-in invalidated on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Chrome 登录卡已失效，请退回手动登录"
+          }
+        }
+      }
+    },
+    "Encrypted in transit to %@’s credential store and never shown to the AI model. Only connect services you trust." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥会直接加密存入 %@ 的凭据库，不会发给 AI 模型。只连接你信任的服务。"
+          }
+        }
+      }
+    },
+    "Update Key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新密钥"
+          }
+        }
+      }
+    },
+    "Tab %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签页 %@"
+          }
+        }
+      }
+    },
+    "Opens this Chrome tab on %@ so you can sign in directly with Chrome’s login or password manager. Model access to the page, screenshots, and debugging is paused while active. Hermesh never reads, stores, or forwards Chrome passwords or cookies, and never auto-submits." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将在 %@ 上切到该 Chrome 标签页，由你直接使用浏览器原生登录或密码管理器完成登录。期间暂停模型对页面、截图和调试输出的访问；Hermesh 不读取、记录或转发浏览器密码或 Cookie，也不会自动提交。"
+          }
+        }
+      }
+    },
+    "%@ is offline. Secrets are not queued offline." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 离线。密钥不会离线排队。"
+          }
+        }
+      }
+    },
+    "Chrome Sign-In · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chrome 安全登录 · %@"
+          }
+        }
+      }
+    },
+    "Confirm Chrome sign-in target" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认 Chrome 登录目标"
+          }
+        }
+      }
+    },
+    "Sign in natively in Chrome. Model access is paused." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Chrome 中完成原生登录，模型访问已暂停。"
+          }
+        }
+      }
+    },
+    "Bring Tab to Front" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切回 Chrome 标签页"
+          }
+        }
+      }
+    },
+    "I’m Signed In" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我已登录"
+          }
+        }
+      }
+    },
+    "Confirm & Open in Chrome" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认并在 Chrome 登录"
+          }
+        }
+      }
+    },
+    "Queued Offline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线排队中"
+          }
+        }
+      }
+    },
+    "Above the limit this machine or grant allows" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超过这台机器或授权允许的上限"
+          }
+        }
+      }
+    },
+    "No models on %@ yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上还没有能用的模型"
+          }
+        }
+      }
+    },
+    "%@ has no levels to choose" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 没有可调的强度"
+          }
+        }
+      }
+    },
+    "%@ is offline: these are the models last read there" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 离线，这是上次读到的模型"
+          }
+        }
+      }
+    },
+    "Add Project…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加项目…"
+          }
+        }
+      }
+    },
+    "Always Allow Here" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这个会话里一直允许"
+          }
+        }
+      }
+    },
+    "Answer it on the Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Mac 上回答。"
+          }
+        }
+      }
+    },
+    "Approve Plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准并开始编码"
+          }
+        }
+      }
+    },
+    "Asks before each file change, command or outside tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次修改文件、执行命令或调用外部工具前均需确认"
+          }
+        }
+      }
+    },
+    "Auto-Accept Edits" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动接受编辑"
+          }
+        }
+      }
+    },
+    "Changes files and runs routine builds and tests; asks before risky steps" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动允许工作区编辑与常规编译测试命令；高风险操作需确认"
+          }
+        }
+      }
+    },
+    "Changes files in the project; asks before commands and sensitive files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动允许工作区内文件修改；执行命令或触碰敏感文件时需确认"
+          }
+        }
+      }
+    },
+    "Decline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
+          }
+        }
+      }
+    },
+    "Describe what to build, debug or plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述要构建、调试或规划的内容"
+          }
+        }
+      }
+    },
+    "Does anything, within the machine’s limit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在机器上限内无阻断执行全部操作"
+          }
+        }
+      }
+    },
+    "Hermesh on %@ needs an update to start sessions." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Hermesh 需要更新才能新建会话。"
+          }
+        }
+      }
+    },
+    "Keep going" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续聊…"
+          }
+        }
+      }
+    },
+    "New Session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建会话"
+          }
+        }
+      }
+    },
+    "New Session in %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 里新建会话"
+          }
+        }
+      }
+    },
+    "No matching models" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的模型"
+          }
+        }
+      }
+    },
+    "Not installed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装"
+          }
+        }
+      }
+    },
+    "Not set up for this project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个项目不用它"
+          }
+        }
+      }
+    },
+    "Offline · messages wait until it’s back" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线 · 消息会排队到它上线"
+          }
+        }
+      }
+    },
+    "Permission mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限模式"
+          }
+        }
+      }
+    },
+    "Plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "规划"
+          }
+        }
+      }
+    },
+    "Plan First" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先出方案"
+          }
+        }
+      }
+    },
+    "Projects on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的项目"
+          }
+        }
+      }
+    },
+    "Projects on %@ · last known" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的项目 · 上次读到的"
+          }
+        }
+      }
+    },
+    "Queue Until It’s Online" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线入队"
+          }
+        }
+      }
+    },
+    "Say more; it goes to the next turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续说，会排到下一轮…"
+          }
+        }
+      }
+    },
+    "Search models or providers" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索模型或供应商"
+          }
+        }
+      }
+    },
+    "Signed out" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未登录"
+          }
+        }
+      }
+    },
+    "Smart Auto" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能自动"
+          }
+        }
+      }
+    },
+    "Steer Now" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即插入引导"
+          }
+        }
+      }
+    },
+    "Supervised" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受控审批"
+          }
+        }
+      }
+    },
+    "Temporary Workspace" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "临时工作区"
+          }
+        }
+      }
+    },
+    "%@ may use a project called “%@”, so this folder too once it’s added." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@的授权里有叫「%@」的项目，添加后也能用这个目录。"
+          }
+        }
+      }
+    },
+    "%@ may use every project on this machine, so this one too once it’s added." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@能用这台机器上的所有项目，添加后也能用它。"
+          }
+        }
+      }
+    },
+    "Agents change this folder directly" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接改这个目录"
+          }
+        }
+      }
+    },
+    "Already the project “%@”: the new session uses it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已经是项目「%@」，新会话会用它。"
+          }
+        }
+      }
+    },
+    "Create Empty Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建空文件夹"
+          }
+        }
+      }
+    },
+    "Create Git Repository" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建为 git 仓库"
+          }
+        }
+      }
+    },
+    "Folder name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹名"
+          }
+        }
+      }
+    },
+    "In %@ on %@. A git repository can give each session its own worktree." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建在 %2$@ 的「%1$@」里。git 仓库能让每个会话用独立的 worktree。"
+          }
+        }
+      }
+    },
+    "New Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹"
+          }
+        }
+      }
+    },
+    "New Folder…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹…"
+          }
+        }
+      }
+    },
     "Provider: %@\nModel: %@\n\nData: messages, chat history, images, attachment contents, memory, and tool results, which may include data from connected services.\n\nPurpose: generate replies and perform Her’s tasks, including scheduled tasks on your computer.\n\nNote: Her sends data through your computer to the AI model service configured there, including any custom provider or gateway." : {
       "localizations" : {
         "zh-Hans" : {

@@ -415,6 +415,19 @@ test("settings 机器 opens this Mac: its sharing, its agents each opening a pag
   await mac.click();
   await pause.click();
   await expect(pause).toHaveAttribute("aria-checked", "false");
+
+  // Its sessions' permission limit (docs/thread-composer.md §5.4): picked from a menu, kept on the machine.
+  const limit = panel.getByTestId("machine-max-mode");
+  await expect(limit).toHaveText("不限制");
+  await answerMenu(app, "2"); // RuntimeMode.AUTO_EDITS
+  await limit.click();
+  await expect(settings.getByRole("status")).toContainText("已把 owner-mac 的会话权限上限设为「自动接受编辑」");
+  await expect(limit).toHaveText("自动接受编辑");
+  const machines = await api<{ machines: { local?: boolean; status?: { maxRuntimeMode?: string } }[] }>(settings, "ListMachines");
+  expect(machines.machines.find((m) => m.local)?.status?.maxRuntimeMode).toBe("RUNTIME_MODE_AUTO_EDITS");
+  await answerMenu(app, "0");
+  await limit.click();
+  await expect(limit).toHaveText("不限制");
   await app.close();
 });
 

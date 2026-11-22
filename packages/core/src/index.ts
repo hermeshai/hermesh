@@ -12,5 +12,6 @@ export * from "./usage";
 export * from "./steps";
 export * from "./team";
 export * from "./threads";
+export * from "./composer";
 export * from "./i18n";
 export * from "./world";

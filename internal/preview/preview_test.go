@@ -268,6 +268,18 @@ func TestGrantRuntimeModeCeiling(t *testing.T) {
 	if err != nil || !slices.Contains(zhCards[0].Lines, "权限上限：改文件不问，运行其他命令前先问") {
 		t.Fatalf("zh-CN auto_edits grant card: %+v %v", zhCards, err)
 	}
+	// The machine's own limit, and a folder made for a project (settings, signed when a device asks to).
+	limit := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO}}}
+	folder := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_CreateFolder{CreateFolder: &identityv1.CreateFolder{Parent: "~/code", Name: "app", GitInit: true}}}
+	cs, err = Cards([]*localv1.SigningRequest{request(t, limit), request(t, folder)}, h, "zh-CN")
+	if err != nil || cs[0].Title != "限制机器 vps-1上会话的权限" || !slices.Contains(cs[0].Lines, "最多：改文件和运行常规检查不问，其余操作前先问") ||
+		cs[1].Title != "在机器 vps-1上新建文件夹“app”" || !slices.Contains(cs[1].Lines, "位置：~/code") {
+		t.Fatalf("machine limit and new folder: %+v %v", cs, err)
+	}
+	unknown := &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: identityv1.RuntimeMode(99)}}}
+	if _, err := Cards([]*localv1.SigningRequest{request(t, unknown)}, h, "en"); !errors.As(err, new(*Refused)) {
+		t.Fatalf("an unknown machine limit must be refused, got: %v", err)
+	}
 	bad := request(t, &identityv1.Grant{OwnerId: "o_x", ClientLabel: "bot", ClientPublicKey: pub, MaxRuntimeMode: identityv1.RuntimeMode(99)})
 	var refused *Refused
 	if _, err := Cards([]*localv1.SigningRequest{bad}, h, "en"); !errors.As(err, &refused) {

@@ -377,6 +377,24 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		d := x.SetAgentDefaults
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),
 			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
+	case *identityv1.AdminCommand_CreateFolder:
+		f := x.CreateFolder
+		lines := []string{w.f("In: %s", cmpOr(f.Parent, "~"))}
+		if f.GitInit {
+			lines = append(lines, w.f("A git repository with one empty commit"))
+		}
+		return Card{Title: w.f("Create folder “%s” on %s", f.Name, target), Lines: lines}, nil
+	case *identityv1.AdminCommand_SetMaxRuntimeMode:
+		m := x.SetMaxRuntimeMode.Mode
+		if m == identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
+			return Card{Title: w.f("Lift the permission limit of %s", target), Why: w.f("Its threads may run as their grants and the owner allow.")}, nil
+		}
+		text := runtimeModeText(m, w)
+		if text == "" {
+			return Card{}, &Refused{typ, "an unknown permission mode"}
+		}
+		return Card{Title: w.f("Limit what threads may do on %s", target), Lines: []string{w.f("At most: %s", text)},
+			Why: w.f("Whoever starts them, its threads ask before anything beyond this.")}, nil
 	case *identityv1.AdminCommand_SetHer:
 		if x.SetHer.Enabled && x.SetHer.Erase {
 			return Card{}, &Refused{typ, "Her turned on with her data erased"}

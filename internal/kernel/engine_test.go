@@ -95,7 +95,7 @@ func TestProviderCatalogEnvRedactionAndIdempotency(t *testing.T) {
 	defer eng.Close()
 
 	repo := initGitProject(t)
-	if err := eng.SyncWorkspace("demo", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "Demo repo"); err != nil {
+	if err := eng.SyncWorkspace("demo", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "Demo repo", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,8 +173,8 @@ func TestMultiPrincipalGrantCeilingAndApprovalBoundary(t *testing.T) {
 	defer eng.Close()
 
 	repo := initGitProject(t)
-	_ = eng.SyncWorkspace("allowed-proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "")
-	_ = eng.SyncWorkspace("secret-proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "")
+	_ = eng.SyncWorkspace("allowed-proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
+	_ = eng.SyncWorkspace("secret-proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
 
 	owner := OwnerPrincipal("dev_owner", "Owner")
 	extGrant := GrantPrincipal(&identityv1.Grant{
@@ -257,7 +257,7 @@ func TestDeclineFeedbackUserInputPlanModeAndZeroPersistenceSecrets(t *testing.T)
 	defer eng.Close()
 
 	repo := initGitProject(t)
-	_ = eng.SyncWorkspace("proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "")
+	_ = eng.SyncWorkspace("proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
 	owner := OwnerPrincipal("dev_owner", "Owner")
 
 	// Upload an attachment blob for structured question answer.
@@ -488,7 +488,7 @@ func TestTransitionsIdleReapCrossProviderHandoffRollbackAndFork(t *testing.T) {
 	defer eng.Close()
 
 	repo := initGitProject(t)
-	_ = eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "")
+	_ = eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_WORKTREE, "", nil)
 	owner := OwnerPrincipal("dev_owner", "Owner")
 
 	// Launch in isolated git worktree!

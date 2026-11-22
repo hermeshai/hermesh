@@ -813,6 +813,22 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     set {command = .setHerCommandConnector(newValue)}
   }
 
+  public var createFolder: Hermesh_Identity_V1_CreateFolder {
+    get {
+      if case .createFolder(let v)? = command {return v}
+      return Hermesh_Identity_V1_CreateFolder()
+    }
+    set {command = .createFolder(newValue)}
+  }
+
+  public var setMaxRuntimeMode: Hermesh_Identity_V1_SetMaxRuntimeMode {
+    get {
+      if case .setMaxRuntimeMode(let v)? = command {return v}
+      return Hermesh_Identity_V1_SetMaxRuntimeMode()
+    }
+    set {command = .setMaxRuntimeMode(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Command: Equatable, Sendable {
@@ -824,6 +840,8 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     case setHer(Hermesh_Identity_V1_SetHer)
     case setHerAssistantMode(Hermesh_Identity_V1_SetHerAssistantMode)
     case setHerCommandConnector(Hermesh_Identity_V1_SetHerCommandConnector)
+    case createFolder(Hermesh_Identity_V1_CreateFolder)
+    case setMaxRuntimeMode(Hermesh_Identity_V1_SetMaxRuntimeMode)
 
   }
 
@@ -1283,6 +1301,41 @@ public nonisolated struct Hermesh_Identity_V1_DeltaEnvelope: Sendable {
   public init() {}
 
   fileprivate var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+/// A setting: a new empty folder in a folder under the machine's home folder,
+/// for a project (docs/thread-composer.md §4.3). git_init makes it a git
+/// repository with one empty commit, so sessions can take worktrees of it.
+public nonisolated struct Hermesh_Identity_V1_CreateFolder: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// "~", "~/code", or a full path under the home folder.
+  public var parent: String = String()
+
+  /// One folder name: no separator, not starting with ".".
+  public var name: String = String()
+
+  public var gitInit: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// A setting: the broadest permission mode the machine's threads may run in,
+/// whoever starts them; UNSPECIFIED lifts the limit.
+public nonisolated struct Hermesh_Identity_V1_SetMaxRuntimeMode: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var mode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -2007,7 +2060,7 @@ nonisolated extension Hermesh_Identity_V1_EraseAck: SwiftProtobuf.Message, Swift
 
 nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AdminCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{3}create_folder\0\u{3}set_max_runtime_mode\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2123,6 +2176,32 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
           self.command = .setHerCommandConnector(v)
         }
       }()
+      case 19: try {
+        var v: Hermesh_Identity_V1_CreateFolder?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .createFolder(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .createFolder(v)
+        }
+      }()
+      case 20: try {
+        var v: Hermesh_Identity_V1_SetMaxRuntimeMode?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setMaxRuntimeMode(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setMaxRuntimeMode(v)
+        }
+      }()
       default: break
       }
     }
@@ -2177,6 +2256,14 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
     case .setHerCommandConnector?: try {
       guard case .setHerCommandConnector(let v)? = self.command else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+    }()
+    case .createFolder?: try {
+      guard case .createFolder(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
+    }()
+    case .setMaxRuntimeMode?: try {
+      guard case .setMaxRuntimeMode(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 20)
     }()
     case nil: break
     }
@@ -2995,6 +3082,76 @@ nonisolated extension Hermesh_Identity_V1_DeltaEnvelope: SwiftProtobuf.Message, 
     if lhs.ciphertext != rhs.ciphertext {return false}
     if lhs.keys != rhs.keys {return false}
     if lhs._createdAt != rhs._createdAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_CreateFolder: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".CreateFolder"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}parent\0\u{1}name\0\u{3}git_init\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.parent) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.gitInit) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.parent.isEmpty {
+      try visitor.visitSingularStringField(value: self.parent, fieldNumber: 1)
+    }
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 2)
+    }
+    if self.gitInit != false {
+      try visitor.visitSingularBoolField(value: self.gitInit, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_CreateFolder, rhs: Hermesh_Identity_V1_CreateFolder) -> Bool {
+    if lhs.parent != rhs.parent {return false}
+    if lhs.name != rhs.name {return false}
+    if lhs.gitInit != rhs.gitInit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SetMaxRuntimeMode: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetMaxRuntimeMode"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.mode) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.mode != .unspecified {
+      try visitor.visitSingularEnumField(value: self.mode, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SetMaxRuntimeMode, rhs: Hermesh_Identity_V1_SetMaxRuntimeMode) -> Bool {
+    if lhs.mode != rhs.mode {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

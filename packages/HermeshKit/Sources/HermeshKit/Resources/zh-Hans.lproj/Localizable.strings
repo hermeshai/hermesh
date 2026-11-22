@@ -172,3 +172,12 @@
 
 /* A machine older than this app lacks what was asked (docs/version-skew.md) */
 "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again." = "那台电脑上的 Hermesh 版本较旧，还没有这项功能。在那台电脑上更新 Hermesh 后再试。";
+"In: %@" = "位置：%@";
+"A git repository with one empty commit" = "一个 git 仓库，带一个空提交";
+"Create folder “%@” on %@" = "在%2$@上新建文件夹「%1$@」";
+"Once approved, the machine makes the empty folder under its home folder, for a project." = "批准后，机器在主目录下新建这个空文件夹，用作项目。";
+"Lift the permission limit of %@" = "取消%@的权限上限";
+"Once approved, its threads run as their grants and you allow." = "批准后，它的会话按授权和你的设置运行。";
+"Limit what threads may do on %@" = "限制%@上会话的权限";
+"At most: %@" = "最多：%@";
+"Once approved, whoever starts them, its threads ask before anything beyond this." = "批准后，无论谁发起，超出这个范围的操作都要先问。";
