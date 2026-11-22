@@ -16,12 +16,17 @@
 /* A new session: its title and the box in the middle of the page. */
 .th-new{width:100%;max-width:var(--conversation-width);margin:0 auto;padding:18vh 24px 0;display:flex;flex-direction:column}
 .th-new h1{margin:0 0 22px;font-size:24px;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-align:center}
-.th-new .cmp-in{min-height:64px}
+/* The box: one line, growing with what is written (Composer.tsx); focus deepens its edge, no ring. */
 .th-cmp{flex:none}
+.th-cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--l3),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06)}
+.th-cmp .cmp-row{gap:6px}
+.th-cmp .cmp-in{padding:5.5px 2px}
+.th-cmp .cmp-in:focus-visible{outline:none}
+.th-cmp .cmp-in::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .th-stop{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
 .th-stop:hover{background:var(--l4)}
 .th-stop .ic{width:14px;height:14px;fill:currentColor}
-.th-opts{display:flex;align-items:center;gap:2px;min-height:32px;padding:4px 2px 0}
+.th-opts{display:flex;align-items:center;gap:2px;min-height:32px;padding:6px 5px 0}
 .th-opts .mb{height:28px;padding:0 7px 0 8px;gap:6px}
 .th-opts .mb .lbl{max-width:220px}
 .th-lvl{margin-left:5px;color:var(--l2);font-weight:var(--font-weight-normal)}

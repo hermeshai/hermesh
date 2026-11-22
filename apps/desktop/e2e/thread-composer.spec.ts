@@ -15,10 +15,11 @@ test("a session on another machine: its folder added as a project, the model pic
   try {
     // New Session sits over Her; it opens the composer.
     const nav = page.locator(".side-nav").getByRole("button");
-    await expect(nav.first()).toContainText("新建会话");
+    await expect(nav.first()).toContainText("新会话");
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-launch-card")).toBeVisible();
-    await expect(page.getByTestId("thread-launch-card").getByRole("heading", { name: "新建会话" })).toBeVisible();
+    await expect(page.getByTestId("thread-launch-card").getByRole("heading", { name: "新会话" })).toBeVisible();
+    await expect(page.getByTestId("thread-title")).toHaveText("新会话");
 
     // The environment: work-mac. It has no project yet, so the session would use its temporary workspace.
     await page.getByRole("button", { name: "环境" }).click();
@@ -26,6 +27,16 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByTestId("launch-machine-chip")).toHaveText("work-mac");
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
+
+    // The box is one line, growing as what is written needs more, and back.
+    const input = page.getByTestId("thread-composer-input");
+    const height = async () => (await input.boundingBox())!.height;
+    expect(await height()).toBeLessThan(40);
+    await input.fill("第一行\n第二行\n第三行");
+    expect(await height()).toBeGreaterThan(60);
+    await snap(page, "composer-lines");
+    await input.fill("");
+    expect(await height()).toBeLessThan(40);
 
     // Add a Project from the project menu: work-mac's folders, browsed from here.
     await page.getByRole("button", { name: "项目" }).click();
@@ -71,7 +82,6 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(panel).toBeHidden();
 
     // Start it: the session opens, runs on work-mac in the project, and is in the list.
-    const input = page.getByTestId("thread-composer-input");
     await input.fill("say hello_from_work_mac");
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
