@@ -32,19 +32,41 @@ const changed = () => worldListeners.forEach((f) => f());
 
 // --- Preferences (the settings window sets them) ---
 
-const defaults: Preferences = { appearance: "system", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system", keepDaemonOnQuit: false };
+const defaults: Preferences = { appearance: "system", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system", stayOnline: true };
 let prefs: Preferences | undefined;
+/** What the file said before Stay online, until migrateStayOnline reads it. */
+let legacy: { keepDaemonOnQuit?: boolean; stayOnline?: boolean } = {};
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
 export function preferences(): Preferences {
   if (!prefs) {
     try {
-      prefs = { ...defaults, ...JSON.parse(fs.readFileSync(prefsFile(), "utf8")) };
+      const raw = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
+      legacy = { keepDaemonOnQuit: raw.keepDaemonOnQuit, stayOnline: raw.stayOnline };
+      delete raw.keepDaemonOnQuit;
+      prefs = { ...defaults, ...raw };
     } catch {
       prefs = { ...defaults };
     }
   }
   return prefs!;
+}
+
+/**
+ * Stay online replaced open-at-login and keep-the-service-on-quit (docs/settings-environments.md,
+ * D10): an owner who had either on stays online; one who had neither, not; a new install is.
+ * Then the login item follows it.
+ */
+export async function migrateStayOnline(loginItem: () => Promise<{ on: boolean }> | { on: boolean }, setLoginItem: (on: boolean) => unknown) {
+  preferences();
+  if (typeof legacy.stayOnline === "boolean") return;
+  if (typeof legacy.keepDaemonOnQuit === "boolean") {
+    const on = legacy.keepDaemonOnQuit || (await loginItem()).on;
+    setPreferences({ stayOnline: on });
+  } else {
+    setPreferences({ stayOnline: preferences().stayOnline });
+  }
+  await setLoginItem(preferences().stayOnline);
 }
 
 /** Every window (and the native menus) in the chosen appearance: CSS follows it through prefers-color-scheme. */
@@ -53,17 +75,23 @@ export function applyAppearance() {
 }
 
 export function setPreferences(p: Partial<Preferences>): Preferences {
-  const next = { ...preferences() };
-  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge", "keepDaemonOnQuit"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
+  const before = preferences();
+  const next = { ...before };
+  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge", "stayOnline"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next.language = p.language!;
   if (p.appearance === "system" || p.appearance === "light" || p.appearance === "dark") next.appearance = p.appearance;
   prefs = next;
+  legacy.stayOnline = next.stayOnline;
   applyAppearance();
   fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
   fs.writeFileSync(prefsFile(), JSON.stringify(next));
+  if (next.stayOnline !== before.stayOnline) stayOnlineListeners.forEach((f) => f(next.stayOnline));
   changed();
   return next;
 }
+
+/** Told when Stay online changes: the login item follows it (index.ts). */
+export const stayOnlineListeners = new Set<(on: boolean) => void>();
 
 // --- Notifications ---
 

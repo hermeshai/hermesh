@@ -3,7 +3,7 @@ import { execFile, execFileSync, spawn, type ChildProcess } from "node:child_pro
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, sessionList } from "./app";
+import { answerMenu, fixture, launch, snap, sessionList } from "./app";
 
 // The sheets over the main window: adding a project, connecting an agent,
 // adding a machine with its pairing code, and approving a request from a
@@ -78,7 +78,7 @@ test("adding a project: a folder on this Mac becomes a project", async () => {
   const sheet = page.getByRole("dialog", { name: "添加项目" });
   // The window behind goes dim and soft, as behind every dialog.
   await expect(page.locator(".sheet-scrim")).toHaveCSS("backdrop-filter", "blur(12px) saturate(1.2)");
-  await expect(sheet.getByRole("group", { name: "机器" }).getByRole("button", { name: "owner-mac" })).toHaveAttribute("aria-pressed", "true");
+  await expect(sheet.getByRole("group", { name: "环境" }).getByRole("button", { name: "owner-mac" })).toHaveAttribute("aria-pressed", "true");
   await expect(sheet.getByRole("button", { name: "选择…" })).toBeVisible(); // this Mac: the folder can be picked
   await sheet.getByLabel("目录").fill(dir); // the native folder dialog can't be driven
   await expect(sheet.getByLabel("项目名")).toHaveValue(folder);
@@ -132,9 +132,9 @@ test("connecting an agent: the message to send, its request, what it may use, ap
     if (!text.includes("所有项目")) await box.setChecked(text.includes("/ demo"));
   }
   await projects.getByRole("button", { name: "好" }).click();
-  const agents = sheet.getByRole("group", { name: "编码 agent" });
+  const agents = sheet.getByRole("group", { name: "Agent 提供方" });
   await agents.getByRole("button", { name: "修改" }).click();
-  const allAgents = agents.getByRole("checkbox", { name: "所有编码 agent（包括以后安装的）" });
+  const allAgents = agents.getByRole("checkbox", { name: "所有 Agent 提供方（包括以后安装的）" });
   await expect(allAgents).toBeChecked(); // the default
   await allAgents.setChecked(false);
   await agents.getByRole("checkbox", { name: "Gemini CLI" }).setChecked(true);
@@ -178,7 +178,7 @@ test("adding a machine: its system, then the app or a command (Linux: the comman
   const st = await api<Status>(page, "GetStatus");
   await command(app, page, "addMachine");
   const sheet = page.getByRole("dialog");
-  await expect(sheet.getByRole("heading", { name: "添加机器" })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "添加环境" })).toBeVisible();
   const how = sheet.getByRole("group", { name: "安装方式" });
   const viaApp = how.getByRole("button", { name: "安装应用" });
   const viaCommand = how.getByRole("button", { name: "终端命令" });
@@ -223,11 +223,11 @@ test("adding a machine: its system, then the app or a command (Linux: the comman
   await snap(page, "sheet-enter-code");
   await sheet.getByRole("button", { name: "查找" }).click();
 
-  await expect(sheet.getByRole("heading", { name: "一台自称「box」的机器想加入" })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "「box」想作为环境加入" })).toBeVisible();
   // The code entered binds its key: no verification code to compare.
   await expect(sheet).toContainText("你输入的配对码与它的密钥相符");
   await expect(sheet).not.toContainText("核对码");
-  await sheet.getByLabel("机器名").fill(name);
+  await sheet.getByLabel("名称", { exact: true }).fill(name);
   await snap(page, "sheet-pairing-machine");
   await sheet.getByRole("button", { name: "批准" }).click();
   await expect(page.getByRole("status").filter({ hasText: `「${name}」已加入，去设置里给它加项目` })).toBeVisible();
@@ -246,16 +246,18 @@ test("in settings: two machines ask at once, one at a time; a notification's cli
   const before = new Set((await api<{ machines: { machineId: string }[] }>(page, "ListMachines")).machines.map((m) => m.machineId));
   const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
   await settings.waitForLoadState();
-  await settings.getByRole("button", { name: "添加机器…" }).click();
+  // + beside 环境, then 添加其他电脑或服务器… in its menu.
+  await answerMenu(app, "other");
+  await settings.getByRole("button", { name: "添加环境…" }).click();
   const sheet = settings.getByRole("dialog");
-  await expect(sheet.getByRole("heading", { name: "添加机器" })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "添加环境" })).toBeVisible();
 
   const names = [`box-a-${process.pid}`, `box-b-${process.pid}`];
   const pairs = names.map((n) =>
     background(path.join(path.dirname(fixture.cli), "hermeshd"), ["pair", st.connectAddress, "--name", n, "--no-service", "--data-dir", fs.mkdtempSync(path.join(os.tmpdir(), "hmmachine-"))]),
   );
   await Promise.all(pairs.map((p) => p.code));
-  const heading = sheet.getByRole("heading", { name: /^一台自称「box-[ab]-\d+」的机器想加入$/ });
+  const heading = sheet.getByRole("heading", { name: /^「box-[ab]-\d+」想作为环境加入$/ });
   await expect(heading).toBeVisible({ timeout: 30_000 });
 
   // The other one's notification, clicked: it opens in settings, not in the main window.
@@ -264,15 +266,15 @@ test("in settings: two machines ask at once, one at a time; a notification's cli
   type Hook = { hermeshTest: { notifications(): { title: string; click(): void }[] } };
   await expect
     .poll(() => app.evaluate(() => (globalThis as unknown as Hook).hermeshTest.notifications().map((n) => n.title)), { timeout: 30_000 })
-    .toContain(`机器「${other}」想加入`);
-  await app.evaluate((_, t) => (globalThis as unknown as Hook).hermeshTest.notifications().find((n) => n.title === t)?.click(), `机器「${other}」想加入`);
-  await expect(sheet.getByRole("heading", { name: `一台自称「${other}」的机器想加入` })).toBeVisible();
+    .toContain(`「${other}」想作为环境加入`);
+  await app.evaluate((_, t) => (globalThis as unknown as Hook).hermeshTest.notifications().find((n) => n.title === t)?.click(), `「${other}」想作为环境加入`);
+  await expect(sheet.getByRole("heading", { name: `「${other}」想作为环境加入` })).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // Approved, the other follows; approved too, the sheet closes.
   await sheet.getByRole("button", { name: "批准" }).click();
   await expect(settings.getByRole("status").filter({ hasText: `「${other}」已加入` })).toBeVisible({ timeout: 30_000 });
-  await expect(sheet.getByRole("heading", { name: `一台自称「${names[shown]}」的机器想加入` })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: `「${names[shown]}」想作为环境加入` })).toBeVisible();
   await sheet.getByRole("button", { name: "批准" }).click();
   await expect(sheet).toBeHidden({ timeout: 30_000 });
   for (const p of pairs) expect(await p.exit, p.output()).toBe(0);

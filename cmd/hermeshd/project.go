@@ -58,7 +58,7 @@ func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error
 		Use:   "add <folder>",
 		Short: "Add a folder as a project (a separate worktree per session, or --in-place)",
 		Example: `  hermeshd project add ~/code/app
-  hermeshd project add ~/notes --in-place --agents claude`,
+  hermeshd project add ~/notes --in-place`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := args[0]
@@ -80,10 +80,8 @@ func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error
 			if inPlace {
 				p.Workspace, p.DefaultBaseRef = identityv1.Workspace_WORKSPACE_IN_PLACE, ""
 			}
-			for _, a := range strings.Split(agents, ",") {
-				if a = strings.TrimSpace(a); a != "" {
-					p.Agents = append(p.Agents, a)
-				}
+			if strings.TrimSpace(agents) != "" {
+				fmt.Fprintln(os.Stderr, "--agents is ignored: every signed-in agent provider can work in every project; limit an agent in its access")
 			}
 			if _, err := apply(cmd.Context(), &identityv1.AdminCommand{Command: &identityv1.AdminCommand_AddProject{AddProject: p}}); err != nil {
 				return err
@@ -95,18 +93,15 @@ func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error
 			if base != "" {
 				how += ", base " + base
 			}
-			who := "every coding agent"
-			if len(p.Agents) > 0 {
-				who = strings.Join(p.Agents, ", ")
-			}
-			fmt.Printf("✓ Added project “%s” (%s) for %s\n", name, how, who)
+			fmt.Printf("✓ Added project “%s” (%s)\n", name, how)
 			return nil
 		},
 	}
 	add.Flags().StringVar(&name, "name", "", "the project's name (default: from the folder)")
 	add.Flags().BoolVar(&inPlace, "in-place", false, "agents change this folder directly, with no worktree")
 	add.Flags().StringVar(&base, "base", "", "the branch new sessions start from (default: the current one)")
-	add.Flags().StringVar(&agents, "agents", "", "the coding agents that may use it, comma-separated (default: all)")
+	add.Flags().StringVar(&agents, "agents", "", "ignored: every agent provider works in every project")
+	_ = add.Flags().MarkHidden("agents")
 
 	remove := &cobra.Command{
 		Use:   "remove <name>",

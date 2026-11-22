@@ -16,7 +16,7 @@
   "setup": {
     "title": "Choose where Her runs",
     "addTitle": "Add an Environment",
-    "sub": "Her works on the machine you choose: its conversations, memory and files stay there, and it answers while that machine is on.",
+    "sub": "Her works in the environment you choose: its conversations, memory and files stay there, and it answers while that environment is on.",
     "thisMac": "This Mac",
     "thisMac_win": "This PC",
     "thisMac_linux": "This Computer",
@@ -28,7 +28,7 @@
     "offline": "Offline",
     "unsupported": "Can't run Her: {{detail}}",
     "newServer": "A New Server",
-    "newServerDesc": "Install Hermesh on it and pair it, as Add Machine does",
+    "newServerDesc": "Install Hermesh on it and pair it, as Add Environment does",
     "add": "Add…",
     "turnOn": "Turn On Her",
     "signer": "Confirm in the signer to turn on Her on {{name}}.",
@@ -371,7 +371,7 @@
   },
   "access": {
     "title": "Give “{{name}}” full access?",
-    "body": "It acts on {{environment}} without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.",
+    "body": "It acts on {{environment}} without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything in that environment to it.",
     "button": "Turn On Full Access",
     "done": "{{name}} has full access"
   },

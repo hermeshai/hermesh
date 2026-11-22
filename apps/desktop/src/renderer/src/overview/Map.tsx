@@ -607,7 +607,7 @@ function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
 /** A machine node's context menu: its settings (a click on it drills down). */
 async function machineMenu(m: Machine) {
   const id = await window.hermesh?.popupMenu([{ id: "settings", label: i18n.t("overview:map.machineSettings") }]);
-  if (id === "settings") window.hermesh?.openSettings(`machines/${m.machineId}`);
+  if (id === "settings") window.hermesh?.openSettings(`env/${m.machineId}`);
 }
 
 /** Offline, or how many of its sessions run now. */

@@ -66,7 +66,7 @@ function quitAppMenuItems(): MenuItemConstructorOptions[] {
   const t = i18n.getFixedT(null, "main");
   const items: MenuItemConstructorOptions[] = [{ role: "quit", label: t("menu.app.quit") }];
   if (daemonControlAvailable() && daemonState() === "running") {
-    if (preferences().keepDaemonOnQuit) {
+    if (preferences().stayOnline) {
       items.push({ id: "quitStopDaemon", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() });
     } else {
       items.push({ id: "quitKeepDaemon", label: t("daemon.quitKeepMenu"), click: () => quitKeepingDaemon() });

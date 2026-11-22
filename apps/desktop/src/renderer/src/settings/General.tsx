@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { pickLanguage } from "@hermesh/core";
-import type { Appearance, LoginItem, Preferences } from "../../../shared/bridge";
-import type { DaemonInfo } from "../../../shared/daemon";
+import type { Appearance, Preferences } from "../../../shared/bridge";
 import { languages, resolveLanguage, type LanguageChoice } from "../../../shared/i18n";
 import { useUpdate } from "../update";
 import { SRow, Switch } from "./common";
@@ -10,99 +9,62 @@ import { SRow, Switch } from "./common";
 /** The preferences that are switches. */
 type Flag = { [K in keyof Preferences]: Preferences[K] extends boolean ? K : never }[keyof Preferences];
 
-/** General: the appearance and language, start at login, notifications, the menu bar, updates. */
+/** General: the appearance and language, and updates (docs/settings-environments.md §5.8). */
 export function General() {
   const { t } = useTranslation("settings");
   // Kept by the main process, which acts on them while no window is open.
   const [prefs, setPrefs] = useState<Preferences>();
-  const [login, setLogin] = useState<LoginItem>();
-  const [daemon, setDaemon] = useState<DaemonInfo | null>(null);
-
   useEffect(() => {
     window.hermesh?.getPreferences().then(setPrefs);
-    window.hermesh?.loginItem().then(setLogin);
-    window.hermesh?.daemonState().then(setDaemon);
-    return window.hermesh?.onDaemonState(setDaemon);
+  }, []);
+  const look = (a: Appearance) => (
+    <button key={a} type="button" className={prefs?.appearance === a ? "on" : ""} aria-pressed={prefs?.appearance === a} disabled={!prefs} onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}>
+      <i className={`look-${a}`} />
+      {t(`appearance.${a}`)}
+    </button>
+  );
+  return (
+    <div className="form">
+      <div className="fgroup">
+        <SRow title={t("appearance.title")}>
+          <div className="set-look" role="group" aria-label={t("appearance.title")}>
+            {(["system", "light", "dark"] as Appearance[]).map(look)}
+          </div>
+        </SRow>
+        <Language prefs={prefs} setPrefs={setPrefs} />
+      </div>
+      <Updates />
+    </div>
+  );
+}
+
+/** Notifications: what Hermesh tells about, and the menu bar's dot (docs/settings-environments.md §5.8). */
+export function NotificationsPage() {
+  const { t } = useTranslation("settings");
+  const [prefs, setPrefs] = useState<Preferences>();
+  useEffect(() => {
+    window.hermesh?.getPreferences().then(setPrefs);
   }, []);
   const pref = (k: Flag, title: string, desc?: string) => (
     <SRow title={title} desc={desc}>
       <Switch on={prefs?.[k] ?? false} label={title} disabled={!prefs} set={(on) => window.hermesh?.setPreferences({ [k]: on }).then(setPrefs)} />
     </SRow>
   );
-
   return (
     <div className="form">
       <div className="fgroup">
-        <SRow title={t("appearance.title")}>
-          <div className="seg" role="group" aria-label={t("appearance.title")}>
-            {(["system", "light", "dark"] as Appearance[]).map((a) => (
-              <button
-                key={a}
-                type="button"
-                className={prefs?.appearance === a ? "on" : ""}
-                aria-pressed={prefs?.appearance === a}
-                disabled={!prefs}
-                onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}
-              >
-                {t(`appearance.${a}`)}
-              </button>
-            ))}
-          </div>
+        <SRow title={t("general.connectionRequests")} desc={t("general.connectionRequestsDesc")}>
+          <Switch on label={t("general.connectionRequests")} disabled />
         </SRow>
-      </div>
-      <Language prefs={prefs} setPrefs={setPrefs} />
-      <div>
-        <div className="fhead">{t("general.startup")}</div>
-        <div className="fgroup">
-          <SRow
-            title={t("general.openAtLogin")}
-            desc={
-              <>
-                {t("general.openAtLoginDesc")}
-                {login?.needsApproval && (
-                  <>
-                    {" "}{t("general.loginItemsApproval")}{" "}
-                    <button className="link" onClick={() => window.hermesh?.openLoginItems()}>{t("general.openSystemSettings")}</button>
-                  </>
-                )}
-              </>
-            }
-          >
-            <Switch on={login?.on ?? false} label={t("general.openAtLogin")} disabled={!login} set={(on) => window.hermesh?.setLoginItem(on).then(setLogin)} />
-          </SRow>
-          {pref("keepDaemonOnQuit", t("general.keepDaemonOnQuit"), t("general.keepDaemonOnQuitDesc"))}
-          {daemon?.manageable && (
-            <SRow title={t("general.backgroundService")} desc={t(`general.daemonStatus.${daemon.state}`)}>
-              {daemon.state === "running" ? (
-                <button className="btn sm" onClick={() => void window.hermesh?.stopDaemon()}>{t("general.stopService")}</button>
-              ) : (
-                <button className="btn sm" disabled={daemon.state === "starting" || daemon.state === "stopping"} onClick={() => void window.hermesh?.startDaemon()}>
-                  {t("general.startService")}
-                </button>
-              )}
-            </SRow>
-          )}
-        </div>
+        {pref("notifyQuestion", t("general.agentQuestions"), t("general.agentQuestionsDesc"))}
+        {pref("notifyFailed", t("general.sessionFailed"))}
+        {pref("notifyStarted", t("general.sessionStarted"))}
+        {pref("notifyTurnDone", t("general.turnDone"))}
       </div>
       <div>
-        <div className="fhead">{t("general.notifications")}</div>
-        <div className="fgroup">
-          <SRow title={t("general.connectionRequests")} desc={t("general.connectionRequestsDesc")}>
-            <Switch on label={t("general.connectionRequests")} disabled />
-          </SRow>
-          {pref("notifyStarted", t("general.sessionStarted"))}
-          {pref("notifyQuestion", t("general.agentQuestions"), t("general.agentQuestionsDesc"))}
-          {pref("notifyFailed", t("general.sessionFailed"))}
-          {pref("notifyTurnDone", t("general.turnDone"))}
-        </div>
+        <div className="fgroup">{pref("menuBadge", t("general.menuBadgeTitle"))}</div>
+        <p className="set-foot">{t("general.menuBadge")}</p>
       </div>
-      <div>
-        <div className="fhead">{t("general.menuBar")}</div>
-        <div className="fgroup">
-          {pref("menuBadge", t("general.menuBadge"))}
-        </div>
-      </div>
-      <Updates />
     </div>
   );
 }
@@ -118,8 +80,6 @@ function Language({ prefs, setPrefs }: { prefs?: Preferences; setPrefs: (p: Pref
   const system = pickLanguage(navigator.languages);
   const restart = prefs && running && resolveLanguage(prefs.language, navigator.languages) !== running;
   return (
-    <div>
-      <div className="fgroup">
         <SRow
           title={t("language.title")}
           desc={
@@ -144,8 +104,6 @@ function Language({ prefs, setPrefs }: { prefs?: Preferences; setPrefs: (p: Pref
             ))}
           </select>
         </SRow>
-      </div>
-    </div>
   );
 }
 
@@ -153,9 +111,9 @@ function Language({ prefs, setPrefs }: { prefs?: Preferences; setPrefs: (p: Pref
 function Updates() {
   const { t } = useTranslation("settings");
   const info = useUpdate();
-  return <div><div className="fhead">{t("update.title")}</div><div className="fgroup">
-    <SRow title={t("update.autoDownload")} desc={t("update.autoDownloadDesc")}>
+  return <div><div className="fgroup">
+    <SRow title={t("update.autoDownload")}>
       <Switch label={t("update.autoDownload")} on={info?.autoDownload ?? true} disabled={!info || info.update.state === "unsupported"} set={(on) => { void window.hermesh?.setAutoDownload(on); }} />
     </SRow>
-  </div></div>;
+  </div><p className="set-foot">{t("update.autoDownloadDesc")}</p></div>;
 }

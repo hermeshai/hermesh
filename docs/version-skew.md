@@ -107,9 +107,13 @@ What the devices do with these:
   machine is too old to list its methods. The gate then lets the call through
   and the safety net (§6.3) catches what is missing. Every machine updated
   after this ships lists them.
-- **Not listed:** hermeshd's own RPCs. No feature gates on one yet, and the
-  safety net covers them; a list comes when a feature needs it, derived from
-  the handlers hermeshd registers, not kept by hand.
+- **hermeshd's own:** `MachineStatus.methods` lists the MachineAdminService
+  methods this hermeshd answers, from the service it registers
+  (`adminMethods` in `internal/machine/workspace_storage.go`), not kept by
+  hand. Storage is the first feature gated on it
+  ([settings-environments.md](settings-environments.md) §5.7.6): the clients
+  check it with `machineAnswers` (desktop `skew.ts`, iPhone
+  `Environments.swift`); empty is unknown, as for her.
 
 ### 6.2 One gate in each client
 

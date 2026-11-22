@@ -112,8 +112,7 @@ final class DuoUITests: XCTestCase {
         tap("close")
         openMenu()
         tap("account")
-        for _ in 0..<4 where !app.buttons["account-machines"].isHittable { app.swipeUp() }
-        tap("account-machines")
+        for _ in 0..<4 where !app.staticTexts["account-machines"].isHittable { app.swipeUp() }
         sleep(1)
         shot("machines" + suffix)
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "machine-")).firstMatch.tap()
@@ -145,7 +144,7 @@ final class DuoUITests: XCTestCase {
         tap("new")
         sleep(1)
         shot("new" + suffix)
-        app.buttons["添加机器…"].firstMatch.tap()
+        app.buttons["添加环境…"].firstMatch.tap()
         sleep(2)
         shot("add-machine" + suffix)
         tap("approve") // the demo's machine joins, so the next walk is asked about another

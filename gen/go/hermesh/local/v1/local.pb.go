@@ -5225,7 +5225,9 @@ type Project struct {
 	DefaultBaseRef string                 `protobuf:"bytes,3,opt,name=default_base_ref,json=defaultBaseRef,proto3" json:"default_base_ref,omitempty"`
 	Workspace      v11.Workspace          `protobuf:"varint,4,opt,name=workspace,proto3,enum=hermesh.identity.v1.Workspace" json:"workspace,omitempty"`
 	Description    string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
-	// The coding agents that may work in it; empty: all.
+	// From machines before the settings rework only, which still keep their
+	// projects to these coding agents; empty: all
+	// (docs/settings-environments.md §5.6).
 	Agents []string `protobuf:"bytes,6,rep,name=agents,proto3" json:"agents,omitempty"`
 	// The project directory on the machine.
 	Path          string `protobuf:"bytes,7,opt,name=path,proto3" json:"path,omitempty"`
@@ -5418,7 +5420,10 @@ type AddProjectRequest struct {
 	Workspace      v11.Workspace          `protobuf:"varint,5,opt,name=workspace,proto3,enum=hermesh.identity.v1.Workspace" json:"workspace,omitempty"`
 	// Shown to agents choosing where to work (at most 200 characters).
 	Description string `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
-	// The coding agents that may work in it (e.g. "claude"); empty: all.
+	// Ignored: a project is for every agent provider
+	// (docs/settings-environments.md §5.6).
+	//
+	// Deprecated: Marked as deprecated in hermesh/local/v1/local.proto.
 	Agents        []string `protobuf:"bytes,7,rep,name=agents,proto3" json:"agents,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -5496,6 +5501,7 @@ func (x *AddProjectRequest) GetDescription() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in hermesh/local/v1/local.proto.
 func (x *AddProjectRequest) GetAgents() []string {
 	if x != nil {
 		return x.Agents
@@ -9861,26 +9867,28 @@ func (x *GetHerConsoleResponse) GetUrl() string {
 	return ""
 }
 
-type ListLocalWorkspacesRequest struct {
+type ListWorkspacesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	Cached        bool                   `protobuf:"varint,2,opt,name=cached,proto3" json:"cached,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ListLocalWorkspacesRequest) Reset() {
-	*x = ListLocalWorkspacesRequest{}
+func (x *ListWorkspacesRequest) Reset() {
+	*x = ListWorkspacesRequest{}
 	mi := &file_hermesh_local_v1_local_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ListLocalWorkspacesRequest) String() string {
+func (x *ListWorkspacesRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ListLocalWorkspacesRequest) ProtoMessage() {}
+func (*ListWorkspacesRequest) ProtoMessage() {}
 
-func (x *ListLocalWorkspacesRequest) ProtoReflect() protoreflect.Message {
+func (x *ListWorkspacesRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_hermesh_local_v1_local_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9892,39 +9900,47 @@ func (x *ListLocalWorkspacesRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ListLocalWorkspacesRequest.ProtoReflect.Descriptor instead.
-func (*ListLocalWorkspacesRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use ListWorkspacesRequest.ProtoReflect.Descriptor instead.
+func (*ListWorkspacesRequest) Descriptor() ([]byte, []int) {
 	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{167}
 }
 
-type LocalWorkspace struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	ProjectId string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
-	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
-	Title     string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	Path      string                 `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`
-	SizeBytes uint64                 `protobuf:"varint,5,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
-	Status    v1.SessionStatus       `protobuf:"varint,6,opt,name=status,proto3,enum=hermesh.session.v1.SessionStatus" json:"status,omitempty"`
-	// The rest of the scan is still usable when one checkout could not be read.
-	SizeError     string `protobuf:"bytes,7,opt,name=size_error,json=sizeError,proto3" json:"size_error,omitempty"`
+func (x *ListWorkspacesRequest) GetMachineId() string {
+	if x != nil {
+		return x.MachineId
+	}
+	return ""
+}
+
+func (x *ListWorkspacesRequest) GetCached() bool {
+	if x != nil {
+		return x.Cached
+	}
+	return false
+}
+
+type ReleaseWorkspacesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	SessionIds    []string               `protobuf:"bytes,2,rep,name=session_ids,json=sessionIds,proto3" json:"session_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *LocalWorkspace) Reset() {
-	*x = LocalWorkspace{}
+func (x *ReleaseWorkspacesRequest) Reset() {
+	*x = ReleaseWorkspacesRequest{}
 	mi := &file_hermesh_local_v1_local_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *LocalWorkspace) String() string {
+func (x *ReleaseWorkspacesRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*LocalWorkspace) ProtoMessage() {}
+func (*ReleaseWorkspacesRequest) ProtoMessage() {}
 
-func (x *LocalWorkspace) ProtoReflect() protoreflect.Message {
+func (x *ReleaseWorkspacesRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_hermesh_local_v1_local_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -9936,126 +9952,48 @@ func (x *LocalWorkspace) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use LocalWorkspace.ProtoReflect.Descriptor instead.
-func (*LocalWorkspace) Descriptor() ([]byte, []int) {
+// Deprecated: Use ReleaseWorkspacesRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseWorkspacesRequest) Descriptor() ([]byte, []int) {
 	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{168}
 }
 
-func (x *LocalWorkspace) GetProjectId() string {
+func (x *ReleaseWorkspacesRequest) GetMachineId() string {
 	if x != nil {
-		return x.ProjectId
+		return x.MachineId
 	}
 	return ""
 }
 
-func (x *LocalWorkspace) GetSessionId() string {
+func (x *ReleaseWorkspacesRequest) GetSessionIds() []string {
 	if x != nil {
-		return x.SessionId
-	}
-	return ""
-}
-
-func (x *LocalWorkspace) GetTitle() string {
-	if x != nil {
-		return x.Title
-	}
-	return ""
-}
-
-func (x *LocalWorkspace) GetPath() string {
-	if x != nil {
-		return x.Path
-	}
-	return ""
-}
-
-func (x *LocalWorkspace) GetSizeBytes() uint64 {
-	if x != nil {
-		return x.SizeBytes
-	}
-	return 0
-}
-
-func (x *LocalWorkspace) GetStatus() v1.SessionStatus {
-	if x != nil {
-		return x.Status
-	}
-	return v1.SessionStatus(0)
-}
-
-func (x *LocalWorkspace) GetSizeError() string {
-	if x != nil {
-		return x.SizeError
-	}
-	return ""
-}
-
-type ListLocalWorkspacesResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Workspaces    []*LocalWorkspace      `protobuf:"bytes,1,rep,name=workspaces,proto3" json:"workspaces,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ListLocalWorkspacesResponse) Reset() {
-	*x = ListLocalWorkspacesResponse{}
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[169]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ListLocalWorkspacesResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ListLocalWorkspacesResponse) ProtoMessage() {}
-
-func (x *ListLocalWorkspacesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[169]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ListLocalWorkspacesResponse.ProtoReflect.Descriptor instead.
-func (*ListLocalWorkspacesResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{169}
-}
-
-func (x *ListLocalWorkspacesResponse) GetWorkspaces() []*LocalWorkspace {
-	if x != nil {
-		return x.Workspaces
+		return x.SessionIds
 	}
 	return nil
 }
 
-type ReleaseLocalWorkspaceRequest struct {
+type SetWorkspacePolicyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	AutoRelease   bool                   `protobuf:"varint,2,opt,name=auto_release,json=autoRelease,proto3" json:"auto_release,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ReleaseLocalWorkspaceRequest) Reset() {
-	*x = ReleaseLocalWorkspaceRequest{}
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[170]
+func (x *SetWorkspacePolicyRequest) Reset() {
+	*x = SetWorkspacePolicyRequest{}
+	mi := &file_hermesh_local_v1_local_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ReleaseLocalWorkspaceRequest) String() string {
+func (x *SetWorkspacePolicyRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ReleaseLocalWorkspaceRequest) ProtoMessage() {}
+func (*SetWorkspacePolicyRequest) ProtoMessage() {}
 
-func (x *ReleaseLocalWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[170]
+func (x *SetWorkspacePolicyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_local_v1_local_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10066,39 +10004,46 @@ func (x *ReleaseLocalWorkspaceRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ReleaseLocalWorkspaceRequest.ProtoReflect.Descriptor instead.
-func (*ReleaseLocalWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{170}
+// Deprecated: Use SetWorkspacePolicyRequest.ProtoReflect.Descriptor instead.
+func (*SetWorkspacePolicyRequest) Descriptor() ([]byte, []int) {
+	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{169}
 }
 
-func (x *ReleaseLocalWorkspaceRequest) GetSessionId() string {
+func (x *SetWorkspacePolicyRequest) GetMachineId() string {
 	if x != nil {
-		return x.SessionId
+		return x.MachineId
 	}
 	return ""
 }
 
-type ReleaseLocalWorkspaceResponse struct {
+func (x *SetWorkspacePolicyRequest) GetAutoRelease() bool {
+	if x != nil {
+		return x.AutoRelease
+	}
+	return false
+}
+
+type SetWorkspacePolicyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ReleaseLocalWorkspaceResponse) Reset() {
-	*x = ReleaseLocalWorkspaceResponse{}
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[171]
+func (x *SetWorkspacePolicyResponse) Reset() {
+	*x = SetWorkspacePolicyResponse{}
+	mi := &file_hermesh_local_v1_local_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ReleaseLocalWorkspaceResponse) String() string {
+func (x *SetWorkspacePolicyResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ReleaseLocalWorkspaceResponse) ProtoMessage() {}
+func (*SetWorkspacePolicyResponse) ProtoMessage() {}
 
-func (x *ReleaseLocalWorkspaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_local_v1_local_proto_msgTypes[171]
+func (x *SetWorkspacePolicyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_local_v1_local_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -10109,9 +10054,9 @@ func (x *ReleaseLocalWorkspaceResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ReleaseLocalWorkspaceResponse.ProtoReflect.Descriptor instead.
-func (*ReleaseLocalWorkspaceResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{171}
+// Deprecated: Use SetWorkspacePolicyResponse.ProtoReflect.Descriptor instead.
+func (*SetWorkspacePolicyResponse) Descriptor() ([]byte, []int) {
+	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{170}
 }
 
 var File_hermesh_local_v1_local_proto protoreflect.FileDescriptor
@@ -10496,7 +10441,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\"\x8e\x01\n" +
 	"\x14ListProjectsResponse\x125\n" +
 	"\bprojects\x18\x01 \x03(\v2\x19.hermesh.local.v1.ProjectR\bprojects\x12?\n" +
-	"\vunreachable\x18\x02 \x03(\v2\x1d.hermesh.local.v1.UnreachableR\vunreachable\"\x87\x02\n" +
+	"\vunreachable\x18\x02 \x03(\v2\x1d.hermesh.local.v1.UnreachableR\vunreachable\"\x8b\x02\n" +
 	"\x11AddProjectRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
@@ -10505,8 +10450,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x04path\x18\x03 \x01(\tR\x04path\x12(\n" +
 	"\x10default_base_ref\x18\x04 \x01(\tR\x0edefaultBaseRef\x12<\n" +
 	"\tworkspace\x18\x05 \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\tworkspace\x12 \n" +
-	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x16\n" +
-	"\x06agents\x18\a \x03(\tR\x06agents\"\x14\n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x1a\n" +
+	"\x06agents\x18\a \x03(\tB\x02\x18\x01R\x06agents\"\x14\n" +
 	"\x12AddProjectResponse\"T\n" +
 	"\x14RemoveProjectRequest\x12\x1d\n" +
 	"\n" +
@@ -10823,28 +10768,21 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\")\n" +
 	"\x15GetHerConsoleResponse\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\"\x1c\n" +
-	"\x1aListLocalWorkspacesRequest\"\xf1\x01\n" +
-	"\x0eLocalWorkspace\x12\x1d\n" +
+	"\x03url\x18\x01 \x01(\tR\x03url\"N\n" +
+	"\x15ListWorkspacesRequest\x12\x1d\n" +
 	"\n" +
-	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x1d\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x16\n" +
+	"\x06cached\x18\x02 \x01(\bR\x06cached\"Z\n" +
+	"\x18ReleaseWorkspacesRequest\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x14\n" +
-	"\x05title\x18\x03 \x01(\tR\x05title\x12\x12\n" +
-	"\x04path\x18\x04 \x01(\tR\x04path\x12\x1d\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1f\n" +
+	"\vsession_ids\x18\x02 \x03(\tR\n" +
+	"sessionIds\"]\n" +
+	"\x19SetWorkspacePolicyRequest\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x05 \x01(\x04R\tsizeBytes\x129\n" +
-	"\x06status\x18\x06 \x01(\x0e2!.hermesh.session.v1.SessionStatusR\x06status\x12\x1d\n" +
-	"\n" +
-	"size_error\x18\a \x01(\tR\tsizeError\"_\n" +
-	"\x1bListLocalWorkspacesResponse\x12@\n" +
-	"\n" +
-	"workspaces\x18\x01 \x03(\v2 .hermesh.local.v1.LocalWorkspaceR\n" +
-	"workspaces\"=\n" +
-	"\x1cReleaseLocalWorkspaceRequest\x12\x1d\n" +
-	"\n" +
-	"session_id\x18\x01 \x01(\tR\tsessionId\"\x1f\n" +
-	"\x1dReleaseLocalWorkspaceResponse*T\n" +
+	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +
+	"\fauto_release\x18\x02 \x01(\bR\vautoRelease\"\x1c\n" +
+	"\x1aSetWorkspacePolicyResponse*T\n" +
 	"\n" +
 	"WorkBucket\x12\x1b\n" +
 	"\x17WORK_BUCKET_UNSPECIFIED\x10\x00\x12\x14\n" +
@@ -10855,7 +10793,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x15WORK_DIMENSION_CLIENT\x10\x01\x12\x18\n" +
 	"\x14WORK_DIMENSION_AGENT\x10\x02\x12\x1a\n" +
 	"\x16WORK_DIMENSION_MACHINE\x10\x03\x12\x1a\n" +
-	"\x16WORK_DIMENSION_PROJECT\x10\x042\xee:\n" +
+	"\x16WORK_DIMENSION_PROJECT\x10\x042\xc8;\n" +
 	"\fLocalService\x12T\n" +
 	"\tGetStatus\x12\".hermesh.local.v1.GetStatusRequest\x1a#.hermesh.local.v1.GetStatusResponse\x12J\n" +
 	"\x05Watch\x12\x1e.hermesh.local.v1.WatchRequest\x1a\x1f.hermesh.local.v1.WatchResponse0\x01\x12]\n" +
@@ -10894,9 +10832,10 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x10ListMachineRepos\x12).hermesh.local.v1.ListMachineReposRequest\x1a*.hermesh.local.v1.ListMachineReposResponse\x12j\n" +
 	"\x12ListMachineFolders\x12+.hermesh.local.v1.ListMachineFoldersRequest\x1a'.hermesh.machine.v1.ListFoldersResponse\x12d\n" +
 	"\x10TestMachineAgent\x12).hermesh.local.v1.TestMachineAgentRequest\x1a%.hermesh.machine.v1.TestAgentResponse\x12c\n" +
-	"\x0eGetDiagnostics\x12'.hermesh.local.v1.GetDiagnosticsRequest\x1a(.hermesh.local.v1.GetDiagnosticsResponse\x12r\n" +
-	"\x13ListLocalWorkspaces\x12,.hermesh.local.v1.ListLocalWorkspacesRequest\x1a-.hermesh.local.v1.ListLocalWorkspacesResponse\x12x\n" +
-	"\x15ReleaseLocalWorkspace\x12..hermesh.local.v1.ReleaseLocalWorkspaceRequest\x1a/.hermesh.local.v1.ReleaseLocalWorkspaceResponse\x12K\n" +
+	"\x0eGetDiagnostics\x12'.hermesh.local.v1.GetDiagnosticsRequest\x1a(.hermesh.local.v1.GetDiagnosticsResponse\x12e\n" +
+	"\x0eListWorkspaces\x12'.hermesh.local.v1.ListWorkspacesRequest\x1a*.hermesh.machine.v1.ListWorkspacesResponse\x12n\n" +
+	"\x11ReleaseWorkspaces\x12*.hermesh.local.v1.ReleaseWorkspacesRequest\x1a-.hermesh.machine.v1.ReleaseWorkspacesResponse\x12o\n" +
+	"\x12SetWorkspacePolicy\x12+.hermesh.local.v1.SetWorkspacePolicyRequest\x1a,.hermesh.local.v1.SetWorkspacePolicyResponse\x12K\n" +
 	"\x06SetHer\x12\x1f.hermesh.local.v1.SetHerRequest\x1a .hermesh.local.v1.SetHerResponse\x12r\n" +
 	"\x13SetHerAssistantMode\x12,.hermesh.local.v1.SetHerAssistantModeRequest\x1a-.hermesh.local.v1.SetHerAssistantModeResponse\x12{\n" +
 	"\x16SetHerCommandConnector\x12/.hermesh.local.v1.SetHerCommandConnectorRequest\x1a0.hermesh.local.v1.SetHerCommandConnectorResponse\x12H\n" +
@@ -10955,7 +10894,7 @@ func file_hermesh_local_v1_local_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_local_v1_local_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_hermesh_local_v1_local_proto_msgTypes = make([]protoimpl.MessageInfo, 172)
+var file_hermesh_local_v1_local_proto_msgTypes = make([]protoimpl.MessageInfo, 171)
 var file_hermesh_local_v1_local_proto_goTypes = []any{
 	(WorkBucket)(0),                        // 0: hermesh.local.v1.WorkBucket
 	(WorkDimension)(0),                     // 1: hermesh.local.v1.WorkDimension
@@ -11126,32 +11065,32 @@ var file_hermesh_local_v1_local_proto_goTypes = []any{
 	(*StopScreenResponse)(nil),             // 166: hermesh.local.v1.StopScreenResponse
 	(*GetHerConsoleRequest)(nil),           // 167: hermesh.local.v1.GetHerConsoleRequest
 	(*GetHerConsoleResponse)(nil),          // 168: hermesh.local.v1.GetHerConsoleResponse
-	(*ListLocalWorkspacesRequest)(nil),     // 169: hermesh.local.v1.ListLocalWorkspacesRequest
-	(*LocalWorkspace)(nil),                 // 170: hermesh.local.v1.LocalWorkspace
-	(*ListLocalWorkspacesResponse)(nil),    // 171: hermesh.local.v1.ListLocalWorkspacesResponse
-	(*ReleaseLocalWorkspaceRequest)(nil),   // 172: hermesh.local.v1.ReleaseLocalWorkspaceRequest
-	(*ReleaseLocalWorkspaceResponse)(nil),  // 173: hermesh.local.v1.ReleaseLocalWorkspaceResponse
-	(*v1.Session)(nil),                     // 174: hermesh.session.v1.Session
-	(*v1.SessionCursor)(nil),               // 175: hermesh.session.v1.SessionCursor
-	(v1.EventView)(0),                      // 176: hermesh.session.v1.EventView
-	(*v1.SessionEvent)(nil),                // 177: hermesh.session.v1.SessionEvent
-	(*timestamppb.Timestamp)(nil),          // 178: google.protobuf.Timestamp
-	(v11.PairingKind)(0),                   // 179: hermesh.identity.v1.PairingKind
-	(v11.TaskVisibility)(0),                // 180: hermesh.identity.v1.TaskVisibility
-	(*v12.MachineStatus)(nil),              // 181: hermesh.machine.v1.MachineStatus
-	(*v12.HerStatus)(nil),                  // 182: hermesh.machine.v1.HerStatus
-	(*v11.AgentDefaults)(nil),              // 183: hermesh.identity.v1.AgentDefaults
-	(*v12.Repo)(nil),                       // 184: hermesh.machine.v1.Repo
-	(v11.Workspace)(0),                     // 185: hermesh.identity.v1.Workspace
-	(v1.SessionView)(0),                    // 186: hermesh.session.v1.SessionView
-	(*v1.Answer)(nil),                      // 187: hermesh.session.v1.Answer
-	(*v1.CodingConsentRequest)(nil),        // 188: hermesh.session.v1.CodingConsentRequest
-	(*v11.SetHerCommandConnector)(nil),     // 189: hermesh.identity.v1.SetHerCommandConnector
-	(*v13.OpenRequest)(nil),                // 190: hermesh.her.v1.OpenRequest
-	(*v13.CallRequest)(nil),                // 191: hermesh.her.v1.CallRequest
-	(v1.SessionStatus)(0),                  // 192: hermesh.session.v1.SessionStatus
-	(*v12.ListFoldersResponse)(nil),        // 193: hermesh.machine.v1.ListFoldersResponse
-	(*v12.TestAgentResponse)(nil),          // 194: hermesh.machine.v1.TestAgentResponse
+	(*ListWorkspacesRequest)(nil),          // 169: hermesh.local.v1.ListWorkspacesRequest
+	(*ReleaseWorkspacesRequest)(nil),       // 170: hermesh.local.v1.ReleaseWorkspacesRequest
+	(*SetWorkspacePolicyRequest)(nil),      // 171: hermesh.local.v1.SetWorkspacePolicyRequest
+	(*SetWorkspacePolicyResponse)(nil),     // 172: hermesh.local.v1.SetWorkspacePolicyResponse
+	(*v1.Session)(nil),                     // 173: hermesh.session.v1.Session
+	(*v1.SessionCursor)(nil),               // 174: hermesh.session.v1.SessionCursor
+	(v1.EventView)(0),                      // 175: hermesh.session.v1.EventView
+	(*v1.SessionEvent)(nil),                // 176: hermesh.session.v1.SessionEvent
+	(*timestamppb.Timestamp)(nil),          // 177: google.protobuf.Timestamp
+	(v11.PairingKind)(0),                   // 178: hermesh.identity.v1.PairingKind
+	(v11.TaskVisibility)(0),                // 179: hermesh.identity.v1.TaskVisibility
+	(*v12.MachineStatus)(nil),              // 180: hermesh.machine.v1.MachineStatus
+	(*v12.HerStatus)(nil),                  // 181: hermesh.machine.v1.HerStatus
+	(*v11.AgentDefaults)(nil),              // 182: hermesh.identity.v1.AgentDefaults
+	(*v12.Repo)(nil),                       // 183: hermesh.machine.v1.Repo
+	(v11.Workspace)(0),                     // 184: hermesh.identity.v1.Workspace
+	(v1.SessionView)(0),                    // 185: hermesh.session.v1.SessionView
+	(*v1.Answer)(nil),                      // 186: hermesh.session.v1.Answer
+	(*v1.CodingConsentRequest)(nil),        // 187: hermesh.session.v1.CodingConsentRequest
+	(*v11.SetHerCommandConnector)(nil),     // 188: hermesh.identity.v1.SetHerCommandConnector
+	(*v13.OpenRequest)(nil),                // 189: hermesh.her.v1.OpenRequest
+	(*v13.CallRequest)(nil),                // 190: hermesh.her.v1.CallRequest
+	(*v12.ListFoldersResponse)(nil),        // 191: hermesh.machine.v1.ListFoldersResponse
+	(*v12.TestAgentResponse)(nil),          // 192: hermesh.machine.v1.TestAgentResponse
+	(*v12.ListWorkspacesResponse)(nil),     // 193: hermesh.machine.v1.ListWorkspacesResponse
+	(*v12.ReleaseWorkspacesResponse)(nil),  // 194: hermesh.machine.v1.ReleaseWorkspacesResponse
 	(*v13.OpenEvent)(nil),                  // 195: hermesh.her.v1.OpenEvent
 	(*v13.CallResponse)(nil),               // 196: hermesh.her.v1.CallResponse
 	(*v1.ToolOutputChunk)(nil),             // 197: hermesh.session.v1.ToolOutputChunk
@@ -11166,202 +11105,202 @@ var file_hermesh_local_v1_local_proto_depIdxs = []int32{
 	89,  // 4: hermesh.local.v1.WatchResponse.projects:type_name -> hermesh.local.v1.Project
 	7,   // 5: hermesh.local.v1.WatchResponse.removed_projects:type_name -> hermesh.local.v1.ProjectRef
 	59,  // 6: hermesh.local.v1.WatchResponse.pairings:type_name -> hermesh.local.v1.PairingDetails
-	174, // 7: hermesh.local.v1.WatchResponse.sessions:type_name -> hermesh.session.v1.Session
-	175, // 8: hermesh.local.v1.WatchResponse.next:type_name -> hermesh.session.v1.SessionCursor
-	176, // 9: hermesh.local.v1.ListSessionEventsRequest.view:type_name -> hermesh.session.v1.EventView
-	177, // 10: hermesh.local.v1.ListSessionEventsResponse.events:type_name -> hermesh.session.v1.SessionEvent
+	173, // 7: hermesh.local.v1.WatchResponse.sessions:type_name -> hermesh.session.v1.Session
+	174, // 8: hermesh.local.v1.WatchResponse.next:type_name -> hermesh.session.v1.SessionCursor
+	175, // 9: hermesh.local.v1.ListSessionEventsRequest.view:type_name -> hermesh.session.v1.EventView
+	176, // 10: hermesh.local.v1.ListSessionEventsResponse.events:type_name -> hermesh.session.v1.SessionEvent
 	48,  // 11: hermesh.local.v1.GetStatusResponse.erased:type_name -> hermesh.local.v1.Erased
 	52,  // 12: hermesh.local.v1.GetStatusResponse.signer:type_name -> hermesh.local.v1.SignerState
 	12,  // 13: hermesh.local.v1.GetStatusResponse.relay_health:type_name -> hermesh.local.v1.RelayHealth
 	15,  // 14: hermesh.local.v1.ListProfilesResponse.profiles:type_name -> hermesh.local.v1.Profile
-	178, // 15: hermesh.local.v1.RequestJoinResponse.expires_at:type_name -> google.protobuf.Timestamp
+	177, // 15: hermesh.local.v1.RequestJoinResponse.expires_at:type_name -> google.protobuf.Timestamp
 	32,  // 16: hermesh.local.v1.WaitJoinResponse.devices:type_name -> hermesh.local.v1.Device
 	32,  // 17: hermesh.local.v1.ListDevicesResponse.devices:type_name -> hermesh.local.v1.Device
 	45,  // 18: hermesh.local.v1.EraseStatusResponse.items:type_name -> hermesh.local.v1.EraseItem
-	178, // 19: hermesh.local.v1.Erased.at:type_name -> google.protobuf.Timestamp
+	177, // 19: hermesh.local.v1.Erased.at:type_name -> google.protobuf.Timestamp
 	54,  // 20: hermesh.local.v1.SigningRequest.caller:type_name -> hermesh.local.v1.Caller
-	179, // 21: hermesh.local.v1.PairingDetails.kind:type_name -> hermesh.identity.v1.PairingKind
-	178, // 22: hermesh.local.v1.PairingDetails.expires_at:type_name -> google.protobuf.Timestamp
+	178, // 21: hermesh.local.v1.PairingDetails.kind:type_name -> hermesh.identity.v1.PairingKind
+	177, // 22: hermesh.local.v1.PairingDetails.expires_at:type_name -> google.protobuf.Timestamp
 	59,  // 23: hermesh.local.v1.ListPairingRequestsResponse.pairings:type_name -> hermesh.local.v1.PairingDetails
 	59,  // 24: hermesh.local.v1.LookupPairingResponse.details:type_name -> hermesh.local.v1.PairingDetails
-	180, // 25: hermesh.local.v1.GrantSpec.task_visibility:type_name -> hermesh.identity.v1.TaskVisibility
+	179, // 25: hermesh.local.v1.GrantSpec.task_visibility:type_name -> hermesh.identity.v1.TaskVisibility
 	66,  // 26: hermesh.local.v1.ApproveClientPairingRequest.spec:type_name -> hermesh.local.v1.GrantSpec
-	178, // 27: hermesh.local.v1.Machine.last_seen:type_name -> google.protobuf.Timestamp
-	181, // 28: hermesh.local.v1.Machine.status:type_name -> hermesh.machine.v1.MachineStatus
-	182, // 29: hermesh.local.v1.Machine.her:type_name -> hermesh.machine.v1.HerStatus
+	177, // 27: hermesh.local.v1.Machine.last_seen:type_name -> google.protobuf.Timestamp
+	180, // 28: hermesh.local.v1.Machine.status:type_name -> hermesh.machine.v1.MachineStatus
+	181, // 29: hermesh.local.v1.Machine.her:type_name -> hermesh.machine.v1.HerStatus
 	70,  // 30: hermesh.local.v1.Machine.tunnel:type_name -> hermesh.local.v1.TunnelHealth
 	69,  // 31: hermesh.local.v1.ListMachinesResponse.machines:type_name -> hermesh.local.v1.Machine
-	183, // 32: hermesh.local.v1.SetAgentDefaultsRequest.defaults:type_name -> hermesh.identity.v1.AgentDefaults
-	184, // 33: hermesh.local.v1.ListMachineReposResponse.repos:type_name -> hermesh.machine.v1.Repo
-	185, // 34: hermesh.local.v1.Project.workspace:type_name -> hermesh.identity.v1.Workspace
+	182, // 32: hermesh.local.v1.SetAgentDefaultsRequest.defaults:type_name -> hermesh.identity.v1.AgentDefaults
+	183, // 33: hermesh.local.v1.ListMachineReposResponse.repos:type_name -> hermesh.machine.v1.Repo
+	184, // 34: hermesh.local.v1.Project.workspace:type_name -> hermesh.identity.v1.Workspace
 	89,  // 35: hermesh.local.v1.ListProjectsResponse.projects:type_name -> hermesh.local.v1.Project
 	119, // 36: hermesh.local.v1.ListProjectsResponse.unreachable:type_name -> hermesh.local.v1.Unreachable
-	185, // 37: hermesh.local.v1.AddProjectRequest.workspace:type_name -> hermesh.identity.v1.Workspace
+	184, // 37: hermesh.local.v1.AddProjectRequest.workspace:type_name -> hermesh.identity.v1.Workspace
 	66,  // 38: hermesh.local.v1.Client.spec:type_name -> hermesh.local.v1.GrantSpec
-	178, // 39: hermesh.local.v1.Client.expires_at:type_name -> google.protobuf.Timestamp
-	178, // 40: hermesh.local.v1.Client.last_seen:type_name -> google.protobuf.Timestamp
+	177, // 39: hermesh.local.v1.Client.expires_at:type_name -> google.protobuf.Timestamp
+	177, // 40: hermesh.local.v1.Client.last_seen:type_name -> google.protobuf.Timestamp
 	96,  // 41: hermesh.local.v1.ListClientsResponse.clients:type_name -> hermesh.local.v1.Client
 	66,  // 42: hermesh.local.v1.UpdateClientRequest.spec:type_name -> hermesh.local.v1.GrantSpec
 	118, // 43: hermesh.local.v1.UpdateClientResponse.acks:type_name -> hermesh.local.v1.MachineAck
 	118, // 44: hermesh.local.v1.RevokeClientResponse.acks:type_name -> hermesh.local.v1.MachineAck
-	178, // 45: hermesh.local.v1.Wake.last_ring_at:type_name -> google.protobuf.Timestamp
+	177, // 45: hermesh.local.v1.Wake.last_ring_at:type_name -> google.protobuf.Timestamp
 	106, // 46: hermesh.local.v1.Wake.recent:type_name -> hermesh.local.v1.WakeRing
-	178, // 47: hermesh.local.v1.WakeRing.at:type_name -> google.protobuf.Timestamp
+	177, // 47: hermesh.local.v1.WakeRing.at:type_name -> google.protobuf.Timestamp
 	105, // 48: hermesh.local.v1.ListWakesResponse.wakes:type_name -> hermesh.local.v1.Wake
 	105, // 49: hermesh.local.v1.SetWakeResponse.wake:type_name -> hermesh.local.v1.Wake
 	107, // 50: hermesh.local.v1.SetWakeResponse.check:type_name -> hermesh.local.v1.WakeCheck
 	105, // 51: hermesh.local.v1.CheckWakeResponse.wake:type_name -> hermesh.local.v1.Wake
 	107, // 52: hermesh.local.v1.CheckWakeResponse.check:type_name -> hermesh.local.v1.WakeCheck
-	178, // 53: hermesh.local.v1.OpenWakeLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
-	175, // 54: hermesh.local.v1.ListSessionsRequest.before:type_name -> hermesh.session.v1.SessionCursor
-	186, // 55: hermesh.local.v1.ListSessionsRequest.view:type_name -> hermesh.session.v1.SessionView
-	174, // 56: hermesh.local.v1.ListSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
+	177, // 53: hermesh.local.v1.OpenWakeLinkResponse.expires_at:type_name -> google.protobuf.Timestamp
+	174, // 54: hermesh.local.v1.ListSessionsRequest.before:type_name -> hermesh.session.v1.SessionCursor
+	185, // 55: hermesh.local.v1.ListSessionsRequest.view:type_name -> hermesh.session.v1.SessionView
+	173, // 56: hermesh.local.v1.ListSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
 	119, // 57: hermesh.local.v1.ListSessionsResponse.unreachable:type_name -> hermesh.local.v1.Unreachable
-	175, // 58: hermesh.local.v1.ListSessionsResponse.next:type_name -> hermesh.session.v1.SessionCursor
-	174, // 59: hermesh.local.v1.WatchSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
+	174, // 58: hermesh.local.v1.ListSessionsResponse.next:type_name -> hermesh.session.v1.SessionCursor
+	173, // 59: hermesh.local.v1.WatchSessionsResponse.sessions:type_name -> hermesh.session.v1.Session
 	119, // 60: hermesh.local.v1.WatchSessionsResponse.unreachable:type_name -> hermesh.local.v1.Unreachable
-	176, // 61: hermesh.local.v1.StreamSessionEventsRequest.view:type_name -> hermesh.session.v1.EventView
-	187, // 62: hermesh.local.v1.AnswerQuestionRequest.answers:type_name -> hermesh.session.v1.Answer
-	188, // 63: hermesh.local.v1.CodingConsentRequest.consent:type_name -> hermesh.session.v1.CodingConsentRequest
-	174, // 64: hermesh.local.v1.AnswerQuestionResponse.session:type_name -> hermesh.session.v1.Session
-	174, // 65: hermesh.local.v1.SessionResponse.session:type_name -> hermesh.session.v1.Session
+	175, // 61: hermesh.local.v1.StreamSessionEventsRequest.view:type_name -> hermesh.session.v1.EventView
+	186, // 62: hermesh.local.v1.AnswerQuestionRequest.answers:type_name -> hermesh.session.v1.Answer
+	187, // 63: hermesh.local.v1.CodingConsentRequest.consent:type_name -> hermesh.session.v1.CodingConsentRequest
+	173, // 64: hermesh.local.v1.AnswerQuestionResponse.session:type_name -> hermesh.session.v1.Session
+	173, // 65: hermesh.local.v1.SessionResponse.session:type_name -> hermesh.session.v1.Session
 	0,   // 66: hermesh.local.v1.QueryWorkRequest.bucket:type_name -> hermesh.local.v1.WorkBucket
 	1,   // 67: hermesh.local.v1.QueryWorkRequest.group_by:type_name -> hermesh.local.v1.WorkDimension
 	136, // 68: hermesh.local.v1.SessionCount.group:type_name -> hermesh.local.v1.WorkGroup
 	136, // 69: hermesh.local.v1.TurnCount.group:type_name -> hermesh.local.v1.WorkGroup
-	178, // 70: hermesh.local.v1.WorkSource.synced_at:type_name -> google.protobuf.Timestamp
+	177, // 70: hermesh.local.v1.WorkSource.synced_at:type_name -> google.protobuf.Timestamp
 	137, // 71: hermesh.local.v1.QueryWorkResponse.sessions:type_name -> hermesh.local.v1.SessionCount
 	137, // 72: hermesh.local.v1.QueryWorkResponse.range_sessions:type_name -> hermesh.local.v1.SessionCount
 	138, // 73: hermesh.local.v1.QueryWorkResponse.turns:type_name -> hermesh.local.v1.TurnCount
 	138, // 74: hermesh.local.v1.QueryWorkResponse.range_turns:type_name -> hermesh.local.v1.TurnCount
 	139, // 75: hermesh.local.v1.QueryWorkResponse.sources:type_name -> hermesh.local.v1.WorkSource
-	189, // 76: hermesh.local.v1.SetHerCommandConnectorRequest.connector:type_name -> hermesh.identity.v1.SetHerCommandConnector
-	190, // 77: hermesh.local.v1.HerOpenRequest.open:type_name -> hermesh.her.v1.OpenRequest
-	191, // 78: hermesh.local.v1.HerCallRequest.call:type_name -> hermesh.her.v1.CallRequest
+	188, // 76: hermesh.local.v1.SetHerCommandConnectorRequest.connector:type_name -> hermesh.identity.v1.SetHerCommandConnector
+	189, // 77: hermesh.local.v1.HerOpenRequest.open:type_name -> hermesh.her.v1.OpenRequest
+	190, // 78: hermesh.local.v1.HerCallRequest.call:type_name -> hermesh.her.v1.CallRequest
 	152, // 79: hermesh.local.v1.HerSendRequest.pictures:type_name -> hermesh.local.v1.HerPicture
 	151, // 80: hermesh.local.v1.HerSendRequest.reply:type_name -> hermesh.local.v1.HerReply
 	158, // 81: hermesh.local.v1.HerSendResponse.waiting:type_name -> hermesh.local.v1.HerWaiting
 	158, // 82: hermesh.local.v1.ListHerWaitingResponse.waiting:type_name -> hermesh.local.v1.HerWaiting
-	178, // 83: hermesh.local.v1.HerWaiting.created_at:type_name -> google.protobuf.Timestamp
+	177, // 83: hermesh.local.v1.HerWaiting.created_at:type_name -> google.protobuf.Timestamp
 	151, // 84: hermesh.local.v1.HerWaiting.reply:type_name -> hermesh.local.v1.HerReply
-	192, // 85: hermesh.local.v1.LocalWorkspace.status:type_name -> hermesh.session.v1.SessionStatus
-	170, // 86: hermesh.local.v1.ListLocalWorkspacesResponse.workspaces:type_name -> hermesh.local.v1.LocalWorkspace
-	10,  // 87: hermesh.local.v1.LocalService.GetStatus:input_type -> hermesh.local.v1.GetStatusRequest
-	2,   // 88: hermesh.local.v1.LocalService.Watch:input_type -> hermesh.local.v1.WatchRequest
-	13,  // 89: hermesh.local.v1.LocalService.ListProfiles:input_type -> hermesh.local.v1.ListProfilesRequest
-	16,  // 90: hermesh.local.v1.LocalService.SwitchProfile:input_type -> hermesh.local.v1.SwitchProfileRequest
-	18,  // 91: hermesh.local.v1.LocalService.AddProfile:input_type -> hermesh.local.v1.AddProfileRequest
-	20,  // 92: hermesh.local.v1.LocalService.SignOut:input_type -> hermesh.local.v1.SignOutRequest
-	22,  // 93: hermesh.local.v1.LocalService.SignIn:input_type -> hermesh.local.v1.SignInRequest
-	24,  // 94: hermesh.local.v1.LocalService.Setup:input_type -> hermesh.local.v1.SetupRequest
-	26,  // 95: hermesh.local.v1.LocalService.RequestJoin:input_type -> hermesh.local.v1.RequestJoinRequest
-	28,  // 96: hermesh.local.v1.LocalService.WaitJoin:input_type -> hermesh.local.v1.WaitJoinRequest
-	30,  // 97: hermesh.local.v1.LocalService.ConfirmJoin:input_type -> hermesh.local.v1.ConfirmJoinRequest
-	33,  // 98: hermesh.local.v1.LocalService.ListDevices:input_type -> hermesh.local.v1.ListDevicesRequest
-	35,  // 99: hermesh.local.v1.LocalService.ApproveDevicePairing:input_type -> hermesh.local.v1.ApproveDevicePairingRequest
-	37,  // 100: hermesh.local.v1.LocalService.RemoveDevice:input_type -> hermesh.local.v1.RemoveDeviceRequest
-	39,  // 101: hermesh.local.v1.LocalService.Leave:input_type -> hermesh.local.v1.LeaveRequest
-	41,  // 102: hermesh.local.v1.LocalService.EraseEverything:input_type -> hermesh.local.v1.EraseEverythingRequest
-	43,  // 103: hermesh.local.v1.LocalService.EraseStatus:input_type -> hermesh.local.v1.EraseStatusRequest
-	46,  // 104: hermesh.local.v1.LocalService.FinishErase:input_type -> hermesh.local.v1.FinishEraseRequest
-	49,  // 105: hermesh.local.v1.LocalService.WatchSigningRequests:input_type -> hermesh.local.v1.WatchSigningRequestsRequest
-	55,  // 106: hermesh.local.v1.LocalService.CompleteSigningRequest:input_type -> hermesh.local.v1.CompleteSigningRequestRequest
-	50,  // 107: hermesh.local.v1.LocalService.ShowSigner:input_type -> hermesh.local.v1.ShowSignerRequest
-	57,  // 108: hermesh.local.v1.LocalService.SetLocalMachine:input_type -> hermesh.local.v1.SetLocalMachineRequest
-	62,  // 109: hermesh.local.v1.LocalService.LookupPairing:input_type -> hermesh.local.v1.LookupPairingRequest
-	60,  // 110: hermesh.local.v1.LocalService.ListPairingRequests:input_type -> hermesh.local.v1.ListPairingRequestsRequest
-	64,  // 111: hermesh.local.v1.LocalService.ApproveMachinePairing:input_type -> hermesh.local.v1.ApproveMachinePairingRequest
-	67,  // 112: hermesh.local.v1.LocalService.ApproveClientPairing:input_type -> hermesh.local.v1.ApproveClientPairingRequest
-	71,  // 113: hermesh.local.v1.LocalService.ListMachines:input_type -> hermesh.local.v1.ListMachinesRequest
-	73,  // 114: hermesh.local.v1.LocalService.RenameMachine:input_type -> hermesh.local.v1.RenameMachineRequest
-	75,  // 115: hermesh.local.v1.LocalService.SetMachinePaused:input_type -> hermesh.local.v1.SetMachinePausedRequest
-	77,  // 116: hermesh.local.v1.LocalService.SetAgentDefaults:input_type -> hermesh.local.v1.SetAgentDefaultsRequest
-	87,  // 117: hermesh.local.v1.LocalService.RemoveMachine:input_type -> hermesh.local.v1.RemoveMachineRequest
-	79,  // 118: hermesh.local.v1.LocalService.CheckAgents:input_type -> hermesh.local.v1.CheckAgentsRequest
-	81,  // 119: hermesh.local.v1.LocalService.ListMachineRepos:input_type -> hermesh.local.v1.ListMachineReposRequest
-	83,  // 120: hermesh.local.v1.LocalService.ListMachineFolders:input_type -> hermesh.local.v1.ListMachineFoldersRequest
-	84,  // 121: hermesh.local.v1.LocalService.TestMachineAgent:input_type -> hermesh.local.v1.TestMachineAgentRequest
-	85,  // 122: hermesh.local.v1.LocalService.GetDiagnostics:input_type -> hermesh.local.v1.GetDiagnosticsRequest
-	169, // 123: hermesh.local.v1.LocalService.ListLocalWorkspaces:input_type -> hermesh.local.v1.ListLocalWorkspacesRequest
-	172, // 124: hermesh.local.v1.LocalService.ReleaseLocalWorkspace:input_type -> hermesh.local.v1.ReleaseLocalWorkspaceRequest
-	142, // 125: hermesh.local.v1.LocalService.SetHer:input_type -> hermesh.local.v1.SetHerRequest
-	144, // 126: hermesh.local.v1.LocalService.SetHerAssistantMode:input_type -> hermesh.local.v1.SetHerAssistantModeRequest
-	146, // 127: hermesh.local.v1.LocalService.SetHerCommandConnector:input_type -> hermesh.local.v1.SetHerCommandConnectorRequest
-	148, // 128: hermesh.local.v1.LocalService.HerOpen:input_type -> hermesh.local.v1.HerOpenRequest
-	149, // 129: hermesh.local.v1.LocalService.HerCall:input_type -> hermesh.local.v1.HerCallRequest
-	150, // 130: hermesh.local.v1.LocalService.HerSend:input_type -> hermesh.local.v1.HerSendRequest
-	154, // 131: hermesh.local.v1.LocalService.ListHerWaiting:input_type -> hermesh.local.v1.ListHerWaitingRequest
-	156, // 132: hermesh.local.v1.LocalService.DeleteHerWaiting:input_type -> hermesh.local.v1.DeleteHerWaitingRequest
-	159, // 133: hermesh.local.v1.LocalService.GetHerConversation:input_type -> hermesh.local.v1.GetHerConversationRequest
-	161, // 134: hermesh.local.v1.LocalService.HerUpload:input_type -> hermesh.local.v1.HerUploadRequest
-	163, // 135: hermesh.local.v1.LocalService.HerDownload:input_type -> hermesh.local.v1.HerDownloadRequest
-	167, // 136: hermesh.local.v1.LocalService.GetHerConsole:input_type -> hermesh.local.v1.GetHerConsoleRequest
-	165, // 137: hermesh.local.v1.LocalService.StopScreen:input_type -> hermesh.local.v1.StopScreenRequest
-	90,  // 138: hermesh.local.v1.LocalService.ListProjects:input_type -> hermesh.local.v1.ListProjectsRequest
-	92,  // 139: hermesh.local.v1.LocalService.AddProject:input_type -> hermesh.local.v1.AddProjectRequest
-	94,  // 140: hermesh.local.v1.LocalService.RemoveProject:input_type -> hermesh.local.v1.RemoveProjectRequest
-	97,  // 141: hermesh.local.v1.LocalService.ListClients:input_type -> hermesh.local.v1.ListClientsRequest
-	99,  // 142: hermesh.local.v1.LocalService.UpdateClient:input_type -> hermesh.local.v1.UpdateClientRequest
-	101, // 143: hermesh.local.v1.LocalService.RenameClient:input_type -> hermesh.local.v1.RenameClientRequest
-	103, // 144: hermesh.local.v1.LocalService.RevokeClient:input_type -> hermesh.local.v1.RevokeClientRequest
-	108, // 145: hermesh.local.v1.LocalService.ListWakes:input_type -> hermesh.local.v1.ListWakesRequest
-	110, // 146: hermesh.local.v1.LocalService.SetWake:input_type -> hermesh.local.v1.SetWakeRequest
-	112, // 147: hermesh.local.v1.LocalService.CheckWake:input_type -> hermesh.local.v1.CheckWakeRequest
-	114, // 148: hermesh.local.v1.LocalService.ClearWake:input_type -> hermesh.local.v1.ClearWakeRequest
-	116, // 149: hermesh.local.v1.LocalService.OpenWakeLink:input_type -> hermesh.local.v1.OpenWakeLinkRequest
-	120, // 150: hermesh.local.v1.LocalService.ListSessions:input_type -> hermesh.local.v1.ListSessionsRequest
-	122, // 151: hermesh.local.v1.LocalService.WatchSessions:input_type -> hermesh.local.v1.WatchSessionsRequest
-	124, // 152: hermesh.local.v1.LocalService.StreamSessionEvents:input_type -> hermesh.local.v1.StreamSessionEventsRequest
-	4,   // 153: hermesh.local.v1.LocalService.ListSessionEvents:input_type -> hermesh.local.v1.ListSessionEventsRequest
-	6,   // 154: hermesh.local.v1.LocalService.ReadToolOutput:input_type -> hermesh.local.v1.ReadToolOutputRequest
-	128, // 155: hermesh.local.v1.LocalService.InterruptSession:input_type -> hermesh.local.v1.InterruptSessionRequest
-	129, // 156: hermesh.local.v1.LocalService.ArchiveSession:input_type -> hermesh.local.v1.ArchiveSessionRequest
-	130, // 157: hermesh.local.v1.LocalService.UnarchiveSession:input_type -> hermesh.local.v1.UnarchiveSessionRequest
-	131, // 158: hermesh.local.v1.LocalService.DeleteSession:input_type -> hermesh.local.v1.DeleteSessionRequest
-	133, // 159: hermesh.local.v1.LocalService.RenameSession:input_type -> hermesh.local.v1.RenameSessionRequest
-	125, // 160: hermesh.local.v1.LocalService.AnswerQuestion:input_type -> hermesh.local.v1.AnswerQuestionRequest
-	126, // 161: hermesh.local.v1.LocalService.CodingConsent:input_type -> hermesh.local.v1.CodingConsentRequest
-	141, // 162: hermesh.local.v1.LocalService.GetDiff:input_type -> hermesh.local.v1.GetDiffRequest
-	135, // 163: hermesh.local.v1.LocalService.QueryWork:input_type -> hermesh.local.v1.QueryWorkRequest
-	8,   // 164: hermesh.local.v1.LocalService.RegisterPush:input_type -> hermesh.local.v1.RegisterPushRequest
-	11,  // 165: hermesh.local.v1.LocalService.GetStatus:output_type -> hermesh.local.v1.GetStatusResponse
-	3,   // 166: hermesh.local.v1.LocalService.Watch:output_type -> hermesh.local.v1.WatchResponse
-	14,  // 167: hermesh.local.v1.LocalService.ListProfiles:output_type -> hermesh.local.v1.ListProfilesResponse
-	17,  // 168: hermesh.local.v1.LocalService.SwitchProfile:output_type -> hermesh.local.v1.SwitchProfileResponse
-	19,  // 169: hermesh.local.v1.LocalService.AddProfile:output_type -> hermesh.local.v1.AddProfileResponse
-	21,  // 170: hermesh.local.v1.LocalService.SignOut:output_type -> hermesh.local.v1.SignOutResponse
-	23,  // 171: hermesh.local.v1.LocalService.SignIn:output_type -> hermesh.local.v1.SignInResponse
-	25,  // 172: hermesh.local.v1.LocalService.Setup:output_type -> hermesh.local.v1.SetupResponse
-	27,  // 173: hermesh.local.v1.LocalService.RequestJoin:output_type -> hermesh.local.v1.RequestJoinResponse
-	29,  // 174: hermesh.local.v1.LocalService.WaitJoin:output_type -> hermesh.local.v1.WaitJoinResponse
-	31,  // 175: hermesh.local.v1.LocalService.ConfirmJoin:output_type -> hermesh.local.v1.ConfirmJoinResponse
-	34,  // 176: hermesh.local.v1.LocalService.ListDevices:output_type -> hermesh.local.v1.ListDevicesResponse
-	36,  // 177: hermesh.local.v1.LocalService.ApproveDevicePairing:output_type -> hermesh.local.v1.ApproveDevicePairingResponse
-	38,  // 178: hermesh.local.v1.LocalService.RemoveDevice:output_type -> hermesh.local.v1.RemoveDeviceResponse
-	40,  // 179: hermesh.local.v1.LocalService.Leave:output_type -> hermesh.local.v1.LeaveResponse
-	42,  // 180: hermesh.local.v1.LocalService.EraseEverything:output_type -> hermesh.local.v1.EraseEverythingResponse
-	44,  // 181: hermesh.local.v1.LocalService.EraseStatus:output_type -> hermesh.local.v1.EraseStatusResponse
-	47,  // 182: hermesh.local.v1.LocalService.FinishErase:output_type -> hermesh.local.v1.FinishEraseResponse
-	53,  // 183: hermesh.local.v1.LocalService.WatchSigningRequests:output_type -> hermesh.local.v1.SigningRequest
-	56,  // 184: hermesh.local.v1.LocalService.CompleteSigningRequest:output_type -> hermesh.local.v1.CompleteSigningRequestResponse
-	51,  // 185: hermesh.local.v1.LocalService.ShowSigner:output_type -> hermesh.local.v1.ShowSignerResponse
-	58,  // 186: hermesh.local.v1.LocalService.SetLocalMachine:output_type -> hermesh.local.v1.SetLocalMachineResponse
-	63,  // 187: hermesh.local.v1.LocalService.LookupPairing:output_type -> hermesh.local.v1.LookupPairingResponse
-	61,  // 188: hermesh.local.v1.LocalService.ListPairingRequests:output_type -> hermesh.local.v1.ListPairingRequestsResponse
-	65,  // 189: hermesh.local.v1.LocalService.ApproveMachinePairing:output_type -> hermesh.local.v1.ApproveMachinePairingResponse
-	68,  // 190: hermesh.local.v1.LocalService.ApproveClientPairing:output_type -> hermesh.local.v1.ApproveClientPairingResponse
-	72,  // 191: hermesh.local.v1.LocalService.ListMachines:output_type -> hermesh.local.v1.ListMachinesResponse
-	74,  // 192: hermesh.local.v1.LocalService.RenameMachine:output_type -> hermesh.local.v1.RenameMachineResponse
-	76,  // 193: hermesh.local.v1.LocalService.SetMachinePaused:output_type -> hermesh.local.v1.SetMachinePausedResponse
-	78,  // 194: hermesh.local.v1.LocalService.SetAgentDefaults:output_type -> hermesh.local.v1.SetAgentDefaultsResponse
-	88,  // 195: hermesh.local.v1.LocalService.RemoveMachine:output_type -> hermesh.local.v1.RemoveMachineResponse
-	80,  // 196: hermesh.local.v1.LocalService.CheckAgents:output_type -> hermesh.local.v1.CheckAgentsResponse
-	82,  // 197: hermesh.local.v1.LocalService.ListMachineRepos:output_type -> hermesh.local.v1.ListMachineReposResponse
-	193, // 198: hermesh.local.v1.LocalService.ListMachineFolders:output_type -> hermesh.machine.v1.ListFoldersResponse
-	194, // 199: hermesh.local.v1.LocalService.TestMachineAgent:output_type -> hermesh.machine.v1.TestAgentResponse
-	86,  // 200: hermesh.local.v1.LocalService.GetDiagnostics:output_type -> hermesh.local.v1.GetDiagnosticsResponse
-	171, // 201: hermesh.local.v1.LocalService.ListLocalWorkspaces:output_type -> hermesh.local.v1.ListLocalWorkspacesResponse
-	173, // 202: hermesh.local.v1.LocalService.ReleaseLocalWorkspace:output_type -> hermesh.local.v1.ReleaseLocalWorkspaceResponse
+	10,  // 85: hermesh.local.v1.LocalService.GetStatus:input_type -> hermesh.local.v1.GetStatusRequest
+	2,   // 86: hermesh.local.v1.LocalService.Watch:input_type -> hermesh.local.v1.WatchRequest
+	13,  // 87: hermesh.local.v1.LocalService.ListProfiles:input_type -> hermesh.local.v1.ListProfilesRequest
+	16,  // 88: hermesh.local.v1.LocalService.SwitchProfile:input_type -> hermesh.local.v1.SwitchProfileRequest
+	18,  // 89: hermesh.local.v1.LocalService.AddProfile:input_type -> hermesh.local.v1.AddProfileRequest
+	20,  // 90: hermesh.local.v1.LocalService.SignOut:input_type -> hermesh.local.v1.SignOutRequest
+	22,  // 91: hermesh.local.v1.LocalService.SignIn:input_type -> hermesh.local.v1.SignInRequest
+	24,  // 92: hermesh.local.v1.LocalService.Setup:input_type -> hermesh.local.v1.SetupRequest
+	26,  // 93: hermesh.local.v1.LocalService.RequestJoin:input_type -> hermesh.local.v1.RequestJoinRequest
+	28,  // 94: hermesh.local.v1.LocalService.WaitJoin:input_type -> hermesh.local.v1.WaitJoinRequest
+	30,  // 95: hermesh.local.v1.LocalService.ConfirmJoin:input_type -> hermesh.local.v1.ConfirmJoinRequest
+	33,  // 96: hermesh.local.v1.LocalService.ListDevices:input_type -> hermesh.local.v1.ListDevicesRequest
+	35,  // 97: hermesh.local.v1.LocalService.ApproveDevicePairing:input_type -> hermesh.local.v1.ApproveDevicePairingRequest
+	37,  // 98: hermesh.local.v1.LocalService.RemoveDevice:input_type -> hermesh.local.v1.RemoveDeviceRequest
+	39,  // 99: hermesh.local.v1.LocalService.Leave:input_type -> hermesh.local.v1.LeaveRequest
+	41,  // 100: hermesh.local.v1.LocalService.EraseEverything:input_type -> hermesh.local.v1.EraseEverythingRequest
+	43,  // 101: hermesh.local.v1.LocalService.EraseStatus:input_type -> hermesh.local.v1.EraseStatusRequest
+	46,  // 102: hermesh.local.v1.LocalService.FinishErase:input_type -> hermesh.local.v1.FinishEraseRequest
+	49,  // 103: hermesh.local.v1.LocalService.WatchSigningRequests:input_type -> hermesh.local.v1.WatchSigningRequestsRequest
+	55,  // 104: hermesh.local.v1.LocalService.CompleteSigningRequest:input_type -> hermesh.local.v1.CompleteSigningRequestRequest
+	50,  // 105: hermesh.local.v1.LocalService.ShowSigner:input_type -> hermesh.local.v1.ShowSignerRequest
+	57,  // 106: hermesh.local.v1.LocalService.SetLocalMachine:input_type -> hermesh.local.v1.SetLocalMachineRequest
+	62,  // 107: hermesh.local.v1.LocalService.LookupPairing:input_type -> hermesh.local.v1.LookupPairingRequest
+	60,  // 108: hermesh.local.v1.LocalService.ListPairingRequests:input_type -> hermesh.local.v1.ListPairingRequestsRequest
+	64,  // 109: hermesh.local.v1.LocalService.ApproveMachinePairing:input_type -> hermesh.local.v1.ApproveMachinePairingRequest
+	67,  // 110: hermesh.local.v1.LocalService.ApproveClientPairing:input_type -> hermesh.local.v1.ApproveClientPairingRequest
+	71,  // 111: hermesh.local.v1.LocalService.ListMachines:input_type -> hermesh.local.v1.ListMachinesRequest
+	73,  // 112: hermesh.local.v1.LocalService.RenameMachine:input_type -> hermesh.local.v1.RenameMachineRequest
+	75,  // 113: hermesh.local.v1.LocalService.SetMachinePaused:input_type -> hermesh.local.v1.SetMachinePausedRequest
+	77,  // 114: hermesh.local.v1.LocalService.SetAgentDefaults:input_type -> hermesh.local.v1.SetAgentDefaultsRequest
+	87,  // 115: hermesh.local.v1.LocalService.RemoveMachine:input_type -> hermesh.local.v1.RemoveMachineRequest
+	79,  // 116: hermesh.local.v1.LocalService.CheckAgents:input_type -> hermesh.local.v1.CheckAgentsRequest
+	81,  // 117: hermesh.local.v1.LocalService.ListMachineRepos:input_type -> hermesh.local.v1.ListMachineReposRequest
+	83,  // 118: hermesh.local.v1.LocalService.ListMachineFolders:input_type -> hermesh.local.v1.ListMachineFoldersRequest
+	84,  // 119: hermesh.local.v1.LocalService.TestMachineAgent:input_type -> hermesh.local.v1.TestMachineAgentRequest
+	85,  // 120: hermesh.local.v1.LocalService.GetDiagnostics:input_type -> hermesh.local.v1.GetDiagnosticsRequest
+	169, // 121: hermesh.local.v1.LocalService.ListWorkspaces:input_type -> hermesh.local.v1.ListWorkspacesRequest
+	170, // 122: hermesh.local.v1.LocalService.ReleaseWorkspaces:input_type -> hermesh.local.v1.ReleaseWorkspacesRequest
+	171, // 123: hermesh.local.v1.LocalService.SetWorkspacePolicy:input_type -> hermesh.local.v1.SetWorkspacePolicyRequest
+	142, // 124: hermesh.local.v1.LocalService.SetHer:input_type -> hermesh.local.v1.SetHerRequest
+	144, // 125: hermesh.local.v1.LocalService.SetHerAssistantMode:input_type -> hermesh.local.v1.SetHerAssistantModeRequest
+	146, // 126: hermesh.local.v1.LocalService.SetHerCommandConnector:input_type -> hermesh.local.v1.SetHerCommandConnectorRequest
+	148, // 127: hermesh.local.v1.LocalService.HerOpen:input_type -> hermesh.local.v1.HerOpenRequest
+	149, // 128: hermesh.local.v1.LocalService.HerCall:input_type -> hermesh.local.v1.HerCallRequest
+	150, // 129: hermesh.local.v1.LocalService.HerSend:input_type -> hermesh.local.v1.HerSendRequest
+	154, // 130: hermesh.local.v1.LocalService.ListHerWaiting:input_type -> hermesh.local.v1.ListHerWaitingRequest
+	156, // 131: hermesh.local.v1.LocalService.DeleteHerWaiting:input_type -> hermesh.local.v1.DeleteHerWaitingRequest
+	159, // 132: hermesh.local.v1.LocalService.GetHerConversation:input_type -> hermesh.local.v1.GetHerConversationRequest
+	161, // 133: hermesh.local.v1.LocalService.HerUpload:input_type -> hermesh.local.v1.HerUploadRequest
+	163, // 134: hermesh.local.v1.LocalService.HerDownload:input_type -> hermesh.local.v1.HerDownloadRequest
+	167, // 135: hermesh.local.v1.LocalService.GetHerConsole:input_type -> hermesh.local.v1.GetHerConsoleRequest
+	165, // 136: hermesh.local.v1.LocalService.StopScreen:input_type -> hermesh.local.v1.StopScreenRequest
+	90,  // 137: hermesh.local.v1.LocalService.ListProjects:input_type -> hermesh.local.v1.ListProjectsRequest
+	92,  // 138: hermesh.local.v1.LocalService.AddProject:input_type -> hermesh.local.v1.AddProjectRequest
+	94,  // 139: hermesh.local.v1.LocalService.RemoveProject:input_type -> hermesh.local.v1.RemoveProjectRequest
+	97,  // 140: hermesh.local.v1.LocalService.ListClients:input_type -> hermesh.local.v1.ListClientsRequest
+	99,  // 141: hermesh.local.v1.LocalService.UpdateClient:input_type -> hermesh.local.v1.UpdateClientRequest
+	101, // 142: hermesh.local.v1.LocalService.RenameClient:input_type -> hermesh.local.v1.RenameClientRequest
+	103, // 143: hermesh.local.v1.LocalService.RevokeClient:input_type -> hermesh.local.v1.RevokeClientRequest
+	108, // 144: hermesh.local.v1.LocalService.ListWakes:input_type -> hermesh.local.v1.ListWakesRequest
+	110, // 145: hermesh.local.v1.LocalService.SetWake:input_type -> hermesh.local.v1.SetWakeRequest
+	112, // 146: hermesh.local.v1.LocalService.CheckWake:input_type -> hermesh.local.v1.CheckWakeRequest
+	114, // 147: hermesh.local.v1.LocalService.ClearWake:input_type -> hermesh.local.v1.ClearWakeRequest
+	116, // 148: hermesh.local.v1.LocalService.OpenWakeLink:input_type -> hermesh.local.v1.OpenWakeLinkRequest
+	120, // 149: hermesh.local.v1.LocalService.ListSessions:input_type -> hermesh.local.v1.ListSessionsRequest
+	122, // 150: hermesh.local.v1.LocalService.WatchSessions:input_type -> hermesh.local.v1.WatchSessionsRequest
+	124, // 151: hermesh.local.v1.LocalService.StreamSessionEvents:input_type -> hermesh.local.v1.StreamSessionEventsRequest
+	4,   // 152: hermesh.local.v1.LocalService.ListSessionEvents:input_type -> hermesh.local.v1.ListSessionEventsRequest
+	6,   // 153: hermesh.local.v1.LocalService.ReadToolOutput:input_type -> hermesh.local.v1.ReadToolOutputRequest
+	128, // 154: hermesh.local.v1.LocalService.InterruptSession:input_type -> hermesh.local.v1.InterruptSessionRequest
+	129, // 155: hermesh.local.v1.LocalService.ArchiveSession:input_type -> hermesh.local.v1.ArchiveSessionRequest
+	130, // 156: hermesh.local.v1.LocalService.UnarchiveSession:input_type -> hermesh.local.v1.UnarchiveSessionRequest
+	131, // 157: hermesh.local.v1.LocalService.DeleteSession:input_type -> hermesh.local.v1.DeleteSessionRequest
+	133, // 158: hermesh.local.v1.LocalService.RenameSession:input_type -> hermesh.local.v1.RenameSessionRequest
+	125, // 159: hermesh.local.v1.LocalService.AnswerQuestion:input_type -> hermesh.local.v1.AnswerQuestionRequest
+	126, // 160: hermesh.local.v1.LocalService.CodingConsent:input_type -> hermesh.local.v1.CodingConsentRequest
+	141, // 161: hermesh.local.v1.LocalService.GetDiff:input_type -> hermesh.local.v1.GetDiffRequest
+	135, // 162: hermesh.local.v1.LocalService.QueryWork:input_type -> hermesh.local.v1.QueryWorkRequest
+	8,   // 163: hermesh.local.v1.LocalService.RegisterPush:input_type -> hermesh.local.v1.RegisterPushRequest
+	11,  // 164: hermesh.local.v1.LocalService.GetStatus:output_type -> hermesh.local.v1.GetStatusResponse
+	3,   // 165: hermesh.local.v1.LocalService.Watch:output_type -> hermesh.local.v1.WatchResponse
+	14,  // 166: hermesh.local.v1.LocalService.ListProfiles:output_type -> hermesh.local.v1.ListProfilesResponse
+	17,  // 167: hermesh.local.v1.LocalService.SwitchProfile:output_type -> hermesh.local.v1.SwitchProfileResponse
+	19,  // 168: hermesh.local.v1.LocalService.AddProfile:output_type -> hermesh.local.v1.AddProfileResponse
+	21,  // 169: hermesh.local.v1.LocalService.SignOut:output_type -> hermesh.local.v1.SignOutResponse
+	23,  // 170: hermesh.local.v1.LocalService.SignIn:output_type -> hermesh.local.v1.SignInResponse
+	25,  // 171: hermesh.local.v1.LocalService.Setup:output_type -> hermesh.local.v1.SetupResponse
+	27,  // 172: hermesh.local.v1.LocalService.RequestJoin:output_type -> hermesh.local.v1.RequestJoinResponse
+	29,  // 173: hermesh.local.v1.LocalService.WaitJoin:output_type -> hermesh.local.v1.WaitJoinResponse
+	31,  // 174: hermesh.local.v1.LocalService.ConfirmJoin:output_type -> hermesh.local.v1.ConfirmJoinResponse
+	34,  // 175: hermesh.local.v1.LocalService.ListDevices:output_type -> hermesh.local.v1.ListDevicesResponse
+	36,  // 176: hermesh.local.v1.LocalService.ApproveDevicePairing:output_type -> hermesh.local.v1.ApproveDevicePairingResponse
+	38,  // 177: hermesh.local.v1.LocalService.RemoveDevice:output_type -> hermesh.local.v1.RemoveDeviceResponse
+	40,  // 178: hermesh.local.v1.LocalService.Leave:output_type -> hermesh.local.v1.LeaveResponse
+	42,  // 179: hermesh.local.v1.LocalService.EraseEverything:output_type -> hermesh.local.v1.EraseEverythingResponse
+	44,  // 180: hermesh.local.v1.LocalService.EraseStatus:output_type -> hermesh.local.v1.EraseStatusResponse
+	47,  // 181: hermesh.local.v1.LocalService.FinishErase:output_type -> hermesh.local.v1.FinishEraseResponse
+	53,  // 182: hermesh.local.v1.LocalService.WatchSigningRequests:output_type -> hermesh.local.v1.SigningRequest
+	56,  // 183: hermesh.local.v1.LocalService.CompleteSigningRequest:output_type -> hermesh.local.v1.CompleteSigningRequestResponse
+	51,  // 184: hermesh.local.v1.LocalService.ShowSigner:output_type -> hermesh.local.v1.ShowSignerResponse
+	58,  // 185: hermesh.local.v1.LocalService.SetLocalMachine:output_type -> hermesh.local.v1.SetLocalMachineResponse
+	63,  // 186: hermesh.local.v1.LocalService.LookupPairing:output_type -> hermesh.local.v1.LookupPairingResponse
+	61,  // 187: hermesh.local.v1.LocalService.ListPairingRequests:output_type -> hermesh.local.v1.ListPairingRequestsResponse
+	65,  // 188: hermesh.local.v1.LocalService.ApproveMachinePairing:output_type -> hermesh.local.v1.ApproveMachinePairingResponse
+	68,  // 189: hermesh.local.v1.LocalService.ApproveClientPairing:output_type -> hermesh.local.v1.ApproveClientPairingResponse
+	72,  // 190: hermesh.local.v1.LocalService.ListMachines:output_type -> hermesh.local.v1.ListMachinesResponse
+	74,  // 191: hermesh.local.v1.LocalService.RenameMachine:output_type -> hermesh.local.v1.RenameMachineResponse
+	76,  // 192: hermesh.local.v1.LocalService.SetMachinePaused:output_type -> hermesh.local.v1.SetMachinePausedResponse
+	78,  // 193: hermesh.local.v1.LocalService.SetAgentDefaults:output_type -> hermesh.local.v1.SetAgentDefaultsResponse
+	88,  // 194: hermesh.local.v1.LocalService.RemoveMachine:output_type -> hermesh.local.v1.RemoveMachineResponse
+	80,  // 195: hermesh.local.v1.LocalService.CheckAgents:output_type -> hermesh.local.v1.CheckAgentsResponse
+	82,  // 196: hermesh.local.v1.LocalService.ListMachineRepos:output_type -> hermesh.local.v1.ListMachineReposResponse
+	191, // 197: hermesh.local.v1.LocalService.ListMachineFolders:output_type -> hermesh.machine.v1.ListFoldersResponse
+	192, // 198: hermesh.local.v1.LocalService.TestMachineAgent:output_type -> hermesh.machine.v1.TestAgentResponse
+	86,  // 199: hermesh.local.v1.LocalService.GetDiagnostics:output_type -> hermesh.local.v1.GetDiagnosticsResponse
+	193, // 200: hermesh.local.v1.LocalService.ListWorkspaces:output_type -> hermesh.machine.v1.ListWorkspacesResponse
+	194, // 201: hermesh.local.v1.LocalService.ReleaseWorkspaces:output_type -> hermesh.machine.v1.ReleaseWorkspacesResponse
+	172, // 202: hermesh.local.v1.LocalService.SetWorkspacePolicy:output_type -> hermesh.local.v1.SetWorkspacePolicyResponse
 	143, // 203: hermesh.local.v1.LocalService.SetHer:output_type -> hermesh.local.v1.SetHerResponse
 	145, // 204: hermesh.local.v1.LocalService.SetHerAssistantMode:output_type -> hermesh.local.v1.SetHerAssistantModeResponse
 	147, // 205: hermesh.local.v1.LocalService.SetHerCommandConnector:output_type -> hermesh.local.v1.SetHerCommandConnectorResponse
@@ -11389,7 +11328,7 @@ var file_hermesh_local_v1_local_proto_depIdxs = []int32{
 	117, // 227: hermesh.local.v1.LocalService.OpenWakeLink:output_type -> hermesh.local.v1.OpenWakeLinkResponse
 	121, // 228: hermesh.local.v1.LocalService.ListSessions:output_type -> hermesh.local.v1.ListSessionsResponse
 	123, // 229: hermesh.local.v1.LocalService.WatchSessions:output_type -> hermesh.local.v1.WatchSessionsResponse
-	177, // 230: hermesh.local.v1.LocalService.StreamSessionEvents:output_type -> hermesh.session.v1.SessionEvent
+	176, // 230: hermesh.local.v1.LocalService.StreamSessionEvents:output_type -> hermesh.session.v1.SessionEvent
 	5,   // 231: hermesh.local.v1.LocalService.ListSessionEvents:output_type -> hermesh.local.v1.ListSessionEventsResponse
 	197, // 232: hermesh.local.v1.LocalService.ReadToolOutput:output_type -> hermesh.session.v1.ToolOutputChunk
 	134, // 233: hermesh.local.v1.LocalService.InterruptSession:output_type -> hermesh.local.v1.SessionResponse
@@ -11402,11 +11341,11 @@ var file_hermesh_local_v1_local_proto_depIdxs = []int32{
 	199, // 240: hermesh.local.v1.LocalService.GetDiff:output_type -> hermesh.session.v1.GetDiffResponse
 	140, // 241: hermesh.local.v1.LocalService.QueryWork:output_type -> hermesh.local.v1.QueryWorkResponse
 	9,   // 242: hermesh.local.v1.LocalService.RegisterPush:output_type -> hermesh.local.v1.RegisterPushResponse
-	165, // [165:243] is the sub-list for method output_type
-	87,  // [87:165] is the sub-list for method input_type
-	87,  // [87:87] is the sub-list for extension type_name
-	87,  // [87:87] is the sub-list for extension extendee
-	0,   // [0:87] is the sub-list for field type_name
+	164, // [164:243] is the sub-list for method output_type
+	85,  // [85:164] is the sub-list for method input_type
+	85,  // [85:85] is the sub-list for extension type_name
+	85,  // [85:85] is the sub-list for extension extendee
+	0,   // [0:85] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_local_v1_local_proto_init() }
@@ -11421,7 +11360,7 @@ func file_hermesh_local_v1_local_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_local_v1_local_proto_rawDesc), len(file_hermesh_local_v1_local_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   172,
+			NumMessages:   171,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -24,15 +24,15 @@ var (
 		{Title: "让这台电脑加入你的 Hermesh", Code: "XY7Q-N365-786M", Own: true,
 			Lines: []string{"设备名称：YIPENGFEI38BE", "账号：o_zwbpwtikcuvdpon2irjfzm6e"},
 			Why:   "签下这台电脑的加入申请。之后到你已有的设备上核对同样的核对码并批准，这台电脑就成为可信设备。"},
-		{Title: "给这台电脑签发端到端连接证书", Own: true, Lines: []string{"设备名称：YIPENGFEI38BE", "指纹：tzh3 fjxs"}, Why: "这台电脑上的 Hermesh 用它和你的机器建立端到端加密连接。"},
-		{Title: "共享这台电脑上的 agent", Own: true, Lines: []string{"机器：yipengfei38be"}, Why: "Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。"},
+		{Title: "给这台电脑签发端到端连接证书", Own: true, Lines: []string{"设备名称：YIPENGFEI38BE", "指纹：tzh3 fjxs"}, Why: "这台电脑上的 Hermesh 用它和你的环境建立端到端加密连接。"},
+		{Title: "共享这台电脑上的 agent", Own: true, Lines: []string{"环境：yipengfei38be"}, Why: "Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。"},
 	}
 	grantBatch = []preview.Card{{Title: "允许“bot”连接你的电脑", Code: "K4TP-9WQ2-HM3V",
-		Lines:   []string{"项目：全部", "机器：vps-1", "编码 Agent：claude、codex", "到期：2026年11月29日", "指纹：ab12 cd34"},
+		Lines:   []string{"项目：全部", "环境：vps-1", "Agent 提供方：claude、codex", "到期：2026年11月29日", "指纹：ab12 cd34"},
 		Why:     "用你的账号密钥给它签发授权，随时可以撤销。",
 		Warning: "完全信任：在选定的项目里，它能做你能做的任何事。"}}
 	severalBatch = []preview.Card{
-		{Title: "让“vps-2”成为你的机器", Code: "M2QX-7HTA-01PZ", Lines: []string{"机器：vps-2", "指纹：9f3a 77c1"}},
+		{Title: "让“vps-2”成为你的环境", Code: "M2QX-7HTA-01PZ", Lines: []string{"环境：vps-2", "指纹：9f3a 77c1"}},
 		{Title: "允许“grok”连接你的电脑", Code: "K4TP-9WQ2-HM3V", Lines: []string{"项目：demo", "到期：2026年11月29日"}, Warning: "完全信任：在选定的项目里，它能做你能做的任何事。"},
 		{Title: "撤销“old-bot”的授权", Lines: []string{"授权：c_7h2kq"}},
 	}

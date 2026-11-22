@@ -7,7 +7,7 @@ import { forward, forwardedCalls, openUpstream } from "./gateway";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
 import { setAppMenu } from "./menu";
-import { applyAppearance, posted, watch } from "./notify";
+import { applyAppearance, migrateStayOnline, posted, stayOnlineListeners, watch } from "./notify";
 import { dataDir, socketPath } from "./paths";
 import { platform } from "./platform";
 import { keepSignerRunning } from "./signer";
@@ -86,6 +86,8 @@ app.whenReady().then(async () => {
   registerIPC();
   initDaemonControl(() => started);
   platform.registerDaemon();
+  void migrateStayOnline(() => platform.loginItem(), (on) => platform.setLoginItem(on));
+  stayOnlineListeners.add((on) => void platform.setLoginItem(on));
   setAppMenu();
   watch();
   const stopSigner = keepSignerRunning(socketPath());

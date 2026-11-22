@@ -748,6 +748,14 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     set {command = .setHerCommandConnector(newValue)}
   }
 
+  public var setWorkspacePolicy: Hermesh_Identity_V1_SetWorkspacePolicy {
+    get {
+      if case .setWorkspacePolicy(let v)? = command {return v}
+      return Hermesh_Identity_V1_SetWorkspacePolicy()
+    }
+    set {command = .setWorkspacePolicy(newValue)}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public nonisolated enum OneOf_Command: Equatable, Sendable {
@@ -759,6 +767,7 @@ public nonisolated struct Hermesh_Identity_V1_AdminCommand: Sendable {
     case setHer(Hermesh_Identity_V1_SetHer)
     case setHerAssistantMode(Hermesh_Identity_V1_SetHerAssistantMode)
     case setHerCommandConnector(Hermesh_Identity_V1_SetHerCommandConnector)
+    case setWorkspacePolicy(Hermesh_Identity_V1_SetWorkspacePolicy)
 
   }
 
@@ -784,7 +793,12 @@ public nonisolated struct Hermesh_Identity_V1_AddProject: Sendable {
   /// work (at most 200 characters). Adding the project again changes it.
   public var description_p: String = String()
 
-  /// The coding agents that may work in it (e.g. "claude"); empty: all.
+  /// Ignored by machines since the settings rework (2026-11): every signed-in agent provider works in every
+  /// project; an agent's access limits which it may use
+  /// (docs/settings-environments.md §5.6). Older machines read it as the
+  /// coding agents that may work in it, empty for all.
+  ///
+  /// NOTE: This field was marked as deprecated in the .proto file.
   public var agents: [String] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -824,6 +838,20 @@ public nonisolated struct Hermesh_Identity_V1_SetPaused: Sendable {
   // methods supported on all messages.
 
   public var paused: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+/// SetWorkspacePolicy is a setting: whether the machine releases idle
+/// sessions' checkouts by itself (docs/settings-environments.md §5.7.4).
+public nonisolated struct Hermesh_Identity_V1_SetWorkspacePolicy: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var autoRelease: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1931,7 +1959,7 @@ nonisolated extension Hermesh_Identity_V1_EraseAck: SwiftProtobuf.Message, Swift
 
 nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AdminCommand"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}command_id\0\u{3}target_machine_id\0\u{3}expires_at\0\u{4}\u{6}add_project\0\u{3}remove_project\0\u{4}\u{2}set_paused\0\u{3}set_name\0\u{3}set_agent_defaults\0\u{3}set_her\0\u{3}set_her_assistant_mode\0\u{3}set_her_command_connector\0\u{3}set_workspace_policy\0\u{b}rename_machine\0\u{c}\u{c}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2047,6 +2075,19 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
           self.command = .setHerCommandConnector(v)
         }
       }()
+      case 19: try {
+        var v: Hermesh_Identity_V1_SetWorkspacePolicy?
+        var hadOneofValue = false
+        if let current = self.command {
+          hadOneofValue = true
+          if case .setWorkspacePolicy(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.command = .setWorkspacePolicy(v)
+        }
+      }()
       default: break
       }
     }
@@ -2101,6 +2142,10 @@ nonisolated extension Hermesh_Identity_V1_AdminCommand: SwiftProtobuf.Message, S
     case .setHerCommandConnector?: try {
       guard case .setHerCommandConnector(let v)? = self.command else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 18)
+    }()
+    case .setWorkspacePolicy?: try {
+      guard case .setWorkspacePolicy(let v)? = self.command else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 19)
     }()
     case nil: break
     }
@@ -2258,6 +2303,36 @@ nonisolated extension Hermesh_Identity_V1_SetPaused: SwiftProtobuf.Message, Swif
 
   public static func ==(lhs: Hermesh_Identity_V1_SetPaused, rhs: Hermesh_Identity_V1_SetPaused) -> Bool {
     if lhs.paused != rhs.paused {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Identity_V1_SetWorkspacePolicy: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".SetWorkspacePolicy"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}auto_release\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.autoRelease) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.autoRelease != false {
+      try visitor.visitSingularBoolField(value: self.autoRelease, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Identity_V1_SetWorkspacePolicy, rhs: Hermesh_Identity_V1_SetWorkspacePolicy) -> Bool {
+    if lhs.autoRelease != rhs.autoRelease {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

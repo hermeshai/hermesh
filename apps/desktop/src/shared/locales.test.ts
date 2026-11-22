@@ -129,3 +129,27 @@ test("iPhone first-use Her local AI consent covers provider, model, data and pur
   assert.match(zhIOSFallback, /数据：/);
   assert.match(zhIOSFallback, /用途：/);
 });
+
+test("Chinese calls a machine an environment (环境) and a coding agent an Agent provider (Agent 提供方)", () => {
+  const old = /机器(?!人)|编码 ?agent/i;
+  // Past releases' notes keep the words of their day.
+  for (const { ns, file } of namespaces().filter((n) => n.ns !== "releases")) {
+    for (const [key, forms] of texts(file("zh-CN"))) {
+      for (const s of forms) assert.doesNotMatch(s, old, `zh-CN/${ns}: ${key}`);
+    }
+  }
+  // The iPhone's, the signing panels' on Apple devices (HermeshKit) and on Windows and Linux (internal/preview).
+  const repo = path.join(import.meta.dirname, "..", "..", "..", "..");
+  for (const f of ["apps/ios/Hermesh/Localizable.xcstrings", "apps/ios/Hermesh/InfoPlist.xcstrings"]) {
+    type Unit = { stringUnit?: { value?: string }; variations?: { plural?: Record<string, Unit> } };
+    const strings = JSON.parse(fs.readFileSync(path.join(repo, f), "utf8")).strings as Record<string, { localizations?: Record<string, Unit> }>;
+    const values = (u: Unit | undefined): string[] => (u ? [u.stringUnit?.value ?? "", ...Object.values(u.variations?.plural ?? {}).flatMap(values)] : []);
+    for (const [key, s] of Object.entries(strings)) {
+      for (const v of values(s.localizations?.["zh-Hans"])) assert.doesNotMatch(v, old, `${f}: ${key}`);
+    }
+  }
+  const kit = fs.readFileSync(path.join(repo, "packages/HermeshKit/Sources/HermeshKit/Resources/zh-Hans.lproj/Localizable.strings"), "utf8");
+  for (const line of kit.split("\n").filter((l) => l.includes(" = "))) assert.doesNotMatch(line.split(" = ")[1], old, `HermeshKit: ${line}`);
+  const preview = JSON.parse(fs.readFileSync(path.join(repo, "internal/preview/locales/zh-CN.json"), "utf8")) as Record<string, string>;
+  for (const [key, v] of Object.entries(preview)) assert.doesNotMatch(v, old, `internal/preview: ${key}`);
+});

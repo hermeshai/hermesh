@@ -57,7 +57,7 @@ extension HermeshUITests {
         herShot("Large text: where Her runs")
         reach(turnOn)
         press(turnOn)
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         let approve = app.buttons["sign-approve"]
         let deny = app.buttons["拒绝"]
         XCTAssertTrue(approve.waitForExistence(timeout: 10) && deny.exists)
@@ -77,7 +77,7 @@ extension HermeshUITests {
         openMenu()
         tap("her-place")
         tap("her-turn-on-owner-mac", timeout: 30)
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         let approve = app.buttons["sign-approve"]
         XCTAssertTrue(approve.waitForExistence(timeout: 10) && approve.isHittable, "Approve in sight, unscrolled")
         herShot("Her: turning her on")

@@ -1,6 +1,11 @@
 {
   "unreleased": {
-    "improvements": [],
+    "improvements": [
+      "Settings are organized around environments: your account at the top of the sidebar, then General, Notifications and Access, then one item per environment. An environment’s page gathers its name, agent providers, projects, Her and storage; pausing and stopping are buttons at the foot of the page. The iPhone’s settings follow the same layout.",
+      "Coding agents are now called agent providers. Projects are no longer limited to some providers: every signed-in provider in an environment can work in its projects, and Access decides which providers an agent may use. Updating clears the provider limits existing projects had.",
+      "New Storage page: see what each environment’s task worktrees take, release several idle ones at once, or turn on releasing worktrees idle for 7 days. Regenerable folders such as node_modules no longer block a release; files such as .env are kept, with the reason shown. It works from the iPhone and for other environments too.",
+      "Open at login and keep the service running after quitting are one switch, Stay Online. With it off, quitting Hermesh asks only while tasks are running."
+    ],
     "fixes": []
   },
   "0.1.9": {

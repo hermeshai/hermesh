@@ -224,6 +224,7 @@ message AdminCommand {
     SetHer set_her = 16;
     SetHerAssistantMode set_her_assistant_mode = 17;
     SetHerCommandConnector set_her_command_connector = 18;
+    SetWorkspacePolicy set_workspace_policy = 19;
   }
   reserved 12;
   reserved "rename_machine";
@@ -237,8 +238,11 @@ message AddProject {
   // What the project is, in the owner's words, for agents choosing where to
   // work (at most 200 characters). Adding the project again changes it.
   string description = 5;
-  // The coding agents that may work in it (e.g. "claude"); empty: all.
-  repeated string agents = 6;
+  // Ignored by machines since the settings rework (2026-11): every signed-in agent provider works in every
+  // project; an agent's access limits which it may use
+  // (docs/settings-environments.md §5.6). Older machines read it as the
+  // coding agents that may work in it, empty for all.
+  repeated string agents = 6 [deprecated = true];
 }
 
 message RemoveProject {
@@ -253,6 +257,12 @@ message SetName {
 
 message SetPaused {
   bool paused = 1;
+}
+
+// SetWorkspacePolicy is a setting: whether the machine releases idle
+// sessions' checkouts by itself (docs/settings-environments.md §5.7.4).
+message SetWorkspacePolicy {
+  bool auto_release = 1;
 }
 
 // SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Session, SessionStatus } from "@hermesh/proto/session";
 import type { GetStatusResponse, Machine, PairingDetails } from "@hermesh/proto/local";
-import { assessDaemonImpact, hasActiveWork, hasAnyImpact, impactLines, resolveDaemonState, type DaemonWorld } from "./daemon.ts";
+import { assessDaemonImpact, hasActiveWork, impactLines, resolveDaemonState, type DaemonWorld } from "./daemon.ts";
 import enMain from "../locales/en/main.json" with { type: "json" };
 import zhMain from "../locales/zh-CN/main.json" with { type: "json" };
 
@@ -68,7 +68,6 @@ test("assessDaemonImpact counts only local non-archived active tasks and capture
     localMachineOnline: true,
   });
   assert.equal(hasActiveWork(impact), true);
-  assert.equal(hasAnyImpact(impact), true);
 
   const zhLines = impactLines(impact, makeT(zhMain));
   assert.equal(zhLines.length, 6);
@@ -98,7 +97,6 @@ test("idle initialized Mac has no active work but still reports offline impact",
   };
   const impact = assessDaemonImpact(world, false);
   assert.equal(hasActiveWork(impact), false);
-  assert.equal(hasAnyImpact(impact), true);
   const lines = impactLines(impact, makeT(zhMain));
   assert.equal(lines.length, 1);
   assert.match(lines[0], /暂时无法连接这台 Mac/);
@@ -113,7 +111,6 @@ test("uninitialized daemon with no local work reports no impact", () => {
   };
   const impact = assessDaemonImpact(world, false);
   assert.equal(hasActiveWork(impact), false);
-  assert.equal(hasAnyImpact(impact), false);
 });
 
 test("resolveDaemonState prioritizes transitions over connection and distinguishes user-stopped from unavailable", () => {

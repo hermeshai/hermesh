@@ -190,7 +190,7 @@ function dockMenu(): Menu {
           ...(runningDaemon
             ? [
                 { type: "separator" as const },
-                preferences().keepDaemonOnQuit
+                preferences().stayOnline
                   ? { id: "quitStop", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() }
                   : { id: "quitKeep", label: t("daemon.quitKeepMenu"), click: () => quitKeepingDaemon() },
               ]
@@ -207,7 +207,7 @@ function contextMenu(): Menu {
   const runningDaemon = daemonState() === "running";
   const quitItems: MenuItemConstructorOptions[] =
     manageable && runningDaemon
-      ? preferences().keepDaemonOnQuit
+      ? preferences().stayOnline
         ? [
             { id: "quit", label: t("daemon.quitKeepMenu"), click: () => app.quit() },
             { id: "quitStop", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() },

@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 )
 
-// TestProjectAgents: the owner sets a project up for some coding agents.
-// The agent CLI lists only those for it, and the machine refuses a session
-// of any other there; a project set up for none takes all.
+// TestProjectAgents: a project is for every agent provider
+// (docs/settings-environments.md §5.6). Coding agents an older app still
+// sends with it are ignored; which providers an agent may use is its
+// access, and the CLI lists those for every project.
 func TestProjectAgents(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -31,22 +31,19 @@ func TestProjectAgents(t *testing.T) {
 	if _, err := w.app.client.AddProject(ctx, &localv1.AddProjectRequest{MachineId: ms.Machines[0].MachineId, ProjectId: "site", Path: repo, Agents: []string{"gemini"}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.app.client.AddProject(ctx, &localv1.AddProjectRequest{MachineId: ms.Machines[0].MachineId, ProjectId: "bad", Path: repo, Agents: []string{"vim"}}); err == nil {
-		t.Fatal("a project for an unknown agent was added")
-	}
 
-	// The owner sees what each project is for, and where it is.
+	// The owner sees no agents on it, and where it is.
 	ps, err := w.app.client.ListProjects(ctx, &localv1.ListProjectsRequest{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range ps.Projects {
-		if p.ProjectId == "site" && (!slices.Equal(p.Agents, []string{"gemini"}) || p.Path == "") {
+		if p.ProjectId == "site" && (len(p.Agents) != 0 || p.Path == "") {
 			t.Fatalf("owner's view of site: %+v", p)
 		}
 	}
 
-	// The agent CLI: demo is for all (gemini and cursor here), site for gemini.
+	// The agent CLI: both projects take every provider its access allows.
 	r := w.cli(30*time.Second, "project", "list", "-o", "json")
 	var doc struct {
 		Projects []struct {
@@ -62,20 +59,21 @@ func TestProjectAgents(t *testing.T) {
 		for _, a := range p.Agents {
 			agents[p.Project] = append(agents[p.Project], a.Name)
 		}
+		slices.Sort(agents[p.Project])
 	}
-	slices.Sort(agents["owner-mac/demo"])
-	if !slices.Equal(agents["owner-mac/demo"], []string{"cursor", "gemini"}) || !slices.Equal(agents["owner-mac/site"], []string{"gemini"}) {
+	if !slices.Equal(agents["owner-mac/demo"], []string{"cursor", "gemini"}) || !slices.Equal(agents["owner-mac/site"], []string{"cursor", "gemini"}) {
 		t.Fatalf("agents by project: %v", agents)
 	}
 
-	// Cursor is refused in site, and takes demo; Gemini takes site.
-	if r := w.cli(time.Minute, "session", "start", "--project", "site", "--agent", "cursor", "--prompt", "say x"); r.code == 0 || !strings.Contains(r.stderr+r.stdout, "not set up for agent") {
+	// Cursor, left out by the old app, works in site.
+	if r := w.cli(time.Minute, "session", "start", "--project", "site", "--agent", "cursor", "--wait", "--prompt", "say from cursor"); r.code != 0 {
 		t.Fatalf("cursor in site: %+v", r)
-	}
-	if s, r := w.startSession(time.Minute, "--agent", "cursor", "--wait", "--prompt", "say from cursor"); r.code != 0 || s.Status != "idle" {
-		t.Fatalf("cursor in demo: %+v", r)
 	}
 	if r := w.cli(time.Minute, "session", "start", "--project", "site", "--agent", "gemini", "--wait", "--prompt", "say from gemini"); r.code != 0 {
 		t.Fatalf("gemini in site: %+v", r)
+	}
+	// Its access still limits it: Claude is not in it.
+	if r := w.cli(time.Minute, "session", "start", "--project", "site", "--agent", "claude", "--prompt", "say x"); r.code == 0 {
+		t.Fatalf("claude outside the access: %+v", r)
 	}
 }

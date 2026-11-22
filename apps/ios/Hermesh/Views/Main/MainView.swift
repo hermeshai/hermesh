@@ -57,7 +57,7 @@ private struct PageView: View {
         case .her: HerView()
         case .overview: OverviewView()
         case .grants: GrantsView()
-        case .machines: MachinesView()
+        case .machines: EnvironmentsView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
         }
     }
@@ -65,12 +65,21 @@ private struct PageView: View {
 
 @ViewBuilder func routePage(_ route: Route) -> some View {
     switch route {
-    case .machines: MachinesView(isRoot: false)
+    case .machines: EnvironmentsView(isRoot: false)
     case .grants: GrantsView(isRoot: false)
     case .session(let id): SessionView(id: id).id(id) // the sync line in its title's second line
     case .grant(let id): GrantView(id: id).syncSubtitle()
-    case .machine(let id): MachineView(id: id).syncSubtitle()
+    case .machine(let id): EnvironmentView(id: id).syncSubtitle()
     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()
+    case .environmentName(let id): EnvironmentNameView(id: id)
+    case .providers(let id): ProvidersView(id: id)
+    case .projects(let id): ProjectsView(id: id)
+    case .project(let machine, let project): ProjectView(machineID: machine, projectID: project)
+    case .environmentHer(let id): EnvironmentHerView(id: id)
+    case .storage(let id): StorageView(id: id)
+    case .storageProject(let machine, let project): StorageProjectView(machineID: machine, projectID: project)
+    case .account: AccountView()
+    case .appearance: AppearanceView()
     case .herSettings: HerSettings()
     case .herConnectors: HerConnectorsPage()
     case .herConnector(let name): HerConnectorPage(name: name)
@@ -585,14 +594,14 @@ extension UIColor {
     }
 }
 
-/// New: connect an agent, add a machine, or scan or enter a pairing code.
+/// New: connect an agent, add an environment, or scan or enter a pairing code.
 struct NewMenu: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Menu {
             Button("Connect an Agent…", systemImage: "link") { model.sheet = .connectAgent }
-            Button("Add a Machine…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
+            Button("Add Environment…", systemImage: "desktopcomputer") { model.sheet = .addMachine }
             Button("Scan a Code…", systemImage: "qrcode.viewfinder") { model.sheet = .scan }
             Button("Enter a Pairing Code…", systemImage: "number") { model.sheet = .enterCode }
         } label: {

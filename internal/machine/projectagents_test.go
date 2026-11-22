@@ -2,59 +2,62 @@ package machine
 
 import (
 	"context"
-	"slices"
+	"path/filepath"
 	"testing"
+	"time"
 
-	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
+	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
 
-// A project set up for some coding agents takes sessions of those only;
-// one with none takes all.
-func TestProjectAgents(t *testing.T) {
+// A project is for every agent provider (docs/settings-environments.md §5.6):
+// the coding agents an older device sends with it are ignored, and a
+// session of any provider starts there.
+func TestProjectsAreForEveryProvider(t *testing.T) {
 	h := newHarness(t, Limits{})
-	start := func() error {
-		sess, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "fake", Prompt: "hi"})
-		if err == nil {
-			// Let its worktree settle before the test's directories go.
-			h.wait(sess.SessionId, idle)
-		}
-		return err
-	}
-	p, err := h.s.st.Project("demo")
-	if err != nil || p == nil || len(p.Agents) != 0 {
-		t.Fatalf("project %+v, %v", p, err)
-	}
-
-	p.Agents = []string{"claude", "codex"}
-	if err := h.s.st.PutProject(*p); err != nil {
+	ctx := context.Background()
+	proj, _ := h.s.st.Project("demo")
+	if _, err := h.n.ApplySettings(ctx, &identityv1.AdminCommand{OwnerId: h.n.OwnerID(), CommandId: "p1", TargetMachineId: h.n.machineID,
+		ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
+		Command:   &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: "demo", Path: proj.Path, Agents: []string{"claude"}}}}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := h.s.st.Project("demo"); !slices.Equal(got.Agents, []string{"claude", "codex"}) {
-		t.Fatalf("stored agents %q", got.Agents)
+	res, err := (&machineService{n: h.n}).ListProjects(context.WithValue(ctx, principalKey{}, h.p), &machinev1.ListProjectsRequest{})
+	if err != nil || len(res.Projects) != 1 || len(res.Projects[0].Agents) != 0 {
+		t.Fatalf("listed: %v %v", res, err)
 	}
-	if err := start(); connect.CodeOf(err) != connect.CodePermissionDenied {
-		t.Fatalf("a session of an agent the project is not for: %v", err)
+	sess, err := h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "fake", Prompt: "hi"})
+	if err != nil {
+		t.Fatalf("a session of a provider the old device left out: %v", err)
 	}
-
-	p.Agents = []string{"fake"}
-	if err := h.s.st.PutProject(*p); err != nil {
-		t.Fatal(err)
-	}
-	if err := start(); err != nil {
-		t.Fatalf("a session of an agent the project is for: %v", err)
-	}
+	h.wait(sess.SessionId, idle)
 }
 
-func TestProjectAgentsAreKnownNames(t *testing.T) {
-	if got, err := projectAgents([]string{"codex", "claude", "codex"}); err != nil || !slices.Equal(got, []string{"codex", "claude"}) {
-		t.Fatalf("got %q, %v", got, err)
+// Updating clears the coding agents projects were limited to.
+func TestProjectAgentsMigrationClearsLimits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "machine.db")
+	db, err := sqlitedb.Open(path, migrations[:len(migrations)-1])
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got, err := projectAgents(nil); err != nil || got != nil {
-		t.Fatalf("none: %q, %v", got, err)
+	if _, err := db.Exec(`INSERT INTO projects(project_id,path,default_base_ref,workspace,description,agents,created_at) VALUES('notes','/tmp/notes','HEAD',1,'','codex',0)`); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := projectAgents([]string{"claude", "vim"}); err == nil {
-		t.Fatal("an unknown agent was taken")
+	db.Close()
+	st, err := OpenStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	var agents string
+	if err := st.rdb.QueryRow(`SELECT agents FROM projects WHERE project_id='notes'`).Scan(&agents); err != nil || agents != "" {
+		t.Fatalf("agents %q, %v", agents, err)
+	}
+	if p, err := st.Project("notes"); err != nil || p == nil || p.Path != "/tmp/notes" {
+		t.Fatalf("project %+v, %v", p, err)
 	}
 }

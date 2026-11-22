@@ -23,6 +23,7 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
   const host = URL.canParse(relay) ? new URL(relay).host : relay;
   const addr = s?.connectAddress ?? "";
   const silent = useElevatesSilently();
+  const [advanced, setAdvanced] = useState(false);
   const removeDevice = (d: Device) => {
     // Its own machine goes with it, and Her's data there can go too (docs/her-server.md §5.6).
     const m = st.machines.find((x) => x.machineId === d.machineId);
@@ -88,9 +89,6 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
               )}
             </div>
           ))}
-          <div className="frow">
-            <button className="link" onClick={() => st.set({ sheet: { kind: "addDevice" } })}>{t("account.addDevice")}</button>
-          </div>
         </div>
         <p className="set-note">{t("account.devicesNote")}</p>
         {silent && (
@@ -100,8 +98,18 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
           </p>
         )}
       </div>
-      <More label={t("account.advanced")}>
-        <div className="fgroup">
+      <div className="set-acts">
+        <button className="btn" onClick={leave}>{t("account.signOut")}</button>
+        <button className="btn push" onClick={() => st.set({ sheet: { kind: "addDevice" } })}>{t("account.addDevice")}</button>
+        <button className="btn" onClick={() => setAdvanced(true)}>{t("account.advancedButton")}</button>
+      </div>
+      {advanced && (
+        <>
+          <div className="sheet-scrim" />
+          <div className="sheet set-sheet" role="dialog" aria-label={t("account.advanced")}>
+            <h3>{t("account.advanced")}</h3>
+            <p className="sub">{t("account.advancedSub")}</p>
+            <div className="fgroup">
           <div className="frow">
             <span className="fl">{t(s?.hosted ? "account.server" : "account.relay")}</span>
             <span className="fv">
@@ -129,13 +137,16 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
             </div>
           )}
         </div>
-      </More>
-      <div className="set-acts">
-        {s && !s.removed && (
-          <button className="btn danger" onClick={() => st.set({ sheet: { kind: "erase" } })}>{t("account.eraseAll")}</button>
-        )}
-        <button className="btn danger push" onClick={leave}>{t("account.signOut")}</button>
-      </div>
+            <div className="sheet-foot">
+              {s && !s.removed && (
+                <button className="btn danger" onClick={() => (setAdvanced(false), st.set({ sheet: { kind: "erase" } }))}>{t("account.eraseAll")}</button>
+              )}
+              <span className="push" />
+              <button className="btn primary" onClick={() => setAdvanced(false)}>{t("account.done")}</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -12,6 +12,8 @@ hermesh auth login --name "Codex on MacBook"   # or: hermesh auth login <connect
 
 `hermesh agent login antigravity` signs in to the official Antigravity ACP server **on the computer running this command**, separately from Hermesh pairing. It prints the Google sign-in link and leaves credentials with the official server. `--method` selects another advertised authentication method. See [installation and authentication](antigravity.md).
 
+**Words.** The apps call a machine an *environment* and a coding agent an *agent provider* ([settings-environments.md](settings-environments.md) §3); the CLI, the protocol and these docs keep `machine` and `coding agent` (`--agent claude`), and agents still find a project as `name/project`.
+
 Commands are "noun + action": `auth`, `project`, `session` and `message`, each with its actions (`hermesh <noun> --help`). The agent calling the CLI is the **client**; the agent doing the work on the machine is the **coding agent** (`--agent claude`). Over MCP, the same commands are tools (`project_list`, `session_start`, …; [docs/mcp-gateway.md](mcp-gateway.md) §7).
 
 ```bash

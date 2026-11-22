@@ -3,11 +3,6 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// The projects agent may work in: those for it, and those for every agent.
-func projectsFor(_ projects: [Project], _ agent: String) -> [Project] {
-    projects.filter { $0.agents.isEmpty || $0.agents.contains(agent) }
-}
-
 /// A machine's coding agents sorted out: installed (signed in first, then
 /// Claude Code and Codex, then by name), still being checked, not installed.
 func sortedAgents(_ agents: [AgentStatus]) -> (installed: [AgentStatus], checking: [AgentStatus], missing: [String]) {
@@ -50,16 +45,14 @@ func defaultsText(_ a: AgentStatus) -> String {
         .filter { !$0.isEmpty }.joined(separator: " · ")
 }
 
-/// A coding agent on a machine, opened from the machine's page: signing in
-/// when it isn't, the model, reasoning effort and (Codex) speed its sessions
-/// run with when the agent starting one names no model (or why there is no
-/// choosing), and the projects it may work in, each with how agents work
-/// there.
+/// An agent provider in an environment, opened from its Agent Providers page: signing in when it isn't,
+/// Test, and the model, reasoning effort and (Codex) speed its sessions run with when the agent starting
+/// one names no model (or why there is no choosing). Projects are the environment's, for every provider
+/// (docs/settings-environments.md §5.6).
 struct MachineAgentView: View {
     @Environment(AppModel.self) private var model
     let machineID: String
     let agent: String
-    @State private var projects: [Project] = []
     @State private var testing = false
     @State private var test: Result<Hermesh_Machine_V1_TestAgentResponse, Error>?
 
@@ -73,17 +66,10 @@ struct MachineAgentView: View {
         }
         .navigationTitle(agentTitle(agent))
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
-        .onChange(of: model.sheet) { if model.sheet == nil { Task { await load() } } }
-    }
-
-    private func load() async {
-        projects = (try? await model.api?.projects(machine: machineID))?.projects ?? []
     }
 
     private func content(_ m: Machine, _ a: AgentStatus) -> some View {
         let title = agentTitle(agent)
-        let mine = projectsFor(projects, agent)
         let editable = m.online
         return List {
             Section {
@@ -141,22 +127,9 @@ struct MachineAgentView: View {
                     Text("Default Model")
                 }
             }
-            Section {
-                ForEach(mine, id: \.projectID) { p in
-                    projectRow(p, title: title, editable: editable)
-                }
-                Button("Add a Project…", systemImage: "plus") { model.sheet = .addProject(machineID, agent) }
-                    .disabled(!editable)
-                    .accessibilityIdentifier("add-project")
-            } header: {
-                Text("Projects")
-            } footer: {
-                if mine.isEmpty { Text("No projects yet") }
-            }
         }
         .refreshable {
             await model.recheck(machine: machineID)
-            await load()
         }
     }
 
@@ -233,61 +206,12 @@ struct MachineAgentView: View {
                     Text("Standard").tag(Hermesh_Identity_V1_AgentSpeed.standard)
                     Text("Fast").tag(Hermesh_Identity_V1_AgentSpeed.fast)
                 }
+                .accessibilityIdentifier("default-speed")
             }
         } header: {
             Text("Default Model")
         } footer: {
             Text("Sessions an agent starts here without naming a model use these. \(title)’s own settings stay as they are.")
-        }
-    }
-
-    /// A project of this agent, with a menu (and swipe) to change how agents
-    /// work in it, or stop using it with this agent: taken from the last
-    /// agent it is for, the project goes.
-    private func projectRow(_ p: Project, title: String, editable: Bool) -> some View {
-        let stop = {
-            // One for every agent stays for every other the machine knows of.
-            let rest = (p.agents.isEmpty ? (model.machines.first { $0.machineID == machineID }?.status.agents ?? []).map(\.name) : p.agents).filter { $0 != agent }
-            run {
-                if rest.isEmpty {
-                    try await model.removeProject(machine: machineID, project: p.projectID)
-                } else {
-                    try await model.saveProject(p, agents: rest, workspace: p.workspace)
-                }
-            }
-        }
-        return HStack {
-            ProjectLine(project: p, detail: workspaceText(p.workspace))
-            Spacer(minLength: 0)
-            Menu {
-                Picker("How agents work", selection: Binding(get: { p.workspace == .inPlace ? Hermesh_Identity_V1_Workspace.inPlace : .worktree }, set: { w in
-                    run { try await model.saveProject(p, agents: p.agents, workspace: w) }
-                })) {
-                    Text("Separate Worktree: Each Session on Its Own Branch").tag(Hermesh_Identity_V1_Workspace.worktree)
-                    Text("In Place: Change This Folder Directly").tag(Hermesh_Identity_V1_Workspace.inPlace)
-                }
-                Divider()
-                Button("Stop Using with \(title)", systemImage: "minus.circle", role: .destructive) { stop() }
-            } label: {
-                Image(systemName: "ellipsis").frame(width: 44, height: 44).contentShape(.rect)
-            }
-            .disabled(!editable)
-            .accessibilityLabel("More")
-            .accessibilityIdentifier("project-menu-\(p.projectID)")
-        }
-        .swipeActions {
-            Button("Stop Using", role: .destructive) { stop() }.disabled(!editable)
-        }
-    }
-
-    private func run(_ work: @escaping () async throws -> Void) {
-        Task {
-            do {
-                try await work()
-            } catch {
-                model.report(error)
-            }
-            await load()
         }
     }
 }

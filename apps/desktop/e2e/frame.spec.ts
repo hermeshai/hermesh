@@ -182,7 +182,7 @@ test("the avatar opens the account menu above it, opaque, by mouse and keyboard"
   await avatar.click();
   await expect(avatar).toHaveAttribute("aria-expanded", "true");
   await expect(menu.getByRole("menuitem")).toHaveText(
-    onMac ? ["连接 agent…⇧⌘N", "添加机器…", "输入配对码…⇧⌘P", "设置…⌘,", "账号…"] : ["连接 agent…Ctrl+Shift+N", "添加机器…", "输入配对码…Ctrl+Shift+P", "设置…Ctrl+,", "账号…"],
+    onMac ? ["连接 agent…⇧⌘N", "添加环境…", "输入配对码…⇧⌘P", "设置…⌘,", "账号…"] : ["连接 agent…Ctrl+Shift+N", "添加环境…", "输入配对码…Ctrl+Shift+P", "设置…Ctrl+,", "账号…"],
   );
   await menu.evaluate((el) => Promise.all(el.getAnimations().map((x) => x.finished))); // it rises into place
   const a = (await avatar.boundingBox())!;
@@ -245,7 +245,7 @@ test("the view menu groups, sorts and shows the list from submenus, opaque over 
   expect(background).toMatch(/^rgb\(/); // no alpha: the list doesn't show through
   await menu.getByRole("menuitem", { name: /分组/ }).hover();
   const group = page.getByRole("menu", { name: "分组" });
-  await expect(group.getByRole("menuitemradio")).toHaveText(["按派活的人", "按状态", "按日期", "按项目", "按 Agent", "按机器"]);
+  await expect(group.getByRole("menuitemradio")).toHaveText(["按派活的人", "按状态", "按日期", "按项目", "按 Agent", "按环境"]);
   // By status, until the owner picks a view (docs/her-team.md §16).
   await expect(group.getByRole("menuitemradio", { name: "按状态" })).toHaveAttribute("aria-checked", "true");
   await expect(list.getByRole("group", { name: "已结束" })).toContainText("写 hello");

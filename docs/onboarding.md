@@ -487,8 +487,7 @@ Hermesh never signs in for them (the onboarding concepts).
 
 ### 6.7 Projects on the machine
 
-`hermeshd project add <folder> [--name] [--in-place] [--base main] [--agents
-claude,codex]`, plus `hermeshd project list` and `hermeshd project remove`.
+`hermeshd project add <folder> [--name] [--in-place] [--base main]`, plus `hermeshd project list` and `hermeshd project remove`.
 
 - These are the machine's own settings. It reports changes to the trusted
   devices like any other change, and the phone shows the new project at

@@ -53,15 +53,15 @@
     "other": "失败"
   },
   "advice": {
-    "auth": "请在该机器上以同一系统用户运行一次对应的 CLI 完成登录。",
+    "auth": "请在该环境里以同一系统用户运行一次对应的 CLI 完成登录。",
     "quota": "请等待额度恢复后再试，或更换 Agent / 模型。",
     "transient": "暂时性问题，请稍后重新发送消息。",
     "newContext": "再次发送消息将在新上下文中继续，工作区中的代码改动将会保留。",
     "modelUnavailable": "请更换模型并开启新任务。",
     "limitReached": "发送“继续”即可接着执行。",
     "resume": "再次发送消息即可恢复任务。",
-    "startFailed": "请在 Hermesh 设置中打开该机器的详情页，排查无法启动 Agent 的原因。",
-    "baseRefUnavailable": "请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（机器会从那里拉取），再在这个任务里发一条消息，重试原来的请求。"
+    "startFailed": "请在 Hermesh 设置中打开该环境的页面，排查无法启动 Agent 的原因。",
+    "baseRefUnavailable": "请确认基准引用名称，以及项目的远端仓库里有这个分支或 tag（环境会从那里拉取），再在这个任务里发一条消息，重试原来的请求。"
   },
   "headline": {
     "auth": "{{agent}} 未登录",
@@ -97,7 +97,7 @@
     "herQuestion": "等你回答：{{text}}"
   },
   "pairing": {
-    "machine": "机器「{{label}}」想加入",
+    "machine": "「{{label}}」想作为环境加入",
     "device": "「{{label}}」想成为你的可信设备",
     "client": "「{{label}}」想连接",
     "body": "核对码 {{code}}。点击比对并批准，如不认识请拒绝。"

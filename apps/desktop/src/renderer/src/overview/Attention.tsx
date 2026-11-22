@@ -50,7 +50,7 @@ export function Attention({ now }: { now: Date }) {
             {opensActivityMonitor(m, p) ? (
               <button className="btn" onClick={() => window.hermesh?.openActivityMonitor()}>{i18n.t("common:health.openActivityMonitor")}</button>
             ) : (
-              <button className="btn" onClick={() => window.hermesh?.openSettings(`machines/${m.machineId}`)}>{i18n.t("common:health.view")}</button>
+              <button className="btn" onClick={() => window.hermesh?.openSettings(`env/${m.machineId}`)}>{i18n.t("common:health.view")}</button>
             )}
           </Row>
         ))}

@@ -65,6 +65,12 @@ const (
 	// MachineAdminServiceSetHerGrantProcedure is the fully-qualified name of the MachineAdminService's
 	// SetHerGrant RPC.
 	MachineAdminServiceSetHerGrantProcedure = "/hermesh.machine.v1.MachineAdminService/SetHerGrant"
+	// MachineAdminServiceListWorkspacesProcedure is the fully-qualified name of the
+	// MachineAdminService's ListWorkspaces RPC.
+	MachineAdminServiceListWorkspacesProcedure = "/hermesh.machine.v1.MachineAdminService/ListWorkspaces"
+	// MachineAdminServiceReleaseWorkspacesProcedure is the fully-qualified name of the
+	// MachineAdminService's ReleaseWorkspaces RPC.
+	MachineAdminServiceReleaseWorkspacesProcedure = "/hermesh.machine.v1.MachineAdminService/ReleaseWorkspaces"
 )
 
 // MachineServiceClient is a client for the hermesh.machine.v1.MachineService service.
@@ -296,6 +302,14 @@ type MachineAdminServiceClient interface {
 	// devices only; the grant is root-signed and checked by the machine: for
 	// its own Her key, with its own machine id.
 	SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error)
+	// The sessions' checkouts on this machine, their size and whether each can
+	// be released now (docs/settings-environments.md §5.7). Scanning reads
+	// every file: the owner asks for it, or takes the last scan (cached).
+	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error)
+	// Removes idle sessions' checkouts; each session's branch stays, and its
+	// next message checks it out again. One that cannot be released is kept
+	// and says why; the others go on.
+	ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v1.ReleaseWorkspacesResponse, error)
 }
 
 // NewMachineAdminServiceClient constructs a client for the hermesh.machine.v1.MachineAdminService
@@ -345,6 +359,18 @@ func NewMachineAdminServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(machineAdminServiceMethods.ByName("SetHerGrant")),
 			connect.WithClientOptions(opts...),
 		),
+		listWorkspaces: connect.NewClient[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse](
+			httpClient,
+			baseURL+MachineAdminServiceListWorkspacesProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("ListWorkspaces")),
+			connect.WithClientOptions(opts...),
+		),
+		releaseWorkspaces: connect.NewClient[v1.ReleaseWorkspacesRequest, v1.ReleaseWorkspacesResponse](
+			httpClient,
+			baseURL+MachineAdminServiceReleaseWorkspacesProcedure,
+			connect.WithSchema(machineAdminServiceMethods.ByName("ReleaseWorkspaces")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -356,6 +382,8 @@ type machineAdminServiceClient struct {
 	listFolders       *connect.Client[v1.ListFoldersRequest, v1.ListFoldersResponse]
 	testAgent         *connect.Client[v1.TestAgentRequest, v1.TestAgentResponse]
 	setHerGrant       *connect.Client[v1.SetHerGrantRequest, v1.SetHerGrantResponse]
+	listWorkspaces    *connect.Client[v1.ListWorkspacesRequest, v1.ListWorkspacesResponse]
+	releaseWorkspaces *connect.Client[v1.ReleaseWorkspacesRequest, v1.ReleaseWorkspacesResponse]
 }
 
 // ApplyAdminCommand calls hermesh.machine.v1.MachineAdminService.ApplyAdminCommand.
@@ -412,6 +440,24 @@ func (c *machineAdminServiceClient) SetHerGrant(ctx context.Context, req *v1.Set
 	return nil, err
 }
 
+// ListWorkspaces calls hermesh.machine.v1.MachineAdminService.ListWorkspaces.
+func (c *machineAdminServiceClient) ListWorkspaces(ctx context.Context, req *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error) {
+	response, err := c.listWorkspaces.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ReleaseWorkspaces calls hermesh.machine.v1.MachineAdminService.ReleaseWorkspaces.
+func (c *machineAdminServiceClient) ReleaseWorkspaces(ctx context.Context, req *v1.ReleaseWorkspacesRequest) (*v1.ReleaseWorkspacesResponse, error) {
+	response, err := c.releaseWorkspaces.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // MachineAdminServiceHandler is an implementation of the hermesh.machine.v1.MachineAdminService
 // service.
 type MachineAdminServiceHandler interface {
@@ -430,6 +476,14 @@ type MachineAdminServiceHandler interface {
 	// devices only; the grant is root-signed and checked by the machine: for
 	// its own Her key, with its own machine id.
 	SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error)
+	// The sessions' checkouts on this machine, their size and whether each can
+	// be released now (docs/settings-environments.md §5.7). Scanning reads
+	// every file: the owner asks for it, or takes the last scan (cached).
+	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error)
+	// Removes idle sessions' checkouts; each session's branch stays, and its
+	// next message checks it out again. One that cannot be released is kept
+	// and says why; the others go on.
+	ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v1.ReleaseWorkspacesResponse, error)
 }
 
 // NewMachineAdminServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -475,6 +529,18 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 		connect.WithSchema(machineAdminServiceMethods.ByName("SetHerGrant")),
 		connect.WithHandlerOptions(opts...),
 	)
+	machineAdminServiceListWorkspacesHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceListWorkspacesProcedure,
+		svc.ListWorkspaces,
+		connect.WithSchema(machineAdminServiceMethods.ByName("ListWorkspaces")),
+		connect.WithHandlerOptions(opts...),
+	)
+	machineAdminServiceReleaseWorkspacesHandler := connect.NewUnaryHandlerSimple(
+		MachineAdminServiceReleaseWorkspacesProcedure,
+		svc.ReleaseWorkspaces,
+		connect.WithSchema(machineAdminServiceMethods.ByName("ReleaseWorkspaces")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.machine.v1.MachineAdminService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case MachineAdminServiceApplyAdminCommandProcedure:
@@ -489,6 +555,10 @@ func NewMachineAdminServiceHandler(svc MachineAdminServiceHandler, opts ...conne
 			machineAdminServiceTestAgentHandler.ServeHTTP(w, r)
 		case MachineAdminServiceSetHerGrantProcedure:
 			machineAdminServiceSetHerGrantHandler.ServeHTTP(w, r)
+		case MachineAdminServiceListWorkspacesProcedure:
+			machineAdminServiceListWorkspacesHandler.ServeHTTP(w, r)
+		case MachineAdminServiceReleaseWorkspacesProcedure:
+			machineAdminServiceReleaseWorkspacesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -520,4 +590,12 @@ func (UnimplementedMachineAdminServiceHandler) TestAgent(context.Context, *v1.Te
 
 func (UnimplementedMachineAdminServiceHandler) SetHerGrant(context.Context, *v1.SetHerGrantRequest) (*v1.SetHerGrantResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.SetHerGrant is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v1.ListWorkspacesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.ListWorkspaces is not implemented"))
+}
+
+func (UnimplementedMachineAdminServiceHandler) ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v1.ReleaseWorkspacesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.machine.v1.MachineAdminService.ReleaseWorkspaces is not implemented"))
 }

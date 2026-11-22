@@ -351,7 +351,7 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 	switch x := c.Command.(type) {
 	case *identityv1.AdminCommand_AddProject:
 		p := x.AddProject
-		lines := []string{w.f("Project: %s", p.ProjectId), w.f("Directory: %s", p.Path), w.f("Coding agents: %s", scope(agentTitles(p.Agents), w))}
+		lines := []string{w.f("Project: %s", p.ProjectId), w.f("Directory: %s", p.Path)}
 		if p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE {
 			lines = append(lines, w.f("In place: agents change the directory's files directly"))
 		}
@@ -367,6 +367,11 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		return Card{Title: w.f("Resume %s", target), Why: w.f("It takes new tasks again.")}, nil
 	case *identityv1.AdminCommand_SetName:
 		return Card{Title: w.f("Rename %s to “%s”", target, x.SetName.Name)}, nil
+	case *identityv1.AdminCommand_SetWorkspacePolicy:
+		if x.SetWorkspacePolicy.AutoRelease {
+			return Card{Title: w.f("Release idle worktrees on %s automatically", target), Why: w.f("Tasks’ worktrees idle for 7 days with no local changes are deleted there; their branches stay.")}, nil
+		}
+		return Card{Title: w.f("Stop releasing idle worktrees on %s", target), Why: w.f("Worktrees stay until released by hand.")}, nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		d := x.SetAgentDefaults
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),

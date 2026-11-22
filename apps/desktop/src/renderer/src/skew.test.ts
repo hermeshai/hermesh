@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Code, ConnectError } from "@connectrpc/connect";
 import type { Machine } from "@hermesh/proto/local";
-import { herAnswers, needsUpdate } from "./skew.ts";
+import { herAnswers, machineAnswers, needsUpdate } from "./skew.ts";
 
 // A machine older than this app (docs/version-skew.md §6.1, §6.3).
 
@@ -22,4 +22,12 @@ test("what a machine lists is what it answers; nothing listed is unknown", () =>
   const listed = m({ methods: ["bots/subscribe", "bots/memory"] });
   assert.equal(herAnswers(listed, "bots/memory"), true);
   assert.equal(herAnswers(listed, "bots/routine"), false);
+});
+
+test("hermeshd's own methods: what its status lists, unknown for one from before the list", () => {
+  const m = (methods?: string[]) => ({ machineId: "m", status: methods && { methods } }) as unknown as Machine;
+  assert.equal(machineAnswers(m(), "ListWorkspaces"), undefined);
+  assert.equal(machineAnswers(m([]), "ListWorkspaces"), undefined);
+  assert.equal(machineAnswers(m(["TestAgent", "ListWorkspaces"]), "ListWorkspaces"), true);
+  assert.equal(machineAnswers(m(["TestAgent"]), "ListWorkspaces"), false);
 });

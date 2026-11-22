@@ -291,9 +291,14 @@ func goBodiesAreShown(type: String, body: String) throws {
     let c = try SigningPreview.card(request(a), .init(machineNames: ["m_1": "box"]))
     #expect(c.title == "Add project “demo” to machine “box”")
     #expect(c.lines.contains("Directory: /src/demo"))
-    #expect(c.lines.contains("Available coding agents: All"))
+    // A project is for every agent provider (docs/settings-environments.md §5.6): an older device's list says nothing.
     a.addProject.agents = ["claude", "codex"]
-    #expect(try SigningPreview.card(request(a)).lines.contains("Available coding agents: Claude Code, Codex"))
+    #expect(try !SigningPreview.card(request(a)).lines.contains { $0.contains("coding agents") })
+
+    var w = Hermesh_Identity_V1_SetWorkspacePolicy()
+    w.autoRelease = true
+    a.setWorkspacePolicy = w
+    #expect(try SigningPreview.card(request(a), .init(machineNames: ["m_1": "box"])).title == "Release idle worktrees on machine “box” automatically")
 
     a.command = nil
     #expect(throws: Refusal.unsupported(SigningPreview.adminCommand)) { try SigningPreview.card(request(a)) }

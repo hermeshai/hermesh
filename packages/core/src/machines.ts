@@ -48,3 +48,19 @@ export function modelTitle(id: string, models: AgentStatus["models"] = []): stri
   if (!c) return id;
   return `${c[1][0].toUpperCase()}${c[1].slice(1)} ${c[2]}${c[3] ? `.${c[3]}` : ""}${c[4] ? " (1M)" : ""}`;
 }
+
+/**
+ * A size as the platform's file manager shows it (docs/settings-environments.md, D14): Finder
+ * and Linux file managers count 1000 bytes to a kB, Windows Explorer 1024; one decimal from GB up.
+ */
+export function formatBytes(bytes: number | bigint, platform: string): string {
+  const base = platform.startsWith("win") ? 1024 : 1000;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = Number(bytes);
+  let u = 0;
+  while (v >= base && u < units.length - 1) {
+    v /= base;
+    u++;
+  }
+  return `${u < 3 ? Math.round(v) : v.toFixed(1)} ${units[u]}`;
+}

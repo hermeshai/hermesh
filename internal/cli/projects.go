@@ -180,8 +180,8 @@ func (a *app) listPlaces(ctx context.Context, c *peer.Client, machines []machine
 }
 
 // usableAgents are the coding agents this agent may run in a project: ones
-// it may run on the machine that are set up for the project (a project with
-// no agents is for all).
+// it may run on the machine. A machine from before the settings rework may
+// still keep a project to some (none: all); newer ones never do.
 func (a *app) usableAgents(st *machinev1.MachineStatus, p *machinev1.Project) []placeAgent {
 	out := []placeAgent{}
 	for _, ag := range st.GetAgents() {

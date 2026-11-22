@@ -21,3 +21,13 @@ export function herAnswers(m: Machine, method: string): boolean | undefined {
   const methods = m.her?.methods ?? [];
   return methods.length ? methods.includes(method) : undefined;
 }
+
+/**
+ * Whether hermeshd on this machine answers `method` of its MachineAdminService
+ * (MachineStatus.methods, docs/settings-environments.md §5.7.6): undefined for a machine
+ * from before the list, which callers take as yes and the safety net catches.
+ */
+export function machineAnswers(m: Machine, method: string): boolean | undefined {
+  const methods = m.status?.methods ?? [];
+  return methods.length ? methods.includes(method) : undefined;
+}

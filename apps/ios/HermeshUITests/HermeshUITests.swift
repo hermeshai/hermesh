@@ -52,22 +52,29 @@ final class HermeshUITests: XCTestCase {
     func testAccountSettingsLayout() throws {
         try join()
         openMenu(); tap("account")
-        reach("account-machines")
-        let machines = app.buttons["account-machines"], notifications = app.buttons["notifications"]
-        XCTAssertTrue(notifications.exists)
-        XCTAssertLessThan(machines.frame.minY, notifications.frame.minY)
-        tap("account-machines")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.buttons["account-grants"].waitForExistence(timeout: 5))
+        // Settings (docs/settings-environments.md §4.2): the app's own settings, then the environments, then About.
+        let notifications = app.buttons["notifications"]
+        XCTAssertTrue(notifications.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["account-grants"].exists)
+        reach("add-environment")
+        let machines = app.staticTexts["account-machines"], addEnvironment = app.buttons["add-environment"]
+        XCTAssertLessThan(notifications.frame.minY, machines.frame.minY)
+        XCTAssertLessThan(machines.frame.minY, addEnvironment.frame.minY)
+        reach("account-privacy-policy")
+        XCTAssertLessThan(addEnvironment.frame.minY, app.staticTexts["account-about"].frame.minY)
+        // Account and Devices, from the card at the top: the trusted devices, then what ends, at the bottom.
+        let card = app.buttons["account-card"]
+        for _ in 0..<8 where !card.isHittable { app.swipeDown() }
+        card.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["device-this"].firstMatch.waitForExistence(timeout: 20))
         reach("erase-everything")
-        let appearance = app.staticTexts["account-appearance"], about = app.staticTexts["account-about"], actions = app.staticTexts["account-actions"]
-        XCTAssertTrue(appearance.exists && about.exists && actions.exists)
-        XCTAssertLessThan(appearance.frame.minY, about.frame.minY)
-        XCTAssertLessThan(about.frame.minY, actions.frame.minY, "account actions stay at the bottom")
-        XCTAssertLessThan(actions.frame.minY, app.buttons["erase-everything"].frame.minY)
+        let actions = app.staticTexts["account-actions"]
+        XCTAssertTrue(actions.exists)
+        XCTAssertLessThan(actions.frame.minY, app.buttons["erase-everything"].frame.minY, "account actions stay at the bottom")
         XCTAssertFalse(app.buttons["delete-hosted-account"].exists, "a self-hosted relay has no hosted account")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "account-actions-at-bottom"; shot.lifetime = .keepAlways; add(shot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
     }
 
@@ -76,6 +83,7 @@ final class HermeshUITests: XCTestCase {
         app.terminate()
         app.launch()
         openMenu(); tap("account")
+        tap("account-card")
         let deletion = app.buttons["delete-hosted-account"]
         reach("delete-hosted-account")
         XCTAssertTrue(app.buttons["erase-everything"].exists)
@@ -94,7 +102,9 @@ final class HermeshUITests: XCTestCase {
 
     func testAntigravitySetup() throws {
         try join()
-        try machine()
+        openMachines()
+        tap("machine-owner-mac", timeout: 20)
+        tap("env-providers", timeout: 30)
         let agent = app.buttons["agent-antigravity"]
         XCTAssertTrue(agent.waitForExistence(timeout: 20))
         XCTAssertTrue(agent.label.contains("Antigravity"), agent.label)
@@ -109,6 +119,7 @@ final class HermeshUITests: XCTestCase {
         try join()
         openMachines()
         tap("machine-owner-mac", timeout: 20)
+        tap("env-providers", timeout: 30)
         tap("agent-qwen", timeout: 30)
         let model = app.descendants(matching: .any)["default-model"].firstMatch
         XCTAssertTrue(model.waitForExistence(timeout: 30), "its default model")
@@ -205,7 +216,7 @@ final class HermeshUITests: XCTestCase {
         // Machines and the connected agents are reached from it.
         account.tap()
         reach("account-grants")
-        XCTAssertTrue(app.buttons["account-machines"].exists && app.buttons["account-grants"].exists, "managed from the account")
+        XCTAssertTrue(app.staticTexts["account-machines"].exists && app.buttons["account-grants"].exists, "managed from the account")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "menu"
         shot.lifetime = .keepAlways
@@ -460,7 +471,7 @@ final class HermeshUITests: XCTestCase {
         all.switches.firstMatch.exists ? all.switches.firstMatch.tap() : all.tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(text("所有项目").waitForExistence(timeout: 10), "the card shows the choice")
-        XCTAssertTrue(text("所有编码 agent").exists, "all coding agents, unless the owner narrows it")
+        XCTAssertTrue(text("所有 Agent 提供方").exists, "all coding agents, unless the owner narrows it")
         tap("scope-agents")
         let allAgents = app.switches["all-agents"]
         XCTAssertTrue(allAgents.waitForExistence(timeout: 10))
@@ -475,7 +486,7 @@ final class HermeshUITests: XCTestCase {
         allAgents.switches.firstMatch.exists ? allAgents.switches.firstMatch.tap() : allAgents.tap()
         XCTAssertFalse(app.buttons["scope-agent-gemini"].waitForExistence(timeout: 2), "with all of them, nothing to pick")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(text("所有编码 agent").waitForExistence(timeout: 10), "the card shows the choice")
+        XCTAssertTrue(text("所有 Agent 提供方").waitForExistence(timeout: 10), "the card shows the choice")
         tap("approve")
         XCTAssertTrue(text("「Cursor」已连接").waitForExistence(timeout: 30), "approved")
         XCTAssertTrue(app.buttons["copy-prompt"].exists, "the first task to copy")
@@ -500,7 +511,7 @@ final class HermeshUITests: XCTestCase {
         tap("change-scope")
         let agents = app.buttons["scope-agents"]
         XCTAssertTrue(agents.waitForExistence(timeout: 10))
-        XCTAssertTrue(agents.label.contains("所有编码 agent"), agents.label)
+        XCTAssertTrue(agents.label.contains("所有 Agent 提供方"), agents.label)
         agents.tap()
         let allAgents = app.switches["all-agents"]
         XCTAssertTrue(allAgents.waitForExistence(timeout: 10))
@@ -603,28 +614,34 @@ final class HermeshUITests: XCTestCase {
         let m = app.buttons["machine-owner-mac"]
         XCTAssertTrue(m.waitForExistence(timeout: 20))
         m.tap()
-        // Its page: the coding agents, each opening its own; projects are there.
-        XCTAssertTrue(app.switches["accept-sessions"].waitForExistence(timeout: 20))
+        // Its page (docs/settings-environments.md §5.9): the name, its agent providers, projects, Her and storage,
+        // each a page; pausing is a button, removing at the end.
+        XCTAssertTrue(app.descendants(matching: .any)["env-name"].firstMatch.waitForExistence(timeout: 20))
         XCTAssertFalse(app.descendants(matching: .any)["machine-offline"].exists, "online: nothing about reconnecting")
-        // Renaming and removing are in the bar's menu.
-        tap("machine-menu")
-        XCTAssertTrue(app.buttons["移除…"].waitForExistence(timeout: 5))
-        app.buttons["重命名…"].tap()
-        XCTAssertTrue(app.alerts.textFields.firstMatch.waitForExistence(timeout: 5), "the new name asked")
-        app.alerts.buttons["取消"].tap()
+        reach("accept-sessions")
+        reach("env-remove")
+        XCTAssertTrue(app.buttons["env-remove"].exists)
+        reach("env-name")
+        tap("env-name")
+        XCTAssertTrue(app.textFields["env-name-field"].waitForExistence(timeout: 5), "the new name asked")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        tap("env-providers")
         let agent = app.buttons["agent-gemini"]
-        XCTAssertTrue(agent.waitForExistence(timeout: 20), "the coding agent")
-        XCTAssertTrue(agent.label.contains("1 个项目"), agent.label)
-        XCTAssertFalse(text("demo").exists, "projects are on the agent's page")
-        agent.tap()
-        // The agent's page: its projects, how agents work in each set from a menu.
-        XCTAssertTrue(text("demo").waitForExistence(timeout: 20), "its project")
-        tap("project-menu-demo")
-        tap("原地：直接改这个目录")
-        try waitFor("the project works in place") { self.text("原地").exists && !self.text("独立 worktree").exists ? true : nil }
-        tap("project-menu-demo")
-        tap("独立 worktree：每个任务在自己的分支里")
-        try waitFor("a separate worktree again") { self.text("独立 worktree").exists ? true : nil }
+        XCTAssertTrue(agent.waitForExistence(timeout: 20), "the agent provider")
+        XCTAssertTrue(agent.label.contains("已登录"), agent.label)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Projects: the environment's, for every provider; how agents work in each set on its page.
+        tap("env-projects")
+        let demo = app.buttons["project-demo"]
+        XCTAssertTrue(demo.waitForExistence(timeout: 20), "its project")
+        demo.tap()
+        tap("workspace-in-place")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        try waitFor("the project works in place") { demo.label.contains("原地") ? true : nil }
+        demo.tap()
+        tap("workspace-worktree")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        try waitFor("a separate worktree again") { demo.label.contains("独立 worktree") ? true : nil }
         // Add a Project: browse to a folder. It takes the folder's name, a
         // number added since another project has it; its new branches start
         // from one of its own branches.
@@ -644,8 +661,22 @@ final class HermeshUITests: XCTestCase {
         tap("base-branch")
         app.buttons["feature"].tap()
         tap("add-project-confirm")
-        XCTAssertTrue(text("demo-2").waitForExistence(timeout: 30), "the project added")
-        XCTAssertTrue(text("demo").exists, "the project as it was")
+        XCTAssertTrue(app.buttons["project-demo-2"].waitForExistence(timeout: 30), "the project added")
+        XCTAssertTrue(app.buttons["project-demo"].exists, "the project as it was")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // Storage (docs/settings-environments.md §5.7): the Mac's task worktrees, measured over its connection, by project.
+        reach("env-storage")
+        tap("env-storage")
+        XCTAssertTrue(app.descendants(matching: .any)["storage-summary"].firstMatch.waitForExistence(timeout: 60), "what the worktrees take")
+        XCTAssertTrue(app.buttons["storage-project-demo"].waitForExistence(timeout: 10), "the demo project's worktrees")
+        tap("storage-project-demo")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'worktree-'")).firstMatch.waitForExistence(timeout: 30), "its tasks' worktrees")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "storage"
+        shot.lifetime = .keepAlways
+        add(shot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
@@ -656,10 +687,15 @@ final class HermeshUITests: XCTestCase {
         let mac = app.buttons["machine-owner-mac"]
         XCTAssertTrue(mac.waitForExistence(timeout: 20))
         XCTAssertTrue(mac.label.contains("可信设备"), mac.label)
+        // The trusted devices are the account's, this iPhone first.
+        let card = app.buttons["account-card"] // at the top, out of the list once scrolled past
+        for _ in 0..<8 where !card.isHittable { app.swipeDown() }
+        card.tap()
         let phone = app.descendants(matching: .any)["device-this"].firstMatch
         XCTAssertTrue(phone.waitForExistence(timeout: 20), "this iPhone")
-        XCTAssertTrue(phone.label.contains("这台 iPhone") && phone.label.contains("可信设备"), phone.label)
-        XCTAssertTrue(text("其他可信设备").exists)
+        XCTAssertTrue(phone.label.contains("这台 iPhone"), phone.label)
+        XCTAssertTrue(app.descendants(matching: .any)["device-owner-mac"].firstMatch.exists || text("可信设备").exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
     func approveDevice() throws {
@@ -692,12 +728,13 @@ final class HermeshUITests: XCTestCase {
     func appearance() throws {
         openMenu()
         tap("account")
-        // Three small phones, as Display & Brightness has them.
+        XCTAssertFalse(app.buttons["web-console"].exists, "a server of one's own has no web console")
+        // Three small phones, as Display & Brightness has them, on a page of their own.
+        tap("account-appearance")
         let system = app.buttons["appearance-system"], dark = app.buttons["appearance-dark"]
         reach("appearance-system")
         XCTAssertTrue(system.isSelected && system.label == "跟随系统", system.label)
         XCTAssertLessThan(system.frame.height, 140, "kept low")
-        XCTAssertFalse(app.buttons["web-console"].exists, "a server of one's own has no web console")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "account"
         shot.lifetime = .keepAlways
@@ -706,6 +743,7 @@ final class HermeshUITests: XCTestCase {
         try waitFor("dark chosen") { dark.isSelected && !system.isSelected ? true : nil }
         press(system)
         try waitFor("the system's again") { system.isSelected && !dark.isSelected ? true : nil }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         // Notifications are a page of their own, above appearance.
         reach("notifications")
         tap("notifications")
@@ -764,7 +802,7 @@ final class HermeshUITests: XCTestCase {
 
     func addMachine() throws {
         tap("new")
-        let add = app.buttons["添加机器…"]
+        let add = app.buttons["添加环境…"]
         XCTAssertTrue(add.waitForExistence(timeout: 5), "the New menu")
         add.tap()
         // A Mac, with the app by default: the page to open on it, then this server to join.
@@ -850,7 +888,7 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI") && toGemini.label.contains("轮"), "the coding agent that did it, and its turns: \(toGemini.label)")
         XCTAssertTrue(text("Cursor 今天未发起任务").exists, "the agent approved, which sent nothing")
         let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
-        XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 台机器"), gemini.label)
+        XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 个环境"), gemini.label)
         // Tapping the band between them says how much: bot to Gemini CLI, its turns and tokens.
         let bands = app.descendants(matching: .any)["flow-bands"].firstMatch
         XCTAssertTrue(bands.exists && bands.label.contains("bot → Gemini CLI"), bands.label)
@@ -868,7 +906,7 @@ final class HermeshUITests: XCTestCase {
         press(bot)
         try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 发起") ? true : nil }
         press(bot)
-        try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 台机器") ? true : nil }
+        try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 个环境") ? true : nil }
         // Every coding agent is listed, the idle ones too: no fold.
         let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
         XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
@@ -982,7 +1020,7 @@ final class HermeshUITests: XCTestCase {
     /// never opened says the Mac is offline instead of waiting for good, and
     /// shows once the Mac is back.
     func machineOffline() throws {
-        let read = "机器离线前读过", unread = "机器离线时没读过"
+        let read = "环境离线前读过", unread = "环境离线时没读过"
         // Each says its own words, so what shows is known to be its own.
         for (title, say) in [(read, "离线前读到"), (unread, "离线时没读")] {
             let q = { (t: String) in t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)! }
@@ -1013,7 +1051,7 @@ final class HermeshUITests: XCTestCase {
         tap("machine-owner-mac", timeout: 20)
         tap("machine-offline", timeout: 20)
         XCTAssertTrue(text("hermeshd status").waitForExistence(timeout: 10), "the command to run there")
-        XCTAssertFalse(app.switches["accept-sessions"].exists, "no switch it can't take while offline")
+        XCTAssertFalse(app.buttons["accept-sessions"].exists, "no pausing it can't take while offline")
         let page = XCTAttachment(screenshot: app.screenshot())
         page.name = "how to reconnect a machine gone offline"
         page.lifetime = .keepAlways
@@ -1216,7 +1254,13 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists, "management has a way back to settings")
     }
 
-    func openMachines() { openManaged("account-machines") }
+    /// Settings, scrolled to its environments (docs/settings-environments.md §4.2).
+    func openMachines() {
+        openMenu()
+        tap("account")
+        // Its last row, in sight with the rows above it (a section's header is never hittable).
+        reach("add-environment")
+    }
     func openGrants() { openManaged("account-grants") }
 
     /// Scrolls the page until an element can be tapped: down the page first, then back up.

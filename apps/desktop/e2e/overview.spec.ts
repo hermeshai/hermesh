@@ -73,7 +73,7 @@ test("pointers are macOS's: the hand on text links only, the arrow on the map's 
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
   const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
-  for (const name of ["bot", thisComputer, "demo", "+ 连接更多", "+ 添加机器"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
+  for (const name of ["bot", thisComputer, "demo", "+ 连接更多", "+ 添加环境"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
   expect(await cursor(page.getByRole("button", { name: "管理授权…" }))).toBe("pointer");
   // The session list: a heading the arrow, a text link the hand; then back to the overview.
   expect(await cursor((await sessionList(page)).getByRole("button", { name: /^已结束/ }))).toBe("default");
@@ -148,7 +148,7 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
     ipcMain.handle("popup-menu", (_e, items: { label?: string }[]) => ((globalThis as unknown as { shown: unknown }).shown = items.map((i) => i.label), null));
   });
   await map.getByRole("button", { name: thisComputer }).click({ button: "right" });
-  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown)).toEqual(["机器设置…"]);
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as { shown: unknown }).shown)).toEqual(["环境设置…"]);
   await app.close();
 });
 
