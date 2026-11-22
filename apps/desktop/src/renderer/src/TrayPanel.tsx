@@ -34,13 +34,14 @@ export function TrayPanel() {
   const go = (a: TrayAction) => window.hermesh?.trayAction(a);
   const ok = v?.state === "ok";
   const ready = v?.state === "ok" || v?.state === "down";
+  const stopped = v?.state === "stopped";
   return (
     <div className="tp" ref={box}>
       <div className="tp-head">
         <Mark size={18} />
         <span className="tp-word">Hermesh</span>
         {v && (
-          <span className={`tp-chip ${ok ? "" : "off"}`} role="status">
+          <span className={`tp-chip ${ok ? "" : stopped ? "stopped" : "off"}`} role="status">
             <i />
             {chip(v)}
           </span>
@@ -52,6 +53,11 @@ export function TrayPanel() {
           <Tile n={v.attention} label={t("tray.attention")} hot onClick={() => go("attention")} />
           <Tile n={v.running} label={t("tray.running")} onClick={() => go("running")} />
         </div>
+      )}
+      {v?.manageable && stopped && (
+        <button className="tp-update" onClick={() => go("startDaemon")}>
+          {t("tray.startService")}
+        </button>
       )}
       {v?.control && (
         <div className="tp-control" role="status">
@@ -102,6 +108,12 @@ function line(v: TrayView): string {
       return i18n.t("common:tray.down");
     case "setup":
       return i18n.t("common:tray.setup");
+    case "stopped":
+      return i18n.t("common:tray.stopped");
+    case "starting":
+      return i18n.t("common:tray.starting");
+    case "stopping":
+      return i18n.t("common:tray.stopping");
     case "daemon":
       return i18n.t("common:tray.daemon");
   }

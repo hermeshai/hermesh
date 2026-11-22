@@ -30,25 +30,32 @@ const instances: { app: ElectronApplication; home: string; closed: boolean }[] =
 
 test.afterEach(async () => {
   for (const { app, home, closed } of instances.splice(0)) {
-    if (!closed) await app.close();
+    if (!closed) {
+      await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+      await app.close().catch(() => {});
+    }
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
 
-export async function installer(inApplications = false, move: "success" | "cancel" | "error" = "success", options: { autoDownload?: boolean; checkedAt?: number; failures?: number; attemptedAt?: number } = {}) {
+export async function installer(
+  inApplications = false,
+  move: "success" | "cancel" | "error" = "success",
+  options: { autoDownload?: boolean; checkedAt?: number; failures?: number; attemptedAt?: number; wasOpenedAtLogin?: boolean; keepDaemonOnQuit?: boolean } = {},
+) {
   // Keep the daemon socket below macOS's Unix-domain socket path limit.
   const home = fs.mkdtempSync("/tmp/hminst-");
   const data = path.join(home, "Library", "Application Support", "Hermesh");
   fs.mkdirSync(path.join(data, "run"), { recursive: true });
   fs.symlinkSync(fixture.socket, path.join(data, "run", "hermeshd.sock"));
   fs.mkdirSync(path.join(data, "desktop"));
-  fs.writeFileSync(path.join(data, "desktop", "preferences.json"), JSON.stringify({ language: "zh-CN" }));
+  fs.writeFileSync(path.join(data, "desktop", "preferences.json"), JSON.stringify({ language: "zh-CN", ...(options.keepDaemonOnQuit ? { keepDaemonOnQuit: true } : {}) }));
   fs.writeFileSync(path.join(data, "desktop", "updates.json"), JSON.stringify(options));
   const entry = path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js");
   const bootstrap = path.join(home, "start.cjs");
   fs.writeFileSync(bootstrap, `
     const { app, autoUpdater, dialog, net, shell } = require("electron");
-    const config = ${JSON.stringify({ home, entry, inApplications, move })};
+    const config = ${JSON.stringify({ home, entry, inApplications, move, wasOpenedAtLogin: options.wasOpenedAtLogin === true })};
     require("node:os").homedir = () => config.home;
     delete process.env.HERMESH_DATA_DIR;
     delete process.env.HERMESH_SOCKET;
@@ -89,16 +96,20 @@ export async function installer(inApplications = false, move: "success" | "cance
     const { PassThrough } = require("node:stream");
     const fs = require("node:fs"), cp = require("node:child_process");
     const exists = fs.existsSync, spawn = cp.spawn, execFile = cp.execFile;
-    // launchd: a job booted out is still there for one look, while it exits.
+    // launchd: a job booted out is still there for one look, while it exits; kill SIGTERM stops its pid.
     let looksUntilGone = Infinity;
+    let daemonPid = 4242;
     cp.execFile = (bin, ...args) => {
       if (bin !== "launchctl") return execFile(bin, ...args);
       const [argv] = args;
       state.launchctl.push(argv);
-      if (argv[0] === "bootout") looksUntilGone = 1;
+      if (argv[0] === "bootout") { looksUntilGone = 1; daemonPid = 0; }
+      if (argv[0] === "kill") daemonPid = 0;
+      if (argv[0] === "kickstart") { looksUntilGone = Infinity; daemonPid = 4242; }
       const gone = argv[0] === "print" && looksUntilGone-- <= 0;
+      const stdout = argv[0] === "print" ? (daemonPid ? "\\tpid = " + daemonPid + "\\n\\tstate = running\\n" : "\\tstate = not running\\n") : "";
       const callback = args.at(-1);
-      if (typeof callback === "function") setImmediate(() => callback(gone ? new Error("not loaded") : null, "", ""));
+      if (typeof callback === "function") setImmediate(() => callback(gone ? new Error("not loaded") : null, stdout, ""));
       return new EventEmitter();
     };
     fs.existsSync = (p) => String(p).endsWith("/HermeshSigner") || exists(p);
@@ -125,7 +136,7 @@ export async function installer(inApplications = false, move: "success" | "cance
       return true;
     };
     app.setLoginItemSettings = (options) => state.loginItems.push(options);
-    app.getLoginItemSettings = () => ({ status: "not-registered", wasOpenedAtLogin: false });
+    app.getLoginItemSettings = () => ({ status: "not-registered", wasOpenedAtLogin: config.wasOpenedAtLogin });
     app.setAsDefaultProtocolClient = (scheme) => { state.protocols.push(scheme); return true; };
     autoUpdater.setFeedURL = () => {};
     autoUpdater.checkForUpdates = () => { state.downloads++; autoUpdater.emit("update-available"); };
@@ -158,7 +169,10 @@ export async function installer(inApplications = false, move: "success" | "cance
 
 export async function restartInstaller(app: ElectronApplication) {
   const instance = instances.find((i) => i.app === app)!;
-  await app.close();
+  if (!instance.closed) {
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+    await app.close().catch(() => {});
+  }
   const next = await electron.launch({ args: ["-r", background, path.join(instance.home, "start.cjs")] });
   instance.app = next;
   instance.closed = false;

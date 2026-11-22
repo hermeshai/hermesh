@@ -10,6 +10,8 @@ html,body{height:auto}
 .tp-chip i{width:6px;height:6px;border-radius:50%;background:var(--green)}
 .tp-chip.off{color:var(--l1)}
 .tp-chip.off i{background:var(--l3);animation:tp-blink 1.6s ease-in-out infinite}
+.tp-chip.stopped{color:var(--l2)}
+.tp-chip.stopped i{background:var(--l3)}
 @keyframes tp-blink{50%{opacity:.25}}
 .tp-line{padding:4px 13px 0;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:21px}
 .tp-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:13px 13px 0}

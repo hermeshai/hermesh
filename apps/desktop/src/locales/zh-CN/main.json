@@ -95,5 +95,47 @@
     "notYours": "Hermesh 签名服务不能接管这个 Hermesh：它的接口不属于你。"
   },
   "herConsole": "Her 控制台 — {{name}}",
-  "herConsoleBad": "控制台的地址不是 Hermesh 会打开的地址。"
+  "herConsoleBad": "控制台的地址不是 Hermesh 会打开的地址。",
+  "daemon": {
+    "status": {
+      "running": "后台服务：运行中",
+      "stopped": "后台服务：已停止",
+      "starting": "后台服务：正在启动…",
+      "stopping": "后台服务：正在停止…",
+      "unavailable": "后台服务：未运行"
+    },
+    "stopMenu": "停止后台服务…",
+    "startMenu": "启动后台服务",
+    "startingMenu": "正在启动后台服务…",
+    "stoppingMenu": "正在停止后台服务…",
+    "quitKeepMenu": "仅退出界面（保持后台运行）",
+    "quitAndStopMenu": "退出并停止后台服务…",
+    "stopTitle": "要停止 Hermesh 后台服务吗？",
+    "stopButton": "停止后台服务",
+    "quitTitle": "退出 Hermesh 将停止后台服务",
+    "quitActiveTitle": "要退出 Hermesh 并停止后台服务吗？",
+    "quitAndStop": "停止服务并退出",
+    "quitKeepBackground": "保持后台运行",
+    "cancel": "取消",
+    "titleSeparator": "、",
+    "impactRunning_other": "• {{count}} 个正在这台 Mac 上运行的任务会被中断（任务记录保留，当前轮次会停止）。",
+    "impactRunning_win_other": "• {{count}} 个正在这台电脑上运行的任务会被中断（任务记录保留，当前轮次会停止）。",
+    "impactRunning_linux_other": "• {{count}} 个正在这台电脑上运行的任务会被中断（任务记录保留，当前轮次会停止）。",
+    "impactRunningNamed_other": "• {{count}} 个正在这台 Mac 上运行的任务会被中断（任务记录保留，当前轮次会停止）：{{titles}}。",
+    "impactRunningNamed_win_other": "• {{count}} 个正在这台电脑上运行的任务会被中断（任务记录保留，当前轮次会停止）：{{titles}}。",
+    "impactRunningNamed_linux_other": "• {{count}} 个正在这台电脑上运行的任务会被中断（任务记录保留，当前轮次会停止）：{{titles}}。",
+    "impactWaiting_other": "• {{count}} 个正在等待回答的本机任务会中止当前轮次。",
+    "impactWaiting_win_other": "• {{count}} 个正在等待回答的本机任务会中止当前轮次。",
+    "impactWaiting_linux_other": "• {{count}} 个正在等待回答的本机任务会中止当前轮次。",
+    "impactScreen": "• {{viewer}} 正在远程操控这台 Mac，屏幕连接会立即断开。",
+    "impactScreen_win": "• {{viewer}} 正在远程操控这台电脑，屏幕连接会立即断开。",
+    "impactScreen_linux": "• {{viewer}} 正在远程操控这台电脑，屏幕连接会立即断开。",
+    "impactHer": "• 这台 Mac 上的 Her 助手会停止运行，消息回复和定时任务会暂停。",
+    "impactHer_win": "• 这台电脑上的 Her 助手会停止运行，消息回复和定时任务会暂停。",
+    "impactHer_linux": "• 这台电脑上的 Her 助手会停止运行，消息回复和定时任务会暂停。",
+    "impactApprovals_other": "• 当前有 {{count}} 项待处理的连接或签名审批将会取消。",
+    "impactOffline": "• 停止后，你的其他设备（如 iPhone）和远端 Agent 将暂时无法连接这台 Mac，直到重新启动服务。",
+    "impactOffline_win": "• 停止后，你的其他设备（如 iPhone）和远端 Agent 将暂时无法连接这台电脑，直到重新启动服务。",
+    "impactOffline_linux": "• 停止后，你的其他设备（如 iPhone）和远端 Agent 将暂时无法连接这台电脑，直到重新启动服务。"
+  }
 }

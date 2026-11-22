@@ -2,8 +2,9 @@ import { app, BrowserWindow, dialog, Menu, shell, type MenuItemConstructorOption
 import type { Command } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { keys, platformKeys } from "../shared/keys";
+import { daemonControlAvailable, daemonListeners, daemonState, quitKeepingDaemon, quitStoppingDaemon, startBackgroundService, stopBackgroundService } from "./daemon";
 import { command, currentMenuState, menuStateListeners } from "./ipc";
-import { world, worldListeners } from "./notify";
+import { preferences, world, worldListeners } from "./notify";
 import { platform } from "./platform";
 import { install, openUpdates, updateInfo, updateListeners } from "./updater";
 import { mainWindow, settingsVisible, showMain, showSettings, showAbout, showWhatsNew } from "./windows";
@@ -22,7 +23,8 @@ export function setAppMenu() {
   build();
   menuStateListeners.add(build);
   updateListeners.add(build);
-  worldListeners.add(() => ready() !== builtReady && build());
+  daemonListeners.add(build);
+  worldListeners.add(() => build());
   app.on("browser-window-created", (_e, w) => {
     if (!mac) w.setMenuBarVisibility(false);
     // The window menu checks the open windows.
@@ -44,6 +46,33 @@ function build() {
 /** Past the first run: the main window's commands work (opening it when it is closed). */
 function ready(): boolean {
   return currentMenuState().main || world.status?.initialized === true || world.status?.machineOnly === true;
+}
+
+function daemonAppMenuItems(): MenuItemConstructorOptions[] {
+  if (!daemonControlAvailable()) return [];
+  const t = i18n.getFixedT(null, "main");
+  const st = daemonState();
+  const sep = { type: "separator" } as const;
+  const control: MenuItemConstructorOptions =
+    st === "running"
+      ? { id: "stopDaemon", label: t("daemon.stopMenu"), click: () => void stopBackgroundService({ confirm: true }) }
+      : st === "starting" || st === "stopping"
+        ? { id: "daemonBusy", label: t(st === "starting" ? "daemon.startingMenu" : "daemon.stoppingMenu"), enabled: false }
+        : { id: "startDaemon", label: t("daemon.startMenu"), click: () => void startBackgroundService() };
+  return [sep, control];
+}
+
+function quitAppMenuItems(): MenuItemConstructorOptions[] {
+  const t = i18n.getFixedT(null, "main");
+  const items: MenuItemConstructorOptions[] = [{ role: "quit", label: t("menu.app.quit") }];
+  if (daemonControlAvailable() && daemonState() === "running") {
+    if (preferences().keepDaemonOnQuit) {
+      items.push({ id: "quitStopDaemon", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() });
+    } else {
+      items.push({ id: "quitKeepDaemon", label: t("daemon.quitKeepMenu"), click: () => quitKeepingDaemon() });
+    }
+  }
+  return items;
 }
 
 function template(): MenuItemConstructorOptions[] {
@@ -92,8 +121,9 @@ function template(): MenuItemConstructorOptions[] {
               { role: "hide", label: t("app.hide") },
               { role: "hideOthers", label: t("app.hideOthers") },
               { role: "unhide", label: t("app.unhide") },
+              ...daemonAppMenuItems(),
               sep,
-              { role: "quit", label: t("app.quit") },
+              ...quitAppMenuItems(),
             ],
           } satisfies MenuItemConstructorOptions,
         ]

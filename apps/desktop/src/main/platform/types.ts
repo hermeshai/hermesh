@@ -21,8 +21,12 @@ export interface Platform {
   installerEvent(): boolean;
   /** Takes hermesh:// links (sign-in, join and wake). */
   registerLinks(): void;
-  /** Makes hermeshd start by itself, and start now if it does not run. */
+  /** Registers hermeshd with the OS and starts it now if it is not running. */
   registerDaemon(): void;
+  /** Starts hermeshd now (and registers it if needed). */
+  startDaemon(): Promise<void>;
+  /** Gracefully stops hermeshd and waits briefly for it to exit. */
+  stopDaemon(): Promise<void>;
   /** Restarts hermeshd (after an update brought another version). */
   restartDaemon(why: string): void;
   /** The owner turned hermeshd's start off in the system's settings. */
