@@ -18,8 +18,15 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(nav.first()).toContainText("新会话");
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-launch-card")).toBeVisible();
-    await expect(page.getByTestId("thread-launch-card").getByRole("heading", { name: "新会话" })).toBeVisible();
     await expect(page.getByTestId("thread-title")).toHaveText("新会话");
+    // The question in the middle, with the project in it and the environment under it; the box at the bottom.
+    const card = page.getByTestId("thread-launch-card");
+    await expect(card.getByRole("heading", { level: 1 })).toContainText(/^要在 .+ 里做什么？$/);
+    const box = await page.getByTestId("thread-composer-input").boundingBox();
+    const ask = await card.getByRole("heading", { level: 1 }).boundingBox();
+    const area = await card.boundingBox();
+    expect(box!.y).toBeGreaterThan(ask!.y);
+    expect(area!.y + area!.height - (box!.y + box!.height)).toBeLessThan(90);
 
     // The environment: work-mac. It has no project yet, so the session would use its temporary workspace.
     await page.getByRole("button", { name: "环境" }).click();
@@ -63,7 +70,14 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(sheet).toBeHidden();
     // The new session takes it, in its own worktree as a git repository's sessions are.
     await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
-    await expect(page.getByTestId("launch-worktree")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
+    // The working copy is a choice beside the model: the project's own folder, or a worktree of its own.
+    await page.getByRole("button", { name: "工作目录" }).click();
+    await page.getByTestId("worktree-off").click();
+    await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
+    await page.getByRole("button", { name: "工作目录" }).click();
+    await page.getByTestId("worktree-on").click();
+    await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
 
     // The model: one panel. Search across providers, a provider's models, how hard it thinks.
     await page.getByRole("button", { name: "模型" }).click();
@@ -176,7 +190,7 @@ test("Add a Project on another machine from its own folders: a recent repository
     await expect(sheet.getByLabel("项目名")).toHaveValue("fresh-app");
     await sheet.getByRole("button", { name: "添加", exact: true }).click();
     await expect(page.getByTestId("launch-project-chip")).toHaveText("fresh-app");
-    await expect(page.getByTestId("launch-worktree")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
     // Made again, the name is taken.
     await page.getByRole("button", { name: "项目" }).click();
     await page.getByTestId("project-add").click();

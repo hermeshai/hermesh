@@ -11,6 +11,26 @@
         }
       }
     },
+    "Current checkout" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前目录"
+          }
+        }
+      }
+    },
+    "A branch of its own; your files are left alone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个任务一个分支，不碰你正在改的文件"
+          }
+        }
+      }
+    },
     "Use %@ %@?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -57,6 +77,52 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "项目外"
+          }
+        }
+      }
+    },
+    "What should we build in" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要在"
+          }
+        }
+      }
+    },
+    "What should we build in · end" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "里做什么？"
+          }
+        }
+      }
+    },
+    "Working copy" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作目录"
+          }
+        }
+      }
+    },
+    "Works on the project’s own folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接在项目目录里修改"
           }
         }
       }
@@ -1056,7 +1122,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新建会话"
+            "value" : "新会话"
           }
         }
       }

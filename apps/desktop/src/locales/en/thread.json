@@ -24,7 +24,11 @@
     "notRepo": "Not a git repository: works in place only",
     "needsUpdate": "Hermesh on {{machine}} needs an update to start sessions.",
     "needsUpdateShort": "Needs update",
-    "lastKnown": "last known"
+    "lastKnown": "last known",
+    "ask": "What should we build in <project/>?",
+    "workingCopy": "Working copy",
+    "checkout": "Current checkout",
+    "checkoutHint": "Works on the project's own folder"
   },
   "header": {
     "archive": "Archive",
