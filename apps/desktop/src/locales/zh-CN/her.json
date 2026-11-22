@@ -16,7 +16,7 @@
   "setup": {
     "title": "选择 Her 在哪里运行",
     "addTitle": "添加环境",
-    "sub": "Her 在你选的机器上工作：对话、记忆和文件都留在那里，那台机器开着时它就能回你。",
+    "sub": "Her 在你选的环境里工作：对话、记忆和文件都留在那里，那个环境开着时它就能回你。",
     "thisMac": "这台 Mac",
     "thisMac_win": "这台电脑",
     "thisMac_linux": "这台电脑",
@@ -28,7 +28,7 @@
     "offline": "离线",
     "unsupported": "不能运行 Her：{{detail}}",
     "newServer": "新的服务器",
-    "newServerDesc": "在上面安装 Hermesh 并配对，和添加机器一样",
+    "newServerDesc": "在上面安装 Hermesh 并配对，和添加环境一样",
     "add": "添加…",
     "turnOn": "开启 Her",
     "signer": "在签名窗口里确认，在 {{name}} 上开启 Her。",
@@ -366,7 +366,7 @@
   },
   "access": {
     "title": "让「{{name}}」完全访问？",
-    "body": "它在 {{environment}} 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那台机器上的一切交给它时开启。",
+    "body": "它在 {{environment}} 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那个环境里的一切交给它时开启。",
     "button": "开启完全访问",
     "done": "{{name}} 已开启完全访问"
   },
@@ -610,7 +610,7 @@
     "ranFor": "运行 {{time}}",
     "lastFailed": "上次没做成 · {{time}}",
     "whenNext": "下次 {{time}} · {{when}}",
-    "note": "定时任务在 {{name}} 上运行。那台机器关机或睡眠时不跑，回来后补最近一次。",
+    "note": "定时任务在 {{name}} 上运行。那个环境关机或睡眠时不跑，回来后补最近一次。",
     "unavailable": "定时任务现在用不了",
     "empty": {
       "title": "还没有定时任务",

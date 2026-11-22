@@ -37,5 +37,5 @@ private func specifiers(_ s: String) -> [String] {
     let kitPath = try #require(kit.path(forResource: kitLang, ofType: "lproj"))
     let kitZh = try #require(Bundle(path: kitPath))
     let add = kitZh.localizedString(forKey: "Add project “%@” to %@", value: nil, table: nil)
-    #expect(String(format: add, "demo", "机器「box」") == "在机器「box」上添加项目「demo」")
+    #expect(String(format: add, "demo", "环境「box」") == "在环境「box」上添加项目「demo」")
 }

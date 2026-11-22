@@ -29,11 +29,12 @@ test("Her: a machine from before Her says it needs an update, and offers Her onc
   await expect(page.locator("body")).not.toContainText("unknown admin command");
   await snap(page, "her-before-her");
 
-  const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
+  const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("env"))]);
   await win.waitForLoadState();
-  const machines = win.getByRole("main", { name: "机器" });
-  await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasText: "old-box" }).first().click();
-  const run = machines.getByRole("switch", { name: "在这台机器上运行 Her" });
+  await win.getByRole("navigation", { name: "设置" }).getByRole("button", { name: /^old-box/ }).click();
+  await win.getByRole("main", { name: "old-box" }).getByRole("listitem", { name: "Her" }).click();
+  const machines = win.getByRole("main", { name: "Her" });
+  const run = machines.getByRole("switch", { name: "在这个环境运行 Her" });
   await expect(machines).toContainText(`${needsUpdate}。`, { timeout: 30_000 });
   await expect(run).toBeDisabled();
   await snap(win, "her-before-her-settings");

@@ -1,5 +1,4 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { codingAgentIds, codingAgentTitle } from "@hermesh/ui/agents";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs";
@@ -7,7 +6,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, thisComputer } from "./app";
+import { cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, sys, thisComputer } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -28,7 +27,7 @@ async function api<T = Record<string, never>>(page: Page, method: string, body: 
   );
 }
 
-const projects = async (page: Page) => (await api<{ projects?: { path: string; agents?: string[] }[] }>(page, "ListProjects")).projects ?? [];
+const projects = async (page: Page) => (await api<{ projects?: { path: string; agents?: string[]; workspace?: string }[] }>(page, "ListProjects")).projects ?? [];
 
 const page_ = (settings: Page, name: string) => settings.getByRole("main", { name });
 const nav = (settings: Page, name: string) => settings.getByRole("navigation", { name: "设置" }).getByRole("button", { name: new RegExp(`^${name}`) });
@@ -38,20 +37,26 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   const settings = await openSettings(app, page);
   await expect(nav(settings, "通用")).toHaveAttribute("aria-current", "page");
   const general = page_(settings, "通用");
-  await expect(general.getByRole("switch", { name: "连接请求" })).toHaveAttribute("aria-checked", "true");
-  await expect(general.getByRole("switch", { name: "新任务" })).toHaveAttribute("aria-checked", "true");
-  const login = general.getByRole("switch", { name: "登录时打开 Hermesh" });
-  await expect(login).toHaveAttribute("aria-checked", "false");
-  await login.click();
-  await expect(login).toHaveAttribute("aria-checked", "true");
-  expect((await page.evaluate(() => window.hermesh?.loginItem()))?.on).toBe(true);
-  const turnDone = general.getByRole("switch", { name: "一轮完成" });
+  await expect(general.getByRole("group", { name: "外观" })).toBeVisible();
+  await expect(general.getByRole("combobox", { name: "语言" })).toBeVisible();
+  await expect(general.getByRole("switch", { name: "自动下载更新" })).toBeVisible();
+  // Starting at login is this Mac's Stay Online now (docs/settings-environments.md §5.4).
+  await expect(general).not.toContainText("登录时打开");
+  await snap(settings, "settings-general");
+
+  // Notifications, a page of their own.
+  await nav(settings, "通知").click();
+  const notify = page_(settings, "通知");
+  await expect(notify.getByRole("switch", { name: "连接请求" })).toHaveAttribute("aria-checked", "true");
+  await expect(notify.getByRole("switch", { name: "新任务" })).toHaveAttribute("aria-checked", "true");
+  const turnDone = notify.getByRole("switch", { name: "一轮完成" });
   await expect(turnDone).toHaveAttribute("aria-checked", "false");
   await turnDone.click();
   await expect(turnDone).toHaveAttribute("aria-checked", "true");
   // Kept by the main process, which posts the notifications.
   expect((await page.evaluate(() => window.hermesh?.getPreferences()))?.notifyTurnDone).toBe(true);
-  await snap(settings, "settings-general");
+  await expect(notify.getByRole("switch", { name: "菜单栏图标显示圆点" })).toHaveAttribute("aria-checked", "true");
+  await snap(settings, "settings-notifications");
 
   await nav(settings, "授权").click();
   await expect(settings).toHaveTitle("授权");
@@ -323,111 +328,126 @@ test("an app just updated finds the previous hermeshd, which keeps no doorbells;
   }
 });
 
-test("settings 机器 opens this Mac: its sharing, its agents each opening a page with their projects; rename, pause and resume it", async () => {
+test("settings 环境: this Mac's page names it, keeps it online, opens its providers and projects, and pauses it", async () => {
   const { app, page } = await launch();
-  const settings = await openSettings(app, page, "machines");
-  await expect(nav(settings, "机器")).toHaveAttribute("aria-current", "page");
-  const panel = page_(settings, "机器");
-  const mac = panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ });
-  await expect(mac).toContainText(thisComputer);
-  await snap(settings, "settings-machines");
-  await mac.click();
-  await expect(panel.getByRole("switch", { name: "安全可信地共享本机 agent" })).toHaveAttribute("aria-checked", "true");
-  await expect(panel).toContainText(/正在运行 \d+ 个/);
-  await expect(panel.locator(".set-acts").getByRole("button", { name: "移除…" })).toHaveCount(0); // not this Mac
+  const settings = await openSettings(app, page, "env");
+  await expect(nav(settings, thisComputer)).toHaveAttribute("aria-current", "page");
+  const panel = page_(settings, thisComputer);
+  await expect(panel.locator(".set-hero")).toContainText("owner-mac");
+  await expect(panel.locator(".set-hero")).toContainText(/Hermesh \d/);
+  await expect(panel.locator(".set-pill")).toContainText("在线");
+  // Remove is for other environments; this Mac stops being one instead.
+  await expect(panel.getByRole("button", { name: "移除…" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: sys("停用这台 Mac…", "停用这台电脑…") })).toBeVisible();
+  await snap(settings, "settings-env");
 
-  // The agents as the first run shows them, each opening its page: the projects it may work in.
-  const agents = panel.getByRole("list", { name: "编码 Agent" });
-  const gemini = agents.getByRole("listitem", { name: "Gemini CLI" });
+  // The name, changed in place, as hermeshd keeps it.
+  const name = panel.getByRole("textbox", { name: "名称" });
+  await expect(name).toHaveValue("owner-mac");
+  await name.fill("我的电脑");
+  await expect(panel).toContainText("名字里没有字母或数字");
+  await name.press("Escape");
+  await expect(name).toHaveValue("owner-mac");
+  await name.fill("办公室 studio-mac");
+  await expect(panel).toContainText("将保存为「studio-mac」");
+  await name.press("Enter");
+  await expect(panel.locator(".set-hero b")).toHaveText("studio-mac");
+  await name.fill("owner-mac");
+  await name.press("Enter");
+  await expect(panel.locator(".set-hero b")).toHaveText("owner-mac");
+
+  // Stay online: on, the login item with it; off asks first and says what follows.
+  const online = panel.getByRole("switch", { name: "保持在线" });
+  await expect(online).toHaveAttribute("aria-checked", "true");
+  await expect(panel).toContainText("开机后自动在后台运行");
+  expect((await page.evaluate(() => window.hermesh?.loginItem()))?.on).toBe(true);
+  await online.click();
+  const off = settings.getByRole("dialog", { name: "要关闭「保持在线」吗？" });
+  await expect(off).toBeVisible();
+  await off.getByRole("button", { name: "关闭" }).click();
+  await expect(online).toHaveAttribute("aria-checked", "false");
+  await expect(panel).toContainText("只有 Hermesh 打开时");
+  expect((await page.evaluate(() => window.hermesh?.getPreferences()))?.stayOnline).toBe(false);
+  expect((await page.evaluate(() => window.hermesh?.loginItem()))?.on).toBe(false);
+  await online.click();
+  await expect(online).toHaveAttribute("aria-checked", "true");
+  expect((await page.evaluate(() => window.hermesh?.loginItem()))?.on).toBe(true);
+
+  // Agent providers: the installed ones, each opening its page; the others not installed.
+  const entries = panel.getByRole("list", { name: "owner-mac" });
+  await expect(entries.getByRole("listitem", { name: "Agent 提供方" })).toContainText(/\d+ 个可用/, { timeout: 30_000 });
+  await entries.getByRole("listitem", { name: "Agent 提供方" }).click();
+  const providers = page_(settings, "Agent 提供方");
+  const gemini = providers.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Gemini CLI" });
   await expect(gemini).toContainText("已登录", { timeout: 30_000 });
-  await expect(agents).not.toContainText("正在检查…", { timeout: 30_000 });
-  await snap(settings, "settings-machine");
-  await gemini.getByRole("button", { name: /^Gemini CLI/ }).click();
-  const page2 = panel.getByRole("region", { name: "Gemini CLI" });
-  await expect(page2.getByRole("group", { name: "demo" })).toBeVisible();
-  await snap(settings, "settings-machine-agent");
+  await expect(providers.getByRole("list", { name: "未安装" }).getByRole("listitem").first()).toContainText("安装后会自动出现在这里");
+  await snap(settings, "settings-providers");
+  await gemini.click();
+  await expect(page_(settings, "Gemini CLI").getByRole("region", { name: "Gemini CLI" })).toContainText("owner-mac");
+  // No projects of its own: projects are the environment's.
+  await expect(page_(settings, "Gemini CLI")).not.toContainText("添加项目");
+  await settings.getByRole("button", { name: "返回Agent 提供方" }).click();
+  await settings.getByRole("button", { name: `返回${thisComputer}` }).click();
+  await expect(entries).toBeVisible();
 
-  // A folder picked under Gemini CLI is its project; taken from it, it goes.
+  // Projects: for every provider. + adds a picked folder, its way of working a pop-up, − removes it, asking first.
+  await entries.getByRole("listitem", { name: "项目" }).click();
+  const list = page_(settings, "项目").getByRole("listbox", { name: "项目" });
+  await expect(list.getByRole("option", { name: "demo" })).toBeVisible();
   const repo = gitRepo(`app-${process.pid}`);
   await pickAnswers(app, repo);
-  // Drawn as a text link, it takes the pointing hand, as links do.
-  expect(await page2.getByRole("button", { name: "添加项目…" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
-  await page2.getByRole("button", { name: "添加项目…" }).click();
-  const project = page2.getByRole("group", { name: `app-${process.pid}` });
-  await expect(project).toContainText(repo);
-  await expect(project).toContainText("独立 worktree");
-  expect((await projects(settings)).find((p) => p.path === repo)?.agents).toEqual(["gemini"]);
-  await answerMenu(app, "remove");
-  await project.getByRole("button", { name: "更多" }).click();
-  await expect(project).toHaveCount(0);
+  await page_(settings, "项目").getByRole("button", { name: "添加项目…" }).click();
+  const added = list.getByRole("option", { name: `app-${process.pid}` });
+  await expect(added).toContainText(repo);
+  await expect(added.getByRole("combobox")).toHaveValue("worktree");
+  expect((await projects(settings)).find((p) => p.path === repo)?.agents ?? []).toEqual([]);
+  await added.getByRole("combobox").selectOption("inPlace");
+  await expect.poll(async () => (await projects(settings)).find((p) => p.path === repo)?.workspace).toBe("WORKSPACE_IN_PLACE");
+  await snap(settings, "settings-projects");
+  // Added, it is the one selected, as in Login Items.
+  await expect(added).toHaveAttribute("aria-selected", "true");
+  await page_(settings, "项目").getByRole("button", { name: "移除", exact: true }).click();
+  const removing = settings.getByRole("dialog", { name: `移除项目「app-${process.pid}」？` });
+  await expect(removing).toContainText("目录本身不会被删除");
+  await removing.getByRole("button", { name: "移除" }).click();
+  await expect(added).toHaveCount(0);
   expect((await projects(settings)).some((p) => p.path === repo)).toBe(false);
-  // ‹ goes back to the machine, not to the list of machines.
-  await settings.getByRole("button", { name: "返回owner-mac" }).click();
-  await expect(agents).toBeVisible();
+  expect(fs.existsSync(repo)).toBe(true);
+  await settings.getByRole("button", { name: `返回${thisComputer}` }).click();
 
-  // A project of an agent not installed here shows after the agents, and can be removed.
-  const missing = await panel.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem").first().getAttribute("aria-label");
-  const id = codingAgentIds.find((x) => codingAgentTitle(x) === missing);
-  if (id) {
-    const st = await api<{ localMachineId: string }>(settings, "GetStatus");
-    await api(settings, "AddProject", { machineId: st.localMachineId, projectId: `left-${process.pid}`, path: gitRepo(`left-${process.pid}`), agents: [id] });
-    const left = panel.getByRole("list", { name: "其他项目 · 给没有安装的 agent" }).getByRole("group", { name: `left-${process.pid}` });
-    await expect(left).toContainText(missing!, { timeout: 30_000 });
-    await expect(agents.getByRole("group", { name: `left-${process.pid}` })).toHaveCount(0);
-    await answerMenu(app, "remove");
-    await left.getByRole("button", { name: "更多" }).click();
-    await expect(left).toHaveCount(0);
-  }
+  // Pausing: a banner says so, and the sidebar.
+  await panel.getByRole("button", { name: "暂停接受新任务" }).click();
+  await expect(settings.getByRole("status").filter({ hasText: "「owner-mac」暂停接受新任务" })).toBeVisible();
+  await expect(panel.locator(".set-banner")).toContainText("已暂停接受新任务");
+  await expect(nav(settings, thisComputer)).toContainText("已暂停");
+  await snap(settings, "settings-env-paused");
+  await panel.locator(".set-banner").getByRole("button", { name: "恢复" }).click();
+  await expect(panel.locator(".set-banner")).toHaveCount(0);
+  await expect(nav(settings, thisComputer)).not.toContainText("已暂停");
 
-  const rename = async (from: string, to: string) => {
-    await panel.getByRole("button", { name: "改名…" }).click();
-    const dialog = settings.getByRole("dialog", { name: "给这台机器改名" });
-    const field = dialog.getByRole("textbox", { name: "机器名" });
-    await expect(field).toHaveValue(from);
-    await snap(settings, "settings-machines-rename");
-    // A name with nothing usable is said before saving, and cannot be saved;
-    // one partly usable shows what it will be saved as.
-    const button = dialog.getByRole("button", { name: "改名" });
-    await field.fill("我的电脑");
-    await expect(dialog).toContainText("名字里没有字母或数字");
-    await expect(button).toBeDisabled();
-    await field.press("Enter");
-    await expect(dialog).toBeVisible();
-    await field.fill(`办公室 ${to}`);
-    await expect(dialog).toContainText(`将保存为「${to}」`);
-    await expect(button).toBeEnabled();
-    await field.fill(to);
-    await expect(dialog.locator(".sheet-note")).toHaveCount(0);
-    await field.press("Enter");
-    await expect(dialog).toBeHidden();
-    await expect(panel.locator(".dhero")).toContainText(to);
-  };
-  await rename("owner-mac", "studio-mac");
-  await rename("studio-mac", "owner-mac");
+  // Stopping this Mac as an environment asks first.
+  await panel.getByRole("button", { name: sys("停用这台 Mac…", "停用这台电脑…") }).click();
+  const disable = settings.getByRole("dialog", { name: sys("要停用这台 Mac 吗？", "要停用这台电脑吗？") });
+  await expect(disable).toContainText("这里的任务会停下");
+  await disable.getByRole("button", { name: "取消" }).click();
+  await expect(disable).toBeHidden();
 
-  const pause = panel.getByRole("switch", { name: "暂停接受新任务" });
-  await pause.click();
-  await expect(pause).toHaveAttribute("aria-checked", "true");
-  await expect(settings.getByRole("status")).toContainText("「owner-mac」暂停接受新任务");
-  await snap(settings, "settings-machines-paused");
-  await settings.getByRole("button", { name: "返回机器" }).click();
-  await expect(mac).toContainText("已暂停");
-  await mac.click();
-  await pause.click();
-  await expect(pause).toHaveAttribute("aria-checked", "false");
+  // An old link to the machine lands here; + offers adding another computer.
+  await page.evaluate(() => window.hermesh?.openSettings("machines"));
+  await expect(nav(settings, thisComputer)).toHaveAttribute("aria-current", "page");
   await app.close();
 });
 
-test("settings 机器: Codex's page sets the model, effort and speed its sessions run with, its own until set, for Hermesh only", async () => {
+test("settings 环境: Codex's page sets the model, effort and speed its sessions run with, its own until set, for Hermesh only", async () => {
   test.skip(onWindows, "the fixture's Codex is a shell script");
   const { app, page } = await launch();
-  const settings = await openSettings(app, page, "machines");
-  const panel = page_(settings, "机器");
-  await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
-  const codex = panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Codex" });
+  const settings = await openSettings(app, page, "env");
+  const panel = page_(settings, thisComputer);
+  await panel.getByRole("list", { name: "owner-mac" }).getByRole("listitem", { name: "Agent 提供方" }).click();
+  const codex = page_(settings, "Agent 提供方").getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Codex" });
   await expect(codex).toContainText("还没登录", { timeout: 30_000 });
-  await codex.getByRole("button", { name: /^Codex/ }).click();
-  const row = (name: string) => panel.getByRole("region", { name: "Codex" }).getByRole("group", { name });
+  await codex.click();
+  const row = (name: string) => page_(settings, "Codex").getByRole("region", { name: "Codex" }).getByRole("group", { name });
   // Each follows Codex, saying what that is.
   await expect(row("模型")).toContainText("跟随 Codex（GPT-Fake-Big）");
   await expect(row("推理强度")).toContainText("跟随 Codex（高）");
@@ -458,20 +478,14 @@ test("settings 机器: Codex's page sets the model, effort and speed its session
     return r.machines?.[0]?.status?.agents?.find((a) => a.name === "codex");
   };
   expect((await codexStatus())?.defaults).toEqual({ agent: "codex", model: "gpt-fake-small", effort: "low", speed: "AGENT_SPEED_FAST" });
-  // The machine's list says what is set.
-  await settings.getByRole("button", { name: "返回owner-mac" }).click();
-  await expect(codex).toContainText("GPT-Fake-Small · 低 · 快速");
 
-  // Back to Codex's own, one by one: the list says nothing more.
-  await codex.getByRole("button", { name: /^Codex/ }).click();
+  // Back to Codex's own, one by one.
   expect(await pick("模型", "")).toContain("✓ GPT-Fake-Small");
   await pick("推理强度", "");
   await pick("速度", "0");
   await expect(row("模型")).toContainText("跟随 Codex（GPT-Fake-Big）");
   await expect(row("速度")).toContainText("跟随 Codex（标准）");
   expect((await codexStatus())?.defaults).toEqual({ agent: "codex" });
-  await settings.getByRole("button", { name: "返回owner-mac" }).click();
-  await expect(codex).not.toContainText("GPT-Fake");
   await app.close();
 });
 
@@ -489,24 +503,28 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   await expect(panel).not.toContainText(status.ownerId);
   await snap(settings, "settings-account");
 
-  await devices.getByRole("button", { name: "添加设备…" }).click();
+  await panel.getByRole("button", { name: "添加设备…" }).click();
   await expect(settings.getByRole("dialog", { name: "添加可信设备" })).toBeVisible();
   await settings.keyboard.press("Escape");
   await expect(settings.getByRole("dialog")).toHaveCount(0);
 
-  await panel.getByRole("button", { name: "高级" }).click();
-  await expect(panel).toContainText(status.ownerId);
-  await expect(panel).toContainText("已连接");
-  await expect(panel).toContainText(`hermeshd pair ${status.connectAddress}`);
-  await expect(panel).toContainText(`hermesh auth login ${status.connectAddress}`);
-  await panel.getByRole("button", { name: "拷贝身份 ID" }).click();
+  await panel.getByRole("button", { name: "高级…" }).click();
+  const advanced = settings.getByRole("dialog", { name: "高级" });
+  await expect(advanced).toContainText(status.ownerId);
+  await expect(advanced).toContainText("已连接");
+  await expect(advanced).toContainText(`hermeshd pair ${status.connectAddress}`);
+  await expect(advanced).toContainText(`hermesh auth login ${status.connectAddress}`);
+  await expect(advanced.getByRole("button", { name: "全部清空…" })).toBeVisible();
+  await advanced.getByRole("button", { name: "拷贝身份 ID" }).click();
   await expect(settings.getByRole("status")).toContainText("已拷贝");
   expect(await app.evaluate(({ clipboard }) => clipboard.readText())).toBe(status.ownerId);
   // This server's MCP address, with its key in it.
   expect(status.mcpUrl).toMatch(/\/mcp\/[0-9a-z]{26}$/);
-  await panel.getByRole("button", { name: "拷贝MCP 地址" }).click();
+  await advanced.getByRole("button", { name: "拷贝MCP 地址" }).click();
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(status.mcpUrl);
   await snap(settings, "settings-account-advanced");
+  await advanced.getByRole("button", { name: "完成" }).click();
+  await expect(advanced).toBeHidden();
 
   // Still a trusted device: signing out only explains how.
   await panel.getByRole("button", { name: "退出登录…" }).click();
@@ -586,12 +604,10 @@ test("nothing signed: a signer older than the app offers its update, else the fa
       ipcMain.handle("update-signer", () => ({ value: void g.updates++ }));
     }, version);
   try {
-    const settings = await openSettings(app, page, "machines");
-    const panel = page_(settings, "机器");
-    await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
+    const settings = await openSettings(app, page, "env");
+    const panel = page_(settings, thisComputer);
     const rename = async () => {
-      await panel.getByRole("button", { name: "改名…" }).click();
-      const field = settings.getByRole("dialog", { name: "给这台机器改名" }).getByRole("textbox", { name: "机器名" });
+      const field = panel.getByRole("textbox", { name: "名称" });
       await field.fill("studio-mac");
       await field.press("Enter");
     };
@@ -600,7 +616,6 @@ test("nothing signed: a signer older than the app offers its update, else the fa
     await rename();
     const update = settings.getByRole("dialog", { name: "更新 Hermesh 签名器" });
     await expect(update).toContainText("这台电脑的签名器（0.0.1）比 Hermesh 旧");
-    await expect(settings.getByRole("dialog", { name: "给这台机器改名" })).toHaveCount(0);
     await snap(settings, "settings-signer-older");
     await update.getByRole("button", { name: "更新签名器" }).click();
     await expect(settings.getByRole("status")).toContainText("签名器已更新，请再试一次");
@@ -613,43 +628,66 @@ test("nothing signed: a signer older than the app offers its update, else the fa
     await expect(toast).toContainText("没有签名：请求在签名器里被拒绝了，或者没有完成确认。");
     await expect(toast).not.toContainText("declined");
     await expect(settings.getByRole("dialog")).toHaveCount(0);
-    await expect(panel.locator(".dhero")).toContainText("owner-mac");
+    await expect(panel.locator(".set-hero b")).toHaveText("owner-mac");
+    // What failed to save goes back to the name it has.
+    await expect(panel.getByRole("textbox", { name: "名称" })).toHaveValue("owner-mac");
   } finally {
     await app.close();
     proxy.close();
   }
 });
 
-test("local workspace storage protects files, releases a checkout and resumes the original session", async () => {
+test("storage: a project's worktrees in a table, one with local changes kept saying why, an idle one released and its task resumed; auto-release on", async () => {
   const { app, page } = await launch();
   try {
     const title = "工作区恢复验证";
+    const kept = "有改动的任务";
     const started = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", "write saved.txt first turn", "--wait", "-o", "json")).session;
+    const other = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", kept, "--prompt", "say ready", "--wait", "-o", "json")).session;
     const { localMachineId } = await api<{ localMachineId: string }>(page, "GetStatus");
-    const settings = await openSettings(app, page, `machines/${localMachineId}`);
-    const storage = settings.getByRole("region", { name: "本地工作区" });
-    await storage.getByRole("button", { name: "查看磁盘占用" }).click();
-    await storage.locator("summary").filter({ hasText: "demo" }).click();
-    const row = storage.locator(".frow").filter({ hasText: title });
-    await expect(row).toContainText(/\d+(\.\d+)? (B|KiB|MiB)/);
-    const { workspaces } = await api<{ workspaces: { sessionId: string; path: string }[] }>(page, "ListLocalWorkspaces");
+    const { workspaces } = await api<{ workspaces: { sessionId: string; path: string }[] }>(page, "ListWorkspaces", { machineId: localMachineId });
     const dir = workspaces.find((w) => w.sessionId === started.session_id)!.path;
-    const draft = path.join(dir, "unsaved.txt");
+    const otherDir = workspaces.find((w) => w.sessionId === other.session_id)!.path;
+    const draft = path.join(otherDir, "unsaved.txt");
     fs.writeFileSync(draft, "keep me");
-    const release = row.getByRole("button", { name: "释放本地工作区" });
-    await release.click();
-    await expect(storage.getByRole("alert")).toContainText("unsaved.txt");
-    expect(fs.readFileSync(draft, "utf8")).toBe("keep me");
-    fs.unlinkSync(draft);
 
-    await release.click();
+    const settings = await openSettings(app, page, `env/${localMachineId}/storage`);
+    const panel = page_(settings, "储存空间");
+    await expect(panel).toContainText(/已使用 \d+(\.\d)? (B|KB|MB|GB)/);
+    await expect(panel.getByRole("listitem", { name: "demo" })).toContainText(/\d+ 个工作目录/);
+    await expect(panel).toContainText("释放空闲的工作目录");
+    await snap(settings, "settings-storage");
+
+    await panel.getByRole("listitem", { name: "demo" }).getByRole("button", { name: "显示详细信息" }).click();
+    const sheet = settings.getByRole("dialog", { name: "demo" });
+    const keptRow = sheet.getByRole("option", { name: kept });
+    await expect(keptRow).toHaveAttribute("aria-disabled", "true");
+    await expect(keptRow).toContainText("有未提交的改动");
+    const row = sheet.getByRole("option", { name: title });
+    await row.click();
+    await expect(row).toHaveAttribute("aria-selected", "true");
+    await snap(settings, "settings-storage-sheet");
+    await sheet.getByRole("button", { name: /^释放 \d/ }).click();
+    const confirm = settings.getByRole("dialog", { name: "要释放 1 个工作目录吗？" });
+    await confirm.getByRole("button", { name: "释放" }).click();
+    await expect(settings.getByRole("status").filter({ hasText: `已释放「${title}」的本地工作区。` })).toBeVisible();
     await expect(row).toHaveCount(0);
     expect(fs.existsSync(dir)).toBe(false);
+    expect(fs.readFileSync(draft, "utf8")).toBe("keep me");
+    await sheet.getByRole("button", { name: "完成" }).click();
+
+    // Auto-release, a setting of this environment.
+    await panel.getByRole("button", { name: "开启…" }).click();
+    await settings.getByRole("dialog", { name: "要自动释放空闲的工作目录吗？" }).getByRole("button", { name: "开启" }).click();
+    await expect(panel.getByLabel("自动释放空闲的工作目录")).toContainText("已开启");
+    expect((await api<{ autoRelease?: boolean }>(page, "ListWorkspaces", { machineId: localMachineId, cached: true })).autoRelease).toBe(true);
+    await panel.getByLabel("自动释放空闲的工作目录").getByRole("button", { name: "关闭" }).click();
+    await expect(panel.getByRole("button", { name: "开启…" })).toBeVisible();
+
+    // The released task goes on where it was.
     await cli("session", "send", started.session_id, "--message", "write resumed.txt second turn", "--wait");
     expect(fs.readFileSync(path.join(dir, "saved.txt"), "utf8")).toContain("first turn");
     expect(fs.readFileSync(path.join(dir, "resumed.txt"), "utf8")).toContain("second turn");
-    await storage.getByRole("button", { name: "刷新" }).click();
-    await expect(row).toBeVisible();
   } finally {
     await app.close();
   }

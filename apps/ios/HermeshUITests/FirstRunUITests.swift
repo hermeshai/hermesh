@@ -20,7 +20,7 @@ extension HermeshUITests {
         XCTContext.runActivity(named: "keeps the demo entry out of the signed-in account") { _ in
             openMenu()
             tap("account")
-            XCTAssertTrue(app.buttons["appearance-system"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.buttons["account-appearance"].waitForExistence(timeout: 10))
             XCTAssertFalse(app.buttons["try-demo"].exists)
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = "account-without-demo"; shot.lifetime = .keepAlways; add(shot)
@@ -107,15 +107,11 @@ extension HermeshUITests {
         try waitFor("rescanned") { rescan.label.contains("重新扫描") ? true : nil }
         press(agent)
         tap("test-agent")
-        let result = app.descendants(matching: .any)["test-result"].firstMatch
+        let result = app.staticTexts["test-result"].firstMatch // its words, not its mark's
         XCTAssertTrue(result.waitForExistence(timeout: 120), "the test's answer")
         XCTAssertTrue(result.label.contains("ready"), result.label)
-        tap("add-project")
-        tap("repo-~/app")
-        tap("add-project-confirm")
-        XCTAssertTrue(toast(containing: "已添加项目「app」"))
         back(to: "agents-continue")
-        XCTAssertTrue(text("已登录 · 1 个项目").waitForExistence(timeout: 10))
+        XCTAssertTrue(text("已登录").waitForExistence(timeout: 10))
         tap("agents-continue")
     }
 
@@ -129,6 +125,11 @@ extension HermeshUITests {
         XCTAssertTrue(text("Cursor 请求连接").exists)
         tap("approve")
         XCTAssertTrue(text("试一下").waitForExistence(timeout: 30), "try it")
+        // Its first project is the machine's, for every provider there (docs/settings-environments.md §5.6).
+        tap("try-add-project")
+        tap("repo-~/app")
+        tap("add-project-confirm")
+        XCTAssertTrue(toast(containing: "已添加项目「app」"))
         XCTAssertTrue(text("跟我打个招呼").exists, "the first task")
         _ = try control("task", method: "POST")
         let session = app.descendants(matching: .any)["first-session"].firstMatch
@@ -167,8 +168,9 @@ extension HermeshUITests {
     func eraseEverything(_ relay: URL) throws {
         openMenu()
         tap("account")
-        // At the bottom of the account: the list makes its rows as they scroll in.
-        XCTAssertTrue(app.buttons["appearance-system"].waitForExistence(timeout: 20), "the account")
+        // At the bottom of the account's page: the list makes its rows as they scroll in.
+        tap("account-card")
+        XCTAssertTrue(app.descendants(matching: .any)["device-this"].firstMatch.waitForExistence(timeout: 20), "the account")
         let erase = app.descendants(matching: .any)["erase-everything"].firstMatch
         for _ in 0 ..< 6 where !(erase.exists && erase.isHittable) { app.swipeUp() }
         XCTAssertTrue(erase.waitForExistence(timeout: 5), "Erase Everything, at the bottom of the account")

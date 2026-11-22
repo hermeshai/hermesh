@@ -63,7 +63,7 @@ export function Inspector({ s }: { s: Session }) {
             <Icon name="laptop" />
             <span title={machine}>{machine}</span>
             {settings && (
-              <button className="tb insp-gear" aria-label={t("inspector.machineSettings")} title={t("inspector.machineSettings")} onClick={() => window.hermesh?.openSettings(`machines/${s.machineId}`)}>
+              <button className="tb insp-gear" aria-label={t("inspector.machineSettings")} title={t("inspector.machineSettings")} onClick={() => window.hermesh?.openSettings(`env/${s.machineId}`)}>
                 <Icon name="gear" />
               </button>
             )}

@@ -598,14 +598,13 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
   expect(await environmentNames(page)).toEqual([]);
 
-  const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
+  const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("env/this/her"))]);
   await win.waitForLoadState();
-  const machines = win.getByRole("main", { name: "机器" });
-  await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasNotText: "work-mac" }).first().click();
-  const run = machines.getByRole("switch", { name: "在这台机器上运行 Her" });
+  const machines = win.getByRole("main", { name: "Her" });
+  const run = machines.getByRole("switch", { name: "在这个环境运行 Her" });
   await expect(run).toHaveAttribute("aria-checked", "false");
   // Off, her data kept: the row under the switch says so, and offers to erase it.
-  const kept = machines.getByText("Her 的数据还在这台机器上，再次开启时接着用。");
+  const kept = machines.getByText("Her 的数据还在这个环境里，再次开启时接着用。");
   const eraseData = machines.getByRole("button", { name: "清空数据…" });
   await expect(kept).toBeVisible({ timeout: 30_000 });
   await expect(eraseData).toBeVisible();
@@ -654,10 +653,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
 
   // Removing work-mac, where Her runs: offline, her data can't be erased there, and the dialog says it stays
   // instead of offering to. Cancelled.
-  await win.getByRole("button", { name: "返回机器" }).click();
-  await machines.getByRole("list", { name: "机器" }).getByRole("button").filter({ hasText: "work-mac" }).click();
-  await machines.locator(".set-acts").getByRole("button", { name: "移除…" }).click();
-  const removing = win.getByRole("dialog", { name: "移除机器「work-mac」？" });
+  await win.getByRole("navigation", { name: "设置" }).getByRole("button", { name: /^work-mac/ }).click();
+  await win.getByRole("main", { name: "work-mac" }).getByRole("button", { name: "移除…" }).click();
+  const removing = win.getByRole("dialog", { name: "移除环境「work-mac」？" });
   await expect(removing).toContainText("「work-mac」离线，Her 的数据会留在上面。");
   await expect(removing.getByRole("switch")).toHaveCount(0);
   await snap(win, "her-remove-offline");

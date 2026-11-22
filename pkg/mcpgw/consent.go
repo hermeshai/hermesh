@@ -329,7 +329,7 @@ var zhText = map[string]string{
 	"account":       "账号",
 	"server":        "服务器",
 	"can":           "你在 {device} 上批准后，它可以：",
-	"can1":          "查看你的机器、项目和任务。",
+	"can1":          "查看你的环境、项目和任务。",
 	"can2":          "启动 Claude Code 或 Codex 任务并与之对话。这些 agent 会在你选择的项目里以完全权限运行。",
 	"custodian":     "%s 保管这个连接的密钥：它可以在你批准的范围内代表该应用操作，并能看到该应用触及的任务。若希望这些只留在你自己的电脑上，请使用自己的 Hermesh 服务器。",
 	"nextApprove":   "下一步，在 {device} 上的 Hermesh 里批准。",

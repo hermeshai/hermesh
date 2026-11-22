@@ -32,14 +32,14 @@
     "messageQueued": "将在下一轮处理",
     "unread": {
       "offline": "{{name}} 离线了",
-      "offlineDetail": "这个任务的内容保存在那台机器上，连上后会自动显示。",
-      "offlineSeen": "这个任务的内容保存在那台机器上，连上后会自动显示。{{ago}}还在线。",
+      "offlineDetail": "这个任务的内容保存在那个环境里，连上后会自动显示。",
+      "offlineSeen": "这个任务的内容保存在那个环境里，连上后会自动显示。{{ago}}还在线。",
       "notConnected": "暂时连不上 Hermesh",
       "notConnectedDetail": "这个任务的内容保存在 {{name}} 上，这台 Mac 连上后会自动显示。",
       "notConnectedDetail_win": "这个任务的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
       "notConnectedDetail_linux": "这个任务的内容保存在 {{name}} 上，这台电脑连上后会自动显示。",
       "noAnswer": "{{name}} 暂时没有回应",
-      "noAnswerDetail": "这个任务的内容保存在那台机器上。正在重试，读到后会自动显示。"
+      "noAnswerDetail": "这个任务的内容保存在那个环境里。正在重试，读到后会自动显示。"
     },
     "stale": {
       "notConnected": "暂时连不上 Hermesh，这里是上次读到的内容。",
@@ -80,7 +80,7 @@
     "title": "环境",
     "startedBy": "<b>{{grant}}</b> 发起",
     "runBy": "<b>{{agent}}</b> 执行",
-    "machineSettings": "机器设置",
+    "machineSettings": "环境设置",
     "projectMenu": "项目",
     "branchMenu": "分支",
     "copyPath": "拷贝项目路径",

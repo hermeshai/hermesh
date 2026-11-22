@@ -32,14 +32,14 @@
     "messageQueued": "queued for next turn",
     "unread": {
       "offline": "{{name}} is offline",
-      "offlineDetail": "This conversation is stored on that machine and will appear once it reconnects.",
-      "offlineSeen": "This conversation is stored on that machine and will appear once it reconnects. Last online {{ago}}.",
+      "offlineDetail": "This conversation is stored in that environment and will appear once it reconnects.",
+      "offlineSeen": "This conversation is stored in that environment and will appear once it reconnects. Last online {{ago}}.",
       "notConnected": "Can’t reach Hermesh",
       "notConnectedDetail": "This conversation is stored on {{name}} and will appear once this Mac reconnects.",
       "notConnectedDetail_win": "This conversation is stored on {{name}} and will appear once this PC reconnects.",
       "notConnectedDetail_linux": "This conversation is stored on {{name}} and will appear once this computer reconnects.",
       "noAnswer": "{{name}} isn’t responding",
-      "noAnswerDetail": "This conversation is stored on that machine. Retrying automatically; it will appear once the machine responds."
+      "noAnswerDetail": "This conversation is stored in that environment. Retrying automatically; it will appear once the environment responds."
     },
     "stale": {
       "notConnected": "Can’t reach Hermesh. Showing last synced messages.",
@@ -80,7 +80,7 @@
     "title": "Environment",
     "startedBy": "Started by <b>{{grant}}</b>",
     "runBy": "Run by <b>{{agent}}</b>",
-    "machineSettings": "Machine Settings",
+    "machineSettings": "Environment Settings",
     "projectMenu": "Project",
     "branchMenu": "Branch",
     "copyPath": "Copy Project Path",

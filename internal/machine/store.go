@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -168,6 +167,10 @@ CREATE TABLE work_hours (
   seq INTEGER NOT NULL
 );
 CREATE INDEX work_hours_by_seq ON work_hours(seq);
+`, `
+-- Projects are no longer for some coding agents only: an agent's access
+-- limits which it may use (docs/settings-environments.md §5.6).
+UPDATE projects SET agents = '';
 `}
 
 // Store uses one writer connection (db) and a pool of readers (rdb), so
@@ -263,30 +266,13 @@ type Project struct {
 	DefaultBaseRef string
 	Workspace      identityv1.Workspace
 	Description    string
-	// Agents are the coding agents that may work in it; empty: all.
-	Agents []string
 }
 
 // InPlace: sessions work directly in the project directory.
 func (p *Project) InPlace() bool { return p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE }
 
-// AllowsAgent: the coding agent may work in the project.
-func (p *Project) AllowsAgent(agent string) bool {
-	return len(p.Agents) == 0 || slices.Contains(p.Agents, agent)
-}
-
-// The agents column: names joined by commas ("" for all).
-func joinAgents(a []string) string { return strings.Join(a, ",") }
-
-func splitAgents(s string) []string {
-	if s == "" {
-		return nil
-	}
-	return strings.Split(s, ",")
-}
-
 func (s *Store) Projects() ([]Project, error) {
-	rows, err := s.rdb.Query(`SELECT project_id, path, default_base_ref, workspace, description, agents FROM projects ORDER BY project_id`)
+	rows, err := s.rdb.Query(`SELECT project_id, path, default_base_ref, workspace, description FROM projects ORDER BY project_id`)
 	if err != nil {
 		return nil, err
 	}
@@ -294,11 +280,9 @@ func (s *Store) Projects() ([]Project, error) {
 	var out []Project
 	for rows.Next() {
 		var p Project
-		var agents string
-		if err := rows.Scan(&p.ID, &p.Path, &p.DefaultBaseRef, &p.Workspace, &p.Description, &agents); err != nil {
+		if err := rows.Scan(&p.ID, &p.Path, &p.DefaultBaseRef, &p.Workspace, &p.Description); err != nil {
 			return nil, err
 		}
-		p.Agents = splitAgents(agents)
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -306,19 +290,17 @@ func (s *Store) Projects() ([]Project, error) {
 
 func (s *Store) Project(id string) (*Project, error) {
 	p := &Project{}
-	var agents string
-	err := s.rdb.QueryRow(`SELECT project_id, path, default_base_ref, workspace, description, agents FROM projects WHERE project_id=?`, id).Scan(&p.ID, &p.Path, &p.DefaultBaseRef, &p.Workspace, &p.Description, &agents)
+	err := s.rdb.QueryRow(`SELECT project_id, path, default_base_ref, workspace, description FROM projects WHERE project_id=?`, id).Scan(&p.ID, &p.Path, &p.DefaultBaseRef, &p.Workspace, &p.Description)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
-	p.Agents = splitAgents(agents)
 	return p, err
 }
 
 func (s *Store) PutProject(p Project) error {
-	_, err := s.db.Exec(`INSERT INTO projects(project_id,path,default_base_ref,workspace,description,agents,created_at) VALUES(?,?,?,?,?,?,?)
-		ON CONFLICT(project_id) DO UPDATE SET path=excluded.path, default_base_ref=excluded.default_base_ref, workspace=excluded.workspace, description=excluded.description, agents=excluded.agents`,
-		p.ID, p.Path, p.DefaultBaseRef, int(p.Workspace), p.Description, joinAgents(p.Agents), time.Now().Unix())
+	_, err := s.db.Exec(`INSERT INTO projects(project_id,path,default_base_ref,workspace,description,created_at) VALUES(?,?,?,?,?,?)
+		ON CONFLICT(project_id) DO UPDATE SET path=excluded.path, default_base_ref=excluded.default_base_ref, workspace=excluded.workspace, description=excluded.description`,
+		p.ID, p.Path, p.DefaultBaseRef, int(p.Workspace), p.Description, time.Now().Unix())
 	return err
 }
 

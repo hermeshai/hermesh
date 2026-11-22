@@ -126,10 +126,11 @@ export const linux: Platform = {
     void answers().then((ok) => ok || execFile(bundled("hermeshd"), ["service", "install", "--owner"], (err) => err && console.warn("registering hermeshd:", err)));
   },
 
+  // Started, it starts at login again; stopped, it does not (docs/settings-environments.md §5.4).
   async startDaemon() {
     if (!installed) return;
     try {
-      await promisify(execFile)("systemctl", ["--user", "start", "hermeshd.service"]);
+      await promisify(execFile)("systemctl", ["--user", "enable", "--now", "hermeshd.service"]);
     } catch {
       await promisify(execFile)(bundled("hermeshd"), ["service", "install", "--owner"]).catch((err) => console.warn("starting hermeshd:", err));
     }
@@ -137,7 +138,7 @@ export const linux: Platform = {
 
   async stopDaemon() {
     if (!installed) return;
-    await promisify(execFile)("systemctl", ["--user", "stop", "hermeshd.service"]).catch((err) => console.warn("stopping hermeshd:", err));
+    await promisify(execFile)("systemctl", ["--user", "disable", "--now", "hermeshd.service"]).catch((err) => console.warn("stopping hermeshd:", err));
   },
 
   restartDaemon(why) {

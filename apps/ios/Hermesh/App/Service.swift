@@ -323,6 +323,29 @@ extension AppAPI {
         return try await call("TestMachineAgent", r, timeout: 120)
     }
 
+    /// A machine's storage: its tasks' worktrees (docs/settings-environments.md §5.7); cached, the last scan.
+    func workspaces(machine: String, cached: Bool) async throws -> Hermesh_Machine_V1_ListWorkspacesResponse {
+        var r = Hermesh_Local_V1_ListWorkspacesRequest()
+        r.machineID = machine
+        r.cached = cached
+        return try await call("ListWorkspaces", r, timeout: 120)
+    }
+
+    /// Releases tasks' worktrees on a machine; each one kept says why.
+    func releaseWorkspaces(machine: String, sessions: [String]) async throws -> Hermesh_Machine_V1_ReleaseWorkspacesResponse {
+        var r = Hermesh_Local_V1_ReleaseWorkspacesRequest()
+        r.machineID = machine
+        r.sessionIds = sessions
+        return try await call("ReleaseWorkspaces", r, timeout: 120)
+    }
+
+    func setWorkspacePolicy(machine: String, autoRelease: Bool) async throws {
+        var r = Hermesh_Local_V1_SetWorkspacePolicyRequest()
+        r.machineID = machine
+        r.autoRelease = autoRelease
+        let _: Hermesh_Local_V1_SetWorkspacePolicyResponse = try await call("SetWorkspacePolicy", r)
+    }
+
     func addProject(_ r: Hermesh_Local_V1_AddProjectRequest) async throws {
         let _: Hermesh_Local_V1_AddProjectResponse = try await call("AddProject", r, timeout: signingTimeout)
     }

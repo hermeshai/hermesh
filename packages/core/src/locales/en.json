@@ -53,15 +53,15 @@
     "other": "Failed"
   },
   "advice": {
-    "auth": "Run the matching CLI once on that machine as the same user to sign in.",
+    "auth": "Run the matching CLI once in that environment as the same user to sign in.",
     "quota": "Try again when the quota resets, or switch agents or models.",
     "transient": "Temporary issue. Try sending the message again in a moment.",
     "newContext": "Send another message to continue in a fresh context. Your worktree changes are preserved.",
     "modelUnavailable": "Start a new task with another model.",
     "limitReached": "Send “continue” to keep going.",
     "resume": "Send another message to resume the task.",
-    "startFailed": "Open that machine’s page in Hermesh Settings to check why it can’t start agents.",
-    "baseRefUnavailable": "Check the base ref name, and that the branch or tag is on the project’s remote (the machine fetches it from there). Then send another message in this task to retry the original request."
+    "startFailed": "Open that environment’s page in Hermesh Settings to check why it can’t start agents.",
+    "baseRefUnavailable": "Check the base ref name, and that the branch or tag is on the project’s remote (the environment fetches it from there). Then send another message in this task to retry the original request."
   },
   "headline": {
     "auth": "{{agent}} isn’t signed in",
@@ -98,7 +98,7 @@
     "herQuestion": "Waiting for your answer: {{text}}"
   },
   "pairing": {
-    "machine": "Machine “{{label}}” wants to join",
+    "machine": "“{{label}}” wants to join as an environment",
     "device": "“{{label}}” wants to be your trusted device",
     "client": "“{{label}}” wants to connect",
     "body": "Verification code {{code}}. Click to verify and approve, or deny if you don’t recognize it."

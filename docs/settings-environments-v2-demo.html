@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置重构 v2 · 环境</title>
+<style>
+/* The Mac app's own tokens (apps/desktop/src/renderer/src/styles/app.css, packages/ui/src/brand.css). */
+:root{--font:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;--mono:"Google Sans Code",ui-monospace,"SF Mono",Menlo,monospace;--r-ctl:7px;--r-card:12px}
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--page-bd:rgba(0,0,0,.08);
+  --win:#fff;--win2:#f4f4f7;--side:#f4f4f7;
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --sep:rgba(0,0,0,.075);--fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--fill3:rgba(0,0,0,.12);
+  --side-sel:rgba(0,0,0,.075);--side-fg:rgba(0,0,0,.76);--side-sel-fg:rgba(0,0,0,.95);
+  --accent:#3d5bff;--accent-t:#2d4ae6;--accent-bg:rgba(61,91,255,.10);
+  --green:#17924f;--orange:#d0700a;--orange-bg:rgba(230,126,10,.12);--red:#d7333f;
+  --btn:#fff;--btn-sh:0 0 0 .5px rgba(0,0,0,.14),0 1px 1.5px rgba(0,0,0,.08);--seg-on:#fff;
+  --menu:#f8f8fa;--menu-bd:rgba(0,0,0,.10);--scrim:rgba(0,0,0,.22);
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--page-bd:rgba(255,255,255,.08);
+  --win:#1e1e21;--win2:#29292d;--side:#25252a;
+  --l1:rgba(255,255,255,.88);--l2:rgba(255,255,255,.55);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --sep:rgba(255,255,255,.09);--fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--fill3:rgba(255,255,255,.14);
+  --side-sel:rgba(255,255,255,.1);--side-fg:rgba(255,255,255,.78);--side-sel-fg:#fff;
+  --accent:#4a66ff;--accent-t:#8fa2ff;--accent-bg:rgba(91,121,255,.16);
+  --green:#3fcf86;--orange:#ffab3d;--orange-bg:rgba(255,171,61,.14);--red:#ff6670;
+  --btn:rgba(255,255,255,.12);--btn-sh:0 0 0 .5px rgba(255,255,255,.08);--seg-on:rgba(255,255,255,.22);
+  --menu:#2c2c30;--menu-bd:rgba(255,255,255,.12);--scrim:rgba(0,0,0,.4);
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:13px/1.45 var(--font);-webkit-font-smoothing:antialiased;padding-bottom:80px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+p,h1,h2,ul{margin:0;padding:0}
+
+/* The demo's own page around the window. */
+.top{max-width:1180px;margin:0 auto;padding:24px 24px 0;display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.top h1{font-size:20px;font-weight:650}
+.top p{color:var(--page-fg2);font-size:13px;margin-top:4px;max-width:640px}
+.ctl{margin-left:auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.schemes{max-width:1180px;margin:18px auto 0;padding:0 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.sc{border:1px solid var(--page-bd);border-radius:12px;padding:12px 14px;text-align:left;background:transparent}
+.sc b{display:block;font-size:14px;font-weight:650}
+.sc span{display:block;color:var(--page-fg2);font-size:12.5px;margin-top:3px}
+.sc.on{border-color:var(--accent);background:var(--accent-bg)}
+.stage{display:flex;justify-content:center;padding:26px 24px 10px}
+.notes{max-width:900px;margin:0 auto;padding:0 24px}
+.notes h2{font-size:15px;font-weight:650;margin:26px 0 6px}
+.notes ul{padding-left:18px;color:var(--page-fg2);font-size:13px;line-height:1.7}
+.notes li b{color:var(--page-fg);font-weight:600}
+.legend{display:inline-flex;gap:6px;align-items:center;color:var(--page-fg2);font-size:12px}
+
+/* The settings window: as Settings.tsx and settings.css lay it out. */
+.win{width:900px;height:640px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-win);display:grid;grid-template-columns:200px minmax(0,1fr);background:var(--win);position:relative;color:var(--l1)}
+.side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0}
+.lights{height:44px;display:flex;gap:8px;align-items:center;padding:0 14px;flex:none}
+.lights i{width:12px;height:12px;border-radius:50%;background:var(--fill3)}
+.side-nav{padding:0 8px 8px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.nav-i{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;border-radius:8px;font-size:14px;color:var(--side-fg);width:100%;text-align:left}
+.nav-i svg{width:18px;height:18px;flex:none}
+.nav-i:hover{background:var(--fill)}
+.nav-i.sel{background:var(--side-sel);color:var(--side-sel-fg);font-weight:500}
+.nav-i .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nav-i .dot{width:7px;height:7px;border-radius:50%;background:var(--l4);flex:none}
+.nav-i .dot.on{background:var(--green)}
+.nav-i .soon{margin-left:auto;font-size:11px;color:var(--orange)}
+.side-h{font-size:12px;color:var(--l2);padding:14px 9px 4px}
+.nav-add{height:28px;font-size:13px;color:var(--l2)}
+.main{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--win)}
+.set-top{height:44px;flex:none;display:flex;align-items:center;gap:4px;padding:0 21px;border-bottom:.5px solid var(--sep)}
+.set-top h1{font-size:14px;font-weight:500;display:flex;gap:6px;align-items:center}
+.set-top h1 .crumb{color:var(--l2);font-weight:400}
+.back{width:26px;height:26px;margin-left:-6px;border-radius:var(--r-ctl);display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.back:hover{background:var(--fill2)}
+.back svg{transform:rotate(180deg);width:16px;height:16px}
+.body{flex:1;min-height:0;overflow-y:auto;padding:21px 34px 34px}
+.form{display:flex;flex-direction:column;gap:21px}
+.fhead{font-size:12px;color:var(--l2);margin:0 0 6px 4px;display:flex;align-items:center;gap:6px}
+.fgroup{background:var(--win2);border-radius:var(--r-card)}
+.frow{display:flex;align-items:center;gap:12px;padding:9px 14px;min-height:44px;border-top:.5px solid var(--sep)}
+.frow:first-child{border-top:0}
+.frow.muted{color:var(--l2)}
+.frow>svg{width:18px;height:18px;color:var(--l2);flex:none}
+.ft{flex:1;min-width:0}
+.fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fdesc{font-size:11.5px;color:var(--l2);margin-top:2px}
+.fside{display:inline-flex;align-items:center;gap:6px;flex:none;color:var(--l2);font-size:12.5px}
+.fside .dotc{width:7px;height:7px;border-radius:50%;background:var(--l4)}
+.fside .dotc.on{background:var(--green)}
+.warn{color:var(--orange)}
+.go{width:100%;text-align:left}
+.go:hover{background:var(--fill)}
+.fgroup>.go:first-child{border-radius:12px 12px 0 0}.fgroup>.go:last-child{border-radius:0 0 12px 12px}.fgroup>.go:only-child{border-radius:12px}
+.chev{width:14px;height:14px;color:var(--l3);flex:none}
+.btn{height:26px;padding:0 13px;border-radius:999px;background:var(--btn);box-shadow:var(--btn-sh);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:none}
+.btn.sm{height:22px;padding:0 10px;font-size:12px}
+.btn.danger{color:var(--red)}
+.btn:disabled{opacity:.42;cursor:default}
+.btn.ghost{background:none;box-shadow:none;color:var(--l2);padding:0 6px}
+.btn.ghost:hover{background:var(--fill2)}
+.link{color:var(--accent-t);font-size:inherit}
+.link:hover{text-decoration:underline}
+.sw{width:34px;height:20px;border-radius:999px;background:var(--fill3);position:relative;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .2s}
+.sw.on{background:var(--accent)}.sw.on::after{transform:translateX(14px)}
+.seg{display:inline-flex;background:var(--fill2);border-radius:999px;padding:2px;gap:1px;flex:none}
+.seg button{height:24px;padding:0 12px;border-radius:999px;font-size:12.5px;white-space:nowrap}
+.seg button.on{background:var(--seg-on);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.psel{height:24px;border-radius:7px;border:.5px solid var(--l4);background:var(--btn);color:var(--l1);font:inherit;font-size:12.5px;padding:0 6px}
+.dhero{display:flex;align-items:center;gap:14px}
+.dhero b{font-size:17px;font-weight:600;display:block}
+.dhero .sub{font-size:12px;color:var(--l2);margin-top:2px;display:block}
+.dhero .more{margin-left:auto}
+.mtile{width:28px;height:28px;border-radius:var(--r-ctl);background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
+.mtile svg{width:16px;height:16px}
+.mtile.xl{width:52px;height:52px;border-radius:12px}.mtile.xl svg{width:26px;height:26px}
+.av{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex:none}
+.av.xl{width:52px;height:52px;border-radius:50%;font-size:22px;background:linear-gradient(135deg,#22b8c9,#6d3cf0)}
+.set-acts{display:flex;gap:8px;align-items:center;margin-top:-8px}
+.set-acts .push{margin-left:auto}
+.set-note{margin:8px 4px 0;color:var(--l2);font-size:12px}
+.mono{font-family:var(--mono);font-size:11.5px}
+.chip{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:9px;background:var(--fill2);color:var(--l2);font-size:11px;margin-right:4px}
+.tabs{display:flex;gap:2px;border-bottom:.5px solid var(--sep);margin:-4px 0 0}
+.tabs button{height:32px;padding:0 12px;color:var(--l2);border-bottom:2px solid transparent;margin-bottom:-.5px}
+.tabs button.on{color:var(--l1);border-color:var(--accent);font-weight:500}
+.health{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:var(--orange-bg)}
+.health b{display:block;font-weight:600}.health p{font-size:12px;color:var(--l2)}
+/* What is new in the proposal: real today unless marked. */
+.new{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:8px;font-size:10.5px;font-weight:600;color:var(--accent-t);background:var(--accent-bg);flex:none;letter-spacing:.02em}
+.new.mv{color:var(--orange);background:var(--orange-bg)}
+/* Disk directories. */
+.dsum{display:flex;align-items:flex-end;gap:14px;padding:14px}
+.dsum .big{font-size:26px;font-weight:600;letter-spacing:-.01em;line-height:1}
+.dsum .big small{font-size:14px;font-weight:500;color:var(--l2);margin-left:3px}
+.bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--fill2);margin:0 14px}
+.bar i{display:block;height:100%}
+.bar-key{display:flex;gap:14px;padding:8px 14px 12px;font-size:11.5px;color:var(--l2);flex-wrap:wrap}
+.bar-key span{display:inline-flex;align-items:center;gap:5px}
+.bar-key i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.tools{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+.tools .push{margin-left:auto}
+.wrow .size{font-variant-numeric:tabular-nums;color:var(--l2);font-size:12.5px;width:62px;text-align:right;flex:none}
+.wrow .act{width:96px;display:flex;justify-content:flex-end;flex:none;font-size:12px}
+.wrow .open{opacity:0}
+.wrow:hover .open{opacity:1}
+.wrow.gone{opacity:0;transform:translateX(12px);transition:all .25s}
+.grp{padding:8px 14px 6px;font-size:12px;color:var(--l2);border-top:.5px solid var(--sep);display:flex}
+.grp:first-child{border-top:0}
+.grp span{margin-left:auto;font-variant-numeric:tabular-nums}
+/* Menus, sheets and toasts. */
+.menu{position:absolute;z-index:5;min-width:170px;background:var(--menu);border:.5px solid var(--menu-bd);border-radius:9px;padding:5px;box-shadow:0 8px 28px rgba(0,0,0,.25)}
+.menu button{display:block;width:100%;text-align:left;padding:4px 10px;border-radius:5px;font-size:13px}
+.menu button:hover{background:var(--accent);color:#fff}
+.menu hr{border:0;border-top:.5px solid var(--sep);margin:4px 6px}
+.menu .danger{color:var(--red)}
+.scrim{position:absolute;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;z-index:6}
+.sheet{width:380px;background:var(--win);border-radius:14px;padding:20px;box-shadow:var(--shadow-win)}
+.sheet b{font-size:14px;font-weight:600;display:block}
+.sheet p{color:var(--l2);margin-top:8px;font-size:12.5px}
+.sheet .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.btn.primary{background:var(--accent);color:#fff;box-shadow:none}
+.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--menu);border:.5px solid var(--menu-bd);border-radius:10px;padding:8px 14px;box-shadow:0 8px 28px rgba(0,0,0,.25);font-size:12.5px;z-index:7;white-space:nowrap}
+.dim{opacity:.55}
+/* v2 */
+.acct{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:10px;margin:0 0 8px;width:100%;text-align:left}
+.acct:hover{background:var(--fill)}
+.acct.sel{background:var(--side-sel)}
+.acct .av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#22b8c9,#6d3cf0);font-size:14px}
+.acct b{display:block;font-size:13px;font-weight:600;color:var(--side-sel-fg)}
+.acct small{display:block;font-size:11px;color:var(--l2)}
+.side-h{display:flex;align-items:center}
+.side-h .add{margin-left:auto;width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:var(--l2)}
+.side-h .add:hover{background:var(--fill2)}
+.side-h .add svg{width:14px;height:14px}
+.dhero .sub .run{color:var(--accent-t)}
+.dhero .sub .run:hover{text-decoration:underline}
+.val{color:var(--l2);font-size:12.5px;flex:none;white-space:nowrap}
+.val.ok{color:var(--green)}
+.go .mtile{width:26px;height:26px}
+.gone-rows .frow{opacity:.5}
+.marks-off .new{display:none}
+.dsum2{display:flex;align-items:center;gap:14px;padding:14px}
+.dsum2 .big{font-size:24px;font-weight:600;line-height:1}
+.dsum2 .big small{font-size:13px;font-weight:500;color:var(--l2);margin-left:3px}
+.toggle{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;color:var(--page-fg2)}
+.toggle .sw{transform:scale(.85)}
+.menu .chk{display:flex;gap:8px}
+.menu .chk i{width:12px;font-style:normal}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>设置重构 v2 · 环境</h1>
+    <p>在方案 C 的基础上精简：「编码 agent」改名为「Agent 提供方」（AgentProvider）；项目不再绑定到提供方，在环境下单独管理；环境页只留入口和开关，说明文字尽量短。</p>
+  </div>
+  <div class="ctl">
+    <label class="toggle"><button class="sw on" id="marks" aria-pressed="true"></button>标出改动</label>
+    <div class="seg" id="theme"><button data-theme-set="light">浅色</button><button data-theme-set="dark" class="on">深色</button></div>
+  </div>
+</header>
+<div class="stage"><div class="win" id="win"></div></div>
+<section class="notes">
+  <h2>和上一版方案 C 比，改了什么</h2>
+  <ul>
+    <li><b>Agent 提供方</b> <span class="new">新</span>：原来叫「编码 agent」，指 Claude Code、Codex、Gemini CLI 这些在环境里真正干活的程序。连进来调用的 agent（Cursor、OpenClaw…）仍然在「授权」里。代码里本来就叫 <code>provider</code>，中英文就对上了。</li>
+    <li><b>项目独立</b> <span class="new">新</span>：项目只属于环境，不再选「给哪些提供方用」。现在后端的规则是 <code>agents</code> 为空就表示「全部」，所以新建项目不填这个字段就行。要限制某个 agent 能用哪些提供方，用授权里已有的「Agent 提供方」范围。Agent 提供方的页面只保留登录状态和默认模型。</li>
+    <li><b>环境页只有三组</b>：入口（Agent 提供方、项目、Her、磁盘目录），访问（共享、暂停），这台 Mac 特有的后台服务。运行中的任务数放进标题下的状态行，点击就跳到主窗口。</li>
+    <li><b>侧栏</b> <span class="new">新</span>：账号放在最上面（和 macOS 系统设置一样），然后是通用、授权，最后是「环境」分组，加号在分组标题上。</li>
+    <li><b>磁盘目录更精简</b>：顶部一个总量和「释放空闲的」按钮，下面是按大小排序的列表，最后是自动清理开关。去掉了分色条和分组切换。</li>
+  </ul>
+  <h2>还要定的</h2>
+  <ul>
+    <li>已有项目如果只给了部分提供方（<code>agents</code> 不为空），迁移时是清空（全部可用），还是继续按原来的限制、只是不在界面上显示？我建议清空，否则就成了一条看不见的规则。</li>
+    <li>「共享这台 Mac 的 Agent 提供方」原来叫「安全可信地共享本机 agent」，跟着改了，看看是否合适。</li>
+    <li>CLI 的 <code>--agent claude</code> 和文档里的 coding agent，要不要一起改成 provider？</li>
+  </ul>
+</section>
+
+<script>
+const ICON = {
+  gear:'<path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M17 6l3 3M15 8l2 2"/>',
+  laptop:'<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  server:'<rect x="4" y="4" width="16" height="7" rx="1.5"/><rect x="4" y="13" width="16" height="7" rx="1.5"/><path d="M8 7.5h.01M8 16.5h.01"/>',
+  mini:'<rect x="3" y="8" width="18" height="8" rx="2"/><path d="M7 12h.01"/>',
+  chev:'<path d="m9 6 6 6-6 6"/>',
+  more:'<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  disk:'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  her:'<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  code:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+};
+const ic = (n, cls='') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${ICON[n]}</svg>`;
+const NEW = '<span class="new">新</span>';
+
+/* Sample data in the shapes the app has (Machine, AgentStatus, Project, LocalWorkspace, Client). */
+const ENVS = [
+  {id:'mbp', name:'macbook-pro', local:true, online:true, platform:'macOS · arm64', version:'0.1.9', running:2, icon:'laptop', her:true},
+  {id:'vps', name:'vps-1', online:true, platform:'Linux · amd64', version:'0.1.9', running:1, icon:'server', her:false},
+  {id:'mini', name:'mac-mini', trusted:true, online:false, seen:'3 天前', platform:'macOS · arm64', version:'0.1.8', running:0, icon:'mini', her:false},
+];
+const PROV = {
+  mbp:[{id:'claude',name:'Claude Code',c:'#c96442',ver:'2.1.4',in:true},{id:'codex',name:'Codex',c:'#3a3a3a',ver:'0.58.0',in:true},{id:'gemini',name:'Gemini CLI',c:'#3d7cf5',ver:'0.12.1',in:false}],
+  vps:[{id:'claude',name:'Claude Code',c:'#c96442',ver:'2.1.4',in:true}],
+  mini:[],
+};
+const MISSING = {mbp:['Antigravity'], vps:['Codex','Gemini CLI'], mini:[]};
+const PROJ0 = {
+  mbp:[{id:'hermesh',path:'~/CodeSpace/hermesh',wt:true},{id:'web-console',path:'~/CodeSpace/web-console',wt:true},{id:'notes',path:'~/Documents/notes',wt:false}],
+  vps:[{id:'api',path:'/srv/api',wt:true}],
+  mini:[],
+};
+const GIB = 1024**3;
+const WS0 = [
+  {id:'s1',title:'修复登录页面的 bug',proj:'hermesh',size:2.4*GIB,ago:'3 天前',state:'idle'},
+  {id:'s2',title:'重构设置页面',proj:'hermesh',size:2.1*GIB,ago:'现在',state:'running'},
+  {id:'s3',title:'迁移到新的构建脚本',proj:'web-console',size:1.3*GIB,ago:'12 天前',state:'dirty',why:'有未提交的改动'},
+  {id:'s4',title:'补充 e2e 测试',proj:'hermesh',size:1.1*GIB,ago:'6 天前',state:'idle'},
+  {id:'s5',title:'升级依赖',proj:'web-console',size:0.9*GIB,ago:'20 天前',state:'idle'},
+  {id:'s6',title:'整理文档目录',proj:'hermesh',size:0.5*GIB,ago:'2 天前',state:'dirty',why:'有不能从分支恢复的文件 .env'},
+  {id:'s7',title:'调整 CI 配置',proj:'hermesh',size:0.31*GIB,ago:'1 天前',state:'idle'},
+];
+const GRANTS = [
+  {name:'Cursor',c:'#3a3a3a',sub:'3 天前用过',left:'还剩 21 天'},
+  {name:'OpenClaw',c:'#d9573b',sub:'hermesh 在用 · 2 分钟前',left:'4 天后到期',warn:true},
+  {name:'Her',c:'#b05fd8',sub:'1 小时前用过',left:'所有电脑 · 不会到期'},
+];
+
+const S = {side:'env:mbp', stack:[], ws:WS0.map(w=>({...w})), proj:JSON.parse(JSON.stringify(PROJ0)), sw:{share:true,pause:false,login:true,keep:false,auto:false,her:true}, menu:null, sheet:null, toast:''};
+const env = id => ENVS.find(e=>e.id===id);
+const fmt = b => { const g=b/GIB; return g>=1 ? `${g.toFixed(1)} GiB` : `${Math.round(b/1024**2)} MiB`; };
+const total = () => S.ws.reduce((n,w)=>n+w.size,0);
+const idle = () => S.ws.filter(w=>w.state==='idle');
+const sum = ws => ws.reduce((n,w)=>n+w.size,0);
+const reach = e => e.local || e.online;
+
+/* ---------- Pieces ---------- */
+const sw = key => `<button class="sw ${S.sw[key]?'on':''}" data-sw="${key}" aria-pressed="${S.sw[key]}"></button>`;
+const srow = (title, desc, right) => `<div class="frow"><div class="ft"><div class="fn">${title}</div>${desc?`<div class="fdesc">${desc}</div>`:''}</div>${right}</div>`;
+const go = (to, lead, title, val='', opts={}) => `<button class="frow go" data-go="${to}" ${opts.off?'disabled style="cursor:default"':''}>${lead}<div class="ft"><div class="fn" style="display:flex;gap:6px;align-items:center">${title}${opts.mark||''}</div>${opts.sub?`<div class="fdesc">${opts.sub}</div>`:''}</div>${val?`<span class="val ${opts.cls||''}">${val}</span>`:''}${opts.off?'':ic('chev','chev')}</button>`;
+const tile = n => `<span class="mtile">${ic(n)}</span>`;
+const ptile = (a, big) => `<span class="av" style="background:${a.c};${big?'width:44px;height:44px;border-radius:11px;font-size:18px':''}">${a.name[0]}</span>`;
+
+/* ---------- Sidebar ---------- */
+function sidebar(){
+  const it = (id, icon, label, extra='') => `<button class="nav-i ${S.side===id?'sel':''}" data-side="${id}">${ic(icon)}<span class="nm">${label}</span>${extra}</button>`;
+  return `<div class="lights"><i></i><i></i><i></i></div><nav class="side-nav">
+    <button class="acct ${S.side==='account'?'sel':''}" data-side="account"><span class="av">U</span><span><b>user</b><small>账号与设备</small></span></button>
+    ${it('general','gear','通用')}
+    ${it('grants','key','授权','<span class="soon">1 个快到期</span>')}
+    <div class="side-h">环境<button class="add" data-act="noop" title="添加环境…">${ic('plus')}</button></div>
+    ${ENVS.map(e=>`<button class="nav-i ${S.side==='env:'+e.id?'sel':''}" data-side="env:${e.id}">${ic(e.icon)}<span class="nm">${e.local?'这台 Mac':e.name}</span><i class="dot ${e.online?'on':''}"></i></button>`).join('')}
+  </nav>`;
+}
+
+/* ---------- Environment ---------- */
+function hero(e){
+  const status = e.online ? (e.running ? `<button class="run" data-act="noop">${e.running} 个任务运行中</button>` : '在线') : `离线 · 最近在线 ${e.seen}`;
+  return `<div class="dhero"><span class="mtile xl">${ic(e.icon)}</span><div><b>${e.name}</b>
+    <span class="sub">${[e.local?'这台 Mac':e.trusted?'可信设备':'', status, e.platform, 'Hermesh '+e.version].filter(Boolean).join(' · ')}</span></div>
+    <button class="btn ghost more" data-act="env-menu" title="更多">${ic('more')}</button></div>`;
+}
+function provSummary(e){
+  if (!reach(e)) return '离线';
+  const ps = PROV[e.id], ok = ps.filter(p=>p.in);
+  return ok.map(p=>p.name).join('、') + (ps.length>ok.length ? `<span class="warn"> · ${ps.length-ok.length} 个未登录</span>` : '');
+}
+function envHub(e){
+  const off = !reach(e);
+  return `<div class="form">${hero(e)}
+    <div class="fgroup">
+      ${go('providers', tile('code'), 'Agent 提供方', provSummary(e), {off, mark:NEW})}
+      ${go('projects', tile('folder'), '项目', off?'离线':`${S.proj[e.id].length} 个`, {off})}
+      ${go('her', tile('her'), 'Her', e.her?'运行中':'未开启', {cls:e.her?'ok':''})}
+      ${go('disk', tile('disk'), '磁盘目录', e.local?fmt(total()):off?'离线':'', {off:off, mark:e.local?NEW:'<span class="new">新 · 需新接口</span>'})}
+    </div>
+    <div><div class="fhead">访问</div><div class="fgroup">
+      ${e.local?srow('共享这台 Mac 的 Agent 提供方','Hermesh 像你一样在命令行调用它们，不读取 API Key 和 Token。', sw('share')):''}
+      ${srow('暂停接受新任务','正在跑的任务不受影响', sw('pause'))}
+    </div></div>
+    ${e.local?`<div><div class="fhead">后台服务 <span class="new mv">移</span></div><div class="fgroup">
+      ${srow('登录时打开 Hermesh','', sw('login'))}
+      ${srow('退出应用后保持后台服务运行','', sw('keep'))}
+      ${srow('后台服务','<span style="color:var(--green)">运行中</span>','<button class="btn sm">停止…</button>')}
+    </div></div>`:''}
+  </div>`;
+}
+function providers(e){
+  return `<div class="form"><div class="fgroup">
+    ${PROV[e.id].map(a=>go('prov:'+a.id, ptile(a), a.name, a.in?'已登录':'还没登录', {cls:a.in?'ok':'warn', sub:`<span class="mono">${a.ver}</span>`})).join('')}
+  </div>
+  ${MISSING[e.id].length?`<p class="set-note" style="margin-top:-13px">没有安装：${MISSING[e.id].join('、')} · 装好后 Hermesh 会自己发现</p>`:''}
+  ${e.local?`<div class="set-acts"><button class="btn sm">重新检测</button></div>`:''}</div>`;
+}
+function provider(e, id){
+  const a = PROV[e.id].find(x=>x.id===id);
+  const sel = (o) => `<select class="psel">${o.map(x=>`<option>${x}</option>`).join('')}</select>`;
+  return `<div class="form">
+    <div class="dhero">${ptile(a,true)}<div><b>${a.name}</b><span class="sub">${e.name} · <span class="mono">${a.ver}</span> · ${a.in?'<span style="color:var(--green)">已登录</span>':'<span class="warn">还没登录</span>'}</span></div></div>
+    ${a.in?'':`<div class="fgroup"><div class="frow"><span class="ft">先登录 ${a.name}，Hermesh 才能用它。</span><button class="btn sm">在终端运行</button></div></div>`}
+    <div><div class="fhead">默认模型</div><div class="fgroup">
+      ${srow('模型','',sel([`跟随 ${a.name}`]))}
+      ${srow('推理强度','',sel([`跟随 ${a.name}（高）`,'低','中','高','超高']))}
+      ${srow('速度','',sel(['标准','快速']))}
+    </div><p class="set-note">Agent 在这里开任务、没指定模型时用这些；不改 ${a.name} 自己的配置。</p></div>
+  </div>`;
+}
+function projects(e){
+  const ps = S.proj[e.id];
+  return `<div class="form"><div class="fgroup">
+    ${ps.length?ps.map((p,i)=>`<div class="frow">${ic('folder')}<div class="ft"><div class="fn">${p.id}</div><div class="fdesc mono">${p.path}</div></div><span class="val">${p.wt?'独立 worktree':'原地'}</span><button class="btn ghost" data-act="proj-menu" data-i="${i}" title="更多">${ic('more')}</button></div>`).join(''):'<div class="frow muted">还没有项目</div>'}
+  </div>
+  <div class="set-acts"><button class="btn sm">添加项目…</button></div>
+  <p class="set-note">这个环境里登录了的 Agent 提供方都能在这些项目里工作。要限制某个 agent 能用哪些项目和提供方，到「授权」里改它的范围。${NEW}</p></div>`;
+}
+function her(e){
+  return `<div class="form"><div class="fgroup">${srow('在这个环境运行 Her', 'Her 的助手、对话和设置都保存在这个环境里。开启或关闭需要 Touch ID。', sw('her'))}</div>
+    ${e.local && S.sw.her?`<div><div class="fhead">电脑操控</div><div class="fgroup">
+      ${srow('辅助功能','读取窗口内容并执行点击、输入。','<span class="val ok">已允许</span>')}
+      ${srow('屏幕录制','给窗口截图时需要。','<button class="btn sm">打开系统设置</button>')}
+    </div></div>`:''}</div>`;
+}
+function disk(e){
+  if (!e.local) return `<div class="form"><div class="fgroup"><div class="frow muted">示意：其他环境的磁盘目录要等 hermeshd 提供远程统计接口后才能显示。</div></div></div>`;
+  const rows = [...S.ws].sort((a,b)=>b.size-a.size), free = idle();
+  const row = w => `<div class="frow wrow" id="w-${w.id}"><div class="ft"><div class="fn">${w.title}</div><div class="fdesc">${w.proj} · ${w.state==='running'?'运行中':w.ago+'活跃'}</div></div>
+    <button class="btn ghost open" title="在访达中打开">${ic('folder')}</button>
+    <span class="size">${fmt(w.size)}</span>
+    <span class="act">${w.state==='idle'?`<button class="btn sm" data-free="${w.id}">释放</button>`:w.state==='running'?'<span style="color:var(--l3)">进行中</span>':`<span class="warn" title="${w.why}">${w.why.startsWith('有未提交')?'有未提交的改动':'有本地文件'}</span>`}</span></div>`;
+  return `<div class="form">
+    <div class="fgroup"><div class="dsum2"><div><div class="big">${fmt(total()).replace(' ','<small>')}</small></div><div class="fdesc" style="margin-top:6px">${S.ws.length} 个会话工作目录 · <button class="link" data-act="rescan">刷新</button></div></div>
+      <button class="btn sm" style="margin-left:auto" data-act="free-all" ${free.length?'':'disabled'}>释放空闲的（${fmt(sum(free))}）</button>${NEW}</div></div>
+    <div><div class="fgroup">${rows.length?rows.map(row).join(''):'<div class="frow muted">这个环境没有占用磁盘的会话工作目录。</div>'}</div>
+      <p class="set-note">释放只删除本地目录，分支保留，下次给任务发消息时自动恢复。</p></div>
+    <div class="fgroup">${srow(`自动释放空闲 7 天以上的工作目录 ${NEW}`,'只释放没有本地改动的目录。', sw('auto'))}</div>
+  </div>`;
+}
+
+/* ---------- Other pages ---------- */
+function general(){
+  return `<div class="form">
+    <div class="fgroup">${srow('外观','','<div class="seg"><button>跟随系统</button><button>浅色</button><button class="on">深色</button></div>')}${srow('语言','','<select class="psel"><option>跟随系统（简体中文）</option></select>')}</div>
+    <div><div class="fhead">通知</div><div class="fgroup">
+      ${srow('连接请求','需要你批准，一直会通知','<button class="sw on" disabled></button>')}${srow('新任务','','<button class="sw"></button>')}${srow('agent 提问','没人回答的话 30 分钟后过期','<button class="sw on"></button>')}${srow('任务出错','','<button class="sw on"></button>')}${srow('一轮完成','','<button class="sw"></button>')}
+    </div></div>
+    <div><div class="fhead">菜单栏</div><div class="fgroup">${srow('有事需要处理时，图标上显示圆点','','<button class="sw on"></button>')}</div></div>
+    <div><div class="fhead">更新</div><div class="fgroup">${srow('自动下载更新','下载好后，退出或重新启动 Hermesh 时安装','<button class="sw on"></button>')}</div></div>
+    <p class="set-note">「启动」挪到了「环境 › 这台 Mac › 后台服务」。<span class="new mv">移</span></p>
+  </div>`;
+}
+function grants(){
+  return `<div class="form"><div class="fgroup">${GRANTS.map(g=>go('noop',`<span class="av" style="background:${g.c}">${g.name[0]}</span>`, g.name, `<span class="${g.warn?'warn':''}">${g.left}</span>`, {sub:g.sub})).join('')}</div>
+    <div class="set-acts"><button class="btn">连接 agent…</button></div>
+    <p class="set-note">授权决定一个 agent 能用你的哪些项目、环境和 Agent 提供方，用多久。${NEW}</p></div>`;
+}
+function account(){
+  return `<div class="form">
+    <div class="dhero"><span class="av xl">U</span><div><b>user</b><span class="sub">Hermesh 官方服务 · hermesh.io</span></div></div>
+    <div><div class="fhead">可信设备</div><div class="fgroup">
+      <div class="frow">${ic('laptop')}<div class="ft"><div class="fn">MacBook Pro <span style="color:var(--l3)">这台 Mac</span></div><div class="fdesc">macOS · 也在执行任务 · 在线</div></div></div>
+      <div class="frow">${ic('mini')}<div class="ft"><div class="fn">Mac mini</div><div class="fdesc">macOS · 也在执行任务 · 离线</div></div><button class="btn sm danger">移除…</button></div>
+      <div class="frow"><button class="link">添加设备…</button></div>
+    </div><p class="set-note">每台可信设备都能批准连接请求。如设备遗失，请在另一台可信设备上将其移除。</p></div>
+    <div class="set-acts" style="margin-top:0"><button class="btn danger">全部清空…</button><button class="btn danger push">退出登录…</button></div>
+  </div>`;
+}
+
+/* ---------- Routing ---------- */
+function current(){
+  if (S.side==='general') return {title:'通用', body:general()};
+  if (S.side==='grants') return {title:'授权', body:grants()};
+  if (S.side==='account') return {title:'账号与设备', body:account()};
+  const e = env(S.side.slice(4)), name = e.local?'这台 Mac':e.name, top = S.stack.at(-1);
+  if (!top) return {title:name, body:envHub(e)};
+  if (top.startsWith('prov:')) { const a = PROV[e.id].find(x=>x.id===top.slice(5)); return {title:a.name, crumb:name+' › Agent 提供方', body:provider(e,a.id)}; }
+  const map = {providers:['Agent 提供方',providers],projects:['项目',projects],her:['Her',her],disk:['磁盘目录',disk]};
+  return {title:map[top][0], crumb:name, body:map[top][1](e)};
+}
+function render(){
+  const c = current(), win = document.getElementById('win'), prev = win.querySelector('.body')?.scrollTop ?? 0;
+  win.innerHTML = `<aside class="side">${sidebar()}</aside><main class="main">
+    <div class="set-top">${S.stack.length?`<button class="back" data-act="back">${ic('chev')}</button>`:''}<h1>${c.crumb?`<span class="crumb">${c.crumb} ›</span>`:''}${c.title}</h1></div>
+    <div class="body">${c.body}</div></main>
+    ${S.menu?S.menu.html:''}
+    ${S.sheet?`<div class="scrim"><div class="sheet"><b>${S.sheet.t}</b><p>${S.sheet.m}</p><div class="acts"><button class="btn" data-act="sheet-no">取消</button><button class="btn primary" data-act="sheet-yes">${S.sheet.b}</button></div></div></div>`:''}
+    ${S.toast?`<div class="toast">${S.toast}</div>`:''}`;
+  if (!S.reset) win.querySelector('.body').scrollTop = prev;
+  S.reset = false;
+}
+function toast(t){ S.toast=t; render(); clearTimeout(toast.h); toast.h=setTimeout(()=>{S.toast='';render();},2200); }
+function menuAt(btn, html){ const w=document.getElementById('win').getBoundingClientRect(), r=btn.getBoundingClientRect(); return {html:`<div class="menu" style="right:${w.right-r.right}px;top:${r.bottom-w.top+4}px">${html}</div>`}; }
+
+document.getElementById('marks').onclick = ev => { const on = ev.currentTarget.classList.toggle('on'); document.body.classList.toggle('marks-off', !on); };
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-side],[data-go],[data-act],[data-free],[data-sw],[data-theme-set],[data-pm]');
+  if (!t) { if (S.menu) { S.menu=null; render(); } return; }
+  const d = t.dataset;
+  if (d.themeSet) { document.documentElement.dataset.theme = d.themeSet; document.querySelectorAll('#theme button').forEach(b=>b.classList.toggle('on', b===t)); return; }
+  const hadMenu = S.menu; S.menu = null;
+  if (d.side) { S.side=d.side; S.stack=[]; S.reset=true; }
+  else if (d.go) { if (d.go==='noop') return render(); S.stack=[...S.stack, d.go]; S.reset=true; }
+  else if (d.sw) { S.sw[d.sw]=!S.sw[d.sw]; if (d.sw==='her') env('mbp').her=S.sw.her; }
+  else if (d.pm) { const e=env(S.side.slice(4)), [i,k]=d.pm.split(':'), p=S.proj[e.id][i]; if (k==='rm') { S.proj[e.id].splice(i,1); toast(`已移除「${p.id}」`); return; } p.wt = k==='wt'; }
+  else if (d.free) {
+    const w = S.ws.find(x=>x.id===d.free); document.getElementById('w-'+w.id)?.classList.add('gone');
+    setTimeout(()=>{ S.ws = S.ws.filter(x=>x.id!==w.id); toast(`已释放「${w.title}」的本地工作区。`); }, 250); return;
+  }
+  else if (d.act==='back') { S.stack = S.stack.slice(0,-1); S.reset=true; }
+  else if (d.act==='env-menu') { if (!hadMenu) S.menu = menuAt(t, `<button>改名…</button><button>复制诊断信息</button><hr><button class="danger">移除…</button>`); }
+  else if (d.act==='proj-menu') { if (!hadMenu) { const e=env(S.side.slice(4)), p=S.proj[e.id][d.i]; S.menu = menuAt(t, `<button class="chk" data-pm="${d.i}:wt"><i>${p.wt?'✓':''}</i>独立 worktree：每个任务在自己的分支里</button><button class="chk" data-pm="${d.i}:ip"><i>${p.wt?'':'✓'}</i>原地：直接改这个目录</button><hr><button class="danger" data-pm="${d.i}:rm">移除项目</button>`); } }
+  else if (d.act==='rescan') { S.ws = WS0.map(w=>({...w})); toast('已重新统计'); return; }
+  else if (d.act==='free-all') { const f=idle(); S.sheet={t:`释放 ${f.length} 个空闲的工作目录？`, m:`共 ${fmt(sum(f))}。分支都会保留，下次给这些任务发消息时会自动恢复。有本地改动的目录不会动。`, b:'释放'}; }
+  else if (d.act==='sheet-no') S.sheet=null;
+  else if (d.act==='sheet-yes') { const n=idle().length; S.ws=S.ws.filter(w=>w.state!=='idle'); S.sheet=null; toast(`已释放 ${n} 个工作目录`); return; }
+  render();
+});
+render();
+</script>
+</body>
+</html>

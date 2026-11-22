@@ -271,7 +271,7 @@ struct GuideView: View {
                 ForEach(Array(found.enumerated()), id: \.element.name) { i, a in
                     if i > 0 { GuideDivider() }
                     NavigationLink(value: Route.machineAgent(machineID, a.name)) {
-                        agentRow(a, projects: projectsFor(model.projects.filter { $0.machineID == machineID }, a.name).count)
+                        agentRow(a)
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("agent-\(a.name)")
@@ -312,7 +312,7 @@ struct GuideView: View {
         scanning = false
     }
 
-    private func agentRow(_ a: AgentStatus, projects: Int) -> some View {
+    private func agentRow(_ a: AgentStatus) -> some View {
         HStack(spacing: 12) {
             AgentLogo(id: a.name, size: 32)
             VStack(alignment: .leading, spacing: 2) {
@@ -320,8 +320,6 @@ struct GuideView: View {
                 Group {
                     if !a.loggedIn {
                         Text("Not signed in").foregroundStyle(.orange)
-                    } else if projects > 0 {
-                        Text("Signed in · \(projects) projects")
                     } else {
                         Text("Signed in")
                     }
@@ -379,7 +377,6 @@ struct GuideView: View {
         let first = model.sessions.filter { $0.createdBy == clientID }.min { $0.createdAt.date < $1.createdAt.date }
         let prompt = firstTaskPrompt(model)
         let machine = model.machines.first
-        let agent = machine?.status.agents.first { $0.available && $0.loggedIn }?.name ?? "claude"
         return GuidePage(part: .connect, title: Text("Try it"), lede: Text("Send this to \(name)")) {
             if model.projects.isEmpty, let machine {
                 GuideCard {
@@ -387,7 +384,7 @@ struct GuideView: View {
                         GuideTile(systemImage: "folder")
                         Text("Add a project first").font(.body.weight(.semibold))
                         Spacer(minLength: 0)
-                        Button("Add…") { model.sheet = .addProject(machine.machineID, agent) }
+                        Button("Add…") { model.sheet = .addProject(machine.machineID) }
                             .buttonStyle(.glassProminent)
                             .accessibilityIdentifier("try-add-project")
                     }

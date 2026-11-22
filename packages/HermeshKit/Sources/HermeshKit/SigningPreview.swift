@@ -435,7 +435,6 @@ public enum SigningPreview {
                          String(localized: "Workspace: \(mode)", bundle: .module)]
             if !p.defaultBaseRef.isEmpty { lines.append(String(localized: "Base branch: \(p.defaultBaseRef)", bundle: .module)) }
             if !p.description_p.isEmpty { lines.append(String(localized: "Description: \(p.description_p)", bundle: .module)) }
-            lines.append(String(localized: "Available coding agents: \(scope(p.agents.map(codingAgentTitle)))", bundle: .module))
             return Card(type: type, title: String(localized: "Add project “\(p.projectID)” to \(target)", bundle: .module), who: who, lines: lines,
                         why: String(localized: "Once approved, the machine registers the directory as a project, where personal agents with access can start tasks and read and write files.", bundle: .module))
         case .removeProject(let p):
@@ -448,6 +447,12 @@ public enum SigningPreview {
                        why: String(localized: "Once approved, the machine accepts no new tasks until you resume it, which you can do at any time.", bundle: .module))
                 : Card(type: type, title: String(localized: "Resume \(target)", bundle: .module), who: who, lines: [],
                        why: String(localized: "Once approved, the machine accepts new tasks again.", bundle: .module))
+        case .setWorkspacePolicy(let p):
+            return p.autoRelease
+                ? Card(type: type, title: String(localized: "Release idle worktrees on \(target) automatically", bundle: .module), who: who, lines: [],
+                       why: String(localized: "Once approved, tasks’ worktrees idle for 7 days with no local changes are deleted there; their branches stay.", bundle: .module))
+                : Card(type: type, title: String(localized: "Stop releasing idle worktrees on \(target)", bundle: .module), who: who, lines: [],
+                       why: String(localized: "Once approved, worktrees stay until released by hand.", bundle: .module))
         case .setName(let n):
             return Card(type: type, title: String(localized: "Rename \(target) to “\(n.name)”", bundle: .module), who: who, lines: [],
                         why: String(localized: "The machine takes the new name; its projects and access stay the same.", bundle: .module))

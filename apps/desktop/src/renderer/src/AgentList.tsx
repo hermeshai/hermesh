@@ -1,10 +1,10 @@
 import { useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { AgentSpeed, Workspace } from "@hermesh/proto/identity";
+import { AgentSpeed } from "@hermesh/proto/identity";
 import { AgentProblem, type AgentStatus } from "@hermesh/proto/machine";
-import type { Machine, Project } from "@hermesh/proto/local";
-import { codingAgentIds, codingAgentTitle, projectIdFromFolder } from "@hermesh/core";
+import type { Machine } from "@hermesh/proto/local";
+import { codingAgentIds, codingAgentTitle } from "@hermesh/core";
 import { AgentLogo, AgentTile, Mark } from "@hermesh/ui";
 import type { TerminalCommand } from "../../shared/bridge";
 import { useRecheckAgents } from "./agents";
@@ -13,15 +13,11 @@ import { Icon } from "./icons";
 import { useStore } from "./store";
 import "./agentlist.css";
 
-// A machine's coding agents, as the first run's "Check and Manage Available
-// Agents" shows them and settings' machine page too: every coding agent
-// Hermesh supports, what the machine has of each (version, logged in), and
-// each installed one opening its page (AgentPage): the model its sessions run
-// with (Claude Code and Codex) and the projects it may work in. A project is
-// one folder; it lists the agents it is for (none: all of them).
-
-/** The projects agent may work in. */
-export const projectsFor = (projects: Project[], agent: string) => projects.filter((p) => p.agents.length === 0 || p.agents.includes(agent));
+// A machine's agent providers, as the first run's "Check and Manage Available
+// Agents" shows them: every coding agent Hermesh supports, what the machine has
+// of each (version, logged in), and each installed one opening its page
+// (AgentPage): signing in, and the model its sessions run with. Projects are
+// the machine's, for every provider (docs/settings-environments.md §5.6).
 
 export const ready = (a: AgentStatus) => a.available && a.loggedIn;
 
@@ -46,7 +42,7 @@ export function whyBroken(a: AgentStatus, t: TFunction<"firstrun">): string {
 }
 
 /** A broken agent's state in a few words: its CLI is missing, or it can't run. */
-function BrokenState({ a }: { a: AgentStatus }) {
+export function BrokenState({ a }: { a: AgentStatus }) {
   const { t } = useTranslation("firstrun");
   const cli = a.problem === AgentProblem.APP_WITHOUT_CLI;
   return (
@@ -77,16 +73,11 @@ export function sortAgents(agents: AgentStatus[] | undefined) {
 /**
  * The list: one row per installed agent, opening its page (onOpen), the ones
  * being checked, then the ones not installed; until the machine says which
- * it has, unknown instead. Projects none of the installed agents may use
- * (theirs is gone, or not known yet) follow, so they can still be removed.
+ * it has, unknown instead.
  */
-export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: ReturnType<typeof sortAgents>; unknown?: ReactNode; onOpen: (agent: string) => void }) {
+export function AgentList({ agents, unknown, onOpen }: { agents: ReturnType<typeof sortAgents>; unknown?: ReactNode; onOpen: (agent: string) => void }) {
   const { t } = useTranslation("firstrun");
-  const st = useStore();
-  const projects = st.projects.filter((p) => p.machineId === m.machineId);
   const { installed, troubled, checking, missing, known } = agents;
-  const others = projects.filter((p) => !installed.some((a) => projectsFor([p], a.name).length > 0));
-  const othersTitle = known ? t("prepare.otherProjects") : t("prepare.allProjects");
   return (
     <>
       <div className="ag-list" role="list" aria-label={t("prepare.agents")}>
@@ -105,7 +96,6 @@ export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: 
                       <i />
                       {a.loggedIn ? t("prepare.signedIn") : t("prepare.notSignedIn")}
                     </span>
-                    <span>{projectsFor(projects, a.name).length > 0 ? t("prepare.projects", { count: projectsFor(projects, a.name).length }) : t("prepare.noProjects")}</span>
                     {set && <span>{set}</span>}
                   </span>
                 </span>
@@ -122,7 +112,6 @@ export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: 
                 <b>{codingAgentTitle(a.name)}</b>
                 <span className="ag-sub">
                   <BrokenState a={a} />
-                  {projectsFor(projects, a.name).length > 0 && <span>{t("prepare.projects", { count: projectsFor(projects, a.name).length })}</span>}
                 </span>
                 <span className="ag-why">{whyBroken(a, t)}</span>
               </span>
@@ -147,16 +136,6 @@ export function AgentList({ m, agents, unknown, onOpen }: { m: Machine; agents: 
           </div>
         ))}
       </div>
-      {others.length > 0 && (
-        <>
-          <div className="ag-group">{othersTitle}</div>
-          <div className="ag-prjs" role="list" aria-label={othersTitle}>
-            {others.map((x) => (
-              <ProjectRow key={x.projectId} p={x} />
-            ))}
-          </div>
-        </>
-      )}
       {known && missing.length > 0 && (
         <>
           <div className="ag-group">{t("prepare.notInstalled")}</div>
@@ -187,7 +166,7 @@ function defaultsText(a: AgentStatus, t: T): string {
   return [d.model && modelName(a, d.model), d.effort && effortName(t, d.effort), d.speed ? speedName(t, d.speed) : ""].filter(Boolean).join(" · ");
 }
 
-const logins: Record<string, { key: TerminalCommand; text: string }> = {
+export const logins: Record<string, { key: TerminalCommand; text: string }> = {
   codex: { key: "codexLogin", text: "codex login" },
   claude: { key: "claudeLogin", text: "claude" },
   antigravity: { key: "antigravityLogin", text: "hermesh agent login antigravity" },
@@ -195,39 +174,17 @@ const logins: Record<string, { key: TerminalCommand; text: string }> = {
 
 /**
  * An agent's page on a machine, opened from its row: signing in when it
- * isn't, the model, reasoning effort and (Codex) speed its sessions run with
- * when the agent starting one names no model (or why there is no choosing),
- * and the projects it may work in.
+ * isn't, and the model, reasoning effort and (Codex) speed its sessions run
+ * with when the agent starting one names no model (or why there is no choosing).
  */
 export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
   const { t } = useTranslation("firstrun");
-  const st = useStore();
   const a = m.status?.agents.find((x) => x.name === agent);
-  const [busy, setBusy] = useState(false);
   const [ran, setRan] = useState(false);
   useRecheckAgents(ran && !a?.loggedIn);
   const title = codingAgentTitle(agent);
-  const projects = st.projects.filter((p) => p.machineId === m.machineId);
-  const mine = projectsFor(projects, agent);
   // Logging in runs in this Mac's Terminal: another machine's agent is logged in there.
   const login = m.local ? logins[agent] : undefined;
-
-  // On this Mac the folder is picked: one already a project gets this agent
-  // too; a new one is for this agent only. Another machine's is typed in.
-  const add = async () => {
-    if (!m.local) return st.set({ sheet: { kind: "addProject", machineId: m.machineId, agent } });
-    const path = await window.hermesh?.pickDirectory();
-    if (!path) return;
-    const same = projects.find((x) => x.path === path);
-    setBusy(true);
-    if (same) {
-      if (same.agents.length > 0 && !same.agents.includes(agent)) await st.run(() => save(same, [...same.agents, agent]), t("prepare.alsoFor", { project: same.projectId, agent: title }));
-    } else {
-      const projectId = projectIdFromFolder(path.split(/[\\/]/).filter(Boolean).pop() ?? "", new Set(projects.map((x) => x.projectId)));
-      await st.run(() => local.addProject({ machineId: m.machineId, projectId, path, agents: [agent] }));
-    }
-    setBusy(false);
-  };
 
   return (
     <div className="ag-page" role="region" aria-label={title}>
@@ -278,20 +235,6 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
           <p className="ag-note">{t(`prepare.models.${a.modelsState}`, { agent: title })}</p>
         </section>
       )}
-      <section aria-label={t("prepare.projectsHead")}>
-        <div className="ag-group">{t("prepare.projectsHead")}</div>
-        {mine.length > 0 && (
-          <div className="ag-prjs">
-            {mine.map((x) => (
-              <ProjectRow key={x.projectId} p={x} agent={agent} />
-            ))}
-          </div>
-        )}
-        <button className="ag-add" onClick={add} disabled={busy || (!m.online && !m.local)}>
-          <Icon name="plus" />
-          {busy ? t("prepare.adding") : t("prepare.addProject")}
-        </button>
-      </section>
     </div>
   );
 }
@@ -302,7 +245,7 @@ export function AgentPage({ m, agent }: { m: Machine; agent: string }) {
  * configuration unless set here; set here, only Hermesh's sessions use them.
  * Each row's button shows the value and opens a menu of the choices.
  */
-function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
+export function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const title = codingAgentTitle(a.name);
@@ -387,53 +330,5 @@ function Defaults({ a, m }: { a: AgentStatus; m: Machine }) {
       </div>
       <p className="ag-note">{t("prepare.defaultsNote", { agent: title })}</p>
     </section>
-  );
-}
-
-/** Adds the project again, as it is, for agents (adding again changes it). */
-const save = (p: Project, agents: string[], workspace = p.workspace) =>
-  local.addProject({ machineId: p.machineId, projectId: p.projectId, path: p.path, workspace, defaultBaseRef: workspace === Workspace.IN_PLACE ? "" : p.defaultBaseRef, description: p.description, agents });
-
-/**
- * A project of one agent: its name and way of working, its folder, and a
- * ⋯ menu to change the way of working or take it from this agent. Of no
- * installed agent (agent unset): the agents it is for, and removing it.
- */
-function ProjectRow({ p, agent }: { p: Project; agent?: string }) {
-  const { t } = useTranslation("firstrun");
-  const st = useStore();
-  const worktree = p.workspace !== Workspace.IN_PLACE;
-  const how = worktree ? t("prepare.worktree") : t("prepare.inPlace");
-  const more = async () => {
-    const id = await window.hermesh?.popupMenu([
-      { id: "worktree", label: t("prepare.worktreeItem"), checked: worktree },
-      { id: "inPlace", label: t("prepare.inPlaceItem"), checked: !worktree },
-      { separator: true },
-      { id: "remove", label: agent ? t("prepare.removeItem", { agent: codingAgentTitle(agent) }) : t("machineOnly.removeProject") },
-    ]);
-    if (id === "worktree" && !worktree) await st.run(() => save(p, p.agents, Workspace.WORKTREE));
-    if (id === "inPlace" && worktree) await st.run(() => save(p, p.agents, Workspace.IN_PLACE));
-    if (id === "remove") {
-      // Taken from the last agent it is for, it goes; one for all stays for the others.
-      const rest = agent ? (p.agents.length > 0 ? p.agents : codingAgentIds).filter((x) => x !== agent) : [];
-      await st.run(() => (rest.length > 0 ? save(p, rest) : local.removeProject({ machineId: p.machineId, projectId: p.projectId })));
-    }
-  };
-  return (
-    <div className="ag-prj" role="group" aria-label={p.projectId}>
-      <Icon name="folder" />
-      <div className="ag-prj-t">
-        <span>
-          <b>{p.projectId}</b>
-          <em>{agent ? how : [how, ...p.agents.map(codingAgentTitle)].join(" · ")}</em>
-        </span>
-        <span className="mono" title={p.path}>
-          {p.path}
-        </span>
-      </div>
-      <button className="tb" aria-label={t("prepare.more")} onClick={more}>
-        <Icon name="more" />
-      </button>
-    </div>
   );
 }

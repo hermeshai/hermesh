@@ -106,7 +106,7 @@ func TestRemoteMachineSetup(t *testing.T) {
 
 	// A project added in the machine's own shell, while it runs.
 	add := run(t, vpsEnv, 30*time.Second, daemon, "project", "add", "~/app", "--data-dir", data)
-	if add.code != 0 || !strings.Contains(add.stdout, "✓ Added project “app” (separate worktrees) for every coding agent") {
+	if add.code != 0 || !strings.Contains(add.stdout, "✓ Added project “app” (separate worktrees)") {
 		t.Fatalf("project add: %+v", add)
 	}
 	real, _ := filepath.EvalSymlinks(app)

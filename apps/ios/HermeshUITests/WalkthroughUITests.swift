@@ -108,7 +108,7 @@ extension HermeshUITests {
         showOverview()
         if go("new") {
             shot("new menu")
-            if go(app.buttons["添加机器…"]) { sleep(1); shot("add machine"); dismiss() } else { dismiss() }
+            if go(app.buttons["添加环境…"]) { sleep(1); shot("add machine"); dismiss() } else { dismiss() }
         }
         openMenu()
         if go("account") {
@@ -126,7 +126,7 @@ extension HermeshUITests {
         shot("her where")
         _ = try control("her-slow", method: "POST")
         tap("her-turn-on-owner-mac", timeout: 30)
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30))
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30))
         shot("her signing sheet")
         let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
         for _ in 0..<4 where !approve.isHittable { app.swipeUp() }

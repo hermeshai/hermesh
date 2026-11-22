@@ -70,7 +70,7 @@ test("opened at login hides the Dock icon until a window opens; closing the wind
   await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
 
   await app.evaluate(() => (globalThis as unknown as MainHook).hermeshTest.mainWindow()?.close());
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.webContents.getURL().endsWith("#tray")).length)).toBe(0);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !w.webContents.getURL().endsWith("#tray")).length)).toBe(0);
   expect(await app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
 
   // Both Dock right-click menu and Tray right-click menu expose background service status and controls.
@@ -151,19 +151,21 @@ test("quitting with active tasks and choosing Stop Service & Quit sends launchct
   await closed;
 });
 
-test("stopping the background service from Dock/Settings explains impact, shows clean Stopped UI everywhere, and starting recovers", async () => {
+test("stopping the background service from the Dock explains impact, shows clean Stopped UI everywhere, and starting recovers", async () => {
   const app = await installer(true);
   const main = await app.firstWindow();
   await expect(await sessionList(main)).toContainText("写 hello");
 
-  const [settings] = await Promise.all([app.waitForEvent("window"), main.evaluate(() => window.hermesh?.openSettings("general"))]);
+  const [settings] = await Promise.all([app.waitForEvent("window"), main.evaluate(() => window.hermesh?.openSettings("env"))]);
   await settings.waitForLoadState();
-  const general = settings.getByRole("main", { name: "通用" });
-  await expect(general).toContainText("后台服务");
-  await expect(general).toContainText("运行中");
+  const env = settings.getByRole("main", { name: "这台 Mac" });
+  const pill = env.locator(".set-pill");
+  await expect(pill).toContainText("在线");
+  // Starting and stopping is the menus' (docs/settings-environments.md §5.4): no row for it in settings.
+  await expect(settings.getByRole("button", { name: "停止…" })).toHaveCount(0);
 
-  // 1) Click Stop in Settings -> Cancel leaves it running.
-  await general.getByRole("button", { name: "停止…" }).click();
+  // 1) Stop from the Dock -> Cancel leaves it running.
+  await clickNativeMenu(app, "dock", "stopDaemon");
   await expect.poll(async () => (await dialogs(app)).length).toBe(1);
   const d1 = (await dialogs(app))[0];
   expect(d1.message).toBe("要停止 Hermesh 后台服务吗？");
@@ -172,10 +174,10 @@ test("stopping the background service from Dock/Settings explains impact, shows 
   expect(d1.buttons).toEqual(["停止后台服务", "取消"]);
   expect(d1.defaultId).toBe(1);
   await respond(app, 1);
-  await expect(general).toContainText("运行中");
+  await expect(pill).toContainText("在线");
   expect((await launchctlCalls(app)).filter(([v]) => v === "kill")).toEqual([]);
 
-  // 2) Stop from Dock right-click menu -> Confirm stops daemon and switches every surface to Stopped.
+  // 2) Confirmed: every surface says Stopped, the environment's pill and the sidebar too.
   await clickNativeMenu(app, "dock", "stopDaemon");
   await expect.poll(async () => (await dialogs(app)).length).toBe(2);
   await respond(app, 0);
@@ -184,8 +186,8 @@ test("stopping the background service from Dock/Settings explains impact, shows 
   await expect(main.getByText("后台服务已停止")).toBeVisible();
   await expect(main.getByRole("button", { name: "启动后台服务" })).toBeVisible();
   await expect(main.getByText("后台服务没有响应")).toHaveCount(0);
-  await expect(general).toContainText("已停止");
-  await expect(general.getByRole("button", { name: "启动", exact: true })).toBeVisible();
+  await expect(pill).toContainText("后台服务已停止");
+  await expect(settings.getByRole("navigation", { name: "设置" }).getByRole("button", { name: /^这台 Mac/ })).toContainText("已停止");
 
   const panel = await openTray(app);
   await expect(panel.getByRole("status")).toHaveText("已停止");
@@ -195,27 +197,30 @@ test("stopping the background service from Dock/Settings explains impact, shows 
   expect(await menuSnapshot(app, "dock")).toContainEqual({ id: "startDaemon", label: "启动后台服务", enabled: true });
   expect(await menuSnapshot(app, "context")).toContainEqual({ id: "startDaemon", label: "启动后台服务", enabled: true });
 
-  // 3) Start again from the main window's Stopped screen -> recovers everything cleanly.
+  // 3) Start again from the pill -> recovers everything cleanly.
   const kickstartsBefore = (await launchctlCalls(app)).filter(([v]) => v === "kickstart").length;
-  await main.getByRole("button", { name: "启动后台服务" }).click();
+  await pill.getByRole("button", { name: "启动" }).click();
   await expect.poll(async () => (await launchctlCalls(app)).filter(([v]) => v === "kickstart").length).toBeGreaterThan(kickstartsBefore);
   await expect(await sessionList(main)).toContainText("写 hello");
-  await expect(general).toContainText("运行中");
+  await expect(pill).toContainText("在线");
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as MainHook).hermeshTest.tray().view.state)).toBe("ok");
   expect(await menuSnapshot(app, "dock")).toContainEqual({ id: "stopDaemon", label: "停止后台服务…", enabled: true });
 });
 
-test("enabling Keep background service running after quitting skips dialog on normal Quit while explicit Quit & Stop still confirms", async () => {
+test("turning on Stay Online opens Hermesh at login and skips the dialog on a normal Quit, while explicit Quit & Stop still confirms", async () => {
   let app = await installer(true);
   let main = await app.firstWindow();
   await expect(await sessionList(main)).toContainText("写 hello");
 
-  const [settings] = await Promise.all([app.waitForEvent("window"), main.evaluate(() => window.hermesh?.openSettings("general"))]);
+  const [settings] = await Promise.all([app.waitForEvent("window"), main.evaluate(() => window.hermesh?.openSettings("env"))]);
   await settings.waitForLoadState();
-  const sw = settings.getByRole("switch", { name: "退出应用后保持后台服务运行" });
+  const sw = settings.getByRole("switch", { name: "保持在线" });
   await expect(sw).toHaveAttribute("aria-checked", "false");
+  await expect(settings.getByRole("main", { name: "这台 Mac" })).toContainText("只有 Hermesh 打开时");
   await sw.click();
   await expect(sw).toHaveAttribute("aria-checked", "true");
+  // The login item follows it.
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as MainHook).installTest.loginItems)).toContainEqual({ type: "mainAppService", openAtLogin: true });
 
   // Menus adapt to offer explicit "退出并停止后台服务…".
   await expect.poll(() => menuSnapshot(app, "context")).toContainEqual({ id: "quitStop", label: "退出并停止后台服务…", enabled: true });
@@ -228,7 +233,7 @@ test("enabling Keep background service running after quitting skips dialog on no
   app = await restartInstaller(app);
   main = await app.firstWindow();
   await expect(await sessionList(main)).toContainText("写 hello");
-  expect((await main.evaluate(() => window.hermesh?.getPreferences()))?.keepDaemonOnQuit).toBe(true);
+  expect((await main.evaluate(() => window.hermesh?.getPreferences()))?.stayOnline).toBe(true);
 
   await clickNativeMenu(app, "context", "quitStop");
   await expect.poll(async () => (await dialogs(app)).length).toBe(1);
@@ -236,6 +241,15 @@ test("enabling Keep background service running after quitting skips dialog on no
   const closed = app.waitForEvent("close");
   await respond(app, 0);
   await closed;
+});
+
+test("an older app's choice carries over: keeping the service on quit becomes Stay Online, its login item with it", async () => {
+  const app = await installer(true, "success", { prefs: { language: "zh-CN", keepDaemonOnQuit: true } });
+  const main = await app.firstWindow();
+  await expect(await sessionList(main)).toContainText("写 hello");
+  await expect.poll(async () => (await main.evaluate(() => window.hermesh?.getPreferences()))?.stayOnline).toBe(true);
+  await expect.poll(() => app.evaluate(() => (globalThis as unknown as MainHook).installTest.loginItems)).toContainEqual({ type: "mainAppService", openAtLogin: true });
+  await Promise.all([app.waitForEvent("close"), app.evaluate(({ app }) => { setImmediate(() => app.quit()); })]);
 });
 
 test("relaunch for language change never prompts or stops the background service", async () => {
@@ -252,7 +266,7 @@ test("relaunch for language change never prompts or stops the background service
   await closed;
 });
 
-test("quitting when idle still explains offline impact and defaults to Stop Service & Quit", async () => {
+test("with Stay Online off, quitting when idle stops the service without asking", async () => {
   // Interrupt the fixture's two active sessions so this Mac is completely idle.
   await cli("session", "interrupt", fixture.sessions["跑很久"]);
   await cli("session", "interrupt", fixture.sessions["选颜色"]);
@@ -262,17 +276,16 @@ test("quitting when idle still explains offline impact and defaults to Stop Serv
   await expect(await sessionList(main)).toContainText("写 hello");
   await expect.poll(() => app.evaluate(() => (globalThis as unknown as MainHook).hermeshTest.tray().view.running)).toBe(0);
 
-  await app.evaluate(({ app }) => { setImmediate(() => app.quit()); });
-  await expect.poll(async () => (await dialogs(app)).length).toBe(1);
-  const d = (await dialogs(app))[0];
-  expect(d.message).toBe("退出 Hermesh 将停止后台服务");
-  expect(d.detail).not.toContain("运行的任务会被中断");
-  expect(d.detail).not.toContain("等待回答");
-  expect(d.detail).toContain("暂时无法连接这台 Mac");
-  expect(d.buttons).toEqual(["停止服务并退出", "保持后台运行", "取消"]);
-  expect(d.defaultId).toBe(0); // Idle: Stop Service & Quit is default.
-
+  // The owner chose "only while Hermesh is open": nothing to ask while nothing runs.
+  const killSeen = app.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const check = () => ((globalThis as unknown as MainHook).installTest.launchctl.some(([v]) => v === "kill") ? resolve(true) : setTimeout(check, 20));
+        check();
+      }),
+  );
   const closed = app.waitForEvent("close");
-  await respond(app, 0);
+  await app.evaluate(({ app }) => { setImmediate(() => app.quit()); });
+  expect(await killSeen).toBe(true);
   await closed;
 });

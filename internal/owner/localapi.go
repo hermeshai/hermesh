@@ -356,20 +356,25 @@ func (l *localService) TestMachineAgent(ctx context.Context, req *localv1.TestMa
 	return l.o().TestMachineAgent(ctx, req.MachineId, req.Agent)
 }
 
-func (l *localService) ListLocalWorkspaces(ctx context.Context, _ *localv1.ListLocalWorkspacesRequest) (*localv1.ListLocalWorkspacesResponse, error) {
-	m := l.o().local()
-	if m == nil {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
-	}
-	return m.ListLocalWorkspaces(ctx)
+func (l *localService) ListWorkspaces(ctx context.Context, req *localv1.ListWorkspacesRequest) (*machinev1.ListWorkspacesResponse, error) {
+	return l.o().MachineWorkspaces(ctx, req.MachineId, req.Cached)
 }
 
-func (l *localService) ReleaseLocalWorkspace(ctx context.Context, req *localv1.ReleaseLocalWorkspaceRequest) (*localv1.ReleaseLocalWorkspaceResponse, error) {
-	m := l.o().local()
-	if m == nil {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
+func (l *localService) ReleaseWorkspaces(ctx context.Context, req *localv1.ReleaseWorkspacesRequest) (*machinev1.ReleaseWorkspacesResponse, error) {
+	return l.o().ReleaseMachineWorkspaces(ctx, req.MachineId, req.SessionIds)
+}
+
+func (l *localService) SetWorkspacePolicy(ctx context.Context, req *localv1.SetWorkspacePolicyRequest) (*localv1.SetWorkspacePolicyResponse, error) {
+	policy := &identityv1.SetWorkspacePolicy{AutoRelease: req.AutoRelease}
+	if m, ok, err := l.o().onlyMachine(); ok {
+		if err == nil {
+			err = onlyMachineSettings(ctx, m, req.MachineId, func(c *identityv1.AdminCommand) {
+				c.Command = &identityv1.AdminCommand_SetWorkspacePolicy{SetWorkspacePolicy: policy}
+			})
+		}
+		return &localv1.SetWorkspacePolicyResponse{}, err
 	}
-	return &localv1.ReleaseLocalWorkspaceResponse{}, m.ReleaseLocalWorkspace(ctx, req.SessionId)
+	return &localv1.SetWorkspacePolicyResponse{}, l.o().SetWorkspacePolicy(ctx, req.MachineId, req.AutoRelease)
 }
 
 // GetDiagnostics describes this Mac: what it is to its owner, then its
@@ -423,7 +428,7 @@ func (l *localService) AddProject(ctx context.Context, req *localv1.AddProjectRe
 		if err == nil {
 			err = onlyMachineSettings(ctx, m, req.MachineId, func(c *identityv1.AdminCommand) {
 				c.Command = &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: req.ProjectId, Path: req.Path, DefaultBaseRef: req.DefaultBaseRef,
-					Workspace: req.Workspace, Description: req.Description, Agents: req.Agents}}
+					Workspace: req.Workspace, Description: req.Description}}
 			})
 		}
 		return &localv1.AddProjectResponse{}, err

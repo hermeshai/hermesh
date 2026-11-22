@@ -18,11 +18,9 @@ test("Antigravity's default model and reasoning effort are picked from the model
   test.skip(process.env.HERMESH_MODEL_DEFAULTS_TEST !== "1", "TestAntigravityModelDefaultsDesktop runs fakeacp as Antigravity");
   const { app, page } = await launch();
   try {
-    const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("machines"))]);
+    const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("env/this/providers/antigravity"))]);
     await settings.waitForLoadState();
-    const panel = settings.getByRole("main", { name: "机器" });
-    await panel.getByRole("list", { name: "机器" }).getByRole("button", { name: /^owner-mac/ }).click();
-    await panel.getByRole("list", { name: "编码 Agent" }).getByRole("listitem", { name: "Antigravity" }).getByRole("button", { name: /^Antigravity/ }).click();
+    const panel = settings.getByRole("main", { name: "Antigravity" });
     const defaults = panel.getByRole("region", { name: "默认模型" });
     const model = defaults.getByRole("group", { name: "模型", exact: true });
     const effort = defaults.getByRole("group", { name: "推理强度" });

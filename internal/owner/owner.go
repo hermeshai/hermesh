@@ -2205,7 +2205,7 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	req := &machinev1.ApplyAdminCommandRequest{}
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
-		*identityv1.AdminCommand_SetAgentDefaults:
+		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_SetWorkspacePolicy:
 		if l := o.local(); l != nil && l.MachineID() == machineID {
 			return l.ApplySettings(ctx, build) // this device's own machine, in process
 		}
@@ -2299,6 +2299,42 @@ func (o *Owner) TestMachineAgent(ctx context.Context, machineID, agent string) (
 	return n.Admin.TestAgent(ctx, &machinev1.TestAgentRequest{Agent: agent})
 }
 
+// MachineWorkspaces lists a machine's sessions' checkouts
+// (docs/settings-environments.md §5.7); this device's own in process.
+func (o *Owner) MachineWorkspaces(ctx context.Context, machineID string, cached bool) (*machinev1.ListWorkspacesResponse, error) {
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return l.ListWorkspaces(ctx, cached)
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := n.Admin.ListWorkspaces(ctx, &machinev1.ListWorkspacesRequest{Cached: cached})
+	return res, olderMachine(err)
+}
+
+// ReleaseMachineWorkspaces releases sessions' checkouts on a machine.
+func (o *Owner) ReleaseMachineWorkspaces(ctx context.Context, machineID string, ids []string) (*machinev1.ReleaseWorkspacesResponse, error) {
+	if l := o.local(); l != nil && l.MachineID() == machineID {
+		return l.ReleaseWorkspaces(ctx, ids), nil
+	}
+	n, err := o.machineClient(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := n.Admin.ReleaseWorkspaces(ctx, &machinev1.ReleaseWorkspacesRequest{SessionIds: ids})
+	return res, olderMachine(err)
+}
+
+// SetWorkspacePolicy has a machine release idle checkouts by itself, or not:
+// a setting.
+func (o *Owner) SetWorkspacePolicy(ctx context.Context, machineID string, autoRelease bool) error {
+	_, err := o.admin(ctx, machineID, func(c *identityv1.AdminCommand) {
+		c.Command = &identityv1.AdminCommand_SetWorkspacePolicy{SetWorkspacePolicy: &identityv1.SetWorkspacePolicy{AutoRelease: autoRelease}}
+	})
+	return err
+}
+
 // RenameMachine gives a machine another name: a setting, sent over this
 // device's own connection (no Touch ID).
 func (o *Owner) RenameMachine(ctx context.Context, machineID, name string) error {
@@ -2372,7 +2408,7 @@ func (o *Owner) RemoveMachine(ctx context.Context, machineID string, eraseHer bo
 func (o *Owner) AddProject(ctx context.Context, req *localv1.AddProjectRequest) error {
 	_, err := o.admin(ctx, req.MachineId, func(c *identityv1.AdminCommand) {
 		c.Command = &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: req.ProjectId, Path: req.Path, DefaultBaseRef: req.DefaultBaseRef, Workspace: req.Workspace,
-			Description: req.Description, Agents: req.Agents}}
+			Description: req.Description}}
 	})
 	return err
 }

@@ -58,9 +58,9 @@ export type Bridge = {
   macos: number;
   /** Opens the pane of System Settings where the owner allows a computer use permission (main/computer.ts). */
   openComputerPermission(kind: ComputerPermission): void;
-  /** The settings window, on a tab ("grants"), optionally with an item in it selected ("machines/<machine id>", "grants/<grant id>"). */
+  /** The settings window, on a tab ("grants"), optionally with an item in it selected ("env/<machine id>", "grants/<grant id>"; settingsRoute.ts). */
   openSettings(tab?: string): void;
-  /** In the settings window: another tab was asked for while it is open ("grants", "machines/<id>"). */
+  /** In the settings window: another tab was asked for while it is open ("grants", "env/<id>"). */
   onSettingsTab(cb: (tab: string) => void): () => void;
   /** Whether this window has the focus: now, and whenever it changes. */
   onWindowFocus(cb: (focused: boolean) => void): () => void;
@@ -193,8 +193,12 @@ export type Preferences = {
   menuBadge: boolean;
   /** The app's language; a change takes effect when the app next starts. */
   language: LanguageChoice;
-  /** Keep the background service running after quitting the app. */
-  keepDaemonOnQuit: boolean;
+  /**
+   * Stay online (docs/settings-environments.md §5.4): Hermesh opens in the menu bar at login and
+   * quitting it leaves the background service running, so the owner's other devices and agents
+   * reach this computer at any time. Off, the service runs while the app does.
+   */
+  stayOnline: boolean;
 };
 
 /** needsApproval: macOS waits for the person to allow it in System Settings › Login Items. */

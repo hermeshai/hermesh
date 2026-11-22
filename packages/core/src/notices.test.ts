@@ -107,7 +107,7 @@ describe("session notices", () => {
 describe("pairing notices", () => {
   test("each kind of request, with the code to check", () => {
     const p = (kind: PairingKind, verificationCode = "4F7-2K9") => create(PairingDetailsSchema, { kind, label: "gpu-box", code: "ABCD-EFGH", verificationCode });
-    expect(pairingNotice(p(PairingKind.MACHINE))).toEqual({ title: "机器「gpu-box」想加入", body: "核对码 4F7-2K9。点击比对并批准，如不认识请拒绝。" });
+    expect(pairingNotice(p(PairingKind.MACHINE))).toEqual({ title: "「gpu-box」想作为环境加入", body: "核对码 4F7-2K9。点击比对并批准，如不认识请拒绝。" });
     expect(pairingNotice(p(PairingKind.CLIENT)).title).toBe("「gpu-box」想连接");
     expect(pairingNotice(p(PairingKind.DEVICE)).title).toBe("「gpu-box」想成为你的可信设备");
     // Without a verification code, the pairing code is what both sides show.

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -185,26 +184,11 @@ func (s *machineService) projects(ctx context.Context, p *Principal, base bool) 
 			continue
 		}
 		mp := &machinev1.Project{ProjectId: pr.ID, DefaultBaseRef: pr.DefaultBaseRef, Workspace: pr.Workspace,
-			Path: pr.Path, Description: pr.Description, ActiveSessions: active[pr.ID], Agents: pr.Agents}
+			Path: pr.Path, Description: pr.Description, ActiveSessions: active[pr.ID]}
 		if base {
 			mp.Base = projectBase(ctx, pr)
 		}
 		out.Projects = append(out.Projects, mp)
-	}
-	return out, nil
-}
-
-// projectAgents checks the coding agents a project is for: known names,
-// each once, in the order given (none: all).
-func projectAgents(names []string) ([]string, error) {
-	var out []string
-	for _, a := range names {
-		if !slices.Contains(AgentNames(), a) {
-			return nil, fmt.Errorf("unknown agent %q (one of: %s)", a, strings.Join(AgentNames(), ", "))
-		}
-		if !slices.Contains(out, a) {
-			out = append(out, a)
-		}
 	}
 	return out, nil
 }
@@ -309,10 +293,10 @@ func (n *Machine) ApplyAdminCommand(ctx context.Context, signed *identityv1.Sign
 func (n *Machine) ApplySettings(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
-		*identityv1.AdminCommand_SetAgentDefaults:
+		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_SetWorkspacePolicy:
 	default:
 		n.audit.Log(AuditRecord{Kind: "admin", Decision: "deny", Reason: "unsigned command that is not a setting"})
-		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name, agent defaults) may be sent without a signature"))
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name, agent defaults, storage) may be sent without a signature"))
 	}
 	if cmd.OwnerId != n.OwnerID() || cmd.TargetMachineId != n.machineID {
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("settings for another owner or machine"))
@@ -362,10 +346,8 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		if utf8.RuneCountInString(p.Description) > maxDescription {
 			return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the description is longer than %d characters", maxDescription))
 		}
-		agents, err := projectAgents(p.Agents)
-		if err != nil {
-			return "", connect.NewError(connect.CodeInvalidArgument, err)
-		}
+		// p.Agents, from an older device, is ignored: every signed-in agent
+		// provider may work here (docs/settings-environments.md §5.6).
 		mode, path, err := projectWorkspace(ctx, p.Workspace, p.Path)
 		if err != nil {
 			return "", connect.NewError(connect.CodeInvalidArgument, err)
@@ -379,7 +361,7 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 			base = "HEAD"
 		}
 		defer n.sessions.changes().project(p.ProjectId)
-		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description), Agents: agents}); err != nil {
+		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description)}); err != nil {
 			return "", err
 		}
 		if mode == identityv1.Workspace_WORKSPACE_IN_PLACE {
@@ -417,6 +399,11 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 			}
 		}
 		return "paused=" + v, nil
+	case *identityv1.AdminCommand_SetWorkspacePolicy:
+		if err := n.setAutoRelease(c.SetWorkspacePolicy.AutoRelease); err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("auto-release=%t", c.SetWorkspacePolicy.AutoRelease), nil
 	case *identityv1.AdminCommand_SetHer:
 		return n.setHer(c.SetHer.Enabled, c.SetHer.Erase)
 	case *identityv1.AdminCommand_SetHerAssistantMode, *identityv1.AdminCommand_SetHerCommandConnector:

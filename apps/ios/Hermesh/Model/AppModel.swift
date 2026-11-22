@@ -30,8 +30,17 @@ enum Route: Hashable {
     case machines, grants
     case session(String)
     case grant(String) // grant id
-    case machine(String) // machine id
-    case machineAgent(String, String) // machine id, coding agent
+    case machine(String) // machine id: its environment page (docs/settings-environments.md §5.9)
+    case machineAgent(String, String) // machine id, agent provider
+    case environmentName(String) // machine id
+    case providers(String) // machine id
+    case projects(String) // machine id
+    case project(String, String) // machine id, project id
+    case environmentHer(String) // machine id
+    case storage(String) // machine id
+    case storageProject(String, String) // machine id, project id
+    case account // the account and its devices, from Settings
+    case appearance
     case herSettings // the environment's Her shown
     case herConnectors // the environment's connectors (docs/her-connectors-v2-demo.html)
     case herConnector(String) // one of them, by name
@@ -67,7 +76,7 @@ enum SheetKind: Identifiable, Hashable {
     case enterCode
     case scan
     case addDevice
-    case addProject(String, String) // machine id, coding agent
+    case addProject(String) // machine id
     case search
     /// An agent's doorbell: see and change it.
     case wake(String, String, Wake) // client id, the agent's name
@@ -1080,8 +1089,9 @@ final class AppModel {
         try await api?.removeProject(machine: machine, project: project)
     }
 
-    /// Adds p again, for agents and with workspace (adding again changes it).
-    func saveProject(_ p: Project, agents: [String], workspace: Hermesh_Identity_V1_Workspace) async throws {
+    /// Adds p again, working another way (adding again changes it). A project is for every agent provider
+    /// (docs/settings-environments.md §5.6).
+    func saveProject(_ p: Project, workspace: Hermesh_Identity_V1_Workspace) async throws {
         var r = Hermesh_Local_V1_AddProjectRequest()
         r.machineID = p.machineID
         r.projectID = p.projectID
@@ -1089,8 +1099,31 @@ final class AppModel {
         r.workspace = workspace
         r.defaultBaseRef = workspace == .inPlace ? "" : p.defaultBaseRef
         r.description_p = p.description_p
-        r.agents = agents
         try await addProject(r)
+    }
+
+    /// A machine's tasks' worktrees (docs/settings-environments.md §5.7); cached, its last scan.
+    func workspaces(_ machine: String, cached: Bool) async throws -> Hermesh_Machine_V1_ListWorkspacesResponse {
+        guard let api else { throw CancellationError() }
+        return try await api.workspaces(machine: machine, cached: cached)
+    }
+
+    /// Releases worktrees, saying how it went: one by its task's name, more by their number, and those kept.
+    func releaseWorkspaces(_ machine: String, _ ws: [Hermesh_Machine_V1_Workspace]) async {
+        guard let api else { return }
+        do {
+            let res = try await api.releaseWorkspaces(machine: machine, sessions: ws.map(\.sessionID))
+            let done = res.results.filter(\.released).count
+            let kept = res.results.count - done
+            if done == 1, ws.count == 1 { show(String(localized: "Released the local worktree of “\(ws[0].title)”.")) }
+            else if done > 0 { show(String(localized: "Released \(done) worktrees")) }
+            if kept > 0 { show(String(localized: "\(kept) worktrees changed and were kept")) }
+        } catch { report(error) }
+    }
+
+    func setWorkspacePolicy(_ machine: String, autoRelease: Bool) async {
+        guard let api else { return }
+        do { try await api.setWorkspacePolicy(machine: machine, autoRelease: autoRelease) } catch { report(error) }
     }
 
     func rename(_ m: Machine, to name: String) async {

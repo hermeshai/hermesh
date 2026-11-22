@@ -75,11 +75,6 @@ export function hasActiveWork(impact: DaemonImpact): boolean {
   return impact.runningTasks > 0 || impact.waitingTasks > 0 || impact.screenViewer !== "" || impact.pendingApprovals > 0;
 }
 
-/** True when stopping the daemon has any user-visible impact worth explaining first. */
-export function hasAnyImpact(impact: DaemonImpact): boolean {
-  return hasActiveWork(impact) || impact.herRunning || impact.localMachineOnline;
-}
-
 export type Translate = (key: string, values?: Record<string, unknown>) => string;
 
 /** Localized bullet lines explaining every consequence of stopping the background service now. */

@@ -8,15 +8,12 @@ import UserNotifications
 /// The account, laid out as iOS Settings: the service this iPhone belongs
 /// to (its web console a tap away), usage, machines and agents, notifications,
 /// appearance and about; account actions stay at the bottom.
+/// Settings, from the account picture (docs/settings-environments.md §4.2), laid out as iOS Settings:
+/// the account at the top, opening its page and devices; usage; the app's own settings; every
+/// environment, each opening its page; about.
 struct AccountSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
-    @State private var signingOut = false
-    @State private var erasing = false
-    /// The web console, while the alert before opening it the first time shows.
-    @State private var console: URL?
-    @AppStorage("consoleOpened") private var consoleOpened = false
-    @Environment(\.openURL) private var openURL
     @State private var notifications: UNAuthorizationStatus?
     @AppStorage("appearance") private var appearance = "system"
 
@@ -24,18 +21,14 @@ struct AccountSheet: View {
         model.isDemo ? Binding(get: { model.demoAppearance }, set: { model.demoAppearance = $0 }) : $appearance
     }
 
-    private var accountDeletionURL: URL? {
-        let status = model.status
-        guard !model.isDemo, status.initialized, status.hosted, !status.signedOut, !status.removed else { return nil }
-        let origins = Bundle.main.object(forInfoDictionaryKey: "HermeshAccountDeletionOrigins") as? String ?? ""
-        return HostedAccountDeletion.browserURL(consoleURL: status.consoleURL, enabledOrigins: origins)
-    }
-
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.accountPath) {
             List {
-                Section { service }
+                Section {
+                    NavigationLink(value: Route.account) { AccountCard() }
+                        .accessibilityIdentifier("account-card")
+                }
                 if let u = model.usage {
                     Section {
                         UsageSummary(usage: u)
@@ -43,11 +36,35 @@ struct AccountSheet: View {
                         Text("Usage").accessibilityIdentifier("account-usage")
                     }
                 }
-                // The machines and the agents connected to the owner, managed on pages of their own (the menu
-                // lists sessions only, docs/her-team.md §16).
                 Section {
-                    manage("Machines", symbol: "desktopcomputer", color: .blue, opens: .machines, id: "account-machines")
-                    manage("Connected Agents", symbol: "link", color: .indigo, opens: .grants, id: "account-grants")
+                    if !model.isDemo {
+                        NavigationLink {
+                            NotificationsView()
+                        } label: {
+                            LabeledContent {
+                                Text(notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } == true ? "On" : "Off")
+                            } label: {
+                                Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
+                            }
+                        }
+                        .accessibilityIdentifier("notifications")
+                    }
+                    NavigationLink(value: Route.appearance) {
+                        LabeledContent {
+                            Text(appearanceSelection.wrappedValue == "light" ? "Light" : appearanceSelection.wrappedValue == "dark" ? "Dark" : "System")
+                        } label: {
+                            Label { Text("Appearance") } icon: { SettingsIcon(symbol: "sun.max.fill", color: .gray) }
+                        }
+                    }
+                    .accessibilityIdentifier("account-appearance")
+                    NavigationLink(value: Route.grants) {
+                        LabeledContent {
+                            Text("\(model.clients.filter { !$0.revoked }.count)")
+                        } label: {
+                            Label { Text("Access") } icon: { SettingsIcon(symbol: "key.fill", color: .brown) }
+                        }
+                    }
+                    .accessibilityIdentifier("account-grants")
                     NavigationLink {
                         NetworkDiagnosticsView()
                     } label: {
@@ -61,81 +78,23 @@ struct AccountSheet: View {
                 } header: {
                     Text("Settings").accessibilityIdentifier("account-settings")
                 }
-                if !model.isDemo {
-                    Section {
-                        NavigationLink {
-                            NotificationsView()
-                        } label: {
-                            LabeledContent {
-                                Text(notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } == true ? "On" : "Off")
-                            } label: {
-                                Label { Text("Notifications") } icon: { SettingsIcon(symbol: "bell.badge.fill", color: .red) }
-                            }
-                        }
-                        .accessibilityIdentifier("notifications")
-                    }
-                }
                 Section {
-                    HStack(spacing: 0) {
-                        AppearanceOption(tag: "system", title: "System", selection: appearanceSelection)
-                        AppearanceOption(tag: "light", title: "Light", selection: appearanceSelection)
-                        AppearanceOption(tag: "dark", title: "Dark", selection: appearanceSelection)
-                    }
-                    .padding(.vertical, 8)
+                    EnvironmentRows(trusted: Set(model.devices.map(\.machineID).filter { !$0.isEmpty }))
+                    Button("Add Environment…") { model.sheet = .addMachine }
+                        .accessibilityIdentifier("add-environment")
                 } header: {
-                    Text("Appearance").accessibilityIdentifier("account-appearance")
+                    Text("Environments").accessibilityIdentifier("account-machines")
                 }
                 Section {
-                    // The official service shows no connection address: agents
-                    // pair by a link, machines by the Add a Machine command.
-                    if !model.status.hosted {
-                        CopyAddressRow(title: "Connection address", address: model.status.connectAddress)
-                        // An own server's MCP address carries its key; the
-                        // official one is in Connect Your Agent.
-                        if !model.status.mcpURL.isEmpty {
-                            CopyAddressRow(title: "MCP address", address: model.status.mcpURL)
-                                .accessibilityIdentifier("mcpAddress")
-                        }
-                    }
                     LabeledContent("Version", value: model.status.version)
                     PrivacyPolicyLink()
                         .accessibilityIdentifier("account-privacy-policy")
                 } header: {
                     Text("About").accessibilityIdentifier("account-about")
                 }
-                // What ends: signing this iPhone out, and erasing everything (its own page).
-                if !model.isDemo {
-                    Section {
-                        Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
-                        if !model.status.removed {
-                            Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
-                                .accessibilityIdentifier("erase-everything")
-                        }
-                        if let url = accountDeletionURL {
-                            Button(role: .destructive) { openURL(url) } label: { endRow("Delete Account…") }
-                                .accessibilityIdentifier("delete-hosted-account")
-                        }
-                    } header: {
-                        Text("Actions").accessibilityIdentifier("account-actions")
-                    } footer: {
-                        if accountDeletionURL != nil {
-                            Text("Delete Account opens the hosted account page in your browser. Erase Everything resets your workspace and its devices.")
-                        }
-                    }
-                }
             }
             .navigationDestination(for: Route.self) { routePage($0) }
-            .navigationDestination(isPresented: $erasing) { EraseView() }
-            .alert("Open the web console?", isPresented: Binding(get: { console != nil }, set: { if !$0 { console = nil } }), presenting: console) { url in
-                Button("Cancel", role: .cancel) {}
-                Button("Open") {
-                    consoleOpened = true
-                    openURL(url)
-                }
-            } message: { url in
-                Text("Safari opens \(url.host ?? url.absoluteString), the web console: your machines and grants in any browser, and revoking access in an emergency.")
-            }
-            .navigationTitle("Account and Devices")
+            .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { CloseButton() }
             // The app takes the choice too; this sheet shows it at once.
@@ -144,28 +103,7 @@ struct AccountSheet: View {
             .onAppear { Task { await readNotifications() } }
             .onChange(of: scenePhase) { if scenePhase == .active { Task { await readNotifications() } } }
             .refreshable { await model.loadUsage() }
-            .confirmationDialog("Sign this iPhone out?", isPresented: $signingOut, titleVisibility: .visible) {
-                if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
-                    Button("OK", role: .cancel) {}
-                } else {
-                    Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
-                }
-            } message: {
-                if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
-                    Text("It is still one of your trusted devices. First remove it on another trusted device, under Machines; then sign out here.")
-                } else {
-                    Text("This iPhone is no longer in your Hermesh account. After signing out, you can set it up again or join your account again.")
-                }
-            }
         }
-    }
-
-    /// Management stays in the account's stack, including its detail pages.
-    private func manage(_ title: LocalizedStringKey, symbol: String, color: Color, opens route: Route, id: String) -> some View {
-        NavigationLink(value: route) {
-            Label { Text(title) } icon: { SettingsIcon(symbol: symbol, color: color) }
-        }
-        .accessibilityIdentifier(id)
     }
 
     private var networkSummary: String {
@@ -182,69 +120,210 @@ struct AccountSheet: View {
         return String(localized: "Connecting…")
     }
 
-    /// The service this iPhone belongs to, as Settings shows the account at
-    /// its top: on the official service the account, its picture and the
-    /// service; on a server of one's own the mark and where it is; whether
-    /// it is reached; and a way to the web console.
-    private var service: some View {
+    private func readNotifications() async {
+        notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+}
+
+/// The account at the top of Settings: its picture, name, service and whether it is reached.
+private struct AccountCard: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
         let account = model.status.hosted && !model.status.account.isEmpty
-        return HStack(spacing: 14) {
+        HStack(spacing: 14) {
             if account {
-                AccountPicture(status: model.status).frame(width: 60, height: 60)
+                AccountPicture(status: model.status).frame(width: 56, height: 56)
             } else {
-                Mark(size: 38)
-                    .frame(width: 60, height: 60)
-                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                Mark(size: 34).frame(width: 56, height: 56)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             VStack(alignment: .leading, spacing: 3) {
-                if account {
-                    Text(model.status.account).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle)
-                    Text("Hermesh service").font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    Text(model.status.hosted ? "Hermesh service" : "Your own server").font(.title3.weight(.semibold))
-                    Text(host).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                }
-                HStack(spacing: 5) {
-                    Circle().fill(model.status.relayConnected ? Color.green : .secondary).frame(width: 7, height: 7)
-                    Text(model.status.relayConnected ? "Connected" : "Not connected")
-                }
-                .font(.footnote).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            // The service's web console, where it has one: the first time,
-            // an alert says where it goes; after that, straight there.
-            if let url = URL(string: model.status.consoleURL), !model.status.consoleURL.isEmpty {
-                Button {
-                    if consoleOpened { openURL(url) } else { console = url }
-                } label: {
-                    Image(systemName: "arrow.up.right").font(.subheadline.weight(.semibold))
-                        .frame(width: 36, height: 36)
-                        .background(Color(.tertiarySystemFill), in: .circle)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Web console")
-                .accessibilityIdentifier("web-console")
+                Text(account ? model.status.account : model.status.hosted ? String(localized: "Hermesh service") : String(localized: "Your own server"))
+                    .font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                Text("\(Text(model.status.hosted ? "Hermesh service" : "Your own server")) · \(Text(model.status.relayConnected ? "Connected" : "Not connected"))")
+                    .font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The appearance, as Display & Brightness shows it.
+struct AppearanceView: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage("appearance") private var appearance = "system"
+
+    var body: some View {
+        let selection = model.isDemo ? Binding(get: { model.demoAppearance }, set: { model.demoAppearance = $0 }) : $appearance
+        List {
+            Section {
+                HStack(spacing: 0) {
+                    AppearanceOption(tag: "system", title: "System", selection: selection)
+                    AppearanceOption(tag: "light", title: "Light", selection: selection)
+                    AppearanceOption(tag: "dark", title: "Dark", selection: selection)
+                }
+                .padding(.vertical, 8)
+            }
+        }
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The account and its devices: who and where; every trusted device, this iPhone first, the others
+/// removed with a swipe; the web console and addresses; signing out, erasing everything, deleting
+/// the account.
+struct AccountView: View {
+    @Environment(AppModel.self) private var model
+    @State private var signingOut = false
+    @State private var erasing = false
+    @State private var removing: Device?
+    /// The web console, while the alert before opening it the first time shows.
+    @State private var console: URL?
+    @AppStorage("consoleOpened") private var consoleOpened = false
+    @Environment(\.openURL) private var openURL
+
+    private var accountDeletionURL: URL? {
+        let status = model.status
+        guard !model.isDemo, status.initialized, status.hosted, !status.signedOut, !status.removed else { return nil }
+        let origins = Bundle.main.object(forInfoDictionaryKey: "HermeshAccountDeletionOrigins") as? String ?? ""
+        return HostedAccountDeletion.browserURL(consoleURL: status.consoleURL, enabledOrigins: origins)
     }
 
-    /// One of the buttons at the end: its title in the middle of the row,
-    /// the separator across it.
+    var body: some View {
+        List {
+            Section { service }
+            Section {
+                ForEach(model.devices.sorted { $0.thisDevice && !$1.thisDevice }, id: \.keyID) { d in
+                    HStack(spacing: 12) {
+                        Image(systemName: d.platform == "ios" ? "iphone" : "laptopcomputer").frame(width: 28, height: 28).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(d.thisDevice ? String(localized: "This iPhone") : d.label)
+                            Text(d.machineID.isEmpty ? String(localized: "Approves; doesn’t run tasks") : String(localized: "Also runs tasks · \(model.machines.first { $0.machineID == d.machineID }?.online == true ? String(localized: "Online") : String(localized: "Offline"))"))
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("device-\(d.thisDevice ? "this" : d.label)")
+                    .swipeActions {
+                        if !d.thisDevice { Button("Remove", role: .destructive) { removing = d } }
+                    }
+                }
+            } header: {
+                Text("Trusted Devices")
+            } footer: {
+                Text("Every trusted device can approve requests to connect. If one gets lost, remove it from another (swipe left on it).")
+            }
+            Section {
+                if let url = URL(string: model.status.consoleURL), !model.status.consoleURL.isEmpty {
+                    Button("Web Console") { if consoleOpened { openURL(url) } else { console = url } }
+                        .accessibilityIdentifier("web-console")
+                }
+                // The official service shows no connection address: agents pair by a link, machines by the Add a
+                // Machine command.
+                if !model.status.hosted {
+                    CopyAddressRow(title: "Connection address", address: model.status.connectAddress)
+                    // An own server's MCP address carries its key; the official one is in Connect Your Agent.
+                    if !model.status.mcpURL.isEmpty {
+                        CopyAddressRow(title: "MCP address", address: model.status.mcpURL)
+                            .accessibilityIdentifier("mcpAddress")
+                    }
+                }
+            } footer: {
+                if !model.status.consoleURL.isEmpty { Text("View environments and access in any browser, or revoke access in an emergency.") }
+            }
+            // What ends: signing this iPhone out, and erasing everything (its own page).
+            if !model.isDemo {
+                Section {
+                    Button(role: .destructive) { signingOut = true } label: { endRow("Sign Out…") }
+                    if !model.status.removed {
+                        Button(role: .destructive) { erasing = true } label: { endRow("Erase Everything…") }
+                            .accessibilityIdentifier("erase-everything")
+                    }
+                    if let url = accountDeletionURL {
+                        Button(role: .destructive) { openURL(url) } label: { endRow("Delete Account…") }
+                            .accessibilityIdentifier("delete-hosted-account")
+                    }
+                } header: {
+                    Text("Actions").accessibilityIdentifier("account-actions")
+                } footer: {
+                    if accountDeletionURL != nil {
+                        Text("Delete Account opens the hosted account page in your browser. Erase Everything resets your workspace and its devices.")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Account and Devices")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $erasing) { EraseView() }
+        .alert("Open the web console?", isPresented: Binding(get: { console != nil }, set: { if !$0 { console = nil } }), presenting: console) { url in
+            Button("Cancel", role: .cancel) {}
+            Button("Open") {
+                consoleOpened = true
+                openURL(url)
+            }
+        } message: { url in
+            Text("Safari opens \(url.host ?? url.absoluteString), the web console: your machines and grants in any browser, and revoking access in an emergency.")
+        }
+        .confirmationDialog(removing.map { String(localized: "Remove the trusted device “\($0.label)”?") } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("Remove", role: .destructive) { if let d = removing { Task { await model.removeDevice(d) } } }
+        } message: {
+            Text("This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).")
+        }
+        .confirmationDialog("Sign this iPhone out?", isPresented: $signingOut, titleVisibility: .visible) {
+            if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
+                Button("OK", role: .cancel) {}
+            } else {
+                Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
+            }
+        } message: {
+            if !model.status.removed && model.devices.contains(where: { $0.thisDevice }) {
+                Text("It is still one of your trusted devices. First remove it on another trusted device, under Account and Devices; then sign out here.")
+            } else {
+                Text("This iPhone is no longer in your Hermesh account. After signing out, you can set it up again or join your account again.")
+            }
+        }
+    }
+
+    /// The service this iPhone belongs to: on the official service the account, its picture and the
+    /// service; on a server of one's own the mark and where it is; whether it is reached.
+    private var service: some View {
+        let account = model.status.hosted && !model.status.account.isEmpty
+        return VStack(spacing: 6) {
+            if account {
+                AccountPicture(status: model.status).frame(width: 72, height: 72)
+            } else {
+                Mark(size: 44).frame(width: 72, height: 72)
+                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            if account {
+                Text(model.status.account).font(.title2.bold()).lineLimit(1).truncationMode(.middle)
+                Text("Hermesh service").font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                Text(model.status.hosted ? "Hermesh service" : "Your own server").font(.title2.bold())
+                Text(host).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            HStack(spacing: 5) {
+                Circle().fill(model.status.relayConnected ? Color.green : .secondary).frame(width: 7, height: 7)
+                Text(model.status.relayConnected ? "Connected" : "Not connected")
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity).listRowBackground(Color.clear)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// One of the buttons at the end: its title in the middle of the row, the separator across it.
     private func endRow(_ title: LocalizedStringKey) -> some View {
         Text(title).frame(maxWidth: .infinity)
             .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
-    private func readNotifications() async {
-        notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-    }
-
     private var host: String {
         URL(string: model.status.relayURL)?.host ?? model.status.relayURL
     }
-
 }
 
 /// Notifications, a page of its own as in Settings: requests to connect

@@ -181,6 +181,10 @@ message MachineStatus {
   // offering 1-RTT handshakes, independent non-HoL streams, and connection
   // migration. Sent to the owner's devices only.
   repeated string direct_quic_addrs = 17;
+  // The MachineAdminService methods this hermeshd answers ("ListWorkspaces"),
+  // from the handlers it registers (docs/version-skew.md §6.1). Empty: a
+  // machine from before the list, which may answer some of them.
+  repeated string methods = 18;
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this
@@ -416,6 +420,81 @@ service MachineAdminService {
   rpc SetHerGrant(SetHerGrantRequest) returns (SetHerGrantResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
+  // The sessions' checkouts on this machine, their size and whether each can
+  // be released now (docs/settings-environments.md §5.7). Scanning reads
+  // every file: the owner asks for it, or takes the last scan (cached).
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (ListWorkspacesResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  // Removes idle sessions' checkouts; each session's branch stays, and its
+  // next message checks it out again. One that cannot be released is kept
+  // and says why; the others go on.
+  rpc ReleaseWorkspaces(ReleaseWorkspacesRequest) returns (ReleaseWorkspacesResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+}
+
+// Why a session's checkout cannot be released now.
+enum WorkspaceBlock {
+  // It can be released.
+  WORKSPACE_BLOCK_UNSPECIFIED = 0;
+  // The session is running, waits for an answer or has messages waiting.
+  WORKSPACE_BLOCK_BUSY = 1;
+  // Uncommitted changes or untracked files: its branch does not have them.
+  WORKSPACE_BLOCK_CHANGES = 2;
+  // Files Git ignores that cannot be made again (.env, keys), unlike
+  // node_modules and the like.
+  WORKSPACE_BLOCK_LOCAL_FILES = 3;
+  // It is not, or no longer, verifiably this session's checkout on its branch.
+  WORKSPACE_BLOCK_UNVERIFIED = 4;
+}
+
+message Workspace {
+  string session_id = 1;
+  string project_id = 2;
+  // The session's title.
+  string title = 3;
+  string path = 4;
+  uint64 size_bytes = 5;
+  // Why the size could not be read; the rest of the scan still counts.
+  string size_error = 6;
+  hermesh.session.v1.SessionStatus status = 7;
+  // When the session last changed.
+  google.protobuf.Timestamp last_active = 8;
+  WorkspaceBlock block = 9;
+  // The first file behind block, relative to the checkout.
+  string block_path = 10;
+}
+
+message ListWorkspacesRequest {
+  // The last scan, when there is one; otherwise this scans.
+  bool cached = 1;
+}
+
+message ListWorkspacesResponse {
+  // Largest first.
+  repeated Workspace workspaces = 1;
+  google.protobuf.Timestamp scanned_at = 2;
+  // Idle checkouts are released by themselves after a week.
+  bool auto_release = 3;
+}
+
+message ReleaseWorkspacesRequest {
+  repeated string session_ids = 1;
+}
+
+message WorkspaceRelease {
+  string session_id = 1;
+  bool released = 2;
+  // Why it was kept.
+  WorkspaceBlock block = 3;
+  string block_path = 4;
+  // Something else went wrong (it was kept).
+  string error = 5;
+}
+
+message ReleaseWorkspacesResponse {
+  repeated WorkspaceRelease results = 1;
 }
 
 message ListReposRequest {}

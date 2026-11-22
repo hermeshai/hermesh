@@ -232,6 +232,23 @@ final class DemoService {
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
+    /// Storage (docs/settings-environments.md §5.7): the worktrees released, and auto-release, by machine.
+    private var released: Set<String> = []
+    private var autoRelease: [String: Bool] = [:]
+
+    /// A machine's tasks as worktrees: sizes made up from their ids, the running ones busy, one with changes.
+    private func demoWorkspaces(_ machine: String) -> [Hermesh_Machine_V1_Workspace] {
+        let sessions = world.sessions.filter { $0.machineID == machine && !released.contains($0.sessionID) && $0.status != .archived }
+        return sessions.enumerated().map { i, s in
+            Hermesh_Machine_V1_Workspace.with {
+                $0.sessionID = s.sessionID; $0.projectID = s.projectID; $0.title = s.displayTitle; $0.status = s.status
+                $0.path = "~/.hermesh/worktrees/\(s.sessionID)"
+                $0.sizeBytes = UInt64(s.sessionID.unicodeScalars.reduce(0) { $0 + Int($1.value) } % 2_400 + 300) * 1_000_000
+                $0.lastActive = s.updatedAt
+                if s.isInterruptible { $0.block = .busy } else if i == 1 { $0.block = .changes }
+            }
+        }.sorted { $0.sizeBytes > $1.sizeBytes }
+    }
 
     func call(_ method: String, _ data: Data) throws -> Data {
         // Protobuf JSON keeps this dispatcher independent of the callers' generic response types.
@@ -360,6 +377,25 @@ final class DemoService {
                 $0.workspace = request.workspace; $0.defaultBaseRef = request.defaultBaseRef
                 $0.description_p = request.description_p; $0.agents = request.agents
             }); publish()
+        case "ListWorkspaces":
+            let mid = string("machineId")
+            return try encoded(Hermesh_Machine_V1_ListWorkspacesResponse.with {
+                $0.workspaces = demoWorkspaces(mid)
+                $0.scannedAt = .init(date: Date())
+                $0.autoRelease = autoRelease[mid] ?? false
+            })
+        case "ReleaseWorkspaces":
+            let request = try Hermesh_Local_V1_ReleaseWorkspacesRequest(jsonUTF8Data: data)
+            let rows = demoWorkspaces(request.machineID)
+            return try encoded(Hermesh_Machine_V1_ReleaseWorkspacesResponse.with {
+                $0.results = request.sessionIds.map { id in
+                    let w = rows.first { $0.sessionID == id }
+                    let ok = w != nil && w!.block == .unspecified
+                    if ok { released.insert(id) }
+                    return .with { $0.sessionID = id; $0.released = ok; $0.block = w?.block ?? .unverified; $0.blockPath = w?.blockPath ?? "" }
+                }
+            })
+        case "SetWorkspacePolicy": autoRelease[string("machineId")] = r["autoRelease"] as? Bool ?? false
         case "RemoveProject": world.projects.removeAll { $0.machineID == string("machineId") && $0.projectID == string("projectId") }; publish()
         case "ListMachineRepos": return try object(["repos": [["path": "~/Projects/hello-world", "branch": "main"], ["path": "~/Projects/playground", "branch": "main"]]])
         case "ListMachineFolders":

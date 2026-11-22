@@ -174,7 +174,7 @@ func TestHerCards(t *testing.T) {
 	if _, err := Cards([]*localv1.SigningRequest{unknown}, h, "en"); !errors.As(err, &refused) {
 		t.Fatalf("an unknown mode: %v", err)
 	}
-	if cs, err := Cards([]*localv1.SigningRequest{connector}, h, "zh-CN"); err != nil || cs[0].Title != "允许 Her 在机器 vps-1上启动连接器“files”" {
+	if cs, err := Cards([]*localv1.SigningRequest{connector}, h, "zh-CN"); err != nil || cs[0].Title != "允许 Her 在环境 vps-1上启动连接器“files”" {
 		t.Fatalf("in Chinese: %+v %v", cs, err)
 	}
 }
@@ -241,7 +241,7 @@ func TestWords(t *testing.T) {
 		}
 	}
 	add := &identityv1.AdminCommand{TargetMachineId: "m_1", Command: &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: "app", Path: "~/app"}}}
-	if cs, err := Cards([]*localv1.SigningRequest{request(t, add)}, Hints{MachineNames: map[string]string{"m_1": "vps-1"}}, "zh-CN"); err != nil || cs[0].Title != "给机器 vps-1添加项目“app”" {
+	if cs, err := Cards([]*localv1.SigningRequest{request(t, add)}, Hints{MachineNames: map[string]string{"m_1": "vps-1"}}, "zh-CN"); err != nil || cs[0].Title != "给环境 vps-1添加项目“app”" {
 		t.Fatalf("in Chinese: %+v %v", cs, err)
 	}
 }

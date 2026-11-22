@@ -108,9 +108,11 @@ service LocalService {
   // something does not work: versions, health, PATH and each coding agent.
   // Nothing leaves the Mac unless they do.
   rpc GetDiagnostics(GetDiagnosticsRequest) returns (GetDiagnosticsResponse);
-  // On this machine only. Scanning the checkouts is an explicit user action.
-  rpc ListLocalWorkspaces(ListLocalWorkspacesRequest) returns (ListLocalWorkspacesResponse);
-  rpc ReleaseLocalWorkspace(ReleaseLocalWorkspaceRequest) returns (ReleaseLocalWorkspaceResponse);
+  // A machine's storage: its sessions' checkouts (docs/settings-environments.md
+  // §5.7), this device's own machine in process, another over its connection.
+  rpc ListWorkspaces(ListWorkspacesRequest) returns (hermesh.machine.v1.ListWorkspacesResponse);
+  rpc ReleaseWorkspaces(ReleaseWorkspacesRequest) returns (hermesh.machine.v1.ReleaseWorkspacesResponse);
+  rpc SetWorkspacePolicy(SetWorkspacePolicyRequest) returns (SetWorkspacePolicyResponse);
 
   // Her (docs/her-server.md). A machine's Her is Machine.her. Each call
   // goes in process when the machine is this Mac, else through the tunnel.
@@ -843,7 +845,9 @@ message Project {
   string default_base_ref = 3;
   hermesh.identity.v1.Workspace workspace = 4;
   string description = 5;
-  // The coding agents that may work in it; empty: all.
+  // From machines before the settings rework only, which still keep their
+  // projects to these coding agents; empty: all
+  // (docs/settings-environments.md §5.6).
   repeated string agents = 6;
   // The project directory on the machine.
   string path = 7;
@@ -867,8 +871,9 @@ message AddProjectRequest {
   hermesh.identity.v1.Workspace workspace = 5;
   // Shown to agents choosing where to work (at most 200 characters).
   string description = 6;
-  // The coding agents that may work in it (e.g. "claude"); empty: all.
-  repeated string agents = 7;
+  // Ignored: a project is for every agent provider
+  // (docs/settings-environments.md §5.6).
+  repeated string agents = 7 [deprecated = true];
 }
 
 message AddProjectResponse {}
@@ -1389,25 +1394,19 @@ message GetHerConsoleResponse {
   string url = 1;
 }
 
-message ListLocalWorkspacesRequest {}
-
-message LocalWorkspace {
-  string project_id = 1;
-  string session_id = 2;
-  string title = 3;
-  string path = 4;
-  uint64 size_bytes = 5;
-  hermesh.session.v1.SessionStatus status = 6;
-  // The rest of the scan is still usable when one checkout could not be read.
-  string size_error = 7;
+message ListWorkspacesRequest {
+  string machine_id = 1;
+  bool cached = 2;
 }
 
-message ListLocalWorkspacesResponse {
-  repeated LocalWorkspace workspaces = 1;
+message ReleaseWorkspacesRequest {
+  string machine_id = 1;
+  repeated string session_ids = 2;
 }
 
-message ReleaseLocalWorkspaceRequest {
-  string session_id = 1;
+message SetWorkspacePolicyRequest {
+  string machine_id = 1;
+  bool auto_release = 2;
 }
 
-message ReleaseLocalWorkspaceResponse {}
+message SetWorkspacePolicyResponse {}

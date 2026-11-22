@@ -104,6 +104,11 @@ type Sessions struct {
 	// defaults is what an agent's sessions run with when the client names
 	// no model.
 	defaults func(agent string) provider.Settings
+	// autoReleaseOn is whether idle checkouts go by themselves; the Janitor
+	// checks at most every autoReleaseEvery (default an hour).
+	autoReleaseOn    func() bool
+	autoReleaseEvery time.Duration
+	wsCache          workspaceCache
 
 	mu         sync.Mutex
 	live       map[string]*live
@@ -389,9 +394,6 @@ func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.Start
 	}
 	if proj == nil {
 		return nil, cerr(connect.CodeNotFound, "project %q does not exist on this machine", req.ProjectId)
-	}
-	if !proj.AllowsAgent(req.Agent) {
-		return nil, cerr(connect.CodePermissionDenied, "project %q is not set up for agent %q (it is for: %s)", req.ProjectId, req.Agent, strings.Join(proj.Agents, ", "))
 	}
 	if proj.InPlace() && req.BaseRef != "" {
 		return nil, cerr(connect.CodeInvalidArgument, "project %q works in place (no worktree), so it has no base ref", req.ProjectId)
@@ -2356,6 +2358,9 @@ func (s *Sessions) Janitor(ctx context.Context) {
 		case <-tick.C:
 		}
 		now := time.Now()
+		if s.wsCache.autoDue(now, s.autoReleaseEvery) {
+			go s.autoRelease(ctx, now)
+		}
 		s.mu.Lock()
 		ls := make([]*live, 0, len(s.live))
 		for _, l := range s.live {

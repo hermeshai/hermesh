@@ -41,7 +41,8 @@ test.afterEach(async () => {
 export async function installer(
   inApplications = false,
   move: "success" | "cancel" | "error" = "success",
-  options: { autoDownload?: boolean; checkedAt?: number; failures?: number; attemptedAt?: number; wasOpenedAtLogin?: boolean; keepDaemonOnQuit?: boolean } = {},
+  // prefs: preferences.json as an older app left it (no stayOnline: migrated when the app starts); stayOnline off otherwise.
+  options: { autoDownload?: boolean; checkedAt?: number; failures?: number; attemptedAt?: number; wasOpenedAtLogin?: boolean; stayOnline?: boolean; prefs?: Record<string, unknown> } = {},
 ) {
   // Keep the daemon socket below macOS's Unix-domain socket path limit.
   const home = fs.mkdtempSync("/tmp/hminst-");
@@ -49,7 +50,7 @@ export async function installer(
   fs.mkdirSync(path.join(data, "run"), { recursive: true });
   fs.symlinkSync(fixture.socket, path.join(data, "run", "hermeshd.sock"));
   fs.mkdirSync(path.join(data, "desktop"));
-  fs.writeFileSync(path.join(data, "desktop", "preferences.json"), JSON.stringify({ language: "zh-CN", ...(options.keepDaemonOnQuit ? { keepDaemonOnQuit: true } : {}) }));
+  fs.writeFileSync(path.join(data, "desktop", "preferences.json"), JSON.stringify(options.prefs ?? { language: "zh-CN", stayOnline: options.stayOnline ?? false }));
   fs.writeFileSync(path.join(data, "desktop", "updates.json"), JSON.stringify(options));
   const entry = path.join(process.env.HERMESH_DESKTOP_OUT || path.join(import.meta.dirname, "..", "out"), "main", "index.js");
   const bootstrap = path.join(home, "start.cjs");

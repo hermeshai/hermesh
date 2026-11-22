@@ -214,9 +214,9 @@ test("the session card floats over the conversation with what a glance needs, an
   await page.getByRole("menuitem", { name: "拷贝分支名称" }).click();
   await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(branch);
   // The machine's settings are a click away, on its own page.
-  const [settings] = await Promise.all([app.waitForEvent("window"), card.getByRole("button", { name: "机器设置" }).click()]);
+  const [settings] = await Promise.all([app.waitForEvent("window"), card.getByRole("button", { name: "环境设置" }).click()]);
   await settings.waitForLoadState();
-  expect(settings.url()).toMatch(/#settings\/machines\/.+/);
+  expect(settings.url()).toMatch(/#settings\/env\/.+/);
   await settings.close();
   // It floats over the conversation, which keeps clear of it.
   const c = (await card.boundingBox())!;
@@ -662,7 +662,7 @@ test("a conversation on a machine gone offline says why: one read before shows w
   // Never read: the page says why it is empty, not a blank page or a wait for good.
   await open(page, "也在另一台 Mac 上");
   await expect(page.getByText("work-mac 离线了", { exact: true })).toBeVisible();
-  await expect(page.getByText(/^这个任务的内容保存在那台机器上，连上后会自动显示。.*还在线。$/)).toBeVisible();
+  await expect(page.getByText(/^这个任务的内容保存在那个环境里，连上后会自动显示。.*还在线。$/)).toBeVisible();
   await snap(page, "session-machine-offline");
   // The overview says it as the iPhone does: offline, when it was last seen, no raw error.
   await page.getByRole("button", { name: /^概览/ }).click();

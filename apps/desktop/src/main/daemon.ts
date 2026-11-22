@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog } from "electron";
-import { assessDaemonImpact, hasActiveWork, hasAnyImpact, impactLines, resolveDaemonState, type DaemonInfo, type DaemonState } from "../shared/daemon";
+import { assessDaemonImpact, hasActiveWork, impactLines, resolveDaemonState, type DaemonInfo, type DaemonState } from "../shared/daemon";
 import { i18n } from "../shared/i18n";
 import { setGatewayPaused } from "./gateway";
 import { preferences, setWatchPaused, wakeWatch, world, worldListeners } from "./notify";
@@ -63,7 +63,7 @@ export function initDaemonControl(isStarted: () => boolean) {
     if (!isStarted() || !daemonControlAvailable()) return;
     const st = daemonState();
     if (st === "stopped" || st === "unavailable" || world.status === null) return;
-    if (preferences().keepDaemonOnQuit) return;
+    if (preferences().stayOnline) return;
     e.preventDefault();
     void handleQuitWithStop(false);
   });
@@ -152,7 +152,7 @@ export async function stopBackgroundService(opts: { confirm?: boolean } = {}): P
 async function handleQuitWithStop(forceConfirm: boolean): Promise<void> {
   quitFlow = "handling";
   const impact = assessDaemonImpact(world, signerBusy());
-  if (forceConfirm || hasAnyImpact(impact)) {
+  if (forceConfirm || hasActiveWork(impact)) {
     const t = i18n.getFixedT(null, "main");
     const tr = (k: string, v?: Record<string, unknown>) => String(t(k as never, v as never));
     const active = hasActiveWork(impact);
@@ -197,7 +197,7 @@ export function quitKeepingDaemon() {
   app.quit();
 }
 
-/** Quits the app and explicitly stops the background service (even if keepDaemonOnQuit is enabled). */
+/** Quits the app and explicitly stops the background service (even when staying online). */
 export function quitStoppingDaemon() {
   if (!daemonControlAvailable() || daemonState() === "stopped" || world.status === null) {
     quitFlow = "proceed-stop";

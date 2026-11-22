@@ -254,7 +254,7 @@ extension HermeshUITests {
         XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 10))
         tap("her-turn-on-owner-mac", timeout: 30)
         // What turning her on means, from the bytes to be signed; Face ID approves.
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         herShot("Her: turning her on")
         // Turning her on also lets her use the owner's computers, and the sheet says so; Approve stays in sight.
         tap("sign-approve")
@@ -684,7 +684,7 @@ extension HermeshUITests {
         herShot("Her: her page, Settings")
         // Where she runs, on a page of its own: the environments, another machine, storage, the console, turning off.
         env.tap()
-        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10) && text("在另一台机器上开启 Her").exists, "the environment page")
+        XCTAssertTrue(text("运行在").waitForExistence(timeout: 10) && text("在另一个环境里开启 Her").exists, "the environment page")
         XCTAssertTrue(app.buttons["her-storage"].exists && app.buttons["her-console"].exists && app.buttons["her-turn-off"].exists)
         herShot("Her: environment")
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -1023,7 +1023,7 @@ extension HermeshUITests {
         // Off, Her runs nowhere: the entry asks where she should run. On again there, she is new, with no model.
         XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 60), "the first run again")
         tap("her-turn-on-owner-mac", timeout: 30)
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
         for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
         tap("sign-approve")
@@ -1072,7 +1072,7 @@ extension HermeshUITests {
         XCTAssertTrue(text("选择 Her 在哪里运行").waitForExistence(timeout: 30), "the first run")
         XCTAssertFalse(text("上次的数据还在").exists, "no data kept")
         tap("her-turn-on-owner-mac", timeout: 30)
-        XCTAssertTrue(text("在机器「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
+        XCTAssertTrue(text("在环境「owner-mac」上开启 Her").waitForExistence(timeout: 30), "the signing sheet")
         let approve = app.descendants(matching: .any)["sign-approve"].firstMatch
         for _ in 0 ..< 4 where !approve.exists { app.swipeUp() }
         tap("sign-approve")

@@ -96,7 +96,7 @@ irm https://github.com/hermeshai/hermesh/releases/latest/download/install.ps1 | 
 | `hermeshd screen` | Whether the owner's devices can see and operate this screen, which way, who is in control ([computer-control-linux.md](computer-control-linux.md) §6) |
 | `hermeshd screen stop`, `screen off`, `screen on` | Ends the session under way; refuses every device until `on` |
 | `hermeshd screen allow` | On Plasma: lets Hermesh show the screen without its dialog |
-| `hermeshd project add <folder>` | Lets agents work in a folder: a separate worktree per session, or `--in-place`; `--agents claude` limits it |
+| `hermeshd project add <folder>` | Lets agents work in a folder: a separate worktree per session, or `--in-place`. Every signed-in agent provider may work in it; an agent's access limits which it may use |
 | `hermeshd project list`, `project remove <name>` | The projects; removing one leaves its folder |
 | `hermeshd service status` | Whether the service runs and starts at boot, and where its log is |
 | `hermeshd service restart` | Restart it |

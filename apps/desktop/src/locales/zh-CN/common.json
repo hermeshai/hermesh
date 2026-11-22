@@ -67,7 +67,7 @@
   "accountMenu": {
     "settings": "设置…",
     "newGrant": "连接 agent…",
-    "addMachine": "添加机器…",
+    "addMachine": "添加环境…",
     "enterCode": "输入配对码…",
     "account": "账号…"
   },
@@ -90,8 +90,8 @@
   "filter": {
     "grant": "授权",
     "project": "项目",
-    "agent": "编码 agent",
-    "machine": "机器"
+    "agent": "Agent 提供方",
+    "machine": "环境"
   },
   "listView": {
     "title": "视图选项",
@@ -102,7 +102,7 @@
     "byDate": "按日期",
     "byProject": "按项目",
     "byAgent": "按 Agent",
-    "byMachine": "按机器",
+    "byMachine": "按环境",
     "lastActive": "最后活跃时间",
     "newestFirst": "最新在前",
     "oldestFirst": "最早在前",
@@ -147,9 +147,9 @@
       "stopping": "正在停止",
       "daemon": "未运行"
     },
-    "online_other": "你的 agent 能用 {{count}} 台机器",
-    "noneOnline": "还没有在线的机器",
-    "down": "已断开，agent 暂时用不了你的机器",
+    "online_other": "你的 agent 能用 {{count}} 个环境",
+    "noneOnline": "还没有在线的环境",
+    "down": "已断开，agent 暂时用不了你的环境",
     "setup": "打开 Hermesh，完成设置",
     "stopped": "后台服务已停止，其他设备暂时无法连接这台 Mac",
     "stopped_win": "后台服务已停止，其他设备暂时无法连接这台电脑",
@@ -164,16 +164,16 @@
     "thisMac_linux": "这台电脑",
     "processesTitle": "{{name}} 开不了新程序了",
     "processesTitleNear": "{{name}} 的进程数快满了",
-    "processesBody": "进程数到了上限（{{used}} / {{limit}}），Hermesh 启动不了编码 agent，派来的任务会失败。占用进程的程序退出后会自动恢复。",
-    "processesBodyCulprit": "进程数到了上限（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。Hermesh 启动不了编码 agent，派来的任务会失败。退出 {{culprit}} 后会自动恢复。",
-    "processesBodyNear": "进程数快到上限了（{{used}} / {{limit}}）。到上限后，Hermesh 就启动不了编码 agent。",
-    "processesBodyNearCulprit": "进程数快到上限了（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。趁 Hermesh 还能启动编码 agent，先退出 {{culprit}}。",
+    "processesBody": "进程数到了上限（{{used}} / {{limit}}），Hermesh 启动不了 Agent 提供方，派来的任务会失败。占用进程的程序退出后会自动恢复。",
+    "processesBodyCulprit": "进程数到了上限（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。Hermesh 启动不了 Agent 提供方，派来的任务会失败。退出 {{culprit}} 后会自动恢复。",
+    "processesBodyNear": "进程数快到上限了（{{used}} / {{limit}}）。到上限后，Hermesh 就启动不了 Agent 提供方。",
+    "processesBodyNearCulprit": "进程数快到上限了（{{used}} / {{limit}}），其中 {{count}} 个是 {{culprit}} 结束后没回收的。趁 Hermesh 还能启动 Agent 提供方，先退出 {{culprit}}。",
     "diskTitle": "{{name}} 的磁盘快满了",
     "diskBody": "只剩 {{free}}。磁盘满了以后，新的任务建不了 worktree，任务记录也存不下。",
     "filesTitle": "{{name}} 上的 Hermesh 快打不开新文件了",
     "filesBody": "打开的文件数 {{used}} / {{limit}}。重新启动 Hermesh 可以缓解；如果反复出现，请复制诊断信息发给我们。",
     "shellPathTitle": "读不到 {{name}} 终端里的 PATH",
-    "shellPathBody": "{{detail}}。通过 nvm、npm 等方式安装的编码 Agent 可能无法识别。请检查新建终端窗口是否启动缓慢或需要等待输入；Hermesh 每分钟会自动重试。",
+    "shellPathBody": "{{detail}}。通过 nvm、npm 等方式安装的 Agent 提供方 可能无法识别。请检查新建终端窗口是否启动缓慢或需要等待输入；Hermesh 每分钟会自动重试。",
     "shortProcesses": "开不了新程序",
     "shortProcessesNear": "进程数快满",
     "shortDisk": "磁盘快满",

@@ -1257,6 +1257,7 @@ type AdminCommand struct {
 	//	*AdminCommand_SetHer
 	//	*AdminCommand_SetHerAssistantMode
 	//	*AdminCommand_SetHerCommandConnector
+	//	*AdminCommand_SetWorkspacePolicy
 	Command       isAdminCommand_Command `protobuf_oneof:"command"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1399,6 +1400,15 @@ func (x *AdminCommand) GetSetHerCommandConnector() *SetHerCommandConnector {
 	return nil
 }
 
+func (x *AdminCommand) GetSetWorkspacePolicy() *SetWorkspacePolicy {
+	if x != nil {
+		if x, ok := x.Command.(*AdminCommand_SetWorkspacePolicy); ok {
+			return x.SetWorkspacePolicy
+		}
+	}
+	return nil
+}
+
 type isAdminCommand_Command interface {
 	isAdminCommand_Command()
 }
@@ -1435,6 +1445,10 @@ type AdminCommand_SetHerCommandConnector struct {
 	SetHerCommandConnector *SetHerCommandConnector `protobuf:"bytes,18,opt,name=set_her_command_connector,json=setHerCommandConnector,proto3,oneof"`
 }
 
+type AdminCommand_SetWorkspacePolicy struct {
+	SetWorkspacePolicy *SetWorkspacePolicy `protobuf:"bytes,19,opt,name=set_workspace_policy,json=setWorkspacePolicy,proto3,oneof"`
+}
+
 func (*AdminCommand_AddProject) isAdminCommand_Command() {}
 
 func (*AdminCommand_RemoveProject) isAdminCommand_Command() {}
@@ -1451,6 +1465,8 @@ func (*AdminCommand_SetHerAssistantMode) isAdminCommand_Command() {}
 
 func (*AdminCommand_SetHerCommandConnector) isAdminCommand_Command() {}
 
+func (*AdminCommand_SetWorkspacePolicy) isAdminCommand_Command() {}
+
 type AddProject struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	ProjectId      string                 `protobuf:"bytes,1,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
@@ -1460,7 +1476,12 @@ type AddProject struct {
 	// What the project is, in the owner's words, for agents choosing where to
 	// work (at most 200 characters). Adding the project again changes it.
 	Description string `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`
-	// The coding agents that may work in it (e.g. "claude"); empty: all.
+	// Ignored by machines since the settings rework (2026-11): every signed-in agent provider works in every
+	// project; an agent's access limits which it may use
+	// (docs/settings-environments.md §5.6). Older machines read it as the
+	// coding agents that may work in it, empty for all.
+	//
+	// Deprecated: Marked as deprecated in hermesh/identity/v1/identity.proto.
 	Agents        []string `protobuf:"bytes,6,rep,name=agents,proto3" json:"agents,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1531,6 +1552,7 @@ func (x *AddProject) GetDescription() string {
 	return ""
 }
 
+// Deprecated: Marked as deprecated in hermesh/identity/v1/identity.proto.
 func (x *AddProject) GetAgents() []string {
 	if x != nil {
 		return x.Agents
@@ -1672,6 +1694,52 @@ func (x *SetPaused) GetPaused() bool {
 	return false
 }
 
+// SetWorkspacePolicy is a setting: whether the machine releases idle
+// sessions' checkouts by itself (docs/settings-environments.md §5.7.4).
+type SetWorkspacePolicy struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AutoRelease   bool                   `protobuf:"varint,1,opt,name=auto_release,json=autoRelease,proto3" json:"auto_release,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetWorkspacePolicy) Reset() {
+	*x = SetWorkspacePolicy{}
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetWorkspacePolicy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetWorkspacePolicy) ProtoMessage() {}
+
+func (x *SetWorkspacePolicy) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetWorkspacePolicy.ProtoReflect.Descriptor instead.
+func (*SetWorkspacePolicy) Descriptor() ([]byte, []int) {
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SetWorkspacePolicy) GetAutoRelease() bool {
+	if x != nil {
+		return x.AutoRelease
+	}
+	return false
+}
+
 // SetHer turns Her on or off for the machine (docs/her-server.md §5.2): on, its
 // hermeshd keeps her running; off, it stops her and keeps her data, unless
 // erase (§5.6). Root-signed only, never a setting.
@@ -1687,7 +1755,7 @@ type SetHer struct {
 
 func (x *SetHer) Reset() {
 	*x = SetHer{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[16]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1699,7 +1767,7 @@ func (x *SetHer) String() string {
 func (*SetHer) ProtoMessage() {}
 
 func (x *SetHer) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[16]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1712,7 +1780,7 @@ func (x *SetHer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetHer.ProtoReflect.Descriptor instead.
 func (*SetHer) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{16}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SetHer) GetEnabled() bool {
@@ -1743,7 +1811,7 @@ type SetHerAssistantMode struct {
 
 func (x *SetHerAssistantMode) Reset() {
 	*x = SetHerAssistantMode{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1755,7 +1823,7 @@ func (x *SetHerAssistantMode) String() string {
 func (*SetHerAssistantMode) ProtoMessage() {}
 
 func (x *SetHerAssistantMode) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[17]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1768,7 +1836,7 @@ func (x *SetHerAssistantMode) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetHerAssistantMode.ProtoReflect.Descriptor instead.
 func (*SetHerAssistantMode) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{17}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SetHerAssistantMode) GetBotId() string {
@@ -1804,7 +1872,7 @@ type SetHerCommandConnector struct {
 
 func (x *SetHerCommandConnector) Reset() {
 	*x = SetHerCommandConnector{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1816,7 +1884,7 @@ func (x *SetHerCommandConnector) String() string {
 func (*SetHerCommandConnector) ProtoMessage() {}
 
 func (x *SetHerCommandConnector) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[18]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1829,7 +1897,7 @@ func (x *SetHerCommandConnector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetHerCommandConnector.ProtoReflect.Descriptor instead.
 func (*SetHerCommandConnector) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{18}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SetHerCommandConnector) GetName() string {
@@ -1886,7 +1954,7 @@ type AgentDefaults struct {
 
 func (x *AgentDefaults) Reset() {
 	*x = AgentDefaults{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +1966,7 @@ func (x *AgentDefaults) String() string {
 func (*AgentDefaults) ProtoMessage() {}
 
 func (x *AgentDefaults) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[19]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +1979,7 @@ func (x *AgentDefaults) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AgentDefaults.ProtoReflect.Descriptor instead.
 func (*AgentDefaults) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{19}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *AgentDefaults) GetAgent() string {
@@ -1957,7 +2025,7 @@ type RevocationList struct {
 
 func (x *RevocationList) Reset() {
 	*x = RevocationList{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[20]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1969,7 +2037,7 @@ func (x *RevocationList) String() string {
 func (*RevocationList) ProtoMessage() {}
 
 func (x *RevocationList) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[20]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1982,7 +2050,7 @@ func (x *RevocationList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RevocationList.ProtoReflect.Descriptor instead.
 func (*RevocationList) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{20}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RevocationList) GetOwnerId() string {
@@ -2034,7 +2102,7 @@ type Credentials struct {
 
 func (x *Credentials) Reset() {
 	*x = Credentials{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[21]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2046,7 +2114,7 @@ func (x *Credentials) String() string {
 func (*Credentials) ProtoMessage() {}
 
 func (x *Credentials) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[21]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2059,7 +2127,7 @@ func (x *Credentials) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Credentials.ProtoReflect.Descriptor instead.
 func (*Credentials) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{21}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Credentials) GetRootChain() *RootChain {
@@ -2152,7 +2220,7 @@ type ContactCard struct {
 
 func (x *ContactCard) Reset() {
 	*x = ContactCard{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[22]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2164,7 +2232,7 @@ func (x *ContactCard) String() string {
 func (*ContactCard) ProtoMessage() {}
 
 func (x *ContactCard) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[22]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2177,7 +2245,7 @@ func (x *ContactCard) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ContactCard.ProtoReflect.Descriptor instead.
 func (*ContactCard) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{22}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ContactCard) GetOwnerId() string {
@@ -2243,7 +2311,7 @@ type InboxRegistration struct {
 
 func (x *InboxRegistration) Reset() {
 	*x = InboxRegistration{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[23]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2255,7 +2323,7 @@ func (x *InboxRegistration) String() string {
 func (*InboxRegistration) ProtoMessage() {}
 
 func (x *InboxRegistration) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[23]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2268,7 +2336,7 @@ func (x *InboxRegistration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InboxRegistration.ProtoReflect.Descriptor instead.
 func (*InboxRegistration) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{23}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *InboxRegistration) GetOwnerId() string {
@@ -2321,7 +2389,7 @@ type Contact struct {
 
 func (x *Contact) Reset() {
 	*x = Contact{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[24]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2333,7 +2401,7 @@ func (x *Contact) String() string {
 func (*Contact) ProtoMessage() {}
 
 func (x *Contact) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[24]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2346,7 +2414,7 @@ func (x *Contact) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Contact.ProtoReflect.Descriptor instead.
 func (*Contact) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{24}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Contact) GetCard() *Signed {
@@ -2395,7 +2463,7 @@ type SyncRegistration struct {
 
 func (x *SyncRegistration) Reset() {
 	*x = SyncRegistration{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[25]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2407,7 +2475,7 @@ func (x *SyncRegistration) String() string {
 func (*SyncRegistration) ProtoMessage() {}
 
 func (x *SyncRegistration) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[25]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2420,7 +2488,7 @@ func (x *SyncRegistration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncRegistration.ProtoReflect.Descriptor instead.
 func (*SyncRegistration) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{25}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SyncRegistration) GetOwnerId() string {
@@ -2465,7 +2533,7 @@ type WrappedKey struct {
 
 func (x *WrappedKey) Reset() {
 	*x = WrappedKey{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[26]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2477,7 +2545,7 @@ func (x *WrappedKey) String() string {
 func (*WrappedKey) ProtoMessage() {}
 
 func (x *WrappedKey) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[26]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2490,7 +2558,7 @@ func (x *WrappedKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WrappedKey.ProtoReflect.Descriptor instead.
 func (*WrappedKey) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{26}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *WrappedKey) GetDeviceKeyId() string {
@@ -2532,7 +2600,7 @@ type DeltaEnvelope struct {
 
 func (x *DeltaEnvelope) Reset() {
 	*x = DeltaEnvelope{}
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[27]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2544,7 +2612,7 @@ func (x *DeltaEnvelope) String() string {
 func (*DeltaEnvelope) ProtoMessage() {}
 
 func (x *DeltaEnvelope) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[27]
+	mi := &file_hermesh_identity_v1_identity_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2557,7 +2625,7 @@ func (x *DeltaEnvelope) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeltaEnvelope.ProtoReflect.Descriptor instead.
 func (*DeltaEnvelope) Descriptor() ([]byte, []int) {
-	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{27}
+	return file_hermesh_identity_v1_identity_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DeltaEnvelope) GetOwnerId() string {
@@ -2705,7 +2773,7 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x18\n" +
 	"\asubject\x18\x03 \x01(\tR\asubject\x12<\n" +
 	"\vdevice_cert\x18\x04 \x01(\v2\x1b.hermesh.identity.v1.SignedR\n" +
-	"deviceCert\"\xb4\x06\n" +
+	"deviceCert\"\x91\a\n" +
 	"\fAdminCommand\x12\x19\n" +
 	"\bowner_id\x18\x01 \x01(\tR\aownerId\x12\x1d\n" +
 	"\n" +
@@ -2723,8 +2791,9 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\x12set_agent_defaults\x18\x0f \x01(\v2\".hermesh.identity.v1.AgentDefaultsH\x00R\x10setAgentDefaults\x126\n" +
 	"\aset_her\x18\x10 \x01(\v2\x1b.hermesh.identity.v1.SetHerH\x00R\x06setHer\x12_\n" +
 	"\x16set_her_assistant_mode\x18\x11 \x01(\v2(.hermesh.identity.v1.SetHerAssistantModeH\x00R\x13setHerAssistantMode\x12h\n" +
-	"\x19set_her_command_connector\x18\x12 \x01(\v2+.hermesh.identity.v1.SetHerCommandConnectorH\x00R\x16setHerCommandConnectorB\t\n" +
-	"\acommandJ\x04\b\f\x10\rR\x0erename_machine\"\xe1\x01\n" +
+	"\x19set_her_command_connector\x18\x12 \x01(\v2+.hermesh.identity.v1.SetHerCommandConnectorH\x00R\x16setHerCommandConnector\x12[\n" +
+	"\x14set_workspace_policy\x18\x13 \x01(\v2'.hermesh.identity.v1.SetWorkspacePolicyH\x00R\x12setWorkspacePolicyB\t\n" +
+	"\acommandJ\x04\b\f\x10\rR\x0erename_machine\"\xe5\x01\n" +
 	"\n" +
 	"AddProject\x12\x1d\n" +
 	"\n" +
@@ -2732,15 +2801,17 @@ const file_hermesh_identity_v1_identity_proto_rawDesc = "" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12(\n" +
 	"\x10default_base_ref\x18\x03 \x01(\tR\x0edefaultBaseRef\x12<\n" +
 	"\tworkspace\x18\x04 \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\tworkspace\x12 \n" +
-	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x16\n" +
-	"\x06agents\x18\x06 \x03(\tR\x06agents\".\n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x1a\n" +
+	"\x06agents\x18\x06 \x03(\tB\x02\x18\x01R\x06agents\".\n" +
 	"\rRemoveProject\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\"\x1d\n" +
 	"\aSetName\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"#\n" +
 	"\tSetPaused\x12\x16\n" +
-	"\x06paused\x18\x01 \x01(\bR\x06paused\"8\n" +
+	"\x06paused\x18\x01 \x01(\bR\x06paused\"7\n" +
+	"\x12SetWorkspacePolicy\x12!\n" +
+	"\fauto_release\x18\x01 \x01(\bR\vautoRelease\"8\n" +
 	"\x06SetHer\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x14\n" +
 	"\x05erase\x18\x02 \x01(\bR\x05erase\"U\n" +
@@ -2856,7 +2927,7 @@ func file_hermesh_identity_v1_identity_proto_rawDescGZIP() []byte {
 }
 
 var file_hermesh_identity_v1_identity_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_hermesh_identity_v1_identity_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(SignatureAlgorithm)(0),        // 0: hermesh.identity.v1.SignatureAlgorithm
 	(PairingKind)(0),               // 1: hermesh.identity.v1.PairingKind
@@ -2879,68 +2950,70 @@ var file_hermesh_identity_v1_identity_proto_goTypes = []any{
 	(*RemoveProject)(nil),          // 18: hermesh.identity.v1.RemoveProject
 	(*SetName)(nil),                // 19: hermesh.identity.v1.SetName
 	(*SetPaused)(nil),              // 20: hermesh.identity.v1.SetPaused
-	(*SetHer)(nil),                 // 21: hermesh.identity.v1.SetHer
-	(*SetHerAssistantMode)(nil),    // 22: hermesh.identity.v1.SetHerAssistantMode
-	(*SetHerCommandConnector)(nil), // 23: hermesh.identity.v1.SetHerCommandConnector
-	(*AgentDefaults)(nil),          // 24: hermesh.identity.v1.AgentDefaults
-	(*RevocationList)(nil),         // 25: hermesh.identity.v1.RevocationList
-	(*Credentials)(nil),            // 26: hermesh.identity.v1.Credentials
-	(*ContactCard)(nil),            // 27: hermesh.identity.v1.ContactCard
-	(*InboxRegistration)(nil),      // 28: hermesh.identity.v1.InboxRegistration
-	(*Contact)(nil),                // 29: hermesh.identity.v1.Contact
-	(*SyncRegistration)(nil),       // 30: hermesh.identity.v1.SyncRegistration
-	(*WrappedKey)(nil),             // 31: hermesh.identity.v1.WrappedKey
-	(*DeltaEnvelope)(nil),          // 32: hermesh.identity.v1.DeltaEnvelope
-	nil,                            // 33: hermesh.identity.v1.SetHerCommandConnector.EnvEntry
-	nil,                            // 34: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
-	(*timestamppb.Timestamp)(nil),  // 35: google.protobuf.Timestamp
+	(*SetWorkspacePolicy)(nil),     // 21: hermesh.identity.v1.SetWorkspacePolicy
+	(*SetHer)(nil),                 // 22: hermesh.identity.v1.SetHer
+	(*SetHerAssistantMode)(nil),    // 23: hermesh.identity.v1.SetHerAssistantMode
+	(*SetHerCommandConnector)(nil), // 24: hermesh.identity.v1.SetHerCommandConnector
+	(*AgentDefaults)(nil),          // 25: hermesh.identity.v1.AgentDefaults
+	(*RevocationList)(nil),         // 26: hermesh.identity.v1.RevocationList
+	(*Credentials)(nil),            // 27: hermesh.identity.v1.Credentials
+	(*ContactCard)(nil),            // 28: hermesh.identity.v1.ContactCard
+	(*InboxRegistration)(nil),      // 29: hermesh.identity.v1.InboxRegistration
+	(*Contact)(nil),                // 30: hermesh.identity.v1.Contact
+	(*SyncRegistration)(nil),       // 31: hermesh.identity.v1.SyncRegistration
+	(*WrappedKey)(nil),             // 32: hermesh.identity.v1.WrappedKey
+	(*DeltaEnvelope)(nil),          // 33: hermesh.identity.v1.DeltaEnvelope
+	nil,                            // 34: hermesh.identity.v1.SetHerCommandConnector.EnvEntry
+	nil,                            // 35: hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	(*timestamppb.Timestamp)(nil),  // 36: google.protobuf.Timestamp
 }
 var file_hermesh_identity_v1_identity_proto_depIdxs = []int32{
 	0,  // 0: hermesh.identity.v1.Signed.alg:type_name -> hermesh.identity.v1.SignatureAlgorithm
 	6,  // 1: hermesh.identity.v1.RootCert.root_keys:type_name -> hermesh.identity.v1.RootKey
-	35, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 2: hermesh.identity.v1.RootCert.issued_at:type_name -> google.protobuf.Timestamp
 	5,  // 3: hermesh.identity.v1.RootChain.certs:type_name -> hermesh.identity.v1.Signed
-	35, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
-	35, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 4: hermesh.identity.v1.OwnerDeviceCert.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 5: hermesh.identity.v1.PushRegistration.issued_at:type_name -> google.protobuf.Timestamp
 	1,  // 6: hermesh.identity.v1.PairingRequest.kind:type_name -> hermesh.identity.v1.PairingKind
-	35, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
-	35, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 7: hermesh.identity.v1.PairingRequest.created_at:type_name -> google.protobuf.Timestamp
+	36, // 8: hermesh.identity.v1.MachineCert.issued_at:type_name -> google.protobuf.Timestamp
 	3,  // 9: hermesh.identity.v1.Grant.task_visibility:type_name -> hermesh.identity.v1.TaskVisibility
-	35, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
-	35, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
-	35, // 12: hermesh.identity.v1.EraseOrder.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 10: hermesh.identity.v1.Grant.not_before:type_name -> google.protobuf.Timestamp
+	36, // 11: hermesh.identity.v1.Grant.expires_at:type_name -> google.protobuf.Timestamp
+	36, // 12: hermesh.identity.v1.EraseOrder.issued_at:type_name -> google.protobuf.Timestamp
 	5,  // 13: hermesh.identity.v1.EraseAck.device_cert:type_name -> hermesh.identity.v1.Signed
-	35, // 14: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
+	36, // 14: hermesh.identity.v1.AdminCommand.expires_at:type_name -> google.protobuf.Timestamp
 	17, // 15: hermesh.identity.v1.AdminCommand.add_project:type_name -> hermesh.identity.v1.AddProject
 	18, // 16: hermesh.identity.v1.AdminCommand.remove_project:type_name -> hermesh.identity.v1.RemoveProject
 	20, // 17: hermesh.identity.v1.AdminCommand.set_paused:type_name -> hermesh.identity.v1.SetPaused
 	19, // 18: hermesh.identity.v1.AdminCommand.set_name:type_name -> hermesh.identity.v1.SetName
-	24, // 19: hermesh.identity.v1.AdminCommand.set_agent_defaults:type_name -> hermesh.identity.v1.AgentDefaults
-	21, // 20: hermesh.identity.v1.AdminCommand.set_her:type_name -> hermesh.identity.v1.SetHer
-	22, // 21: hermesh.identity.v1.AdminCommand.set_her_assistant_mode:type_name -> hermesh.identity.v1.SetHerAssistantMode
-	23, // 22: hermesh.identity.v1.AdminCommand.set_her_command_connector:type_name -> hermesh.identity.v1.SetHerCommandConnector
-	2,  // 23: hermesh.identity.v1.AddProject.workspace:type_name -> hermesh.identity.v1.Workspace
-	33, // 24: hermesh.identity.v1.SetHerCommandConnector.env:type_name -> hermesh.identity.v1.SetHerCommandConnector.EnvEntry
-	4,  // 25: hermesh.identity.v1.AgentDefaults.speed:type_name -> hermesh.identity.v1.AgentSpeed
-	34, // 26: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
-	8,  // 27: hermesh.identity.v1.Credentials.root_chain:type_name -> hermesh.identity.v1.RootChain
-	5,  // 28: hermesh.identity.v1.Credentials.machine_cert:type_name -> hermesh.identity.v1.Signed
-	5,  // 29: hermesh.identity.v1.Credentials.grant:type_name -> hermesh.identity.v1.Signed
-	5,  // 30: hermesh.identity.v1.Credentials.device_cert:type_name -> hermesh.identity.v1.Signed
-	35, // 31: hermesh.identity.v1.ContactCard.issued_at:type_name -> google.protobuf.Timestamp
-	35, // 32: hermesh.identity.v1.InboxRegistration.issued_at:type_name -> google.protobuf.Timestamp
-	5,  // 33: hermesh.identity.v1.Contact.card:type_name -> hermesh.identity.v1.Signed
-	5,  // 34: hermesh.identity.v1.Contact.device_cert:type_name -> hermesh.identity.v1.Signed
-	5,  // 35: hermesh.identity.v1.Contact.machine_cert:type_name -> hermesh.identity.v1.Signed
-	5,  // 36: hermesh.identity.v1.Contact.registration:type_name -> hermesh.identity.v1.Signed
-	35, // 37: hermesh.identity.v1.SyncRegistration.issued_at:type_name -> google.protobuf.Timestamp
-	31, // 38: hermesh.identity.v1.DeltaEnvelope.keys:type_name -> hermesh.identity.v1.WrappedKey
-	35, // 39: hermesh.identity.v1.DeltaEnvelope.created_at:type_name -> google.protobuf.Timestamp
-	40, // [40:40] is the sub-list for method output_type
-	40, // [40:40] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	25, // 19: hermesh.identity.v1.AdminCommand.set_agent_defaults:type_name -> hermesh.identity.v1.AgentDefaults
+	22, // 20: hermesh.identity.v1.AdminCommand.set_her:type_name -> hermesh.identity.v1.SetHer
+	23, // 21: hermesh.identity.v1.AdminCommand.set_her_assistant_mode:type_name -> hermesh.identity.v1.SetHerAssistantMode
+	24, // 22: hermesh.identity.v1.AdminCommand.set_her_command_connector:type_name -> hermesh.identity.v1.SetHerCommandConnector
+	21, // 23: hermesh.identity.v1.AdminCommand.set_workspace_policy:type_name -> hermesh.identity.v1.SetWorkspacePolicy
+	2,  // 24: hermesh.identity.v1.AddProject.workspace:type_name -> hermesh.identity.v1.Workspace
+	34, // 25: hermesh.identity.v1.SetHerCommandConnector.env:type_name -> hermesh.identity.v1.SetHerCommandConnector.EnvEntry
+	4,  // 26: hermesh.identity.v1.AgentDefaults.speed:type_name -> hermesh.identity.v1.AgentSpeed
+	35, // 27: hermesh.identity.v1.RevocationList.min_grant_versions:type_name -> hermesh.identity.v1.RevocationList.MinGrantVersionsEntry
+	8,  // 28: hermesh.identity.v1.Credentials.root_chain:type_name -> hermesh.identity.v1.RootChain
+	5,  // 29: hermesh.identity.v1.Credentials.machine_cert:type_name -> hermesh.identity.v1.Signed
+	5,  // 30: hermesh.identity.v1.Credentials.grant:type_name -> hermesh.identity.v1.Signed
+	5,  // 31: hermesh.identity.v1.Credentials.device_cert:type_name -> hermesh.identity.v1.Signed
+	36, // 32: hermesh.identity.v1.ContactCard.issued_at:type_name -> google.protobuf.Timestamp
+	36, // 33: hermesh.identity.v1.InboxRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	5,  // 34: hermesh.identity.v1.Contact.card:type_name -> hermesh.identity.v1.Signed
+	5,  // 35: hermesh.identity.v1.Contact.device_cert:type_name -> hermesh.identity.v1.Signed
+	5,  // 36: hermesh.identity.v1.Contact.machine_cert:type_name -> hermesh.identity.v1.Signed
+	5,  // 37: hermesh.identity.v1.Contact.registration:type_name -> hermesh.identity.v1.Signed
+	36, // 38: hermesh.identity.v1.SyncRegistration.issued_at:type_name -> google.protobuf.Timestamp
+	32, // 39: hermesh.identity.v1.DeltaEnvelope.keys:type_name -> hermesh.identity.v1.WrappedKey
+	36, // 40: hermesh.identity.v1.DeltaEnvelope.created_at:type_name -> google.protobuf.Timestamp
+	41, // [41:41] is the sub-list for method output_type
+	41, // [41:41] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_identity_v1_identity_proto_init() }
@@ -2957,8 +3030,9 @@ func file_hermesh_identity_v1_identity_proto_init() {
 		(*AdminCommand_SetHer)(nil),
 		(*AdminCommand_SetHerAssistantMode)(nil),
 		(*AdminCommand_SetHerCommandConnector)(nil),
+		(*AdminCommand_SetWorkspacePolicy)(nil),
 	}
-	file_hermesh_identity_v1_identity_proto_msgTypes[21].OneofWrappers = []any{
+	file_hermesh_identity_v1_identity_proto_msgTypes[22].OneofWrappers = []any{
 		(*Credentials_MachineCert)(nil),
 		(*Credentials_Grant)(nil),
 		(*Credentials_DeviceCert)(nil),
@@ -2969,7 +3043,7 @@ func file_hermesh_identity_v1_identity_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_identity_v1_identity_proto_rawDesc), len(file_hermesh_identity_v1_identity_proto_rawDesc)),
 			NumEnums:      5,
-			NumMessages:   30,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

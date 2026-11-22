@@ -135,12 +135,15 @@ const (
 	// LocalServiceGetDiagnosticsProcedure is the fully-qualified name of the LocalService's
 	// GetDiagnostics RPC.
 	LocalServiceGetDiagnosticsProcedure = "/hermesh.local.v1.LocalService/GetDiagnostics"
-	// LocalServiceListLocalWorkspacesProcedure is the fully-qualified name of the LocalService's
-	// ListLocalWorkspaces RPC.
-	LocalServiceListLocalWorkspacesProcedure = "/hermesh.local.v1.LocalService/ListLocalWorkspaces"
-	// LocalServiceReleaseLocalWorkspaceProcedure is the fully-qualified name of the LocalService's
-	// ReleaseLocalWorkspace RPC.
-	LocalServiceReleaseLocalWorkspaceProcedure = "/hermesh.local.v1.LocalService/ReleaseLocalWorkspace"
+	// LocalServiceListWorkspacesProcedure is the fully-qualified name of the LocalService's
+	// ListWorkspaces RPC.
+	LocalServiceListWorkspacesProcedure = "/hermesh.local.v1.LocalService/ListWorkspaces"
+	// LocalServiceReleaseWorkspacesProcedure is the fully-qualified name of the LocalService's
+	// ReleaseWorkspaces RPC.
+	LocalServiceReleaseWorkspacesProcedure = "/hermesh.local.v1.LocalService/ReleaseWorkspaces"
+	// LocalServiceSetWorkspacePolicyProcedure is the fully-qualified name of the LocalService's
+	// SetWorkspacePolicy RPC.
+	LocalServiceSetWorkspacePolicyProcedure = "/hermesh.local.v1.LocalService/SetWorkspacePolicy"
 	// LocalServiceSetHerProcedure is the fully-qualified name of the LocalService's SetHer RPC.
 	LocalServiceSetHerProcedure = "/hermesh.local.v1.LocalService/SetHer"
 	// LocalServiceSetHerAssistantModeProcedure is the fully-qualified name of the LocalService's
@@ -339,9 +342,11 @@ type LocalServiceClient interface {
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
-	// On this machine only. Scanning the checkouts is an explicit user action.
-	ListLocalWorkspaces(context.Context, *v1.ListLocalWorkspacesRequest) (*v1.ListLocalWorkspacesResponse, error)
-	ReleaseLocalWorkspace(context.Context, *v1.ReleaseLocalWorkspaceRequest) (*v1.ReleaseLocalWorkspaceResponse, error)
+	// A machine's storage: its sessions' checkouts (docs/settings-environments.md
+	// §5.7), this device's own machine in process, another over its connection.
+	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v11.ListWorkspacesResponse, error)
+	ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v11.ReleaseWorkspacesResponse, error)
+	SetWorkspacePolicy(context.Context, *v1.SetWorkspacePolicyRequest) (*v1.SetWorkspacePolicyResponse, error)
 	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
 	// goes in process when the machine is this Mac, else through the tunnel.
 	// Turns Her on or off for a machine, erasing her data if asked: signed by
@@ -659,16 +664,22 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
 			connect.WithClientOptions(opts...),
 		),
-		listLocalWorkspaces: connect.NewClient[v1.ListLocalWorkspacesRequest, v1.ListLocalWorkspacesResponse](
+		listWorkspaces: connect.NewClient[v1.ListWorkspacesRequest, v11.ListWorkspacesResponse](
 			httpClient,
-			baseURL+LocalServiceListLocalWorkspacesProcedure,
-			connect.WithSchema(localServiceMethods.ByName("ListLocalWorkspaces")),
+			baseURL+LocalServiceListWorkspacesProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ListWorkspaces")),
 			connect.WithClientOptions(opts...),
 		),
-		releaseLocalWorkspace: connect.NewClient[v1.ReleaseLocalWorkspaceRequest, v1.ReleaseLocalWorkspaceResponse](
+		releaseWorkspaces: connect.NewClient[v1.ReleaseWorkspacesRequest, v11.ReleaseWorkspacesResponse](
 			httpClient,
-			baseURL+LocalServiceReleaseLocalWorkspaceProcedure,
-			connect.WithSchema(localServiceMethods.ByName("ReleaseLocalWorkspace")),
+			baseURL+LocalServiceReleaseWorkspacesProcedure,
+			connect.WithSchema(localServiceMethods.ByName("ReleaseWorkspaces")),
+			connect.WithClientOptions(opts...),
+		),
+		setWorkspacePolicy: connect.NewClient[v1.SetWorkspacePolicyRequest, v1.SetWorkspacePolicyResponse](
+			httpClient,
+			baseURL+LocalServiceSetWorkspacePolicyProcedure,
+			connect.WithSchema(localServiceMethods.ByName("SetWorkspacePolicy")),
 			connect.WithClientOptions(opts...),
 		),
 		setHer: connect.NewClient[v1.SetHerRequest, v1.SetHerResponse](
@@ -952,8 +963,9 @@ type localServiceClient struct {
 	listMachineFolders     *connect.Client[v1.ListMachineFoldersRequest, v11.ListFoldersResponse]
 	testMachineAgent       *connect.Client[v1.TestMachineAgentRequest, v11.TestAgentResponse]
 	getDiagnostics         *connect.Client[v1.GetDiagnosticsRequest, v1.GetDiagnosticsResponse]
-	listLocalWorkspaces    *connect.Client[v1.ListLocalWorkspacesRequest, v1.ListLocalWorkspacesResponse]
-	releaseLocalWorkspace  *connect.Client[v1.ReleaseLocalWorkspaceRequest, v1.ReleaseLocalWorkspaceResponse]
+	listWorkspaces         *connect.Client[v1.ListWorkspacesRequest, v11.ListWorkspacesResponse]
+	releaseWorkspaces      *connect.Client[v1.ReleaseWorkspacesRequest, v11.ReleaseWorkspacesResponse]
+	setWorkspacePolicy     *connect.Client[v1.SetWorkspacePolicyRequest, v1.SetWorkspacePolicyResponse]
 	setHer                 *connect.Client[v1.SetHerRequest, v1.SetHerResponse]
 	setHerAssistantMode    *connect.Client[v1.SetHerAssistantModeRequest, v1.SetHerAssistantModeResponse]
 	setHerCommandConnector *connect.Client[v1.SetHerCommandConnectorRequest, v1.SetHerCommandConnectorResponse]
@@ -1312,18 +1324,27 @@ func (c *localServiceClient) GetDiagnostics(ctx context.Context, req *v1.GetDiag
 	return nil, err
 }
 
-// ListLocalWorkspaces calls hermesh.local.v1.LocalService.ListLocalWorkspaces.
-func (c *localServiceClient) ListLocalWorkspaces(ctx context.Context, req *v1.ListLocalWorkspacesRequest) (*v1.ListLocalWorkspacesResponse, error) {
-	response, err := c.listLocalWorkspaces.CallUnary(ctx, connect.NewRequest(req))
+// ListWorkspaces calls hermesh.local.v1.LocalService.ListWorkspaces.
+func (c *localServiceClient) ListWorkspaces(ctx context.Context, req *v1.ListWorkspacesRequest) (*v11.ListWorkspacesResponse, error) {
+	response, err := c.listWorkspaces.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// ReleaseLocalWorkspace calls hermesh.local.v1.LocalService.ReleaseLocalWorkspace.
-func (c *localServiceClient) ReleaseLocalWorkspace(ctx context.Context, req *v1.ReleaseLocalWorkspaceRequest) (*v1.ReleaseLocalWorkspaceResponse, error) {
-	response, err := c.releaseLocalWorkspace.CallUnary(ctx, connect.NewRequest(req))
+// ReleaseWorkspaces calls hermesh.local.v1.LocalService.ReleaseWorkspaces.
+func (c *localServiceClient) ReleaseWorkspaces(ctx context.Context, req *v1.ReleaseWorkspacesRequest) (*v11.ReleaseWorkspacesResponse, error) {
+	response, err := c.releaseWorkspaces.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// SetWorkspacePolicy calls hermesh.local.v1.LocalService.SetWorkspacePolicy.
+func (c *localServiceClient) SetWorkspacePolicy(ctx context.Context, req *v1.SetWorkspacePolicyRequest) (*v1.SetWorkspacePolicyResponse, error) {
+	response, err := c.setWorkspacePolicy.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -1763,9 +1784,11 @@ type LocalServiceHandler interface {
 	// something does not work: versions, health, PATH and each coding agent.
 	// Nothing leaves the Mac unless they do.
 	GetDiagnostics(context.Context, *v1.GetDiagnosticsRequest) (*v1.GetDiagnosticsResponse, error)
-	// On this machine only. Scanning the checkouts is an explicit user action.
-	ListLocalWorkspaces(context.Context, *v1.ListLocalWorkspacesRequest) (*v1.ListLocalWorkspacesResponse, error)
-	ReleaseLocalWorkspace(context.Context, *v1.ReleaseLocalWorkspaceRequest) (*v1.ReleaseLocalWorkspaceResponse, error)
+	// A machine's storage: its sessions' checkouts (docs/settings-environments.md
+	// §5.7), this device's own machine in process, another over its connection.
+	ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v11.ListWorkspacesResponse, error)
+	ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v11.ReleaseWorkspacesResponse, error)
+	SetWorkspacePolicy(context.Context, *v1.SetWorkspacePolicyRequest) (*v1.SetWorkspacePolicyResponse, error)
 	// Her (docs/her-server.md). A machine's Her is Machine.her. Each call
 	// goes in process when the machine is this Mac, else through the tunnel.
 	// Turns Her on or off for a machine, erasing her data if asked: signed by
@@ -2079,16 +2102,22 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("GetDiagnostics")),
 		connect.WithHandlerOptions(opts...),
 	)
-	localServiceListLocalWorkspacesHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceListLocalWorkspacesProcedure,
-		svc.ListLocalWorkspaces,
-		connect.WithSchema(localServiceMethods.ByName("ListLocalWorkspaces")),
+	localServiceListWorkspacesHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceListWorkspacesProcedure,
+		svc.ListWorkspaces,
+		connect.WithSchema(localServiceMethods.ByName("ListWorkspaces")),
 		connect.WithHandlerOptions(opts...),
 	)
-	localServiceReleaseLocalWorkspaceHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceReleaseLocalWorkspaceProcedure,
-		svc.ReleaseLocalWorkspace,
-		connect.WithSchema(localServiceMethods.ByName("ReleaseLocalWorkspace")),
+	localServiceReleaseWorkspacesHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceReleaseWorkspacesProcedure,
+		svc.ReleaseWorkspaces,
+		connect.WithSchema(localServiceMethods.ByName("ReleaseWorkspaces")),
+		connect.WithHandlerOptions(opts...),
+	)
+	localServiceSetWorkspacePolicyHandler := connect.NewUnaryHandlerSimple(
+		LocalServiceSetWorkspacePolicyProcedure,
+		svc.SetWorkspacePolicy,
+		connect.WithSchema(localServiceMethods.ByName("SetWorkspacePolicy")),
 		connect.WithHandlerOptions(opts...),
 	)
 	localServiceSetHerHandler := connect.NewUnaryHandlerSimple(
@@ -2405,10 +2434,12 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceTestMachineAgentHandler.ServeHTTP(w, r)
 		case LocalServiceGetDiagnosticsProcedure:
 			localServiceGetDiagnosticsHandler.ServeHTTP(w, r)
-		case LocalServiceListLocalWorkspacesProcedure:
-			localServiceListLocalWorkspacesHandler.ServeHTTP(w, r)
-		case LocalServiceReleaseLocalWorkspaceProcedure:
-			localServiceReleaseLocalWorkspaceHandler.ServeHTTP(w, r)
+		case LocalServiceListWorkspacesProcedure:
+			localServiceListWorkspacesHandler.ServeHTTP(w, r)
+		case LocalServiceReleaseWorkspacesProcedure:
+			localServiceReleaseWorkspacesHandler.ServeHTTP(w, r)
+		case LocalServiceSetWorkspacePolicyProcedure:
+			localServiceSetWorkspacePolicyHandler.ServeHTTP(w, r)
 		case LocalServiceSetHerProcedure:
 			localServiceSetHerHandler.ServeHTTP(w, r)
 		case LocalServiceSetHerAssistantModeProcedure:
@@ -2642,12 +2673,16 @@ func (UnimplementedLocalServiceHandler) GetDiagnostics(context.Context, *v1.GetD
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiagnostics is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) ListLocalWorkspaces(context.Context, *v1.ListLocalWorkspacesRequest) (*v1.ListLocalWorkspacesResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListLocalWorkspaces is not implemented"))
+func (UnimplementedLocalServiceHandler) ListWorkspaces(context.Context, *v1.ListWorkspacesRequest) (*v11.ListWorkspacesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListWorkspaces is not implemented"))
 }
 
-func (UnimplementedLocalServiceHandler) ReleaseLocalWorkspace(context.Context, *v1.ReleaseLocalWorkspaceRequest) (*v1.ReleaseLocalWorkspaceResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReleaseLocalWorkspace is not implemented"))
+func (UnimplementedLocalServiceHandler) ReleaseWorkspaces(context.Context, *v1.ReleaseWorkspacesRequest) (*v11.ReleaseWorkspacesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReleaseWorkspaces is not implemented"))
+}
+
+func (UnimplementedLocalServiceHandler) SetWorkspacePolicy(context.Context, *v1.SetWorkspacePolicyRequest) (*v1.SetWorkspacePolicyResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.SetWorkspacePolicy is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) SetHer(context.Context, *v1.SetHerRequest) (*v1.SetHerResponse, error) {

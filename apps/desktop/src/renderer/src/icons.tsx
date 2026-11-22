@@ -52,7 +52,11 @@ const paths: Record<string, string> = {
   warn: "<path d=\"M8 2.2l6.2 11H1.8z\"/><path d=\"M8 6.4v3.2M8 11.4v.1\"/>",
   q: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M6.3 6.2a1.8 1.8 0 1 1 2.5 1.7c-.5.2-.8.6-.8 1.1v.3M8 11.3v.1\"/>",
   bolt: "<path d=\"M9 1.8L3.6 9h4l-1 5.2L12.4 7h-4z\"/>",
+  pause: "<path d=\"M6 3.5v9M10 3.5v9\"/>",
+  // A stack of disks: storage.
+  disk: "<ellipse cx=\"8\" cy=\"4\" rx=\"5.2\" ry=\"1.9\"/><path d=\"M2.8 4v8c0 1 2.3 1.9 5.2 1.9s5.2-.9 5.2-1.9V4M2.8 8c0 1 2.3 1.9 5.2 1.9s5.2-.9 5.2-1.9\"/>",
   sparkle: "<path d=\"M8 2v3M8 11v3M2 8h3M11 8h3M4 4l2 2M10 10l2 2M4 12l2-2M10 6l2-2\"/>",
+  broom: "<path d=\"M9.3 2.7L6 8.7M4 8.7h5.3l1.4 4.6H2.7z\"/>",
   user: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><circle cx=\"8\" cy=\"6.8\" r=\"2\"/><path d=\"M4.4 12.2c.8-1.4 2-2.1 3.6-2.1s2.8.7 3.6 2.1\"/>",
   wifi: "<path d=\"M1.8 6.2a9 9 0 0 1 12.4 0M4 8.6a5.8 5.8 0 0 1 8 0M6.2 11a2.6 2.6 0 0 1 3.6 0\"/><circle cx=\"8\" cy=\"13\" r=\".5\"/>",
   filter: "<path d=\"M2.5 4.2h11M4.6 8h6.8M6.7 11.8h2.6\"/>",

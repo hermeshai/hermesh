@@ -226,7 +226,7 @@ func Open(cfg Config) (*Machine, error) {
 	ws.none = cfg.WorkspaceMode == "none"
 	n.sessions = &Sessions{st: st, ws: ws, audit: n.audit, log: n.log,
 		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
-		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, live: map[string]*live{}}
+		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, autoReleaseOn: n.AutoRelease, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
 	n.sessions.mcp = n.mcpServers
 	n.sessions.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
@@ -505,6 +505,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	}
 	st.Screen = n.screenStatus()
 	st.DirectAddrs, st.DirectQuicAddrs = n.directStatusAddrs()
+	st.Methods = adminMethods()
 	return st
 }
 

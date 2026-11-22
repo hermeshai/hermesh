@@ -106,7 +106,7 @@ test("the menu bar panel counts what needs the owner and what runs; a count open
   const toggle = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.tray().toggle());
   await expect.poll(async () => (await tray(app)).open || (await toggle(), false)).toBe(true);
   await expect(win.getByRole("status")).toHaveText("正常");
-  await expect(win.getByText("你的 agent 能用 1 台机器")).toBeVisible();
+  await expect(win.getByText("你的 agent 能用 1 个环境")).toBeVisible();
   await expect(win.getByRole("button", { name: `需要处理 ${3 + pairings}` })).toBeVisible();
   await expect(win.getByRole("button", { name: "进行中 1" })).toBeVisible();
   await expect(win.getByRole("button", { name: "设置" })).toBeVisible();

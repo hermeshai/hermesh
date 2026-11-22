@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { AgentStatusSchema } from "@hermesh/proto/machine";
 import { describe, expect, test } from "vitest";
-import { agentTiles, folderName, isAbsolutePath, modelTitle, platformTitle } from "./machines";
+import { agentTiles, folderName, formatBytes, isAbsolutePath, modelTitle, platformTitle } from "./machines";
 
 describe("machines", () => {
   test("models read as their agent names them, Claude's IDs as people call them", () => {
@@ -48,5 +48,17 @@ describe("project paths", () => {
     expect(folderName("C:\\code\\my-app")).toBe("my-app");
     expect(folderName("C:\\")).toBe("C:");
     expect(folderName("")).toBe("");
+  });
+});
+
+describe("formatBytes", () => {
+  test("counts as the platform's file manager does", () => {
+    expect(formatBytes(0, "darwin")).toBe("0 B");
+    expect(formatBytes(2_600_000_000, "darwin")).toBe("2.6 GB");
+    expect(formatBytes(540_000_000n, "linux")).toBe("540 MB");
+    expect(formatBytes(999, "darwin")).toBe("999 B");
+    expect(formatBytes(1536, "darwin")).toBe("2 KB");
+    expect(formatBytes(1024 ** 3, "win32")).toBe("1.0 GB");
+    expect(formatBytes(1024 ** 3, "darwin")).toBe("1.1 GB");
   });
 });

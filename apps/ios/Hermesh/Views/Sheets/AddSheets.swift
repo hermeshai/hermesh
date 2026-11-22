@@ -532,8 +532,6 @@ struct AddProjectSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let machineID: String
-    /// The coding agent it is for; a directory already a project gets it too.
-    let agent: String
     /// The folder chosen, as the person writes it ("~/code/app").
     @State private var path = ""
     /// What its machine said of it: nil while asked, or from a machine from
@@ -555,7 +553,6 @@ struct AddProjectSheet: View {
         guard let full = folder?.fullPath, !full.isEmpty else { return nil }
         return model.projects.first { $0.machineID == machineID && $0.path == full }
     }
-    private var alreadyForAgent: Bool { existing.map { $0.agents.isEmpty || $0.agents.contains(agent) } ?? false }
     /// What agents call the project: the folder's name, made to fit a
     /// project's, numbered when another project of this machine has it.
     private var name: String {
@@ -572,7 +569,7 @@ struct AddProjectSheet: View {
     /// Whether the folder is a git repository; nil when its machine couldn't say.
     private var isRepo: Bool? { folder.map(\.repo) ?? (repos?.contains { $0.path == path } == true ? true : nil) }
     private var canAdd: Bool {
-        !path.isEmpty && !alreadyForAgent && (machine?.online ?? false)
+        !path.isEmpty && existing == nil && (machine?.online ?? false)
     }
 
     var body: some View {
@@ -592,7 +589,7 @@ struct AddProjectSheet: View {
                 }
             }
             .navigationTitle("Add a Project")
-            .navigationSubtitle("\(model.machineName(machineID)) · \(agentTitle(agent))")
+            .navigationSubtitle(model.machineName(machineID))
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { p in
                 FolderBrowser(machineID: machineID, path: p, browsing: $browsing) { choose($0, listing: $1) }
@@ -660,11 +657,7 @@ struct AddProjectSheet: View {
             Text("Folder")
         } footer: {
             if let existing {
-                if alreadyForAgent {
-                    Text("“\(existing.projectID)” is already a project for \(agentTitle(agent)).")
-                } else {
-                    Text("Already the project “\(existing.projectID)”, for \(existing.agents.map(agentTitle).formatted()). Adding it lets \(agentTitle(agent)) use it too, working as it does now.")
-                }
+                Text("“\(existing.projectID)” is already a project here.")
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     let base = projectID(folderName(path))
@@ -682,7 +675,7 @@ struct AddProjectSheet: View {
     private var workspace: some View {
         Section("How Agents Work") {
             choice(false, "Separate worktree", "Each session gets its own branch; the files you’re changing are left alone")
-            choice(true, "In place", "Agents change this folder directly, as if you ran \(agentTitle(agent)) here")
+            choice(true, "In place", "Agents change this folder directly, as if you worked in it yourself")
             if !inPlace, let folder, folder.repo {
                 Picker("New Branches From", selection: $baseRef) {
                     Text("Current branch (\(folder.branch))").tag("")
@@ -740,20 +733,14 @@ struct AddProjectSheet: View {
         Task {
             defer { busy = false }
             do {
-                if let existing {
-                    try await model.saveProject(existing, agents: existing.agents + [agent], workspace: existing.workspace)
-                    model.show(String(localized: "“\(existing.projectID)” is now for \(agentTitle(agent)) too"))
-                } else {
-                    var r = Hermesh_Local_V1_AddProjectRequest()
-                    r.machineID = machineID
-                    r.projectID = name
-                    r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
-                    r.workspace = inPlace ? .inPlace : .worktree
-                    r.defaultBaseRef = inPlace ? "" : baseRef
-                    r.agents = [agent]
-                    try await model.addProject(r)
-                    model.show(String(localized: "Added project “\(name)”"))
-                }
+                var r = Hermesh_Local_V1_AddProjectRequest()
+                r.machineID = machineID
+                r.projectID = name
+                r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
+                r.workspace = inPlace ? .inPlace : .worktree
+                r.defaultBaseRef = inPlace ? "" : baseRef
+                try await model.addProject(r)
+                model.show(String(localized: "Added project “\(name)”"))
                 dismiss()
             } catch {
                 model.report(error)
