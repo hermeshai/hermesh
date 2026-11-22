@@ -1,10 +1,11 @@
 import { createdDate, isActive, needsAttention, updatedDate } from "@hermesh/core";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, screen, Tray, type NativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, screen, Tray, type MenuItemConstructorOptions, type NativeImage } from "electron";
 import glyph1x from "../../resources/menuBarIconTemplate.png?inline";
 import glyph2x from "../../resources/menuBarIconTemplate@2x.png?inline";
 import type { TrayAction, TrayView } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
+import { daemonControlAvailable, daemonListeners, daemonState, quitKeepingDaemon, quitStoppingDaemon, startBackgroundService, stopBackgroundService } from "./daemon";
 import { stopScreen } from "./her";
 import { command } from "./ipc";
 import { preferences, world, worldListeners } from "./notify";
@@ -34,12 +35,13 @@ export function showTray() {
   tray = new Tray(icon(false, true));
   tray.setToolTip("Hermesh");
   tray.on("click", toggle);
-  tray.on("right-click", mac ? toggle : () => tray?.popUpContextMenu(contextMenu()));
+  tray.on("right-click", () => tray?.popUpContextMenu(contextMenu()));
   // Windows: the icon in the taskbar's colours, light or dark.
   if (!mac) nativeTheme.on("updated", () => ((shownIcon = "*"), update()));
   update();
   worldListeners.add(update);
   updateListeners.add(update);
+  daemonListeners.add(update);
   ipcMain.handle("tray-view", (e) => (e.senderFrame && ours(e.senderFrame.url) ? view() : null));
   ipcMain.on("tray-action", (e, a: TrayAction) => e.sender === panel?.webContents && act(a));
   ipcMain.on("tray-size", (e, h: unknown) => {
@@ -47,21 +49,27 @@ export function showTray() {
     panel.setSize(268, Math.ceil(h));
     if (panel.isVisible()) place(panel);
   });
-  // With no window open the app lives in the menu bar only (Open Hermesh at login, in the menu bar only). The panel doesn't count.
-  const watch = (w: BrowserWindow) =>
-    w.on("closed", () => BrowserWindow.getAllWindows().every((x) => x === w || x === panel) && app.dock?.hide());
-  BrowserWindow.getAllWindows().forEach(watch);
-  app.on("browser-window-created", (_, w) => {
+  // Opened silently at login (no window yet): stay in the menu bar only.
+  // Once a window has been shown, keep the Dock icon visible even after closing
+  // windows so the user can see Hermesh is still running and right-click it.
+  app.on("browser-window-created", () => {
     if (makingPanel) return;
     app.dock?.show();
-    watch(w);
   });
-  if (BrowserWindow.getAllWindows().length === 0) app.dock?.hide();
+  if (platform.openedAtLogin() && BrowserWindow.getAllWindows().length === 0) app.dock?.hide();
 }
 
-/** For tests: what the panel shows, whether it is open, and whether the icon shows its dot. */
+/** For tests: what the panel shows, whether it is open, whether the icon shows its dot, and the native menus. */
 export function trayState() {
-  return { view: view(), open: panel?.isVisible() ?? false, badge: shownIcon.startsWith("dot"), panel: () => panel, toggle };
+  return {
+    view: view(),
+    open: panel?.isVisible() ?? false,
+    badge: shownIcon.startsWith("dot"),
+    panel: () => panel,
+    toggle,
+    contextMenu,
+    dockMenu,
+  };
 }
 
 function update() {
@@ -73,6 +81,7 @@ function update() {
     tray.setImage(icon(badge, v.state !== "ok"));
     shownIcon = key;
   }
+  if (mac) app.dock?.setMenu(dockMenu());
   panel?.webContents.send("tray-view", v);
 }
 
@@ -93,14 +102,26 @@ function running(): Session[] {
 
 function view(): TrayView {
   const st = world.status;
+  const d = daemonState();
   const u = updateInfo().update;
+  const state: TrayView["state"] =
+    d === "stopped" || d === "starting" || d === "stopping"
+      ? d
+      : !st
+        ? "daemon"
+        : !st.initialized && !st.machineOnly
+          ? "setup"
+          : st.relayConnected
+            ? "ok"
+            : "down";
   return {
-    state: !st ? "daemon" : !st.initialized && !st.machineOnly ? "setup" : st.relayConnected ? "ok" : "down",
+    state,
     online: world.machines.filter((m) => m.online).length,
     attention: attention().length + world.pairings.length,
     running: running().length,
     update: u.state === "ready" ? u.version : "",
     control: world.machines.find((m) => m.local)?.status?.screen?.viewer ?? "",
+    manageable: daemonControlAvailable(),
   };
 }
 
@@ -140,13 +161,68 @@ function place(p: BrowserWindow) {
   p.setPosition(x, Math.round(below ? b.y + b.height + 5 : Math.min(b.y, area.y + area.height) - height - 8));
 }
 
-/** Windows: the icon's right click. */
-function contextMenu(): Menu {
+function daemonMenuItems(): MenuItemConstructorOptions[] {
+  if (!daemonControlAvailable()) return [];
+  const t = i18n.getFixedT(null, "main");
+  const st = daemonState();
+  const status: MenuItemConstructorOptions = { id: "daemonStatus", label: t(`daemon.status.${st}`), enabled: false };
+  const toggleItem: MenuItemConstructorOptions =
+    st === "running"
+      ? { id: "stopDaemon", label: t("daemon.stopMenu"), click: () => void stopBackgroundService({ confirm: true }) }
+      : st === "starting" || st === "stopping"
+        ? { id: "daemonBusy", label: t(st === "starting" ? "daemon.startingMenu" : "daemon.stoppingMenu"), enabled: false }
+        : { id: "startDaemon", label: t("daemon.startMenu"), click: () => void startBackgroundService() };
+  return [status, toggleItem];
+}
+
+/** macOS Dock right-click menu (native Hide/Quit are appended by macOS below these items). */
+function dockMenu(): Menu {
+  const t = i18n.getFixedT(null, "main");
+  const manageable = daemonControlAvailable();
+  const runningDaemon = daemonState() === "running";
   return Menu.buildFromTemplate([
-    { label: i18n.t("main:tray.open"), click: () => showMain() },
-    { label: i18n.t("main:menu.settings"), click: () => showSettings() },
-    { type: "separator" },
-    { label: i18n.t("main:menu.app.quit"), click: () => app.quit() },
+    { id: "open", label: t("tray.open"), click: () => showMain() },
+    { id: "settings", label: t("menu.settings"), click: () => showSettings() },
+    ...(manageable
+      ? [
+          { type: "separator" as const },
+          ...daemonMenuItems(),
+          ...(runningDaemon
+            ? [
+                { type: "separator" as const },
+                preferences().keepDaemonOnQuit
+                  ? { id: "quitStop", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() }
+                  : { id: "quitKeep", label: t("daemon.quitKeepMenu"), click: () => quitKeepingDaemon() },
+              ]
+            : []),
+        ]
+      : []),
+  ]);
+}
+
+/** Tray icon right-click menu (macOS, Windows, Linux). */
+function contextMenu(): Menu {
+  const t = i18n.getFixedT(null, "main");
+  const manageable = daemonControlAvailable();
+  const runningDaemon = daemonState() === "running";
+  const quitItems: MenuItemConstructorOptions[] =
+    manageable && runningDaemon
+      ? preferences().keepDaemonOnQuit
+        ? [
+            { id: "quit", label: t("daemon.quitKeepMenu"), click: () => app.quit() },
+            { id: "quitStop", label: t("daemon.quitAndStopMenu"), click: () => quitStoppingDaemon() },
+          ]
+        : [
+            { id: "quitKeep", label: t("daemon.quitKeepMenu"), click: () => quitKeepingDaemon() },
+            { id: "quit", label: t("menu.app.quit"), click: () => app.quit() },
+          ]
+      : [{ id: "quit", label: t("menu.app.quit"), click: () => app.quit() }];
+  return Menu.buildFromTemplate([
+    { id: "open", label: t("tray.open"), click: () => showMain() },
+    { id: "settings", label: t("menu.settings"), click: () => showSettings() },
+    ...(manageable ? [{ type: "separator" as const }, ...daemonMenuItems()] : []),
+    { type: "separator" as const },
+    ...quitItems,
   ]);
 }
 
@@ -166,6 +242,8 @@ function act(a: TrayAction) {
   if (a === "settings") return showSettings();
   if (a === "install") return install();
   if (a === "stopControl") return void stopScreen().catch(() => {});
+  if (a === "startDaemon") return void startBackgroundService();
+  if (a === "stopDaemon") return void stopBackgroundService({ confirm: true });
   if (a === "quit") return app.quit();
 }
 

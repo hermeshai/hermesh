@@ -9,6 +9,7 @@ import { pipeline } from "node:stream/promises";
 import enNotes from "../locales/en/releases.json";
 import zhNotes from "../locales/zh-CN/releases.json";
 import { feedNotes, nextCheckDelay, nextUpdate, releaseCatalog, squirrelFailure, type ReleaseNote, type Update, type UpdateEvent, type UpdateInfo } from "../shared/update";
+import { prepareUpdateQuit } from "./daemon";
 import { command } from "./ipc";
 import { world, worldListeners } from "./notify";
 import { platform } from "./platform";
@@ -304,6 +305,7 @@ export function install() {
   if (update.state !== "ready") return;
   if (updateInfo().approvalPending) { showUpdates(); changed(); return; }
   if (platform.token === "linux") return installLinuxPackage();
+  prepareUpdateQuit();
   autoUpdater.quitAndInstall();
 }
 

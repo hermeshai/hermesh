@@ -164,7 +164,7 @@ test("a question notifies, and the notification opens its session", async () => 
   await app.close();
 });
 
-test("closing the window keeps Hermesh in the menu bar, without a renderer", async () => {
+test("closing the window keeps Hermesh running without a renderer while keeping the Dock icon visible on macOS", async () => {
   const { app, page } = await launch();
   await expect((await sessionList(page))).toContainText("写 hello");
   const memory = async () => {
@@ -175,19 +175,18 @@ test("closing the window keeps Hermesh in the menu bar, without a renderer", asy
   console.log(`memory with the window open: ${await memory()}`);
   await app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.mainWindow()?.close());
   await expect.poll(() => app.evaluate(({ app }) => app.getAppMetrics().filter((m) => m.type === "Tab").length)).toBe(0);
-  // The Dock is a Mac's; elsewhere the app keeps running in the notification area, where it has one.
-  if (onMac) await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
+  // On macOS the Dock icon stays visible so the user knows Hermesh is still running and can right-click it.
+  if (onMac) await expect.poll(() => app.evaluate(({ app }) => app.dock?.isVisible())).toBe(true);
 
   // Idle: let the closed renderer's memory go back.
   await new Promise((r) => setTimeout(r, 5000));
   console.log(`idle memory with the window closed: ${await memory()}`);
 
-  // The menu bar panel opens it again; the panel itself doesn't bring the Dock icon back.
+  // The menu bar panel opens the main window again.
   const [panel] = await Promise.all([
     app.waitForEvent("window", (w) => w.url().endsWith("#tray")),
     app.evaluate(() => (globalThis as unknown as { hermeshTest: Hook }).hermeshTest.tray().toggle()),
   ]);
-  if (onMac) expect(await app.evaluate(({ app }) => app.dock?.isVisible())).toBe(false);
   const opened = app.waitForEvent("window", (w) => !w.url().endsWith("#tray"));
   await panel.getByRole("button", { name: "打开 Hermesh" }).click();
   const again = await opened;

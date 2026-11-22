@@ -32,7 +32,7 @@ const changed = () => worldListeners.forEach((f) => f());
 
 // --- Preferences (the settings window sets them) ---
 
-const defaults: Preferences = { appearance: "system", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system" };
+const defaults: Preferences = { appearance: "system", notifyStarted: true, notifyQuestion: true, notifyFailed: true, notifyTurnDone: false, menuBadge: true, language: "system", keepDaemonOnQuit: false };
 let prefs: Preferences | undefined;
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
@@ -54,7 +54,7 @@ export function applyAppearance() {
 
 export function setPreferences(p: Partial<Preferences>): Preferences {
   const next = { ...preferences() };
-  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
+  for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge", "keepDaemonOnQuit"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next.language = p.language!;
   if (p.appearance === "system" || p.appearance === "light" || p.appearance === "dark") next.appearance = p.appearance;
   prefs = next;
@@ -151,17 +151,60 @@ function noticePairings() {
 
 // --- Following hermeshd ---
 
+let wakeRetry: (() => void) | undefined;
+let watchAbort: AbortController | undefined;
+let pauseWatch = false;
+
+/** Wakes the watch loop right away (after starting the daemon). */
+export function wakeWatch() {
+  pauseWatch = false;
+  wakeRetry?.();
+  wakeRetry = undefined;
+}
+
+/** Pauses the watch loop and clears cached world state (after stopping the daemon). */
+export function setWatchPaused(paused: boolean) {
+  pauseWatch = paused;
+  if (paused) {
+    watchAbort?.abort();
+    if (world.status !== null) {
+      world.status = null;
+      world.sessions = [];
+      world.clients = [];
+      world.machines = [];
+      world.pairings = [];
+      changed();
+    }
+  } else {
+    wakeWatch();
+  }
+}
+
 export function watch() {
   (async () => {
     for (;;) {
+      if (pauseWatch) {
+        await new Promise<void>((r) => {
+          const timer = setTimeout(r, 1000);
+          wakeRetry = () => {
+            clearTimeout(timer);
+            r();
+          };
+        });
+        wakeRetry = undefined;
+        continue;
+      }
       let w = emptyWorld;
       // Where hermeshd is now: a pipe's name changes each time it starts (Windows).
       const local = createClient(
         LocalService,
         createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }),
       );
+      const abort = new AbortController();
+      watchAbort = abort;
       try {
-        for await (const m of local.watch({})) {
+        for await (const m of local.watch({}, { signal: abort.signal })) {
+          if (pauseWatch) break;
           const before = w;
           w = applyWatch(w, m);
           world.status = w.status ?? null;
@@ -175,14 +218,24 @@ export function watch() {
           if (w !== before) changed();
         }
       } catch (e) {
-        console.warn("hermeshd watch:", e);
+        if (!pauseWatch && !abort.signal.aborted) console.warn("hermeshd watch:", e);
+      } finally {
+        if (watchAbort === abort) watchAbort = undefined;
       }
       // hermeshd restarted, or this watch fell behind: watched again.
       if (world.status !== null) {
         world.status = null;
         changed();
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      if (pauseWatch) continue;
+      await new Promise<void>((r) => {
+        const timer = setTimeout(r, 1000);
+        wakeRetry = () => {
+          clearTimeout(timer);
+          r();
+        };
+      });
+      wakeRetry = undefined;
     }
   })();
 }

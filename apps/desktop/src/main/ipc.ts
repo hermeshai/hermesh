@@ -3,6 +3,7 @@ import path from "node:path";
 import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
+import { daemonInfo, quitForRelaunch, startBackgroundService, stopBackgroundService } from "./daemon";
 import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, herFilesKept, reopenHerChatGpt, reopenHerConnector, readHerFile, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
 import { preferences, setPreferences, world } from "./notify";
 import { platform } from "./platform";
@@ -65,8 +66,7 @@ export function registerIPC() {
   ipcMain.on("show-upgrade", (e) => trusted(e) && command("upgrade"));
   ipcMain.on("relaunch", (e) => {
     if (!trusted(e)) return;
-    app.relaunch();
-    app.quit();
+    quitForRelaunch();
   });
   ipcMain.on("window-mode", (e, m) => trusted(e) && (m === "onboarding" || m === "main") && setMode(m));
   ipcMain.on("open-external", (e, url: string) => {
@@ -244,6 +244,9 @@ export function registerIPC() {
   ipcMain.handle("login-item", (e) => (trusted(e) ? platform.loginItem() : null));
   ipcMain.handle("set-login-item", (e, on: unknown) => (trusted(e) && typeof on === "boolean" ? platform.setLoginItem(on) : null));
   ipcMain.handle("daemon-needs-approval", (e) => trusted(e) && platform.daemonNeedsApproval());
+  ipcMain.handle("daemon-state", (e) => (trusted(e) ? daemonInfo() : null));
+  ipcMain.handle("start-daemon", (e) => (trusted(e) ? startBackgroundService() : undefined));
+  ipcMain.handle("stop-daemon", (e) => (trusted(e) ? stopBackgroundService({ confirm: true }) : false));
   ipcMain.on("open-login-items", (e) => trusted(e) && platform.openLoginItems());
   ipcMain.on("open-activity-monitor", (e) => trusted(e) && platform.openProcessMonitor());
   // Her's computer use: a permission's pane of System Settings (main/computer.ts).

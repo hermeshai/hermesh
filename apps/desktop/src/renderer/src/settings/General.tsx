@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { pickLanguage } from "@hermesh/core";
 import type { Appearance, LoginItem, Preferences } from "../../../shared/bridge";
+import type { DaemonInfo } from "../../../shared/daemon";
 import { languages, resolveLanguage, type LanguageChoice } from "../../../shared/i18n";
 import { useUpdate } from "../update";
 import { SRow, Switch } from "./common";
@@ -15,10 +16,13 @@ export function General() {
   // Kept by the main process, which acts on them while no window is open.
   const [prefs, setPrefs] = useState<Preferences>();
   const [login, setLogin] = useState<LoginItem>();
+  const [daemon, setDaemon] = useState<DaemonInfo | null>(null);
 
   useEffect(() => {
     window.hermesh?.getPreferences().then(setPrefs);
     window.hermesh?.loginItem().then(setLogin);
+    window.hermesh?.daemonState().then(setDaemon);
+    return window.hermesh?.onDaemonState(setDaemon);
   }, []);
   const pref = (k: Flag, title: string, desc?: string) => (
     <SRow title={title} desc={desc}>
@@ -66,6 +70,18 @@ export function General() {
           >
             <Switch on={login?.on ?? false} label={t("general.openAtLogin")} disabled={!login} set={(on) => window.hermesh?.setLoginItem(on).then(setLogin)} />
           </SRow>
+          {pref("keepDaemonOnQuit", t("general.keepDaemonOnQuit"), t("general.keepDaemonOnQuitDesc"))}
+          {daemon?.manageable && (
+            <SRow title={t("general.backgroundService")} desc={t(`general.daemonStatus.${daemon.state}`)}>
+              {daemon.state === "running" ? (
+                <button className="btn sm" onClick={() => void window.hermesh?.stopDaemon()}>{t("general.stopService")}</button>
+              ) : (
+                <button className="btn sm" disabled={daemon.state === "starting" || daemon.state === "stopping"} onClick={() => void window.hermesh?.startDaemon()}>
+                  {t("general.startService")}
+                </button>
+              )}
+            </SRow>
+          )}
         </div>
       </div>
       <div>
