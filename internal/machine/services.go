@@ -382,12 +382,18 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description), Agents: agents}); err != nil {
 			return "", err
 		}
+		if n.threads != nil {
+			_ = n.threads.SyncWorkspace(p.ProjectId, path, base, mode, strings.TrimSpace(p.Description))
+		}
 		if mode == identityv1.Workspace_WORKSPACE_IN_PLACE {
 			return "project " + p.ProjectId + " added (sessions work in place)", nil
 		}
 		return "project " + p.ProjectId + " added (a worktree per session)", nil
 	case *identityv1.AdminCommand_RemoveProject:
 		defer n.sessions.changes().project(c.RemoveProject.ProjectId)
+		if n.threads != nil {
+			_ = n.threads.RemoveWorkspace(c.RemoveProject.ProjectId)
+		}
 		return "project removed", n.st.DeleteProject(c.RemoveProject.ProjectId)
 	case *identityv1.AdminCommand_SetName:
 		if err := n.SetName(c.SetName.Name); err != nil {

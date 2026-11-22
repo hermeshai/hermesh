@@ -100,7 +100,11 @@ func (n *Machine) Check(ctx context.Context) Check {
 // running or waiting for an answer; and Her's assistants at work, which
 // stop with her.
 func (n *Machine) Busy() int {
-	return n.sessions.Running() + int(n.sessions.counts[sessionv1.SessionStatus_SESSION_STATUS_QUEUED].Load()) + n.her.Busy()
+	b := n.sessions.Running() + int(n.sessions.counts[sessionv1.SessionStatus_SESSION_STATUS_QUEUED].Load()) + n.her.Busy()
+	if n.threads != nil {
+		b += n.threads.BusyCount()
+	}
+	return b
 }
 
 // ApplyLocal applies a project change from this machine's own user: adding

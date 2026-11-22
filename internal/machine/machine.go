@@ -26,6 +26,7 @@ import (
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/herhost"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/provider/acp"
@@ -102,6 +103,7 @@ type Machine struct {
 	machineID string
 	audit     *Audit
 	sessions  *Sessions
+	threads   *kernel.Engine
 
 	mu          sync.Mutex
 	trust       *identity.Trust
@@ -234,6 +236,9 @@ func Open(cfg Config) (*Machine, error) {
 		n.sessionNews(s, e)
 	}
 	n.sessions.registerMetrics()
+	if err := n.openThreads(); err != nil {
+		return nil, err
+	}
 	return n, nil
 }
 
@@ -283,6 +288,9 @@ func (n *Machine) Close() error {
 	n.screen.Stop()
 	n.stopHerLink()
 	n.her.Stop()
+	if n.threads != nil {
+		_ = n.threads.Close()
+	}
 	n.sessions.w.close()
 	err := n.st.Close()
 	n.audit.Close()

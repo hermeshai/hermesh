@@ -1,0 +1,106 @@
+{
+  "nav": {
+    "newThread": "New Thread",
+    "threads": "Threads"
+  },
+  "launch": {
+    "title": "Start a Coding Thread",
+    "subtitle": "Pick an execution machine, repository workspace, model, and permission boundary.",
+    "machine": "Machine",
+    "online": "Online",
+    "offline": "Offline (queues in Outbox)",
+    "project": "Project",
+    "scratch": "Scratch Workspace",
+    "inPlace": "In-place",
+    "worktree": "Worktree",
+    "basePlaceholder": "Base branch (default)",
+    "promptPlaceholder": "Describe what to build, debug, or plan… (type / for commands & skills)"
+  },
+  "header": {
+    "fork": "Fork",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "inspector": "Inspector",
+    "offlineQueued": "Queued Offline"
+  },
+  "mode": {
+    "code": "Code",
+    "plan": "Plan",
+    "supervised": "Supervised",
+    "supervisedHint": "Prompt before every file edit, command, or external tool",
+    "autoEdits": "Auto-accept edits",
+    "autoEditsHint": "Auto-apply workspace file edits; prompt on commands & protected paths",
+    "auto": "Auto",
+    "autoHint": "Auto-apply workspace edits & routine dev/test commands; prompt on risky actions",
+    "fullAccess": "Full access",
+    "fullAccessHint": "Unrestricted execution within your machine ceiling",
+    "ceilingLocked": "Locked by cryptographic Grant / Machine ceiling"
+  },
+  "picker": {
+    "providers": "Providers",
+    "models": "Models",
+    "options": "Model Traits",
+    "noOptions": "No configurable traits for this model."
+  },
+  "composer": {
+    "placeholder": "Reply, steer mid-turn, or queue a follow-up…",
+    "attach": "Attach File",
+    "start": "Start Thread",
+    "send": "Send",
+    "steer": "Steer",
+    "queue": "Queue",
+    "queueOffline": "Queue Offline",
+    "stop": "Stop",
+    "forceStop": "Force Stop"
+  },
+  "queue": {
+    "heading": "Queued Follow-ups ({{count}})",
+    "held": "Queue paused",
+    "resume": "Resume Queue",
+    "steerNow": "Steer Now",
+    "moveUp": "Move Up",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Remove"
+  },
+  "request": {
+    "approvalTitle": "Permission Required: {{tool}}",
+    "outsideWorkspace": "Outside Workspace",
+    "approveOnce": "Approve Once",
+    "approveThread": "Always Allow in Thread",
+    "decline": "Decline",
+    "declinePlaceholder": "Optional steering feedback on decline…",
+    "cancelTurn": "Cancel Turn",
+    "questionTitle": "Agent Question",
+    "customAnswerPlaceholder": "Or type a custom answer…",
+    "submitAnswer": "Submit Answer",
+    "planTitle": "Proposed Plan: {{title}}",
+    "approvePlan": "Approve & Build",
+    "revisePlan": "Request Changes",
+    "planFeedbackPlaceholder": "Feedback to revise the plan…",
+    "secretTitle": "Secret Requested: {{label}}",
+    "secretZeroPersistence": "Zero-persistence: delivered in memory only, never saved to disk",
+    "sendSecret": "Provide Secret"
+  },
+  "timeline": {
+    "steered": "Steered mid-turn",
+    "reasoning": "Reasoning",
+    "handoff": "Context Handoff ({{strategy}})",
+    "modelSwitch": "Switched model to {{model}}",
+    "checkpoint": "Checkpoint #{{ordinal}}",
+    "rewind": "Rewind here"
+  },
+  "inspector": {
+    "diffTab": "Diff",
+    "checkpointsTab": "Checkpoints",
+    "infoTab": "Runtime",
+    "noDiff": "Working tree matches baseline.",
+    "noCheckpoints": "Checkpoints appear after completed turns.",
+    "rewindChat": "Rewind Chat",
+    "rewindFiles": "Rewind Chat & Files",
+    "contextWindow": "Context Window",
+    "providerSession": "Provider Session",
+    "alive": "Live process",
+    "reaped": "Idle (resumes on next turn)"
+  }
+}

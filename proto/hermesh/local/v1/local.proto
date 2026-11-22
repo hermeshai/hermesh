@@ -717,6 +717,7 @@ message GrantSpec {
   hermesh.identity.v1.TaskVisibility task_visibility = 6;
   uint32 ttl_days = 7;
   uint32 max_concurrent_sessions = 8;
+  hermesh.identity.v1.RuntimeMode max_runtime_mode = 9;
 }
 
 message ApproveClientPairingRequest {

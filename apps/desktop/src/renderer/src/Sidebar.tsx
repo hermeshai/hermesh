@@ -99,6 +99,7 @@ export function Sidebar() {
         <button className="tb" onClick={() => setSidebar(st, false)} title={`${t("window.hideSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.hideSidebar")}>
           <Icon name="sidebar" />
         </button>
+        <NewThreadButton />
         <button className="tb side-search" onClick={() => st.set({ searching: true })} title={`${t("sidebar.search")} ${keys("CmdOrCtrl+K")}`} aria-label={t("sidebar.search")}>
           <Icon name="search" />
         </button>
@@ -158,6 +159,23 @@ function OverviewItem({ now }: { now: Date }) {
         {running > 0 && <Ring label={t("sidebar.running", { count: running })} />}
         {waits === 0 && running === 0 && <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
       </span>
+    </button>
+  );
+}
+
+function NewThreadButton() {
+  const st = useStore();
+  const { t } = useTranslation("thread");
+  const active = st.selection.kind === "newThread" || st.selection.kind === "thread";
+  return (
+    <button
+      className={`tb ${active ? "on" : ""}`}
+      data-testid="nav-new-thread"
+      title={`${t("nav.newThread")} ${keys("CmdOrCtrl+N")}`}
+      aria-label={t("nav.newThread")}
+      onClick={() => st.set({ selection: { kind: "newThread" } })}
+    >
+      <Icon name="plus" />
     </button>
   );
 }

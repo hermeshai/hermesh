@@ -192,6 +192,63 @@ public nonisolated enum Hermesh_Identity_V1_TaskVisibility: SwiftProtobuf.Enum, 
 
 }
 
+/// RuntimeMode bounds how much autonomy an agent session has before asking the
+/// owner for approval. Ordered monotonically from narrowest (SUPERVISED) to
+/// broadest (FULL_ACCESS). UNSPECIFIED means no additional grant ceiling.
+public nonisolated enum Hermesh_Identity_V1_RuntimeMode: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+
+  /// Ask before every file edit, command, or external action.
+  case supervised // = 1
+
+  /// Auto-approve file edits inside the workspace; ask before commands or outside writes.
+  case autoEdits // = 2
+
+  /// Auto-approve workspace edits and routine read/build/test commands; ask before risky or outside actions.
+  case auto // = 3
+
+  /// Allow commands and edits without interactive prompts (subject to explicit deny/secret gates).
+  case fullAccess // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .supervised
+    case 2: self = .autoEdits
+    case 3: self = .auto
+    case 4: self = .fullAccess
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .supervised: return 1
+    case .autoEdits: return 2
+    case .auto: return 3
+    case .fullAccess: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Identity_V1_RuntimeMode] = [
+    .unspecified,
+    .supervised,
+    .autoEdits,
+    .auto,
+    .fullAccess,
+  ]
+
+}
+
 public nonisolated enum Hermesh_Identity_V1_AgentSpeed: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
 
@@ -587,6 +644,14 @@ public nonisolated struct Hermesh_Identity_V1_Grant: @unchecked Sendable {
   public var herMachineID: String {
     get {_storage._herMachineID}
     set {_uniqueStorage()._herMachineID = newValue}
+  }
+
+  /// Optional cryptographic autonomy ceiling for sessions/threads started or
+  /// operated under this grant. When set, effective runtime mode is clamped to
+  /// at most max_runtime_mode, and actions above it pause for owner approval.
+  public var maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode {
+    get {_storage._maxRuntimeMode}
+    set {_uniqueStorage()._maxRuntimeMode = newValue}
   }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
@@ -1240,6 +1305,10 @@ nonisolated extension Hermesh_Identity_V1_TaskVisibility: SwiftProtobuf._ProtoNa
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TASK_VISIBILITY_UNSPECIFIED\0\u{1}TASK_VISIBILITY_OWN\0\u{1}TASK_VISIBILITY_ALL\0")
 }
 
+nonisolated extension Hermesh_Identity_V1_RuntimeMode: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0RUNTIME_MODE_UNSPECIFIED\0\u{1}RUNTIME_MODE_SUPERVISED\0\u{1}RUNTIME_MODE_AUTO_EDITS\0\u{1}RUNTIME_MODE_AUTO\0\u{1}RUNTIME_MODE_FULL_ACCESS\0")
+}
+
 nonisolated extension Hermesh_Identity_V1_AgentSpeed: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0AGENT_SPEED_UNSPECIFIED\0\u{1}AGENT_SPEED_STANDARD\0\u{1}AGENT_SPEED_FAST\0")
 }
@@ -1656,7 +1725,7 @@ nonisolated extension Hermesh_Identity_V1_MachineCert: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Grant"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{3}client_icon\0\u{3}client_image\0\u{3}her_machine_id\0\u{b}preset\0\u{c}\u{a}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}owner_id\0\u{3}grant_id\0\u{1}version\0\u{3}client_id\0\u{3}client_public_key\0\u{3}client_label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}max_concurrent_sessions\0\u{3}not_before\0\u{3}expires_at\0\u{1}custodian\0\u{3}client_icon\0\u{3}client_image\0\u{3}her_machine_id\0\u{3}max_runtime_mode\0\u{b}preset\0\u{c}\u{a}\u{1}")
 
   fileprivate class _StorageClass {
     var _ownerID: String = String()
@@ -1676,6 +1745,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
     var _clientIcon: String = String()
     var _clientImage: Data = Data()
     var _herMachineID: String = String()
+    var _maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -1703,6 +1773,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
       _clientIcon = source._clientIcon
       _clientImage = source._clientImage
       _herMachineID = source._herMachineID
+      _maxRuntimeMode = source._maxRuntimeMode
     }
   }
 
@@ -1738,6 +1809,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
         case 16: try { try decoder.decodeSingularStringField(value: &_storage._clientIcon) }()
         case 17: try { try decoder.decodeSingularBytesField(value: &_storage._clientImage) }()
         case 18: try { try decoder.decodeSingularStringField(value: &_storage._herMachineID) }()
+        case 19: try { try decoder.decodeSingularEnumField(value: &_storage._maxRuntimeMode) }()
         default: break
         }
       }
@@ -1801,6 +1873,9 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
       if !_storage._herMachineID.isEmpty {
         try visitor.visitSingularStringField(value: _storage._herMachineID, fieldNumber: 18)
       }
+      if _storage._maxRuntimeMode != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._maxRuntimeMode, fieldNumber: 19)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -1827,6 +1902,7 @@ nonisolated extension Hermesh_Identity_V1_Grant: SwiftProtobuf.Message, SwiftPro
         if _storage._clientIcon != rhs_storage._clientIcon {return false}
         if _storage._clientImage != rhs_storage._clientImage {return false}
         if _storage._herMachineID != rhs_storage._herMachineID {return false}
+        if _storage._maxRuntimeMode != rhs_storage._maxRuntimeMode {return false}
         return true
       }
       if !storagesAreEqual {return false}

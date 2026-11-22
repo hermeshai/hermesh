@@ -177,6 +177,9 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool, w words) (Card, erro
 		if _, ok := identityv1.TaskVisibility_name[int32(m.TaskVisibility)]; !ok {
 			return Card{}, &Refused{r.Type, "an unknown visibility"}
 		}
+		if _, ok := identityv1.RuntimeMode_name[int32(m.MaxRuntimeMode)]; !ok {
+			return Card{}, &Refused{r.Type, "an unknown approval mode"}
+		}
 		return grantCard(m, h, reissue, r.Confirmed, w), nil
 	case identity.MessageType(&identityv1.AdminCommand{}):
 		m := &identityv1.AdminCommand{}
@@ -305,6 +308,9 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 	}
 	if g.MaxConcurrentSessions > 0 {
 		lines = append(lines, w.f("Tasks at once: up to %d", g.MaxConcurrentSessions))
+	}
+	if mode := runtimeModeText(g.MaxRuntimeMode, w); mode != "" {
+		lines = append(lines, w.f("Autonomy limit: %s", mode))
 	}
 	if g.Custodian != "" {
 		lines = append(lines, w.f("Connects through %s, which holds its key", g.Custodian))
@@ -495,4 +501,18 @@ func cmpOr(a, b string) string {
 		return a
 	}
 	return b
+}
+
+func runtimeModeText(m identityv1.RuntimeMode, w words) string {
+	switch m {
+	case identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED:
+		return w.f("asks before each file change and command")
+	case identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS:
+		return w.f("changes files without asking, asks before other commands")
+	case identityv1.RuntimeMode_RUNTIME_MODE_AUTO:
+		return w.f("changes files and runs routine checks without asking")
+	case identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS:
+		return w.f("full access, asks before nothing")
+	}
+	return ""
 }

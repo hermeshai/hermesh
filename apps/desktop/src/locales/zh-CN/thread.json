@@ -1,0 +1,106 @@
+{
+  "nav": {
+    "newThread": "新建会话",
+    "threads": "原生会话"
+  },
+  "launch": {
+    "title": "发起编码会话",
+    "subtitle": "选择目标执行机器、代码库工作区、供应商模型与权限边界。",
+    "machine": "执行机器",
+    "online": "在线",
+    "offline": "离线（自动进入离线队列）",
+    "project": "项目",
+    "scratch": "临时工作区",
+    "inPlace": "原目录执行",
+    "worktree": "独立 Worktree",
+    "basePlaceholder": "基准分支（默认）",
+    "promptPlaceholder": "描述要开发、调试或规划的任务…（输入 / 查看命令与技能）"
+  },
+  "header": {
+    "fork": "派生分支会话",
+    "archive": "归档",
+    "unarchive": "取消归档",
+    "inspector": "检查器",
+    "offlineQueued": "离线排队中"
+  },
+  "mode": {
+    "code": "编码",
+    "plan": "规划",
+    "supervised": "受控审批",
+    "supervisedHint": "每次修改文件、执行命令或调用外部工具前均需确认",
+    "autoEdits": "自动接受编辑",
+    "autoEditsHint": "自动允许工作区内文件修改；执行命令或触碰敏感文件时需确认",
+    "auto": "智能自动",
+    "autoHint": "自动允许工作区编辑与常规编译测试命令；高风险操作需确认",
+    "fullAccess": "完全权限",
+    "fullAccessHint": "在机器上限内无阻断执行全部操作",
+    "ceilingLocked": "受加密授权凭证 / 机器策略上限锁定"
+  },
+  "picker": {
+    "providers": "供应商实例",
+    "models": "模型",
+    "options": "模型参数",
+    "noOptions": "当前模型无可调节附加参数。"
+  },
+  "composer": {
+    "placeholder": "继续追问、中途引导（Steer）或加入排队队列…",
+    "attach": "添加附件",
+    "start": "开始会话",
+    "send": "发送",
+    "steer": "中途引导",
+    "queue": "加入队列",
+    "queueOffline": "离线入队",
+    "stop": "停止",
+    "forceStop": "强制终止"
+  },
+  "queue": {
+    "heading": "待执行队列（{{count}}）",
+    "held": "队列已暂停",
+    "resume": "恢复队列",
+    "steerNow": "立即插入引导",
+    "moveUp": "上移",
+    "edit": "编辑",
+    "save": "保存",
+    "cancel": "移除"
+  },
+  "request": {
+    "approvalTitle": "需要权限审批：{{tool}}",
+    "outsideWorkspace": "工作区外路径",
+    "approveOnce": "批准本次",
+    "approveThread": "本会话始终允许",
+    "decline": "拒绝并反馈",
+    "declinePlaceholder": "可选：告诉 Agent 拒绝原因或替代方案…",
+    "cancelTurn": "取消本轮",
+    "questionTitle": "Agent 提问",
+    "customAnswerPlaceholder": "或输入自定义回答…",
+    "submitAnswer": "提交回答",
+    "planTitle": "方案评审：{{title}}",
+    "approvePlan": "批准并开始编码",
+    "revisePlan": "要求修改方案",
+    "planFeedbackPlaceholder": "输入方案修改意见…",
+    "secretTitle": "请求密钥：{{label}}",
+    "secretZeroPersistence": "零落盘保护：仅在内存传递，绝不写入数据库或日志",
+    "sendSecret": "安全注入密钥"
+  },
+  "timeline": {
+    "steered": "中途引导",
+    "reasoning": "思考过程",
+    "handoff": "跨模型上下文交接（{{strategy}}）",
+    "modelSwitch": "已切换模型至 {{model}}",
+    "checkpoint": "检查点 #{{ordinal}}",
+    "rewind": "回滚至此"
+  },
+  "inspector": {
+    "diffTab": "代码变更",
+    "checkpointsTab": "检查点",
+    "infoTab": "运行态",
+    "noDiff": "当前工作区与基准一致，暂无未提交改动。",
+    "noCheckpoints": "完成首轮执行后将自动生成 Git 检查点。",
+    "rewindChat": "仅回滚对话",
+    "rewindFiles": "回滚对话与文件",
+    "contextWindow": "上下文窗口",
+    "providerSession": "底层会话进程",
+    "alive": "进程常驻就绪",
+    "reaped": "已空闲释放（下轮自动恢复）"
+  }
+}

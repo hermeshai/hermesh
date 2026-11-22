@@ -31,6 +31,8 @@ export type Data = {
 export type Selection =
   | { kind: "overview" }
   | { kind: "session"; id: string }
+  | { kind: "newThread"; machineId?: string; projectId?: string }
+  | { kind: "thread"; id: string }
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 

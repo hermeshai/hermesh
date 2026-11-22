@@ -254,6 +254,7 @@ public enum SigningPreview {
         case grant:
             let g = try strict(r, Hermesh_Identity_V1_Grant.self)
             if case .UNRECOGNIZED = g.taskVisibility { throw Refusal.unsupported(r.type) }
+            if case .UNRECOGNIZED = g.maxRuntimeMode { throw Refusal.unsupported(r.type) }
             var c = describeGrant(g, hints, reissue: reissue)
             // The person already said, signed in to their account, that this
             // agent is theirs: its side shows no code to compare.
@@ -348,6 +349,14 @@ public enum SigningPreview {
         var limits: [String] = []
         if g.taskVisibility == .all { limits.append(String(localized: "Can also see other personal agents’ tasks in these projects", bundle: .module)) }
         if g.maxConcurrentSessions > 0 { limits.append(String(localized: "Tasks at once: up to \(Int(g.maxConcurrentSessions))", bundle: .module)) }
+        switch g.maxRuntimeMode {
+        case .unspecified: break
+        case .supervised: limits.append(String(localized: "Autonomy limit: \(String(localized: "Ask before each file change and command", bundle: .module))", bundle: .module))
+        case .autoEdits: limits.append(String(localized: "Autonomy limit: \(String(localized: "Change files without asking; ask before other commands", bundle: .module))", bundle: .module))
+        case .auto: limits.append(String(localized: "Autonomy limit: \(String(localized: "Change files and run routine checks without asking", bundle: .module))", bundle: .module))
+        case .fullAccess: limits.append(String(localized: "Autonomy limit: \(String(localized: "Full access: ask before nothing", bundle: .module))", bundle: .module))
+        case .UNRECOGNIZED: break
+        }
         var rows = [CardRow(kind: .project, value: projects), CardRow(kind: .codingAgent, value: agents),
                     CardRow(kind: .expires, value: String(localized: "Until \(day)", bundle: .module))]
         if !isAll(g.machineIds) { rows.insert(CardRow(kind: .machine, value: machines), at: 1) }
