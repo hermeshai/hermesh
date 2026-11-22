@@ -19,9 +19,10 @@ import (
 // every project and relay-bot with the project relay (and the temporary
 // workspace, named). A project added on work-mac keeps its folder: adding the
 // name again for another folder is refused, the same folder changes its
-// settings. Both agents can start sessions in the new project at once. A
-// project set up for Claude Code refuses Codex to the owner and to an agent
-// alike. "Every project" leaves out the temporary workspace; naming it lets in.
+// settings. Both agents can start sessions in the new project at once. The
+// agents it is added with limit nothing (docs/settings-environments.md D5):
+// Codex works there too, for an agent and the owner. "Every project" leaves
+// out the temporary workspace; naming it lets in.
 func TestThreadProjectsAndGrants(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e")
@@ -60,7 +61,7 @@ func TestThreadProjectsAndGrants(t *testing.T) {
 	}
 	botEnv := append(append([]string{}, w.cliEnv...), "HERMESH_LINK=off")
 
-	// relay on work-mac, for Claude Code only. Another folder by its name is refused, naming the folder it is;
+	// relay on work-mac, sent as for Claude Code only. Another folder by its name is refused, naming the folder it is;
 	// the same folder again changes its settings.
 	first := gitRepo(t, map[string]string{"README.md": "# relay\n"})
 	other := gitRepo(t, map[string]string{"README.md": "# another\n"})
@@ -104,15 +105,15 @@ func TestThreadProjectsAndGrants(t *testing.T) {
 		}
 	}
 
-	// Codex is refused in relay, to an agent and to the owner.
-	if r := launch(relayEnv, "relay", "codex"); r.code == 0 || !strings.Contains(r.stdout+r.stderr, "not set up for") {
+	// Codex works in relay too, for an agent and for the owner: the project is for every provider.
+	if r := launch(relayEnv, "relay", "codex"); r.code != 0 {
 		t.Fatalf("relay-bot with Codex in relay: %+v", r)
 	}
 	tc := ownerThreadClient(w.sock)
 	var sel threadv2.ModelSelection
 	sel.InstanceId = "codex"
 	_, err = tc.LaunchThread(ctx, &threadv2.LaunchThreadRequest{MachineId: workID, ProjectId: "relay", InitialPrompt: "say from the owner", ModelSelection: &sel})
-	if connect.CodeOf(err) != connect.CodePermissionDenied || !strings.Contains(err.Error(), "not set up for") {
+	if err != nil {
 		t.Fatalf("the owner with Codex in relay: %v", err)
 	}
 

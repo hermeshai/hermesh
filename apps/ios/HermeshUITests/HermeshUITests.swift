@@ -752,8 +752,11 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.switches["notify-started"].exists && text("新任务").exists, "new tasks, on by default")
         XCTAssertEqual(app.switches["notify-started"].value as? String, "1")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        // This server's MCP address, with its key, beside its connection address.
+        // This server's MCP address, with its key, beside its connection address: on Account and Devices.
         let address = try control("mcp")["address"] as! String
+        let card = app.buttons["account-card"]
+        for _ in 0..<8 where !card.isHittable { app.swipeDown() }
+        card.tap()
         app.swipeUp()
         let mcp = app.buttons["mcpAddress"]
         XCTAssertTrue(mcp.waitForExistence(timeout: 10), "the MCP address in the account")
@@ -767,6 +770,7 @@ final class HermeshUITests: XCTestCase {
         end.name = "account end"
         end.lifetime = .keepAlways
         add(end)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         tap("close")
     }
 
