@@ -1,11 +1,11 @@
 {
   "nav": {
-    "newThread": "新建会话",
+    "newThread": "新会话",
     "threads": "原生会话",
     "newIn": "在 {{project}} 里新建会话"
   },
   "launch": {
-    "title": "新建会话",
+    "title": "新会话",
     "subtitle": "选择目标执行环境、代码库工作区、供应商模型与权限边界。",
     "machine": "执行环境",
     "online": "在线",
