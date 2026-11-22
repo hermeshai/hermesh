@@ -2,6 +2,7 @@ import { app, net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { useSystemWords } from "../shared/i18n";
+import { daemonInfo, initDaemonControl, startBackgroundService, stopBackgroundService } from "./daemon";
 import { forward, forwardedCalls, openUpstream } from "./gateway";
 import { registerIPC } from "./ipc";
 import { chooseLanguage } from "./language";
@@ -83,6 +84,7 @@ app.whenReady().then(async () => {
   platform.registerLinks();
   serve();
   registerIPC();
+  initDaemonControl(() => started);
   platform.registerDaemon();
   setAppMenu();
   watch();
@@ -102,4 +104,13 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {});
 
 // For end-to-end tests (evaluated in the main process by Playwright).
-Object.assign(globalThis, { hermeshTest: { openUpstream, forwardedCalls, mainWindow, notifications: () => posted, tray: trayState } });
+Object.assign(globalThis, {
+  hermeshTest: {
+    openUpstream,
+    forwardedCalls,
+    mainWindow,
+    notifications: () => posted,
+    tray: trayState,
+    daemon: () => ({ info: daemonInfo(), start: startBackgroundService, stop: stopBackgroundService }),
+  },
+});

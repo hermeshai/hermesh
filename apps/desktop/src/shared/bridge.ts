@@ -1,3 +1,4 @@
+import type { DaemonInfo } from "./daemon";
 import type { ChatGptSignIn, ConnectorSignIn } from "./herSignin";
 import type { Language, LanguageChoice } from "./i18n";
 import type { UpdateInfo } from "./update";
@@ -25,17 +26,19 @@ export type Command =
  * the owner (pairing requests included) and run; a downloaded update.
  */
 export type TrayView = {
-  state: "ok" | "down" | "setup" | "daemon";
+  state: "ok" | "down" | "setup" | "daemon" | "stopped" | "starting" | "stopping";
   online: number;
   attention: number;
   running: number;
   update: string;
   /** The device that sees and operates this Mac's screen now (Computer Control), "" when none does. */
   control: string;
+  /** True when the app can start and stop the background service itself. */
+  manageable: boolean;
 };
 
-/** The panel's buttons: the first session that needs the owner, the first that runs, the main window, settings, quit, check for updates, restart to update, and ending Computer Control. */
-export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install" | "stopControl";
+/** The panel's buttons: the first session that needs the owner, the first that runs, the main window, settings, quit, restart to update, ending Computer Control, and starting/stopping the background service. */
+export type TrayAction = "attention" | "running" | "open" | "settings" | "quit" | "install" | "stopControl" | "startDaemon" | "stopDaemon";
 
 /** Fixed commands the page may ask to run in Terminal (by key, never by text). */
 export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
@@ -138,6 +141,13 @@ export type Bridge = {
   setLoginItem(on: boolean): Promise<LoginItem>;
   /** hermeshd's background service waits for the person to allow it in System Settings › Login Items. */
   daemonNeedsApproval(): Promise<boolean>;
+  /** Current state of the background service and whether the app manages it. */
+  daemonState(): Promise<DaemonInfo>;
+  onDaemonState(cb: (d: DaemonInfo) => void): () => void;
+  /** Starts the background service (when stopped). */
+  startDaemon(): Promise<void>;
+  /** Stops the background service after confirming its impact with the user; true when stopped. */
+  stopDaemon(): Promise<boolean>;
   /** Opens System Settings › Login Items. */
   openLoginItems(): void;
   /** Opens Activity Monitor (this Mac out of processes: the person finds what holds them). */
@@ -183,6 +193,8 @@ export type Preferences = {
   menuBadge: boolean;
   /** The app's language; a change takes effect when the app next starts. */
   language: LanguageChoice;
+  /** Keep the background service running after quitting the app. */
+  keepDaemonOnQuit: boolean;
 };
 
 /** needsApproval: macOS waits for the person to allow it in System Settings › Login Items. */

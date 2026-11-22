@@ -3,7 +3,14 @@
     "connecting": "Connecting to the background service…",
     "needsApproval": "Allow Hermesh’s background service in System Settings › Login Items so it can run.",
     "openLoginItems": "Open Login Items Settings",
-    "noResponse": "Hermesh’s background service isn’t responding. It usually starts automatically; if this continues, reopen Hermesh."
+    "noResponse": "Hermesh’s background service isn’t responding. It usually starts automatically; if this continues, reopen Hermesh.",
+    "stopped": "Background service is stopped",
+    "stoppedDesc": "Start it to view tasks, use Her, and let your other devices connect to this Mac.",
+    "stoppedDesc_win": "Start it to view tasks, use Her, and let your other devices connect to this PC.",
+    "stoppedDesc_linux": "Start it to view tasks, use Her, and let your other devices connect to this computer.",
+    "start": "Start Background Service",
+    "starting": "Starting the background service…",
+    "stopping": "Stopping the background service…"
   },
   "window": {
     "showSidebar": "Expand Sidebar",
@@ -133,10 +140,14 @@
     "settings": "Settings",
     "settingsTitle": "Settings…",
     "quit": "Quit Hermesh",
+    "startService": "Start Background Service",
     "chip": {
       "ok": "Connected",
       "down": "Reconnecting",
       "setup": "Not set up",
+      "stopped": "Stopped",
+      "starting": "Starting",
+      "stopping": "Stopping",
       "daemon": "Not running"
     },
     "online_one": "Your agents can use {{count}} machine",
@@ -144,6 +155,11 @@
     "noneOnline": "No machines online yet",
     "down": "Agents can’t use your machines for now",
     "setup": "Open Hermesh to finish setting up",
+    "stopped": "Background service is stopped; other devices can’t reach this Mac",
+    "stopped_win": "Background service is stopped; other devices can’t reach this PC",
+    "stopped_linux": "Background service is stopped; other devices can’t reach this computer",
+    "starting": "Starting the background service…",
+    "stopping": "Stopping the background service…",
     "daemon": "The background service isn’t responding"
   },
   "health": {
