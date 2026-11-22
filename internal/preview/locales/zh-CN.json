@@ -41,6 +41,8 @@
   "2006-01-02": "2006年1月2日",
   "Also sees other agents’ tasks in these projects": "还能看到这些项目里其他 agent 的任务",
   "Tasks at once: up to %d": "最多同时运行 %d 个任务",
+  "Autonomy limit: %s": "权限上限：%s",
+  "changes files and runs routine checks without asking": "改文件和运行常规检查不问，其余操作前先问",
   "Connects through %s, which holds its key": "通过 %s 连接，密钥由它保管",
   "Re-issue the grant of “%s”": "重新签发“%s”的授权",
   "It keeps the same access, now signed by this computer.": "权限不变，改由这台电脑签发。",

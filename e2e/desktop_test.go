@@ -79,12 +79,12 @@ type freshOwner struct {
 // windowsSpecs are the specs that run on Windows too (docs/windows.md §14);
 // the others are the Mac's (its menu bar, Touch ID, moving to
 // Applications, the process limit).
-var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true}
+var windowsSpecs = map[string]bool{"windows": true, "shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true, "thread-v2": true}
 
 // linuxSpecs are the specs that run on Linux too (docs/linux.md §7.1), under
 // a display such as Xvfb's and an init that reaps orphans (docker --init).
 var linuxSpecs = map[string]bool{"shell": true, "motion": true, "search": true, "overview": true, "sheets": true, "settings": true, "session": true, "sessionlist": true,
-	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true}
+	"conversation": true, "model-catalogs": true, "onboarding": true, "language": true, "menus": true, "frame": true, "health": true, "team": true, "thread-v2": true}
 
 // These specs read back what they copied. The clipboard is the whole
 // computer's, so they run one at a time, before the specs that run side by
@@ -484,7 +484,7 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	codex := filepath.Join(t.TempDir(), "codex")
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
-	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro"}
+	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro", "HERMESH_INCLUDE_SCRIPTED=1"}
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}

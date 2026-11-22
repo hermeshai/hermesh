@@ -245,3 +245,32 @@ func TestWords(t *testing.T) {
 		t.Fatalf("in Chinese: %+v %v", cs, err)
 	}
 }
+
+func TestGrantRuntimeModeCeiling(t *testing.T) {
+	pub := spki(t)
+	h := Hints{MachineNames: map[string]string{"m_1": "vps-1"}}
+	g := &identityv1.Grant{
+		OwnerId:         "o_x",
+		GrantId:         "g_1",
+		Version:         1,
+		ClientLabel:     "bot",
+		ClientPublicKey: pub,
+		ProjectIds:      []string{"app"},
+		MachineIds:      []string{"m_1"},
+		Agents:          []string{"claude"},
+		MaxRuntimeMode:  identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS,
+	}
+	cs, err := Cards([]*localv1.SigningRequest{request(t, g)}, h, "en")
+	if err != nil || !slices.Contains(cs[0].Lines, "Autonomy limit: changes files without asking, asks before other commands") {
+		t.Fatalf("auto_edits grant card: %+v %v", cs, err)
+	}
+	zhCards, err := Cards([]*localv1.SigningRequest{request(t, g)}, h, "zh-CN")
+	if err != nil || !slices.Contains(zhCards[0].Lines, "权限上限：改文件不问，运行其他命令前先问") {
+		t.Fatalf("zh-CN auto_edits grant card: %+v %v", zhCards, err)
+	}
+	bad := request(t, &identityv1.Grant{OwnerId: "o_x", ClientLabel: "bot", ClientPublicKey: pub, MaxRuntimeMode: identityv1.RuntimeMode(99)})
+	var refused *Refused
+	if _, err := Cards([]*localv1.SigningRequest{bad}, h, "en"); !errors.As(err, &refused) {
+		t.Fatalf("unknown runtime mode must be refused, got: %v", err)
+	}
+}

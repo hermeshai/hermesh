@@ -7,6 +7,7 @@ import enMain from "../locales/en/main.json" with { type: "json" };
 import enOverview from "../locales/en/overview.json" with { type: "json" };
 import enSession from "../locales/en/session.json" with { type: "json" };
 import enSettings from "../locales/en/settings.json" with { type: "json" };
+import enThread from "../locales/en/thread.json" with { type: "json" };
 import enUpdates from "../locales/en/updates.json" with { type: "json" };
 import zhUpdates from "../locales/zh-CN/updates.json" with { type: "json" };
 import enSheets from "../locales/en/sheets.json" with { type: "json" };
@@ -19,6 +20,7 @@ import zhOverview from "../locales/zh-CN/overview.json" with { type: "json" };
 import zhSession from "../locales/zh-CN/session.json" with { type: "json" };
 import zhSettings from "../locales/zh-CN/settings.json" with { type: "json" };
 import zhSheets from "../locales/zh-CN/sheets.json" with { type: "json" };
+import zhThread from "../locales/zh-CN/thread.json" with { type: "json" };
 import { systemWords } from "./words";
 
 // The desktop app's text, by namespace: main (the main process: menus,
@@ -26,8 +28,8 @@ import { systemWords } from "./words";
 // part of the app. English holds every key; zh-CN translates them.
 
 export const resources = {
-  en: { main: enMain, common: enCommon, firstrun: enFirstrun, her: enHer, overview: enOverview, session: enSession, settings: enSettings, sheets: enSheets, updates: enUpdates, computer: enComputer },
-  "zh-CN": { main: zhMain, common: zhCommon, firstrun: zhFirstrun, her: zhHer, overview: zhOverview, session: zhSession, settings: zhSettings, sheets: zhSheets, updates: zhUpdates, computer: zhComputer },
+  en: { main: enMain, common: enCommon, firstrun: enFirstrun, her: enHer, overview: enOverview, session: enSession, settings: enSettings, sheets: enSheets, updates: enUpdates, computer: enComputer, thread: enThread },
+  "zh-CN": { main: zhMain, common: zhCommon, firstrun: zhFirstrun, her: zhHer, overview: zhOverview, session: zhSession, settings: zhSettings, sheets: zhSheets, updates: zhUpdates, computer: zhComputer, thread: zhThread },
 } satisfies Record<Language, Record<string, object>>;
 
 for (const lng of languages) {

@@ -7,7 +7,8 @@
     "./her": "./src/gen/hermesh/her/v1/her_pb.ts",
     "./session": "./src/gen/hermesh/session/v1/session_pb.ts",
     "./identity": "./src/gen/hermesh/identity/v1/identity_pb.ts",
-    "./machine": "./src/gen/hermesh/machine/v1/machine_pb.ts"
+    "./machine": "./src/gen/hermesh/machine/v1/machine_pb.ts",
+    "./thread": "./src/gen/hermesh/thread/v2/thread_pb.ts"
   },
   "dependencies": {
     "@bufbuild/protobuf": "2.16.0"

@@ -1,0 +1,228 @@
+{
+  "providers": {
+    "claude": {
+      "displayName": "Claude Code",
+      "defaultModel": "claude-sonnet-4-6",
+      "minVersion": "2.0.0",
+      "models": [
+        {
+          "slug": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "shortName": "Opus 4.7",
+          "badge": "new",
+          "isDefault": false,
+          "options": ["claude_effort_max", "claude_thinking", "claude_fast"]
+        },
+        {
+          "slug": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "shortName": "Sonnet 4.6",
+          "isDefault": true,
+          "options": ["claude_effort", "claude_thinking", "claude_fast"]
+        },
+        {
+          "slug": "claude-haiku-4-5",
+          "name": "Claude Haiku 4.5",
+          "shortName": "Haiku 4.5",
+          "options": ["claude_thinking"]
+        }
+      ]
+    },
+    "codex": {
+      "displayName": "Codex",
+      "defaultModel": "gpt-5.4",
+      "minVersion": "0.100.0",
+      "models": [
+        {
+          "slug": "gpt-5.4",
+          "name": "GPT-5.4",
+          "shortName": "GPT-5.4",
+          "badge": "new",
+          "isDefault": true,
+          "options": ["codex_effort", "codex_fast"]
+        },
+        {
+          "slug": "gpt-5.3-codex",
+          "name": "GPT-5.3 Codex",
+          "shortName": "5.3 Codex",
+          "options": ["codex_effort", "codex_fast"]
+        },
+        {
+          "slug": "gpt-5.4-mini",
+          "name": "GPT-5.4 Mini",
+          "shortName": "5.4 Mini",
+          "options": ["codex_effort"]
+        }
+      ]
+    },
+    "gemini": {
+      "displayName": "Gemini CLI",
+      "defaultModel": "gemini-3-pro",
+      "models": [
+        {
+          "slug": "gemini-3-pro",
+          "name": "Gemini 3 Pro",
+          "shortName": "Gemini 3 Pro",
+          "isDefault": true,
+          "options": ["acp_thought"]
+        },
+        {
+          "slug": "gemini-3-flash",
+          "name": "Gemini 3 Flash",
+          "shortName": "Gemini 3 Flash",
+          "options": ["acp_thought"]
+        }
+      ]
+    },
+    "antigravity": {
+      "displayName": "Antigravity",
+      "defaultModel": "gemini-4-carbon",
+      "models": [
+        {
+          "slug": "gemini-4-carbon",
+          "name": "Gemini 4 Carbon",
+          "shortName": "Carbon",
+          "isDefault": true,
+          "options": ["acp_thought"]
+        }
+      ]
+    },
+    "cursor": {
+      "displayName": "Cursor",
+      "defaultModel": "auto",
+      "models": [
+        {
+          "slug": "auto",
+          "name": "Auto",
+          "shortName": "Auto",
+          "isDefault": true,
+          "options": ["codex_fast"]
+        },
+        {
+          "slug": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "shortName": "Sonnet 4.6",
+          "options": ["acp_thought", "codex_fast"]
+        }
+      ]
+    },
+    "opencode": {
+      "displayName": "OpenCode",
+      "defaultModel": "anthropic/claude-sonnet-4-6",
+      "models": [
+        {
+          "slug": "anthropic/claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "shortName": "Sonnet 4.6",
+          "isDefault": true,
+          "options": ["acp_thought"]
+        }
+      ]
+    },
+    "her": {
+      "displayName": "Her",
+      "defaultModel": "her-default",
+      "models": [
+        {
+          "slug": "her-default",
+          "name": "Her Personal Assistant",
+          "shortName": "Her",
+          "isDefault": true,
+          "options": []
+        }
+      ]
+    },
+    "scripted": {
+      "displayName": "Scripted Agent",
+      "defaultModel": "scripted-pro",
+      "models": [
+        {
+          "slug": "scripted-pro",
+          "name": "Scripted Pro",
+          "shortName": "Scripted Pro",
+          "isDefault": true,
+          "options": ["claude_effort", "codex_fast", "claude_thinking"]
+        },
+        {
+          "slug": "scripted-fast",
+          "name": "Scripted Fast",
+          "shortName": "Scripted Fast",
+          "options": ["claude_effort"]
+        }
+      ]
+    }
+  },
+  "optionTemplates": {
+    "claude_effort": {
+      "id": "effort",
+      "label": "Reasoning",
+      "role": "reasoning",
+      "type": "select",
+      "default": "medium",
+      "choices": [
+        { "id": "low", "label": "Low", "description": "Fast responses with light reasoning" },
+        { "id": "medium", "label": "Medium", "description": "Balanced speed and depth", "isDefault": true },
+        { "id": "high", "label": "High", "description": "Extended thinking for complex tasks" }
+      ]
+    },
+    "claude_effort_max": {
+      "id": "effort",
+      "label": "Reasoning",
+      "role": "reasoning",
+      "type": "select",
+      "default": "high",
+      "choices": [
+        { "id": "low", "label": "Low", "description": "Quick exploration" },
+        { "id": "medium", "label": "Medium", "description": "Balanced reasoning" },
+        { "id": "high", "label": "High", "description": "Deep architectural reasoning", "isDefault": true },
+        { "id": "max", "label": "Max", "description": "Maximum reasoning budget" }
+      ]
+    },
+    "claude_thinking": {
+      "id": "thinking",
+      "label": "Extended Thinking",
+      "description": "Stream chain-of-thought reasoning blocks",
+      "type": "boolean",
+      "defaultBool": true
+    },
+    "claude_fast": {
+      "id": "fast_mode",
+      "label": "Fast Mode",
+      "description": "Prioritize low-latency token generation",
+      "type": "boolean",
+      "defaultBool": false
+    },
+    "codex_effort": {
+      "id": "effort",
+      "label": "Reasoning Effort",
+      "role": "reasoning",
+      "type": "select",
+      "default": "medium",
+      "choices": [
+        { "id": "low", "label": "Low", "description": "Fastest coding turns" },
+        { "id": "medium", "label": "Medium", "description": "Standard reasoning effort", "isDefault": true },
+        { "id": "high", "label": "High", "description": "Deep multi-file reasoning" },
+        { "id": "xhigh", "label": "Extra High", "description": "Exhaustive verification" }
+      ]
+    },
+    "codex_fast": {
+      "id": "fast_mode",
+      "label": "Priority Tier",
+      "description": "Use fast service tier when available",
+      "type": "boolean",
+      "defaultBool": false
+    },
+    "acp_thought": {
+      "id": "thought_level",
+      "label": "Thinking Level",
+      "role": "reasoning",
+      "type": "select",
+      "default": "medium",
+      "choices": [
+        { "id": "low", "label": "Low" },
+        { "id": "medium", "label": "Medium", "isDefault": true },
+        { "id": "high", "label": "High" }
+      ]
+    }
+  }
+}

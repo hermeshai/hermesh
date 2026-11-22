@@ -15,6 +15,7 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
 	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
@@ -49,7 +50,9 @@ func (d *Device) ServeLocal(ctx context.Context, sockPath string) error {
 // its own listener and access control (the iPhone app's loopback server).
 func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
-	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))))
+	opts := connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))
+	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, opts))
+	mux.Handle(threadv2connect.NewThreadServiceHandler(&ownerThreadService{d: d}, opts))
 	return mux
 }
 

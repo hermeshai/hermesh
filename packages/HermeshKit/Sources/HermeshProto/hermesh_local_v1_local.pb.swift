@@ -1459,6 +1459,8 @@ public nonisolated struct Hermesh_Local_V1_GrantSpec: Sendable {
 
   public var maxConcurrentSessions: UInt32 = 0
 
+  public var maxRuntimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -6068,7 +6070,7 @@ nonisolated extension Hermesh_Local_V1_ApproveMachinePairingResponse: SwiftProto
 
 nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GrantSpec"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}ttl_days\0\u{3}max_concurrent_sessions\0\u{b}preset\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}label\0\u{3}machine_ids\0\u{3}project_ids\0\u{1}agents\0\u{4}\u{2}task_visibility\0\u{3}ttl_days\0\u{3}max_concurrent_sessions\0\u{3}max_runtime_mode\0\u{b}preset\0\u{c}\u{5}\u{1}")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6083,6 +6085,7 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
       case 6: try { try decoder.decodeSingularEnumField(value: &self.taskVisibility) }()
       case 7: try { try decoder.decodeSingularUInt32Field(value: &self.ttlDays) }()
       case 8: try { try decoder.decodeSingularUInt32Field(value: &self.maxConcurrentSessions) }()
+      case 9: try { try decoder.decodeSingularEnumField(value: &self.maxRuntimeMode) }()
       default: break
       }
     }
@@ -6110,6 +6113,9 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
     if self.maxConcurrentSessions != 0 {
       try visitor.visitSingularUInt32Field(value: self.maxConcurrentSessions, fieldNumber: 8)
     }
+    if self.maxRuntimeMode != .unspecified {
+      try visitor.visitSingularEnumField(value: self.maxRuntimeMode, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -6121,6 +6127,7 @@ nonisolated extension Hermesh_Local_V1_GrantSpec: SwiftProtobuf.Message, SwiftPr
     if lhs.taskVisibility != rhs.taskVisibility {return false}
     if lhs.ttlDays != rhs.ttlDays {return false}
     if lhs.maxConcurrentSessions != rhs.maxConcurrentSessions {return false}
+    if lhs.maxRuntimeMode != rhs.maxRuntimeMode {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
