@@ -177,6 +177,9 @@ func card(r *localv1.SigningRequest, h Hints, reissue bool, w words) (Card, erro
 		if _, ok := identityv1.TaskVisibility_name[int32(m.TaskVisibility)]; !ok {
 			return Card{}, &Refused{r.Type, "an unknown visibility"}
 		}
+		if _, ok := identityv1.RuntimeMode_name[int32(m.MaxRuntimeMode)]; !ok {
+			return Card{}, &Refused{r.Type, "an unknown approval mode"}
+		}
 		return grantCard(m, h, reissue, r.Confirmed, w), nil
 	case identity.MessageType(&identityv1.AdminCommand{}):
 		m := &identityv1.AdminCommand{}
@@ -306,6 +309,9 @@ func grantCard(g *identityv1.Grant, h Hints, reissue, confirmed bool, w words) C
 	if g.MaxConcurrentSessions > 0 {
 		lines = append(lines, w.f("Tasks at once: up to %d", g.MaxConcurrentSessions))
 	}
+	if mode := runtimeModeText(g.MaxRuntimeMode, w); mode != "" {
+		lines = append(lines, w.f("Autonomy limit: %s", mode))
+	}
 	if g.Custodian != "" {
 		lines = append(lines, w.f("Connects through %s, which holds its key", g.Custodian))
 	}
@@ -376,6 +382,24 @@ func admin(c *identityv1.AdminCommand, h Hints, typ string, w words) (Card, erro
 		d := x.SetAgentDefaults
 		return Card{Title: w.f("Set the model %s runs with on %s", agentTitle(d.Agent), target),
 			Lines: []string{w.f("Model: %s", cmpOr(d.Model, w.f("its own"))), w.f("Reasoning effort: %s", cmpOr(d.Effort, w.f("its own"))), w.f("Speed: %s", d.Speed.String())}}, nil
+	case *identityv1.AdminCommand_CreateFolder:
+		f := x.CreateFolder
+		lines := []string{w.f("In: %s", cmpOr(f.Parent, "~"))}
+		if f.GitInit {
+			lines = append(lines, w.f("A git repository with one empty commit"))
+		}
+		return Card{Title: w.f("Create folder “%s” on %s", f.Name, target), Lines: lines}, nil
+	case *identityv1.AdminCommand_SetMaxRuntimeMode:
+		m := x.SetMaxRuntimeMode.Mode
+		if m == identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
+			return Card{Title: w.f("Lift the permission limit of %s", target), Why: w.f("Its threads may run as their grants and the owner allow.")}, nil
+		}
+		text := runtimeModeText(m, w)
+		if text == "" {
+			return Card{}, &Refused{typ, "an unknown permission mode"}
+		}
+		return Card{Title: w.f("Limit what threads may do on %s", target), Lines: []string{w.f("At most: %s", text)},
+			Why: w.f("Whoever starts them, its threads ask before anything beyond this.")}, nil
 	case *identityv1.AdminCommand_SetHer:
 		if x.SetHer.Enabled && x.SetHer.Erase {
 			return Card{}, &Refused{typ, "Her turned on with her data erased"}
@@ -500,4 +524,18 @@ func cmpOr(a, b string) string {
 		return a
 	}
 	return b
+}
+
+func runtimeModeText(m identityv1.RuntimeMode, w words) string {
+	switch m {
+	case identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED:
+		return w.f("asks before each file change and command")
+	case identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS:
+		return w.f("changes files without asking, asks before other commands")
+	case identityv1.RuntimeMode_RUNTIME_MODE_AUTO:
+		return w.f("changes files and runs routine checks without asking")
+	case identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS:
+		return w.f("full access, asks before nothing")
+	}
+	return ""
 }

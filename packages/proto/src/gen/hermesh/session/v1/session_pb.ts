@@ -2656,8 +2656,8 @@ export const SessionService: GenService<{
     output: typeof SessionSchema;
   },
   /**
-   * AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
-   * to AnswerQuestion on older hosts.
+   * AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
+   * and applies the same authorization and validation rules as AnswerQuestion.
    *
    * @generated from rpc hermesh.session.v1.SessionService.AnswerLocalQuestion
    */
@@ -2667,8 +2667,8 @@ export const SessionService: GenService<{
     output: typeof SessionSchema;
   },
   /**
-   * CheckLocalCodingRecipient checks the destination before Her forwards
-   * content. The subsequent write still checks the authenticated Her grant.
+   * CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
+   * Her clients after coding-specific consent was removed.
    *
    * @generated from rpc hermesh.session.v1.SessionService.CheckLocalCodingRecipient
    */
@@ -2678,7 +2678,8 @@ export const SessionService: GenService<{
     output: typeof CheckLocalCodingRecipientResponseSchema;
   },
   /**
-   * CodingConsent reads or changes an execution host's coding consent.
+   * CodingConsent is retained for wire compatibility with v0.1.7 owner clients
+   * after coding-specific consent was removed.
    *
    * @generated from rpc hermesh.session.v1.SessionService.CodingConsent
    */

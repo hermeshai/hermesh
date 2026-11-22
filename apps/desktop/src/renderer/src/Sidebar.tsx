@@ -4,11 +4,12 @@ import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
   bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
+  SCRATCH_PROJECT, isThreadId, threadAsSession,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
-import { local } from "./api";
+import { local, threads as threadApi } from "./api";
 import { AppMenuButton } from "./MainWindow";
 import { Icon } from "./icons";
 import { setSidebar } from "./layout";
@@ -42,14 +43,17 @@ export function machineName(st: Store, id: string): string {
   return st.machines.find((m) => m.machineId === id)?.machineName ?? id;
 }
 
+/** Archives or unarchives a v2 thread (UpdateThreadConfig). */
+const setThreadArchived = (id: string, archived: boolean) => threadApi.updateThreadConfig({ threadId: id, hasArchived: true, archived });
+
 export function archive(st: Store, s: Session) {
-  st.run(() => local.archiveSession({ sessionId: s.sessionId })).then((ok) => {
+  st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, true) : local.archiveSession({ sessionId: s.sessionId }))).then((ok) => {
     if (ok) st.show(i18n.t("common:sidebar.archived", { title: displayTitle(s) }), () => unarchive(st, s));
   });
 }
 
 export function unarchive(st: Store, s: Session) {
-  st.run(() => local.unarchiveSession({ sessionId: s.sessionId }));
+  st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, false) : local.unarchiveSession({ sessionId: s.sessionId })));
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
@@ -65,7 +69,7 @@ export function confirmDelete(st: Store, s: Session) {
       title: i18n.t("common:sessionMenu.deleteTitle", { title }),
       message,
       button: i18n.t("common:sessionMenu.deleteButton"),
-      run: () => local.deleteSession({ sessionId: s.sessionId }),
+      run: () => (isThreadId(s.sessionId) ? threadApi.deleteThread({ threadId: s.sessionId }) : local.deleteSession({ sessionId: s.sessionId })),
       done: i18n.t("common:sessionMenu.deleted", { title }),
     },
   });
@@ -75,13 +79,14 @@ export function confirmDelete(st: Store, s: Session) {
  * The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. By status, the
  * running group stays while nothing runs, empty, so it is always there to look at (docs/her-team.md §16).
  */
-export function listSections(st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients">, now: Date): SessionSection[] {
+export function listSections(st: Pick<Store, "sessions" | "threads" | "view" | "archived" | "machines" | "clients">, now: Date): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
-  return sessionSections(st.sessions, st.view, { archived: st.archived, now, machines, her: herClients(st), alwaysActive: true });
+  const rows = st.threads.length ? [...st.sessions, ...st.threads.map(threadAsSession)] : st.sessions;
+  return sessionSections(rows, st.view, { archived: st.archived, now, machines, her: herClients(st), alwaysActive: true });
 }
 
 export function sectionTitle(st: Store, sec: SessionSection): string {
-  if (sec.grouping === "project") return sec.key;
+  if (sec.grouping === "project") return sec.key === SCRATCH_PROJECT ? i18n.t("thread:launch.scratch") : sec.key;
   if (sec.grouping === "agent") return codingAgentTitle(sec.key);
   if (sec.grouping === "machine") return st.machines.find((m) => m.machineId === sec.key)?.local ? i18n.t("overview:thisMac") : machineName(st, sec.key);
   if (sec.grouping === "sender") return sec.key === "owner" ? i18n.t("common:sidebar.sentByYou") : i18n.t("common:sidebar.sentBy", { name: senderName(st, sec.key) });
@@ -105,6 +110,7 @@ export function Sidebar() {
       </div>
       {/* Her and the overview, then every session, as the view lays them out (docs/her-team.md §16). */}
       <nav className="side-nav">
+        <NewSessionItem />
         {!st.status?.machineOnly && <HerItem />}
         <OverviewItem now={now} />
       </nav>
@@ -162,6 +168,41 @@ function OverviewItem({ now }: { now: Date }) {
   );
 }
 
+/** New Session (⌘N), over Her: the composer, on the machine and project last used (docs/thread-composer.md §4.6). */
+function NewSessionItem() {
+  const st = useStore();
+  const { t } = useTranslation("thread");
+  return (
+    <button className={`nav-i ${st.selection.kind === "newThread" ? "sel" : ""}`} data-testid="nav-new-thread" onClick={() => st.set({ selection: { kind: "newThread" } })}>
+      <Icon name="edit" />
+      <span>{t("nav.newThread")}</span>
+      <span className="kbd">{keys("CmdOrCtrl+N")}</span>
+    </button>
+  );
+}
+
+/**
+ * ＋ on a project's group: a new session in that project, on the machine of
+ * its latest session there (projects of one name may be on several machines;
+ * the composer can still change it).
+ */
+function NewInProject({ sec }: { sec: SessionSection }) {
+  const st = useStore();
+  const { t } = useTranslation("thread");
+  const latest = sec.sessions.reduce<Session | undefined>((a, b) => (!a || updatedDate(b) > updatedDate(a) ? b : a), undefined);
+  const name = sectionTitle(st, sec);
+  return (
+    <button
+      className="tb grp-add"
+      title={t("nav.newIn", { project: name })}
+      aria-label={t("nav.newIn", { project: name })}
+      onClick={() => st.set({ selection: { kind: "newThread", machineId: latest?.machineId, projectId: sec.key } })}
+    >
+      <Icon name="plus" />
+    </button>
+  );
+}
+
 /** A small ring that turns: something is at work. */
 export function Ring({ label }: { label: string }) {
   return (
@@ -178,8 +219,8 @@ export function Ring({ label }: { label: string }) {
 function Sessions({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { sessions, view, archived, machines, clients } = st;
-  const sections = useMemo(() => listSections({ sessions, view, archived, machines, clients }, now), [sessions, view, archived, machines, clients, now]);
+  const { sessions, threads, view, archived, machines, clients } = st;
+  const sections = useMemo(() => listSections({ sessions, threads, view, archived, machines, clients }, now), [sessions, threads, view, archived, machines, clients, now]);
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
   const list = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -203,20 +244,23 @@ function Sessions({ now }: { now: Date }) {
           const open = !st.collapsed.includes(id);
           return (
             <div key={id} role="group" aria-label={sectionTitle(st, sec)}>
-              <button
-                className={`grp-h ${open ? "" : "shut"}`}
-                aria-expanded={open}
-                onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
-              >
-                {sectionTitle(st, sec)}
-                <Icon name="caret" className="sm" />
-              </button>
+              <div className="grp-hrow">
+                <button
+                  className={`grp-h ${open ? "" : "shut"}`}
+                  aria-expanded={open}
+                  onClick={() => st.set({ collapsed: open ? [...st.collapsed, id] : st.collapsed.filter((c) => c !== id) })}
+                >
+                  {sectionTitle(st, sec)}
+                  <Icon name="caret" className="sm" />
+                </button>
+                {sec.grouping === "project" && <NewInProject sec={sec} />}
+              </div>
               {open && sec.sessions.length === 0 && <div className="side-none">{t("sidebar.noneNow")}</div>}
               {open && sec.sessions.map((s) => (
                 <SessionRow
                   key={s.sessionId}
                   s={s}
-                  sel={sel.kind === "session" && sel.id === s.sessionId}
+                  sel={(sel.kind === "session" || sel.kind === "thread") && sel.id === s.sessionId}
                   sender={senderName(st, s.createdBy)}
                   meta={view.metadata}
                   renaming={st.renaming === s.sessionId}
@@ -511,7 +555,8 @@ function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
     const st = store.current;
     st.set({ renaming: null });
     const title = value.trim();
-    if (keep && title && title !== displayTitle(s)) st.run(() => local.renameSession({ sessionId: s.sessionId, title }));
+    if (keep && title && title !== displayTitle(s))
+      st.run(() => (isThreadId(s.sessionId) ? threadApi.updateThreadConfig({ threadId: s.sessionId, title }) : local.renameSession({ sessionId: s.sessionId, title })));
   };
   return (
     <input

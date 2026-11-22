@@ -41,6 +41,8 @@
   "2006-01-02": "2006年1月2日",
   "Also sees other agents’ tasks in these projects": "还能看到这些项目里其他 agent 的任务",
   "Tasks at once: up to %d": "最多同时运行 %d 个任务",
+  "Autonomy limit: %s": "权限上限：%s",
+  "changes files and runs routine checks without asking": "改文件和运行常规检查不问，其余操作前先问",
   "Connects through %s, which holds its key": "通过 %s 连接，密钥由它保管",
   "Re-issue the grant of “%s”": "重新签发“%s”的授权",
   "It keeps the same access, now signed by this computer.": "权限不变，改由这台电脑签发。",
@@ -107,5 +109,14 @@
   "Release idle worktrees on %s automatically": "让%s自动释放空闲的工作目录",
   "Tasks’ worktrees idle for 7 days with no local changes are deleted there; their branches stay.": "那里空闲 7 天以上、没有本地改动的任务工作目录会被删除，分支保留。",
   "Stop releasing idle worktrees on %s": "让%s不再自动释放空闲的工作目录",
-  "Worktrees stay until released by hand.": "工作目录会一直保留，直到手动释放。"
+  "Worktrees stay until released by hand.": "工作目录会一直保留，直到手动释放。",
+  "In: %s": "位置：%s",
+  "A git repository with one empty commit": "一个 git 仓库，带一个空提交",
+  "Create folder “%s” on %s": "在%[2]s上新建文件夹“%[1]s”",
+  "Lift the permission limit of %s": "取消%s的权限上限",
+  "Its threads may run as their grants and the owner allow.": "它的会话按授权和你的设置运行。",
+  "Limit what threads may do on %s": "限制%s上会话的权限",
+  "At most: %s": "最多：%s",
+  "Whoever starts them, its threads ask before anything beyond this.": "无论谁发起，超出这个范围的操作都要先问。",
+  "an unknown permission mode": "未知的权限模式"
 }

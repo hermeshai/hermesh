@@ -23,6 +23,8 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -310,6 +312,9 @@ func (n *Machine) handler() http.Handler {
 	mux := http.NewServeMux()
 	opts := connect.WithHandlerOptions(connect.WithInterceptors(n.authInterceptor()), transport.NoCompression)
 	mux.Handle(sessionv1connect.NewSessionServiceHandler(&sessionService{n: n}, opts))
+	if n.threads != nil {
+		mux.Handle(threadv2connect.NewThreadServiceHandler(kernel.NewService(n.threads, n.threadPrincipal), opts))
+	}
 	mux.Handle(machinev1connect.NewMachineServiceHandler(&machineService{n: n}, opts))
 	mux.Handle(machinev1connect.NewMachineAdminServiceHandler(&adminService{n: n}, opts))
 	mux.Handle(herv1connect.NewHerServiceHandler(&herService{n: n}, opts))

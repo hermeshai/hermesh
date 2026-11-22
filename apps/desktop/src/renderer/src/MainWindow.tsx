@@ -7,6 +7,7 @@ import { Overview } from "./Overview";
 import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
 import { SessionPage } from "./SessionPage";
+import { ThreadPage } from "./thread/ThreadPage";
 import { SheetHost } from "./Sheets";
 import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
@@ -74,6 +75,16 @@ export function MainWindow() {
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
   }, [peeking, set]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+        e.preventDefault();
+        set({ selection: { kind: "newThread" } });
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [set]);
   const { sidebar } = layoutOf(st);
   // The search, keyed by what it was opened for; closed, it fades out as it was.
   const search = useLeaving(st.searching ? JSON.stringify(st.searchFor) : null);
@@ -85,7 +96,9 @@ export function MainWindow() {
       {/* Over the conversation, the sidebar goes again with a click beside it. */}
       {sidebar === "over" && <div className="peek-scrim" onClick={() => setSidebar(st, false)} />}
       <section className="content">
-        {session ? (
+        {st.selection.kind === "newThread" || st.selection.kind === "thread" ? (
+          <ThreadPage />
+        ) : session ? (
           <SessionPage s={session} />
         ) : (st.selection.kind === "her" || st.selection.kind === "progress") && !st.status?.machineOnly ? (
           <Suspense fallback={<div className="ctool drag" />}>

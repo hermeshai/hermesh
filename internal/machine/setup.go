@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/shellenv"
@@ -266,4 +267,74 @@ func (n *Machine) TestAgent(ctx context.Context, name string) (*machinev1.TestAg
 			}
 		}
 	}
+}
+
+// isRepoTop: path is the top level of a git repository now (its .git a
+// folder, or a worktree's .git file), read from the file system alone.
+func isRepoTop(path string) bool {
+	_, err := os.Stat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
+// CreateFolder makes a new empty folder for a project (a setting, the owner's
+// devices only): in a folder under the home folder, named by one plain name,
+// never over something there. With GitInit it becomes a git repository with
+// one empty commit, so sessions can take worktrees of it. It returns the new
+// folder as the person writes it ("~/code/app").
+func CreateFolder(ctx context.Context, c *identityv1.CreateFolder) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	parent := c.Parent
+	switch {
+	case parent == "" || parent == "~":
+		parent = home
+	case strings.HasPrefix(parent, "~/"):
+		parent = filepath.Join(home, parent[2:])
+	case !filepath.IsAbs(parent):
+		return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a full path", c.Parent))
+	}
+	name := c.Name
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, ".") || strings.ContainsAny(name, `/\`) || len(name) > 255 {
+		return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is not a folder name (one name, not starting with a dot)", name))
+	}
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", err
+	}
+	realParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return "", connect.NewError(connect.CodeNotFound, fmt.Errorf("no folder %s", c.Parent))
+	}
+	if rel, err := filepath.Rel(realHome, realParent); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("folders are only made under the home folder"))
+	}
+	dir := filepath.Join(realParent, name)
+	if err := os.Mkdir(dir, 0o755); errors.Is(err, fs.ErrExist) {
+		return "", connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("%s is already there", name))
+	} else if err != nil {
+		return "", err
+	}
+	if c.GitInit {
+		if err := initRepo(ctx, dir); err != nil {
+			_ = os.RemoveAll(dir)
+			return "", fmt.Errorf("make it a git repository: %w", err)
+		}
+	}
+	return homePath(realHome, dir), nil
+}
+
+// initRepo makes dir a git repository with one empty commit, authored as the
+// machine's git user, or as Hermesh when it has none.
+func initRepo(ctx context.Context, dir string) error {
+	if _, err := git(ctx, dir, "init", "-q"); err != nil {
+		return err
+	}
+	args := []string{"commit", "-q", "--allow-empty", "-m", "Initial commit"}
+	if who, _ := git(ctx, dir, "config", "user.email"); strings.TrimSpace(who) == "" {
+		args = append([]string{"-c", "user.name=Hermesh", "-c", "user.email=hermesh@localhost"}, args...)
+	}
+	_, err := git(ctx, dir, args...)
+	return err
 }

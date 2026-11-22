@@ -102,6 +102,11 @@ func TestIPhone(t *testing.T) {
 		return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
 	})
 	go deliverToSimulator(t, spool, device)
+	// testThreadComposer: work-mac, a machine with the scripted agent for its threads and repositories in its
+	// home folder, and old-mac, from before threads, as the Mac's composer spec has them (otherMacThreads).
+	if only == "testThreadComposer" {
+		otherMacThreads(t, desktopFixture{owner: w})
+	}
 	var deletionOrigin string
 	if only == "testHostedAccountDeletion" {
 		deletionOrigin = iphoneHostedDeletion(t, w, device)

@@ -7,16 +7,24 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 )
 
-// In-process binary Protobuf FFI bridge for LocalService:
+// In-process binary Protobuf FFI bridge for LocalService & ThreadService:
 // Calls owner.Device.LocalHandler() directly in memory using Connect's native
 // binary Protobuf codecs (application/proto and application/connect+proto),
 // eliminating 127.0.0.1 loopback sockets, iOS TN2277 listener reclaim races,
 // HTTP/1.1 framing, and JSON/Base64 encoding overhead on every mobile RPC.
 
 const localServicePrefix = "/hermesh.local.v1.LocalService/"
+
+func procedurePath(method string) string {
+	if strings.HasPrefix(method, "/") {
+		return method
+	}
+	return localServicePrefix + method
+}
 
 type ffiFrame struct {
 	payload []byte
@@ -39,7 +47,7 @@ func (c *Core) InvokeUnary(method string, reqProto []byte, timeout time.Duration
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://inproc"+localServicePrefix+method, bytes.NewReader(reqProto))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://inproc"+procedurePath(method), bytes.NewReader(reqProto))
 	if err != nil {
 		return nil, "invalid_argument", err.Error()
 	}
@@ -80,7 +88,7 @@ func (c *Core) OpenStream(method string, reqProto []byte) int64 {
 	binary.BigEndian.PutUint32(envelope[1:5], uint32(len(reqProto)))
 	copy(envelope[5:], reqProto)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://inproc"+localServicePrefix+method, bytes.NewReader(envelope))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://inproc"+procedurePath(method), bytes.NewReader(envelope))
 	if err != nil {
 		s.push(ffiFrame{errCode: "invalid_argument", errMsg: err.Error()})
 		close(s.frames)

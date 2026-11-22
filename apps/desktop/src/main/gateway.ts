@@ -5,7 +5,10 @@ import { Readable } from "node:stream";
 // app://hermesh/api/<service>/<method> are forwarded to the daemon's Unix
 // socket. Signing requests are the signer's alone, so those two methods are
 // never forwarded.
-const service = "hermesh.local.v1.LocalService";
+const services = new Set([
+  "hermesh.local.v1.LocalService",
+  "hermesh.thread.v2.ThreadService",
+]);
 const blocked = new Set(["WatchSigningRequests", "CompleteSigningRequest"]);
 const forwardedHeaders = ["content-type", "connect-protocol-version", "connect-timeout-ms", "connect-content-encoding", "connect-accept-encoding"];
 
@@ -29,7 +32,7 @@ export const forwardedCalls = () => Object.fromEntries(calls);
 
 export function allowed(apiPath: string): boolean {
   const m = /^\/([\w.]+)\/(\w+)$/.exec(apiPath);
-  return m !== null && m[1] === service && !blocked.has(m[2]);
+  return m !== null && services.has(m[1]!) && !blocked.has(m[2]!);
 }
 
 export async function forward(req: Request, apiPath: string, socket: string, cors: Record<string, string>): Promise<Response> {

@@ -532,6 +532,9 @@ struct AddProjectSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let machineID: String
+    /// Opened from a new session (docs/thread-composer.md §4.2): that session takes the project, one
+    /// already there included, once it is added.
+    var forSession = false
     /// The folder chosen, as the person writes it ("~/code/app").
     @State private var path = ""
     /// What its machine said of it: nil while asked, or from a machine from
@@ -569,7 +572,7 @@ struct AddProjectSheet: View {
     /// Whether the folder is a git repository; nil when its machine couldn't say.
     private var isRepo: Bool? { folder.map(\.repo) ?? (repos?.contains { $0.path == path } == true ? true : nil) }
     private var canAdd: Bool {
-        !path.isEmpty && existing == nil && (machine?.online ?? false)
+        !path.isEmpty && (existing == nil || forSession) && (machine?.online ?? false)
     }
 
     var body: some View {
@@ -657,7 +660,11 @@ struct AddProjectSheet: View {
             Text("Folder")
         } footer: {
             if let existing {
-                Text("“\(existing.projectID)” is already a project here.")
+                if forSession {
+                    Text("Already the project “\(existing.projectID)”: the new session uses it.")
+                } else {
+                    Text("“\(existing.projectID)” is already a project here.")
+                }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     let base = projectID(folderName(path))
@@ -667,9 +674,19 @@ struct AddProjectSheet: View {
                         Text("Agents call it “\(name)”.")
                     }
                     if isRepo == false { Text("Not a git repository: agents change the files in this folder directly.") }
+                    reach
                 }
             }
         }
+    }
+
+    /// Which grants could use the project once it's added, without anyone signing anything (§3.2): said, not stopped.
+    @ViewBuilder private var reach: some View {
+        let reaching = grantsReaching(model.clients, machineID: machineID, projectID: name)
+        let all = reaching.filter(\.all).map(\.client.label)
+        let named = reaching.filter { !$0.all }.map(\.client.label)
+        if !all.isEmpty { Text("\(all.formatted()) may use every project on this machine, so this one too once it’s added.").accessibilityIdentifier("add-project-reach") }
+        if !named.isEmpty { Text("\(named.formatted()) may use a project called “\(name)”, so this folder too once it’s added.").accessibilityIdentifier("add-project-reach") }
     }
 
     private var workspace: some View {
@@ -733,14 +750,19 @@ struct AddProjectSheet: View {
         Task {
             defer { busy = false }
             do {
-                var r = Hermesh_Local_V1_AddProjectRequest()
-                r.machineID = machineID
-                r.projectID = name
-                r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
-                r.workspace = inPlace ? .inPlace : .worktree
-                r.defaultBaseRef = inPlace ? "" : baseRef
-                try await model.addProject(r)
-                model.show(String(localized: "Added project “\(name)”"))
+                if let existing, forSession {
+                    model.addedProject = AddedProject(machineID: machineID, projectID: existing.projectID, worktree: existing.workspace == .worktree)
+                } else {
+                    var r = Hermesh_Local_V1_AddProjectRequest()
+                    r.machineID = machineID
+                    r.projectID = name
+                    r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
+                    r.workspace = inPlace ? .inPlace : .worktree
+                    r.defaultBaseRef = inPlace ? "" : baseRef
+                    try await model.addProject(r)
+                    model.show(String(localized: "Added project “\(name)”"))
+                    if forSession { model.addedProject = AddedProject(machineID: machineID, projectID: name, worktree: !inPlace) }
+                }
                 dismiss()
             } catch {
                 model.report(error)

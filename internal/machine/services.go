@@ -16,6 +16,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -184,7 +185,7 @@ func (s *machineService) projects(ctx context.Context, p *Principal, base bool) 
 			continue
 		}
 		mp := &machinev1.Project{ProjectId: pr.ID, DefaultBaseRef: pr.DefaultBaseRef, Workspace: pr.Workspace,
-			Path: pr.Path, Description: pr.Description, ActiveSessions: active[pr.ID]}
+			Path: pr.Path, Description: pr.Description, ActiveSessions: active[pr.ID], Repo: isRepoTop(pr.Path)}
 		if base {
 			mp.Base = projectBase(ctx, pr)
 		}
@@ -218,6 +219,18 @@ func projectWorkspace(ctx context.Context, mode identityv1.Workspace, path strin
 	}
 	p, err := ValidateDir(path)
 	return identityv1.Workspace_WORKSPACE_IN_PLACE, p, err
+}
+
+// samePath: two project folders are the same folder (links resolved where
+// they still exist).
+func samePath(a, b string) bool {
+	if ra, err := filepath.EvalSymlinks(a); err == nil {
+		a = ra
+	}
+	if rb, err := filepath.EvalSymlinks(b); err == nil {
+		b = rb
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 type adminService struct{ n *Machine }
@@ -293,7 +306,7 @@ func (n *Machine) ApplyAdminCommand(ctx context.Context, signed *identityv1.Sign
 func (n *Machine) ApplySettings(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
-		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_SetWorkspacePolicy:
+		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_CreateFolder, *identityv1.AdminCommand_SetMaxRuntimeMode, *identityv1.AdminCommand_SetWorkspacePolicy:
 	default:
 		n.audit.Log(AuditRecord{Kind: "admin", Decision: "deny", Reason: "unsigned command that is not a setting"})
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name, agent defaults, storage) may be sent without a signature"))
@@ -343,6 +356,9 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		if !projectIDRE.MatchString(p.ProjectId) {
 			return "", connect.NewError(connect.CodeInvalidArgument, errors.New("project id must be lowercase letters, digits, '.', '_' or '-'"))
 		}
+		if p.ProjectId == kernel.ScratchProjectID {
+			return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("%q is the name of the machine's temporary workspace; choose another", kernel.ScratchProjectID))
+		}
 		if utf8.RuneCountInString(p.Description) > maxDescription {
 			return "", connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("the description is longer than %d characters", maxDescription))
 		}
@@ -360,9 +376,20 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		} else if base == "" {
 			base = "HEAD"
 		}
+		// Adding a project again with its own folder changes its settings (the
+		// apps do this); pointing an existing name at another folder would move
+		// every grant that names it there, so that takes a remove first.
+		if old, err := n.st.Project(p.ProjectId); err != nil {
+			return "", err
+		} else if old != nil && !samePath(old.Path, path) {
+			return "", connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("project %q is already the folder %s; remove it first to use another folder", p.ProjectId, old.Path))
+		}
 		defer n.sessions.changes().project(p.ProjectId)
 		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description)}); err != nil {
 			return "", err
+		}
+		if n.threads != nil {
+			_ = n.threads.SyncWorkspace(p.ProjectId, path, base, mode, strings.TrimSpace(p.Description), nil) // for every provider (docs/settings-environments.md D5)
 		}
 		if mode == identityv1.Workspace_WORKSPACE_IN_PLACE {
 			return "project " + p.ProjectId + " added (sessions work in place)", nil
@@ -370,6 +397,9 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		return "project " + p.ProjectId + " added (a worktree per session)", nil
 	case *identityv1.AdminCommand_RemoveProject:
 		defer n.sessions.changes().project(c.RemoveProject.ProjectId)
+		if n.threads != nil && c.RemoveProject.ProjectId != kernel.ScratchProjectID {
+			_ = n.threads.RemoveWorkspace(c.RemoveProject.ProjectId)
+		}
 		return "project removed", n.st.DeleteProject(c.RemoveProject.ProjectId)
 	case *identityv1.AdminCommand_SetName:
 		if err := n.SetName(c.SetName.Name); err != nil {
@@ -377,6 +407,18 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		}
 		n.kickStatus()
 		return "renamed to " + n.Name(), nil
+	case *identityv1.AdminCommand_CreateFolder:
+		path, err := CreateFolder(ctx, c.CreateFolder)
+		if err != nil {
+			return "", err
+		}
+		return "folder " + path + " created", nil
+	case *identityv1.AdminCommand_SetMaxRuntimeMode:
+		if err := n.setMaxRuntimeMode(c.SetMaxRuntimeMode.Mode); err != nil {
+			return "", err
+		}
+		n.kickStatus()
+		return "permission mode limited to " + c.SetMaxRuntimeMode.Mode.String(), nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		if err := n.setAgentDefaults(c.SetAgentDefaults); err != nil {
 			return "", connect.NewError(connect.CodeInvalidArgument, err)

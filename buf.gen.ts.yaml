@@ -13,3 +13,4 @@ inputs:
       - proto/hermesh/machine
       - proto/hermesh/screen
       - proto/hermesh/options
+      - proto/hermesh/thread

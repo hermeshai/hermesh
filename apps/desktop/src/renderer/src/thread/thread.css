@@ -1,0 +1,271 @@
+.th-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.th-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.th-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.th-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.th-item {
+  max-width: 780px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.th-item-user {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  align-self: flex-end;
+}
+
+.th-item-assistant {
+  background: rgba(128, 128, 128, 0.07);
+  border: 1px solid rgba(128, 128, 128, 0.16);
+}
+
+.th-item-step {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgba(128, 128, 128, 0.05);
+  border: 1px solid rgba(128, 128, 128, 0.14);
+}
+
+.th-item-plan {
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.th-divider {
+  max-width: 780px;
+  width: 100%;
+  margin: 2px auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  opacity: 0.72;
+  padding: 4px 8px;
+  border-left: 2px solid rgba(128, 128, 128, 0.35);
+}
+
+.th-composer-wrap {
+  padding: 10px 20px 16px;
+  max-width: 820px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.th-banner {
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.09);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.th-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.th-queue-strip {
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  background: rgba(128, 128, 128, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.th-queue-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.th-seg {
+  display: inline-flex;
+  border-radius: 7px;
+  border: 1px solid rgba(128, 128, 128, 0.24);
+  overflow: hidden;
+}
+
+.th-seg button,
+.th-pill-btn {
+  padding: 4px 9px;
+  font-size: 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.th-pill-btn {
+  border-radius: 7px;
+  border: 1px solid rgba(128, 128, 128, 0.24);
+}
+
+.th-seg button.on,
+.th-pill-btn.on {
+  background: rgba(59, 130, 246, 0.18);
+  font-weight: 600;
+}
+
+.th-seg button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.th-inspector {
+  width: 310px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(128, 128, 128, 0.18);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 12.5px;
+}
+
+.th-insp-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.16);
+}
+
+.th-insp-tabs button {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.th-insp-tabs button.on {
+  opacity: 1;
+  font-weight: 600;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.th-insp-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.th-diff-pre {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(128, 128, 128, 0.08);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.th-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: rgba(128, 128, 128, 0.18);
+}
+
+/* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
+.th-shell{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:dark){.th-shell{--pill:var(--win2)}}
+/* A new session: its title and the box in the middle of the page. */
+.th-new{width:100%;max-width:var(--conversation-width);margin:0 auto;padding:18vh 24px 0;display:flex;flex-direction:column}
+.th-new h1{margin:0 0 22px;font-size:24px;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-align:center}
+.th-new .cmp-in{min-height:64px}
+.th-cmp{flex:none}
+.th-stop{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
+.th-stop:hover{background:var(--l4)}
+.th-stop .ic{width:14px;height:14px;fill:currentColor}
+.th-opts{display:flex;align-items:center;gap:2px;min-height:32px;padding:4px 2px 0}
+.th-opts .mb{height:28px;padding:0 7px 0 8px;gap:6px}
+.th-opts .mb .lbl{max-width:220px}
+.th-lvl{margin-left:5px;color:var(--l2);font-weight:var(--font-weight-normal)}
+.th-grow{flex:1}
+.th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
+.th-where{height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;color:var(--l3);font-size:12.5px;white-space:nowrap}
+.th-where .ic{width:14px;height:14px}
+.th-check{height:28px;padding:0 8px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:7px;color:var(--l2);font-size:12.5px;white-space:nowrap}
+.th-check:hover{background:var(--fill);color:var(--l1)}
+.th-check .box{width:14px;height:14px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--field-bd);display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.th-check.on .box{background:var(--accent);box-shadow:none}
+.th-check .box .ic{width:10px;height:10px;stroke-width:2.2}
+.th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
+.th-modes{width:330px}
+/* The model panel: a search, the providers beside a provider's models, how hard it thinks along the bottom. */
+.her-menu:has(.th-mpanel){padding:0;overflow:hidden}
+.th-mpanel{width:456px;display:flex;flex-direction:column}
+.th-mfind{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-bottom:.5px solid var(--sep);color:var(--l3)}
+.th-mfind input{flex:1;min-width:0;height:100%;border:0;padding:0;background:none;outline:none;color:var(--l1);font-size:13px}
+.th-mfind input::placeholder{color:var(--l3)}
+.th-mcols{display:flex;height:min(248px,40vh)}
+.th-mprov{width:170px;flex:none;padding:5px;border-right:.5px solid var(--sep);overflow-y:auto}
+.th-mprov .mi{min-height:30px;gap:8px}
+.th-mprov .mi.on{background:var(--fill2)}
+.th-mprov .mi .val{padding-left:6px;font-size:11.5px}
+.th-mmod{flex:1;min-width:0;padding:5px;overflow-y:auto}
+.th-mmod .mgh{position:static}
+.th-dim{color:var(--l3)}
+.th-mpanel .mi .val .th-badge-new{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:5px;background:var(--accent-bg);color:var(--accent-t)}
+.th-mfoot{display:flex;align-items:center;gap:10px;height:44px;padding:0 9px 0 14px;border-top:.5px solid var(--sep);font-size:12.5px;color:var(--l2)}
+.th-mfoot .seg{margin-left:auto}
+.th-mfoot .th-none{margin-left:auto;padding-right:5px;color:var(--l3)}
+/* Rows with a line under them grow, as her.css means for its menus (app.css fixes .vmenu rows at 28px). */
+.vmenu.her-menu .mi{height:auto;min-height:28px}
+.th-mprov .mi{min-height:30px}
+.th-note{margin:10px 2px 0;font-size:12.5px;color:var(--orange)}
+.th-mstale{padding:6px 13px;border-bottom:.5px solid var(--sep);font-size:11.5px;color:var(--l2)}

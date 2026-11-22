@@ -246,6 +246,13 @@ html.vibrant .rail{background:var(--side-tint)}
 .grp-h:hover{color:var(--l1)}
 .grp-h .ic{width:16px;height:16px;color:var(--l2);transition:transform .15s var(--ease-out)}
 .grp-h.shut .ic{transform:rotate(-90deg)}
+/* A group's header row: its title, and ＋ when it is a project's (a new session in it). */
+.grp-hrow{position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;background:var(--side-head)}
+.grp-hrow .grp-h{position:static;flex:1;min-width:0}
+.grp-add{flex:none;height:24px;min-width:24px;margin:0 4px 3px 0;opacity:0;transition:opacity .12s}
+.grp-hrow:hover .grp-add,.grp-add:focus-visible{opacity:1}
+.grp-add .ic{width:15px;height:15px}
+html.vibrant .grp-hrow{position:static;background:transparent}
 /* A session: its agent's logo, the title, one mark; 32 high. */
 .srow{display:flex;gap:8px;padding:6px 9px;border-radius:8px;align-items:flex-start;border:0;background:none;width:100%;text-align:left;font-size:14px;color:var(--side-fg)}
 .slogo{display:flex;flex:none;margin-top:2px}
@@ -656,3 +663,30 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 /* Copied: the check comes in. */
 .tick-in{animation:popin .2s var(--ease-out)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+/* Add a Project: the machine's recent repositories, its folders one level at a time (sheets/Add.tsx). */
+.pj-sec{font-size:11.5px;color:var(--l3);padding:14px 2px 5px}
+.pj-box{background:var(--win2);border-radius:var(--r-card);overflow:hidden}
+.pj-row{display:flex;align-items:center;gap:9px;width:100%;min-height:36px;padding:0 12px;border:0;background:none;text-align:left;font:inherit;font-size:13px;color:var(--l1)}
+.pj-row+.pj-row{box-shadow:inset 0 .5px 0 var(--sep)}
+.pj-row:hover{background:var(--fill)}
+.pj-row>.ic{color:var(--l2);flex:none}
+.pj-row.ask{background:var(--fill)}
+.pj-path{font-family:var(--mono);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pj-val{margin-left:auto;padding-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l2);font-size:12px;white-space:nowrap}
+.pj-val .ic{color:var(--l3)}
+.pj-empty{padding:12px;color:var(--l3);font-size:12.5px}
+.pj-list{height:260px;overflow-y:auto}
+.pj-crumbs{display:flex;align-items:center;gap:2px;min-height:30px;margin:12px 0 8px;font-size:13px;flex-wrap:wrap}
+.pj-crumbs .field{flex:1}
+.pj-crumb{display:inline-flex;align-items:center;gap:2px}
+.pj-crumb button{height:26px;padding:0 7px;border:0;border-radius:var(--r-sm);background:none;color:var(--l2);font:inherit}
+.pj-crumb button:hover{background:var(--fill2);color:var(--l1)}
+.pj-crumb button.cur{color:var(--l1);font-weight:var(--font-weight-medium)}
+.pj-crumb .ic{color:var(--l3)}
+.pj-type{margin-left:auto}
+.pj-about{margin:9px 2px 0;font-size:12px;color:var(--l2);min-height:17px}
+.pj-hidden{display:inline-flex;align-items:center;gap:6px;margin-right:auto;font-size:12.5px;color:var(--l2)}
+.pj-make{display:flex;align-items:center;gap:8px;margin:0 0 8px;padding:8px 10px;border-radius:var(--r-card);background:var(--win2)}
+.pj-make>.ic{color:var(--l2);flex:none}
+.pj-make .field{flex:1;min-width:0}
+.pj-git{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--l2);white-space:nowrap}

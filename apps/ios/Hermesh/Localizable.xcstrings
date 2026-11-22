@@ -121,16 +121,6 @@
         }
       }
     },
-    "Add Project…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加项目…"
-          }
-        }
-      }
-    },
     "Agent Providers" : {
       "localizations" : {
         "zh-Hans" : {
@@ -317,16 +307,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已暂停接受新任务"
-          }
-        }
-      }
-    },
-    "Not installed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有安装"
           }
         }
       }
@@ -667,6 +647,646 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "—"
+          }
+        }
+      }
+    },
+    "Update key for %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新 %@ 的密钥"
+          }
+        }
+      }
+    },
+    "Signed in via Chrome on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 Chrome 完成 %@ 登录"
+          }
+        }
+      }
+    },
+    "Cancelled — fall back to manual login" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已取消（退回手动登录）"
+          }
+        }
+      }
+    },
+    "%@ key updated · %lld tools" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的密钥已更新 · %lld 个工具"
+          }
+        }
+      }
+    },
+    "%@ key updated" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的密钥已更新"
+          }
+        }
+      }
+    },
+    "Chrome sign-in invalidated on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Chrome 登录卡已失效，请退回手动登录"
+          }
+        }
+      }
+    },
+    "Encrypted in transit to %@’s credential store and never shown to the AI model. Only connect services you trust." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥会直接加密存入 %@ 的凭据库，不会发给 AI 模型。只连接你信任的服务。"
+          }
+        }
+      }
+    },
+    "Update Key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更新密钥"
+          }
+        }
+      }
+    },
+    "Tab %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标签页 %@"
+          }
+        }
+      }
+    },
+    "Opens this Chrome tab on %@ so you can sign in directly with Chrome’s login or password manager. Model access to the page, screenshots, and debugging is paused while active. Hermesh never reads, stores, or forwards Chrome passwords or cookies, and never auto-submits." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将在 %@ 上切到该 Chrome 标签页，由你直接使用浏览器原生登录或密码管理器完成登录。期间暂停模型对页面、截图和调试输出的访问；Hermesh 不读取、记录或转发浏览器密码或 Cookie，也不会自动提交。"
+          }
+        }
+      }
+    },
+    "%@ is offline. Secrets are not queued offline." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 离线。密钥不会离线排队。"
+          }
+        }
+      }
+    },
+    "Chrome Sign-In · %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chrome 安全登录 · %@"
+          }
+        }
+      }
+    },
+    "Confirm Chrome sign-in target" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认 Chrome 登录目标"
+          }
+        }
+      }
+    },
+    "Sign in natively in Chrome. Model access is paused." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Chrome 中完成原生登录，模型访问已暂停。"
+          }
+        }
+      }
+    },
+    "Bring Tab to Front" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切回 Chrome 标签页"
+          }
+        }
+      }
+    },
+    "I’m Signed In" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "我已登录"
+          }
+        }
+      }
+    },
+    "Confirm & Open in Chrome" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认并在 Chrome 登录"
+          }
+        }
+      }
+    },
+    "Queued Offline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线排队中"
+          }
+        }
+      }
+    },
+    "Above the limit this machine or grant allows" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "超过这个环境或授权允许的上限"
+          }
+        }
+      }
+    },
+    "No models on %@ yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上还没有能用的模型"
+          }
+        }
+      }
+    },
+    "%@ has no levels to choose" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 没有可调的强度"
+          }
+        }
+      }
+    },
+    "%@ is offline: these are the models last read there" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 离线，这是上次读到的模型"
+          }
+        }
+      }
+    },
+    "Add Project…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加项目…"
+          }
+        }
+      }
+    },
+    "Always Allow Here" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在这个会话里一直允许"
+          }
+        }
+      }
+    },
+    "Answer it on the Mac." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 Mac 上回答。"
+          }
+        }
+      }
+    },
+    "Approve Plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准并开始编码"
+          }
+        }
+      }
+    },
+    "Asks before each file change, command or outside tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次修改文件、执行命令或调用外部工具前均需确认"
+          }
+        }
+      }
+    },
+    "Auto-Accept Edits" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动接受编辑"
+          }
+        }
+      }
+    },
+    "Changes files and runs routine builds and tests; asks before risky steps" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动允许工作区编辑与常规编译测试命令；高风险操作需确认"
+          }
+        }
+      }
+    },
+    "Changes files in the project; asks before commands and sensitive files" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动允许工作区内文件修改；执行命令或触碰敏感文件时需确认"
+          }
+        }
+      }
+    },
+    "Decline" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拒绝"
+          }
+        }
+      }
+    },
+    "Describe what to build, debug or plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "描述要构建、调试或规划的内容"
+          }
+        }
+      }
+    },
+    "Does anything, within the machine’s limit" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在环境上限内无阻断执行全部操作"
+          }
+        }
+      }
+    },
+    "Hermesh on %@ needs an update to start sessions." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Hermesh 需要更新才能新建会话。"
+          }
+        }
+      }
+    },
+    "Keep going" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续聊…"
+          }
+        }
+      }
+    },
+    "New Session" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建会话"
+          }
+        }
+      }
+    },
+    "New Session in %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 里新建会话"
+          }
+        }
+      }
+    },
+    "No matching models" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的模型"
+          }
+        }
+      }
+    },
+    "Not installed" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未安装"
+          }
+        }
+      }
+    },
+    "Not set up for this project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个项目不用它"
+          }
+        }
+      }
+    },
+    "Offline · messages wait until it’s back" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线 · 消息会排队到它上线"
+          }
+        }
+      }
+    },
+    "Permission mode" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "权限模式"
+          }
+        }
+      }
+    },
+    "Plan" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "规划"
+          }
+        }
+      }
+    },
+    "Plan First" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先出方案"
+          }
+        }
+      }
+    },
+    "Projects on %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的项目"
+          }
+        }
+      }
+    },
+    "Projects on %@ · last known" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的项目 · 上次读到的"
+          }
+        }
+      }
+    },
+    "Queue Until It’s Online" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "离线入队"
+          }
+        }
+      }
+    },
+    "Say more; it goes to the next turn" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续说，会排到下一轮…"
+          }
+        }
+      }
+    },
+    "Search models or providers" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索模型或供应商"
+          }
+        }
+      }
+    },
+    "Signed out" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未登录"
+          }
+        }
+      }
+    },
+    "Smart Auto" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "智能自动"
+          }
+        }
+      }
+    },
+    "Steer Now" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "立即插入引导"
+          }
+        }
+      }
+    },
+    "Supervised" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受控审批"
+          }
+        }
+      }
+    },
+    "Temporary Workspace" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "临时工作区"
+          }
+        }
+      }
+    },
+    "%@ may use a project called “%@”, so this folder too once it’s added." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@的授权里有叫「%@」的项目，添加后也能用这个目录。"
+          }
+        }
+      }
+    },
+    "%@ may use every project on this machine, so this one too once it’s added." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@能用这个环境里的所有项目，添加后也能用它。"
+          }
+        }
+      }
+    },
+    "Agents change this folder directly" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接改这个目录"
+          }
+        }
+      }
+    },
+    "Already the project “%@”: the new session uses it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已经是项目「%@」，新会话会用它。"
+          }
+        }
+      }
+    },
+    "Create Empty Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建空文件夹"
+          }
+        }
+      }
+    },
+    "Create Git Repository" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建为 git 仓库"
+          }
+        }
+      }
+    },
+    "Folder name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹名"
+          }
+        }
+      }
+    },
+    "In %@ on %@. A git repository can give each session its own worktree." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建在 %2$@ 的「%1$@」里。git 仓库能让每个会话用独立的 worktree。"
+          }
+        }
+      }
+    },
+    "New Folder" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹"
+          }
+        }
+      }
+    },
+    "New Folder…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新建文件夹…"
           }
         }
       }
@@ -1289,40 +1909,40 @@
         }
       }
     },
-    "%lld machines": {
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld 个环境"
+    "%lld machines" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 个环境"
                 }
               },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld machines"
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld machines"
                 }
               }
             }
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld 个环境"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 个环境"
           }
         }
       }
     },
-    "%lld machines · %lld turns": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld 个环境 · %2$lld 轮"
+    "%lld machines · %lld turns" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld 个环境 · %2$lld 轮"
           }
         }
       }
@@ -1547,50 +2167,50 @@
         }
       }
     },
-    "**%@ is offline**; its sessions can’t be shown for now": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%@ is offline**; its tasks can’t be shown for now"
+    "**%@ is offline**; its sessions can’t be shown for now" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%@ is offline**; its tasks can’t be shown for now"
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%@ 当前离线**，该环境里的任务暂时无法显示"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%@ 当前离线**，该环境里的任务暂时无法显示"
           }
         }
       }
     },
-    "**%@ isn’t responding**; its sessions may be missing": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%@ isn’t responding**; its tasks may be missing"
+    "**%@ isn’t responding**; its sessions may be missing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%@ isn’t responding**; its tasks may be missing"
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%@ 暂无响应**，该环境里的任务可能未完全显示"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%@ 暂无响应**，该环境里的任务可能未完全显示"
           }
         }
       }
     },
-    "**%lld machines can’t be reached**; their sessions can’t be shown for now": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%lld 个环境无法连接**，这些环境上的任务暂时无法显示"
+    "**%lld machines can’t be reached**; their sessions can’t be shown for now" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%lld 个环境无法连接**，这些环境上的任务暂时无法显示"
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "**%lld 个环境无法连接**，这些环境里的任务暂时无法显示"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**%lld 个环境无法连接**，这些环境里的任务暂时无法显示"
           }
         }
       }
@@ -1628,12 +2248,12 @@
         }
       }
     },
-    "1. Run this in that machine’s terminal": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1. 在那个环境的终端里运行"
+    "1. Run this in that machine’s terminal" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 在那个环境的终端里运行"
           }
         }
       }
@@ -1718,12 +2338,12 @@
         }
       }
     },
-    "A Mac mini, a Linux server or a cloud host can each be a machine: agents you grant access use Claude Code and Codex on it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Mac mini、Linux 服务器或云主机都可以作为环境，获批的 Agent 会在上面运行 Claude Code 和 Codex。"
+    "A Mac mini, a Linux server or a cloud host can each be a machine: agents you grant access use Claude Code and Codex on it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac mini、Linux 服务器或云主机都可以作为环境，获批的 Agent 会在上面运行 Claude Code 和 Codex。"
           }
         }
       }
@@ -1758,22 +2378,22 @@
         }
       }
     },
-    "A grant decides which of your projects, machines and coding agents an agent can use, and for how long.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "授权决定一个 agent 能用你的哪些项目、环境和 Agent 提供方，用多久。"
+    "A grant decides which of your projects, machines and coding agents an agent can use, and for how long." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "授权决定一个 agent 能用你的哪些项目、环境和 Agent 提供方，用多久。"
           }
         }
       }
     },
-    "A machine calling itself “%@” wants to join": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」想作为环境加入"
+    "A machine calling itself “%@” wants to join" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」想作为环境加入"
           }
         }
       }
@@ -1954,12 +2574,12 @@
         }
       }
     },
-    "Add a Machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "添加环境"
+    "Add a Machine" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加环境"
           }
         }
       }
@@ -2024,12 +2644,12 @@
         }
       }
     },
-    "Add projects to it on its page.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "可在该环境页面中添加项目。"
+    "Add projects to it on its page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在该环境页面中添加项目。"
           }
         }
       }
@@ -2114,12 +2734,12 @@
         }
       }
     },
-    "Agents call it “%@”: another project here is called “%@”.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "agent 里叫它「%1$@」，因为这个环境里已有叫「%2$@」的项目。"
+    "Agents call it “%@”: another project here is called “%@”." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 里叫它「%1$@」，因为这个环境里已有叫「%2$@」的项目。"
           }
         }
       }
@@ -2134,32 +2754,32 @@
         }
       }
     },
-    "Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "agent 用“名称/项目”找到项目，改名后它们会看到新名字。只能用小写字母、数字和 -。"
+    "Agents find projects as “machine/project” and will see the new name. Use lowercase letters, digits and -." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agent 用“名称/项目”找到项目，改名后它们会看到新名字。只能用小写字母、数字和 -。"
           }
         }
       }
     },
-    "Agents find projects as “machine/project”. Once approved, add projects to it on its page and choose which grants may use them.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 通过“名称/项目”定位项目。批准后，可在该环境页面中添加项目，并在授权中勾选谁可以使用。"
+    "Agents find projects as “machine/project”. Once approved, add projects to it on its page and choose which grants may use them." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 通过“名称/项目”定位项目。批准后，可在该环境页面中添加项目，并在授权中勾选谁可以使用。"
           }
         }
       }
     },
-    "Agents use Claude Code and Codex on it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 会在该环境里运行 Claude Code 和 Codex。"
+    "Agents use Claude Code and Codex on it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 会在该环境里运行 Claude Code 和 Codex。"
           }
         }
       }
@@ -2194,32 +2814,32 @@
         }
       }
     },
-    "All coding agents": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "所有 Agent 提供方"
+    "All coding agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有 Agent 提供方"
           }
         }
       }
     },
-    "All coding agents (including ones installed later)": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "所有 Agent 提供方（包括以后安装的）"
+    "All coding agents (including ones installed later)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有 Agent 提供方（包括以后安装的）"
           }
         }
       }
     },
-    "All machines (including ones that join later)": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "所有环境（包括以后加入的）"
+    "All machines (including ones that join later)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有环境（包括以后加入的）"
           }
         }
       }
@@ -2364,12 +2984,12 @@
         }
       }
     },
-    "Another iPhone or a Mac can approve too. If you lose this iPhone, it keeps your machines and agents working.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "另一台 iPhone 或 Mac 也可以批准。万一这台 iPhone 丢了，你的环境和 agent 也能照常工作。"
+    "Another iPhone or a Mac can approve too. If you lose this iPhone, it keeps your machines and agents working." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "另一台 iPhone 或 Mac 也可以批准。万一这台 iPhone 丢了，你的环境和 agent 也能照常工作。"
           }
         }
       }
@@ -2550,12 +3170,12 @@
         }
       }
     },
-    "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "用你平时在那个环境里写代码的用户运行。它会安装 Hermesh、在后台运行，并显示一个核对码。"
+    "As the user you code as on that machine. It installs Hermesh, runs it in the background, and shows a verification code." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用你平时在那个环境里写代码的用户运行。它会安装 Hermesh、在后台运行，并显示一个核对码。"
           }
         }
       }
@@ -2720,12 +3340,12 @@
         }
       }
     },
-    "By Machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "按环境"
+    "By Machine" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按环境"
           }
         }
       }
@@ -3026,12 +3646,12 @@
         }
       }
     },
-    "Choose at least one project, or All Projects, and one coding agent.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "至少选一个项目（或“所有项目”）和一个 Agent 提供方。"
+    "Choose at least one project, or All Projects, and one coding agent." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "至少选一个项目（或“所有项目”）和一个 Agent 提供方。"
           }
         }
       }
@@ -3146,32 +3766,32 @@
         }
       }
     },
-    "Coding Agents": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 提供方"
+    "Coding Agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 提供方"
           }
         }
       }
     },
-    "Coding agent": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 提供方"
+    "Coding agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 提供方"
           }
         }
       }
     },
-    "Coding agents": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 提供方"
+    "Coding agents" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 提供方"
           }
         }
       }
@@ -5038,12 +5658,12 @@
         }
       }
     },
-    "Hermesh on %@ is too old to browse its folders. Update it there, or type a path.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ 上的 Hermesh 版本太旧，不能浏览文件夹。在那个环境里更新，或者输入路径。"
+    "Hermesh on %@ is too old to browse its folders. Update it there, or type a path." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Hermesh 版本太旧，不能浏览文件夹。在那个环境里更新，或者输入路径。"
           }
         }
       }
@@ -5118,12 +5738,12 @@
         }
       }
     },
-    "Her’s scheduled tasks show here once she runs on one of your machines.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 在你的某个环境里运行后，她的定时任务会显示在这里。"
+    "Her’s scheduled tasks show here once she runs on one of your machines." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 在你的某个环境里运行后，她的定时任务会显示在这里。"
           }
         }
       }
@@ -6774,12 +7394,12 @@
         }
       }
     },
-    "Scheduled tasks run on %@. They don’t run while it is off or asleep, and catch up once, with the latest, when it is back.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "定时任务在 %@ 上运行。那个环境关机或睡眠时不跑，回来后补最近一次。"
+    "Scheduled tasks run on %@. They don’t run while it is off or asleep, and catch up once, with the latest, when it is back." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "定时任务在 %@ 上运行。那个环境关机或睡眠时不跑，回来后补最近一次。"
           }
         }
       }
@@ -6964,12 +7584,12 @@
         }
       }
     },
-    "She runs on a computer of yours and leads the coding agents on all of them. Her conversations, files and model keys stay on that machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "她运行在你的一台电脑上，带着所有电脑上的编程 Agent 干活。她的对话、文件和模型密钥都留在那个环境里。"
+    "She runs on a computer of yours and leads the coding agents on all of them. Her conversations, files and model keys stay on that machine." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "她运行在你的一台电脑上，带着所有电脑上的编程 Agent 干活。她的对话、文件和模型密钥都留在那个环境里。"
           }
         }
       }
@@ -7161,12 +7781,12 @@
         }
       }
     },
-    "Storage": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "储存空间"
+    "Storage" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "储存空间"
           }
         }
       }
@@ -7371,22 +7991,22 @@
         }
       }
     },
-    "The work Her sends out shows here once she runs on one of your machines.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 在你的某个环境里运行后，她派出去的活会显示在这里。"
+    "The work Her sends out shows here once she runs on one of your machines." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 在你的某个环境里运行后，她派出去的活会显示在这里。"
           }
         }
       }
     },
-    "The work Her sent out shows here once the machine is back.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "环境恢复连接后，这里会显示 Her 派出去的活。"
+    "The work Her sent out shows here once the machine is back." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境恢复连接后，这里会显示 Her 派出去的活。"
           }
         }
       }
@@ -7481,12 +8101,12 @@
         }
       }
     },
-    "This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID).": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "该设备将立即失去批准权限，其关联的环境也会一并移除。此前由该设备批准的环境和 Agent 将改由这台 iPhone 重新签发，继续正常使用（需要面容 ID）。"
+    "This device will immediately lose approval rights and its own machine will be removed. Machines and agents it previously approved will be re-signed by this iPhone so they keep working (requires Face ID)." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该设备将立即失去批准权限，其关联的环境也会一并移除。此前由该设备批准的环境和 Agent 将改由这台 iPhone 重新签发，继续正常使用（需要面容 ID）。"
           }
         }
       }
@@ -7521,28 +8141,28 @@
         }
       }
     },
-    "This is taking longer than usual. You can keep waiting, look at Her’s settings, or run her on another machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "启动比平时久一些。你可以继续等，看看 Her 的设置，或者换一个环境运行她。"
+    "This is taking longer than usual. You can keep waiting, look at Her’s settings, or run her on another machine." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动比平时久一些。你可以继续等，看看 Her 的设置，或者换一个环境运行她。"
           }
         }
       }
     },
-    "This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个环境会立即断开，正在运行的任务会停止。之后需要重新配对才能加入。"
+    "This machine will disconnect immediately and running sessions will stop. You will need to pair it again to reconnect." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个环境会立即断开，正在运行的任务会停止。之后需要重新配对才能加入。"
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个环境会立即断开，正在运行的任务会停止。之后需要重新配对才能加入。"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个环境会立即断开，正在运行的任务会停止。之后需要重新配对才能加入。"
           }
         }
       }
@@ -7557,12 +8177,12 @@
         }
       }
     },
-    "It is still one of your trusted devices. First remove it on another trusted device, under Machines; then sign out here.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这台设备仍是你的可信设备。请先在另一台可信设备的“账号与设备”页面将它移除，然后再退出登录。"
+    "It is still one of your trusted devices. First remove it on another trusted device, under Machines; then sign out here." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台设备仍是你的可信设备。请先在另一台可信设备的“账号与设备”页面将它移除，然后再退出登录。"
           }
         }
       }
@@ -7969,12 +8589,12 @@
         }
       }
     },
-    "Its projects and coding agents stay the same. Once you confirm with Face ID, “%@” works with the new expiry and the old grant stops working.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "项目和 Agent 提供方不变。用面容 ID 确认后，「%@」按新的有效期工作，旧授权立即作废。"
+    "Its projects and coding agents stay the same. Once you confirm with Face ID, “%@” works with the new expiry and the old grant stops working." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "项目和 Agent 提供方不变。用面容 ID 确认后，「%@」按新的有效期工作，旧授权立即作废。"
           }
         }
       }
@@ -8247,42 +8867,42 @@
         }
       }
     },
-    "Machine / project": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "环境 / 项目"
+    "Machine / project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境 / 项目"
           }
         }
       }
     },
-    "Machine name": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "名称"
+    "Machine name" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名称"
           }
         }
       }
     },
-    "Machines": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "环境"
+    "Machines" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "环境"
           }
         }
       }
     },
-    "Make sure it’s on and online, then run this there:": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请确认它已开机并联网，然后在上面运行："
+    "Make sure it’s on and online, then run this there:" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请确认它已开机并联网，然后在上面运行："
           }
         }
       }
@@ -8433,12 +9053,12 @@
         }
       }
     },
-    "Name this machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "给这个环境起个名字"
+    "Name this machine" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "给这个环境起个名字"
           }
         }
       }
@@ -8559,32 +9179,32 @@
         }
       }
     },
-    "No coding agent found on your machines.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你的环境里还没有找到 Agent 提供方。"
+    "No coding agent found on your machines." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的环境里还没有找到 Agent 提供方。"
           }
         }
       }
     },
-    "No coding agent found on this machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这里没有找到 Agent 提供方。"
+    "No coding agent found on this machine." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里没有找到 Agent 提供方。"
           }
         }
       }
     },
-    "No coding agents yet": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "还没有 Agent 提供方"
+    "No coding agents yet" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有 Agent 提供方"
           }
         }
       }
@@ -8661,12 +9281,12 @@
         }
       }
     },
-    "No machines yet.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "还没有环境。"
+    "No machines yet." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有环境。"
           }
         }
       }
@@ -8691,12 +9311,12 @@
         }
       }
     },
-    "No projects yet. Add one on a machine’s page.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "还没有项目。到环境的页面里添加。"
+    "No projects yet. Add one on a machine’s page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "还没有项目。到环境的页面里添加。"
           }
         }
       }
@@ -8741,18 +9361,18 @@
         }
       }
     },
-    "Not encrypted (HTTP). Your sessions stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not encrypted (HTTP). Your tasks stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain."
+    "Not encrypted (HTTP). Your sessions stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not encrypted (HTTP). Your tasks stay end-to-end encrypted, but the claim code and which machines are online travel in the clear: someone on the network could see them, or claim this server before you do. Claude and ChatGPT can't connect either. Fine for trying Hermesh or on a network you trust; to keep using it, give the server a domain."
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未加密（HTTP）。任务内容仍然端到端加密，但认领码、哪些环境在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未加密（HTTP）。任务内容仍然端到端加密，但认领码、哪些环境在线等信息会明文传输：网络上的人能看到，甚至抢在你前面认领这台服务器。Claude、ChatGPT 也连不上。用来试用或在可信的网络里没问题；要长期使用，请给服务器配一个域名。"
           }
         }
       }
@@ -8997,12 +9617,12 @@
         }
       }
     },
-    "On that machine, run": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在那个环境里运行"
+    "On that machine, run" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在那个环境里运行"
           }
         }
       }
@@ -9017,12 +9637,12 @@
         }
       }
     },
-    "Once approved, it approves machines, personal agents and new devices, as this iPhone does. Approve only if it is in your hands.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "批准后，该设备将与这台 iPhone 一样，拥有批准环境、个人 Agent 和新设备的权限。请仅在设备位于你手边时批准。"
+    "Once approved, it approves machines, personal agents and new devices, as this iPhone does. Approve only if it is in your hands." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "批准后，该设备将与这台 iPhone 一样，拥有批准环境、个人 Agent 和新设备的权限。请仅在设备位于你手边时批准。"
           }
         }
       }
@@ -9129,12 +9749,12 @@
         }
       }
     },
-    "Only this iPhone can approve. If you lose it, you’ll set up again and pair your machines and agents again.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "只有这台 iPhone 能批准。万一丢了，你得重新设置，并重新配对你的环境和 agent。"
+    "Only this iPhone can approve. If you lose it, you’ll set up again and pair your machines and agents again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有这台 iPhone 能批准。万一丢了，你得重新设置，并重新配对你的环境和 agent。"
           }
         }
       }
@@ -9435,12 +10055,12 @@
         }
       }
     },
-    "Reading your machines…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在读取你的环境…"
+    "Reading your machines…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在读取你的环境…"
           }
         }
       }
@@ -9541,12 +10161,12 @@
         }
       }
     },
-    "Remove the machine “%@”?": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "移除环境「%@」？"
+    "Remove the machine “%@”?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移除环境「%@」？"
           }
         }
       }
@@ -9617,12 +10237,12 @@
         }
       }
     },
-    "Rename this machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "给这个环境改名"
+    "Rename this machine" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "给这个环境改名"
           }
         }
       }
@@ -9773,12 +10393,12 @@
         }
       }
     },
-    "Safari opens %@, the web console: your machines and grants in any browser, and revoking access in an emergency.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "将在 Safari 中打开 %@，也就是网页控制台：在任何浏览器里查看环境和授权，紧急时撤销访问。"
+    "Safari opens %@, the web console: your machines and grants in any browser, and revoking access in an emergency." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将在 Safari 中打开 %@，也就是网页控制台：在任何浏览器里查看环境和授权，紧急时撤销访问。"
           }
         }
       }
@@ -9883,12 +10503,12 @@
         }
       }
     },
-    "Scanning your machines…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在查找你的环境…"
+    "Scanning your machines…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在查找你的环境…"
           }
         }
       }
@@ -10247,18 +10867,18 @@
         }
       }
     },
-    "Signed out; their owner keys, sessions and settings erased, and, for one that also runs tasks, its projects list and worktrees": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signed out; their owner keys, tasks and settings erased, and, for one that also runs tasks, its projects list and worktrees"
+    "Signed out; their owner keys, sessions and settings erased, and, for one that also runs tasks, its projects list and worktrees" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signed out; their owner keys, tasks and settings erased, and, for one that also runs tasks, its projects list and worktrees"
           }
         },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "退出登录，删除管理密钥、任务记录和设置；同时作为环境的，还会删除项目列表和 worktree"
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出登录，删除管理密钥、任务记录和设置；同时作为环境的，还会删除项目列表和 worktree"
           }
         }
       }
@@ -10543,12 +11163,12 @@
         }
       }
     },
-    "That machine’s system": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "那个环境的系统"
+    "That machine’s system" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "那个环境的系统"
           }
         }
       }
@@ -10599,12 +11219,12 @@
         }
       }
     },
-    "The code a machine or agent shows in its terminal. Its request then opens here, to approve.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "输入环境或 Agent 终端里显示的配对码后，连接请求会在这里打开，等待你批准。"
+    "The code a machine or agent shows in its terminal. Its request then opens here, to approve." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "输入环境或 Agent 终端里显示的配对码后，连接请求会在这里打开，等待你批准。"
           }
         }
       }
@@ -10645,12 +11265,12 @@
         }
       }
     },
-    "The pairing code matches this machine’s key": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "配对码与这个环境的密钥相符"
+    "The pairing code matches this machine’s key" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "配对码与这个环境的密钥相符"
           }
         }
       }
@@ -10711,12 +11331,12 @@
         }
       }
     },
-    "Then it can no longer use your machines": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "到期后不能再用你的环境"
+    "Then it can no longer use your machines" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "到期后不能再用你的环境"
           }
         }
       }
@@ -10761,12 +11381,12 @@
         }
       }
     },
-    "This coding agent isn’t on this machine": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个环境里没有这个 Agent 提供方"
+    "This coding agent isn’t on this machine" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个环境里没有这个 Agent 提供方"
           }
         }
       }
@@ -10781,32 +11401,32 @@
         }
       }
     },
-    "This conversation is kept on that machine. Retrying; it shows here once the machine answers.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个任务的内容保存在那个环境里。正在重试，读到后会自动显示。"
+    "This conversation is kept on that machine. Retrying; it shows here once the machine answers." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个任务的内容保存在那个环境里。正在重试，读到后会自动显示。"
           }
         }
       }
     },
-    "This conversation is kept on that machine; it shows here once the machine reconnects.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个任务的内容保存在那个环境里，连上后会自动显示。"
+    "This conversation is kept on that machine; it shows here once the machine reconnects." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个任务的内容保存在那个环境里，连上后会自动显示。"
           }
         }
       }
     },
-    "This conversation is kept on that machine; it shows here once the machine reconnects. Last online %@.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个任务的内容保存在那个环境里，连上后会自动显示。%@还在线。"
+    "This conversation is kept on that machine; it shows here once the machine reconnects. Last online %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个任务的内容保存在那个环境里，连上后会自动显示。%@还在线。"
           }
         }
       }
@@ -10881,12 +11501,12 @@
         }
       }
     },
-    "This machine is gone": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这个环境已经不在了"
+    "This machine is gone" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个环境已经不在了"
           }
         }
       }
@@ -11319,12 +11939,12 @@
         }
       }
     },
-    "Updating from %lld machines…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在从 %lld 个环境更新…"
+    "Updating from %lld machines…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在从 %lld 个环境更新…"
           }
         }
       }
@@ -11519,12 +12139,12 @@
         }
       }
     },
-    "Waiting for that machine to connect…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "等待那个环境连上来…"
+    "Waiting for that machine to connect…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "等待那个环境连上来…"
           }
         }
       }
@@ -11789,12 +12409,12 @@
         }
       }
     },
-    "When a machine or agent came without your connection address, its terminal shows a pairing code. Its request then opens like any other: compare the verification code.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "如果环境或 Agent 未携带你的连接地址，终端会显示一个配对码。输入配对码后，会像其他请求一样弹出批准页面，请比对双方的核对码。"
+    "When a machine or agent came without your connection address, its terminal shows a pairing code. Its request then opens like any other: compare the verification code." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果环境或 Agent 未携带你的连接地址，终端会显示一个配对码。输入配对码后，会像其他请求一样弹出批准页面，请比对双方的核对码。"
           }
         }
       }
@@ -11972,12 +12592,12 @@
         }
       }
     },
-    "You can only set up again on this iPhone; your machines and agents then need pairing again.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "只能在这台 iPhone 上重新设置，环境和 agent 需要重新配对。"
+    "You can only set up again on this iPhone; your machines and agents then need pairing again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只能在这台 iPhone 上重新设置，环境和 agent 需要重新配对。"
           }
         }
       }
@@ -12078,12 +12698,12 @@
         }
       }
     },
-    "a coding agent": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Agent 提供方"
+    "a coding agent" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 提供方"
           }
         }
       }
@@ -12309,12 +12929,12 @@
         }
       }
     },
-    "“%@” joined. Add projects to it on its page.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "「%@」已加入，可前往该环境页面添加项目"
+    "“%@” joined. Add projects to it on its page." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」已加入，可前往该环境页面添加项目"
           }
         }
       }
@@ -12474,12 +13094,12 @@
         }
       }
     },
-    "Connect an agent and enable a machine with a project first, or exit and reopen the demo to start again.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请先连接 Agent，并启用一个有项目的环境；也可以退出并重新进入演示以重置。"
+    "Connect an agent and enable a machine with a project first, or exit and reopen the demo to start again." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先连接 Agent，并启用一个有项目的环境；也可以退出并重新进入演示以重置。"
           }
         }
       }
@@ -12630,12 +13250,12 @@
         }
       }
     },
-    "Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "启动任务、回答 Agent 的问题，再查看代码改动。这里的环境、审批和执行结果均为模拟。"
+    "Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启动任务、回答 Agent 的问题，再查看代码改动。这里的环境、审批和执行结果均为模拟。"
           }
         }
       }
@@ -12650,12 +13270,12 @@
         }
       }
     },
-    "Use Add Machine or Connect Agent to create a demo request.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "请通过添加环境或连接 Agent 创建演示请求。"
+    "Use Add Machine or Connect Agent to create a demo request." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请通过添加环境或连接 Agent 创建演示请求。"
           }
         }
       }
@@ -12680,12 +13300,12 @@
         }
       }
     },
-    "It now appears in Machines. No physical device was paired.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你可以在环境列表中看到它，并未配对真实设备。"
+    "It now appears in Machines. No physical device was paired." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你可以在环境列表中看到它，并未配对真实设备。"
           }
         }
       }
@@ -12730,12 +13350,12 @@
         }
       }
     },
-    "A sample code is filled in. Tap Find to try approving a simulated machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已填入示例配对码。点击“查找”，体验批准模拟环境加入的流程。"
+    "A sample code is filled in. Tap Find to try approving a simulated machine." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已填入示例配对码。点击“查找”，体验批准模拟环境加入的流程。"
           }
         }
       }
@@ -14076,12 +14696,12 @@
         }
       }
     },
-    "Turn On Her on Another Machine…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "在另一个环境里开启 Her…"
+    "Turn On Her on Another Machine…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在另一个环境里开启 Her…"
           }
         }
       }
@@ -14126,12 +14746,12 @@
         }
       }
     },
-    "It acts on %@ without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "它在 %@ 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那个环境里的一切交给它时开启。"
+    "It acts on %@ without asking you, and so do the agents and scheduled tasks it starts. Her reads web pages and messages from anyone, so turn this on only if you trust everything on that machine to it." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "它在 %@ 上做任何事都不再问你，它创建的智能体和定时任务也一样。Her 会读网页和别人发来的消息，所以只在你放心把那个环境里的一切交给它时开启。"
           }
         }
       }
@@ -14146,12 +14766,12 @@
         }
       }
     },
-    "Her runs on one of your Macs or Linux servers. Add one in Machines first.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 在你的 Mac 或 Linux 服务器上运行。先在“环境”里添加一台。"
+    "Her runs on one of your Macs or Linux servers. Add one in Machines first." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 在你的 Mac 或 Linux 服务器上运行。先在“环境”里添加一台。"
           }
         }
       }
@@ -14216,12 +14836,12 @@
         }
       }
     },
-    "Her’s conversations, files and model keys stay on that machine. You can add other machines later.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对话、文件和模型的 Key 都只留在那个环境里。以后可以再加别的环境。"
+    "Her’s conversations, files and model keys stay on that machine. You can add other machines later." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话、文件和模型的 Key 都只留在那个环境里。以后可以再加别的环境。"
           }
         }
       }
@@ -14236,12 +14856,12 @@
         }
       }
     },
-    "Her’s conversations, files and model keys stay on that machine.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对话、文件和模型的 Key 都只留在那个环境里。"
+    "Her’s conversations, files and model keys stay on that machine." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "对话、文件和模型的 Key 都只留在那个环境里。"
           }
         }
       }
@@ -14256,22 +14876,22 @@
         }
       }
     },
-    "Her’s conversation is kept on that machine; it shows here once the machine is back.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 的对话保存在那个环境里，连上后会显示在这里。"
+    "Her’s conversation is kept on that machine; it shows here once the machine is back." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 的对话保存在那个环境里，连上后会显示在这里。"
           }
         }
       }
     },
-    "Her’s conversation is kept on that machine; it shows here once the machine is back. Last online %@.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 的对话保存在那个环境里，连上后会显示在这里。上次在线：%@。"
+    "Her’s conversation is kept on that machine; it shows here once the machine is back. Last online %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 的对话保存在那个环境里，连上后会显示在这里。上次在线：%@。"
           }
         }
       }
@@ -14799,12 +15419,12 @@
         }
       }
     },
-    "Her is off. Her’s data is still on this machine; turned on again, she carries on.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Her 已关闭。她的数据还在这个环境里，再次开启时接着用。"
+    "Her is off. Her’s data is still on this machine; turned on again, she carries on." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her 已关闭。她的数据还在这个环境里，再次开启时接着用。"
           }
         }
       }
@@ -15209,12 +15829,12 @@
         }
       }
     },
-    "Kept on %@ and shared by the assistants there. Turning one on or off takes effect from Her’s next step.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "装在 %@ 上，这个环境里的助手共用。开关对 Her 的下一步就生效。"
+    "Kept on %@ and shared by the assistants there. Turning one on or off takes effect from Her’s next step." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "装在 %@ 上，这个环境里的助手共用。开关对 Her 的下一步就生效。"
           }
         }
       }

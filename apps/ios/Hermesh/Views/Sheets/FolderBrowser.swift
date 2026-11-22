@@ -22,6 +22,9 @@ struct FolderBrowser: View {
     @State private var typing = false
     @State private var typed = ""
     @State private var asking: Hermesh_Machine_V1_Folder?
+    /// A new folder here (docs/thread-composer.md §4.3): its name, while asked.
+    @State private var making = false
+    @State private var newName = ""
 
     private var shown: String { listing?.path ?? path }
     private var machine: String { model.machineName(machineID) }
@@ -83,6 +86,9 @@ struct FolderBrowser: View {
                 Menu {
                     Toggle("Show Hidden Folders", isOn: hiddenSelection)
                     Button("Type a Path…", systemImage: "character.cursor.ibeam") { typing = true }
+                    Button("New Folder…", systemImage: "folder.badge.plus") { newName = ""; making = true }
+                        .disabled(listing == nil)
+                        .accessibilityIdentifier("new-folder")
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
@@ -96,6 +102,15 @@ struct FolderBrowser: View {
             Button("Go") { go(typed.trimmingCharacters(in: .whitespaces)) }
         } message: {
             Text("A folder on \(machine).")
+        }
+        .alert("New Folder", isPresented: $making) {
+            TextField("Folder name", text: $newName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                .accessibilityIdentifier("new-folder-name")
+            Button("Cancel", role: .cancel) {}
+            Button("Create Git Repository") { make(git: true) }
+            Button("Create Empty Folder") { make(git: false) }
+        } message: {
+            Text("In \(folderName(shown)) on \(machine). A git repository can give each session its own worktree.")
         }
         .alert("Open “\(asking?.name ?? "")”?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }), presenting: asking) { f in
             Button("Cancel", role: .cancel) {}
@@ -135,6 +150,21 @@ struct FolderBrowser: View {
             failure = String(localized: "macOS didn’t let Hermesh read this folder. On that Mac, allow it in System Settings › Privacy & Security › Files & Folders.")
         } catch {
             failure = error.localizedDescription
+        }
+    }
+
+    /// Makes the folder and goes into it, to choose it.
+    private func make(git: Bool) {
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        let parent = shown
+        guard !name.isEmpty else { return }
+        Task {
+            do {
+                try await model.createFolder(machine: machineID, parent: parent, name: name, gitInit: git)
+                browsing.append(parent == "~" ? "~/\(name)" : "\(parent)/\(name)")
+            } catch {
+                model.report(error)
+            }
         }
     }
 

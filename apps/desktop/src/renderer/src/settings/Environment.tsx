@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus } from "@hermesh/proto/session";
 import { agoText, codingAgentTitle, dateOf, formatBytes, isActive, platformTitle } from "@hermesh/core";
 import type { DaemonInfo } from "../../../shared/daemon";
+import { i18n } from "../../../shared/i18n";
 import { sortAgents } from "../AgentList";
 import { useCheckAgents } from "../agents";
 import { local } from "../api";
@@ -18,6 +20,7 @@ import { Projects } from "./Projects";
 import { Provider, Providers } from "./Providers";
 import { StayOnline } from "./StayOnline";
 import { Storage, useWorkspaces } from "./Storage";
+import { SRow } from "./common";
 
 // An environment's page and what opens from it (docs/settings-environments.md §5.3): a machine
 // of the owner's, or this Mac, which may not be one.
@@ -204,6 +207,7 @@ function EnvironmentPage({ m, go }: { m: Machine; go: (sub: string) => void }) {
       <div>
         <div className="fgroup">
           <NameRow m={m} />
+          <MaxModeRow m={m} />
         </div>
         <p className="set-foot">{t("env.nameNote")}</p>
       </div>
@@ -279,6 +283,35 @@ function NameRow({ m }: { m: Machine }) {
       </div>
       {hint && <div className={`frow set-hint ${name ? "" : "warn"}`}>{hint}</div>}
     </>
+  );
+}
+
+/** The machine's own limit on what its sessions may do (SetMaxRuntimeMode, docs/thread-composer.md §5.4). */
+const maxModes = [
+  [RuntimeMode.UNSPECIFIED, "settings:machines.maxModeNone"],
+  [RuntimeMode.SUPERVISED, "thread:mode.supervised"],
+  [RuntimeMode.AUTO_EDITS, "thread:mode.autoEdits"],
+  [RuntimeMode.AUTO, "thread:mode.auto"],
+  [RuntimeMode.FULL_ACCESS, "thread:mode.fullAccess"],
+] as const;
+
+function MaxModeRow({ m }: { m: Machine }) {
+  const st = useStore();
+  const { t } = useTranslation("settings");
+  const now = m.status?.maxRuntimeMode ?? RuntimeMode.UNSPECIFIED;
+  const title = (mode: RuntimeMode): string => i18n.t(maxModes.find(([x]) => x === mode)?.[1] ?? "settings:machines.maxModeNone");
+  const pick = async () => {
+    const id = await window.hermesh?.popupMenu(maxModes.map(([mode, key]) => ({ id: String(mode), label: i18n.t(key), checked: mode === now })));
+    if (id == null || Number(id) === now) return;
+    const mode = Number(id) as RuntimeMode;
+    void st.run(() => local.setMachineMaxRuntimeMode({ machineId: m.machineId, mode }), t("machines.maxModeSet", { name: m.machineName, mode: title(mode) }));
+  };
+  return (
+    <SRow title={t("machines.maxMode")} desc={t("machines.maxModeDesc")}>
+      <button className="btn sm" data-testid="machine-max-mode" disabled={!m.online && !m.local} onClick={pick}>
+        {title(now)}
+      </button>
+    </SRow>
   );
 }
 

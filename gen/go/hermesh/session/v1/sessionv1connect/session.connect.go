@@ -131,13 +131,14 @@ type SessionServiceClient interface {
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
-	// to AnswerQuestion on older hosts.
+	// AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
+	// and applies the same authorization and validation rules as AnswerQuestion.
 	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// CheckLocalCodingRecipient checks the destination before Her forwards
-	// content. The subsequent write still checks the authenticated Her grant.
+	// CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
+	// Her clients after coding-specific consent was removed.
 	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
-	// CodingConsent reads or changes an execution host's coding consent.
+	// CodingConsent is retained for wire compatibility with v0.1.7 owner clients
+	// after coding-specific consent was removed.
 	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
 	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
 	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
@@ -495,13 +496,14 @@ type SessionServiceHandler interface {
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
 	// AnswerQuestion answers (or declines) a question the agent asked.
 	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion enforces coding consent. Mobile clients never fall back
-	// to AnswerQuestion on older hosts.
+	// AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
+	// and applies the same authorization and validation rules as AnswerQuestion.
 	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// CheckLocalCodingRecipient checks the destination before Her forwards
-	// content. The subsequent write still checks the authenticated Her grant.
+	// CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
+	// Her clients after coding-specific consent was removed.
 	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
-	// CodingConsent reads or changes an execution host's coding consent.
+	// CodingConsent is retained for wire compatibility with v0.1.7 owner clients
+	// after coding-specific consent was removed.
 	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
 	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
 	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
