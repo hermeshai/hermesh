@@ -1,10 +1,11 @@
 {
   "nav": {
-    "newThread": "New Thread",
-    "threads": "Threads"
+    "newThread": "New Session",
+    "threads": "Threads",
+    "newIn": "New session in {{project}}"
   },
   "launch": {
-    "title": "Start a Coding Thread",
+    "title": "New Session",
     "subtitle": "Pick an execution machine, repository workspace, model, and permission boundary.",
     "machine": "Machine",
     "online": "Online",
@@ -12,9 +13,18 @@
     "project": "Project",
     "scratch": "Scratch Workspace",
     "inPlace": "In-place",
-    "worktree": "Worktree",
+    "worktree": "Separate worktree",
     "basePlaceholder": "Base branch (default)",
-    "promptPlaceholder": "Describe what to build, debug, or plan… (type / for commands & skills)"
+    "promptPlaceholder": "Describe what to build, debug or plan…",
+    "environment": "Environment",
+    "projectsOn": "Projects on {{machine}}",
+    "addProject": "Add Project…",
+    "offlineQueues": "Offline · messages wait until it’s back",
+    "worktreeHint": "Each task gets its own branch; the files you’re changing are left alone",
+    "notRepo": "Not a git repository: works in place only",
+    "needsUpdate": "Hermesh on {{machine}} needs an update to start sessions.",
+    "needsUpdateShort": "Needs update",
+    "lastKnown": "last known"
   },
   "header": {
     "fork": "Fork",
@@ -34,13 +44,37 @@
     "autoHint": "Auto-apply workspace edits & routine dev/test commands; prompt on risky actions",
     "fullAccess": "Full access",
     "fullAccessHint": "Unrestricted execution within your machine ceiling",
-    "ceilingLocked": "Locked by cryptographic Grant / Machine ceiling"
+    "ceilingLocked": "Locked by cryptographic Grant / Machine ceiling",
+    "title": "Permission mode",
+    "planHint": "Plans only; files change and commands run once the plan is approved",
+    "ceilingMachine": "Above what this machine or the grant allows"
   },
   "picker": {
     "providers": "Providers",
     "models": "Models",
     "options": "Model Traits",
-    "noOptions": "No configurable traits for this model."
+    "noOptions": "No configurable traits for this model.",
+    "model": "Model",
+    "find": "Search models or providers",
+    "noMatch": "No matching models",
+    "none": "No models to use on {{machine}} yet",
+    "thinking": "Thinking",
+    "noThinking": "{{model}} has no thinking levels",
+    "thinkingChanged": "{{model}} has no “{{from}}” level; thinking is now “{{to}}”",
+    "notInstalled": "Not installed",
+    "signedOut": "Signed out",
+    "notForProject": "Not set up for this project",
+    "off": "Turned off",
+    "isNew": "New",
+    "level": {
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra high",
+      "max": "Max"
+    },
+    "lastKnown": "{{machine}} is offline: these are the models last read there"
   },
   "composer": {
     "placeholder": "Reply, steer mid-turn, or queue a follow-up…",
@@ -51,7 +85,10 @@
     "queue": "Queue",
     "queueOffline": "Queue Offline",
     "stop": "Stop",
-    "forceStop": "Force Stop"
+    "forceStop": "Force Stop",
+    "placeholderIdle": "Keep going…",
+    "placeholderRunning": "Say more; it goes to the next turn…",
+    "nextTurn": "Handled in the next turn"
   },
   "queue": {
     "heading": "Queued Follow-ups ({{count}})",

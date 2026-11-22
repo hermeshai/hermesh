@@ -2221,7 +2221,7 @@ func (o *Owner) admin(ctx context.Context, machineID string, build func(*identit
 	req := &machinev1.ApplyAdminCommandRequest{}
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject, *identityv1.AdminCommand_SetPaused, *identityv1.AdminCommand_SetName,
-		*identityv1.AdminCommand_SetAgentDefaults:
+		*identityv1.AdminCommand_SetAgentDefaults, *identityv1.AdminCommand_CreateFolder, *identityv1.AdminCommand_SetMaxRuntimeMode:
 		if l := o.local(); l != nil && l.MachineID() == machineID {
 			return l.ApplySettings(ctx, build) // this device's own machine, in process
 		}
@@ -2480,7 +2480,7 @@ func (o *Owner) ListProjects(ctx context.Context, machineID string) (*localv1.Li
 		defer mu.Unlock()
 		for _, p := range res.Projects {
 			out.Projects = append(out.Projects, &localv1.Project{MachineId: meta.MachineId, ProjectId: p.ProjectId, DefaultBaseRef: p.DefaultBaseRef, Workspace: p.Workspace,
-				Description: p.Description, Agents: p.Agents, Path: p.Path})
+				Description: p.Description, Agents: p.Agents, Path: p.Path, Repo: p.Repo})
 		}
 	}
 	bad, err := o.fanOut(ctx, ask, func(l *machine.Local, meta *localv1.Machine) error {

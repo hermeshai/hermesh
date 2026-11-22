@@ -199,6 +199,46 @@ func (o *Owner) cacheThread(th *threadv2.Thread, proj *threadv2.ThreadProjection
 	o.notifyThreadSubs(&threadv2.SubscribeThreadsResponse{Threads: []*threadv2.Thread{th}})
 }
 
+// followThreads keeps this device's copy of a remote machine's threads
+// current while the replica follows that machine (followWatch): its
+// SubscribeThreads snapshot, then every change, into the thread cache, which
+// tells the apps' thread lists. It ends with the machine's watch; a machine
+// without threads (older hermeshd) ends it at once.
+func (o *Owner) followThreads(ctx context.Context, n *peer.Machine) {
+	stream, err := n.Thread.SubscribeThreads(ctx, &threadv2.SubscribeThreadsRequest{IncludeArchived: true})
+	if err != nil {
+		return
+	}
+	defer stream.Close()
+	for stream.Receive() {
+		m := stream.Msg()
+		if m.Snapshot {
+			o.forgetCachedThreads(n.MachineID, m.Threads)
+		}
+		for _, t := range m.Threads {
+			o.cacheThread(t, nil)
+		}
+		for _, id := range m.DeletedThreadIds {
+			o.removeCachedThread(id)
+		}
+	}
+}
+
+// forgetCachedThreads drops the machine's cached threads its snapshot no
+// longer has (deleted while this device was away), keeping those still
+// waiting in the offline outbox.
+func (o *Owner) forgetCachedThreads(machineID string, now []*threadv2.Thread) {
+	keep := map[string]bool{}
+	for _, t := range now {
+		keep[t.ThreadId] = true
+	}
+	for _, t := range o.cachedThreads(true) {
+		if t.MachineId == machineID && !keep[t.ThreadId] && !t.OfflineQueued {
+			o.removeCachedThread(t.ThreadId)
+		}
+	}
+}
+
 func (o *Owner) removeCachedThread(threadID string) {
 	_, _ = o.st.db.Exec(`DELETE FROM threads_v2_cache WHERE thread_id = ?`, threadID)
 	o.notifyThreadSubs(&threadv2.SubscribeThreadsResponse{DeletedThreadIds: []string{threadID}})
@@ -367,6 +407,11 @@ func (o *Owner) flushThreadOutboxOnce(ctx context.Context) {
 			skipMachine[item.machineID] = true
 			continue
 		}
+		// Re-read the row: an earlier LaunchThread in this pass may have rewritten
+		// its temporary thread ID to the machine's real one.
+		if o.st.db.QueryRow(`SELECT thread_id, req_payload FROM threads_v2_outbox WHERE seq = ?`, item.seq).Scan(&item.threadID, &item.payload) != nil {
+			continue
+		}
 		err = o.replayOutboxItem(ctx, pm, item)
 		if err == nil {
 			_, _ = o.st.db.Exec(`DELETE FROM threads_v2_outbox WHERE seq = ?`, item.seq)
@@ -377,9 +422,39 @@ func (o *Owner) flushThreadOutboxOnce(ctx context.Context) {
 			skipMachine[item.machineID] = true
 		} else {
 			// Permanent terminal error (e.g. PermissionDenied / NotFound): drop from outbox after recording error on cached thread.
+			o.recordOutboxFailure(item, err)
 			_, _ = o.st.db.Exec(`DELETE FROM threads_v2_outbox WHERE seq = ?`, item.seq)
 		}
 	}
+}
+
+// recordOutboxFailure surfaces a command the machine rejected on the cached
+// thread, so an offline-queued launch or message does not vanish silently.
+func (o *Owner) recordOutboxFailure(item outboxRow, err error) {
+	proj := o.cachedProjection(item.threadID)
+	if proj == nil || proj.Thread == nil {
+		return
+	}
+	th := proj.Thread
+	if th.OfflineQueued && th.Status == threadv2.ThreadStatus_THREAD_STATUS_FAILED {
+		return // keep the launch's rejection reason; later commands on it fail for the same cause
+	}
+	th.LastError = fmt.Sprintf("%s was rejected by the machine: %s", item.method, connectMessage(err))
+	if th.OfflineQueued {
+		// Never reached the machine: keep it as a local failed record the user can read and delete.
+		th.Status = threadv2.ThreadStatus_THREAD_STATUS_FAILED
+		th.QueuedRunCount = 0
+	}
+	th.UpdatedAt = timestamppb.Now()
+	o.cacheThread(th, nil)
+}
+
+func connectMessage(err error) string {
+	var ce *connect.Error
+	if errors.As(err, &ce) {
+		return ce.Message()
+	}
+	return err.Error()
 }
 
 func (o *Owner) replayOutboxItem(ctx context.Context, pm *peer.Machine, item outboxRow) error {
@@ -681,6 +756,10 @@ func (s *ownerThreadService) GetThread(ctx context.Context, req *threadv2.GetThr
 			o.cacheThread(res.Projection.GetThread(), res.Projection)
 			return res, nil
 		} else if !isOfflineErr(gErr) {
+			// An offline-queued thread exists only here until (or unless) the machine accepts it.
+			if cached := o.cachedProjection(req.ThreadId); connect.CodeOf(gErr) == connect.CodeNotFound && cached.GetThread().GetOfflineQueued() {
+				return &threadv2.GetThreadResponse{Projection: cached}, nil
+			}
 			return nil, gErr
 		}
 	}

@@ -243,6 +243,8 @@ message AdminCommand {
     SetHer set_her = 16;
     SetHerAssistantMode set_her_assistant_mode = 17;
     SetHerCommandConnector set_her_command_connector = 18;
+    CreateFolder create_folder = 19;
+    SetMaxRuntimeMode set_max_runtime_mode = 20;
   }
   reserved 12;
   reserved "rename_machine";
@@ -437,4 +439,21 @@ message DeltaEnvelope {
   // Per-device wrapped DEKs so every trusted device decrypts independently.
   repeated WrappedKey keys = 7;
   google.protobuf.Timestamp created_at = 8;
+}
+
+// A setting: a new empty folder in a folder under the machine's home folder,
+// for a project (docs/thread-composer.md §4.3). git_init makes it a git
+// repository with one empty commit, so sessions can take worktrees of it.
+message CreateFolder {
+  // "~", "~/code", or a full path under the home folder.
+  string parent = 1;
+  // One folder name: no separator, not starting with ".".
+  string name = 2;
+  bool git_init = 3;
+}
+
+// A setting: the broadest permission mode the machine's threads may run in,
+// whoever starts them; UNSPECIFIED lifts the limit.
+message SetMaxRuntimeMode {
+  RuntimeMode mode = 1;
 }

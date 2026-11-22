@@ -1050,8 +1050,14 @@ type MachineStatus struct {
 	// offering 1-RTT handshakes, independent non-HoL streams, and connection
 	// migration. Sent to the owner's devices only.
 	DirectQuicAddrs []string `protobuf:"bytes,17,rep,name=direct_quic_addrs,json=directQuicAddrs,proto3" json:"direct_quic_addrs,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// It serves hermesh.thread.v2.ThreadService (docs/thread-composer.md §5.2);
+	// unset on a machine from before it, which the apps take as "update it".
+	Threads bool `protobuf:"varint,18,opt,name=threads,proto3" json:"threads,omitempty"`
+	// The broadest permission mode its threads may run in, whoever starts them
+	// (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
+	MaxRuntimeMode v11.RuntimeMode `protobuf:"varint,19,opt,name=max_runtime_mode,json=maxRuntimeMode,proto3,enum=hermesh.identity.v1.RuntimeMode" json:"max_runtime_mode,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MachineStatus) Reset() {
@@ -1180,6 +1186,20 @@ func (x *MachineStatus) GetDirectQuicAddrs() []string {
 		return x.DirectQuicAddrs
 	}
 	return nil
+}
+
+func (x *MachineStatus) GetThreads() bool {
+	if x != nil {
+		return x.Threads
+	}
+	return false
+}
+
+func (x *MachineStatus) GetMaxRuntimeMode() v11.RuntimeMode {
+	if x != nil {
+		return x.MaxRuntimeMode
+	}
+	return v11.RuntimeMode(0)
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this
@@ -1971,7 +1991,10 @@ type Project struct {
 	// waiting for an answer).
 	ActiveSessions uint32 `protobuf:"varint,7,opt,name=active_sessions,json=activeSessions,proto3" json:"active_sessions,omitempty"`
 	// The coding agents that may work in it; empty: all.
-	Agents        []string `protobuf:"bytes,8,rep,name=agents,proto3" json:"agents,omitempty"`
+	Agents []string `protobuf:"bytes,8,rep,name=agents,proto3" json:"agents,omitempty"`
+	// Its folder is a git repository's top level now, whatever its workspace:
+	// a session of an in-place project may still take its own worktree.
+	Repo          bool `protobuf:"varint,9,opt,name=repo,proto3" json:"repo,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2060,6 +2083,13 @@ func (x *Project) GetAgents() []string {
 		return x.Agents
 	}
 	return nil
+}
+
+func (x *Project) GetRepo() bool {
+	if x != nil {
+		return x.Repo
+	}
+	return false
 }
 
 type ListProjectsResponse struct {
@@ -3029,7 +3059,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +
 	"\fmachine_name\x18\x02 \x01(\tR\vmachineName\x129\n" +
-	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\xdc\x05\n" +
+	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\xc2\x06\n" +
 	"\rMachineStatus\x12\x12\n" +
 	"\x04name\x18\f \x01(\tR\x04name\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1a\n" +
@@ -3044,7 +3074,9 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x03her\x18\x0e \x01(\v2\x1d.hermesh.machine.v1.HerStatusR\x03her\x128\n" +
 	"\x06screen\x18\x0f \x01(\v2 .hermesh.machine.v1.ScreenStatusR\x06screen\x12!\n" +
 	"\fdirect_addrs\x18\x10 \x03(\tR\vdirectAddrs\x12*\n" +
-	"\x11direct_quic_addrs\x18\x11 \x03(\tR\x0fdirectQuicAddrs\x1a;\n" +
+	"\x11direct_quic_addrs\x18\x11 \x03(\tR\x0fdirectQuicAddrs\x12\x18\n" +
+	"\athreads\x18\x12 \x01(\bR\athreads\x12J\n" +
+	"\x10max_runtime_mode\x18\x13 \x01(\x0e2 .hermesh.identity.v1.RuntimeModeR\x0emaxRuntimeMode\x1a;\n" +
 	"\rSessionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\n" +
@@ -3113,7 +3145,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
 	"\aefforts\x18\x03 \x03(\tR\aefforts\"\x15\n" +
-	"\x13ListProjectsRequest\"\x9b\x02\n" +
+	"\x13ListProjectsRequest\"\xaf\x02\n" +
 	"\aProject\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12(\n" +
@@ -3123,7 +3155,8 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\vdescription\x18\x05 \x01(\tR\vdescription\x12\x12\n" +
 	"\x04base\x18\x06 \x01(\tR\x04base\x12'\n" +
 	"\x0factive_sessions\x18\a \x01(\rR\x0eactiveSessions\x12\x16\n" +
-	"\x06agents\x18\b \x03(\tR\x06agents\"O\n" +
+	"\x06agents\x18\b \x03(\tR\x06agents\x12\x12\n" +
+	"\x04repo\x18\t \x01(\bR\x04repo\"O\n" +
 	"\x14ListProjectsResponse\x127\n" +
 	"\bprojects\x18\x01 \x03(\v2\x1b.hermesh.machine.v1.ProjectR\bprojects\"\x12\n" +
 	"\x10ListReposRequest\"C\n" +
@@ -3273,12 +3306,13 @@ var file_hermesh_machine_v1_machine_proto_goTypes = []any{
 	(*v1.Session)(nil),                // 44: hermesh.session.v1.Session
 	(*v1.SessionCursor)(nil),          // 45: hermesh.session.v1.SessionCursor
 	(v1.SessionStatus)(0),             // 46: hermesh.session.v1.SessionStatus
-	(*v11.AgentDefaults)(nil),         // 47: hermesh.identity.v1.AgentDefaults
-	(v11.Workspace)(0),                // 48: hermesh.identity.v1.Workspace
-	(*v11.Signed)(nil),                // 49: hermesh.identity.v1.Signed
-	(*v11.AdminCommand)(nil),          // 50: hermesh.identity.v1.AdminCommand
-	(*v11.RevocationList)(nil),        // 51: hermesh.identity.v1.RevocationList
-	(*v11.RootChain)(nil),             // 52: hermesh.identity.v1.RootChain
+	(v11.RuntimeMode)(0),              // 47: hermesh.identity.v1.RuntimeMode
+	(*v11.AgentDefaults)(nil),         // 48: hermesh.identity.v1.AgentDefaults
+	(v11.Workspace)(0),                // 49: hermesh.identity.v1.Workspace
+	(*v11.Signed)(nil),                // 50: hermesh.identity.v1.Signed
+	(*v11.AdminCommand)(nil),          // 51: hermesh.identity.v1.AdminCommand
+	(*v11.RevocationList)(nil),        // 52: hermesh.identity.v1.RevocationList
+	(*v11.RootChain)(nil),             // 53: hermesh.identity.v1.RootChain
 }
 var file_hermesh_machine_v1_machine_proto_depIdxs = []int32{
 	42, // 0: hermesh.machine.v1.WatchRequest.view:type_name -> hermesh.session.v1.SessionView
@@ -3300,54 +3334,55 @@ var file_hermesh_machine_v1_machine_proto_depIdxs = []int32{
 	18, // 16: hermesh.machine.v1.MachineStatus.problems:type_name -> hermesh.machine.v1.MachineProblem
 	16, // 17: hermesh.machine.v1.MachineStatus.her:type_name -> hermesh.machine.v1.HerStatus
 	15, // 18: hermesh.machine.v1.MachineStatus.screen:type_name -> hermesh.machine.v1.ScreenStatus
-	17, // 19: hermesh.machine.v1.HerStatus.latest:type_name -> hermesh.machine.v1.HerLatest
-	43, // 20: hermesh.machine.v1.HerLatest.at:type_name -> google.protobuf.Timestamp
-	0,  // 21: hermesh.machine.v1.HerLatest.kind:type_name -> hermesh.machine.v1.HerLatestKind
-	1,  // 22: hermesh.machine.v1.MachineProblem.kind:type_name -> hermesh.machine.v1.MachineProblemKind
-	21, // 23: hermesh.machine.v1.AgentStatus.models:type_name -> hermesh.machine.v1.AgentModel
-	47, // 24: hermesh.machine.v1.AgentStatus.defaults:type_name -> hermesh.identity.v1.AgentDefaults
-	47, // 25: hermesh.machine.v1.AgentStatus.own:type_name -> hermesh.identity.v1.AgentDefaults
-	2,  // 26: hermesh.machine.v1.AgentStatus.problem:type_name -> hermesh.machine.v1.AgentProblem
-	20, // 27: hermesh.machine.v1.AgentStatus.model_catalogs:type_name -> hermesh.machine.v1.AgentModelCatalog
-	21, // 28: hermesh.machine.v1.AgentModelCatalog.models:type_name -> hermesh.machine.v1.AgentModel
-	48, // 29: hermesh.machine.v1.Project.workspace:type_name -> hermesh.identity.v1.Workspace
-	23, // 30: hermesh.machine.v1.ListProjectsResponse.projects:type_name -> hermesh.machine.v1.Project
-	27, // 31: hermesh.machine.v1.ListReposResponse.repos:type_name -> hermesh.machine.v1.Repo
-	43, // 32: hermesh.machine.v1.Repo.last_commit:type_name -> google.protobuf.Timestamp
-	30, // 33: hermesh.machine.v1.ListFoldersResponse.folders:type_name -> hermesh.machine.v1.Folder
-	49, // 34: hermesh.machine.v1.ApplyAdminCommandRequest.command:type_name -> hermesh.identity.v1.Signed
-	50, // 35: hermesh.machine.v1.ApplyAdminCommandRequest.settings:type_name -> hermesh.identity.v1.AdminCommand
-	51, // 36: hermesh.machine.v1.PushRevocationsRequest.revocations:type_name -> hermesh.identity.v1.RevocationList
-	52, // 37: hermesh.machine.v1.PushRevocationsRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
-	49, // 38: hermesh.machine.v1.SetHerGrantRequest.grant:type_name -> hermesh.identity.v1.Signed
-	52, // 39: hermesh.machine.v1.SetHerGrantRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
-	12, // 40: hermesh.machine.v1.MachineService.GetInfo:input_type -> hermesh.machine.v1.GetInfoRequest
-	22, // 41: hermesh.machine.v1.MachineService.ListProjects:input_type -> hermesh.machine.v1.ListProjectsRequest
-	3,  // 42: hermesh.machine.v1.MachineService.Watch:input_type -> hermesh.machine.v1.WatchRequest
-	5,  // 43: hermesh.machine.v1.MachineService.PullWork:input_type -> hermesh.machine.v1.PullWorkRequest
-	39, // 44: hermesh.machine.v1.MachineService.PunchDirect:input_type -> hermesh.machine.v1.PunchDirectRequest
-	33, // 45: hermesh.machine.v1.MachineAdminService.ApplyAdminCommand:input_type -> hermesh.machine.v1.ApplyAdminCommandRequest
-	35, // 46: hermesh.machine.v1.MachineAdminService.PushRevocations:input_type -> hermesh.machine.v1.PushRevocationsRequest
-	25, // 47: hermesh.machine.v1.MachineAdminService.ListRepos:input_type -> hermesh.machine.v1.ListReposRequest
-	28, // 48: hermesh.machine.v1.MachineAdminService.ListFolders:input_type -> hermesh.machine.v1.ListFoldersRequest
-	31, // 49: hermesh.machine.v1.MachineAdminService.TestAgent:input_type -> hermesh.machine.v1.TestAgentRequest
-	37, // 50: hermesh.machine.v1.MachineAdminService.SetHerGrant:input_type -> hermesh.machine.v1.SetHerGrantRequest
-	13, // 51: hermesh.machine.v1.MachineService.GetInfo:output_type -> hermesh.machine.v1.GetInfoResponse
-	24, // 52: hermesh.machine.v1.MachineService.ListProjects:output_type -> hermesh.machine.v1.ListProjectsResponse
-	4,  // 53: hermesh.machine.v1.MachineService.Watch:output_type -> hermesh.machine.v1.WatchResponse
-	6,  // 54: hermesh.machine.v1.MachineService.PullWork:output_type -> hermesh.machine.v1.PullWorkResponse
-	40, // 55: hermesh.machine.v1.MachineService.PunchDirect:output_type -> hermesh.machine.v1.PunchDirectResponse
-	34, // 56: hermesh.machine.v1.MachineAdminService.ApplyAdminCommand:output_type -> hermesh.machine.v1.ApplyAdminCommandResponse
-	36, // 57: hermesh.machine.v1.MachineAdminService.PushRevocations:output_type -> hermesh.machine.v1.PushRevocationsResponse
-	26, // 58: hermesh.machine.v1.MachineAdminService.ListRepos:output_type -> hermesh.machine.v1.ListReposResponse
-	29, // 59: hermesh.machine.v1.MachineAdminService.ListFolders:output_type -> hermesh.machine.v1.ListFoldersResponse
-	32, // 60: hermesh.machine.v1.MachineAdminService.TestAgent:output_type -> hermesh.machine.v1.TestAgentResponse
-	38, // 61: hermesh.machine.v1.MachineAdminService.SetHerGrant:output_type -> hermesh.machine.v1.SetHerGrantResponse
-	51, // [51:62] is the sub-list for method output_type
-	40, // [40:51] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	47, // 19: hermesh.machine.v1.MachineStatus.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	17, // 20: hermesh.machine.v1.HerStatus.latest:type_name -> hermesh.machine.v1.HerLatest
+	43, // 21: hermesh.machine.v1.HerLatest.at:type_name -> google.protobuf.Timestamp
+	0,  // 22: hermesh.machine.v1.HerLatest.kind:type_name -> hermesh.machine.v1.HerLatestKind
+	1,  // 23: hermesh.machine.v1.MachineProblem.kind:type_name -> hermesh.machine.v1.MachineProblemKind
+	21, // 24: hermesh.machine.v1.AgentStatus.models:type_name -> hermesh.machine.v1.AgentModel
+	48, // 25: hermesh.machine.v1.AgentStatus.defaults:type_name -> hermesh.identity.v1.AgentDefaults
+	48, // 26: hermesh.machine.v1.AgentStatus.own:type_name -> hermesh.identity.v1.AgentDefaults
+	2,  // 27: hermesh.machine.v1.AgentStatus.problem:type_name -> hermesh.machine.v1.AgentProblem
+	20, // 28: hermesh.machine.v1.AgentStatus.model_catalogs:type_name -> hermesh.machine.v1.AgentModelCatalog
+	21, // 29: hermesh.machine.v1.AgentModelCatalog.models:type_name -> hermesh.machine.v1.AgentModel
+	49, // 30: hermesh.machine.v1.Project.workspace:type_name -> hermesh.identity.v1.Workspace
+	23, // 31: hermesh.machine.v1.ListProjectsResponse.projects:type_name -> hermesh.machine.v1.Project
+	27, // 32: hermesh.machine.v1.ListReposResponse.repos:type_name -> hermesh.machine.v1.Repo
+	43, // 33: hermesh.machine.v1.Repo.last_commit:type_name -> google.protobuf.Timestamp
+	30, // 34: hermesh.machine.v1.ListFoldersResponse.folders:type_name -> hermesh.machine.v1.Folder
+	50, // 35: hermesh.machine.v1.ApplyAdminCommandRequest.command:type_name -> hermesh.identity.v1.Signed
+	51, // 36: hermesh.machine.v1.ApplyAdminCommandRequest.settings:type_name -> hermesh.identity.v1.AdminCommand
+	52, // 37: hermesh.machine.v1.PushRevocationsRequest.revocations:type_name -> hermesh.identity.v1.RevocationList
+	53, // 38: hermesh.machine.v1.PushRevocationsRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
+	50, // 39: hermesh.machine.v1.SetHerGrantRequest.grant:type_name -> hermesh.identity.v1.Signed
+	53, // 40: hermesh.machine.v1.SetHerGrantRequest.root_chain:type_name -> hermesh.identity.v1.RootChain
+	12, // 41: hermesh.machine.v1.MachineService.GetInfo:input_type -> hermesh.machine.v1.GetInfoRequest
+	22, // 42: hermesh.machine.v1.MachineService.ListProjects:input_type -> hermesh.machine.v1.ListProjectsRequest
+	3,  // 43: hermesh.machine.v1.MachineService.Watch:input_type -> hermesh.machine.v1.WatchRequest
+	5,  // 44: hermesh.machine.v1.MachineService.PullWork:input_type -> hermesh.machine.v1.PullWorkRequest
+	39, // 45: hermesh.machine.v1.MachineService.PunchDirect:input_type -> hermesh.machine.v1.PunchDirectRequest
+	33, // 46: hermesh.machine.v1.MachineAdminService.ApplyAdminCommand:input_type -> hermesh.machine.v1.ApplyAdminCommandRequest
+	35, // 47: hermesh.machine.v1.MachineAdminService.PushRevocations:input_type -> hermesh.machine.v1.PushRevocationsRequest
+	25, // 48: hermesh.machine.v1.MachineAdminService.ListRepos:input_type -> hermesh.machine.v1.ListReposRequest
+	28, // 49: hermesh.machine.v1.MachineAdminService.ListFolders:input_type -> hermesh.machine.v1.ListFoldersRequest
+	31, // 50: hermesh.machine.v1.MachineAdminService.TestAgent:input_type -> hermesh.machine.v1.TestAgentRequest
+	37, // 51: hermesh.machine.v1.MachineAdminService.SetHerGrant:input_type -> hermesh.machine.v1.SetHerGrantRequest
+	13, // 52: hermesh.machine.v1.MachineService.GetInfo:output_type -> hermesh.machine.v1.GetInfoResponse
+	24, // 53: hermesh.machine.v1.MachineService.ListProjects:output_type -> hermesh.machine.v1.ListProjectsResponse
+	4,  // 54: hermesh.machine.v1.MachineService.Watch:output_type -> hermesh.machine.v1.WatchResponse
+	6,  // 55: hermesh.machine.v1.MachineService.PullWork:output_type -> hermesh.machine.v1.PullWorkResponse
+	40, // 56: hermesh.machine.v1.MachineService.PunchDirect:output_type -> hermesh.machine.v1.PunchDirectResponse
+	34, // 57: hermesh.machine.v1.MachineAdminService.ApplyAdminCommand:output_type -> hermesh.machine.v1.ApplyAdminCommandResponse
+	36, // 58: hermesh.machine.v1.MachineAdminService.PushRevocations:output_type -> hermesh.machine.v1.PushRevocationsResponse
+	26, // 59: hermesh.machine.v1.MachineAdminService.ListRepos:output_type -> hermesh.machine.v1.ListReposResponse
+	29, // 60: hermesh.machine.v1.MachineAdminService.ListFolders:output_type -> hermesh.machine.v1.ListFoldersResponse
+	32, // 61: hermesh.machine.v1.MachineAdminService.TestAgent:output_type -> hermesh.machine.v1.TestAgentResponse
+	38, // 62: hermesh.machine.v1.MachineAdminService.SetHerGrant:output_type -> hermesh.machine.v1.SetHerGrantResponse
+	52, // [52:63] is the sub-list for method output_type
+	41, // [41:52] is the sub-list for method input_type
+	41, // [41:41] is the sub-list for extension type_name
+	41, // [41:41] is the sub-list for extension extendee
+	0,  // [0:41] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_machine_v1_machine_proto_init() }

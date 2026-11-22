@@ -41,9 +41,9 @@ test("the page has no Node and cannot leave the app", async () => {
 test("a cancelled stream releases the daemon connection", async () => {
   const { app, page } = await launch();
   const open = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
-  // The window keeps one stream open: its watch on the sessions.
+  // The window keeps two streams open: its watch on the sessions, and the v2 thread list (store.tsx useThreads).
   await expect((await sessionList(page))).toContainText("写 hello");
-  await expect.poll(open).toBe(1);
+  await expect.poll(open).toBe(2);
   const id = (await import("./app")).fixture.sessions["跑很久"];
   await page.evaluate(async (sessionId) => {
     const ctl = new AbortController();
@@ -59,9 +59,9 @@ test("a cancelled stream releases the daemon connection", async () => {
       signal: ctl.signal,
     }).then((r) => r.body?.getReader().read()).catch(() => {});
   }, id);
-  await expect.poll(open).toBe(2);
+  await expect.poll(open).toBe(3);
   await page.evaluate(() => (globalThis as { abortStream?: () => void }).abortStream?.());
-  await expect.poll(open).toBe(1);
+  await expect.poll(open).toBe(2);
   await app.close();
 });
 

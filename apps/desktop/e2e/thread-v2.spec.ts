@@ -1,5 +1,20 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { launch } from "./app";
+
+// The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
+async function pickDemoAndScripted(page: Page) {
+  await page.getByRole("button", { name: "项目" }).click();
+  await page.getByTestId("project-item-demo").click();
+  await page.getByRole("button", { name: "模型" }).click();
+  await page.getByTestId("picker-provider-scripted").click();
+  await page.getByTestId("picker-model-scripted-pro").click();
+  await page.keyboard.press("Escape");
+}
+async function pickMode(page: Page, testId: string) {
+  await page.getByRole("button", { name: "权限模式" }).click();
+  await page.getByTestId(testId).click();
+}
 
 // End-to-end verification of the Hermesh v2 Thread Workspace in the Desktop Electron app:
 // 1. Native thread creation with ProviderInstance + ModelSelection + 4-level RuntimeMode
@@ -13,20 +28,16 @@ test("launches a supervised v2 thread, handles live tool approval, inspects git 
   try {
     const openStreams = () =>
       app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
-    await expect.poll(openStreams).toBe(1);
+    // Watch, and the thread list the window keeps for its sidebar (store.tsx useThreads).
+    await expect.poll(openStreams).toBe(2);
 
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-page")).toBeVisible();
 
     // Pick project "demo" and select the deterministic Scripted Test Agent + Supervised mode.
-    await page.getByTestId("launch-project-select").selectOption("demo");
-    await page.getByTestId("model-picker-trigger").click();
-    await expect(page.getByTestId("model-traits-popover")).toBeVisible();
-    await page.getByTestId("picker-provider-scripted").click();
-    await page.getByTestId("model-picker-trigger").click();
-
+    await pickDemoAndScripted(page);
     // RuntimeMode.SUPERVISED == 1
-    await page.getByTestId("runtime-mode-1").click();
+    await pickMode(page, "runtime-mode-1");
 
     await page.getByTestId("thread-composer-input").fill("write ui_v2.txt|hello_from_v2_ui\nsay ui_turn_complete");
     await page.getByTestId("composer-submit-btn").click();
@@ -60,9 +71,9 @@ test("launches a supervised v2 thread, handles live tool approval, inspects git 
     await page.getByTestId("insp-tab-diff").click();
     await expect(page.getByTestId("insp-tab-diff")).toContainText("(0)");
 
-    // Navigating back to Overview cleanly closes ThreadService subscriptions so upstream drops back to 1 Watch stream!
+    // Navigating back to Overview closes the thread's own subscription: Watch and the thread list stay.
     await page.locator(".side-nav").getByRole("button", { name: /^概览/ }).click();
-    await expect.poll(openStreams).toBe(1);
+    await expect.poll(openStreams).toBe(2);
   } finally {
     await app.close();
   }
@@ -72,14 +83,11 @@ test("plan mode proposes a structured plan, approves it in one click, and transi
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByTestId("launch-project-select").selectOption("demo");
-    await page.getByTestId("model-picker-trigger").click();
-    await page.getByTestId("picker-provider-scripted").click();
-    await page.getByTestId("model-picker-trigger").click();
+    await pickDemoAndScripted(page);
 
-    // Switch segmented pill to Plan mode.
-    await page.getByTestId("mode-plan-btn").click();
-    await expect(page.getByTestId("mode-plan-btn")).toHaveClass(/on/);
+    // Plan mode, from the permission mode menu.
+    await pickMode(page, "mode-plan-btn");
+    await expect(page.getByTestId("runtime-mode-chip")).toContainText("规划");
 
     await page.getByTestId("thread-composer-input").fill("propose-plan V2 Rollout|1. Kernel\n2. Desktop UI\nsay plan_approved_done");
     await page.getByTestId("composer-submit-btn").click();
@@ -90,41 +98,38 @@ test("plan mode proposes a structured plan, approves it in one click, and transi
     // Approve plan -> turn finishes AND interaction mode transitions automatically to Code!
     await page.getByTestId("approve-plan-btn").click();
     await expect(page.getByTestId("turn-item-assistant")).toContainText("plan_approved_done");
-    await expect(page.getByTestId("mode-code-btn")).toHaveClass(/on/);
+    await expect(page.getByTestId("runtime-mode-chip")).not.toContainText("规划");
   } finally {
     await app.close();
   }
 });
 
-test("polymorphic composer supports live mid-turn steer and durable queue editing and cancellation", async () => {
+test("while a turn runs, messages queue; one can steer the turn now, be edited or cancelled, and Stop ends the turn", async () => {
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByTestId("launch-project-select").selectOption("demo");
-    await page.getByTestId("model-picker-trigger").click();
-    await page.getByTestId("picker-provider-scripted").click();
-    await page.getByTestId("model-picker-trigger").click();
+    await pickDemoAndScripted(page);
 
     // Launch a long-running turn (8s) in Auto Edits mode (2) so steer + queue edit + cancel + interrupt all execute deterministically.
-    await page.getByTestId("runtime-mode-2").click();
-    await page.getByTestId("thread-composer-input").fill("sleep 8000\nsay slow_turn_done");
+    await pickMode(page, "runtime-mode-2");
+    await page.getByTestId("thread-composer-input").fill("sleep 8s\nsay slow_turn_done");
     await page.getByTestId("composer-submit-btn").click();
 
-    // While running with an empty draft, primary action is Stop.
+    // While running, Stop sits beside Send.
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 10_000 });
 
-    // Typing a draft while running switches buttons to Steer + Queue!
+    // A message sent while running waits for the next turn; the queue's "steer now" puts it into this one.
     await page.getByTestId("thread-composer-input").fill("Focus on test coverage");
-    await expect(page.getByTestId("composer-steer-btn")).toBeVisible();
-    await expect(page.getByTestId("composer-queue-btn")).toBeVisible();
-    await page.getByTestId("composer-steer-btn").click();
+    await page.getByTestId("composer-submit-btn").click();
+    await expect(page.getByTestId("queued-run-0")).toContainText("Focus on test coverage");
+    await page.getByTestId("queue-promote-0").click();
 
     // Steered message appears immediately in the live timeline.
     await expect(page.getByTestId("thread-timeline")).toContainText("Focus on test coverage");
 
     // Enqueue a follow-up turn while the active turn is still running, edit it, and cancel it!
     await page.getByTestId("thread-composer-input").fill("Draft follow-up 1");
-    await page.getByTestId("composer-queue-btn").click();
+    await page.getByTestId("composer-submit-btn").click();
 
     const strip = page.getByTestId("queued-runs-strip");
     await expect(strip).toBeVisible();
@@ -138,9 +143,10 @@ test("polymorphic composer supports live mid-turn steer and durable queue editin
     await page.getByTestId("queue-cancel-0").click();
     await expect(strip).toHaveCount(0);
 
-    // Interrupt the running turn cleanly via the Stop button and verify composer returns to Send!
+    // Interrupt the running turn cleanly via the Stop button: Stop goes, Send stays.
     await page.getByTestId("composer-stop-btn").click();
-    await expect(page.getByTestId("composer-submit-btn")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByTestId("composer-submit-btn")).toBeVisible();
   } finally {
     await app.close();
   }

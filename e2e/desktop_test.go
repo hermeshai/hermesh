@@ -150,6 +150,9 @@ func TestDesktop(t *testing.T) {
 				f.OtherMac = otherMacSession(t, f)
 				inPlaceSessions(t, f)
 			}
+			if name == "thread-composer" {
+				f.OtherMac = otherMacThreads(t, f)
+			}
 			if name == "windows" {
 				f.OldSigner = t.TempDir()
 				bin := filepath.Join(f.OldSigner, "hermesh-signer.exe")
@@ -510,6 +513,41 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 		f.Fresh = append(f.Fresh, newFreshOwner(t, w, fmt.Sprintf("fresh-%d", i), i == 0, i == 8))
 	}
 	return f
+}
+
+// otherMacThreads joins a second Mac, work-mac, as a machine only, with the
+// scripted agent for its threads, a home folder of its own and no project:
+// the spec adds them from the app (thread-composer.spec.ts); and old-mac, a
+// machine from before threads. It returns work-mac's daemon's process group,
+// for the spec to take it offline.
+func otherMacThreads(t *testing.T, f desktopFixture) int {
+	w := f.owner
+	home, err := w.app.client.GetStatus(context.Background(), &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Its own home folder: what Add a Project lists, browses and makes folders in. ~/code/recent-app and
+	// ~/code/mono are repositories; ~/code/mono/web is a folder inside one.
+	workHome := t.TempDir()
+	for _, name := range []string{"recent-app", "mono"} {
+		dir := filepath.Join(workHome, "code", name)
+		os.MkdirAll(filepath.Join(dir, "web"), 0o755)
+		os.WriteFile(filepath.Join(dir, "web", "README.md"), []byte("# "+name+"\n"), 0o644)
+		for _, args := range [][]string{{"init", "-q"}, {"add", "-A"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v %s", args, err, out)
+			}
+		}
+	}
+	work, _ := w.otherMac("work-mac", []string{"HERMESH_INCLUDE_SCRIPTED=1", "HOME=" + workHome})
+	daemon := w.logs[len(w.logs)-1] // the one otherMac started
+	w.joinTyped(work, home, "work-mac")
+	// old-mac: a hermeshd from before threads, for the composer to say it needs an update.
+	old, _ := w.otherMac("old-mac", []string{"HERMESH_TEST_BEFORE_THREADS=1"})
+	w.joinTyped(old, home, "old-mac")
+	return daemon.cmd.Process.Pid
 }
 
 // otherMacSession joins a second Mac, work-mac, as a machine only, runs two

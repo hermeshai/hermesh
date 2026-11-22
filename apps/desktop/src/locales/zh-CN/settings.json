@@ -226,7 +226,11 @@
     "herEraseTitle": "清空「{{name}}」上 Her 的数据？",
     "herEraseMessage": "删除「{{name}}」上 Her 的助手、对话、记忆、定时任务、文件、连接器和模型登录，无法恢复。",
     "herEraseButton": "清空",
-    "herErased": "已清空「{{name}}」上 Her 的数据"
+    "herErased": "已清空「{{name}}」上 Her 的数据",
+    "maxMode": "会话权限上限",
+    "maxModeDesc": "这台机器上的会话最多能用到的权限模式，无论谁发起",
+    "maxModeNone": "不限制",
+    "maxModeSet": "已把 {{name}} 的会话权限上限设为「{{mode}}」"
   },
   "wake": {
     "title": "新消息提醒",

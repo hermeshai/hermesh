@@ -48,7 +48,7 @@ function Body({ sheet }: { sheet: Sheet }) {
     case "addMachine":
       return <AddMachineSheet />;
     case "addProject":
-      return <AddProjectSheet machineId={sheet.machineId} agent={sheet.agent} />;
+      return <AddProjectSheet machineId={sheet.machineId} agent={sheet.agent} then={sheet.then} />;
     case "addDevice":
       return <AddDeviceSheet />;
     case "enterCode":

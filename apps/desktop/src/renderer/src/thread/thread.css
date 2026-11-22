@@ -5,38 +5,6 @@
   min-height: 0;
 }
 
-.th-subbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--line, rgba(128, 128, 128, 0.16));
-  overflow-x: auto;
-  flex-shrink: 0;
-}
-
-.th-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  opacity: 0.78;
-}
-
-.th-tab.active {
-  opacity: 1;
-  background: rgba(128, 128, 128, 0.14);
-  border-color: rgba(128, 128, 128, 0.24);
-  font-weight: 500;
-}
-
 .th-body {
   display: flex;
   flex: 1;
@@ -50,50 +18,6 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-}
-
-.th-launch-card {
-  margin: 24px auto 12px;
-  max-width: 720px;
-  width: calc(100% - 32px);
-  padding: 20px;
-  border-radius: 12px;
-  border: 1px solid rgba(128, 128, 128, 0.2);
-  background: rgba(128, 128, 128, 0.05);
-}
-
-.th-launch-card h3 {
-  margin: 0 0 4px;
-  font-size: 17px;
-}
-
-.th-launch-card p {
-  margin: 0 0 16px;
-  font-size: 13px;
-  opacity: 0.72;
-}
-
-.th-launch-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.th-field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  font-size: 12px;
-}
-
-.th-field select,
-.th-field input {
-  padding: 7px 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(128, 128, 128, 0.28);
-  background: transparent;
-  color: inherit;
-  font-size: 13px;
 }
 
 .th-timeline {
@@ -203,46 +127,6 @@
   background: rgba(128, 128, 128, 0.06);
 }
 
-.th-composer {
-  position: relative;
-  border-radius: 12px;
-  border: 1px solid rgba(128, 128, 128, 0.28);
-  background: rgba(128, 128, 128, 0.04);
-  padding: 10px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.th-composer textarea {
-  width: 100%;
-  min-height: 60px;
-  max-height: 200px;
-  resize: vertical;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: inherit;
-  font-family: inherit;
-  font-size: 13.5px;
-  line-height: 1.5;
-}
-
-.th-composer-foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.th-pills {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
 .th-seg {
   display: inline-flex;
   border-radius: 7px;
@@ -274,59 +158,6 @@
 .th-seg button:disabled {
   opacity: 0.35;
   cursor: not-allowed;
-}
-
-.th-popover {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 12px;
-  z-index: 40;
-  width: min(640px, calc(100vw - 48px));
-  max-height: 320px;
-  display: grid;
-  grid-template-columns: 160px 1fr 190px;
-  border-radius: 11px;
-  border: 1px solid rgba(128, 128, 128, 0.3);
-  background: var(--bg, #1e1e22);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-.th-pop-col {
-  padding: 10px;
-  overflow-y: auto;
-  border-right: 1px solid rgba(128, 128, 128, 0.16);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12.5px;
-}
-
-.th-pop-col:last-child {
-  border-right: none;
-}
-
-.th-pop-col h4 {
-  margin: 0 0 6px;
-  font-size: 11px;
-  text-transform: uppercase;
-  opacity: 0.6;
-}
-
-.th-pop-item {
-  text-align: left;
-  padding: 6px 8px;
-  border-radius: 6px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 12.5px;
-}
-
-.th-pop-item.on {
-  background: rgba(59, 130, 246, 0.2);
-  font-weight: 600;
 }
 
 .th-inspector {
@@ -388,3 +219,53 @@
   font-size: 11px;
   background: rgba(128, 128, 128, 0.18);
 }
+
+/* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
+.th-shell{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:dark){.th-shell{--pill:var(--win2)}}
+/* A new session: its title and the box in the middle of the page. */
+.th-new{width:100%;max-width:var(--conversation-width);margin:0 auto;padding:18vh 24px 0;display:flex;flex-direction:column}
+.th-new h1{margin:0 0 22px;font-size:24px;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-align:center}
+.th-new .cmp-in{min-height:64px}
+.th-cmp{flex:none}
+.th-stop{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
+.th-stop:hover{background:var(--l4)}
+.th-stop .ic{width:14px;height:14px;fill:currentColor}
+.th-opts{display:flex;align-items:center;gap:2px;min-height:32px;padding:4px 2px 0}
+.th-opts .mb{height:28px;padding:0 7px 0 8px;gap:6px}
+.th-opts .mb .lbl{max-width:220px}
+.th-lvl{margin-left:5px;color:var(--l2);font-weight:var(--font-weight-normal)}
+.th-grow{flex:1}
+.th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
+.th-where{height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;color:var(--l3);font-size:12.5px;white-space:nowrap}
+.th-where .ic{width:14px;height:14px}
+.th-check{height:28px;padding:0 8px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:7px;color:var(--l2);font-size:12.5px;white-space:nowrap}
+.th-check:hover{background:var(--fill);color:var(--l1)}
+.th-check .box{width:14px;height:14px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--field-bd);display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.th-check.on .box{background:var(--accent);box-shadow:none}
+.th-check .box .ic{width:10px;height:10px;stroke-width:2.2}
+.th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
+.th-modes{width:330px}
+/* The model panel: a search, the providers beside a provider's models, how hard it thinks along the bottom. */
+.her-menu:has(.th-mpanel){padding:0;overflow:hidden}
+.th-mpanel{width:456px;display:flex;flex-direction:column}
+.th-mfind{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-bottom:.5px solid var(--sep);color:var(--l3)}
+.th-mfind input{flex:1;min-width:0;height:100%;border:0;padding:0;background:none;outline:none;color:var(--l1);font-size:13px}
+.th-mfind input::placeholder{color:var(--l3)}
+.th-mcols{display:flex;height:min(248px,40vh)}
+.th-mprov{width:170px;flex:none;padding:5px;border-right:.5px solid var(--sep);overflow-y:auto}
+.th-mprov .mi{min-height:30px;gap:8px}
+.th-mprov .mi.on{background:var(--fill2)}
+.th-mprov .mi .val{padding-left:6px;font-size:11.5px}
+.th-mmod{flex:1;min-width:0;padding:5px;overflow-y:auto}
+.th-mmod .mgh{position:static}
+.th-dim{color:var(--l3)}
+.th-mpanel .mi .val .th-badge-new{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:5px;background:var(--accent-bg);color:var(--accent-t)}
+.th-mfoot{display:flex;align-items:center;gap:10px;height:44px;padding:0 9px 0 14px;border-top:.5px solid var(--sep);font-size:12.5px;color:var(--l2)}
+.th-mfoot .seg{margin-left:auto}
+.th-mfoot .th-none{margin-left:auto;padding-right:5px;color:var(--l3)}
+/* Rows with a line under them grow, as her.css means for its menus (app.css fixes .vmenu rows at 28px). */
+.vmenu.her-menu .mi{height:auto;min-height:28px}
+.th-mprov .mi{min-height:30px}
+.th-note{margin:10px 2px 0;font-size:12.5px;color:var(--orange)}
+.th-mstale{padding:6px 13px;border-bottom:.5px solid var(--sep);font-size:11.5px;color:var(--l2)}

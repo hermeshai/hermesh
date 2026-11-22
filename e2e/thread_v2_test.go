@@ -160,12 +160,30 @@ func TestThreadV2EndToEnd(t *testing.T) {
 			InstanceId: "claude",
 			Model:      "claude-sonnet-4-6",
 		},
-		InitialPrompt: "write vps_hello.txt|hello_v1\nsay turn_1_complete",
+		InitialPrompt: "sleep 2s\nwrite vps_hello.txt|hello_v1\nsay turn_1_complete",
 	})
 	if err != nil {
 		t.Fatalf("LaunchThread on vps: %v", err)
 	}
 	vpsThreadID := launchRes.Thread.ThreadId
+	// The thread list hears the remote turn finish by itself, with nobody
+	// reading the thread: the owner follows each machine's threads.
+	listCtx, stopList := context.WithTimeout(ctx, 20*time.Second)
+	list, err := tc.SubscribeThreads(listCtx, &threadv2.SubscribeThreadsRequest{})
+	if err != nil {
+		t.Fatalf("SubscribeThreads: %v", err)
+	}
+	heardIdle := false
+	for !heardIdle && list.Receive() {
+		for _, th := range list.Msg().Threads {
+			heardIdle = heardIdle || th.ThreadId == vpsThreadID && th.Status == threadv2.ThreadStatus_THREAD_STATUS_IDLE
+		}
+	}
+	list.Close()
+	stopList()
+	if !heardIdle {
+		t.Fatalf("the thread list never heard vps's turn finish: %v", list.Err())
+	}
 	eventually(t, 15*time.Second, "vps turn 1 idle", func() bool {
 		g, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: vpsThreadID})
 		return err == nil && g.Projection.GetThread().GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_IDLE
@@ -329,9 +347,22 @@ func TestThreadV2EndToEnd(t *testing.T) {
 	if err != nil || !offSend.QueuedOffline {
 		t.Fatalf("expected follow-up DispatchMessage to queue offline, got res=%+v err=%v", offSend, err)
 	}
+	// A launch the machine will reject (unknown project) plus its follow-up must not vanish silently.
+	doomed, err := tc.LaunchThread(ctx, &threadv2.LaunchThreadRequest{
+		MachineId:     vpsID,
+		ProjectId:     "no-such-project",
+		Title:         "Rejected Offline Thread",
+		InitialPrompt: "say never_runs",
+	})
+	if err != nil || !doomed.QueuedOffline {
+		t.Fatalf("expected rejected-later launch to queue offline, got res=%+v err=%v", doomed, err)
+	}
+	if _, err := tc.DispatchMessage(ctx, &threadv2.DispatchMessageRequest{ThreadId: doomed.Thread.ThreadId, Text: "say never_runs_2"}); err != nil {
+		t.Fatalf("queue follow-up on rejected-later thread: %v", err)
+	}
 	outboxBefore, err := tc.ListOutbox(ctx, &threadv2.ListOutboxRequest{MachineId: vpsID})
-	if err != nil || len(outboxBefore.Entries) != 2 {
-		t.Fatalf("expected 2 entries in outbox while offline, got %d (err=%v)", len(outboxBefore.GetEntries()), err)
+	if err != nil || len(outboxBefore.Entries) != 4 {
+		t.Fatalf("expected 4 entries in outbox while offline, got %d (err=%v)", len(outboxBefore.GetEntries()), err)
 	}
 
 	// Bring vps-1 back online -> Outbox flushes both LaunchThread and DispatchMessage automatically!
@@ -353,4 +384,26 @@ func TestThreadV2EndToEnd(t *testing.T) {
 		}
 		return false
 	})
+
+	// The rejected launch stays visible as a failed local thread carrying the machine's reason.
+	eventually(t, 15*time.Second, "rejected offline launch surfaced as failed thread", func() bool {
+		g, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: doomed.Thread.ThreadId})
+		if err != nil {
+			return false
+		}
+		th := g.Projection.GetThread()
+		return th.GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_FAILED && strings.Contains(th.GetLastError(), "no-such-project")
+	})
+	if _, err := tc.DeleteThread(ctx, &threadv2.DeleteThreadRequest{ThreadId: doomed.Thread.ThreadId}); err != nil {
+		t.Fatalf("delete rejected offline thread: %v", err)
+	}
+	lt, err := tc.ListThreads(ctx, &threadv2.ListThreadsRequest{MachineId: vpsID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, th := range lt.Threads {
+		if th.ThreadId == doomed.Thread.ThreadId {
+			t.Fatalf("rejected offline thread still listed after delete")
+		}
+	}
 }

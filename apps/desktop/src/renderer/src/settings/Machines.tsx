@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus } from "@hermesh/proto/session";
 import { agoText, dateOf, isActive, platformTitle } from "@hermesh/core";
@@ -161,6 +162,35 @@ export function cleanName(s: string): string {
   return n.length > 63 ? n.slice(0, 63).replace(/^-+|-+$/g, "") : n;
 }
 
+/** The machine's own limit on what its sessions may do (SetMaxRuntimeMode, docs/thread-composer.md §5.4). */
+const maxModes = [
+  [RuntimeMode.UNSPECIFIED, "settings:machines.maxModeNone"],
+  [RuntimeMode.SUPERVISED, "thread:mode.supervised"],
+  [RuntimeMode.AUTO_EDITS, "thread:mode.autoEdits"],
+  [RuntimeMode.AUTO, "thread:mode.auto"],
+  [RuntimeMode.FULL_ACCESS, "thread:mode.fullAccess"],
+] as const;
+
+function MaxModeRow({ m }: { m: Machine }) {
+  const st = useStore();
+  const { t } = useTranslation("settings");
+  const now = m.status?.maxRuntimeMode ?? RuntimeMode.UNSPECIFIED;
+  const title = (mode: RuntimeMode): string => i18n.t(maxModes.find(([x]) => x === mode)?.[1] ?? "settings:machines.maxModeNone");
+  const pick = async () => {
+    const id = await window.hermesh?.popupMenu(maxModes.map(([mode, key]) => ({ id: String(mode), label: i18n.t(key), checked: mode === now })));
+    if (id == null || Number(id) === now) return;
+    const mode = Number(id) as RuntimeMode;
+    void st.run(() => local.setMachineMaxRuntimeMode({ machineId: m.machineId, mode }), t("machines.maxModeSet", { name: m.machineName, mode: title(mode) }));
+  };
+  return (
+    <SRow title={t("machines.maxMode")} desc={t("machines.maxModeDesc")}>
+      <button className="btn sm" data-testid="machine-max-mode" disabled={!m.online && !m.local} onClick={pick}>
+        {title(now)}
+      </button>
+    </SRow>
+  );
+}
+
 function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; open: (agent: string) => void }) {
   const { t } = useTranslation("settings");
   const st = useStore();
@@ -265,6 +295,7 @@ function MachineDetail({ m, ask, open }: { m: Machine; ask: (a: Ask) => void; op
           <SRow title={t("machines.pause")} desc={t("machines.pauseDesc")}>
             <Switch on={paused} label={t("machines.pause")} disabled={!m.online && !m.local} set={setPaused} />
           </SRow>
+          <MaxModeRow m={m} />
           <div className="frow">
             <span style={{ flex: 1 }}>{t("machines.running", { count: running(st, m.machineId) })}</span>
             <button className="btn sm" onClick={() => (window.hermesh?.showInMain({ machine: m.machineId }), window.close())}>

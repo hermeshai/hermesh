@@ -120,3 +120,92 @@ import Testing
     #expect(composerPrimaryAction(hasThread: true, status: .idle, draftNotEmpty: true, machineOnline: false, supportsLiveSteer: true) == .queueOffline)
     #expect(composerPrimaryAction(hasThread: true, status: .idle, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .send)
 }
+
+// The new-session composer's rules (ThreadComposer.swift), as the Mac's composer.test.ts checks them.
+@Suite struct ThreadComposerTests {
+    private func effort(_ ids: [String], _ def: String) -> Hermesh_Thread_V2_OptionDescriptor {
+        var d = Hermesh_Thread_V2_OptionDescriptor()
+        d.id = "effort"
+        d.role = "reasoning"
+        d.type = .select
+        d.choices = ids.map { id in var c = Hermesh_Thread_V2_OptionChoice(); c.id = id; c.label = id; c.isDefault = id == def; return c }
+        var v = Hermesh_Thread_V2_OptionValue(); v.kind = .stringValue(def)
+        d.currentValue = v
+        return d
+    }
+    private func model(_ slug: String, _ levels: [String] = [], _ def: String = "", isDefault: Bool = false) -> Hermesh_Thread_V2_ModelCatalogEntry {
+        var m = Hermesh_Thread_V2_ModelCatalogEntry()
+        m.slug = slug; m.name = "Claude \(slug)"; m.shortName = slug; m.isDefault = isDefault
+        if !levels.isEmpty { m.optionDescriptors = [effort(levels, def)] }
+        return m
+    }
+    private var providers: [Hermesh_Thread_V2_ProviderInstance] {
+        var c = Hermesh_Thread_V2_ProviderInstance()
+        c.instanceID = "claude"; c.driver = "claude"; c.displayName = "Claude Code"; c.enabled = true; c.installed = true; c.authenticated = true
+        c.models = [model("opus", ["low", "medium", "high", "max"], "high"), model("sonnet", ["low", "medium", "high"], "medium", isDefault: true), model("haiku")]
+        var g = Hermesh_Thread_V2_ProviderInstance()
+        g.instanceID = "gemini"; g.driver = "acp"; g.acpFlavor = "gemini"; g.displayName = "Gemini CLI"; g.enabled = true; g.installed = true
+        var gm = Hermesh_Thread_V2_ModelCatalogEntry(); gm.slug = "gemini-3-pro"; gm.name = "Gemini 3 Pro"; gm.isDefault = true
+        g.models = [gm]
+        return [c, g]
+    }
+    private func sel(_ model: String, _ level: String? = nil) -> Hermesh_Thread_V2_ModelSelection {
+        var s = Hermesh_Thread_V2_ModelSelection(); s.instanceID = "claude"; s.model = model
+        if let level { s = withReasoning(s, id: "effort", value: level) }
+        return s
+    }
+
+    @Test func testThreadsAreSessionRows() {
+        var th = Hermesh_Thread_V2_Thread()
+        th.threadID = "th_ab_01"; th.machineID = "m1"; th.projectID = "hermesh"; th.title = "Fix it"; th.status = .waitingRequest
+        th.modelSelection.instanceID = "codex"
+        var owner = Hermesh_Thread_V2_Actor(); owner.kind = .owner; owner.id = "owner"
+        th.createdBy = owner
+        let s = threadAsSession(th)
+        #expect([s.sessionID, s.machineID, s.projectID, s.agent, s.createdBy, s.title] == ["th_ab_01", "m1", "hermesh", "codex", "owner", "Fix it"])
+        #expect(s.status == .waitingInput)
+        var bot = Hermesh_Thread_V2_Actor(); bot.kind = .externalAgent; bot.id = "c_grok"
+        th.createdBy = bot; th.status = .failed
+        #expect(threadAsSession(th).createdBy == "c_grok")
+        #expect(threadAsSession(th).status == .crashed)
+        #expect(isThreadID("th_x")); #expect(!isThreadID("s_x"))
+    }
+
+    @Test func testThinkingLevelsFollowTheModel() {
+        #expect(reasoningOf(providers, sel("opus"))?.value == "high")
+        #expect(reasoningOf(providers, sel("haiku")) == nil)
+        #expect(reasoningOf(providers, selectModel(providers, from: sel("opus", "low"), instanceID: "claude", slug: "sonnet").selection)?.value == "low")
+        let r = selectModel(providers, from: sel("opus", "max"), instanceID: "claude", slug: "sonnet")
+        #expect(r.changed?.from == "max"); #expect(r.changed?.to == "medium")
+        #expect(selectModel(providers, from: sel("opus", "max"), instanceID: "claude", slug: "haiku").changed == nil)
+        #expect(defaultSelection(providers[0]).model == "sonnet")
+    }
+
+    @Test func testProvidersSearchAndChoice() {
+        #expect(findModels(providers, query: "son").map { $0.provider.instanceID } == ["claude"])
+        #expect(findModels(providers, query: "gemini").map { $0.provider.instanceID } == ["gemini"])
+        #expect(providerUnusable(providers[0], projectAgents: []) == nil)
+        #expect(providerUnusable(providers[1], projectAgents: []) == .signedOut)
+        #expect(providerUnusable(providers[1], projectAgents: ["claude"]) == .notForProject)
+        #expect(preferredProvider(providers.reversed())?.instanceID == "claude")
+    }
+
+    @Test func testProjectOnAnotherMachine() {
+        func p(_ m: String, _ id: String) -> Hermesh_Local_V1_Project { var x = Hermesh_Local_V1_Project(); x.machineID = m; x.projectID = id; return x }
+        let projects = [p("a", "hermesh"), p("b", "hermesh"), p("b", "relay")]
+        #expect(projectOnMachine(projects, machineID: "b", current: "hermesh") == "hermesh")
+        #expect(projectOnMachine(projects, machineID: "b", current: "website", lastUsed: "relay") == "relay")
+        #expect(projectOnMachine(projects, machineID: "c", current: "hermesh", lastUsed: "relay") == scratchProject)
+    }
+
+    @Test func testGrantsANewProjectReaches() {
+        func c(_ id: String, _ machines: [String], _ projects: [String], revoked: Bool = false) -> Hermesh_Local_V1_Client {
+            var x = Hermesh_Local_V1_Client(); x.clientID = id; x.revoked = revoked
+            x.spec.machineIds = machines; x.spec.projectIds = projects
+            return x
+        }
+        let clients = [c("all", ["*"], ["*"]), c("relay", ["b"], ["relay"]), c("other", ["a"], ["*"]), c("gone", ["*"], ["*"], revoked: true), Hermesh_Local_V1_Client()]
+        #expect(grantsReaching(clients, machineID: "b", projectID: "relay").map { "\($0.client.clientID):\($0.all)" } == ["all:true", "relay:false"])
+        #expect(grantsReaching(clients, machineID: "b", projectID: "").map(\.client.clientID) == ["all"])
+    }
+}

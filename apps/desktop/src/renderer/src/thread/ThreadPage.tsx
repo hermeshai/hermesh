@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "@bufbuild/protobuf";
 import { RuntimeMode, Workspace } from "@hermesh/proto/identity";
+import type { Project } from "@hermesh/proto/local";
 import {
   ApprovalDecision,
   DispatchIntent,
   InteractionMode,
   ModelSelectionSchema,
-  OptionDescriptorType,
-  OptionValueSchema,
   QueueOperation,
   QuestionAnswerSchema,
   RuntimeRequestKind,
@@ -21,27 +20,27 @@ import {
   type ModelSelection,
   type ProviderInstance,
   type RuntimeRequest,
-  type Thread,
   type ThreadProjection,
 } from "@hermesh/proto/thread";
 import {
-  ORDERED_RUNTIME_MODES,
-  activeOptionDescriptors,
+  SCRATCH_PROJECT,
   applyThreadEvent,
   clampRuntimeMode,
-  composerPrimaryAction,
   cycleReasoningSelection,
   defaultModelSelectionFor,
-  findModelEntry,
   findProviderInstance,
-  isRuntimeModeAllowed,
+  isThreadActive,
   pendingRequestOf,
+  projectOnMachine,
+  providerUnusable,
   queuedRunsOf,
   toggleInteractionMode,
 } from "@hermesh/core";
 import { threads as threadApi } from "../api";
 import { Icon } from "../icons";
 import { errorText, useStore } from "../store";
+import { ComposerOptions, ThreadComposer } from "./Composer";
+import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./choices";
 import "./thread.css";
 
 export function ThreadPage() {
@@ -50,23 +49,33 @@ export function ThreadPage() {
   const sel = st.selection;
   const activeThreadId = sel.kind === "thread" ? sel.id : undefined;
 
-  const [threadList, setThreadList] = useState<Thread[]>([]);
   const [projection, setProjection] = useState<ThreadProjection | null>(null);
   const [providers, setProviders] = useState<ProviderInstance[]>([]);
+  /** The providers shown are those last read on the machine, which is offline (choices.ts). */
+  const [providersStale, setProvidersStale] = useState(false);
   const [maxCeiling, setMaxCeiling] = useState<RuntimeMode>(RuntimeMode.FULL_ACCESS);
 
-  // Draft launch controls
-  const defaultMachineId = useMemo(() => {
-    if (sel.kind === "newThread" && sel.machineId) return sel.machineId;
-    return st.machines.find((m) => m.local)?.machineId ?? st.machines[0]?.machineId ?? "";
-  }, [sel, st.machines]);
+  // Each machine's projects as last read, for when it is offline (choices.ts); a machine that
+  // answers has its own, live.
+  useEffect(() => {
+    // A machine going offline may lose its projects from the list a moment before it shows offline: an
+    // empty list never replaces what was kept.
+    const answered = st.machines.filter((m) => (m.online || m.local) && st.projects.some((p) => p.machineId === m.machineId));
+    keepProjects(st.projects, answered.map((m) => m.machineId));
+  }, [st.projects, st.machines]);
+  const projectsOn = (mid: string): { list: Project[]; stale: boolean } => {
+    const live = st.projects.filter((p) => p.machineId === mid);
+    const m = st.machines.find((x) => x.machineId === mid);
+    if (!m || m.online || m.local) return { list: live, stale: false };
+    // Offline: what the window still holds of it, else what this device kept; either is last known.
+    const list = live.length > 0 ? live : lastProjects(mid);
+    return { list, stale: list.length > 0 };
+  };
 
-  const [machineId, setMachineId] = useState<string>(defaultMachineId);
-  const [projectId, setProjectId] = useState<string>(
-    sel.kind === "newThread" && sel.projectId ? sel.projectId : "scratch",
-  );
-  const [wsMode, setWsMode] = useState<Workspace>(Workspace.IN_PLACE);
-  const [baseRef, setBaseRef] = useState<string>("");
+  // A new session's where: as the entry asked (a project group's ＋), else as last time (choices.ts).
+  const [machineId, setMachineId] = useState<string>("");
+  const [projectId, setProjectId] = useState<string>(SCRATCH_PROJECT);
+  const [worktree, setWorktree] = useState<boolean>(true);
 
   // Composer controls
   const [modelSel, setModelSel] = useState<ModelSelection>(() =>
@@ -76,7 +85,6 @@ export function ThreadPage() {
   const [interactionMode, setInteractionMode] = useState<InteractionMode>(InteractionMode.CODE);
   const [prompt, setPrompt] = useState<string>("");
   const [attachments, setAttachments] = useState<AttachmentRef[]>([]);
-  const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [slashOpen, setSlashOpen] = useState<boolean>(false);
   const [busySend, setBusySend] = useState<boolean>(false);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
@@ -98,48 +106,45 @@ export function ThreadPage() {
   const [questionChoices, setQuestionChoices] = useState<Record<string, string[]>>({});
   const [questionCustom, setQuestionCustom] = useState<Record<string, string>>({});
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync machineId when machines load if empty
+  // Each time a new session opens (and once the machines are known): the machine and project its entry
+  // named, else those used last; a machine that is gone falls back to this Mac.
+  const askedMachine = sel.kind === "newThread" ? sel.machineId : undefined;
+  const askedProject = sel.kind === "newThread" ? sel.projectId : undefined;
+  const machinesKnown = st.machines.length > 0;
   useEffect(() => {
-    if (!machineId && defaultMachineId) setMachineId(defaultMachineId);
-  }, [machineId, defaultMachineId]);
+    if (sel.kind !== "newThread" || !machinesKnown) return;
+    const last = remembered();
+    const known = (id?: string) => !!id && st.machines.some((m) => m.machineId === id);
+    const mid = [askedMachine, last.machineId].find(known) ?? st.machines.find((m) => m.local)?.machineId ?? st.machines[0]!.machineId;
+    const pid = askedProject ?? projectOnMachine(projectsOn(mid).list, mid, "", last.byMachine[mid]?.projectId);
+    setMachineId(mid);
+    pickProject(mid, pid);
+    const mine = last.byMachine[mid];
+    if (mine?.mode) setRuntimeMode(mine.mode);
+    setInteractionMode(InteractionMode.CODE);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sel.kind, askedMachine, askedProject, machinesKnown]);
+
+  /** A project, and whether a session of it gets its own worktree: as the project works. */
+  const pickProject = (mid: string, pid: string) => {
+    setProjectId(pid);
+    const pr = projectsOn(mid).list.find((p) => p.projectId === pid);
+    setWorktree(pr?.workspace === Workspace.WORKTREE);
+  };
+  const pickMachine = (mid: string) => {
+    setMachineId(mid);
+    pickProject(mid, projectOnMachine(projectsOn(mid).list, mid, projectId, remembered().byMachine[mid]?.projectId));
+  };
 
   const effectiveMachineId = activeThreadId ? projection?.thread?.machineId ?? machineId : machineId;
   const effectiveProjectId = activeThreadId ? projection?.thread?.projectId ?? projectId : projectId;
   const targetMachine = st.machines.find((m) => m.machineId === effectiveMachineId);
-  const machineOnline = targetMachine ? targetMachine.online : true;
+  const machineOnline = targetMachine ? targetMachine.online || targetMachine.local : true;
+  // A machine from before threads (its status says so) can't take a new session: said, not hidden (§5.2).
+  const needsUpdate = !activeThreadId && !!targetMachine?.status && !targetMachine.status.threads;
 
-  const machineProjects = useMemo(
-    () => st.projects.filter((p) => !effectiveMachineId || p.machineId === effectiveMachineId),
-    [st.projects, effectiveMachineId],
-  );
-
-  // Subscribe to thread list while ThreadPage is mounted (released cleanly on unmount).
-  useEffect(() => {
-    const ctl = new AbortController();
-    (async () => {
-      try {
-        for await (const msg of threadApi.subscribeThreads({ includeArchived: st.archived }, { signal: ctl.signal })) {
-          if (msg.snapshot) {
-            setThreadList(msg.threads);
-          } else {
-            setThreadList((prev) => {
-              const deleted = new Set(msg.deletedThreadIds);
-              const map = new Map(prev.filter((x) => !deleted.has(x.threadId)).map((x) => [x.threadId, x]));
-              for (const u of msg.threads) map.set(u.threadId, u);
-              return [...map.values()].sort(
-                (a, b) => Number(b.pinned) - Number(a.pinned) || Number((b.updatedAt?.seconds ?? 0n) - (a.updatedAt?.seconds ?? 0n)),
-              );
-            });
-          }
-        }
-      } catch {
-        // Stream cancelled or daemon unavailable
-      }
-    })();
-    return () => ctl.abort();
-  }, [st.archived]);
+  // The model a new session takes on a machine: the one used there last, while it is still offered.
 
   // Load providers for target machine & project
   useEffect(() => {
@@ -148,21 +153,38 @@ export function ThreadPage() {
       .listProviders({ machineId: effectiveMachineId, projectId: effectiveProjectId === "scratch" ? "" : effectiveProjectId })
       .then((res) => {
         if (cancelled) return;
+        keepProviders(effectiveMachineId, res);
+        setProvidersStale(false);
+        return res;
+      })
+      .catch(() => {
+        // The machine doesn't answer: what was last read there, if anything.
+        const last = cancelled ? undefined : lastProviders(effectiveMachineId);
+        if (last) setProvidersStale(true);
+        return last;
+      })
+      .then((res) => {
+        if (cancelled || !res) return;
         setProviders(res.providers);
         if (res.maxRuntimeMode !== RuntimeMode.UNSPECIFIED) {
           setMaxCeiling(res.maxRuntimeMode);
         }
+        if (activeThreadId) return; // a session keeps its own (from GetThread)
+        const usable = res.providers.filter((p) => providerUnusable(p, []) === "");
+        const last = remembered().byMachine[effectiveMachineId]?.sel;
+        const lastInst = last && usable.find((p) => p.instanceId === last.instanceId);
         setModelSel((prev) => {
-          if (prev.instanceId && res.providers.some((p) => p.instanceId === prev.instanceId)) return prev;
-          const first = findProviderInstance(res.providers);
+          if (lastInst && lastInst.models.some((m) => m.slug === last.model)) return create(ModelSelectionSchema, last);
+          if (prev.instanceId && usable.some((p) => p.instanceId === prev.instanceId)) return prev;
+          // The coding agents most people use first, then any other that is ready (never a test-only one first).
+          const first = ["claude", "codex", "gemini"].map((id) => usable.find((p) => p.instanceId === id)).find(Boolean) ?? usable[0] ?? findProviderInstance(res.providers);
           return first ? defaultModelSelectionFor(first) : prev;
         });
-      })
-      .catch(() => {});
+      });
     return () => {
       cancelled = true;
     };
-  }, [effectiveMachineId, effectiveProjectId]);
+  }, [effectiveMachineId, effectiveProjectId, activeThreadId]);
 
   // Load & subscribe to active thread projection + live events!
   const refreshInspector = useCallback(
@@ -229,13 +251,10 @@ export function ThreadPage() {
 
   const currentThread = projection?.thread;
   const activeInst = findProviderInstance(providers, modelSel.instanceId);
-  const activeModel = findModelEntry(providers, modelSel);
-  const optionDescriptors = activeOptionDescriptors(providers, modelSel);
-  const supportsSteer = activeInst?.capabilities?.midTurnSteer ?? true;
   const clampedMode = clampRuntimeMode(runtimeMode, maxCeiling);
   const queuedRuns = useMemo(() => queuedRunsOf(projection), [projection]);
   const pendingReq = useMemo(() => pendingRequestOf(projection), [projection]);
-  const primaryAction = composerPrimaryAction(currentThread, machineOnline, prompt.trim().length > 0 || attachments.length > 0, supportsSteer);
+  const running = isThreadActive(currentThread);
 
   // Keyboard shortcuts: Shift+Tab toggles Plan/Code, Shift+Cmd/Ctrl+E cycles reasoning!
   useEffect(() => {
@@ -290,49 +309,58 @@ export function ThreadPage() {
     }
   };
 
+  // Messages to a session go out one after another, in the order sent: the box is free at once, and an
+  // Enter while the last one is still on its way to the machine is not lost.
+  const sends = useRef<Promise<unknown>>(Promise.resolve());
   const submitMessage = async (explicitIntent?: DispatchIntent) => {
     const text = prompt.trim();
     if (!text && attachments.length === 0) return;
+    if (activeThreadId) {
+      const sent = attachments;
+      setPrompt("");
+      setAttachments([]);
+      // After whatever runs, and at once when nothing does: hermeshd decides, not this window's
+      // view of the thread, which may be a moment behind (steering is the queue's "steer now").
+      const req = {
+        threadId: activeThreadId,
+        text,
+        attachments: sent,
+        intent: explicitIntent ?? DispatchIntent.QUEUE,
+        modelSelection: modelSel.instanceId ? modelSel : undefined,
+        runtimeMode: clampedMode,
+        interactionMode,
+      };
+      const job = sends.current.then(() => threadApi.dispatchMessage(req));
+      sends.current = job.catch(() => {});
+      try {
+        await job;
+      } catch (e) {
+        st.show(errorText(e));
+        // Not sent: back in the box, unless something else was written there since.
+        setPrompt((p) => p || text);
+        setAttachments((a) => (a.length ? a : sent));
+      }
+      return;
+    }
     setBusySend(true);
     try {
-      if (!activeThreadId) {
-        const res = await threadApi.launchThread({
-          machineId: effectiveMachineId,
-          projectId,
-          modelSelection: modelSel.instanceId ? modelSel : undefined,
-          runtimeMode: clampedMode,
-          interactionMode,
-          workspace: create(WorkspaceStrategySchema, {
-            mode: projectId === "scratch" ? Workspace.IN_PLACE : wsMode,
-            baseRef: baseRef.trim(),
-          }),
-          initialPrompt: text,
-          attachments,
-        });
-        setPrompt("");
-        setAttachments([]);
-        if (res.thread) {
-          st.set({ selection: { kind: "thread", id: res.thread.threadId } });
-        }
-      } else {
-        const intent =
-          explicitIntent ??
-          (primaryAction === "steer"
-            ? DispatchIntent.STEER
-            : primaryAction === "queue"
-              ? DispatchIntent.QUEUE
-              : DispatchIntent.AUTO);
-        await threadApi.dispatchMessage({
-          threadId: activeThreadId,
-          text,
-          attachments,
-          intent,
-          modelSelection: modelSel.instanceId ? modelSel : undefined,
-          runtimeMode: clampedMode,
-          interactionMode,
-        });
-        setPrompt("");
-        setAttachments([]);
+      const res = await threadApi.launchThread({
+        machineId: effectiveMachineId,
+        projectId,
+        modelSelection: modelSel.instanceId ? modelSel : undefined,
+        runtimeMode: clampedMode,
+        interactionMode,
+        workspace: create(WorkspaceStrategySchema, {
+          mode: projectId !== SCRATCH_PROJECT && worktree ? Workspace.WORKTREE : Workspace.IN_PLACE,
+        }),
+        initialPrompt: text,
+        attachments,
+      });
+      remember(effectiveMachineId, { projectId, sel: modelSel, mode: clampedMode });
+      setPrompt("");
+      setAttachments([]);
+      if (res.thread) {
+        st.set({ selection: { kind: "thread", id: res.thread.threadId } });
       }
     } catch (e) {
       st.show(errorText(e));
@@ -377,6 +405,59 @@ export function ThreadPage() {
     const skills = (activeInst?.skills ?? []).map((s) => ({ label: `/${s.name}`, desc: s.description || s.path }));
     return [...cmds, ...skills].filter((x) => x.label.toLowerCase().includes(q));
   }, [slashOpen, prompt, activeInst]);
+
+  const slashRow = slashSuggestions.length > 0 && (
+    <div className="th-slash">
+      {slashSuggestions.slice(0, 6).map((x) => (
+        <button
+          key={x.label}
+          type="button"
+          className="th-pill-btn"
+          onClick={() => {
+            setPrompt(x.label + " ");
+            setSlashOpen(false);
+          }}
+        >
+          {x.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // What runs where and with what, under the box (Composer.tsx): a new session's to choose; a session's
+  // machine and project fixed, its model and mode for the next turn.
+  const options = (fixed: boolean) => (
+    <ComposerOptions
+      fixed={fixed}
+      below={!fixed}
+      machines={st.machines}
+      projects={[...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list]}
+      projectsStale={projectsOn(effectiveMachineId).stale}
+      providersStale={providersStale}
+      choice={{ machineId: effectiveMachineId, projectId: effectiveProjectId, worktree, sel: modelSel, mode: clampedMode, plan: interactionMode === InteractionMode.PLAN }}
+      providers={providers}
+      maxCeiling={maxCeiling}
+      onMachine={pickMachine}
+      onProject={(pid) => pickProject(machineId, pid)}
+      onWorktree={setWorktree}
+      onModel={(next) => applyConfigUpdate({ sel: next })}
+      onMode={(rm) => applyConfigUpdate({ rm })}
+      onPlan={(on) => applyConfigUpdate({ im: on ? InteractionMode.PLAN : InteractionMode.CODE })}
+      onAddProject={() =>
+        st.set({
+          sheet: {
+            kind: "addProject",
+            machineId,
+            then: (pid, wt) => {
+              setProjectId(pid);
+              setWorktree(wt);
+            },
+          },
+        })
+      }
+      onNotice={(text) => st.show(text)}
+    />
+  );
 
   const resolveRequest = async (req: RuntimeRequest, opts: {
     decision?: ApprovalDecision;
@@ -458,108 +539,34 @@ export function ThreadPage() {
         )}
       </div>
 
-      {/* Quick Thread Switcher Strip */}
-      {threadList.length > 0 && (
-        <div className="th-subbar" role="tablist" aria-label={t("nav.threads")}>
-          <button
-            className={`th-tab ${!activeThreadId ? "active" : ""}`}
-            onClick={() => st.set({ selection: { kind: "newThread" } })}
-          >
-            + {t("nav.newThread")}
-          </button>
-          {threadList.map((th) => (
-            <button
-              key={th.threadId}
-              className={`th-tab ${activeThreadId === th.threadId ? "active" : ""}`}
-              data-testid={`thread-tab-${th.threadId}`}
-              onClick={() => st.set({ selection: { kind: "thread", id: th.threadId } })}
-            >
-              <span>{th.title}</span>
-              {th.status === ThreadStatus.WAITING_REQUEST && <span className="th-badge">!</span>}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div className="th-body">
         <div className="th-main">
-          {/* Draft Launch Bar when starting a new thread */}
           {!activeThreadId && (
-            <div className="th-launch-card" data-testid="thread-launch-card">
-              <h3>{t("launch.title")}</h3>
-              <p>{t("launch.subtitle")}</p>
-              <div className="th-launch-grid">
-                <label className="th-field">
-                  <span>{t("launch.machine")}</span>
-                  <select
-                    data-testid="launch-machine-select"
-                    value={machineId}
-                    onChange={(e) => {
-                      setMachineId(e.target.value);
-                      setProjectId("scratch");
-                    }}
-                  >
-                    {st.machines.map((m) => (
-                      <option key={m.machineId} value={m.machineId}>
-                        {m.machineName} ({m.online ? t("launch.online") : t("launch.offline")})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="th-field">
-                  <span>{t("launch.project")}</span>
-                  <select
-                    data-testid="launch-project-select"
-                    value={projectId}
-                    onChange={(e) => {
-                      const pid = e.target.value;
-                      setProjectId(pid);
-                      const pr = machineProjects.find((x) => x.projectId === pid);
-                      if (pr) setWsMode(pr.workspace);
-                    }}
-                  >
-                    <option value="scratch">{t("launch.scratch")}</option>
-                    {machineProjects.map((p) => (
-                      <option key={p.projectId} value={p.projectId}>
-                        {p.projectId}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                {projectId !== "scratch" && (
-                  <div className="th-field">
-                    <span>Workspace</span>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <div className="th-seg">
-                        <button
-                          type="button"
-                          className={wsMode === Workspace.IN_PLACE ? "on" : ""}
-                          onClick={() => setWsMode(Workspace.IN_PLACE)}
-                        >
-                          {t("launch.inPlace")}
-                        </button>
-                        <button
-                          type="button"
-                          className={wsMode === Workspace.WORKTREE ? "on" : ""}
-                          onClick={() => setWsMode(Workspace.WORKTREE)}
-                        >
-                          {t("launch.worktree")}
-                        </button>
-                      </div>
-                      {wsMode === Workspace.WORKTREE && (
-                        <input
-                          placeholder={t("launch.basePlaceholder")}
-                          value={baseRef}
-                          onChange={(e) => setBaseRef(e.target.value)}
-                          style={{ width: 120 }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="th-new" data-testid="thread-launch-card">
+              <h1>{t("launch.title")}</h1>
+              <ThreadComposer
+                value={prompt}
+                onChange={(v) => {
+                  setPrompt(v);
+                  setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                }}
+                onSend={() => submitMessage()}
+                running={false}
+                sending={busySend}
+                placeholder={t("launch.promptPlaceholder")}
+                attachments={attachments}
+                onAttach={handleAttachFiles}
+                onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                offline={!machineOnline}
+                blocked={needsUpdate}
+              />
+              {options(false)}
+              {needsUpdate && (
+                <p className="th-note" role="status" data-testid="launch-needs-update">
+                  {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
+                </p>
+              )}
+              {slashRow}
             </div>
           )}
 
@@ -674,6 +681,12 @@ export function ThreadPage() {
                   return null;
               }
             })}
+            {/* Why it stopped: a launch or message the machine rejected (docs/thread-composer.md §5.3), unless the timeline says it already. */}
+            {currentThread?.lastError && !(projection?.items ?? []).some((it) => it.text === currentThread.lastError) && (
+              <div className="th-divider" data-testid="thread-last-error">
+                <span>{currentThread.lastError}</span>
+              </div>
+            )}
           </div>
 
           {/* Polymorphic Composer + Queue Strip + Pending Request Banners */}
@@ -965,288 +978,28 @@ export function ThreadPage() {
               </div>
             )}
 
-            {/* Main Composer Box */}
-            <div className="th-composer">
-              {/* Docked Model + Traits Picker Popover */}
-              {pickerOpen && (
-                <div className="th-popover" data-testid="model-traits-popover">
-                  <div className="th-pop-col">
-                    <h4>{t("picker.providers")}</h4>
-                    {providers.map((p) => (
-                      <button
-                        key={p.instanceId}
-                        type="button"
-                        className={`th-pop-item ${activeInst?.instanceId === p.instanceId ? "on" : ""}`}
-                        data-testid={`picker-provider-${p.instanceId}`}
-                        onClick={() => applyConfigUpdate({ sel: defaultModelSelectionFor(p) })}
-                      >
-                        {p.displayName}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="th-pop-col">
-                    <h4>{t("picker.models")}</h4>
-                    {(activeInst?.models ?? []).map((m) => (
-                      <button
-                        key={m.slug}
-                        type="button"
-                        className={`th-pop-item ${activeModel?.slug === m.slug ? "on" : ""}`}
-                        data-testid={`picker-model-${m.slug}`}
-                        onClick={() => {
-                          if (!activeInst) return;
-                          applyConfigUpdate({ sel: defaultModelSelectionFor(activeInst, m.slug) });
-                        }}
-                      >
-                        {m.name} {m.badge ? `(${m.badge})` : ""}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="th-pop-col">
-                    <h4>{t("picker.options")}</h4>
-                    {optionDescriptors.length === 0 ? (
-                      <span style={{ opacity: 0.65 }}>{t("picker.noOptions")}</span>
-                    ) : (
-                      optionDescriptors.map((d) => {
-                        const optKind = modelSel.options[d.id]?.kind;
-                        if (d.type === OptionDescriptorType.BOOLEAN) {
-                          const cur = optKind?.case === "boolValue" ? optKind.value : false;
-                          return (
-                            <label key={d.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 2px" }}>
-                              <input
-                                type="checkbox"
-                                checked={cur}
-                                data-testid={`picker-opt-${d.id}`}
-                                onChange={(e) => {
-                                  const next = create(ModelSelectionSchema, {
-                                    instanceId: modelSel.instanceId,
-                                    model: modelSel.model,
-                                    options: {
-                                      ...modelSel.options,
-                                      [d.id]: create(OptionValueSchema, {
-                                        kind: { case: "boolValue", value: e.target.checked },
-                                      }),
-                                    },
-                                  });
-                                  applyConfigUpdate({ sel: next });
-                                }}
-                              />
-                              <span>{d.label}</span>
-                            </label>
-                          );
-                        }
-                        const curStr = optKind?.case === "stringValue" ? optKind.value : "";
-                        return (
-                          <label key={d.id} className="th-field">
-                            <span>{d.label}</span>
-                            <select
-                              value={curStr}
-                              data-testid={`picker-opt-${d.id}`}
-                              onChange={(e) => {
-                                const next = create(ModelSelectionSchema, {
-                                  instanceId: modelSel.instanceId,
-                                  model: modelSel.model,
-                                  options: {
-                                    ...modelSel.options,
-                                    [d.id]: create(OptionValueSchema, {
-                                      kind: { case: "stringValue", value: e.target.value },
-                                    }),
-                                  },
-                                });
-                                applyConfigUpdate({ sel: next });
-                              }}
-                            >
-                              {d.choices.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Slash Command / Skill Suggestions */}
-              {slashSuggestions.length > 0 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {slashSuggestions.slice(0, 6).map((s) => (
-                    <button
-                      key={s.label}
-                      type="button"
-                      className="th-pill-btn"
-                      onClick={() => {
-                        setPrompt(s.label + " ");
-                        setSlashOpen(false);
-                      }}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {attachments.length > 0 && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {attachments.map((a) => (
-                    <span key={a.blobSha256} className="th-badge">
-                      📎 {a.name}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <textarea
-                data-testid="thread-composer-input"
-                placeholder={activeThreadId ? t("composer.placeholder") : t("launch.promptPlaceholder")}
-                value={prompt}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setPrompt(v);
-                  setSlashOpen(v.startsWith("/") && !v.includes(" "));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault();
-                    submitMessage();
-                  }
-                }}
-              />
-
-              <div className="th-composer-foot">
-                <div className="th-pills">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    style={{ display: "none" }}
-                    onChange={(e) => handleAttachFiles(e.target.files)}
-                  />
-                  <button
-                    type="button"
-                    className="th-pill-btn"
-                    title={t("composer.attach")}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    📎
-                  </button>
-
-                  {/* Code | Plan Segmented Mode Pill */}
-                  <div className="th-seg" data-testid="interaction-mode-toggle">
-                    <button
-                      type="button"
-                      className={interactionMode !== InteractionMode.PLAN ? "on" : ""}
-                      data-testid="mode-code-btn"
-                      onClick={() => applyConfigUpdate({ im: InteractionMode.CODE })}
-                    >
-                      {t("mode.code")}
-                    </button>
-                    <button
-                      type="button"
-                      className={interactionMode === InteractionMode.PLAN ? "on" : ""}
-                      data-testid="mode-plan-btn"
-                      onClick={() => applyConfigUpdate({ im: InteractionMode.PLAN })}
-                    >
-                      {t("mode.plan")}
-                    </button>
-                  </div>
-
-                  {/* Model + Traits Picker Trigger */}
-                  <button
-                    type="button"
-                    className={`th-pill-btn ${pickerOpen ? "on" : ""}`}
-                    data-testid="model-picker-trigger"
-                    onClick={() => setPickerOpen((v) => !v)}
-                  >
-                    {activeInst?.displayName ?? "Agent"} · {activeModel?.shortName || activeModel?.name || modelSel.model || "default"}
-                  </button>
-
-                  {/* 4-Level Runtime Permission Selector */}
-                  <div className="th-seg" data-testid="runtime-mode-selector">
-                    {ORDERED_RUNTIME_MODES.map((m) => {
-                      const allowed = isRuntimeModeAllowed(m, maxCeiling);
-                      const labelKey =
-                        m === RuntimeMode.SUPERVISED
-                          ? "mode.supervised"
-                          : m === RuntimeMode.AUTO_EDITS
-                            ? "mode.autoEdits"
-                            : m === RuntimeMode.AUTO
-                              ? "mode.auto"
-                              : "mode.fullAccess";
-                      const hintKey = `${labelKey}Hint` as const;
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          disabled={!allowed}
-                          title={allowed ? t(hintKey) : t("mode.ceilingLocked")}
-                          className={clampedMode === m ? "on" : ""}
-                          data-testid={`runtime-mode-${m}`}
-                          onClick={() => applyConfigUpdate({ rm: m })}
-                        >
-                          {t(labelKey)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Adaptive Primary Action Cluster */}
-                <div style={{ display: "flex", gap: 6 }}>
-                  {primaryAction === "stop" ? (
-                    <button
-                      type="button"
-                      className="btn sm"
-                      data-testid="composer-stop-btn"
-                      onClick={handleStop}
-                    >
-                      {stopRequestedRun === currentThread?.activeRunId && currentThread?.activeRunId
-                        ? t("composer.forceStop")
-                        : t("composer.stop")}
-                    </button>
-                  ) : primaryAction === "steer" ? (
-                    <>
-                      <button
-                        type="button"
-                        className="th-pill-btn"
-                        data-testid="composer-queue-btn"
-                        disabled={busySend}
-                        onClick={() => submitMessage(DispatchIntent.QUEUE)}
-                      >
-                        {t("composer.queue")}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn sm"
-                        data-testid="composer-steer-btn"
-                        disabled={busySend}
-                        onClick={() => submitMessage(DispatchIntent.STEER)}
-                      >
-                        {t("composer.steer")}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn sm"
-                      data-testid="composer-submit-btn"
-                      disabled={busySend || (!prompt.trim() && attachments.length === 0)}
-                      onClick={() => submitMessage()}
-                    >
-                      {primaryAction === "start"
-                        ? t("composer.start")
-                        : primaryAction === "queue"
-                          ? t("composer.queue")
-                          : primaryAction === "queue_offline"
-                            ? t("composer.queueOffline")
-                            : t("composer.send")}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+            {activeThreadId && (
+              <>
+                {slashRow}
+                <ThreadComposer
+                  value={prompt}
+                  onChange={(v) => {
+                    setPrompt(v);
+                    setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                  }}
+                  onSend={() => submitMessage()}
+                  onStop={handleStop}
+                  running={running}
+                  sending={busySend}
+                  placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
+                  attachments={attachments}
+                  onAttach={handleAttachFiles}
+                  onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                  offline={!machineOnline}
+                />
+                {options(true)}
+              </>
+            )}
           </div>
         </div>
 

@@ -231,7 +231,7 @@ func onlyMachineProjects(ctx context.Context, l *machine.Local) (*localv1.ListPr
 	out := &localv1.ListProjectsResponse{}
 	for _, p := range res.Projects {
 		out.Projects = append(out.Projects, &localv1.Project{MachineId: id, ProjectId: p.ProjectId, DefaultBaseRef: p.DefaultBaseRef, Workspace: p.Workspace,
-			Description: p.Description, Agents: p.Agents, Path: p.Path})
+			Description: p.Description, Agents: p.Agents, Path: p.Path, Repo: p.Repo})
 	}
 	return out, nil
 }

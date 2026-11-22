@@ -181,6 +181,12 @@ message MachineStatus {
   // offering 1-RTT handshakes, independent non-HoL streams, and connection
   // migration. Sent to the owner's devices only.
   repeated string direct_quic_addrs = 17;
+  // It serves hermesh.thread.v2.ThreadService (docs/thread-composer.md §5.2);
+  // unset on a machine from before it, which the apps take as "update it".
+  bool threads = 18;
+  // The broadest permission mode its threads may run in, whoever starts them
+  // (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
+  hermesh.identity.v1.RuntimeMode max_runtime_mode = 19;
 }
 
 // ScreenStatus is whether the owner's devices can see and operate this
@@ -381,6 +387,9 @@ message Project {
   uint32 active_sessions = 7;
   // The coding agents that may work in it; empty: all.
   repeated string agents = 8;
+  // Its folder is a git repository's top level now, whatever its workspace:
+  // a session of an in-place project may still take its own worktree.
+  bool repo = 9;
 }
 
 message ListProjectsResponse {

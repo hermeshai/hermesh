@@ -533,6 +533,8 @@ struct AddProjectSheet: View {
     @Environment(\.dismiss) private var dismiss
     let machineID: String
     /// The coding agent it is for; a directory already a project gets it too.
+    /// Empty from a new session (docs/thread-composer.md §4.2): for every agent, and
+    /// that session takes the project once it is added.
     let agent: String
     /// The folder chosen, as the person writes it ("~/code/app").
     @State private var path = ""
@@ -555,7 +557,7 @@ struct AddProjectSheet: View {
         guard let full = folder?.fullPath, !full.isEmpty else { return nil }
         return model.projects.first { $0.machineID == machineID && $0.path == full }
     }
-    private var alreadyForAgent: Bool { existing.map { $0.agents.isEmpty || $0.agents.contains(agent) } ?? false }
+    private var alreadyForAgent: Bool { !agent.isEmpty && (existing.map { $0.agents.isEmpty || $0.agents.contains(agent) } ?? false) }
     /// What agents call the project: the folder's name, made to fit a
     /// project's, numbered when another project of this machine has it.
     private var name: String {
@@ -592,7 +594,7 @@ struct AddProjectSheet: View {
                 }
             }
             .navigationTitle("Add a Project")
-            .navigationSubtitle("\(model.machineName(machineID)) · \(agentTitle(agent))")
+            .navigationSubtitle(agent.isEmpty ? model.machineName(machineID) : "\(model.machineName(machineID)) · \(agentTitle(agent))")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: String.self) { p in
                 FolderBrowser(machineID: machineID, path: p, browsing: $browsing) { choose($0, listing: $1) }
@@ -660,7 +662,9 @@ struct AddProjectSheet: View {
             Text("Folder")
         } footer: {
             if let existing {
-                if alreadyForAgent {
+                if agent.isEmpty {
+                    Text("Already the project “\(existing.projectID)”: the new session uses it.")
+                } else if alreadyForAgent {
                     Text("“\(existing.projectID)” is already a project for \(agentTitle(agent)).")
                 } else {
                     Text("Already the project “\(existing.projectID)”, for \(existing.agents.map(agentTitle).formatted()). Adding it lets \(agentTitle(agent)) use it too, working as it does now.")
@@ -674,15 +678,29 @@ struct AddProjectSheet: View {
                         Text("Agents call it “\(name)”.")
                     }
                     if isRepo == false { Text("Not a git repository: agents change the files in this folder directly.") }
+                    reach
                 }
             }
         }
     }
 
+    /// Which grants could use the project once it's added, without anyone signing anything (§3.2): said, not stopped.
+    @ViewBuilder private var reach: some View {
+        let reaching = grantsReaching(model.clients, machineID: machineID, projectID: name)
+        let all = reaching.filter(\.all).map(\.client.label)
+        let named = reaching.filter { !$0.all }.map(\.client.label)
+        if !all.isEmpty { Text("\(all.formatted()) may use every project on this machine, so this one too once it’s added.").accessibilityIdentifier("add-project-reach") }
+        if !named.isEmpty { Text("\(named.formatted()) may use a project called “\(name)”, so this folder too once it’s added.").accessibilityIdentifier("add-project-reach") }
+    }
+
     private var workspace: some View {
         Section("How Agents Work") {
             choice(false, "Separate worktree", "Each session gets its own branch; the files you’re changing are left alone")
-            choice(true, "In place", "Agents change this folder directly, as if you ran \(agentTitle(agent)) here")
+            if agent.isEmpty {
+                choice(true, "In place", "Agents change this folder directly")
+            } else {
+                choice(true, "In place", "Agents change this folder directly, as if you ran \(agentTitle(agent)) here")
+            }
             if !inPlace, let folder, folder.repo {
                 Picker("New Branches From", selection: $baseRef) {
                     Text("Current branch (\(folder.branch))").tag("")
@@ -740,7 +758,9 @@ struct AddProjectSheet: View {
         Task {
             defer { busy = false }
             do {
-                if let existing {
+                if let existing, agent.isEmpty {
+                    model.addedProject = AddedProject(machineID: machineID, projectID: existing.projectID, worktree: existing.workspace == .worktree)
+                } else if let existing {
                     try await model.saveProject(existing, agents: existing.agents + [agent], workspace: existing.workspace)
                     model.show(String(localized: "“\(existing.projectID)” is now for \(agentTitle(agent)) too"))
                 } else {
@@ -750,9 +770,10 @@ struct AddProjectSheet: View {
                     r.path = folder?.fullPath.isEmpty == false ? folder!.fullPath : path
                     r.workspace = inPlace ? .inPlace : .worktree
                     r.defaultBaseRef = inPlace ? "" : baseRef
-                    r.agents = [agent]
+                    r.agents = agent.isEmpty ? [] : [agent]
                     try await model.addProject(r)
                     model.show(String(localized: "Added project “\(name)”"))
+                    if agent.isEmpty { model.addedProject = AddedProject(machineID: machineID, projectID: name, worktree: !inPlace) }
                 }
                 dismiss()
             } catch {
