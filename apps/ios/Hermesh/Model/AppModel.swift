@@ -145,15 +145,15 @@ final class AppModel {
     var status = StatusResponse()
     let signer = Signer()
 
-    /// As screens show them: those of a machine that cannot be read now with
-    /// their state unknown (withKnownState).
-    var sessions: [Session] { withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID))) }
+    /// As screens show them, wherever they started (the v2 threads are sessions too, docs/thread-composer.md §14):
+    /// those of a machine that cannot be read now with their state unknown (withKnownState).
+    var sessions: [Session] {
+        withKnownState(threads.isEmpty ? heldSessions : heldSessions + threads.map(threadAsSession), unreachable: Set(unreachable.map(\.machineID)))
+    }
     /// As hermeshd last told of them.
     private var heldSessions: [Session] = []
     /// Every machine's v2 threads, archived ones too, as they change (docs/thread-composer.md §4.7).
     var threads: [Hermesh_Thread_V2_Thread] = []
-    /// The menu's list: the sessions, and the threads as sessions, grouped and sorted alike.
-    var listedSessions: [Session] { threads.isEmpty ? sessions : sessions + threads.map(threadAsSession) }
     /// Set by Add a Project once it added one; the new-session page takes it.
     var addedProject: AddedProject?
     var loadingOlder = false
@@ -845,7 +845,7 @@ final class AppModel {
     func grant(id: String) -> Client? { clients.first { $0.grantID == id } }
 
     /// Who started a session, as the person knows them.
-    func grantLabel(_ s: Session) -> String { clientLabel(s.createdBy) }
+    func grantLabel(_ s: Session) -> String { s.createdBy == "owner" ? String(localized: "You") : clientLabel(s.createdBy) }
 
     /// A client by its id (a session's created_by), as the person knows it.
     func clientLabel(_ clientID: String) -> String {

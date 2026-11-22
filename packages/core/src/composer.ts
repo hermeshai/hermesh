@@ -15,6 +15,7 @@ import {
   type Thread,
 } from "@hermesh/proto/thread";
 import { activeOptionDescriptors, findModelEntry, findProviderInstance } from "./threads";
+import { threadFailure } from "./threadtranscript";
 
 // The new-session composer (docs/thread-composer.md): where a session runs
 // (machine, project), with what (provider, model, how hard it thinks) and
@@ -40,9 +41,9 @@ const threadStatusAsSession: Record<ThreadStatus, SessionStatus> = {
 };
 
 /**
- * A thread as a row of the session list, so both kinds group, sort and
- * filter alike: who started it ("owner", else the grant's client id), its
- * provider instance as the agent, and its state.
+ * A thread as a session, so both kinds list, count, notify and act alike: who
+ * started it ("owner", else the grant's client id), its provider instance as
+ * the agent, its state, its runs as turns and why it stopped.
  */
 export function threadAsSession(th: Thread): Session {
   const by = th.createdBy;
@@ -52,10 +53,12 @@ export function threadAsSession(th: Thread): Session {
     projectId: th.projectId,
     agent: th.modelSelection?.instanceId ?? "",
     model: th.modelSelection?.model ?? "",
+    branch: th.workspace?.branch ?? "",
     status: threadStatusAsSession[th.status] ?? SessionStatus.IDLE,
     createdBy: !by || by.kind === ActorKind.OWNER ? "owner" : by.id,
     title: th.title,
     error: th.lastError,
+    progress: { turnCount: th.runCount, lastFailure: threadFailure(th) },
     createdAt: th.createdAt,
     updatedAt: th.updatedAt,
   });

@@ -27,10 +27,8 @@
     "lastKnown": "上次读到的"
   },
   "header": {
-    "fork": "派生分支会话",
     "archive": "归档",
     "unarchive": "取消归档",
-    "inspector": "检查器",
     "offlineQueued": "离线排队中"
   },
   "mode": {
@@ -101,43 +99,22 @@
     "cancel": "移除"
   },
   "request": {
-    "approvalTitle": "需要权限审批：{{tool}}",
-    "outsideWorkspace": "工作区外路径",
-    "approveOnce": "批准本次",
-    "approveThread": "本会话始终允许",
-    "decline": "拒绝并反馈",
-    "declinePlaceholder": "可选：告诉 Agent 拒绝原因或替代方案…",
-    "cancelTurn": "取消本轮",
-    "questionTitle": "Agent 提问",
-    "customAnswerPlaceholder": "或输入自定义回答…",
-    "submitAnswer": "提交回答",
-    "planTitle": "方案评审：{{title}}",
-    "approvePlan": "批准并开始编码",
-    "revisePlan": "要求修改方案",
-    "planFeedbackPlaceholder": "输入方案修改意见…",
-    "secretTitle": "请求密钥：{{label}}",
-    "secretZeroPersistence": "零落盘保护：仅在内存传递，绝不写入数据库或日志",
-    "sendSecret": "安全注入密钥"
-  },
-  "timeline": {
-    "steered": "中途引导",
-    "reasoning": "思考过程",
-    "handoff": "跨模型上下文交接（{{strategy}}）",
-    "modelSwitch": "已切换模型至 {{model}}",
-    "checkpoint": "检查点 #{{ordinal}}",
-    "rewind": "回滚至此"
-  },
-  "inspector": {
-    "diffTab": "代码变更",
-    "checkpointsTab": "检查点",
-    "infoTab": "运行态",
-    "noDiff": "当前工作区与基准一致，暂无未提交改动。",
-    "noCheckpoints": "完成首轮执行后将自动生成 Git 检查点。",
-    "rewindChat": "仅回滚对话",
-    "rewindFiles": "回滚对话与文件",
-    "contextWindow": "上下文窗口",
-    "providerSession": "底层会话进程",
-    "alive": "进程常驻就绪",
-    "reaped": "已空闲释放（下轮自动恢复）"
+    "label": "等你批准",
+    "runCommand": "运行这条命令？",
+    "useTool": "使用 {{tool}} {{target}}？",
+    "tool": "工具",
+    "outsideWorkspace": "工作区外",
+    "approveOnce": "允许",
+    "approveThread": "本会话都允许",
+    "deny": "拒绝",
+    "cancel": "取消",
+    "feedback": "告诉 {{agent}} 为什么拒绝，或者应该怎么做（可选）",
+    "planTitle": "按这个方案开始做？",
+    "approvePlan": "批准方案",
+    "revisePlan": "要求修改",
+    "secretTitle": "{{agent}} 需要 {{label}}",
+    "secretNote": "只在内存里交给它，不写进记录和日志。",
+    "secretPlaceholder": "输入后按回车",
+    "sendSecret": "发送"
   }
 }

@@ -199,7 +199,7 @@ private struct MenuSessions: View {
 
     var body: some View {
         let machines = model.machines.sorted { $0.machineName.localizedStandardCompare($1.machineName) == .orderedAscending }.map(\.machineID)
-        let sections = sessionSections(model.listedSessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
+        let sections = sessionSections(model.sessions, view: model.listView, archived: model.showArchived, now: model.now, machines: machines, alwaysActive: true)
         ForEach(sections) { section in
             let open = !model.collapsed.contains(section.id)
             heading(section, open: open).plainRow()

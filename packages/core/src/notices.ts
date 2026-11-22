@@ -61,7 +61,8 @@ export function noticeDiff(
   for (const s of sessions) {
     const before = previous.get(s.sessionId);
     const created = dateOf(s.createdAt);
-    if (!before && since && created && created >= since) {
+    // New work from an agent; the owner knows of a session they started themself.
+    if (!before && since && created && created >= since && s.createdBy !== "owner") {
       out.push({
         kind: "started",
         sessionId: s.sessionId,

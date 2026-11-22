@@ -74,7 +74,7 @@ test("a session on another machine: its folder added as a project, the model pic
     const input = page.getByTestId("thread-composer-input");
     await input.fill("say hello_from_work_mac");
     await input.press("Enter");
-    await expect(page.getByTestId("turn-item-assistant").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
+    await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
     await expect(page.getByTestId("composer-options")).toContainText(`work-mac·${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
     await expect(row).toBeVisible();
@@ -83,7 +83,7 @@ test("a session on another machine: its folder added as a project, the model pic
     // Keep going in it.
     await input.fill("say second_turn_done");
     await input.press("Enter");
-    await expect(page.getByTestId("turn-item-assistant").nth(1)).toContainText("second_turn_done", { timeout: 30_000 });
+    await expect(page.getByRole("log").locator(".am").nth(1)).toContainText("second_turn_done", { timeout: 30_000 });
 
     // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
     await input.fill("sleep 20s\nsay never");
@@ -93,7 +93,7 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.press("Enter");
     await expect(page.getByTestId("queued-run-0")).toContainText("say after_the_stop");
     await page.getByTestId("composer-stop-btn").click();
-    await expect(page.getByTestId("turn-item-assistant").last()).toContainText("after_the_stop", { timeout: 30_000 });
+    await expect(page.getByRole("log").locator(".am").last()).toContainText("after_the_stop", { timeout: 30_000 });
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 15_000 });
     await snap(page, "composer-session");
 

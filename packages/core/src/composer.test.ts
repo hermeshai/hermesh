@@ -15,6 +15,7 @@ import {
   ProviderInstanceSchema,
   ThreadSchema,
   ThreadStatus,
+  WorkspaceStrategySchema,
 } from "@hermesh/proto/thread";
 import {
   findModels,
@@ -27,6 +28,8 @@ import {
   threadAsSession,
   withReasoning,
 } from "./composer";
+import { noticeDiff, noticeSnapshots } from "./notices";
+import { isFailed } from "./sessions";
 import { projectIdFromFolder } from "./signin";
 
 const effort = (ids: string[], def: string) =>
@@ -81,6 +84,25 @@ describe("the new-session composer", () => {
     expect(threadAsSession(th)).toMatchObject({ createdBy: "c_grok", status: SessionStatus.CRASHED });
     th.status = ThreadStatus.ARCHIVED;
     expect(threadAsSession(th).status).toBe(SessionStatus.ARCHIVED);
+  });
+
+  it("makes a thread a session the lists, counts and notices treat alike", () => {
+    const base = { threadId: "th_y", title: "Fix it", runCount: 1, createdAt: timestampFromDate(new Date("2026-11-23T10:00:00Z")) };
+    const running = create(ThreadSchema, { ...base, status: ThreadStatus.RUNNING, workspace: create(WorkspaceStrategySchema, { branch: "hermesh/th_y" }) });
+    expect(threadAsSession(running)).toMatchObject({ branch: "hermesh/th_y", progress: { turnCount: 1 } });
+    const done = create(ThreadSchema, { ...base, status: ThreadStatus.IDLE, runCount: 2 });
+    const failed = create(ThreadSchema, { ...base, status: ThreadStatus.FAILED, runCount: 2, lastError: "boom" });
+    expect(isFailed(threadAsSession(failed))).toBe(true);
+    expect(threadAsSession(failed).progress?.lastFailure?.message).toBe("boom");
+
+    const before = noticeSnapshots([threadAsSession(running)]);
+    expect(noticeDiff(before, [threadAsSession(done)], () => "You").map((n) => n.kind)).toEqual(["turnDone"]);
+    expect(noticeDiff(before, [threadAsSession(failed)], () => "You").map((n) => n.kind)).toEqual(["failed"]);
+    // The owner's own new session is no news; an agent's is.
+    const since = new Date("2026-11-23T09:00:00Z");
+    expect(noticeDiff(new Map(), [threadAsSession(running)], () => "You", since)).toEqual([]);
+    const byAgent = create(ThreadSchema, { ...base, status: ThreadStatus.RUNNING, createdBy: create(ActorSchema, { kind: ActorKind.EXTERNAL_AGENT, id: "c_grok" }) });
+    expect(noticeDiff(new Map(), [threadAsSession(byAgent)], () => "Grok", since).map((n) => n.kind)).toEqual(["started"]);
   });
 
   it("reads and sets how hard the model thinks", () => {

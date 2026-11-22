@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { codingAgentShort, codingAgentTitle, displayTitle, searchSessions, sessionFilter, shortTime, threadAsSession, updatedDate, type SessionFilter } from "@hermesh/core";
+import { codingAgentShort, codingAgentTitle, displayTitle, searchSessions, sessionFilter, shortTime, updatedDate, type SessionFilter } from "@hermesh/core";
 import { i18n } from "../../shared/i18n";
 import { StatusDot } from "./components";
 import { Icon } from "./icons";
@@ -28,9 +28,7 @@ export function SearchPalette({ leaving = false }: { leaving?: boolean }) {
   const list = useRef<HTMLDivElement>(null);
 
   const text = (s: Session) => [displayTitle(s), s.projectId, grantLabel(st, s), codingAgentTitle(s.agent), machineName(st, s.machineId)].join(" ");
-  // v2 threads too, as the list shows them (docs/thread-composer.md §4.7).
-  const all = useMemo(() => (st.threads.length ? [...st.sessions, ...st.threads.map(threadAsSession)] : st.sessions), [st.sessions, st.threads]);
-  const found = searchSessions(all, query, filter, text);
+  const found = searchSessions(st.sessions, query, filter, text);
   const sessions = found.slice(0, 8);
   const q = query.trim().toLowerCase();
   const acts = actions().filter((a) => q === "" || a.label.toLowerCase().includes(q));

@@ -4,7 +4,7 @@ import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
   bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
-  SCRATCH_PROJECT, isThreadId, threadAsSession,
+  SCRATCH_PROJECT, isThreadId,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../shared/i18n";
@@ -19,6 +19,8 @@ import { keys, ownKeys } from "./platform";
 import { useNow, useStore, type Store } from "./store";
 
 export function grantLabel(st: Store, s: Session): string {
+  // A session the owner started here (a v2 thread's): "You".
+  if (s.createdBy === "owner") return i18n.t("common:sidebar.you");
   return st.clients.find((c) => c.clientId === s.createdBy)?.label ?? i18n.t("common:sidebar.disconnectedGrant");
 }
 
@@ -52,8 +54,8 @@ export function archive(st: Store, s: Session) {
   });
 }
 
-export function unarchive(st: Store, s: Session) {
-  st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, false) : local.unarchiveSession({ sessionId: s.sessionId })));
+export function unarchive(st: Store, s: Session, done?: string) {
+  return st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, false) : local.unarchiveSession({ sessionId: s.sessionId })), done);
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
@@ -79,10 +81,9 @@ export function confirmDelete(st: Store, s: Session) {
  * The list as the sidebar shows it, in the owner's view; machines this Mac first, then by name. By status, the
  * running group stays while nothing runs, empty, so it is always there to look at (docs/her-team.md §16).
  */
-export function listSections(st: Pick<Store, "sessions" | "threads" | "view" | "archived" | "machines" | "clients">, now: Date): SessionSection[] {
+export function listSections(st: Pick<Store, "sessions" | "view" | "archived" | "machines" | "clients">, now: Date): SessionSection[] {
   const machines = [...st.machines].sort((a, b) => Number(b.local) - Number(a.local) || a.machineName.localeCompare(b.machineName)).map((m) => m.machineId);
-  const rows = st.threads.length ? [...st.sessions, ...st.threads.map(threadAsSession)] : st.sessions;
-  return sessionSections(rows, st.view, { archived: st.archived, now, machines, her: herClients(st), alwaysActive: true });
+  return sessionSections(st.sessions, st.view, { archived: st.archived, now, machines, her: herClients(st), alwaysActive: true });
 }
 
 export function sectionTitle(st: Store, sec: SessionSection): string {
@@ -219,8 +220,8 @@ export function Ring({ label }: { label: string }) {
 function Sessions({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { sessions, threads, view, archived, machines, clients } = st;
-  const sections = useMemo(() => listSections({ sessions, threads, view, archived, machines, clients }, now), [sessions, threads, view, archived, machines, clients, now]);
+  const { sessions, view, archived, machines, clients } = st;
+  const sections = useMemo(() => listSections({ sessions, view, archived, machines, clients }, now), [sessions, view, archived, machines, clients, now]);
   const total = sections.reduce((n, x) => n + x.sessions.length, 0);
   const list = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);

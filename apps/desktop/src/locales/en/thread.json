@@ -27,10 +27,8 @@
     "lastKnown": "last known"
   },
   "header": {
-    "fork": "Fork",
     "archive": "Archive",
     "unarchive": "Unarchive",
-    "inspector": "Inspector",
     "offlineQueued": "Queued Offline"
   },
   "mode": {
@@ -101,43 +99,22 @@
     "cancel": "Remove"
   },
   "request": {
-    "approvalTitle": "Permission Required: {{tool}}",
-    "outsideWorkspace": "Outside Workspace",
-    "approveOnce": "Approve Once",
-    "approveThread": "Always Allow in Thread",
-    "decline": "Decline",
-    "declinePlaceholder": "Optional steering feedback on decline…",
-    "cancelTurn": "Cancel Turn",
-    "questionTitle": "Agent Question",
-    "customAnswerPlaceholder": "Or type a custom answer…",
-    "submitAnswer": "Submit Answer",
-    "planTitle": "Proposed Plan: {{title}}",
-    "approvePlan": "Approve & Build",
-    "revisePlan": "Request Changes",
-    "planFeedbackPlaceholder": "Feedback to revise the plan…",
-    "secretTitle": "Secret Requested: {{label}}",
-    "secretZeroPersistence": "Zero-persistence: delivered in memory only, never saved to disk",
-    "sendSecret": "Provide Secret"
-  },
-  "timeline": {
-    "steered": "Steered mid-turn",
-    "reasoning": "Reasoning",
-    "handoff": "Context Handoff ({{strategy}})",
-    "modelSwitch": "Switched model to {{model}}",
-    "checkpoint": "Checkpoint #{{ordinal}}",
-    "rewind": "Rewind here"
-  },
-  "inspector": {
-    "diffTab": "Diff",
-    "checkpointsTab": "Checkpoints",
-    "infoTab": "Runtime",
-    "noDiff": "Working tree matches baseline.",
-    "noCheckpoints": "Checkpoints appear after completed turns.",
-    "rewindChat": "Rewind Chat",
-    "rewindFiles": "Rewind Chat & Files",
-    "contextWindow": "Context Window",
-    "providerSession": "Provider Session",
-    "alive": "Live process",
-    "reaped": "Idle (resumes on next turn)"
+    "label": "Waiting for you",
+    "runCommand": "Run this command?",
+    "useTool": "Use {{tool}} {{target}}?",
+    "tool": "a tool",
+    "outsideWorkspace": "Outside the workspace",
+    "approveOnce": "Allow",
+    "approveThread": "Allow for this session",
+    "deny": "Deny",
+    "cancel": "Cancel",
+    "feedback": "Tell {{agent}} why, or what to do instead (optional)",
+    "planTitle": "Start on this plan?",
+    "approvePlan": "Approve plan",
+    "revisePlan": "Ask for changes",
+    "secretTitle": "{{agent}} needs {{label}}",
+    "secretNote": "Handed over in memory only; never written to the record or logs.",
+    "secretPlaceholder": "Type it, then press Return",
+    "sendSecret": "Send"
   }
 }

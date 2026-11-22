@@ -73,6 +73,11 @@ extension HermeshUITests {
         // Keep going in it.
         send("say second_turn_done")
         XCTAssertTrue(reply("second_turn_done").waitForExistence(timeout: 60), "the second turn's reply")
+        // Drawn as a session's page: its toolbar (info, more) and its ending.
+        XCTAssertTrue(app.buttons["session-info"].exists, "a session's info")
+        XCTAssertTrue(app.buttons["session-more"].exists, "a session's actions")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '这一轮做完了'")).firstMatch.waitForExistence(timeout: 10), "a session's ending")
+        shot("composer-session")
 
         // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
         send("sleep 20s")
@@ -83,6 +88,15 @@ extension HermeshUITests {
         tap("thread-stop")
         XCTAssertTrue(reply("after_the_stop").waitForExistence(timeout: 60), "the waiting message, once stopped")
         XCTAssertTrue(app.buttons["thread-stop"].waitForNonExistence(timeout: 30), "nothing runs")
+
+        // Archived from its ⋯ menu, as a session: read-only, said at the top with Unarchive, and no box.
+        tap("session-more")
+        menuItem("归档").tap()
+        let note = app.descendants(matching: .any)["archived-note"]
+        XCTAssertTrue(note.waitForExistence(timeout: 15), "archived, said so")
+        XCTAssertTrue(app.descendants(matching: .any)["thread-composer"].waitForNonExistence(timeout: 10), "read-only")
+        app.buttons["取消归档"].firstMatch.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["thread-composer"].firstMatch.waitForExistence(timeout: 15), "back to work")
 
         // The session is in the menu's list, with the rest.
         openMenu()
@@ -149,8 +163,9 @@ extension HermeshUITests {
         press(send)
     }
 
+    /// The agent's words, drawn as a session's (StepView): not what was sent ("say …"), nor the title.
     private func reply(_ s: String) -> XCUIElement {
-        app.staticTexts.matching(NSPredicate(format: "identifier == 'thread-reply' AND label CONTAINS %@", s)).firstMatch
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND NOT (label CONTAINS 'say ')", s)).firstMatch
     }
 
     private func shot(_ name: String) {

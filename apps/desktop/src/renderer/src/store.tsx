@@ -3,7 +3,7 @@ import { ConnectError } from "@connectrpc/connect";
 import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
 import type { Thread } from "@hermesh/proto/thread";
-import { isThreadId, sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
+import { isThreadId, sessionView, threadAsSession, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
@@ -108,10 +108,8 @@ export type Store = Data &
   UI & {
     /** The window's width, which lays it out (layout.ts). */
     width: number;
-    /** The sessions loaded so far: the newest page, older pages the list asked for, and every change since. */
+    /** The sessions loaded so far (the newest page, older pages the list asked for, and every change since), and every v2 thread as one. */
     sessions: Session[];
-    /** Every machine's v2 threads, archived ones too, as they change (docs/thread-composer.md §4.7). */
-    threads: Thread[];
     /** Moves when the counts of work changed (QueryWork). */
     workVersion: number;
     sessionsUnreachable: Unreachable[];
@@ -189,7 +187,13 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     () => ({ status, clients: world.clients, machines: world.machines, projects: world.projects, projectsUnreachable: unreachable, pairings: world.pairings, devices: world.devices }),
     [status, world.clients, world.machines, world.projects, unreachable, world.pairings, world.devices],
   );
-  const sessions = useMemo(() => withKnownState(world.sessions, world.machines), [world.sessions, world.machines]);
+  // A session is a session wherever it started: v2 threads are rows of the same list, for every view that counts,
+  // groups or finds sessions (docs/thread-composer.md §4.7, §14).
+  const threads = useThreads(!location.hash.startsWith("#settings"));
+  const sessions = useMemo(
+    () => withKnownState(threads.length ? [...world.sessions, ...threads.map(threadAsSession)] : world.sessions, world.machines),
+    [world.sessions, threads, world.machines],
+  );
   const [ui, setUI] = useState<UI>(() => ({
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
@@ -285,14 +289,12 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
 
   // A v2 thread opens on its own page; the rows of both kinds share the list (docs/thread-composer.md §4.7).
   const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: isThreadId(id) ? { kind: "thread", id } : { kind: "session", id } })), []);
-  const threads = useThreads(!location.hash.startsWith("#settings"));
 
   const store = useMemo<Store>(
     () => ({
       ...data,
       pairings: data.pairings.filter((p) => !ui.dismissed.includes(p.code)),
       sessions,
-      threads,
       sessionsUnreachable: data.projectsUnreachable,
       sessionsLoaded: world.loaded && world.status !== undefined && (world.status.initialized || world.status.machineOnly),
       moreSessions: world.next !== undefined,
@@ -306,7 +308,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
       run,
       show,
     }),
-    [data, sessions, threads, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
+    [data, sessions, world.loaded, world.status, world.next, world.loadOlder, world.workVersion, ui, width, set, select, refresh, run, show],
   );
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

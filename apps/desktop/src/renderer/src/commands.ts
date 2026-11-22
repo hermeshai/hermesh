@@ -3,11 +3,10 @@ import { SessionStatus, type Session } from "@hermesh/proto/session";
 import { displayTitle, isActive, isArchivable, isInterruptible, needsAttention, pendingQuestion } from "@hermesh/core";
 import type { Command, MenuState } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
-import { local } from "./api";
 import { layoutOf, setCard, setSidebar } from "./layout";
 import { copySessionId, focusAnswer, interrupt } from "./session/actions";
 import { frontRequest } from "./RequestCards";
-import { archive, grantLabel, listSections } from "./Sidebar";
+import { archive, grantLabel, listSections, unarchive } from "./Sidebar";
 import { useStore, type Store } from "./store";
 
 // The app menu's and the menu bar's commands (main/menu.ts, main/tray.ts,
@@ -43,9 +42,10 @@ export function useCommands() {
   useEffect(() => () => window.hermesh?.setMenuState({ main: false, her: false, session: null, sidebar: true, undo: false }), []);
 }
 
+/** The session the window shows, wherever it started (a v2 thread too). */
 function selected(st: Store): Session | undefined {
   const sel = st.selection;
-  return sel.kind === "session" ? st.sessions.find((s) => s.sessionId === sel.id) : undefined;
+  return sel.kind === "session" || sel.kind === "thread" ? st.sessions.find((s) => s.sessionId === sel.id) : undefined;
 }
 
 function run(st: Store, c: Command) {
@@ -77,7 +77,7 @@ function run(st: Store, c: Command) {
     case "archive":
       return s && isArchivable(s) && archive(st, s);
     case "unarchive":
-      return s?.status === SessionStatus.ARCHIVED && st.run(() => local.unarchiveSession({ sessionId: s.sessionId }), i18n.t("common:sidebar.unarchived", { title: displayTitle(s) }));
+      return s?.status === SessionStatus.ARCHIVED && unarchive(st, s, i18n.t("common:sidebar.unarchived", { title: displayTitle(s) }));
     case "copySessionId":
       return s && copySessionId(st, s);
     case "undo":
