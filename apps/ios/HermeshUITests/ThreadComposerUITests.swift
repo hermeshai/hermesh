@@ -128,9 +128,15 @@ extension HermeshUITests {
         // Keep going in it.
         send("say second_turn_done")
         XCTAssertTrue(reply("second_turn_done").waitForExistence(timeout: 60), "the second turn's reply")
-        // On a session's page, a tap on the conversation puts the keyboard away.
-        app.descendants(matching: .any)["thread-composer"].firstMatch.tap()
+        // On a session's page, taps in the box keep the keyboard (they place the caret, a double tap selects a word);
+        // a tap on the conversation puts it away.
+        let composer = app.descendants(matching: .any)["thread-composer"].firstMatch
+        composer.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "typing")
+        composer.tap()
+        composer.doubleTap()
+        sleep(1)
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "taps in the box: the keyboard stays")
         reply("second_turn_done").tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), "a tap on the conversation: the keyboard goes")
         // Drawn as a session's page: its toolbar (info, more) and its ending.

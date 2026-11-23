@@ -323,6 +323,9 @@ struct ThreadPage: View {
             .padding(.top, 13).padding(.bottom, 21)
             .background(ConversationScrollFinder(box: scrollBox))
         }
+        // A tap on the conversation puts the keyboard away: on it only, not on the box under it, where taps place the
+        // caret and select words.
+        .keyboardAwayOnTap()
         .followsEnd(id: threadID, ready: projection != nil, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             // Archived, it is read-only, as a session is: no box.
             if s.status != .archived {
@@ -339,7 +342,6 @@ struct ThreadPage: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .keyboardAwayOnTap()
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
