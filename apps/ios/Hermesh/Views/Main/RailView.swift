@@ -64,9 +64,9 @@ struct RailView: View {
                id: "rail-overview", current: model.root == .overview && model.path.isEmpty) {
             model.open(.overview)
         } icon: {
-            Image(systemName: "square.grid.2x2")
+            Image(systemName: "square.grid.2x2").shimmer(waits == 0 && !work.running.isEmpty)
         } mark: {
-            if waits > 0 { Circle().fill(.orange).frame(width: 9, height: 9) } else if !work.running.isEmpty { ProgressView().controlSize(.mini) }
+            if waits > 0 { Circle().fill(.orange).frame(width: 9, height: 9) }
         }
         button("Search", id: "rail-search") { model.sheet = .search } icon: { Image(systemName: "magnifyingglass") }
     }
@@ -81,7 +81,7 @@ struct RailView: View {
                 button(label(agentTitle(g.agent), g.sessions), id: "rail-agent-\(g.agent)", current: current) {
                     model.open(.session(g.sessions[0].sessionID))
                 } icon: {
-                    AgentLogo(id: g.agent, size: 24)
+                    AgentLogo(id: g.agent, size: 24).shimmer(atWork(g.sessions))
                 } mark: {
                     marks(g.sessions)
                 }
@@ -96,7 +96,7 @@ struct RailView: View {
                         }
                     }
                 } label: {
-                    tile(current: current) { AgentLogo(id: g.agent, size: 24) } mark: { marks(g.sessions) }
+                    tile(current: current) { AgentLogo(id: g.agent, size: 24).shimmer(atWork(g.sessions)) } mark: { marks(g.sessions) }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(label(agentTitle(g.agent), g.sessions))
@@ -119,15 +119,18 @@ struct RailView: View {
                      running > 0 ? String(localized: "\(running) working") : ""].filter { !$0.isEmpty }.joined(separator: " · "))
     }
 
-    /// At the logo's corner: a dot while a session waits for the owner (orange) or failed (red), else a ring while any runs.
+    /// At the logo's corner: a dot while a session waits for the owner (orange) or failed (red).
     @ViewBuilder private func marks(_ sessions: [Session]) -> some View {
         if sessions.contains(where: { $0.status == .waitingInput }) {
             Circle().fill(.orange).frame(width: 9, height: 9)
         } else if sessions.contains(where: \.isFailed) {
             Circle().fill(.red).frame(width: 9, height: 9)
-        } else if sessions.contains(where: \.isActive) {
-            ProgressView().controlSize(.mini)
         }
+    }
+
+    /// Without a dot, while any runs: the logo shimmers.
+    private func atWork(_ sessions: [Session]) -> Bool {
+        !sessions.contains { $0.status == .waitingInput || $0.isFailed } && sessions.contains(where: \.isActive)
     }
 
     private func button(_ label: LocalizedStringKey, id: String, action: @escaping () -> Void, @ViewBuilder icon: () -> some View) -> some View {

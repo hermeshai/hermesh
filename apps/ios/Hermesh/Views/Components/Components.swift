@@ -106,15 +106,11 @@ struct StatusDot: View {
     }
 }
 
-/// A running session's title, in the menu and in the lists, as the Mac's
-/// sidebar has it (app.css .stitle.run): a fainter band crosses it from left
-/// to right in 3 s, and after a breath (0.2 s) crosses it again. With Reduce
-/// Motion it stays still.
+/// A running session's title, in the menu and in the lists, shimmering (`shimmer`).
 struct ShimmerText: View {
     let title: String
     /// While no one sees it (the menu closed): it does not draw.
     let paused: Bool
-    @Environment(\.accessibilityReduceMotion) private var still
 
     init(_ title: String, paused: Bool) {
         self.title = title
@@ -122,17 +118,39 @@ struct ShimmerText: View {
     }
 
     var body: some View {
-        if still {
-            Text(title)
-        } else {
-            TimelineView(.animation(paused: paused)) { timeline in
-                // The band's middle runs from half the title's width before it to half after; it is 0.72 of it wide.
-                let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2)
-                let x = -0.5 + 2 * ease(min(t / 3, 1))
-                Text(title).foregroundStyle(LinearGradient(
-                    colors: [Color(.label), Color(.tertiaryLabel), Color(.label)],
-                    startPoint: UnitPoint(x: x - 0.36, y: 0.5), endPoint: UnitPoint(x: x + 0.36, y: 0.5)))
+        Text(title).foregroundStyle(Color(.label)).shimmer(paused: paused)
+    }
+}
+
+extension View {
+    /// Something at work, as the Mac's sidebar has a running title (app.css .stitle.run): a fainter band crosses it
+    /// from left to right in 3 s, and after a breath (0.2 s) crosses it again; it is the one mark of work in
+    /// progress, on a title, a step's words or an icon. Off (`on` false) it is the view as it is; while no one sees it
+    /// (`paused`) it does not draw; with Reduce Motion it stays still.
+    func shimmer(_ on: Bool = true, paused: Bool = false) -> some View {
+        modifier(Shimmer(on: on, paused: paused))
+    }
+}
+
+private struct Shimmer: ViewModifier {
+    let on: Bool
+    let paused: Bool
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    func body(content: Content) -> some View {
+        if on && !still {
+            content.mask {
+                TimelineView(.animation(paused: paused)) { timeline in
+                    // The band's middle runs from half the view's width before it to half after; it is 0.72 of it
+                    // wide, and lets 0.3 through (the label's colour to the tertiary label's).
+                    let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2)
+                    let x = -0.5 + 2 * ease(min(t / 3, 1))
+                    LinearGradient(colors: [.black, .black.opacity(0.3), .black],
+                                   startPoint: UnitPoint(x: x - 0.36, y: 0.5), endPoint: UnitPoint(x: x + 0.36, y: 0.5))
+                }
             }
+        } else {
+            content
         }
     }
 
