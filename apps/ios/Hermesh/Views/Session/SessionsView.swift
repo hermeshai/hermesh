@@ -35,9 +35,12 @@ struct MenuSessionRow: View {
             AgentLogo(id: session.agent, size: 22).frame(width: 28, height: 22)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
+                    // One running has no mark: its title shimmers, while the menu shows.
                     Text(session.displayTitle)
                         .foregroundStyle(session.status == .archived ? .secondary : .primary)
-                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        .lineLimit(1)
+                        .shimmer(session.isActive && !session.needsAttention, paused: !(model.drawerOpen || model.menuInView))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     mark
                 }
                 if metadata {
@@ -57,12 +60,10 @@ struct MenuSessionRow: View {
         .accessibilityIdentifier("session-\(session.displayTitle)")
     }
 
-    /// One mark: orange, it waits for the owner; red, it failed; a ring, it runs; nothing, it is done.
+    /// One mark: orange, it waits for the owner; red, it failed; nothing, it runs (its title shimmers) or is done.
     @ViewBuilder private var mark: some View {
         if session.status == .waitingInput || session.isFailed {
             Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 9, height: 9).accessibilityHidden(true)
-        } else if session.isActive {
-            BusyRing().accessibilityHidden(true)
         } else if session.status == .unspecified {
             Text(statusTitle(session.status)).font(.footnote).foregroundStyle(.secondary) // its machine cannot be read now
         }

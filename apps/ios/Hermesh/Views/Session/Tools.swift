@@ -32,8 +32,7 @@ struct ToolFold<ID: Hashable, Row: View>: View {
                 withAnimation(.snappy(duration: 0.25)) { open.toggle() }
             } label: {
                 HStack(spacing: 6) {
-                    if running { Spinner() }
-                    Text(summary).lineLimit(1)
+                    Text(summary).lineLimit(1).shimmer(running)
                     Caret(open: open)
                 }
                 .font(.subheadline).foregroundStyle(.secondary)
@@ -57,7 +56,7 @@ struct ToolFold<ID: Hashable, Row: View>: View {
 
 /// One tool call: what it did, and its output when opened, read whole then
 /// when the conversation holds only its start. Folded until opened, failed
-/// ones too; the one running spins. A command reads as code.
+/// ones too; the one running shimmers. A command reads as code.
 struct ToolRow: View {
     @Environment(AppModel.self) private var model
     let item: ToolItem
@@ -113,7 +112,7 @@ struct ToolRow: View {
 }
 
 /// A step on its line: its verb, what it acted on (a command as code), and what it gave when opened (`output`;
-/// nothing to open without one). The one at work spins; a failed one is red. In an opened group's card (`inCard`): a
+/// nothing to open without one). The one at work shimmers; a failed one is red. In an opened group's card (`inCard`): a
 /// size down, its output on the card's ground.
 struct ToolLine: View {
     let verb: String
@@ -131,8 +130,8 @@ struct ToolLine: View {
                 if !output.isEmpty { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
             } label: {
                 HStack(spacing: 5) {
-                    if running { Spinner() }
                     Text(verb).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .shimmer(running && !failed)
                         .layoutPriority(1)
                     if shell {
                         CodeText(text: object, lang: "bash").font(inCard ? .caption.monospaced() : .footnote.monospaced()).opacity(0.9)
@@ -188,13 +187,6 @@ struct Caret: View {
         Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             .rotationEffect(.degrees(open ? 0 : -90))
             .accessibilityHidden(true)
-    }
-}
-
-/// The small spinner of a step in progress.
-struct Spinner: View {
-    var body: some View {
-        ProgressView().controlSize(.mini).accessibilityLabel("In progress")
     }
 }
 

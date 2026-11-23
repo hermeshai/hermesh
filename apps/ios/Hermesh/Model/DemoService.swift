@@ -87,6 +87,12 @@ final class DemoService {
         if UserDefaults.standard.bool(forKey: "DemoSidebarActivity") {
             world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
             world.status.relayConnected = false
+            // A step still at work, for its line in the session.
+            append("demo-running", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
+            append("demo-running", .with { $0.userMessage.text = "Run the tests." })
+            append("demo-running", .with { $0.toolCall = .with { $0.callID = "read"; $0.kind = "read"; $0.name = "read"; $0.summary = "package.json"; $0.decision = "allow" } })
+            append("demo-running", .with { $0.toolResult = .with { $0.callID = "read"; $0.summary = "{}" } })
+            append("demo-running", .with { $0.toolCall = .with { $0.callID = "test"; $0.kind = "shell"; $0.name = "npm test"; $0.summary = "npm test"; $0.decision = "allow" } })
         }
         #endif
         #if targetEnvironment(simulator)

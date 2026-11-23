@@ -346,15 +346,14 @@ private struct HerTag: View {
                     HStack(spacing: -5) {
                         ForEach(team.runningAgents.prefix(3), id: \.self) { AgentLogo(id: $0, size: 18) }
                     }
-                    Text("\(n) working").foregroundStyle(.secondary)
+                    Text("\(n) working").foregroundStyle(.secondary).shimmer(paused: paused)
                 case .quiet:
                     EmptyView()
                 }
                 if !team.running.isEmpty {
                     if case .working = team.tag {} else {
-                        Text(verbatim: "\(team.running.count)").foregroundStyle(.secondary).monospacedDigit()
+                        Text("\(team.running.count) working").foregroundStyle(.secondary).monospacedDigit().shimmer(paused: paused)
                     }
-                    runningRing
                 }
             }
         }
@@ -418,26 +417,11 @@ private struct HerTag: View {
         case .working(let n): parts.append(String(localized: "\(n) working"))
         case .quiet: break
         }
-        if case .working = team.tag {} else if team.tag != .quiet && !team.running.isEmpty { parts.append("\(team.running.count)") }
+        if case .working = team.tag {} else if team.tag != .quiet && !team.running.isEmpty { parts.append(String(localized: "\(team.running.count) working")) }
         return parts.joined(separator: ", ")
     }
 
     private func dot(_ color: Color) -> some View { Circle().fill(color).frame(width: 9, height: 9) }
-
-    /// Like Her's avatar, draw the continuous motion without a never-ending UIKit animation.
-    private var runningRing: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: paused || still)) { timeline in
-            let angle = paused || still ? 0 : timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1) * 360
-            Canvas { context, size in
-                var arc = Path()
-                arc.addArc(center: CGPoint(x: size.width / 2, y: size.height / 2), radius: 5,
-                           startAngle: .degrees(angle), endAngle: .degrees(angle + 270), clockwise: false)
-                context.stroke(arc, with: .color(.secondary), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            }
-        }
-        .frame(width: 12, height: 12)
-        .accessibilityHidden(true)
-    }
 }
 
 /// The team panel (docs/her-team.md §4.3): what needs the owner, answered in place where one tap can, what

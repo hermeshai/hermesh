@@ -128,7 +128,8 @@ team's state. It is drawn from `model.sessions` (not archived) and
 | Nothing | the name alone |
 
 When something waits and sessions also run, the running count follows the
-words as a small ring and a number.
+words as a small ring and a number (Mac); on the iPhone, as "1 working",
+shimmering as a running session's title does, with no ring.
 
 **Taps.** Today the avatar and the name are one button that opens Her's
 settings. They become two: the avatar opens Her's settings (as today), the
@@ -660,9 +661,9 @@ card against the real local services. The one-choice rule in §4.3 now
 allows optional extra fields, and uses the choice's item id even when an
 optional field comes first. The panel's heading can be swiped up to close
 it; the name tag honours Reduce Motion.
-Its busy ring uses the same timeline drawing approach as Her's avatar,
-and stays still with Reduce Motion or while inactive, without installing
-a repeating UIKit animation.
+What runs shimmers (no busy ring) on the same timeline drawing as Her's
+avatar, and stays still with Reduce Motion or while inactive, without
+installing a repeating UIKit animation.
 The start page is chosen only from an initialized owner's snapshot. The
 iOS 26 run exposed a pre-join status-only snapshot choosing Work too
 early, even when the owner joined afterward already had a machine.
@@ -1175,7 +1176,7 @@ code's word.
 | Part | Rows | Marks |
 |---|---|---|
 | Top band (Mac) | The sidebar toggle after the traffic lights; Search (⌘K) at its end | |
-| Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner. The Mac sidebar and the iPhone’s collapsed rail can also show a ring while tasks run. |
+| Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner. The Mac sidebar can also show a ring while tasks run; the iPhone’s collapsed rail shimmers the icon instead. |
 | Sessions | The heading "Sessions" with the view menu at its end; every session, as the view lays them out | Per row, below |
 | Foot | The account (Mac: "Connected", no count of machines) | A dot only when not connected |
 
@@ -1183,8 +1184,8 @@ code's word.
 groups or of machines. Counts are on the overview.
 
 **A row** is the coding agent's logo, the title (one line, cut), and one
-mark: orange, it waits for the owner; red, it failed; a ring, it runs;
-nothing, it is done. The state in words is for screen readers. With the
+mark: orange, it waits for the owner; red, it failed; a ring, it runs
+(on the iPhone no ring: its title shimmers); nothing, it is done. The state in words is for screen readers. With the
 view's metadata on, a second line says who sent the work to which agent,
 the project and the time. A click (tap) opens the session; hovering shows
 ⋯ in the mark's place; right-click (Mac) or long-press (iPhone) for
