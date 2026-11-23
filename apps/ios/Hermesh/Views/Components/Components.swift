@@ -402,6 +402,26 @@ enum Palette {
         : UIColor(red: 0xf4 / 255, green: 0xf4 / 255, blue: 0xf7 / 255, alpha: 1) })
 }
 
+/// Putting the keyboard away, as Messages does (docs/thread-composer.md §16): there is no button for it on iPhone.
+extension View {
+    /// A tap on the page (its blank parts or what's on it) puts it away; what was tapped still does what it does.
+    func keyboardAwayOnTap() -> some View {
+        simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
+    }
+
+    /// A quick flick down on the box puts it away. Only a flick: a slow drag (selecting text) leaves it.
+    func keyboardAwayOnFlickDown() -> some View {
+        simultaneousGesture(DragGesture(minimumDistance: 12).onEnded { v in
+            let down = v.translation.height, flick = v.predictedEndTranslation.height - down
+            if down > 16, flick > 30, abs(v.translation.width) < down { hideKeyboard() }
+        })
+    }
+}
+
+private func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
 /// Back to a conversation's end, once it was scrolled well up from it (the Mac's): an arrow in a glass circle.
 struct ToEndButton: View {
     let action: () -> Void

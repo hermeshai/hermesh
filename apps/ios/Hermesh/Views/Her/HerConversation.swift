@@ -103,6 +103,7 @@ struct HerConversation: View {
         }
         .onScrollGeometryChange(for: Bool.self, of: scrolledAway) { _, away in far.away = away }
         .scrollDismissesKeyboard(.interactively)
+        .keyboardAwayOnTap()
         .overlay {
             if rows.isEmpty && busy == nil { HerEmpty(chat: chat, machine: machine, loading: noModel || (chat.session == nil && state == .ready)) }
         }

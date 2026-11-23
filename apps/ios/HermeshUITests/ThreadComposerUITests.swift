@@ -66,7 +66,7 @@ extension HermeshUITests {
         menuItem("独立 worktree").tap()
         XCTAssertTrue(chip("thread-branch", contains: "基于"), app.buttons["thread-branch"].label)
 
-        // The box is one line until it is tapped: then the model and how hard it thinks are along its bottom.
+        // The box is one line until it is tapped: then the model is along its bottom.
         XCTAssertFalse(app.buttons["thread-model"].exists, "closed: no model")
         openBox()
         // The model: one sheet, the providers one under another; a search across them; choosing one closes it.
@@ -82,10 +82,36 @@ extension HermeshUITests {
         XCTAssertTrue(app.buttons["model-scripted-fast"].waitForNonExistence(timeout: 10), "chosen: the sheet goes")
         openBox()
         XCTAssertTrue(chip("thread-model", contains: "Scripted Fast"), app.buttons["thread-model"].label)
-        // How hard it thinks: a menu of its own beside the model.
-        tap("thread-thinking")
-        menuItem("高").tap()
-        XCTAssertTrue(chip("thread-thinking", contains: "高"), app.buttons["thread-thinking"].label)
+        // How hard it thinks: not on the box, but at the top of the model sheet, dragged along a track to a level.
+        XCTAssertFalse(app.buttons["thread-thinking"].exists, "not on the box")
+        tap("thread-model")
+        let thinking = app.descendants(matching: .any)["model-thinking"].firstMatch
+        XCTAssertTrue(thinking.waitForExistence(timeout: 10), "at the top of the sheet")
+        let firstModel = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'model-' AND identifier != 'model-done'")).firstMatch
+        XCTAssertLessThan(thinking.frame.maxY, firstModel.frame.minY, "over the models")
+        // Its levels are 低, 中 and 高 (the level before it may have been kept, so where it starts isn't said).
+        dragThinking(thinking, to: 0.5)
+        XCTAssertTrue(waitUntil(timeout: 5) { thinking.value as? String == "中" }, "\(thinking.value ?? "")")
+        dragThinking(thinking, to: 0)
+        XCTAssertTrue(waitUntil(timeout: 5) { thinking.value as? String == "低" }, "\(thinking.value ?? "")")
+        dragThinking(thinking, to: 1)
+        XCTAssertTrue(waitUntil(timeout: 5) { thinking.value as? String == "高" }, "\(thinking.value ?? "")")
+        shot("composer-thinking")
+        // Dragging doesn't choose a model: the sheet stays until Done.
+        XCTAssertTrue(thinking.exists && app.buttons["model-done"].exists, "still open")
+        tap("model-done")
+        openBox()
+        XCTAssertTrue(chip("thread-model", contains: "Scripted Fast"), app.buttons["thread-model"].label)
+
+        // The keyboard goes as on Messages, with no button for it: the page dragged down, or a flick down on the box.
+        let keyboard = app.keyboards.firstMatch
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10), "typing: the keyboard is up")
+        app.descendants(matching: .any)["new-session-title"].firstMatch.swipeDown()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10), "the page dragged down: the keyboard goes")
+        openBox()
+        XCTAssertTrue(keyboard.waitForExistence(timeout: 10))
+        app.descendants(matching: .any)["thread-composer"].firstMatch.swipeDown()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10), "a flick down on the box: the keyboard goes")
 
         // The box's plus, as Her's but without Connectors: a photo goes with the first message.
         attachPhoto()
@@ -100,6 +126,11 @@ extension HermeshUITests {
         // Keep going in it.
         send("say second_turn_done")
         XCTAssertTrue(reply("second_turn_done").waitForExistence(timeout: 60), "the second turn's reply")
+        // On a session's page, a tap on the conversation puts the keyboard away.
+        app.descendants(matching: .any)["thread-composer"].firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "typing")
+        reply("second_turn_done").tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), "a tap on the conversation: the keyboard goes")
         // Drawn as a session's page: its toolbar (info, more) and its ending.
         XCTAssertTrue(app.buttons["session-info"].exists, "a session's info")
         XCTAssertTrue(app.buttons["session-more"].exists, "a session's actions")
@@ -153,7 +184,11 @@ extension HermeshUITests {
         XCTAssertTrue(chip("thread-project", contains: "fresh-app"), app.buttons["thread-project"].label)
         openBox()
         XCTAssertTrue(chip("thread-model", contains: "Scripted Fast"), app.buttons["thread-model"].label)
-        XCTAssertTrue(chip("thread-thinking", contains: "高"), app.buttons["thread-thinking"].label)
+        tap("thread-model")
+        let kept = app.descendants(matching: .any)["model-thinking"].firstMatch
+        XCTAssertTrue(kept.waitForExistence(timeout: 10))
+        XCTAssertEqual(kept.value as? String, "高", "how hard it thinks, kept")
+        tap("model-done")
 
         // old-mac runs a Hermesh from before threads: said so, and nothing can be sent there; marked in the menu.
         pickMachine("old-mac")
@@ -188,6 +223,16 @@ extension HermeshUITests {
         app.navigationBars["连接诊断"].buttons["完成"].tap()
         _ = try control("machine?up=1", method: "POST")
         XCTAssertTrue(capsule.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
+    }
+
+    /// Drags the thinking track's thumb from where it is to a place along it (0 the start, 1 the end), as a finger does.
+    private func dragThinking(_ track: XCUIElement, to x: CGFloat) {
+        let levels = ["低", "中", "高"]
+        let from = CGFloat(levels.firstIndex(of: track.value as? String ?? "") ?? 1) / CGFloat(levels.count - 1)
+        // The track is the row's middle, between its title and the levels' names; each stop is the middle of a column.
+        let n = CGFloat(levels.count)
+        let at = { (p: CGFloat) in track.coordinate(withNormalizedOffset: CGVector(dx: (0.5 + p * (n - 1)) / n, dy: 0.55)) }
+        at(from).press(forDuration: 0.1, thenDragTo: at(x))
     }
 
     /// Taps into the box, which opens it.
