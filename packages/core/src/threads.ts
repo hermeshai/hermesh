@@ -224,9 +224,13 @@ export function applyThreadEvent(
       providerThreads: [],
     });
 
+  const prevLastSeq = base.thread?.lastSeq ?? 0n;
   let thread = ev.thread ?? base.thread;
-  if (thread && ev.seq > thread.lastSeq) {
-    thread = { ...thread, lastSeq: ev.seq };
+  if (thread) {
+    const maxSeq = [prevLastSeq, thread.lastSeq, ev.seq].reduce((a, b) => (a > b ? a : b), 0n);
+    if (maxSeq !== thread.lastSeq) {
+      thread = { ...thread, lastSeq: maxSeq };
+    }
   }
   let runs = base.runs;
   if (ev.run) {
@@ -234,10 +238,12 @@ export function applyThreadEvent(
   }
   let items: TurnItem[] = [...base.items];
   if (ev.type === "item.delta" && ev.targetItemId && ev.textDelta && !ev.item) {
-    const idx = items.findIndex((it) => it.itemId === ev.targetItemId);
-    if (idx >= 0) {
-      const cur = items[idx]!;
-      items[idx] = { ...cur, text: cur.text + ev.textDelta, streaming: true };
+    if (ev.seq === 0n || ev.seq !== prevLastSeq) {
+      const idx = items.findIndex((it) => it.itemId === ev.targetItemId);
+      if (idx >= 0) {
+        const cur = items[idx]!;
+        items[idx] = { ...cur, text: cur.text + ev.textDelta, streaming: true };
+      }
     }
   } else if (ev.item) {
     items = upsertBy(items, ev.item, (it) => it.itemId).sort((a, b) => Number(a.seq - b.seq));

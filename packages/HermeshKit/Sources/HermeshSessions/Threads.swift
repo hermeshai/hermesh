@@ -133,14 +133,13 @@ public func applyThreadEvent(
     to current: Hermesh_Thread_V2_ThreadProjection?
 ) -> Hermesh_Thread_V2_ThreadProjection {
     var next = current ?? Hermesh_Thread_V2_ThreadProjection()
-    if event.seq > 0 && event.seq <= next.thread.lastSeq {
-        return next
-    }
+    let prevLastSeq = next.thread.lastSeq
     if event.hasThread {
         next.thread = event.thread
     }
-    if event.seq > next.thread.lastSeq {
-        next.thread.lastSeq = event.seq
+    let maxSeq = max(prevLastSeq, max(next.thread.lastSeq, event.seq))
+    if next.thread.lastSeq != maxSeq {
+        next.thread.lastSeq = maxSeq
     }
 
     if event.hasRun {
@@ -152,7 +151,8 @@ public func applyThreadEvent(
     }
 
     if event.type == "item.delta" && !event.targetItemID.isEmpty && !event.textDelta.isEmpty && !event.hasItem {
-        if let idx = next.items.firstIndex(where: { $0.itemID == event.targetItemID }) {
+        if event.seq == 0 || event.seq != prevLastSeq,
+           let idx = next.items.firstIndex(where: { $0.itemID == event.targetItemID }) {
             next.items[idx].text += event.textDelta
             next.items[idx].streaming = true
         }

@@ -21,7 +21,12 @@ func threadToolKind(_ name: String) -> String {
     }
 }
 
-private func toolItem(_ it: Hermesh_Thread_V2_TurnItem) -> ToolItem {
+private func isRunActive(_ run: Hermesh_Thread_V2_Run?) -> Bool {
+    guard let run else { return true }
+    return run.status == .preparing || run.status == .running || run.status == .waitingRequest
+}
+
+private func toolItem(_ it: Hermesh_Thread_V2_TurnItem, run: Hermesh_Thread_V2_Run?) -> ToolItem {
     var call = ToolCall()
     call.callID = it.itemID
     var result = ToolResult()
@@ -36,8 +41,8 @@ private func toolItem(_ it: Hermesh_Thread_V2_TurnItem) -> ToolItem {
     let shell = it.kind == .commandExecution
     call.name = it.toolName.isEmpty && shell ? "Bash" : it.toolName
     call.kind = shell ? "shell" : threadToolKind(call.name)
-    call.summary = shell ? it.command : ""
-    let running = it.status == "running"
+    call.summary = shell ? it.command : it.filePath
+    let running = it.status == "running" && isRunActive(run)
     result.summary = it.output
     result.isError = it.status == "failed" || it.exitCode != 0
     result.truncated = it.outputTruncated
@@ -70,7 +75,7 @@ public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [Tr
         case .userMessage: out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt)))
         case .assistantMessage: out.append(.agent(seq: seq, text: it.text))
         case .proposedPlan: out.append(.agent(seq: seq, text: it.planTitle.isEmpty ? it.text : "### \(it.planTitle)\n\n\(it.text)"))
-        case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it)))
+        case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it, run: run)))
         case .error:
             var e = ErrorEvent()
             e.message = it.text

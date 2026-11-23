@@ -27,7 +27,7 @@ private let projection: Hermesh_Thread_V2_ThreadProjection = .with {
         item(2, "r1", .reasoning) { $0.text = "thinking" },
         item(3, "r1", .commandExecution) { $0.toolName = "Bash"; $0.command = "ls"; $0.output = "a\nb" },
         item(4, "r1", .commandExecution) { $0.command = "false"; $0.exitCode = 1; $0.status = "failed" },
-        item(5, "r1", .toolCall) { $0.toolName = "Read" },
+        item(5, "r1", .toolCall) { $0.toolName = "Read"; $0.filePath = "README.md"; $0.status = "running" },
         item(6, "r1", .fileChange) { $0.filePath = "a.txt"; $0.diff = "+x" },
         item(7, "r1", .checkpoint) { $0.checkpointID = "c1" },
         item(8, "r1", .assistantMessage) { $0.text = "done" },
@@ -69,6 +69,8 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(calls[0].call.summary == "ls")
     #expect(calls[0].result?.summary == "a\nb")
     #expect(calls[1].result?.isError == true)
+    #expect(calls[2].call.summary == "README.md")
+    #expect(calls[2].running == false)
     #expect(calls[3].call.summary == "a.txt")
     #expect(calls[3].result?.summary == "+x")
 }

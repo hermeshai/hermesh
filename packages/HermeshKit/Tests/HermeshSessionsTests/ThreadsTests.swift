@@ -44,8 +44,16 @@ import Testing
     deltaEv.targetItemID = "it_1"
     deltaEv.textDelta = "mesh!"
     state = applyThreadEvent(deltaEv, to: state)
+    state = applyThreadEvent(deltaEv, to: state) // exact duplicate delta seq is not doubled
     #expect(state.items.first?.text == "Hello mesh!")
     #expect(state.items.first?.streaming == true)
+
+    // An out-of-band unary thread snapshot with higher lastSeq must not drop in-flight item events.
+    var ahead = Hermesh_Thread_V2_ThreadProjection()
+    ahead.thread = .with { $0.threadID = "th_mac_1"; $0.lastSeq = 25 }
+    ahead = applyThreadEvent(initEv, to: ahead)
+    #expect(ahead.items.first?.text == "Hello ")
+    #expect(ahead.thread.lastSeq == 25)
 
     // Pending runtime request opens and resolves cleanly.
     var reqEv = Hermesh_Thread_V2_ThreadEvent()

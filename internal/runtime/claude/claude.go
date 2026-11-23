@@ -200,11 +200,12 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		return nil, err
 	}
 	s := &session{
-		proc:      proc,
-		spec:      spec,
-		selection: proto.Clone(spec.Selection).(*threadv2.ModelSelection),
-		events:    make(chan runtime.Event, 256),
-		turnCtx:   ctx,
+		proc:           proc,
+		spec:           spec,
+		selection:      proto.Clone(spec.Selection).(*threadv2.ModelSelection),
+		events:         make(chan runtime.Event, 256),
+		skipToolResult: map[string]bool{},
+		turnCtx:        ctx,
 	}
 	s.alive.Store(true)
 	go s.readLoop()
@@ -232,13 +233,18 @@ type session struct {
 	itemSeq   atomic.Uint64
 	closeOnce sync.Once
 
-	mu        sync.Mutex
-	selection *threadv2.ModelSelection
-	turnCtx   context.Context
-	inTurn    bool
-	sent      int
-	seen      int
-	msgItemID string
+	emitMu       sync.RWMutex
+	eventsClosed bool
+
+	mu             sync.Mutex
+	selection      *threadv2.ModelSelection
+	turnCtx        context.Context
+	inTurn         bool
+	sent           int
+	seen           int
+	msgItemID      string
+	msgUsed        bool
+	skipToolResult map[string]bool
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -261,6 +267,8 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.inTurn = true
 	s.sent++
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+	s.msgUsed = false
+	s.skipToolResult = map[string]bool{}
 	s.mu.Unlock()
 	return s.writeUserMessage(in.Prompt, in.Attachments)
 }
@@ -384,10 +392,24 @@ func (s *session) Close() error {
 }
 
 func (s *session) emit(ev runtime.Event) {
+	s.emitMu.RLock()
+	defer s.emitMu.RUnlock()
+	if s.eventsClosed {
+		return
+	}
 	select {
 	case s.events <- ev:
 	case <-s.proc.Done():
 	}
+}
+
+func (s *session) closeEvents() {
+	s.emitMu.Lock()
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
+	}
+	s.emitMu.Unlock()
 }
 
 type wireLine struct {
@@ -414,9 +436,13 @@ type wireLine struct {
 }
 
 func (s *session) readLoop() {
+	var heldResult *wireLine
 	defer func() {
+		if heldResult != nil {
+			s.emitResultLine(*heldResult)
+		}
 		s.alive.Store(false)
-		close(s.events)
+		s.closeEvents()
 	}()
 	_ = s.proc.Lines(func(raw []byte) {
 		var l wireLine
@@ -446,17 +472,24 @@ func (s *session) readLoop() {
 				} `json:"delta"`
 			}
 			if json.Unmarshal(l.Event, &ev) == nil && ev.Type == "content_block_delta" {
-				s.mu.Lock()
-				msgID := s.msgItemID
-				s.mu.Unlock()
 				if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
+					s.mu.Lock()
+					msgID := s.msgItemID
+					s.msgUsed = true
+					s.mu.Unlock()
 					s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: ev.Delta.Text})
 				} else if ev.Delta.Type == "thinking_delta" && ev.Delta.Thinking != "" {
+					s.mu.Lock()
+					msgID := s.msgItemID
+					s.mu.Unlock()
 					s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: ev.Delta.Thinking})
 				}
 			}
 
 		case "assistant":
+			if l.ParentToolID != "" {
+				return
+			}
 			var m struct {
 				Content []struct {
 					Type  string          `json:"type"`
@@ -467,25 +500,40 @@ func (s *session) readLoop() {
 				} `json:"content"`
 			}
 			if json.Unmarshal(l.Message, &m) == nil {
-				s.mu.Lock()
-				msgID := s.msgItemID
-				s.mu.Unlock()
 				for _, c := range m.Content {
 					switch c.Type {
 					case "text":
 						if strings.TrimSpace(c.Text) != "" {
+							s.mu.Lock()
+							msgID := s.msgItemID
+							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+							s.msgUsed = false
+							s.mu.Unlock()
 							s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: msgID, Text: c.Text})
 						}
 					case "tool_use":
-						if c.Name != "AskUserQuestion" && c.Name != "ExitPlanMode" {
-							_, cmd, _ := classifyTool(c.Name, c.Input)
-							s.emit(runtime.Event{
-								Kind:     runtime.EventToolStarted,
-								ItemID:   c.ID,
-								ToolName: c.Name,
-								Command:  cmd,
-							})
+						s.mu.Lock()
+						if s.msgUsed {
+							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+							s.msgUsed = false
 						}
+						if c.Name == "AskUserQuestion" || c.Name == "ExitPlanMode" {
+							if c.ID != "" {
+								s.skipToolResult[c.ID] = true
+							}
+							s.mu.Unlock()
+							continue
+						}
+						s.mu.Unlock()
+						_, cmd, targetPath := classifyTool(c.Name, c.Input)
+						summaryPath := toolSummaryPath(c.Input, targetPath)
+						s.emit(runtime.Event{
+							Kind:     runtime.EventToolStarted,
+							ItemID:   c.ID,
+							ToolName: c.Name,
+							Command:  cmd,
+							FilePath: summaryPath,
+						})
 					}
 				}
 			}
@@ -495,6 +543,10 @@ func (s *session) readLoop() {
 				s.mu.Lock()
 				s.seen++
 				s.mu.Unlock()
+				heldResult = nil
+				return
+			}
+			if l.ParentToolID != "" {
 				return
 			}
 			var m struct {
@@ -508,10 +560,13 @@ func (s *session) readLoop() {
 			if json.Unmarshal(l.Message, &m) == nil {
 				for _, c := range m.Content {
 					if c.Type == "tool_result" && c.ToolUseID != "" {
-						var text string
-						if json.Unmarshal(c.Content, &text) != nil {
-							text = string(c.Content)
+						s.mu.Lock()
+						skip := s.skipToolResult[c.ToolUseID]
+						s.mu.Unlock()
+						if skip {
+							continue
 						}
+						text := extractToolResultText(c.Content)
 						kept, _ := provider.KeepOutput(text)
 						exit := int32(0)
 						if c.IsError {
@@ -539,37 +594,96 @@ func (s *session) readLoop() {
 					ContextLimitTokens: 200000,
 				},
 			})
+			isTerminalErr := l.IsError || l.TerminalReason == "prompt_too_long"
 			s.mu.Lock()
-			if s.seen < s.sent && !l.IsError {
+			if s.seen < s.sent && !isTerminalErr {
+				cp := l
+				heldResult = &cp
 				s.mu.Unlock()
 				return
 			}
+			heldResult = nil
 			s.inTurn = false
 			// Advance msgItemID for future turns.
 			s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+			s.msgUsed = false
 			s.mu.Unlock()
 
-			if l.Subtype == "interrupted" || l.TerminalReason == "interrupted" {
-				s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
-				return
-			}
-			if l.IsError {
-				msg := strings.TrimSpace(strings.Join(l.Errors, "; "))
-				if msg == "" {
-					msg = strings.TrimSpace(l.Result)
-				}
-				if msg == "" {
-					msg = "claude reported an error"
-				}
-				s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: l.Subtype, ErrorMessage: msg})
-				return
-			}
-			s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
+			s.emitResultLine(l)
 
 		case "control_request":
 			go s.handleControlRequest(l.RequestID, l.Request)
 		}
 	})
+}
+
+func (s *session) emitResultLine(l wireLine) {
+	if l.Subtype == "interrupted" || l.TerminalReason == "interrupted" {
+		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+		return
+	}
+	if l.IsError || l.TerminalReason == "prompt_too_long" {
+		msg := strings.TrimSpace(strings.Join(l.Errors, "; "))
+		if msg == "" {
+			msg = strings.TrimSpace(l.Result)
+		}
+		if msg == "" && l.TerminalReason == "prompt_too_long" {
+			msg = "prompt too long for context window"
+		}
+		if msg == "" {
+			msg = "claude reported an error"
+		}
+		code := l.Subtype
+		if code == "" {
+			code = l.TerminalReason
+		}
+		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: code, ErrorMessage: msg})
+		return
+	}
+	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
+}
+
+func extractToolResultText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) == nil {
+		var parts []string
+		for _, b := range blocks {
+			if b.Text != "" {
+				parts = append(parts, b.Text)
+			}
+		}
+		return strings.Join(parts, "\n")
+	}
+	return string(raw)
+}
+
+func toolSummaryPath(raw json.RawMessage, targetPath string) string {
+	if targetPath != "" {
+		return targetPath
+	}
+	var extra struct {
+		Pattern string `json:"pattern"`
+		URL     string `json:"url"`
+		Query   string `json:"query"`
+	}
+	if json.Unmarshal(raw, &extra) == nil {
+		for _, s := range []string{extra.Pattern, extra.URL, extra.Query} {
+			if s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
