@@ -17320,6 +17320,16 @@
         }
       }
     },
+    "Couldn’t read %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 %@"
+          }
+        }
+      }
+    },
     "Couldn’t read the models %@ offers; the next check tries again. Its sessions use its own settings.": {
       "localizations": {
         "zh-Hans": {

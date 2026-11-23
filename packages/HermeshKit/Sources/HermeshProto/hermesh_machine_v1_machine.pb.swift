@@ -1279,6 +1279,14 @@ public nonisolated struct Hermesh_Machine_V1_ListFoldersResponse: Sendable {
   /// Its full path, links resolved, as a project made of it records it.
   public var fullPath: String = String()
 
+  /// A repository's default branch: what origin/HEAD points at, else main or
+  /// master when there is one; empty when neither tells.
+  public var defaultBranch: String = String()
+
+  /// The branches checked out in its other worktrees (a session's, say): one
+  /// can't be checked out here too.
+  public var worktreeBranches: [String] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3308,7 +3316,7 @@ nonisolated extension Hermesh_Machine_V1_ListFoldersRequest: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Machine_V1_ListFoldersResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ListFoldersResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}folders\0\u{1}files\0\u{1}repo\0\u{1}branch\0\u{1}branches\0\u{3}full_path\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}path\0\u{1}folders\0\u{1}files\0\u{1}repo\0\u{1}branch\0\u{1}branches\0\u{3}full_path\0\u{3}default_branch\0\u{3}worktree_branches\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3323,6 +3331,8 @@ nonisolated extension Hermesh_Machine_V1_ListFoldersResponse: SwiftProtobuf.Mess
       case 5: try { try decoder.decodeSingularStringField(value: &self.branch) }()
       case 6: try { try decoder.decodeRepeatedStringField(value: &self.branches) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.fullPath) }()
+      case 8: try { try decoder.decodeSingularStringField(value: &self.defaultBranch) }()
+      case 9: try { try decoder.decodeRepeatedStringField(value: &self.worktreeBranches) }()
       default: break
       }
     }
@@ -3350,6 +3360,12 @@ nonisolated extension Hermesh_Machine_V1_ListFoldersResponse: SwiftProtobuf.Mess
     if !self.fullPath.isEmpty {
       try visitor.visitSingularStringField(value: self.fullPath, fieldNumber: 7)
     }
+    if !self.defaultBranch.isEmpty {
+      try visitor.visitSingularStringField(value: self.defaultBranch, fieldNumber: 8)
+    }
+    if !self.worktreeBranches.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.worktreeBranches, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3361,6 +3377,8 @@ nonisolated extension Hermesh_Machine_V1_ListFoldersResponse: SwiftProtobuf.Mess
     if lhs.branch != rhs.branch {return false}
     if lhs.branches != rhs.branches {return false}
     if lhs.fullPath != rhs.fullPath {return false}
+    if lhs.defaultBranch != rhs.defaultBranch {return false}
+    if lhs.worktreeBranches != rhs.worktreeBranches {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPhone 会话输入框 · 原型</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+[data-theme=light]{
+  --page:#e9e9ee;--page-fg:#1b1c22;--page-fg2:#62646f;--card:#fff;--card-bd:rgba(0,0,0,.08);
+  --bg:#fbfbfc;--l1:rgba(0,0,0,.88);--l2:rgba(0,0,0,.55);--l3:rgba(0,0,0,.30);--l4:rgba(0,0,0,.13);
+  --fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--sep:rgba(0,0,0,.08);
+  --glass:rgba(250,250,252,.78);--glass-bd:rgba(255,255,255,.9);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 10px 30px rgba(20,24,40,.10),0 2px 6px rgba(20,24,40,.06);
+  --sheet:#f4f4f6;--group:#fff;--kb:#d3d5db;--key:#fff;--key2:#adb2bb;--key-sh:0 1px 0 rgba(0,0,0,.28);
+  --accent:#3d5bff;--accent-bg:rgba(61,91,255,.10);--warn:#c2680a;--scrim:rgba(0,0,0,.18);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--card:#1a1b20;--card-bd:rgba(255,255,255,.08);
+  --bg:#000;--l1:rgba(255,255,255,.92);--l2:rgba(255,255,255,.58);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --fill:rgba(255,255,255,.06);--fill2:rgba(255,255,255,.10);--sep:rgba(255,255,255,.10);
+  --glass:rgba(32,32,36,.78);--glass-bd:rgba(255,255,255,.10);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 10px 30px rgba(0,0,0,.5);
+  --sheet:#1c1c1f;--group:#2a2a2e;--kb:#2b2b2e;--key:#58585c;--key2:#3e3e42;--key-sh:0 1px 0 rgba(0,0,0,.5);
+  --accent:#4a66ff;--accent-bg:rgba(74,102,255,.18);--warn:#f0a43a;--scrim:rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font);min-height:100vh;padding-bottom:96px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1180px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1180px;margin:0 auto;padding:12px 24px;display:flex;gap:32px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.notes{width:380px;max-width:100%;background:var(--card);border:1px solid var(--card-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes ul{margin:6px 0 0;padding-left:19px}
+.notes li{margin:4px 0}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--card-bd)}
+.notes .blk>b{display:block;margin-bottom:2px}
+.notes p{margin:0;color:var(--page-fg2)}
+.notes code{font:12px var(--mono);background:var(--fill);padding:1px 4px;border-radius:4px}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--card-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;justify-content:center;font-size:12.5px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:4px 11px;border-radius:7px;background:var(--fill2)}
+.ctl button.on{background:var(--accent);color:#fff}
+
+/* ---------- the phone (iPhone 17 Pro, 402 × 874 pt) ---------- */
+.phone{width:402px;height:874px;border-radius:58px;padding:0;background:var(--bg);position:relative;overflow:hidden;overflow:clip;flex:none;
+  box-shadow:0 0 0 11px #1a1a1c,0 0 0 12px #3a3a3e,0 30px 80px rgba(10,20,50,.30);color:var(--l1);font:17px/1.3 var(--font)}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.status{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 34px 0 46px;font-weight:600;font-size:17px;z-index:3}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:4}
+.status .r{display:flex;gap:6px;align-items:center}
+.nav{position:absolute;top:56px;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:center;z-index:3}
+.nav .menu{position:absolute;left:16px;width:44px;height:44px;border-radius:50%;background:var(--glass);box-shadow:var(--glass-sh);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px)}
+.nav h2{margin:0;font-size:17px;font-weight:600}
+.nav .ttl{text-align:center;max-width:210px;line-height:1.2}
+.nav .ttl small{display:block;font-size:11.5px;color:var(--l2);font-weight:400;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav .ttl h2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.phone.session .nav .ttl h2{font-size:15px}
+.nav .acts{position:absolute;right:16px;height:44px;border-radius:22px;background:var(--glass);box-shadow:var(--glass-sh);display:none;align-items:center;padding:0 4px;backdrop-filter:blur(20px)}
+.phone.session .nav .acts{display:flex}
+.nav .acts button{width:38px;height:44px;display:flex;align-items:center;justify-content:center}
+
+/* the question in the middle (unchanged) */
+.ask{position:absolute;left:0;right:0;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 28px 120px;text-align:center;transition:transform .32s cubic-bezier(.2,.8,.2,1),opacity .25s}
+.ask h1{margin:0;font-size:28px;font-weight:650;line-height:1.25;letter-spacing:-.01em}
+.ask h1 u{text-decoration-color:var(--l3);text-underline-offset:5px;text-decoration-thickness:1.5px}
+.ask .env{margin-top:16px;display:flex;align-items:center;gap:6px;color:var(--l2);font-size:15px}
+.ask .env .ic{width:17px;height:17px}
+.phone.kb .ask{transform:translateY(-150px);opacity:.55}
+.phone.session .ask{display:none}
+
+/* a session under way (only to show the box there) */
+.conv{position:absolute;top:110px;left:0;right:0;bottom:0;padding:8px 16px 0;display:none;flex-direction:column;gap:14px;font-size:16px;line-height:1.5}
+.phone.session .conv{display:flex}
+.conv .um{align-self:flex-end;max-width:80%;background:var(--accent);color:#fff;border-radius:20px;padding:9px 14px}
+.conv .am{color:var(--l1)}
+.conv .step{font:13px var(--mono);color:var(--l2);background:var(--fill);border-radius:10px;padding:8px 12px}
+.conv .done{font-size:13px;color:var(--l3)}
+.phone.running .conv .done{display:none}
+.queue{background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:var(--glass-sh);border-radius:20px;padding:4px 0;margin:0 8px}
+.queue .qh{font-size:12px;color:var(--l2);padding:6px 14px 2px}
+.qrow{display:flex;align-items:center;gap:8px;padding:5px 8px 5px 14px;font-size:14px}
+.qrow .qt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qrow .steer{font-size:13px;color:var(--accent);padding:4px 6px;white-space:nowrap}
+.qrow .rm{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--l3)}
+.qrow .rm .ic{width:13px;height:13px;stroke-width:2.2}
+.offq{font-size:12.5px;color:var(--warn);display:inline-flex;align-items:center;gap:5px}
+.offq i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.appr{background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);box-shadow:var(--glass-sh);border-radius:30px;padding:16px;display:flex;flex-direction:column;gap:11px}
+.appr .ah{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
+.appr pre{margin:0;background:var(--fill);border-radius:12px;padding:10px 12px;font:12.5px var(--mono);color:var(--l1);white-space:pre-wrap}
+.appr .ab{display:flex;gap:8px}
+.appr .ab button{flex:1;height:44px;border-radius:22px;background:var(--fill2);font-size:15px;font-weight:500}
+.appr .ab button.pri{background:var(--accent);color:#fff}
+#req:empty,#queue:empty{display:none}
+
+/* ---------- the dock: what the box sits under, the box ---------- */
+.dock{position:absolute;left:0;right:0;bottom:34px;padding:0 12px;display:flex;flex-direction:column;gap:8px;z-index:5;transition:bottom .32s cubic-bezier(.2,.8,.2,1)}
+.phone.kb .dock{bottom:291px}
+.above{display:flex;align-items:center;gap:6px;padding:0 6px;min-height:28px}
+.qchip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:14px;font-size:13px;color:var(--l2);background:var(--fill)}
+.qchip .ic{width:15px;height:15px;stroke-width:1.6}
+.qchip .chev{width:11px;height:11px;stroke-width:2;color:var(--l3)}
+.qchip.fixed{background:none;padding:0 4px;color:var(--l3)}
+.qchip{max-width:100%;min-width:0;white-space:nowrap}
+.qchip .br{color:var(--l3);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.qchip .br b{font:500 12.5px var(--mono);color:var(--l2)}
+.box{background:var(--glass);border-radius:26px;box-shadow:var(--glass-sh);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);padding:6px;transition:padding .25s;position:relative}
+.box::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.35;mix-blend-mode:soft-light;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")}
+.atts{display:flex;gap:6px;padding:4px 4px 6px;overflow:hidden}
+.att{position:relative;width:56px;height:56px;border-radius:12px;flex:none;background:linear-gradient(135deg,#b8446d,#7d2d55 55%,#e3a239);overflow:hidden}
+.att.file{width:auto;height:34px;align-self:center;border-radius:17px;background:var(--fill2);display:flex;align-items:center;gap:5px;padding:0 10px;font-size:13px;color:var(--l1)}
+.att .x{position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center}
+.att .x .ic{width:10px;height:10px;stroke-width:2.6}
+.row{display:flex;align-items:flex-end;gap:8px}
+textarea{flex:1;min-width:0;border:0;outline:0;resize:none;background:none;color:var(--l1);font:17px/22px var(--font);padding:7px 4px 7px 12px;height:36px;max-height:154px;caret-color:var(--accent)}
+textarea::placeholder{color:var(--l3)}
+.phone.open textarea{height:66px;padding:8px 8px 4px 12px}
+.cbtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:var(--fill2);color:var(--l1)}
+.send{background:var(--accent);color:#fff;opacity:.4}
+.send.ready{opacity:1}
+.send .ic,.stop .ic{width:18px;height:18px;stroke-width:2.3}
+.stop .ic{fill:currentColor;stroke:none;width:13px;height:13px}
+.bar{display:none;align-items:center;gap:6px;padding-top:4px}
+.phone.open .bar{display:flex}
+.phone.open .row .tail,.phone.open .row .lead{display:none}
+.row .lead+textarea{padding-left:6px}
+.model{display:inline-flex;align-items:center;gap:5px;height:36px;padding:0 12px;border-radius:18px;font-size:14px;color:var(--l1);background:var(--fill)}
+.model .chev{width:11px;height:11px;stroke-width:2;color:var(--l3)}
+.bar>*{white-space:nowrap}
+.grow{flex:1}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:var(--l1);z-index:20}
+
+/* ---------- keyboard (only to place the box) ---------- */
+.kbd{position:absolute;left:0;right:0;bottom:0;height:282px;background:var(--kb);transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);z-index:4;padding:10px 3px 0}
+.phone.kb .kbd{transform:none}
+.kbd .kr{display:flex;justify-content:center;gap:6px;margin-bottom:11px}
+.kbd .k{height:43px;flex:0 0 34px;border-radius:6px;background:var(--key);box-shadow:var(--key-sh);display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--l1)}
+.kbd .k.w{flex-basis:44px;background:var(--key2);font-size:15px}
+.kbd .k.sp{flex:1 1 auto;max-width:190px;font-size:15px}
+.kbd .k.rt{flex-basis:88px;background:var(--key2);font-size:15px}
+
+/* ---------- sheets ---------- */
+.scrim{position:absolute;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .25s;z-index:10}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--sheet);border-radius:34px 34px 0 0;transform:translateY(105%);transition:transform .34s cubic-bezier(.2,.8,.2,1);z-index:11;padding:8px 16px 40px;box-shadow:0 -10px 40px rgba(0,0,0,.15)}
+.phone.drawer .scrim,.phone.models .scrim,.phone.branches .scrim{opacity:1;pointer-events:auto}
+.phone.drawer #drawer,.phone.models #models,.phone.branches #branches{transform:none}
+#branches{height:600px}
+#branches .mlist{height:auto;max-height:400px;padding-bottom:0}
+.br-row{align-items:center}
+.br-row>.ic{width:18px;height:18px;color:var(--l2)}
+.br-row .mono{font:500 15.5px var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.br-row .tags{font-size:11.5px;letter-spacing:.04em;color:var(--l3)}
+.brnote{margin:0 6px 10px;font-size:12.5px;color:var(--warn)}
+.opt.tog .t span{font-size:12.5px}
+.above .qchip+.qchip{min-width:0}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--l4);margin:0 auto 12px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
+.tile{background:var(--group);border-radius:16px;height:76px;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;padding:12px 14px;font-size:15px;text-align:left}
+.tile .ic{width:24px;height:24px;color:var(--accent)}
+.sec{font-size:13px;color:var(--l2);margin:0 4px 7px}
+.group{background:var(--group);border-radius:16px;overflow:hidden;margin-bottom:12px}
+.opt{display:flex;align-items:flex-start;gap:10px;width:100%;padding:11px 14px;text-align:left;position:relative}
+.opt+.opt::before{content:"";position:absolute;top:0;left:14px;right:0;height:.5px;background:var(--sep)}
+.opt .t{flex:1;min-width:0}
+.opt .t b{display:block;font-weight:500;font-size:16px}
+.opt .t span{display:block;font-size:13px;color:var(--l2);line-height:1.35;margin-top:2px}
+.opt .ck{width:22px;flex:none;color:var(--accent);padding-top:1px}
+.opt.dis{opacity:.4;pointer-events:none}
+.sw{width:51px;height:31px;border-radius:16px;background:var(--l4);position:relative;flex:none;transition:background .2s;margin-top:-2px}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform .2s}
+.sw.on{background:#34c759}.sw.on::after{transform:translateX(20px)}
+.opt.tog{align-items:center}
+.opt.tog .ic{width:20px;height:20px;color:var(--l2)}
+
+/* the model sheet as it is today, in short */
+#models{height:560px;padding-top:8px}
+.mhead{display:flex;align-items:center;justify-content:center;position:relative;height:40px;margin-bottom:8px}
+.mhead b{font-size:17px}
+.mhead button{position:absolute;right:0;height:36px;padding:0 14px;border-radius:18px;background:var(--fill2);font-weight:600;font-size:15px}
+.search{height:38px;border-radius:12px;background:var(--fill2);display:flex;align-items:center;gap:6px;padding:0 10px;color:var(--l3);font-size:16px;margin-bottom:12px}
+.search .ic{width:17px;height:17px}
+.search input{flex:1;min-width:0;border:0;outline:0;background:none;color:var(--l1);font:16px var(--font)}
+.search input::placeholder{color:var(--l3)}
+.mlist{overflow:auto;height:calc(100% - 104px);padding-bottom:20px;scrollbar-width:none}
+.phead{display:flex;align-items:center;gap:8px;margin:14px 4px 7px;font-size:13px;color:var(--l2)}
+.phead:first-child{margin-top:2px}
+.phead .why{color:var(--l3)}
+.logo{width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font:600 11px var(--font);color:#fff;flex:none}
+.opt .lv{font-size:13px;color:var(--l3);margin-right:2px;padding-top:2px}
+.lvl{display:inline-flex;align-items:center;gap:4px;height:36px;padding:0 11px;border-radius:18px;font-size:14px;color:var(--l1);background:var(--fill)}
+.lvl .ic{width:16px;height:16px;color:var(--l2)}
+.lvl .chev{width:11px;height:11px;stroke-width:2;color:var(--l3)}
+.lmenu{position:absolute;bottom:52px;width:200px;background:var(--glass);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);border-radius:18px;box-shadow:var(--glass-sh),0 18px 40px rgba(0,0,0,.18);padding:6px 0;z-index:12;transform-origin:30% 100%;transform:scale(.6);opacity:0;pointer-events:none;transition:transform .2s cubic-bezier(.2,.9,.3,1.2),opacity .15s}
+.lmenu.on{transform:none;opacity:1;pointer-events:auto}
+.wmenu{width:300px;transform-origin:15% 100%}
+.lmenu .two{display:flex;flex-direction:column;line-height:1.3;padding:6px 0}
+.lmenu .two>span{font-size:12.5px;color:var(--l2)}
+.lmenu .two>span.nm{display:flex;align-items:center;gap:6px;font-size:16px;color:var(--l1)}
+.lmenu .nm .ic{width:16px;height:16px;color:var(--l2)}
+.wmenu button{height:auto;min-height:42px}
+.lmenu .sep{height:.5px;background:var(--sep);margin:5px 16px}
+.lmenu .mono{font:15px var(--mono);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lmenu .val{font-size:12.5px;color:var(--l3)}
+.blist{max-height:250px;overflow:auto}
+.wmenu{width:320px}
+.lmenu .h{font-size:12.5px;color:var(--l2);padding:4px 16px 6px}
+.lmenu button{display:flex;align-items:center;gap:8px;width:100%;height:42px;padding:0 16px;font-size:16px;text-align:left}
+.lmenu button .ck{width:20px;color:var(--l1)}
+.lmenu button .ck .ic{width:18px;height:18px}
+.toast{position:absolute;left:50%;top:116px;transform:translate(-50%,-10px);width:max-content;max-width:340px;background:var(--glass);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);box-shadow:var(--glass-sh);border-radius:20px;padding:9px 16px;font-size:14px;text-align:center;opacity:0;transition:opacity .2s,transform .2s;z-index:30;pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.model{gap:6px;padding-left:9px;max-width:170px;min-width:0;flex:0 1 auto}
+.bar>.cbtn,.bar>.lvl,#barBtns{flex:none}
+.model #modelLbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>iPhone 会话输入框 · 原型</h1>
+  <span>点输入框展开；＋ 打开抽屉（照片、文件、权限模式）；点空白处收起。「会话中」能发消息：运行中发的会排到下一轮。中文文案都取自 Localizable.xcstrings。</span>
+</div>
+<div class="wrap">
+  <div class="phone" id="phone">
+    <div class="island"></div>
+    <div class="status"><span>9:41</span><span class="r">
+      <svg class="ic" viewBox="0 0 24 24" style="width:18px"><path d="M2 9a15 15 0 0 1 20 0M5.5 12.5a10 10 0 0 1 13 0M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+      <svg viewBox="0 0 28 14" width="27" height="13"><rect x=".5" y=".5" width="23" height="13" rx="4" fill="none" stroke="currentColor" opacity=".4"/><rect x="2.5" y="2.5" width="19" height="9" rx="2.5" fill="currentColor"/><rect x="25" y="4.5" width="2" height="5" rx="1" fill="currentColor" opacity=".4"/></svg>
+    </span></div>
+    <div class="nav">
+      <button class="menu" aria-label="菜单"><svg class="ic" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>
+      <div class="ttl"><h2 id="navTitle">新会话</h2><small id="navSub" hidden>你 · work-mac/fresh-app</small></div>
+      <div class="acts"><button aria-label="任务信息"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></button><button aria-label="更多"><svg class="ic" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="3"/></svg></button></div>
+    </div>
+
+    <div class="ask" id="ask">
+      <h1>要在<br><u>fresh-app</u>里做什么？</h1>
+      <div class="env"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>work-mac<svg class="ic" viewBox="0 0 24 24" style="width:13px;height:13px;color:var(--l3)"><path d="M9 6l6 6-6 6"/></svg></div>
+    </div>
+
+    <div class="conv">
+      <div class="um">登录后跳回原来的页面</div>
+      <div class="step">运行了 3 条命令</div>
+      <div class="am">改好了：登录成功后会回到进入登录页之前的地址，没有来源时回到首页。两项测试都通过。</div>
+      <div id="more" style="display:flex;flex-direction:column;gap:14px"></div>
+      <div class="done">这一轮做完了。你再发消息时，会在这个任务里接着做。</div>
+    </div>
+
+    <div class="dock" id="dock">
+      <div id="req"></div>
+      <div id="queue"></div>
+      <div class="above" id="above"></div>
+      <div class="box" id="box">
+        <div class="atts" id="atts" hidden></div>
+        <div class="row">
+          <button class="cbtn lead" id="plus1" aria-label="添加照片或文件"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+          <textarea id="ta" rows="1" placeholder="描述要构建、调试或规划的内容"></textarea>
+          <span class="tail" id="tailBtns"></span>
+        </div>
+        <div class="bar">
+          <button class="cbtn" id="plus" aria-label="添加照片或文件"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="model" id="modelBtn"><span class="logo" id="modelLogo"></span><span id="modelLbl"></span><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+          <button class="lvl" id="lvlBtn"></button>
+          <span class="grow"></span>
+          <span id="barBtns" style="display:flex;gap:8px"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="kbd" id="kbd"></div>
+    <div class="scrim" id="scrim"></div>
+
+    <div class="sheet" id="drawer">
+      <div class="grab"></div>
+      <div class="tiles">
+        <button class="tile" data-add="photo"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="3.5" width="15" height="13" rx="2.5"/><path d="M3 7.5v10a3 3 0 0 0 3 3h11"/><path d="M6 13.5l4-4 4 4 2-2 5 5"/></svg>照片</button>
+        <button class="tile" data-add="file"><svg class="ic" viewBox="0 0 24 24"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>文件</button>
+      </div>
+      <div class="sec">权限模式</div>
+      <div class="group" id="modes"></div>
+    </div>
+
+    <div class="sheet" id="models">
+      <div class="grab"></div>
+      <div class="mhead"><b>模型</b><button id="modelsDone">完成</button></div>
+      <div class="search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="q" placeholder="搜索模型或供应商"></div>
+      <div class="mlist" id="mlist"></div>
+    </div>
+    <div class="sheet" id="branches">
+      <div class="grab"></div>
+      <div class="mhead"><b id="brTitle">基于分支</b><button id="brDone">完成</button></div>
+      <div class="search"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input id="bq" placeholder="搜索分支"></div>
+      <div class="group" id="remoteRow"><button class="opt tog" id="remoteBtn"><span class="t"><b>从远程开始</b><span>先取回远程的最新提交，再从它开新分支</span></span><span class="sw" id="remoteSw"></span></button></div>
+      <p class="brnote" id="brNote">开始前会把项目目录切到这个分支；目录里有没提交的改动时不能切换。</p>
+      <div class="group mlist" id="brList"></div>
+    </div>
+    <div class="lmenu" id="lmenu"></div>
+    <div class="lmenu wmenu" id="wmenu"></div>
+    <div class="toast" id="toast"></div>
+    <div class="home"></div>
+  </div>
+
+  <div class="notes">
+    <h3>改了什么</h3>
+    <ul>
+      <li><b>默认收起。</b>没点输入框、框里也没东西时只有一行：＋、文字、发送键；模型、权限模式不再常驻，初始页只剩中间的问题。</li>
+      <li><b>点输入框展开。</b>框拉高到两三行，底部一行：左边 ＋ 和模型，右边发送（运行中多一个停下）。有文字或附件时失去焦点也保持展开，空了才收回一行。</li>
+      <li><b>＋ 改成底部抽屉。</b>权限模式只在这里，框上不显示。上面两格「照片」「文件」，下面「权限模式」四档（带说明，超过上限的置灰并写原因），选完不关，点空白处收起。「先出方案」去掉了。</li>
+      <li><b>工作目录移到框上方。</b>从框下面那行挪到框的左上角，只有 git 仓库的项目才出现，和现在一样。会话中这里是只读的「work-mac · fresh-app」。</li>
+      <li><b>新增：工作目录和分支分成两个按钮</b>（参考你截的图）。<br>
+        左边「当前目录 / 独立 worktree」：在哪里改，菜单两项。<br>
+        右边是分支，点开一个面板：独立 worktree 时标题「基于分支」，从哪个分支新开（默认是仓库的默认分支，如 main），可以打开「从远程开始」先取回远程最新；当前目录时标题「在哪个分支上工作」，默认是已签出的分支，选别的会在开始前把目录切过去（有没提交的改动时不能切）。<br>
+        列表：已签出的在最前，标「当前」；默认分支标「默认」；被别的 worktree 签出的标「worktree」（当前目录模式下不能选）。上面有搜索。会话自己的 <code>hermesh/…</code> 分支不列。</li>
+      <li><b>思考强度单独一个按钮。</b>在框底部模型按钮旁边，点一下弹出菜单（档位取自所选模型），不用再进模型面板。模型没有档位时这个按钮不出现。</li>
+      <li><b>模型面板改成竖排。</b>去掉横向的供应商胶囊：能用的供应商按组竖着排（组头是图标和名字，未登录写在组头上，照旧能选），每行一个模型，选中的只有一个勾，不再写强度。未安装、已停用的供应商不再出现。搜索照旧。思考强度不再放在面板里。</li>
+      <li><b>换模型时</b>新模型没有原来的强度，照旧提示一次改成了什么（现有文案）。</li>
+    </ul>
+    <div class="blk"><b>会话页</b>
+      <ul>
+        <li><b>同一个输入框。</b>收起时一行：＋、文字（「继续聊…」，运行中是「继续说，会排到下一轮…」）、运行中的停下、发送。点进去展开，底部一行和新会话一样：＋、模型、思考强度、停下、发送。会话中途换模型、强度、权限模式，照旧从下一轮起生效。</li>
+        <li><b>框下面那行去掉。</b>「work-mac · fresh-app」标题下面已经有（「你 · work-mac/fresh-app」），不再重复；模型和权限模式进了框里。</li>
+        <li><b>框上方只放待处理的。</b>从上到下：Agent 等你回答的审批卡片（和现在一样）、排到下一轮的消息（收进一张卡片，卡片头写「排到下一轮 · 条数」，这是新加的一行字；每条照旧「立即插入引导」或移除）、「离线排队中」。都没有时框上方是空的。</li>
+        <li>归档后照旧没有输入框。</li>
+      </ul>
+    </div>
+    <div class="blk"><b>分支要补的后端</b>
+      <ul>
+        <li>已有：本地分支和签出的分支（机器的「浏览文件夹」）；worktree 从指定分支开（<code>workspace.base_ref</code>）。</li>
+        <li>要补：列分支时多说两件事，哪个是默认分支（<code>origin/HEAD</code>）、哪些被别的 worktree 签出了，都是读 <code>.git</code> 里的文件，不起 git 进程。</li>
+        <li>要补：「从远程开始」，开 worktree 前先 <code>git fetch</code> 这个分支，再从 <code>origin/…</code> 开。</li>
+        <li>要补：当前目录模式选了别的分支时，开始前在项目目录里切过去；目录不干净就拒绝并写原因，不替你 stash。</li>
+        <li>新会话默认从默认分支开，现在是从签出的分支开（项目基准分支默认 HEAD），这是一处行为变化。</li>
+      </ul>
+    </div>
+    <div class="blk"><b>没变的</b>
+      <p>中间的「要在 fresh-app 里做什么？」和环境菜单、项目菜单；发送、排队、停下的规则；附件上传方式。Mac 端这次没动，你看完 iPhone 的再决定要不要对齐。</p>
+    </div>
+    <div class="blk"><b>说明</b>
+      <p>供应商名单取自机器端的内置列表（Claude Code、Codex、Gemini CLI、Antigravity、Cursor、OpenCode）；模型名、档位、谁装了谁没装是示例，真实的由各 Agent 自己报告。会话里的对话和照片缩略图是示例；供应商图标用字母方块代替 AgentLogo。键盘只是占位。</p>
+    </div>
+  </div>
+</div>
+
+<div class="ctl">
+  <div class="g"><b>页面</b><button data-k="session" data-v="0" class="on">新会话</button><button data-k="session" data-v="1">会话中</button></div>
+  <div class="g"><b>状态</b><button data-act="collapse">收起</button><button data-act="focus">输入中</button><button data-act="drawer">＋ 抽屉</button><button data-act="level">思考强度</button><button data-act="models">模型面板</button></div>
+  <div class="g"><b>运行中</b><button data-k="running" data-v="0" class="on">否</button><button data-k="running" data-v="1">是</button></div>
+  <div class="g"><b>会话中</b><button data-x="queue">排队两条</button><button data-x="approval">等审批</button><button data-x="offline">离线排队</button></div>
+  <div class="g"><b>项目</b><button data-k="repo" data-v="1" class="on">git 仓库</button><button data-k="repo" data-v="0">临时工作区</button></div>
+  <div class="g"><b>分支</b><button data-b="main" class="on">main</button><button data-b="feat/remember-me">feat/remember-me</button><button data-b="a1b2c3d">分离（a1b2c3d）</button></div>
+  <div class="g"><b>环境上限</b><button data-k="ceiling" data-v="0" class="on">无</button><button data-k="ceiling" data-v="1">自动接受编辑</button></div>
+  <div class="g"><b>外观</b><button data-k="theme" data-v="light" class="on">浅色</button><button data-k="theme" data-v="dark">深色</button></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const phone = $("phone"), ta = $("ta");
+const I = {
+  up: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  stop: '<svg class="ic" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/></svg>',
+  check: '<svg class="ic" viewBox="0 0 24 24" style="width:20px;height:20px;stroke-width:2.2"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  branch: '<svg class="ic" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-6 4-11.5 8.5"/></svg>',
+  folder: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  chev: '<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  laptop: '<svg class="ic" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/></svg>',
+  wtree: '<svg class="ic" viewBox="0 0 24 24"><path d="M3 7.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v3"/><path d="M3 7.5v9a2 2 0 0 0 2 2h6"/><circle cx="15.5" cy="15" r="1.4"/><circle cx="15.5" cy="21" r="1.4"/><circle cx="20.5" cy="17" r="1.4"/><path d="M15.5 16.4v3.2M20.5 18.4c0 1.4-2.5 1.6-4.5 2"/></svg>',
+  shield: '<svg class="ic" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>',
+  x: '<svg class="ic" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  right: '<svg class="chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>',
+  doc: '<svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--l2)"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/></svg>',
+};
+const MODES = [
+  { id: "supervised", t: "受控审批", h: "每次修改文件、执行命令或调用外部工具前均需确认" },
+  { id: "autoEdits", t: "自动接受编辑", h: "自动允许工作区内文件修改；执行命令或触碰敏感文件时需确认" },
+  { id: "auto", t: "智能自动", h: "自动允许工作区编辑与常规编译测试命令；高风险操作需确认" },
+  { id: "full", t: "完全访问", h: "在环境上限内无阻断执行全部操作" },
+];
+// Providers as the machine lists them (internal/kernel/catalog); models and levels are sample data.
+const PROVIDERS = [
+  { id: "claude", name: "Claude Code", c: "#c8664a", models: [["Opus 4.5", ["低", "中", "高"]], ["Sonnet 4.5", ["低", "中", "高"]], ["Haiku 4.5", []]] },
+  { id: "codex", name: "Codex", c: "#2b2b30", models: [["GPT-5.1-Codex", ["低", "中", "高", "超高"]], ["GPT-5.1-Codex-Mini", ["中", "高"]], ["GPT-5.1", ["最少", "低", "中", "高"]]] },
+  { id: "opencode", name: "OpenCode", c: "#5a6270", why: "未登录", models: [["big-pickle", []]] },
+  { id: "gemini", name: "Gemini CLI", c: "#4a74e8", why: "未安装", models: [] },
+  { id: "cursor", name: "Cursor", c: "#3a3a3f", why: "未安装", models: [] },
+  { id: "antigravity", name: "Antigravity", c: "#6b5bd6", why: "已停用", models: [] },
+];
+// Sample: the repository's local branches, and what the machine would say of each (the default branch, one checked
+// out in another worktree). Sessions' own hermesh/… branches aren't offered.
+const BRANCHES = [{ n: "main", def: true }, { n: "feat/remember-me" }, { n: "fix/login-redirect", wt: true }, { n: "release/0.2" }];
+const defBranch = () => BRANCHES.find((b) => b.def).n;
+// Where it works, and on which branch: a worktree starts from a branch (by default the default one); the folder
+// works on one (by default the one checked out).
+const chosen = () => s.wt ? (s.base || defBranch()) : (s.on || s.branch);
+const placeChip = () => s.wt ? `${I.wtree}独立 worktree` : `${I.folder}当前目录`;
+const branchChip = () => `${I.branch}<span class="br">${s.wt ? `基于 <b>${s.remote ? "origin/" : ""}${chosen()}</b>` : `<b>${chosen()}</b>`}</span>`;
+// The list: the one checked out first, then the default, then the rest by name; searched by name.
+function branchList() {
+  const all = [s.branch, ...BRANCHES.map((b) => b.n).filter((n) => n !== s.branch)];
+  const q = (s.bq || "").trim().toLowerCase();
+  const order = (n) => (n === s.branch ? 0 : n === defBranch() ? 1 : 2);
+  return all.filter((n) => !q || n.toLowerCase().includes(q)).sort((a, b) => order(a) - order(b) || a.localeCompare(b)).map((n) => {
+    const b = BRANCHES.find((x) => x.n === n) || {};
+    const tags = [n === s.branch && "当前", b.def && "默认", b.wt && "worktree"].filter(Boolean);
+    // In the folder, a branch another worktree has checked out can't be checked out too.
+    const blocked = !s.wt && b.wt && n !== s.branch;
+    return { n, tags, blocked, on: chosen() === n };
+  });
+}
+const ALL = PROVIDERS.flatMap((p) => p.models.map(([n, lv]) => ({ p, n, lv })));
+const s = { sent: [], queued: [], approval: 0, offline: 0, branch: "main", wt: true, base: "", on: "", remote: false, bq: "", wmenu: false, session: 0, running: 0, repo: 1, ceiling: 0, focus: false, sheet: "", mode: "auto", worktree: true, atts: [], model: "Opus 4.5", levels: { "Opus 4.5": "高", "Sonnet 4.5": "中", "GPT-5.1-Codex": "超高" }, lmenu: false, q: "" };
+const cur = () => ALL.find((m) => m.n === s.model);
+const logo = (p, sz = 20) => `<span class="logo" style="background:${p.c};width:${sz}px;height:${sz}px">${p.name[0]}</span>`;
+let toastT;
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 2600); }
+function pickModel(n) {
+  const level = s.levels[s.model], next = ALL.find((m) => m.n === n);
+  s.model = n;
+  // A model it hasn't used yet takes the level it had, when it has it; else its middle one, said once.
+  if (next.lv.length && !s.levels[n]) {
+    const to = next.lv.includes(level) ? level : next.lv[Math.floor((next.lv.length - 1) / 2)];
+    s.levels[n] = to;
+    if (level && to !== level) toast(`${n} 没有「${level}」档，思考强度改为「${to}」`);
+  }
+}
+
+function rank(id) { return MODES.findIndex((m) => m.id === id); }
+function allowed(id) { return !s.ceiling || rank(id) <= rank("autoEdits"); }
+
+function render() {
+  const open = s.focus || ta.value.trim() !== "" || s.atts.length > 0 || s.sheet !== "";
+  phone.classList.toggle("open", open);
+  phone.classList.toggle("kb", s.focus && !s.sheet);
+  phone.classList.toggle("drawer", s.sheet === "drawer");
+  phone.classList.toggle("models", s.sheet === "models");
+  phone.classList.toggle("branches", s.sheet === "branches");
+  phone.classList.toggle("session", !!s.session);
+  phone.classList.toggle("running", !!(s.session && s.running));
+  $("navTitle").textContent = s.session ? "登录后跳回原来的页面" : "新会话";
+  $("navSub").hidden = !s.session;
+  $("more").innerHTML = s.sent.map((t) => `<div class="um">${t}</div>`).join("");
+  ta.placeholder = s.session ? (s.running ? "继续说，会排到下一轮…" : "继续聊…") : "描述要构建、调试或规划的内容";
+
+  // Over the box: the working copy (a new session, a repository), or where a session runs.
+  let above = "";
+  // A session: where it runs is under its title; over the box only what is pending.
+  if (s.session) above = s.offline ? `<span class="offq"><i></i>离线排队中</span>` : "";
+  // In the project's own folder the branch says it all; a worktree says where its branch starts.
+  else if (s.repo) above = `<button class="qchip" id="wt">${placeChip()}${I.chev}</button><button class="qchip" id="brBtn">${branchChip()}${I.right}</button>`;
+  $("above").innerHTML = above;
+  $("above").hidden = !above;
+
+  // What waits for the next turn, over the box: each can steer the turn now, or go.
+  const qd = s.session && s.running ? s.queued : [];
+  $("queue").innerHTML = qd.length ? `<div class="queue"><div class="qh">排到下一轮 · ${qd.length}</div>${qd.map((t, i) =>
+    `<div class="qrow"><span class="qt">${t}</span><button class="steer" data-steer="${i}">立即插入引导</button><button class="rm" data-unq="${i}" aria-label="移除">${I.x}</button></div>`).join("")}</div>` : "";
+  document.querySelectorAll("[data-unq]").forEach((b) => b.onclick = () => { s.queued.splice(+b.dataset.unq, 1); render(); });
+  document.querySelectorAll("[data-steer]").forEach((b) => b.onclick = () => { s.sent.push(s.queued.splice(+b.dataset.steer, 1)[0]); render(); });
+
+  // What the agent waits on, over everything else, as Her's approval card.
+  $("req").innerHTML = s.session && s.approval ? `<div class="appr"><div class="ah">${logo(PROVIDERS[0], 20)}运行这条命令？</div><pre>npm test -- login</pre>`
+    + `<div class="ab"><button data-ans>拒绝</button><button data-ans>一直允许</button><button class="pri" data-ans>这次允许</button></div></div>` : "";
+  document.querySelectorAll("[data-ans]").forEach((b) => b.onclick = () => { s.approval = 0; render(); });
+  const wt = $("wt");
+  if (wt) { wt.onmousedown = (e) => e.preventDefault(); wt.onclick = (e) => { e.stopPropagation(); s.wmenu = !s.wmenu; render(); }; }
+
+  // Where it works: the folder, or a worktree of its own.
+  const wm = $("wmenu");
+  wm.classList.toggle("on", s.wmenu && !!wt);
+  wm.innerHTML = `<div class="h">工作目录</div>`
+    + `<button data-wt="0"><span class="ck">${!s.wt ? I.check : ""}</span><span class="two"><span class="nm">${I.folder}当前目录</span><span>直接在项目目录里修改</span></span></button>`
+    + `<button data-wt="1"><span class="ck">${s.wt ? I.check : ""}</span><span class="two"><span class="nm">${I.wtree}独立 worktree</span><span>每个任务一个分支，不碰你正在改的文件</span></span></button>`;
+  wm.querySelectorAll("[data-wt]").forEach((b) => b.onclick = () => { s.wt = b.dataset.wt === "1"; s.wmenu = false; render(); });
+  const br = $("brBtn");
+  if (br) { br.onmousedown = (e) => e.preventDefault(); br.onclick = () => { s.sheet = "branches"; s.bq = ""; s.focus = false; ta.blur(); render(); }; }
+
+  // Which branch: for a worktree the one it starts from, in the folder the one it works on.
+  $("brTitle").textContent = s.wt ? "基于分支" : "在哪个分支上工作";
+  $("remoteRow").hidden = !s.wt;
+  $("remoteSw").classList.toggle("on", s.remote);
+  $("brNote").hidden = s.wt || chosen() === s.branch;
+  $("brList").innerHTML = branchList().map((b) => `<button class="opt br-row${b.blocked ? " dis" : ""}" data-br="${b.n}">${I.branch}<span class="t"><b class="mono">${b.n}</b>`
+    + (b.blocked ? `<span>已在别的 worktree 签出</span>` : b.tags.length ? `<span class="tags">${b.tags.join(" · ")}</span>` : "") + `</span><span class="ck">${b.on ? I.check : ""}</span></button>`).join("")
+    || `<div class="opt"><span class="t"><span>没有匹配的分支</span></span></div>`;
+  document.querySelectorAll("[data-br]").forEach((b) => b.onclick = () => { if (s.wt) s.base = b.dataset.br; else s.on = b.dataset.br; render(); });
+  if (wt) requestAnimationFrame(() => {
+    const r = wt.getBoundingClientRect(), pr = phone.getBoundingClientRect();
+    wm.style.left = (r.left - pr.left) + "px";
+    wm.style.bottom = (pr.bottom - r.top + 8) + "px";
+  });
+
+  // Send (Stop beside it while a turn runs): in the line when collapsed, at the bottom when open.
+  const ready = ta.value.trim() !== "" || s.atts.length > 0;
+  const btns = (s.session && s.running ? `<button class="cbtn stop" aria-label="停下">${I.stop}</button>` : "")
+    + `<button class="cbtn send${ready ? " ready" : ""}" aria-label="发送">${I.up}</button>`;
+  $("tailBtns").innerHTML = `<span style="display:flex;gap:8px">${btns}</span>`;
+  $("barBtns").innerHTML = btns;
+
+  // Attachments.
+  $("atts").hidden = s.atts.length === 0;
+  $("atts").innerHTML = s.atts.map((a, i) => a === "photo"
+    ? `<span class="att"><button class="x" data-rm="${i}">${I.x}</button></span>`
+    : `<span class="att file">${I.doc}design-notes.pdf<button data-rm="${i}" style="color:var(--l3)">${I.x.replace('class="ic"', 'class="ic" style="width:12px;height:12px"')}</button></span>`).join("");
+  document.querySelectorAll("[data-rm]").forEach((b) => b.onmousedown = (e) => { e.preventDefault(); s.atts.splice(+b.dataset.rm, 1); render(); });
+
+  // Model, and the mode when it isn't the default.
+  const m = cur(), level = s.levels[m.n];
+  $("modelLbl").textContent = m.n;
+  $("modelLogo").outerHTML = logo(m.p, 18).replace('class="logo"', 'class="logo" id="modelLogo"');
+  $("lvlBtn").hidden = !m.lv.length;
+  $("lvlBtn").innerHTML = `<svg class="ic" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>${level || ""}${I.chev}`;
+  const lm = $("lmenu");
+  lm.classList.toggle("on", s.lmenu && m.lv.length > 0);
+  lm.innerHTML = `<div class="h">思考强度</div>` + m.lv.map((l) => `<button data-level="${l}"><span class="ck">${l === level ? I.check : ""}</span>${l}</button>`).join("");
+  requestAnimationFrame(() => {
+    const r = $("lvlBtn").getBoundingClientRect(), pr = phone.getBoundingClientRect();
+    lm.style.left = Math.max(12, Math.min(r.left - pr.left - 8, 402 - 212)) + "px";
+    lm.style.bottom = (pr.bottom - r.top + 8) + "px";
+  });
+  lm.querySelectorAll("[data-level]").forEach((b) => b.onclick = () => { s.levels[m.n] = b.dataset.level; s.lmenu = false; render(); });
+  const mode = allowed(s.mode) ? s.mode : "autoEdits";
+
+  // The drawer.
+  $("modes").innerHTML = MODES.map((m) => {
+    const dis = !allowed(m.id);
+    return `<button class="opt${dis ? " dis" : ""}" data-mode="${m.id}"><span class="ck">${mode === m.id ? I.check : ""}</span><span class="t"><b>${m.t}</b><span>${dis ? "超过这个环境或授权允许的上限" : m.h}</span></span></button>`;
+  }).join("");
+  document.querySelectorAll("[data-mode]").forEach((b) => b.onclick = () => { s.mode = b.dataset.mode; render(); });
+
+  // The model sheet: usable providers one under another, a model a row; the rest in a line at the end.
+  const q = s.q.trim().toLowerCase();
+  const groups = PROVIDERS.filter((p) => p.models.length)
+    .map((p) => ({ p, ms: p.models.filter(([n]) => !q || n.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)) }))
+    .filter((g) => g.ms.length);
+  let html = groups.map((g) => `<div class="phead">${logo(g.p)}<span>${g.p.name}</span>${g.p.why ? `<span class="why">· ${g.p.why}</span>` : ""}</div><div class="group">`
+    + g.ms.map(([n, lv]) => `<button class="opt" data-model="${n}"><span class="t"><b>${n}</b></span><span class="ck">${s.model === n ? I.check : ""}</span></button>`).join("") + `</div>`).join("");
+  if (q && !groups.length) html = `<div class="phead"><span>没有匹配的模型</span></div>`;
+  $("mlist").innerHTML = html;
+  document.querySelectorAll("[data-model]").forEach((b) => b.onclick = () => { pickModel(b.dataset.model); render(); });
+
+  document.querySelectorAll(".ctl [data-k]").forEach((b) => {
+    const k = b.dataset.k, v = b.dataset.v;
+    b.classList.toggle("on", k === "theme" ? document.documentElement.dataset.theme === v : String(s[k]) === v);
+  });
+}
+
+// A keyboard, only to place the box above it.
+$("kbd").innerHTML = [["q","w","e","r","t","y","u","i","o","p"],["a","s","d","f","g","h","j","k","l"],["⇧","z","x","c","v","b","n","m","⌫"]]
+  .map((r) => `<div class="kr">${r.map((k) => `<span class="k${k === "⇧" || k === "⌫" ? " w" : ""}">${k}</span>`).join("")}</div>`).join("")
+  + `<div class="kr"><span class="k w">123</span><span class="k w">🌐</span><span class="k sp">空格</span><span class="k rt">换行</span></div>`;
+$("kbd").onmousedown = (e) => e.preventDefault();
+
+ta.addEventListener("focus", () => { s.focus = true; render(); });
+ta.addEventListener("input", () => {
+  ta.style.height = "";
+  if (phone.classList.contains("open")) ta.style.height = Math.max(66, Math.min(ta.scrollHeight, 154)) + "px";
+  render();
+});
+// Tapping the page away from the box ends typing.
+phone.addEventListener("mousedown", (e) => {
+  if (e.target.closest(".sheet,#kbd,#lmenu,#wmenu")) return;
+  if (s.wmenu && !e.target.closest("#wt")) { s.wmenu = false; render(); }
+  if (e.target.closest("#dock")) return;
+  if (s.lmenu || s.wmenu) { s.lmenu = false; s.wmenu = false; render(); return; }
+  if (s.sheet) { s.sheet = ""; render(); return; }
+  s.focus = false; ta.blur(); render();
+});
+$("box").addEventListener("mousedown", (e) => { if (!e.target.closest("button") && e.target !== ta) { e.preventDefault(); ta.focus(); } });
+$("plus").onmousedown = (e) => e.preventDefault();
+$("plus1").onmousedown = (e) => e.preventDefault();
+$("plus").onclick = () => { s.sheet = "drawer"; s.focus = false; ta.blur(); render(); };
+$("plus1").onclick = $("plus").onclick;
+// Send: while a turn runs it waits for the next; else it starts one. Stop ends the turn.
+$("box").addEventListener("click", (e) => {
+  if (!e.target.closest(".send")) return;
+  const t = ta.value.trim();
+  if (!t && !s.atts.length) return;
+  if (s.session && s.running) s.queued.push(t || "照片"); else if (s.session) { s.sent.push(t || "照片"); s.running = 1; }
+  ta.value = ""; s.atts = []; ta.style.height = "";
+  render();
+});
+$("box").addEventListener("mousedown", (e) => { if (e.target.closest(".stop")) { e.preventDefault(); s.running = 0; s.queued = []; render(); } });
+$("lvlBtn").onmousedown = (e) => e.preventDefault();
+$("lvlBtn").onclick = (e) => { e.stopPropagation(); s.lmenu = !s.lmenu; render(); };
+$("lmenu").onmousedown = (e) => e.preventDefault();
+$("q").oninput = () => { s.q = $("q").value; render(); };
+document.addEventListener("click", (e) => { if (s.lmenu && !e.target.closest("#lmenu,#lvlBtn")) { s.lmenu = false; render(); } });
+$("modelBtn").onmousedown = (e) => e.preventDefault();
+$("modelBtn").onclick = () => { s.sheet = "models"; s.focus = false; ta.blur(); render(); };
+$("modelsDone").onclick = () => { s.sheet = ""; render(); };
+$("brDone").onclick = () => { s.sheet = ""; render(); };
+$("remoteBtn").onclick = () => { s.remote = !s.remote; render(); };
+$("bq").oninput = () => { s.bq = $("bq").value; render(); };
+document.querySelectorAll("[data-add]").forEach((b) => b.onclick = () => { s.atts.push(b.dataset.add); s.sheet = ""; render(); });
+
+document.querySelectorAll(".ctl [data-k]").forEach((b) => b.onclick = () => {
+  const k = b.dataset.k, v = b.dataset.v;
+  if (k === "theme") document.documentElement.dataset.theme = v; else s[k] = +v;
+  render();
+});
+document.querySelectorAll(".ctl [data-x]").forEach((b) => b.onclick = () => {
+  s.session = 1;
+  if (b.dataset.x === "queue") { s.running = 1; s.queued = s.queued.length ? [] : ["顺便把注册页也改成一样的", "跑一下 e2e"]; }
+  if (b.dataset.x === "approval") { s.approval = s.approval ? 0 : 1; s.running = 1; }
+  if (b.dataset.x === "offline") s.offline = s.offline ? 0 : 1;
+  render();
+});
+document.querySelectorAll(".ctl [data-b]").forEach((b) => b.onclick = () => {
+  s.branch = b.dataset.b; s.on = "";
+  document.querySelectorAll(".ctl [data-b]").forEach((x) => x.classList.toggle("on", x === b));
+  render();
+});
+document.querySelectorAll(".ctl [data-act]").forEach((b) => b.onclick = () => {
+  const a = b.dataset.act;
+  s.sheet = a === "drawer" || a === "models" ? a : "";
+  s.lmenu = a === "level";
+  if (a === "level") { ta.focus(); s.focus = true; render(); return; }
+  if (a === "focus") { ta.focus(); s.focus = true; } else { s.focus = false; ta.blur(); }
+  if (a === "collapse") { ta.value = ""; s.atts = []; ta.style.height = ""; }
+  render();
+});
+render();
+</script>
+</body>
+</html>
