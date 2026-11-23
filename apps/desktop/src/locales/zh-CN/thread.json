@@ -35,6 +35,11 @@
     "unarchive": "取消归档",
     "offlineQueued": "离线排队中"
   },
+  "work": {
+    "starting": "正在启动…",
+    "thinking": "思考中",
+    "working": "处理中"
+  },
   "mode": {
     "code": "编码",
     "plan": "规划",

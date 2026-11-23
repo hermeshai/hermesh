@@ -163,12 +163,23 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.fill("sleep 20s\nsay never");
     await input.press("Enter");
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 15_000 });
+    // And a line at the end of the conversation, as the iPhone's: the mark at work, thinking (no tool runs while it
+    // sleeps) and how long; under the last message, over the box.
+    const working = page.getByTestId("thread-working");
+    await expect(working).toContainText("思考中", { timeout: 15_000 });
+    await expect(working).toContainText(/\d+:\d\d/);
+    const under = (await page.getByRole("log").locator(".um").filter({ hasText: "sleep 20s" }).boundingBox())!;
+    const line = (await working.boundingBox())!;
+    expect(line.y).toBeGreaterThan(under.y + under.height);
+    expect(line.y + line.height).toBeLessThan((await input.boundingBox())!.y);
+    await snap(page, "composer-working");
     await input.fill("say after_the_stop");
     await input.press("Enter");
     await expect(page.getByTestId("queued-run-0")).toContainText("say after_the_stop");
     await page.getByTestId("composer-stop-btn").click();
     await expect(page.getByRole("log").locator(".am").last()).toContainText("after_the_stop", { timeout: 30_000 });
     await expect(page.getByTestId("composer-stop-btn")).toHaveCount(0, { timeout: 15_000 });
+    await expect(working).toHaveCount(0); // nothing runs: the line goes
     await snap(page, "composer-session");
 
     // Grouped by project, the project's group starts a new session in it, on work-mac.

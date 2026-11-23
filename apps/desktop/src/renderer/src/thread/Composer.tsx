@@ -248,11 +248,14 @@ type Pickers = {
   onAddProject: () => void;
 };
 
+/** A new session's question: the pickers, and under them what happens once it is sent (`after`, kept out of the layout). */
+type LaunchAskProps = Pickers & { after?: ReactNode };
+
 /**
  * A new session's question, in the middle of its page: "What should we build in <project>?", and under it the
  * environment it runs on. Both are menus (opening below), set as last time (choices.ts).
  */
-export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine, onProject, onAddProject }: Pickers) {
+export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine, onProject, onAddProject, after }: LaunchAskProps) {
   const { t } = useTranslation("thread");
   const machine = machines.find((m) => m.machineId === choice.machineId);
   const machineName = machine?.machineName ?? choice.machineId;
@@ -322,6 +325,7 @@ export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine
           </>
         )}
       </MenuButton>
+      {after && <div className="th-ask-after">{after}</div>}
     </div>
   );
 }
