@@ -49,6 +49,13 @@ private func toolItem(_ it: Hermesh_Thread_V2_TurnItem, run: Hermesh_Thread_V2_R
     return ToolItem(seq: itemSeq(it), call: call, result: running ? nil : result, running: running)
 }
 
+private func formatProposedPlan(title: String, text: String) -> String {
+    if title.isEmpty || text.drop(while: { $0.isWhitespace || $0.isNewline }).hasPrefix("#") {
+        return text
+    }
+    return "### \(title)\n\n\(text)"
+}
+
 private func runFailure(_ message: String) -> Failure {
     var f = Failure()
     f.kind = .unspecified
@@ -74,7 +81,7 @@ public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [Tr
         switch it.kind {
         case .userMessage: out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt)))
         case .assistantMessage: out.append(.agent(seq: seq, text: it.text))
-        case .proposedPlan: out.append(.agent(seq: seq, text: it.planTitle.isEmpty ? it.text : "### \(it.planTitle)\n\n\(it.text)"))
+        case .proposedPlan: out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text)))
         case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it, run: run)))
         case .error:
             var e = ErrorEvent()

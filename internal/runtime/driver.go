@@ -78,24 +78,25 @@ const (
 )
 
 type Event struct {
-	Kind         EventKind
-	NativeID     string
-	ResumeCursor string
-	ItemID       string
-	Text         string
-	ToolName     string
-	Command      string
-	ExitCode     int32
-	Output       string
-	FilePath     string
-	Diff         string
-	Additions    uint32
-	Deletions    uint32
-	PlanTitle    string
-	TodoSteps    []*threadv2.TodoStep
-	Usage        *threadv2.ContextWindowUsage
-	ErrorCode    string
-	ErrorMessage string
+	Kind          EventKind
+	NativeID      string
+	ResumeCursor  string
+	ItemID        string
+	Text          string
+	ToolName      string
+	Command       string
+	ExitCode      int32
+	Output        string
+	FilePath      string
+	Diff          string
+	Additions     uint32
+	Deletions     uint32
+	PlanTitle     string
+	RequestReview bool
+	TodoSteps     []*threadv2.TodoStep
+	Usage         *threadv2.ContextWindowUsage
+	ErrorCode     string
+	ErrorMessage  string
 }
 
 type StartSpec struct {

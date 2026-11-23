@@ -316,6 +316,54 @@ func TestThreadV2EndToEnd(t *testing.T) {
 		return err == nil && g.Projection.GetThread().GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_IDLE
 	})
 
+	// 3b. Post-turn RESUME_TURN Plan Review (Antigravity ArtifactMetadata.RequestFeedback / Codex plan):
+	// Launch an Antigravity thread in PLAN mode on remote vps-1 -> turn completes and parks on WAITING_REQUEST
+	// with ActiveRunId=="" -> Owner approves via CLI `--approve-plan` -> switches to CODE and runs continuation!
+	planLaunch, err := tc.LaunchThread(ctx, &threadv2.LaunchThreadRequest{
+		MachineId:       vpsID,
+		ProjectId:       "demo",
+		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_PLAN,
+		ModelSelection: &threadv2.ModelSelection{
+			InstanceId: "antigravity",
+			Model:      "gemini-3.1-pro",
+		},
+		InitialPrompt: "propose-artifact Refactor Plan|true|# Refactor Plan\\n\\n1. Unify adapter\nsay Ready, click Proceed.",
+	})
+	if err != nil {
+		t.Fatalf("LaunchThread antigravity plan: %v", err)
+	}
+	planThreadID := planLaunch.Thread.ThreadId
+	var planProj *threadv2.ThreadProjection
+	eventually(t, 15*time.Second, "antigravity thread parked on post-turn WAITING_REQUEST", func() bool {
+		g, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: planThreadID})
+		if err == nil && g.Projection.GetThread().GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST {
+			planProj = g.Projection
+			return true
+		}
+		return false
+	})
+	if planProj.Thread.ActiveRunId != "" || planProj.Thread.PendingRequestId == "" {
+		t.Fatalf("expected post-turn plan review ActiveRunId=='' and non-empty PendingRequestId, got active=%q pending=%q",
+			planProj.Thread.ActiveRunId, planProj.Thread.PendingRequestId)
+	}
+	approvePlanCLI := run(t, nil, 20*time.Second, cliBin, "thread", "respond", planThreadID,
+		"--socket", sock,
+		"--approve-plan",
+	)
+	if approvePlanCLI.code != 0 {
+		t.Fatalf("hermesh thread respond --approve-plan failed (%d):\n%s\n%s", approvePlanCLI.code, approvePlanCLI.stdout, approvePlanCLI.stderr)
+	}
+	eventually(t, 15*time.Second, "antigravity thread switched to CODE and completed continuation turn", func() bool {
+		g, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: planThreadID})
+		if err != nil {
+			return false
+		}
+		th := g.Projection.GetThread()
+		return th.GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_IDLE &&
+			th.GetInteractionMode() == threadv2.InteractionMode_INTERACTION_MODE_CODE &&
+			th.GetRunCount() == 2
+	})
+
 	// 4. Durable Offline Outbox: stop vps-1, launch thread + queue follow-up while offline, restart vps-1 -> auto-flushes FIFO!
 	vpsProc.stop()
 	eventually(t, 15*time.Second, "vps-1 marked offline", func() bool {

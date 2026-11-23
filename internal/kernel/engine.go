@@ -1152,7 +1152,14 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 			return tx.PutReceipt(req.CommandId, "DispatchMessage", res)
 		}
 
-		// Start immediately!
+		// Start immediately! If the thread was parked on a post-turn resumable
+		// request (such as PLAN_REVIEW or USER_INPUT) and the user replied in the
+		// composer instead of clicking the card, supersede that request cleanly.
+		supersededReq, supersededItem, err := dismissPendingRequestTx(tx, tNow, p.Actor)
+		if err != nil {
+			return err
+		}
+
 		tNow.QueueHeld = false
 		tNow.LastError = ""
 		tNow.RunCount++
@@ -1193,6 +1200,17 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 		}
 		if err := tx.PutThread(tNow); err != nil {
 			return err
+		}
+		if supersededReq != nil {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: tNow.ThreadId,
+				Type:     "request.resolved",
+				Thread:   tNow,
+				Item:     supersededItem,
+				Request:  supersededReq,
+			}); err != nil {
+				return err
+			}
 		}
 		if err := tx.AppendEvent(&threadv2.ThreadEvent{
 			ThreadId: tNow.ThreadId,
@@ -1551,6 +1569,7 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 	// Consume events for this turn until terminal event or session exit!
 	msgBufs := map[string]*strings.Builder{}
 	rsnBufs := map[string]*strings.Builder{}
+	var pendingPlan *threadv2.PlanReviewPayload
 	for {
 		select {
 		case <-runCtx.Done():
@@ -1787,6 +1806,15 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				} else {
 					itemID = newID("plan")
 				}
+				if ev.RequestReview {
+					pendingPlan = &threadv2.PlanReviewPayload{
+						PlanId:   itemID,
+						Title:    ev.PlanTitle,
+						Markdown: ev.Text,
+					}
+				} else if pendingPlan != nil && pendingPlan.PlanId == itemID {
+					pendingPlan = nil
+				}
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 					it := &threadv2.TurnItem{
 						ItemId:    itemID,
@@ -1879,7 +1907,7 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				if cp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), threadID, runID, curRun.Ordinal, prevTreeOID); cpErr == nil && cp != nil {
 					capturedCp = cp
 				}
-				e.finishRunCompleted(threadID, runID, activePT.ProviderThreadId, capturedCp)
+				e.finishRunCompleted(threadID, runID, activePT.ProviderThreadId, capturedCp, pendingPlan)
 				return
 
 			case runtime.EventTurnInterrupted:
@@ -1960,8 +1988,18 @@ func (e *Engine) recordSwitchItem(threadID, runID string, fromSel, toSel *thread
 	e.publish(evs, nil)
 }
 
-func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.Checkpoint) {
+func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.Checkpoint, pendingPlan *threadv2.PlanReviewPayload) {
 	unlock := e.lockThread(threadID)
+	if pendingPlan != nil {
+		if existing, rErr := e.st.RuntimeRequests(threadID); rErr == nil {
+			for _, rq := range existing {
+				if rq.RunId == runID && rq.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
+					pendingPlan = nil
+					break
+				}
+			}
+		}
+	}
 	var nextQueued *threadv2.Run
 	var nextItem *threadv2.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
@@ -2014,6 +2052,8 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 
 		// Automatically dequeue the next queued run unless queue is held!
 		queued, _ := tx.QueuedRuns(threadID)
+		var resumeReq *threadv2.RuntimeRequest
+		var resumeReqItem *threadv2.TurnItem
 		if len(queued) > 0 && !th.QueueHeld {
 			nextQueued = queued[0]
 			th.RunCount++
@@ -2040,6 +2080,36 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			th.ModelSelection = nextQueued.ModelSelection
 			th.EffectiveRuntimeMode = nextQueued.RuntimeMode
 			th.InteractionMode = nextQueued.InteractionMode
+			th.PendingRequestId = ""
+		} else if pendingPlan != nil {
+			reqID := newID("req")
+			resumeReq = &threadv2.RuntimeRequest{
+				RequestId:    reqID,
+				ThreadId:     threadID,
+				RunId:        runID,
+				Kind:         threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+				Status:       threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
+				ResponseMode: threadv2.ResponseMode_RESPONSE_MODE_RESUME_TURN,
+				PlanReview:   pendingPlan,
+			}
+			if err := tx.PutRuntimeRequest(resumeReq); err != nil {
+				return err
+			}
+			resumeReqItem = &threadv2.TurnItem{
+				ItemId:    "reqitm_" + reqID,
+				ThreadId:  threadID,
+				RunId:     runID,
+				Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+				Status:    "waiting",
+				RequestId: reqID,
+			}
+			if err := tx.PutTurnItem(resumeReqItem); err != nil {
+				return err
+			}
+			th.ActiveRunId = ""
+			th.QueuedRunCount = uint32(len(queued))
+			th.Status = threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST
+			th.PendingRequestId = reqID
 		} else {
 			th.ActiveRunId = ""
 			th.QueuedRunCount = uint32(len(queued))
@@ -2048,8 +2118,8 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			} else {
 				th.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
 			}
+			th.PendingRequestId = ""
 		}
-		th.PendingRequestId = ""
 		if err := tx.PutThread(th); err != nil {
 			return err
 		}
@@ -2062,6 +2132,18 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			Checkpoint: cp,
 		}); err != nil {
 			return err
+		}
+		if resumeReq != nil {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: threadID,
+				Type:     "request.created",
+				Thread:   th,
+				Run:      r,
+				Item:     resumeReqItem,
+				Request:  resumeReq,
+			}); err != nil {
+				return err
+			}
 		}
 		return appendRunStarted(tx, th, nextQueued, nextItem)
 	})
@@ -2471,11 +2553,22 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 		if req.ApprovePlan {
 			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
 			gateRes = runtime.ToolGateResult{Allowed: true, PlanApproved: true}
-			resumePrompt = "Plan approved. Proceed with implementation in Code mode."
+			if th.InteractionMode == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+				resumePrompt = "Plan approved. Proceed with implementation in Code mode."
+			} else {
+				resumePrompt = "Approved. Proceed."
+			}
+		} else if req.Decision == threadv2.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN {
+			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN
+			gateRes = runtime.ToolGateResult{Allowed: false, PlanApproved: false, CancelTurn: true}
 		} else {
 			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_DECLINE
 			gateRes = runtime.ToolGateResult{Allowed: false, PlanApproved: false, Feedback: req.Feedback}
-			resumePrompt = "Please revise the plan: " + req.Feedback
+			if fb := strings.TrimSpace(req.Feedback); fb != "" {
+				resumePrompt = "Please revise the plan: " + fb
+			} else {
+				resumePrompt = "Please revise the plan."
+			}
 		}
 
 	case threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT:
@@ -2564,14 +2657,47 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 	if waitCh != nil {
 		waitCh <- gateRes
 	} else if resumePrompt != "" {
-		// Resumable request answered after daemon restart -> automatically continue!
-		_, _ = e.DispatchMessage(ctx, p, &threadv2.DispatchMessageRequest{
+		// Resumable request answered after turn completion or daemon restart -> automatically continue!
+		if dispRes, dErr := e.DispatchMessage(ctx, p, &threadv2.DispatchMessageRequest{
 			ThreadId: req.ThreadId,
 			Text:     resumePrompt,
 			Intent:   threadv2.DispatchIntent_DISPATCH_INTENT_START,
-		})
+		}); dErr == nil && dispRes.GetThread() != nil {
+			res.Thread = dispRes.Thread
+		}
 	}
 	return res, nil
+}
+
+func dismissPendingRequestTx(tx *store.Tx, tNow *threadv2.Thread, actor *threadv2.Actor) (*threadv2.RuntimeRequest, *threadv2.TurnItem, error) {
+	if tNow.PendingRequestId == "" {
+		return nil, nil, nil
+	}
+	var supersededReq *threadv2.RuntimeRequest
+	var supersededItem *threadv2.TurnItem
+	if prevReq, rErr := tx.GetRuntimeRequest(tNow.PendingRequestId); rErr == nil &&
+		prevReq.Status == threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+		prevReq.Status = threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_DISMISSED
+		if actor != nil {
+			prevReq.ResolvedBy = proto.Clone(actor).(*threadv2.Actor)
+		}
+		prevReq.ResolvedAt = timestamppb.Now()
+		if err := tx.PutRuntimeRequest(prevReq); err != nil {
+			return nil, nil, err
+		}
+		supersededItem = &threadv2.TurnItem{
+			ItemId:    "reqitm_" + prevReq.RequestId,
+			ThreadId:  tNow.ThreadId,
+			RunId:     prevReq.RunId,
+			Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+			Status:    "dismissed",
+			RequestId: prevReq.RequestId,
+		}
+		_ = tx.PutTurnItem(supersededItem)
+		supersededReq = prevReq
+	}
+	tNow.PendingRequestId = ""
+	return supersededReq, supersededItem, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2598,18 +2724,51 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 	}
 	activeRunID := th.ActiveRunId
 	ptID := th.ActiveProviderThreadId
+	var dismissEvents []*threadv2.ThreadEvent
 
-	if req.HoldQueue {
-		_, _ = e.st.Mutate(func(tx *store.Tx) error {
+	if req.HoldQueue || (activeRunID == "" && th.PendingRequestId != "") {
+		dismissEvents, _ = e.st.Mutate(func(tx *store.Tx) error {
 			tNow, err := tx.GetThread(req.ThreadId)
 			if err != nil {
 				return err
 			}
-			tNow.QueueHeld = true
-			return tx.PutThread(tNow)
+			if req.HoldQueue {
+				tNow.QueueHeld = true
+			}
+			var supReq *threadv2.RuntimeRequest
+			var supItem *threadv2.TurnItem
+			if activeRunID == "" && tNow.PendingRequestId != "" {
+				supReq, supItem, err = dismissPendingRequestTx(tx, tNow, p.Actor)
+				if err != nil {
+					return err
+				}
+				queued, _ := tx.QueuedRuns(req.ThreadId)
+				tNow.QueuedRunCount = uint32(len(queued))
+				if len(queued) > 0 {
+					tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
+				} else {
+					tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
+				}
+			}
+			if err := tx.PutThread(tNow); err != nil {
+				return err
+			}
+			if supReq != nil {
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: req.ThreadId,
+					Type:     "request.resolved",
+					Thread:   tNow,
+					Item:     supItem,
+					Request:  supReq,
+				})
+			}
+			return nil
 		})
 	}
 	unlock()
+	if len(dismissEvents) > 0 {
+		e.publish(dismissEvents, nil)
+	}
 
 	if req.Force && activeRunID != "" {
 		e.mu.Lock()
@@ -2798,6 +2957,10 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			threadv2.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER:
 			tNow.QueueHeld = false
 			if tNow.ActiveRunId == "" && len(queued) > 0 {
+				supReq, supItem, dErr := dismissPendingRequestTx(tx, tNow, p.Actor)
+				if dErr != nil {
+					return dErr
+				}
 				pickIdx := 0
 				if req.RunId != "" {
 					if idx := slices.IndexFunc(queued, func(r *threadv2.Run) bool { return r.RunId == req.RunId }); idx >= 0 {
@@ -2829,6 +2992,15 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 				tNow.EffectiveRuntimeMode = startNow.RuntimeMode
 				tNow.InteractionMode = startNow.InteractionMode
 				updatedRuns = []*threadv2.Run{startNow}
+				if supReq != nil {
+					_ = tx.AppendEvent(&threadv2.ThreadEvent{
+						ThreadId: req.ThreadId,
+						Type:     "request.resolved",
+						Thread:   tNow,
+						Item:     supItem,
+						Request:  supReq,
+					})
+				}
 			}
 
 		default:

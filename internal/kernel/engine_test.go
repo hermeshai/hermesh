@@ -703,3 +703,131 @@ func TestDaemonCrashOrphanRecoveryAndStreamingReplay(t *testing.T) {
 		t.Fatalf("expected queued run to drain after answering recovered request, remaining=%d", afterProj.Thread.QueuedRunCount)
 	}
 }
+
+func TestPostTurnArtifactPlanReviewReviseApproveAndSupersede(t *testing.T) {
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+	defer eng.Close()
+
+	repo := initGitProject(t)
+	_ = eng.SyncWorkspace("proj", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
+	owner := OwnerPrincipal("dev_owner", "Owner")
+
+	// 1. Run 1 in PLAN mode proposes a RequestFeedback=true artifact and ends its turn.
+	launched, err := eng.LaunchThread(ctx, owner, &threadv2.LaunchThreadRequest{
+		ProjectId:       "proj",
+		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_PLAN,
+		InitialPrompt: strings.Join([]string{
+			"propose-artifact Implementation Plan|true|# Plan v1\\n\\n1. Draft architecture",
+			"say Click Proceed when ready.",
+		}, "\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tid := launched.Thread.ThreadId
+
+	p1 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST)
+	if p1.Thread.ActiveRunId != "" {
+		t.Fatalf("expected ActiveRunId to be empty for post-turn RESUME_TURN plan review, got %q", p1.Thread.ActiveRunId)
+	}
+	if len(p1.Runs) != 1 || p1.Runs[0].Status != threadv2.RunStatus_RUN_STATUS_COMPLETED {
+		t.Fatalf("expected Run 1 COMPLETED, got %+v", p1.Runs)
+	}
+	req1ID := p1.Thread.PendingRequestId
+	var req1 *threadv2.RuntimeRequest
+	for _, r := range p1.Requests {
+		if r.RequestId == req1ID {
+			req1 = r
+		}
+	}
+	if req1 == nil ||
+		req1.Kind != threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW ||
+		req1.ResponseMode != threadv2.ResponseMode_RESPONSE_MODE_RESUME_TURN ||
+		!strings.Contains(req1.GetPlanReview().GetMarkdown(), "# Plan v1") {
+		t.Fatalf("unexpected post-turn PLAN_REVIEW request: %+v", req1)
+	}
+
+	// 2. Ask for revision (ApprovePlan=false) -> stays in PLAN mode and dispatches continuation Run 2!
+	revRes, err := eng.RespondRuntimeRequest(ctx, owner, &threadv2.RespondRuntimeRequestRequest{
+		ThreadId:    tid,
+		RequestId:   req1ID,
+		ApprovePlan: false,
+		Feedback:    "include rollback verification",
+	})
+	if err != nil {
+		t.Fatalf("RespondRuntimeRequest(revise): %v", err)
+	}
+	if revRes.Thread.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+		t.Fatalf("expected PLAN mode retained on revision, got %v", revRes.Thread.InteractionMode)
+	}
+	p2 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_IDLE)
+	if len(p2.Runs) != 2 || p2.Runs[1].Prompt != "Please revise the plan: include rollback verification" {
+		t.Fatalf("expected Run 2 revision prompt, got runs=%+v", p2.Runs)
+	}
+
+	// 3. Run 3 emits both a RequestFeedback=true revised plan AND a RequestFeedback=false deliverable;
+	//    only the RequestFeedback=true artifact parks the thread, and ApprovePlan=true switches PLAN -> CODE!
+	_, err = eng.DispatchMessage(ctx, owner, &threadv2.DispatchMessageRequest{
+		ThreadId: tid,
+		Text: strings.Join([]string{
+			"propose-artifact Implementation Plan|true|# Plan v2\\n\\n1. With rollback verification",
+			"propose-artifact Notes|false|# Notes\\n\\nSupplementary walkthrough",
+		}, "\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p3 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST)
+	req3ID := p3.Thread.PendingRequestId
+	appRes, err := eng.RespondRuntimeRequest(ctx, owner, &threadv2.RespondRuntimeRequestRequest{
+		ThreadId:    tid,
+		RequestId:   req3ID,
+		ApprovePlan: true,
+	})
+	if err != nil {
+		t.Fatalf("RespondRuntimeRequest(approve): %v", err)
+	}
+	if appRes.Thread.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_CODE {
+		t.Fatalf("expected RespondRuntimeRequest response Thread to reflect CODE mode, got %v", appRes.Thread.InteractionMode)
+	}
+	p4 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_IDLE)
+	if p4.Thread.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_CODE {
+		t.Fatalf("expected thread in CODE mode, got %v", p4.Thread.InteractionMode)
+	}
+	if len(p4.Runs) != 4 || p4.Runs[3].Prompt != "Plan approved. Proceed with implementation in Code mode." || p4.Runs[3].InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_CODE {
+		t.Fatalf("unexpected Run 4 continuation after plan approval: %+v", p4.Runs)
+	}
+
+	// 4. Superseding: when parked on a post-turn RESUME_TURN proposal (e.g. /learn proposal in CODE mode),
+	//    sending a normal message in the composer dismisses the pending request and runs immediately!
+	_, err = eng.DispatchMessage(ctx, owner, &threadv2.DispatchMessageRequest{
+		ThreadId: tid,
+		Text:     "propose-artifact Learning Proposal|true|# Learnings\\n\\nPersist rule X",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p5 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST)
+	req5ID := p5.Thread.PendingRequestId
+	_, err = eng.DispatchMessage(ctx, owner, &threadv2.DispatchMessageRequest{
+		ThreadId: tid,
+		Text:     "say superseded_cleanly",
+	})
+	if err != nil {
+		t.Fatalf("DispatchMessage while parked on RESUME_TURN request: %v", err)
+	}
+	p6 := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_IDLE)
+	if p6.Thread.PendingRequestId != "" || len(p6.Runs) != 6 {
+		t.Fatalf("expected PendingRequestId cleared and Run 6 completed, pending=%q runs=%d", p6.Thread.PendingRequestId, len(p6.Runs))
+	}
+	var req5After *threadv2.RuntimeRequest
+	for _, r := range p6.Requests {
+		if r.RequestId == req5ID {
+			req5After = r
+		}
+	}
+	if req5After == nil || req5After.Status != threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_DISMISSED {
+		t.Fatalf("expected superseded request %s to be DISMISSED, got %+v", req5ID, req5After)
+	}
+}

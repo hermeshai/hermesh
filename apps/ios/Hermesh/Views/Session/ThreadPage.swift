@@ -135,7 +135,13 @@ struct ThreadPage: View {
     private var online: Bool { machine.map { $0.online || $0.local } ?? true }
     /// A machine from before threads can't take a new session: said, not hidden (§5.2).
     private var needsUpdate: Bool { isNew && machine.map { $0.hasStatus && !$0.status.threads } ?? false }
-    private var running: Bool { [.preparing, .running, .waitingRequest].contains(thread?.status ?? .idle) }
+    private var running: Bool {
+        switch thread?.status ?? .idle {
+        case .preparing, .running: true
+        case .waitingRequest: !(thread?.activeRunID.isEmpty ?? true)
+        default: false
+        }
+    }
 
     /// A machine's projects: live while it answers, else what was last read of it.
     private func projects(on id: String) -> (list: [Project], stale: Bool) {

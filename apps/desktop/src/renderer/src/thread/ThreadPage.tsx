@@ -291,7 +291,7 @@ export function ThreadPage() {
   const clampedMode = clampRuntimeMode(runtimeMode, maxCeiling);
   const queuedRuns = useMemo(() => queuedRunsOf(projection), [projection]);
   const pendingReq = useMemo(() => pendingRequestOf(projection), [projection]);
-  const running = isThreadActive(currentThread);
+  const running = isThreadActive(currentThread) && (currentThread?.status !== ThreadStatus.WAITING_REQUEST || currentThread.activeRunId !== "");
 
   // Shift+Cmd/Ctrl+E cycles how hard it thinks.
   useEffect(() => {
