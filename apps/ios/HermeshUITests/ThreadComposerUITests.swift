@@ -23,7 +23,9 @@ extension HermeshUITests {
         pickMachine("work-mac")
         XCTAssertTrue(chip("thread-project", contains: "临时工作区"), app.buttons["thread-project"].label)
 
-        // Add a Project from the project menu: work-mac's own folders, browsed from here, and a folder made there.
+        // Add a Project from the project menu: work-mac's own folders, browsed from here, and a folder made there. Only
+        // once work-mac answers (until then the line over the box says it connects, and Add Project is off).
+        XCTAssertTrue(app.descendants(matching: .any)["connection-capsule"].firstMatch.waitForNonExistence(timeout: 60), "work-mac connected")
         tap("thread-project")
         tap("thread-add-project")
         XCTAssertTrue(app.navigationBars["添加项目"].waitForExistence(timeout: 10))
