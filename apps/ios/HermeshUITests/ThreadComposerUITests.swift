@@ -65,9 +65,14 @@ extension HermeshUITests {
         tap("model-done")
         XCTAssertTrue(chip("thread-model", contains: "Scripted Fast 高"), app.buttons["thread-model"].label)
 
-        // Start it: the session's own page, on work-mac in the project.
-        send("say hello_from_work_mac")
+        // The box's plus, as Her's but without Connectors: a photo goes with the first message.
+        attachPhoto()
+
+        // Start it: the session's own page, on work-mac in the project. The agent got the photo.
+        send("say hello_from_work_mac\ninspect")
         XCTAssertTrue(reply("hello_from_work_mac").waitForExistence(timeout: 60), "the first turn's reply")
+        XCTAssertTrue(reply("attachments=[照片.jpg]").waitForExistence(timeout: 10), "the photo, with the first message")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-attached"].exists, "sent: the box holds nothing")
         XCTAssertTrue(text("work-mac · fresh-app").waitForExistence(timeout: 10), "where it runs, fixed")
 
         // Keep going in it.
@@ -140,6 +145,33 @@ extension HermeshUITests {
         box.typeText("say hi")
         XCTAssertFalse(app.buttons["thread-send"].isEnabled, "can't be sent")
         shot("composer-needs-update")
+    }
+
+    /// The plus: Photos and Files, no Connectors; the first photo in the system's picker, shown in the box once it is
+    /// uploaded.
+    private func attachPhoto() {
+        let plus = app.buttons["thread-attach"]
+        let box = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(plus.waitForExistence(timeout: 10) && box.exists)
+        XCTAssertLessThan(plus.frame.maxX, box.frame.minX, "before the field, as Her's")
+        tap("thread-attach")
+        XCTAssertTrue(app.buttons["照片"].waitForExistence(timeout: 10) && app.buttons["文件"].exists, "photos and files")
+        XCTAssertFalse(app.buttons["连接器"].exists, "no connectors in a session's box")
+        sleep(1) // the menu settled, for the picture
+        shot("composer-attach-menu")
+        app.buttons["照片"].tap()
+        let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH '照片'")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 20), "the photo picker: \(app.debugDescription)")
+        sleep(1) // the picker settled
+        press(photo) // the picker is the system's, out of the app: its photos read as not hittable
+        let add = app.buttons["Add"] // the picker's 完成
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "Done: \(app.debugDescription)")
+        press(add)
+        let attached = app.descendants(matching: .any)["thread-attached"]
+        XCTAssertTrue(attached.waitForExistence(timeout: 20), "the photo, in the box")
+        XCTAssertTrue(waitUntil(timeout: 30) { !self.app.descendants(matching: .any)["thread-attach-loading"].exists }, "uploaded")
+        XCTAssertTrue(app.buttons["移除 照片.jpg"].exists, "removable")
+        shot("composer-attached")
     }
 
     private func pickMachine(_ name: String) {

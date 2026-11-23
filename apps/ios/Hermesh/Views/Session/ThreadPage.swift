@@ -1,7 +1,9 @@
 import HermeshKit
 import HermeshProto
 import HermeshSessions
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 // A v2 session on the iPhone (docs/thread-composer.md): a new one, where the
 // owner picks the machine, the project, the model and how far it may go, and
@@ -88,6 +90,14 @@ struct ThreadPage: View {
     @State private var ceiling: Hermesh_Identity_V1_RuntimeMode = .unspecified
     @State private var draft = ""
     @State private var sending = false
+    /// What goes with the next message: uploaded to hermeshd as it is picked (as on the Mac).
+    @State private var attached: [Attached] = []
+    /// Picked and still being read or uploaded: they show, and Send waits for them.
+    @State private var uploading = 0
+    @State private var adding = false
+    @State private var pickingPhotos = false
+    @State private var pickingFiles = false
+    @State private var photos: [PhotosPickerItem] = []
     @State private var projection: Hermesh_Thread_V2_ThreadProjection?
     @State private var pickingModel = false
     /// Whether the conversation shows its end, so it follows what comes (as a session's, SessionView).
@@ -362,36 +372,136 @@ struct ThreadPage: View {
 
     // MARK: The box and the line under it
 
-    /// Her's box: the text, and Send (Stop beside it while a turn runs).
+    /// Her's box: what is attached, the plus (photos and files), the text, and Send (Stop beside it while a turn runs).
     private var box: some View {
-        let ready = !sending && !needsUpdate && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return HStack(alignment: .bottom, spacing: 8) {
-            TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
-                      text: $draft, axis: .vertical)
-                .lineLimit(1 ... 6)
-                .focused($focused)
-                .padding(.vertical, 8).padding(.leading, 10)
-                .accessibilityIdentifier("thread-composer")
-            if running {
-                Button { stop() } label: {
-                    Image(systemName: "stop.fill").font(.footnote).frame(width: 36, height: 36).background(Palette.fill2, in: .circle)
+        let ready = !sending && !needsUpdate && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
+        return VStack(alignment: .leading, spacing: 6) {
+            if !attached.isEmpty || uploading > 0 {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(attached) { a in
+                            if let picture = a.picture {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Button { attached.removeAll { $0.id == a.id } } label: {
+                                        Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
+                                    }
+                                    .padding(3)
+                                    .accessibilityLabel(Text("Remove \(a.ref.name)"))
+                                }
+                            } else {
+                                HerChip(name: a.ref.name) { attached.removeAll { $0.id == a.id } }
+                            }
+                        }
+                        ForEach(0 ..< uploading, id: \.self) { _ in
+                            ProgressView().frame(width: 56, height: 56)
+                                .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .accessibilityIdentifier("thread-attach-loading")
+                        }
+                    }
+                    .padding(.horizontal, 6).padding(.top, 6)
+                }
+                .scrollIndicators(.hidden)
+                .accessibilityIdentifier("thread-attached")
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                // As Her's plus, without Connectors: a session's agent brings its own tools.
+                Button { adding = true } label: {
+                    Image(systemName: "plus").font(.body.weight(.medium)).frame(width: 36, height: 36)
+                        .background(Palette.fill2, in: .circle)
                 }
                 .tint(.primary)
-                .accessibilityLabel(Text("Stop"))
-                .accessibilityIdentifier("thread-stop")
+                .accessibilityLabel(Text("Add Photos or Files"))
+                .accessibilityIdentifier("thread-attach")
+                .disabled(model.isDemo)
+                .popover(isPresented: $adding, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button { add(photos: true) } label: { Label("Photos", systemImage: "photo.on.rectangle").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect) }
+                        Button { add(photos: false) } label: { Label("Files", systemImage: "folder").frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12).contentShape(.rect) }
+                    }
+                    .buttonStyle(.plain)
+                    .frame(width: 200)
+                    .padding(.vertical, 6)
+                    .presentationCompactAdaptation(.popover)
+                }
+                TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
+                          text: $draft, axis: .vertical)
+                    .lineLimit(1 ... 6)
+                    .focused($focused)
+                    .padding(.vertical, 8)
+                    .accessibilityIdentifier("thread-composer")
+                if running {
+                    Button { stop() } label: {
+                        Image(systemName: "stop.fill").font(.footnote).frame(width: 36, height: 36).background(Palette.fill2, in: .circle)
+                    }
+                    .tint(.primary)
+                    .accessibilityLabel(Text("Stop"))
+                    .accessibilityIdentifier("thread-stop")
+                }
+                Button { send() } label: {
+                    Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 36, height: 36)
+                        .foregroundStyle(.white)
+                        .background(Color("AccentColor").opacity(ready ? 1 : 0.4), in: .circle)
+                }
+                .disabled(!ready)
+                .accessibilityLabel(Text(online ? "Send" : "Queue Until It’s Online"))
+                .accessibilityIdentifier("thread-send")
             }
-            Button { send() } label: {
-                Image(systemName: "arrow.up").font(.body.weight(.semibold)).frame(width: 36, height: 36)
-                    .foregroundStyle(.white)
-                    .background(Color("AccentColor").opacity(ready ? 1 : 0.4), in: .circle)
-            }
-            .disabled(!ready)
-            .accessibilityLabel(Text(online ? "Send" : "Queue Until It’s Online"))
-            .accessibilityIdentifier("thread-send")
         }
         .padding(6)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 12)
+        .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
+        .onChange(of: photos) {
+            let picked = photos
+            guard !picked.isEmpty else { return }
+            photos = []
+            uploading += picked.count
+            Task {
+                for item in picked {
+                    if let data = try? await item.loadTransferable(type: Data.self), let jpeg = HerComposer.jpeg(data) {
+                        await upload(name: String(localized: "Photo") + ".jpg", mime: "image/jpeg", data: jpeg, picture: UIImage(data: jpeg))
+                    }
+                    uploading -= 1
+                }
+            }
+        }
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            uploading += urls.count
+            Task {
+                for url in urls {
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    let data = try? Data(contentsOf: url)
+                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    if let data {
+                        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: nil)
+                    } else {
+                        model.show(String(localized: "Couldn’t read \(url.lastPathComponent)"))
+                    }
+                    uploading -= 1
+                }
+            }
+        }
+    }
+
+    /// Closes the popover, then opens a picker once it has gone (one presentation at a time), as Her's.
+    private func add(photos: Bool) {
+        adding = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            if photos { pickingPhotos = true } else { pickingFiles = true }
+        }
+    }
+
+    private func upload(name: String, mime: String, data: Data, picture: UIImage?) async {
+        guard let live = model.api?.live else { return }
+        do {
+            let ref = try await live.uploadThreadBlob(machineID: machineID, name: name, mimeType: mime, data: data).attachment
+            if !attached.contains(where: { $0.id == ref.blobSha256 }) { attached.append(Attached(ref: ref, picture: picture)) }
+        } catch { model.report(error) }
     }
 
     private var modelTitle: String {
@@ -581,7 +691,8 @@ struct ThreadPage: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let live = model.api?.live else { return }
+        guard !text.isEmpty || !attached.isEmpty, let live = model.api?.live else { return }
+        let files = attached
         if isNew {
             sending = true
             Task {
@@ -591,6 +702,7 @@ struct ThreadPage: View {
                 r.machineID = machineID
                 r.projectID = projectID
                 r.initialPrompt = text
+                r.attachments = files.map(\.ref)
                 if !selection.instanceID.isEmpty { r.modelSelection = selection }
                 r.runtimeMode = clamped
                 r.interactionMode = plan ? .plan : .code
@@ -599,16 +711,19 @@ struct ThreadPage: View {
                     let res = try await live.launchThread(r)
                     ThreadChoices.remember(machine: machineID, project: projectID, selection: selection, mode: clamped)
                     draft = ""
+                    attached = []
                     model.open(.thread(res.thread.threadID))
                 } catch { model.report(error) }
             }
             return
         }
         draft = ""
+        attached = []
         var r = Hermesh_Thread_V2_DispatchMessageRequest()
         r.commandID = UUID().uuidString
         r.threadID = threadID
         r.text = text
+        r.attachments = files.map(\.ref)
         // After whatever runs, and at once when nothing does: hermeshd decides (§4.5).
         r.intent = .queue
         if !selection.instanceID.isEmpty { r.modelSelection = selection }
@@ -620,6 +735,7 @@ struct ThreadPage: View {
             do { _ = try await live.dispatchThreadMessage(r) } catch {
                 model.report(error)
                 if draft.isEmpty { draft = text }
+                if attached.isEmpty { attached = files }
             }
         }
     }
@@ -652,6 +768,13 @@ struct ThreadPage: View {
         r.operation = op
         Task { do { _ = try await model.api?.live?.manageThreadQueue(r) } catch { model.report(error) } }
     }
+}
+
+/// A photo or file attached to the next message: hermeshd's reference to it, and the photo itself to show.
+private struct Attached: Identifiable {
+    let ref: Hermesh_Thread_V2_AttachmentRef
+    let picture: UIImage?
+    var id: String { ref.blobSha256 }
 }
 
 /// The model: one sheet, nothing nested (docs/thread-composer.md §4.4). A search over every provider; the

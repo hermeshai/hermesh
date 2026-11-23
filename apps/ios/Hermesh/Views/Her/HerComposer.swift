@@ -218,7 +218,7 @@ struct HerComposer: View {
     }
 
     /// A photo as a model reads it: JPEG, at most 2048 points on its longer side.
-    private static func jpeg(_ data: Data) -> Data? {
+    static func jpeg(_ data: Data) -> Data? {
         guard let image = UIImage(data: data) else { return nil }
         let scale = min(1, 2048 / max(image.size.width, image.size.height))
         let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
