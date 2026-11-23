@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { create } from "@bufbuild/protobuf";
+import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { FailureKind } from "@hermesh/proto/session";
 import {
@@ -15,13 +15,12 @@ import {
   TurnItemKind,
   TurnItemSchema,
   UserInputPayloadSchema,
-  type TurnItem,
 } from "@hermesh/proto/thread";
 import { groupSteps, replyEnds, stepSummary } from "./steps";
 import { threadFailure, threadLiveReplies, threadQuestion, threadTranscript } from "./threadtranscript";
 
 const at = new Date("2026-11-23T10:00:00Z");
-const item = (seq: number, runId: string, kind: TurnItemKind, more: Partial<TurnItem> = {}) =>
+const item = (seq: number, runId: string, kind: TurnItemKind, more: MessageInitShape<typeof TurnItemSchema> = {}) =>
   create(TurnItemSchema, { itemId: `i${seq}`, runId, seq: BigInt(seq), kind, status: "completed", ...more });
 
 describe("a thread drawn as a session's conversation", () => {
@@ -36,7 +35,7 @@ describe("a thread drawn as a session's conversation", () => {
       item(2, "r1", TurnItemKind.REASONING, { text: "thinking" }),
       item(3, "r1", TurnItemKind.COMMAND_EXECUTION, { toolName: "Bash", command: "ls", output: "a\nb" }),
       item(4, "r1", TurnItemKind.COMMAND_EXECUTION, { command: "false", exitCode: 1, status: "failed" }),
-      item(5, "r1", TurnItemKind.TOOL_CALL, { toolName: "Read" }),
+      item(5, "r1", TurnItemKind.TOOL_CALL, { toolName: "Read", filePath: "README.md", status: "running" }),
       item(6, "r1", TurnItemKind.FILE_CHANGE, { filePath: "a.txt", diff: "+x" }),
       item(7, "r1", TurnItemKind.CHECKPOINT, { checkpointId: "c1" }),
       item(8, "r1", TurnItemKind.ASSISTANT_MESSAGE, { text: "done" }),
@@ -62,6 +61,8 @@ describe("a thread drawn as a session's conversation", () => {
     expect(tools.calls[0].call.summary).toBe("ls");
     expect(tools.calls[0].result?.summary).toBe("a\nb");
     expect(tools.calls[1].result?.isError).toBe(true);
+    expect(tools.calls[2].call.summary).toBe("README.md");
+    expect(tools.calls[2].running).toBe(false);
     expect(tools.calls[3].call.summary).toBe("a.txt");
     expect(tools.calls[3].result?.summary).toBe("+x");
     expect(stepSummary(tools.calls)).not.toBe("");

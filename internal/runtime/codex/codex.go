@@ -176,7 +176,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		"sandbox":        sandbox,
 		"approvalPolicy": approval,
 	}
-	applySelectionParams(params, spec.Selection)
+	applyThreadSelectionParams(params, spec.Selection)
 
 	method := "thread/start"
 	if spec.ResumeCursor != "" {
@@ -185,6 +185,20 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		_, _ = s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeCursor})
 	}
 	raw, err := s.call(ctx, method, params)
+	if err != nil && method == "thread/resume" && strings.Contains(strings.ToLower(err.Error()), "active writer") {
+		for attempt := 0; attempt < 3 && err != nil; attempt++ {
+			select {
+			case <-ctx.Done():
+				proc.Stop(time.Second)
+				return nil, ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+			}
+			raw, err = s.call(ctx, "thread/resume", params)
+		}
+		if err != nil && strings.Contains(strings.ToLower(err.Error()), "active writer") {
+			raw, err = s.call(ctx, "thread/fork", params)
+		}
+	}
 	if err != nil {
 		proc.Stop(time.Second)
 		return nil, fmt.Errorf("codex %s: %w", method, err)
@@ -208,7 +222,26 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	return s, nil
 }
 
-func applySelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
+func applyThreadSelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
+	if sel == nil {
+		return
+	}
+	if sel.Model != "" && sel.Model != "default" {
+		params["model"] = sel.Model
+	}
+	if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
+		params["config"] = map[string]any{"model_reasoning_effort": eff}
+	}
+	if opt, ok := sel.Options["fastMode"]; ok {
+		if opt.GetBoolValue() {
+			params["serviceTier"] = "fast"
+		} else {
+			params["serviceTier"] = nil
+		}
+	}
+}
+
+func applyTurnSelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
 	if sel == nil {
 		return
 	}
@@ -218,8 +251,12 @@ func applySelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
 	if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
 		params["effort"] = eff
 	}
-	if sel.Options["fastMode"].GetBoolValue() {
-		params["serviceTier"] = "fast"
+	if opt, ok := sel.Options["fastMode"]; ok {
+		if opt.GetBoolValue() {
+			params["serviceTier"] = "fast"
+		} else {
+			params["serviceTier"] = nil
+		}
 	}
 }
 
@@ -238,11 +275,16 @@ type session struct {
 	itemSeq       atomic.Uint64
 	closeOnce     sync.Once
 
+	emitMu       sync.RWMutex
+	eventsClosed bool
+
 	mu              sync.Mutex
 	pending         map[int64]chan rpcRes
 	turnCtx         context.Context
 	turnID          string
 	msgItemID       string
+	msgUsed         bool
+	lastTurnErr     string
 	selection       *threadv2.ModelSelection
 	effectiveMode   identityv1.RuntimeMode
 	interactionMode threadv2.InteractionMode
@@ -319,6 +361,8 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	sel := s.selection
 	rm, im := s.effectiveMode, s.interactionMode
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+	s.msgUsed = false
+	s.lastTurnErr = ""
 	s.mu.Unlock()
 
 	sandbox, approval := mapSandboxAndPolicy(rm, im)
@@ -328,7 +372,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 		"sandbox":        sandbox,
 		"approvalPolicy": approval,
 	}
-	applySelectionParams(params, sel)
+	applyTurnSelectionParams(params, sel)
 
 	res, err := s.call(ctx, "turn/start", params)
 	if err != nil {
@@ -404,16 +448,30 @@ func (s *session) Close() error {
 }
 
 func (s *session) emit(ev runtime.Event) {
+	s.emitMu.RLock()
+	defer s.emitMu.RUnlock()
+	if s.eventsClosed {
+		return
+	}
 	select {
 	case s.events <- ev:
 	case <-s.proc.Done():
 	}
 }
 
+func (s *session) closeEvents() {
+	s.emitMu.Lock()
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
+	}
+	s.emitMu.Unlock()
+}
+
 func (s *session) readLoop() {
 	defer func() {
 		s.alive.Store(false)
-		close(s.events)
+		s.closeEvents()
 	}()
 	_ = s.proc.Lines(func(raw []byte) {
 		var m struct {
@@ -610,26 +668,56 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 
 	case "item/agentMessage/delta":
 		var p struct {
-			Delta string `json:"delta"`
+			ItemID string `json:"itemId"`
+			Delta  string `json:"delta"`
 		}
 		if json.Unmarshal(params, &p) == nil && p.Delta != "" {
-			s.mu.Lock()
-			msgID := s.msgItemID
-			s.mu.Unlock()
+			msgID := p.ItemID
+			if msgID == "" {
+				s.mu.Lock()
+				msgID = s.msgItemID
+				s.msgUsed = true
+				s.mu.Unlock()
+			}
 			s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: p.Delta})
+		}
+
+	case "item/reasoning/summaryTextDelta", "item/reasoning/textDelta":
+		var p struct {
+			ItemID string `json:"itemId"`
+			Delta  string `json:"delta"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.Delta != "" {
+			rsnID := p.ItemID
+			if rsnID == "" {
+				s.mu.Lock()
+				rsnID = s.msgItemID
+				s.mu.Unlock()
+			}
+			if !strings.HasPrefix(rsnID, "rsn_") {
+				rsnID = "rsn_" + rsnID
+			}
+			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: rsnID, Text: p.Delta})
 		}
 
 	case "item/started", "item/completed":
 		var p struct {
 			Item struct {
-				ID               string `json:"id"`
-				Type             string `json:"type"`
-				Text             string `json:"text"`
-				Command          string `json:"command"`
-				Status           string `json:"status"`
-				ExitCode         *int   `json:"exitCode"`
-				AggregatedOutput string `json:"aggregatedOutput"`
-				Changes          []struct {
+				ID               string          `json:"id"`
+				Type             string          `json:"type"`
+				Text             string          `json:"text"`
+				Command          string          `json:"command"`
+				Server           string          `json:"server"`
+				Tool             string          `json:"tool"`
+				Query            string          `json:"query"`
+				Status           string          `json:"status"`
+				ExitCode         *int            `json:"exitCode"`
+				AggregatedOutput string          `json:"aggregatedOutput"`
+				Result           json.RawMessage `json:"result"`
+				Error            *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+				Changes []struct {
 					Path string `json:"path"`
 				} `json:"changes"`
 			} `json:"item"`
@@ -641,28 +729,81 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		switch p.Item.Type {
 		case "agentMessage":
 			if done && strings.TrimSpace(p.Item.Text) != "" {
+				msgID := p.Item.ID
 				s.mu.Lock()
-				msgID := s.msgItemID
+				if msgID == "" {
+					msgID = s.msgItemID
+				}
+				s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+				s.msgUsed = false
 				s.mu.Unlock()
 				s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: msgID, Text: p.Item.Text})
 			}
 		case "commandExecution":
+			s.advanceFallbackMsgID()
 			if !done {
 				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command})
 			} else {
 				exit := int32(0)
 				if p.Item.ExitCode != nil {
 					exit = int32(*p.Item.ExitCode)
+				} else if p.Item.Status == "failed" {
+					exit = 1
 				}
 				kept, _ := provider.KeepOutput(p.Item.AggregatedOutput)
 				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command, ExitCode: exit, Output: kept})
 			}
+		case "mcpToolCall":
+			s.advanceFallbackMsgID()
+			name := p.Item.Tool
+			if p.Item.Server != "" && p.Item.Tool != "" {
+				name = "mcp__" + p.Item.Server + "__" + p.Item.Tool
+			}
+			if !done {
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: name})
+			} else {
+				exit := int32(0)
+				out := string(bytes.TrimSpace(p.Item.Result))
+				if p.Item.Error != nil && p.Item.Error.Message != "" {
+					exit = 1
+					out = p.Item.Error.Message
+				} else if p.Item.Status == "failed" {
+					exit = 1
+				}
+				kept, _ := provider.KeepOutput(out)
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: name, ExitCode: exit, Output: kept})
+			}
+		case "webSearch":
+			s.advanceFallbackMsgID()
+			if !done {
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "WebSearch", FilePath: p.Item.Query})
+			} else {
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "WebSearch", FilePath: p.Item.Query})
+			}
 		case "fileChange":
+			s.advanceFallbackMsgID()
 			if done {
 				for _, ch := range p.Item.Changes {
 					s.emit(runtime.Event{Kind: runtime.EventFileChanged, ItemID: p.Item.ID + "_" + ch.Path, FilePath: ch.Path})
 				}
 			}
+		case "plan":
+			if done && strings.TrimSpace(p.Item.Text) != "" {
+				s.emit(runtime.Event{Kind: runtime.EventPlanProposed, ItemID: p.Item.ID, PlanTitle: "Implementation Plan", Text: p.Item.Text})
+			}
+		}
+
+	case "error":
+		var p struct {
+			WillRetry bool `json:"willRetry"`
+			Error     struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(params, &p) == nil && !p.WillRetry && p.Error.Message != "" {
+			s.mu.Lock()
+			s.lastTurnErr = p.Error.Message
+			s.mu.Unlock()
 		}
 
 	case "thread/tokenUsage/updated":
@@ -700,6 +841,8 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		_ = json.Unmarshal(params, &p)
 		s.mu.Lock()
 		s.turnID = ""
+		lastErr := s.lastTurnErr
+		s.lastTurnErr = ""
 		s.mu.Unlock()
 		switch p.Turn.Status {
 		case "completed", "":
@@ -710,8 +853,19 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			msg := "codex turn " + p.Turn.Status
 			if p.Turn.Error != nil && p.Turn.Error.Message != "" {
 				msg = p.Turn.Error.Message
+			} else if lastErr != "" {
+				msg = lastErr
 			}
 			s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: p.Turn.Status, ErrorMessage: msg})
 		}
 	}
+}
+
+func (s *session) advanceFallbackMsgID() {
+	s.mu.Lock()
+	if s.msgUsed {
+		s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+		s.msgUsed = false
+	}
+	s.mu.Unlock()
 }

@@ -1231,10 +1231,16 @@ func (s *ownerThreadService) DownloadBlob(ctx context.Context, req *threadv2.Dow
 	if err == nil {
 		return &threadv2.DownloadBlobResponse{Data: data, Name: name, MimeType: mime}, nil
 	}
+	if req.MachineId != "" {
+		if pm, dErr := o.dialRemoteThreadMachine(ctx, req.MachineId); dErr == nil {
+			if resp, rErr := pm.Thread.DownloadBlob(ctx, req); rErr == nil {
+				return resp, nil
+			}
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("blob not found"))
 	}
-	_ = ctx
 	return nil, err
 }
 
