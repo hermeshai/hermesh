@@ -26,6 +26,10 @@ func TestListFolders(t *testing.T) {
 	write("code/app/.git/refs/heads/main", "0\n")
 	write("code/app/.git/refs/heads/feat/x", "0\n")
 	write("code/app/.git/packed-refs", "# pack-refs with: peeled\n0 refs/heads/old\n0 refs/tags/v1\n0 refs/remotes/origin/main\n")
+	// Its default branch as origin says, and a branch another worktree has (a session's).
+	write("code/app/.git/refs/remotes/origin/HEAD", "ref: refs/remotes/origin/main\n")
+	write("code/app/.git/worktrees/th_1/HEAD", "ref: refs/heads/old\n")
+	write("code/app/.git/worktrees/th_2/HEAD", "0123456789012345678901234567890123456789\n")
 	write("code/app/main.go", "package main\n")
 	write("code/Notes/a.md", "")
 	write("code/.cache/x", "")
@@ -68,6 +72,17 @@ func TestListFolders(t *testing.T) {
 	real, _ := filepath.EvalSymlinks(filepath.Join(home, "code", "app"))
 	if repo.Path != "~/code/app" || repo.FullPath != real || !repo.Repo || repo.Branch != "feat/x" || !slices.Equal(repo.Branches, []string{"feat/x", "main", "old"}) || repo.Files != 1 {
 		t.Fatalf("repo %+v", repo)
+	}
+	// Which is the default, and which another worktree has checked out (a detached one has none).
+	if repo.DefaultBranch != "main" || !slices.Equal(repo.WorktreeBranches, []string{"old"}) {
+		t.Fatalf("default %q, in worktrees %v", repo.DefaultBranch, repo.WorktreeBranches)
+	}
+	// Without origin/HEAD: main or master, when there is one.
+	if got := repoDefaultBranch(t.TempDir(), []string{"dev", "master"}); got != "master" {
+		t.Fatalf("default without origin: %q", got)
+	}
+	if got := repoDefaultBranch(t.TempDir(), []string{"dev"}); got != "" {
+		t.Fatalf("no default: %q", got)
 	}
 
 	top, err := ListFolders("", false)

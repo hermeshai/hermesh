@@ -35,9 +35,8 @@ import {
   threadFailure,
   threadLiveReplies,
   threadTranscript,
-  toggleInteractionMode,
 } from "@hermesh/core";
-import { threads as threadApi } from "../api";
+import { local, threads as threadApi } from "../api";
 import { Icon } from "../icons";
 import { layoutOf, setCard } from "../layout";
 import { keys, ownKeys } from "../platform";
@@ -48,10 +47,21 @@ import { Inspector } from "../session/Inspector";
 import { ContentScope } from "../session/scope";
 import "../session/markdown/markdown.css";
 import "../session/session.css";
-import { ComposerOptions, LaunchAsk, ThreadComposer } from "./Composer";
+import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./Composer";
 import { ThreadRequest } from "./Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./choices";
 import "./thread.css";
+
+/**
+ * The workspace a new session asks for (docs/thread-composer.md §16): a worktree from its base (the default branch
+ * unless another was chosen; from origin when asked), or the project's own folder, switched first when another branch
+ * was chosen there. The temporary workspace has none to choose.
+ */
+function workspaceFor(place: Place | undefined, branches: Branches | undefined) {
+  if (!place) return { mode: Workspace.IN_PLACE };
+  if (place.worktree) return { mode: Workspace.WORKTREE, baseRef: place.base || branches?.default || "", fromRemote: place.fromRemote };
+  return { mode: Workspace.IN_PLACE, branch: place.on && place.on !== branches?.current ? place.on : "" };
+}
 
 // A session started here (a v2 thread): the conversation, its info cards and the
 // box under it, as a session's page (SessionPage.tsx) has them; a new one, the box
@@ -89,7 +99,9 @@ export function ThreadPage() {
   // A new session's where: as the entry asked (a project group's ＋), else as last time (choices.ts).
   const [machineId, setMachineId] = useState<string>("");
   const [projectId, setProjectId] = useState<string>(SCRATCH_PROJECT);
-  const [worktree, setWorktree] = useState<boolean>(true);
+  // Where it works and on which branch (§16): only this session's, never remembered.
+  const [place, setPlace] = useState<Place>({ worktree: true, base: "", on: "", fromRemote: false });
+  const [branches, setBranches] = useState<Branches | undefined>();
 
   // Composer controls
   const [modelSel, setModelSel] = useState<ModelSelection>(() =>
@@ -130,7 +142,7 @@ export function ThreadPage() {
   const pickProject = (mid: string, pid: string) => {
     setProjectId(pid);
     const pr = projectsOn(mid).list.find((p) => p.projectId === pid);
-    setWorktree(pr?.workspace === Workspace.WORKTREE);
+    setPlace({ worktree: pr?.workspace === Workspace.WORKTREE, base: "", on: "", fromRemote: false });
   };
   const pickMachine = (mid: string) => {
     setMachineId(mid);
@@ -143,6 +155,26 @@ export function ThreadPage() {
   const machineOnline = targetMachine ? targetMachine.online || targetMachine.local : true;
   // A machine from before threads (its status says so) can't take a new session: said, not hidden (§5.2).
   const needsUpdate = !activeThreadId && !!targetMachine?.status && !targetMachine.status.threads;
+
+  // A new session's project's branches, read from its folder on the machine (only the owner's devices can): read
+  // again as the page opens or the project changes, since a branch switched on the machine isn't sent here.
+  const projectPath = !activeThreadId ? projectsOn(effectiveMachineId).list.find((p) => p.projectId === effectiveProjectId && p.repo)?.path : undefined;
+  useEffect(() => {
+    setBranches(undefined);
+    if (!projectPath || !machineOnline) return;
+    let cancelled = false;
+    local
+      .listMachineFolders({ machineId: effectiveMachineId, path: projectPath })
+      .then((res) => {
+        if (cancelled || !res.repo) return;
+        setBranches({ current: res.branch, default: res.defaultBranch, all: res.branches, inWorktrees: res.worktreeBranches });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveMachineId, projectPath, machineOnline, sel.kind]);
 
   // The model a new session takes on a machine: the one used there last, while it is still offered.
 
@@ -231,17 +263,10 @@ export function ThreadPage() {
   const pendingReq = useMemo(() => pendingRequestOf(projection), [projection]);
   const running = isThreadActive(currentThread);
 
-  // Keyboard shortcuts: Shift+Tab toggles Plan/Code, Shift+Cmd/Ctrl+E cycles reasoning!
+  // Shift+Cmd/Ctrl+E cycles how hard it thinks.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Tab" && e.shiftKey) {
-        e.preventDefault();
-        const next = toggleInteractionMode(interactionMode);
-        setInteractionMode(next);
-        if (activeThreadId) {
-          threadApi.updateThreadConfig({ threadId: activeThreadId, interactionMode: next }).catch(() => {});
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "e") {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "e") {
         e.preventDefault();
         setModelSel((prev) => {
           const next = cycleReasoningSelection(providers, prev);
@@ -254,7 +279,7 @@ export function ThreadPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [interactionMode, providers, activeThreadId]);
+  }, [providers, activeThreadId]);
 
   const applyConfigUpdate = async (patch: {
     sel?: ModelSelection;
@@ -325,9 +350,7 @@ export function ThreadPage() {
         modelSelection: modelSel.instanceId ? modelSel : undefined,
         runtimeMode: clampedMode,
         interactionMode,
-        workspace: create(WorkspaceStrategySchema, {
-          mode: projectId !== SCRATCH_PROJECT && worktree ? Workspace.WORKTREE : Workspace.IN_PLACE,
-        }),
+        workspace: create(WorkspaceStrategySchema, workspaceFor(projectId === SCRATCH_PROJECT ? undefined : place, branches)),
         initialPrompt: text,
         attachments,
       });
@@ -399,26 +422,29 @@ export function ThreadPage() {
     </div>
   );
 
-  // What runs where and with what, under the box (Composer.tsx): a new session's to choose; a session's
-  // machine and project fixed, its model and mode for the next turn.
+  // What runs where and with what (Composer.tsx): the model and how hard it thinks in the box; a new session's
+  // working copy and branch over it (for a repository).
   const projectsHere = [...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list];
-  const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree, sel: modelSel, mode: clampedMode, plan: interactionMode === InteractionMode.PLAN };
-  const options = (fixed: boolean) => (
-    <ComposerOptions
-      fixed={fixed}
-      machines={st.machines}
-      projects={projectsHere}
-      providersStale={providersStale}
-      choice={choice}
+  const project = projectsHere.find((p) => p.machineId === effectiveMachineId && p.projectId === effectiveProjectId);
+  const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree: place.worktree, sel: modelSel, mode: clampedMode, plan: false };
+  const modelButtons = (
+    <ModelButtons
       providers={providers}
-      maxCeiling={maxCeiling}
-      onWorktree={setWorktree}
+      sel={modelSel}
+      stale={providersStale}
+      machineName={targetMachine?.machineName ?? effectiveMachineId}
+      projectAgents={project?.agents ?? []}
       onModel={(next) => applyConfigUpdate({ sel: next })}
-      onMode={(rm) => applyConfigUpdate({ rm })}
-      onPlan={(on) => applyConfigUpdate({ im: on ? InteractionMode.PLAN : InteractionMode.CODE })}
       onNotice={(text) => st.show(text)}
     />
   );
+  const composerProps = {
+    mode: clampedMode,
+    maxCeiling,
+    onMode: (rm: RuntimeMode) => applyConfigUpdate({ rm }),
+    model: modelButtons,
+  };
+  const placeRow = !activeThreadId && (project?.repo || project?.workspace === Workspace.WORKTREE) && <ComposerPlace place={place} branches={branches} onPlace={setPlace} />;
   // A new session's question in the middle of the page: the project, and the environment under it.
   const ask = (
     <LaunchAsk
@@ -435,7 +461,7 @@ export function ThreadPage() {
             machineId,
             then: (pid, wt) => {
               setProjectId(pid);
-              setWorktree(wt);
+              setPlace({ worktree: wt, base: "", on: "", fromRemote: false });
             },
           },
         })
@@ -535,6 +561,13 @@ export function ThreadPage() {
       <div className="ctool drag">
         <div className="ctitle">
           <h2 data-testid="thread-title">{activeThreadId ? currentThread?.title || "…" : t("launch.title")}</h2>
+          {/* Where it runs, fixed: the line under the box had it (§16). */}
+          {activeThreadId && currentThread && (
+            <span className="th-where" data-testid="thread-where">
+              <Icon name={targetMachine?.local ? "laptop" : "server"} />
+              {targetMachine?.machineName ?? currentThread.machineId} · {currentThread.projectId === SCRATCH_PROJECT ? t("launch.scratch") : currentThread.projectId}
+            </span>
+          )}
           {currentThread?.offlineQueued && (
             <span className="th-badge" data-testid="offline-badge">
               {t("header.offlineQueued")}
@@ -566,7 +599,9 @@ export function ThreadPage() {
                   </p>
                 )}
                 {slashRow}
+                {placeRow}
                 <ThreadComposer
+                  {...composerProps}
                   value={prompt}
                   onChange={(v) => {
                     setPrompt(v);
@@ -582,7 +617,6 @@ export function ThreadPage() {
                   offline={!machineOnline}
                   blocked={needsUpdate}
                 />
-                {options(false)}
               </div>
             </div>
           </div>
@@ -623,6 +657,7 @@ export function ThreadPage() {
                     {queueCard}
                     {slashRow}
                     <ThreadComposer
+                      {...composerProps}
                       value={prompt}
                       onChange={(v) => {
                         setPrompt(v);
@@ -638,7 +673,6 @@ export function ThreadPage() {
                       onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
                       offline={!machineOnline}
                     />
-                    {options(true)}
                   </ComposerZone>
                 )}
               />

@@ -1829,11 +1829,17 @@ func (x *ProviderInstanceConfig) GetCustomModels() []string {
 }
 
 type WorkspaceStrategy struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Mode          v1.Workspace           `protobuf:"varint,1,opt,name=mode,proto3,enum=hermesh.identity.v1.Workspace" json:"mode,omitempty"`
-	BaseRef       string                 `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
-	Branch        string                 `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
-	WorktreePath  string                 `protobuf:"bytes,4,opt,name=worktree_path,json=worktreePath,proto3" json:"worktree_path,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Mode  v1.Workspace           `protobuf:"varint,1,opt,name=mode,proto3,enum=hermesh.identity.v1.Workspace" json:"mode,omitempty"`
+	// A worktree's new branch starts here (default: the project's base ref).
+	BaseRef string `protobuf:"bytes,2,opt,name=base_ref,json=baseRef,proto3" json:"base_ref,omitempty"`
+	// A worktree's branch; in place, the branch to switch the project's folder
+	// to before the first turn (it must have no uncommitted changes).
+	Branch       string `protobuf:"bytes,3,opt,name=branch,proto3" json:"branch,omitempty"`
+	WorktreePath string `protobuf:"bytes,4,opt,name=worktree_path,json=worktreePath,proto3" json:"worktree_path,omitempty"`
+	// A worktree's base is fetched from origin first, and the branch starts
+	// from origin/<base_ref>.
+	FromRemote    bool `protobuf:"varint,5,opt,name=from_remote,json=fromRemote,proto3" json:"from_remote,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1894,6 +1900,13 @@ func (x *WorkspaceStrategy) GetWorktreePath() string {
 		return x.WorktreePath
 	}
 	return ""
+}
+
+func (x *WorkspaceStrategy) GetFromRemote() bool {
+	if x != nil {
+		return x.FromRemote
+	}
+	return false
 }
 
 type ThreadLineage struct {
@@ -6793,12 +6806,14 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\rcustom_models\x18\t \x03(\tR\fcustomModels\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9f\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc0\x01\n" +
 	"\x11WorkspaceStrategy\x122\n" +
 	"\x04mode\x18\x01 \x01(\x0e2\x1e.hermesh.identity.v1.WorkspaceR\x04mode\x12\x19\n" +
 	"\bbase_ref\x18\x02 \x01(\tR\abaseRef\x12\x16\n" +
 	"\x06branch\x18\x03 \x01(\tR\x06branch\x12#\n" +
-	"\rworktree_path\x18\x04 \x01(\tR\fworktreePath\"\xb8\x01\n" +
+	"\rworktree_path\x18\x04 \x01(\tR\fworktreePath\x12\x1f\n" +
+	"\vfrom_remote\x18\x05 \x01(\bR\n" +
+	"fromRemote\"\xb8\x01\n" +
 	"\rThreadLineage\x12(\n" +
 	"\x10parent_thread_id\x18\x01 \x01(\tR\x0eparentThreadId\x125\n" +
 	"\x17forked_from_run_ordinal\x18\x02 \x01(\rR\x14forkedFromRunOrdinal\x12\"\n" +

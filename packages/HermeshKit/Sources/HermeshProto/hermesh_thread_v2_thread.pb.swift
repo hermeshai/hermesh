@@ -1049,11 +1049,18 @@ public nonisolated struct Hermesh_Thread_V2_WorkspaceStrategy: Sendable {
 
   public var mode: Hermesh_Identity_V1_Workspace = .unspecified
 
+  /// A worktree's new branch starts here (default: the project's base ref).
   public var baseRef: String = String()
 
+  /// A worktree's branch; in place, the branch to switch the project's folder
+  /// to before the first turn (it must have no uncommitted changes).
   public var branch: String = String()
 
   public var worktreePath: String = String()
+
+  /// A worktree's base is fetched from origin first, and the branch starts
+  /// from origin/<base_ref>.
+  public var fromRemote: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2197,53 +2204,79 @@ public nonisolated struct Hermesh_Thread_V2_RemoveProviderInstanceResponse: Send
   public init() {}
 }
 
-public nonisolated struct Hermesh_Thread_V2_LaunchThreadRequest: Sendable {
+public nonisolated struct Hermesh_Thread_V2_LaunchThreadRequest: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  public var commandID: String = String()
+  public var commandID: String {
+    get {_storage._commandID}
+    set {_uniqueStorage()._commandID = newValue}
+  }
 
-  public var machineID: String = String()
+  public var machineID: String {
+    get {_storage._machineID}
+    set {_uniqueStorage()._machineID = newValue}
+  }
 
-  public var projectID: String = String()
+  public var projectID: String {
+    get {_storage._projectID}
+    set {_uniqueStorage()._projectID = newValue}
+  }
 
-  public var title: String = String()
+  public var title: String {
+    get {_storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
 
   public var modelSelection: Hermesh_Thread_V2_ModelSelection {
-    get {_modelSelection ?? Hermesh_Thread_V2_ModelSelection()}
-    set {_modelSelection = newValue}
+    get {_storage._modelSelection ?? Hermesh_Thread_V2_ModelSelection()}
+    set {_uniqueStorage()._modelSelection = newValue}
   }
   /// Returns true if `modelSelection` has been explicitly set.
-  public var hasModelSelection: Bool {self._modelSelection != nil}
+  public var hasModelSelection: Bool {_storage._modelSelection != nil}
   /// Clears the value of `modelSelection`. Subsequent reads from it will return its default value.
-  public mutating func clearModelSelection() {self._modelSelection = nil}
+  public mutating func clearModelSelection() {_uniqueStorage()._modelSelection = nil}
 
-  public var runtimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+  public var runtimeMode: Hermesh_Identity_V1_RuntimeMode {
+    get {_storage._runtimeMode}
+    set {_uniqueStorage()._runtimeMode = newValue}
+  }
 
-  public var interactionMode: Hermesh_Thread_V2_InteractionMode = .unspecified
+  public var interactionMode: Hermesh_Thread_V2_InteractionMode {
+    get {_storage._interactionMode}
+    set {_uniqueStorage()._interactionMode = newValue}
+  }
 
   public var workspace: Hermesh_Thread_V2_WorkspaceStrategy {
-    get {_workspace ?? Hermesh_Thread_V2_WorkspaceStrategy()}
-    set {_workspace = newValue}
+    get {_storage._workspace ?? Hermesh_Thread_V2_WorkspaceStrategy()}
+    set {_uniqueStorage()._workspace = newValue}
   }
   /// Returns true if `workspace` has been explicitly set.
-  public var hasWorkspace: Bool {self._workspace != nil}
+  public var hasWorkspace: Bool {_storage._workspace != nil}
   /// Clears the value of `workspace`. Subsequent reads from it will return its default value.
-  public mutating func clearWorkspace() {self._workspace = nil}
+  public mutating func clearWorkspace() {_uniqueStorage()._workspace = nil}
 
-  public var initialPrompt: String = String()
+  public var initialPrompt: String {
+    get {_storage._initialPrompt}
+    set {_uniqueStorage()._initialPrompt = newValue}
+  }
 
-  public var attachments: [Hermesh_Thread_V2_AttachmentRef] = []
+  public var attachments: [Hermesh_Thread_V2_AttachmentRef] {
+    get {_storage._attachments}
+    set {_uniqueStorage()._attachments = newValue}
+  }
 
-  public var parentThreadID: String = String()
+  public var parentThreadID: String {
+    get {_storage._parentThreadID}
+    set {_uniqueStorage()._parentThreadID = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
-  fileprivate var _modelSelection: Hermesh_Thread_V2_ModelSelection? = nil
-  fileprivate var _workspace: Hermesh_Thread_V2_WorkspaceStrategy? = nil
+  fileprivate var _storage = _StorageClass.defaultInstance
 }
 
 public nonisolated struct Hermesh_Thread_V2_LaunchThreadResponse: Sendable {
@@ -3822,7 +3855,7 @@ nonisolated extension Hermesh_Thread_V2_ProviderInstanceConfig: SwiftProtobuf.Me
 
 nonisolated extension Hermesh_Thread_V2_WorkspaceStrategy: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WorkspaceStrategy"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0\u{3}base_ref\0\u{1}branch\0\u{3}worktree_path\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0\u{3}base_ref\0\u{1}branch\0\u{3}worktree_path\0\u{3}from_remote\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -3834,6 +3867,7 @@ nonisolated extension Hermesh_Thread_V2_WorkspaceStrategy: SwiftProtobuf.Message
       case 2: try { try decoder.decodeSingularStringField(value: &self.baseRef) }()
       case 3: try { try decoder.decodeSingularStringField(value: &self.branch) }()
       case 4: try { try decoder.decodeSingularStringField(value: &self.worktreePath) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.fromRemote) }()
       default: break
       }
     }
@@ -3852,6 +3886,9 @@ nonisolated extension Hermesh_Thread_V2_WorkspaceStrategy: SwiftProtobuf.Message
     if !self.worktreePath.isEmpty {
       try visitor.visitSingularStringField(value: self.worktreePath, fieldNumber: 4)
     }
+    if self.fromRemote != false {
+      try visitor.visitSingularBoolField(value: self.fromRemote, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3860,6 +3897,7 @@ nonisolated extension Hermesh_Thread_V2_WorkspaceStrategy: SwiftProtobuf.Message
     if lhs.baseRef != rhs.baseRef {return false}
     if lhs.branch != rhs.branch {return false}
     if lhs.worktreePath != rhs.worktreePath {return false}
+    if lhs.fromRemote != rhs.fromRemote {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -5866,81 +5904,137 @@ nonisolated extension Hermesh_Thread_V2_LaunchThreadRequest: SwiftProtobuf.Messa
   public static let protoMessageName: String = _protobuf_package + ".LaunchThreadRequest"
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}initial_prompt\0\u{1}attachments\0\u{3}parent_thread_id\0")
 
+  fileprivate class _StorageClass {
+    var _commandID: String = String()
+    var _machineID: String = String()
+    var _projectID: String = String()
+    var _title: String = String()
+    var _modelSelection: Hermesh_Thread_V2_ModelSelection? = nil
+    var _runtimeMode: Hermesh_Identity_V1_RuntimeMode = .unspecified
+    var _interactionMode: Hermesh_Thread_V2_InteractionMode = .unspecified
+    var _workspace: Hermesh_Thread_V2_WorkspaceStrategy? = nil
+    var _initialPrompt: String = String()
+    var _attachments: [Hermesh_Thread_V2_AttachmentRef] = []
+    var _parentThreadID: String = String()
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _commandID = source._commandID
+      _machineID = source._machineID
+      _projectID = source._projectID
+      _title = source._title
+      _modelSelection = source._modelSelection
+      _runtimeMode = source._runtimeMode
+      _interactionMode = source._interactionMode
+      _workspace = source._workspace
+      _initialPrompt = source._initialPrompt
+      _attachments = source._attachments
+      _parentThreadID = source._parentThreadID
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularStringField(value: &self.commandID) }()
-      case 2: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
-      case 3: try { try decoder.decodeSingularStringField(value: &self.projectID) }()
-      case 4: try { try decoder.decodeSingularStringField(value: &self.title) }()
-      case 5: try { try decoder.decodeSingularMessageField(value: &self._modelSelection) }()
-      case 6: try { try decoder.decodeSingularEnumField(value: &self.runtimeMode) }()
-      case 7: try { try decoder.decodeSingularEnumField(value: &self.interactionMode) }()
-      case 8: try { try decoder.decodeSingularMessageField(value: &self._workspace) }()
-      case 9: try { try decoder.decodeSingularStringField(value: &self.initialPrompt) }()
-      case 10: try { try decoder.decodeRepeatedMessageField(value: &self.attachments) }()
-      case 11: try { try decoder.decodeSingularStringField(value: &self.parentThreadID) }()
-      default: break
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._commandID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._machineID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._projectID) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 5: try { try decoder.decodeSingularMessageField(value: &_storage._modelSelection) }()
+        case 6: try { try decoder.decodeSingularEnumField(value: &_storage._runtimeMode) }()
+        case 7: try { try decoder.decodeSingularEnumField(value: &_storage._interactionMode) }()
+        case 8: try { try decoder.decodeSingularMessageField(value: &_storage._workspace) }()
+        case 9: try { try decoder.decodeSingularStringField(value: &_storage._initialPrompt) }()
+        case 10: try { try decoder.decodeRepeatedMessageField(value: &_storage._attachments) }()
+        case 11: try { try decoder.decodeSingularStringField(value: &_storage._parentThreadID) }()
+        default: break
+        }
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    // The use of inline closures is to circumvent an issue where the compiler
-    // allocates stack space for every if/case branch local when no optimizations
-    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
-    // https://github.com/apple/swift-protobuf/issues/1182
-    if !self.commandID.isEmpty {
-      try visitor.visitSingularStringField(value: self.commandID, fieldNumber: 1)
-    }
-    if !self.machineID.isEmpty {
-      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 2)
-    }
-    if !self.projectID.isEmpty {
-      try visitor.visitSingularStringField(value: self.projectID, fieldNumber: 3)
-    }
-    if !self.title.isEmpty {
-      try visitor.visitSingularStringField(value: self.title, fieldNumber: 4)
-    }
-    try { if let v = self._modelSelection {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
-    } }()
-    if self.runtimeMode != .unspecified {
-      try visitor.visitSingularEnumField(value: self.runtimeMode, fieldNumber: 6)
-    }
-    if self.interactionMode != .unspecified {
-      try visitor.visitSingularEnumField(value: self.interactionMode, fieldNumber: 7)
-    }
-    try { if let v = self._workspace {
-      try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
-    } }()
-    if !self.initialPrompt.isEmpty {
-      try visitor.visitSingularStringField(value: self.initialPrompt, fieldNumber: 9)
-    }
-    if !self.attachments.isEmpty {
-      try visitor.visitRepeatedMessageField(value: self.attachments, fieldNumber: 10)
-    }
-    if !self.parentThreadID.isEmpty {
-      try visitor.visitSingularStringField(value: self.parentThreadID, fieldNumber: 11)
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._commandID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._commandID, fieldNumber: 1)
+      }
+      if !_storage._machineID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._machineID, fieldNumber: 2)
+      }
+      if !_storage._projectID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._projectID, fieldNumber: 3)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 4)
+      }
+      try { if let v = _storage._modelSelection {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 5)
+      } }()
+      if _storage._runtimeMode != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._runtimeMode, fieldNumber: 6)
+      }
+      if _storage._interactionMode != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._interactionMode, fieldNumber: 7)
+      }
+      try { if let v = _storage._workspace {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
+      } }()
+      if !_storage._initialPrompt.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._initialPrompt, fieldNumber: 9)
+      }
+      if !_storage._attachments.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._attachments, fieldNumber: 10)
+      }
+      if !_storage._parentThreadID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._parentThreadID, fieldNumber: 11)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Thread_V2_LaunchThreadRequest, rhs: Hermesh_Thread_V2_LaunchThreadRequest) -> Bool {
-    if lhs.commandID != rhs.commandID {return false}
-    if lhs.machineID != rhs.machineID {return false}
-    if lhs.projectID != rhs.projectID {return false}
-    if lhs.title != rhs.title {return false}
-    if lhs._modelSelection != rhs._modelSelection {return false}
-    if lhs.runtimeMode != rhs.runtimeMode {return false}
-    if lhs.interactionMode != rhs.interactionMode {return false}
-    if lhs._workspace != rhs._workspace {return false}
-    if lhs.initialPrompt != rhs.initialPrompt {return false}
-    if lhs.attachments != rhs.attachments {return false}
-    if lhs.parentThreadID != rhs.parentThreadID {return false}
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._commandID != rhs_storage._commandID {return false}
+        if _storage._machineID != rhs_storage._machineID {return false}
+        if _storage._projectID != rhs_storage._projectID {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._modelSelection != rhs_storage._modelSelection {return false}
+        if _storage._runtimeMode != rhs_storage._runtimeMode {return false}
+        if _storage._interactionMode != rhs_storage._interactionMode {return false}
+        if _storage._workspace != rhs_storage._workspace {return false}
+        if _storage._initialPrompt != rhs_storage._initialPrompt {return false}
+        if _storage._attachments != rhs_storage._attachments {return false}
+        if _storage._parentThreadID != rhs_storage._parentThreadID {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

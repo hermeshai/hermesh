@@ -49,7 +49,27 @@ extension HermeshUITests {
         XCTAssertTrue(chip("thread-project", contains: "fresh-app"), app.buttons["thread-project"].label)
         XCTAssertTrue(app.descendants(matching: .any)["thread-worktree"].waitForExistence(timeout: 10), "a repository: its own worktree offered")
 
-        // The model: one sheet. A search across providers, a provider's models, how hard it thinks.
+        // Its branch, read from the folder on work-mac: a worktree starts from the default one; the sheet lists them,
+        // the one checked out marked, and can start from the remote. In the folder itself the branch is the one it works on.
+        XCTAssertTrue(chip("thread-branch", contains: "基于"), app.buttons["thread-branch"].label)
+        tap("thread-branch")
+        XCTAssertTrue(app.navigationBars["基于分支"].waitForExistence(timeout: 10), "the base branch sheet")
+        XCTAssertTrue(app.descendants(matching: .any)["branch-remote"].firstMatch.exists, "start from the remote")
+        let checkedOut = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'branch-item-'")).firstMatch
+        XCTAssertTrue(checkedOut.waitForExistence(timeout: 10) && checkedOut.label.contains("当前"), checkedOut.label)
+        shot("composer-branches")
+        tap("branch-done")
+        tap("thread-worktree")
+        menuItem("当前目录").tap()
+        XCTAssertTrue(waitUntil(timeout: 10) { !self.app.buttons["thread-branch"].label.contains("基于") }, "in the folder: just its branch")
+        tap("thread-worktree")
+        menuItem("独立 worktree").tap()
+        XCTAssertTrue(chip("thread-branch", contains: "基于"), app.buttons["thread-branch"].label)
+
+        // The box is one line until it is tapped: then the model and how hard it thinks are along its bottom.
+        XCTAssertFalse(app.buttons["thread-model"].exists, "closed: no model")
+        openBox()
+        // The model: one sheet, the providers one under another; a search across them; choosing one closes it.
         tap("thread-model")
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 10))
@@ -57,18 +77,25 @@ extension HermeshUITests {
         search.typeText("fast")
         XCTAssertTrue(app.buttons["model-scripted-fast"].waitForExistence(timeout: 30), "found by its name")
         XCTAssertFalse(app.buttons["model-scripted-pro"].exists, "only what matches")
-        tap("model-scripted-fast")
-        let high = app.segmentedControls["thinking"].buttons["高"]
-        XCTAssertTrue(high.waitForExistence(timeout: 10), "the levels of the model chosen")
-        high.tap()
         shot("composer-model")
-        tap("model-done")
-        XCTAssertTrue(chip("thread-model", contains: "Scripted Fast 高"), app.buttons["thread-model"].label)
+        tap("model-scripted-fast")
+        XCTAssertTrue(app.buttons["model-scripted-fast"].waitForNonExistence(timeout: 10), "chosen: the sheet goes")
+        openBox()
+        XCTAssertTrue(chip("thread-model", contains: "Scripted Fast"), app.buttons["thread-model"].label)
+        // How hard it thinks: a menu of its own beside the model.
+        tap("thread-thinking")
+        menuItem("高").tap()
+        XCTAssertTrue(chip("thread-thinking", contains: "高"), app.buttons["thread-thinking"].label)
 
-        // Start it: the session's own page, on work-mac in the project.
-        send("say hello_from_work_mac")
+        // The box's plus, as Her's but without Connectors: a photo goes with the first message.
+        attachPhoto()
+
+        // Start it: the session's own page, on work-mac in the project. The agent got the photo.
+        send("say hello_from_work_mac\ninspect")
         XCTAssertTrue(reply("hello_from_work_mac").waitForExistence(timeout: 60), "the first turn's reply")
-        XCTAssertTrue(text("work-mac · fresh-app").waitForExistence(timeout: 10), "where it runs, fixed")
+        XCTAssertTrue(reply("attachments=[照片.jpg]").waitForExistence(timeout: 10), "the photo, with the first message")
+        XCTAssertFalse(app.descendants(matching: .any)["thread-attached"].exists, "sent: the box holds nothing")
+        XCTAssertTrue(text("work-mac/fresh-app").waitForExistence(timeout: 10), "where it runs, under the title")
 
         // Keep going in it.
         send("say second_turn_done")
@@ -124,7 +151,9 @@ extension HermeshUITests {
         tap("new-session-place")
         XCTAssertTrue(chip("thread-machine", contains: "work-mac"), app.buttons["thread-machine"].label)
         XCTAssertTrue(chip("thread-project", contains: "fresh-app"), app.buttons["thread-project"].label)
-        XCTAssertTrue(chip("thread-model", contains: "Scripted Fast 高"), app.buttons["thread-model"].label)
+        openBox()
+        XCTAssertTrue(chip("thread-model", contains: "Scripted Fast"), app.buttons["thread-model"].label)
+        XCTAssertTrue(chip("thread-thinking", contains: "高"), app.buttons["thread-thinking"].label)
 
         // old-mac runs a Hermesh from before threads: said so, and nothing can be sent there; marked in the menu.
         pickMachine("old-mac")
@@ -140,6 +169,42 @@ extension HermeshUITests {
         box.typeText("say hi")
         XCTAssertFalse(app.buttons["thread-send"].isEnabled, "can't be sent")
         shot("composer-needs-update")
+    }
+
+    /// Taps into the box, which opens it.
+    private func openBox() {
+        let box = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(box.waitForExistence(timeout: 10))
+        box.tap()
+        XCTAssertTrue(app.buttons["thread-model"].waitForExistence(timeout: 10), "open: the model along its bottom")
+    }
+
+    /// The plus: a sheet with Photos and Files (no Connectors) and the permission mode; the first photo in the system's
+    /// picker, shown in the box once it is uploaded.
+    private func attachPhoto() {
+        let plus = app.buttons["thread-attach"]
+        let box = app.descendants(matching: .any)["thread-composer"].firstMatch
+        XCTAssertTrue(plus.waitForExistence(timeout: 10) && box.exists)
+        tap("thread-attach")
+        XCTAssertTrue(app.buttons["thread-attach-photos"].waitForExistence(timeout: 10) && app.buttons["thread-attach-files"].exists, "photos and files")
+        XCTAssertFalse(app.buttons["连接器"].exists, "no connectors in a session's box")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'thread-mode-'")).count, 4, "the permission mode, under them")
+        XCTAssertTrue(text("智能自动").exists)
+        sleep(1) // the sheet settled, for the picture
+        shot("composer-attach-sheet")
+        tap("thread-attach-photos")
+        let photo = app.images.matching(NSPredicate(format: "label BEGINSWITH '照片'")).firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 20), "the photo picker: \(app.debugDescription)")
+        sleep(1) // the picker settled
+        press(photo) // the picker is the system's, out of the app: its photos read as not hittable
+        let add = app.buttons["Add"] // the picker's 完成
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "Done: \(app.debugDescription)")
+        press(add)
+        let attached = app.descendants(matching: .any)["thread-attached"]
+        XCTAssertTrue(attached.waitForExistence(timeout: 20), "the photo, in the box")
+        XCTAssertTrue(waitUntil(timeout: 30) { !self.app.descendants(matching: .any)["thread-attach-loading"].exists }, "uploaded")
+        XCTAssertTrue(app.buttons["移除 照片.jpg"].exists, "removable")
+        shot("composer-attached")
     }
 
     private func pickMachine(_ name: String) {

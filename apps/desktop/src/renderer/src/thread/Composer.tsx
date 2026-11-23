@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 import { Trans, useTranslation } from "react-i18next";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine, Project } from "@hermesh/proto/local";
-import { Workspace } from "@hermesh/proto/identity";
 import type { AttachmentRef, ModelSelection, ProviderInstance } from "@hermesh/proto/thread";
 import {
   ORDERED_RUNTIME_MODES,
@@ -23,13 +22,17 @@ import { MenuButton } from "../her/menus";
 import { Tile } from "../her/Composer";
 import "../her/her.css";
 
-// The new-session composer (docs/thread-composer.md §4): Her's box as it is
-// (＋, the text, Send), and under it the line of what the session runs on
-// and with: environment, project, a separate worktree, the model, and the
-// permission mode.
+// The composer (docs/thread-composer.md §16), a new session's and a
+// session's: Her's box, with what the session runs with inside it (＋ for
+// files and the permission mode, the model, how hard it thinks); over a new
+// session's box where it works and on which branch.
 
-/** The box: what is attached, the text, and Send (with Stop beside it while a turn runs). */
-export function ThreadComposer({ value, onChange, onSend, onStop, running, sending, placeholder, attachments, onAttach, onRemove, offline, blocked = false }: {
+/**
+ * The box (docs/thread-composer.md §16): one line (＋, the text, Send) until it is clicked into or typed in; then the
+ * text grows and a row along its bottom holds ＋, the model and how hard it thinks, Stop and Send. With words or
+ * files in it, it stays open.
+ */
+export function ThreadComposer({ value, onChange, onSend, onStop, running, sending, placeholder, attachments, onAttach, onRemove, offline, blocked = false, mode, maxCeiling, onMode, model }: {
   value: string;
   onChange: (v: string) => void;
   onSend: () => void;
@@ -44,10 +47,19 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   offline: boolean;
   /** Nothing can be sent there (its Hermesh needs an update). */
   blocked?: boolean;
+  /** The permission mode, chosen from ＋. */
+  mode: RuntimeMode;
+  maxCeiling: RuntimeMode;
+  onMode: (m: RuntimeMode) => void;
+  /** The model and how hard it thinks (ModelButtons). */
+  model: ReactNode;
 }) {
   const { t } = useTranslation("thread");
   const area = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
+  const [active, setActive] = useState(false);
+  const open = active || value !== "" || attachments.length > 0;
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
   // The text grows with what is written, up to ten lines, then scrolls (as Her's).
   useLayoutEffect(() => {
@@ -55,14 +67,80 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [value]);
-  useEffect(() => area.current?.focus(), []);
+  }, [value, open]);
+  // A click away from the box and its menus folds it back to one line: once the click is done, not as the button goes
+  // down, or what is over the box (a queued message's buttons) would move from under the pointer mid-click.
+  useEffect(() => {
+    if (!active) return;
+    const away = (e: MouseEvent) => {
+      const at = e.target as Element;
+      if (!box.current?.contains(at) && !at.closest?.("[role=menu]")) setActive(false);
+    };
+    document.addEventListener("click", away);
+    return () => document.removeEventListener("click", away);
+  }, [active]);
+  // Typing anywhere on the page (not in another field, no shortcut) goes into the box.
+  useEffect(() => {
+    const type = (e: globalThis.KeyboardEvent) => {
+      const el = document.activeElement;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1 || e.isComposing) return;
+      if (el && el !== document.body && (el.closest("input,textarea,select,[contenteditable],[role=menu],[role=dialog]") || el.matches("input,textarea"))) return;
+      area.current?.focus();
+    };
+    window.addEventListener("keydown", type, true);
+    return () => window.removeEventListener("keydown", type, true);
+  }, []);
   const sendTitle = running ? t("composer.queue") : offline ? t("composer.queueOffline") : t("composer.send");
+  const plus = (
+    <MenuButton
+      className="cmp-plus"
+      title={t("composer.attach")}
+      label={<Icon name="plus" />}
+    >
+      {(close) => (
+        <div className="th-modes" data-testid="composer-plus-menu">
+          <Item icon={<Icon name="doc" />} label={t("composer.addAttachment")} testId="composer-attach" onClick={() => (close(), file.current?.click())} />
+          <div className="msep" role="separator" />
+          <div className="mgh">{t("mode.title")}</div>
+          {ORDERED_RUNTIME_MODES.map((m) => {
+            const allowed = isRuntimeModeAllowed(m, maxCeiling);
+            return (
+              <Item
+                key={m}
+                checked={mode === m}
+                label={t(`mode.${modeKey(m)}`)}
+                desc={allowed ? t(`mode.${modeKey(m)}Hint`) : t("mode.ceilingMachine")}
+                disabled={!allowed}
+                testId={`runtime-mode-${m}`}
+                onClick={() => (close(), onMode(m))}
+              />
+            );
+          })}
+        </div>
+      )}
+    </MenuButton>
+  );
+  const ends = (
+    <>
+      {running && onStop && (
+        <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>
+          <Icon name="stop" />
+        </button>
+      )}
+      <button className="send" disabled={!ready} title={sendTitle} aria-label={sendTitle} data-testid="composer-submit-btn" onClick={onSend}>
+        <Icon name="arrowUp" />
+      </button>
+    </>
+  );
   return (
     <div
-      className="cmp th-cmp"
-      onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att") && (e.preventDefault(), area.current?.focus())}
+      ref={box}
+      className={`cmp th-cmp ${open ? "open" : ""}`}
+      data-testid="thread-composer"
+      onFocus={() => setActive(true)}
+      onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att,.th-bar") && (e.preventDefault(), area.current?.focus())}
     >
+      <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach(e.target.files), (e.target.value = ""))} />
       {attachments.length > 0 && (
         <div className="cmp-att">
           {attachments.map((a) => (
@@ -71,10 +149,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
         </div>
       )}
       <div className="cmp-row">
-        <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach(e.target.files), (e.target.value = ""))} />
-        <button className="cmp-plus" title={t("composer.attach")} aria-label={t("composer.attach")} onClick={() => file.current?.click()}>
-          <Icon name="plus" />
-        </button>
+        {!open && plus}
         <textarea
           ref={area}
           className="cmp-in"
@@ -91,15 +166,16 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
             if (ready) onSend();
           }}
         />
-        {running && onStop && (
-          <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>
-            <Icon name="stop" />
-          </button>
-        )}
-        <button className="send" disabled={!ready} title={sendTitle} aria-label={sendTitle} data-testid="composer-submit-btn" onClick={onSend}>
-          <Icon name="arrowUp" />
-        </button>
+        {!open && ends}
       </div>
+      {open && (
+        <div className="th-bar" data-testid="composer-bar">
+          {plus}
+          {model}
+          <span className="th-grow" />
+          {ends}
+        </div>
+      )}
     </div>
   );
 }
@@ -249,141 +325,198 @@ export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine
   );
 }
 
+const modeKey = (m: RuntimeMode) => (m === RuntimeMode.SUPERVISED ? "supervised" : m === RuntimeMode.AUTO_EDITS ? "autoEdits" : m === RuntimeMode.FULL_ACCESS ? "fullAccess" : "auto");
+
+/** A repository's branches as its folder says (ListFolders): the one checked out, the default, those other worktrees have. */
+export interface Branches {
+  current: string;
+  default: string;
+  all: string[];
+  inWorktrees: string[];
+}
+
+/** Where a new session works, over the box: its folder or a worktree of its own; and on which branch. */
+export interface Place {
+  worktree: boolean;
+  /** A worktree's base; empty: the default branch. */
+  base: string;
+  /** In the folder, the branch to work on; empty: the one checked out. */
+  on: string;
+  fromRemote: boolean;
+}
+
 /**
- * The line under the box, the same in a new session and in one: on the left where it works (a new session's
- * working copy, when its project can have its own worktree; a session's machine and project, fixed), on the right
- * the model and the mode, which in a session apply from the next turn.
+ * Over a new session's box (§16): the working copy, and the branch (a worktree's base, or the branch the folder works
+ * on). Only for a repository; the branch only once its folder was read.
  */
-export function ComposerOptions({ fixed, machines, projects, providersStale, choice, providers, maxCeiling, onWorktree, onModel, onMode, onPlan, onNotice }: {
-  /** In a session: where it runs, not to be changed. */
-  fixed: boolean;
-  machines: Machine[];
-  projects: Project[];
-  providersStale?: boolean;
-  choice: Choice;
-  providers: ProviderInstance[];
-  maxCeiling: RuntimeMode;
-  onWorktree: (on: boolean) => void;
-  onModel: (sel: ModelSelection) => void;
-  onMode: (m: RuntimeMode) => void;
-  onPlan: (on: boolean) => void;
-  onNotice: (text: string) => void;
-}) {
+export function ComposerPlace({ place, branches, onPlace }: { place: Place; branches?: Branches; onPlace: (p: Place) => void }) {
   const { t } = useTranslation("thread");
-  const machine = machines.find((m) => m.machineId === choice.machineId);
-  const machineName = machine?.machineName ?? choice.machineId;
-  const project = projects.find((p) => p.machineId === choice.machineId && p.projectId === choice.projectId);
-  const projectName = choice.projectId === SCRATCH_PROJECT ? t("launch.scratch") : choice.projectId;
-  const modeKey = (m: RuntimeMode) => (m === RuntimeMode.SUPERVISED ? "supervised" : m === RuntimeMode.AUTO_EDITS ? "autoEdits" : m === RuntimeMode.FULL_ACCESS ? "fullAccess" : "auto");
-  const inst = findProviderInstance(providers, choice.sel.instanceId);
-  const reasoning = reasoningOf(providers, choice.sel);
+  const [find, setFind] = useState("");
+  const chosen = branches ? (place.worktree ? place.base || branches.default || branches.current : place.on || branches.current) : "";
   return (
-    <div className="th-opts" data-testid="composer-options">
-      {fixed ? (
-        <span className="th-where">
-          <Icon name={machineIcon(machine)} />
-          {machineName}
-          <span>·</span>
-          {projectName}
-        </span>
-      ) : (
-        (project?.repo || project?.workspace === Workspace.WORKTREE) && (
-          <MenuButton
-            className="mb"
-            title={t("launch.workingCopy")}
-            label={
-              <>
-                <Icon name={choice.worktree ? "branch" : "folder"} />
-                <span className="lbl" data-testid="launch-worktree">{t(choice.worktree ? "launch.worktree" : "launch.checkout")}</span>
-                <Icon name="chevD" />
-              </>
-            }
-          >
-            {(close) => (
-              <>
-                <div className="mgh">{t("launch.workingCopy")}</div>
-                <Item checked={!choice.worktree} label={t("launch.checkout")} desc={t("launch.checkoutHint")} testId="worktree-off" onClick={() => (close(), onWorktree(false))} />
-                <Item checked={choice.worktree} label={t("launch.worktree")} desc={t("launch.worktreeHint")} testId="worktree-on" onClick={() => (close(), onWorktree(true))} />
-              </>
-            )}
-          </MenuButton>
-        )
-      )}
-      <span className="th-grow" />
+    <div className="th-place">
       <MenuButton
         className="mb"
-        align="right"
-        title={t("picker.model")}
+        title={t("launch.workingCopy")}
         label={
           <>
-            {inst && <AgentLogo agent={inst.instanceId} size={14} />}
-            <span className="lbl strong" data-testid="model-picker-trigger">
-              {inst ? selectionTitle(providers, choice.sel) : t("picker.model")}
-              {reasoning && <span className="th-lvl">{levelTitle(reasoning.value, reasoning.choices.find((c) => c.id === reasoning.value)?.label ?? reasoning.value)}</span>}
-            </span>
+            <Icon name={place.worktree ? "branch" : "folder"} />
+            <span className="lbl" data-testid="launch-worktree">{t(place.worktree ? "launch.worktree" : "launch.checkout")}</span>
             <Icon name="chevD" />
           </>
         }
       >
-        {() => (
+        {(close) => (
+          <>
+            <div className="mgh">{t("launch.workingCopy")}</div>
+            <Item checked={!place.worktree} icon={<Icon name="folder" />} label={t("launch.checkout")} desc={t("launch.checkoutHint")} testId="worktree-off" onClick={() => (close(), onPlace({ ...place, worktree: false }))} />
+            <Item checked={place.worktree} icon={<Icon name="branch" />} label={t("launch.worktree")} desc={t("launch.worktreeHint")} testId="worktree-on" onClick={() => (close(), onPlace({ ...place, worktree: true }))} />
+          </>
+        )}
+      </MenuButton>
+      {branches && (
+        <MenuButton
+          className="mb"
+          title={t(place.worktree ? "branch.base" : "branch.workOn")}
+          label={
+            <>
+              <Icon name="branch" />
+              <span className="lbl th-br" data-testid="branch-trigger">
+                {place.worktree ? <Trans t={t} i18nKey="branch.from" values={{ branch: (place.fromRemote ? "origin/" : "") + chosen }} components={{ b: <b /> }} /> : <b>{chosen}</b>}
+              </span>
+              <Icon name="chevD" />
+            </>
+          }
+        >
+          {(close) => {
+            const q = find.trim().toLowerCase();
+            const order = (n: string) => (n === branches.current ? 0 : n === branches.default ? 1 : 2);
+            const list = [...new Set([branches.current, ...branches.all])]
+              .filter((n) => n && !n.startsWith("hermesh/") && (!q || n.toLowerCase().includes(q)))
+              .sort((a, b) => order(a) - order(b) || a.localeCompare(b));
+            return (
+              <div className="th-branches" data-testid="branch-panel">
+                <label className="th-mfind">
+                  <Icon name="search" className="sm" />
+                  <input autoFocus value={find} placeholder={t("branch.find")} spellCheck={false} data-testid="branch-find" onChange={(e) => setFind(e.target.value)} onKeyDown={(e) => e.key === "Escape" && find && (e.stopPropagation(), setFind(""))} />
+                </label>
+                <div className="mgh">{t(place.worktree ? "branch.base" : "branch.workOn")}</div>
+                {place.worktree && (
+                  <button className="mi" role="menuitemcheckbox" aria-checked={place.fromRemote} tabIndex={-1} data-testid="branch-remote" onClick={() => onPlace({ ...place, fromRemote: !place.fromRemote })}>
+                    <span className="ck" />
+                    <span className="two">
+                      {t("branch.remote")}
+                      <span>{t("branch.remoteHint")}</span>
+                    </span>
+                    <span className={`sw th-sw ${place.fromRemote ? "on" : ""}`} />
+                  </button>
+                )}
+                {!place.worktree && chosen !== branches.current && <p className="th-brnote">{t("branch.switchNote")}</p>}
+                <div className="msep" role="separator" />
+                <div className="th-brlist">
+                  {list.map((n) => {
+                    const tags = [n === branches.current && t("branch.current"), n === branches.default && t("branch.default"), branches.inWorktrees.includes(n) && t("branch.worktree")].filter(Boolean);
+                    // In the folder, a branch another worktree has can't be checked out too.
+                    const blocked = !place.worktree && branches.inWorktrees.includes(n) && n !== branches.current;
+                    return (
+                      <Item
+                        key={n}
+                        checked={n === chosen}
+                        icon={<Icon name="branch" />}
+                        label={<span className="th-mono">{n}</span>}
+                        desc={blocked ? t("branch.inWorktree") : tags.join(" · ") || undefined}
+                        disabled={blocked}
+                        testId={`branch-item-${n}`}
+                        onClick={() => {
+                          close();
+                          setFind("");
+                          onPlace(place.worktree ? { ...place, base: n } : { ...place, on: n });
+                        }}
+                      />
+                    );
+                  })}
+                  {list.length === 0 && <div className="mempty">{t("branch.none")}</div>}
+                </div>
+              </div>
+            );
+          }}
+        </MenuButton>
+      )}
+    </div>
+  );
+}
+
+/** In the box's bottom row: the model (its provider's logo and name) and, when it has levels, how hard it thinks. */
+export function ModelButtons({ providers, sel, stale, machineName, projectAgents, onModel, onNotice }: {
+  providers: ProviderInstance[];
+  sel: ModelSelection;
+  stale?: boolean;
+  machineName: string;
+  projectAgents: string[];
+  onModel: (sel: ModelSelection) => void;
+  onNotice: (text: string) => void;
+}) {
+  const { t } = useTranslation("thread");
+  const inst = findProviderInstance(providers, sel.instanceId);
+  const reasoning = reasoningOf(providers, sel);
+  const entry = inst?.models.find((m) => m.slug === sel.model);
+  return (
+    <>
+      <MenuButton
+        className="mb th-pickbtn"
+        title={t("picker.model")}
+        label={
+          <>
+            {inst && <AgentLogo agent={inst.instanceId} size={14} />}
+            <span className="lbl strong" data-testid="model-picker-trigger">{entry ? entry.shortName || entry.name : inst ? selectionTitle(providers, sel) : t("picker.model")}</span>
+            <Icon name="chevD" />
+          </>
+        }
+      >
+        {(close) => (
           <ModelPanel
             providers={providers}
-            sel={choice.sel}
-            stale={providersStale}
+            sel={sel}
+            stale={stale}
             machineName={machineName}
-            projectAgents={project?.agents ?? []}
+            projectAgents={projectAgents}
             onSel={(next, changed) => {
+              close();
               onModel(next);
               if (changed) onNotice(t("picker.thinkingChanged", { model: selectionTitle(providers, next), from: levelTitle(changed.from, changed.from), to: levelTitle(changed.to, changed.to) }));
             }}
           />
         )}
       </MenuButton>
-      <MenuButton
-        className="mb"
-        align="right"
-        title={t("mode.title")}
-        label={
-          <>
-            <span className="lbl strong" data-testid="runtime-mode-chip">
-              {t(`mode.${modeKey(choice.mode)}`)}
-              {choice.plan && <span className="th-lvl">{t("mode.plan")}</span>}
-            </span>
-            <Icon name="chevD" />
-          </>
-        }
-      >
-        {(close) => (
-          <div className="th-modes">
-            <div className="mgh">{t("mode.title")}</div>
-            {ORDERED_RUNTIME_MODES.map((m) => {
-              const allowed = isRuntimeModeAllowed(m, maxCeiling);
-              return (
-                <Item
-                  key={m}
-                  checked={choice.mode === m}
-                  label={t(`mode.${modeKey(m)}`)}
-                  desc={allowed ? t(`mode.${modeKey(m)}Hint`) : t("mode.ceilingMachine")}
-                  disabled={!allowed}
-                  testId={`runtime-mode-${m}`}
-                  onClick={() => (close(), onMode(m))}
-                />
-              );
-            })}
-            <div className="msep" role="separator" />
-            <Item checked={choice.plan} label={t("mode.plan")} desc={t("mode.planHint")} testId="mode-plan-btn" onClick={() => (close(), onPlan(!choice.plan))} />
-          </div>
-        )}
-      </MenuButton>
-    </div>
+      {reasoning && (
+        <MenuButton
+          className="mb th-pickbtn"
+          title={t("picker.thinking")}
+          label={
+            <>
+              <Icon name="brain" />
+              <span className="lbl" data-testid="thinking-trigger">{levelTitle(reasoning.value, reasoning.choices.find((c) => c.id === reasoning.value)?.label ?? reasoning.value)}</span>
+              <Icon name="chevD" />
+            </>
+          }
+        >
+          {(close) => (
+            <div className="th-levels">
+              <div className="mgh">{t("picker.thinking")}</div>
+              {reasoning.choices.map((c) => (
+                <Item key={c.id} checked={c.id === reasoning.value} label={levelTitle(c.id, c.label)} testId={`picker-level-${c.id}`} onClick={() => (close(), onModel(withReasoning(sel, reasoning.id, c.id)))} />
+              ))}
+            </div>
+          )}
+        </MenuButton>
+      )}
+    </>
   );
 }
 
 /**
- * The model: one panel, nothing nested (docs/thread-composer.md §4.4). A
- * search over every provider; the providers, and the chosen one's models
- * beside them; how hard it thinks, along the bottom. Choosing leaves it open,
- * to set the level next.
+ * The model: one column (§16). A search over every provider; the providers that can be used one under another, a
+ * model a row; those not installed, turned off or not for this project left out. Choosing closes it.
  */
 function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel }: {
   providers: ProviderInstance[];
@@ -395,28 +528,10 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel }
 }) {
   const { t } = useTranslation("thread");
   const [query, setQuery] = useState("");
-  const [shown, setShown] = useState(sel.instanceId || providers[0]?.instanceId || "");
   const find = useRef<HTMLInputElement>(null);
   useEffect(() => find.current?.focus(), []);
-  const inst = findProviderInstance(providers, shown);
-  const reasoning = reasoningOf(providers, sel);
-  const current = findProviderInstance(providers, sel.instanceId);
-  const pick = (instanceId: string, slug: string) => {
-    const r = selectModel(providers, sel, instanceId, slug);
-    onSel(r.sel, r.changed);
-  };
-  const row = (p: ProviderInstance, slug: string, name: string, badge: string) => (
-    <Item
-      key={`${p.instanceId}/${slug}`}
-      checked={sel.instanceId === p.instanceId && sel.model === slug}
-      label={name}
-      value={badge ? <span className="th-badge-new">{t("picker.isNew")}</span> : undefined}
-      disabled={providerUnusable(p, projectAgents) !== "" && providerUnusable(p, projectAgents) !== "signedOut"}
-      testId={`picker-model-${slug}`}
-      onClick={() => pick(p.instanceId, slug)}
-    />
-  );
-  const found = findModels(providers, query);
+  const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents)));
+  const groups = query.trim() ? findModels(usable, query).map((g) => ({ inst: g.inst, models: g.models })) : usable.map((inst) => ({ inst, models: inst.models }));
   const keys = (e: KeyboardEvent) => {
     if (e.key === "Escape" && query) {
       e.stopPropagation();
@@ -430,66 +545,34 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel }
         <input ref={find} value={query} placeholder={t("picker.find")} spellCheck={false} onChange={(e) => setQuery(e.target.value)} onKeyDown={keys} />
       </label>
       {stale && <div className="th-mstale">{t("picker.lastKnown", { machine: machineName })}</div>}
-      {providers.length === 0 ? (
-        <div className="mempty">{t("picker.none", { machine: machineName })}</div>
-      ) : query.trim() ? (
-        <div className="th-mcols">
-          <div className="th-mmod wide">
-            {found.map((g) => (
-              <div key={g.inst.instanceId} role="group" aria-label={g.inst.displayName}>
-                <div className="mgh">{g.inst.displayName}</div>
-                {g.models.map((m) => row(g.inst, m.slug, m.name, m.badge))}
-              </div>
-            ))}
-            {found.length === 0 && <div className="mempty">{t("picker.noMatch")}</div>}
-          </div>
-        </div>
-      ) : (
-        <div className="th-mcols">
-          <div className="th-mprov">
-            {providers.map((p) => {
-              const why = providerUnusable(p, projectAgents);
-              return (
-                <button
-                  key={p.instanceId}
-                  className={`mi ${p.instanceId === shown ? "on" : ""}`}
-                  role="menuitem"
-                  tabIndex={-1}
-                  data-testid={`picker-provider-${p.instanceId}`}
-                  onMouseMove={(e) => e.currentTarget.focus()}
-                  onClick={() => setShown(p.instanceId)}
-                >
-                  <AgentLogo agent={p.instanceId} size={16} />
-                  <span className={why && why !== "signedOut" ? "th-dim" : ""}>{p.displayName}</span>
-                  {why && <span className="val">{t(`picker.${why}`)}</span>}
-                </button>
-              );
-            })}
-          </div>
-          <div className="th-mmod">{inst?.models.map((m) => row(inst, m.slug, m.name, m.badge))}</div>
-        </div>
-      )}
-      <div className="th-mfoot">
-        <span>{t("picker.thinking")}</span>
-        {reasoning ? (
-          <div className="seg th-lvls" role="radiogroup" aria-label={t("picker.thinking")}>
-            {reasoning.choices.map((c) => (
-              <button
-                key={c.id}
-                type="button"
-                role="radio"
-                aria-checked={c.id === reasoning.value}
-                className={c.id === reasoning.value ? "on" : ""}
-                data-testid={`picker-level-${c.id}`}
-                onClick={() => onSel(withReasoning(sel, reasoning.id, c.id))}
-              >
-                {levelTitle(c.id, c.label)}
-              </button>
-            ))}
-          </div>
+      <div className="th-mlist">
+        {usable.length === 0 ? (
+          <div className="mempty">{t("picker.none", { machine: machineName })}</div>
         ) : (
-          <span className="th-none">{t("picker.noThinking", { model: current ? selectionTitle(providers, sel) : "" })}</span>
+          groups.map((g) => (
+            <div key={g.inst.instanceId} role="group" aria-label={g.inst.displayName} data-testid={`picker-provider-${g.inst.instanceId}`}>
+              <div className="mgh th-mgh">
+                <AgentLogo agent={g.inst.instanceId} size={14} />
+                {g.inst.displayName}
+                {providerUnusable(g.inst, projectAgents) === "signedOut" && <span className="th-why">· {t("picker.signedOut")}</span>}
+              </div>
+              {g.models.map((m) => (
+                <Item
+                  key={m.slug}
+                  checked={sel.instanceId === g.inst.instanceId && sel.model === m.slug}
+                  label={m.name}
+                  value={m.badge ? <span className="th-badge-new">{t("picker.isNew")}</span> : undefined}
+                  testId={`picker-model-${m.slug}`}
+                  onClick={() => {
+                    const r = selectModel(providers, sel, g.inst.instanceId, m.slug);
+                    onSel(r.sel, r.changed);
+                  }}
+                />
+              ))}
+            </div>
+          ))
         )}
+        {usable.length > 0 && groups.length === 0 && <div className="mempty">{t("picker.noMatch")}</div>}
       </div>
     </div>
   );

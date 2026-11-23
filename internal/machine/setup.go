@@ -141,6 +141,8 @@ func ListFolders(path string, hidden bool) (*machinev1.ListFoldersResponse, erro
 	}
 	if r := repoAt(home, dir); r != nil {
 		res.Repo, res.Branch, res.Branches = true, r.Branch, repoBranches(dir)
+		res.DefaultBranch = repoDefaultBranch(dir, res.Branches)
+		res.WorktreeBranches = repoWorktreeBranches(dir)
 	}
 	for _, e := range entries {
 		isDir := e.IsDir()
@@ -207,6 +209,45 @@ func repoBranches(repo string) []string {
 	}
 	out := slices.Sorted(maps.Keys(names))
 	return out[:min(len(out), branchLimit)]
+}
+
+// repoDefaultBranch is a repository's default branch: the one origin/HEAD
+// points at, else main or master when it has one, else none. Read from
+// .git, as its branches are.
+func repoDefaultBranch(repo string, branches []string) string {
+	if b, err := os.ReadFile(filepath.Join(repo, ".git", "refs", "remotes", "origin", "HEAD")); err == nil {
+		if name, ok := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: refs/remotes/origin/"); ok && name != "" {
+			return name
+		}
+	}
+	for _, name := range []string{"main", "master"} {
+		if slices.Contains(branches, name) {
+			return name
+		}
+	}
+	return ""
+}
+
+// repoWorktreeBranches lists the branches checked out in a repository's
+// other worktrees (.git/worktrees/*/HEAD): git checks a branch out in one
+// place at a time.
+func repoWorktreeBranches(repo string) []string {
+	entries, err := os.ReadDir(filepath.Join(repo, ".git", "worktrees"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		head, err := os.ReadFile(filepath.Join(repo, ".git", "worktrees", e.Name(), "HEAD"))
+		if err != nil {
+			continue
+		}
+		if name, ok := strings.CutPrefix(strings.TrimSpace(string(head)), "ref: refs/heads/"); ok && !slices.Contains(out, name) {
+			out = append(out, name)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // testPrompt is the turn Test runs: short, no tools, one word back.

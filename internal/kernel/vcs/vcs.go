@@ -61,6 +61,42 @@ func CurrentBranch(ctx context.Context, dir string) string {
 	return ""
 }
 
+// SwitchBranch checks branch out in the project's own folder, for a session
+// that works in place on a branch other than the one checked out. Only when
+// no tracked file has uncommitted changes: they are the person's, and a
+// switch would carry them along or fail half way.
+func (m *Manager) SwitchBranch(ctx context.Context, dir, branch string) error {
+	unlock := m.lockRepo(dir)
+	defer unlock()
+	if CurrentBranch(ctx, dir) == branch {
+		return nil
+	}
+	out, err := runGit(ctx, dir, nil, "status", "--porcelain", "--untracked-files=no")
+	if err != nil {
+		return fmt.Errorf("read the status of %s: %w", dir, err)
+	}
+	if strings.TrimSpace(out) != "" {
+		return fmt.Errorf("%s has uncommitted changes; commit or stash them before switching to %s", dir, branch)
+	}
+	if _, err := runGit(ctx, dir, nil, "switch", branch); err != nil {
+		return fmt.Errorf("switch %s to %s: %w", dir, branch, err)
+	}
+	return nil
+}
+
+// FetchBase brings base up to date from origin and returns what a worktree
+// starts from then: origin/<base>. An empty or HEAD base is the branch
+// checked out.
+func FetchBase(ctx context.Context, dir, base string) (string, error) {
+	if base == "" || base == "HEAD" {
+		base = CurrentBranch(ctx, dir)
+	}
+	if _, err := runGit(ctx, dir, nil, "fetch", "origin", base); err != nil {
+		return "", fmt.Errorf("fetch %s from origin: %w", base, err)
+	}
+	return "origin/" + base, nil
+}
+
 // PrepareWorktree creates or restores an isolated git worktree for threadID.
 func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, threadID, baseRef, branch string) (worktreePath, resolvedBranch string, err error) {
 	if !IsGitRepo(ctx, repoPath) {

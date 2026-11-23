@@ -1,6 +1,136 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Couldn’t read %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 %@"
+          }
+        }
+      }
+    },
+    "Queue (%lld)" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "待执行队列（%lld）"
+          }
+        }
+      }
+    },
+    "From %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于 %@"
+          }
+        }
+      }
+    },
+    "Start from remote" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "从远程开始"
+          }
+        }
+      }
+    },
+    "Fetches the latest commits first, then branches from them" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "先取回远程的最新提交，再从它开新分支"
+          }
+        }
+      }
+    },
+    "The project folder switches to this branch before the session starts; it can’t while there are uncommitted changes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开始前会把项目目录切到这个分支；目录里有没提交的改动时不能切换。"
+          }
+        }
+      }
+    },
+    "Current" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前"
+          }
+        }
+      }
+    },
+    "Worktree" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "worktree"
+          }
+        }
+      }
+    },
+    "Checked out in another worktree" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在别的 worktree 签出"
+          }
+        }
+      }
+    },
+    "No matching branches" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的分支"
+          }
+        }
+      }
+    },
+    "Search branches" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索分支"
+          }
+        }
+      }
+    },
+    "Base branch" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "基于分支"
+          }
+        }
+      }
+    },
+    "Branch to work on" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在哪个分支上工作"
+          }
+        }
+      }
+    },
     " · %lld" : {
       "localizations" : {
         "zh-Hans" : {

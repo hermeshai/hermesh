@@ -35,36 +35,44 @@
 .th-stop{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
 .th-stop:hover{background:var(--l4)}
 .th-stop .ic{width:14px;height:14px;fill:currentColor}
-.th-opts{display:flex;align-items:center;gap:2px;min-height:32px;padding:6px 5px 0}
-.th-opts .mb{height:28px;padding:0 7px 0 8px;gap:6px}
-.th-opts .mb .lbl{max-width:220px}
-.th-lvl{margin-left:5px;color:var(--l2);font-weight:var(--font-weight-normal)}
+/* Inside the box once it opens: ＋, the model, how hard it thinks; Stop and Send at the right. */
+.th-cmp.open .cmp-in{min-height:52px;padding:6px 6px 2px}
+.th-bar{display:flex;align-items:center;gap:2px;min-width:0}
+.mb.th-pickbtn{height:28px;padding:0 8px;gap:6px;color:var(--l1)}
+.mb.th-pickbtn .ic{color:var(--l2)}
+.mb.th-pickbtn .lbl{max-width:200px}
 .th-grow{flex:1}
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
-.th-where{height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;color:var(--l3);font-size:12.5px;white-space:nowrap}
-.th-where .ic{width:14px;height:14px}
+.th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.th-where .ic{width:13px;height:13px;flex:none}
+/* Over a new session's box: where it works, and on which branch. */
+.th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 4px;margin-bottom:-4px}
+.th-place .mb{height:26px;padding:0 7px;gap:5px}
+.th-place .mb .lbl{max-width:280px}
+.th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}
+.th-br b{color:var(--l1)}
 .th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
 .th-modes{width:330px}
-/* The model panel: a search, the providers beside a provider's models, how hard it thinks along the bottom. */
-.her-menu:has(.th-mpanel){padding:0;overflow:hidden}
-.th-mpanel{width:456px;display:flex;flex-direction:column}
+/* The model panel: a search, then the providers one under another, a model a row. */
+.her-menu:has(.th-mpanel),.her-menu:has(.th-branches){padding:0;overflow:hidden}
+.th-mpanel{width:320px;display:flex;flex-direction:column}
 .th-mfind{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-bottom:.5px solid var(--sep);color:var(--l3)}
 .th-mfind input{flex:1;min-width:0;height:100%;border:0;padding:0;background:none;outline:none;color:var(--l1);font-size:13px}
 .th-mfind input::placeholder{color:var(--l3)}
-.th-mcols{display:flex;height:min(248px,40vh)}
-.th-mprov{width:170px;flex:none;padding:5px;border-right:.5px solid var(--sep);overflow-y:auto}
-.th-mprov .mi{min-height:30px;gap:8px}
-.th-mprov .mi.on{background:var(--fill2)}
-.th-mprov .mi .val{padding-left:6px;font-size:11.5px}
-.th-mmod{flex:1;min-width:0;padding:5px;overflow-y:auto}
-.th-mmod .mgh{position:static}
-.th-dim{color:var(--l3)}
+.th-mlist{max-height:min(340px,46vh);overflow-y:auto;padding:5px}
+.th-mlist .mgh.th-mgh{position:static;gap:6px}
+.th-why{color:var(--l3)}
 .th-mpanel .mi .val .th-badge-new{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:5px;background:var(--accent-bg);color:var(--accent-t)}
-.th-mfoot{display:flex;align-items:center;gap:10px;height:44px;padding:0 9px 0 14px;border-top:.5px solid var(--sep);font-size:12.5px;color:var(--l2)}
-.th-mfoot .seg{margin-left:auto}
-.th-mfoot .th-none{margin-left:auto;padding-right:5px;color:var(--l3)}
+.th-levels{min-width:170px}
+/* The branch panel: a search, starting from the remote, the branches. */
+.th-branches{width:340px;display:flex;flex-direction:column}
+.th-branches>.mgh,.th-branches>.mi,.th-branches>.th-brlist{margin:0 5px}
+.th-branches>.mgh{margin-top:4px}
+.th-brlist{max-height:min(260px,40vh);overflow-y:auto;padding-bottom:5px}
+.th-brlist .mi .ic{color:var(--l2)}
+.th-brnote{margin:2px 14px 4px;font-size:11.5px;line-height:16px;color:var(--orange)}
+.sw.th-sw{margin-left:auto;flex:none}
 /* Rows with a line under them grow, as her.css means for its menus (app.css fixes .vmenu rows at 28px). */
 .vmenu.her-menu .mi{height:auto;min-height:28px}
-.th-mprov .mi{min-height:30px}
 .th-note{margin:10px 2px 0;font-size:12.5px;color:var(--orange)}
 .th-mstale{padding:6px 13px;border-bottom:.5px solid var(--sep);font-size:11.5px;color:var(--l2)}

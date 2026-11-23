@@ -2810,9 +2810,15 @@ type ListFoldersResponse struct {
 	Branch   string   `protobuf:"bytes,5,opt,name=branch,proto3" json:"branch,omitempty"`
 	Branches []string `protobuf:"bytes,6,rep,name=branches,proto3" json:"branches,omitempty"`
 	// Its full path, links resolved, as a project made of it records it.
-	FullPath      string `protobuf:"bytes,7,opt,name=full_path,json=fullPath,proto3" json:"full_path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	FullPath string `protobuf:"bytes,7,opt,name=full_path,json=fullPath,proto3" json:"full_path,omitempty"`
+	// A repository's default branch: what origin/HEAD points at, else main or
+	// master when there is one; empty when neither tells.
+	DefaultBranch string `protobuf:"bytes,8,opt,name=default_branch,json=defaultBranch,proto3" json:"default_branch,omitempty"`
+	// The branches checked out in its other worktrees (a session's, say): one
+	// can't be checked out here too.
+	WorktreeBranches []string `protobuf:"bytes,9,rep,name=worktree_branches,json=worktreeBranches,proto3" json:"worktree_branches,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ListFoldersResponse) Reset() {
@@ -2892,6 +2898,20 @@ func (x *ListFoldersResponse) GetFullPath() string {
 		return x.FullPath
 	}
 	return ""
+}
+
+func (x *ListFoldersResponse) GetDefaultBranch() string {
+	if x != nil {
+		return x.DefaultBranch
+	}
+	return ""
+}
+
+func (x *ListFoldersResponse) GetWorktreeBranches() []string {
+	if x != nil {
+		return x.WorktreeBranches
+	}
+	return nil
 }
 
 type Folder struct {
@@ -3676,7 +3696,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"lastCommit\"@\n" +
 	"\x12ListFoldersRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
-	"\x06hidden\x18\x02 \x01(\bR\x06hidden\"\xda\x01\n" +
+	"\x06hidden\x18\x02 \x01(\bR\x06hidden\"\xae\x02\n" +
 	"\x13ListFoldersResponse\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x124\n" +
 	"\afolders\x18\x02 \x03(\v2\x1a.hermesh.machine.v1.FolderR\afolders\x12\x14\n" +
@@ -3684,7 +3704,9 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x04repo\x18\x04 \x01(\bR\x04repo\x12\x16\n" +
 	"\x06branch\x18\x05 \x01(\tR\x06branch\x12\x1a\n" +
 	"\bbranches\x18\x06 \x03(\tR\bbranches\x12\x1b\n" +
-	"\tfull_path\x18\a \x01(\tR\bfullPath\"z\n" +
+	"\tfull_path\x18\a \x01(\tR\bfullPath\x12%\n" +
+	"\x0edefault_branch\x18\b \x01(\tR\rdefaultBranch\x12+\n" +
+	"\x11worktree_branches\x18\t \x03(\tR\x10worktreeBranches\"z\n" +
 	"\x06Folder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +

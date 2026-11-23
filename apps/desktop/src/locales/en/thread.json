@@ -90,7 +90,8 @@
     "forceStop": "Force Stop",
     "placeholderIdle": "Keep going…",
     "placeholderRunning": "Say more; it goes to the next turn…",
-    "nextTurn": "Handled in the next turn"
+    "nextTurn": "Handled in the next turn",
+    "addAttachment": "Add Attachment…"
   },
   "queue": {
     "heading": "Queued Follow-ups ({{count}})",
@@ -120,5 +121,19 @@
     "secretNote": "Handed over in memory only; never written to the record or logs.",
     "secretPlaceholder": "Type it, then press Return",
     "sendSecret": "Send"
+  },
+  "branch": {
+    "base": "Base branch",
+    "workOn": "Branch to work on",
+    "from": "From <b>{{branch}}</b>",
+    "find": "Search branches",
+    "remote": "Start from remote",
+    "remoteHint": "Fetches the latest commits first, then branches from them",
+    "current": "Current",
+    "default": "Default",
+    "worktree": "Worktree",
+    "inWorktree": "Checked out in another worktree",
+    "switchNote": "The project folder switches to this branch before the session starts; it can't while there are uncommitted changes.",
+    "none": "No matching branches"
   }
 }

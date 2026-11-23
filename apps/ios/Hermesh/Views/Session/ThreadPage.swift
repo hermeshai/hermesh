@@ -1,7 +1,9 @@
 import HermeshKit
 import HermeshProto
 import HermeshSessions
+import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 // A v2 session on the iPhone (docs/thread-composer.md): a new one, where the
 // owner picks the machine, the project, the model and how far it may go, and
@@ -79,7 +81,11 @@ struct ThreadPage: View {
 
     @State private var machineID = ""
     @State private var projectID = scratchProject
-    @State private var worktree = true
+    /// Where a new session works and on which branch (§16): this session's only.
+    @State private var place = ThreadPlace()
+    /// Its project's branches as its folder says, once read.
+    @State private var branches: ThreadBranches?
+    @State private var pickingBranch = false
     @State private var selection = Hermesh_Thread_V2_ModelSelection()
     @State private var mode: Hermesh_Identity_V1_RuntimeMode = .auto
     @State private var plan = false
@@ -88,6 +94,14 @@ struct ThreadPage: View {
     @State private var ceiling: Hermesh_Identity_V1_RuntimeMode = .unspecified
     @State private var draft = ""
     @State private var sending = false
+    /// What goes with the next message: uploaded to hermeshd as it is picked (as on the Mac).
+    @State private var attached: [Attached] = []
+    /// Picked and still being read or uploaded: they show, and Send waits for them.
+    @State private var uploading = 0
+    @State private var attaching = false
+    @State private var pickingPhotos = false
+    @State private var pickingFiles = false
+    @State private var photos: [PhotosPickerItem] = []
     @State private var projection: Hermesh_Thread_V2_ThreadProjection?
     @State private var pickingModel = false
     /// Whether the conversation shows its end, so it follows what comes (as a session's, SessionView).
@@ -154,7 +168,7 @@ struct ThreadPage: View {
             // The project Add a Project just added, from this page: the new session takes it.
             guard let added = model.addedProject, added.machineID == machineID else { return }
             projectID = added.projectID
-            worktree = added.worktree
+            place = ThreadPlace(worktree: added.worktree)
             model.addedProject = nil
         }
         .sheet(isPresented: $pickingModel) {
@@ -163,6 +177,15 @@ struct ThreadPage: View {
                 model.show(String(localized: "\(modelTitle) has no “\(levelTitle(changed.from))” level; thinking is now “\(levelTitle(changed.to))”"))
             }
         }
+        .sheet(isPresented: $attaching) {
+            AttachSheet(mode: clamped, ceiling: ceiling, modeTitle: modeTitle, modeHint: modeHint, onMode: setMode) { photos in add(photos: photos) }
+        }
+        .sheet(isPresented: $pickingBranch) {
+            if let branches { BranchSheet(place: $place, branches: branches) }
+        }
+        // A new session's project's branches, read from its folder (only the owner's devices can): again as the page
+        // opens or the project changes, since a branch switched on the machine isn't sent here.
+        .task(id: "\(machineID)/\(projectID)/\(isNew)") { await loadBranches() }
     }
 
     // MARK: A new session
@@ -181,8 +204,8 @@ struct ThreadPage: View {
                             .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
                             .accessibilityIdentifier("needs-update")
                     }
+                    placeRow
                     box
-                    options
                 }
                 .padding(.bottom, 4)
             }
@@ -284,8 +307,8 @@ struct ThreadPage: View {
                 VStack(spacing: 6) {
                     if let req = pendingRequest(of: projection) { requestPanel(req, s) }
                     queue
+                    offlineNote
                     box
-                    options
                 }
                 .padding(.bottom, 4)
             }
@@ -340,38 +363,41 @@ struct ThreadPage: View {
         }
     }
 
-    /// What waits for the next turn: each can steer the turn now, or go.
+    /// What waits for the next turn, in a card over the box: each can steer the turn now, or go.
     @ViewBuilder private var queue: some View {
         let queued = queuedRuns(of: projection)
         if !queued.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
+                Text("Queue (\(queued.count))").font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(queued.enumerated()), id: \.element.runID) { i, run in
                     HStack {
-                        Text(verbatim: run.prompt).font(.footnote).lineLimit(1)
+                        Text(verbatim: run.prompt).font(.subheadline).lineLimit(1)
                         Spacer()
-                        Button("Steer Now") { manage(run, .promoteToSteer) }.font(.footnote)
-                        Button("Remove", systemImage: "xmark") { manage(run, .cancel) }.labelStyle(.iconOnly).font(.footnote)
+                        Button("Steer Now") { manage(run, .promoteToSteer) }.font(.footnote).tint(.accentColor)
+                        Button("Remove", systemImage: "xmark") { manage(run, .cancel) }.labelStyle(.iconOnly).font(.footnote).tint(.secondary)
                     }
                     .accessibilityIdentifier("thread-queued-\(i)")
                 }
             }
-            .padding(.horizontal, 22).padding(.top, 6)
-            .tint(.primary)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 20)
         }
     }
 
-    // MARK: The box and the line under it
+    // MARK: The box
 
-    /// Her's box: the text, and Send (Stop beside it while a turn runs).
+    /// Open: being typed in, holding words or files, or while one of its sheets shows.
+    private var boxOpen: Bool {
+        focused || !draft.isEmpty || !attached.isEmpty || attaching || pickingModel
+    }
+
+    /// Her's box (docs/thread-composer.md §16): one line (＋, the text, Send) until it is tapped; then two lines and,
+    /// along its bottom, ＋, the model, how hard it thinks, Stop and Send.
     private var box: some View {
-        let ready = !sending && !needsUpdate && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return HStack(alignment: .bottom, spacing: 8) {
-            TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
-                      text: $draft, axis: .vertical)
-                .lineLimit(1 ... 6)
-                .focused($focused)
-                .padding(.vertical, 8).padding(.leading, 10)
-                .accessibilityIdentifier("thread-composer")
+        let ready = !sending && !needsUpdate && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
+        let open = boxOpen
+        let ends = HStack(spacing: 8) {
             if running {
                 Button { stop() } label: {
                     Image(systemName: "stop.fill").font(.footnote).frame(width: 36, height: 36).background(Palette.fill2, in: .circle)
@@ -389,9 +415,112 @@ struct ThreadPage: View {
             .accessibilityLabel(Text(online ? "Send" : "Queue Until It’s Online"))
             .accessibilityIdentifier("thread-send")
         }
+        return VStack(alignment: .leading, spacing: 6) {
+            if !attached.isEmpty || uploading > 0 {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 6) {
+                        ForEach(attached) { a in
+                            if let picture = a.picture {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(uiImage: picture).resizable().scaledToFill().frame(width: 56, height: 56)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    Button { attached.removeAll { $0.id == a.id } } label: {
+                                        Image(systemName: "xmark.circle.fill").symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.55))
+                                    }
+                                    .padding(3)
+                                    .accessibilityLabel(Text("Remove \(a.ref.name)"))
+                                }
+                            } else {
+                                HerChip(name: a.ref.name) { attached.removeAll { $0.id == a.id } }
+                            }
+                        }
+                        ForEach(0 ..< uploading, id: \.self) { _ in
+                            ProgressView().frame(width: 56, height: 56)
+                                .background(Palette.fill2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .accessibilityIdentifier("thread-attach-loading")
+                        }
+                    }
+                    .padding(.horizontal, 6).padding(.top, 6)
+                }
+                .scrollIndicators(.hidden)
+                .accessibilityIdentifier("thread-attached")
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                if !open { plusButton }
+                TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
+                          text: $draft, axis: .vertical)
+                    .lineLimit(open ? 2 ... 6 : 1 ... 6)
+                    .focused($focused)
+                    .padding(.vertical, 8).padding(.leading, open ? 10 : 0)
+                    .accessibilityIdentifier("thread-composer")
+                if !open { ends }
+            }
+            if open {
+                HStack(spacing: 6) {
+                    plusButton
+                    modelButton
+                    thinkingMenu
+                    Spacer(minLength: 0)
+                    ends
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("thread-bar")
+            }
+        }
         .padding(6)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .animation(.snappy(duration: 0.22), value: open)
         .padding(.horizontal, 12)
+        .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
+        .onChange(of: photos) {
+            let picked = photos
+            guard !picked.isEmpty else { return }
+            photos = []
+            uploading += picked.count
+            Task {
+                for item in picked {
+                    if let data = try? await item.loadTransferable(type: Data.self), let jpeg = HerComposer.jpeg(data) {
+                        await upload(name: String(localized: "Photo") + ".jpg", mime: "image/jpeg", data: jpeg, picture: UIImage(data: jpeg))
+                    }
+                    uploading -= 1
+                }
+            }
+        }
+        .fileImporter(isPresented: $pickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            guard case .success(let urls) = result else { return }
+            uploading += urls.count
+            Task {
+                for url in urls {
+                    let scoped = url.startAccessingSecurityScopedResource()
+                    let data = try? Data(contentsOf: url)
+                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    if let data {
+                        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
+                        await upload(name: url.lastPathComponent, mime: mime, data: data, picture: nil)
+                    } else {
+                        model.show(String(localized: "Couldn’t read \(url.lastPathComponent)"))
+                    }
+                    uploading -= 1
+                }
+            }
+        }
+    }
+
+    /// Closes the sheet, then opens a picker once it has gone (one presentation at a time), as Her's.
+    private func add(photos: Bool) {
+        attaching = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            if photos { pickingPhotos = true } else { pickingFiles = true }
+        }
+    }
+
+    private func upload(name: String, mime: String, data: Data, picture: UIImage?) async {
+        guard let live = model.api?.live else { return }
+        do {
+            let ref = try await live.uploadThreadBlob(machineID: machineID, name: name, mimeType: mime, data: data).attachment
+            if !attached.contains(where: { $0.id == ref.blobSha256 }) { attached.append(Attached(ref: ref, picture: picture)) }
+        } catch { model.report(error) }
     }
 
     private var modelTitle: String {
@@ -399,7 +528,7 @@ struct ThreadPage: View {
         return m.shortName.isEmpty ? m.name : m.shortName
     }
 
-    private func levelTitle(_ id: String) -> String {
+    private func levelTitle(_ id: String, _ label: String = "") -> String {
         switch id {
         case "minimal": String(localized: "Minimal")
         case "low": String(localized: "Low")
@@ -407,7 +536,7 @@ struct ThreadPage: View {
         case "high": String(localized: "High")
         case "xhigh": String(localized: "Extra High")
         case "max": String(localized: "Max")
-        default: id
+        default: label.isEmpty ? id : label
         }
     }
 
@@ -429,57 +558,118 @@ struct ThreadPage: View {
         }
     }
 
-    /// What the session runs on and with, under the box. In a session, where it runs is fixed.
-    private var options: some View {
-        let project = projects(on: machineID).list.first { $0.projectID == projectID }
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                if isNew {
-                    if project?.repo == true || project?.workspace == .worktree {
-                        Menu {
-                            Section("Working copy") {
-                                Button { worktree = false } label: {
-                                    Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !worktree { Image(systemName: "checkmark") } }
-                                }
-                                Button { worktree = true } label: {
-                                    Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if worktree { Image(systemName: "checkmark") } }
-                                }
-                            }
-                        } label: { chip(icon: worktree ? "arrow.triangle.branch" : "folder", worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
-                            .accessibilityIdentifier("thread-worktree")
-                    }
-                } else if let thread {
-                    Label("\(model.machineName(thread.machineID)) · \(thread.projectID == scratchProject ? String(localized: "Temporary Workspace") : thread.projectID)", systemImage: "laptopcomputer")
-                        .font(.footnote).foregroundStyle(.tertiary).lineLimit(1)
-                    if thread.offlineQueued {
-                        Text("Queued Offline").font(.footnote).foregroundStyle(.orange).accessibilityIdentifier("thread-offline-queued")
-                    }
-                }
-                Button { pickingModel = true } label: {
-                    let level = reasoningOf(providers, selection).map { levelTitle($0.value) }
-                    chip(icon: nil, level.map { "\(modelTitle) \($0)" } ?? modelTitle)
-                }
-                .accessibilityIdentifier("thread-model")
-                Menu {
-                    Section("Permission mode") {
-                        ForEach(orderedRuntimeModes, id: \.rawValue) { m in
-                            Button { setMode(m) } label: {
-                                Label {
-                                    Text(modeTitle(m))
-                                    Text(isRuntimeModeAllowed(m, ceiling: ceiling) ? modeHint(m) : String(localized: "Above the limit this machine or grant allows"))
-                                } icon: { if clamped == m { Image(systemName: "checkmark") } }
-                            }
-                            .disabled(!isRuntimeModeAllowed(m, ceiling: ceiling))
+    /// ＋: photos, files and the permission mode, in a sheet from the bottom.
+    private var plusButton: some View {
+        Button {
+            focused = false
+            attaching = true
+        } label: {
+            Image(systemName: "plus").font(.body.weight(.medium)).frame(width: 36, height: 36)
+                .background(Palette.fill2, in: .circle)
+        }
+        .tint(.primary)
+        .accessibilityLabel(Text("Add Photos or Files"))
+        .accessibilityIdentifier("thread-attach")
+        .disabled(model.isDemo)
+    }
+
+    /// The model: its provider's logo and its name; the sheet to choose another.
+    private var modelButton: some View {
+        Button {
+            focused = false
+            pickingModel = true
+        } label: {
+            HStack(spacing: 6) {
+                if let inst = providerInstance(providers, selection.instanceID) { AgentLogo(id: inst.instanceID, size: 16) }
+                Text(verbatim: modelTitle).lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 11).frame(height: 36)
+            .background(Palette.fill2, in: Capsule())
+        }
+        .tint(.primary)
+        .accessibilityIdentifier("thread-model")
+    }
+
+    /// How hard it thinks, when the model has levels: a menu of them.
+    @ViewBuilder private var thinkingMenu: some View {
+        if let r = reasoningOf(providers, selection) {
+            Menu {
+                Section("Thinking") {
+                    ForEach(r.choices, id: \.id) { c in
+                        Button { selection = withReasoning(selection, id: r.id, value: c.id) } label: {
+                            Label { Text(levelTitle(c.id, c.label)) } icon: { if c.id == r.value { Image(systemName: "checkmark") } }
                         }
                     }
-                    Toggle(isOn: Binding(get: { plan }, set: { setPlan($0) })) { Label("Plan First", systemImage: "list.bullet.clipboard") }
-                } label: { chip(icon: nil, plan ? "\(modeTitle(clamped)) · \(String(localized: "Plan"))" : modeTitle(clamped)) }
-                    .accessibilityIdentifier("thread-mode")
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "brain").foregroundStyle(.secondary)
+                    Text(verbatim: levelTitle(r.value, r.choices.first { $0.id == r.value }?.label ?? r.value)).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .font(.subheadline)
+                .padding(.horizontal, 11).frame(height: 36)
+                .background(Palette.fill2, in: Capsule())
             }
-            .padding(.horizontal, 16)
+            .tint(.primary)
+            .accessibilityIdentifier("thread-thinking")
         }
-        // Choices read as text, not links: neutral, as the Mac's line under the box.
-        .tint(.primary)
+    }
+
+    /// Over a new session's box: the working copy and, once its folder was read, the branch (a worktree's base, or
+    /// the branch the folder works on). Only for a repository.
+    @ViewBuilder private var placeRow: some View {
+        let project = projects(on: machineID).list.first { $0.projectID == projectID }
+        if project?.repo == true || project?.workspace == .worktree {
+            HStack(spacing: 6) {
+                Menu {
+                    Section("Working copy") {
+                        Button { place.worktree = false } label: {
+                            Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !place.worktree { Image(systemName: "checkmark") } }
+                        }
+                        Button { place.worktree = true } label: {
+                            Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if place.worktree { Image(systemName: "checkmark") } }
+                        }
+                    }
+                } label: { chip(icon: place.worktree ? "arrow.triangle.branch" : "folder", place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
+                    .accessibilityIdentifier("thread-worktree")
+                if let branches {
+                    let name = place.chosen(branches)
+                    Button {
+                        focused = false
+                        pickingBranch = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                            if place.worktree {
+                                Text("From \(Text(verbatim: (place.fromRemote ? "origin/" : "") + name).font(.footnote.monospaced()).foregroundStyle(.primary))").lineLimit(1)
+                            } else {
+                                Text(verbatim: name).font(.footnote.monospaced()).lineLimit(1)
+                            }
+                            Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).frame(height: 30)
+                        .background(Palette.fill, in: Capsule())
+                    }
+                    .tint(.primary)
+                    .accessibilityIdentifier("thread-branch")
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18)
+        }
+    }
+
+    /// What a session's box sits under besides its cards: that it waits for its machine.
+    @ViewBuilder private var offlineNote: some View {
+        if thread?.offlineQueued == true {
+            Text("Queued Offline").font(.footnote).foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
+                .accessibilityIdentifier("thread-offline-queued")
+        }
     }
 
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
@@ -505,19 +695,13 @@ struct ThreadPage: View {
 
     private func pick(project id: String, in list: [Project]) {
         projectID = id
-        worktree = list.first { $0.projectID == id }?.workspace == .worktree
+        place = ThreadPlace(worktree: list.first { $0.projectID == id }?.workspace == .worktree)
     }
 
     private func setMode(_ m: Hermesh_Identity_V1_RuntimeMode) {
         mode = m
         guard !isNew else { return }
         update { $0.runtimeMode = m }
-    }
-
-    private func setPlan(_ on: Bool) {
-        plan = on
-        guard !isNew else { return }
-        update { $0.interactionMode = on ? .plan : .code }
     }
 
     // MARK: Talking to hermeshd
@@ -554,6 +738,13 @@ struct ThreadPage: View {
         ceiling = th.maxRuntimeMode
     }
 
+    private func loadBranches() async {
+        branches = nil
+        guard isNew, online, let path = projects(on: machineID).list.first(where: { $0.projectID == projectID && $0.repo })?.path,
+              let res = try? await model.api?.folders(machine: machineID, path: path), res.repo else { return }
+        branches = ThreadBranches(current: res.branch, default: res.defaultBranch, all: res.branches, inWorktrees: res.worktreeBranches)
+    }
+
     private func loadProviders() async {
         guard !machineID.isEmpty, let live = model.api?.live else { return }
         var res: Hermesh_Thread_V2_ListProvidersResponse?
@@ -581,7 +772,8 @@ struct ThreadPage: View {
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, let live = model.api?.live else { return }
+        guard !text.isEmpty || !attached.isEmpty, let live = model.api?.live else { return }
+        let files = attached
         if isNew {
             sending = true
             Task {
@@ -591,24 +783,28 @@ struct ThreadPage: View {
                 r.machineID = machineID
                 r.projectID = projectID
                 r.initialPrompt = text
+                r.attachments = files.map(\.ref)
                 if !selection.instanceID.isEmpty { r.modelSelection = selection }
                 r.runtimeMode = clamped
                 r.interactionMode = plan ? .plan : .code
-                r.workspace.mode = projectID != scratchProject && worktree ? .worktree : .inPlace
+                r.workspace = projectID == scratchProject ? .with { $0.mode = .inPlace } : place.workspace(branches)
                 do {
                     let res = try await live.launchThread(r)
                     ThreadChoices.remember(machine: machineID, project: projectID, selection: selection, mode: clamped)
                     draft = ""
+                    attached = []
                     model.open(.thread(res.thread.threadID))
                 } catch { model.report(error) }
             }
             return
         }
         draft = ""
+        attached = []
         var r = Hermesh_Thread_V2_DispatchMessageRequest()
         r.commandID = UUID().uuidString
         r.threadID = threadID
         r.text = text
+        r.attachments = files.map(\.ref)
         // After whatever runs, and at once when nothing does: hermeshd decides (§4.5).
         r.intent = .queue
         if !selection.instanceID.isEmpty { r.modelSelection = selection }
@@ -620,6 +816,7 @@ struct ThreadPage: View {
             do { _ = try await live.dispatchThreadMessage(r) } catch {
                 model.report(error)
                 if draft.isEmpty { draft = text }
+                if attached.isEmpty { attached = files }
             }
         }
     }
@@ -654,9 +851,183 @@ struct ThreadPage: View {
     }
 }
 
-/// The model: one sheet, nothing nested (docs/thread-composer.md §4.4). A search over every provider; the
-/// providers, and the chosen one's models; how hard it thinks, at the bottom. Choosing leaves it open, to set
-/// the level next.
+/// A photo or file attached to the next message: hermeshd's reference to it, and the photo itself to show.
+private struct Attached: Identifiable {
+    let ref: Hermesh_Thread_V2_AttachmentRef
+    let picture: UIImage?
+    var id: String { ref.blobSha256 }
+}
+
+/// A repository's branches as its folder says (ListFolders): the one checked out, the default, those other worktrees have.
+struct ThreadBranches: Equatable {
+    var current: String
+    var `default`: String
+    var all: [String]
+    var inWorktrees: [String]
+}
+
+/// Where a new session works, and on which branch (docs/thread-composer.md §16): its folder on a branch (by default
+/// the one checked out), or a worktree from a branch (by default the default one, from origin when asked).
+struct ThreadPlace: Equatable {
+    var worktree = true
+    var base = ""
+    var on = ""
+    var fromRemote = false
+
+    init(worktree: Bool = true) { self.worktree = worktree }
+
+    func chosen(_ b: ThreadBranches) -> String {
+        worktree ? (base.isEmpty ? (b.default.isEmpty ? b.current : b.default) : base) : (on.isEmpty ? b.current : on)
+    }
+
+    /// What LaunchThread asks for: a worktree from its base, or the folder, switched first to another branch.
+    func workspace(_ b: ThreadBranches?) -> Hermesh_Thread_V2_WorkspaceStrategy {
+        .with {
+            if worktree {
+                $0.mode = .worktree
+                $0.baseRef = base.isEmpty ? b?.default ?? "" : base
+                $0.fromRemote = fromRemote
+            } else {
+                $0.mode = .inPlace
+                if !on.isEmpty, on != b?.current { $0.branch = on }
+            }
+        }
+    }
+}
+
+/// ＋ (§16): photos and files at the top; the permission mode under them, each with what it allows. It stays open
+/// as a mode is chosen; a picker opens once it has gone.
+private struct AttachSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let mode: Hermesh_Identity_V1_RuntimeMode
+    let ceiling: Hermesh_Identity_V1_RuntimeMode
+    let modeTitle: (Hermesh_Identity_V1_RuntimeMode) -> String
+    let modeHint: (Hermesh_Identity_V1_RuntimeMode) -> String
+    let onMode: (Hermesh_Identity_V1_RuntimeMode) -> Void
+    let add: (_ photos: Bool) -> Void
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 10) {
+                    tile("Photos", "photo.on.rectangle", id: "thread-attach-photos") { add(true) }
+                    tile("Files", "folder", id: "thread-attach-files") { add(false) }
+                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
+            Section("Permission mode") {
+                ForEach(orderedRuntimeModes, id: \.rawValue) { m in
+                    let allowed = isRuntimeModeAllowed(m, ceiling: ceiling)
+                    Button { onMode(m) } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: "checkmark").font(.subheadline.weight(.semibold)).foregroundStyle(Color.accentColor).opacity(clampRuntimeMode(mode, ceiling: ceiling) == m ? 1 : 0)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(modeTitle(m)).foregroundStyle(.primary)
+                                Text(allowed ? modeHint(m) : String(localized: "Above the limit this machine or grant allows")).font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .tint(.primary)
+                    .disabled(!allowed)
+                    .accessibilityIdentifier("thread-mode-\(m.rawValue)")
+                }
+            }
+        }
+        .contentMargins(.top, 18, for: .scrollContent)
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .accessibilityIdentifier("thread-attach-sheet")
+    }
+
+    private func tile(_ title: LocalizedStringKey, _ icon: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: icon).font(.title3).foregroundStyle(.tint)
+                Text(title).foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+}
+
+/// The branch (§16): a worktree's base (and starting from the remote), or the branch the folder works on. The one
+/// checked out first, then the default; in the folder, one another worktree has checked out can't be chosen.
+private struct BranchSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var place: ThreadPlace
+    let branches: ThreadBranches
+    @State private var query = ""
+
+    var body: some View {
+        let chosen = place.chosen(branches)
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        let order = { (n: String) in n == branches.current ? 0 : n == branches.default ? 1 : 2 }
+        let list = ([branches.current] + branches.all.filter { $0 != branches.current })
+            .filter { !$0.isEmpty && !$0.hasPrefix("hermesh/") && (q.isEmpty || $0.lowercased().contains(q)) }
+            .sorted { order($0) != order($1) ? order($0) < order($1) : $0 < $1 }
+        NavigationStack {
+            List {
+                if place.worktree {
+                    Section {
+                        Toggle(isOn: $place.fromRemote) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Start from remote")
+                                Text("Fetches the latest commits first, then branches from them").font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("branch-remote")
+                    }
+                } else if chosen != branches.current {
+                    Text("The project folder switches to this branch before the session starts; it can’t while there are uncommitted changes.")
+                        .font(.footnote).foregroundStyle(.orange)
+                        .accessibilityIdentifier("branch-switch-note")
+                }
+                Section {
+                    ForEach(list, id: \.self) { n in
+                        let tags = [n == branches.current ? String(localized: "Current") : nil, n == branches.default ? String(localized: "Default") : nil,
+                                    branches.inWorktrees.contains(n) ? String(localized: "Worktree") : nil].compactMap { $0 }
+                        let blocked = !place.worktree && branches.inWorktrees.contains(n) && n != branches.current
+                        Button {
+                            if place.worktree { place.base = n } else { place.on = n }
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath").foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(verbatim: n).font(.body.monospaced()).foregroundStyle(.primary).lineLimit(1).truncationMode(.middle)
+                                    if blocked {
+                                        Text("Checked out in another worktree").font(.caption).foregroundStyle(.secondary)
+                                    } else if !tags.isEmpty {
+                                        Text(verbatim: tags.joined(separator: " · ")).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                if n == chosen { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                            }
+                        }
+                        .disabled(blocked)
+                        .accessibilityIdentifier("branch-item-\(n)")
+                    }
+                    if list.isEmpty { Text("No matching branches").foregroundStyle(.secondary) }
+                }
+            }
+            .searchable(text: $query, prompt: Text("Search branches"))
+            .navigationTitle(place.worktree ? String(localized: "Base branch") : String(localized: "Branch to work on"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("branch-done") } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// The model: one sheet, one column (docs/thread-composer.md §16). A search over every provider; the providers
+/// that can be used one under another, a model a row; those not installed, turned off or not for this project
+/// left out. Choosing closes it: how hard it thinks is a button of its own, beside the model.
 private struct ModelSheet: View {
     @Environment(\.dismiss) private var dismiss
     let providers: [Hermesh_Thread_V2_ProviderInstance]
@@ -665,85 +1036,48 @@ private struct ModelSheet: View {
     let machineName: String
     let projectAgents: [String]
     let changed: ((from: String, to: String)) -> Void
-    @State private var shown = ""
     @State private var query = ""
-    @State private var searching = false
 
     var body: some View {
+        let usable = providers.filter { p in providerUnusable(p, projectAgents: projectAgents).map { $0 == .signedOut } ?? true }
+        let groups: [(provider: Hermesh_Thread_V2_ProviderInstance, models: [Hermesh_Thread_V2_ModelCatalogEntry])] =
+            query.trimmingCharacters(in: .whitespaces).isEmpty ? usable.map { ($0, $0.models) } : findModels(usable, query: query).map { ($0.provider, $0.models) }
         NavigationStack {
             List {
                 if stale {
                     Text("\(machineName) is offline: these are the models last read there").font(.footnote).foregroundStyle(.secondary)
                 }
-                if providers.isEmpty {
+                if usable.isEmpty {
                     Text("No models on \(machineName) yet").foregroundStyle(.secondary)
                 }
-                if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    let found = findModels(providers, query: query)
-                    ForEach(found, id: \.provider.instanceID) { g in
-                        Section(g.provider.displayName) { ForEach(g.models, id: \.slug) { m in row(g.provider, m) } }
-                    }
-                    if found.isEmpty { Text("No matching models").foregroundStyle(.secondary) }
-                } else {
+                ForEach(groups, id: \.provider.instanceID) { g in
                     Section {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(providers, id: \.instanceID) { p in
-                                    let why = providerUnusable(p, projectAgents: projectAgents)
-                                    Button { shown = p.instanceID } label: {
-                                        HStack(spacing: 6) {
-                                            AgentLogo(id: p.instanceID, size: 18)
-                                            Text(p.displayName)
-                                            if let why { Text(reasonTitle(why)).foregroundStyle(.secondary) }
-                                        }
-                                        .font(.footnote).padding(.horizontal, 10).frame(height: 32)
-                                        .background(p.instanceID == shown ? Palette.fill3 : Palette.fill2, in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("provider-\(p.instanceID)")
-                                }
-                            }
+                        ForEach(g.models, id: \.slug) { m in row(g.provider, m) }
+                    } header: {
+                        HStack(spacing: 6) {
+                            AgentLogo(id: g.provider.instanceID, size: 16)
+                            Text(g.provider.displayName)
+                            if providerUnusable(g.provider, projectAgents: projectAgents) == .signedOut { Text(verbatim: "· " + String(localized: "Signed out")) }
                         }
-                    }
-                    if let inst = providerInstance(providers, shown) {
-                        Section(inst.displayName) { ForEach(inst.models, id: \.slug) { m in row(inst, m) } }
+                        .accessibilityIdentifier("provider-\(g.provider.instanceID)")
                     }
                 }
-                if let r = reasoningOf(providers, selection) {
-                    Section("Thinking") {
-                        Picker("Thinking", selection: Binding(get: { r.value }, set: { selection = withReasoning(selection, id: r.id, value: $0) })) {
-                            ForEach(r.choices, id: \.id) { c in Text(levelTitle(c.id, c.label)).tag(c.id) }
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("thinking")
-                    }
-                } else if let m = modelEntry(providers, selection) {
-                    Section("Thinking") {
-                        Text("\(m.shortName.isEmpty ? m.name : m.shortName) has no levels to choose").foregroundStyle(.secondary)
-                    }
-                }
+                if !usable.isEmpty && groups.isEmpty { Text("No matching models").foregroundStyle(.secondary) }
             }
-            .searchable(text: $query, isPresented: $searching, prompt: Text("Search models or providers"))
+            .searchable(text: $query, prompt: Text("Search models or providers"))
             .navigationTitle("Model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.accessibilityIdentifier("model-done") } }
-            .onAppear { shown = selection.instanceID.isEmpty ? providers.first?.instanceID ?? "" : selection.instanceID }
         }
         .presentationDetents([.medium, .large])
     }
 
     private func row(_ p: Hermesh_Thread_V2_ProviderInstance, _ m: Hermesh_Thread_V2_ModelCatalogEntry) -> some View {
-        let why = providerUnusable(p, projectAgents: projectAgents)
-        return Button {
+        Button {
             let r = selectModel(providers, from: selection, instanceID: p.instanceID, slug: m.slug)
             selection = r.selection
             if let c = r.changed { changed(c) }
-            // Found by a search: back to its provider's models, where the level and Done are.
-            if searching {
-                shown = p.instanceID
-                query = ""
-                searching = false
-            }
+            dismiss()
         } label: {
             HStack {
                 Text(m.name)
@@ -753,28 +1087,6 @@ private struct ModelSheet: View {
             }
         }
         .tint(.primary)
-        .disabled(why != nil && why != .signedOut)
         .accessibilityIdentifier("model-\(m.slug)")
-    }
-
-    private func reasonTitle(_ why: ProviderUnusable) -> String {
-        switch why {
-        case .off: String(localized: "Turned off")
-        case .notInstalled: String(localized: "Not installed")
-        case .notForProject: String(localized: "Not set up for this project")
-        case .signedOut: String(localized: "Signed out")
-        }
-    }
-
-    private func levelTitle(_ id: String, _ label: String) -> String {
-        switch id {
-        case "minimal": String(localized: "Minimal")
-        case "low": String(localized: "Low")
-        case "medium": String(localized: "Medium")
-        case "high": String(localized: "High")
-        case "xhigh": String(localized: "Extra High")
-        case "max": String(localized: "Max")
-        default: label
-        }
     }
 }
