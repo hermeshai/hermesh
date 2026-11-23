@@ -17,7 +17,7 @@ import {
   UserInputPayloadSchema,
 } from "@hermesh/proto/thread";
 import { groupSteps, replyEnds, stepSummary } from "./steps";
-import { threadFailure, threadLiveReplies, threadQuestion, threadTranscript } from "./threadtranscript";
+import { threadFailure, threadLiveReplies, threadQuestion, threadToolRunning, threadTranscript } from "./threadtranscript";
 
 const at = new Date("2026-11-23T10:00:00Z");
 const item = (seq: number, runId: string, kind: TurnItemKind, more: MessageInitShape<typeof TurnItemSchema> = {}) =>
@@ -104,5 +104,24 @@ describe("a thread drawn as a session's conversation", () => {
     expect(q.questionId).toBe("req1");
     expect(q.items[0]).toMatchObject({ id: "q1", text: "Color?", allowOther: true, optional: false });
     expect(q.items[0].options[0].label).toBe("Red");
+  });
+});
+
+describe("a thread at work: working or thinking", () => {
+  it("works while a tool or command of the run under way runs", () => {
+    const proj = create(ThreadProjectionSchema, {
+      thread: create(ThreadSchema, { threadId: "th_1", status: ThreadStatus.RUNNING, activeRunId: "r2" }),
+      items: [item(1, "r1", TurnItemKind.TOOL_CALL, { toolName: "Read", status: "running" })],
+    });
+    expect(threadToolRunning(proj)).toBe(false); // only r1's tool runs: r2 thinks
+    proj.items.push(item(2, "r2", TurnItemKind.REASONING, { status: "running" }));
+    expect(threadToolRunning(proj)).toBe(false); // reasoning is thinking
+    proj.items.push(item(3, "r2", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running" }));
+    expect(threadToolRunning(proj)).toBe(true);
+    proj.items[2].status = "completed";
+    expect(threadToolRunning(proj)).toBe(false); // done: back to thinking
+    proj.thread!.activeRunId = "";
+    expect(threadToolRunning(proj)).toBe(false); // no run under way
+    expect(threadToolRunning(undefined)).toBe(false);
   });
 });

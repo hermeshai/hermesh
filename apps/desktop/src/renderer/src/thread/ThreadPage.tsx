@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "@bufbuild/protobuf";
 import { RuntimeMode, Workspace } from "@hermesh/proto/identity";
 import type { Project } from "@hermesh/proto/local";
+import { SessionStatus } from "@hermesh/proto/session";
 import {
   DispatchIntent,
   InteractionMode,
@@ -19,8 +20,11 @@ import {
   SCRATCH_PROJECT,
   applyThreadEvent,
   clampRuntimeMode,
+  clockText,
   cycleReasoningSelection,
+  dateOf,
   defaultModelSelectionFor,
+  elapsedSeconds,
   findProviderInstance,
   groupSteps,
   isThreadActive,
@@ -31,18 +35,21 @@ import {
   reasoningOf,
   replyEnds,
   selectionTitle,
+  statusTitle,
   threadAsSession,
   threadFailure,
   threadLiveReplies,
+  threadToolRunning,
   threadTranscript,
 } from "@hermesh/core";
+import { Mark } from "@hermesh/ui";
 import { local, threads as threadApi } from "../api";
 import { ConnectionCapsule } from "../ConnectionCapsule";
 import { Icon } from "../icons";
 import { layoutOf, setCard } from "../layout";
 import { keys, ownKeys } from "../platform";
 import { grantLabel, unarchive } from "../Sidebar";
-import { errorText, useStore } from "../store";
+import { errorText, useNow, useStore } from "../store";
 import { ChatFrame, DoneLine, Failed, Row, Stale, rowHeights, rowsOf } from "../session/Chat";
 import { Inspector } from "../session/Inspector";
 import { ContentScope } from "../session/scope";
@@ -477,6 +484,8 @@ export function ThreadPage() {
       choice={choice}
       onMachine={pickMachine}
       onProject={(pid) => pickProject(machineId, pid)}
+      // Sent, until the session opens.
+      after={busySend && <WorkLine text={t("work.starting")} />}
       onAddProject={() =>
         st.set({
           sheet: {
@@ -571,6 +580,15 @@ export function ThreadPage() {
   const steps = useMemo(() => groupSteps(threadTranscript(projection)), [projection]);
   const ends = useMemo(() => replyEnds(steps, running), [steps, running]);
   const failure = threadFailure(currentThread);
+  // At the end of the conversation while the session is at work, whatever its last row (the agent may be thinking,
+  // which has no row): starting, waiting its turn, or, with how long, working (a tool or command of this turn runs) or
+  // thinking (anything else). Waiting on the owner, the request card says so instead.
+  const activeRun = projection?.runs.find((r) => r.runId === currentThread?.activeRunId);
+  const workLine =
+    currentThread?.status === ThreadStatus.PREPARING ? <WorkLine text={t("work.starting")} />
+    : currentThread?.status === ThreadStatus.QUEUED ? <WorkLine text={statusTitle(SessionStatus.QUEUED)} />
+    : currentThread?.status === ThreadStatus.RUNNING ? <WorkLine text={t(threadToolRunning(projection) ? "work.working" : "work.thinking")} since={dateOf(activeRun?.startedAt)} />
+    : null;
   const writing = useMemo(() => threadLiveReplies(projection), [projection]);
   const rows = useMemo(
     () => rowsOf(steps, ends, failure).map((r) => (writing.has(r.it.seq) ? { ...r, live: true } : r)),
@@ -668,6 +686,7 @@ export function ThreadPage() {
                 foot={
                   session && (
                     <>
+                      {workLine}
                       <Stale s={session} behind={false} />
                       {failure && <Failed s={session} failure={failure} grant={grant} />}
                       {currentThread?.status === ThreadStatus.IDLE && !failure && rows.length > 0 && rows.at(-1)?.it.kind !== "turnEnd" && <DoneLine text={ts("chat.turnDone", { grant })} />}
@@ -707,6 +726,18 @@ export function ThreadPage() {
         </div>
       )}
     </>
+  );
+}
+
+/** A session at work, in a line at the end of its conversation (as the iPhone's): the mark, its beams lighting up in turn, what it does and, while the agent works, for how long. */
+function WorkLine({ text, since }: { text: string; since?: Date }) {
+  const now = useNow(1000);
+  return (
+    <div className="th-work" role="status" data-testid="thread-working">
+      <Mark size={16} variant="seq" />
+      <span>{text}</span>
+      {since && <span className="el">{clockText(elapsedSeconds(since, now))}</span>}
+    </div>
   );
 }
 

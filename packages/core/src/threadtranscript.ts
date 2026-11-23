@@ -153,6 +153,14 @@ export function threadFailure(th: Thread | undefined): Failure | undefined {
   return runFailure(th.lastError);
 }
 
+/** Whether a tool or command of the thread's run under way is running (its line at work says "Working", not "Thinking"). */
+export function threadToolRunning(proj: ThreadProjection | null | undefined): boolean {
+  const run = proj?.thread?.activeRunId;
+  if (!proj || !run) return false;
+  const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
+  return proj.items.some((it) => it.runId === run && it.status === "running" && tools.includes(it.kind));
+}
+
 /** The rows (by seq) of replies still being written. */
 export function threadLiveReplies(proj: ThreadProjection | null | undefined): Set<bigint> {
   return new Set((proj?.items ?? []).filter((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming).map(itemSeq));

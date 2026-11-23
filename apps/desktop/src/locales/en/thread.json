@@ -35,6 +35,11 @@
     "unarchive": "Unarchive",
     "offlineQueued": "Queued Offline"
   },
+  "work": {
+    "starting": "Starting…",
+    "thinking": "Thinking…",
+    "working": "Working…"
+  },
   "mode": {
     "code": "Code",
     "plan": "Plan",
