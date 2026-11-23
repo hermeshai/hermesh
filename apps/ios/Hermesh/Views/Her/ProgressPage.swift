@@ -554,7 +554,7 @@ private struct SourceSheet: View {
             HStack(spacing: 10) {
                 StandMark(stand: s).frame(width: 18)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.body.weight(mine ? .semibold : .regular)).lineLimit(1)
+                    Text(title).font(.body.weight(mine ? .semibold : .regular)).lineLimit(1).shimmer(s.atWork)
                     Text(s.words).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
@@ -569,13 +569,14 @@ private struct SourceSheet: View {
     }
 }
 
-/// A small mark of how work stands: a ring while it works, a dot when it waits or failed, a check when done.
+/// A small mark of how work stands: a dot when it waits or failed, a check when done; none while it works (its
+/// words shimmer instead).
 private struct StandMark: View {
     let stand: Stand
 
     var body: some View {
         switch stand {
-        case .starting, .running: ProgressView().controlSize(.mini)
+        case .starting, .running: EmptyView()
         case .waiting: Circle().fill(.orange).frame(width: 8, height: 8)
         case .done: Image(systemName: "checkmark").font(.caption.weight(.semibold)).foregroundStyle(.green)
         case .failed: Circle().fill(.red).frame(width: 8, height: 8)
@@ -591,7 +592,8 @@ private struct StepWords: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Text(herStepVerb(tool)).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary)).layoutPriority(1)
+            Text(herStepVerb(tool)).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                .shimmer(tool.state == .live).layoutPriority(1)
             if tool.category == "execute" {
                 CodeText(text: tool.object, lang: "bash").font(.footnote.monospaced())
             } else {
@@ -922,7 +924,7 @@ private struct AgentInfoSheet: View {
                     LabeledContent("Status") {
                         HStack(spacing: 6) {
                             StandMark(stand: state)
-                            Text(state.words)
+                            Text(state.words).shimmer(state.atWork)
                         }
                     }
                     LabeledContent(running ? "Running for" : "Took") {
@@ -969,7 +971,6 @@ struct StepRow: View {
         case .tool(let tool):
             VStack(alignment: .leading, spacing: 0) {
                 fold(openable: !tool.output.isEmpty) {
-                    if tool.state == .live { Spinner() }
                     StepWords(tool: tool)
                 }
                 if open, !tool.output.isEmpty {

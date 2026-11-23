@@ -595,6 +595,7 @@ struct HerSessionCard: View {
                 AgentLogo(id: agent, size: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(s?.displayTitle ?? started.title).font(.callout.weight(.semibold)).lineLimit(1)
+                        .shimmer(s.map { $0.isActive && !$0.needsAttention } ?? false)
                     Text(verbatim: "\(agentShortTitle(agent)) · \(s.map { model.machineName($0.machineID) } ?? started.machine)")
                         .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                     if let s { state(s) }
@@ -645,8 +646,6 @@ struct HerSessionCard: View {
             Circle().fill(.orange).frame(width: 9, height: 9)
         } else if s.isFailed {
             Circle().fill(.red).frame(width: 9, height: 9)
-        } else if s.isActive {
-            ProgressView().controlSize(.small)
         } else if s.status == .idle {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         }

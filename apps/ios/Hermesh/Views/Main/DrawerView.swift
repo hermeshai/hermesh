@@ -296,19 +296,6 @@ private struct MenuSessions: View {
     }
 }
 
-/// A ring that turns while the menu shows, and rests while it does not.
-struct BusyRing: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        if model.drawerOpen || model.menuInView {
-            ProgressView().controlSize(.mini)
-        } else {
-            Circle().strokeBorder(.tertiary, lineWidth: 1.5).frame(width: 12, height: 12)
-        }
-    }
-}
-
 extension View {
     /// A row of the menu's list drawn as the view itself: no insets, separator or background of the list's.
     func plainRow() -> some View {
