@@ -277,14 +277,17 @@ func pickAuthMethod(methods []struct {
 }
 
 type acpToolState struct {
-	id       string
-	title    string
-	kind     string
-	status   string
-	command  string
-	filePath string
-	output   string
-	started  bool
+	id              string
+	title           string
+	kind            string
+	status          string
+	command         string
+	filePath        string
+	output          string
+	diffNewText     string
+	rawInput        json.RawMessage
+	lastArtifactSig string
+	started         bool
 }
 
 type rpcRes struct {
@@ -687,7 +690,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if id == "" {
 			id = fmt.Sprintf("acp_tool_%d", s.itemSeq.Add(1))
 		}
-		contentOut, diffPath := s.extractACPToolContent(u.Content)
+		contentOut, diffPath, diffNewText := s.extractACPToolContent(u.Content)
 		rawOut := extractACPRawOutput(u.RawOutput)
 		inCmd, inPath := extractACPRawInput(u.RawInput)
 
@@ -721,11 +724,18 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		} else if rawOut != "" {
 			st.output = rawOut
 		}
+		if diffNewText != "" {
+			st.diffNewText = diffNewText
+		}
+		if trimmedIn := bytes.TrimSpace(u.RawInput); len(trimmedIn) > 0 && string(trimmedIn) != "null" && string(trimmedIn) != "{}" {
+			st.rawInput = append(st.rawInput[:0], trimmedIn...)
+		}
 		toolName, cmd, filePath := mapACPToolFields(st)
 		wasStarted := st.started
 		st.started = true
 		status := st.status
 		outText := st.output
+		stSnap := *st
 		s.mu.Unlock()
 
 		if status == "completed" || status == "failed" {
@@ -743,6 +753,15 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 				ExitCode: exit,
 				Output:   kept,
 			})
+			if status == "completed" {
+				if sig := s.maybeEmitACPArtifact(stSnap); sig != "" {
+					s.mu.Lock()
+					if cur := s.tools[id]; cur != nil {
+						cur.lastArtifactSig = sig
+					}
+					s.mu.Unlock()
+				}
+			}
 		} else if !wasStarted || u.SessionUpdate == "tool_call" || toolName != "" || cmd != "" || filePath != "" {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
@@ -761,9 +780,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 	}
 }
 
-func (s *session) extractACPToolContent(raw json.RawMessage) (output string, diffPath string) {
+func (s *session) extractACPToolContent(raw json.RawMessage) (output string, diffPath string, diffNewText string) {
 	if len(raw) == 0 {
-		return "", ""
+		return "", "", ""
 	}
 	var items []struct {
 		Type       string `json:"type"`
@@ -781,9 +800,9 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			Text string `json:"text"`
 		}
 		if json.Unmarshal(raw, &single) == nil {
-			return single.Text, ""
+			return single.Text, "", ""
 		}
-		return "", ""
+		return "", "", ""
 	}
 	var parts []string
 	for _, it := range items {
@@ -795,6 +814,9 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 		case "diff":
 			if diffPath == "" && it.Path != "" {
 				diffPath = it.Path
+			}
+			if it.NewText != "" {
+				diffNewText = it.NewText
 			}
 			if it.Path != "" {
 				parts = append(parts, it.Path)
@@ -815,7 +837,7 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			}
 		}
 	}
-	return strings.Join(parts, "\n"), diffPath
+	return strings.Join(parts, "\n"), diffPath, diffNewText
 }
 
 func extractACPRawOutput(raw json.RawMessage) string {
@@ -847,15 +869,16 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 		return "", ""
 	}
 	var obj struct {
-		Command  string `json:"command"`
-		Path     string `json:"path"`
-		FilePath string `json:"file_path"`
-		Pattern  string `json:"pattern"`
-		Query    string `json:"query"`
-		URL      string `json:"url"`
+		Command       string `json:"command"`
+		Path          string `json:"path"`
+		FilePath      string `json:"file_path"`
+		FilePathCamel string `json:"filePath"`
+		Pattern       string `json:"pattern"`
+		Query         string `json:"query"`
+		URL           string `json:"url"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
-		for _, p := range []string{obj.Path, obj.FilePath, obj.Pattern, obj.Query, obj.URL} {
+		for _, p := range []string{obj.Path, obj.FilePath, obj.FilePathCamel, obj.Pattern, obj.Query, obj.URL} {
 			if p != "" {
 				path = p
 				break
@@ -864,6 +887,279 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 		cmd = obj.Command
 	}
 	return cmd, path
+}
+
+type acpArtifactMeta struct {
+	Present         bool
+	Summary         string
+	UserFacing      bool
+	RequestFeedback bool
+}
+
+func decodeACPArtifactMetaJSON(raw json.RawMessage) acpArtifactMeta {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return acpArtifactMeta{}
+	}
+	if raw[0] == '"' {
+		var inner string
+		if json.Unmarshal(raw, &inner) != nil {
+			return acpArtifactMeta{}
+		}
+		raw = bytes.TrimSpace([]byte(inner))
+	}
+	var m struct {
+		Summary              string `json:"summary"`
+		UserFacing           *bool  `json:"userFacing"`
+		UserFacingSnake      *bool  `json:"user_facing"`
+		RequestFeedback      *bool  `json:"requestFeedback"`
+		RequestFeedbackSnake *bool  `json:"request_feedback"`
+	}
+	if json.Unmarshal(raw, &m) != nil {
+		return acpArtifactMeta{}
+	}
+	out := acpArtifactMeta{Summary: strings.TrimSpace(m.Summary)}
+	if m.UserFacing != nil {
+		out.UserFacing = *m.UserFacing
+		out.Present = true
+	} else if m.UserFacingSnake != nil {
+		out.UserFacing = *m.UserFacingSnake
+		out.Present = true
+	}
+	if m.RequestFeedback != nil {
+		out.RequestFeedback = *m.RequestFeedback
+		out.Present = true
+	} else if m.RequestFeedbackSnake != nil {
+		out.RequestFeedback = *m.RequestFeedbackSnake
+		out.Present = true
+	}
+	if out.Summary != "" {
+		out.Present = true
+	}
+	return out
+}
+
+func parseACPArtifactInput(raw json.RawMessage) (meta acpArtifactMeta, content string, path string) {
+	if len(raw) == 0 {
+		return acpArtifactMeta{}, "", ""
+	}
+	var obj struct {
+		Content           string          `json:"content"`
+		Path              string          `json:"path"`
+		FilePath          string          `json:"file_path"`
+		FilePathCamel     string          `json:"filePath"`
+		ArtifactMetadata  json.RawMessage `json:"artifactMetadata"`
+		ArtifactMetaSnake json.RawMessage `json:"artifact_metadata"`
+	}
+	if json.Unmarshal(raw, &obj) != nil {
+		return acpArtifactMeta{}, "", ""
+	}
+	for _, p := range []string{obj.Path, obj.FilePath, obj.FilePathCamel} {
+		if p != "" {
+			path = p
+			break
+		}
+	}
+	metaRaw := obj.ArtifactMetadata
+	if len(metaRaw) == 0 {
+		metaRaw = obj.ArtifactMetaSnake
+	}
+	return decodeACPArtifactMetaJSON(metaRaw), obj.Content, path
+}
+
+func readACPArtifactSidecar(diskPath string) acpArtifactMeta {
+	b, err := os.ReadFile(diskPath + ".metadata.json")
+	if err != nil {
+		return acpArtifactMeta{}
+	}
+	return decodeACPArtifactMetaJSON(b)
+}
+
+func isMarkdownArtifactPath(p string) bool {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case "", ".md", ".markdown", ".txt":
+		return true
+	default:
+		return false
+	}
+}
+
+func sanitizeACPPlanID(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	out := strings.Trim(b.String(), "_")
+	if out == "" {
+		return "artifact"
+	}
+	return out
+}
+
+func deriveACPPlanTitle(md, summary, targetPath string) string {
+	for _, line := range strings.Split(md, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			if heading := strings.TrimSpace(strings.TrimLeft(trimmed, "#")); heading != "" {
+				return heading
+			}
+		}
+	}
+	for _, line := range strings.Split(summary, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			runes := []rune(s)
+			if len(runes) > 80 {
+				return string(runes[:80]) + "…"
+			}
+			return s
+		}
+	}
+	if targetPath != "" {
+		return filepath.Base(targetPath)
+	}
+	return "Implementation Plan"
+}
+
+func resolveACPPath(workdir, p string) string {
+	if p == "" {
+		return ""
+	}
+	if filepath.IsAbs(p) || workdir == "" {
+		return p
+	}
+	return filepath.Join(workdir, p)
+}
+
+func (s *session) maybeEmitACPArtifact(st acpToolState) string {
+	meta, rawContent, rawPath := parseACPArtifactInput(st.rawInput)
+	targetPath := st.filePath
+	if targetPath == "" {
+		targetPath = rawPath
+	}
+	diskPath := resolveACPPath(s.spec.Workdir, targetPath)
+	if !meta.Present && diskPath != "" {
+		ext := strings.ToLower(filepath.Ext(diskPath))
+		if ext == ".md" || ext == ".markdown" {
+			meta = readACPArtifactSidecar(diskPath)
+		}
+	}
+	if !meta.Present || (!meta.UserFacing && !meta.RequestFeedback) {
+		return ""
+	}
+	if !meta.RequestFeedback && targetPath != "" && !isMarkdownArtifactPath(targetPath) {
+		return ""
+	}
+	var md string
+	if diskPath != "" {
+		if b, err := os.ReadFile(diskPath); err == nil && len(bytes.TrimSpace(b)) > 0 {
+			md = string(b)
+		}
+	}
+	if md == "" && st.diffNewText != "" {
+		md = st.diffNewText
+	}
+	if md == "" {
+		md = rawContent
+	}
+	md = strings.TrimSpace(md)
+	if md == "" {
+		return ""
+	}
+	idSeed := st.id
+	if targetPath != "" {
+		idSeed = filepath.Base(targetPath)
+	}
+	planID := "plan_" + sanitizeACPPlanID(idSeed)
+	title := deriveACPPlanTitle(md, meta.Summary, targetPath)
+	sig := fmt.Sprintf("%t\x00%s\x00%s", meta.RequestFeedback, title, md)
+	if sig == st.lastArtifactSig {
+		return ""
+	}
+	s.emit(runtime.Event{
+		Kind:          runtime.EventPlanProposed,
+		ItemID:        planID,
+		PlanTitle:     title,
+		Text:          md,
+		RequestReview: meta.RequestFeedback,
+	})
+	return sig
+}
+
+func (s *session) extractACPPlanExit(toolCallID, name, title, kind string, rawInput, content json.RawMessage, locPath string) (*threadv2.PlanReviewPayload, bool) {
+	var in struct {
+		Plan          string `json:"plan"`
+		Title         string `json:"title"`
+		PlanPath      string `json:"plan_path"`
+		PlanPathCamel string `json:"planPath"`
+		Path          string `json:"path"`
+		FilePath      string `json:"file_path"`
+		FilePathCamel string `json:"filePath"`
+	}
+	_ = json.Unmarshal(rawInput, &in)
+
+	normName := strings.ToLower(strings.TrimSpace(name))
+	normTitle := strings.ToLower(strings.TrimSpace(title))
+	normKind := strings.ToLower(strings.TrimSpace(kind))
+	isPlanExit := normName == "exit_plan_mode" || normName == "exitplanmode" ||
+		normTitle == "exit_plan_mode" || normTitle == "exitplanmode" || normTitle == "exit plan mode" ||
+		(normKind == "switch_mode" && (in.Plan != "" || in.PlanPath != "" || in.PlanPathCamel != "" || strings.Contains(normTitle, "plan")))
+	if !isPlanExit {
+		return nil, false
+	}
+
+	targetPath := ""
+	for _, p := range []string{in.PlanPath, in.PlanPathCamel, in.Path, in.FilePath, in.FilePathCamel, locPath} {
+		if p != "" {
+			targetPath = p
+			break
+		}
+	}
+	if targetPath == "" && toolCallID != "" {
+		s.mu.Lock()
+		if st := s.tools[toolCallID]; st != nil {
+			targetPath = st.filePath
+		}
+		s.mu.Unlock()
+	}
+
+	planMD := strings.TrimSpace(in.Plan)
+	if planMD == "" && targetPath != "" {
+		if b, err := os.ReadFile(resolveACPPath(s.spec.Workdir, targetPath)); err == nil {
+			planMD = strings.TrimSpace(string(b))
+		}
+	}
+	if planMD == "" && len(content) > 0 {
+		out, _, diffText := s.extractACPToolContent(content)
+		if strings.TrimSpace(diffText) != "" {
+			planMD = strings.TrimSpace(diffText)
+		} else {
+			planMD = strings.TrimSpace(out)
+		}
+	}
+
+	var planID string
+	switch {
+	case targetPath != "":
+		planID = "plan_" + sanitizeACPPlanID(filepath.Base(targetPath))
+	case toolCallID != "":
+		planID = "plan_" + sanitizeACPPlanID(toolCallID)
+	default:
+		planID = fmt.Sprintf("plan_%d", s.itemSeq.Add(1))
+	}
+	planTitle := strings.TrimSpace(in.Title)
+	if planTitle == "" {
+		planTitle = deriveACPPlanTitle(planMD, "", targetPath)
+	}
+	return &threadv2.PlanReviewPayload{
+		PlanId:   planID,
+		Title:    planTitle,
+		Markdown: planMD,
+	}, true
 }
 
 func mapACPToolFields(st *acpToolState) (toolName, cmd, filePath string) {
@@ -917,9 +1213,13 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 	case "session/request_permission":
 		var p struct {
 			ToolCall struct {
-				Title     string `json:"title"`
-				Kind      string `json:"kind"`
-				Locations []struct {
+				ToolCallID string          `json:"toolCallId"`
+				Title      string          `json:"title"`
+				Name       string          `json:"name"`
+				Kind       string          `json:"kind"`
+				RawInput   json.RawMessage `json:"rawInput"`
+				Content    json.RawMessage `json:"content"`
+				Locations  []struct {
 					Path string `json:"path"`
 				} `json:"locations"`
 			} `json:"toolCall"`
@@ -929,6 +1229,48 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			} `json:"options"`
 		}
 		_ = json.Unmarshal(params, &p)
+		targetPath := ""
+		if len(p.ToolCall.Locations) > 0 {
+			targetPath = p.ToolCall.Locations[0].Path
+		}
+		if planPayload, ok := s.extractACPPlanExit(
+			p.ToolCall.ToolCallID,
+			p.ToolCall.Name,
+			p.ToolCall.Title,
+			p.ToolCall.Kind,
+			p.ToolCall.RawInput,
+			p.ToolCall.Content,
+			targetPath,
+		); ok {
+			s.flushAssistantSegment()
+			if planPayload.Markdown != "" {
+				s.emit(runtime.Event{
+					Kind:      runtime.EventPlanProposed,
+					ItemID:    planPayload.PlanId,
+					PlanTitle: planPayload.Title,
+					Text:      planPayload.Markdown,
+				})
+			}
+			allowed := true
+			if s.spec.Gate != nil {
+				res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
+					Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+					Plan: planPayload,
+				})
+				if err != nil || res.CancelTurn {
+					reply(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
+					return
+				}
+				allowed = res.PlanApproved
+			}
+			chosenID := pickPermissionOption(p.Options, allowed)
+			if chosenID == "" {
+				reply(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
+				return
+			}
+			reply(map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": chosenID}})
+			return
+		}
 		cat := "mcp"
 		switch p.ToolCall.Kind {
 		case "edit", "write", "delete", "move":
@@ -937,10 +1279,6 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			cat = "command"
 		case "read", "search":
 			cat = "read"
-		}
-		targetPath := ""
-		if len(p.ToolCall.Locations) > 0 {
-			targetPath = p.ToolCall.Locations[0].Path
 		}
 		allowed := true
 		if s.spec.Gate != nil {

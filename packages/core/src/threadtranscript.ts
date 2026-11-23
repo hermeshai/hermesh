@@ -119,7 +119,7 @@ export function threadTranscript(proj: ThreadProjection | null | undefined): Tra
         out.push({ kind: "agent", seq, text: it.text, at });
         break;
       case TurnItemKind.PROPOSED_PLAN:
-        out.push({ kind: "agent", seq, text: it.planTitle ? `### ${it.planTitle}\n\n${it.text}` : it.text, at });
+        out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at });
         break;
       case TurnItemKind.TOOL_CALL:
       case TurnItemKind.COMMAND_EXECUTION:
@@ -140,6 +140,11 @@ export function threadTranscript(proj: ThreadProjection | null | undefined): Tra
     }
   });
   return out;
+}
+
+function formatProposedPlan(title: string, text: string): string {
+  if (!title || text.trimStart().startsWith("#")) return text;
+  return `### ${title}\n\n${text}`;
 }
 
 const runFailure = (message: string): Failure => create(FailureSchema, { kind: FailureKind.UNSPECIFIED, message });

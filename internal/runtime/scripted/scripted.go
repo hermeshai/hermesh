@@ -522,6 +522,24 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					}
 				}
 
+			case "propose-artifact":
+				// Post-turn proposal/deliverable (models Antigravity ArtifactMetadata & Codex plan items):
+				// format: propose-artifact <title>|<request_feedback:true/false>|<markdown>
+				parts := strings.SplitN(rest, "|", 3)
+				if len(parts) == 3 {
+					title := strings.TrimSpace(parts[0])
+					reqReview := strings.EqualFold(strings.TrimSpace(parts[1]), "true")
+					md := strings.ReplaceAll(parts[2], `\n`, "\n")
+					planID := "plan_" + strings.ToLower(strings.ReplaceAll(title, " ", "_"))
+					s.emit(runtime.Event{
+						Kind:          runtime.EventPlanProposed,
+						ItemID:        planID,
+						PlanTitle:     title,
+						Text:          md,
+						RequestReview: reqReview,
+					})
+				}
+
 			case "ask-secret":
 				label, reason, _ := strings.Cut(rest, "|")
 				if s.spec.Gate != nil {
@@ -631,7 +649,7 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 func isDirective(line string) bool {
 	verb, _, _ := strings.Cut(strings.TrimSpace(line), " ")
 	switch verb {
-	case "say", "stream", "think", "sleep", "hang", "crash", "fail", "write", "shell", "ask", "propose-plan", "ask-secret", "tokens", "inspect":
+	case "say", "stream", "think", "sleep", "hang", "crash", "fail", "write", "shell", "ask", "propose-plan", "propose-artifact", "ask-secret", "tokens", "inspect":
 		return true
 	}
 	return false

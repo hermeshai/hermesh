@@ -227,11 +227,38 @@ func runMockCodex() {
 			var p struct {
 				Model  string `json:"model"`
 				Effort string `json:"effort"`
+				Input  []struct {
+					Text string `json:"text"`
+				} `json:"input"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
 			curTurnModel, curEffort = p.Model, p.Effort
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "propose_codex_plan") {
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{
+							"id":   "cx_plan_1",
+							"type": "plan",
+							"text": "# Codex Plan\n\n1. Inspect\n2. Ship",
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{
+							"id":   "it_plan_msg",
+							"type": "agentMessage",
+							"text": "Plan ready for review.",
+						},
+					},
+				})
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
 			waitingApproval = true
 			write(map[string]any{
 				"id":     777,
@@ -349,6 +376,31 @@ func runMockACP() {
 			})
 			continue
 		}
+		if m.ID != nil && m.Method == "" && *m.ID == 779 {
+			var res struct {
+				Outcome struct {
+					Outcome  string `json:"outcome"`
+					OptionID string `json:"optionId"`
+				} `json:"outcome"`
+			}
+			_ = json.Unmarshal(m.Result, &res)
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"method":  "session/update",
+				"params": map[string]any{
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"content":       map[string]any{"type": "text", "text": "plan_exit_opt=" + res.Outcome.OptionID},
+					},
+				},
+			})
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      promptReqID,
+				"result":  map[string]any{"stopReason": "end_turn"},
+			})
+			continue
+		}
 		if m.ID != nil && m.Method == "" && *m.ID == 888 {
 			// Response to fs/write_text_file!
 			status := "wrote_ok"
@@ -395,7 +447,151 @@ func runMockACP() {
 				} `json:"prompt"`
 			}
 			_ = json.Unmarshal(m.Params, &p)
-			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
+			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "antigravity_artifacts") {
+				brainDir := os.Getenv("MOCK_BRAIN_DIR")
+				planPath := filepath.Join(brainDir, "implementation_plan.md")
+				_ = os.WriteFile(planPath, []byte("# v1 Plan\n\nInitial draft\n"), 0o644)
+				_ = os.WriteFile(planPath+".metadata.json", []byte(`{"summary":"Plan summary","userFacing":true,"requestFeedback":true}`), 0o644)
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_plan_w",
+							"title":         "write_file",
+							"kind":          "edit",
+							"status":        "in_progress",
+							"rawInput": map[string]any{
+								"Path":    planPath,
+								"Content": "# v1 Plan\n\nInitial draft\n",
+								"ArtifactMetadata": map[string]any{
+									"Summary":         "Plan summary",
+									"UserFacing":      true,
+									"RequestFeedback": true,
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call_update",
+							"toolCallId":    "tc_plan_w",
+							"status":        "completed",
+							"locations":     []any{map[string]any{"path": planPath}},
+						},
+					},
+				})
+				// Subsequent edit_file omits ArtifactMetadata in rawInput and only sends partial Target/Replacement;
+				// driver must read full updated markdown + .metadata.json sidecar from disk!
+				_ = os.WriteFile(planPath, []byte("# Final Unified Plan\n\n1. Adapter\n2. Kernel\n3. UI\n"), 0o644)
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_plan_e",
+							"title":         "edit_file",
+							"kind":          "edit",
+							"status":        "completed",
+							"locations":     []any{map[string]any{"path": planPath}},
+							"rawInput": map[string]any{
+								"Path":        planPath,
+								"Target":      "Initial draft",
+								"Replacement": "1. Adapter\n2. Kernel\n3. UI",
+							},
+						},
+					},
+				})
+				// Deliverable artifact (UserFacing=true, RequestFeedback=false) -> inline PROPOSED_PLAN without review gate.
+				walkPath := filepath.Join(brainDir, "walkthrough.md")
+				_ = os.WriteFile(walkPath, []byte("# Walkthrough\n\nVerified end-to-end.\n"), 0o644)
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_walk",
+							"title":         "write_file",
+							"kind":          "edit",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"Path":    walkPath,
+								"Content": "# Walkthrough\n\nVerified end-to-end.\n",
+								"ArtifactMetadata": map[string]any{
+									"Summary":         "Walkthrough summary",
+									"UserFacing":      true,
+									"RequestFeedback": false,
+								},
+							},
+						},
+					},
+				})
+				// Non-markdown widget (UserFacing=true, RequestFeedback=false, .html) -> must NOT emit EventPlanProposed.
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_html",
+							"title":         "write_file",
+							"kind":          "edit",
+							"status":        "completed",
+							"rawInput": map[string]any{
+								"Path":    filepath.Join(brainDir, "widget.html"),
+								"Content": "<div>widget</div>",
+								"ArtifactMetadata": map[string]any{
+									"Summary":         "HTML widget",
+									"UserFacing":      true,
+									"RequestFeedback": false,
+								},
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "See implementation_plan.md and click Proceed."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "acp_exit_plan_mode") {
+				_ = os.WriteFile("PLAN.md", []byte("# Standard ACP Plan\n\nStep A\nStep B\n"), 0o644)
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      779,
+					"method":  "session/request_permission",
+					"params": map[string]any{
+						"toolCall": map[string]any{
+							"toolCallId": "tc_exit",
+							"name":       "exit_plan_mode",
+							"title":      "Exit Plan Mode",
+							"kind":       "switch_mode",
+							"rawInput":   map[string]any{"plan_path": "PLAN.md"},
+						},
+						"options": []any{
+							map[string]any{"optionId": "allow_plan", "kind": "allow_once"},
+							map[string]any{"optionId": "reject_plan", "kind": "reject_once"},
+						},
+					},
+				})
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
 				write(map[string]any{
 					"jsonrpc": "2.0",
 					"method":  "session/update",
@@ -795,4 +991,126 @@ func TestCodexActiveWriterForkFallbackAndHerCloseSafety(t *testing.T) {
 	_ = hs.ForceStop()
 	close(release)
 	time.Sleep(30 * time.Millisecond)
+}
+
+func TestACPArtifactProposalsStandardPlanExitAndCodexPlanReview(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	brainDir := t.TempDir()
+	workdir := t.TempDir()
+	acpDrv := acp.NewDriver("")
+
+	var gatedPlan *threadv2.PlanReviewPayload
+	acpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_acp_plan",
+		Workdir:  workdir,
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "antigravity",
+			Driver:     "acp",
+			AcpFlavor:  "antigravity",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER": "acp",
+				"MOCK_BRAIN_DIR":      brainDir,
+			},
+		},
+		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
+			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
+				gatedPlan = req.Plan
+				return runtime.ToolGateResult{Allowed: true, PlanApproved: true}, nil
+			}
+			return runtime.ToolGateResult{Allowed: true}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession ACP: %v", err)
+	}
+	defer acpSess.Close()
+
+	// 1. Antigravity non-blocking write_file + edit_file (sidecar fallback + out-of-workspace brainDir) + walkthrough.md + widget.html filter.
+	if err := acpSess.StartTurn(ctx, runtime.TurnInput{RunID: "r_agy", Prompt: "antigravity_artifacts"}); err != nil {
+		t.Fatal(err)
+	}
+	var agyPlans []runtime.Event
+	timeout := time.After(8 * time.Second)
+agyLoop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for antigravity_artifacts turn")
+		case ev := <-acpSess.Events():
+			if ev.Kind == runtime.EventPlanProposed {
+				agyPlans = append(agyPlans, ev)
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break agyLoop
+			}
+		}
+	}
+	if len(agyPlans) != 3 {
+		t.Fatalf("expected 3 EventPlanProposed (write plan, edit plan, walkthrough; excluding .html), got %d: %+v", len(agyPlans), agyPlans)
+	}
+	if agyPlans[0].ItemID != agyPlans[1].ItemID || !agyPlans[1].RequestReview || agyPlans[1].PlanTitle != "Final Unified Plan" || !strings.Contains(agyPlans[1].Text, "3. UI") {
+		t.Fatalf("expected edit_file to update same ItemID with full disk markdown & RequestReview=true, got %+v -> %+v", agyPlans[0], agyPlans[1])
+	}
+	if agyPlans[2].RequestReview || agyPlans[2].PlanTitle != "Walkthrough" || !strings.Contains(agyPlans[2].Text, "Verified end-to-end.") {
+		t.Fatalf("expected walkthrough.md to emit RequestReview=false inline deliverable, got %+v", agyPlans[2])
+	}
+
+	// 2. Standard ACP blocking exit_plan_mode via session/request_permission -> Gate(PLAN_REVIEW).
+	if err := acpSess.StartTurn(ctx, runtime.TurnInput{RunID: "r_exit", Prompt: "acp_exit_plan_mode"}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := collectTurn(t, acpSess)
+	if gatedPlan == nil || gatedPlan.Title != "Standard ACP Plan" || !strings.Contains(gatedPlan.Markdown, "Step B") {
+		t.Fatalf("expected Gate(PLAN_REVIEW) with Standard ACP Plan, got %+v", gatedPlan)
+	}
+	if len(msgs) == 0 || msgs[0] != "plan_exit_opt=allow_plan" {
+		t.Fatalf("expected allow_plan selected on plan approval, got %v", msgs)
+	}
+
+	// 3. Codex item/completed type="plan" -> emits EventPlanProposed with RequestReview=true.
+	cxDrv := codex.NewDriver("")
+	cxSess, err := cxDrv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_cx_plan",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "codex",
+			Driver:     "codex",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "codex"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession Codex: %v", err)
+	}
+	defer cxSess.Close()
+	if err := cxSess.StartTurn(ctx, runtime.TurnInput{RunID: "r_cx_plan", Prompt: "propose_codex_plan"}); err != nil {
+		t.Fatal(err)
+	}
+	var cxPlan *runtime.Event
+	timeoutCx := time.After(8 * time.Second)
+cxLoop:
+	for {
+		select {
+		case <-timeoutCx:
+			t.Fatal("timed out waiting for codex plan turn")
+		case ev := <-cxSess.Events():
+			if ev.Kind == runtime.EventPlanProposed {
+				cp := ev
+				cxPlan = &cp
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break cxLoop
+			}
+		}
+	}
+	if cxPlan == nil || !cxPlan.RequestReview || !strings.Contains(cxPlan.Text, "# Codex Plan") {
+		t.Fatalf("expected Codex plan item to set RequestReview=true, got %+v", cxPlan)
+	}
 }

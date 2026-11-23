@@ -90,6 +90,23 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(q.items[0].options[0].label == "Red")
 }
 
+@Test func proposedPlanFormattingAvoidsDuplicateHeadings() {
+    let rows = threadTranscript(.with {
+        $0.items = [
+            item(1, "r1", .proposedPlan) { $0.planTitle = "v2 Refactor"; $0.text = "1. Build\n2. Test" },
+            item(2, "r1", .proposedPlan) { $0.planTitle = "v2 Refactor"; $0.text = "# v2 Refactor\n\n1. Build\n2. Test" },
+        ]
+    })
+    let texts = rows.compactMap { row -> String? in
+        if case .agent(_, let text) = row { return text }
+        return nil
+    }
+    #expect(texts == [
+        "### v2 Refactor\n\n1. Build\n2. Test",
+        "# v2 Refactor\n\n1. Build\n2. Test",
+    ])
+}
+
 @Test func aToolRunningInTheRunUnderWayIsWorking() {
     var p = projection
     p.thread.activeRunID = "r2"

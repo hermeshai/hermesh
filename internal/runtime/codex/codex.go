@@ -789,7 +789,13 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			}
 		case "plan":
 			if done && strings.TrimSpace(p.Item.Text) != "" {
-				s.emit(runtime.Event{Kind: runtime.EventPlanProposed, ItemID: p.Item.ID, PlanTitle: "Implementation Plan", Text: p.Item.Text})
+				s.emit(runtime.Event{
+					Kind:          runtime.EventPlanProposed,
+					ItemID:        p.Item.ID,
+					PlanTitle:     "Implementation Plan",
+					Text:          p.Item.Text,
+					RequestReview: true,
+				})
 			}
 		}
 

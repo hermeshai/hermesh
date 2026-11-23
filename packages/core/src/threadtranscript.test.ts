@@ -105,6 +105,21 @@ describe("a thread drawn as a session's conversation", () => {
     expect(q.items[0]).toMatchObject({ id: "q1", text: "Color?", allowOther: true, optional: false });
     expect(q.items[0].options[0].label).toBe("Red");
   });
+
+  it("formats proposed plans without duplicating an existing markdown heading", () => {
+    const rows = threadTranscript(
+      create(ThreadProjectionSchema, {
+        items: [
+          item(1, "r1", TurnItemKind.PROPOSED_PLAN, { planTitle: "v2 Refactor", text: "1. Build\n2. Test" }),
+          item(2, "r1", TurnItemKind.PROPOSED_PLAN, { planTitle: "v2 Refactor", text: "# v2 Refactor\n\n1. Build\n2. Test" }),
+        ],
+      }),
+    );
+    expect(rows.map((r) => (r.kind === "agent" ? r.text : ""))).toEqual([
+      "### v2 Refactor\n\n1. Build\n2. Test",
+      "# v2 Refactor\n\n1. Build\n2. Test",
+    ]);
+  });
 });
 
 describe("a thread at work: working or thinking", () => {
