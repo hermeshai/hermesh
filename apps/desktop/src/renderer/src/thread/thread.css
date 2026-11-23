@@ -13,9 +13,18 @@
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
 @media (prefers-color-scheme:dark){.th{--pill:var(--win2)}}
-/* A new session: its title and the box in the middle of the page. */
-.th-new{width:100%;max-width:var(--conversation-width);margin:0 auto;padding:18vh 24px 0;display:flex;flex-direction:column}
-.th-new h1{margin:0 0 22px;font-size:24px;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-align:center}
+/* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
+   environment under it; the box where a session's is (her.css .cmp-zone). */
+.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
+.th-ask h1{margin:0;max-width:var(--conversation-width);font-size:28px;line-height:1.3;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-wrap:balance}
+.th-pick{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:bottom;border:0;padding:0 2px;margin:0 2px;background:none;color:inherit;font:inherit;letter-spacing:inherit;border-bottom:1.5px solid var(--l4);border-radius:0;cursor:pointer}
+.th-pick:hover,.th-pick[aria-expanded="true"]{border-bottom-color:var(--l2)}
+.th-pick .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+.th-pick .ic{width:16px;height:16px;color:var(--l3);flex:none}
+.th-on{height:28px;border:0;border-radius:var(--r-sm);background:none;padding:0 8px;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--l2);white-space:nowrap}
+.th-on:hover,.th-on[aria-expanded="true"]{background:var(--fill);color:var(--l1)}
+.th-on .ic{width:14px;height:14px;flex:none}
+.th-on .lbl{max-width:260px;overflow:hidden;text-overflow:ellipsis}
 /* The box: one line, growing with what is written (Composer.tsx); focus deepens its edge, no ring. */
 .th-cmp{flex:none}
 .th-cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--l3),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06)}
@@ -34,11 +43,6 @@
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
 .th-where{height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px;color:var(--l3);font-size:12.5px;white-space:nowrap}
 .th-where .ic{width:14px;height:14px}
-.th-check{height:28px;padding:0 8px;border:0;border-radius:var(--r-sm);background:none;display:inline-flex;align-items:center;gap:7px;color:var(--l2);font-size:12.5px;white-space:nowrap}
-.th-check:hover{background:var(--fill);color:var(--l1)}
-.th-check .box{width:14px;height:14px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--field-bd);display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
-.th-check.on .box{background:var(--accent);box-shadow:none}
-.th-check .box .ic{width:10px;height:10px;stroke-width:2.2}
 .th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
 .th-modes{width:330px}
 /* The model panel: a search, the providers beside a provider's models, how hard it thinks along the bottom. */

@@ -48,7 +48,7 @@ import { Inspector } from "../session/Inspector";
 import { ContentScope } from "../session/scope";
 import "../session/markdown/markdown.css";
 import "../session/session.css";
-import { ComposerOptions, ThreadComposer } from "./Composer";
+import { ComposerOptions, LaunchAsk, ThreadComposer } from "./Composer";
 import { ThreadRequest } from "./Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./choices";
 import "./thread.css";
@@ -401,23 +401,33 @@ export function ThreadPage() {
 
   // What runs where and with what, under the box (Composer.tsx): a new session's to choose; a session's
   // machine and project fixed, its model and mode for the next turn.
+  const projectsHere = [...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list];
+  const choice = { machineId: effectiveMachineId, projectId: effectiveProjectId, worktree, sel: modelSel, mode: clampedMode, plan: interactionMode === InteractionMode.PLAN };
   const options = (fixed: boolean) => (
     <ComposerOptions
       fixed={fixed}
-      below={!fixed}
       machines={st.machines}
-      projects={[...st.projects.filter((p) => p.machineId !== effectiveMachineId), ...projectsOn(effectiveMachineId).list]}
-      projectsStale={projectsOn(effectiveMachineId).stale}
+      projects={projectsHere}
       providersStale={providersStale}
-      choice={{ machineId: effectiveMachineId, projectId: effectiveProjectId, worktree, sel: modelSel, mode: clampedMode, plan: interactionMode === InteractionMode.PLAN }}
+      choice={choice}
       providers={providers}
       maxCeiling={maxCeiling}
-      onMachine={pickMachine}
-      onProject={(pid) => pickProject(machineId, pid)}
       onWorktree={setWorktree}
       onModel={(next) => applyConfigUpdate({ sel: next })}
       onMode={(rm) => applyConfigUpdate({ rm })}
       onPlan={(on) => applyConfigUpdate({ im: on ? InteractionMode.PLAN : InteractionMode.CODE })}
+      onNotice={(text) => st.show(text)}
+    />
+  );
+  // A new session's question in the middle of the page: the project, and the environment under it.
+  const ask = (
+    <LaunchAsk
+      machines={st.machines}
+      projects={projectsHere}
+      projectsStale={projectsOn(effectiveMachineId).stale}
+      choice={choice}
+      onMachine={pickMachine}
+      onProject={(pid) => pickProject(machineId, pid)}
       onAddProject={() =>
         st.set({
           sheet: {
@@ -430,7 +440,6 @@ export function ThreadPage() {
           },
         })
       }
-      onNotice={(text) => st.show(text)}
     />
   );
 
@@ -546,31 +555,36 @@ export function ThreadPage() {
       </div>
       {!activeThreadId ? (
         <div className="dwrap th" data-testid="thread-page">
-          <div className="th-new" data-testid="thread-launch-card">
-            <h1>{t("launch.title")}</h1>
-            <ThreadComposer
-              value={prompt}
-              onChange={(v) => {
-                setPrompt(v);
-                setSlashOpen(v.startsWith("/") && !v.includes(" "));
-              }}
-              onSend={() => submitMessage()}
-              running={false}
-              sending={busySend}
-              placeholder={t("launch.promptPlaceholder")}
-              attachments={attachments}
-              onAttach={handleAttachFiles}
-              onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
-              offline={!machineOnline}
-              blocked={needsUpdate}
-            />
-            {options(false)}
-            {needsUpdate && (
-              <p className="th-note" role="status" data-testid="launch-needs-update">
-                {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
-              </p>
-            )}
-            {slashRow}
+          {/* The question in the middle, the box at the bottom where a session's is. */}
+          <div className="dmain" data-testid="thread-launch-card">
+            {ask}
+            <div className="cmp-zone">
+              <div className="cmp-col">
+                {needsUpdate && (
+                  <p className="th-note" role="status" data-testid="launch-needs-update">
+                    {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
+                  </p>
+                )}
+                {slashRow}
+                <ThreadComposer
+                  value={prompt}
+                  onChange={(v) => {
+                    setPrompt(v);
+                    setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                  }}
+                  onSend={() => submitMessage()}
+                  running={false}
+                  sending={busySend}
+                  placeholder={t("launch.promptPlaceholder")}
+                  attachments={attachments}
+                  onAttach={handleAttachFiles}
+                  onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                  offline={!machineOnline}
+                  blocked={needsUpdate}
+                />
+                {options(false)}
+              </div>
+            </div>
           </div>
         </div>
       ) : (

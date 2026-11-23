@@ -24,7 +24,11 @@
     "notRepo": "不是 git 仓库，只能原地工作",
     "needsUpdate": "{{machine}} 上的 Hermesh 需要更新才能新建会话。",
     "needsUpdateShort": "需要更新",
-    "lastKnown": "上次读到的"
+    "lastKnown": "上次读到的",
+    "ask": "要在 <project/> 里做什么？",
+    "workingCopy": "工作目录",
+    "checkout": "当前目录",
+    "checkoutHint": "直接在项目目录里修改"
   },
   "header": {
     "archive": "归档",

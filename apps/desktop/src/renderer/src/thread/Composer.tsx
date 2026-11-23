@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine, Project } from "@hermesh/proto/local";
 import { Workspace } from "@hermesh/proto/identity";
@@ -160,40 +160,120 @@ export interface Choice {
   plan: boolean;
 }
 
-/**
- * The line under the box. In a new session every part can change; in a
- * session, where it runs is fixed (shown, not a menu) and the model and the
- * mode apply from the next turn.
- */
-export function ComposerOptions({ fixed, below, machines, projects, projectsStale, providersStale, choice, providers, maxCeiling, onMachine, onProject, onWorktree, onModel, onMode, onPlan, onAddProject, onNotice }: {
-  /** In a session: where it runs, not to be changed. */
-  fixed: boolean;
-  /** The menus open under the line (a new session's box is high in the window). */
-  below: boolean;
+type Pickers = {
   machines: Machine[];
   projects: Project[];
   /** The machine is offline: its projects (and models) are those last read there. */
   projectsStale?: boolean;
+  choice: Choice;
+  onMachine: (id: string) => void;
+  onProject: (id: string) => void;
+  onAddProject: () => void;
+};
+
+/**
+ * A new session's question, in the middle of its page: "What should we build in <project>?", and under it the
+ * environment it runs on. Both are menus (opening below), set as last time (choices.ts).
+ */
+export function LaunchAsk({ machines, projects, projectsStale, choice, onMachine, onProject, onAddProject }: Pickers) {
+  const { t } = useTranslation("thread");
+  const machine = machines.find((m) => m.machineId === choice.machineId);
+  const machineName = machine?.machineName ?? choice.machineId;
+  const here = projects.filter((p) => p.machineId === choice.machineId);
+  const projectName = choice.projectId === SCRATCH_PROJECT ? t("launch.scratch") : choice.projectId;
+  const canAdd = !!machine && (machine.online || machine.local);
+  const project = (
+    <MenuButton
+      className="th-pick"
+      below
+      title={t("launch.project")}
+      label={
+        <>
+          <span className="lbl" data-testid="launch-project-chip">{projectName}</span>
+          <Icon name="chevD" />
+        </>
+      }
+    >
+      {(close) => (
+        <>
+          <div className="mgh">
+            {t("launch.projectsOn", { machine: machineName })}
+            {projectsStale && ` · ${t("launch.lastKnown")}`}
+          </div>
+          {here.map((p) => (
+            <Item key={p.projectId} checked={p.projectId === choice.projectId} label={p.projectId} desc={p.path} testId={`project-item-${p.projectId}`} onClick={() => (close(), onProject(p.projectId))} />
+          ))}
+          <Item checked={choice.projectId === SCRATCH_PROJECT} label={t("launch.scratch")} testId="project-item-scratch" onClick={() => (close(), onProject(SCRATCH_PROJECT))} />
+          <div className="msep" role="separator" />
+          <Item icon={<Icon name="plus" />} label={t("launch.addProject")} disabled={!canAdd} testId="project-add" onClick={() => (close(), onAddProject())} />
+        </>
+      )}
+    </MenuButton>
+  );
+  return (
+    <div className="th-ask">
+      <h1>
+        <Trans t={t} i18nKey="launch.ask" components={{ project }} />
+      </h1>
+      <MenuButton
+        className="th-on"
+        below
+        title={t("launch.environment")}
+        label={
+          <>
+            <Icon name={machineIcon(machine)} />
+            <span className="lbl" data-testid="launch-machine-chip">{machineName}</span>
+            {machine && !machine.online && !machine.local && <i className="th-off" />}
+            <Icon name="chevR" />
+          </>
+        }
+      >
+        {(close) => (
+          <>
+            <div className="mgh">{t("launch.environment")}</div>
+            {machines.map((m) => (
+              <Item
+                key={m.machineId}
+                checked={m.machineId === choice.machineId}
+                icon={<Icon name={machineIcon(m)} />}
+                label={m.machineName}
+                desc={m.status && !m.status.threads ? t("launch.needsUpdateShort") : m.online || m.local ? undefined : t("launch.offlineQueues")}
+                testId={`machine-item-${m.machineName}`}
+                onClick={() => (close(), onMachine(m.machineId))}
+              />
+            ))}
+          </>
+        )}
+      </MenuButton>
+    </div>
+  );
+}
+
+/**
+ * The line under the box, the same in a new session and in one: on the left where it works (a new session's
+ * working copy, when its project can have its own worktree; a session's machine and project, fixed), on the right
+ * the model and the mode, which in a session apply from the next turn.
+ */
+export function ComposerOptions({ fixed, machines, projects, providersStale, choice, providers, maxCeiling, onWorktree, onModel, onMode, onPlan, onNotice }: {
+  /** In a session: where it runs, not to be changed. */
+  fixed: boolean;
+  machines: Machine[];
+  projects: Project[];
   providersStale?: boolean;
   choice: Choice;
   providers: ProviderInstance[];
   maxCeiling: RuntimeMode;
-  onMachine: (id: string) => void;
-  onProject: (id: string) => void;
   onWorktree: (on: boolean) => void;
   onModel: (sel: ModelSelection) => void;
   onMode: (m: RuntimeMode) => void;
   onPlan: (on: boolean) => void;
-  onAddProject: () => void;
   onNotice: (text: string) => void;
 }) {
   const { t } = useTranslation("thread");
   const machine = machines.find((m) => m.machineId === choice.machineId);
   const machineName = machine?.machineName ?? choice.machineId;
-  const here = projects.filter((p) => p.machineId === choice.machineId);
-  const project = here.find((p) => p.projectId === choice.projectId);
+  const project = projects.find((p) => p.machineId === choice.machineId && p.projectId === choice.projectId);
   const projectName = choice.projectId === SCRATCH_PROJECT ? t("launch.scratch") : choice.projectId;
-  const canAdd = !!machine && (machine.online || machine.local);
   const modeKey = (m: RuntimeMode) => (m === RuntimeMode.SUPERVISED ? "supervised" : m === RuntimeMode.AUTO_EDITS ? "autoEdits" : m === RuntimeMode.FULL_ACCESS ? "fullAccess" : "auto");
   const inst = findProviderInstance(providers, choice.sel.instanceId);
   const reasoning = reasoningOf(providers, choice.sel);
@@ -207,85 +287,32 @@ export function ComposerOptions({ fixed, below, machines, projects, projectsStal
           {projectName}
         </span>
       ) : (
-        <>
+        (project?.repo || project?.workspace === Workspace.WORKTREE) && (
           <MenuButton
             className="mb"
-            below={below}
-            title={t("launch.environment")}
+            title={t("launch.workingCopy")}
             label={
               <>
-                <Icon name={machineIcon(machine)} />
-                <span className="lbl strong" data-testid="launch-machine-chip">{machineName}</span>
-                {machine && !machine.online && !machine.local && <i className="th-off" />}
+                <Icon name={choice.worktree ? "branch" : "folder"} />
+                <span className="lbl" data-testid="launch-worktree">{t(choice.worktree ? "launch.worktree" : "launch.checkout")}</span>
                 <Icon name="chevD" />
               </>
             }
           >
             {(close) => (
               <>
-                <div className="mgh">{t("launch.environment")}</div>
-                {machines.map((m) => (
-                  <Item
-                    key={m.machineId}
-                    checked={m.machineId === choice.machineId}
-                    icon={<Icon name={machineIcon(m)} />}
-                    label={m.machineName}
-                    desc={m.status && !m.status.threads ? t("launch.needsUpdateShort") : m.online || m.local ? undefined : t("launch.offlineQueues")}
-                    testId={`machine-item-${m.machineName}`}
-                    onClick={() => (close(), onMachine(m.machineId))}
-                  />
-                ))}
+                <div className="mgh">{t("launch.workingCopy")}</div>
+                <Item checked={!choice.worktree} label={t("launch.checkout")} desc={t("launch.checkoutHint")} testId="worktree-off" onClick={() => (close(), onWorktree(false))} />
+                <Item checked={choice.worktree} label={t("launch.worktree")} desc={t("launch.worktreeHint")} testId="worktree-on" onClick={() => (close(), onWorktree(true))} />
               </>
             )}
           </MenuButton>
-          <MenuButton
-            className="mb"
-            below={below}
-            title={t("launch.project")}
-            label={
-              <>
-                <Icon name={choice.projectId === SCRATCH_PROJECT ? "tray" : "folder"} />
-                <span className="lbl strong" data-testid="launch-project-chip">{projectName}</span>
-                <Icon name="chevD" />
-              </>
-            }
-          >
-            {(close) => (
-              <>
-                <div className="mgh">
-                  {t("launch.projectsOn", { machine: machineName })}
-                  {projectsStale && ` · ${t("launch.lastKnown")}`}
-                </div>
-                {here.map((p) => (
-                  <Item key={p.projectId} checked={p.projectId === choice.projectId} label={p.projectId} desc={p.path} testId={`project-item-${p.projectId}`} onClick={() => (close(), onProject(p.projectId))} />
-                ))}
-                <Item checked={choice.projectId === SCRATCH_PROJECT} label={t("launch.scratch")} testId="project-item-scratch" onClick={() => (close(), onProject(SCRATCH_PROJECT))} />
-                <div className="msep" role="separator" />
-                <Item icon={<Icon name="plus" />} label={t("launch.addProject")} disabled={!canAdd} testId="project-add" onClick={() => (close(), onAddProject())} />
-              </>
-            )}
-          </MenuButton>
-          {(project?.repo || project?.workspace === Workspace.WORKTREE) && (
-            <button
-              type="button"
-              className={`th-check ${choice.worktree ? "on" : ""}`}
-              role="checkbox"
-              aria-checked={choice.worktree}
-              title={t("launch.worktreeHint")}
-              data-testid="launch-worktree"
-              onClick={() => onWorktree(!choice.worktree)}
-            >
-              <span className="box">{choice.worktree && <Icon name="check" />}</span>
-              {t("launch.worktree")}
-            </button>
-          )}
-        </>
+        )
       )}
       <span className="th-grow" />
       <MenuButton
         className="mb"
         align="right"
-        below={below}
         title={t("picker.model")}
         label={
           <>
@@ -315,7 +342,6 @@ export function ComposerOptions({ fixed, below, machines, projects, projectsStal
       <MenuButton
         className="mb"
         align="right"
-        below={below}
         title={t("mode.title")}
         label={
           <>

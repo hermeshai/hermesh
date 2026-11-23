@@ -167,22 +167,90 @@ struct ThreadPage: View {
 
     // MARK: A new session
 
+    /// The question in the middle ("What should we build in <project>?", the environment under it), both menus set
+    /// as last time; the box at the bottom, where a session's is.
     private var newSession: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                Text("New Session").font(.title2.weight(.semibold)).padding(.top, 60)
-                    .accessibilityIdentifier("new-session-title")
-                box
-                options
-                if needsUpdate {
-                    Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
-                        .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
-                        .accessibilityIdentifier("needs-update")
+        ask
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture { focused = false }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 6) {
+                    if needsUpdate {
+                        Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
+                            .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
+                            .accessibilityIdentifier("needs-update")
+                    }
+                    box
+                    options
+                }
+                .padding(.bottom, 4)
+            }
+    }
+
+    private var ask: some View {
+        let (here, stale) = projects(on: machineID)
+        let projectTitle = projectID == scratchProject ? String(localized: "Temporary Workspace") : projectID
+        return VStack(spacing: 18) {
+            VStack(spacing: 2) {
+                Text("What should we build in")
+                HStack(spacing: 0) {
+                    Menu {
+                        Section(stale ? String(localized: "Projects on \(machine?.machineName ?? "") · last known") : String(localized: "Projects on \(machine?.machineName ?? "")")) {
+                            ForEach(here, id: \.projectID) { p in
+                                Button { pick(project: p.projectID, in: here) } label: {
+                                    Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == projectID { Image(systemName: "checkmark") } }
+                                }
+                                .accessibilityIdentifier("project-\(p.projectID)")
+                            }
+                            Button { pick(project: scratchProject, in: here) } label: {
+                                Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
+                            }
+                        }
+                        Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
+                            .disabled(!online)
+                            .accessibilityIdentifier("thread-add-project")
+                    } label: {
+                        Text(verbatim: projectTitle).lineLimit(1).underline(color: .secondary)
+                    }
+                    .tint(.primary)
+                    .accessibilityIdentifier("thread-project")
+                    Text("What should we build in · end")
                 }
             }
-            .padding(.bottom, 40)
+            .font(.title.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("new-session-title")
+            Menu {
+                Section("Environment") {
+                    ForEach(model.machines, id: \.machineID) { m in
+                        // A menu item shows a second text as its subtitle only when it is always there.
+                        let note: String? = m.hasStatus && !m.status.threads ? String(localized: "Needs update")
+                            : !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
+                        Button { pick(machine: m.machineID) } label: {
+                            if let note {
+                                Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                            } else {
+                                Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
+                            }
+                        }
+                        .accessibilityIdentifier("machine-\(m.machineName)")
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: m_icon)
+                    Text(verbatim: machine?.machineName ?? "").lineLimit(1)
+                    if !online { Circle().fill(.tertiary).frame(width: 6, height: 6) }
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
+            }
+            .tint(.secondary)
+            .accessibilityIdentifier("thread-machine")
         }
-        .scrollDismissesKeyboard(.interactively)
+        .padding(.horizontal, 28)
     }
 
     // MARK: A session under way
@@ -288,6 +356,7 @@ struct ThreadPage: View {
                 }
             }
             .padding(.horizontal, 22).padding(.top, 6)
+            .tint(.primary)
         }
     }
 
@@ -299,7 +368,7 @@ struct ThreadPage: View {
         return HStack(alignment: .bottom, spacing: 8) {
             TextField(isNew ? String(localized: "Describe what to build, debug or plan") : running ? String(localized: "Say more; it goes to the next turn") : String(localized: "Keep going"),
                       text: $draft, axis: .vertical)
-                .lineLimit(isNew ? 3 ... 8 : 1 ... 6)
+                .lineLimit(1 ... 6)
                 .focused($focused)
                 .padding(.vertical, 8).padding(.leading, 10)
                 .accessibilityIdentifier("thread-composer")
@@ -362,50 +431,21 @@ struct ThreadPage: View {
 
     /// What the session runs on and with, under the box. In a session, where it runs is fixed.
     private var options: some View {
-        let (here, stale) = projects(on: machineID)
-        let project = here.first { $0.projectID == projectID }
-        let projectTitle = projectID == scratchProject ? String(localized: "Temporary Workspace") : projectID
+        let project = projects(on: machineID).list.first { $0.projectID == projectID }
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
                 if isNew {
-                    Menu {
-                        Section("Environment") {
-                            ForEach(model.machines, id: \.machineID) { m in
-                                // A menu item shows a second text as its subtitle only when it is always there.
-                                let note: String? = m.hasStatus && !m.status.threads ? String(localized: "Needs update")
-                                    : !m.online && !m.local ? String(localized: "Offline · messages wait until it’s back") : nil
-                                Button { pick(machine: m.machineID) } label: {
-                                    if let note {
-                                        Label { Text(m.machineName); Text(note) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                    } else {
-                                        Label { Text(m.machineName) } icon: { if m.machineID == machineID { Image(systemName: "checkmark") } }
-                                    }
-                                }
-                                .accessibilityIdentifier("machine-\(m.machineName)")
-                            }
-                        }
-                    } label: { chip(icon: m_icon, machine?.machineName ?? "") }
-                        .accessibilityIdentifier("thread-machine")
-                    Menu {
-                        Section(stale ? String(localized: "Projects on \(machine?.machineName ?? "") · last known") : String(localized: "Projects on \(machine?.machineName ?? "")")) {
-                            ForEach(here, id: \.projectID) { p in
-                                Button { pick(project: p.projectID, in: here) } label: {
-                                    Label { Text(p.projectID); Text(p.path) } icon: { if p.projectID == projectID { Image(systemName: "checkmark") } }
-                                }
-                                .accessibilityIdentifier("project-\(p.projectID)")
-                            }
-                            Button { pick(project: scratchProject, in: here) } label: {
-                                Label { Text("Temporary Workspace") } icon: { if projectID == scratchProject { Image(systemName: "checkmark") } }
-                            }
-                        }
-                        Button("Add Project…", systemImage: "plus") { model.sheet = .addProject(machineID, forSession: true) }
-                            .disabled(!online)
-                            .accessibilityIdentifier("thread-add-project")
-                    } label: { chip(icon: projectID == scratchProject ? "tray" : "folder", projectTitle) }
-                        .accessibilityIdentifier("thread-project")
                     if project?.repo == true || project?.workspace == .worktree {
-                        Toggle(isOn: $worktree) { Text("Separate worktree").font(.footnote) }
-                            .toggleStyle(.button).buttonStyle(.bordered).controlSize(.small)
+                        Menu {
+                            Section("Working copy") {
+                                Button { worktree = false } label: {
+                                    Label { Text("Current checkout"); Text("Works on the project’s own folder") } icon: { if !worktree { Image(systemName: "checkmark") } }
+                                }
+                                Button { worktree = true } label: {
+                                    Label { Text("Separate worktree"); Text("A branch of its own; your files are left alone") } icon: { if worktree { Image(systemName: "checkmark") } }
+                                }
+                            }
+                        } label: { chip(icon: worktree ? "arrow.triangle.branch" : "folder", worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
                             .accessibilityIdentifier("thread-worktree")
                     }
                 } else if let thread {
@@ -438,6 +478,8 @@ struct ThreadPage: View {
             }
             .padding(.horizontal, 16)
         }
+        // Choices read as text, not links: neutral, as the Mac's line under the box.
+        .tint(.primary)
     }
 
     private var m_icon: String { machine?.local == true ? "laptopcomputer" : "server.rack" }
