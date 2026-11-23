@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// The public reviewer path, with the app built in Release and no account or external service.
 final class HerReviewUITests: XCTestCase {
@@ -105,6 +106,16 @@ final class HerReviewUITests: XCTestCase {
         tap("try-demo")
         tap("Delegate a sample task")
         tap("her-allow-once")
+        // At work, the card has no spinner at its trailing corner (its title shimmers instead).
+        let card = app.buttons["her-session-Her sample task"]
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        sleep(1)
+        let shot = app.screenshot()
+        let running = XCTAttachment(screenshot: shot)
+        running.name = "Her demo: running session card"; running.lifetime = .keepAlways; add(running)
+        let corner = CGRect(x: card.frame.maxX - 40, y: card.frame.minY + 10, width: 28, height: 24)
+        XCTAssertLessThan(luminanceRange(shot.image, corner), 0.08, "a spinner at the running card's corner")
+        XCTAssertTrue(words("1 working").exists, "Her's header says what runs in words, not with a ring")
         tap("her-session-Her sample task")
         tap("interrupt"); tap("interrupt-confirm")
         XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 10))
@@ -113,6 +124,21 @@ final class HerReviewUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Retry sample task"].waitForExistence(timeout: 10), "Her shows the stopped task after returning")
         XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 5))
         XCTAssertFalse(words("Sample task complete.").exists)
+    }
+
+    /// How far apart the darkest and lightest pixels in `rect` (in points) are, 0 to 1.
+    private func luminanceRange(_ image: UIImage, _ rect: CGRect) -> Double {
+        guard let cg = image.cgImage else { return 0 }
+        let k = CGFloat(cg.width) / image.size.width
+        let px = CGRect(x: rect.minX * k, y: rect.minY * k, width: rect.width * k, height: rect.height * k).integral
+        guard let crop = cg.cropping(to: px) else { return 0 }
+        let w = crop.width, h = crop.height
+        var rgba = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(data: &rgba, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return 0 }
+        ctx.draw(crop, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let l = stride(from: 0, to: rgba.count, by: 4).map { (0.299 * Double(rgba[$0]) + 0.587 * Double(rgba[$0 + 1]) + 0.114 * Double(rgba[$0 + 2])) / 255 }
+        return (l.max() ?? 0) - (l.min() ?? 0)
     }
 
     private func words(_ text: String) -> XCUIElement {

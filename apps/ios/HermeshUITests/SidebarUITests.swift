@@ -70,6 +70,36 @@ final class SidebarUITests: XCTestCase {
         attach(XCUIScreen.main.screenshot(), name: "overview-connection-notice")
     }
 
+    /// A running session has no spinner: its title in the menu, and its step at work in the session, shimmer instead.
+    func testRunningSessionShimmersWithoutSpinner() {
+        launchDemo(["-DemoSidebarActivity", "YES"])
+        openDrawer()
+        let row = app.buttons["session-Running sidebar task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the running demo session in the menu")
+        usleep(400_000)
+        let menuShot = XCUIScreen.main.screenshot()
+        attach(menuShot, name: "sidebar-running-row")
+        // The title is short: the row's trailing end is empty, where the spinner was.
+        let trailing = CGRect(x: row.frame.maxX - 44, y: row.frame.midY - 10, width: 32, height: 20)
+        let stats = contrastStats(in: menuShot.image, rectInPoints: trailing)
+        XCTAssertLessThan(stats.range, 0.08, "spinner at the running row's end (neutral luminance range: \(stats.range))")
+        XCTAssertTrue(app.activityIndicators.allElementsBoundByIndex.filter { abs($0.frame.midY - row.frame.midY) < 22 }.isEmpty,
+                      "an activity indicator on the running row")
+
+        row.tap()
+        let steps = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Ran 1 command")).firstMatch
+        XCTAssertTrue(steps.waitForExistence(timeout: 10), "the running tool group")
+        attach(XCUIScreen.main.screenshot(), name: "session-running-steps")
+        XCTAssertTrue(app.activityIndicators.allElementsBoundByIndex.filter { abs($0.frame.midY - steps.frame.midY) < 22 }.isEmpty,
+                      "an activity indicator on the running tool group")
+        steps.tap()
+        let step = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "npm test")).firstMatch
+        XCTAssertTrue(step.waitForExistence(timeout: 10), "the running step in the opened group")
+        attach(XCUIScreen.main.screenshot(), name: "session-running-step-open")
+        XCTAssertTrue(app.activityIndicators.allElementsBoundByIndex.filter { abs($0.frame.midY - step.frame.midY) < 22 }.isEmpty,
+                      "an activity indicator on the running step")
+    }
+
     private func verifyLongSidebar(mode: String) {
         let drawer = app.descendants(matching: .any)["drawer"].firstMatch
         let account = app.buttons["account"]

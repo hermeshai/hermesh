@@ -1,16 +1,6 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "Couldn’t read %@" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法读取 %@"
-          }
-        }
-      }
-    },
     "Queue (%lld)" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17446,6 +17436,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 不提供模型选择，会话用它自己的设置。"
+          }
+        }
+      }
+    },
+    "Couldn’t read %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取 %@"
           }
         }
       }
