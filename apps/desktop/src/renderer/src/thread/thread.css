@@ -78,10 +78,13 @@
 .th-effort-h .ic{width:13px;height:13px}
 .th-effort-keys{margin-left:auto;font-weight:var(--font-weight-normal);color:var(--l3);letter-spacing:.08em}
 .th-seg{position:relative;display:grid;grid-template-columns:repeat(var(--n),1fr);padding:2px;border-radius:8px;background:var(--fill2);touch-action:none;user-select:none}
-.th-seg-plate{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px) / var(--n));transform:translateX(calc(100% * var(--i)));border-radius:6px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.2,1)}
+/* At rest the plate sits on its level; dragged (--at, Composer.tsx) it follows the pointer, swollen a little, and lets go
+   with a small bounce onto the level. */
+.th-seg-plate{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px) / var(--n));transform:translateX(calc(100% * var(--i)));border-radius:6px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 1px 3px rgba(0,0,0,.12);transition:transform .38s cubic-bezier(.34,1.45,.64,1),box-shadow .2s}
 @media (prefers-color-scheme:dark){.th-seg-plate{background:var(--win3)}}
-.th-seg.drag .th-seg-plate{transition-duration:.12s}
-.th-seg button{position:relative;height:26px;border:0;background:none;padding:0 4px;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.th-seg.drag .th-seg-plate{transform:translateX(var(--at)) scale(1.06,1.14);box-shadow:0 0 0 .5px var(--sep),0 3px 10px rgba(0,0,0,.18);transition:transform .08s linear,box-shadow .2s}
+.th-seg.drag button[aria-checked=true]{transform:scale(1.06)}
+.th-seg button{position:relative;height:26px;border:0;background:none;padding:0 4px;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s,transform .2s}
 .th-seg button[aria-checked=true]{color:var(--l1);font-weight:var(--font-weight-semibold)}
 .th-seg button:hover:not([aria-checked=true]){color:var(--l1)}
 .th-seg button:focus-visible{outline:none}

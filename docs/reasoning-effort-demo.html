@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>推理强度选择器</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --page:#e9e9ee;--page-fg:#1b1c22;--page-fg2:#62646f;--card:#fff;--card-bd:rgba(0,0,0,.08);
+  --sheet:#f2f2f6;--group:#fff;--inv:#fff;
+  --l1:rgba(0,0,0,.88);--l2:rgba(0,0,0,.55);--l3:rgba(0,0,0,.30);--l4:rgba(0,0,0,.13);
+  --fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.08);--fill3:rgba(0,0,0,.12);
+  --knob:#fff;--knob-sh:0 0 0 .5px rgba(0,0,0,.08),0 2px 8px rgba(0,0,0,.18);
+  --glass:rgba(255,255,255,.92);--glass-bd:rgba(0,0,0,.06);
+  --brand:#3d5bff;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--card:#16171b;--card-bd:rgba(255,255,255,.08);
+  --sheet:#1c1c1f;--group:#2a2a2e;--inv:#1c1c1f;
+  --l1:rgba(255,255,255,.94);--l2:rgba(255,255,255,.58);--l3:rgba(255,255,255,.30);--l4:rgba(255,255,255,.14);
+  --fill:rgba(255,255,255,.06);--fill2:rgba(255,255,255,.10);--fill3:rgba(255,255,255,.16);
+  --knob:#fff;--knob-sh:0 2px 10px rgba(0,0,0,.5);
+  --glass:rgba(255,255,255,.16);--glass-bd:rgba(255,255,255,.22);
+  --brand:#4a66ff;
+}}
+:root[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--card:#16171b;--card-bd:rgba(255,255,255,.08);
+  --sheet:#1c1c1f;--group:#2a2a2e;--inv:#1c1c1f;
+  --l1:rgba(255,255,255,.94);--l2:rgba(255,255,255,.58);--l3:rgba(255,255,255,.30);--l4:rgba(255,255,255,.14);
+  --fill:rgba(255,255,255,.06);--fill2:rgba(255,255,255,.10);--fill3:rgba(255,255,255,.16);
+  --knob:#fff;--knob-sh:0 2px 10px rgba(0,0,0,.5);
+  --glass:rgba(255,255,255,.16);--glass-bd:rgba(255,255,255,.22);
+  --brand:#4a66ff;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font);padding-bottom:84px;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+.top{max-width:1320px;margin:0 auto;padding:22px 16px 6px}
+.top h1{font-size:20px;margin:0 0 4px;font-weight:650}
+.top p{margin:0;color:var(--page-fg2);font-size:13px;max-width:760px}
+.grid{max-width:1320px;margin:0 auto;padding:14px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,400px),1fr));gap:22px}
+.v{display:flex;flex-direction:column;gap:10px;min-width:0}
+.v>h2{margin:0;font-size:15px;font-weight:650;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.v>h2 small{font-weight:400;color:var(--page-fg2);font-size:12.5px}
+.rec{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--fill2);color:var(--page-fg)}
+/* The model sheet's top, as on the phone */
+.sheet{background:var(--sheet);color:var(--l1);border-radius:30px 30px 0 0;padding:14px 16px 0;height:330px;overflow:hidden;position:relative;max-width:402px;width:100%;margin:0 auto;
+  box-shadow:0 0 0 .5px var(--card-bd);-webkit-mask-image:linear-gradient(#000 82%,transparent);mask-image:linear-gradient(#000 82%,transparent)}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--l4);margin:0 auto 10px}
+.bar{display:flex;align-items:center;justify-content:space-between;height:44px;margin-bottom:12px}
+.bar b{font-size:20px;font-weight:650;padding-left:4px}
+.done{height:40px;padding:0 16px;border-radius:20px;background:var(--fill2);font-size:16px;font-weight:600;display:flex;align-items:center}
+.group{background:var(--group);border-radius:24px;padding:16px 18px 18px;user-select:none;-webkit-user-select:none;touch-action:none}
+.head{display:flex;align-items:center;gap:8px;font-size:15px;margin-bottom:14px}
+.head svg{width:20px;height:20px;color:var(--l2);transition:transform .12s}
+.head .now{margin-left:auto;font-weight:600}
+.tick svg{transform:scale(1.18)}
+.prov{display:flex;align-items:center;gap:8px;margin:22px 4px 8px;color:var(--l2);font-size:14px}
+.logo{width:18px;height:18px;border-radius:5px;background:var(--fill3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--l2)}
+.row{background:var(--group);border-radius:22px;padding:14px 18px;font-size:17px}
+.notes{background:var(--card);border:1px solid var(--card-bd);border-radius:14px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:var(--page-fg2)}
+.notes b{color:var(--page-fg);font-weight:600}
+.notes p{margin:0 0 4px}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--card-bd);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;justify-content:center;font-size:12.5px;z-index:9}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g>span{color:var(--page-fg2);margin-right:4px}
+.ctl button{padding:5px 11px;border-radius:8px;background:var(--fill2)}
+.ctl button.on{background:var(--page-fg);color:var(--page)}
+
+/* A — ruler */
+.ruler-big{text-align:center;height:40px;font-size:30px;font-weight:650;letter-spacing:.02em;overflow:hidden;position:relative}
+.ruler-big span{display:block}
+.ruler{position:relative;height:62px;overflow:hidden;margin:4px -18px 0;cursor:grab;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent);mask-image:linear-gradient(90deg,transparent,#000 22%,#000 78%,transparent)}
+.ruler-in{position:absolute;left:0;top:0;height:100%;will-change:transform}
+.ruler .t{position:absolute;top:8px;width:1.5px;height:10px;border-radius:1px;background:var(--l4);transform:translateX(-50%)}
+.ruler .t.maj{height:22px;width:2px;top:2px;background:var(--l3)}
+.ruler .t.maj.on{background:var(--l1)}
+.ruler .lb{position:absolute;top:34px;transform:translateX(-50%);font-size:13px;color:var(--l3);white-space:nowrap;transition:color .15s}
+.ruler .lb.on{color:var(--l1);font-weight:600}
+.needle{position:absolute;left:50%;top:-2px;width:3px;height:30px;margin-left:-1.5px;border-radius:2px;background:var(--l1);transition:transform .1s}
+.tick .needle{transform:scaleY(1.15)}
+
+/* B — bars */
+.bars{display:flex;align-items:flex-end;gap:8px;height:76px;cursor:pointer}
+.bars i{flex:1;border-radius:9px;background:var(--fill2);transition:background .18s,transform .25s cubic-bezier(.34,1.56,.64,1);transform-origin:bottom}
+.bars i.on{background:var(--l1)}
+.bars i.pop{transform:scaleY(1.08)}
+.bars-lb{display:flex;gap:8px;margin-top:8px}
+.bars-lb span{flex:1;text-align:center;font-size:13px;color:var(--l3);transition:color .15s}
+.bars-lb span.on{color:var(--l1);font-weight:600}
+
+/* C — arc gauge */
+.arc{display:block;margin:0 auto;width:100%;max-width:300px;cursor:grab;overflow:visible}
+.arc .track{stroke:var(--fill2)}
+.arc .act{stroke:var(--l1)}
+.arc .dot{fill:var(--l3)}
+.arc .lab{fill:var(--l3);font-size:13px;text-anchor:middle;dominant-baseline:middle;transition:fill .15s}
+.arc .lab.on{fill:var(--l1);font-weight:600}
+.arc .big{fill:var(--l1);font-size:32px;font-weight:650;text-anchor:middle}
+.arc .knob{fill:var(--knob);filter:drop-shadow(0 2px 5px rgba(0,0,0,.35))}
+
+/* D — fill capsule */
+.cap{position:relative;height:58px;border-radius:20px;background:var(--fill2);overflow:hidden;cursor:pointer;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.cap .lay{position:absolute;inset:0;display:grid}
+.cap .lay span{display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--l3)}
+.cap .fill{position:absolute;left:0;top:0;bottom:0;background:var(--l1);border-radius:20px}
+.cap .lay.inv span{color:var(--inv);font-weight:600}
+.cap.snap .fill{transition:width .42s cubic-bezier(.34,1.45,.64,1)}
+.cap.snap .lay.inv{transition:clip-path .42s cubic-bezier(.34,1.45,.64,1)}
+
+/* E — liquid glass over an aurora of the brand's blue (#3D5BFF; #4A66FF in dark) and its neighbours */
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}
+.seg{--b1:var(--brand);--b2:#7c8cff;--b3:#5aa8ff;--b4:#7a5cff;position:relative;height:48px;border-radius:24px;background:var(--fill2);padding:4px;display:grid;cursor:pointer}
+.seg span{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--l2);transition:color .15s,transform .2s;pointer-events:none}
+.seg span.on{color:var(--l1);font-weight:600}
+.seg.drag span.near{transform:scale(1.1)}
+/* The aurora drifts in the track, brighter and fuller the harder it thinks (--lv 0…1); a glow sits under the glass. */
+.aur{position:absolute;inset:0;border-radius:24px;overflow:hidden;z-index:0;opacity:calc(.28 + .6 * var(--lv,0));transition:opacity .5s}
+.aur b{position:absolute;top:-70%;height:240%;width:46%;border-radius:50%;filter:blur(16px);will-change:transform}
+.aur .a1{background:radial-gradient(closest-side,var(--b1),transparent);animation:aur1 9s ease-in-out infinite alternate}
+.aur .a2{background:radial-gradient(closest-side,var(--b2),transparent);animation:aur2 13s ease-in-out infinite alternate}
+.aur .a3{background:radial-gradient(closest-side,var(--b3),transparent);animation:aur3 17s ease-in-out infinite alternate;width:38%}
+.aur .a4{background:radial-gradient(closest-side,var(--b4),transparent);animation:aur4 11s ease-in-out infinite alternate;width:34%}
+.aur .glow{left:var(--x,0);width:calc(100% / var(--n,4) + 40px);margin-left:-20px;top:-40%;height:180%;background:radial-gradient(closest-side,var(--b1),transparent);opacity:.55;filter:blur(12px);transition:left .45s cubic-bezier(.34,1.5,.64,1),opacity .3s}
+.seg.drag .aur .glow{transition:opacity .3s;opacity:1}
+.seg.drag .aur{opacity:calc(.5 + .5 * var(--lv,0))}
+@keyframes aur1{from{transform:translateX(-30%) rotate(0)}to{transform:translateX(170%) rotate(25deg)}}
+@keyframes aur2{from{transform:translateX(190%) scaleY(.8)}to{transform:translateX(-20%) scaleY(1.15)}}
+@keyframes aur3{from{transform:translateX(60%) translateY(10%)}to{transform:translateX(220%) translateY(-12%)}}
+@keyframes aur4{from{transform:translateX(250%)}to{transform:translateX(30%)}}
+:root[data-theme=light] .aur{opacity:calc(.16 + .38 * var(--lv,0))}
+:root[data-theme=light] .seg.drag .aur{opacity:calc(.3 + .35 * var(--lv,0))}
+/* The glass: swells while dragged and settles with a bounce. Round it, a ring of the aurora's colours turning: faint at
+   rest (less faint the harder it thinks), lit while dragged; letting go sends a ring of light out from it. */
+.lens{position:absolute;top:4px;bottom:4px;border-radius:20px;z-index:1;background:var(--glass);box-shadow:inset 0 0 0 .5px var(--glass-bd),inset 0 1px 0 rgba(255,255,255,.35),0 3px 12px rgba(0,0,0,.18);
+  backdrop-filter:blur(8px) saturate(1.6);-webkit-backdrop-filter:blur(8px) saturate(1.6)}
+.seg.snap .lens{transition:left .45s cubic-bezier(.34,1.5,.64,1),transform .3s cubic-bezier(.34,1.5,.64,1)}
+.seg.drag .lens{transform:scale(1.14,1.22)}
+.rim{position:absolute;inset:-1.5px;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:conic-gradient(from var(--ang),var(--b1),var(--b2),var(--b3),var(--b4),var(--b1));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);
+  opacity:calc(.15 + .45 * var(--lv,0));animation:spin 3.2s linear infinite;transition:opacity .3s}
+.seg.drag .rim{opacity:1;animation-duration:1.6s}
+@keyframes spin{to{--ang:360deg}}
+.lens.pulse{animation:pulse .7s ease-out}
+@keyframes pulse{from{box-shadow:inset 0 0 0 .5px var(--glass-bd),0 0 0 0 color-mix(in srgb,var(--b1) 65%,transparent),0 3px 12px rgba(0,0,0,.18)}to{box-shadow:inset 0 0 0 .5px var(--glass-bd),0 0 0 16px transparent,0 3px 12px rgba(0,0,0,.18)}}
+.seg span.on{text-shadow:0 0 12px color-mix(in srgb,var(--b2) 70%,transparent)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>推理强度：五种选择方式</h1>
+  <p>每版都是 iPhone 模型面板最上面那一块，可以直接用手指或鼠标拖。档位用的是真实的三套：Claude / Gemini 的「低 中 高」，Codex 的「低 中 高 超高」，Opus 的「低 中 高 最高」，底部切换。真机上每过一档会轻震一下，这里用图标轻跳代替。</p>
+</header>
+
+<main class="grid">
+  <section class="v">
+    <h2>E　液态玻璃 · 极光 <small>品牌蓝的极光在玻璃下流动</small> <span class="rec">新</span></h2>
+    <div class="sheet"><div class="grab"></div><div class="bar"><b>模型</b><span class="done">完成</span></div>
+      <div class="group" id="E"></div>
+      <div class="prov"><span class="logo">A</span>Antigravity</div><div class="row">Gemini 4 Carbon</div>
+    </div>
+    <div class="notes"><p><b>动画：</b>滑轨里是品牌蓝 #3D5BFF 和它的邻色（亮蓝、靛蓝、浅蓝、微紫）缓慢流动的极光，档位越高越亮越满。玻璃块外圈一道旋转的极光描边，平时很淡；按住拖时点亮、转得更快，玻璃块下面的光跟着走；松手落位时从玻璃块荡开一圈光。</p><p><b>手感：</b>按住玻璃块拖，它鼓起来、底下的字放大，松手带回弹落位。</p><p><b>做法：</b>iPhone 用 MeshGradient + TimelineView 做极光，glassEffect 做玻璃块，AngularGradient 描边旋转；「减弱动态效果」打开时极光静止。Mac 用同样的 CSS。</p></div>
+  </section>
+
+  <section class="v">
+    <h2>A　刻度尺 <small>拖尺子，指针不动</small> <span class="rec">推荐</span></h2>
+    <div class="sheet"><div class="grab"></div><div class="bar"><b>模型</b><span class="done">完成</span></div>
+      <div class="group" id="A"></div>
+      <div class="prov"><span class="logo">A</span>Antigravity</div><div class="row">Gemini 4 Carbon</div>
+    </div>
+    <div class="notes"><p><b>手感：</b>像相机的曝光刻度。尺子跟着手指走，松手按速度惯性滑一段，再吸到最近一档；拖过两头有阻尼回弹。点刻度下的字直接跳过去。</p><p><b>为什么：</b>动作和「调节」最贴，档位名大字居中，一眼能看清；不占额外高度。</p><p><b>做法：</b>SwiftUI 横向 ScrollView + scrollTargetBehavior 吸附，原生惯性；Mac 上用滚轮/触控板横滑同一把尺。</p></div>
+  </section>
+
+  <section class="v">
+    <h2>B　能量柱 <small>越往右越高</small></h2>
+    <div class="sheet"><div class="grab"></div><div class="bar"><b>模型</b><span class="done">完成</span></div>
+      <div class="group" id="B"></div>
+      <div class="prov"><span class="logo">A</span>Antigravity</div><div class="row">Gemini 4 Carbon</div>
+    </div>
+    <div class="notes"><p><b>手感：</b>手指在柱子上横扫，扫到哪亮到哪，新亮的柱子弹一下。</p><p><b>为什么：</b>柱子由矮到高，直接画出「花更多力气想」，不用读字也知道是第几档。</p><p><b>做法：</b>HStack 几个圆角矩形 + DragGesture，简单。Mac 上鼠标按住横扫一样。</p></div>
+  </section>
+
+  <section class="v">
+    <h2>C　仪表盘 <small>和图标一样的表盘</small></h2>
+    <div class="sheet"><div class="grab"></div><div class="bar"><b>模型</b><span class="done">完成</span></div>
+      <div class="group" id="C"></div>
+    </div>
+    <div class="notes"><p><b>手感：</b>沿着弧拖旋钮，档位名在表盘中间变；松手转到最近一档。</p><p><b>为什么：</b>和面板里的仪表图标是一回事，最有「仪器」的感觉。</p><p><b>代价：</b>最占高度（约多出 60pt），模型列表露出的少；弧形拖动单手不如横拖顺。</p></div>
+  </section>
+
+  <section class="v">
+    <h2>D　整条可拖 <small>像控制中心的亮度条</small> <span class="rec">推荐</span></h2>
+    <div class="sheet"><div class="grab"></div><div class="bar"><b>模型</b><span class="done">完成</span></div>
+      <div class="group" id="D"></div>
+      <div class="prov"><span class="logo">A</span>Antigravity</div><div class="row">Gemini 4 Carbon</div>
+    </div>
+    <div class="notes"><p><b>手感：</b>整条都能按，填充跟着手指走，被盖住的字反白；拖过头整条微微拉伸，松手弹回吸到一档。</p><p><b>为什么：</b>触控面积最大、最好按；和系统控制中心是同一个手势，用户不用学。</p><p><b>做法：</b>两层文字（下层灰、上层反色被填充裁出）+ DragGesture + spring。Mac 上同样可拖可点。</p></div>
+  </section>
+</main>
+
+<div class="ctl">
+  <div class="g"><span>档位</span><button data-set="three">低 中 高</button><button data-set="xhigh" class="on">低 中 高 超高</button><button data-set="max">低 中 高 最高</button></div>
+  <div class="g"><span>外观</span><button data-th="dark" class="on">深色</button><button data-th="light">浅色</button></div>
+</div>
+
+<script>
+const SETS = { three: ["低", "中", "高"], xhigh: ["低", "中", "高", "超高"], max: ["低", "中", "高", "最高"] };
+let labels = SETS.xhigh;
+const gauge = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="10" cy="10" r="8"/><path d="M10 10l3.2-3.6"/><circle cx="10" cy="10" r="1.1" fill="currentColor"/><path d="M5.2 12.6h.01M5.4 7.5h.01M10 4.7h.01M14.8 12.6h.01"/></svg>';
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const head = (el, showNow) => (el.innerHTML = `<div class="head">${gauge}<span>推理强度</span>${showNow ? '<span class="now"></span>' : ""}</div>`, el.querySelector(".head"));
+function tick(el) { el.classList.add("tick"); navigator.vibrate?.(6); setTimeout(() => el.classList.remove("tick"), 110); }
+function drag(el, { down, move, up }) {
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    down?.(e);
+    const mv = (ev) => move?.(ev), u = (ev) => { up?.(ev); el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", u); el.removeEventListener("pointercancel", u); };
+    el.addEventListener("pointermove", mv); el.addEventListener("pointerup", u); el.addEventListener("pointercancel", u);
+  });
+}
+
+/* E — liquid glass over an aurora of the brand's blue: the plate is dragged, swells, and settles with a little bounce. */
+const E = { i: 2, mount() {
+  const g = document.getElementById("E"), n = labels.length; head(g); this.i = Math.min(this.i, n - 1);
+  g.insertAdjacentHTML("beforeend", `<div class="seg snap" style="grid-template-columns:repeat(${n},1fr);--n:${n}"><div class="aur"><b class="a1"></b><b class="a2"></b><b class="a3"></b><b class="a4"></b><b class="glow"></b></div><i class="lens"><i class="rim"></i></i>${labels.map((l) => `<span>${l}</span>`).join("")}</div>`);
+  const seg = g.querySelector(".seg"), lens = seg.querySelector(".lens"), ls = [...seg.querySelectorAll("span")];
+  let shown = -1;
+  const cw = () => (seg.clientWidth - 8) / n;
+  const place = (x) => {
+    lens.style.width = `${cw()}px`; lens.style.left = `${4 + x}px`; seg.style.setProperty("--x", `${4 + x}px`);
+    const s = clamp(Math.round(x / cw()), 0, n - 1);
+    if (s !== shown) { if (shown >= 0) tick(g); shown = s; seg.style.setProperty("--lv", n > 1 ? s / (n - 1) : 0); ls.forEach((l, j) => (l.classList.toggle("on", j === s), l.classList.toggle("near", j === s))); }
+  };
+  const at = (e) => clamp(e.clientX - seg.getBoundingClientRect().left - 4 - cw() / 2, 0, cw() * (n - 1));
+  drag(seg, {
+    down: (e) => { seg.classList.remove("snap"); seg.classList.add("drag"); place(at(e)); },
+    move: (e) => place(at(e)),
+    up: (e) => {
+      seg.classList.add("snap"); seg.classList.remove("drag"); this.i = clamp(Math.round(at(e) / cw()), 0, n - 1); place(this.i * cw());
+      lens.classList.remove("pulse"); void lens.offsetWidth; lens.classList.add("pulse");
+    },
+  });
+  place(this.i * cw());
+}};
+
+/* A — ruler: the ruler moves under a fixed needle; momentum, then the nearest stop. */
+const A = { i: 2, mount() {
+  const g = document.getElementById("A"); head(g);
+  g.insertAdjacentHTML("beforeend", '<div class="ruler-big"><span></span></div><div class="ruler"><div class="ruler-in"></div><div class="needle"></div></div>');
+  const big = g.querySelector(".ruler-big span"), r = g.querySelector(".ruler"), inner = g.querySelector(".ruler-in");
+  const S = 76, n = labels.length; let pos = Math.min(this.i, n - 1), shown = -1;
+  let html = "";
+  for (let k = -1; k <= (n - 1) * 5 + 1; k++) {
+    const x = k * S / 5, maj = k % 5 === 0 && k >= 0 && k <= (n - 1) * 5;
+    html += `<i class="t ${maj ? "maj" : ""}" data-k="${maj ? k / 5 : ""}" style="left:${x}px"></i>`;
+    if (maj) html += `<span class="lb" data-k="${k / 5}" style="left:${x}px">${labels[k / 5]}</span>`;
+  }
+  inner.innerHTML = html;
+  const place = (p, anim) => {
+    inner.style.transition = anim ? "transform .5s cubic-bezier(.22,1,.36,1)" : "none";
+    inner.style.transform = `translateX(${r.clientWidth / 2 - p * S}px)`;
+    const s = clamp(Math.round(p), 0, n - 1);
+    if (s !== shown) {
+      big.textContent = labels[s];
+      if (shown >= 0) { tick(g); big.animate([{ transform: `translateY(${s > shown ? 14 : -14}px)`, opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" }); }
+      inner.querySelectorAll("[data-k]").forEach((t) => t.classList.toggle("on", t.dataset.k !== "" && +t.dataset.k === s));
+      shown = s;
+    }
+  };
+  let x0, p0, last, lastT, v = 0;
+  drag(r, {
+    down: (e) => { x0 = last = e.clientX; lastT = e.timeStamp; p0 = pos; v = 0; r.style.cursor = "grabbing"; },
+    move: (e) => {
+      const dt = Math.max(1, e.timeStamp - lastT); v = (e.clientX - last) / dt; last = e.clientX; lastT = e.timeStamp;
+      let p = p0 - (e.clientX - x0) / S;
+      if (p < 0) p = -(1 - 1 / (1 - p * 0.8)) / 0.8 * 0.5; if (p > n - 1) p = n - 1 + (1 - 1 / (1 + (p - n + 1) * 0.8)) / 0.8 * 0.5;
+      pos = p; place(p);
+    },
+    up: (e) => {
+      r.style.cursor = "";
+      if (Math.abs(e.clientX - x0) < 4) { // a tap: the stop under the finger
+        const rect = r.getBoundingClientRect(); pos = clamp(Math.round(pos + (e.clientX - rect.left - rect.width / 2) / S), 0, n - 1);
+      } else pos = clamp(Math.round(pos - v * 140 / S), 0, n - 1);
+      this.i = pos; place(pos, true);
+    },
+  });
+  place(pos);
+}};
+
+/* B — bars: taller to the right; a sweep lights them up to where the finger is. */
+const B = { i: 2, mount() {
+  const g = document.getElementById("B"), h = head(g, true), n = labels.length; this.i = Math.min(this.i, n - 1);
+  g.insertAdjacentHTML("beforeend", `<div class="bars">${labels.map((_, k) => `<i style="height:${26 + k * (50 / (n - 1))}px"></i>`).join("")}</div><div class="bars-lb">${labels.map((l) => `<span>${l}</span>`).join("")}</div>`);
+  const bars = g.querySelector(".bars"), bs = [...bars.children], ls = [...g.querySelectorAll(".bars-lb span")], now = h.querySelector(".now");
+  const set = (k, first) => {
+    if (k === this.i && !first) return;
+    const was = this.i; this.i = k; now.textContent = labels[k];
+    bs.forEach((b, j) => { b.classList.toggle("on", j <= k); if (!first && j <= k && j > was) { b.classList.add("pop"); setTimeout(() => b.classList.remove("pop"), 160); } });
+    ls.forEach((l, j) => l.classList.toggle("on", j === k));
+    if (!first) tick(g);
+  };
+  const at = (e) => { const r = bars.getBoundingClientRect(); return clamp(Math.floor((e.clientX - r.left) / r.width * n), 0, n - 1); };
+  drag(bars, { down: (e) => set(at(e)), move: (e) => set(at(e)) });
+  set(this.i, true);
+}};
+
+/* C — arc gauge: the knob goes round the arc; the level in the middle. */
+const C = { t: 2, mount() {
+  const g = document.getElementById("C"), n = labels.length; head(g); this.t = Math.min(this.t, n - 1);
+  const W = 300, cx = 150, cy = 136, R = 96;
+  const pt = (t, r = R) => { const a = Math.PI + (t / (n - 1)) * Math.PI; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
+  const arcPath = (t) => { const [x0, y0] = pt(0), [x1, y1] = pt(t); return `M${x0} ${y0} A${R} ${R} 0 0 1 ${x1} ${y1}`; };
+  g.insertAdjacentHTML("beforeend", `<svg class="arc" viewBox="0 0 ${W} 150">
+    <path class="track" d="${arcPath(n - 1)}" fill="none" stroke-width="10" stroke-linecap="round"/>
+    <path class="act" fill="none" stroke-width="10" stroke-linecap="round"/>
+    ${labels.map((l, k) => { const [x, y] = pt(k, R + 26); const [dx, dy] = pt(k); return `<circle class="dot" cx="${dx}" cy="${dy}" r="2"/><text class="lab" x="${x}" y="${y}">${l}</text>`; }).join("")}
+    <text class="big" x="${cx}" y="${cy - 6}"></text>
+    <circle class="knob" r="13"/></svg>`);
+  const svg = g.querySelector(".arc"), act = svg.querySelector(".act"), knob = svg.querySelector(".knob"), big = svg.querySelector(".big"), labs = [...svg.querySelectorAll(".lab")];
+  let shown = -1, raf;
+  const draw = (t) => {
+    act.setAttribute("d", t <= 0.001 ? "" : arcPath(t)); const [x, y] = pt(t); knob.setAttribute("cx", x); knob.setAttribute("cy", y);
+    const s = Math.round(t); if (s !== shown) { if (shown >= 0) tick(g); shown = s; big.textContent = labels[s]; labs.forEach((l, j) => l.classList.toggle("on", j === s)); }
+  };
+  const animate = (to) => { cancelAnimationFrame(raf); const from = this.t, t0 = performance.now(); const step = (now) => { const k = Math.min(1, (now - t0) / 380), e = 1 + 2.2 * Math.pow(k - 1, 3) + 1.2 * Math.pow(k - 1, 2); this.t = from + (to - from) * (k === 1 ? 1 : e); draw(this.t); if (k < 1) raf = requestAnimationFrame(step); }; raf = requestAnimationFrame(step); };
+  const at = (e) => { const r = svg.getBoundingClientRect(), x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * W / r.width; let a = Math.atan2(y - cy, x - cx); if (a > 0) a = a < Math.PI / 2 ? 0 : -Math.PI; return clamp((a + Math.PI) / Math.PI * (n - 1), 0, n - 1); };
+  drag(svg, { down: (e) => { cancelAnimationFrame(raf); this.t = at(e); draw(this.t); }, move: (e) => { this.t = at(e); draw(this.t); }, up: () => animate(Math.round(this.t)) });
+  draw(this.t);
+}};
+
+/* D — fill capsule: the whole bar is the control; the fill follows the finger and covers the names, which turn over. */
+const D = { i: 2, mount() {
+  const g = document.getElementById("D"), n = labels.length; head(g); this.i = Math.min(this.i, n - 1);
+  const cols = `grid-template-columns:repeat(${n},1fr)`;
+  g.insertAdjacentHTML("beforeend", `<div class="cap snap"><div class="lay" style="${cols}">${labels.map((l) => `<span>${l}</span>`).join("")}</div><div class="fill"></div><div class="lay inv" style="${cols}">${labels.map((l) => `<span>${l}</span>`).join("")}</div></div>`);
+  const cap = g.querySelector(".cap"), fill = cap.querySelector(".fill"), inv = cap.querySelector(".inv");
+  let shown = -1;
+  const show = (w) => {
+    const W = cap.clientWidth; fill.style.width = `${w}px`; inv.style.clipPath = `inset(0 ${W - w}px 0 0 round 20px)`;
+    const s = clamp(Math.ceil(w / W * n) - 1, 0, n - 1); if (s !== shown) { if (shown >= 0) tick(g); shown = s; }
+  };
+  const stop = (k) => cap.clientWidth * (k + 1) / n;
+  const at = (e) => e.clientX - cap.getBoundingClientRect().left;
+  drag(cap, {
+    down: (e) => { cap.classList.remove("snap"); show(clamp(at(e), cap.clientWidth / n * 0.5, cap.clientWidth)); },
+    move: (e) => { const W = cap.clientWidth, x = at(e); const over = x < 0 ? x : x > W ? x - W : 0; cap.style.transform = over ? `scaleX(${1 + Math.abs(over) * 0.0009}) scaleY(${1 - Math.abs(over) * 0.0007})` : ""; cap.style.transformOrigin = over < 0 ? "right" : "left"; show(clamp(x, W / n * 0.5, W)); },
+    up: (e) => { const W = cap.clientWidth; cap.classList.add("snap"); cap.style.transform = ""; this.i = clamp(Math.ceil(clamp(at(e), 1, W) / W * n) - 1, 0, n - 1); show(stop(this.i)); },
+  });
+  requestAnimationFrame(() => { cap.classList.remove("snap"); show(stop(this.i)); requestAnimationFrame(() => cap.classList.add("snap")); });
+}};
+
+const all = [E, A, B, C, D];
+const mountAll = () => all.forEach((v) => v.mount());
+document.querySelectorAll("[data-set]").forEach((b) => b.onclick = () => {
+  labels = SETS[b.dataset.set]; document.querySelectorAll("[data-set]").forEach((x) => x.classList.toggle("on", x === b)); mountAll();
+});
+document.querySelectorAll("[data-th]").forEach((b) => b.onclick = () => {
+  document.documentElement.dataset.theme = b.dataset.th; document.querySelectorAll("[data-th]").forEach((x) => x.classList.toggle("on", x === b));
+});
+document.documentElement.dataset.theme = "dark";
+mountAll();
+let w0 = innerWidth;
+addEventListener("resize", () => innerWidth !== w0 && (w0 = innerWidth, mountAll()));
+</script>
+</body>
+</html>
