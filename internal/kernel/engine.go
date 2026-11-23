@@ -138,6 +138,9 @@ type Config struct {
 	MachineMaxMode  identityv1.RuntimeMode
 	IsPaused        func() bool
 	OnNotice        NoticeHook
+	// AgentModels: each coding agent's own list of models, as the machine
+	// last read it; nil offers the manifest's.
+	AgentModels catalog.AgentModels
 }
 
 type shellSub struct {
@@ -184,7 +187,7 @@ func Open(cfg Config) (*Engine, error) {
 		log:         cfg.Logger,
 		st:          st,
 		vcs:         vcs.NewManager(filepath.Join(cfg.DataDir, "worktrees_v2")),
-		cat:         catalog.NewService(cfg.Drivers),
+		cat:         catalog.NewService(cfg.Drivers, cfg.AgentModels),
 		sup:         runtime.NewSupervisor(cfg.IdleTTL),
 		scratchDir:  scratchDir,
 		bgCtx:       bgCtx,

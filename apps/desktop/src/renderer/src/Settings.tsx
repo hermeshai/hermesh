@@ -87,9 +87,9 @@ export function SettingsWindow() {
     return () => document.removeEventListener("keydown", onKey);
   }, [ask, st.sheet]);
 
-  const nav = (p: "general" | "notifications" | "grants", icon: string, tone: string, extra?: React.ReactNode) => (
+  const nav = (p: "general" | "notifications" | "grants", icon: string, extra?: React.ReactNode) => (
     <button className={`nav-i ${p === shown ? "sel" : ""}`} aria-current={p === shown ? "page" : undefined} onClick={() => open(p)}>
-      <span className={`set-tile ${tone}`}><Icon name={icon} /></span>
+      <Icon name={icon} />
       <span className="nav-n">{t(`pages.${p}`)}</span>
       {extra}
     </button>
@@ -108,9 +108,9 @@ export function SettingsWindow() {
             </span>
           </button>
           <div className="set-gap" />
-          {nav("general", "gear", "slate")}
-          {nav("notifications", "bell", "rose")}
-          {!only && nav("grants", "key", "sand", soon > 0 && <span className="set-soon">{t("expiringSoon", { count: soon })}</span>)}
+          {nav("general", "gear")}
+          {nav("notifications", "bell")}
+          {!only && nav("grants", "key", soon > 0 && <span className="set-soon">{t("expiringSoon", { count: soon })}</span>)}
           <div className="set-head">
             {t("pages.envs")}
             {!only && (
@@ -121,7 +121,7 @@ export function SettingsWindow() {
           </div>
           {envs.map((e) => (
             <button key={e.id} className={`nav-i ${shown === "env" && envId === e.id ? "sel" : ""}`} aria-current={shown === "env" && envId === e.id ? "page" : undefined} onClick={() => open("env", e.id)}>
-              <span className="set-tile blue"><Icon name={machineIcon(e.m)} /></span>
+              <Icon name={machineIcon(e.m)} />
               <span className="nav-n">{envTitle(t, e.m)}</span>
               <EnvState m={e.m} />
             </button>

@@ -1,12 +1,14 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"os"
 	"time"
 
 	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
 	"github.com/hermeshai/hermesh/internal/kernel"
+	"github.com/hermeshai/hermesh/internal/provider"
 	rt "github.com/hermeshai/hermesh/internal/runtime"
 	rtacp "github.com/hermeshai/hermesh/internal/runtime/acp"
 	rtclaude "github.com/hermeshai/hermesh/internal/runtime/claude"
@@ -65,6 +67,7 @@ func (n *Machine) openThreads() error {
 		OnNotice: func(_ *threadv2.Thread, _ *threadv2.ThreadEvent) {
 			n.kickStatus()
 		},
+		AgentModels: n.agentModelList,
 	})
 	if err != nil {
 		return err
@@ -79,6 +82,18 @@ func (n *Machine) openThreads() error {
 }
 
 func (n *Machine) Threads() *kernel.Engine { return n.threads }
+
+// agentModelList is what an agent's page in the settings shows of its
+// models: the ones it offers here and its sessions' default (this machine's,
+// else the agent's own), for the new-session composer to offer the same.
+func (n *Machine) agentModelList(agent string) ([]provider.Model, provider.Settings, bool) {
+	i := n.providerInfo(agent)
+	if i.ModelsState != provider.ModelsKnown {
+		return nil, provider.Settings{}, false
+	}
+	d := n.agentDefaults(agent)
+	return i.Models, provider.Settings{Model: cmp.Or(d.Model, i.Own.Model), Effort: cmp.Or(d.Effort, i.Own.Effort)}, true
+}
 
 func (n *Machine) threadPrincipal(ctx context.Context) *kernel.Principal {
 	p := principalFrom(ctx)
