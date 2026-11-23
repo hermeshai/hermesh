@@ -723,7 +723,10 @@ private struct FollowsEnd<Bottom: View>: ViewModifier {
         if let sv = scrollBox.view {
             sv.layoutIfNeeded()
             guard !sv.isTracking, !sv.isDragging, !sv.isDecelerating else { return }
-            let targetY = max(-sv.adjustedContentInset.top, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            // SwiftUI knows content grew (a row, the line saying it works) before the scroll view's contentSize says so:
+            // aligned to the older size, the end stayed under the box, the more so with the keyboard up.
+            let content = max(sv.contentSize.height, layout.contentHeight)
+            let targetY = max(-sv.adjustedContentInset.top, content + sv.adjustedContentInset.bottom - sv.bounds.height)
             if sv.bounds.height > 0, abs(sv.contentOffset.y - targetY) > 1 {
                 sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: targetY), animated: false)
             }
