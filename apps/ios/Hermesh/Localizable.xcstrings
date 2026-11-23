@@ -11,6 +11,56 @@
         }
       }
     },
+    "Use %@ %@?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 %1$@ %2$@？"
+          }
+        }
+      }
+    },
+    "a tool" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工具"
+          }
+        }
+      }
+    },
+    "Start on this plan?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按这个方案开始做？"
+          }
+        }
+      }
+    },
+    "%@ needs %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 需要 %2$@"
+          }
+        }
+      }
+    },
+    "Outside the project" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "项目外"
+          }
+        }
+      }
+    },
     "“%@” is already a project here." : {
       "localizations" : {
         "zh-Hans" : {

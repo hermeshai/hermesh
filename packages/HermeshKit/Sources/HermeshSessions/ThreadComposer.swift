@@ -21,8 +21,11 @@ public func threadAsSession(_ th: Hermesh_Thread_V2_Thread) -> Session {
     s.projectID = th.projectID
     s.agent = th.modelSelection.instanceID
     s.model = th.modelSelection.model
+    s.branch = th.workspace.branch
     s.title = th.title
     s.error = th.lastError
+    s.progress.turnCount = th.runCount
+    if let f = threadFailure(th) { s.progress.lastFailure = f }
     s.createdBy = th.createdBy.kind == .owner || !th.hasCreatedBy ? "owner" : th.createdBy.id
     if th.hasCreatedAt { s.createdAt = th.createdAt }
     if th.hasUpdatedAt { s.updatedAt = th.updatedAt }

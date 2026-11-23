@@ -1,9 +1,10 @@
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshots, pairingNotice, withKnownState, type HerSnapshot, type NoticeSnapshot } from "@hermesh/core";
+import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, noticeDiff, noticeSnapshots, pairingNotice, threadAsSession, withKnownState, type HerSnapshot, type NoticeSnapshot } from "@hermesh/core";
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import { HerLatestKind } from "@hermesh/proto/machine";
 import type { Session } from "@hermesh/proto/session";
+import { ThreadService, type Thread } from "@hermesh/proto/thread";
 import { app, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +28,35 @@ export type World = {
   pairings: PairingDetails[];
 };
 export const world: World = { status: null, sessions: [], clients: [], machines: [], pairings: [] };
+
+// A session is a session wherever it started: the v2 threads (SubscribeThreads) are sessions here too, for the
+// menu bar and the notifications, as in the window's list (docs/thread-composer.md §14).
+let watched: Session[] = [];
+let threads: Thread[] = [];
+function setSessions() {
+  world.sessions = withKnownState(threads.length ? [...watched, ...threads.map(threadAsSession)] : watched, world.machines);
+}
+
+/** Follows the threads while this watch lasts; a thread list kept from a watch before is replaced by the next snapshot. */
+async function followThreads(transport: ReturnType<typeof createConnectTransport>, signal: AbortSignal) {
+  const client = createClient(ThreadService, transport);
+  try {
+    for await (const m of client.subscribeThreads({ includeArchived: true }, { signal })) {
+      if (m.snapshot) threads = m.threads;
+      else {
+        const gone = new Set(m.deletedThreadIds);
+        const byId = new Map(threads.filter((t) => !gone.has(t.threadId)).map((t) => [t.threadId, t]));
+        for (const t of m.threads) byId.set(t.threadId, t);
+        threads = [...byId.values()];
+      }
+      setSessions();
+      noticeSessions();
+      changed();
+    }
+  } catch {
+    // The watch ended (hermeshd restarting) or a hermeshd from before threads: the next watch follows them again.
+  }
+}
 export const worldListeners = new Set<() => void>();
 const changed = () => worldListeners.forEach((f) => f());
 
@@ -131,7 +161,7 @@ let since: Date | undefined;
 function noticeSessions() {
   // A machine only does not know the owner's agents by name.
   const unnamed = i18n.t(world.status?.machineOnly ? "main:anAgent" : "main:disconnectedGrant");
-  const grant = (s: Session) => world.clients.find((c) => c.clientId === s.createdBy)?.label ?? unnamed;
+  const grant = (s: Session) => (s.createdBy === "owner" ? i18n.t("common:sidebar.you") : world.clients.find((c) => c.clientId === s.createdBy)?.label ?? unnamed);
   const look = new Date();
   for (const n of filterNotices(noticeDiff(seen, world.sessions, grant, since), preferences())) {
     post(`session-${n.kind}-${n.sessionId}`, n.title, n.body, `open:${n.sessionId}`, n.kind === "turnDone" || n.kind === "started");
@@ -197,6 +227,8 @@ export function setWatchPaused(paused: boolean) {
     watchAbort?.abort();
     if (world.status !== null) {
       world.status = null;
+      watched = [];
+      threads = [];
       world.sessions = [];
       world.clients = [];
       world.machines = [];
@@ -224,12 +256,11 @@ export function watch() {
       }
       let w = emptyWorld;
       // Where hermeshd is now: a pipe's name changes each time it starts (Windows).
-      const local = createClient(
-        LocalService,
-        createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } }),
-      );
+      const transport = createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", useBinaryFormat: true, nodeOptions: { socketPath: socketPath() } });
+      const local = createClient(LocalService, transport);
       const abort = new AbortController();
       watchAbort = abort;
+      void followThreads(transport, abort.signal);
       try {
         for await (const m of local.watch({}, { signal: abort.signal })) {
           if (pauseWatch) break;
@@ -238,7 +269,8 @@ export function watch() {
           world.status = w.status ?? null;
           world.clients = w.clients;
           world.machines = w.machines;
-          world.sessions = withKnownState(w.sessions, w.machines);
+          watched = w.sessions;
+          setSessions();
           world.pairings = world.status?.initialized ? w.pairings : [];
           if (w.sessions !== before.sessions || w.machines !== before.machines) noticeSessions();
           if (w.machines !== before.machines) noticeHer();
@@ -248,6 +280,7 @@ export function watch() {
       } catch (e) {
         if (!pauseWatch && !abort.signal.aborted) console.warn("hermeshd watch:", e);
       } finally {
+        abort.abort(); // the threads' stream ends with the watch
         if (watchAbort === abort) watchAbort = undefined;
       }
       // hermeshd restarted, or this watch fell behind: watched again.

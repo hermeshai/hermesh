@@ -67,7 +67,7 @@ struct SearchSheet: View {
         }
         Section {
             ForEach(SearchState.allCases) { t in
-                let n = model.listedSessions.filter(t.matches).count
+                let n = model.sessions.filter(t.matches).count
                 Button {
                     tokens = [t]
                 } label: {
@@ -85,7 +85,7 @@ struct SearchSheet: View {
         } header: {
             header("Search Within")
         }
-        let latest = model.listedSessions.filter { $0.status != .archived }.sorted { $0.updatedDate > $1.updatedDate }.prefix(8)
+        let latest = model.sessions.filter { $0.status != .archived }.sorted { $0.updatedDate > $1.updatedDate }.prefix(8)
         if !latest.isEmpty {
             Section {
                 ForEach(Array(latest), id: \.sessionID) { s in sessionRow(s) }
@@ -102,7 +102,7 @@ struct SearchSheet: View {
             ForEach(SearchState.allCases.filter { !tokens.contains($0) && $0.title.localizedCaseInsensitiveContains(q) }) { t in
                 Label(t.title, systemImage: t.symbol).searchCompletion(t)
             }
-            let titles = Array(Set(model.listedSessions.map(\.displayTitle).filter { $0.localizedCaseInsensitiveContains(q) && $0 != q })).sorted().prefix(4)
+            let titles = Array(Set(model.sessions.map(\.displayTitle).filter { $0.localizedCaseInsensitiveContains(q) && $0 != q })).sorted().prefix(4)
             ForEach(titles, id: \.self) { title in
                 Label(title, systemImage: "magnifyingglass").searchCompletion(title)
             }
@@ -110,7 +110,7 @@ struct SearchSheet: View {
     }
 
     @ViewBuilder private func results(_ q: String) -> some View {
-        let found = searchSessions(model.listedSessions, query: q, filter: SessionFilter(), text: model.searchText)
+        let found = searchSessions(model.sessions, query: q, filter: SessionFilter(), text: model.searchText)
             .filter { s in tokens.isEmpty || tokens.contains { $0.matches(s) } }
         if found.isEmpty {
             ContentUnavailableView.search(text: q)

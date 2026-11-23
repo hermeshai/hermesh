@@ -81,7 +81,8 @@ struct SessionInfoSheet: View {
                             LabeledContent("Reasoning Effort", value: s.effort.isEmpty ? same : effortName(s.effort))
                         }
                     }
-                    Section {
+                    // A v2 thread's changes are not listed yet (docs/thread-composer.md §13).
+                    if !isThreadID(id) { Section {
                         if let files {
                             if files.isEmpty { Text("No changes").foregroundStyle(.secondary) }
                             ForEach(files) { f in
@@ -104,7 +105,7 @@ struct SessionInfoSheet: View {
                         Text(files.map { $0.count == 1 ? String(localized: "Changes · 1 file") : String(localized: "Changes · \($0.count) files") } ?? String(localized: "Changes"))
                     } footer: {
                         Text("The changes are on the session’s own branch and worktree; your own files are left alone.")
-                    }
+                    } }
                 }
             }
             .navigationTitle("Session Info")
@@ -114,6 +115,7 @@ struct SessionInfoSheet: View {
                 if let f = files?.first(where: { $0.path == path }) { DiffView(file: f) }
             }
             .task {
+                guard !isThreadID(id) else { return }
                 do {
                     files = parseUnifiedDiff(try await model.api?.diff(id) ?? "")
                 } catch {

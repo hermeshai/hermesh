@@ -78,7 +78,7 @@ struct SessionView: View {
             // not laid out, and opened at the bottom it left a gap under the
             // last message until those guesses were corrected.
             VStack(alignment: .leading, spacing: 13) {
-                if s.status == .archived { archivedNote(s) }
+                if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
                 }
@@ -140,21 +140,6 @@ struct SessionView: View {
         } message: {
             Text("The session stays; when \(grant) sends another message, it continues.")
         }
-    }
-
-    /// The archived note, with Unarchive.
-    private func archivedNote(_ s: Session) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "archivebox")
-            Text("Archived: read-only; the worktree is released and the changes stay on the branch.")
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Unarchive") { Task { await model.setArchived(s, false) } }
-                .foregroundStyle(.tint)
-        }
-        .font(.footnote).foregroundStyle(.secondary)
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.bottom, 3)
     }
 
     /// Why the conversation can't be read now: it is kept on the machine
@@ -254,14 +239,6 @@ struct SessionView: View {
         }
     }
 
-    /// When the turn before step i started, for the time lines.
-    private func previousTurn(_ steps: [Step], before i: Int) -> Date? {
-        for s in steps[..<i].reversed() {
-            if case .item(.turn(_, _, let at)) = s { return at }
-        }
-        return nil
-    }
-
     /// Shows what is kept of the conversation, then reads the events after
     /// it and follows new ones while the page is shown. Events that come
     /// together are shown together: a long conversation read at once is laid
@@ -309,6 +286,35 @@ struct SessionView: View {
         flush?.cancel()
         show()
     }
+}
+
+/// The archived note at the top of a conversation, with Unarchive.
+struct ArchivedNote: View {
+    @Environment(AppModel.self) private var model
+    let session: Session
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "archivebox")
+            Text("Archived: read-only; the worktree is released and the changes stay on the branch.")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Unarchive") { Task { await model.setArchived(session, false) } }
+                .foregroundStyle(.tint)
+        }
+        .font(.footnote).foregroundStyle(.secondary)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.bottom, 3)
+        .accessibilityIdentifier("archived-note")
+    }
+}
+
+/// When the turn before step i started, for the time lines.
+func previousTurn(_ steps: [Step], before i: Int) -> Date? {
+    for s in steps[..<i].reversed() {
+        if case .item(.turn(_, _, let at)) = s { return at }
+    }
+    return nil
 }
 
 /// One row of the conversation, as on the Mac: the owner on the right in a

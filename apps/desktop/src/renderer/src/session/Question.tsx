@@ -7,12 +7,15 @@ import { local } from "../api";
 import { Icon } from "../icons";
 import { useNow, useStore } from "../store";
 
+/** What the owner answered, item by item. */
+export type QuestionAnswers = { itemId: string; selected: string[]; text: string }[];
+
 /**
  * The agent's question, answered as the owner: options by click or by number
  * key (the first item's), or in their own words; Return answers once every
  * item the agent requires has an answer. Don’t Answer tells the agent to decide by itself.
  */
-export function QuestionPanel({ s, q }: { s: Session; q: Question }) {
+export function QuestionPanel({ s, q, answer }: { s: Session; q: Question; answer?: (answers: QuestionAnswers, decline: boolean) => Promise<unknown> }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const draftKey = `answer-draft:${s.sessionId}:${q.questionId}`;
@@ -44,7 +47,7 @@ export function QuestionPanel({ s, q }: { s: Session; q: Question }) {
   const send = async (decline: boolean) => {
     if (busy || (!decline && !complete)) return;
     setBusy(true);
-    const answers = decline
+    const answers: QuestionAnswers = decline
       ? []
       : q.items.filter(answered).map((it) => ({
           itemId: it.id,
@@ -52,7 +55,7 @@ export function QuestionPanel({ s, q }: { s: Session; q: Question }) {
           text: (texts[it.id] ?? "").trim(),
         }));
     const ok = await st.run(
-      () => local.answerQuestion({ sessionId: s.sessionId, questionId: q.questionId, answers, decline }),
+      () => (answer ? answer(answers, decline) : local.answerQuestion({ sessionId: s.sessionId, questionId: q.questionId, answers, decline })),
       decline ? t("question.declined") : t("question.answered", { agent: codingAgentTitle(s.agent) }),
     );
     if (ok) {

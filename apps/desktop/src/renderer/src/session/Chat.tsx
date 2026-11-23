@@ -298,7 +298,7 @@ function Unread({ s }: { s: Session }) {
 }
 
 /** Under a conversation kept from before that can't be brought up to date now: a quiet line that says why it may be old. */
-function Stale({ s, behind }: { s: Session; behind: boolean }) {
+export function Stale({ s, behind }: { s: Session; behind: boolean }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const why = useUnreadable(s, behind);
@@ -322,16 +322,16 @@ function previousTurn(items: Step[], i: number): Date | undefined {
 }
 
 /** A row of the list: its item, whether it ends a turn's reply, whether it is the reply being written, and the turn before it. */
-type ChatRow = VirtualRow & { it: Step; end: boolean; live: boolean; previous: Date | undefined };
+export type ChatRow = VirtualRow & { it: Step; end: boolean; live: boolean; previous: Date | undefined };
 
 /** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
-const rowHeights: Record<string, number> = { turn: 30, user: 64, agent: 220, tools: 32, question: 80, turnEnd: 36, message: 100, error: 36 };
+export const rowHeights: Record<string, number> = { turn: 30, user: 64, agent: 220, tools: 32, question: 80, turnEnd: 36, message: 100, error: 36 };
 
 /**
  * The rows the conversation draws, in order: the items but those that draw nothing (a time line within half an hour of
  * the turn before, a question still pending, a turn that went well, the session's current failure, told at the end).
  */
-function rowsOf(items: Step[], ends: Set<bigint>, current: Failure | undefined): ChatRow[] {
+export function rowsOf(items: Step[], ends: Set<bigint>, current: Failure | undefined): ChatRow[] {
   const out: ChatRow[] = [];
   items.forEach((it, i) => {
     const previous = previousTurn(items, i);
@@ -369,7 +369,7 @@ type RowProps = { it: Step; rowKey: string; end: boolean; live: boolean; session
  * items are made anew from the events each time, but an event never changes
  * (the reply being written only grows).
  */
-const Row = memo(
+export const Row = memo(
   RowView,
   (a, b) =>
     sameStep(a.it, b.it) && a.rowKey === b.rowKey && a.end === b.end && a.live === b.live && a.sessionId === b.sessionId &&
@@ -626,7 +626,7 @@ function sameFailure(a: Failure | undefined, b: Failure | undefined): boolean {
  * is the owner's to fix, and that the agent driving the session goes on
  * from here; then Details (the agent's own words, folded) and Archive.
  */
-function Failed({ s, failure, grant }: { s: Session; failure: Failure | undefined; grant: string }) {
+export function Failed({ s, failure, grant }: { s: Session; failure: Failure | undefined; grant: string }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const message = failure?.message ?? s.error;

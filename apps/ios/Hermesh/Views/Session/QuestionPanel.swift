@@ -9,6 +9,8 @@ struct QuestionPanel: View {
     @Environment(AppModel.self) private var model
     let session: Session
     let question: Question
+    /// How the answer goes, when not as a session's (a v2 thread answers its request).
+    var answer: (([Answer], Bool) async -> Void)? = nil
     @State private var picked: [String: Set<String>] = [:]
     @State private var text: [String: String] = [:]
     @State private var sending = false
@@ -115,7 +117,7 @@ struct QuestionPanel: View {
             return a
         }
         Task {
-            _ = await model.answer(session, answers: answers, decline: decline)
+            if let answer { await answer(answers, decline) } else { _ = await model.answer(session, answers: answers, decline: decline) }
             sending = false
         }
     }

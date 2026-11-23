@@ -202,7 +202,7 @@ function hostOf(origin: string): string {
 }
 
 /** The call itself: a command coloured as shell, a change as removed and added lines, or what it writes. */
-function Preview({ p }: { p: ApprovalPreview }) {
+export function Preview({ p }: { p: ApprovalPreview }) {
   const { t } = useTranslation("her");
   switch (p.kind) {
     case "command":

@@ -90,6 +90,12 @@ struct ThreadPage: View {
     @State private var sending = false
     @State private var projection: Hermesh_Thread_V2_ThreadProjection?
     @State private var pickingModel = false
+    /// Whether the conversation shows its end, so it follows what comes (as a session's, SessionView).
+    @State private var atEnd = true
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var scrollBox = ConversationScrollBox()
+    @State private var renaming = false
+    @State private var deleting = false
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
     @FocusState private var focused: Bool
@@ -122,13 +128,25 @@ struct ThreadPage: View {
         return (list, !list.isEmpty)
     }
 
+    /// The thread as a session (as the list has it), for a session's rows, cards and info.
+    private var asSession: Session? {
+        guard let thread else { return nil }
+        var s = threadAsSession(thread)
+        if let f = threadFailure(thread) { s.progress.lastFailure = f }
+        return s
+    }
+
     var body: some View {
         Group {
-            if isNew { newSession } else { session }
+            if isNew {
+                newSession.navigationTitle(String(localized: "New Session")).rootToolbar()
+            } else if let s = asSession {
+                session(s)
+            } else {
+                PageLoader(text: "Reading the session…", bare: true)
+            }
         }
-        .navigationTitle(isNew ? String(localized: "New Session") : (thread?.title ?? ""))
         .navigationBarTitleDisplayMode(.inline)
-        .rootToolbar()
         .task(id: threadID) { await start() }
         .task(id: "\(machineID)/\(projectID)") { await loadProviders() }
         .onChange(of: model.projects) { ThreadChoices.keepProjects(model.projects, machines: model.machines) }
@@ -169,90 +187,89 @@ struct ThreadPage: View {
 
     // MARK: A session under way
 
-    private var session: some View {
-        ScrollViewReader { reader in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(projection?.items ?? [], id: \.itemID) { item in itemView(item) }
-                    // Why it stopped: a launch or message the machine rejected (§5.3), unless the conversation says it already.
-                    if let th = thread, !th.lastError.isEmpty, !(projection?.items ?? []).contains(where: { $0.text == th.lastError }) {
-                        Text(verbatim: th.lastError).font(.footnote).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("thread-last-error")
-                    }
-                    if let pending = pendingRequest(of: projection) { pendingCard(pending) }
-                    Color.clear.frame(height: 1).id("end")
+    /// Its conversation as a session's page has it (SessionView): the same rows, the same ending, the same
+    /// toolbar; under it, what the agent waits on, then the box.
+    private func session(_ s: Session) -> some View {
+        let grant = model.grantLabel(s)
+        let steps = groupSteps(threadTranscript(projection))
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 13) {
+                if s.status == .archived { ArchivedNote(session: s) }
+                ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
+                    StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
                 }
-                .padding(.horizontal, 16).padding(.top, 8)
+                if let f = threadFailure(thread) {
+                    FailedView(session: s, failure: f, grant: grant)
+                } else if thread?.status == .idle, let last = steps.last {
+                    if case .item(.turnEnd) = last {} else {
+                        DoneLine(text: String(localized: "This turn is done. When \(grant) sends another message, it continues in this session."))
+                    }
+                }
             }
-            .onChange(of: projection?.items.count) { withAnimation { reader.scrollTo("end", anchor: .bottom) } }
-            .safeAreaInset(edge: .bottom) {
+            .padding(.horizontal, 20)
+            .padding(.top, 13).padding(.bottom, 21)
+            .background(ConversationScrollFinder(box: scrollBox))
+        }
+        .followsEnd(id: threadID, ready: projection != nil, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
+            // Archived, it is read-only, as a session is: no box.
+            if s.status != .archived {
                 VStack(spacing: 6) {
+                    if let req = pendingRequest(of: projection) { requestPanel(req, s) }
                     queue
                     box
                     options
                 }
                 .padding(.bottom, 4)
-                .background(.bar)
             }
         }
-    }
-
-    @ViewBuilder private func itemView(_ item: Hermesh_Thread_V2_TurnItem) -> some View {
-        switch item.kind {
-        case .userMessage:
-            Text(verbatim: item.text)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .foregroundStyle(.white)
-                .background(Color("AccentColor"), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .accessibilityIdentifier("thread-user")
-        case .assistantMessage:
-            Text(verbatim: item.text).frame(maxWidth: .infinity, alignment: .leading)
-                .accessibilityIdentifier("thread-reply")
-        case .commandExecution, .toolCall, .fileChange:
-            Label {
-                Text(verbatim: item.kind == .fileChange ? item.filePath : (item.command.isEmpty ? item.toolName : item.command))
-                    .font(.footnote.monospaced()).lineLimit(2)
-            } icon: {
-                Image(systemName: item.kind == .fileChange ? "doc" : "terminal")
-            }
-            .foregroundStyle(.secondary)
-        case .proposedPlan:
-            VStack(alignment: .leading, spacing: 6) {
-                Text(verbatim: item.planTitle).font(.headline)
-                Text(verbatim: item.text).font(.subheadline)
-            }
-            .padding(12).background(Palette.fill2, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        case .error, .systemNotice:
-            Text(verbatim: item.text).font(.footnote).foregroundStyle(.secondary)
-        default:
-            EmptyView()
-        }
-    }
-
-    private func pendingCard(_ req: Hermesh_Thread_V2_RuntimeRequest) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if req.kind == .planReview {
-                Text(verbatim: req.planReview.title).font(.headline)
-                Button("Approve Plan") { respond(req) { $0.approvePlan = true } }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("thread-approve-plan")
-            } else if req.kind == .toolApproval {
-                Text(verbatim: req.approval.command.isEmpty ? req.approval.toolName : req.approval.command).font(.subheadline.monospaced())
-                HStack {
-                    Button("Allow Once") { respond(req) { $0.decision = .acceptOnce } }.buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("thread-allow-once")
-                    Button("Always Allow Here") { respond(req) { $0.decision = .acceptForThread } }.buttonStyle(.bordered)
-                    Button("Decline", role: .destructive) { respond(req) { $0.decision = .decline } }.buttonStyle(.bordered)
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(s.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    if model.shownSync != nil {
+                        SyncLine(small: true)
+                    } else {
+                        Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
-            } else {
-                Text("Answer it on the Mac.").font(.footnote).foregroundStyle(.secondary)
+            }
+            if model.path.isEmpty { MenuToolbarItem() }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
+                    .accessibilityIdentifier("session-info")
+                Menu {
+                    Button("Copy Session ID", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = s.sessionID
+                        model.show(String(localized: "Copied the session ID"))
+                    }
+                    SessionActions(session: s, renaming: $renaming, deleting: $deleting)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("session-more")
             }
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityIdentifier("thread-request")
+        .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
+    }
+
+    /// What the agent waits on: a question as a session's panel asks it, the rest as Her's approval.
+    @ViewBuilder private func requestPanel(_ req: Hermesh_Thread_V2_RuntimeRequest, _ s: Session) -> some View {
+        if req.kind == .userInput {
+            QuestionPanel(session: s, question: threadQuestion(req)) { answers, decline in
+                await respondNow(req) { r in
+                    r.decision = decline ? .decline : .acceptOnce
+                    for a in answers {
+                        r.answers[a.itemID] = .with { $0.selectedOptions = a.selected; $0.customText = a.text }
+                    }
+                }
+            }
+            .id(req.requestID)
+        } else {
+            ThreadRequestPanel(session: s, request: req) { build in await respondNow(req, build) }
+                .id(req.requestID)
+        }
     }
 
     /// What waits for the next turn: each can steer the turn now, or go.
@@ -576,13 +593,13 @@ struct ThreadPage: View {
         Task { do { _ = try await model.api?.live?.updateThreadConfig(r) } catch { model.report(error) } }
     }
 
-    private func respond(_ req: Hermesh_Thread_V2_RuntimeRequest, _ build: (inout Hermesh_Thread_V2_RespondRuntimeRequestRequest) -> Void) {
+    private func respondNow(_ req: Hermesh_Thread_V2_RuntimeRequest, _ build: (inout Hermesh_Thread_V2_RespondRuntimeRequestRequest) -> Void) async {
         var r = Hermesh_Thread_V2_RespondRuntimeRequestRequest()
         r.commandID = UUID().uuidString
         r.threadID = threadID
         r.requestID = req.requestID
         build(&r)
-        Task { do { _ = try await model.api?.live?.respondThreadRuntimeRequest(r) } catch { model.report(error) } }
+        do { _ = try await model.api?.live?.respondThreadRuntimeRequest(r) } catch { model.report(error) }
     }
 
     private func manage(_ run: Hermesh_Thread_V2_Run, _ op: Hermesh_Thread_V2_QueueOperation) {

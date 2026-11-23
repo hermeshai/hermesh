@@ -1,25 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "@bufbuild/protobuf";
 import { RuntimeMode, Workspace } from "@hermesh/proto/identity";
 import type { Project } from "@hermesh/proto/local";
 import {
-  ApprovalDecision,
   DispatchIntent,
   InteractionMode,
   ModelSelectionSchema,
   QueueOperation,
-  QuestionAnswerSchema,
-  RuntimeRequestKind,
   ThreadStatus,
-  TurnItemKind,
   WorkspaceStrategySchema,
   type AttachmentRef,
-  type Checkpoint,
-  type CheckpointFile,
   type ModelSelection,
   type ProviderInstance,
-  type RuntimeRequest,
   type ThreadProjection,
 } from "@hermesh/proto/thread";
 import {
@@ -29,22 +22,43 @@ import {
   cycleReasoningSelection,
   defaultModelSelectionFor,
   findProviderInstance,
+  groupSteps,
   isThreadActive,
   pendingRequestOf,
   projectOnMachine,
   providerUnusable,
   queuedRunsOf,
+  reasoningOf,
+  replyEnds,
+  selectionTitle,
+  threadAsSession,
+  threadFailure,
+  threadLiveReplies,
+  threadTranscript,
   toggleInteractionMode,
 } from "@hermesh/core";
 import { threads as threadApi } from "../api";
 import { Icon } from "../icons";
+import { layoutOf, setCard } from "../layout";
+import { keys, ownKeys } from "../platform";
+import { grantLabel, unarchive } from "../Sidebar";
 import { errorText, useStore } from "../store";
+import { ChatFrame, DoneLine, Failed, Row, Stale, rowHeights, rowsOf } from "../session/Chat";
+import { Inspector } from "../session/Inspector";
+import { ContentScope } from "../session/scope";
+import "../session/markdown/markdown.css";
+import "../session/session.css";
 import { ComposerOptions, ThreadComposer } from "./Composer";
+import { ThreadRequest } from "./Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./choices";
 import "./thread.css";
 
+// A session started here (a v2 thread): the conversation, its info cards and the
+// box under it, as a session's page (SessionPage.tsx) has them; a new one, the box
+// in the middle of the page.
 export function ThreadPage() {
   const { t } = useTranslation("thread");
+  const ts = useTranslation("session").t;
   const st = useStore();
   const sel = st.selection;
   const activeThreadId = sel.kind === "thread" ? sel.id : undefined;
@@ -89,23 +103,9 @@ export function ThreadPage() {
   const [busySend, setBusySend] = useState<boolean>(false);
   const [stopRequestedRun, setStopRequestedRun] = useState<string>("");
 
-  // Inspector controls
-  const [inspectorOpen, setInspectorOpen] = useState<boolean>(true);
-  const [inspTab, setInspTab] = useState<"diff" | "checkpoints" | "info">("diff");
-  const [diffText, setDiffText] = useState<string>("");
-  const [diffFiles, setDiffFiles] = useState<CheckpointFile[]>([]);
-  const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
-
-  //Queue edit state
+  // Queue edit state
   const [editingRunId, setEditingRunId] = useState<string>("");
   const [editingText, setEditingText] = useState<string>("");
-
-  // Request response local state
-  const [declineFeedback, setDeclineFeedback] = useState<string>("");
-  const [secretInput, setSecretInput] = useState<string>("");
-  const [questionChoices, setQuestionChoices] = useState<Record<string, string[]>>({});
-  const [questionCustom, setQuestionCustom] = useState<Record<string, string>>({});
-
 
   // Each time a new session opens (and once the machines are known): the machine and project its entry
   // named, else those used last; a machine that is gone falls back to this Mac.
@@ -187,29 +187,9 @@ export function ThreadPage() {
   }, [effectiveMachineId, effectiveProjectId, activeThreadId]);
 
   // Load & subscribe to active thread projection + live events!
-  const refreshInspector = useCallback(
-    (tid: string) => {
-      threadApi
-        .getThreadDiff({ threadId: tid })
-        .then((r) => {
-          setDiffText(r.unifiedDiff);
-          setDiffFiles(r.files);
-        })
-        .catch(() => {});
-      threadApi
-        .listCheckpoints({ threadId: tid })
-        .then((r) => setCheckpoints(r.checkpoints))
-        .catch(() => {});
-    },
-    [],
-  );
-
   useEffect(() => {
     if (!activeThreadId) {
       setProjection(null);
-      setDiffText("");
-      setDiffFiles([]);
-      setCheckpoints([]);
       return;
     }
     const ctl = new AbortController();
@@ -232,22 +212,17 @@ export function ThreadPage() {
           if (init.projection.thread?.maxRuntimeMode) {
             setMaxCeiling(init.projection.thread.maxRuntimeMode);
           }
-          setCheckpoints(init.projection.checkpoints);
         }
-        refreshInspector(activeThreadId);
         for await (const ev of threadApi.subscribeThread({ threadId: activeThreadId, afterSeq }, { signal: ctl.signal })) {
           setProjection((prev) => applyThreadEvent(prev, ev));
           if (ev.thread?.interactionMode) setInteractionMode(ev.thread.interactionMode);
-          if (ev.type === "run.completed" || ev.type === "thread.rolled_back") {
-            refreshInspector(activeThreadId);
-          }
         }
       } catch {
         // Stream aborted or offline
       }
     })();
     return () => ctl.abort();
-  }, [activeThreadId, refreshInspector]);
+  }, [activeThreadId]);
 
   const currentThread = projection?.thread;
   const activeInst = findProviderInstance(providers, modelSel.instanceId);
@@ -412,7 +387,7 @@ export function ThreadPage() {
         <button
           key={x.label}
           type="button"
-          className="th-pill-btn"
+          className="btn"
           onClick={() => {
             setPrompt(x.label + " ");
             setSlashOpen(false);
@@ -459,677 +434,225 @@ export function ThreadPage() {
     />
   );
 
-  const resolveRequest = async (req: RuntimeRequest, opts: {
-    decision?: ApprovalDecision;
-    feedback?: string;
-    approvePlan?: boolean;
-    secret?: string;
-    answers?: Record<string, { selected: string[]; custom?: string }>;
-  }) => {
-    if (!activeThreadId) return;
-    try {
-      const protoAnswers: Record<string, ReturnType<typeof create<typeof QuestionAnswerSchema>>> = {};
-      if (opts.answers) {
-        for (const [qid, val] of Object.entries(opts.answers)) {
-          protoAnswers[qid] = create(QuestionAnswerSchema, {
-            selectedOptions: val.selected,
-            customText: val.custom ?? "",
-          });
-        }
-      }
-      await threadApi.respondRuntimeRequest({
-        threadId: activeThreadId,
-        requestId: req.requestId,
-        decision: opts.decision ?? ApprovalDecision.ACCEPT_ONCE,
-        feedback: opts.feedback ?? "",
-        approvePlan: opts.approvePlan ?? false,
-        secretValue: opts.secret ?? "",
-        answers: protoAnswers,
-      });
-      setDeclineFeedback("");
-      setSecretInput("");
-      setQuestionChoices({});
-      setQuestionCustom({});
-    } catch (e) {
-      st.show(errorText(e));
-    }
-  };
+  // The thread as a session (as the list has it), with the model and how hard it thinks as the box has them, for the info cards.
+  const session = useMemo(() => {
+    if (!currentThread) return undefined;
+    const s = threadAsSession(currentThread);
+    s.model = selectionTitle(providers, modelSel) || modelSel.model;
+    s.effort = reasoningOf(providers, modelSel)?.value ?? "";
+    s.branch = currentThread.workspace?.branch ?? "";
+    return s;
+  }, [currentThread, providers, modelSel]);
+  const { card } = layoutOf(st);
+  const info = card !== "hidden";
+
+  const requestCard = activeThreadId && session && pendingReq && <ThreadRequest key={pendingReq.requestId} s={session} req={pendingReq} />;
+  const queueCard = activeThreadId && (queuedRuns.length > 0 || currentThread?.queueHeld) && (
+    <div className="knote" data-testid="queued-runs-strip">
+      <div className="knote-h">
+        <Icon name="clock" className="knote-i" />
+        <b>{t("queue.heading", { count: queuedRuns.length })}</b>
+        {currentThread?.queueHeld && (
+          <>
+            <span className="qx-tag">{t("queue.held")}</span>
+            <span className="appr-sp" />
+            <button className="btn th-qbtn" data-testid="queue-resume-btn" onClick={() => threadApi.manageQueue({ threadId: activeThreadId, operation: QueueOperation.RESUME_QUEUE })}>
+              {t("queue.resume")}
+            </button>
+          </>
+        )}
+      </div>
+      {queuedRuns.map((qr, idx) => (
+        <div key={qr.runId} className="th-qrow" data-testid={`queued-run-${idx}`}>
+          {editingRunId === qr.runId ? (
+            <>
+              <input className="field" value={editingText} onChange={(e) => setEditingText(e.target.value)} data-testid="queue-edit-input" />
+              <button
+                className="btn primary th-qbtn"
+                data-testid="queue-edit-save"
+                onClick={async () => {
+                  await threadApi.manageQueue({ threadId: activeThreadId, operation: QueueOperation.EDIT, runId: qr.runId, text: editingText });
+                  setEditingRunId("");
+                }}
+              >
+                {t("queue.save")}
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="th-qtext sel-text" title={qr.prompt}>{qr.prompt}</span>
+              <button className="btn th-qbtn" data-testid={`queue-promote-${idx}`} onClick={() => threadApi.manageQueue({ threadId: activeThreadId, operation: QueueOperation.PROMOTE_TO_STEER, runId: qr.runId })}>
+                {t("queue.steerNow")}
+              </button>
+              {idx > 0 && (
+                <button className="btn th-qbtn" onClick={() => threadApi.manageQueue({ threadId: activeThreadId, operation: QueueOperation.REORDER, runId: qr.runId, beforeRunId: queuedRuns[idx - 1]!.runId })}>
+                  {t("queue.moveUp")}
+                </button>
+              )}
+              <button
+                className="btn th-qbtn"
+                data-testid={`queue-edit-${idx}`}
+                onClick={() => {
+                  setEditingRunId(qr.runId);
+                  setEditingText(qr.prompt);
+                }}
+              >
+                {t("queue.edit")}
+              </button>
+              <button className="btn th-qbtn" data-testid={`queue-cancel-${idx}`} onClick={() => threadApi.manageQueue({ threadId: activeThreadId, operation: QueueOperation.CANCEL, runId: qr.runId })}>
+                {t("queue.cancel")}
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  // The conversation, made as a session's (core threadtranscript.ts) and drawn with a session's rows.
+  const steps = useMemo(() => groupSteps(threadTranscript(projection)), [projection]);
+  const ends = useMemo(() => replyEnds(steps, running), [steps, running]);
+  const failure = threadFailure(currentThread);
+  const writing = useMemo(() => threadLiveReplies(projection), [projection]);
+  const rows = useMemo(
+    () => rowsOf(steps, ends, failure).map((r) => (writing.has(r.it.seq) ? { ...r, live: true } : r)),
+    [steps, ends, failure?.message, writing],
+  );
+  const grant = session ? grantLabel(st, session) : "";
+  const archived = currentThread?.status === ThreadStatus.ARCHIVED;
 
   return (
-    <div className="th-shell" data-testid="thread-page">
-      {/* Top Toolbar */}
+    <>
       <div className="ctool drag">
         <div className="ctitle">
-          <h2 data-testid="thread-title">
-            {activeThreadId ? currentThread?.title || "..." : t("launch.title")}
-          </h2>
+          <h2 data-testid="thread-title">{activeThreadId ? currentThread?.title || "…" : t("launch.title")}</h2>
           {currentThread?.offlineQueued && (
             <span className="th-badge" data-testid="offline-badge">
               {t("header.offlineQueued")}
             </span>
           )}
         </div>
-        {activeThreadId && currentThread && (
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <button
-              className="tb"
-              title={t("header.fork")}
-              data-testid="thread-fork-btn"
-              onClick={async () => {
-                try {
-                  const r = await threadApi.forkThread({ sourceThreadId: activeThreadId });
-                  if (r.thread) st.set({ selection: { kind: "thread", id: r.thread.threadId } });
-                } catch (e) {
-                  st.show(errorText(e));
-                }
-              }}
-            >
-              <Icon name="plus" />
-            </button>
-            <button
-              className={`tb ${inspectorOpen ? "on" : ""}`}
-              title={t("header.inspector")}
-              aria-label={t("header.inspector")}
-              data-testid="thread-inspector-toggle"
-              onClick={() => setInspectorOpen((v) => !v)}
-            >
-              <Icon name="infoCard" />
-            </button>
-          </div>
+        {activeThreadId && (
+          <button
+            className={`tb ${info ? "on" : ""}`}
+            title={ts(info ? "page.hideInfo" : "page.showInfo", { keys: keys(ownKeys.toggleInspector) })}
+            aria-label={ts("page.info")}
+            aria-pressed={info}
+            onClick={() => setCard(st, !info)}
+          >
+            <Icon name="infoCard" />
+          </button>
         )}
       </div>
-
-      <div className="th-body">
-        <div className="th-main">
-          {!activeThreadId && (
-            <div className="th-new" data-testid="thread-launch-card">
-              <h1>{t("launch.title")}</h1>
-              <ThreadComposer
-                value={prompt}
-                onChange={(v) => {
-                  setPrompt(v);
-                  setSlashOpen(v.startsWith("/") && !v.includes(" "));
-                }}
-                onSend={() => submitMessage()}
-                running={false}
-                sending={busySend}
-                placeholder={t("launch.promptPlaceholder")}
-                attachments={attachments}
-                onAttach={handleAttachFiles}
-                onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
-                offline={!machineOnline}
-                blocked={needsUpdate}
-              />
-              {options(false)}
-              {needsUpdate && (
-                <p className="th-note" role="status" data-testid="launch-needs-update">
-                  {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
-                </p>
-              )}
-              {slashRow}
-            </div>
-          )}
-
-          {/* Conversation & Step Timeline */}
-          <div className="th-timeline" data-testid="thread-timeline">
-            {(projection?.items ?? []).map((it) => {
-              switch (it.kind) {
-                case TurnItemKind.USER_MESSAGE:
-                  return (
-                    <div key={it.itemId} className="th-item th-item-user" data-testid="turn-item-user">
-                      {it.status === "steered" && (
-                        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 4 }}>{t("timeline.steered")}</div>
-                      )}
-                      {it.text}
-                    </div>
-                  );
-
-                case TurnItemKind.ASSISTANT_MESSAGE:
-                  return (
-                    <div key={it.itemId} className="th-item th-item-assistant" data-testid="turn-item-assistant">
-                      {it.text}
-                    </div>
-                  );
-
-                case TurnItemKind.REASONING:
-                  return (
-                    <details key={it.itemId} className="th-item th-item-step">
-                      <summary style={{ cursor: "pointer" }}>{t("timeline.reasoning")}</summary>
-                      <div style={{ marginTop: 6, opacity: 0.85 }}>{it.text}</div>
-                    </details>
-                  );
-
-                case TurnItemKind.COMMAND_EXECUTION:
-                case TurnItemKind.TOOL_CALL:
-                  return (
-                    <details key={it.itemId} className="th-item th-item-step" data-testid="turn-item-tool">
-                      <summary style={{ cursor: "pointer" }}>
-                        [{it.status}] {it.toolName} {it.command ? `— ${it.command}` : ""}
-                      </summary>
-                      {it.output && <pre className="th-diff-pre" style={{ marginTop: 6 }}>{it.output}</pre>}
-                    </details>
-                  );
-
-                case TurnItemKind.FILE_CHANGE:
-                  return (
-                    <div key={it.itemId} className="th-item th-item-step" data-testid="turn-item-file">
-                      ✎ {it.filePath} (+{it.additions} −{it.deletions})
-                    </div>
-                  );
-
-                case TurnItemKind.PROPOSED_PLAN:
-                  return (
-                    <div key={it.itemId} className="th-item th-item-plan" data-testid="turn-item-plan">
-                      <strong>{t("request.planTitle", { title: it.planTitle || "Plan" })}</strong>
-                      <div style={{ marginTop: 8 }}>{it.text}</div>
-                    </div>
-                  );
-
-                case TurnItemKind.HANDOFF:
-                  return (
-                    <div key={it.itemId} className="th-divider" data-testid="turn-item-handoff">
-                      <span>{t("timeline.handoff", { strategy: it.handoffStrategy })}</span>
-                    </div>
-                  );
-
-                case TurnItemKind.MODEL_SWITCH:
-                  return (
-                    <div key={it.itemId} className="th-divider">
-                      <span>{t("timeline.modelSwitch", { model: it.toSelection?.model ?? "" })}</span>
-                    </div>
-                  );
-
-                case TurnItemKind.CHECKPOINT: {
-                  const cp = checkpoints.find((c) => c.checkpointId === it.checkpointId);
-                  if (!cp) return null;
-                  return (
-                    <div key={it.itemId} className="th-divider" data-testid={`checkpoint-divider-${cp.runOrdinal}`}>
-                      <span>{t("timeline.checkpoint", { ordinal: cp.runOrdinal })}</span>
-                      {currentThread?.status === ThreadStatus.IDLE && (
-                        <button
-                          className="link"
-                          data-testid={`rewind-files-btn-${cp.runOrdinal}`}
-                          onClick={async () => {
-                            try {
-                              await threadApi.rollbackCheckpoint({
-                                threadId: activeThreadId!,
-                                checkpointId: cp.checkpointId,
-                                restoreFiles: true,
-                              });
-                              refreshInspector(activeThreadId!);
-                            } catch (e) {
-                              st.show(errorText(e));
-                            }
-                          }}
-                        >
-                          {t("timeline.rewind")}
-                        </button>
-                      )}
-                    </div>
-                  );
-                }
-
-                case TurnItemKind.ERROR:
-                case TurnItemKind.SYSTEM_NOTICE:
-                  return (
-                    <div key={it.itemId} className="th-divider">
-                      <span>{it.text}</span>
-                    </div>
-                  );
-
-                default:
-                  return null;
-              }
-            })}
-            {/* Why it stopped: a launch or message the machine rejected (docs/thread-composer.md §5.3), unless the timeline says it already. */}
-            {currentThread?.lastError && !(projection?.items ?? []).some((it) => it.text === currentThread.lastError) && (
-              <div className="th-divider" data-testid="thread-last-error">
-                <span>{currentThread.lastError}</span>
-              </div>
+      {!activeThreadId ? (
+        <div className="dwrap th" data-testid="thread-page">
+          <div className="th-new" data-testid="thread-launch-card">
+            <h1>{t("launch.title")}</h1>
+            <ThreadComposer
+              value={prompt}
+              onChange={(v) => {
+                setPrompt(v);
+                setSlashOpen(v.startsWith("/") && !v.includes(" "));
+              }}
+              onSend={() => submitMessage()}
+              running={false}
+              sending={busySend}
+              placeholder={t("launch.promptPlaceholder")}
+              attachments={attachments}
+              onAttach={handleAttachFiles}
+              onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+              offline={!machineOnline}
+              blocked={needsUpdate}
+            />
+            {options(false)}
+            {needsUpdate && (
+              <p className="th-note" role="status" data-testid="launch-needs-update">
+                {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
+              </p>
             )}
-          </div>
-
-          {/* Polymorphic Composer + Queue Strip + Pending Request Banners */}
-          <div className="th-composer-wrap">
-            {/* Queued Follow-ups Strip */}
-            {(queuedRuns.length > 0 || currentThread?.queueHeld) && (
-              <div className="th-queue-strip" data-testid="queued-runs-strip">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <strong>{t("queue.heading", { count: queuedRuns.length })}</strong>
-                  {currentThread?.queueHeld && (
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span className="th-badge">{t("queue.held")}</span>
-                      <button
-                        className="btn sm"
-                        data-testid="queue-resume-btn"
-                        onClick={() =>
-                          threadApi.manageQueue({
-                            threadId: activeThreadId!,
-                            operation: QueueOperation.RESUME_QUEUE,
-                          })
-                        }
-                      >
-                        {t("queue.resume")}
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {queuedRuns.map((qr, idx) => (
-                  <div key={qr.runId} className="th-queue-row" data-testid={`queued-run-${idx}`}>
-                    {editingRunId === qr.runId ? (
-                      <div style={{ display: "flex", gap: 6, flex: 1 }}>
-                        <input
-                          value={editingText}
-                          onChange={(e) => setEditingText(e.target.value)}
-                          style={{ flex: 1 }}
-                          data-testid="queue-edit-input"
-                        />
-                        <button
-                          className="btn sm"
-                          data-testid="queue-edit-save"
-                          onClick={async () => {
-                            await threadApi.manageQueue({
-                              threadId: activeThreadId!,
-                              operation: QueueOperation.EDIT,
-                              runId: qr.runId,
-                              text: editingText,
-                            });
-                            setEditingRunId("");
-                          }}
-                        >
-                          {t("queue.save")}
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {qr.prompt}
-                        </span>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <button
-                            className="th-pill-btn"
-                            data-testid={`queue-promote-${idx}`}
-                            onClick={() =>
-                              threadApi.manageQueue({
-                                threadId: activeThreadId!,
-                                operation: QueueOperation.PROMOTE_TO_STEER,
-                                runId: qr.runId,
-                              })
-                            }
-                          >
-                            {t("queue.steerNow")}
-                          </button>
-                          {idx > 0 && (
-                            <button
-                              className="th-pill-btn"
-                              onClick={() =>
-                                threadApi.manageQueue({
-                                  threadId: activeThreadId!,
-                                  operation: QueueOperation.REORDER,
-                                  runId: qr.runId,
-                                  beforeRunId: queuedRuns[idx - 1]!.runId,
-                                })
-                              }
-                            >
-                              {t("queue.moveUp")}
-                            </button>
-                          )}
-                          <button
-                            className="th-pill-btn"
-                            data-testid={`queue-edit-${idx}`}
-                            onClick={() => {
-                              setEditingRunId(qr.runId);
-                              setEditingText(qr.prompt);
-                            }}
-                          >
-                            {t("queue.edit")}
-                          </button>
-                          <button
-                            className="th-pill-btn"
-                            data-testid={`queue-cancel-${idx}`}
-                            onClick={() =>
-                              threadApi.manageQueue({
-                                threadId: activeThreadId!,
-                                operation: QueueOperation.CANCEL,
-                                runId: qr.runId,
-                              })
-                            }
-                          >
-                            {t("queue.cancel")}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Live RuntimeRequest Banner */}
-            {pendingReq && pendingReq.kind === RuntimeRequestKind.TOOL_APPROVAL && (
-              <div className="th-banner" data-testid="pending-approval-banner">
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <strong>{t("request.approvalTitle", { tool: pendingReq.approval?.toolName ?? "Tool" })}</strong>
-                  {pendingReq.approval?.outsideWorkspace && (
-                    <span className="th-badge">{t("request.outsideWorkspace")}</span>
-                  )}
-                </div>
-                <div style={{ fontFamily: "monospace", fontSize: 12 }}>
-                  {pendingReq.approval?.command || pendingReq.approval?.targetPath}
-                </div>
-                {pendingReq.approval?.reason && <div style={{ opacity: 0.8 }}>{pendingReq.approval.reason}</div>}
-                <div className="th-banner-actions">
-                  <button
-                    className="btn sm"
-                    data-testid="approve-once-btn"
-                    onClick={() => resolveRequest(pendingReq, { decision: ApprovalDecision.ACCEPT_ONCE })}
-                  >
-                    {t("request.approveOnce")}
-                  </button>
-                  <button
-                    className="btn sm"
-                    data-testid="approve-thread-btn"
-                    onClick={() => resolveRequest(pendingReq, { decision: ApprovalDecision.ACCEPT_FOR_THREAD })}
-                  >
-                    {t("request.approveThread")}
-                  </button>
-                  <input
-                    placeholder={t("request.declinePlaceholder")}
-                    value={declineFeedback}
-                    onChange={(e) => setDeclineFeedback(e.target.value)}
-                    data-testid="decline-feedback-input"
-                    style={{ flex: 1, minWidth: 160, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "transparent", color: "inherit" }}
-                  />
-                  <button
-                    className="th-pill-btn"
-                    data-testid="decline-btn"
-                    onClick={() =>
-                      resolveRequest(pendingReq, {
-                        decision: ApprovalDecision.DECLINE,
-                        feedback: declineFeedback,
-                      })
-                    }
-                  >
-                    {t("request.decline")}
-                  </button>
-                  <button
-                    className="th-pill-btn"
-                    onClick={() => resolveRequest(pendingReq, { decision: ApprovalDecision.CANCEL_TURN })}
-                  >
-                    {t("request.cancelTurn")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {pendingReq && pendingReq.kind === RuntimeRequestKind.PLAN_REVIEW && (
-              <div className="th-banner" data-testid="pending-plan-banner">
-                <strong>{t("request.planTitle", { title: pendingReq.planReview?.title ?? "Plan" })}</strong>
-                <div className="th-banner-actions">
-                  <button
-                    className="btn sm"
-                    data-testid="approve-plan-btn"
-                    onClick={() => resolveRequest(pendingReq, { approvePlan: true })}
-                  >
-                    {t("request.approvePlan")}
-                  </button>
-                  <input
-                    placeholder={t("request.planFeedbackPlaceholder")}
-                    value={declineFeedback}
-                    onChange={(e) => setDeclineFeedback(e.target.value)}
-                    style={{ flex: 1, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "transparent", color: "inherit" }}
-                  />
-                  <button
-                    className="th-pill-btn"
-                    onClick={() => resolveRequest(pendingReq, { approvePlan: false, feedback: declineFeedback })}
-                  >
-                    {t("request.revisePlan")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {pendingReq && pendingReq.kind === RuntimeRequestKind.USER_INPUT && (
-              <div className="th-banner" data-testid="pending-question-banner">
-                <strong>{t("request.questionTitle")}</strong>
-                {(pendingReq.userInput?.questions ?? []).map((q) => {
-                  const chosen = questionChoices[q.id] ?? [];
-                  return (
-                    <div key={q.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div>{q.question}</div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {q.options.map((o) => {
-                          const on = chosen.includes(o.label);
-                          return (
-                            <button
-                              key={o.id}
-                              type="button"
-                              className={`th-pill-btn ${on ? "on" : ""}`}
-                              data-testid={`question-opt-${o.label}`}
-                              onClick={() =>
-                                setQuestionChoices((prev) => ({
-                                  ...prev,
-                                  [q.id]: q.multiSelect
-                                    ? on
-                                      ? chosen.filter((x) => x !== o.label)
-                                      : [...chosen, o.label]
-                                    : [o.label],
-                                }))
-                              }
-                            >
-                              {o.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {q.allowCustom && (
-                        <input
-                          placeholder={t("request.customAnswerPlaceholder")}
-                          value={questionCustom[q.id] ?? ""}
-                          onChange={(e) => setQuestionCustom((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                          style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "transparent", color: "inherit" }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-                <div className="th-banner-actions">
-                  <button
-                    className="btn sm"
-                    data-testid="submit-question-btn"
-                    onClick={() => {
-                      const answers: Record<string, { selected: string[]; custom?: string }> = {};
-                      for (const q of pendingReq.userInput?.questions ?? []) {
-                        answers[q.id] = {
-                          selected: questionChoices[q.id] ?? [],
-                          custom: questionCustom[q.id],
-                        };
-                      }
-                      resolveRequest(pendingReq, { answers });
-                    }}
-                  >
-                    {t("request.submitAnswer")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {pendingReq && pendingReq.kind === RuntimeRequestKind.SECRET_INPUT && (
-              <div className="th-banner" data-testid="pending-secret-banner">
-                <strong>{t("request.secretTitle", { label: pendingReq.secretInput?.label ?? "Secret" })}</strong>
-                <div style={{ fontSize: 11.5, opacity: 0.78 }}>{t("request.secretZeroPersistence")}</div>
-                <div className="th-banner-actions">
-                  <input
-                    type="password"
-                    value={secretInput}
-                    onChange={(e) => setSecretInput(e.target.value)}
-                    placeholder={pendingReq.secretInput?.placeholder || "••••••••"}
-                    data-testid="secret-value-input"
-                    style={{ flex: 1, padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(128,128,128,0.3)", background: "transparent", color: "inherit" }}
-                  />
-                  <button
-                    className="btn sm"
-                    data-testid="submit-secret-btn"
-                    onClick={() => resolveRequest(pendingReq, { secret: secretInput })}
-                  >
-                    {t("request.sendSecret")}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {activeThreadId && (
-              <>
-                {slashRow}
-                <ThreadComposer
-                  value={prompt}
-                  onChange={(v) => {
-                    setPrompt(v);
-                    setSlashOpen(v.startsWith("/") && !v.includes(" "));
-                  }}
-                  onSend={() => submitMessage()}
-                  onStop={handleStop}
-                  running={running}
-                  sending={busySend}
-                  placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
-                  attachments={attachments}
-                  onAttach={handleAttachFiles}
-                  onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
-                  offline={!machineOnline}
-                />
-                {options(true)}
-              </>
-            )}
+            {slashRow}
           </div>
         </div>
-
-        {/* Right Inspector Drawer: Unified Git Diff, Checkpoints & Runtime Info */}
-        {activeThreadId && inspectorOpen && (
-          <aside className="th-inspector" data-testid="thread-inspector">
-            <div className="th-insp-tabs">
-              <button
-                type="button"
-                className={inspTab === "diff" ? "on" : ""}
-                data-testid="insp-tab-diff"
-                onClick={() => setInspTab("diff")}
-              >
-                {t("inspector.diffTab")} ({diffFiles.length})
-              </button>
-              <button
-                type="button"
-                className={inspTab === "checkpoints" ? "on" : ""}
-                data-testid="insp-tab-checkpoints"
-                onClick={() => setInspTab("checkpoints")}
-              >
-                {t("inspector.checkpointsTab")} ({checkpoints.length})
-              </button>
-              <button
-                type="button"
-                className={inspTab === "info" ? "on" : ""}
-                data-testid="insp-tab-info"
-                onClick={() => setInspTab("info")}
-              >
-                {t("inspector.infoTab")}
-              </button>
-            </div>
-
-            <div className="th-insp-body">
-              {inspTab === "diff" && (
-                <>
-                  {diffFiles.length === 0 ? (
-                    <div style={{ opacity: 0.68 }}>{t("inspector.noDiff")}</div>
-                  ) : (
-                    <>
-                      {diffFiles.map((f) => (
-                        <div key={f.path} style={{ display: "flex", justifyContent: "space-between", fontFamily: "monospace", fontSize: 11.5 }}>
-                          <span>{f.status} {f.path}</span>
-                          <span>+{f.additions} −{f.deletions}</span>
-                        </div>
-                      ))}
-                      {diffText && <pre className="th-diff-pre">{diffText}</pre>}
-                    </>
-                  )}
-                </>
-              )}
-
-              {inspTab === "checkpoints" && (
-                <>
-                  {checkpoints.length === 0 ? (
-                    <div style={{ opacity: 0.68 }}>{t("inspector.noCheckpoints")}</div>
-                  ) : (
-                    checkpoints.map((cp) => (
-                      <div
-                        key={cp.checkpointId}
-                        data-testid={`insp-ckpt-${cp.runOrdinal}`}
-                        style={{ padding: 8, borderRadius: 7, border: "1px solid rgba(128,128,128,0.2)", display: "flex", flexDirection: "column", gap: 6 }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <strong>{t("timeline.checkpoint", { ordinal: cp.runOrdinal })}</strong>
-                          <span style={{ fontFamily: "monospace", fontSize: 11, opacity: 0.7 }}>
-                            {cp.gitTreeOid.slice(0, 8)}
-                          </span>
-                        </div>
-                        {currentThread?.status === ThreadStatus.IDLE && (
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <button
-                              type="button"
-                              className="th-pill-btn"
-                              onClick={async () => {
-                                await threadApi.rollbackCheckpoint({
-                                  threadId: activeThreadId,
-                                  checkpointId: cp.checkpointId,
-                                  restoreFiles: false,
-                                });
-                                refreshInspector(activeThreadId);
-                              }}
-                            >
-                              {t("inspector.rewindChat")}
-                            </button>
-                            <button
-                              type="button"
-                              className="th-pill-btn"
-                              data-testid={`insp-rewind-files-${cp.runOrdinal}`}
-                              onClick={async () => {
-                                await threadApi.rollbackCheckpoint({
-                                  threadId: activeThreadId,
-                                  checkpointId: cp.checkpointId,
-                                  restoreFiles: true,
-                                });
-                                refreshInspector(activeThreadId);
-                              }}
-                            >
-                              {t("inspector.rewindFiles")}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </>
-              )}
-
-              {inspTab === "info" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div>
-                    <div style={{ opacity: 0.65 }}>{t("inspector.contextWindow")}</div>
-                    <strong>
-                      {Number(currentThread?.usage?.contextUsedTokens ?? 0n).toLocaleString()} /{" "}
-                      {Number(currentThread?.usage?.contextLimitTokens ?? 200000n).toLocaleString()} tokens
-                    </strong>
-                  </div>
-                  {(projection?.providerThreads ?? []).map((pt) => (
-                    <div key={pt.providerThreadId}>
-                      <div style={{ opacity: 0.65 }}>{t("inspector.providerSession")} ({pt.instanceId})</div>
-                      <div style={{ fontFamily: "monospace", fontSize: 11 }}>{pt.nativeSessionId || pt.providerThreadId}</div>
-                      <span className="th-badge">{pt.processAlive ? t("inspector.alive") : t("inspector.reaped")}</span>
+      ) : (
+        <div className={`dwrap th ${card === "docked" ? "dock" : ""}`} data-testid="thread-page">
+          <div className="dmain">
+            <ContentScope value={activeThreadId}>
+              <ChatFrame
+                key={activeThreadId}
+                rows={rows}
+                initial={rowHeights}
+                label={ts("chat.log")}
+                follow={currentThread?.status}
+                row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeThreadId} clients={st.clients} grant={grant} previous={r.previous} />}
+                head={
+                  archived && session && (
+                    <div className="anote">
+                      <Icon name="archive" className="sm" />
+                      {ts("chat.archived")}
+                      <button className="link" onClick={() => unarchive(st, session)}>{ts("chat.unarchive")}</button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </aside>
-        )}
-      </div>
+                  )
+                }
+                foot={
+                  session && (
+                    <>
+                      <Stale s={session} behind={false} />
+                      {failure && <Failed s={session} failure={failure} grant={grant} />}
+                      {currentThread?.status === ThreadStatus.IDLE && !failure && rows.length > 0 && rows.at(-1)?.it.kind !== "turnEnd" && <DoneLine text={ts("chat.turnDone", { grant })} />}
+                    </>
+                  )
+                }
+                // Archived, it is read-only, as a session is: no box.
+                control={archived ? undefined : (onHeight) => (
+                  <ComposerZone onHeight={onHeight}>
+                    {requestCard}
+                    {queueCard}
+                    {slashRow}
+                    <ThreadComposer
+                      value={prompt}
+                      onChange={(v) => {
+                        setPrompt(v);
+                        setSlashOpen(v.startsWith("/") && !v.includes(" "));
+                      }}
+                      onSend={() => submitMessage()}
+                      onStop={handleStop}
+                      running={running}
+                      sending={busySend}
+                      placeholder={running ? t("composer.placeholderRunning") : t("composer.placeholderIdle")}
+                      attachments={attachments}
+                      onAttach={handleAttachFiles}
+                      onRemove={(sha) => setAttachments((prev) => prev.filter((a) => a.blobSha256 !== sha))}
+                      offline={!machineOnline}
+                    />
+                    {options(true)}
+                  </ComposerZone>
+                )}
+              />
+            </ContentScope>
+          </div>
+          {info && session && <Inspector s={session} />}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** The box at the bottom of the conversation, as Her's (her.css .cmp-zone), telling the conversation how much of it it covers. */
+function ComposerZone({ onHeight, children }: { onHeight: (h: number) => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => onHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      onHeight(0);
+    };
+  }, [onHeight]);
+  return (
+    <div className="cmp-zone" ref={ref}>
+      <div className="cmp-col">{children}</div>
     </div>
   );
 }
