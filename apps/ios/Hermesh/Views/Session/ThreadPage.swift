@@ -199,8 +199,8 @@ struct ThreadPage: View {
     /// The question in the middle ("What should we build in <project>?", the environment under it), both menus set
     /// as last time; the box at the bottom, where a session's is.
     private var newSession: some View {
-        // In a scroll view that always bounces, though it fits: dragged down, the keyboard follows the finger away, as on a
-        // session's page; a tap on the page puts it away too.
+        // In a scroll view that always bounces, though it fits: there is nothing to scroll, so a drag puts the keyboard away
+        // at once (a session's page has it follow the finger); a tap on the page puts it away too.
         ScrollView {
             ask
                 .frame(maxWidth: .infinity)
@@ -209,7 +209,7 @@ struct ThreadPage: View {
                 .onTapGesture { focused = false }
         }
         .scrollBounceBehavior(.always)
-        .scrollDismissesKeyboard(.interactively)
+        .scrollDismissesKeyboard(.immediately)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 ConnectionCapsule(machine: machine, linkUp: reachable)

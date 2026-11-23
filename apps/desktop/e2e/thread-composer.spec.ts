@@ -53,7 +53,8 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.fill("");
     await card.getByRole("heading", { level: 1 }).click({ position: { x: 2, y: 2 } });
     await expect(bar).toBeHidden();
-    expect(await height()).toBeLessThan(40);
+    // It folds back smoothly: one line once it has.
+    await expect.poll(height).toBeLessThan(40);
     // Typing on the page, away from any field, goes into the box.
     await page.keyboard.type("x");
     await expect(input).toHaveValue("x");
@@ -107,9 +108,32 @@ test("a session on another machine: its folder added as a project, the model pic
     await panel.getByTestId("picker-model-scripted-fast").click();
     await expect(panel).toBeHidden();
     await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
-    // How hard it thinks: its own button beside the model.
-    await bar.getByRole("button", { name: "思考强度" }).click();
-    await page.getByTestId("picker-level-high").click();
+    // How hard it thinks: no button of its own, but after the model's name, and at the top of the model's panel: a row
+    // of its levels. A click picks one and the panel stays; dragging along the row picks as it goes; with nothing
+    // searched, ← and → step through them.
+    await expect(bar.getByRole("button", { name: "思考强度" })).toHaveCount(0);
+    await bar.getByRole("button", { name: "模型" }).click();
+    const effort = panel.getByRole("radiogroup", { name: "推理强度" });
+    await expect(effort.getByRole("radio")).toHaveText(["低", "中", "高"]);
+    const effortBox = (await effort.boundingBox())!;
+    expect(effortBox.y).toBeLessThan((await panel.getByPlaceholder("搜索模型或服务商").boundingBox())!.y);
+    await page.getByTestId("picker-level-low").click();
+    await expect(page.getByTestId("picker-level-low")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("thinking-trigger")).toHaveText("低");
+    await expect(panel).toBeVisible();
+    await page.mouse.move(effortBox.x + 4, effortBox.y + effortBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(effortBox.x + effortBox.width - 4, effortBox.y + effortBox.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByTestId("picker-level-high")).toHaveAttribute("aria-checked", "true");
+    await panel.getByPlaceholder("搜索模型或服务商").press("ArrowLeft");
+    await expect(page.getByTestId("picker-level-medium")).toHaveAttribute("aria-checked", "true");
+    await panel.getByPlaceholder("搜索模型或服务商").press("ArrowRight");
+    await expect(page.getByTestId("picker-level-high")).toHaveAttribute("aria-checked", "true");
+    await snap(page, "composer-effort");
+    await page.keyboard.press("Escape");
+    await expect(panel).toBeHidden();
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
     await expect(page.getByTestId("thinking-trigger")).toHaveText("高");
     // The permission mode is in ＋, with adding files; not shown in the box.
     await bar.getByRole("button", { name: "添加附件" }).click();

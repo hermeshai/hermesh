@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import type { Machine, Project } from "@hermesh/proto/local";
@@ -14,6 +14,7 @@ import {
   selectModel,
   selectionTitle,
   withReasoning,
+  type Reasoning,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
@@ -446,7 +447,10 @@ export function ComposerPlace({ place, branches, onPlace }: { place: Place; bran
   );
 }
 
-/** In the box's bottom row: the model (its provider's logo and name) and, when it has levels, how hard it thinks. */
+/**
+ * In the box's bottom row: the model, its provider's logo and name, and how hard it thinks after it in grey, when it
+ * has levels. One panel holds both: the level at its top, the models under it.
+ */
 export function ModelButtons({ providers, sel, stale, machineName, projectAgents, onModel, onNotice }: {
   providers: ProviderInstance[];
   sel: ModelSelection;
@@ -461,56 +465,96 @@ export function ModelButtons({ providers, sel, stale, machineName, projectAgents
   const reasoning = reasoningOf(providers, sel);
   const entry = inst?.models.find((m) => m.slug === sel.model);
   return (
-    <>
-      <MenuButton
-        className="mb th-pickbtn"
-        title={t("picker.model")}
-        label={
-          <>
-            {inst && <AgentLogo agent={inst.instanceId} size={14} />}
-            <span className="lbl strong" data-testid="model-picker-trigger">{entry ? entry.shortName || entry.name : inst ? selectionTitle(providers, sel) : t("picker.model")}</span>
-            <Icon name="chevD" />
-          </>
-        }
-      >
-        {(close) => (
-          <ModelPanel
-            providers={providers}
-            sel={sel}
-            stale={stale}
-            machineName={machineName}
-            projectAgents={projectAgents}
-            onSel={(next, changed) => {
-              close();
-              onModel(next);
-              if (changed) onNotice(t("picker.thinkingChanged", { model: selectionTitle(providers, next), from: levelTitle(changed.from, changed.from), to: levelTitle(changed.to, changed.to) }));
-            }}
-          />
-        )}
-      </MenuButton>
-      {reasoning && (
-        <MenuButton
-          className="mb th-pickbtn"
-          title={t("picker.thinking")}
-          label={
-            <>
-              <Icon name="brain" />
-              <span className="lbl" data-testid="thinking-trigger">{levelTitle(reasoning.value, reasoning.choices.find((c) => c.id === reasoning.value)?.label ?? reasoning.value)}</span>
-              <Icon name="chevD" />
-            </>
-          }
-        >
-          {(close) => (
-            <div className="th-levels">
-              <div className="mgh">{t("picker.thinking")}</div>
-              {reasoning.choices.map((c) => (
-                <Item key={c.id} checked={c.id === reasoning.value} label={levelTitle(c.id, c.label)} testId={`picker-level-${c.id}`} onClick={() => (close(), onModel(withReasoning(sel, reasoning.id, c.id)))} />
-              ))}
-            </div>
+    <MenuButton
+      className="mb th-pickbtn"
+      title={t("picker.model")}
+      label={
+        <>
+          {inst && <AgentLogo agent={inst.instanceId} size={14} />}
+          <span className="lbl strong" data-testid="model-picker-trigger">{entry ? entry.shortName || entry.name : inst ? selectionTitle(providers, sel) : t("picker.model")}</span>
+          {reasoning && (
+            <span className="th-lvl" data-testid="thinking-trigger">
+              {levelTitle(reasoning.value, reasoning.choices.find((c) => c.id === reasoning.value)?.label ?? reasoning.value)}
+            </span>
           )}
-        </MenuButton>
+          <Icon name="chevD" />
+        </>
+      }
+    >
+      {(close) => (
+        <ModelPanel
+          providers={providers}
+          sel={sel}
+          stale={stale}
+          machineName={machineName}
+          projectAgents={projectAgents}
+          onLevel={(id) => reasoning && onModel(withReasoning(sel, reasoning.id, id))}
+          onSel={(next, changed) => {
+            close();
+            onModel(next);
+            if (changed) onNotice(t("picker.thinkingChanged", { model: selectionTitle(providers, next), from: levelTitle(changed.from, changed.from), to: levelTitle(changed.to, changed.to) }));
+          }}
+        />
       )}
-    </>
+    </MenuButton>
+  );
+}
+
+/**
+ * How hard the model thinks, at the top of the model panel: its levels side by side, least to most, the chosen one on
+ * a raised plate that slides to it. A click picks a level, and so does dragging along them; ← and → step through them
+ * (from the panel's search while it is empty). Choosing one leaves the panel open.
+ */
+function Effort({ reasoning, onLevel }: { reasoning: Reasoning; onLevel: (id: string) => void }) {
+  const { t } = useTranslation("thread");
+  const row = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const n = reasoning.choices.length;
+  const i = Math.max(0, reasoning.choices.findIndex((c) => c.id === reasoning.value));
+  const pick = (k: number) => k !== i && onLevel(reasoning.choices[k].id);
+  const at = (x: number) => {
+    const r = row.current!.getBoundingClientRect();
+    return Math.min(n - 1, Math.max(0, Math.floor(((x - r.left) / r.width) * n)));
+  };
+  return (
+    <div className="th-effort" data-testid="picker-effort">
+      <div className="th-effort-h">
+        <Icon name="gauge" className="sm" />
+        {t("picker.thinking")}
+        <span className="th-effort-keys" aria-hidden="true">← →</span>
+      </div>
+      <div
+        ref={row}
+        className={`th-seg ${dragging ? "drag" : ""}`}
+        role="radiogroup"
+        aria-label={t("picker.thinking")}
+        style={{ "--n": n, "--i": i } as CSSProperties}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setDragging(true);
+          pick(at(e.clientX));
+        }}
+        onPointerMove={(e) => dragging && pick(at(e.clientX))}
+        onPointerUp={() => setDragging(false)}
+        onPointerCancel={() => setDragging(false)}
+        onKeyDown={(e) => {
+          const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+          if (!step) return;
+          e.preventDefault();
+          e.stopPropagation();
+          pick(Math.min(n - 1, Math.max(0, i + step)));
+          row.current?.querySelectorAll<HTMLElement>("[role=radio]")[Math.min(n - 1, Math.max(0, i + step))]?.focus();
+        }}
+      >
+        <span className="th-seg-plate" aria-hidden="true" />
+        {reasoning.choices.map((c, k) => (
+          <button key={c.id} type="button" role="radio" aria-checked={k === i} tabIndex={k === i ? 0 : -1} data-testid={`picker-level-${c.id}`}>
+            {levelTitle(c.id, c.label)}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -518,13 +562,14 @@ export function ModelButtons({ providers, sel, stale, machineName, projectAgents
  * The model: one column (§16). A search over every provider; the providers that can be used one under another, a
  * model a row; those not installed, turned off or not for this project left out. Choosing closes it.
  */
-function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel }: {
+function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel, onLevel }: {
   providers: ProviderInstance[];
   sel: ModelSelection;
   stale?: boolean;
   machineName: string;
   projectAgents: string[];
   onSel: (sel: ModelSelection, changed?: { from: string; to: string }) => void;
+  onLevel: (id: string) => void;
 }) {
   const { t } = useTranslation("thread");
   const [query, setQuery] = useState("");
@@ -532,14 +577,22 @@ function ModelPanel({ providers, sel, stale, machineName, projectAgents, onSel }
   useEffect(() => find.current?.focus(), []);
   const usable = providers.filter((p) => ["", "signedOut"].includes(providerUnusable(p, projectAgents)));
   const groups = query.trim() ? findModels(usable, query).map((g) => ({ inst: g.inst, models: g.models })) : usable.map((inst) => ({ inst, models: inst.models }));
+  const reasoning = reasoningOf(providers, sel);
   const keys = (e: KeyboardEvent) => {
     if (e.key === "Escape" && query) {
       e.stopPropagation();
       setQuery("");
     }
+    // With nothing searched, ← and → set how hard it thinks.
+    if (!query && reasoning && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      const i = Math.max(0, reasoning.choices.findIndex((c) => c.id === reasoning.value)) + (e.key === "ArrowRight" ? 1 : -1);
+      if (i >= 0 && i < reasoning.choices.length) onLevel(reasoning.choices[i].id);
+    }
   };
   return (
     <div className="th-mpanel" data-testid="model-traits-popover">
+      {reasoning && reasoning.choices.length > 1 && <Effort reasoning={reasoning} onLevel={onLevel} />}
       <label className="th-mfind">
         <Icon name="search" className="sm" />
         <input ref={find} value={query} placeholder={t("picker.find")} spellCheck={false} onChange={(e) => setQuery(e.target.value)} onKeyDown={keys} />
