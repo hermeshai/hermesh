@@ -502,19 +502,27 @@ export function ModelButtons({ providers, sel, stale, machineName, projectAgents
 
 /**
  * How hard the model thinks, at the top of the model panel: its levels side by side, least to most, the chosen one on
- * a raised plate that slides to it. A click picks a level, and so does dragging along them; ← and → step through them
- * (from the panel's search while it is empty). Choosing one leaves the panel open.
+ * a raised plate, as on iPhone. The plate is dragged: it follows the pointer, swells a little, and the level under it
+ * is chosen as it passes; let go, it settles on that level with a small bounce. A click goes straight to a level; ← and
+ * → step through them (from the panel's search while it is empty). Choosing one leaves the panel open.
  */
 function Effort({ reasoning, onLevel }: { reasoning: Reasoning; onLevel: (id: string) => void }) {
   const { t } = useTranslation("thread");
   const row = useRef<HTMLDivElement>(null);
-  const [dragging, setDragging] = useState(false);
+  // Where the plate's left edge is while dragged, in px from the first level's.
+  const [dragged, setDragged] = useState<number | null>(null);
   const n = reasoning.choices.length;
   const i = Math.max(0, reasoning.choices.findIndex((c) => c.id === reasoning.value));
   const pick = (k: number) => k !== i && onLevel(reasoning.choices[k].id);
-  const at = (x: number) => {
+  const column = () => (row.current!.getBoundingClientRect().width - 4) / n;
+  const along = (x: number) => {
     const r = row.current!.getBoundingClientRect();
-    return Math.min(n - 1, Math.max(0, Math.floor(((x - r.left) / r.width) * n)));
+    return Math.min(column() * (n - 1), Math.max(0, x - r.left - 2 - column() / 2));
+  };
+  const follow = (x: number) => {
+    const at = along(x);
+    setDragged(at);
+    pick(Math.round(at / column()));
   };
   return (
     <div className="th-effort" data-testid="picker-effort">
@@ -525,26 +533,26 @@ function Effort({ reasoning, onLevel }: { reasoning: Reasoning; onLevel: (id: st
       </div>
       <div
         ref={row}
-        className={`th-seg ${dragging ? "drag" : ""}`}
+        className={`th-seg ${dragged !== null ? "drag" : ""}`}
         role="radiogroup"
         aria-label={t("picker.thinking")}
-        style={{ "--n": n, "--i": i } as CSSProperties}
+        style={{ "--n": n, "--i": i, ...(dragged !== null && { "--at": `${dragged}px` }) } as CSSProperties}
         onPointerDown={(e) => {
           e.preventDefault();
           e.currentTarget.setPointerCapture(e.pointerId);
-          setDragging(true);
-          pick(at(e.clientX));
+          follow(e.clientX);
         }}
-        onPointerMove={(e) => dragging && pick(at(e.clientX))}
-        onPointerUp={() => setDragging(false)}
-        onPointerCancel={() => setDragging(false)}
+        onPointerMove={(e) => dragged !== null && follow(e.clientX)}
+        onPointerUp={() => setDragged(null)}
+        onPointerCancel={() => setDragged(null)}
         onKeyDown={(e) => {
           const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
           if (!step) return;
           e.preventDefault();
           e.stopPropagation();
-          pick(Math.min(n - 1, Math.max(0, i + step)));
-          row.current?.querySelectorAll<HTMLElement>("[role=radio]")[Math.min(n - 1, Math.max(0, i + step))]?.focus();
+          const k = Math.min(n - 1, Math.max(0, i + step));
+          pick(k);
+          row.current?.querySelectorAll<HTMLElement>("[role=radio]")[k]?.focus();
         }}
       >
         <span className="th-seg-plate" aria-hidden="true" />

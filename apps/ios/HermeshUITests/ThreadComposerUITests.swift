@@ -225,13 +225,13 @@ extension HermeshUITests {
         XCTAssertTrue(capsule.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
     }
 
-    /// Drags the thinking track's thumb from where it is to a place along it (0 the start, 1 the end), as a finger does.
+    /// Drags the thinking track's glass from where it is to a place along it (0 the start, 1 the end), as a finger does.
     private func dragThinking(_ track: XCUIElement, to x: CGFloat) {
         let levels = ["低", "中", "高"]
         let from = CGFloat(levels.firstIndex(of: track.value as? String ?? "") ?? 1) / CGFloat(levels.count - 1)
-        // The track is the row's middle, between its title and the levels' names; each stop is the middle of a column.
+        // The track is the row's lower part, under its title; each level is the middle of a column of it.
         let n = CGFloat(levels.count)
-        let at = { (p: CGFloat) in track.coordinate(withNormalizedOffset: CGVector(dx: (0.5 + p * (n - 1)) / n, dy: 0.55)) }
+        let at = { (p: CGFloat) in track.coordinate(withNormalizedOffset: CGVector(dx: (0.5 + p * (n - 1)) / n, dy: 0.68)) }
         at(from).press(forDuration: 0.1, thenDragTo: at(x))
     }
 

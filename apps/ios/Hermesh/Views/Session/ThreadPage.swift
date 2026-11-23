@@ -1124,71 +1124,69 @@ private struct ModelSheet: View {
     }
 }
 
-/// How hard the model thinks: its levels as stops along a track, from least to most, each named under its stop and the
-/// chosen one in bold. The thumb follows the finger (with a tick at each stop, and the gauge's needle turning) and settles
-/// on the nearest stop when let go; a tap on the track goes straight to a stop. VoiceOver swipes up and down through them.
+/// How hard the model thinks: its levels side by side on a track, least to most, the chosen one under a plate of liquid
+/// glass. The glass is dragged: it follows the finger, swells a little, and the name under it grows; let go, it settles
+/// on the nearest level with a small bounce. A tap goes straight to a level; each level passed ticks. VoiceOver swipes
+/// up and down through them.
 private struct ThinkingSlider: View {
     let levels: [(id: String, title: String)]
     @Binding var value: String
-    /// Where the thumb is while dragged, 0 to 1 from the first stop to the last.
+    /// Where the glass's left edge is while dragged, in points from the first level's.
     @State private var dragged: CGFloat?
-    private let thumb: CGFloat = 22
+    @Environment(\.colorScheme) private var scheme
+    private let pad: CGFloat = 4
 
     var body: some View {
         let last = levels.count - 1
         let chosen = levels.firstIndex { $0.id == value } ?? 0
-        let at = dragged ?? CGFloat(chosen) / CGFloat(last)
-        let shown = Int((at * CGFloat(last)).rounded())
         VStack(alignment: .leading, spacing: 14) {
             Label {
                 Text("Reasoning Effort")
             } icon: {
-                Image(systemName: gauge(CGFloat(shown) / CGFloat(last))).foregroundStyle(.secondary)
-                    .contentTransition(.symbolEffect(.replace))
+                Image(systemName: "gauge.with.dots.needle.67percent").foregroundStyle(.secondary)
             }
             .font(.subheadline)
-            // Each stop is the middle of a column of its own, so its name sits right under it.
             GeometryReader { g in
-                let column = g.size.width / CGFloat(levels.count)
-                let span = g.size.width - column
-                let x = column / 2 + at * span
-                let along = { (px: CGFloat) in min(max((px - column / 2) / span, 0), 1) }
+                let column = (g.size.width - pad * 2) / CGFloat(levels.count)
+                let x = dragged ?? CGFloat(chosen) * column
+                let shown = min(max(Int((x / column).rounded()), 0), last)
+                let along = { (px: CGFloat) in min(max(px - pad - column / 2, 0), column * CGFloat(last)) }
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Palette.fill3).frame(width: span, height: 3).offset(x: column / 2)
-                    Capsule().fill(.primary).frame(width: at * span, height: 3).offset(x: column / 2)
-                    Circle().fill(.white)
-                        .overlay(Circle().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
-                        .shadow(color: .black.opacity(0.2), radius: dragged == nil ? 2 : 5, y: 1)
-                        .frame(width: thumb, height: thumb)
-                        .scaleEffect(dragged == nil ? 1 : 1.12)
-                        .position(x: x, y: g.size.height / 2)
+                    Capsule().fill(Palette.fill2)
+                    Capsule().fill(.clear)
+                        // Tinted so it stands off the track: whiter in light, a little lighter in dark.
+                        .glassEffect(.regular.tint(.white.opacity(scheme == .dark ? 0.16 : 0.85)), in: Capsule())
+                        .shadow(color: .black.opacity(0.12), radius: 4, y: 1)
+                        .frame(width: column, height: g.size.height - pad * 2)
+                        .scaleEffect(x: dragged == nil ? 1 : 1.14, y: dragged == nil ? 1 : 1.22)
+                        .offset(x: pad + x)
+                    HStack(spacing: 0) {
+                        ForEach(Array(levels.enumerated()), id: \.offset) { i, l in
+                            Text(verbatim: l.title)
+                                .font(.subheadline.weight(i == shown ? .semibold : .regular))
+                                .foregroundStyle(i == shown ? .primary : .secondary)
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                                .scaleEffect(dragged != nil && i == shown ? 1.1 : 1)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, pad)
+                    .allowsHitTesting(false)
                 }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
+                .contentShape(Capsule())
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { v in
-                        withAnimation(.interactiveSpring) { dragged = along(v.location.x) }
+                        withAnimation(dragged == nil ? .spring(response: 0.3, dampingFraction: 0.75) : .interactiveSpring) { dragged = along(v.location.x) }
                     }
                     .onEnded { v in
-                        value = levels[Int((along(v.location.x) * CGFloat(last)).rounded())].id
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { dragged = nil }
+                        value = levels[min(max(Int((along(v.location.x) / column).rounded()), 0), last)].id
+                        withAnimation(.spring(response: 0.38, dampingFraction: 0.62)) { dragged = nil }
                     })
+                .sensoryFeedback(.selection, trigger: shown)
             }
-            .frame(height: thumb + 6)
-            HStack(spacing: 0) {
-                ForEach(Array(levels.enumerated()), id: \.offset) { i, l in
-                    Text(verbatim: l.title)
-                        .font(.footnote.weight(i == shown ? .semibold : .regular))
-                        .foregroundStyle(i == shown ? .primary : .tertiary)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.top, -8)
-            .animation(.snappy(duration: 0.2), value: shown)
+            .frame(height: 46)
         }
         .padding(.vertical, 6)
-        .sensoryFeedback(.selection, trigger: shown)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Reasoning Effort"))
         .accessibilityValue(Text(verbatim: levels[chosen].title))
@@ -1200,11 +1198,5 @@ private struct ThinkingSlider: View {
             }
         }
         .accessibilityIdentifier("model-thinking")
-    }
-
-    /// A gauge whose needle points as far round as the level is along.
-    private func gauge(_ f: CGFloat) -> String {
-        let percent = [0, 33, 50, 67, 100].min { abs(CGFloat($0) / 100 - f) < abs(CGFloat($1) / 100 - f) } ?? 50
-        return "gauge.with.dots.needle.\(percent)percent"
     }
 }
