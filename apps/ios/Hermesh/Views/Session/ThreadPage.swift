@@ -178,7 +178,8 @@ struct ThreadPage: View {
         }
         .sheet(isPresented: $pickingModel) {
             ModelSheet(providers: providers, selection: $selection, stale: providersStale, machineName: machine?.machineName ?? "",
-                       projectAgents: projects(on: machineID).list.first { $0.projectID == projectID }?.agents ?? []) { changed in
+                       projectAgents: projects(on: machineID).list.first { $0.projectID == projectID }?.agents ?? [],
+                       levelTitle: levelTitle) { changed in
                 model.show(String(localized: "\(modelTitle) has no “\(levelTitle(changed.from))” level; thinking is now “\(levelTitle(changed.to))”"))
             }
         }
@@ -198,25 +199,32 @@ struct ThreadPage: View {
     /// The question in the middle ("What should we build in <project>?", the environment under it), both menus set
     /// as last time; the box at the bottom, where a session's is.
     private var newSession: some View {
-        ask
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture { focused = false }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                    ConnectionCapsule(machine: machine, linkUp: reachable)
-                    VStack(spacing: 6) {
-                        if needsUpdate {
-                            Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
-                                .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
-                                .accessibilityIdentifier("needs-update")
-                        }
-                        placeRow
-                        box
+        // In a scroll view that always bounces, though it fits: dragged down, the keyboard follows the finger away, as on a
+        // session's page; a tap on the page puts it away too.
+        ScrollView {
+            ask
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical)
+                .contentShape(Rectangle())
+                .onTapGesture { focused = false }
+        }
+        .scrollBounceBehavior(.always)
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                ConnectionCapsule(machine: machine, linkUp: reachable)
+                VStack(spacing: 6) {
+                    if needsUpdate {
+                        Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
+                            .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
+                            .accessibilityIdentifier("needs-update")
                     }
+                    placeRow
+                    box
                 }
-                .padding(.bottom, 4)
             }
+            .padding(.bottom, 4)
+        }
     }
 
     private var ask: some View {
@@ -325,6 +333,7 @@ struct ThreadPage: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .keyboardAwayOnTap()
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
@@ -400,7 +409,7 @@ struct ThreadPage: View {
     }
 
     /// Her's box (docs/thread-composer.md §16): one line (＋, the text, Send) until it is tapped; then two lines and,
-    /// along its bottom, ＋, the model, how hard it thinks, Stop and Send.
+    /// along its bottom, ＋, the model (how hard it thinks is in its sheet), Stop and Send.
     private var box: some View {
         let ready = !sending && !needsUpdate && uploading == 0 && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attached.isEmpty)
         let open = boxOpen
@@ -466,7 +475,6 @@ struct ThreadPage: View {
                 HStack(spacing: 6) {
                     plusButton
                     modelButton
-                    thinkingMenu
                     Spacer(minLength: 0)
                     ends
                 }
@@ -476,6 +484,7 @@ struct ThreadPage: View {
         }
         .padding(6)
         .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .keyboardAwayOnFlickDown()
         .animation(.snappy(duration: 0.22), value: open)
         .padding(.horizontal, 12)
         .photosPicker(isPresented: $pickingPhotos, selection: $photos, maxSelectionCount: 10, matching: .images)
@@ -599,32 +608,6 @@ struct ThreadPage: View {
         .accessibilityIdentifier("thread-model")
     }
 
-    /// How hard it thinks, when the model has levels: a menu of them.
-    @ViewBuilder private var thinkingMenu: some View {
-        if let r = reasoningOf(providers, selection) {
-            Menu {
-                Section("Thinking") {
-                    ForEach(r.choices, id: \.id) { c in
-                        Button { selection = withReasoning(selection, id: r.id, value: c.id) } label: {
-                            Label { Text(levelTitle(c.id, c.label)) } icon: { if c.id == r.value { Image(systemName: "checkmark") } }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "brain").foregroundStyle(.secondary)
-                    Text(verbatim: levelTitle(r.value, r.choices.first { $0.id == r.value }?.label ?? r.value)).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
-                }
-                .font(.subheadline)
-                .padding(.horizontal, 11).frame(height: 36)
-                .background(Palette.fill2, in: Capsule())
-            }
-            .tint(.primary)
-            .accessibilityIdentifier("thread-thinking")
-        }
-    }
-
     /// Over a new session's box: the working copy and, once its folder was read, the branch (a worktree's base, or
     /// the branch the folder works on). Only for a repository.
     @ViewBuilder private var placeRow: some View {
@@ -641,6 +624,7 @@ struct ThreadPage: View {
                         }
                     }
                 } label: { chip(icon: place.worktree ? "arrow.triangle.branch" : "folder", place.worktree ? String(localized: "Separate worktree") : String(localized: "Current checkout")) }
+                    .tint(.primary)
                     .accessibilityIdentifier("thread-worktree")
                 if let branches {
                     let name = place.chosen(branches)
@@ -1051,6 +1035,7 @@ private struct BranchSheet: View {
                                 if n == chosen { Image(systemName: "checkmark").foregroundStyle(.tint) }
                             }
                         }
+                        .tint(.primary)
                         .disabled(blocked)
                         .accessibilityIdentifier("branch-item-\(n)")
                     }
@@ -1068,7 +1053,7 @@ private struct BranchSheet: View {
 
 /// The model: one sheet, one column (docs/thread-composer.md §16). A search over every provider; the providers
 /// that can be used one under another, a model a row; those not installed, turned off or not for this project
-/// left out. Choosing closes it: how hard it thinks is a button of its own, beside the model.
+/// left out. Choosing closes it. At the top, how hard the chosen model thinks, when it has levels: dragged along a track.
 private struct ModelSheet: View {
     @Environment(\.dismiss) private var dismiss
     let providers: [Hermesh_Thread_V2_ProviderInstance]
@@ -1076,6 +1061,7 @@ private struct ModelSheet: View {
     let stale: Bool
     let machineName: String
     let projectAgents: [String]
+    let levelTitle: (String, String) -> String
     let changed: ((from: String, to: String)) -> Void
     @State private var query = ""
 
@@ -1090,6 +1076,12 @@ private struct ModelSheet: View {
                 }
                 if usable.isEmpty {
                     Text("No models on \(machineName) yet").foregroundStyle(.secondary)
+                }
+                if query.isEmpty, let r = reasoningOf(providers, selection), r.choices.count > 1 {
+                    Section {
+                        ThinkingSlider(levels: r.choices.map { ($0.id, levelTitle($0.id, $0.label)) },
+                                       value: Binding(get: { r.value }, set: { selection = withReasoning(selection, id: r.id, value: $0) }))
+                    }
                 }
                 ForEach(groups, id: \.provider.instanceID) { g in
                     Section {
@@ -1129,5 +1121,90 @@ private struct ModelSheet: View {
         }
         .tint(.primary)
         .accessibilityIdentifier("model-\(m.slug)")
+    }
+}
+
+/// How hard the model thinks: its levels as stops along a track, from least to most, each named under its stop and the
+/// chosen one in bold. The thumb follows the finger (with a tick at each stop, and the gauge's needle turning) and settles
+/// on the nearest stop when let go; a tap on the track goes straight to a stop. VoiceOver swipes up and down through them.
+private struct ThinkingSlider: View {
+    let levels: [(id: String, title: String)]
+    @Binding var value: String
+    /// Where the thumb is while dragged, 0 to 1 from the first stop to the last.
+    @State private var dragged: CGFloat?
+    private let thumb: CGFloat = 22
+
+    var body: some View {
+        let last = levels.count - 1
+        let chosen = levels.firstIndex { $0.id == value } ?? 0
+        let at = dragged ?? CGFloat(chosen) / CGFloat(last)
+        let shown = Int((at * CGFloat(last)).rounded())
+        VStack(alignment: .leading, spacing: 14) {
+            Label {
+                Text("Reasoning Effort")
+            } icon: {
+                Image(systemName: gauge(CGFloat(shown) / CGFloat(last))).foregroundStyle(.secondary)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .font(.subheadline)
+            // Each stop is the middle of a column of its own, so its name sits right under it.
+            GeometryReader { g in
+                let column = g.size.width / CGFloat(levels.count)
+                let span = g.size.width - column
+                let x = column / 2 + at * span
+                let along = { (px: CGFloat) in min(max((px - column / 2) / span, 0), 1) }
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Palette.fill3).frame(width: span, height: 3).offset(x: column / 2)
+                    Capsule().fill(.primary).frame(width: at * span, height: 3).offset(x: column / 2)
+                    Circle().fill(.white)
+                        .overlay(Circle().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.2), radius: dragged == nil ? 2 : 5, y: 1)
+                        .frame(width: thumb, height: thumb)
+                        .scaleEffect(dragged == nil ? 1 : 1.12)
+                        .position(x: x, y: g.size.height / 2)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { v in
+                        withAnimation(.interactiveSpring) { dragged = along(v.location.x) }
+                    }
+                    .onEnded { v in
+                        value = levels[Int((along(v.location.x) * CGFloat(last)).rounded())].id
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { dragged = nil }
+                    })
+            }
+            .frame(height: thumb + 6)
+            HStack(spacing: 0) {
+                ForEach(Array(levels.enumerated()), id: \.offset) { i, l in
+                    Text(verbatim: l.title)
+                        .font(.footnote.weight(i == shown ? .semibold : .regular))
+                        .foregroundStyle(i == shown ? .primary : .tertiary)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.top, -8)
+            .animation(.snappy(duration: 0.2), value: shown)
+        }
+        .padding(.vertical, 6)
+        .sensoryFeedback(.selection, trigger: shown)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Reasoning Effort"))
+        .accessibilityValue(Text(verbatim: levels[chosen].title))
+        .accessibilityAdjustableAction { d in
+            switch d {
+            case .increment: value = levels[min(chosen + 1, last)].id
+            case .decrement: value = levels[max(chosen - 1, 0)].id
+            @unknown default: break
+            }
+        }
+        .accessibilityIdentifier("model-thinking")
+    }
+
+    /// A gauge whose needle points as far round as the level is along.
+    private func gauge(_ f: CGFloat) -> String {
+        let percent = [0, 33, 50, 67, 100].min { abs(CGFloat($0) / 100 - f) < abs(CGFloat($1) / 100 - f) } ?? 50
+        return "gauge.with.dots.needle.\(percent)percent"
     }
 }

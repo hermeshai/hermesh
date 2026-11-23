@@ -144,6 +144,7 @@ struct HerComposer: View {
             }
             .padding(6)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .keyboardAwayOnFlickDown()
             .disabled(noModel)
             .opacity(noModel ? 0.6 : 1)
         }
