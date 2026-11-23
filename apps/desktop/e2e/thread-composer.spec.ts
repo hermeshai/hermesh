@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fixture, gitRepo, launch, snap } from "./app";
 
@@ -35,15 +36,29 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
 
-    // The box is one line, growing as what is written needs more, and back.
+    // The box is one line (＋, the text, Send) until it is clicked into: then it opens, with the model in a row
+    // along its bottom; it grows as what is written needs more, and a click away folds it back once it is empty.
     const input = page.getByTestId("thread-composer-input");
+    const bar = page.getByTestId("composer-bar");
     const height = async () => (await input.boundingBox())!.height;
     expect(await height()).toBeLessThan(40);
+    await expect(bar).toBeHidden();
+    await expect(page.getByTestId("thread-composer").getByRole("button", { name: "添加附件" })).toBeVisible();
+    await input.click();
+    await expect(bar).toBeVisible();
+    await expect(bar.getByRole("button", { name: "模型" })).toBeVisible();
     await input.fill("第一行\n第二行\n第三行");
     expect(await height()).toBeGreaterThan(60);
     await snap(page, "composer-lines");
     await input.fill("");
+    await card.getByRole("heading", { level: 1 }).click({ position: { x: 2, y: 2 } });
+    await expect(bar).toBeHidden();
     expect(await height()).toBeLessThan(40);
+    // Typing on the page, away from any field, goes into the box.
+    await page.keyboard.type("x");
+    await expect(input).toHaveValue("x");
+    await expect(bar).toBeVisible();
+    await input.fill("");
 
     // Add a Project from the project menu: work-mac's folders, browsed from here.
     await page.getByRole("button", { name: "项目" }).click();
@@ -68,10 +83,11 @@ test("a session on another machine: its folder added as a project, the model pic
     await sheet.getByRole("button", { name: "添加", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: `已添加项目「${name}」` })).toBeVisible();
     await expect(sheet).toBeHidden();
-    // The new session takes it, in its own worktree as a git repository's sessions are.
+    // The new session takes it, in its own worktree as a git repository's sessions are, from its default branch.
     await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
-    // The working copy is a choice beside the model: the project's own folder, or a worktree of its own.
+    await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
+    // The working copy is a choice over the box: the project's own folder, or a worktree of its own.
     await page.getByRole("button", { name: "工作目录" }).click();
     await page.getByTestId("worktree-off").click();
     await expect(page.getByTestId("launch-worktree")).toHaveText("当前目录");
@@ -79,27 +95,37 @@ test("a session on another machine: its folder added as a project, the model pic
     await page.getByTestId("worktree-on").click();
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
 
-    // The model: one panel. Search across providers, a provider's models, how hard it thinks.
-    await page.getByRole("button", { name: "模型" }).click();
+    // The model: one panel, the providers one under another. Search across them; choosing one closes it.
+    await input.click();
+    await bar.getByRole("button", { name: "模型" }).click();
     const panel = page.getByTestId("model-traits-popover");
+    await expect(panel.getByTestId("picker-provider-scripted")).toContainText("Scripted Agent");
     await panel.getByPlaceholder("搜索模型或服务商").fill("fast");
     await expect(panel.getByTestId("picker-model-scripted-pro")).toHaveCount(0);
     await expect(panel.getByTestId("picker-model-scripted-fast")).toBeVisible();
-    await panel.getByPlaceholder("搜索模型或服务商").fill("");
-    await panel.getByTestId("picker-provider-scripted").click();
-    await panel.getByTestId("picker-model-scripted-fast").click();
-    // Choosing a model leaves the panel open, for the level next.
-    await panel.getByTestId("picker-level-high").click();
-    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast高");
     await snap(page, "composer-model");
-    await page.keyboard.press("Escape");
+    await panel.getByTestId("picker-model-scripted-fast").click();
     await expect(panel).toBeHidden();
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
+    // How hard it thinks: its own button beside the model.
+    await bar.getByRole("button", { name: "思考强度" }).click();
+    await page.getByTestId("picker-level-high").click();
+    await expect(page.getByTestId("thinking-trigger")).toHaveText("高");
+    // The permission mode is in ＋, with adding files; not shown in the box.
+    await bar.getByRole("button", { name: "添加附件" }).click();
+    const plus = page.getByTestId("composer-plus-menu");
+    await expect(plus.getByTestId("composer-attach")).toBeVisible();
+    await expect(plus.getByRole("menuitemradio")).toHaveCount(4);
+    await expect(plus.getByRole("menuitemradio", { checked: true })).toContainText("智能自动");
+    await snap(page, "composer-plus");
+    await page.keyboard.press("Escape");
 
     // Start it: the session opens, runs on work-mac in the project, and is in the list.
     await input.fill("say hello_from_work_mac");
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
-    await expect(page.getByTestId("composer-options")).toContainText(`work-mac·${name}`);
+    // Where it runs, fixed, beside the title; nothing under the box.
+    await expect(page.getByTestId("thread-where")).toHaveText(`work-mac · ${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("aria-current", "true");
@@ -138,11 +164,86 @@ test("a session on another machine: its folder added as a project, the model pic
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("launch-machine-chip")).toHaveText("work-mac");
     await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
-    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast高");
+    await input.click();
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("Scripted Fast");
+    await expect(page.getByTestId("thinking-trigger")).toHaveText("高");
   } finally {
     await app.close();
   }
 });
+
+// A new session's branch (docs/thread-composer.md §16), read from the project's folder on work-mac: a worktree from
+// another local branch, and the project's own folder switched to one.
+test("a new session's branch: a worktree from another branch, and the project's folder on another branch", async () => {
+  const repo = gitRepo(`branches-app-${process.pid}`);
+  const name = path.basename(repo);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" } }).toString().trim();
+  git("checkout", "-q", "-b", "feat/x");
+  git("commit", "-q", "--allow-empty", "-m", "on feat/x");
+  git("checkout", "-q", "main");
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await page.getByRole("button", { name: "环境" }).click();
+    await page.getByTestId("machine-item-work-mac").click();
+    await addProject(page, repo, name);
+    await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
+    const input = page.getByTestId("thread-composer-input");
+
+    // The branches: the one checked out first, marked as such and as the default; starting from the remote is a choice.
+    await page.getByRole("button", { name: "基于分支" }).click();
+    const panel = page.getByTestId("branch-panel");
+    await expect(panel.getByTestId("branch-item-main")).toContainText("当前 · 默认");
+    await expect(panel.getByTestId("branch-item-feat/x")).toBeVisible();
+    await expect(panel.getByTestId("branch-remote")).toBeVisible();
+    await panel.getByTestId("branch-find").fill("feat");
+    await expect(panel.getByTestId("branch-item-main")).toHaveCount(0);
+    await snap(page, "composer-branches");
+    await panel.getByTestId("branch-item-feat/x").click();
+    await expect(page.getByTestId("branch-trigger")).toHaveText("基于 feat/x");
+
+    // Started: its worktree's branch starts at feat/x's commit, and the folder stays on main.
+    await input.fill("say from_feat_base");
+    await input.press("Enter");
+    await expect(page.getByRole("log").locator(".am").first()).toContainText("from_feat_base", { timeout: 30_000 });
+    const sessionBranch = git("branch", "--list", "hermesh/*", "--format=%(refname:short)");
+    expect(sessionBranch).not.toBe("");
+    expect(git("log", "-1", "--format=%s", sessionBranch)).toBe("on feat/x");
+    expect(git("branch", "--show-current")).toBe("main");
+
+    // In the project's own folder: the branch is the one to work on; another one switches the folder first.
+    await page.getByTestId("nav-new-thread").click();
+    await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
+    await page.getByRole("button", { name: "工作目录" }).click();
+    await page.getByTestId("worktree-off").click();
+    await expect(page.getByTestId("branch-trigger")).toHaveText("main");
+    await page.getByRole("button", { name: "在哪个分支上工作" }).click();
+    await expect(panel.getByTestId("branch-remote")).toHaveCount(0);
+    await panel.getByTestId("branch-item-feat/x").click();
+    await expect(page.getByTestId("branch-trigger")).toHaveText("feat/x");
+    await page.getByRole("button", { name: "在哪个分支上工作" }).click();
+    await expect(panel).toContainText("开始前会把项目目录切到这个分支");
+    await page.keyboard.press("Escape");
+    await input.fill("say in_place_on_feat");
+    await input.press("Enter");
+    await expect(page.getByRole("log").locator(".am").first()).toContainText("in_place_on_feat", { timeout: 30_000 });
+    expect(git("branch", "--show-current")).toBe("feat/x");
+  } finally {
+    await app.close();
+  }
+});
+
+/** Add a Project on the chosen machine, its folder typed in. */
+async function addProject(page: Page, dir: string, name: string) {
+  await page.getByRole("button", { name: "项目" }).click();
+  await page.getByTestId("project-add").click();
+  const sheet = page.getByRole("dialog", { name: "添加项目" });
+  await sheet.getByLabel("目录").fill(dir);
+  await expect(sheet.getByLabel("项目名")).toHaveValue(name);
+  await sheet.getByRole("button", { name: "添加", exact: true }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
+}
 
 test("Add a Project on another machine from its own folders: a recent repository's place, a repository's top for a folder inside it, a new folder made there; an older machine says it needs an update", async () => {
   const { app, page } = await launch();
@@ -225,6 +326,7 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     await page.getByRole("button", { name: "项目" }).click();
     await expect(page.getByTestId("project-item-mono")).toBeVisible();
     await page.keyboard.press("Escape");
+    await page.getByTestId("thread-composer-input").click();
     await page.getByRole("button", { name: "模型" }).click();
     await expect(page.getByTestId("picker-provider-scripted")).toBeVisible();
     await page.keyboard.press("Escape");
@@ -239,6 +341,7 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     await expect(page.getByRole("menu", { name: "项目" })).toContainText("work-mac 上的项目 · 上次读到的");
     await expect(page.getByTestId("project-item-mono")).toBeVisible();
     await page.getByTestId("project-item-mono").click();
+    await page.getByTestId("thread-composer-input").click();
     await page.getByRole("button", { name: "模型" }).click();
     const panel = page.getByTestId("model-traits-popover");
     await expect(panel).toContainText("work-mac 离线，这是上次读到的模型");

@@ -42,14 +42,17 @@ test("Antigravity's default model and reasoning effort are picked from the model
 
     // A new session offers the same models, the machine's default effort for the one picked: not a list of Hermesh's own.
     await page.getByTestId("nav-new-thread").click();
+    await page.getByTestId("thread-composer-input").click();
     await page.getByRole("button", { name: "模型" }).click();
     const picker = page.getByTestId("model-traits-popover");
-    await picker.getByTestId("picker-provider-antigravity").click();
-    await expect(picker.locator(".th-mmod [role=menuitemradio]")).toHaveText(["SMALL", "LARGE"]);
+    await expect(picker.getByTestId("picker-provider-antigravity").locator("[role=menuitemradio]")).toHaveText(["SMALL", "LARGE"]);
     await picker.getByTestId("picker-model-large").click();
-    await expect(picker.locator(".th-lvls [role=radio]")).toHaveText(["低", "高", "超高"]);
-    await expect(picker.getByTestId("picker-level-xhigh")).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByTestId("model-picker-trigger")).toHaveText("LARGE超高");
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("LARGE");
+    // How hard it thinks, beside the model: the picked model's levels, the machine's default chosen.
+    await expect(page.getByTestId("thinking-trigger")).toHaveText("超高");
+    await page.getByRole("button", { name: "思考强度" }).click();
+    await expect(page.getByRole("menu", { name: "思考强度" }).getByRole("menuitemradio")).toHaveText(["低", "高", "超高"]);
+    await expect(page.getByTestId("picker-level-xhigh")).toHaveAttribute("aria-checked", "true");
     await snap(page, "antigravity-new-session-models");
   } finally {
     await app.close();

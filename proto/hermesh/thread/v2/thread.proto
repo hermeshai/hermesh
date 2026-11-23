@@ -151,9 +151,15 @@ message ProviderInstanceConfig {
 
 message WorkspaceStrategy {
   hermesh.identity.v1.Workspace mode = 1;
+  // A worktree's new branch starts here (default: the project's base ref).
   string base_ref = 2;
+  // A worktree's branch; in place, the branch to switch the project's folder
+  // to before the first turn (it must have no uncommitted changes).
   string branch = 3;
   string worktree_path = 4;
+  // A worktree's base is fetched from origin first, and the branch starts
+  // from origin/<base_ref>.
+  bool from_remote = 5;
 }
 
 enum ThreadStatus {

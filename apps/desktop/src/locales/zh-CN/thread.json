@@ -90,7 +90,8 @@
     "forceStop": "强制终止",
     "placeholderIdle": "继续聊…",
     "placeholderRunning": "继续说，会排到下一轮…",
-    "nextTurn": "将在下一轮处理"
+    "nextTurn": "将在下一轮处理",
+    "addAttachment": "添加附件…"
   },
   "queue": {
     "heading": "待执行队列（{{count}}）",
@@ -120,5 +121,19 @@
     "secretNote": "只在内存里交给它，不写进记录和日志。",
     "secretPlaceholder": "输入后按回车",
     "sendSecret": "发送"
+  },
+  "branch": {
+    "base": "基于分支",
+    "workOn": "在哪个分支上工作",
+    "from": "基于 <b>{{branch}}</b>",
+    "find": "搜索分支",
+    "remote": "从远程开始",
+    "remoteHint": "先取回远程的最新提交，再从它开新分支",
+    "current": "当前",
+    "default": "默认",
+    "worktree": "worktree",
+    "inWorktree": "已在别的 worktree 签出",
+    "switchNote": "开始前会把项目目录切到这个分支；目录里有没提交的改动时不能切换。",
+    "none": "没有匹配的分支"
   }
 }

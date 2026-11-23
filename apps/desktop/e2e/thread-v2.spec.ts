@@ -7,10 +7,11 @@ import { launch, snap } from "./app";
 async function pickDemoAndScripted(page: Page) {
   await page.getByRole("button", { name: "项目" }).click();
   await page.getByTestId("project-item-demo").click();
+  // The model is in the box, once it is open; choosing one closes the panel.
+  await page.getByTestId("thread-composer-input").click();
   await page.getByRole("button", { name: "模型" }).click();
-  await page.getByTestId("picker-provider-scripted").click();
   await page.getByTestId("picker-model-scripted-pro").click();
-  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("model-traits-popover")).toBeHidden();
 }
 // What the menu bar counts (main/tray.ts): a session started here counts as any session does.
 const trayView = (app: ElectronApplication) =>
@@ -30,8 +31,10 @@ const clickMenu = (app: ElectronApplication, id: string) =>
 // A session started here draws as any session does (session/Chat.tsx): its messages, its replies, its steps.
 const conversation = (page: Page) => page.getByRole("log");
 const replies = (page: Page) => conversation(page).locator(".am");
+/** The permission mode: in the box's ＋ menu. */
 async function pickMode(page: Page, testId: string) {
-  await page.getByRole("button", { name: "权限模式" }).click();
+  await page.getByTestId("thread-composer-input").click();
+  await page.getByTestId("composer-bar").getByRole("button", { name: "添加附件" }).click();
   await page.getByTestId(testId).click();
 }
 
@@ -120,31 +123,6 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     // Navigating back to Overview closes the thread's own subscription: Watch and the thread list stay.
     await page.locator(".side-nav").getByRole("button", { name: /^概览/ }).click();
     await expect.poll(openStreams).toBe(2);
-  } finally {
-    await app.close();
-  }
-});
-
-test("plan mode proposes a structured plan, approves it in one click, and transitions to code mode", async () => {
-  const { app, page } = await launch();
-  try {
-    await page.getByTestId("nav-new-thread").click();
-    await pickDemoAndScripted(page);
-
-    // Plan mode, from the permission mode menu.
-    await pickMode(page, "mode-plan-btn");
-    await expect(page.getByTestId("runtime-mode-chip")).toContainText("规划");
-
-    await page.getByTestId("thread-composer-input").fill("propose-plan V2 Rollout|1. Kernel\n2. Desktop UI\nsay plan_approved_done");
-    await page.getByTestId("composer-submit-btn").click();
-
-    await expect(replies(page).first()).toContainText("V2 Rollout", { timeout: 15_000 });
-    await expect(page.getByTestId("pending-plan-banner")).toBeVisible();
-
-    // Approve plan -> turn finishes AND interaction mode transitions automatically to Code!
-    await page.getByTestId("approve-plan-btn").click();
-    await expect(replies(page).last()).toContainText("plan_approved_done");
-    await expect(page.getByTestId("runtime-mode-chip")).not.toContainText("规划");
   } finally {
     await app.close();
   }

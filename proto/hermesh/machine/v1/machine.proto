@@ -539,6 +539,12 @@ message ListFoldersResponse {
   repeated string branches = 6;
   // Its full path, links resolved, as a project made of it records it.
   string full_path = 7;
+  // A repository's default branch: what origin/HEAD points at, else main or
+  // master when there is one; empty when neither tells.
+  string default_branch = 8;
+  // The branches checked out in its other worktrees (a session's, say): one
+  // can't be checked out here too.
+  repeated string worktree_branches = 9;
 }
 
 message Folder {

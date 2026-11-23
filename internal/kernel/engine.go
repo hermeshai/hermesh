@@ -787,6 +787,13 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 
 	// Prepare workspace directory before first run (fast for in-place, isolated git worktree for WORKTREE).
 	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_WORKTREE {
+		if wsStrategy.FromRemote {
+			base, err := vcs.FetchBase(ctx, ws.Path, wsStrategy.BaseRef)
+			if err != nil {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+			}
+			wsStrategy.BaseRef = base
+		}
 		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, threadID, wsStrategy.BaseRef, wsStrategy.Branch)
 		if wtErr != nil {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, wtErr)
@@ -797,6 +804,14 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 		wsStrategy.WorktreePath = ""
 		if wsStrategy.Branch == "" {
 			wsStrategy.Branch = vcs.CurrentBranch(ctx, ws.Path)
+		} else if wsStrategy.Branch != vcs.CurrentBranch(ctx, ws.Path) {
+			// Another branch in the project's own folder: switched to first, unless a session works there now.
+			if e.busyInPlace(projectID) {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("a session is working in %s now; switch branches once it is done", ws.Path))
+			}
+			if err := e.vcs.SwitchBranch(ctx, ws.Path, wsStrategy.Branch); err != nil {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+			}
 		}
 	}
 
@@ -3287,6 +3302,27 @@ func (e *Engine) GetThread(_ context.Context, p *Principal, threadID string) (*t
 		pt.ProcessAlive = e.sup.Get(pt.ProviderThreadId) != nil
 	}
 	return proj, nil
+}
+
+// busyInPlace says whether a session works in a project's own folder now
+// (queued, preparing, running or waiting): its branch is not to be switched
+// under it.
+func (e *Engine) busyInPlace(projectID string) bool {
+	threads, err := e.st.ListThreads(projectID, false, 0)
+	if err != nil {
+		return true
+	}
+	for _, th := range threads {
+		if th.GetWorkspace().GetMode() != identityv1.Workspace_WORKSPACE_IN_PLACE {
+			continue
+		}
+		switch th.GetStatus() {
+		case threadv2.ThreadStatus_THREAD_STATUS_QUEUED, threadv2.ThreadStatus_THREAD_STATUS_PREPARING,
+			threadv2.ThreadStatus_THREAD_STATUS_RUNNING, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST:
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Engine) ListThreads(_ context.Context, p *Principal, projectID string, includeArchived bool, limit uint32) ([]*threadv2.Thread, error) {

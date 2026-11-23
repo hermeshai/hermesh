@@ -234,6 +234,16 @@ public final class LocalAPI: @unchecked Sendable {
         try await callThread("DispatchMessage", req, timeout: 20)
     }
 
+    /// A file for a session's message, kept by hermeshd until the message goes (and sent on to its machine then).
+    public func uploadThreadBlob(machineID: String = "", name: String, mimeType: String, data: Data) async throws -> Hermesh_Thread_V2_UploadBlobResponse {
+        var r = Hermesh_Thread_V2_UploadBlobRequest()
+        r.machineID = machineID
+        r.name = name
+        r.mimeType = mimeType
+        r.data = data
+        return try await callThread("UploadBlob", r, timeout: 60)
+    }
+
     public func interruptThreadRun(threadID: String, runID: String = "", force: Bool = false) async throws -> Hermesh_Thread_V2_InterruptRunResponse {
         var r = Hermesh_Thread_V2_InterruptRunRequest()
         r.threadID = threadID
