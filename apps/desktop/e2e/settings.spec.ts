@@ -36,6 +36,16 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   const { app, page } = await launch();
   const settings = await openSettings(app, page);
   await expect(nav(settings, "通用")).toHaveAttribute("aria-current", "page");
+  // Its rows are the main sidebar's: a bare line icon in the text's colour, 18px, on a 32px row; no coloured tiles.
+  const side = settings.locator(".set-side");
+  await expect(side.locator(".set-tile")).toHaveCount(0);
+  for (const row of await side.locator(".nav-i").all()) {
+    const looks = await row.evaluate((el) => {
+      const ic = el.querySelector(":scope > svg.ic")!;
+      return { row: el.getBoundingClientRect().height, ic: ic.getBoundingClientRect().width, colour: getComputedStyle(ic).color === getComputedStyle(el).color };
+    });
+    expect(looks).toEqual({ row: 32, ic: 18, colour: true });
+  }
   const general = page_(settings, "通用");
   await expect(general.getByRole("group", { name: "外观" })).toBeVisible();
   await expect(general.getByRole("combobox", { name: "语言" })).toBeVisible();

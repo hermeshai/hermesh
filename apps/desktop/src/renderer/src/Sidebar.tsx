@@ -174,7 +174,7 @@ function NewSessionItem() {
   const { t } = useTranslation("thread");
   return (
     <button className={`nav-i ${st.selection.kind === "newThread" ? "sel" : ""}`} data-testid="nav-new-thread" onClick={() => st.set({ selection: { kind: "newThread" } })}>
-      <Icon name="edit" />
+      <Icon name="plus" />
       <span>{t("nav.newThread")}</span>
       <span className="kbd">{keys("CmdOrCtrl+N")}</span>
     </button>

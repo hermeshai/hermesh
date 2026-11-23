@@ -86,7 +86,7 @@ html[data-platform=win] .set-top{padding-right:calc(var(--caption) + 8px)}
 .set-tile.sand{background:var(--t-sand)}.set-tile.plum{background:var(--t-plum)}.set-tile.rose{background:var(--t-rose)}
 .set-gray{filter:grayscale(1);opacity:.45;display:inline-flex;width:22px;justify-content:center;flex:none}
 .set-side .side-nav{gap:1px;overflow-y:auto}
-.set-side .nav-i{height:30px;font-size:13px;gap:8px;padding:0 7px}
+.set-side .nav-i{padding:0 7px}
 .set-side .nav-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .set-st{font-size:11px;color:var(--l3)}.set-st.warn{color:var(--orange)}
 .set-me{display:flex;gap:10px;align-items:center;width:100%;padding:8px 7px;border:0;border-radius:9px;background:none;text-align:left;font:inherit;color:var(--l1)}
