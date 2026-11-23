@@ -35,6 +35,14 @@
     "connectLink": "Connect to Hermesh: follow {{url}}. Your name in Hermesh is “{{name}}”.",
     "projectArg": "project"
   },
+  "connection": {
+    "noNetwork": "No network connection",
+    "connecting": "Connecting to {{name}}…",
+    "connectingHermesh": "Connecting to Hermesh…",
+    "cantReach": "Can’t reach Hermesh · Retrying",
+    "offline": "<b>{{name}}</b> is offline · messages wait until it’s back",
+    "notResponding": "<b>{{name}}</b> isn’t responding · Retrying"
+  },
   "sidebar": {
     "label": "Sidebar",
     "search": "Search",

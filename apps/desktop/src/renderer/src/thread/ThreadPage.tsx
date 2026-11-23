@@ -37,6 +37,7 @@ import {
   threadTranscript,
 } from "@hermesh/core";
 import { local, threads as threadApi } from "../api";
+import { ConnectionCapsule } from "../ConnectionCapsule";
 import { Icon } from "../icons";
 import { layoutOf, setCard } from "../layout";
 import { keys, ownKeys } from "../platform";
@@ -74,6 +75,8 @@ export function ThreadPage() {
   const activeThreadId = sel.kind === "thread" ? sel.id : undefined;
 
   const [projection, setProjection] = useState<ThreadProjection | null>(null);
+  /** The session's events are followed: its subscription has been open a moment (the effect that follows it). */
+  const [following, setFollowing] = useState(false);
   const [providers, setProviders] = useState<ProviderInstance[]>([]);
   /** The providers shown are those last read on the machine, which is offline (choices.ts). */
   const [providersStale, setProvidersStale] = useState(false);
@@ -218,43 +221,63 @@ export function ThreadPage() {
     };
   }, [effectiveMachineId, effectiveProjectId, activeThreadId]);
 
-  // Load & subscribe to active thread projection + live events!
+  // The page's machine can be reached now: this Mac reaches the relay, and the machine is online and answers.
+  const reachable = !targetMachine || targetMachine.local || (st.status?.relayConnected === true && targetMachine.online && !targetMachine.unreachable);
+
+  // The session's projection, then its events as they come; read and subscribed again after the subscription ended or
+  // failed (in 1 s, then up to every 30 s), and at once when its machine can be reached again.
   useEffect(() => {
     if (!activeThreadId) {
       setProjection(null);
       return;
     }
     const ctl = new AbortController();
-    let afterSeq = 0n;
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
     (async () => {
-      try {
-        const init = await threadApi.getThread({ threadId: activeThreadId }, { signal: ctl.signal });
-        if (init.projection) {
-          setProjection(init.projection);
-          afterSeq = init.projection.thread?.lastSeq ?? 0n;
-          if (init.projection.thread?.modelSelection) {
-            setModelSel(init.projection.thread.modelSelection);
+      let failures = 0;
+      let applied = false;
+      while (!ctl.signal.aborted) {
+        let opened: ReturnType<typeof setTimeout> | undefined;
+        let open = false;
+        try {
+          const init = await threadApi.getThread({ threadId: activeThreadId }, { signal: ctl.signal });
+          if (init.projection) {
+            setProjection(init.projection);
+            // Its own model and modes, once: later, the owner's own choices stay.
+            const th = init.projection.thread;
+            if (!applied && th) {
+              applied = true;
+              if (th.modelSelection) setModelSel(th.modelSelection);
+              if (th.runtimeMode) setRuntimeMode(th.runtimeMode);
+              if (th.interactionMode) setInteractionMode(th.interactionMode);
+              if (th.maxRuntimeMode) setMaxCeiling(th.maxRuntimeMode);
+            }
           }
-          if (init.projection.thread?.runtimeMode) {
-            setRuntimeMode(init.projection.thread.runtimeMode);
+          // Open a moment without failing: followed (a subscription that can't reach the machine fails at once).
+          opened = setTimeout(() => {
+            open = true;
+            setFollowing(true);
+          }, 1000);
+          for await (const ev of threadApi.subscribeThread({ threadId: activeThreadId, afterSeq: init.projection?.thread?.lastSeq ?? 0n }, { signal: ctl.signal })) {
+            setProjection((prev) => applyThreadEvent(prev, ev));
+            if (ev.thread?.interactionMode) setInteractionMode(ev.thread.interactionMode);
           }
-          if (init.projection.thread?.interactionMode) {
-            setInteractionMode(init.projection.thread.interactionMode);
-          }
-          if (init.projection.thread?.maxRuntimeMode) {
-            setMaxCeiling(init.projection.thread.maxRuntimeMode);
-          }
+        } catch {
+          // Ended, or the machine can't be reached: tried again below.
         }
-        for await (const ev of threadApi.subscribeThread({ threadId: activeThreadId, afterSeq }, { signal: ctl.signal })) {
-          setProjection((prev) => applyThreadEvent(prev, ev));
-          if (ev.thread?.interactionMode) setInteractionMode(ev.thread.interactionMode);
-        }
-      } catch {
-        // Stream aborted or offline
+        clearTimeout(opened);
+        setFollowing(false);
+        if (open) failures = 0;
+        if (ctl.signal.aborted) return;
+        failures++;
+        await wait(Math.min(30_000, 1000 * 2 ** Math.min(5, failures - 1)));
       }
     })();
-    return () => ctl.abort();
-  }, [activeThreadId]);
+    return () => {
+      ctl.abort();
+      setFollowing(false);
+    };
+  }, [activeThreadId, reachable]);
 
   const currentThread = projection?.thread;
   const activeInst = findProviderInstance(providers, modelSel.instanceId);
@@ -593,6 +616,7 @@ export function ThreadPage() {
             {ask}
             <div className="cmp-zone">
               <div className="cmp-col">
+                <ConnectionCapsule machine={targetMachine} linkUp={reachable} />
                 {needsUpdate && (
                   <p className="th-note" role="status" data-testid="launch-needs-update">
                     {t("launch.needsUpdate", { machine: targetMachine?.machineName ?? "" })}
@@ -653,6 +677,7 @@ export function ThreadPage() {
                 // Archived, it is read-only, as a session is: no box.
                 control={archived ? undefined : (onHeight) => (
                   <ComposerZone onHeight={onHeight}>
+                    <ConnectionCapsule machine={targetMachine} linkUp={following && reachable} />
                     {requestCard}
                     {queueCard}
                     {slashRow}

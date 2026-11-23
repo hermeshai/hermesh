@@ -207,9 +207,14 @@ matched by its id.
 - The conversation's connection opens again when the assistant, its
   conversation or whether her runs changes, and when a model is connected
   while her refused it for having none; not when `modelReady` merely changes.
-- While the machine answers but the conversation's connection is opening
-  again, a line under the top says so ("Connecting to …"), after a moment,
-  so a slow reply is not a mystery.
+- While the conversation's connection is down, the line above the box says
+  why, as on every page with a box (docs/connection-status-demo.html; the
+  rules in HermeshKit's `ConnectionNotice.swift` and the Mac's
+  `connection.ts`): no network; "Connecting to …" after a second; the relay
+  out of reach after ten; the machine offline at once, and that what is sent
+  waits for it; online but not answering after fifteen. Up again, it goes; a
+  shown line stays at least half a second. The line is about the page's own
+  connection: Her reached directly while the relay reconnects says nothing.
 
 ## 6. Older peers
 

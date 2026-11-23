@@ -547,11 +547,19 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await (await environments(page)).filter({ hasText: "work-mac" }).click();
   await expect(log).toContainText("来自 work-mac");
   await expect(log).toContainText("已接上 腾讯云 Token Plan");
+  // Connected, the line above the box says nothing.
+  const capsule = page.getByTestId("connection-capsule");
+  await expect(capsule).toHaveCount(0);
+  // Focused, the box's edge deepens, with no ring of the text's own inside it.
+  await composer.click();
+  expect(await composer.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe("none");
   await snap(page, "her-two-environments");
 
-  // work-mac goes offline: what was read stays, under a line that says when it was last seen.
+  // work-mac goes offline: what was read stays, and the line above the box says so, and what a message does meanwhile.
   process.kill(-fixture.otherMac, "SIGTERM");
-  await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 90_000 });
+  await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 90_000 });
+  const [capBox, boxBox] = await Promise.all([capsule.boundingBox(), composer.boundingBox()]);
+  expect(capBox!.y + capBox!.height).toBeLessThanOrEqual(boxBox!.y);
   await expect(log).toContainText("来自 work-mac");
   await snap(page, "her-offline");
   // Written meanwhile, a message waits on this Mac until work-mac is back; discarded, it goes.
@@ -568,7 +576,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await app.close();
   ({ app, page } = await launch(fixture.socket, { profile }));
   await page.locator(".side-nav").getByRole("button", { name: /^Her/ }).click();
-  await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("connection-capsule")).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 30_000 });
   await expect(page.getByRole("log", { name: "对话" })).toContainText("来自 work-mac");
   await snap(page, "her-offline-restarted");
 
@@ -595,7 +603,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(off).toBeHidden({ timeout: 30_000 });
   await expect(page.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her$/);
   // Her runs on work-mac alone now: the page is its, and no menu of environments shows.
-  await expect(page.getByText(/^work-mac 离线 · .+在线$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("connection-capsule")).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 30_000 });
   expect(await environmentNames(page)).toEqual([]);
 
   const [win] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("env/this/her"))]);

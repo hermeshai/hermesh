@@ -10,6 +10,7 @@ import { useWorld } from "./useWorld";
 import { i18n } from "../../shared/i18n";
 import { needsUpdate } from "./skew";
 import { threads as threadApi } from "./api";
+import { noteRelay } from "./connection";
 
 // What the window knows: the owner's world as hermeshd pushes it
 // (useWorld: no polling), plus the window's own state (selection, list
@@ -183,6 +184,9 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   // Each part changes only when its own list does: a session's change leaves them all.
   const unreachable = useMemo(() => unreachableMachines(world.machines), [world.machines]);
   const status = world.down ? null : world.loaded ? world.status : undefined;
+  // How long the relay has been down, for the line above a page's box (ConnectionCapsule).
+  const relayUp = status === undefined || status?.relayConnected === true;
+  useEffect(() => noteRelay(relayUp), [relayUp]);
   const data = useMemo<Data>(
     () => ({ status, clients: world.clients, machines: world.machines, projects: world.projects, projectsUnreachable: unreachable, pairings: world.pairings, devices: world.devices }),
     [status, world.clients, world.machines, world.projects, unreachable, world.pairings, world.devices],

@@ -345,6 +345,22 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
    and fades out above it; an approval, or what keeps the environment from answering, sits over the composer. */
 .cmp-zone{position:absolute;left:0;right:0;bottom:0;z-index:4;pointer-events:none;padding:28px 16px 16px;background:linear-gradient(to bottom,transparent,var(--win) 28px)}
 .cmp-col{pointer-events:auto;max-width:var(--conversation-width);margin:0 auto;display:flex;flex-direction:column;gap:10px}
+/* The line above a page's box while its connection is down (ConnectionCapsule.tsx): a pill of the window's own
+   material, a hairline round it. It comes in from the box's top and goes back into it, taking its row as it does. */
+.conn-cap{align-self:center;display:inline-flex;align-items:center;gap:7px;height:28px;max-width:100%;padding:0 12px 0 10px;border-radius:14px;
+  font-size:12.5px;font-weight:500;color:var(--l2);white-space:nowrap;
+  background:color-mix(in srgb,var(--win) 72%,transparent);backdrop-filter:blur(20px) saturate(1.6);-webkit-backdrop-filter:blur(20px) saturate(1.6);
+  box-shadow:0 0 0 .5px var(--pill-bd),0 4px 14px rgba(0,0,0,.08);animation:conn-in .32s cubic-bezier(.2,.9,.3,1.15) both}
+.conn-cap.out{animation:conn-out .22s ease-out both}
+@keyframes conn-in{from{opacity:0;transform:translateY(6px) scale(.92);margin-bottom:-38px}}
+@keyframes conn-out{to{opacity:0;transform:translateY(6px) scale(.92);margin-bottom:-38px}}
+.conn-t{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.conn-t b{font-weight:600;color:var(--l1)}
+.conn-i{width:14px;height:14px;color:var(--orange)}
+.conn-dot{width:6px;height:6px;border-radius:50%;background:var(--orange);flex:none;animation:conn-breathe 1.65s ease-in-out infinite}
+.conn-ring{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--l2);flex:none}
+@keyframes conn-breathe{0%,100%{opacity:.35}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.conn-cap,.conn-cap.out,.conn-dot{animation:none}}
 @keyframes her-up{from{opacity:0;transform:translateY(10px) scale(.98)}}
 .appr,.knote{background:var(--pill);border-radius:var(--r-lg);box-shadow:0 0 0 .5px var(--pill-bd),0 10px 30px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.06);padding:14px 14px 12px 16px;display:flex;flex-direction:column;animation:her-up .32s cubic-bezier(.2,0,0,1)}
 .appr{gap:10px}
@@ -375,10 +391,13 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 /* The composer: one line while empty ("+", the text, Send), growing with what is written; what is attached shows as
    tiles above the text. */
 .cmp{position:relative;cursor:text;background:var(--pill);border-radius:var(--r-xl);box-shadow:0 0 0 .5px var(--pill-bd),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06);padding:6px;display:flex;flex-direction:column;gap:6px;transition:box-shadow .18s ease,transform .18s ease}
-.cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--pill-bd),0 0 0 3px var(--accent-bg),0 6px 20px rgba(0,0,0,.06)}
+/* Focus deepens its edge, no ring, as a session's box (thread.css .th-cmp). */
+.cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--l3),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06)}
 .cmp-row{display:flex;align-items:flex-end;gap:4px}
 .cmp button,.cmp .tile{cursor:default}
 .cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 4px;min-height:32px;max-height:220px;overflow-y:auto;caret-color:var(--l1)}
+/* The text has no focus ring of its own (the page's :focus-visible would draw one inside the box): the box shows it. */
+.cmp-in:focus-visible{outline:none}
 .cmp-in::placeholder{color:var(--l3)}
 .cmp-plus{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:none;color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
 .cmp-plus:hover{background:var(--fill2);color:var(--l1)}

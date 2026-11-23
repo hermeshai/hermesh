@@ -111,10 +111,13 @@ struct HerConversation: View {
                 atEnd = true
                 withAnimation(still ? nil : .smooth) { position.scrollTo(edge: .bottom) }
             } over: {
-                if let asking {
-                    HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
-                } else {
-                    HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
+                VStack(spacing: 0) {
+                    ConnectionCapsule(machine: machine, linkUp: herLinkUp(chat, state: state), chat: chat, state: state)
+                    if let asking {
+                        HerApprovalPanel(chat: chat, approval: asking.approval, agent: asking.agent, waiting: asking.waiting).id(asking.approval.callID)
+                    } else {
+                        HerComposer(chat: chat, machine: machine, state: state, noModel: noModel)
+                    }
                 }
             }
         }
@@ -1079,32 +1082,12 @@ func herNetworkLabel(_ kind: String) -> String {
     return kind.isEmpty ? String(localized: "Unknown") : kind
 }
 
-/// Four-hop connection diagnostics sheet presented from Her's tag when offline or unreachable.
-struct HerDiagnosticsSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    let chat: HerChat
-    let machine: HerMachine
-    let state: HerEnvState
-
-    var body: some View {
-        NavigationStack {
-            NetworkDiagnosticsList(
-                focusMachine: machine,
-                focusChat: chat,
-                focusState: state,
-                reconnectID: "her-diagnostics-reconnect",
-                onReconnect: { dismiss() }
-            )
-            .navigationTitle("Connection Diagnostics")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
+/// Whether Her's conversation is open, or her page needs no connection now (her starting there, or without a model;
+/// the app in the background): what the line above her box follows. Her's machine offline, it is down.
+func herLinkUp(_ chat: HerChat, state: HerEnvState) -> Bool {
+    if chat.paused || chat.convUp { return true }
+    if case .offline = state { return false }
+    return !(state == .ready && !chat.noModel)
 }
 
 /// Views in rows as wide as they fit, the next row under: answers to tap, files.

@@ -16,6 +16,7 @@ import { BusyBubble } from "./Busy";
 import { addAttachments, type Attachment } from "./attachments";
 import { cardOf } from "./cards";
 import { ChromeWait, useWaitsForChrome } from "./ChromeWait";
+import { ConnectionCapsule } from "../ConnectionCapsule";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
@@ -121,8 +122,6 @@ export function Conversation({ bot, conv, op, waiting, onWaiting }: { bot: BotSu
     <ContentScope value={`${her.machine.machineId}/${conv.session ?? ""}`}>
       <div className="dwrap">
         <div className="dmain">
-          <OfflineLine state={state} />
-          <ConnectingLine state={state} reconnecting={conv.reconnecting} />
           <BotChat bot={bot} conv={conv} op={op} state={state} waiting={waiting} onWaiting={onWaiting} />
         </div>
       </div>
@@ -141,27 +140,6 @@ export function OfflineLine({ state }: { state: EnvState }) {
     <div className="her-note" role="status">
       <Icon name="wifi" className="sm" />
       <span>{state.seen ? t("env.offlineSeen", { name, ago: agoText(state.seen, now) }) : t("env.offline", { name })}</span>
-    </div>
-  );
-}
-
-/** The conversation's connection opening again for more than a moment, while the machine answers: a reply may take a
- * while, and the page says why (docs/her-sending.md §5.4). */
-function ConnectingLine({ state, reconnecting }: { state: EnvState; reconnecting: boolean }) {
-  const { t } = useTranslation("her");
-  const her = useHer();
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    setSlow(false);
-    if (!reconnecting) return;
-    const timer = setTimeout(() => setSlow(true), 2000);
-    return () => clearTimeout(timer);
-  }, [reconnecting]);
-  if (state.kind !== "ready" || !reconnecting || !slow) return null;
-  return (
-    <div className="her-note" role="status" data-testid="her-connecting">
-      <span className="mini-spin" aria-hidden="true" />
-      <span>{t("waiting.connecting", { name: her.machine.machineName })}</span>
     </div>
   );
 }
@@ -900,7 +878,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
     sendDraft(sent);
   };
   // Without a model, the onboarding in the conversation says what to do; the composer waits.
-  const above = asking ? (
+  const what = asking ? (
     <Approval key={`${asking.agent?.id ?? ""}/${asking.approval.call_id}`} view={view!} op={op} />
   ) : waitsForChrome && conv.rpc && conv.session ? (
     <ChromeWait
@@ -913,6 +891,13 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
   ) : state.kind === "failed" ? (
     <StateNote icon="alert" title={t("env.failed", { name })} body={state.error} />
   ) : null;
+  // Over all of it, the line that says the conversation's connection is down (herLinkUp).
+  const above = (
+    <>
+      <ConnectionCapsule machine={her.machine} linkUp={herLinkUp(conv, state)} />
+      {what}
+    </>
+  );
   return (
     <Composer
       above={above}
@@ -928,6 +913,16 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
       placeholder={noModel ? t("onboard.placeholder") : t("chat.placeholder", { name: bot.name })}
     />
   );
+}
+
+/**
+ * Whether Her's conversation is open, or her page needs no connection now (her starting there, or without a model):
+ * what the line above her box follows. Her's machine offline, it is down.
+ */
+export function herLinkUp(conv: Pick<Conv, "rpc" | "noModel">, state: EnvState): boolean {
+  if (conv.rpc) return true;
+  if (state.kind === "offline") return false;
+  return !(state.kind === "ready" && !conv.noModel);
 }
 
 /** What keeps the environment from answering, above the composer in an approval's shape. */
