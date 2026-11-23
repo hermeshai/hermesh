@@ -39,6 +39,18 @@ test("Antigravity's default model and reasoning effort are picked from the model
     await expect(effort.getByRole("button")).toHaveText("超高");
     expect(await shownMenu(app)).toEqual(["跟随 Antigravity（高）", "低", "高", "超高"]);
     await snap(settings, "antigravity-default-model");
+
+    // A new session offers the same models, the machine's default effort for the one picked: not a list of Hermesh's own.
+    await page.getByTestId("nav-new-thread").click();
+    await page.getByRole("button", { name: "模型" }).click();
+    const picker = page.getByTestId("model-traits-popover");
+    await picker.getByTestId("picker-provider-antigravity").click();
+    await expect(picker.locator(".th-mmod [role=menuitemradio]")).toHaveText(["SMALL", "LARGE"]);
+    await picker.getByTestId("picker-model-large").click();
+    await expect(picker.locator(".th-lvls [role=radio]")).toHaveText(["低", "高", "超高"]);
+    await expect(picker.getByTestId("picker-level-xhigh")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("model-picker-trigger")).toHaveText("LARGE超高");
+    await snap(page, "antigravity-new-session-models");
   } finally {
     await app.close();
   }
