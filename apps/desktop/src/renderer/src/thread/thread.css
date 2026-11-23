@@ -32,15 +32,23 @@
 .th-cmp .cmp-in{padding:5.5px 2px}
 .th-cmp .cmp-in:focus-visible{outline:none}
 .th-cmp .cmp-in::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.th-stop{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
+/* Send and Stop are round, as on iPhone, inside the round-cornered box; they give a little as they are pressed. */
+.th-cmp .send,.th-stop{border-radius:50%;transition:background .15s,transform .12s ease}
+.th-cmp .send:not(:disabled):active,.th-stop:active{transform:scale(.92)}
+.th-stop{width:32px;height:32px;border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
 .th-stop:hover{background:var(--l4)}
-.th-stop .ic{width:14px;height:14px;fill:currentColor}
-/* Inside the box once it opens: ＋, the model, how hard it thinks; Stop and Send at the right. */
+.th-stop .ic{width:12px;height:12px;fill:currentColor}
+/* Inside the box once it opens: ＋, the model (how hard it thinks after it); Stop and Send at the right, the row
+   fading in. (The text's height is set from what it holds, Composer.tsx: not animated.) */
 .th-cmp.open .cmp-in{min-height:52px;padding:6px 6px 2px}
-.th-bar{display:flex;align-items:center;gap:2px;min-width:0}
+.th-bar{display:flex;align-items:center;gap:2px;min-width:0;animation:th-bar-in .18s ease}
+@keyframes th-bar-in{from{opacity:0;transform:translateY(3px)}}
+@media (prefers-reduced-motion:reduce){.th-bar{animation:none}}
 .mb.th-pickbtn{height:28px;padding:0 8px;gap:6px;color:var(--l1)}
 .mb.th-pickbtn .ic{color:var(--l2)}
 .mb.th-pickbtn .lbl{max-width:200px}
+.th-lvl{color:var(--l3)}
+.th-lvl::before{content:"·";margin-right:6px}
 .th-grow{flex:1}
 .th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
 .th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -63,7 +71,22 @@
 .th-mlist .mgh.th-mgh{position:static;gap:6px}
 .th-why{color:var(--l3)}
 .th-mpanel .mi .val .th-badge-new{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:5px;background:var(--accent-bg);color:var(--accent-t)}
-.th-levels{min-width:170px}
+/* How hard it thinks, at the panel's top: its levels side by side on a sunken track, the chosen one on a plate that
+   slides to it (Composer.tsx Effort). */
+.th-effort{padding:10px 10px 11px;border-bottom:.5px solid var(--sep)}
+.th-effort-h{display:flex;align-items:center;gap:6px;margin:0 3px 8px;font-size:11.5px;font-weight:var(--font-weight-semibold);color:var(--l2)}
+.th-effort-h .ic{width:13px;height:13px}
+.th-effort-keys{margin-left:auto;font-weight:var(--font-weight-normal);color:var(--l3);letter-spacing:.08em}
+.th-seg{position:relative;display:grid;grid-template-columns:repeat(var(--n),1fr);padding:2px;border-radius:8px;background:var(--fill2);touch-action:none;user-select:none}
+.th-seg-plate{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px) / var(--n));transform:translateX(calc(100% * var(--i)));border-radius:6px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 1px 3px rgba(0,0,0,.12);transition:transform .22s cubic-bezier(.3,.7,.2,1)}
+@media (prefers-color-scheme:dark){.th-seg-plate{background:var(--win3)}}
+.th-seg.drag .th-seg-plate{transition-duration:.12s}
+.th-seg button{position:relative;height:26px;border:0;background:none;padding:0 4px;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.th-seg button[aria-checked=true]{color:var(--l1);font-weight:var(--font-weight-semibold)}
+.th-seg button:hover:not([aria-checked=true]){color:var(--l1)}
+.th-seg button:focus-visible{outline:none}
+.th-seg:has(button:focus-visible) .th-seg-plate{box-shadow:0 0 0 2px var(--accent-bg),0 0 0 .5px var(--accent)}
+@media (prefers-reduced-motion:reduce){.th-seg-plate{transition:none}}
 /* The branch panel: a search, starting from the remote, the branches. */
 .th-branches{width:340px;display:flex;flex-direction:column}
 .th-branches>.mgh,.th-branches>.mi,.th-branches>.th-brlist{margin:0 5px}

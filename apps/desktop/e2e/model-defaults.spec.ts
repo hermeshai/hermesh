@@ -48,10 +48,11 @@ test("Antigravity's default model and reasoning effort are picked from the model
     await expect(picker.getByTestId("picker-provider-antigravity").locator("[role=menuitemradio]")).toHaveText(["SMALL", "LARGE"]);
     await picker.getByTestId("picker-model-large").click();
     await expect(page.getByTestId("model-picker-trigger")).toHaveText("LARGE");
-    // How hard it thinks, beside the model: the picked model's levels, the machine's default chosen.
+    // How hard it thinks, after the model's name and at the top of its panel: the picked model's levels, the machine's
+    // default chosen.
     await expect(page.getByTestId("thinking-trigger")).toHaveText("超高");
-    await page.getByRole("button", { name: "思考强度" }).click();
-    await expect(page.getByRole("menu", { name: "思考强度" }).getByRole("menuitemradio")).toHaveText(["低", "高", "超高"]);
+    await page.getByRole("button", { name: "模型" }).click();
+    await expect(picker.getByRole("radiogroup", { name: "推理强度" }).getByRole("radio")).toHaveText(["低", "高", "超高"]);
     await expect(page.getByTestId("picker-level-xhigh")).toHaveAttribute("aria-checked", "true");
     await snap(page, "antigravity-new-session-models");
   } finally {
