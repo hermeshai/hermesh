@@ -371,6 +371,14 @@ func (e *Engine) recoverOrphans() error {
 					r.ErrorMessage = "hermeshd restarted while turn was active"
 					r.CompletedAt = timestamppb.Now()
 					_ = tx.PutRun(r)
+					settled, _ := tx.SettleRunItems(th.ThreadId, r.RunId, "interrupted")
+					for _, sit := range settled {
+						_ = tx.AppendEvent(&threadv2.ThreadEvent{
+							ThreadId: th.ThreadId,
+							Type:     "item.updated",
+							Item:     sit,
+						})
+					}
 				}
 			}
 			queued, _ := tx.QueuedRuns(th.ThreadId)
@@ -1386,22 +1394,27 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		if currentPT != nil {
 			e.sup.Detach(currentPT.ProviderThreadId, false)
 		}
+		buildHandoff := func() string {
+			if freshContext {
+				return ""
+			}
+			priorItems, _ := e.st.TurnItems(threadID)
+			// Exclude current run's just-added user message from handoff history!
+			var historyItems []*threadv2.TurnItem
+			for _, it := range priorItems {
+				if it.RunId != runID {
+					historyItems = append(historyItems, it)
+				}
+			}
+			return BuildContextHandoff(historyItems, existingCkpts, defaultHandoffBudgetChars)
+		}
+
 		resumeCursor := ""
 		if plan.Action == TransitionSpawnAndResume && currentPT != nil {
 			resumeCursor = currentPT.ResumeCursor
 			activePT = currentPT
 		} else {
-			if !freshContext {
-				priorItems, _ := e.st.TurnItems(threadID)
-				// Exclude current run's just-added user message from handoff history!
-				var historyItems []*threadv2.TurnItem
-				for _, it := range priorItems {
-					if it.RunId != runID {
-						historyItems = append(historyItems, it)
-					}
-				}
-				handoffPrefix = BuildContextHandoff(historyItems, existingCkpts, defaultHandoffBudgetChars)
-			}
+			handoffPrefix = buildHandoff()
 			activePT = &threadv2.ProviderThread{
 				ProviderThreadId: newID("pt"),
 				ThreadId:         threadID,
@@ -1421,6 +1434,37 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 			ResumeCursor:    resumeCursor,
 			Gate:            e.makeGate(threadID, workdir),
 		})
+		if startErr != nil && resumeCursor != "" && runCtx.Err() == nil && e.bgCtx.Err() == nil {
+			// Native session cursor expired or cannot be resumed; self-heal by spawning a
+			// fresh ProviderThread carrying the Hermesh transcript handoff.
+			if currentPT != nil {
+				_, _ = e.st.Mutate(func(tx *store.Tx) error {
+					if pt, err := tx.GetProviderThread(currentPT.ProviderThreadId); err == nil {
+						pt.ProcessAlive = false
+						_ = tx.PutProviderThread(pt)
+					}
+					return nil
+				})
+			}
+			handoffPrefix = buildHandoff()
+			plan.HandoffStrategy = "transcript_pack"
+			activePT = &threadv2.ProviderThread{
+				ProviderThreadId: newID("pt"),
+				ThreadId:         threadID,
+				InstanceId:       instCfg.InstanceId,
+				Driver:           instCfg.Driver,
+				ProcessAlive:     true,
+			}
+			sess, startErr = drv.StartSession(e.bgCtx, runtime.StartSpec{
+				ThreadID:        threadID,
+				Workdir:         workdir,
+				Instance:        instCfg,
+				Selection:       curRun.ModelSelection,
+				EffectiveMode:   curRun.RuntimeMode,
+				InteractionMode: curRun.InteractionMode,
+				Gate:            e.makeGate(threadID, workdir),
+			})
+		}
 		if startErr != nil {
 			e.finishRunFailed(threadID, runID, "session_start_failed", startErr.Error())
 			return
@@ -1505,7 +1549,8 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 	}
 
 	// Consume events for this turn until terminal event or session exit!
-	streamBufs := map[string]*strings.Builder{}
+	msgBufs := map[string]*strings.Builder{}
+	rsnBufs := map[string]*strings.Builder{}
 	for {
 		select {
 		case <-runCtx.Done():
@@ -1546,14 +1591,11 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				})
 
 			case runtime.EventAssistantDelta:
-				itemID := ev.ItemID
-				if itemID == "" {
-					itemID = "msg_" + runID
-				}
-				buf := streamBufs[itemID]
+				itemID := scopeRunItemID(runID, ev.ItemID, "msg")
+				buf := msgBufs[itemID]
 				if buf == nil {
 					buf = &strings.Builder{}
-					streamBufs[itemID] = buf
+					msgBufs[itemID] = buf
 				}
 				buf.WriteString(ev.Text)
 				fullText := buf.String()
@@ -1581,14 +1623,12 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				e.publish(evs, nil)
 
 			case runtime.EventAssistantMessage:
-				itemID := ev.ItemID
-				if itemID == "" {
-					itemID = "msg_" + runID
-				}
+				itemID := scopeRunItemID(runID, ev.ItemID, "msg")
 				text := ev.Text
-				if text == "" && streamBufs[itemID] != nil {
-					text = streamBufs[itemID].String()
+				if text == "" && msgBufs[itemID] != nil {
+					text = msgBufs[itemID].String()
 				}
+				delete(msgBufs, itemID)
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 					it := &threadv2.TurnItem{
 						ItemId:    itemID,
@@ -1611,14 +1651,11 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				e.publish(evs, nil)
 
 			case runtime.EventReasoningDelta:
-				itemID := ev.ItemID
-				if itemID == "" {
-					itemID = "rsn_" + runID
-				}
-				buf := streamBufs[itemID]
+				itemID := scopeRunItemID(runID, ev.ItemID, "rsn")
+				buf := rsnBufs[itemID]
 				if buf == nil {
 					buf = &strings.Builder{}
-					streamBufs[itemID] = buf
+					rsnBufs[itemID] = buf
 				}
 				buf.WriteString(ev.Text)
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
@@ -1649,12 +1686,10 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 						status = "failed"
 					}
 				}
-				kind := threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
-				if ev.Command != "" {
-					kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
-				}
-				itemID := ev.ItemID
-				if itemID == "" {
+				var itemID string
+				if ev.ItemID != "" {
+					itemID = scopeRunItemID(runID, ev.ItemID, "tool")
+				} else {
 					itemID = newID("tool")
 				}
 				output := ev.Output
@@ -1668,14 +1703,38 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 					truncated = true
 				}
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+					prev, _ := tx.GetTurnItem(threadID, itemID)
+					toolName := ev.ToolName
+					cmd := ev.Command
+					filePath := ev.FilePath
+					if prev != nil {
+						if toolName == "" {
+							toolName = prev.ToolName
+						}
+						if cmd == "" {
+							cmd = prev.Command
+						}
+						if filePath == "" {
+							filePath = prev.FilePath
+						}
+						if output == "" && prev.Output != "" {
+							output = prev.Output
+							truncated = prev.OutputTruncated
+						}
+					}
+					kind := threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
+					if cmd != "" || (prev != nil && prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION) {
+						kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
+					}
 					it := &threadv2.TurnItem{
 						ItemId:          itemID,
 						ThreadId:        threadID,
 						RunId:           runID,
 						Kind:            kind,
 						Status:          status,
-						ToolName:        ev.ToolName,
-						Command:         ev.Command,
+						ToolName:        toolName,
+						Command:         cmd,
+						FilePath:        filePath,
 						ExitCode:        ev.ExitCode,
 						Output:          output,
 						OutputTruncated: truncated,
@@ -1692,8 +1751,10 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				e.publish(evs, nil)
 
 			case runtime.EventFileChanged:
-				itemID := ev.ItemID
-				if itemID == "" {
+				var itemID string
+				if ev.ItemID != "" {
+					itemID = scopeRunItemID(runID, ev.ItemID, "file")
+				} else {
 					itemID = newID("file")
 				}
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
@@ -1720,8 +1781,10 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				e.publish(evs, nil)
 
 			case runtime.EventPlanProposed:
-				itemID := ev.ItemID
-				if itemID == "" {
+				var itemID string
+				if ev.ItemID != "" {
+					itemID = scopeRunItemID(runID, ev.ItemID, "plan")
+				} else {
 					itemID = newID("plan")
 				}
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
@@ -1746,10 +1809,7 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				e.publish(evs, nil)
 
 			case runtime.EventTodoUpdated:
-				itemID := ev.ItemID
-				if itemID == "" {
-					itemID = "todo_" + runID
-				}
+				itemID := scopeRunItemID(runID, ev.ItemID, "todo")
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
 					it := &threadv2.TurnItem{
 						ItemId:    itemID,
@@ -1789,11 +1849,11 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				}
 
 			case runtime.EventTurnCompleted:
-				// Finalize any open streaming message buffer.
-				for itemID, buf := range streamBufs {
-					if strings.HasPrefix(itemID, "msg_") {
-						_, _ = e.st.Mutate(func(tx *store.Tx) error {
-							return tx.PutTurnItem(&threadv2.TurnItem{
+				// Finalize any open streaming message buffer that did not emit EventAssistantMessage.
+				for itemID, buf := range msgBufs {
+					if buf.Len() > 0 {
+						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+							it := &threadv2.TurnItem{
 								ItemId:    itemID,
 								ThreadId:  threadID,
 								RunId:     runID,
@@ -1801,8 +1861,17 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 								Status:    "completed",
 								Text:      buf.String(),
 								Streaming: false,
+							}
+							if err := tx.PutTurnItem(it); err != nil {
+								return err
+							}
+							return tx.AppendEvent(&threadv2.ThreadEvent{
+								ThreadId: threadID,
+								Type:     "item.updated",
+								Item:     it,
 							})
 						})
+						e.publish(evs, nil)
 					}
 				}
 				// Capture post-run Git Checkpoint!
@@ -1817,10 +1886,10 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 				if e.bgCtx.Err() != nil {
 					return
 				}
-				for itemID, buf := range streamBufs {
-					if strings.HasPrefix(itemID, "msg_") && buf.Len() > 0 {
-						_, _ = e.st.Mutate(func(tx *store.Tx) error {
-							return tx.PutTurnItem(&threadv2.TurnItem{
+				for itemID, buf := range msgBufs {
+					if buf.Len() > 0 {
+						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+							it := &threadv2.TurnItem{
 								ItemId:    itemID,
 								ThreadId:  threadID,
 								RunId:     runID,
@@ -1828,8 +1897,17 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 								Status:    "interrupted",
 								Text:      buf.String(),
 								Streaming: false,
+							}
+							if err := tx.PutTurnItem(it); err != nil {
+								return err
+							}
+							return tx.AppendEvent(&threadv2.ThreadEvent{
+								ThreadId: threadID,
+								Type:     "item.updated",
+								Item:     it,
 							})
 						})
+						e.publish(evs, nil)
 					}
 				}
 				e.finishRunInterrupted(threadID, runID, "interrupted")
@@ -1841,6 +1919,16 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 			}
 		}
 	}
+}
+
+func scopeRunItemID(runID, rawID, fallbackPrefix string) string {
+	if rawID == "" {
+		return fallbackPrefix + "_" + runID
+	}
+	if strings.HasPrefix(rawID, runID+":") || strings.HasSuffix(rawID, "_"+runID) {
+		return rawID
+	}
+	return runID + ":" + rawID
 }
 
 func (e *Engine) recordSwitchItem(threadID, runID string, fromSel, toSel *threadv2.ModelSelection, handoffStrategy, summary string) {
@@ -1888,14 +1976,25 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 		if r.Status != threadv2.RunStatus_RUN_STATUS_RUNNING && r.Status != threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST {
 			return nil
 		}
+		settled, _ := tx.SettleRunItems(threadID, runID, "completed")
+		for _, sit := range settled {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: threadID,
+				Type:     "item.updated",
+				Item:     sit,
+			}); err != nil {
+				return err
+			}
+		}
 		r.Status = threadv2.RunStatus_RUN_STATUS_COMPLETED
 		r.CompletedAt = timestamppb.Now()
+		var cpItem *threadv2.TurnItem
 		if cp != nil {
 			r.CheckpointId = cp.CheckpointId
 			if err := tx.PutCheckpoint(cp); err != nil {
 				return err
 			}
-			cpItem := &threadv2.TurnItem{
+			cpItem = &threadv2.TurnItem{
 				ItemId:       "ckpt_" + cp.CheckpointId,
 				ThreadId:     threadID,
 				RunId:        runID,
@@ -1959,6 +2058,7 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			Type:       "run.completed",
 			Thread:     th,
 			Run:        r,
+			Item:       cpItem,
 			Checkpoint: cp,
 		}); err != nil {
 			return err
@@ -1989,6 +2089,16 @@ func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
 		}
 		if r.Status == threadv2.RunStatus_RUN_STATUS_INTERRUPTED || r.Status == threadv2.RunStatus_RUN_STATUS_COMPLETED {
 			return nil
+		}
+		settled, _ := tx.SettleRunItems(threadID, runID, "interrupted")
+		for _, sit := range settled {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: threadID,
+				Type:     "item.updated",
+				Item:     sit,
+			}); err != nil {
+				return err
+			}
 		}
 		r.Status = threadv2.RunStatus_RUN_STATUS_INTERRUPTED
 		r.ErrorMessage = reason
@@ -2081,6 +2191,16 @@ func (e *Engine) finishRunFailed(threadID, runID, code, msg string) {
 		}
 		if r.Status != threadv2.RunStatus_RUN_STATUS_RUNNING && r.Status != threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST {
 			return nil
+		}
+		settled, _ := tx.SettleRunItems(threadID, runID, "interrupted")
+		for _, sit := range settled {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: threadID,
+				Type:     "item.updated",
+				Item:     sit,
+			}); err != nil {
+				return err
+			}
 		}
 		r.Status = threadv2.RunStatus_RUN_STATUS_FAILED
 		r.ErrorCode = code
@@ -2397,14 +2517,15 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 		if err := tx.PutRuntimeRequest(target); err != nil {
 			return err
 		}
-		_ = tx.PutTurnItem(&threadv2.TurnItem{
+		reqItem := &threadv2.TurnItem{
 			ItemId:    "reqitm_" + target.RequestId,
 			ThreadId:  req.ThreadId,
 			RunId:     target.RunId,
 			Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
 			Status:    "completed",
 			RequestId: target.RequestId,
-		})
+		}
+		_ = tx.PutTurnItem(reqItem)
 		if waitCh != nil {
 			if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
 				rNow.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
@@ -2423,6 +2544,7 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 			ThreadId: req.ThreadId,
 			Type:     "request.resolved",
 			Thread:   tNow,
+			Item:     reqItem,
 			Request:  target,
 		}); err != nil {
 			return err

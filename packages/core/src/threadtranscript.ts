@@ -12,7 +12,7 @@ import {
   type Failure,
   type Question,
 } from "@hermesh/proto/session";
-import { RunStatus, TurnItemKind, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
+import { RunStatus, TurnItemKind, type Run, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
 import { dateOf } from "./sessions";
 import type { TranscriptItem } from "./transcript";
 
@@ -59,7 +59,16 @@ function toolKind(name: string): string {
   }
 }
 
-function toolItem(it: TurnItem): TranscriptItem {
+function isRunActive(run: Run | undefined): boolean {
+  if (!run) return true;
+  return (
+    run.status === RunStatus.PREPARING ||
+    run.status === RunStatus.RUNNING ||
+    run.status === RunStatus.WAITING_REQUEST
+  );
+}
+
+function toolItem(it: TurnItem, run: Run | undefined): TranscriptItem {
   const seq = itemSeq(it);
   const callId = it.itemId;
   if (it.kind === TurnItemKind.FILE_CHANGE) {
@@ -73,11 +82,11 @@ function toolItem(it: TurnItem): TranscriptItem {
   }
   const shell = it.kind === TurnItemKind.COMMAND_EXECUTION;
   const name = it.toolName || (shell ? "Bash" : "");
-  const running = it.status === "running";
+  const running = it.status === "running" && isRunActive(run);
   return {
     kind: "tool",
     seq,
-    call: create(ToolCallSchema, { callId, kind: shell ? "shell" : toolKind(name), name, summary: shell ? it.command : "" }),
+    call: create(ToolCallSchema, { callId, kind: shell ? "shell" : toolKind(name), name, summary: shell ? it.command : it.filePath }),
     result: running
       ? undefined
       : create(ToolResultSchema, { callId, summary: it.output, isError: it.status === "failed" || it.exitCode !== 0, truncated: it.outputTruncated }),
@@ -115,7 +124,7 @@ export function threadTranscript(proj: ThreadProjection | null | undefined): Tra
       case TurnItemKind.TOOL_CALL:
       case TurnItemKind.COMMAND_EXECUTION:
       case TurnItemKind.FILE_CHANGE:
-        out.push(toolItem(it));
+        out.push(toolItem(it, run));
         break;
       case TurnItemKind.ERROR:
         out.push({ kind: "error", seq, error: create(ErrorEventSchema, { message: it.text, failure: runFailure(it.text) }) });

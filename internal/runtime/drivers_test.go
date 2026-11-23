@@ -16,6 +16,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/runtime/claude"
 	"github.com/hermeshai/hermesh/internal/runtime/codex"
+	"github.com/hermeshai/hermesh/internal/runtime/her"
 )
 
 // TestHelperMockCLI runs as a real OS child process speaking authentic Claude
@@ -99,7 +100,35 @@ func runMockClaude() {
 			write(map[string]any{"type": "user", "isReplay": true})
 			msgObj, _ := m["message"].(map[string]any)
 			prompt, _ := msgObj["content"].(string)
-			if strings.Contains(prompt, "run_bash") {
+			if strings.Contains(prompt, "multistep_tools") {
+				write(map[string]any{
+					"type":  "stream_event",
+					"event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": "let me read first"}},
+				})
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "text", "text": "let me read first"},
+						map[string]any{"type": "tool_use", "id": "tu_ask", "name": "AskUserQuestion", "input": map[string]any{}},
+						map[string]any{"type": "tool_use", "id": "tu_read", "name": "Read", "input": map[string]any{"file_path": "pkg/foo.go"}},
+					}},
+				})
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_ask", "content": "ignored"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_read", "content": []any{map[string]any{"type": "text", "text": "package foo"}}},
+					}},
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "read finished"}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 60, "output_tokens": 15},
+				})
+			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
 					replyText := fmt.Sprintf("claude(%s) bash=%s", model, beh)
@@ -178,8 +207,20 @@ func runMockCodex() {
 		switch m.Method {
 		case "initialize":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{}})
-		case "thread/start", "thread/resume":
+		case "thread/start":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_99"}}})
+		case "thread/resume":
+			var p struct {
+				ThreadID string `json:"threadId"`
+			}
+			_ = json.Unmarshal(m.Params, &p)
+			if p.ThreadID == "locked_cursor" {
+				write(map[string]any{"id": *m.ID, "error": map[string]any{"code": -32000, "message": "thread already has an active writer"}})
+			} else {
+				write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_99"}}})
+			}
+		case "thread/fork":
+			write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_forked"}}})
 		case "thread/unarchive":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{}})
 		case "turn/start":
@@ -224,6 +265,90 @@ func runMockACP() {
 		if json.Unmarshal(sc.Bytes(), &m) != nil {
 			continue
 		}
+		if m.ID != nil && m.Method == "" && *m.ID == 777 {
+			// Response to session/request_permission!
+			var res struct {
+				Outcome struct {
+					Outcome  string `json:"outcome"`
+					OptionID string `json:"optionId"`
+				} `json:"outcome"`
+			}
+			_ = json.Unmarshal(m.Result, &res)
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"method":  "session/update",
+				"params": map[string]any{
+					"update": map[string]any{
+						"sessionUpdate": "tool_call",
+						"toolCallId":    "tc_1",
+						"title":         "Run pytest",
+						"kind":          "execute",
+						"status":        "in_progress",
+						"rawInput":      map[string]any{"command": "pytest -q"},
+					},
+				},
+			})
+			// tool_call_update with array Content (previously failed json.Unmarshal in handleSessionUpdate!):
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"method":  "session/update",
+				"params": map[string]any{
+					"update": map[string]any{
+						"sessionUpdate": "tool_call_update",
+						"toolCallId":    "tc_1",
+						"status":        "completed",
+						"content": []any{
+							map[string]any{
+								"type":    "content",
+								"content": map[string]any{"type": "text", "text": "3 passed"},
+							},
+						},
+					},
+				},
+			})
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      778,
+				"method":  "elicitation/create",
+				"params": map[string]any{
+					"mode":    "form",
+					"message": "Target env?",
+					"requestedSchema": map[string]any{
+						"required": []string{"env"},
+						"properties": map[string]any{
+							"env": map[string]any{"type": "string", "title": "Env", "enum": []string{"staging", "prod"}},
+						},
+					},
+				},
+			})
+			// Stash chosen permission option in curModel for assertion.
+			curModel = res.Outcome.OptionID
+			continue
+		}
+		if m.ID != nil && m.Method == "" && *m.ID == 778 {
+			var res struct {
+				Action  string            `json:"action"`
+				Content map[string]string `json:"content"`
+			}
+			_ = json.Unmarshal(m.Result, &res)
+			post := fmt.Sprintf("perm=%s env=%s:%s", curModel, res.Action, res.Content["env"])
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"method":  "session/update",
+				"params": map[string]any{
+					"update": map[string]any{
+						"sessionUpdate": "agent_message_chunk",
+						"content":       map[string]any{"type": "text", "text": post},
+					},
+				},
+			})
+			write(map[string]any{
+				"jsonrpc": "2.0",
+				"id":      promptReqID,
+				"result":  map[string]any{"stopReason": "end_turn", "usage": map[string]any{"inputTokens": 90, "outputTokens": 30, "cachedReadTokens": 10}},
+			})
+			continue
+		}
 		if m.ID != nil && m.Method == "" && *m.ID == 888 {
 			// Response to fs/write_text_file!
 			status := "wrote_ok"
@@ -264,12 +389,44 @@ func runMockACP() {
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{}})
 		case "session/prompt":
 			promptReqID = *m.ID
-			write(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      888,
-				"method":  "fs/write_text_file",
-				"params":  map[string]any{"path": "generated_by_acp.txt", "content": "hello from acp\n"},
-			})
+			var p struct {
+				Prompt []struct {
+					Text string `json:"text"`
+				} `json:"prompt"`
+			}
+			_ = json.Unmarshal(m.Params, &p)
+			if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "acp_preamble"},
+						},
+					},
+				})
+				// Options[0] is allow_once! When Gate denies, driver MUST pick opt_reject (never Options[0]).
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      777,
+					"method":  "session/request_permission",
+					"params": map[string]any{
+						"toolCall": map[string]any{"title": "rm -rf /tmp/x", "kind": "execute"},
+						"options": []any{
+							map[string]any{"optionId": "opt_allow", "kind": "allow_once"},
+							map[string]any{"optionId": "opt_reject", "kind": "reject_once"},
+						},
+					},
+				})
+			} else {
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      888,
+					"method":  "fs/write_text_file",
+					"params":  map[string]any{"path": "generated_by_acp.txt", "content": "hello from acp\n"},
+				})
+			}
 		}
 	}
 }
@@ -453,4 +610,189 @@ func TestACPDriverSubprocessProtocolAndFilesystemGate(t *testing.T) {
 	if err != nil || string(written) != "hello from acp\n" {
 		t.Fatalf("ACP fs/write_text_file did not write file: %q (err=%v)", string(written), err)
 	}
+}
+
+func TestACPMultiStepToolArrayContentPermissionDenialAndElicitation(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	drv := acp.NewDriver("")
+
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_acp_2",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "antigravity",
+			Driver:     "acp",
+			AcpFlavor:  "antigravity",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
+		},
+		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
+			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL {
+				return runtime.ToolGateResult{Allowed: false}, nil
+			}
+			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+				return runtime.ToolGateResult{
+					Allowed: true,
+					Answers: map[string]*threadv2.QuestionAnswer{
+						"env": {SelectedOptions: []string{"staging"}},
+					},
+				}, nil
+			}
+			return runtime.ToolGateResult{Allowed: true}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_acp", Prompt: "multistep_acp"}); err != nil {
+		t.Fatal(err)
+	}
+	var events []runtime.Event
+	timeout := time.After(8 * time.Second)
+loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for ACP multistep turn")
+		case ev := <-sess.Events():
+			events = append(events, ev)
+			if ev.Kind == runtime.EventTurnCompleted {
+				break loop
+			}
+		}
+	}
+
+	var msgIDs []string
+	var msgTexts []string
+	var completedTool *runtime.Event
+	for i := range events {
+		ev := events[i]
+		if ev.Kind == runtime.EventAssistantMessage {
+			msgIDs = append(msgIDs, ev.ItemID)
+			msgTexts = append(msgTexts, ev.Text)
+		}
+		if ev.Kind == runtime.EventToolCompleted {
+			completedTool = &events[i]
+		}
+	}
+	if len(msgTexts) != 2 || msgTexts[0] != "acp_preamble" || msgTexts[1] != "perm=opt_reject env=accept:staging" || msgIDs[0] == msgIDs[1] {
+		t.Fatalf("expected 2 distinct assistant messages (preamble + post-tool), got IDs=%v texts=%v", msgIDs, msgTexts)
+	}
+	if completedTool == nil || completedTool.Command != "pytest -q" || completedTool.Output != "3 passed" {
+		t.Fatalf("ACP tool_call_update array content not parsed/merged: %+v", completedTool)
+	}
+}
+
+func TestClaudeMultiStepToolResultArrayAndSkipInteractiveTools(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	drv := claude.NewDriver("")
+
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_cl_multi",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "claude",
+			Driver:     "claude",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r_cl", Prompt: "multistep_tools"}); err != nil {
+		t.Fatal(err)
+	}
+	var msgIDs, msgTexts []string
+	var startedPath, completedOut string
+	var completedToolIDs []string
+	timeout := time.After(8 * time.Second)
+loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for Claude multistep turn")
+		case ev := <-sess.Events():
+			switch ev.Kind {
+			case runtime.EventAssistantMessage:
+				msgIDs = append(msgIDs, ev.ItemID)
+				msgTexts = append(msgTexts, ev.Text)
+			case runtime.EventToolStarted:
+				startedPath = ev.FilePath
+			case runtime.EventToolCompleted:
+				completedToolIDs = append(completedToolIDs, ev.ItemID)
+				completedOut = ev.Output
+			case runtime.EventTurnCompleted:
+				break loop
+			}
+		}
+	}
+	if len(msgTexts) != 2 || msgIDs[0] == msgIDs[1] || msgTexts[0] != "let me read first" || msgTexts[1] != "read finished" {
+		t.Fatalf("Claude multi-step messages collided: IDs=%v texts=%v", msgIDs, msgTexts)
+	}
+	if len(completedToolIDs) != 1 || completedToolIDs[0] != "tu_read" {
+		t.Fatalf("expected only tu_read completion (no orphan AskUserQuestion completion), got %v", completedToolIDs)
+	}
+	if startedPath != "pkg/foo.go" || completedOut != "package foo" {
+		t.Fatalf("Claude Read FilePath=%q Output=%q, want pkg/foo.go / package foo", startedPath, completedOut)
+	}
+}
+
+func TestCodexActiveWriterForkFallbackAndHerCloseSafety(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	drv := codex.NewDriver("")
+
+	sess, err := drv.StartSession(ctx, runtime.StartSpec{
+		ThreadID:     "th_cx_fork",
+		Workdir:      t.TempDir(),
+		ResumeCursor: "locked_cursor",
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "codex",
+			Driver:     "codex",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "codex"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected active-writer resume to fall back to thread/fork, got err: %v", err)
+	}
+	ev := <-sess.Events()
+	if ev.Kind != runtime.EventNativeSession || ev.NativeID != "cx_th_forked" {
+		t.Fatalf("expected forked native session cx_th_forked, got %+v", ev)
+	}
+	_ = sess.Close()
+
+	// Her driver: closing while Send is blocked or returning must never panic on closed channel.
+	started := make(chan struct{})
+	release := make(chan struct{})
+	herDrv := her.NewDriver(func() bool { return true }, func(ctx context.Context, _, _ string) (string, string, error) {
+		close(started)
+		select {
+		case <-release:
+			return "late reply", "her_s2", nil
+		case <-ctx.Done():
+			return "", "", ctx.Err()
+		}
+	})
+	hs, err := herDrv.StartSession(ctx, runtime.StartSpec{ResumeCursor: "her_s1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := hs.StartTurn(ctx, runtime.TurnInput{RunID: "r_her", Prompt: "hi"}); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	_ = hs.ForceStop()
+	close(release)
+	time.Sleep(30 * time.Millisecond)
 }
