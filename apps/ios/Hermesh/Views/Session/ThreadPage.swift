@@ -290,6 +290,11 @@ struct ThreadPage: View {
             .accessibilityIdentifier("thread-machine")
         }
         .padding(.horizontal, 28)
+        // Sent, until the session opens: under the question, which stays where it is; a short wait shows nothing.
+        .overlay(alignment: .bottom) {
+            Delayed(active: sending) { WorkLine(text: Text("Starting…")) }
+                .alignmentGuide(.bottom) { $0[.top] - 28 }
+        }
     }
 
     // MARK: A session under way
@@ -305,6 +310,7 @@ struct ThreadPage: View {
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
                 }
+                workLine.frame(maxWidth: .infinity, alignment: .leading)
                 if let f = threadFailure(thread) {
                     FailedView(session: s, failure: f, grant: grant)
                 } else if thread?.status == .idle, let last = steps.last {
@@ -398,6 +404,20 @@ struct ThreadPage: View {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .padding(.horizontal, 20)
+        }
+    }
+
+    /// At the end of the conversation while the session is at work, whatever its last row (the agent may be thinking,
+    /// which has no row): starting, waiting its turn, or, with how long, working (a tool or command of this turn
+    /// runs) or thinking (anything else). Waiting on the owner, the panel says so instead.
+    @ViewBuilder private var workLine: some View {
+        switch thread?.status {
+        case .preparing: WorkLine(text: Text("Starting…"))
+        case .queued: WorkLine(text: Text(statusTitle(.queued)))
+        case .running:
+            let run = projection?.runs.first { $0.runID == thread?.activeRunID }
+            WorkLine(text: threadToolRunning(projection) ? Text("Working…") : Text("Thinking…"), since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
+        default: EmptyView()
         }
     }
 
@@ -873,6 +893,24 @@ struct ThreadPage: View {
         r.runID = run.runID
         r.operation = op
         Task { do { _ = try await model.api?.live?.manageThreadQueue(r) } catch { model.report(error) } }
+    }
+}
+
+/// A session at work, in a line at the end of its conversation: the mark, its beams lighting up in turn, what it
+/// does and, while the agent works, for how long.
+private struct WorkLine: View {
+    let text: Text
+    var since: Date?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            MovingMark(size: 18, motion: .seq)
+            text.foregroundStyle(.secondary)
+            if let since { Text(since, style: .timer).monospacedDigit().foregroundStyle(.tertiary) }
+        }
+        .font(.footnote).lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("thread-working")
     }
 }
 
