@@ -36,10 +36,6 @@ private struct HerPage: View {
     let machine: HerMachine
     /// The team panel shows.
     @State private var team = false
-    /// Connection diagnostics sheet opened from the tag when a network issue overrides team status.
-    @State private var showDiagnostics = false
-    /// Staged debounce for Her's own connecting state: hidden (<400ms), subtle dot (0.4-3s), prominent text (>3s).
-    @State private var linkTier: HerLinkTier = .hidden
     /// How tall the status bar is, where the conversation fades out.
     @State private var statusBar: CGFloat = 0
     /// How tall the bar under it is (the buttons, her mark and the tag), where the conversation fades out.
@@ -107,20 +103,6 @@ private struct HerPage: View {
         .onChange(of: model.drawerOpen) { team = false }
         .onAppear { model.her.machine = machine.machineID }
         .herConnections(chat, machine: machine)
-        .sheet(isPresented: $showDiagnostics) {
-            HerDiagnosticsSheet(chat: chat, machine: machine, state: state)
-        }
-        // Progressive debounce for Her's own link: silent < 400 ms, subtle breathing dot 0.4–3 s, text > 3 s.
-        .task(id: herWaiting(chat, state: state)) {
-            linkTier = .hidden
-            guard herWaiting(chat, state: state) else { return }
-            try? await Task.sleep(for: .milliseconds(400))
-            guard !Task.isCancelled else { return }
-            linkTier = .subtle
-            try? await Task.sleep(for: .milliseconds(2600))
-            guard !Task.isCancelled else { return }
-            linkTier = .prominent
-        }
         // Nothing is unread while the owner looks.
         .task(id: [chat.bot?.unread ?? 0, chat.envUp ? 1 : 0, phase == .active ? 1 : 0]) { if phase == .active { await chat.markRead() } }
         .herAISharingAlert(chat)
@@ -169,67 +151,23 @@ private struct HerPage: View {
     }
 
     private func tag(_ chat: HerChat, state: HerEnvState) -> some View {
-        let net = tagNetwork(chat, state: state)
-        return Button {
-            if net.overridesTeam {
-                showDiagnostics = true
-            } else {
-                showTeam(true)
-            }
+        Button {
+            showTeam(true)
         } label: {
             HerTag(name: chat.bot?.name ?? "Her",
                    session: chat.live,
                    team: teamState(model.sessions, requests: model.pairings.count),
-                   network: net,
                    paused: phase != .active)
                 .frame(height: tagHeight)
                 .padding(.horizontal, 14)
                 .glassEffect(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
-        .accessibilityHint(net.overridesTeam ? Text("Opens connection diagnostics") : Text("Shows what your agents are doing"))
-        .accessibilityIdentifier(net.isOffline ? "her-offline" : "her-tag")
+        .accessibilityHint(Text("Shows what your agents are doing"))
+        .accessibilityIdentifier("her-tag")
         // The panel takes its place.
         .opacity(team ? 0 : 1)
         .allowsHitTesting(!team)
-    }
-
-    /// Whether Her's own usable link is still connecting (ignores slow outer
-    /// relay reconnects whenever Her's direct QUIC/TCP conversation is live).
-    private func herWaiting(_ chat: HerChat, state: HerEnvState) -> Bool {
-        guard !model.isDemo, !chat.paused else { return false }
-        if model.networkKind == "offline" { return false }
-        if case .offline = state { return false }
-        if case .failed = state { return false }
-        if chat.convUp { return false }
-        if state == .ready && !chat.noModel { return true }
-        return chat.bot == nil && !model.status.relayConnected
-    }
-
-    private func tagNetwork(_ chat: HerChat, state: HerEnvState) -> HerTagNetwork {
-        guard !model.isDemo, !chat.paused else { return .healthy }
-        if model.networkKind == "offline" { return .noNetwork }
-        if case .offline = state { return .offline(machineName: machine.machineName) }
-        if case .failed = state { return .unreachable }
-        // Once Her's own conversation stream is up (e.g. QUIC LAN/IPv6), stay
-        // completely healthy regardless of outer relay reconnects.
-        if chat.convUp { return .healthy }
-        let relay = model.status.relayHealth
-        if !model.status.relayConnected && (relay.phase == "offline" || relay.retryCount >= 3) {
-            return .unreachable
-        }
-        guard herWaiting(chat, state: state) else { return .healthy }
-        switch linkTier {
-        case .hidden:
-            return .healthy
-        case .subtle:
-            return .subtleConnecting
-        case .prominent:
-            if chat.convError != nil && chat.convRetries >= 3 {
-                return .unreachable
-            }
-            return .reconnecting
-        }
     }
 
     private let tagHeight: CGFloat = 36
@@ -240,43 +178,13 @@ private struct HerPage: View {
     }
 }
 
-private enum HerLinkTier: Equatable {
-    case hidden, subtle, prominent
-}
-
-/// Single-slot network state rendered inside Her's bottom name tag.
-/// Severe network/offline states outrank team task status and open diagnostics on tap.
-private enum HerTagNetwork: Equatable {
-    case healthy
-    case subtleConnecting
-    case noNetwork
-    case offline(machineName: String)
-    case reconnecting
-    case unreachable
-
-    var overridesTeam: Bool {
-        switch self {
-        case .healthy, .subtleConnecting: false
-        case .noNetwork, .offline, .reconnecting, .unreachable: true
-        }
-    }
-
-    var isOffline: Bool {
-        if case .offline = self { return true }
-        return false
-    }
-}
-
-/// Her's name tag: the single status slot under her avatar. Severe network/offline
-/// issues take priority over team activity; brief reconnects (0.4–3 s) show only a
-/// subtle breathing dot beside her name; while Her answers (and isn't awaiting
-/// approval), her live status replaces her name in place, keeping the team panel tap.
+/// Her's name tag under her avatar: her name, and what the team is doing; while Her answers (and isn't awaiting
+/// approval), her live status replaces her name in place. The connection is said above the box (ConnectionCapsule).
 private struct HerTag: View {
     @Environment(\.accessibilityReduceMotion) private var still
     let name: String
     let session: HerSession?
     let team: TeamState
-    let network: HerTagNetwork
     /// Nothing turns while the app is not in front.
     let paused: Bool
 
@@ -284,7 +192,7 @@ private struct HerTag: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: session?.live?.retryAt != nil ? 1 : 60)) { tick in
-            let status = network.overridesTeam ? nil : session.flatMap { herStatus($0, now: tick.date.timeIntervalSince1970 * 1000) }
+            let status = session.flatMap { herStatus($0, now: tick.date.timeIntervalSince1970 * 1000) }
             let statusText = status.map(Self.words(for:))
             content(statusText: statusText)
                 .accessibilityElement(children: .ignore)
@@ -307,30 +215,8 @@ private struct HerTag: View {
                 } else {
                     Text(name).font(.headline)
                 }
-                if network == .subtleConnecting {
-                    breathingDot(size: 6)
-                        .transition(.opacity)
-                }
             }
-            if network.overridesTeam {
-                Capsule().fill(.tertiary).frame(width: 1, height: 14)
-                switch network {
-                case .noNetwork:
-                    dot(.orange)
-                    Text("No network").foregroundStyle(.orange)
-                case .offline:
-                    dot(.secondary)
-                    Text("Offline").foregroundStyle(.secondary)
-                case .reconnecting:
-                    breathingDot(size: 7)
-                    Text("Reconnecting").foregroundStyle(.orange)
-                case .unreachable:
-                    dot(.red)
-                    Text("Connection lost").foregroundStyle(.red)
-                case .healthy, .subtleConnecting:
-                    EmptyView()
-                }
-            } else if team.tag != .quiet {
+            if team.tag != .quiet {
                 Capsule().fill(.tertiary).frame(width: 1, height: 14)
                 switch team.tag {
                 case .waiting(let agent):
@@ -360,7 +246,6 @@ private struct HerTag: View {
         .font(.subheadline.weight(.medium))
         .lineLimit(1)
         .animation(still ? nil : .snappy, value: team.tag)
-        .animation(still ? nil : .easeInOut(duration: 0.22), value: network)
         .animation(still ? nil : .easeInOut(duration: 0.2), value: statusText)
     }
 
@@ -382,34 +267,9 @@ private struct HerTag: View {
         }
     }
 
-    private func breathingDot(size: CGFloat) -> some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: paused || still)) { timeline in
-            let t = paused || still ? 0.0 : timeline.date.timeIntervalSinceReferenceDate
-            let opacity = 0.35 + 0.65 * (0.5 + 0.5 * sin(t * 3.8))
-            Circle()
-                .fill(.orange.opacity(opacity))
-                .frame(width: size, height: size)
-        }
-        .accessibilityHidden(true)
-    }
-
     /// What the tag says, in words.
     private func spoken(statusText: String?) -> String {
         var parts = [statusText ?? name]
-        switch network {
-        case .healthy:
-            break
-        case .subtleConnecting:
-            parts.append(String(localized: "Connecting…"))
-        case .noNetwork:
-            return (parts + [String(localized: "No network")]).joined(separator: ", ")
-        case .offline(let machineName):
-            return (parts + [String(localized: "\(machineName) is offline")]).joined(separator: ", ")
-        case .reconnecting:
-            return (parts + [String(localized: "Reconnecting")]).joined(separator: ", ")
-        case .unreachable:
-            return (parts + [String(localized: "Connection lost")]).joined(separator: ", ")
-        }
         switch team.tag {
         case .waiting(let agent): parts.append(String(localized: "\(agentShortTitle(agent)) is waiting"))
         case .needYou(let n): parts.append(String(localized: "\(n) need you"))

@@ -331,10 +331,15 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     await expect(page.getByTestId("picker-provider-scripted")).toBeVisible();
     await page.keyboard.press("Escape");
 
+    // Aimed at work-mac while it answers: nothing above the box.
+    const capsule = page.getByTestId("connection-capsule");
+    await expect(capsule).toHaveCount(0);
     process.kill(-fixture.otherMac, "SIGTERM");
     await page.getByRole("button", { name: "环境" }).click();
     await expect(page.getByTestId("machine-item-work-mac")).toContainText("离线 · 消息会排队到它上线", { timeout: 60_000 });
     await page.getByTestId("machine-item-work-mac").click();
+    // The line above the box says it is offline, and what sending does.
+    await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
 
     // Its projects and models are still there to choose, marked as what was last read.
     await page.getByRole("button", { name: "项目" }).click();
@@ -353,6 +358,9 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     await page.getByTestId("thread-composer-input").fill("say queued_while_offline");
     await page.getByTestId("thread-composer-input").press("Enter");
     await expect(page.getByTestId("offline-badge")).toHaveText("离线排队中", { timeout: 15_000 });
+    // The session it opened says the same above its box, not a wait for good.
+    await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
+    await snap(page, "session-offline-capsule");
   } finally {
     await app.close();
   }

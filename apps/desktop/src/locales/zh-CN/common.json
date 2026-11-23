@@ -35,6 +35,14 @@
     "connectLink": "连接 Hermesh：按 {{url}} 操作。你在 Hermesh 里的名字是「{{name}}」。",
     "projectArg": "项目"
   },
+  "connection": {
+    "noNetwork": "当前无网络连接",
+    "connecting": "正在连接 {{name}}…",
+    "connectingHermesh": "正在连接 Hermesh…",
+    "cantReach": "暂时连不上 Hermesh · 正在重试",
+    "offline": "<b>{{name}}</b> 离线 · 消息会排队到它上线",
+    "notResponding": "<b>{{name}}</b> 暂时没有回应 · 正在重试"
+  },
   "sidebar": {
     "label": "边栏",
     "search": "搜索",

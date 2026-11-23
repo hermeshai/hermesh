@@ -787,6 +787,16 @@ struct NetworkDiagnosticsList: View {
                 subtitle: String(localized: "Check Wi-Fi or cellular settings")
             )
         }
+        // The machine this is about is offline (while the relay says so): that first, not the relay that is fine.
+        if model.status.relayConnected, let m = primaryMachine, !m.online, !m.local {
+            let name = m.machineName.isEmpty ? m.machineID : m.machineName
+            return DiagnosticHero(
+                symbol: "desktopcomputer",
+                color: .secondary,
+                title: String(localized: "\(name) is offline"),
+                subtitle: m.hasLastSeen ? String(localized: "Last online \(agoText(m.lastSeen.date, now: model.now))") : String(localized: "Offline")
+            )
+        }
         if let m = primaryMachine, m.online, m.hasTunnel, m.tunnel.phase == "ready" {
             let name = m.machineName.isEmpty ? m.machineID : m.machineName
             let path = herPathLabel(m.tunnel.path)

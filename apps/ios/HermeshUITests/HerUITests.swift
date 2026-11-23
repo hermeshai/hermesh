@@ -973,10 +973,14 @@ extension HermeshUITests {
     }
 
     func herOffline() throws {
+        // Connected, nothing over the box; the Mac offline, the line over the box says so, and what sending does.
+        let line = app.descendants(matching: .any)["connection-capsule"].firstMatch
+        XCTAssertFalse(line.exists, "nothing said while the Mac answers")
         _ = try control("machine?up=0", method: "POST")
-        let line = app.descendants(matching: .any)["her-offline"].firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 120), "the line that says the Mac is offline")
-        XCTAssertTrue(line.label.contains("owner-mac 离线"), line.label)
+        // First it may say the Mac isn't responding (hermeshd can't reach it), until the relay has it offline.
+        XCTAssertTrue(waitUntil(timeout: 120) { line.label.contains("owner-mac 离线 · 消息会排队到它上线") }, line.label)
+        XCTAssertTrue(app.buttons["her-tag"].exists, "her name tag stays hers")
         XCTAssertTrue(app.staticTexts["你好，主人"].exists, "what was said stays")
         herSend("[[mock:send:回来了]] hi")
         let waiting = app.descendants(matching: .any)["her-waiting"].firstMatch
@@ -986,7 +990,7 @@ extension HermeshUITests {
         _ = try control("machine?up=1", method: "POST")
         XCTAssertTrue(app.staticTexts["回来了"].waitForExistence(timeout: 180), "delivered once the Mac is back, and answered")
         XCTAssertTrue(waiting.waitForNonExistence(timeout: 60))
-        XCTAssertFalse(line.exists)
+        XCTAssertTrue(line.waitForNonExistence(timeout: 30), "the line goes once the Mac is back")
     }
 
     func herEarlier() throws {

@@ -169,6 +169,25 @@ extension HermeshUITests {
         box.typeText("say hi")
         XCTAssertFalse(app.buttons["thread-send"].isEnabled, "can't be sent")
         shot("composer-needs-update")
+
+        // Aimed at owner-mac while it answers: nothing over the box. Gone offline, the line over the box says so and
+        // what sending does; a tap opens the diagnostics, about owner-mac first. Back, the line goes.
+        pickMachine("owner-mac")
+        let capsule = app.descendants(matching: .any)["connection-capsule"].firstMatch
+        sleep(2)
+        XCTAssertFalse(capsule.exists, "nothing said while owner-mac answers")
+        _ = try control("machine?up=0", method: "POST")
+        XCTAssertTrue(capsule.waitForExistence(timeout: 120), "the line over the box")
+        XCTAssertTrue(waitUntil(timeout: 120) { capsule.label.contains("owner-mac 离线 · 消息会排队到它上线") }, capsule.label)
+        XCTAssertLessThan(capsule.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
+        shot("composer-machine-offline")
+        capsule.tap()
+        XCTAssertTrue(app.navigationBars["连接诊断"].waitForExistence(timeout: 10), "the diagnostics")
+        XCTAssertTrue(text("owner-mac 离线了").waitForExistence(timeout: 10), "about owner-mac first")
+        shot("composer-machine-offline-diagnostics")
+        app.navigationBars["连接诊断"].buttons["完成"].tap()
+        _ = try control("machine?up=1", method: "POST")
+        XCTAssertTrue(capsule.waitForNonExistence(timeout: 120), "gone once owner-mac is back")
     }
 
     /// Taps into the box, which opens it.

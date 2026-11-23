@@ -74,6 +74,7 @@ enum ThreadChoices {
 
 struct ThreadPage: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
     /// The session shown; empty on a new one.
     let threadID: String
     private let askedMachine: String
@@ -103,6 +104,8 @@ struct ThreadPage: View {
     @State private var pickingFiles = false
     @State private var photos: [PhotosPickerItem] = []
     @State private var projection: Hermesh_Thread_V2_ThreadProjection?
+    /// The session's events are followed: its subscription has been open a moment (followThread).
+    @State private var following = false
     @State private var pickingModel = false
     /// Whether the conversation shows its end, so it follows what comes (as a session's, SessionView).
     @State private var atEnd = true
@@ -153,7 +156,7 @@ struct ThreadPage: View {
     var body: some View {
         Group {
             if isNew {
-                newSession.navigationTitle(String(localized: "New Session")).rootToolbar()
+                newSession.navigationTitle(String(localized: "New Session")).rootToolbar(sync: false)
             } else if let s = asSession {
                 session(s)
             } else {
@@ -162,6 +165,8 @@ struct ThreadPage: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: threadID) { await start() }
+        // Opened again at once when its machine can be reached again, or the app is back in front.
+        .task(id: "\(threadID)/\(reachable)/\(scenePhase == .active)") { if !isNew { await followThread() } }
         .task(id: "\(machineID)/\(projectID)") { await loadProviders() }
         .onChange(of: model.projects) { ThreadChoices.keepProjects(model.projects, machines: model.machines) }
         .onChange(of: model.addedProject) {
@@ -198,14 +203,17 @@ struct ThreadPage: View {
             .contentShape(Rectangle())
             .onTapGesture { focused = false }
             .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 6) {
-                    if needsUpdate {
-                        Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
-                            .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
-                            .accessibilityIdentifier("needs-update")
+                VStack(spacing: 0) {
+                    ConnectionCapsule(machine: machine, linkUp: reachable)
+                    VStack(spacing: 6) {
+                        if needsUpdate {
+                            Text("Hermesh on \(machine?.machineName ?? "") needs an update to start sessions.")
+                                .font(.footnote).foregroundStyle(.orange).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22)
+                                .accessibilityIdentifier("needs-update")
+                        }
+                        placeRow
+                        box
                     }
-                    placeRow
-                    box
                 }
                 .padding(.bottom, 4)
             }
@@ -304,11 +312,14 @@ struct ThreadPage: View {
         .followsEnd(id: threadID, ready: projection != nil, atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             // Archived, it is read-only, as a session is: no box.
             if s.status != .archived {
-                VStack(spacing: 6) {
-                    if let req = pendingRequest(of: projection) { requestPanel(req, s) }
-                    queue
-                    offlineNote
-                    box
+                VStack(spacing: 0) {
+                    ConnectionCapsule(machine: machine, linkUp: following && reachable)
+                    VStack(spacing: 6) {
+                        if let req = pendingRequest(of: projection) { requestPanel(req, s) }
+                        queue
+                        offlineNote
+                        box
+                    }
                 }
                 .padding(.bottom, 4)
             }
@@ -318,11 +329,7 @@ struct ThreadPage: View {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 0) {
                     Text(s.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if model.shownSync != nil {
-                        SyncLine(small: true)
-                    } else {
-                        Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                    }
+                    Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             if model.path.isEmpty { MenuToolbarItem() }
@@ -717,15 +724,49 @@ struct ThreadPage: View {
             ThreadChoices.keepProjects(model.projects, machines: model.machines)
             return
         }
+    }
+
+    /// A session's projection, then its events as they come, until the page goes; read and subscribed again after
+    /// the subscription ended or failed (in 1 s, then up to every 30 s), and at once when its machine can be reached
+    /// again (the task's id). `following` says it is open, for the line above the box.
+    private func followThread() async {
         guard let live = model.api?.live else { return }
-        do {
-            let first = try await live.getThread(threadID: threadID)
-            apply(first.projection.thread)
-            projection = first.projection
-            for try await ev in live.subscribeThread(threadID: threadID, afterSeq: first.projection.thread.lastSeq) {
-                projection = applyThreadEvent(ev, to: projection)
+        var failures = 0
+        while !Task.isCancelled {
+            do {
+                let first = try await live.getThread(threadID: threadID)
+                if projection == nil { apply(first.projection.thread) } // its model and modes: later, the owner's own choices stay
+                projection = first.projection
+                // Open a moment without failing: followed (a subscription that can't reach the machine fails at once).
+                let open = Task {
+                    try? await Task.sleep(for: .seconds(1))
+                    if !Task.isCancelled { following = true }
+                }
+                defer { open.cancel() }
+                for try await ev in live.subscribeThread(threadID: threadID, afterSeq: first.projection.thread.lastSeq) {
+                    projection = applyThreadEvent(ev, to: projection)
+                    failures = 0
+                }
+            } catch {
+                // Never read and not to be read now: the session as the list has it, with the box and the line
+                // above it saying why, rather than a wait for good.
+                if projection == nil, let t = model.threads.first(where: { $0.threadID == threadID }) {
+                    apply(t)
+                    projection = .with { $0.thread = t }
+                }
             }
-        } catch {}
+            if following { failures = 0 }
+            following = false
+            guard !Task.isCancelled else { return }
+            failures += 1
+            try? await Task.sleep(for: .seconds(min(30, 1 << min(5, failures - 1))))
+        }
+    }
+
+    /// The page's machine can be reached now: this iPhone reaches the relay, and the machine is online and answers.
+    private var reachable: Bool {
+        guard let m = machine else { return true }
+        return m.local || (model.status.relayConnected && m.online && m.unreachable.isEmpty)
     }
 
     /// A session's own model and modes, from hermeshd.

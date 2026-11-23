@@ -655,14 +655,16 @@ extension View {
     /// The menu button on a root page, and the sync line in the middle of
     /// its bar: once the title is small, in its place; while it is large,
     /// the bar shows nothing there (UIKit hides a title view then), so the
-    /// line is laid over the bar (PageView).
-    @ViewBuilder func rootToolbar(enabled: Bool = true) -> some View {
-        if enabled { modifier(RootToolbar()) } else { self.syncSubtitle() }
+    /// line is laid over the bar (PageView). A page with a box (`sync` false) says its connection above the box
+    /// instead (ConnectionCapsule).
+    @ViewBuilder func rootToolbar(enabled: Bool = true, sync: Bool = true) -> some View {
+        if enabled { modifier(RootToolbar(sync: sync)) } else { self.syncSubtitle() }
     }
 }
 
 private struct RootToolbar: ViewModifier {
     @Environment(AppModel.self) private var model
+    let sync: Bool
 
     func body(content: Content) -> some View {
         content
@@ -672,7 +674,7 @@ private struct RootToolbar: ViewModifier {
             .onAppear { model.rootTitleSmall = false } // a root page shows from its top
             .toolbar {
                 MenuToolbarItem()
-                if (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
+                if sync && (model.rootTitleSmall || !model.root.titleLarge) && model.shownSync != nil { ToolbarItem(placement: .principal) { SyncLine() } }
             }
     }
 }
