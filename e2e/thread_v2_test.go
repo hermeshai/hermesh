@@ -406,4 +406,44 @@ func TestThreadV2EndToEnd(t *testing.T) {
 			t.Fatalf("rejected offline thread still listed after delete")
 		}
 	}
+
+	// 5. Verify multi-thread & multi-run assistant reply isolation end-to-end:
+	// Earlier vpsThreadID AND the 2-run "Offline Queued Thread" on the same daemon must each
+	// retain all of their own assistant messages without msg_1 collisions across threads or runs!
+	var offlineRealID string
+	for _, th := range lt.Threads {
+		if th.Title == "Offline Queued Thread" {
+			offlineRealID = th.ThreadId
+		}
+	}
+	if offlineRealID == "" {
+		t.Fatalf("Offline Queued Thread not found on vps-1")
+	}
+	offProj, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: offlineRealID})
+	if err != nil {
+		t.Fatalf("GetThread offlineRealID: %v", err)
+	}
+	var offReplies []string
+	for _, it := range offProj.Projection.GetItems() {
+		if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+			offReplies = append(offReplies, it.Text)
+		}
+	}
+	if len(offReplies) != 2 || !strings.Contains(offReplies[0], "offline_run_1") || !strings.Contains(offReplies[1], "offline_run_2") {
+		t.Fatalf("expected Offline Queued Thread to retain both runs' assistant messages, got %v", offReplies)
+	}
+
+	vpsProjAfter, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: vpsThreadID})
+	if err != nil {
+		t.Fatalf("GetThread vpsThreadID after later threads ran: %v", err)
+	}
+	var sawTurn1Reply bool
+	for _, it := range vpsProjAfter.Projection.GetItems() {
+		if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && strings.Contains(it.Text, "turn_1_complete") {
+			sawTurn1Reply = true
+		}
+	}
+	if !sawTurn1Reply {
+		t.Fatalf("vpsThreadID lost its turn_1_complete assistant message after subsequent threads ran: %+v", vpsProjAfter.Projection.GetItems())
+	}
 }

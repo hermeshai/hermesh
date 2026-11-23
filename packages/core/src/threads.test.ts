@@ -145,5 +145,23 @@ describe("v2 threads domain helpers & event reducer", () => {
     );
     expect(proj.items.map((i) => i.itemId)).toEqual(["i1"]);
     expect(queuedRunsOf(proj).map((r) => r.runId)).toEqual(["q1", "q2"]);
+
+    // Even if an out-of-band unary RPC bumped thread.lastSeq to 20, earlier stream item events are still applied!
+    const bumped = create(ThreadProjectionSchema, {
+      thread: create(ThreadSchema, { threadId: "th_1", lastSeq: 20n }),
+      runs: [],
+      items: [],
+    });
+    const caughtUp = applyThreadEvent(
+      bumped,
+      create(ThreadEventSchema, {
+        threadId: "th_1",
+        seq: 12n,
+        type: "item.updated",
+        item: create(TurnItemSchema, { itemId: "i_late", runId: "r1", seq: 11n, kind: TurnItemKind.ASSISTANT_MESSAGE, text: "Recovered" }),
+      }),
+    );
+    expect(caughtUp.thread?.lastSeq).toBe(20n);
+    expect(caughtUp.items.map((i) => i.text)).toEqual(["Recovered"]);
   });
 });

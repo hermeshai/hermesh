@@ -157,6 +157,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		events:    make(chan runtime.Event, 256),
 		pending:   map[int64]func(rpcRes){},
 		terminals: map[string]*managedTerm{},
+		tools:     map[string]*acpToolState{},
 		turnCtx:   ctx,
 	}
 	s.alive.Store(true)
@@ -176,8 +177,14 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		return nil, fmt.Errorf("acp initialize: %w", err)
 	}
 	var caps struct {
+		AuthMethods []struct {
+			ID string `json:"id"`
+		} `json:"authMethods"`
 		AgentCapabilities struct {
-			LoadSession        bool `json:"loadSession"`
+			LoadSession         bool `json:"loadSession"`
+			SessionCapabilities struct {
+				Resume json.RawMessage `json:"resume"`
+			} `json:"sessionCapabilities"`
 			PromptCapabilities struct {
 				Image bool `json:"image"`
 			} `json:"promptCapabilities"`
@@ -186,15 +193,31 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	_ = json.Unmarshal(initRes, &caps)
 	s.supportsImages = caps.AgentCapabilities.PromptCapabilities.Image
 
+	if authID := pickAuthMethod(caps.AuthMethods, env); authID != "" {
+		_, _ = s.call(ctx, "authenticate", map[string]any{"methodId": authID})
+	}
+
+	canResume := len(caps.AgentCapabilities.SessionCapabilities.Resume) > 0 &&
+		string(bytes.TrimSpace(caps.AgentCapabilities.SessionCapabilities.Resume)) != "null"
+
 	params := map[string]any{"cwd": spec.Workdir, "mcpServers": []any{}}
+	var sessRes json.RawMessage
 	if spec.ResumeCursor != "" {
 		params["sessionId"] = spec.ResumeCursor
-		s.replaying.Store(true)
-		_, loadErr := s.call(ctx, "session/load", params)
-		s.replaying.Store(false)
-		if loadErr != nil {
+		var resumeErr error
+		if canResume {
+			sessRes, resumeErr = s.call(ctx, "session/resume", params)
+		}
+		if (resumeErr != nil || !canResume) && caps.AgentCapabilities.LoadSession {
+			s.replaying.Store(true)
+			sessRes, resumeErr = s.call(ctx, "session/load", params)
+			s.replaying.Store(false)
+		} else if !canResume && !caps.AgentCapabilities.LoadSession {
+			resumeErr = errors.New("acp agent does not support session resume or load")
+		}
+		if resumeErr != nil {
 			proc.Stop(time.Second)
-			return nil, fmt.Errorf("acp session/load: %w", loadErr)
+			return nil, fmt.Errorf("acp session resume: %w", resumeErr)
 		}
 		s.sessionID = spec.ResumeCursor
 	} else {
@@ -203,6 +226,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 			proc.Stop(time.Second)
 			return nil, fmt.Errorf("acp session/new: %w", newErr)
 		}
+		sessRes = newRes
 		var nr struct {
 			SessionID string `json:"sessionId"`
 		}
@@ -213,6 +237,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		}
 		s.sessionID = nr.SessionID
 	}
+	s.parseSessionConfigOptions(sessRes)
 
 	s.emit(runtime.Event{
 		Kind:         runtime.EventNativeSession,
@@ -224,6 +249,42 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	}
 	_ = s.SetModes(ctx, spec.EffectiveMode, spec.InteractionMode)
 	return s, nil
+}
+
+func pickAuthMethod(methods []struct {
+	ID string `json:"id"`
+}, env []string) string {
+	has := func(id string) bool {
+		for _, m := range methods {
+			if m.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	if has("cursor_login") {
+		return "cursor_login"
+	}
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "XAI_API_KEY=") && len(kv) > len("XAI_API_KEY=") && has("xai.api_key") {
+			return "xai.api_key"
+		}
+	}
+	if has("cached_token") {
+		return "cached_token"
+	}
+	return ""
+}
+
+type acpToolState struct {
+	id       string
+	title    string
+	kind     string
+	status   string
+	command  string
+	filePath string
+	output   string
+	started  bool
 }
 
 type rpcRes struct {
@@ -240,23 +301,69 @@ type managedTerm struct {
 }
 
 type session struct {
-	proc           *provider.Proc
-	spec           runtime.StartSpec
-	sessionID      string
-	supportsImages bool
-	replaying      atomic.Bool
-	events         chan runtime.Event
-	alive          atomic.Bool
-	nextID         atomic.Int64
-	itemSeq        atomic.Uint64
-	closeOnce      sync.Once
+	proc            *provider.Proc
+	spec            runtime.StartSpec
+	sessionID       string
+	supportsImages  bool
+	modelOptionID   string
+	thoughtOptionID string
+	replaying       atomic.Bool
+	events          chan runtime.Event
+	alive           atomic.Bool
+	nextID          atomic.Int64
+	itemSeq         atomic.Uint64
+	closeOnce       sync.Once
+
+	emitMu       sync.RWMutex
+	eventsClosed bool
 
 	mu        sync.Mutex
 	pending   map[int64]func(rpcRes)
 	terminals map[string]*managedTerm
+	tools     map[string]*acpToolState
 	turnCtx   context.Context
 	msgItemID string
 	msgBuf    strings.Builder
+}
+
+func (s *session) parseSessionConfigOptions(raw json.RawMessage) {
+	if len(raw) == 0 {
+		return
+	}
+	var sr struct {
+		ConfigOptions []struct {
+			ID       string `json:"id"`
+			Category string `json:"category"`
+		} `json:"configOptions"`
+	}
+	if json.Unmarshal(raw, &sr) != nil {
+		return
+	}
+	for _, opt := range sr.ConfigOptions {
+		switch {
+		case opt.Category == "model" || opt.ID == "model":
+			s.modelOptionID = opt.ID
+		case opt.Category == "thought_level":
+			s.thoughtOptionID = opt.ID
+		}
+	}
+}
+
+func (s *session) flushAssistantSegment() {
+	s.mu.Lock()
+	if s.msgBuf.Len() == 0 {
+		s.mu.Unlock()
+		return
+	}
+	msgID := s.msgItemID
+	full := s.msgBuf.String()
+	s.msgBuf.Reset()
+	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+	s.mu.Unlock()
+
+	if strings.TrimSpace(full) != "" {
+		s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: msgID, Text: full})
+	}
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -307,6 +414,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.turnCtx = ctx
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgBuf.Reset()
+	s.tools = map[string]*acpToolState{}
 	s.mu.Unlock()
 
 	prompt := []any{map[string]any{"type": "text", "text": in.Prompt}}
@@ -331,15 +439,7 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 }
 
 func (s *session) onPromptResult(r rpcRes) {
-	s.mu.Lock()
-	msgID := s.msgItemID
-	full := s.msgBuf.String()
-	s.msgBuf.Reset()
-	s.mu.Unlock()
-
-	if strings.TrimSpace(full) != "" {
-		s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: msgID, Text: full})
-	}
+	s.flushAssistantSegment()
 	if r.err != nil {
 		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "acp_error", ErrorMessage: r.err.Error()})
 		return
@@ -347,27 +447,38 @@ func (s *session) onPromptResult(r rpcRes) {
 	var res struct {
 		StopReason string `json:"stopReason"`
 		Usage      struct {
-			InputTokens  uint64 `json:"inputTokens"`
-			OutputTokens uint64 `json:"outputTokens"`
+			InputTokens       uint64 `json:"inputTokens"`
+			OutputTokens      uint64 `json:"outputTokens"`
+			CachedReadTokens  uint64 `json:"cachedReadTokens"`
+			CachedWriteTokens uint64 `json:"cachedWriteTokens"`
 		} `json:"usage"`
 	}
 	_ = json.Unmarshal(r.result, &res)
-	if res.Usage.InputTokens > 0 || res.Usage.OutputTokens > 0 {
+	inTok := res.Usage.InputTokens + res.Usage.CachedReadTokens + res.Usage.CachedWriteTokens
+	if inTok > 0 || res.Usage.OutputTokens > 0 {
 		s.emit(runtime.Event{
 			Kind: runtime.EventUsage,
 			Usage: &threadv2.ContextWindowUsage{
-				InputTokens:        res.Usage.InputTokens,
+				InputTokens:        inTok,
 				OutputTokens:       res.Usage.OutputTokens,
-				ContextUsedTokens:  res.Usage.InputTokens + res.Usage.OutputTokens,
+				CacheReadTokens:    res.Usage.CachedReadTokens,
+				ContextUsedTokens:  inTok + res.Usage.OutputTokens,
 				ContextLimitTokens: 200000,
 			},
 		})
 	}
-	if res.StopReason == "cancelled" {
+	switch res.StopReason {
+	case "cancelled":
 		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
-		return
+	case "refusal", "max_tokens", "max_turn_requests":
+		s.emit(runtime.Event{
+			Kind:         runtime.EventTurnFailed,
+			ErrorCode:    res.StopReason,
+			ErrorMessage: "acp turn stopped: " + res.StopReason,
+		})
+	default:
+		s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 	}
-	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 }
 
 func (s *session) Steer(context.Context, string, []runtime.TurnAttachment) error {
@@ -379,7 +490,15 @@ func (s *session) SetSelection(ctx context.Context, sel *threadv2.ModelSelection
 		return nil
 	}
 	if sel.Model != "" && sel.Model != "default" {
-		_, _ = s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": sel.Model})
+		if s.modelOptionID != "" {
+			_, _ = s.call(ctx, "session/set_config_option", map[string]any{
+				"sessionId": s.sessionID,
+				"configId":  s.modelOptionID,
+				"value":     sel.Model,
+			})
+		} else {
+			_, _ = s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": sel.Model})
+		}
 	}
 	for k, v := range sel.Options {
 		var rawVal any
@@ -389,9 +508,13 @@ func (s *session) SetSelection(ctx context.Context, sel *threadv2.ModelSelection
 			rawVal = bv.BoolValue
 		}
 		if rawVal != nil {
+			cfgID := k
+			if k == "reasoningEffort" && s.thoughtOptionID != "" {
+				cfgID = s.thoughtOptionID
+			}
 			_, _ = s.call(ctx, "session/set_config_option", map[string]any{
 				"sessionId": s.sessionID,
-				"configId":  k,
+				"configId":  cfgID,
 				"value":     rawVal,
 			})
 		}
@@ -446,16 +569,30 @@ func (s *session) killTerminals() {
 }
 
 func (s *session) emit(ev runtime.Event) {
+	s.emitMu.RLock()
+	defer s.emitMu.RUnlock()
+	if s.eventsClosed {
+		return
+	}
 	select {
 	case s.events <- ev:
 	case <-s.proc.Done():
 	}
 }
 
+func (s *session) closeEvents() {
+	s.emitMu.Lock()
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
+	}
+	s.emitMu.Unlock()
+}
+
 func (s *session) readLoop() {
 	defer func() {
 		s.alive.Store(false)
-		close(s.events)
+		s.closeEvents()
 	}()
 	_ = s.proc.Lines(func(raw []byte) {
 		var m struct {
@@ -499,16 +636,18 @@ func (s *session) readLoop() {
 func (s *session) handleSessionUpdate(params json.RawMessage) {
 	var p struct {
 		Update struct {
-			SessionUpdate string `json:"sessionUpdate"`
-			Content       struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-			ToolCallID string `json:"toolCallId"`
-			Title      string `json:"title"`
-			Kind       string `json:"kind"`
-			Status     string `json:"status"`
-			Entries    []struct {
+			SessionUpdate string          `json:"sessionUpdate"`
+			Content       json.RawMessage `json:"content"`
+			ToolCallID    string          `json:"toolCallId"`
+			Title         string          `json:"title"`
+			Kind          string          `json:"kind"`
+			Status        string          `json:"status"`
+			Locations     []struct {
+				Path string `json:"path"`
+			} `json:"locations"`
+			RawInput  json.RawMessage `json:"rawInput"`
+			RawOutput json.RawMessage `json:"rawOutput"`
+			Entries   []struct {
 				Content string `json:"content"`
 				Status  string `json:"status"`
 			} `json:"entries"`
@@ -520,33 +659,98 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 	u := p.Update
 	switch u.SessionUpdate {
 	case "agent_message_chunk":
-		if u.Content.Text != "" {
+		var cb struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
 			msgID := s.msgItemID
-			s.msgBuf.WriteString(u.Content.Text)
+			s.msgBuf.WriteString(cb.Text)
 			s.mu.Unlock()
-			s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: u.Content.Text})
+			s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgID, Text: cb.Text})
 		}
 	case "agent_thought_chunk":
-		if u.Content.Text != "" {
+		var cb struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
 			msgID := s.msgItemID
 			s.mu.Unlock()
-			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: u.Content.Text})
+			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: cb.Text})
 		}
 	case "tool_call", "tool_call_update":
+		s.flushAssistantSegment()
 		id := u.ToolCallID
 		if id == "" {
 			id = fmt.Sprintf("acp_tool_%d", s.itemSeq.Add(1))
 		}
-		if u.Status == "completed" || u.Status == "failed" {
+		contentOut, diffPath := s.extractACPToolContent(u.Content)
+		rawOut := extractACPRawOutput(u.RawOutput)
+		inCmd, inPath := extractACPRawInput(u.RawInput)
+
+		s.mu.Lock()
+		st := s.tools[id]
+		if st == nil {
+			st = &acpToolState{id: id}
+			s.tools[id] = st
+		}
+		if u.Title != "" {
+			st.title = u.Title
+		}
+		if u.Kind != "" {
+			st.kind = u.Kind
+		}
+		if u.Status != "" {
+			st.status = u.Status
+		}
+		if inCmd != "" {
+			st.command = inCmd
+		}
+		if len(u.Locations) > 0 && u.Locations[0].Path != "" {
+			st.filePath = u.Locations[0].Path
+		} else if diffPath != "" && st.filePath == "" {
+			st.filePath = diffPath
+		} else if inPath != "" && st.filePath == "" {
+			st.filePath = inPath
+		}
+		if contentOut != "" {
+			st.output = contentOut
+		} else if rawOut != "" {
+			st.output = rawOut
+		}
+		toolName, cmd, filePath := mapACPToolFields(st)
+		wasStarted := st.started
+		st.started = true
+		status := st.status
+		outText := st.output
+		s.mu.Unlock()
+
+		if status == "completed" || status == "failed" {
 			exit := int32(0)
-			if u.Status == "failed" {
+			if status == "failed" {
 				exit = 1
 			}
-			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: id, ToolName: u.Title, ExitCode: exit})
-		} else {
-			s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: id, ToolName: u.Title})
+			kept, _ := provider.KeepOutput(outText)
+			s.emit(runtime.Event{
+				Kind:     runtime.EventToolCompleted,
+				ItemID:   id,
+				ToolName: toolName,
+				Command:  cmd,
+				FilePath: filePath,
+				ExitCode: exit,
+				Output:   kept,
+			})
+		} else if !wasStarted || u.SessionUpdate == "tool_call" || toolName != "" || cmd != "" || filePath != "" {
+			s.emit(runtime.Event{
+				Kind:     runtime.EventToolStarted,
+				ItemID:   id,
+				ToolName: toolName,
+				Command:  cmd,
+				FilePath: filePath,
+			})
 		}
 	case "plan":
 		var steps []*threadv2.TodoStep
@@ -555,6 +759,146 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, TodoSteps: steps})
 	}
+}
+
+func (s *session) extractACPToolContent(raw json.RawMessage) (output string, diffPath string) {
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var items []struct {
+		Type       string `json:"type"`
+		Path       string `json:"path"`
+		NewText    string `json:"newText"`
+		TerminalID string `json:"terminalId"`
+		Content    struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if json.Unmarshal(raw, &items) != nil {
+		var single struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(raw, &single) == nil {
+			return single.Text, ""
+		}
+		return "", ""
+	}
+	var parts []string
+	for _, it := range items {
+		switch it.Type {
+		case "content":
+			if it.Content.Text != "" {
+				parts = append(parts, it.Content.Text)
+			}
+		case "diff":
+			if diffPath == "" && it.Path != "" {
+				diffPath = it.Path
+			}
+			if it.Path != "" {
+				parts = append(parts, it.Path)
+			}
+		case "terminal":
+			if it.TerminalID != "" {
+				s.mu.Lock()
+				mt := s.terminals[it.TerminalID]
+				s.mu.Unlock()
+				if mt != nil {
+					mt.mu.Lock()
+					tOut := mt.outBuf.String()
+					mt.mu.Unlock()
+					if tOut != "" {
+						parts = append(parts, tOut)
+					}
+				}
+			}
+		}
+	}
+	return strings.Join(parts, "\n"), diffPath
+}
+
+func extractACPRawOutput(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var obj struct {
+		Output         string `json:"output"`
+		Stdout         string `json:"stdout"`
+		CombinedOutput string `json:"combinedOutput"`
+		Content        string `json:"content"`
+	}
+	if json.Unmarshal(raw, &obj) == nil {
+		for _, cand := range []string{obj.CombinedOutput, obj.Output, obj.Stdout, obj.Content} {
+			if cand != "" {
+				return cand
+			}
+		}
+	}
+	return ""
+}
+
+func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
+	if len(raw) == 0 {
+		return "", ""
+	}
+	var obj struct {
+		Command  string `json:"command"`
+		Path     string `json:"path"`
+		FilePath string `json:"file_path"`
+		Pattern  string `json:"pattern"`
+		Query    string `json:"query"`
+		URL      string `json:"url"`
+	}
+	if json.Unmarshal(raw, &obj) == nil {
+		for _, p := range []string{obj.Path, obj.FilePath, obj.Pattern, obj.Query, obj.URL} {
+			if p != "" {
+				path = p
+				break
+			}
+		}
+		cmd = obj.Command
+	}
+	return cmd, path
+}
+
+func mapACPToolFields(st *acpToolState) (toolName, cmd, filePath string) {
+	filePath = st.filePath
+	switch st.kind {
+	case "execute", "command", "bash":
+		cmd = st.command
+		if cmd == "" {
+			cmd = st.title
+		}
+		toolName = "Bash"
+	case "read":
+		toolName = "Read"
+		if filePath == "" {
+			filePath = st.title
+		}
+	case "search":
+		toolName = "Grep"
+		if filePath == "" {
+			filePath = st.title
+		}
+	case "edit", "delete", "move", "write":
+		toolName = "Edit"
+		if filePath == "" {
+			filePath = st.title
+		}
+	case "fetch":
+		toolName = "WebFetch"
+		if filePath == "" {
+			filePath = st.title
+		}
+	default:
+		toolName = st.title
+	}
+	return toolName, cmd, filePath
 }
 
 func (s *session) handleServerRequest(id json.RawMessage, method string, params json.RawMessage) {
@@ -573,8 +917,11 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 	case "session/request_permission":
 		var p struct {
 			ToolCall struct {
-				Title string `json:"title"`
-				Kind  string `json:"kind"`
+				Title     string `json:"title"`
+				Kind      string `json:"kind"`
+				Locations []struct {
+					Path string `json:"path"`
+				} `json:"locations"`
 			} `json:"toolCall"`
 			Options []struct {
 				OptionID string `json:"optionId"`
@@ -584,12 +931,16 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		_ = json.Unmarshal(params, &p)
 		cat := "mcp"
 		switch p.ToolCall.Kind {
-		case "edit", "write":
+		case "edit", "write", "delete", "move":
 			cat = "file_write"
 		case "execute", "command", "bash":
 			cat = "command"
 		case "read", "search":
 			cat = "read"
+		}
+		targetPath := ""
+		if len(p.ToolCall.Locations) > 0 {
+			targetPath = p.ToolCall.Locations[0].Path
 		}
 		allowed := true
 		if s.spec.Gate != nil {
@@ -599,6 +950,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 					ToolCategory: cat,
 					ToolName:     p.ToolCall.Title,
 					Command:      p.ToolCall.Title,
+					TargetPath:   targetPath,
 				},
 			})
 			if err != nil || res.CancelTurn {
@@ -607,21 +959,15 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			}
 			allowed = res.Allowed
 		}
-		pickKind := "allow_once"
-		if !allowed {
-			pickKind = "reject_once"
-		}
-		chosenID := ""
-		for _, o := range p.Options {
-			if o.Kind == pickKind || (allowed && strings.Contains(o.Kind, "allow")) || (!allowed && strings.Contains(o.Kind, "reject")) {
-				chosenID = o.OptionID
-				break
-			}
-		}
-		if chosenID == "" && len(p.Options) > 0 {
-			chosenID = p.Options[0].OptionID
+		chosenID := pickPermissionOption(p.Options, allowed)
+		if chosenID == "" {
+			reply(map[string]any{"outcome": map[string]any{"outcome": "cancelled"}})
+			return
 		}
 		reply(map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": chosenID}})
+
+	case "elicitation/create", "session/create_elicitation":
+		s.handleElicitation(tctx, params, reply)
 
 	case "fs/read_text_file":
 		var p struct {
@@ -681,6 +1027,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 				return
 			}
 		}
+		s.flushAssistantSegment()
 		_ = os.MkdirAll(filepath.Dir(target), 0o755)
 		if err := os.WriteFile(target, []byte(p.Content), 0o644); err != nil {
 			replyErr(-32603, err.Error())
@@ -720,6 +1067,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 				return
 			}
 		}
+		s.flushAssistantSegment()
 		cwd := p.Cwd
 		if cwd == "" {
 			cwd = s.spec.Workdir
@@ -728,8 +1076,9 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		cmd := provider.Command(context.Background(), p.Command, p.Args...)
 		cmd.Dir = cwd
 		mt := &managedTerm{cmd: cmd, done: make(chan struct{})}
-		cmd.Stdout = &mt.outBuf
-		cmd.Stderr = &mt.outBuf
+		lw := &lockedTermWriter{mt: mt}
+		cmd.Stdout = lw
+		cmd.Stderr = lw
 		if err := cmd.Start(); err != nil {
 			replyErr(-32603, err.Error())
 			return
@@ -748,7 +1097,10 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 				}
 			}
 			close(mt.done)
-			kept, _ := provider.KeepOutput(mt.outBuf.String())
+			mt.mu.Lock()
+			outStr := mt.outBuf.String()
+			mt.mu.Unlock()
+			kept, _ := provider.KeepOutput(outStr)
 			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, ExitCode: int32(mt.exit), Output: kept})
 		}()
 		reply(map[string]any{"terminalId": termID})
@@ -780,7 +1132,10 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			replyErr(-32002, "unknown terminalId")
 			return
 		}
-		reply(map[string]any{"output": mt.outBuf.String(), "truncated": false})
+		mt.mu.Lock()
+		outStr := mt.outBuf.String()
+		mt.mu.Unlock()
+		reply(map[string]any{"output": outStr, "truncated": false})
 
 	case "terminal/release", "terminal/kill":
 		var p struct {
@@ -799,4 +1154,173 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 	default:
 		replyErr(-32601, "method not supported")
 	}
+}
+
+type lockedTermWriter struct {
+	mt *managedTerm
+}
+
+func (w *lockedTermWriter) Write(p []byte) (int, error) {
+	w.mt.mu.Lock()
+	defer w.mt.mu.Unlock()
+	return w.mt.outBuf.Write(p)
+}
+
+func pickPermissionOption(options []struct {
+	OptionID string `json:"optionId"`
+	Kind     string `json:"kind"`
+}, allowed bool) string {
+	if allowed {
+		for _, o := range options {
+			if o.Kind == "allow_once" {
+				return o.OptionID
+			}
+		}
+		for _, o := range options {
+			if strings.HasPrefix(o.Kind, "allow") {
+				return o.OptionID
+			}
+		}
+		return ""
+	}
+	for _, o := range options {
+		if o.Kind == "reject_once" {
+			return o.OptionID
+		}
+	}
+	for _, o := range options {
+		if strings.HasPrefix(o.Kind, "reject") {
+			return o.OptionID
+		}
+	}
+	return ""
+}
+
+func (s *session) handleElicitation(tctx context.Context, params json.RawMessage, reply func(any)) {
+	if s.spec.Gate == nil {
+		reply(map[string]any{"action": "decline"})
+		return
+	}
+	var p struct {
+		Mode            string `json:"mode"`
+		Message         string `json:"message"`
+		RequestedSchema struct {
+			Required   []string `json:"required"`
+			Properties map[string]struct {
+				Type        string   `json:"type"`
+				Title       string   `json:"title"`
+				Description string   `json:"description"`
+				Enum        []string `json:"enum"`
+				OneOf       []struct {
+					Const string `json:"const"`
+					Title string `json:"title"`
+				} `json:"oneOf"`
+			} `json:"properties"`
+		} `json:"requestedSchema"`
+	}
+	if json.Unmarshal(params, &p) != nil || (p.Mode != "" && p.Mode != "form") {
+		reply(map[string]any{"action": "decline"})
+		return
+	}
+
+	type propMeta struct {
+		key      string
+		typ      string
+		choiceID map[string]string
+	}
+	var keys []string
+	for k := range p.RequestedSchema.Properties {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+
+	var qItems []*threadv2.QuestionItem
+	var metas []propMeta
+	if len(keys) == 0 {
+		qItems = append(qItems, &threadv2.QuestionItem{
+			Id:          "response",
+			Question:    p.Message,
+			AllowCustom: true,
+			Required:    true,
+		})
+		metas = append(metas, propMeta{key: "response", typ: "string"})
+	} else {
+		for _, k := range keys {
+			prop := p.RequestedSchema.Properties[k]
+			meta := propMeta{key: k, typ: prop.Type, choiceID: map[string]string{}}
+			var opts []*threadv2.QuestionOption
+			if prop.Type == "boolean" {
+				opts = []*threadv2.QuestionOption{
+					{Id: "true", Label: "Yes"},
+					{Id: "false", Label: "No"},
+				}
+				meta.choiceID["Yes"] = "true"
+				meta.choiceID["No"] = "false"
+			} else if len(prop.OneOf) > 0 {
+				for _, o := range prop.OneOf {
+					lbl := o.Title
+					if lbl == "" {
+						lbl = o.Const
+					}
+					opts = append(opts, &threadv2.QuestionOption{Id: o.Const, Label: lbl})
+					meta.choiceID[lbl] = o.Const
+				}
+			} else {
+				for _, e := range prop.Enum {
+					opts = append(opts, &threadv2.QuestionOption{Id: e, Label: e})
+					meta.choiceID[e] = e
+				}
+			}
+			qText := prop.Description
+			if qText == "" {
+				qText = p.Message
+			}
+			if qText == "" {
+				qText = k
+			}
+			qItems = append(qItems, &threadv2.QuestionItem{
+				Id:          k,
+				Header:      prop.Title,
+				Question:    qText,
+				Options:     opts,
+				AllowCustom: len(opts) == 0,
+				Required:    slices.Contains(p.RequestedSchema.Required, k),
+			})
+			metas = append(metas, meta)
+		}
+	}
+
+	res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
+		Kind:      threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+		UserInput: &threadv2.UserInputPayload{Questions: qItems},
+	})
+	if err != nil || !res.Allowed {
+		if res.CancelTurn {
+			reply(map[string]any{"action": "cancel"})
+		} else {
+			reply(map[string]any{"action": "decline"})
+		}
+		return
+	}
+	content := map[string]any{}
+	for _, m := range metas {
+		ans := res.Answers[m.key]
+		if ans == nil {
+			continue
+		}
+		raw := ans.CustomText
+		if raw == "" && len(ans.SelectedOptions) > 0 {
+			raw = ans.SelectedOptions[0]
+			if mapped, ok := m.choiceID[raw]; ok {
+				raw = mapped
+			}
+		}
+		switch m.typ {
+		case "boolean":
+			content[m.key] = raw == "true" || strings.EqualFold(raw, "yes")
+		default:
+			content[m.key] = raw
+		}
+	}
+	reply(map[string]any{"action": "accept", "content": content})
 }

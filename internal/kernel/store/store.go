@@ -142,6 +142,19 @@ CREATE TABLE thread_events (
 ALTER TABLE runs ADD COLUMN grant_ceiling INTEGER NOT NULL DEFAULT 0;
 `, `
 ALTER TABLE workspaces ADD COLUMN agents TEXT NOT NULL DEFAULT '';
+`, `
+ALTER TABLE turn_items RENAME TO turn_items_v3_legacy;
+DROP INDEX IF EXISTS idx_turn_items_thread_seq;
+CREATE TABLE turn_items (
+  thread_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  kind INTEGER NOT NULL,
+  payload BLOB NOT NULL,
+  PRIMARY KEY (thread_id, item_id)
+);
+CREATE INDEX idx_turn_items_thread_seq ON turn_items(thread_id, seq ASC);
 `}
 
 type WorkspaceRow struct {
@@ -167,6 +180,10 @@ type Store struct {
 func Open(dbPath string) (*Store, error) {
 	writer, err := sqlitedb.Open(dbPath, migrations)
 	if err != nil {
+		return nil, err
+	}
+	if err := repairLegacyTurnItems(writer); err != nil {
+		writer.Close()
 		return nil, err
 	}
 	reader, err := sqlitedb.OpenReader(dbPath)
@@ -651,34 +668,345 @@ func (s *Store) Runs(threadID string) ([]*threadv2.Run, error) {
 	return out, rows.Err()
 }
 
+func (tx *Tx) GetTurnItem(threadID, itemID string) (*threadv2.TurnItem, error) {
+	var b []byte
+	err := tx.tx.QueryRow(
+		`SELECT payload FROM turn_items WHERE thread_id = ? AND item_id = ?`,
+		threadID, itemID,
+	).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	it := &threadv2.TurnItem{}
+	return it, proto.Unmarshal(b, it)
+}
+
 func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
+	var existingSeq uint64
+	var existingPayload []byte
+	if err := tx.tx.QueryRow(
+		`SELECT seq, payload FROM turn_items WHERE thread_id = ? AND item_id = ?`,
+		it.ThreadId, it.ItemId,
+	).Scan(&existingSeq, &existingPayload); err == nil {
+		if it.Seq == 0 && existingSeq > 0 {
+			it.Seq = existingSeq
+		}
+		if it.CreatedAt == nil && len(existingPayload) > 0 {
+			prev := &threadv2.TurnItem{}
+			if proto.Unmarshal(existingPayload, prev) == nil && prev.CreatedAt != nil {
+				it.CreatedAt = prev.CreatedAt
+			}
+		}
+	}
 	if it.CreatedAt == nil {
 		it.CreatedAt = timestamppb.Now()
 	}
 	it.UpdatedAt = timestamppb.Now()
 	if it.Seq == 0 {
-		var existing uint64
-		if err := tx.tx.QueryRow(`SELECT seq FROM turn_items WHERE item_id = ?`, it.ItemId).Scan(&existing); err == nil && existing > 0 {
-			it.Seq = existing
-		} else {
-			seq, err := tx.NextSeq(it.ThreadId)
-			if err != nil {
-				return err
-			}
-			it.Seq = seq
+		seq, err := tx.NextSeq(it.ThreadId)
+		if err != nil {
+			return err
 		}
+		it.Seq = seq
 	}
 	b, err := proto.Marshal(it)
 	if err != nil {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO turn_items(item_id, thread_id, run_id, seq, kind, payload)
+		`INSERT INTO turn_items(thread_id, item_id, run_id, seq, kind, payload)
 		 VALUES(?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(item_id) DO UPDATE SET kind=excluded.kind, payload=excluded.payload`,
-		it.ItemId, it.ThreadId, it.RunId, it.Seq, int32(it.Kind), b,
+		 ON CONFLICT(thread_id, item_id) DO UPDATE SET
+		   run_id=excluded.run_id,
+		   seq=excluded.seq,
+		   kind=excluded.kind,
+		   payload=excluded.payload`,
+		it.ThreadId, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
 	)
 	return err
+}
+
+// SettleRunItems closes any streaming or running TurnItems left behind when a
+// run enters a terminal state (completed, interrupted, or failed), returning
+// the updated items so callers can broadcast item.updated events.
+func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv2.TurnItem, error) {
+	rows, err := tx.tx.Query(
+		`SELECT payload FROM turn_items WHERE thread_id = ? AND run_id = ? ORDER BY seq ASC`,
+		threadID, runID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var pending []*threadv2.TurnItem
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		it := &threadv2.TurnItem{}
+		if err := proto.Unmarshal(b, it); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if it.Streaming || it.Status == "running" {
+			pending = append(pending, it)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	var settled []*threadv2.TurnItem
+	for _, it := range pending {
+		it.Streaming = false
+		if it.Status == "running" {
+			if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && terminalStatus == "failed" {
+				it.Status = "completed"
+			} else {
+				it.Status = terminalStatus
+			}
+		}
+		if err := tx.PutTurnItem(it); err != nil {
+			return nil, err
+		}
+		settled = append(settled, it)
+	}
+	return settled, nil
+}
+
+func isKernelUniqueItemID(id string) bool {
+	for _, p := range []string{"itm_", "ckpt_", "err_", "reqitm_", "rb_", "sw_"} {
+		if strings.HasPrefix(id, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// repairLegacyTurnItems runs once when migrating from schema <= 3 (where
+// turn_items had a global PRIMARY KEY(item_id) that caused driver-local IDs
+// such as msg_1 / rsn_msg_1 to collide across threads and runs). It rebuilds
+// turn_items per thread from the intact thread_events log inside a single
+// transaction and drops turn_items_v3_legacy on commit.
+func repairLegacyTurnItems(db *sql.DB) error {
+	var exists int
+	err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='turn_items_v3_legacy'`).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	threadSet := map[string]bool{}
+	for _, q := range []string{
+		`SELECT thread_id FROM threads`,
+		`SELECT DISTINCT thread_id FROM thread_events`,
+		`SELECT DISTINCT thread_id FROM turn_items_v3_legacy`,
+	} {
+		rows, qErr := tx.Query(q)
+		if qErr != nil {
+			return qErr
+		}
+		for rows.Next() {
+			var tid string
+			if rows.Scan(&tid) == nil && tid != "" {
+				threadSet[tid] = true
+			}
+		}
+		rows.Close()
+	}
+
+	for threadID := range threadSet {
+		runsByID := map[string]*threadv2.Run{}
+		if rRows, rErr := tx.Query(`SELECT payload FROM runs WHERE thread_id = ?`, threadID); rErr == nil {
+			for rRows.Next() {
+				var b []byte
+				if rRows.Scan(&b) == nil {
+					r := &threadv2.Run{}
+					if proto.Unmarshal(b, r) == nil && r.RunId != "" {
+						runsByID[r.RunId] = r
+					}
+				}
+			}
+			rRows.Close()
+		}
+
+		var legacyItems []*threadv2.TurnItem
+		if lRows, lErr := tx.Query(`SELECT payload FROM turn_items_v3_legacy WHERE thread_id = ? ORDER BY seq ASC`, threadID); lErr == nil {
+			for lRows.Next() {
+				var b []byte
+				if lRows.Scan(&b) == nil {
+					it := &threadv2.TurnItem{}
+					if proto.Unmarshal(b, it) == nil && it.ItemId != "" {
+						it.ThreadId = threadID
+						legacyItems = append(legacyItems, it)
+					}
+				}
+			}
+			lRows.Close()
+		}
+
+		type rawEv struct {
+			seq     uint64
+			payload []byte
+		}
+		var evRows []rawEv
+		if eRows, eErr := tx.Query(`SELECT seq, payload FROM thread_events WHERE thread_id = ? ORDER BY seq ASC`, threadID); eErr == nil {
+			for eRows.Next() {
+				var e rawEv
+				if eRows.Scan(&e.seq, &e.payload) == nil {
+					evRows = append(evRows, e)
+				}
+			}
+			eRows.Close()
+		}
+
+		itemsByID := map[string]*threadv2.TurnItem{}
+		if len(evRows) == 0 {
+			for _, it := range legacyItems {
+				itemsByID[it.ItemId] = it
+			}
+		} else {
+			scopedIDs := map[string]string{}
+			usedSeqs := map[uint64]bool{}
+			for _, it := range legacyItems {
+				if isKernelUniqueItemID(it.ItemId) {
+					itemsByID[it.ItemId] = it
+					if it.RunId != "" {
+						scopedIDs[it.RunId+"\x00"+it.ItemId] = it.ItemId
+					}
+					if it.Seq > 0 {
+						usedSeqs[it.Seq] = true
+					}
+				}
+			}
+			for _, raw := range evRows {
+				ev := &threadv2.ThreadEvent{}
+				if proto.Unmarshal(raw.payload, ev) != nil {
+					continue
+				}
+				if ev.Item != nil && ev.Item.ItemId != "" {
+					inc := proto.Clone(ev.Item).(*threadv2.TurnItem)
+					inc.ThreadId = threadID
+					rawID := inc.ItemId
+					key := inc.RunId + "\x00" + rawID
+					effID, seen := scopedIDs[key]
+					if !seen {
+						if prev, exists := itemsByID[rawID]; exists && prev.RunId != inc.RunId {
+							effID = inc.RunId + ":" + rawID
+						} else {
+							effID = rawID
+						}
+						scopedIDs[key] = effID
+					}
+					inc.ItemId = effID
+					if prev, exists := itemsByID[effID]; exists {
+						inc.Seq = prev.Seq
+						if prev.CreatedAt != nil {
+							inc.CreatedAt = prev.CreatedAt
+						}
+						if inc.ToolName == "" {
+							inc.ToolName = prev.ToolName
+						}
+						if inc.Command == "" {
+							inc.Command = prev.Command
+						}
+						if inc.FilePath == "" {
+							inc.FilePath = prev.FilePath
+						}
+						if prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION &&
+							inc.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL {
+							inc.Kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
+						}
+					} else {
+						if inc.Seq == 0 || inc.Seq >= raw.seq || usedSeqs[inc.Seq] {
+							inc.Seq = raw.seq
+						}
+						usedSeqs[inc.Seq] = true
+					}
+					itemsByID[effID] = inc
+				} else if ev.Type == "item.delta" && ev.TargetItemId != "" && ev.TextDelta != "" {
+					if cur := itemsByID[ev.TargetItemId]; cur != nil {
+						cur.Text += ev.TextDelta
+					}
+				}
+				if ev.Type == "request.resolved" && ev.Request != nil {
+					if reqIt := itemsByID["reqitm_"+ev.Request.RequestId]; reqIt != nil {
+						reqIt.Status = "completed"
+					}
+				}
+				if ev.Type == "thread.rolled_back" && ev.Checkpoint != nil {
+					maxOrd := ev.Checkpoint.RunOrdinal
+					for id, it := range itemsByID {
+						if r := runsByID[it.RunId]; r != nil && r.Ordinal > maxOrd && r.Status != threadv2.RunStatus_RUN_STATUS_QUEUED {
+							delete(itemsByID, id)
+						}
+					}
+				}
+			}
+		}
+
+		for id, it := range itemsByID {
+			if r := runsByID[it.RunId]; r != nil {
+				if r.Status == threadv2.RunStatus_RUN_STATUS_ROLLED_BACK {
+					delete(itemsByID, id)
+					continue
+				}
+				switch r.Status {
+				case threadv2.RunStatus_RUN_STATUS_COMPLETED:
+					if it.Streaming || it.Status == "running" {
+						it.Streaming = false
+						it.Status = "completed"
+					}
+				case threadv2.RunStatus_RUN_STATUS_INTERRUPTED, threadv2.RunStatus_RUN_STATUS_CANCELLED:
+					if it.Streaming || it.Status == "running" {
+						it.Streaming = false
+						it.Status = "interrupted"
+					}
+				case threadv2.RunStatus_RUN_STATUS_FAILED:
+					if it.Streaming {
+						it.Streaming = false
+						if it.Status == "running" {
+							it.Status = "completed"
+						}
+					} else if it.Status == "running" {
+						it.Status = "interrupted"
+					}
+				}
+			}
+			b, err := proto.Marshal(it)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.Exec(
+				`INSERT INTO turn_items(thread_id, item_id, run_id, seq, kind, payload)
+				 VALUES(?, ?, ?, ?, ?, ?)
+				 ON CONFLICT(thread_id, item_id) DO UPDATE SET
+				   run_id=excluded.run_id, seq=excluded.seq, kind=excluded.kind, payload=excluded.payload`,
+				threadID, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
+			); err != nil {
+				return err
+			}
+		}
+	}
+
+	if _, err := tx.Exec(`DROP TABLE turn_items_v3_legacy`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (tx *Tx) DeleteTurnItemsAfterRunIds(threadID string, removedRunIDs map[string]bool) error {
