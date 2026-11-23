@@ -140,5 +140,29 @@
     "inWorktree": "已在别的 worktree 签出",
     "switchNote": "开始前会把项目目录切到这个分支；目录里有没提交的改动时不能切换。",
     "none": "没有匹配的分支"
+  },
+  "background": {
+    "title": "后台任务",
+    "badge": "后台 · {{count}}",
+    "runningOne": "后台任务进行中 · {{title}}",
+    "runningMany": "{{count}} 个后台任务进行中",
+    "daemonOne": "常驻进程运行中 · {{title}}",
+    "daemonMany": "{{count}} 个常驻进程运行中",
+    "waitingDone": "这一轮前台回复已结束，正在等待 {{count}} 个后台任务完成后继续汇报。",
+    "view": "查看",
+    "stop": "停止",
+    "stopAll": "全部停止",
+    "runningGroup": "运行中",
+    "recentGroup": "最近结束",
+    "kindCommand": "命令",
+    "kindSubagent": "子智能体",
+    "kindSchedule": "定时唤醒",
+    "kindDaemon": "常驻服务",
+    "statusRunning": "运行中",
+    "statusCompleted": "已完成",
+    "statusFailed": "失败",
+    "statusStopped": "已停止",
+    "sessionStopHint": "与会话共用停止信号",
+    "noOutput": "暂无输出"
   }
 }

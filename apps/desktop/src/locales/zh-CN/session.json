@@ -20,6 +20,7 @@
     "interrupted": "这一轮被打断了。任务还在，{{grant}} 再发消息就会接着做。",
     "interruptedBy": "{{name}} 打断了这一轮。任务还在，{{grant}} 再发消息就会接着做。",
     "turnFailed": "第 {{turn}} 轮出错：{{title}}",
+    "wakeLine": "后台唤醒 · {{reason}}",
     "copy": "拷贝",
     "inProgress": "进行中",
     "truncated": "…（已截断）",

@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
@@ -46,6 +47,47 @@ var builtinFlavors = map[string]Flavor{
 
 type Driver struct {
 	PathEnv string
+	// Optional overrides for deterministic tests; zero uses production defaults.
+	PostPromptMergeWindow time.Duration
+	OutOfTurnToolWait     time.Duration
+	OutOfTurnDebounce     time.Duration
+	OutOfTurnQuietLimit   time.Duration
+	BusyPromptRetryDelay  time.Duration
+}
+
+func (d *Driver) mergeWindow() time.Duration {
+	if d.PostPromptMergeWindow > 0 {
+		return d.PostPromptMergeWindow
+	}
+	return 1500 * time.Millisecond
+}
+
+func (d *Driver) outOfTurnToolWait() time.Duration {
+	if d.OutOfTurnToolWait > 0 {
+		return d.OutOfTurnToolWait
+	}
+	return 6 * time.Second
+}
+
+func (d *Driver) outOfTurnDebounce() time.Duration {
+	if d.OutOfTurnDebounce > 0 {
+		return d.OutOfTurnDebounce
+	}
+	return 1500 * time.Millisecond
+}
+
+func (d *Driver) outOfTurnQuietLimit() time.Duration {
+	if d.OutOfTurnQuietLimit > 0 {
+		return d.OutOfTurnQuietLimit
+	}
+	return 45 * time.Second
+}
+
+func (d *Driver) busyPromptRetryDelay() time.Duration {
+	if d.BusyPromptRetryDelay > 0 {
+		return d.BusyPromptRetryDelay
+	}
+	return 350 * time.Millisecond
 }
 
 func NewDriver(pathEnv string) *Driver { return &Driver{PathEnv: pathEnv} }
@@ -151,26 +193,40 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	if err != nil {
 		return nil, err
 	}
+	sessCtx, sessCancel := context.WithCancel(ctx)
 	s := &session{
-		proc:      proc,
-		spec:      spec,
-		events:    make(chan runtime.Event, 256),
-		pending:   map[int64]func(rpcRes){},
-		terminals: map[string]*managedTerm{},
-		tools:     map[string]*acpToolState{},
-		turnCtx:   ctx,
+		drv:           d,
+		proc:          proc,
+		spec:          spec,
+		events:        make(chan runtime.Event, 256),
+		pending:       map[int64]func(rpcRes){},
+		terminals:     map[string]*managedTerm{},
+		agentTerms:    map[string]*acpAgentTerm{},
+		tools:         map[string]*acpToolState{},
+		bgTasks:       map[string]*acpBgTask{},
+		sessionCtx:    sessCtx,
+		sessionCancel: sessCancel,
+		turnCtx:       sessCtx,
 	}
 	s.alive.Store(true)
 	go s.readLoop()
 
+	clientCaps := map[string]any{
+		"fs":          map[string]any{"readTextFile": true, "writeTextFile": true},
+		"terminal":    true,
+		"elicitation": map[string]any{"form": map[string]any{}},
+	}
+	if spec.Instance != nil && strings.EqualFold(spec.Instance.AcpFlavor, "copilot") {
+		clientCaps["_meta"] = map[string]any{
+			"github.com/copilot": map[string]any{
+				"events": []string{"subagent.started", "subagent.completed", "subagent.failed", "assistant.idle"},
+			},
+		}
+	}
 	initRes, err := s.call(ctx, "initialize", map[string]any{
-		"protocolVersion": 1,
-		"clientCapabilities": map[string]any{
-			"fs":          map[string]any{"readTextFile": true, "writeTextFile": true},
-			"terminal":    true,
-			"elicitation": map[string]any{"form": map[string]any{}},
-		},
-		"clientInfo": map[string]any{"name": "hermesh", "version": "2.0.0"},
+		"protocolVersion":    1,
+		"clientCapabilities": clientCaps,
+		"clientInfo":         map[string]any{"name": "hermesh", "version": "2.0.0"},
 	})
 	if err != nil {
 		proc.Stop(time.Second)
@@ -283,11 +339,14 @@ type acpToolState struct {
 	status          string
 	command         string
 	filePath        string
+	terminalID      string
 	output          string
 	diffNewText     string
 	rawInput        json.RawMessage
 	lastArtifactSig string
 	started         bool
+	asyncLaunch     bool
+	asyncAgentID    string
 }
 
 type rpcRes struct {
@@ -296,14 +355,81 @@ type rpcRes struct {
 }
 
 type managedTerm struct {
-	cmd    *exec.Cmd
-	outBuf bytes.Buffer
-	mu     sync.Mutex
-	done   chan struct{}
-	exit   int
+	id        string
+	command   string
+	cmd       *exec.Cmd
+	outBuf    bytes.Buffer
+	mu        sync.Mutex
+	done      chan struct{}
+	exit      int
+	lastFlush time.Time
+	promoted  bool
+}
+
+type acpAgentTerm struct {
+	id        string
+	toolID    string
+	title     string
+	command   string
+	outBuf    bytes.Buffer
+	carryUTF8 []byte
+	running   bool
+	exitCode  int32
+	hasExit   bool
+}
+
+func (at *acpAgentTerm) appendBytes(raw []byte) {
+	if len(raw) == 0 {
+		return
+	}
+	buf := raw
+	if len(at.carryUTF8) > 0 {
+		buf = append(append([]byte(nil), at.carryUTF8...), raw...)
+		at.carryUTF8 = at.carryUTF8[:0]
+	}
+	validEnd := len(buf)
+	for back := 1; back <= 3 && back <= len(buf); back++ {
+		idx := len(buf) - back
+		b := buf[idx]
+		if b < 0x80 {
+			break
+		}
+		if utf8.RuneStart(b) {
+			if !utf8.FullRune(buf[idx:]) {
+				validEnd = idx
+				at.carryUTF8 = append(at.carryUTF8[:0], buf[idx:]...)
+			}
+			break
+		}
+	}
+	if validEnd > 0 {
+		_, _ = at.outBuf.Write(buf[:validEnd])
+	}
+}
+
+func (at *acpAgentTerm) flushCarry() {
+	if len(at.carryUTF8) > 0 {
+		_, _ = at.outBuf.Write(at.carryUTF8)
+		at.carryUTF8 = at.carryUTF8[:0]
+	}
+}
+
+type acpBgTask struct {
+	taskID      string
+	itemID      string
+	agentID     string
+	kind        threadv2.BackgroundTaskKind
+	title       string
+	command     string
+	output      string
+	awaited     bool
+	asyncLaunch bool
+	stopScope   threadv2.BackgroundTaskStopScope
+	running     bool
 }
 
 type session struct {
+	drv             *Driver
 	proc            *provider.Proc
 	spec            runtime.StartSpec
 	sessionID       string
@@ -316,17 +442,194 @@ type session struct {
 	nextID          atomic.Int64
 	itemSeq         atomic.Uint64
 	closeOnce       sync.Once
+	sessionCtx      context.Context
+	sessionCancel   context.CancelFunc
 
 	emitMu       sync.RWMutex
 	eventsClosed bool
 
-	mu        sync.Mutex
-	pending   map[int64]func(rpcRes)
-	terminals map[string]*managedTerm
-	tools     map[string]*acpToolState
-	turnCtx   context.Context
-	msgItemID string
-	msgBuf    strings.Builder
+	mu                 sync.Mutex
+	pending            map[int64]func(rpcRes)
+	terminals          map[string]*managedTerm
+	agentTerms         map[string]*acpAgentTerm
+	tools              map[string]*acpToolState
+	bgTasks            map[string]*acpBgTask
+	turnCtx            context.Context
+	inPrompt           bool
+	awaitingMerge      bool
+	mergeTimer         *time.Timer
+	outOfTurnActive    bool
+	outOfTurnReplyOpen bool
+	outOfTurnSawReply  bool
+	outOfTurnSawUsage  bool
+	outOfTurnTimer     *time.Timer
+	openServerReqs     int
+	msgItemID          string
+	msgBuf             strings.Builder
+}
+
+func tailUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	start := len(s) - maxBytes
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
+}
+
+func (s *session) gateCtx() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inPrompt && s.turnCtx != nil && s.turnCtx.Err() == nil {
+		return s.turnCtx
+	}
+	return s.sessionCtx
+}
+
+func (s *session) stopTimersLocked() {
+	if s.mergeTimer != nil {
+		s.mergeTimer.Stop()
+		s.mergeTimer = nil
+	}
+	if s.outOfTurnTimer != nil {
+		s.outOfTurnTimer.Stop()
+		s.outOfTurnTimer = nil
+	}
+}
+
+func (s *session) hasOpenWakeToolLocked() bool {
+	for id, st := range s.tools {
+		if bg := s.bgTasks[id]; bg != nil && bg.running {
+			continue
+		}
+		if st.status == "in_progress" || st.status == "pending" {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *session) noteWakeActivityLocked(opensReply bool) {
+	if s.inPrompt {
+		return
+	}
+	if s.awaitingMerge {
+		if s.mergeTimer != nil {
+			s.mergeTimer.Stop()
+			s.mergeTimer = nil
+		}
+		s.awaitingMerge = false
+	}
+	if !s.outOfTurnActive {
+		s.outOfTurnActive = true
+		s.outOfTurnSawReply = false
+		s.outOfTurnSawUsage = false
+		if s.msgItemID == "" {
+			s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+		}
+	}
+	s.outOfTurnSawUsage = false
+	if opensReply {
+		s.outOfTurnReplyOpen = true
+		s.outOfTurnSawReply = true
+	}
+	s.rearmOutOfTurnTimerLocked()
+}
+
+func (s *session) rearmOutOfTurnTimerLocked() {
+	if s.outOfTurnTimer != nil {
+		s.outOfTurnTimer.Stop()
+		s.outOfTurnTimer = nil
+	}
+	if !s.outOfTurnActive || s.inPrompt {
+		return
+	}
+	if s.openServerReqs > 0 || s.hasOpenWakeToolLocked() {
+		return
+	}
+	wait := s.drv.outOfTurnDebounce()
+	if s.outOfTurnReplyOpen {
+		wait = s.drv.outOfTurnQuietLimit()
+	} else if !s.outOfTurnSawUsage {
+		wait = s.drv.outOfTurnToolWait()
+	}
+	s.outOfTurnTimer = time.AfterFunc(wait, s.settleOutOfTurn)
+}
+
+func (s *session) settleOutOfTurn() {
+	s.mu.Lock()
+	if !s.outOfTurnActive || s.inPrompt {
+		s.mu.Unlock()
+		return
+	}
+	if s.openServerReqs > 0 || s.hasOpenWakeToolLocked() {
+		s.rearmOutOfTurnTimerLocked()
+		s.mu.Unlock()
+		return
+	}
+	sawReply := s.outOfTurnSawReply
+	s.outOfTurnActive = false
+	s.outOfTurnReplyOpen = false
+	s.outOfTurnSawReply = false
+	s.outOfTurnSawUsage = false
+	s.outOfTurnTimer = nil
+
+	var autoSettled []runtime.Event
+	if sawReply {
+		for _, bg := range s.bgTasks {
+			if bg.running && bg.awaited && bg.asyncLaunch {
+				bg.running = false
+				autoSettled = append(autoSettled,
+					runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              bg.taskID,
+						ItemID:              bg.itemID,
+						ToolName:            bg.title,
+						Command:             bg.command,
+						Output:              bg.output,
+						ExitCode:            0,
+						HasExitCode:         true,
+						BackgroundKind:      bg.kind,
+						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						BackgroundStopScope: bg.stopScope,
+						BackgroundAwaited:   bg.awaited,
+					},
+					runtime.Event{
+						Kind:        runtime.EventToolCompleted,
+						ItemID:      bg.itemID,
+						ToolName:    bg.title,
+						Command:     bg.command,
+						ExitCode:    0,
+						HasExitCode: true,
+						Output:      bg.output,
+					},
+				)
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	for _, ev := range autoSettled {
+		s.emit(ev)
+	}
+	s.flushAssistantSegment()
+	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
+}
+
+func (s *session) finishDeferredPrompt() {
+	s.mu.Lock()
+	if !s.awaitingMerge || s.inPrompt {
+		s.mu.Unlock()
+		return
+	}
+	s.awaitingMerge = false
+	s.mergeTimer = nil
+	s.mu.Unlock()
+
+	s.flushAssistantSegment()
+	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 }
 
 func (s *session) parseSessionConfigOptions(raw json.RawMessage) {
@@ -409,15 +712,40 @@ func (s *session) call(ctx context.Context, method string, params any) (json.Raw
 	}
 }
 
+func isACPBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "already processing") ||
+		strings.Contains(msg, "session is busy") ||
+		strings.Contains(msg, "agent is busy") ||
+		strings.Contains(msg, "already running") ||
+		strings.Contains(msg, "turn in progress")
+}
+
 func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	if !s.Alive() {
 		return runtime.ErrSessionClosed
 	}
 	s.mu.Lock()
+	s.stopTimersLocked()
+	s.inPrompt = true
+	s.awaitingMerge = false
+	s.outOfTurnActive = false
+	s.outOfTurnReplyOpen = false
+	s.outOfTurnSawReply = false
+	s.outOfTurnSawUsage = false
 	s.turnCtx = ctx
 	s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 	s.msgBuf.Reset()
-	s.tools = map[string]*acpToolState{}
+	keptTools := map[string]*acpToolState{}
+	for id, st := range s.tools {
+		if bg := s.bgTasks[id]; bg != nil && bg.running {
+			keptTools[id] = st
+		}
+	}
+	s.tools = keptTools
 	s.mu.Unlock()
 
 	prompt := []any{map[string]any{"type": "text", "text": in.Prompt}}
@@ -435,15 +763,300 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 			})
 		}
 	}
-	return s.request("session/prompt", map[string]any{
+	err := s.sendPromptWithBusyRetry(ctx, prompt, 0)
+	if err != nil {
+		s.mu.Lock()
+		s.inPrompt = false
+		s.mu.Unlock()
+	}
+	return err
+}
+
+func (s *session) sendPromptWithBusyRetry(turnCtx context.Context, prompt []any, attempt int) error {
+	params := map[string]any{
 		"sessionId": s.sessionID,
 		"prompt":    prompt,
-	}, s.onPromptResult)
+	}
+	return s.request("session/prompt", params, func(r rpcRes) {
+		if r.err != nil && isACPBusyError(r.err) && attempt < 8 && s.Alive() && turnCtx.Err() == nil {
+			delay := s.drv.busyPromptRetryDelay()
+			go func() {
+				select {
+				case <-time.After(delay):
+					s.mu.Lock()
+					if !s.Alive() || !s.inPrompt {
+						s.mu.Unlock()
+						return
+					}
+					s.msgBuf.Reset()
+					s.mu.Unlock()
+					if err := s.sendPromptWithBusyRetry(turnCtx, prompt, attempt+1); err != nil {
+						s.onPromptResult(rpcRes{err: err})
+					}
+				case <-turnCtx.Done():
+					s.mu.Lock()
+					s.inPrompt = false
+					s.stopTimersLocked()
+					s.mu.Unlock()
+					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+				case <-s.sessionCtx.Done():
+				case <-s.proc.Done():
+				}
+			}()
+			return
+		}
+		s.onPromptResult(r)
+	})
+}
+
+func detectACPAsyncLaunch(rawInput, meta json.RawMessage) (isAsync bool, agentID string) {
+	if len(rawInput) > 0 {
+		var in struct {
+			RunInBackground      *bool `json:"run_in_background"`
+			RunInBackgroundCamel *bool `json:"runInBackground"`
+			Background           *bool `json:"background"`
+		}
+		if json.Unmarshal(rawInput, &in) == nil {
+			if (in.RunInBackground != nil && *in.RunInBackground) ||
+				(in.RunInBackgroundCamel != nil && *in.RunInBackgroundCamel) ||
+				(in.Background != nil && *in.Background) {
+				isAsync = true
+			}
+		}
+	}
+	if len(meta) > 0 {
+		var m struct {
+			IsAsync    *bool  `json:"isAsync"`
+			AgentID    string `json:"agentId"`
+			TaskID     string `json:"taskId"`
+			ClaudeCode struct {
+				ToolResponse struct {
+					IsAsync *bool  `json:"isAsync"`
+					AgentID string `json:"agentId"`
+					TaskID  string `json:"taskId"`
+				} `json:"toolResponse"`
+			} `json:"claudeCode"`
+		}
+		if json.Unmarshal(meta, &m) == nil {
+			if (m.IsAsync != nil && *m.IsAsync) ||
+				(m.ClaudeCode.ToolResponse.IsAsync != nil && *m.ClaudeCode.ToolResponse.IsAsync) {
+				isAsync = true
+			}
+			for _, id := range []string{m.AgentID, m.TaskID, m.ClaudeCode.ToolResponse.AgentID, m.ClaudeCode.ToolResponse.TaskID} {
+				if strings.TrimSpace(id) != "" {
+					agentID = strings.TrimSpace(id)
+					break
+				}
+			}
+		}
+	}
+	return isAsync, agentID
+}
+
+func classifyACPBackgroundTool(st *acpToolState) (kind threadv2.BackgroundTaskKind, title string, cmd string, awaited bool, ok bool) {
+	if st == nil || (!st.asyncLaunch && st.status != "in_progress" && st.status != "pending") {
+		return 0, "", "", false, false
+	}
+	var in struct {
+		IsDaemon         *bool  `json:"IsDaemon"`
+		IsDaemonSnake    *bool  `json:"is_daemon"`
+		Persistent       *bool  `json:"persistent"`
+		ToolSummary      string `json:"toolSummary"`
+		Description      string `json:"description"`
+		CommandLine      string `json:"CommandLine"`
+		CommandLineSnake string `json:"command_line"`
+		Command          string `json:"command"`
+		Role             string `json:"Role"`
+		TypeName         string `json:"TypeName"`
+		SubagentType     string `json:"subagent_type"`
+		CronExpression   string `json:"CronExpression"`
+		DurationSeconds  int64  `json:"DurationSeconds"`
+	}
+	_ = json.Unmarshal(st.rawInput, &in)
+	isDaemon := (in.IsDaemon != nil && *in.IsDaemon) ||
+		(in.IsDaemonSnake != nil && *in.IsDaemonSnake) ||
+		(in.Persistent != nil && *in.Persistent)
+
+	cmd = st.command
+	for _, c := range []string{in.CommandLine, in.CommandLineSnake, in.Command} {
+		if cmd == "" && strings.TrimSpace(c) != "" {
+			cmd = strings.TrimSpace(c)
+		}
+	}
+	title = strings.TrimSpace(st.title)
+	for _, cand := range []string{in.ToolSummary, in.Description, in.Role, in.SubagentType, cmd} {
+		if title == "" && strings.TrimSpace(cand) != "" {
+			title = strings.TrimSpace(cand)
+		}
+	}
+	lowerTitle := strings.ToLower(title)
+	lowerKind := strings.ToLower(st.kind)
+
+	switch {
+	case lowerKind == "execute" || lowerKind == "command" || lowerKind == "bash" || cmd != "":
+		if isDaemon {
+			return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
+		}
+		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND, title, cmd, true, true
+	case strings.Contains(lowerTitle, "schedule") || in.CronExpression != "" || in.DurationSeconds > 0:
+		if isDaemon {
+			return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
+		}
+		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE, title, cmd, true, true
+	case strings.Contains(lowerTitle, "subagent") || strings.Contains(lowerTitle, "agent") || lowerKind == "agent" || in.Role != "" || in.TypeName != "" || in.SubagentType != "" || st.asyncLaunch:
+		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT, title, cmd, true, true
+	default:
+		return 0, "", "", false, false
+	}
+}
+
+func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwaited bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, st := range s.tools {
+		kind, title, cmd, awaited, ok := classifyACPBackgroundTool(st)
+		if !ok {
+			continue
+		}
+		bg := s.bgTasks[id]
+		if bg == nil {
+			bg = &acpBgTask{
+				taskID:      id,
+				itemID:      id,
+				agentID:     st.asyncAgentID,
+				kind:        kind,
+				title:       title,
+				command:     cmd,
+				output:      tailUTF8(st.output, 16384),
+				awaited:     awaited,
+				asyncLaunch: st.asyncLaunch,
+				stopScope:   threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:     true,
+			}
+			s.bgTasks[id] = bg
+			newEvents = append(newEvents, runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			})
+		}
+		if bg.running && bg.awaited {
+			hasAwaited = true
+		}
+	}
+
+	for termID, at := range s.agentTerms {
+		if !at.running {
+			continue
+		}
+		taskKey := termID
+		if at.toolID != "" {
+			taskKey = at.toolID
+		}
+		bg := s.bgTasks[taskKey]
+		if bg == nil {
+			title := at.title
+			if title == "" {
+				title = at.command
+			}
+			if title == "" {
+				title = "Terminal"
+			}
+			bg = &acpBgTask{
+				taskID:    taskKey,
+				itemID:    taskKey,
+				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+				title:     title,
+				command:   at.command,
+				output:    tailUTF8(at.outBuf.String(), 16384),
+				awaited:   true,
+				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:   true,
+			}
+			s.bgTasks[taskKey] = bg
+			newEvents = append(newEvents, runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			})
+		}
+		if bg.running && bg.awaited {
+			hasAwaited = true
+		}
+	}
+
+	for termID, mt := range s.terminals {
+		select {
+		case <-mt.done:
+			continue
+		default:
+		}
+		mt.mu.Lock()
+		outSnap := tailUTF8(mt.outBuf.String(), 16384)
+		mt.promoted = true
+		mt.mu.Unlock()
+		bg := s.bgTasks[termID]
+		if bg == nil {
+			bg = &acpBgTask{
+				taskID:    termID,
+				itemID:    termID,
+				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+				title:     mt.command,
+				command:   mt.command,
+				output:    outSnap,
+				awaited:   true,
+				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+				running:   true,
+			}
+			s.bgTasks[termID] = bg
+			newEvents = append(newEvents, runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			})
+		}
+		if bg.running && bg.awaited {
+			hasAwaited = true
+		}
+	}
+
+	for _, bg := range s.bgTasks {
+		if bg.running && bg.awaited {
+			hasAwaited = true
+		}
+	}
+	return newEvents, hasAwaited
 }
 
 func (s *session) onPromptResult(r rpcRes) {
 	s.flushAssistantSegment()
 	if r.err != nil {
+		s.mu.Lock()
+		s.inPrompt = false
+		s.stopTimersLocked()
+		s.mu.Unlock()
 		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "acp_error", ErrorMessage: r.err.Error()})
 		return
 	}
@@ -472,14 +1085,57 @@ func (s *session) onPromptResult(r rpcRes) {
 	}
 	switch res.StopReason {
 	case "cancelled":
+		s.mu.Lock()
+		s.inPrompt = false
+		s.stopTimersLocked()
+		var stopped []runtime.Event
+		for _, bg := range s.bgTasks {
+			if bg.running {
+				bg.running = false
+				stopped = append(stopped, runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					Text:                "cancelled",
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				})
+			}
+		}
+		s.mu.Unlock()
+		for _, ev := range stopped {
+			s.emit(ev)
+		}
 		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 	case "refusal", "max_tokens", "max_turn_requests":
+		s.mu.Lock()
+		s.inPrompt = false
+		s.stopTimersLocked()
+		s.mu.Unlock()
 		s.emit(runtime.Event{
 			Kind:         runtime.EventTurnFailed,
 			ErrorCode:    res.StopReason,
 			ErrorMessage: "acp turn stopped: " + res.StopReason,
 		})
 	default:
+		bgEvents, hasAwaited := s.promoteOpenBackgroundWork()
+		for _, ev := range bgEvents {
+			s.emit(ev)
+		}
+		s.mu.Lock()
+		s.inPrompt = false
+		if hasAwaited {
+			s.awaitingMerge = true
+			s.mergeTimer = time.AfterFunc(s.drv.mergeWindow(), s.finishDeferredPrompt)
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Unlock()
 		s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 	}
 }
@@ -535,15 +1191,99 @@ func (s *session) SetModes(ctx context.Context, _ identityv1.RuntimeMode, im thr
 }
 
 func (s *session) Interrupt(context.Context) error {
-	return s.writeJSON(map[string]any{
+	s.mu.Lock()
+	wasOutOfTurn := s.outOfTurnActive
+	s.outOfTurnActive = false
+	s.outOfTurnReplyOpen = false
+	s.outOfTurnSawReply = false
+	s.outOfTurnSawUsage = false
+	s.awaitingMerge = false
+	s.stopTimersLocked()
+	s.mu.Unlock()
+	err := s.writeJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "session/cancel",
 		"params":  map[string]any{"sessionId": s.sessionID},
 	})
+	if wasOutOfTurn {
+		s.flushAssistantSegment()
+		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+	}
+	return err
+}
+
+func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
+	if taskID != "" {
+		s.mu.Lock()
+		mt := s.terminals[taskID]
+		if mt != nil {
+			delete(s.terminals, taskID)
+			bg := s.bgTasks[taskID]
+			if bg != nil {
+				bg.running = false
+			}
+			s.mu.Unlock()
+			if mt.cmd != nil && mt.cmd.Process != nil {
+				_ = mt.cmd.Process.Kill()
+			}
+			if bg != nil {
+				s.emit(runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					Text:                "stopped by user",
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				})
+			}
+			return nil
+		}
+		s.mu.Unlock()
+	}
+
+	// Agent-owned ACP tasks (run_command / schedule / invoke_subagent) have no
+	// single-task kill RPC in ACP v1; session/cancel stops all session background work.
+	s.killTerminals()
+	s.mu.Lock()
+	var stopped []runtime.Event
+	for _, bg := range s.bgTasks {
+		if bg.running {
+			bg.running = false
+			stopped = append(stopped, runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				Text:                "stopped by user",
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			})
+		}
+	}
+	s.mu.Unlock()
+	for _, ev := range stopped {
+		s.emit(ev)
+	}
+	return s.Interrupt(ctx)
 }
 
 func (s *session) ForceStop() error {
 	s.alive.Store(false)
+	s.mu.Lock()
+	s.stopTimersLocked()
+	s.mu.Unlock()
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.killTerminals()
 	s.closeOnce.Do(func() { s.proc.Stop(0) })
 	return nil
@@ -551,6 +1291,12 @@ func (s *session) ForceStop() error {
 
 func (s *session) Close() error {
 	s.alive.Store(false)
+	s.mu.Lock()
+	s.stopTimersLocked()
+	s.mu.Unlock()
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.killTerminals()
 	s.closeOnce.Do(func() { s.proc.Stop(2 * time.Second) })
 	return nil
@@ -632,6 +1378,10 @@ func (s *session) readLoop() {
 			if !s.replaying.Load() {
 				s.handleSessionUpdate(m.Params)
 			}
+		case m.Method == "github.com/copilot/sessionEvent":
+			if !s.replaying.Load() {
+				s.handleCopilotSessionEvent(m.Params)
+			}
 		}
 	})
 }
@@ -642,18 +1392,31 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			SessionUpdate string          `json:"sessionUpdate"`
 			Content       json.RawMessage `json:"content"`
 			ToolCallID    string          `json:"toolCallId"`
+			TerminalID    string          `json:"terminalId"`
 			Title         string          `json:"title"`
+			Command       string          `json:"command"`
 			Kind          string          `json:"kind"`
 			Status        string          `json:"status"`
-			Locations     []struct {
+			Output        string          `json:"output"`
+			Chunk         string          `json:"chunk"`
+			Data          string          `json:"data"`
+			Encoding      string          `json:"encoding"`
+			ExitCode      *int32          `json:"exitCode"`
+			ExitStatus    *struct {
+				ExitCode *int32 `json:"exitCode"`
+			} `json:"exitStatus"`
+			Locations []struct {
 				Path string `json:"path"`
 			} `json:"locations"`
 			RawInput  json.RawMessage `json:"rawInput"`
 			RawOutput json.RawMessage `json:"rawOutput"`
+			Meta      json.RawMessage `json:"_meta"`
 			Entries   []struct {
 				Content string `json:"content"`
 				Status  string `json:"status"`
 			} `json:"entries"`
+			Used uint64 `json:"used"`
+			Size uint64 `json:"size"`
 		} `json:"update"`
 	}
 	if json.Unmarshal(params, &p) != nil {
@@ -668,6 +1431,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
+			s.noteWakeActivityLocked(true)
 			msgID := s.msgItemID
 			s.msgBuf.WriteString(cb.Text)
 			s.mu.Unlock()
@@ -680,19 +1444,184 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if json.Unmarshal(u.Content, &cb) == nil && cb.Text != "" {
 			s.mu.Lock()
+			s.noteWakeActivityLocked(true)
 			msgID := s.msgItemID
 			s.mu.Unlock()
 			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID, Text: cb.Text})
 		}
+	case "terminal_update", "terminal_output_chunk":
+		termID := u.TerminalID
+		if termID == "" {
+			termID = u.ToolCallID
+		}
+		if termID == "" {
+			return
+		}
+		var chunkBytes []byte
+		if u.Data != "" {
+			if strings.EqualFold(u.Encoding, "utf8") || strings.EqualFold(u.Encoding, "text") {
+				chunkBytes = []byte(u.Data)
+			} else if decoded, err := base64.StdEncoding.DecodeString(u.Data); err == nil {
+				chunkBytes = decoded
+			} else if decodedRaw, errRaw := base64.RawStdEncoding.DecodeString(u.Data); errRaw == nil {
+				chunkBytes = decodedRaw
+			} else {
+				chunkBytes = []byte(u.Data)
+			}
+		} else if u.Chunk != "" {
+			chunkBytes = []byte(u.Chunk)
+		}
+
+		s.mu.Lock()
+		at := s.agentTerms[termID]
+		isNewTerm := false
+		if at == nil {
+			at = &acpAgentTerm{id: termID, running: true}
+			s.agentTerms[termID] = at
+			isNewTerm = true
+		}
+		if u.ToolCallID != "" && at.toolID == "" {
+			at.toolID = u.ToolCallID
+		}
+		if u.Title != "" {
+			at.title = u.Title
+		}
+		if u.Command != "" {
+			at.command = u.Command
+		}
+		if len(chunkBytes) > 0 {
+			at.appendBytes(chunkBytes)
+		} else if u.Output != "" && u.SessionUpdate == "terminal_update" {
+			at.carryUTF8 = at.carryUTF8[:0]
+			at.outBuf.Reset()
+			_, _ = at.outBuf.WriteString(u.Output)
+		}
+		exitCode := u.ExitCode
+		if exitCode == nil && u.ExitStatus != nil {
+			exitCode = u.ExitStatus.ExitCode
+		}
+		if exitCode != nil {
+			at.exitCode = *exitCode
+			at.hasExit = true
+		}
+		termDone := u.Status == "completed" || u.Status == "exited" || u.Status == "failed" || u.Status == "killed" || exitCode != nil
+		if termDone {
+			at.running = false
+			at.flushCarry()
+		}
+		outSnap := tailUTF8(at.outBuf.String(), 16384)
+		taskKey := termID
+		if at.toolID != "" {
+			taskKey = at.toolID
+			if st := s.tools[at.toolID]; st != nil && outSnap != "" {
+				st.output = outSnap
+			}
+		}
+		bg := s.bgTasks[taskKey]
+		var bgEv *runtime.Event
+		var toolEv *runtime.Event
+		standalone := at.toolID == ""
+		if bg != nil && bg.running {
+			bg.output = outSnap
+			if at.command != "" && bg.command == "" {
+				bg.command = at.command
+			}
+			if termDone && standalone {
+				bg.running = false
+				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				code := at.exitCode
+				if u.Status == "failed" || (at.hasExit && code != 0) {
+					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					if code == 0 {
+						code = 1
+					}
+				}
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					ExitCode:            code,
+					HasExitCode:         true,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    bgStatus,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+				kept, _ := provider.KeepOutput(outSnap)
+				toolEv = &runtime.Event{
+					Kind:        runtime.EventToolCompleted,
+					ItemID:      bg.itemID,
+					ToolName:    bg.title,
+					Command:     bg.command,
+					ExitCode:    code,
+					HasExitCode: true,
+					Output:      kept,
+				}
+			} else if outSnap != "" {
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+			}
+			if s.outOfTurnActive {
+				s.rearmOutOfTurnTimerLocked()
+			}
+		} else if standalone && isNewTerm && (at.command != "" || at.title != "") {
+			name := at.title
+			if name == "" {
+				name = "Terminal"
+			}
+			toolEv = &runtime.Event{
+				Kind:     runtime.EventToolStarted,
+				ItemID:   termID,
+				ToolName: name,
+				Command:  at.command,
+			}
+		} else if standalone && termDone && (at.command != "" || at.title != "") {
+			name := at.title
+			if name == "" {
+				name = "Terminal"
+			}
+			kept, _ := provider.KeepOutput(outSnap)
+			toolEv = &runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      termID,
+				ToolName:    name,
+				Command:     at.command,
+				ExitCode:    at.exitCode,
+				HasExitCode: true,
+				Output:      kept,
+			}
+		}
+		s.mu.Unlock()
+		if bgEv != nil {
+			s.emit(*bgEv)
+		}
+		if toolEv != nil {
+			s.emit(*toolEv)
+		}
+
 	case "tool_call", "tool_call_update":
 		s.flushAssistantSegment()
 		id := u.ToolCallID
 		if id == "" {
 			id = fmt.Sprintf("acp_tool_%d", s.itemSeq.Add(1))
 		}
-		contentOut, diffPath, diffNewText := s.extractACPToolContent(u.Content)
+		contentOut, diffPath, diffNewText, refTermID := s.extractACPToolContent(u.Content)
 		rawOut := extractACPRawOutput(u.RawOutput)
 		inCmd, inPath := extractACPRawInput(u.RawInput)
+		isAsyncIn, asyncAgentID := detectACPAsyncLaunch(u.RawInput, u.Meta)
 
 		s.mu.Lock()
 		st := s.tools[id]
@@ -711,6 +1640,18 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		}
 		if inCmd != "" {
 			st.command = inCmd
+		}
+		if refTermID != "" {
+			st.terminalID = refTermID
+			if at := s.agentTerms[refTermID]; at != nil && at.toolID == "" {
+				at.toolID = id
+			}
+		}
+		if isAsyncIn {
+			st.asyncLaunch = true
+		}
+		if asyncAgentID != "" {
+			st.asyncAgentID = asyncAgentID
 		}
 		if len(u.Locations) > 0 && u.Locations[0].Path != "" {
 			st.filePath = u.Locations[0].Path
@@ -736,8 +1677,96 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		status := st.status
 		outText := st.output
 		stSnap := *st
+
+		bg := s.bgTasks[id]
+		var bgEv *runtime.Event
+		// When an async-launch tool (`run_in_background: true` / `_meta...isAsync: true`)
+		// immediately reports `status: "completed"`, that event is only the launch ack:
+		// keep its transcript item running and register the live BackgroundTask right away.
+		isLaunchAck := bg == nil && st.asyncLaunch && status == "completed"
+		if isLaunchAck {
+			st.status = "in_progress"
+			status = "in_progress"
+			if kind, bgTitle, bgCmd, awaited, ok := classifyACPBackgroundTool(st); ok {
+				bg = &acpBgTask{
+					taskID:      id,
+					itemID:      id,
+					agentID:     st.asyncAgentID,
+					kind:        kind,
+					title:       bgTitle,
+					command:     bgCmd,
+					output:      tailUTF8(outText, 16384),
+					awaited:     awaited,
+					asyncLaunch: true,
+					stopScope:   threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+					running:     true,
+				}
+				s.bgTasks[id] = bg
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+			}
+		} else if bg != nil && bg.running {
+			bg.output = tailUTF8(outText, 16384)
+			if cmd != "" && bg.command == "" {
+				bg.command = cmd
+			}
+			if status == "completed" || status == "failed" {
+				bg.running = false
+				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				exitCode := int32(0)
+				if status == "failed" {
+					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					exitCode = 1
+				}
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					ExitCode:            exitCode,
+					HasExitCode:         true,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    bgStatus,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+			} else if bg.output != "" {
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+			}
+			if s.outOfTurnActive {
+				s.rearmOutOfTurnTimerLocked()
+			}
+		} else {
+			s.noteWakeActivityLocked(status != "completed" && status != "failed")
+		}
 		s.mu.Unlock()
 
+		if bgEv != nil {
+			s.emit(*bgEv)
+		}
 		if status == "completed" || status == "failed" {
 			exit := int32(0)
 			if status == "failed" {
@@ -745,13 +1774,14 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			kept, _ := provider.KeepOutput(outText)
 			s.emit(runtime.Event{
-				Kind:     runtime.EventToolCompleted,
-				ItemID:   id,
-				ToolName: toolName,
-				Command:  cmd,
-				FilePath: filePath,
-				ExitCode: exit,
-				Output:   kept,
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      id,
+				ToolName:    toolName,
+				Command:     cmd,
+				FilePath:    filePath,
+				ExitCode:    exit,
+				HasExitCode: true,
+				Output:      kept,
 			})
 			if status == "completed" {
 				if sig := s.maybeEmitACPArtifact(stSnap); sig != "" {
@@ -762,7 +1792,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					s.mu.Unlock()
 				}
 			}
-		} else if !wasStarted || u.SessionUpdate == "tool_call" || toolName != "" || cmd != "" || filePath != "" {
+		} else if !wasStarted || u.SessionUpdate == "tool_call" || isLaunchAck || toolName != "" || cmd != "" || filePath != "" {
 			s.emit(runtime.Event{
 				Kind:     runtime.EventToolStarted,
 				ItemID:   id,
@@ -772,17 +1802,217 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			})
 		}
 	case "plan":
+		s.mu.Lock()
+		s.noteWakeActivityLocked(true)
+		s.mu.Unlock()
 		var steps []*threadv2.TodoStep
 		for _, e := range u.Entries {
 			steps = append(steps, &threadv2.TodoStep{Text: e.Content, Status: e.Status})
 		}
 		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, TodoSteps: steps})
+	case "usage_update":
+		if u.Size > 0 || u.Used > 0 {
+			s.emit(runtime.Event{
+				Kind: runtime.EventUsage,
+				Usage: &threadv2.ContextWindowUsage{
+					ContextUsedTokens:  u.Used,
+					ContextLimitTokens: u.Size,
+				},
+			})
+		}
+		s.mu.Lock()
+		if s.outOfTurnActive {
+			// If an out-of-turn wake started a new background command during the wake,
+			// promote it before checking whether any foreground tool remains open.
+			s.mu.Unlock()
+			bgEvents, _ := s.promoteOpenBackgroundWork()
+			for _, ev := range bgEvents {
+				s.emit(ev)
+			}
+			s.mu.Lock()
+			if s.outOfTurnActive {
+				s.outOfTurnSawUsage = true
+				s.outOfTurnReplyOpen = false
+				s.rearmOutOfTurnTimerLocked()
+			}
+		}
+		s.mu.Unlock()
 	}
 }
 
-func (s *session) extractACPToolContent(raw json.RawMessage) (output string, diffPath string, diffNewText string) {
+func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
+	var ev struct {
+		Type      string `json:"type"`
+		AgentID   string `json:"agentId"`
+		AgentName string `json:"agentName"`
+		Title     string `json:"title"`
+		Data      struct {
+			ToolCallID string `json:"toolCallId"`
+			AgentID    string `json:"agentId"`
+			AgentName  string `json:"agentName"`
+			Title      string `json:"title"`
+			Summary    string `json:"summary"`
+			Output     string `json:"output"`
+			Error      string `json:"error"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(params, &ev) != nil {
+		return
+	}
+	pick := func(vals ...string) string {
+		for _, v := range vals {
+			if strings.TrimSpace(v) != "" {
+				return strings.TrimSpace(v)
+			}
+		}
+		return ""
+	}
+	agentID := pick(ev.AgentID, ev.Data.AgentID, ev.Data.ToolCallID)
+	itemID := pick(ev.Data.ToolCallID, agentID)
+	title := pick(ev.Title, ev.Data.Title, ev.AgentName, ev.Data.AgentName, "Subagent")
+
+	switch ev.Type {
+	case "subagent.started":
+		if agentID == "" {
+			agentID = fmt.Sprintf("cp_sub_%d", s.itemSeq.Add(1))
+		}
+		if itemID == "" {
+			itemID = agentID
+		}
+		s.mu.Lock()
+		bg := s.bgTasks[itemID]
+		if bg == nil && agentID != itemID {
+			bg = s.bgTasks[agentID]
+		}
+		if bg == nil {
+			bg = &acpBgTask{
+				taskID:    agentID,
+				itemID:    itemID,
+				agentID:   agentID,
+				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+				title:     title,
+				awaited:   true,
+				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				running:   true,
+			}
+			s.bgTasks[agentID] = bg
+		} else {
+			bg.agentID = agentID
+			bg.running = true
+		}
+		needToolStart := s.tools[itemID] == nil
+		if needToolStart {
+			s.tools[itemID] = &acpToolState{id: itemID, title: title, kind: "agent", status: "in_progress", started: true, asyncLaunch: true, asyncAgentID: agentID}
+		} else {
+			s.tools[itemID].status = "in_progress"
+			s.tools[itemID].asyncLaunch = true
+			s.tools[itemID].asyncAgentID = agentID
+		}
+		bgSnap := *bg
+		s.mu.Unlock()
+
+		if needToolStart {
+			s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: itemID, ToolName: title})
+		}
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              bgSnap.taskID,
+			ItemID:              bgSnap.itemID,
+			ToolName:            bgSnap.title,
+			BackgroundKind:      bgSnap.kind,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: bgSnap.stopScope,
+			BackgroundAwaited:   bgSnap.awaited,
+		})
+
+	case "subagent.completed", "subagent.failed":
+		failed := ev.Type == "subagent.failed"
+		out := pick(ev.Data.Output, ev.Data.Summary, ev.Data.Error)
+		s.mu.Lock()
+		var bg *acpBgTask
+		for _, k := range []string{agentID, itemID} {
+			if k != "" && s.bgTasks[k] != nil {
+				bg = s.bgTasks[k]
+				break
+			}
+		}
+		if bg == nil && agentID != "" {
+			for _, cand := range s.bgTasks {
+				if cand.agentID == agentID && cand.running {
+					bg = cand
+					break
+				}
+			}
+		}
+		var bgEv *runtime.Event
+		var toolEv *runtime.Event
+		exitCode := int32(0)
+		bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+		if failed {
+			exitCode = 1
+			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+		}
+		if bg != nil {
+			bg.running = false
+			if out != "" {
+				bg.output = tailUTF8(out, 16384)
+			}
+			if st := s.tools[bg.itemID]; st != nil {
+				if failed {
+					st.status = "failed"
+				} else {
+					st.status = "completed"
+				}
+			}
+			bgEv = &runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Output:              bg.output,
+				Text:                ev.Data.Summary,
+				ExitCode:            exitCode,
+				HasExitCode:         true,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    bgStatus,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			}
+			kept, _ := provider.KeepOutput(bg.output)
+			toolEv = &runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      bg.itemID,
+				ToolName:    bg.title,
+				ExitCode:    exitCode,
+				HasExitCode: true,
+				Output:      kept,
+			}
+		}
+		if s.outOfTurnActive {
+			s.rearmOutOfTurnTimerLocked()
+		}
+		s.mu.Unlock()
+		if bgEv != nil {
+			s.emit(*bgEv)
+		}
+		if toolEv != nil {
+			s.emit(*toolEv)
+		}
+
+	case "assistant.idle":
+		s.mu.Lock()
+		if s.outOfTurnActive && !s.inPrompt {
+			s.outOfTurnSawUsage = true
+			s.outOfTurnReplyOpen = false
+			s.rearmOutOfTurnTimerLocked()
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *session) extractACPToolContent(raw json.RawMessage) (output string, diffPath string, diffNewText string, terminalID string) {
 	if len(raw) == 0 {
-		return "", "", ""
+		return "", "", "", ""
 	}
 	var items []struct {
 		Type       string `json:"type"`
@@ -800,9 +2030,9 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			Text string `json:"text"`
 		}
 		if json.Unmarshal(raw, &single) == nil {
-			return single.Text, "", ""
+			return single.Text, "", "", ""
 		}
-		return "", "", ""
+		return "", "", "", ""
 	}
 	var parts []string
 	for _, it := range items {
@@ -823,8 +2053,15 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 			}
 		case "terminal":
 			if it.TerminalID != "" {
+				if terminalID == "" {
+					terminalID = it.TerminalID
+				}
 				s.mu.Lock()
 				mt := s.terminals[it.TerminalID]
+				var agentOut string
+				if at := s.agentTerms[it.TerminalID]; at != nil {
+					agentOut = at.outBuf.String()
+				}
 				s.mu.Unlock()
 				if mt != nil {
 					mt.mu.Lock()
@@ -833,11 +2070,13 @@ func (s *session) extractACPToolContent(raw json.RawMessage) (output string, dif
 					if tOut != "" {
 						parts = append(parts, tOut)
 					}
+				} else if agentOut != "" {
+					parts = append(parts, agentOut)
 				}
 			}
 		}
 	}
-	return strings.Join(parts, "\n"), diffPath, diffNewText
+	return strings.Join(parts, "\n"), diffPath, diffNewText, terminalID
 }
 
 func extractACPRawOutput(raw json.RawMessage) string {
@@ -869,13 +2108,15 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 		return "", ""
 	}
 	var obj struct {
-		Command       string `json:"command"`
-		Path          string `json:"path"`
-		FilePath      string `json:"file_path"`
-		FilePathCamel string `json:"filePath"`
-		Pattern       string `json:"pattern"`
-		Query         string `json:"query"`
-		URL           string `json:"url"`
+		Command          string `json:"command"`
+		CommandLine      string `json:"CommandLine"`
+		CommandLineSnake string `json:"command_line"`
+		Path             string `json:"path"`
+		FilePath         string `json:"file_path"`
+		FilePathCamel    string `json:"filePath"`
+		Pattern          string `json:"pattern"`
+		Query            string `json:"query"`
+		URL              string `json:"url"`
 	}
 	if json.Unmarshal(raw, &obj) == nil {
 		for _, p := range []string{obj.Path, obj.FilePath, obj.FilePathCamel, obj.Pattern, obj.Query, obj.URL} {
@@ -884,7 +2125,12 @@ func extractACPRawInput(raw json.RawMessage) (cmd, path string) {
 				break
 			}
 		}
-		cmd = obj.Command
+		for _, c := range []string{obj.Command, obj.CommandLine, obj.CommandLineSnake} {
+			if c != "" {
+				cmd = c
+				break
+			}
+		}
 	}
 	return cmd, path
 }
@@ -1134,7 +2380,7 @@ func (s *session) extractACPPlanExit(toolCallID, name, title, kind string, rawIn
 		}
 	}
 	if planMD == "" && len(content) > 0 {
-		out, _, diffText := s.extractACPToolContent(content)
+		out, _, diffText, _ := s.extractACPToolContent(content)
 		if strings.TrimSpace(diffText) != "" {
 			planMD = strings.TrimSpace(diffText)
 		} else {
@@ -1199,8 +2445,31 @@ func mapACPToolFields(st *acpToolState) (toolName, cmd, filePath string) {
 
 func (s *session) handleServerRequest(id json.RawMessage, method string, params json.RawMessage) {
 	s.mu.Lock()
-	tctx := s.turnCtx
+	isDetachedWakeReq := method == "session/request_permission" ||
+		method == "elicitation/create" ||
+		method == "session/create_elicitation" ||
+		method == "fs/write_text_file" ||
+		method == "terminal/create"
+	if isDetachedWakeReq {
+		s.noteWakeActivityLocked(true)
+	}
+	s.openServerReqs++
 	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		if s.openServerReqs > 0 {
+			s.openServerReqs--
+		}
+		if s.outOfTurnActive {
+			if isDetachedWakeReq {
+				s.outOfTurnReplyOpen = true
+			}
+			s.rearmOutOfTurnTimerLocked()
+		}
+		s.mu.Unlock()
+	}()
+
+	tctx := s.gateCtx()
 
 	reply := func(res any) {
 		_ = s.writeJSON(map[string]any{"jsonrpc": "2.0", "id": id, "result": res})
@@ -1413,8 +2682,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		termID := fmt.Sprintf("term_%d", s.itemSeq.Add(1))
 		cmd := provider.Command(context.Background(), p.Command, p.Args...)
 		cmd.Dir = cwd
-		mt := &managedTerm{cmd: cmd, done: make(chan struct{})}
-		lw := &lockedTermWriter{mt: mt}
+		mt := &managedTerm{id: termID, command: fullCmd, cmd: cmd, done: make(chan struct{})}
+		lw := &lockedTermWriter{s: s, mt: mt}
 		cmd.Stdout = lw
 		cmd.Stderr = lw
 		if err := cmd.Start(); err != nil {
@@ -1439,7 +2708,37 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			outStr := mt.outBuf.String()
 			mt.mu.Unlock()
 			kept, _ := provider.KeepOutput(outStr)
-			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, ExitCode: int32(mt.exit), Output: kept})
+
+			s.mu.Lock()
+			bg := s.bgTasks[termID]
+			var bgEv *runtime.Event
+			if bg != nil && bg.running {
+				bg.running = false
+				bg.output = tailUTF8(outStr, 16384)
+				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				if mt.exit != 0 {
+					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+				}
+				bgEv = &runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              bg.output,
+					ExitCode:            int32(mt.exit),
+					HasExitCode:         true,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    bgStatus,
+					BackgroundStopScope: bg.stopScope,
+					BackgroundAwaited:   bg.awaited,
+				}
+			}
+			s.mu.Unlock()
+			if bgEv != nil {
+				s.emit(*bgEv)
+			}
+			s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: termID, ToolName: "Terminal", Command: fullCmd, ExitCode: int32(mt.exit), HasExitCode: true, Output: kept})
 		}()
 		reply(map[string]any{"terminalId": termID})
 
@@ -1495,13 +2794,46 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 }
 
 type lockedTermWriter struct {
+	s  *session
 	mt *managedTerm
 }
 
 func (w *lockedTermWriter) Write(p []byte) (int, error) {
 	w.mt.mu.Lock()
-	defer w.mt.mu.Unlock()
-	return w.mt.outBuf.Write(p)
+	n, err := w.mt.outBuf.Write(p)
+	now := time.Now()
+	shouldEmit := w.mt.promoted && now.Sub(w.mt.lastFlush) >= 250*time.Millisecond
+	var snap string
+	if shouldEmit {
+		w.mt.lastFlush = now
+		snap = tailUTF8(w.mt.outBuf.String(), 16384)
+	}
+	w.mt.mu.Unlock()
+	if shouldEmit && w.s != nil {
+		w.s.mu.Lock()
+		bg := w.s.bgTasks[w.mt.id]
+		var ev *runtime.Event
+		if bg != nil && bg.running {
+			bg.output = snap
+			ev = &runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              bg.taskID,
+				ItemID:              bg.itemID,
+				ToolName:            bg.title,
+				Command:             bg.command,
+				Output:              bg.output,
+				BackgroundKind:      bg.kind,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: bg.stopScope,
+				BackgroundAwaited:   bg.awaited,
+			}
+		}
+		w.s.mu.Unlock()
+		if ev != nil {
+			w.s.emit(*ev)
+		}
+	}
+	return n, err
 }
 
 func pickPermissionOption(options []struct {

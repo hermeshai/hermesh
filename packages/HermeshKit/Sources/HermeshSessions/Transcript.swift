@@ -28,7 +28,7 @@ public func partialOutput(_ r: ToolResult) -> Bool {
 
 /// One row of the conversation.
 public enum TranscriptItem: Equatable {
-    case turn(seq: UInt64, turn: Int, at: Date?)
+    case turn(seq: UInt64, turn: Int, at: Date?, wakeReason: String = "")
     /// at: when it was sent. asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say).
     case user(seq: UInt64, text: String, at: Date?, asker: String = "")
     case agent(seq: UInt64, text: String)
@@ -44,7 +44,7 @@ public enum TranscriptItem: Equatable {
 
     public var seq: UInt64 {
         switch self {
-        case .turn(let s, _, _), .user(let s, _, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
+        case .turn(let s, _, _, _), .user(let s, _, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
              .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
         }

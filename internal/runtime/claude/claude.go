@@ -199,13 +199,18 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	if err != nil {
 		return nil, err
 	}
+	sessCtx, sessCancel := context.WithCancel(ctx)
 	s := &session{
-		proc:           proc,
-		spec:           spec,
-		selection:      proto.Clone(spec.Selection).(*threadv2.ModelSelection),
-		events:         make(chan runtime.Event, 256),
-		skipToolResult: map[string]bool{},
-		turnCtx:        ctx,
+		proc:            proc,
+		spec:            spec,
+		selection:       proto.Clone(spec.Selection).(*threadv2.ModelSelection),
+		events:          make(chan runtime.Event, 256),
+		skipToolResult:  map[string]bool{},
+		asyncToolInputs: map[string]claudeAsyncInput{},
+		bgTasks:         map[string]*claudeBgTask{},
+		sessionCtx:      sessCtx,
+		sessionCancel:   sessCancel,
+		turnCtx:         sessCtx,
 	}
 	s.alive.Store(true)
 	go s.readLoop()
@@ -224,6 +229,32 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	return s, nil
 }
 
+type claudeAsyncInput struct {
+	kind    threadv2.BackgroundTaskKind
+	title   string
+	command string
+}
+
+type claudeBgTask struct {
+	taskID     string
+	itemID     string
+	kind       threadv2.BackgroundTaskKind
+	title      string
+	command    string
+	outputFile string
+	outputTail string
+	running    bool
+	tailing    bool
+	stopCh     chan struct{}
+	stopOnce   sync.Once
+}
+
+func (b *claudeBgTask) stopTail() {
+	if b != nil && b.stopCh != nil {
+		b.stopOnce.Do(func() { close(b.stopCh) })
+	}
+}
+
 type session struct {
 	proc      *provider.Proc
 	spec      runtime.StartSpec
@@ -236,15 +267,28 @@ type session struct {
 	emitMu       sync.RWMutex
 	eventsClosed bool
 
-	mu             sync.Mutex
-	selection      *threadv2.ModelSelection
-	turnCtx        context.Context
-	inTurn         bool
-	sent           int
-	seen           int
-	msgItemID      string
-	msgUsed        bool
-	skipToolResult map[string]bool
+	mu              sync.Mutex
+	selection       *threadv2.ModelSelection
+	sessionCtx      context.Context
+	sessionCancel   context.CancelFunc
+	turnCtx         context.Context
+	inTurn          bool
+	sent            int
+	seen            int
+	msgItemID       string
+	msgUsed         bool
+	skipToolResult  map[string]bool
+	asyncToolInputs map[string]claudeAsyncInput // tool_use_id -> async launch metadata
+	bgTasks         map[string]*claudeBgTask    // task_id -> background task state
+}
+
+func (s *session) gateCtx() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.inTurn && s.turnCtx != nil && s.turnCtx.Err() == nil {
+		return s.turnCtx
+	}
+	return s.sessionCtx
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -379,14 +423,92 @@ func (s *session) Interrupt(context.Context) error {
 	})
 }
 
+func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
+	taskID = strings.TrimSpace(taskID)
+	s.mu.Lock()
+	var targets []*claudeBgTask
+	if taskID != "" {
+		if bg := s.bgTasks[taskID]; bg != nil && bg.running {
+			targets = append(targets, bg)
+		}
+	} else {
+		for _, bg := range s.bgTasks {
+			if bg.running {
+				targets = append(targets, bg)
+			}
+		}
+	}
+	inTurn := s.inTurn
+	for _, bg := range targets {
+		bg.running = false
+		bg.stopTail()
+	}
+	s.mu.Unlock()
+
+	var firstErr error
+	for _, bg := range targets {
+		if !strings.HasPrefix(bg.taskID, "claude-schedule-") {
+			reqID := fmt.Sprintf("hermesh-stop-task-%d", s.reqSeq.Add(1))
+			if err := s.writeJSON(map[string]any{
+				"type":       "control_request",
+				"request_id": reqID,
+				"request": map[string]any{
+					"subtype": "stop_task",
+					"task_id": bg.taskID,
+				},
+			}); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              bg.taskID,
+			ItemID:              bg.itemID,
+			ToolName:            bg.title,
+			Command:             bg.command,
+			Output:              bg.outputTail,
+			Text:                "stopped by user",
+			ExitCode:            130,
+			HasExitCode:         true,
+			BackgroundKind:      bg.kind,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+		if bg.itemID != "" {
+			s.emit(runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      bg.itemID,
+				ToolName:    bg.title,
+				Command:     bg.command,
+				ExitCode:    130,
+				HasExitCode: true,
+				Output:      bg.outputTail,
+			})
+		}
+	}
+	if taskID == "" && inTurn {
+		if err := s.Interrupt(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (s *session) ForceStop() error {
 	s.alive.Store(false)
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.closeOnce.Do(func() { s.proc.Stop(0) })
 	return nil
 }
 
 func (s *session) Close() error {
 	s.alive.Store(false)
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.closeOnce.Do(func() { s.proc.Stop(2 * time.Second) })
 	return nil
 }
@@ -413,9 +535,21 @@ func (s *session) closeEvents() {
 }
 
 type wireLine struct {
-	Type           string          `json:"type"`
-	Subtype        string          `json:"subtype"`
-	SessionID      string          `json:"session_id"`
+	Type        string `json:"type"`
+	Subtype     string `json:"subtype"`
+	SessionID   string `json:"session_id"`
+	TaskID      string `json:"task_id"`
+	ToolUseID   string `json:"tool_use_id"`
+	Description string `json:"description"`
+	TaskType    string `json:"task_type"`
+	Status      string `json:"status"`
+	Summary     string `json:"summary"`
+	OutputFile  string `json:"output_file"`
+	Tasks       []struct {
+		TaskID      string `json:"task_id"`
+		TaskType    string `json:"task_type"`
+		Description string `json:"description"`
+	} `json:"tasks"`
 	Message        json.RawMessage `json:"message"`
 	RequestID      string          `json:"request_id"`
 	Request        json.RawMessage `json:"request"`
@@ -451,12 +585,19 @@ func (s *session) readLoop() {
 		}
 		switch l.Type {
 		case "system":
-			if l.Subtype == "init" && l.SessionID != "" {
-				s.emit(runtime.Event{
-					Kind:         runtime.EventNativeSession,
-					NativeID:     l.SessionID,
-					ResumeCursor: l.SessionID,
-				})
+			switch l.Subtype {
+			case "init":
+				if l.SessionID != "" {
+					s.emit(runtime.Event{
+						Kind:         runtime.EventNativeSession,
+						NativeID:     l.SessionID,
+						ResumeCursor: l.SessionID,
+					})
+				}
+			case "task_started", "task_progress", "task_notification":
+				s.handleTaskSystemLine(l)
+			case "background_tasks_changed":
+				s.handleBackgroundTasksChanged(l)
 			}
 
 		case "stream_event":
@@ -473,6 +614,7 @@ func (s *session) readLoop() {
 			}
 			if json.Unmarshal(l.Event, &ev) == nil && ev.Type == "content_block_delta" {
 				if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
+					s.settleScheduledWakeups()
 					s.mu.Lock()
 					msgID := s.msgItemID
 					s.msgUsed = true
@@ -504,6 +646,7 @@ func (s *session) readLoop() {
 					switch c.Type {
 					case "text":
 						if strings.TrimSpace(c.Text) != "" {
+							s.settleScheduledWakeups()
 							s.mu.Lock()
 							msgID := s.msgItemID
 							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
@@ -512,6 +655,7 @@ func (s *session) readLoop() {
 							s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: msgID, Text: c.Text})
 						}
 					case "tool_use":
+						s.settleScheduledWakeups()
 						s.mu.Lock()
 						if s.msgUsed {
 							s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
@@ -524,6 +668,16 @@ func (s *session) readLoop() {
 							s.mu.Unlock()
 							continue
 						}
+						asyncMeta, isAsyncLaunch := detectClaudeAsyncTool(c.Name, c.Input)
+						if isAsyncLaunch && c.ID != "" {
+							s.asyncToolInputs[c.ID] = asyncMeta
+							// Attach command to an already-arrived task_started if ordered first.
+							for _, bg := range s.bgTasks {
+								if bg.itemID == c.ID && bg.command == "" && asyncMeta.command != "" {
+									bg.command = asyncMeta.command
+								}
+							}
+						}
 						s.mu.Unlock()
 						_, cmd, targetPath := classifyTool(c.Name, c.Input)
 						summaryPath := toolSummaryPath(c.Input, targetPath)
@@ -534,6 +688,33 @@ func (s *session) readLoop() {
 							Command:  cmd,
 							FilePath: summaryPath,
 						})
+						if isAsyncLaunch && asyncMeta.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
+							schedID := "claude-schedule-" + c.ID
+							s.mu.Lock()
+							for _, prev := range s.bgTasks {
+								if prev.running && prev.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+									prev.running = false
+								}
+							}
+							s.bgTasks[schedID] = &claudeBgTask{
+								taskID:  schedID,
+								itemID:  c.ID,
+								kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+								title:   asyncMeta.title,
+								running: true,
+							}
+							s.mu.Unlock()
+							s.emit(runtime.Event{
+								Kind:                runtime.EventBackgroundTask,
+								TaskID:              schedID,
+								ItemID:              c.ID,
+								ToolName:            asyncMeta.title,
+								BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+								BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+								BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+								BackgroundAwaited:   true,
+							})
+						}
 					}
 				}
 			}
@@ -562,11 +743,56 @@ func (s *session) readLoop() {
 					if c.Type == "tool_result" && c.ToolUseID != "" {
 						s.mu.Lock()
 						skip := s.skipToolResult[c.ToolUseID]
+						asyncMeta, wasAsyncLaunch := s.asyncToolInputs[c.ToolUseID]
+						hasRunningBg := false
+						for _, bg := range s.bgTasks {
+							if bg.itemID == c.ToolUseID && bg.running {
+								hasRunningBg = true
+								break
+							}
+						}
 						s.mu.Unlock()
 						if skip {
 							continue
 						}
 						text := extractToolResultText(c.Content)
+						// Async Bash/Monitor/Subagent/ScheduleWakeup immediately return a launch
+						// acknowledgement tool_result while the real background task continues running!
+						if !c.IsError && (hasRunningBg || wasAsyncLaunch) {
+							if !hasRunningBg && wasAsyncLaunch {
+								// Synthesize background task if CLI version didn't emit task_started first.
+								synthID := extractClaudeBgIDFromAck(text)
+								if synthID == "" {
+									synthID = "claude-bg-" + c.ToolUseID
+								}
+								s.mu.Lock()
+								if s.bgTasks[synthID] == nil {
+									s.bgTasks[synthID] = &claudeBgTask{
+										taskID:  synthID,
+										itemID:  c.ToolUseID,
+										kind:    asyncMeta.kind,
+										title:   asyncMeta.title,
+										command: asyncMeta.command,
+										running: true,
+									}
+									s.mu.Unlock()
+									s.emit(runtime.Event{
+										Kind:                runtime.EventBackgroundTask,
+										TaskID:              synthID,
+										ItemID:              c.ToolUseID,
+										ToolName:            asyncMeta.title,
+										Command:             asyncMeta.command,
+										BackgroundKind:      asyncMeta.kind,
+										BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+										BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+										BackgroundAwaited:   true,
+									})
+								} else {
+									s.mu.Unlock()
+								}
+							}
+							continue
+						}
 						kept, _ := provider.KeepOutput(text)
 						exit := int32(0)
 						if c.IsError {
@@ -710,9 +936,7 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 		inputMap = map[string]any{}
 	}
 
-	s.mu.Lock()
-	tctx := s.turnCtx
-	s.mu.Unlock()
+	tctx := s.gateCtx()
 
 	reply := func(resp map[string]any) {
 		_ = s.writeJSON(map[string]any{
@@ -841,6 +1065,376 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 	}
 }
 
+var claudeBgAckIDRE = regexp.MustCompile(`(?i)\bID:\s*([A-Za-z0-9_-]+)`)
+
+func extractClaudeBgIDFromAck(text string) string {
+	m := claudeBgAckIDRE.FindStringSubmatch(text)
+	if len(m) >= 2 {
+		return m[1]
+	}
+	return ""
+}
+
+func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, bool) {
+	var in struct {
+		Command         string `json:"command"`
+		Description     string `json:"description"`
+		Prompt          string `json:"prompt"`
+		DelaySeconds    int64  `json:"delaySeconds"`
+		DelaySecSnake   int64  `json:"delay_seconds"`
+		RunInBackground bool   `json:"run_in_background"`
+	}
+	_ = json.Unmarshal(raw, &in)
+	switch name {
+	case "Monitor":
+		title := strings.TrimSpace(in.Description)
+		if title == "" {
+			title = strings.TrimSpace(in.Command)
+		}
+		if title == "" {
+			title = "Monitor"
+		}
+		return claudeAsyncInput{
+			kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+			title:   title,
+			command: strings.TrimSpace(in.Command),
+		}, true
+	case "ScheduleWakeup":
+		title := strings.TrimSpace(in.Description)
+		if title == "" {
+			sec := in.DelaySeconds
+			if sec == 0 {
+				sec = in.DelaySecSnake
+			}
+			if sec > 0 {
+				title = fmt.Sprintf("ScheduleWakeup (%ds)", sec)
+			} else {
+				title = "ScheduleWakeup"
+			}
+		}
+		return claudeAsyncInput{
+			kind:  threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+			title: title,
+		}, true
+	case "Bash":
+		if !in.RunInBackground {
+			return claudeAsyncInput{}, false
+		}
+		title := strings.TrimSpace(in.Description)
+		if title == "" {
+			title = strings.TrimSpace(in.Command)
+		}
+		return claudeAsyncInput{
+			kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+			title:   title,
+			command: strings.TrimSpace(in.Command),
+		}, true
+	case "Agent", "Task":
+		if !in.RunInBackground {
+			return claudeAsyncInput{}, false
+		}
+		title := strings.TrimSpace(in.Description)
+		if title == "" {
+			title = strings.TrimSpace(in.Prompt)
+		}
+		if title == "" {
+			title = name
+		}
+		return claudeAsyncInput{
+			kind:  threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			title: title,
+		}, true
+	default:
+		return claudeAsyncInput{}, false
+	}
+}
+
+func (s *session) settleScheduledWakeups() {
+	s.mu.Lock()
+	if s.inTurn {
+		s.mu.Unlock()
+		return
+	}
+	var settled []*claudeBgTask
+	for _, bg := range s.bgTasks {
+		if bg.running && bg.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+			bg.running = false
+			settled = append(settled, bg)
+		}
+	}
+	s.mu.Unlock()
+	for _, bg := range settled {
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              bg.taskID,
+			ItemID:              bg.itemID,
+			ToolName:            bg.title,
+			BackgroundKind:      bg.kind,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+			HasExitCode:         true,
+			ExitCode:            0,
+		})
+		if bg.itemID != "" {
+			s.emit(runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      bg.itemID,
+				ToolName:    bg.title,
+				ExitCode:    0,
+				HasExitCode: true,
+			})
+		}
+	}
+}
+
+func (s *session) handleBackgroundTasksChanged(l wireLine) {
+	var newEvents []runtime.Event
+	s.mu.Lock()
+	for _, t := range l.Tasks {
+		tid := strings.TrimSpace(t.TaskID)
+		if tid == "" || s.bgTasks[tid] != nil {
+			continue
+		}
+		kind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+		if strings.Contains(t.TaskType, "agent") {
+			kind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
+		}
+		desc := strings.TrimSpace(t.Description)
+		bg := &claudeBgTask{
+			taskID:  tid,
+			kind:    kind,
+			title:   desc,
+			command: desc,
+			running: true,
+		}
+		s.bgTasks[tid] = bg
+		newEvents = append(newEvents, runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              tid,
+			ToolName:            desc,
+			Command:             desc,
+			BackgroundKind:      kind,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+	}
+	s.mu.Unlock()
+	for _, ev := range newEvents {
+		s.emit(ev)
+	}
+}
+
+func (s *session) startClaudeOutputTailer(bg *claudeBgTask) {
+	go func() {
+		ticker := time.NewTicker(350 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.sessionCtx.Done():
+				return
+			case <-bg.stopCh:
+				return
+			case <-ticker.C:
+				s.mu.Lock()
+				running := bg.running
+				path := bg.outputFile
+				prev := bg.outputTail
+				s.mu.Unlock()
+				if !running || path == "" {
+					return
+				}
+				tail := readOutputFileTail(path, 16384)
+				if tail == "" || tail == prev {
+					continue
+				}
+				s.mu.Lock()
+				if !bg.running {
+					s.mu.Unlock()
+					return
+				}
+				bg.outputTail = tail
+				ev := runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              bg.taskID,
+					ItemID:              bg.itemID,
+					ToolName:            bg.title,
+					Command:             bg.command,
+					Output:              tail,
+					BackgroundKind:      bg.kind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundAwaited:   true,
+				}
+				s.mu.Unlock()
+				s.emit(ev)
+			}
+		}
+	}()
+}
+
+func (s *session) handleTaskSystemLine(l wireLine) {
+	taskID := strings.TrimSpace(l.TaskID)
+	if taskID == "" {
+		return
+	}
+	kind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+	if strings.Contains(l.TaskType, "agent") {
+		kind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
+	}
+	outFile := strings.TrimSpace(l.OutputFile)
+	outTail := readOutputFileTail(outFile, 16384)
+
+	s.mu.Lock()
+	bg := s.bgTasks[taskID]
+	if bg == nil {
+		// Remove any synthesized placeholder created from tool_result before task_started arrived.
+		if l.ToolUseID != "" {
+			delete(s.bgTasks, "claude-bg-"+l.ToolUseID)
+		}
+		bg = &claudeBgTask{
+			taskID:  taskID,
+			kind:    kind,
+			running: true,
+			stopCh:  make(chan struct{}),
+		}
+		s.bgTasks[taskID] = bg
+	}
+	if l.ToolUseID != "" {
+		bg.itemID = strings.TrimSpace(l.ToolUseID)
+	}
+	if desc := strings.TrimSpace(l.Description); desc != "" {
+		bg.title = desc
+		if bg.command == "" {
+			bg.command = desc
+		}
+	}
+	if bg.itemID != "" {
+		if meta, ok := s.asyncToolInputs[bg.itemID]; ok {
+			if meta.command != "" {
+				bg.command = meta.command
+			}
+			if bg.title == "" && meta.title != "" {
+				bg.title = meta.title
+			}
+		}
+	}
+	if outFile != "" {
+		bg.outputFile = outFile
+	}
+	if outTail != "" {
+		bg.outputTail = outTail
+	}
+	shouldStartTailer := (l.Subtype == "task_started" || l.Subtype == "task_progress") && bg.running && bg.outputFile != "" && !bg.tailing
+	if shouldStartTailer {
+		if bg.stopCh == nil {
+			bg.stopCh = make(chan struct{})
+		}
+		bg.tailing = true
+	}
+	itemID := bg.itemID
+	title := bg.title
+	cmd := bg.command
+	curTail := bg.outputTail
+	if l.Subtype == "task_notification" {
+		bg.running = false
+		bg.stopTail()
+	}
+	s.mu.Unlock()
+
+	if shouldStartTailer {
+		s.startClaudeOutputTailer(bg)
+	}
+
+	switch l.Subtype {
+	case "task_started", "task_progress":
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              taskID,
+			ItemID:              itemID,
+			ToolName:            title,
+			Command:             cmd,
+			Output:              curTail,
+			Text:                strings.TrimSpace(l.Summary),
+			BackgroundKind:      kind,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+	case "task_notification":
+		bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+		exitCode := int32(0)
+		switch l.Status {
+		case "failed":
+			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+			exitCode = 1
+		case "stopped", "cancelled":
+			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+			exitCode = 130
+		}
+		if curTail == "" {
+			curTail = strings.TrimSpace(l.Summary)
+		}
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              taskID,
+			ItemID:              itemID,
+			ToolName:            title,
+			Command:             cmd,
+			Output:              curTail,
+			Text:                strings.TrimSpace(l.Summary),
+			ExitCode:            exitCode,
+			HasExitCode:         true,
+			BackgroundKind:      kind,
+			BackgroundStatus:    bgStatus,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   true,
+		})
+		if itemID != "" {
+			s.emit(runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      itemID,
+				ToolName:    title,
+				Command:     cmd,
+				ExitCode:    exitCode,
+				HasExitCode: true,
+				Output:      curTail,
+			})
+		}
+	}
+}
+
+func readOutputFileTail(path string, maxBytes int) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.Size() <= 0 {
+		return ""
+	}
+	offset := int64(0)
+	if st.Size() > int64(maxBytes) {
+		offset = st.Size() - int64(maxBytes)
+	}
+	buf := make([]byte, st.Size()-offset)
+	n, _ := f.ReadAt(buf, offset)
+	buf = buf[:n]
+	start := 0
+	if offset > 0 {
+		for start < len(buf) && (buf[start]&0xc0) == 0x80 {
+			start++
+		}
+	}
+	return string(buf[start:])
+}
+
 func classifyTool(name string, raw json.RawMessage) (category, cmd, path string) {
 	var in struct {
 		FilePath     string `json:"file_path"`
@@ -861,7 +1455,7 @@ func classifyTool(name string, raw json.RawMessage) (category, cmd, path string)
 		return "read", "", p
 	case "Edit", "MultiEdit", "Write", "NotebookEdit":
 		return "file_write", "", p
-	case "Bash", "BashOutput", "KillShell":
+	case "Bash", "BashOutput", "KillShell", "Monitor":
 		return "command", in.Command, ""
 	case "WebFetch", "WebSearch":
 		return "network", "", ""

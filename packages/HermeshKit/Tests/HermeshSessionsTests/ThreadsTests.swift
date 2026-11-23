@@ -176,6 +176,10 @@ import Testing
         th.createdBy = bot; th.status = .failed
         #expect(threadAsSession(th).createdBy == "c_grok")
         #expect(threadAsSession(th).status == .crashed)
+        th.status = .idle; th.activeBackgroundCount = 1
+        #expect(threadAsSession(th).status == .running)
+        th.activeBackgroundCount = 0; th.activeDaemonCount = 1
+        #expect(threadAsSession(th).status == .idle)
         #expect(isThreadID("th_x")); #expect(!isThreadID("s_x"))
     }
 

@@ -727,6 +727,165 @@ func (TurnItemKind) EnumDescriptor() ([]byte, []int) {
 	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{11}
 }
 
+type BackgroundTaskKind int32
+
+const (
+	BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED BackgroundTaskKind = 0
+	BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND     BackgroundTaskKind = 1
+	BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT    BackgroundTaskKind = 2
+	BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE    BackgroundTaskKind = 3
+	BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON      BackgroundTaskKind = 4
+)
+
+// Enum value maps for BackgroundTaskKind.
+var (
+	BackgroundTaskKind_name = map[int32]string{
+		0: "BACKGROUND_TASK_KIND_UNSPECIFIED",
+		1: "BACKGROUND_TASK_KIND_COMMAND",
+		2: "BACKGROUND_TASK_KIND_SUBAGENT",
+		3: "BACKGROUND_TASK_KIND_SCHEDULE",
+		4: "BACKGROUND_TASK_KIND_DAEMON",
+	}
+	BackgroundTaskKind_value = map[string]int32{
+		"BACKGROUND_TASK_KIND_UNSPECIFIED": 0,
+		"BACKGROUND_TASK_KIND_COMMAND":     1,
+		"BACKGROUND_TASK_KIND_SUBAGENT":    2,
+		"BACKGROUND_TASK_KIND_SCHEDULE":    3,
+		"BACKGROUND_TASK_KIND_DAEMON":      4,
+	}
+)
+
+func (x BackgroundTaskKind) Enum() *BackgroundTaskKind {
+	p := new(BackgroundTaskKind)
+	*p = x
+	return p
+}
+
+func (x BackgroundTaskKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BackgroundTaskKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_thread_v2_thread_proto_enumTypes[12].Descriptor()
+}
+
+func (BackgroundTaskKind) Type() protoreflect.EnumType {
+	return &file_hermesh_thread_v2_thread_proto_enumTypes[12]
+}
+
+func (x BackgroundTaskKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BackgroundTaskKind.Descriptor instead.
+func (BackgroundTaskKind) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{12}
+}
+
+type BackgroundTaskStatus int32
+
+const (
+	BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED BackgroundTaskStatus = 0
+	BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING     BackgroundTaskStatus = 1
+	BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED   BackgroundTaskStatus = 2
+	BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED      BackgroundTaskStatus = 3
+	BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED     BackgroundTaskStatus = 4
+)
+
+// Enum value maps for BackgroundTaskStatus.
+var (
+	BackgroundTaskStatus_name = map[int32]string{
+		0: "BACKGROUND_TASK_STATUS_UNSPECIFIED",
+		1: "BACKGROUND_TASK_STATUS_RUNNING",
+		2: "BACKGROUND_TASK_STATUS_COMPLETED",
+		3: "BACKGROUND_TASK_STATUS_FAILED",
+		4: "BACKGROUND_TASK_STATUS_STOPPED",
+	}
+	BackgroundTaskStatus_value = map[string]int32{
+		"BACKGROUND_TASK_STATUS_UNSPECIFIED": 0,
+		"BACKGROUND_TASK_STATUS_RUNNING":     1,
+		"BACKGROUND_TASK_STATUS_COMPLETED":   2,
+		"BACKGROUND_TASK_STATUS_FAILED":      3,
+		"BACKGROUND_TASK_STATUS_STOPPED":     4,
+	}
+)
+
+func (x BackgroundTaskStatus) Enum() *BackgroundTaskStatus {
+	p := new(BackgroundTaskStatus)
+	*p = x
+	return p
+}
+
+func (x BackgroundTaskStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BackgroundTaskStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_thread_v2_thread_proto_enumTypes[13].Descriptor()
+}
+
+func (BackgroundTaskStatus) Type() protoreflect.EnumType {
+	return &file_hermesh_thread_v2_thread_proto_enumTypes[13]
+}
+
+func (x BackgroundTaskStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BackgroundTaskStatus.Descriptor instead.
+func (BackgroundTaskStatus) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{13}
+}
+
+type BackgroundTaskStopScope int32
+
+const (
+	BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED BackgroundTaskStopScope = 0
+	BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE      BackgroundTaskStopScope = 1
+	BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION     BackgroundTaskStopScope = 2
+)
+
+// Enum value maps for BackgroundTaskStopScope.
+var (
+	BackgroundTaskStopScope_name = map[int32]string{
+		0: "BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED",
+		1: "BACKGROUND_TASK_STOP_SCOPE_SINGLE",
+		2: "BACKGROUND_TASK_STOP_SCOPE_SESSION",
+	}
+	BackgroundTaskStopScope_value = map[string]int32{
+		"BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED": 0,
+		"BACKGROUND_TASK_STOP_SCOPE_SINGLE":      1,
+		"BACKGROUND_TASK_STOP_SCOPE_SESSION":     2,
+	}
+)
+
+func (x BackgroundTaskStopScope) Enum() *BackgroundTaskStopScope {
+	p := new(BackgroundTaskStopScope)
+	*p = x
+	return p
+}
+
+func (x BackgroundTaskStopScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (BackgroundTaskStopScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_hermesh_thread_v2_thread_proto_enumTypes[14].Descriptor()
+}
+
+func (BackgroundTaskStopScope) Type() protoreflect.EnumType {
+	return &file_hermesh_thread_v2_thread_proto_enumTypes[14]
+}
+
+func (x BackgroundTaskStopScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use BackgroundTaskStopScope.Descriptor instead.
+func (BackgroundTaskStopScope) EnumDescriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{14}
+}
+
 type QueueOperation int32
 
 const (
@@ -769,11 +928,11 @@ func (x QueueOperation) String() string {
 }
 
 func (QueueOperation) Descriptor() protoreflect.EnumDescriptor {
-	return file_hermesh_thread_v2_thread_proto_enumTypes[12].Descriptor()
+	return file_hermesh_thread_v2_thread_proto_enumTypes[15].Descriptor()
 }
 
 func (QueueOperation) Type() protoreflect.EnumType {
-	return &file_hermesh_thread_v2_thread_proto_enumTypes[12]
+	return &file_hermesh_thread_v2_thread_proto_enumTypes[15]
 }
 
 func (x QueueOperation) Number() protoreflect.EnumNumber {
@@ -782,7 +941,7 @@ func (x QueueOperation) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use QueueOperation.Descriptor instead.
 func (QueueOperation) EnumDescriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{12}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{15}
 }
 
 type Actor struct {
@@ -2083,6 +2242,8 @@ type Thread struct {
 	CreatedAt              *timestamppb.Timestamp `protobuf:"bytes,26,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt              *timestamppb.Timestamp `protobuf:"bytes,27,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	ArchivedAt             *timestamppb.Timestamp `protobuf:"bytes,28,opt,name=archived_at,json=archivedAt,proto3" json:"archived_at,omitempty"`
+	ActiveBackgroundCount  uint32                 `protobuf:"varint,29,opt,name=active_background_count,json=activeBackgroundCount,proto3" json:"active_background_count,omitempty"`
+	ActiveDaemonCount      uint32                 `protobuf:"varint,30,opt,name=active_daemon_count,json=activeDaemonCount,proto3" json:"active_daemon_count,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -2313,6 +2474,20 @@ func (x *Thread) GetArchivedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Thread) GetActiveBackgroundCount() uint32 {
+	if x != nil {
+		return x.ActiveBackgroundCount
+	}
+	return 0
+}
+
+func (x *Thread) GetActiveDaemonCount() uint32 {
+	if x != nil {
+		return x.ActiveDaemonCount
+	}
+	return 0
+}
+
 type ProviderThread struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	ProviderThreadId string                 `protobuf:"bytes,1,opt,name=provider_thread_id,json=providerThreadId,proto3" json:"provider_thread_id,omitempty"`
@@ -2520,6 +2695,7 @@ type Run struct {
 	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	StartedAt        *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
 	CompletedAt      *timestamppb.Timestamp `protobuf:"bytes,21,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	WakeReason       string                 `protobuf:"bytes,22,opt,name=wake_reason,json=wakeReason,proto3" json:"wake_reason,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2699,6 +2875,13 @@ func (x *Run) GetCompletedAt() *timestamppb.Timestamp {
 		return x.CompletedAt
 	}
 	return nil
+}
+
+func (x *Run) GetWakeReason() string {
+	if x != nil {
+		return x.WakeReason
+	}
+	return ""
 }
 
 type ToolApprovalPayload struct {
@@ -3837,26 +4020,191 @@ func (x *Checkpoint) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-type ThreadEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Seq           uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
-	ThreadId      string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
-	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
-	Thread        *Thread                `protobuf:"bytes,4,opt,name=thread,proto3" json:"thread,omitempty"`
-	Run           *Run                   `protobuf:"bytes,5,opt,name=run,proto3" json:"run,omitempty"`
-	Item          *TurnItem              `protobuf:"bytes,6,opt,name=item,proto3" json:"item,omitempty"`
-	Request       *RuntimeRequest        `protobuf:"bytes,7,opt,name=request,proto3" json:"request,omitempty"`
-	Checkpoint    *Checkpoint            `protobuf:"bytes,8,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
-	TextDelta     string                 `protobuf:"bytes,9,opt,name=text_delta,json=textDelta,proto3" json:"text_delta,omitempty"`
-	TargetItemId  string                 `protobuf:"bytes,10,opt,name=target_item_id,json=targetItemId,proto3" json:"target_item_id,omitempty"`
-	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+type BackgroundTask struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	TaskId        string                  `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	ThreadId      string                  `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	RunId         string                  `protobuf:"bytes,3,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ItemId        string                  `protobuf:"bytes,4,opt,name=item_id,json=itemId,proto3" json:"item_id,omitempty"`
+	Kind          BackgroundTaskKind      `protobuf:"varint,5,opt,name=kind,proto3,enum=hermesh.thread.v2.BackgroundTaskKind" json:"kind,omitempty"`
+	Status        BackgroundTaskStatus    `protobuf:"varint,6,opt,name=status,proto3,enum=hermesh.thread.v2.BackgroundTaskStatus" json:"status,omitempty"`
+	Title         string                  `protobuf:"bytes,7,opt,name=title,proto3" json:"title,omitempty"`
+	Command       string                  `protobuf:"bytes,8,opt,name=command,proto3" json:"command,omitempty"`
+	OutputTail    string                  `protobuf:"bytes,9,opt,name=output_tail,json=outputTail,proto3" json:"output_tail,omitempty"`
+	Summary       string                  `protobuf:"bytes,10,opt,name=summary,proto3" json:"summary,omitempty"`
+	ExitCode      *int32                  `protobuf:"varint,11,opt,name=exit_code,json=exitCode,proto3,oneof" json:"exit_code,omitempty"`
+	Awaited       bool                    `protobuf:"varint,12,opt,name=awaited,proto3" json:"awaited,omitempty"`
+	StopScope     BackgroundTaskStopScope `protobuf:"varint,13,opt,name=stop_scope,json=stopScope,proto3,enum=hermesh.thread.v2.BackgroundTaskStopScope" json:"stop_scope,omitempty"`
+	StartedAt     *timestamppb.Timestamp  `protobuf:"bytes,14,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp  `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	CompletedAt   *timestamppb.Timestamp  `protobuf:"bytes,16,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *BackgroundTask) Reset() {
+	*x = BackgroundTask{}
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BackgroundTask) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BackgroundTask) ProtoMessage() {}
+
+func (x *BackgroundTask) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BackgroundTask.ProtoReflect.Descriptor instead.
+func (*BackgroundTask) Descriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *BackgroundTask) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetItemId() string {
+	if x != nil {
+		return x.ItemId
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetKind() BackgroundTaskKind {
+	if x != nil {
+		return x.Kind
+	}
+	return BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED
+}
+
+func (x *BackgroundTask) GetStatus() BackgroundTaskStatus {
+	if x != nil {
+		return x.Status
+	}
+	return BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED
+}
+
+func (x *BackgroundTask) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetOutputTail() string {
+	if x != nil {
+		return x.OutputTail
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *BackgroundTask) GetExitCode() int32 {
+	if x != nil && x.ExitCode != nil {
+		return *x.ExitCode
+	}
+	return 0
+}
+
+func (x *BackgroundTask) GetAwaited() bool {
+	if x != nil {
+		return x.Awaited
+	}
+	return false
+}
+
+func (x *BackgroundTask) GetStopScope() BackgroundTaskStopScope {
+	if x != nil {
+		return x.StopScope
+	}
+	return BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED
+}
+
+func (x *BackgroundTask) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *BackgroundTask) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *BackgroundTask) GetCompletedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CompletedAt
+	}
+	return nil
+}
+
+type ThreadEvent struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Seq            uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
+	ThreadId       string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	Type           string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Thread         *Thread                `protobuf:"bytes,4,opt,name=thread,proto3" json:"thread,omitempty"`
+	Run            *Run                   `protobuf:"bytes,5,opt,name=run,proto3" json:"run,omitempty"`
+	Item           *TurnItem              `protobuf:"bytes,6,opt,name=item,proto3" json:"item,omitempty"`
+	Request        *RuntimeRequest        `protobuf:"bytes,7,opt,name=request,proto3" json:"request,omitempty"`
+	Checkpoint     *Checkpoint            `protobuf:"bytes,8,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
+	TextDelta      string                 `protobuf:"bytes,9,opt,name=text_delta,json=textDelta,proto3" json:"text_delta,omitempty"`
+	TargetItemId   string                 `protobuf:"bytes,10,opt,name=target_item_id,json=targetItemId,proto3" json:"target_item_id,omitempty"`
+	OccurredAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	BackgroundTask *BackgroundTask        `protobuf:"bytes,12,opt,name=background_task,json=backgroundTask,proto3" json:"background_task,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
 func (x *ThreadEvent) Reset() {
 	*x = ThreadEvent{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[30]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3868,7 +4216,7 @@ func (x *ThreadEvent) String() string {
 func (*ThreadEvent) ProtoMessage() {}
 
 func (x *ThreadEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[30]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3881,7 +4229,7 @@ func (x *ThreadEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThreadEvent.ProtoReflect.Descriptor instead.
 func (*ThreadEvent) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{30}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ThreadEvent) GetSeq() uint64 {
@@ -3961,6 +4309,13 @@ func (x *ThreadEvent) GetOccurredAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *ThreadEvent) GetBackgroundTask() *BackgroundTask {
+	if x != nil {
+		return x.BackgroundTask
+	}
+	return nil
+}
+
 type ThreadProjection struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Thread          *Thread                `protobuf:"bytes,1,opt,name=thread,proto3" json:"thread,omitempty"`
@@ -3969,13 +4324,14 @@ type ThreadProjection struct {
 	Requests        []*RuntimeRequest      `protobuf:"bytes,4,rep,name=requests,proto3" json:"requests,omitempty"`
 	Checkpoints     []*Checkpoint          `protobuf:"bytes,5,rep,name=checkpoints,proto3" json:"checkpoints,omitempty"`
 	ProviderThreads []*ProviderThread      `protobuf:"bytes,6,rep,name=provider_threads,json=providerThreads,proto3" json:"provider_threads,omitempty"`
+	BackgroundTasks []*BackgroundTask      `protobuf:"bytes,7,rep,name=background_tasks,json=backgroundTasks,proto3" json:"background_tasks,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ThreadProjection) Reset() {
 	*x = ThreadProjection{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[31]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3987,7 +4343,7 @@ func (x *ThreadProjection) String() string {
 func (*ThreadProjection) ProtoMessage() {}
 
 func (x *ThreadProjection) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[31]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4000,7 +4356,7 @@ func (x *ThreadProjection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThreadProjection.ProtoReflect.Descriptor instead.
 func (*ThreadProjection) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{31}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ThreadProjection) GetThread() *Thread {
@@ -4045,6 +4401,13 @@ func (x *ThreadProjection) GetProviderThreads() []*ProviderThread {
 	return nil
 }
 
+func (x *ThreadProjection) GetBackgroundTasks() []*BackgroundTask {
+	if x != nil {
+		return x.BackgroundTasks
+	}
+	return nil
+}
+
 type ListProvidersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
@@ -4056,7 +4419,7 @@ type ListProvidersRequest struct {
 
 func (x *ListProvidersRequest) Reset() {
 	*x = ListProvidersRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[32]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4068,7 +4431,7 @@ func (x *ListProvidersRequest) String() string {
 func (*ListProvidersRequest) ProtoMessage() {}
 
 func (x *ListProvidersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[32]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4081,7 +4444,7 @@ func (x *ListProvidersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProvidersRequest.ProtoReflect.Descriptor instead.
 func (*ListProvidersRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{32}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListProvidersRequest) GetMachineId() string {
@@ -4115,7 +4478,7 @@ type ListProvidersResponse struct {
 
 func (x *ListProvidersResponse) Reset() {
 	*x = ListProvidersResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[33]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4127,7 +4490,7 @@ func (x *ListProvidersResponse) String() string {
 func (*ListProvidersResponse) ProtoMessage() {}
 
 func (x *ListProvidersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[33]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4140,7 +4503,7 @@ func (x *ListProvidersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProvidersResponse.ProtoReflect.Descriptor instead.
 func (*ListProvidersResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{33}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListProvidersResponse) GetProviders() []*ProviderInstance {
@@ -4167,7 +4530,7 @@ type UpsertProviderInstanceRequest struct {
 
 func (x *UpsertProviderInstanceRequest) Reset() {
 	*x = UpsertProviderInstanceRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[34]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4179,7 +4542,7 @@ func (x *UpsertProviderInstanceRequest) String() string {
 func (*UpsertProviderInstanceRequest) ProtoMessage() {}
 
 func (x *UpsertProviderInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[34]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4192,7 +4555,7 @@ func (x *UpsertProviderInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertProviderInstanceRequest.ProtoReflect.Descriptor instead.
 func (*UpsertProviderInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{34}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *UpsertProviderInstanceRequest) GetMachineId() string {
@@ -4218,7 +4581,7 @@ type UpsertProviderInstanceResponse struct {
 
 func (x *UpsertProviderInstanceResponse) Reset() {
 	*x = UpsertProviderInstanceResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[35]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4230,7 +4593,7 @@ func (x *UpsertProviderInstanceResponse) String() string {
 func (*UpsertProviderInstanceResponse) ProtoMessage() {}
 
 func (x *UpsertProviderInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[35]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4243,7 +4606,7 @@ func (x *UpsertProviderInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertProviderInstanceResponse.ProtoReflect.Descriptor instead.
 func (*UpsertProviderInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{35}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *UpsertProviderInstanceResponse) GetProvider() *ProviderInstance {
@@ -4263,7 +4626,7 @@ type RemoveProviderInstanceRequest struct {
 
 func (x *RemoveProviderInstanceRequest) Reset() {
 	*x = RemoveProviderInstanceRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[36]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4275,7 +4638,7 @@ func (x *RemoveProviderInstanceRequest) String() string {
 func (*RemoveProviderInstanceRequest) ProtoMessage() {}
 
 func (x *RemoveProviderInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[36]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4288,7 +4651,7 @@ func (x *RemoveProviderInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveProviderInstanceRequest.ProtoReflect.Descriptor instead.
 func (*RemoveProviderInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{36}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *RemoveProviderInstanceRequest) GetMachineId() string {
@@ -4313,7 +4676,7 @@ type RemoveProviderInstanceResponse struct {
 
 func (x *RemoveProviderInstanceResponse) Reset() {
 	*x = RemoveProviderInstanceResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[37]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4325,7 +4688,7 @@ func (x *RemoveProviderInstanceResponse) String() string {
 func (*RemoveProviderInstanceResponse) ProtoMessage() {}
 
 func (x *RemoveProviderInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[37]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4338,7 +4701,7 @@ func (x *RemoveProviderInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveProviderInstanceResponse.ProtoReflect.Descriptor instead.
 func (*RemoveProviderInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{37}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{38}
 }
 
 type LaunchThreadRequest struct {
@@ -4360,7 +4723,7 @@ type LaunchThreadRequest struct {
 
 func (x *LaunchThreadRequest) Reset() {
 	*x = LaunchThreadRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[38]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4372,7 +4735,7 @@ func (x *LaunchThreadRequest) String() string {
 func (*LaunchThreadRequest) ProtoMessage() {}
 
 func (x *LaunchThreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[38]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4385,7 +4748,7 @@ func (x *LaunchThreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LaunchThreadRequest.ProtoReflect.Descriptor instead.
 func (*LaunchThreadRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{38}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *LaunchThreadRequest) GetCommandId() string {
@@ -4476,7 +4839,7 @@ type LaunchThreadResponse struct {
 
 func (x *LaunchThreadResponse) Reset() {
 	*x = LaunchThreadResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[39]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4488,7 +4851,7 @@ func (x *LaunchThreadResponse) String() string {
 func (*LaunchThreadResponse) ProtoMessage() {}
 
 func (x *LaunchThreadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[39]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4501,7 +4864,7 @@ func (x *LaunchThreadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LaunchThreadResponse.ProtoReflect.Descriptor instead.
 func (*LaunchThreadResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{39}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *LaunchThreadResponse) GetThread() *Thread {
@@ -4535,7 +4898,7 @@ type GetThreadRequest struct {
 
 func (x *GetThreadRequest) Reset() {
 	*x = GetThreadRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[40]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4547,7 +4910,7 @@ func (x *GetThreadRequest) String() string {
 func (*GetThreadRequest) ProtoMessage() {}
 
 func (x *GetThreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[40]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4560,7 +4923,7 @@ func (x *GetThreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetThreadRequest.ProtoReflect.Descriptor instead.
 func (*GetThreadRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{40}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetThreadRequest) GetMachineId() string {
@@ -4586,7 +4949,7 @@ type GetThreadResponse struct {
 
 func (x *GetThreadResponse) Reset() {
 	*x = GetThreadResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[41]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4598,7 +4961,7 @@ func (x *GetThreadResponse) String() string {
 func (*GetThreadResponse) ProtoMessage() {}
 
 func (x *GetThreadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[41]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4611,7 +4974,7 @@ func (x *GetThreadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetThreadResponse.ProtoReflect.Descriptor instead.
 func (*GetThreadResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{41}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetThreadResponse) GetProjection() *ThreadProjection {
@@ -4633,7 +4996,7 @@ type ListThreadsRequest struct {
 
 func (x *ListThreadsRequest) Reset() {
 	*x = ListThreadsRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[42]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4645,7 +5008,7 @@ func (x *ListThreadsRequest) String() string {
 func (*ListThreadsRequest) ProtoMessage() {}
 
 func (x *ListThreadsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[42]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4658,7 +5021,7 @@ func (x *ListThreadsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListThreadsRequest.ProtoReflect.Descriptor instead.
 func (*ListThreadsRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{42}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListThreadsRequest) GetMachineId() string {
@@ -4698,7 +5061,7 @@ type ListThreadsResponse struct {
 
 func (x *ListThreadsResponse) Reset() {
 	*x = ListThreadsResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[43]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4710,7 +5073,7 @@ func (x *ListThreadsResponse) String() string {
 func (*ListThreadsResponse) ProtoMessage() {}
 
 func (x *ListThreadsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[43]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4723,7 +5086,7 @@ func (x *ListThreadsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListThreadsResponse.ProtoReflect.Descriptor instead.
 func (*ListThreadsResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{43}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ListThreadsResponse) GetThreads() []*Thread {
@@ -4743,7 +5106,7 @@ type SubscribeThreadsRequest struct {
 
 func (x *SubscribeThreadsRequest) Reset() {
 	*x = SubscribeThreadsRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[44]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4755,7 +5118,7 @@ func (x *SubscribeThreadsRequest) String() string {
 func (*SubscribeThreadsRequest) ProtoMessage() {}
 
 func (x *SubscribeThreadsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[44]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4768,7 +5131,7 @@ func (x *SubscribeThreadsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeThreadsRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeThreadsRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{44}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SubscribeThreadsRequest) GetMachineId() string {
@@ -4796,7 +5159,7 @@ type SubscribeThreadsResponse struct {
 
 func (x *SubscribeThreadsResponse) Reset() {
 	*x = SubscribeThreadsResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[45]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4808,7 +5171,7 @@ func (x *SubscribeThreadsResponse) String() string {
 func (*SubscribeThreadsResponse) ProtoMessage() {}
 
 func (x *SubscribeThreadsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[45]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4821,7 +5184,7 @@ func (x *SubscribeThreadsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeThreadsResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeThreadsResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{45}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SubscribeThreadsResponse) GetSnapshot() bool {
@@ -4856,7 +5219,7 @@ type SubscribeThreadRequest struct {
 
 func (x *SubscribeThreadRequest) Reset() {
 	*x = SubscribeThreadRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[46]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4868,7 +5231,7 @@ func (x *SubscribeThreadRequest) String() string {
 func (*SubscribeThreadRequest) ProtoMessage() {}
 
 func (x *SubscribeThreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[46]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4881,7 +5244,7 @@ func (x *SubscribeThreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeThreadRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeThreadRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{46}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *SubscribeThreadRequest) GetMachineId() string {
@@ -4922,7 +5285,7 @@ type DispatchMessageRequest struct {
 
 func (x *DispatchMessageRequest) Reset() {
 	*x = DispatchMessageRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[47]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4934,7 +5297,7 @@ func (x *DispatchMessageRequest) String() string {
 func (*DispatchMessageRequest) ProtoMessage() {}
 
 func (x *DispatchMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[47]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4947,7 +5310,7 @@ func (x *DispatchMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchMessageRequest.ProtoReflect.Descriptor instead.
 func (*DispatchMessageRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{47}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *DispatchMessageRequest) GetCommandId() string {
@@ -5025,7 +5388,7 @@ type DispatchMessageResponse struct {
 
 func (x *DispatchMessageResponse) Reset() {
 	*x = DispatchMessageResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[48]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5037,7 +5400,7 @@ func (x *DispatchMessageResponse) String() string {
 func (*DispatchMessageResponse) ProtoMessage() {}
 
 func (x *DispatchMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[48]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5050,7 +5413,7 @@ func (x *DispatchMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchMessageResponse.ProtoReflect.Descriptor instead.
 func (*DispatchMessageResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{48}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *DispatchMessageResponse) GetThread() *Thread {
@@ -5096,7 +5459,7 @@ type InterruptRunRequest struct {
 
 func (x *InterruptRunRequest) Reset() {
 	*x = InterruptRunRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[49]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5108,7 +5471,7 @@ func (x *InterruptRunRequest) String() string {
 func (*InterruptRunRequest) ProtoMessage() {}
 
 func (x *InterruptRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[49]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5121,7 +5484,7 @@ func (x *InterruptRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterruptRunRequest.ProtoReflect.Descriptor instead.
 func (*InterruptRunRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{49}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *InterruptRunRequest) GetCommandId() string {
@@ -5182,7 +5545,7 @@ type InterruptRunResponse struct {
 
 func (x *InterruptRunResponse) Reset() {
 	*x = InterruptRunResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[50]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5194,7 +5557,7 @@ func (x *InterruptRunResponse) String() string {
 func (*InterruptRunResponse) ProtoMessage() {}
 
 func (x *InterruptRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[50]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5207,12 +5570,133 @@ func (x *InterruptRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InterruptRunResponse.ProtoReflect.Descriptor instead.
 func (*InterruptRunResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{50}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *InterruptRunResponse) GetThread() *Thread {
 	if x != nil {
 		return x.Thread
+	}
+	return nil
+}
+
+type StopBackgroundTaskRequest struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	CommandId string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	MachineId string                 `protobuf:"bytes,2,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	ThreadId  string                 `protobuf:"bytes,3,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	// Empty stops all running background tasks on the thread.
+	TaskId        string `protobuf:"bytes,4,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopBackgroundTaskRequest) Reset() {
+	*x = StopBackgroundTaskRequest{}
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopBackgroundTaskRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopBackgroundTaskRequest) ProtoMessage() {}
+
+func (x *StopBackgroundTaskRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopBackgroundTaskRequest.ProtoReflect.Descriptor instead.
+func (*StopBackgroundTaskRequest) Descriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *StopBackgroundTaskRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *StopBackgroundTaskRequest) GetMachineId() string {
+	if x != nil {
+		return x.MachineId
+	}
+	return ""
+}
+
+func (x *StopBackgroundTaskRequest) GetThreadId() string {
+	if x != nil {
+		return x.ThreadId
+	}
+	return ""
+}
+
+func (x *StopBackgroundTaskRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type StopBackgroundTaskResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Thread        *Thread                `protobuf:"bytes,1,opt,name=thread,proto3" json:"thread,omitempty"`
+	StoppedTasks  []*BackgroundTask      `protobuf:"bytes,2,rep,name=stopped_tasks,json=stoppedTasks,proto3" json:"stopped_tasks,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StopBackgroundTaskResponse) Reset() {
+	*x = StopBackgroundTaskResponse{}
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StopBackgroundTaskResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StopBackgroundTaskResponse) ProtoMessage() {}
+
+func (x *StopBackgroundTaskResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StopBackgroundTaskResponse.ProtoReflect.Descriptor instead.
+func (*StopBackgroundTaskResponse) Descriptor() ([]byte, []int) {
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *StopBackgroundTaskResponse) GetThread() *Thread {
+	if x != nil {
+		return x.Thread
+	}
+	return nil
+}
+
+func (x *StopBackgroundTaskResponse) GetStoppedTasks() []*BackgroundTask {
+	if x != nil {
+		return x.StoppedTasks
 	}
 	return nil
 }
@@ -5233,7 +5717,7 @@ type ManageQueueRequest struct {
 
 func (x *ManageQueueRequest) Reset() {
 	*x = ManageQueueRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[51]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5245,7 +5729,7 @@ func (x *ManageQueueRequest) String() string {
 func (*ManageQueueRequest) ProtoMessage() {}
 
 func (x *ManageQueueRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[51]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5258,7 +5742,7 @@ func (x *ManageQueueRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManageQueueRequest.ProtoReflect.Descriptor instead.
 func (*ManageQueueRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{51}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ManageQueueRequest) GetCommandId() string {
@@ -5327,7 +5811,7 @@ type ManageQueueResponse struct {
 
 func (x *ManageQueueResponse) Reset() {
 	*x = ManageQueueResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[52]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5339,7 +5823,7 @@ func (x *ManageQueueResponse) String() string {
 func (*ManageQueueResponse) ProtoMessage() {}
 
 func (x *ManageQueueResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[52]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5352,7 +5836,7 @@ func (x *ManageQueueResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManageQueueResponse.ProtoReflect.Descriptor instead.
 func (*ManageQueueResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{52}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ManageQueueResponse) GetThread() *Thread {
@@ -5388,7 +5872,7 @@ type UpdateThreadConfigRequest struct {
 
 func (x *UpdateThreadConfigRequest) Reset() {
 	*x = UpdateThreadConfigRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[53]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5400,7 +5884,7 @@ func (x *UpdateThreadConfigRequest) String() string {
 func (*UpdateThreadConfigRequest) ProtoMessage() {}
 
 func (x *UpdateThreadConfigRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[53]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5413,7 +5897,7 @@ func (x *UpdateThreadConfigRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateThreadConfigRequest.ProtoReflect.Descriptor instead.
 func (*UpdateThreadConfigRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{53}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *UpdateThreadConfigRequest) GetCommandId() string {
@@ -5503,7 +5987,7 @@ type UpdateThreadConfigResponse struct {
 
 func (x *UpdateThreadConfigResponse) Reset() {
 	*x = UpdateThreadConfigResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[54]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5515,7 +5999,7 @@ func (x *UpdateThreadConfigResponse) String() string {
 func (*UpdateThreadConfigResponse) ProtoMessage() {}
 
 func (x *UpdateThreadConfigResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[54]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5528,7 +6012,7 @@ func (x *UpdateThreadConfigResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateThreadConfigResponse.ProtoReflect.Descriptor instead.
 func (*UpdateThreadConfigResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{54}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *UpdateThreadConfigResponse) GetThread() *Thread {
@@ -5562,7 +6046,7 @@ type RespondRuntimeRequestRequest struct {
 
 func (x *RespondRuntimeRequestRequest) Reset() {
 	*x = RespondRuntimeRequestRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[55]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5574,7 +6058,7 @@ func (x *RespondRuntimeRequestRequest) String() string {
 func (*RespondRuntimeRequestRequest) ProtoMessage() {}
 
 func (x *RespondRuntimeRequestRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[55]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5587,7 +6071,7 @@ func (x *RespondRuntimeRequestRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondRuntimeRequestRequest.ProtoReflect.Descriptor instead.
 func (*RespondRuntimeRequestRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{55}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *RespondRuntimeRequestRequest) GetCommandId() string {
@@ -5664,7 +6148,7 @@ type RespondRuntimeRequestResponse struct {
 
 func (x *RespondRuntimeRequestResponse) Reset() {
 	*x = RespondRuntimeRequestResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[56]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5676,7 +6160,7 @@ func (x *RespondRuntimeRequestResponse) String() string {
 func (*RespondRuntimeRequestResponse) ProtoMessage() {}
 
 func (x *RespondRuntimeRequestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[56]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5689,7 +6173,7 @@ func (x *RespondRuntimeRequestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RespondRuntimeRequestResponse.ProtoReflect.Descriptor instead.
 func (*RespondRuntimeRequestResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{56}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *RespondRuntimeRequestResponse) GetThread() *Thread {
@@ -5723,7 +6207,7 @@ type ListCheckpointsRequest struct {
 
 func (x *ListCheckpointsRequest) Reset() {
 	*x = ListCheckpointsRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[57]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5735,7 +6219,7 @@ func (x *ListCheckpointsRequest) String() string {
 func (*ListCheckpointsRequest) ProtoMessage() {}
 
 func (x *ListCheckpointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[57]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5748,7 +6232,7 @@ func (x *ListCheckpointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCheckpointsRequest.ProtoReflect.Descriptor instead.
 func (*ListCheckpointsRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{57}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ListCheckpointsRequest) GetMachineId() string {
@@ -5774,7 +6258,7 @@ type ListCheckpointsResponse struct {
 
 func (x *ListCheckpointsResponse) Reset() {
 	*x = ListCheckpointsResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[58]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5786,7 +6270,7 @@ func (x *ListCheckpointsResponse) String() string {
 func (*ListCheckpointsResponse) ProtoMessage() {}
 
 func (x *ListCheckpointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[58]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5799,7 +6283,7 @@ func (x *ListCheckpointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCheckpointsResponse.ProtoReflect.Descriptor instead.
 func (*ListCheckpointsResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{58}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *ListCheckpointsResponse) GetCheckpoints() []*Checkpoint {
@@ -5822,7 +6306,7 @@ type RollbackCheckpointRequest struct {
 
 func (x *RollbackCheckpointRequest) Reset() {
 	*x = RollbackCheckpointRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[59]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5834,7 +6318,7 @@ func (x *RollbackCheckpointRequest) String() string {
 func (*RollbackCheckpointRequest) ProtoMessage() {}
 
 func (x *RollbackCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[59]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5847,7 +6331,7 @@ func (x *RollbackCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*RollbackCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{59}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *RollbackCheckpointRequest) GetCommandId() string {
@@ -5895,7 +6379,7 @@ type RollbackCheckpointResponse struct {
 
 func (x *RollbackCheckpointResponse) Reset() {
 	*x = RollbackCheckpointResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[60]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5907,7 +6391,7 @@ func (x *RollbackCheckpointResponse) String() string {
 func (*RollbackCheckpointResponse) ProtoMessage() {}
 
 func (x *RollbackCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[60]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5920,7 +6404,7 @@ func (x *RollbackCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RollbackCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*RollbackCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{60}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *RollbackCheckpointResponse) GetThread() *Thread {
@@ -5948,7 +6432,7 @@ type GetThreadDiffRequest struct {
 
 func (x *GetThreadDiffRequest) Reset() {
 	*x = GetThreadDiffRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[61]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5960,7 +6444,7 @@ func (x *GetThreadDiffRequest) String() string {
 func (*GetThreadDiffRequest) ProtoMessage() {}
 
 func (x *GetThreadDiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[61]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5973,7 +6457,7 @@ func (x *GetThreadDiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetThreadDiffRequest.ProtoReflect.Descriptor instead.
 func (*GetThreadDiffRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{61}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *GetThreadDiffRequest) GetMachineId() string {
@@ -6007,7 +6491,7 @@ type GetThreadDiffResponse struct {
 
 func (x *GetThreadDiffResponse) Reset() {
 	*x = GetThreadDiffResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[62]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6019,7 +6503,7 @@ func (x *GetThreadDiffResponse) String() string {
 func (*GetThreadDiffResponse) ProtoMessage() {}
 
 func (x *GetThreadDiffResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[62]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6032,7 +6516,7 @@ func (x *GetThreadDiffResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetThreadDiffResponse.ProtoReflect.Descriptor instead.
 func (*GetThreadDiffResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{62}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GetThreadDiffResponse) GetUnifiedDiff() string {
@@ -6064,7 +6548,7 @@ type ForkThreadRequest struct {
 
 func (x *ForkThreadRequest) Reset() {
 	*x = ForkThreadRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[63]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6076,7 +6560,7 @@ func (x *ForkThreadRequest) String() string {
 func (*ForkThreadRequest) ProtoMessage() {}
 
 func (x *ForkThreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[63]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6089,7 +6573,7 @@ func (x *ForkThreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForkThreadRequest.ProtoReflect.Descriptor instead.
 func (*ForkThreadRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{63}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *ForkThreadRequest) GetCommandId() string {
@@ -6150,7 +6634,7 @@ type ForkThreadResponse struct {
 
 func (x *ForkThreadResponse) Reset() {
 	*x = ForkThreadResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[64]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6162,7 +6646,7 @@ func (x *ForkThreadResponse) String() string {
 func (*ForkThreadResponse) ProtoMessage() {}
 
 func (x *ForkThreadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[64]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6175,7 +6659,7 @@ func (x *ForkThreadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForkThreadResponse.ProtoReflect.Descriptor instead.
 func (*ForkThreadResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{64}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ForkThreadResponse) GetThread() *Thread {
@@ -6196,7 +6680,7 @@ type DeleteThreadRequest struct {
 
 func (x *DeleteThreadRequest) Reset() {
 	*x = DeleteThreadRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[65]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6208,7 +6692,7 @@ func (x *DeleteThreadRequest) String() string {
 func (*DeleteThreadRequest) ProtoMessage() {}
 
 func (x *DeleteThreadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[65]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6221,7 +6705,7 @@ func (x *DeleteThreadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteThreadRequest.ProtoReflect.Descriptor instead.
 func (*DeleteThreadRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{65}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *DeleteThreadRequest) GetCommandId() string {
@@ -6253,7 +6737,7 @@ type DeleteThreadResponse struct {
 
 func (x *DeleteThreadResponse) Reset() {
 	*x = DeleteThreadResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[66]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6265,7 +6749,7 @@ func (x *DeleteThreadResponse) String() string {
 func (*DeleteThreadResponse) ProtoMessage() {}
 
 func (x *DeleteThreadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[66]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6278,7 +6762,7 @@ func (x *DeleteThreadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteThreadResponse.ProtoReflect.Descriptor instead.
 func (*DeleteThreadResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{66}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{69}
 }
 
 type UploadBlobRequest struct {
@@ -6293,7 +6777,7 @@ type UploadBlobRequest struct {
 
 func (x *UploadBlobRequest) Reset() {
 	*x = UploadBlobRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[67]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6305,7 +6789,7 @@ func (x *UploadBlobRequest) String() string {
 func (*UploadBlobRequest) ProtoMessage() {}
 
 func (x *UploadBlobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[67]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6318,7 +6802,7 @@ func (x *UploadBlobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadBlobRequest.ProtoReflect.Descriptor instead.
 func (*UploadBlobRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{67}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *UploadBlobRequest) GetMachineId() string {
@@ -6358,7 +6842,7 @@ type UploadBlobResponse struct {
 
 func (x *UploadBlobResponse) Reset() {
 	*x = UploadBlobResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[68]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6370,7 +6854,7 @@ func (x *UploadBlobResponse) String() string {
 func (*UploadBlobResponse) ProtoMessage() {}
 
 func (x *UploadBlobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[68]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6383,7 +6867,7 @@ func (x *UploadBlobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadBlobResponse.ProtoReflect.Descriptor instead.
 func (*UploadBlobResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{68}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *UploadBlobResponse) GetAttachment() *AttachmentRef {
@@ -6403,7 +6887,7 @@ type DownloadBlobRequest struct {
 
 func (x *DownloadBlobRequest) Reset() {
 	*x = DownloadBlobRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[69]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6415,7 +6899,7 @@ func (x *DownloadBlobRequest) String() string {
 func (*DownloadBlobRequest) ProtoMessage() {}
 
 func (x *DownloadBlobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[69]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6428,7 +6912,7 @@ func (x *DownloadBlobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadBlobRequest.ProtoReflect.Descriptor instead.
 func (*DownloadBlobRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{69}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *DownloadBlobRequest) GetMachineId() string {
@@ -6456,7 +6940,7 @@ type DownloadBlobResponse struct {
 
 func (x *DownloadBlobResponse) Reset() {
 	*x = DownloadBlobResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[70]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6468,7 +6952,7 @@ func (x *DownloadBlobResponse) String() string {
 func (*DownloadBlobResponse) ProtoMessage() {}
 
 func (x *DownloadBlobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[70]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6481,7 +6965,7 @@ func (x *DownloadBlobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadBlobResponse.ProtoReflect.Descriptor instead.
 func (*DownloadBlobResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{70}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *DownloadBlobResponse) GetData() []byte {
@@ -6520,7 +7004,7 @@ type OutboxEntry struct {
 
 func (x *OutboxEntry) Reset() {
 	*x = OutboxEntry{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[71]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6532,7 +7016,7 @@ func (x *OutboxEntry) String() string {
 func (*OutboxEntry) ProtoMessage() {}
 
 func (x *OutboxEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[71]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6545,7 +7029,7 @@ func (x *OutboxEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OutboxEntry.ProtoReflect.Descriptor instead.
 func (*OutboxEntry) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{71}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *OutboxEntry) GetCommandId() string {
@@ -6606,7 +7090,7 @@ type ListOutboxRequest struct {
 
 func (x *ListOutboxRequest) Reset() {
 	*x = ListOutboxRequest{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[72]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6618,7 +7102,7 @@ func (x *ListOutboxRequest) String() string {
 func (*ListOutboxRequest) ProtoMessage() {}
 
 func (x *ListOutboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[72]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6631,7 +7115,7 @@ func (x *ListOutboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOutboxRequest.ProtoReflect.Descriptor instead.
 func (*ListOutboxRequest) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{72}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *ListOutboxRequest) GetMachineId() string {
@@ -6650,7 +7134,7 @@ type ListOutboxResponse struct {
 
 func (x *ListOutboxResponse) Reset() {
 	*x = ListOutboxResponse{}
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[73]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6662,7 +7146,7 @@ func (x *ListOutboxResponse) String() string {
 func (*ListOutboxResponse) ProtoMessage() {}
 
 func (x *ListOutboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[73]
+	mi := &file_hermesh_thread_v2_thread_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6675,7 +7159,7 @@ func (x *ListOutboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOutboxResponse.ProtoReflect.Descriptor instead.
 func (*ListOutboxResponse) Descriptor() ([]byte, []int) {
-	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{73}
+	return file_hermesh_thread_v2_thread_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *ListOutboxResponse) GetEntries() []*OutboxEntry {
@@ -6824,8 +7308,7 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\routput_tokens\x18\x02 \x01(\x04R\foutputTokens\x12*\n" +
 	"\x11cache_read_tokens\x18\x03 \x01(\x04R\x0fcacheReadTokens\x12.\n" +
 	"\x13context_used_tokens\x18\x04 \x01(\x04R\x11contextUsedTokens\x120\n" +
-	"\x14context_limit_tokens\x18\x05 \x01(\x04R\x12contextLimitTokens\"\xf0\n" +
-	"\n" +
+	"\x14context_limit_tokens\x18\x05 \x01(\x04R\x12contextLimitTokens\"\xd8\v\n" +
 	"\x06Thread\x12\x1b\n" +
 	"\tthread_id\x18\x01 \x01(\tR\bthreadId\x12\x1d\n" +
 	"\n" +
@@ -6863,7 +7346,9 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x1b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12;\n" +
 	"\varchived_at\x18\x1c \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"archivedAt\"\xae\x03\n" +
+	"archivedAt\x126\n" +
+	"\x17active_background_count\x18\x1d \x01(\rR\x15activeBackgroundCount\x12.\n" +
+	"\x13active_daemon_count\x18\x1e \x01(\rR\x11activeDaemonCount\"\xae\x03\n" +
 	"\x0eProviderThread\x12,\n" +
 	"\x12provider_thread_id\x18\x01 \x01(\tR\x10providerThreadId\x12\x1b\n" +
 	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12\x1f\n" +
@@ -6885,7 +7370,7 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x03 \x01(\tR\bmimeType\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x04 \x01(\x04R\tsizeBytes\"\x85\b\n" +
+	"size_bytes\x18\x04 \x01(\x04R\tsizeBytes\"\xa6\b\n" +
 	"\x03Run\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1b\n" +
 	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12\x18\n" +
@@ -6912,7 +7397,9 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"created_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"started_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12=\n" +
-	"\fcompleted_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\"\x95\x02\n" +
+	"\fcompleted_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12\x1f\n" +
+	"\vwake_reason\x18\x16 \x01(\tR\n" +
+	"wakeReason\"\x95\x02\n" +
 	"\x13ToolApprovalPayload\x12#\n" +
 	"\rtool_category\x18\x01 \x01(\tR\ftoolCategory\x12\x1b\n" +
 	"\ttool_name\x18\x02 \x01(\tR\btoolName\x12\x18\n" +
@@ -7034,7 +7521,31 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\bhead_oid\x18\x06 \x01(\tR\aheadOid\x127\n" +
 	"\x05files\x18\a \x03(\v2!.hermesh.thread.v2.CheckpointFileR\x05files\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xdc\x03\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa7\x05\n" +
+	"\x0eBackgroundTask\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x1b\n" +
+	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12\x15\n" +
+	"\x06run_id\x18\x03 \x01(\tR\x05runId\x12\x17\n" +
+	"\aitem_id\x18\x04 \x01(\tR\x06itemId\x129\n" +
+	"\x04kind\x18\x05 \x01(\x0e2%.hermesh.thread.v2.BackgroundTaskKindR\x04kind\x12?\n" +
+	"\x06status\x18\x06 \x01(\x0e2'.hermesh.thread.v2.BackgroundTaskStatusR\x06status\x12\x14\n" +
+	"\x05title\x18\a \x01(\tR\x05title\x12\x18\n" +
+	"\acommand\x18\b \x01(\tR\acommand\x12\x1f\n" +
+	"\voutput_tail\x18\t \x01(\tR\n" +
+	"outputTail\x12\x18\n" +
+	"\asummary\x18\n" +
+	" \x01(\tR\asummary\x12 \n" +
+	"\texit_code\x18\v \x01(\x05H\x00R\bexitCode\x88\x01\x01\x12\x18\n" +
+	"\aawaited\x18\f \x01(\bR\aawaited\x12I\n" +
+	"\n" +
+	"stop_scope\x18\r \x01(\x0e2*.hermesh.thread.v2.BackgroundTaskStopScopeR\tstopScope\x129\n" +
+	"\n" +
+	"started_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12=\n" +
+	"\fcompleted_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAtB\f\n" +
+	"\n" +
+	"_exit_code\"\xa8\x04\n" +
 	"\vThreadEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12\x1b\n" +
 	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12\x12\n" +
@@ -7051,14 +7562,16 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\x0etarget_item_id\x18\n" +
 	" \x01(\tR\ftargetItemId\x12;\n" +
 	"\voccurred_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"occurredAt\"\xf2\x02\n" +
+	"occurredAt\x12J\n" +
+	"\x0fbackground_task\x18\f \x01(\v2!.hermesh.thread.v2.BackgroundTaskR\x0ebackgroundTask\"\xc0\x03\n" +
 	"\x10ThreadProjection\x121\n" +
 	"\x06thread\x18\x01 \x01(\v2\x19.hermesh.thread.v2.ThreadR\x06thread\x12*\n" +
 	"\x04runs\x18\x02 \x03(\v2\x16.hermesh.thread.v2.RunR\x04runs\x121\n" +
 	"\x05items\x18\x03 \x03(\v2\x1b.hermesh.thread.v2.TurnItemR\x05items\x12=\n" +
 	"\brequests\x18\x04 \x03(\v2!.hermesh.thread.v2.RuntimeRequestR\brequests\x12?\n" +
 	"\vcheckpoints\x18\x05 \x03(\v2\x1d.hermesh.thread.v2.CheckpointR\vcheckpoints\x12L\n" +
-	"\x10provider_threads\x18\x06 \x03(\v2!.hermesh.thread.v2.ProviderThreadR\x0fproviderThreads\"n\n" +
+	"\x10provider_threads\x18\x06 \x03(\v2!.hermesh.thread.v2.ProviderThreadR\x0fproviderThreads\x12L\n" +
+	"\x10background_tasks\x18\a \x03(\v2!.hermesh.thread.v2.BackgroundTaskR\x0fbackgroundTasks\"n\n" +
 	"\x14ListProvidersRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
@@ -7160,7 +7673,17 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"hold_queue\x18\x06 \x01(\bR\tholdQueue\x12\x14\n" +
 	"\x05force\x18\a \x01(\bR\x05force\"I\n" +
 	"\x14InterruptRunResponse\x121\n" +
-	"\x06thread\x18\x01 \x01(\v2\x19.hermesh.thread.v2.ThreadR\x06thread\"\xc3\x02\n" +
+	"\x06thread\x18\x01 \x01(\v2\x19.hermesh.thread.v2.ThreadR\x06thread\"\x8f\x01\n" +
+	"\x19StopBackgroundTaskRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
+	"\n" +
+	"machine_id\x18\x02 \x01(\tR\tmachineId\x12\x1b\n" +
+	"\tthread_id\x18\x03 \x01(\tR\bthreadId\x12\x17\n" +
+	"\atask_id\x18\x04 \x01(\tR\x06taskId\"\x97\x01\n" +
+	"\x1aStopBackgroundTaskResponse\x121\n" +
+	"\x06thread\x18\x01 \x01(\v2\x19.hermesh.thread.v2.ThreadR\x06thread\x12F\n" +
+	"\rstopped_tasks\x18\x02 \x03(\v2!.hermesh.thread.v2.BackgroundTaskR\fstoppedTasks\"\xc3\x02\n" +
 	"\x12ManageQueueRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1d\n" +
@@ -7383,14 +7906,30 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\x1bTURN_ITEM_KIND_MODEL_SWITCH\x10\v\x12\x1d\n" +
 	"\x19TURN_ITEM_KIND_CHECKPOINT\x10\f\x12 \n" +
 	"\x1cTURN_ITEM_KIND_SYSTEM_NOTICE\x10\r\x12\x18\n" +
-	"\x14TURN_ITEM_KIND_ERROR\x10\x0e*\xcc\x01\n" +
+	"\x14TURN_ITEM_KIND_ERROR\x10\x0e*\xc3\x01\n" +
+	"\x12BackgroundTaskKind\x12$\n" +
+	" BACKGROUND_TASK_KIND_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cBACKGROUND_TASK_KIND_COMMAND\x10\x01\x12!\n" +
+	"\x1dBACKGROUND_TASK_KIND_SUBAGENT\x10\x02\x12!\n" +
+	"\x1dBACKGROUND_TASK_KIND_SCHEDULE\x10\x03\x12\x1f\n" +
+	"\x1bBACKGROUND_TASK_KIND_DAEMON\x10\x04*\xcf\x01\n" +
+	"\x14BackgroundTaskStatus\x12&\n" +
+	"\"BACKGROUND_TASK_STATUS_UNSPECIFIED\x10\x00\x12\"\n" +
+	"\x1eBACKGROUND_TASK_STATUS_RUNNING\x10\x01\x12$\n" +
+	" BACKGROUND_TASK_STATUS_COMPLETED\x10\x02\x12!\n" +
+	"\x1dBACKGROUND_TASK_STATUS_FAILED\x10\x03\x12\"\n" +
+	"\x1eBACKGROUND_TASK_STATUS_STOPPED\x10\x04*\x94\x01\n" +
+	"\x17BackgroundTaskStopScope\x12*\n" +
+	"&BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED\x10\x00\x12%\n" +
+	"!BACKGROUND_TASK_STOP_SCOPE_SINGLE\x10\x01\x12&\n" +
+	"\"BACKGROUND_TASK_STOP_SCOPE_SESSION\x10\x02*\xcc\x01\n" +
 	"\x0eQueueOperation\x12\x1f\n" +
 	"\x1bQUEUE_OPERATION_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14QUEUE_OPERATION_EDIT\x10\x01\x12\x1b\n" +
 	"\x17QUEUE_OPERATION_REORDER\x10\x02\x12\x1a\n" +
 	"\x16QUEUE_OPERATION_CANCEL\x10\x03\x12$\n" +
 	" QUEUE_OPERATION_PROMOTE_TO_STEER\x10\x04\x12 \n" +
-	"\x1cQUEUE_OPERATION_RESUME_QUEUE\x10\x052\x83\x11\n" +
+	"\x1cQUEUE_OPERATION_RESUME_QUEUE\x10\x052\xf6\x11\n" +
 	"\rThreadService\x12b\n" +
 	"\rListProviders\x12'.hermesh.thread.v2.ListProvidersRequest\x1a(.hermesh.thread.v2.ListProvidersResponse\x12}\n" +
 	"\x16UpsertProviderInstance\x120.hermesh.thread.v2.UpsertProviderInstanceRequest\x1a1.hermesh.thread.v2.UpsertProviderInstanceResponse\x12}\n" +
@@ -7401,7 +7940,8 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\x10SubscribeThreads\x12*.hermesh.thread.v2.SubscribeThreadsRequest\x1a+.hermesh.thread.v2.SubscribeThreadsResponse0\x01\x12^\n" +
 	"\x0fSubscribeThread\x12).hermesh.thread.v2.SubscribeThreadRequest\x1a\x1e.hermesh.thread.v2.ThreadEvent0\x01\x12h\n" +
 	"\x0fDispatchMessage\x12).hermesh.thread.v2.DispatchMessageRequest\x1a*.hermesh.thread.v2.DispatchMessageResponse\x12_\n" +
-	"\fInterruptRun\x12&.hermesh.thread.v2.InterruptRunRequest\x1a'.hermesh.thread.v2.InterruptRunResponse\x12\\\n" +
+	"\fInterruptRun\x12&.hermesh.thread.v2.InterruptRunRequest\x1a'.hermesh.thread.v2.InterruptRunResponse\x12q\n" +
+	"\x12StopBackgroundTask\x12,.hermesh.thread.v2.StopBackgroundTaskRequest\x1a-.hermesh.thread.v2.StopBackgroundTaskResponse\x12\\\n" +
 	"\vManageQueue\x12%.hermesh.thread.v2.ManageQueueRequest\x1a&.hermesh.thread.v2.ManageQueueResponse\x12q\n" +
 	"\x12UpdateThreadConfig\x12,.hermesh.thread.v2.UpdateThreadConfigRequest\x1a-.hermesh.thread.v2.UpdateThreadConfigResponse\x12z\n" +
 	"\x15RespondRuntimeRequest\x12/.hermesh.thread.v2.RespondRuntimeRequestRequest\x1a0.hermesh.thread.v2.RespondRuntimeRequestResponse\x12h\n" +
@@ -7430,8 +7970,8 @@ func file_hermesh_thread_v2_thread_proto_rawDescGZIP() []byte {
 	return file_hermesh_thread_v2_thread_proto_rawDescData
 }
 
-var file_hermesh_thread_v2_thread_proto_enumTypes = make([]protoimpl.EnumInfo, 13)
-var file_hermesh_thread_v2_thread_proto_msgTypes = make([]protoimpl.MessageInfo, 79)
+var file_hermesh_thread_v2_thread_proto_enumTypes = make([]protoimpl.EnumInfo, 16)
+var file_hermesh_thread_v2_thread_proto_msgTypes = make([]protoimpl.MessageInfo, 82)
 var file_hermesh_thread_v2_thread_proto_goTypes = []any{
 	(ActorKind)(0),                         // 0: hermesh.thread.v2.ActorKind
 	(InteractionMode)(0),                   // 1: hermesh.thread.v2.InteractionMode
@@ -7445,264 +7985,282 @@ var file_hermesh_thread_v2_thread_proto_goTypes = []any{
 	(ResponseMode)(0),                      // 9: hermesh.thread.v2.ResponseMode
 	(ApprovalDecision)(0),                  // 10: hermesh.thread.v2.ApprovalDecision
 	(TurnItemKind)(0),                      // 11: hermesh.thread.v2.TurnItemKind
-	(QueueOperation)(0),                    // 12: hermesh.thread.v2.QueueOperation
-	(*Actor)(nil),                          // 13: hermesh.thread.v2.Actor
-	(*OptionValue)(nil),                    // 14: hermesh.thread.v2.OptionValue
-	(*ModelSelection)(nil),                 // 15: hermesh.thread.v2.ModelSelection
-	(*OptionChoice)(nil),                   // 16: hermesh.thread.v2.OptionChoice
-	(*OptionDescriptor)(nil),               // 17: hermesh.thread.v2.OptionDescriptor
-	(*ProviderCapabilities)(nil),           // 18: hermesh.thread.v2.ProviderCapabilities
-	(*ModelCatalogEntry)(nil),              // 19: hermesh.thread.v2.ModelCatalogEntry
-	(*SlashCommand)(nil),                   // 20: hermesh.thread.v2.SlashCommand
-	(*SkillEntry)(nil),                     // 21: hermesh.thread.v2.SkillEntry
-	(*ProviderInstance)(nil),               // 22: hermesh.thread.v2.ProviderInstance
-	(*ProviderInstanceConfig)(nil),         // 23: hermesh.thread.v2.ProviderInstanceConfig
-	(*WorkspaceStrategy)(nil),              // 24: hermesh.thread.v2.WorkspaceStrategy
-	(*ThreadLineage)(nil),                  // 25: hermesh.thread.v2.ThreadLineage
-	(*ContextWindowUsage)(nil),             // 26: hermesh.thread.v2.ContextWindowUsage
-	(*Thread)(nil),                         // 27: hermesh.thread.v2.Thread
-	(*ProviderThread)(nil),                 // 28: hermesh.thread.v2.ProviderThread
-	(*AttachmentRef)(nil),                  // 29: hermesh.thread.v2.AttachmentRef
-	(*Run)(nil),                            // 30: hermesh.thread.v2.Run
-	(*ToolApprovalPayload)(nil),            // 31: hermesh.thread.v2.ToolApprovalPayload
-	(*QuestionOption)(nil),                 // 32: hermesh.thread.v2.QuestionOption
-	(*QuestionItem)(nil),                   // 33: hermesh.thread.v2.QuestionItem
-	(*UserInputPayload)(nil),               // 34: hermesh.thread.v2.UserInputPayload
-	(*PlanReviewPayload)(nil),              // 35: hermesh.thread.v2.PlanReviewPayload
-	(*SecretInputPayload)(nil),             // 36: hermesh.thread.v2.SecretInputPayload
-	(*QuestionAnswer)(nil),                 // 37: hermesh.thread.v2.QuestionAnswer
-	(*RuntimeRequest)(nil),                 // 38: hermesh.thread.v2.RuntimeRequest
-	(*TodoStep)(nil),                       // 39: hermesh.thread.v2.TodoStep
-	(*TurnItem)(nil),                       // 40: hermesh.thread.v2.TurnItem
-	(*CheckpointFile)(nil),                 // 41: hermesh.thread.v2.CheckpointFile
-	(*Checkpoint)(nil),                     // 42: hermesh.thread.v2.Checkpoint
-	(*ThreadEvent)(nil),                    // 43: hermesh.thread.v2.ThreadEvent
-	(*ThreadProjection)(nil),               // 44: hermesh.thread.v2.ThreadProjection
-	(*ListProvidersRequest)(nil),           // 45: hermesh.thread.v2.ListProvidersRequest
-	(*ListProvidersResponse)(nil),          // 46: hermesh.thread.v2.ListProvidersResponse
-	(*UpsertProviderInstanceRequest)(nil),  // 47: hermesh.thread.v2.UpsertProviderInstanceRequest
-	(*UpsertProviderInstanceResponse)(nil), // 48: hermesh.thread.v2.UpsertProviderInstanceResponse
-	(*RemoveProviderInstanceRequest)(nil),  // 49: hermesh.thread.v2.RemoveProviderInstanceRequest
-	(*RemoveProviderInstanceResponse)(nil), // 50: hermesh.thread.v2.RemoveProviderInstanceResponse
-	(*LaunchThreadRequest)(nil),            // 51: hermesh.thread.v2.LaunchThreadRequest
-	(*LaunchThreadResponse)(nil),           // 52: hermesh.thread.v2.LaunchThreadResponse
-	(*GetThreadRequest)(nil),               // 53: hermesh.thread.v2.GetThreadRequest
-	(*GetThreadResponse)(nil),              // 54: hermesh.thread.v2.GetThreadResponse
-	(*ListThreadsRequest)(nil),             // 55: hermesh.thread.v2.ListThreadsRequest
-	(*ListThreadsResponse)(nil),            // 56: hermesh.thread.v2.ListThreadsResponse
-	(*SubscribeThreadsRequest)(nil),        // 57: hermesh.thread.v2.SubscribeThreadsRequest
-	(*SubscribeThreadsResponse)(nil),       // 58: hermesh.thread.v2.SubscribeThreadsResponse
-	(*SubscribeThreadRequest)(nil),         // 59: hermesh.thread.v2.SubscribeThreadRequest
-	(*DispatchMessageRequest)(nil),         // 60: hermesh.thread.v2.DispatchMessageRequest
-	(*DispatchMessageResponse)(nil),        // 61: hermesh.thread.v2.DispatchMessageResponse
-	(*InterruptRunRequest)(nil),            // 62: hermesh.thread.v2.InterruptRunRequest
-	(*InterruptRunResponse)(nil),           // 63: hermesh.thread.v2.InterruptRunResponse
-	(*ManageQueueRequest)(nil),             // 64: hermesh.thread.v2.ManageQueueRequest
-	(*ManageQueueResponse)(nil),            // 65: hermesh.thread.v2.ManageQueueResponse
-	(*UpdateThreadConfigRequest)(nil),      // 66: hermesh.thread.v2.UpdateThreadConfigRequest
-	(*UpdateThreadConfigResponse)(nil),     // 67: hermesh.thread.v2.UpdateThreadConfigResponse
-	(*RespondRuntimeRequestRequest)(nil),   // 68: hermesh.thread.v2.RespondRuntimeRequestRequest
-	(*RespondRuntimeRequestResponse)(nil),  // 69: hermesh.thread.v2.RespondRuntimeRequestResponse
-	(*ListCheckpointsRequest)(nil),         // 70: hermesh.thread.v2.ListCheckpointsRequest
-	(*ListCheckpointsResponse)(nil),        // 71: hermesh.thread.v2.ListCheckpointsResponse
-	(*RollbackCheckpointRequest)(nil),      // 72: hermesh.thread.v2.RollbackCheckpointRequest
-	(*RollbackCheckpointResponse)(nil),     // 73: hermesh.thread.v2.RollbackCheckpointResponse
-	(*GetThreadDiffRequest)(nil),           // 74: hermesh.thread.v2.GetThreadDiffRequest
-	(*GetThreadDiffResponse)(nil),          // 75: hermesh.thread.v2.GetThreadDiffResponse
-	(*ForkThreadRequest)(nil),              // 76: hermesh.thread.v2.ForkThreadRequest
-	(*ForkThreadResponse)(nil),             // 77: hermesh.thread.v2.ForkThreadResponse
-	(*DeleteThreadRequest)(nil),            // 78: hermesh.thread.v2.DeleteThreadRequest
-	(*DeleteThreadResponse)(nil),           // 79: hermesh.thread.v2.DeleteThreadResponse
-	(*UploadBlobRequest)(nil),              // 80: hermesh.thread.v2.UploadBlobRequest
-	(*UploadBlobResponse)(nil),             // 81: hermesh.thread.v2.UploadBlobResponse
-	(*DownloadBlobRequest)(nil),            // 82: hermesh.thread.v2.DownloadBlobRequest
-	(*DownloadBlobResponse)(nil),           // 83: hermesh.thread.v2.DownloadBlobResponse
-	(*OutboxEntry)(nil),                    // 84: hermesh.thread.v2.OutboxEntry
-	(*ListOutboxRequest)(nil),              // 85: hermesh.thread.v2.ListOutboxRequest
-	(*ListOutboxResponse)(nil),             // 86: hermesh.thread.v2.ListOutboxResponse
-	nil,                                    // 87: hermesh.thread.v2.ModelSelection.OptionsEntry
-	nil,                                    // 88: hermesh.thread.v2.ProviderInstance.RedactedEnvEntry
-	nil,                                    // 89: hermesh.thread.v2.ProviderInstanceConfig.EnvEntry
-	nil,                                    // 90: hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry
-	nil,                                    // 91: hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry
-	(v1.RuntimeMode)(0),                    // 92: hermesh.identity.v1.RuntimeMode
-	(v1.Workspace)(0),                      // 93: hermesh.identity.v1.Workspace
-	(*timestamppb.Timestamp)(nil),          // 94: google.protobuf.Timestamp
+	(BackgroundTaskKind)(0),                // 12: hermesh.thread.v2.BackgroundTaskKind
+	(BackgroundTaskStatus)(0),              // 13: hermesh.thread.v2.BackgroundTaskStatus
+	(BackgroundTaskStopScope)(0),           // 14: hermesh.thread.v2.BackgroundTaskStopScope
+	(QueueOperation)(0),                    // 15: hermesh.thread.v2.QueueOperation
+	(*Actor)(nil),                          // 16: hermesh.thread.v2.Actor
+	(*OptionValue)(nil),                    // 17: hermesh.thread.v2.OptionValue
+	(*ModelSelection)(nil),                 // 18: hermesh.thread.v2.ModelSelection
+	(*OptionChoice)(nil),                   // 19: hermesh.thread.v2.OptionChoice
+	(*OptionDescriptor)(nil),               // 20: hermesh.thread.v2.OptionDescriptor
+	(*ProviderCapabilities)(nil),           // 21: hermesh.thread.v2.ProviderCapabilities
+	(*ModelCatalogEntry)(nil),              // 22: hermesh.thread.v2.ModelCatalogEntry
+	(*SlashCommand)(nil),                   // 23: hermesh.thread.v2.SlashCommand
+	(*SkillEntry)(nil),                     // 24: hermesh.thread.v2.SkillEntry
+	(*ProviderInstance)(nil),               // 25: hermesh.thread.v2.ProviderInstance
+	(*ProviderInstanceConfig)(nil),         // 26: hermesh.thread.v2.ProviderInstanceConfig
+	(*WorkspaceStrategy)(nil),              // 27: hermesh.thread.v2.WorkspaceStrategy
+	(*ThreadLineage)(nil),                  // 28: hermesh.thread.v2.ThreadLineage
+	(*ContextWindowUsage)(nil),             // 29: hermesh.thread.v2.ContextWindowUsage
+	(*Thread)(nil),                         // 30: hermesh.thread.v2.Thread
+	(*ProviderThread)(nil),                 // 31: hermesh.thread.v2.ProviderThread
+	(*AttachmentRef)(nil),                  // 32: hermesh.thread.v2.AttachmentRef
+	(*Run)(nil),                            // 33: hermesh.thread.v2.Run
+	(*ToolApprovalPayload)(nil),            // 34: hermesh.thread.v2.ToolApprovalPayload
+	(*QuestionOption)(nil),                 // 35: hermesh.thread.v2.QuestionOption
+	(*QuestionItem)(nil),                   // 36: hermesh.thread.v2.QuestionItem
+	(*UserInputPayload)(nil),               // 37: hermesh.thread.v2.UserInputPayload
+	(*PlanReviewPayload)(nil),              // 38: hermesh.thread.v2.PlanReviewPayload
+	(*SecretInputPayload)(nil),             // 39: hermesh.thread.v2.SecretInputPayload
+	(*QuestionAnswer)(nil),                 // 40: hermesh.thread.v2.QuestionAnswer
+	(*RuntimeRequest)(nil),                 // 41: hermesh.thread.v2.RuntimeRequest
+	(*TodoStep)(nil),                       // 42: hermesh.thread.v2.TodoStep
+	(*TurnItem)(nil),                       // 43: hermesh.thread.v2.TurnItem
+	(*CheckpointFile)(nil),                 // 44: hermesh.thread.v2.CheckpointFile
+	(*Checkpoint)(nil),                     // 45: hermesh.thread.v2.Checkpoint
+	(*BackgroundTask)(nil),                 // 46: hermesh.thread.v2.BackgroundTask
+	(*ThreadEvent)(nil),                    // 47: hermesh.thread.v2.ThreadEvent
+	(*ThreadProjection)(nil),               // 48: hermesh.thread.v2.ThreadProjection
+	(*ListProvidersRequest)(nil),           // 49: hermesh.thread.v2.ListProvidersRequest
+	(*ListProvidersResponse)(nil),          // 50: hermesh.thread.v2.ListProvidersResponse
+	(*UpsertProviderInstanceRequest)(nil),  // 51: hermesh.thread.v2.UpsertProviderInstanceRequest
+	(*UpsertProviderInstanceResponse)(nil), // 52: hermesh.thread.v2.UpsertProviderInstanceResponse
+	(*RemoveProviderInstanceRequest)(nil),  // 53: hermesh.thread.v2.RemoveProviderInstanceRequest
+	(*RemoveProviderInstanceResponse)(nil), // 54: hermesh.thread.v2.RemoveProviderInstanceResponse
+	(*LaunchThreadRequest)(nil),            // 55: hermesh.thread.v2.LaunchThreadRequest
+	(*LaunchThreadResponse)(nil),           // 56: hermesh.thread.v2.LaunchThreadResponse
+	(*GetThreadRequest)(nil),               // 57: hermesh.thread.v2.GetThreadRequest
+	(*GetThreadResponse)(nil),              // 58: hermesh.thread.v2.GetThreadResponse
+	(*ListThreadsRequest)(nil),             // 59: hermesh.thread.v2.ListThreadsRequest
+	(*ListThreadsResponse)(nil),            // 60: hermesh.thread.v2.ListThreadsResponse
+	(*SubscribeThreadsRequest)(nil),        // 61: hermesh.thread.v2.SubscribeThreadsRequest
+	(*SubscribeThreadsResponse)(nil),       // 62: hermesh.thread.v2.SubscribeThreadsResponse
+	(*SubscribeThreadRequest)(nil),         // 63: hermesh.thread.v2.SubscribeThreadRequest
+	(*DispatchMessageRequest)(nil),         // 64: hermesh.thread.v2.DispatchMessageRequest
+	(*DispatchMessageResponse)(nil),        // 65: hermesh.thread.v2.DispatchMessageResponse
+	(*InterruptRunRequest)(nil),            // 66: hermesh.thread.v2.InterruptRunRequest
+	(*InterruptRunResponse)(nil),           // 67: hermesh.thread.v2.InterruptRunResponse
+	(*StopBackgroundTaskRequest)(nil),      // 68: hermesh.thread.v2.StopBackgroundTaskRequest
+	(*StopBackgroundTaskResponse)(nil),     // 69: hermesh.thread.v2.StopBackgroundTaskResponse
+	(*ManageQueueRequest)(nil),             // 70: hermesh.thread.v2.ManageQueueRequest
+	(*ManageQueueResponse)(nil),            // 71: hermesh.thread.v2.ManageQueueResponse
+	(*UpdateThreadConfigRequest)(nil),      // 72: hermesh.thread.v2.UpdateThreadConfigRequest
+	(*UpdateThreadConfigResponse)(nil),     // 73: hermesh.thread.v2.UpdateThreadConfigResponse
+	(*RespondRuntimeRequestRequest)(nil),   // 74: hermesh.thread.v2.RespondRuntimeRequestRequest
+	(*RespondRuntimeRequestResponse)(nil),  // 75: hermesh.thread.v2.RespondRuntimeRequestResponse
+	(*ListCheckpointsRequest)(nil),         // 76: hermesh.thread.v2.ListCheckpointsRequest
+	(*ListCheckpointsResponse)(nil),        // 77: hermesh.thread.v2.ListCheckpointsResponse
+	(*RollbackCheckpointRequest)(nil),      // 78: hermesh.thread.v2.RollbackCheckpointRequest
+	(*RollbackCheckpointResponse)(nil),     // 79: hermesh.thread.v2.RollbackCheckpointResponse
+	(*GetThreadDiffRequest)(nil),           // 80: hermesh.thread.v2.GetThreadDiffRequest
+	(*GetThreadDiffResponse)(nil),          // 81: hermesh.thread.v2.GetThreadDiffResponse
+	(*ForkThreadRequest)(nil),              // 82: hermesh.thread.v2.ForkThreadRequest
+	(*ForkThreadResponse)(nil),             // 83: hermesh.thread.v2.ForkThreadResponse
+	(*DeleteThreadRequest)(nil),            // 84: hermesh.thread.v2.DeleteThreadRequest
+	(*DeleteThreadResponse)(nil),           // 85: hermesh.thread.v2.DeleteThreadResponse
+	(*UploadBlobRequest)(nil),              // 86: hermesh.thread.v2.UploadBlobRequest
+	(*UploadBlobResponse)(nil),             // 87: hermesh.thread.v2.UploadBlobResponse
+	(*DownloadBlobRequest)(nil),            // 88: hermesh.thread.v2.DownloadBlobRequest
+	(*DownloadBlobResponse)(nil),           // 89: hermesh.thread.v2.DownloadBlobResponse
+	(*OutboxEntry)(nil),                    // 90: hermesh.thread.v2.OutboxEntry
+	(*ListOutboxRequest)(nil),              // 91: hermesh.thread.v2.ListOutboxRequest
+	(*ListOutboxResponse)(nil),             // 92: hermesh.thread.v2.ListOutboxResponse
+	nil,                                    // 93: hermesh.thread.v2.ModelSelection.OptionsEntry
+	nil,                                    // 94: hermesh.thread.v2.ProviderInstance.RedactedEnvEntry
+	nil,                                    // 95: hermesh.thread.v2.ProviderInstanceConfig.EnvEntry
+	nil,                                    // 96: hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry
+	nil,                                    // 97: hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry
+	(v1.RuntimeMode)(0),                    // 98: hermesh.identity.v1.RuntimeMode
+	(v1.Workspace)(0),                      // 99: hermesh.identity.v1.Workspace
+	(*timestamppb.Timestamp)(nil),          // 100: google.protobuf.Timestamp
 }
 var file_hermesh_thread_v2_thread_proto_depIdxs = []int32{
 	0,   // 0: hermesh.thread.v2.Actor.kind:type_name -> hermesh.thread.v2.ActorKind
-	87,  // 1: hermesh.thread.v2.ModelSelection.options:type_name -> hermesh.thread.v2.ModelSelection.OptionsEntry
+	93,  // 1: hermesh.thread.v2.ModelSelection.options:type_name -> hermesh.thread.v2.ModelSelection.OptionsEntry
 	2,   // 2: hermesh.thread.v2.OptionDescriptor.type:type_name -> hermesh.thread.v2.OptionDescriptorType
-	16,  // 3: hermesh.thread.v2.OptionDescriptor.choices:type_name -> hermesh.thread.v2.OptionChoice
-	14,  // 4: hermesh.thread.v2.OptionDescriptor.current_value:type_name -> hermesh.thread.v2.OptionValue
-	92,  // 5: hermesh.thread.v2.ProviderCapabilities.supported_runtime_modes:type_name -> hermesh.identity.v1.RuntimeMode
-	17,  // 6: hermesh.thread.v2.ModelCatalogEntry.option_descriptors:type_name -> hermesh.thread.v2.OptionDescriptor
+	19,  // 3: hermesh.thread.v2.OptionDescriptor.choices:type_name -> hermesh.thread.v2.OptionChoice
+	17,  // 4: hermesh.thread.v2.OptionDescriptor.current_value:type_name -> hermesh.thread.v2.OptionValue
+	98,  // 5: hermesh.thread.v2.ProviderCapabilities.supported_runtime_modes:type_name -> hermesh.identity.v1.RuntimeMode
+	20,  // 6: hermesh.thread.v2.ModelCatalogEntry.option_descriptors:type_name -> hermesh.thread.v2.OptionDescriptor
 	3,   // 7: hermesh.thread.v2.ProviderInstance.compatibility:type_name -> hermesh.thread.v2.CompatibilityStatus
-	18,  // 8: hermesh.thread.v2.ProviderInstance.capabilities:type_name -> hermesh.thread.v2.ProviderCapabilities
-	19,  // 9: hermesh.thread.v2.ProviderInstance.models:type_name -> hermesh.thread.v2.ModelCatalogEntry
-	17,  // 10: hermesh.thread.v2.ProviderInstance.workspace_options:type_name -> hermesh.thread.v2.OptionDescriptor
-	20,  // 11: hermesh.thread.v2.ProviderInstance.slash_commands:type_name -> hermesh.thread.v2.SlashCommand
-	21,  // 12: hermesh.thread.v2.ProviderInstance.skills:type_name -> hermesh.thread.v2.SkillEntry
-	88,  // 13: hermesh.thread.v2.ProviderInstance.redacted_env:type_name -> hermesh.thread.v2.ProviderInstance.RedactedEnvEntry
-	89,  // 14: hermesh.thread.v2.ProviderInstanceConfig.env:type_name -> hermesh.thread.v2.ProviderInstanceConfig.EnvEntry
-	93,  // 15: hermesh.thread.v2.WorkspaceStrategy.mode:type_name -> hermesh.identity.v1.Workspace
+	21,  // 8: hermesh.thread.v2.ProviderInstance.capabilities:type_name -> hermesh.thread.v2.ProviderCapabilities
+	22,  // 9: hermesh.thread.v2.ProviderInstance.models:type_name -> hermesh.thread.v2.ModelCatalogEntry
+	20,  // 10: hermesh.thread.v2.ProviderInstance.workspace_options:type_name -> hermesh.thread.v2.OptionDescriptor
+	23,  // 11: hermesh.thread.v2.ProviderInstance.slash_commands:type_name -> hermesh.thread.v2.SlashCommand
+	24,  // 12: hermesh.thread.v2.ProviderInstance.skills:type_name -> hermesh.thread.v2.SkillEntry
+	94,  // 13: hermesh.thread.v2.ProviderInstance.redacted_env:type_name -> hermesh.thread.v2.ProviderInstance.RedactedEnvEntry
+	95,  // 14: hermesh.thread.v2.ProviderInstanceConfig.env:type_name -> hermesh.thread.v2.ProviderInstanceConfig.EnvEntry
+	99,  // 15: hermesh.thread.v2.WorkspaceStrategy.mode:type_name -> hermesh.identity.v1.Workspace
 	4,   // 16: hermesh.thread.v2.Thread.status:type_name -> hermesh.thread.v2.ThreadStatus
-	15,  // 17: hermesh.thread.v2.Thread.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	92,  // 18: hermesh.thread.v2.Thread.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	92,  // 19: hermesh.thread.v2.Thread.effective_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	92,  // 20: hermesh.thread.v2.Thread.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	18,  // 17: hermesh.thread.v2.Thread.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	98,  // 18: hermesh.thread.v2.Thread.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	98,  // 19: hermesh.thread.v2.Thread.effective_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	98,  // 20: hermesh.thread.v2.Thread.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
 	1,   // 21: hermesh.thread.v2.Thread.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
-	24,  // 22: hermesh.thread.v2.Thread.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
-	13,  // 23: hermesh.thread.v2.Thread.created_by:type_name -> hermesh.thread.v2.Actor
-	25,  // 24: hermesh.thread.v2.Thread.lineage:type_name -> hermesh.thread.v2.ThreadLineage
-	26,  // 25: hermesh.thread.v2.Thread.usage:type_name -> hermesh.thread.v2.ContextWindowUsage
-	94,  // 26: hermesh.thread.v2.Thread.created_at:type_name -> google.protobuf.Timestamp
-	94,  // 27: hermesh.thread.v2.Thread.updated_at:type_name -> google.protobuf.Timestamp
-	94,  // 28: hermesh.thread.v2.Thread.archived_at:type_name -> google.protobuf.Timestamp
-	94,  // 29: hermesh.thread.v2.ProviderThread.created_at:type_name -> google.protobuf.Timestamp
-	94,  // 30: hermesh.thread.v2.ProviderThread.updated_at:type_name -> google.protobuf.Timestamp
+	27,  // 22: hermesh.thread.v2.Thread.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
+	16,  // 23: hermesh.thread.v2.Thread.created_by:type_name -> hermesh.thread.v2.Actor
+	28,  // 24: hermesh.thread.v2.Thread.lineage:type_name -> hermesh.thread.v2.ThreadLineage
+	29,  // 25: hermesh.thread.v2.Thread.usage:type_name -> hermesh.thread.v2.ContextWindowUsage
+	100, // 26: hermesh.thread.v2.Thread.created_at:type_name -> google.protobuf.Timestamp
+	100, // 27: hermesh.thread.v2.Thread.updated_at:type_name -> google.protobuf.Timestamp
+	100, // 28: hermesh.thread.v2.Thread.archived_at:type_name -> google.protobuf.Timestamp
+	100, // 29: hermesh.thread.v2.ProviderThread.created_at:type_name -> google.protobuf.Timestamp
+	100, // 30: hermesh.thread.v2.ProviderThread.updated_at:type_name -> google.protobuf.Timestamp
 	6,   // 31: hermesh.thread.v2.Run.status:type_name -> hermesh.thread.v2.RunStatus
-	13,  // 32: hermesh.thread.v2.Run.author:type_name -> hermesh.thread.v2.Actor
-	29,  // 33: hermesh.thread.v2.Run.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	16,  // 32: hermesh.thread.v2.Run.author:type_name -> hermesh.thread.v2.Actor
+	32,  // 33: hermesh.thread.v2.Run.attachments:type_name -> hermesh.thread.v2.AttachmentRef
 	5,   // 34: hermesh.thread.v2.Run.intent:type_name -> hermesh.thread.v2.DispatchIntent
-	15,  // 35: hermesh.thread.v2.Run.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	92,  // 36: hermesh.thread.v2.Run.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	18,  // 35: hermesh.thread.v2.Run.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	98,  // 36: hermesh.thread.v2.Run.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
 	1,   // 37: hermesh.thread.v2.Run.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
-	26,  // 38: hermesh.thread.v2.Run.usage:type_name -> hermesh.thread.v2.ContextWindowUsage
-	94,  // 39: hermesh.thread.v2.Run.created_at:type_name -> google.protobuf.Timestamp
-	94,  // 40: hermesh.thread.v2.Run.started_at:type_name -> google.protobuf.Timestamp
-	94,  // 41: hermesh.thread.v2.Run.completed_at:type_name -> google.protobuf.Timestamp
-	32,  // 42: hermesh.thread.v2.QuestionItem.options:type_name -> hermesh.thread.v2.QuestionOption
-	33,  // 43: hermesh.thread.v2.UserInputPayload.questions:type_name -> hermesh.thread.v2.QuestionItem
-	29,  // 44: hermesh.thread.v2.QuestionAnswer.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	29,  // 38: hermesh.thread.v2.Run.usage:type_name -> hermesh.thread.v2.ContextWindowUsage
+	100, // 39: hermesh.thread.v2.Run.created_at:type_name -> google.protobuf.Timestamp
+	100, // 40: hermesh.thread.v2.Run.started_at:type_name -> google.protobuf.Timestamp
+	100, // 41: hermesh.thread.v2.Run.completed_at:type_name -> google.protobuf.Timestamp
+	35,  // 42: hermesh.thread.v2.QuestionItem.options:type_name -> hermesh.thread.v2.QuestionOption
+	36,  // 43: hermesh.thread.v2.UserInputPayload.questions:type_name -> hermesh.thread.v2.QuestionItem
+	32,  // 44: hermesh.thread.v2.QuestionAnswer.attachments:type_name -> hermesh.thread.v2.AttachmentRef
 	7,   // 45: hermesh.thread.v2.RuntimeRequest.kind:type_name -> hermesh.thread.v2.RuntimeRequestKind
 	8,   // 46: hermesh.thread.v2.RuntimeRequest.status:type_name -> hermesh.thread.v2.RuntimeRequestStatus
 	9,   // 47: hermesh.thread.v2.RuntimeRequest.response_mode:type_name -> hermesh.thread.v2.ResponseMode
-	31,  // 48: hermesh.thread.v2.RuntimeRequest.approval:type_name -> hermesh.thread.v2.ToolApprovalPayload
-	34,  // 49: hermesh.thread.v2.RuntimeRequest.user_input:type_name -> hermesh.thread.v2.UserInputPayload
-	35,  // 50: hermesh.thread.v2.RuntimeRequest.plan_review:type_name -> hermesh.thread.v2.PlanReviewPayload
-	36,  // 51: hermesh.thread.v2.RuntimeRequest.secret_input:type_name -> hermesh.thread.v2.SecretInputPayload
+	34,  // 48: hermesh.thread.v2.RuntimeRequest.approval:type_name -> hermesh.thread.v2.ToolApprovalPayload
+	37,  // 49: hermesh.thread.v2.RuntimeRequest.user_input:type_name -> hermesh.thread.v2.UserInputPayload
+	38,  // 50: hermesh.thread.v2.RuntimeRequest.plan_review:type_name -> hermesh.thread.v2.PlanReviewPayload
+	39,  // 51: hermesh.thread.v2.RuntimeRequest.secret_input:type_name -> hermesh.thread.v2.SecretInputPayload
 	10,  // 52: hermesh.thread.v2.RuntimeRequest.resolved_decision:type_name -> hermesh.thread.v2.ApprovalDecision
-	90,  // 53: hermesh.thread.v2.RuntimeRequest.resolved_answers:type_name -> hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry
-	13,  // 54: hermesh.thread.v2.RuntimeRequest.resolved_by:type_name -> hermesh.thread.v2.Actor
-	94,  // 55: hermesh.thread.v2.RuntimeRequest.created_at:type_name -> google.protobuf.Timestamp
-	94,  // 56: hermesh.thread.v2.RuntimeRequest.resolved_at:type_name -> google.protobuf.Timestamp
+	96,  // 53: hermesh.thread.v2.RuntimeRequest.resolved_answers:type_name -> hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry
+	16,  // 54: hermesh.thread.v2.RuntimeRequest.resolved_by:type_name -> hermesh.thread.v2.Actor
+	100, // 55: hermesh.thread.v2.RuntimeRequest.created_at:type_name -> google.protobuf.Timestamp
+	100, // 56: hermesh.thread.v2.RuntimeRequest.resolved_at:type_name -> google.protobuf.Timestamp
 	11,  // 57: hermesh.thread.v2.TurnItem.kind:type_name -> hermesh.thread.v2.TurnItemKind
-	13,  // 58: hermesh.thread.v2.TurnItem.actor:type_name -> hermesh.thread.v2.Actor
-	29,  // 59: hermesh.thread.v2.TurnItem.attachments:type_name -> hermesh.thread.v2.AttachmentRef
-	39,  // 60: hermesh.thread.v2.TurnItem.todo_steps:type_name -> hermesh.thread.v2.TodoStep
-	15,  // 61: hermesh.thread.v2.TurnItem.from_selection:type_name -> hermesh.thread.v2.ModelSelection
-	15,  // 62: hermesh.thread.v2.TurnItem.to_selection:type_name -> hermesh.thread.v2.ModelSelection
-	94,  // 63: hermesh.thread.v2.TurnItem.created_at:type_name -> google.protobuf.Timestamp
-	94,  // 64: hermesh.thread.v2.TurnItem.updated_at:type_name -> google.protobuf.Timestamp
-	41,  // 65: hermesh.thread.v2.Checkpoint.files:type_name -> hermesh.thread.v2.CheckpointFile
-	94,  // 66: hermesh.thread.v2.Checkpoint.created_at:type_name -> google.protobuf.Timestamp
-	27,  // 67: hermesh.thread.v2.ThreadEvent.thread:type_name -> hermesh.thread.v2.Thread
-	30,  // 68: hermesh.thread.v2.ThreadEvent.run:type_name -> hermesh.thread.v2.Run
-	40,  // 69: hermesh.thread.v2.ThreadEvent.item:type_name -> hermesh.thread.v2.TurnItem
-	38,  // 70: hermesh.thread.v2.ThreadEvent.request:type_name -> hermesh.thread.v2.RuntimeRequest
-	42,  // 71: hermesh.thread.v2.ThreadEvent.checkpoint:type_name -> hermesh.thread.v2.Checkpoint
-	94,  // 72: hermesh.thread.v2.ThreadEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	27,  // 73: hermesh.thread.v2.ThreadProjection.thread:type_name -> hermesh.thread.v2.Thread
-	30,  // 74: hermesh.thread.v2.ThreadProjection.runs:type_name -> hermesh.thread.v2.Run
-	40,  // 75: hermesh.thread.v2.ThreadProjection.items:type_name -> hermesh.thread.v2.TurnItem
-	38,  // 76: hermesh.thread.v2.ThreadProjection.requests:type_name -> hermesh.thread.v2.RuntimeRequest
-	42,  // 77: hermesh.thread.v2.ThreadProjection.checkpoints:type_name -> hermesh.thread.v2.Checkpoint
-	28,  // 78: hermesh.thread.v2.ThreadProjection.provider_threads:type_name -> hermesh.thread.v2.ProviderThread
-	22,  // 79: hermesh.thread.v2.ListProvidersResponse.providers:type_name -> hermesh.thread.v2.ProviderInstance
-	92,  // 80: hermesh.thread.v2.ListProvidersResponse.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	23,  // 81: hermesh.thread.v2.UpsertProviderInstanceRequest.config:type_name -> hermesh.thread.v2.ProviderInstanceConfig
-	22,  // 82: hermesh.thread.v2.UpsertProviderInstanceResponse.provider:type_name -> hermesh.thread.v2.ProviderInstance
-	15,  // 83: hermesh.thread.v2.LaunchThreadRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	92,  // 84: hermesh.thread.v2.LaunchThreadRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	1,   // 85: hermesh.thread.v2.LaunchThreadRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
-	24,  // 86: hermesh.thread.v2.LaunchThreadRequest.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
-	29,  // 87: hermesh.thread.v2.LaunchThreadRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
-	27,  // 88: hermesh.thread.v2.LaunchThreadResponse.thread:type_name -> hermesh.thread.v2.Thread
-	30,  // 89: hermesh.thread.v2.LaunchThreadResponse.initial_run:type_name -> hermesh.thread.v2.Run
-	44,  // 90: hermesh.thread.v2.GetThreadResponse.projection:type_name -> hermesh.thread.v2.ThreadProjection
-	27,  // 91: hermesh.thread.v2.ListThreadsResponse.threads:type_name -> hermesh.thread.v2.Thread
-	27,  // 92: hermesh.thread.v2.SubscribeThreadsResponse.threads:type_name -> hermesh.thread.v2.Thread
-	29,  // 93: hermesh.thread.v2.DispatchMessageRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
-	5,   // 94: hermesh.thread.v2.DispatchMessageRequest.intent:type_name -> hermesh.thread.v2.DispatchIntent
-	15,  // 95: hermesh.thread.v2.DispatchMessageRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	92,  // 96: hermesh.thread.v2.DispatchMessageRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	1,   // 97: hermesh.thread.v2.DispatchMessageRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
-	27,  // 98: hermesh.thread.v2.DispatchMessageResponse.thread:type_name -> hermesh.thread.v2.Thread
-	30,  // 99: hermesh.thread.v2.DispatchMessageResponse.run:type_name -> hermesh.thread.v2.Run
-	27,  // 100: hermesh.thread.v2.InterruptRunResponse.thread:type_name -> hermesh.thread.v2.Thread
-	12,  // 101: hermesh.thread.v2.ManageQueueRequest.operation:type_name -> hermesh.thread.v2.QueueOperation
-	29,  // 102: hermesh.thread.v2.ManageQueueRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
-	27,  // 103: hermesh.thread.v2.ManageQueueResponse.thread:type_name -> hermesh.thread.v2.Thread
-	30,  // 104: hermesh.thread.v2.ManageQueueResponse.queued_runs:type_name -> hermesh.thread.v2.Run
-	15,  // 105: hermesh.thread.v2.UpdateThreadConfigRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	92,  // 106: hermesh.thread.v2.UpdateThreadConfigRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
-	1,   // 107: hermesh.thread.v2.UpdateThreadConfigRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
-	27,  // 108: hermesh.thread.v2.UpdateThreadConfigResponse.thread:type_name -> hermesh.thread.v2.Thread
-	10,  // 109: hermesh.thread.v2.RespondRuntimeRequestRequest.decision:type_name -> hermesh.thread.v2.ApprovalDecision
-	91,  // 110: hermesh.thread.v2.RespondRuntimeRequestRequest.answers:type_name -> hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry
-	27,  // 111: hermesh.thread.v2.RespondRuntimeRequestResponse.thread:type_name -> hermesh.thread.v2.Thread
-	38,  // 112: hermesh.thread.v2.RespondRuntimeRequestResponse.request:type_name -> hermesh.thread.v2.RuntimeRequest
-	42,  // 113: hermesh.thread.v2.ListCheckpointsResponse.checkpoints:type_name -> hermesh.thread.v2.Checkpoint
-	27,  // 114: hermesh.thread.v2.RollbackCheckpointResponse.thread:type_name -> hermesh.thread.v2.Thread
-	42,  // 115: hermesh.thread.v2.RollbackCheckpointResponse.checkpoint:type_name -> hermesh.thread.v2.Checkpoint
-	41,  // 116: hermesh.thread.v2.GetThreadDiffResponse.files:type_name -> hermesh.thread.v2.CheckpointFile
-	24,  // 117: hermesh.thread.v2.ForkThreadRequest.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
-	15,  // 118: hermesh.thread.v2.ForkThreadRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
-	27,  // 119: hermesh.thread.v2.ForkThreadResponse.thread:type_name -> hermesh.thread.v2.Thread
-	29,  // 120: hermesh.thread.v2.UploadBlobResponse.attachment:type_name -> hermesh.thread.v2.AttachmentRef
-	94,  // 121: hermesh.thread.v2.OutboxEntry.created_at:type_name -> google.protobuf.Timestamp
-	84,  // 122: hermesh.thread.v2.ListOutboxResponse.entries:type_name -> hermesh.thread.v2.OutboxEntry
-	14,  // 123: hermesh.thread.v2.ModelSelection.OptionsEntry.value:type_name -> hermesh.thread.v2.OptionValue
-	37,  // 124: hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry.value:type_name -> hermesh.thread.v2.QuestionAnswer
-	37,  // 125: hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry.value:type_name -> hermesh.thread.v2.QuestionAnswer
-	45,  // 126: hermesh.thread.v2.ThreadService.ListProviders:input_type -> hermesh.thread.v2.ListProvidersRequest
-	47,  // 127: hermesh.thread.v2.ThreadService.UpsertProviderInstance:input_type -> hermesh.thread.v2.UpsertProviderInstanceRequest
-	49,  // 128: hermesh.thread.v2.ThreadService.RemoveProviderInstance:input_type -> hermesh.thread.v2.RemoveProviderInstanceRequest
-	51,  // 129: hermesh.thread.v2.ThreadService.LaunchThread:input_type -> hermesh.thread.v2.LaunchThreadRequest
-	53,  // 130: hermesh.thread.v2.ThreadService.GetThread:input_type -> hermesh.thread.v2.GetThreadRequest
-	55,  // 131: hermesh.thread.v2.ThreadService.ListThreads:input_type -> hermesh.thread.v2.ListThreadsRequest
-	57,  // 132: hermesh.thread.v2.ThreadService.SubscribeThreads:input_type -> hermesh.thread.v2.SubscribeThreadsRequest
-	59,  // 133: hermesh.thread.v2.ThreadService.SubscribeThread:input_type -> hermesh.thread.v2.SubscribeThreadRequest
-	60,  // 134: hermesh.thread.v2.ThreadService.DispatchMessage:input_type -> hermesh.thread.v2.DispatchMessageRequest
-	62,  // 135: hermesh.thread.v2.ThreadService.InterruptRun:input_type -> hermesh.thread.v2.InterruptRunRequest
-	64,  // 136: hermesh.thread.v2.ThreadService.ManageQueue:input_type -> hermesh.thread.v2.ManageQueueRequest
-	66,  // 137: hermesh.thread.v2.ThreadService.UpdateThreadConfig:input_type -> hermesh.thread.v2.UpdateThreadConfigRequest
-	68,  // 138: hermesh.thread.v2.ThreadService.RespondRuntimeRequest:input_type -> hermesh.thread.v2.RespondRuntimeRequestRequest
-	70,  // 139: hermesh.thread.v2.ThreadService.ListCheckpoints:input_type -> hermesh.thread.v2.ListCheckpointsRequest
-	72,  // 140: hermesh.thread.v2.ThreadService.RollbackCheckpoint:input_type -> hermesh.thread.v2.RollbackCheckpointRequest
-	74,  // 141: hermesh.thread.v2.ThreadService.GetThreadDiff:input_type -> hermesh.thread.v2.GetThreadDiffRequest
-	76,  // 142: hermesh.thread.v2.ThreadService.ForkThread:input_type -> hermesh.thread.v2.ForkThreadRequest
-	78,  // 143: hermesh.thread.v2.ThreadService.DeleteThread:input_type -> hermesh.thread.v2.DeleteThreadRequest
-	80,  // 144: hermesh.thread.v2.ThreadService.UploadBlob:input_type -> hermesh.thread.v2.UploadBlobRequest
-	82,  // 145: hermesh.thread.v2.ThreadService.DownloadBlob:input_type -> hermesh.thread.v2.DownloadBlobRequest
-	85,  // 146: hermesh.thread.v2.ThreadService.ListOutbox:input_type -> hermesh.thread.v2.ListOutboxRequest
-	46,  // 147: hermesh.thread.v2.ThreadService.ListProviders:output_type -> hermesh.thread.v2.ListProvidersResponse
-	48,  // 148: hermesh.thread.v2.ThreadService.UpsertProviderInstance:output_type -> hermesh.thread.v2.UpsertProviderInstanceResponse
-	50,  // 149: hermesh.thread.v2.ThreadService.RemoveProviderInstance:output_type -> hermesh.thread.v2.RemoveProviderInstanceResponse
-	52,  // 150: hermesh.thread.v2.ThreadService.LaunchThread:output_type -> hermesh.thread.v2.LaunchThreadResponse
-	54,  // 151: hermesh.thread.v2.ThreadService.GetThread:output_type -> hermesh.thread.v2.GetThreadResponse
-	56,  // 152: hermesh.thread.v2.ThreadService.ListThreads:output_type -> hermesh.thread.v2.ListThreadsResponse
-	58,  // 153: hermesh.thread.v2.ThreadService.SubscribeThreads:output_type -> hermesh.thread.v2.SubscribeThreadsResponse
-	43,  // 154: hermesh.thread.v2.ThreadService.SubscribeThread:output_type -> hermesh.thread.v2.ThreadEvent
-	61,  // 155: hermesh.thread.v2.ThreadService.DispatchMessage:output_type -> hermesh.thread.v2.DispatchMessageResponse
-	63,  // 156: hermesh.thread.v2.ThreadService.InterruptRun:output_type -> hermesh.thread.v2.InterruptRunResponse
-	65,  // 157: hermesh.thread.v2.ThreadService.ManageQueue:output_type -> hermesh.thread.v2.ManageQueueResponse
-	67,  // 158: hermesh.thread.v2.ThreadService.UpdateThreadConfig:output_type -> hermesh.thread.v2.UpdateThreadConfigResponse
-	69,  // 159: hermesh.thread.v2.ThreadService.RespondRuntimeRequest:output_type -> hermesh.thread.v2.RespondRuntimeRequestResponse
-	71,  // 160: hermesh.thread.v2.ThreadService.ListCheckpoints:output_type -> hermesh.thread.v2.ListCheckpointsResponse
-	73,  // 161: hermesh.thread.v2.ThreadService.RollbackCheckpoint:output_type -> hermesh.thread.v2.RollbackCheckpointResponse
-	75,  // 162: hermesh.thread.v2.ThreadService.GetThreadDiff:output_type -> hermesh.thread.v2.GetThreadDiffResponse
-	77,  // 163: hermesh.thread.v2.ThreadService.ForkThread:output_type -> hermesh.thread.v2.ForkThreadResponse
-	79,  // 164: hermesh.thread.v2.ThreadService.DeleteThread:output_type -> hermesh.thread.v2.DeleteThreadResponse
-	81,  // 165: hermesh.thread.v2.ThreadService.UploadBlob:output_type -> hermesh.thread.v2.UploadBlobResponse
-	83,  // 166: hermesh.thread.v2.ThreadService.DownloadBlob:output_type -> hermesh.thread.v2.DownloadBlobResponse
-	86,  // 167: hermesh.thread.v2.ThreadService.ListOutbox:output_type -> hermesh.thread.v2.ListOutboxResponse
-	147, // [147:168] is the sub-list for method output_type
-	126, // [126:147] is the sub-list for method input_type
-	126, // [126:126] is the sub-list for extension type_name
-	126, // [126:126] is the sub-list for extension extendee
-	0,   // [0:126] is the sub-list for field type_name
+	16,  // 58: hermesh.thread.v2.TurnItem.actor:type_name -> hermesh.thread.v2.Actor
+	32,  // 59: hermesh.thread.v2.TurnItem.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	42,  // 60: hermesh.thread.v2.TurnItem.todo_steps:type_name -> hermesh.thread.v2.TodoStep
+	18,  // 61: hermesh.thread.v2.TurnItem.from_selection:type_name -> hermesh.thread.v2.ModelSelection
+	18,  // 62: hermesh.thread.v2.TurnItem.to_selection:type_name -> hermesh.thread.v2.ModelSelection
+	100, // 63: hermesh.thread.v2.TurnItem.created_at:type_name -> google.protobuf.Timestamp
+	100, // 64: hermesh.thread.v2.TurnItem.updated_at:type_name -> google.protobuf.Timestamp
+	44,  // 65: hermesh.thread.v2.Checkpoint.files:type_name -> hermesh.thread.v2.CheckpointFile
+	100, // 66: hermesh.thread.v2.Checkpoint.created_at:type_name -> google.protobuf.Timestamp
+	12,  // 67: hermesh.thread.v2.BackgroundTask.kind:type_name -> hermesh.thread.v2.BackgroundTaskKind
+	13,  // 68: hermesh.thread.v2.BackgroundTask.status:type_name -> hermesh.thread.v2.BackgroundTaskStatus
+	14,  // 69: hermesh.thread.v2.BackgroundTask.stop_scope:type_name -> hermesh.thread.v2.BackgroundTaskStopScope
+	100, // 70: hermesh.thread.v2.BackgroundTask.started_at:type_name -> google.protobuf.Timestamp
+	100, // 71: hermesh.thread.v2.BackgroundTask.updated_at:type_name -> google.protobuf.Timestamp
+	100, // 72: hermesh.thread.v2.BackgroundTask.completed_at:type_name -> google.protobuf.Timestamp
+	30,  // 73: hermesh.thread.v2.ThreadEvent.thread:type_name -> hermesh.thread.v2.Thread
+	33,  // 74: hermesh.thread.v2.ThreadEvent.run:type_name -> hermesh.thread.v2.Run
+	43,  // 75: hermesh.thread.v2.ThreadEvent.item:type_name -> hermesh.thread.v2.TurnItem
+	41,  // 76: hermesh.thread.v2.ThreadEvent.request:type_name -> hermesh.thread.v2.RuntimeRequest
+	45,  // 77: hermesh.thread.v2.ThreadEvent.checkpoint:type_name -> hermesh.thread.v2.Checkpoint
+	100, // 78: hermesh.thread.v2.ThreadEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	46,  // 79: hermesh.thread.v2.ThreadEvent.background_task:type_name -> hermesh.thread.v2.BackgroundTask
+	30,  // 80: hermesh.thread.v2.ThreadProjection.thread:type_name -> hermesh.thread.v2.Thread
+	33,  // 81: hermesh.thread.v2.ThreadProjection.runs:type_name -> hermesh.thread.v2.Run
+	43,  // 82: hermesh.thread.v2.ThreadProjection.items:type_name -> hermesh.thread.v2.TurnItem
+	41,  // 83: hermesh.thread.v2.ThreadProjection.requests:type_name -> hermesh.thread.v2.RuntimeRequest
+	45,  // 84: hermesh.thread.v2.ThreadProjection.checkpoints:type_name -> hermesh.thread.v2.Checkpoint
+	31,  // 85: hermesh.thread.v2.ThreadProjection.provider_threads:type_name -> hermesh.thread.v2.ProviderThread
+	46,  // 86: hermesh.thread.v2.ThreadProjection.background_tasks:type_name -> hermesh.thread.v2.BackgroundTask
+	25,  // 87: hermesh.thread.v2.ListProvidersResponse.providers:type_name -> hermesh.thread.v2.ProviderInstance
+	98,  // 88: hermesh.thread.v2.ListProvidersResponse.max_runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	26,  // 89: hermesh.thread.v2.UpsertProviderInstanceRequest.config:type_name -> hermesh.thread.v2.ProviderInstanceConfig
+	25,  // 90: hermesh.thread.v2.UpsertProviderInstanceResponse.provider:type_name -> hermesh.thread.v2.ProviderInstance
+	18,  // 91: hermesh.thread.v2.LaunchThreadRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	98,  // 92: hermesh.thread.v2.LaunchThreadRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	1,   // 93: hermesh.thread.v2.LaunchThreadRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
+	27,  // 94: hermesh.thread.v2.LaunchThreadRequest.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
+	32,  // 95: hermesh.thread.v2.LaunchThreadRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	30,  // 96: hermesh.thread.v2.LaunchThreadResponse.thread:type_name -> hermesh.thread.v2.Thread
+	33,  // 97: hermesh.thread.v2.LaunchThreadResponse.initial_run:type_name -> hermesh.thread.v2.Run
+	48,  // 98: hermesh.thread.v2.GetThreadResponse.projection:type_name -> hermesh.thread.v2.ThreadProjection
+	30,  // 99: hermesh.thread.v2.ListThreadsResponse.threads:type_name -> hermesh.thread.v2.Thread
+	30,  // 100: hermesh.thread.v2.SubscribeThreadsResponse.threads:type_name -> hermesh.thread.v2.Thread
+	32,  // 101: hermesh.thread.v2.DispatchMessageRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	5,   // 102: hermesh.thread.v2.DispatchMessageRequest.intent:type_name -> hermesh.thread.v2.DispatchIntent
+	18,  // 103: hermesh.thread.v2.DispatchMessageRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	98,  // 104: hermesh.thread.v2.DispatchMessageRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	1,   // 105: hermesh.thread.v2.DispatchMessageRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
+	30,  // 106: hermesh.thread.v2.DispatchMessageResponse.thread:type_name -> hermesh.thread.v2.Thread
+	33,  // 107: hermesh.thread.v2.DispatchMessageResponse.run:type_name -> hermesh.thread.v2.Run
+	30,  // 108: hermesh.thread.v2.InterruptRunResponse.thread:type_name -> hermesh.thread.v2.Thread
+	30,  // 109: hermesh.thread.v2.StopBackgroundTaskResponse.thread:type_name -> hermesh.thread.v2.Thread
+	46,  // 110: hermesh.thread.v2.StopBackgroundTaskResponse.stopped_tasks:type_name -> hermesh.thread.v2.BackgroundTask
+	15,  // 111: hermesh.thread.v2.ManageQueueRequest.operation:type_name -> hermesh.thread.v2.QueueOperation
+	32,  // 112: hermesh.thread.v2.ManageQueueRequest.attachments:type_name -> hermesh.thread.v2.AttachmentRef
+	30,  // 113: hermesh.thread.v2.ManageQueueResponse.thread:type_name -> hermesh.thread.v2.Thread
+	33,  // 114: hermesh.thread.v2.ManageQueueResponse.queued_runs:type_name -> hermesh.thread.v2.Run
+	18,  // 115: hermesh.thread.v2.UpdateThreadConfigRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	98,  // 116: hermesh.thread.v2.UpdateThreadConfigRequest.runtime_mode:type_name -> hermesh.identity.v1.RuntimeMode
+	1,   // 117: hermesh.thread.v2.UpdateThreadConfigRequest.interaction_mode:type_name -> hermesh.thread.v2.InteractionMode
+	30,  // 118: hermesh.thread.v2.UpdateThreadConfigResponse.thread:type_name -> hermesh.thread.v2.Thread
+	10,  // 119: hermesh.thread.v2.RespondRuntimeRequestRequest.decision:type_name -> hermesh.thread.v2.ApprovalDecision
+	97,  // 120: hermesh.thread.v2.RespondRuntimeRequestRequest.answers:type_name -> hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry
+	30,  // 121: hermesh.thread.v2.RespondRuntimeRequestResponse.thread:type_name -> hermesh.thread.v2.Thread
+	41,  // 122: hermesh.thread.v2.RespondRuntimeRequestResponse.request:type_name -> hermesh.thread.v2.RuntimeRequest
+	45,  // 123: hermesh.thread.v2.ListCheckpointsResponse.checkpoints:type_name -> hermesh.thread.v2.Checkpoint
+	30,  // 124: hermesh.thread.v2.RollbackCheckpointResponse.thread:type_name -> hermesh.thread.v2.Thread
+	45,  // 125: hermesh.thread.v2.RollbackCheckpointResponse.checkpoint:type_name -> hermesh.thread.v2.Checkpoint
+	44,  // 126: hermesh.thread.v2.GetThreadDiffResponse.files:type_name -> hermesh.thread.v2.CheckpointFile
+	27,  // 127: hermesh.thread.v2.ForkThreadRequest.workspace:type_name -> hermesh.thread.v2.WorkspaceStrategy
+	18,  // 128: hermesh.thread.v2.ForkThreadRequest.model_selection:type_name -> hermesh.thread.v2.ModelSelection
+	30,  // 129: hermesh.thread.v2.ForkThreadResponse.thread:type_name -> hermesh.thread.v2.Thread
+	32,  // 130: hermesh.thread.v2.UploadBlobResponse.attachment:type_name -> hermesh.thread.v2.AttachmentRef
+	100, // 131: hermesh.thread.v2.OutboxEntry.created_at:type_name -> google.protobuf.Timestamp
+	90,  // 132: hermesh.thread.v2.ListOutboxResponse.entries:type_name -> hermesh.thread.v2.OutboxEntry
+	17,  // 133: hermesh.thread.v2.ModelSelection.OptionsEntry.value:type_name -> hermesh.thread.v2.OptionValue
+	40,  // 134: hermesh.thread.v2.RuntimeRequest.ResolvedAnswersEntry.value:type_name -> hermesh.thread.v2.QuestionAnswer
+	40,  // 135: hermesh.thread.v2.RespondRuntimeRequestRequest.AnswersEntry.value:type_name -> hermesh.thread.v2.QuestionAnswer
+	49,  // 136: hermesh.thread.v2.ThreadService.ListProviders:input_type -> hermesh.thread.v2.ListProvidersRequest
+	51,  // 137: hermesh.thread.v2.ThreadService.UpsertProviderInstance:input_type -> hermesh.thread.v2.UpsertProviderInstanceRequest
+	53,  // 138: hermesh.thread.v2.ThreadService.RemoveProviderInstance:input_type -> hermesh.thread.v2.RemoveProviderInstanceRequest
+	55,  // 139: hermesh.thread.v2.ThreadService.LaunchThread:input_type -> hermesh.thread.v2.LaunchThreadRequest
+	57,  // 140: hermesh.thread.v2.ThreadService.GetThread:input_type -> hermesh.thread.v2.GetThreadRequest
+	59,  // 141: hermesh.thread.v2.ThreadService.ListThreads:input_type -> hermesh.thread.v2.ListThreadsRequest
+	61,  // 142: hermesh.thread.v2.ThreadService.SubscribeThreads:input_type -> hermesh.thread.v2.SubscribeThreadsRequest
+	63,  // 143: hermesh.thread.v2.ThreadService.SubscribeThread:input_type -> hermesh.thread.v2.SubscribeThreadRequest
+	64,  // 144: hermesh.thread.v2.ThreadService.DispatchMessage:input_type -> hermesh.thread.v2.DispatchMessageRequest
+	66,  // 145: hermesh.thread.v2.ThreadService.InterruptRun:input_type -> hermesh.thread.v2.InterruptRunRequest
+	68,  // 146: hermesh.thread.v2.ThreadService.StopBackgroundTask:input_type -> hermesh.thread.v2.StopBackgroundTaskRequest
+	70,  // 147: hermesh.thread.v2.ThreadService.ManageQueue:input_type -> hermesh.thread.v2.ManageQueueRequest
+	72,  // 148: hermesh.thread.v2.ThreadService.UpdateThreadConfig:input_type -> hermesh.thread.v2.UpdateThreadConfigRequest
+	74,  // 149: hermesh.thread.v2.ThreadService.RespondRuntimeRequest:input_type -> hermesh.thread.v2.RespondRuntimeRequestRequest
+	76,  // 150: hermesh.thread.v2.ThreadService.ListCheckpoints:input_type -> hermesh.thread.v2.ListCheckpointsRequest
+	78,  // 151: hermesh.thread.v2.ThreadService.RollbackCheckpoint:input_type -> hermesh.thread.v2.RollbackCheckpointRequest
+	80,  // 152: hermesh.thread.v2.ThreadService.GetThreadDiff:input_type -> hermesh.thread.v2.GetThreadDiffRequest
+	82,  // 153: hermesh.thread.v2.ThreadService.ForkThread:input_type -> hermesh.thread.v2.ForkThreadRequest
+	84,  // 154: hermesh.thread.v2.ThreadService.DeleteThread:input_type -> hermesh.thread.v2.DeleteThreadRequest
+	86,  // 155: hermesh.thread.v2.ThreadService.UploadBlob:input_type -> hermesh.thread.v2.UploadBlobRequest
+	88,  // 156: hermesh.thread.v2.ThreadService.DownloadBlob:input_type -> hermesh.thread.v2.DownloadBlobRequest
+	91,  // 157: hermesh.thread.v2.ThreadService.ListOutbox:input_type -> hermesh.thread.v2.ListOutboxRequest
+	50,  // 158: hermesh.thread.v2.ThreadService.ListProviders:output_type -> hermesh.thread.v2.ListProvidersResponse
+	52,  // 159: hermesh.thread.v2.ThreadService.UpsertProviderInstance:output_type -> hermesh.thread.v2.UpsertProviderInstanceResponse
+	54,  // 160: hermesh.thread.v2.ThreadService.RemoveProviderInstance:output_type -> hermesh.thread.v2.RemoveProviderInstanceResponse
+	56,  // 161: hermesh.thread.v2.ThreadService.LaunchThread:output_type -> hermesh.thread.v2.LaunchThreadResponse
+	58,  // 162: hermesh.thread.v2.ThreadService.GetThread:output_type -> hermesh.thread.v2.GetThreadResponse
+	60,  // 163: hermesh.thread.v2.ThreadService.ListThreads:output_type -> hermesh.thread.v2.ListThreadsResponse
+	62,  // 164: hermesh.thread.v2.ThreadService.SubscribeThreads:output_type -> hermesh.thread.v2.SubscribeThreadsResponse
+	47,  // 165: hermesh.thread.v2.ThreadService.SubscribeThread:output_type -> hermesh.thread.v2.ThreadEvent
+	65,  // 166: hermesh.thread.v2.ThreadService.DispatchMessage:output_type -> hermesh.thread.v2.DispatchMessageResponse
+	67,  // 167: hermesh.thread.v2.ThreadService.InterruptRun:output_type -> hermesh.thread.v2.InterruptRunResponse
+	69,  // 168: hermesh.thread.v2.ThreadService.StopBackgroundTask:output_type -> hermesh.thread.v2.StopBackgroundTaskResponse
+	71,  // 169: hermesh.thread.v2.ThreadService.ManageQueue:output_type -> hermesh.thread.v2.ManageQueueResponse
+	73,  // 170: hermesh.thread.v2.ThreadService.UpdateThreadConfig:output_type -> hermesh.thread.v2.UpdateThreadConfigResponse
+	75,  // 171: hermesh.thread.v2.ThreadService.RespondRuntimeRequest:output_type -> hermesh.thread.v2.RespondRuntimeRequestResponse
+	77,  // 172: hermesh.thread.v2.ThreadService.ListCheckpoints:output_type -> hermesh.thread.v2.ListCheckpointsResponse
+	79,  // 173: hermesh.thread.v2.ThreadService.RollbackCheckpoint:output_type -> hermesh.thread.v2.RollbackCheckpointResponse
+	81,  // 174: hermesh.thread.v2.ThreadService.GetThreadDiff:output_type -> hermesh.thread.v2.GetThreadDiffResponse
+	83,  // 175: hermesh.thread.v2.ThreadService.ForkThread:output_type -> hermesh.thread.v2.ForkThreadResponse
+	85,  // 176: hermesh.thread.v2.ThreadService.DeleteThread:output_type -> hermesh.thread.v2.DeleteThreadResponse
+	87,  // 177: hermesh.thread.v2.ThreadService.UploadBlob:output_type -> hermesh.thread.v2.UploadBlobResponse
+	89,  // 178: hermesh.thread.v2.ThreadService.DownloadBlob:output_type -> hermesh.thread.v2.DownloadBlobResponse
+	92,  // 179: hermesh.thread.v2.ThreadService.ListOutbox:output_type -> hermesh.thread.v2.ListOutboxResponse
+	158, // [158:180] is the sub-list for method output_type
+	136, // [136:158] is the sub-list for method input_type
+	136, // [136:136] is the sub-list for extension type_name
+	136, // [136:136] is the sub-list for extension extendee
+	0,   // [0:136] is the sub-list for field type_name
 }
 
 func init() { file_hermesh_thread_v2_thread_proto_init() }
@@ -7714,13 +8272,14 @@ func file_hermesh_thread_v2_thread_proto_init() {
 		(*OptionValue_StringValue)(nil),
 		(*OptionValue_BoolValue)(nil),
 	}
+	file_hermesh_thread_v2_thread_proto_msgTypes[30].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_hermesh_thread_v2_thread_proto_rawDesc), len(file_hermesh_thread_v2_thread_proto_rawDesc)),
-			NumEnums:      13,
-			NumMessages:   79,
+			NumEnums:      16,
+			NumMessages:   82,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

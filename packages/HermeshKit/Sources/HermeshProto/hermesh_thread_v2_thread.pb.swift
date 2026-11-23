@@ -635,6 +635,136 @@ public nonisolated enum Hermesh_Thread_V2_TurnItemKind: SwiftProtobuf.Enum, Swif
 
 }
 
+public nonisolated enum Hermesh_Thread_V2_BackgroundTaskKind: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case command // = 1
+  case subagent // = 2
+  case schedule // = 3
+  case daemon // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .command
+    case 2: self = .subagent
+    case 3: self = .schedule
+    case 4: self = .daemon
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .command: return 1
+    case .subagent: return 2
+    case .schedule: return 3
+    case .daemon: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Thread_V2_BackgroundTaskKind] = [
+    .unspecified,
+    .command,
+    .subagent,
+    .schedule,
+    .daemon,
+  ]
+
+}
+
+public nonisolated enum Hermesh_Thread_V2_BackgroundTaskStatus: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case running // = 1
+  case completed // = 2
+  case failed // = 3
+  case stopped // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .running
+    case 2: self = .completed
+    case 3: self = .failed
+    case 4: self = .stopped
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .running: return 1
+    case .completed: return 2
+    case .failed: return 3
+    case .stopped: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Thread_V2_BackgroundTaskStatus] = [
+    .unspecified,
+    .running,
+    .completed,
+    .failed,
+    .stopped,
+  ]
+
+}
+
+public nonisolated enum Hermesh_Thread_V2_BackgroundTaskStopScope: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+  case single // = 1
+  case session // = 2
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .single
+    case 2: self = .session
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .single: return 1
+    case .session: return 2
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Thread_V2_BackgroundTaskStopScope] = [
+    .unspecified,
+    .single,
+    .session,
+  ]
+
+}
+
 public nonisolated enum Hermesh_Thread_V2_QueueOperation: SwiftProtobuf.Enum, Swift.CaseIterable {
   public typealias RawValue = Int
   case unspecified // = 0
@@ -1282,6 +1412,16 @@ public nonisolated struct Hermesh_Thread_V2_Thread: @unchecked Sendable {
   /// Clears the value of `archivedAt`. Subsequent reads from it will return its default value.
   public mutating func clearArchivedAt() {_uniqueStorage()._archivedAt = nil}
 
+  public var activeBackgroundCount: UInt32 {
+    get {_storage._activeBackgroundCount}
+    set {_uniqueStorage()._activeBackgroundCount = newValue}
+  }
+
+  public var activeDaemonCount: UInt32 {
+    get {_storage._activeDaemonCount}
+    set {_uniqueStorage()._activeDaemonCount = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -1487,6 +1627,11 @@ public nonisolated struct Hermesh_Thread_V2_Run: @unchecked Sendable {
   public var hasCompletedAt: Bool {_storage._completedAt != nil}
   /// Clears the value of `completedAt`. Subsequent reads from it will return its default value.
   public mutating func clearCompletedAt() {_uniqueStorage()._completedAt = nil}
+
+  public var wakeReason: String {
+    get {_storage._wakeReason}
+    set {_uniqueStorage()._wakeReason = newValue}
+  }
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -1984,6 +2129,114 @@ public nonisolated struct Hermesh_Thread_V2_Checkpoint: Sendable {
   fileprivate var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
+public nonisolated struct Hermesh_Thread_V2_BackgroundTask: @unchecked Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var taskID: String {
+    get {_storage._taskID}
+    set {_uniqueStorage()._taskID = newValue}
+  }
+
+  public var threadID: String {
+    get {_storage._threadID}
+    set {_uniqueStorage()._threadID = newValue}
+  }
+
+  public var runID: String {
+    get {_storage._runID}
+    set {_uniqueStorage()._runID = newValue}
+  }
+
+  public var itemID: String {
+    get {_storage._itemID}
+    set {_uniqueStorage()._itemID = newValue}
+  }
+
+  public var kind: Hermesh_Thread_V2_BackgroundTaskKind {
+    get {_storage._kind}
+    set {_uniqueStorage()._kind = newValue}
+  }
+
+  public var status: Hermesh_Thread_V2_BackgroundTaskStatus {
+    get {_storage._status}
+    set {_uniqueStorage()._status = newValue}
+  }
+
+  public var title: String {
+    get {_storage._title}
+    set {_uniqueStorage()._title = newValue}
+  }
+
+  public var command: String {
+    get {_storage._command}
+    set {_uniqueStorage()._command = newValue}
+  }
+
+  public var outputTail: String {
+    get {_storage._outputTail}
+    set {_uniqueStorage()._outputTail = newValue}
+  }
+
+  public var summary: String {
+    get {_storage._summary}
+    set {_uniqueStorage()._summary = newValue}
+  }
+
+  public var exitCode: Int32 {
+    get {_storage._exitCode ?? 0}
+    set {_uniqueStorage()._exitCode = newValue}
+  }
+  /// Returns true if `exitCode` has been explicitly set.
+  public var hasExitCode: Bool {_storage._exitCode != nil}
+  /// Clears the value of `exitCode`. Subsequent reads from it will return its default value.
+  public mutating func clearExitCode() {_uniqueStorage()._exitCode = nil}
+
+  public var awaited: Bool {
+    get {_storage._awaited}
+    set {_uniqueStorage()._awaited = newValue}
+  }
+
+  public var stopScope: Hermesh_Thread_V2_BackgroundTaskStopScope {
+    get {_storage._stopScope}
+    set {_uniqueStorage()._stopScope = newValue}
+  }
+
+  public var startedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._startedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._startedAt = newValue}
+  }
+  /// Returns true if `startedAt` has been explicitly set.
+  public var hasStartedAt: Bool {_storage._startedAt != nil}
+  /// Clears the value of `startedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearStartedAt() {_uniqueStorage()._startedAt = nil}
+
+  public var updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._updatedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._updatedAt = newValue}
+  }
+  /// Returns true if `updatedAt` has been explicitly set.
+  public var hasUpdatedAt: Bool {_storage._updatedAt != nil}
+  /// Clears the value of `updatedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearUpdatedAt() {_uniqueStorage()._updatedAt = nil}
+
+  public var completedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_storage._completedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_uniqueStorage()._completedAt = newValue}
+  }
+  /// Returns true if `completedAt` has been explicitly set.
+  public var hasCompletedAt: Bool {_storage._completedAt != nil}
+  /// Clears the value of `completedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearCompletedAt() {_uniqueStorage()._completedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _storage = _StorageClass.defaultInstance
+}
+
 public nonisolated struct Hermesh_Thread_V2_ThreadEvent: @unchecked Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -2068,6 +2321,15 @@ public nonisolated struct Hermesh_Thread_V2_ThreadEvent: @unchecked Sendable {
   /// Clears the value of `occurredAt`. Subsequent reads from it will return its default value.
   public mutating func clearOccurredAt() {_uniqueStorage()._occurredAt = nil}
 
+  public var backgroundTask: Hermesh_Thread_V2_BackgroundTask {
+    get {_storage._backgroundTask ?? Hermesh_Thread_V2_BackgroundTask()}
+    set {_uniqueStorage()._backgroundTask = newValue}
+  }
+  /// Returns true if `backgroundTask` has been explicitly set.
+  public var hasBackgroundTask: Bool {_storage._backgroundTask != nil}
+  /// Clears the value of `backgroundTask`. Subsequent reads from it will return its default value.
+  public mutating func clearBackgroundTask() {_uniqueStorage()._backgroundTask = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2098,6 +2360,8 @@ public nonisolated struct Hermesh_Thread_V2_ThreadProjection: Sendable {
   public var checkpoints: [Hermesh_Thread_V2_Checkpoint] = []
 
   public var providerThreads: [Hermesh_Thread_V2_ProviderThread] = []
+
+  public var backgroundTasks: [Hermesh_Thread_V2_BackgroundTask] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2532,6 +2796,48 @@ public nonisolated struct Hermesh_Thread_V2_InterruptRunResponse: Sendable {
   public var hasThread: Bool {self._thread != nil}
   /// Clears the value of `thread`. Subsequent reads from it will return its default value.
   public mutating func clearThread() {self._thread = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _thread: Hermesh_Thread_V2_Thread? = nil
+}
+
+public nonisolated struct Hermesh_Thread_V2_StopBackgroundTaskRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var commandID: String = String()
+
+  public var machineID: String = String()
+
+  public var threadID: String = String()
+
+  /// Empty stops all running background tasks on the thread.
+  public var taskID: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Hermesh_Thread_V2_StopBackgroundTaskResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var thread: Hermesh_Thread_V2_Thread {
+    get {_thread ?? Hermesh_Thread_V2_Thread()}
+    set {_thread = newValue}
+  }
+  /// Returns true if `thread` has been explicitly set.
+  public var hasThread: Bool {self._thread != nil}
+  /// Clears the value of `thread`. Subsequent reads from it will return its default value.
+  public mutating func clearThread() {self._thread = nil}
+
+  public var stoppedTasks: [Hermesh_Thread_V2_BackgroundTask] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -3085,6 +3391,18 @@ nonisolated extension Hermesh_Thread_V2_ApprovalDecision: SwiftProtobuf._ProtoNa
 
 nonisolated extension Hermesh_Thread_V2_TurnItemKind: SwiftProtobuf._ProtoNameProviding {
   public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TURN_ITEM_KIND_UNSPECIFIED\0\u{1}TURN_ITEM_KIND_USER_MESSAGE\0\u{1}TURN_ITEM_KIND_ASSISTANT_MESSAGE\0\u{1}TURN_ITEM_KIND_REASONING\0\u{1}TURN_ITEM_KIND_TOOL_CALL\0\u{1}TURN_ITEM_KIND_COMMAND_EXECUTION\0\u{1}TURN_ITEM_KIND_FILE_CHANGE\0\u{1}TURN_ITEM_KIND_PROPOSED_PLAN\0\u{1}TURN_ITEM_KIND_TODO_LIST\0\u{1}TURN_ITEM_KIND_RUNTIME_REQUEST\0\u{1}TURN_ITEM_KIND_HANDOFF\0\u{1}TURN_ITEM_KIND_MODEL_SWITCH\0\u{1}TURN_ITEM_KIND_CHECKPOINT\0\u{1}TURN_ITEM_KIND_SYSTEM_NOTICE\0\u{1}TURN_ITEM_KIND_ERROR\0")
+}
+
+nonisolated extension Hermesh_Thread_V2_BackgroundTaskKind: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0BACKGROUND_TASK_KIND_UNSPECIFIED\0\u{1}BACKGROUND_TASK_KIND_COMMAND\0\u{1}BACKGROUND_TASK_KIND_SUBAGENT\0\u{1}BACKGROUND_TASK_KIND_SCHEDULE\0\u{1}BACKGROUND_TASK_KIND_DAEMON\0")
+}
+
+nonisolated extension Hermesh_Thread_V2_BackgroundTaskStatus: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0BACKGROUND_TASK_STATUS_UNSPECIFIED\0\u{1}BACKGROUND_TASK_STATUS_RUNNING\0\u{1}BACKGROUND_TASK_STATUS_COMPLETED\0\u{1}BACKGROUND_TASK_STATUS_FAILED\0\u{1}BACKGROUND_TASK_STATUS_STOPPED\0")
+}
+
+nonisolated extension Hermesh_Thread_V2_BackgroundTaskStopScope: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED\0\u{1}BACKGROUND_TASK_STOP_SCOPE_SINGLE\0\u{1}BACKGROUND_TASK_STOP_SCOPE_SESSION\0")
 }
 
 nonisolated extension Hermesh_Thread_V2_QueueOperation: SwiftProtobuf._ProtoNameProviding {
@@ -4000,7 +4318,7 @@ nonisolated extension Hermesh_Thread_V2_ContextWindowUsage: SwiftProtobuf.Messag
 
 nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Thread"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}thread_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}title_renamed\0\u{1}status\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}active_provider_thread_id\0\u{3}created_by\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}last_seq\0\u{3}run_count\0\u{1}usage\0\u{3}last_error\0\u{1}pinned\0\u{3}offline_queued\0\u{3}created_at\0\u{3}updated_at\0\u{3}archived_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}thread_id\0\u{3}machine_id\0\u{3}project_id\0\u{1}title\0\u{3}title_renamed\0\u{1}status\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}effective_runtime_mode\0\u{3}max_runtime_mode\0\u{3}interaction_mode\0\u{1}workspace\0\u{3}active_provider_thread_id\0\u{3}created_by\0\u{1}lineage\0\u{3}queue_held\0\u{3}queued_run_count\0\u{3}active_run_id\0\u{3}pending_request_id\0\u{3}last_seq\0\u{3}run_count\0\u{1}usage\0\u{3}last_error\0\u{1}pinned\0\u{3}offline_queued\0\u{3}created_at\0\u{3}updated_at\0\u{3}archived_at\0\u{3}active_background_count\0\u{3}active_daemon_count\0")
 
   fileprivate class _StorageClass {
     var _threadID: String = String()
@@ -4031,6 +4349,8 @@ nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProt
     var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _archivedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _activeBackgroundCount: UInt32 = 0
+    var _activeDaemonCount: UInt32 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -4069,6 +4389,8 @@ nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProt
       _createdAt = source._createdAt
       _updatedAt = source._updatedAt
       _archivedAt = source._archivedAt
+      _activeBackgroundCount = source._activeBackgroundCount
+      _activeDaemonCount = source._activeDaemonCount
     }
   }
 
@@ -4115,6 +4437,8 @@ nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProt
         case 26: try { try decoder.decodeSingularMessageField(value: &_storage._createdAt) }()
         case 27: try { try decoder.decodeSingularMessageField(value: &_storage._updatedAt) }()
         case 28: try { try decoder.decodeSingularMessageField(value: &_storage._archivedAt) }()
+        case 29: try { try decoder.decodeSingularUInt32Field(value: &_storage._activeBackgroundCount) }()
+        case 30: try { try decoder.decodeSingularUInt32Field(value: &_storage._activeDaemonCount) }()
         default: break
         }
       }
@@ -4211,6 +4535,12 @@ nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProt
       try { if let v = _storage._archivedAt {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 28)
       } }()
+      if _storage._activeBackgroundCount != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._activeBackgroundCount, fieldNumber: 29)
+      }
+      if _storage._activeDaemonCount != 0 {
+        try visitor.visitSingularUInt32Field(value: _storage._activeDaemonCount, fieldNumber: 30)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -4248,6 +4578,8 @@ nonisolated extension Hermesh_Thread_V2_Thread: SwiftProtobuf.Message, SwiftProt
         if _storage._createdAt != rhs_storage._createdAt {return false}
         if _storage._updatedAt != rhs_storage._updatedAt {return false}
         if _storage._archivedAt != rhs_storage._archivedAt {return false}
+        if _storage._activeBackgroundCount != rhs_storage._activeBackgroundCount {return false}
+        if _storage._activeDaemonCount != rhs_storage._activeDaemonCount {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -4383,7 +4715,7 @@ nonisolated extension Hermesh_Thread_V2_AttachmentRef: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".Run"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}run_id\0\u{3}thread_id\0\u{1}ordinal\0\u{1}status\0\u{3}queue_order\0\u{1}author\0\u{1}prompt\0\u{1}attachments\0\u{1}intent\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{3}provider_thread_id\0\u{3}checkpoint_id\0\u{3}handoff_summary\0\u{1}usage\0\u{3}error_code\0\u{3}error_message\0\u{3}created_at\0\u{3}started_at\0\u{3}completed_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}run_id\0\u{3}thread_id\0\u{1}ordinal\0\u{1}status\0\u{3}queue_order\0\u{1}author\0\u{1}prompt\0\u{1}attachments\0\u{1}intent\0\u{3}model_selection\0\u{3}runtime_mode\0\u{3}interaction_mode\0\u{3}provider_thread_id\0\u{3}checkpoint_id\0\u{3}handoff_summary\0\u{1}usage\0\u{3}error_code\0\u{3}error_message\0\u{3}created_at\0\u{3}started_at\0\u{3}completed_at\0\u{3}wake_reason\0")
 
   fileprivate class _StorageClass {
     var _runID: String = String()
@@ -4407,6 +4739,7 @@ nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobu
     var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _startedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _completedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _wakeReason: String = String()
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -4438,6 +4771,7 @@ nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobu
       _createdAt = source._createdAt
       _startedAt = source._startedAt
       _completedAt = source._completedAt
+      _wakeReason = source._wakeReason
     }
   }
 
@@ -4477,6 +4811,7 @@ nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobu
         case 19: try { try decoder.decodeSingularMessageField(value: &_storage._createdAt) }()
         case 20: try { try decoder.decodeSingularMessageField(value: &_storage._startedAt) }()
         case 21: try { try decoder.decodeSingularMessageField(value: &_storage._completedAt) }()
+        case 22: try { try decoder.decodeSingularStringField(value: &_storage._wakeReason) }()
         default: break
         }
       }
@@ -4552,6 +4887,9 @@ nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobu
       try { if let v = _storage._completedAt {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 21)
       } }()
+      if !_storage._wakeReason.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._wakeReason, fieldNumber: 22)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -4582,6 +4920,7 @@ nonisolated extension Hermesh_Thread_V2_Run: SwiftProtobuf.Message, SwiftProtobu
         if _storage._createdAt != rhs_storage._createdAt {return false}
         if _storage._startedAt != rhs_storage._startedAt {return false}
         if _storage._completedAt != rhs_storage._completedAt {return false}
+        if _storage._wakeReason != rhs_storage._wakeReason {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -5499,9 +5838,184 @@ nonisolated extension Hermesh_Thread_V2_Checkpoint: SwiftProtobuf.Message, Swift
   }
 }
 
+nonisolated extension Hermesh_Thread_V2_BackgroundTask: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".BackgroundTask"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}task_id\0\u{3}thread_id\0\u{3}run_id\0\u{3}item_id\0\u{1}kind\0\u{1}status\0\u{1}title\0\u{1}command\0\u{3}output_tail\0\u{1}summary\0\u{3}exit_code\0\u{1}awaited\0\u{3}stop_scope\0\u{3}started_at\0\u{3}updated_at\0\u{3}completed_at\0")
+
+  fileprivate class _StorageClass {
+    var _taskID: String = String()
+    var _threadID: String = String()
+    var _runID: String = String()
+    var _itemID: String = String()
+    var _kind: Hermesh_Thread_V2_BackgroundTaskKind = .unspecified
+    var _status: Hermesh_Thread_V2_BackgroundTaskStatus = .unspecified
+    var _title: String = String()
+    var _command: String = String()
+    var _outputTail: String = String()
+    var _summary: String = String()
+    var _exitCode: Int32? = nil
+    var _awaited: Bool = false
+    var _stopScope: Hermesh_Thread_V2_BackgroundTaskStopScope = .unspecified
+    var _startedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _completedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+
+      // This property is used as the initial default value for new instances of the type.
+      // The type itself is protecting the reference to its storage via CoW semantics.
+      // This will force a copy to be made of this reference when the first mutation occurs;
+      // hence, it is safe to mark this as `nonisolated(unsafe)`.
+      static nonisolated(unsafe) let defaultInstance = _StorageClass()
+
+    private init() {}
+
+    init(copying source: _StorageClass) {
+      _taskID = source._taskID
+      _threadID = source._threadID
+      _runID = source._runID
+      _itemID = source._itemID
+      _kind = source._kind
+      _status = source._status
+      _title = source._title
+      _command = source._command
+      _outputTail = source._outputTail
+      _summary = source._summary
+      _exitCode = source._exitCode
+      _awaited = source._awaited
+      _stopScope = source._stopScope
+      _startedAt = source._startedAt
+      _updatedAt = source._updatedAt
+      _completedAt = source._completedAt
+    }
+  }
+
+  fileprivate mutating func _uniqueStorage() -> _StorageClass {
+    if !isKnownUniquelyReferenced(&_storage) {
+      _storage = _StorageClass(copying: _storage)
+    }
+    return _storage
+  }
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    _ = _uniqueStorage()
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      while let fieldNumber = try decoder.nextFieldNumber() {
+        // The use of inline closures is to circumvent an issue where the compiler
+        // allocates stack space for every case branch when no optimizations are
+        // enabled. https://github.com/apple/swift-protobuf/issues/1034
+        switch fieldNumber {
+        case 1: try { try decoder.decodeSingularStringField(value: &_storage._taskID) }()
+        case 2: try { try decoder.decodeSingularStringField(value: &_storage._threadID) }()
+        case 3: try { try decoder.decodeSingularStringField(value: &_storage._runID) }()
+        case 4: try { try decoder.decodeSingularStringField(value: &_storage._itemID) }()
+        case 5: try { try decoder.decodeSingularEnumField(value: &_storage._kind) }()
+        case 6: try { try decoder.decodeSingularEnumField(value: &_storage._status) }()
+        case 7: try { try decoder.decodeSingularStringField(value: &_storage._title) }()
+        case 8: try { try decoder.decodeSingularStringField(value: &_storage._command) }()
+        case 9: try { try decoder.decodeSingularStringField(value: &_storage._outputTail) }()
+        case 10: try { try decoder.decodeSingularStringField(value: &_storage._summary) }()
+        case 11: try { try decoder.decodeSingularInt32Field(value: &_storage._exitCode) }()
+        case 12: try { try decoder.decodeSingularBoolField(value: &_storage._awaited) }()
+        case 13: try { try decoder.decodeSingularEnumField(value: &_storage._stopScope) }()
+        case 14: try { try decoder.decodeSingularMessageField(value: &_storage._startedAt) }()
+        case 15: try { try decoder.decodeSingularMessageField(value: &_storage._updatedAt) }()
+        case 16: try { try decoder.decodeSingularMessageField(value: &_storage._completedAt) }()
+        default: break
+        }
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try withExtendedLifetime(_storage) { (_storage: _StorageClass) in
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every if/case branch local when no optimizations
+      // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+      // https://github.com/apple/swift-protobuf/issues/1182
+      if !_storage._taskID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._taskID, fieldNumber: 1)
+      }
+      if !_storage._threadID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._threadID, fieldNumber: 2)
+      }
+      if !_storage._runID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._runID, fieldNumber: 3)
+      }
+      if !_storage._itemID.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._itemID, fieldNumber: 4)
+      }
+      if _storage._kind != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._kind, fieldNumber: 5)
+      }
+      if _storage._status != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._status, fieldNumber: 6)
+      }
+      if !_storage._title.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._title, fieldNumber: 7)
+      }
+      if !_storage._command.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._command, fieldNumber: 8)
+      }
+      if !_storage._outputTail.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._outputTail, fieldNumber: 9)
+      }
+      if !_storage._summary.isEmpty {
+        try visitor.visitSingularStringField(value: _storage._summary, fieldNumber: 10)
+      }
+      try { if let v = _storage._exitCode {
+        try visitor.visitSingularInt32Field(value: v, fieldNumber: 11)
+      } }()
+      if _storage._awaited != false {
+        try visitor.visitSingularBoolField(value: _storage._awaited, fieldNumber: 12)
+      }
+      if _storage._stopScope != .unspecified {
+        try visitor.visitSingularEnumField(value: _storage._stopScope, fieldNumber: 13)
+      }
+      try { if let v = _storage._startedAt {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+      } }()
+      try { if let v = _storage._updatedAt {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
+      } }()
+      try { if let v = _storage._completedAt {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+      } }()
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Thread_V2_BackgroundTask, rhs: Hermesh_Thread_V2_BackgroundTask) -> Bool {
+    if lhs._storage !== rhs._storage {
+      let storagesAreEqual: Bool = withExtendedLifetime((lhs._storage, rhs._storage)) { (_args: (_StorageClass, _StorageClass)) in
+        let _storage = _args.0
+        let rhs_storage = _args.1
+        if _storage._taskID != rhs_storage._taskID {return false}
+        if _storage._threadID != rhs_storage._threadID {return false}
+        if _storage._runID != rhs_storage._runID {return false}
+        if _storage._itemID != rhs_storage._itemID {return false}
+        if _storage._kind != rhs_storage._kind {return false}
+        if _storage._status != rhs_storage._status {return false}
+        if _storage._title != rhs_storage._title {return false}
+        if _storage._command != rhs_storage._command {return false}
+        if _storage._outputTail != rhs_storage._outputTail {return false}
+        if _storage._summary != rhs_storage._summary {return false}
+        if _storage._exitCode != rhs_storage._exitCode {return false}
+        if _storage._awaited != rhs_storage._awaited {return false}
+        if _storage._stopScope != rhs_storage._stopScope {return false}
+        if _storage._startedAt != rhs_storage._startedAt {return false}
+        if _storage._updatedAt != rhs_storage._updatedAt {return false}
+        if _storage._completedAt != rhs_storage._completedAt {return false}
+        return true
+      }
+      if !storagesAreEqual {return false}
+    }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ThreadEvent"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}seq\0\u{3}thread_id\0\u{1}type\0\u{1}thread\0\u{1}run\0\u{1}item\0\u{1}request\0\u{1}checkpoint\0\u{3}text_delta\0\u{3}target_item_id\0\u{3}occurred_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}seq\0\u{3}thread_id\0\u{1}type\0\u{1}thread\0\u{1}run\0\u{1}item\0\u{1}request\0\u{1}checkpoint\0\u{3}text_delta\0\u{3}target_item_id\0\u{3}occurred_at\0\u{3}background_task\0")
 
   fileprivate class _StorageClass {
     var _seq: UInt64 = 0
@@ -5515,6 +6029,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
     var _textDelta: String = String()
     var _targetItemID: String = String()
     var _occurredAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _backgroundTask: Hermesh_Thread_V2_BackgroundTask? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -5536,6 +6051,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
       _textDelta = source._textDelta
       _targetItemID = source._targetItemID
       _occurredAt = source._occurredAt
+      _backgroundTask = source._backgroundTask
     }
   }
 
@@ -5565,6 +6081,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
         case 9: try { try decoder.decodeSingularStringField(value: &_storage._textDelta) }()
         case 10: try { try decoder.decodeSingularStringField(value: &_storage._targetItemID) }()
         case 11: try { try decoder.decodeSingularMessageField(value: &_storage._occurredAt) }()
+        case 12: try { try decoder.decodeSingularMessageField(value: &_storage._backgroundTask) }()
         default: break
         }
       }
@@ -5610,6 +6127,9 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
       try { if let v = _storage._occurredAt {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 11)
       } }()
+      try { if let v = _storage._backgroundTask {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -5630,6 +6150,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
         if _storage._textDelta != rhs_storage._textDelta {return false}
         if _storage._targetItemID != rhs_storage._targetItemID {return false}
         if _storage._occurredAt != rhs_storage._occurredAt {return false}
+        if _storage._backgroundTask != rhs_storage._backgroundTask {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -5641,7 +6162,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadEvent: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hermesh_Thread_V2_ThreadProjection: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ThreadProjection"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}thread\0\u{1}runs\0\u{1}items\0\u{1}requests\0\u{1}checkpoints\0\u{3}provider_threads\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}thread\0\u{1}runs\0\u{1}items\0\u{1}requests\0\u{1}checkpoints\0\u{3}provider_threads\0\u{3}background_tasks\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -5655,6 +6176,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadProjection: SwiftProtobuf.Message,
       case 4: try { try decoder.decodeRepeatedMessageField(value: &self.requests) }()
       case 5: try { try decoder.decodeRepeatedMessageField(value: &self.checkpoints) }()
       case 6: try { try decoder.decodeRepeatedMessageField(value: &self.providerThreads) }()
+      case 7: try { try decoder.decodeRepeatedMessageField(value: &self.backgroundTasks) }()
       default: break
       }
     }
@@ -5683,6 +6205,9 @@ nonisolated extension Hermesh_Thread_V2_ThreadProjection: SwiftProtobuf.Message,
     if !self.providerThreads.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.providerThreads, fieldNumber: 6)
     }
+    if !self.backgroundTasks.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.backgroundTasks, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -5693,6 +6218,7 @@ nonisolated extension Hermesh_Thread_V2_ThreadProjection: SwiftProtobuf.Message,
     if lhs.requests != rhs.requests {return false}
     if lhs.checkpoints != rhs.checkpoints {return false}
     if lhs.providerThreads != rhs.providerThreads {return false}
+    if lhs.backgroundTasks != rhs.backgroundTasks {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6555,6 +7081,90 @@ nonisolated extension Hermesh_Thread_V2_InterruptRunResponse: SwiftProtobuf.Mess
 
   public static func ==(lhs: Hermesh_Thread_V2_InterruptRunResponse, rhs: Hermesh_Thread_V2_InterruptRunResponse) -> Bool {
     if lhs._thread != rhs._thread {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Thread_V2_StopBackgroundTaskRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".StopBackgroundTaskRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}command_id\0\u{3}machine_id\0\u{3}thread_id\0\u{3}task_id\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.commandID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.threadID) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.taskID) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.commandID.isEmpty {
+      try visitor.visitSingularStringField(value: self.commandID, fieldNumber: 1)
+    }
+    if !self.machineID.isEmpty {
+      try visitor.visitSingularStringField(value: self.machineID, fieldNumber: 2)
+    }
+    if !self.threadID.isEmpty {
+      try visitor.visitSingularStringField(value: self.threadID, fieldNumber: 3)
+    }
+    if !self.taskID.isEmpty {
+      try visitor.visitSingularStringField(value: self.taskID, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Thread_V2_StopBackgroundTaskRequest, rhs: Hermesh_Thread_V2_StopBackgroundTaskRequest) -> Bool {
+    if lhs.commandID != rhs.commandID {return false}
+    if lhs.machineID != rhs.machineID {return false}
+    if lhs.threadID != rhs.threadID {return false}
+    if lhs.taskID != rhs.taskID {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Thread_V2_StopBackgroundTaskResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".StopBackgroundTaskResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}thread\0\u{3}stopped_tasks\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularMessageField(value: &self._thread) }()
+      case 2: try { try decoder.decodeRepeatedMessageField(value: &self.stoppedTasks) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    try { if let v = self._thread {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
+    } }()
+    if !self.stoppedTasks.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.stoppedTasks, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Thread_V2_StopBackgroundTaskResponse, rhs: Hermesh_Thread_V2_StopBackgroundTaskResponse) -> Bool {
+    if lhs._thread != rhs._thread {return false}
+    if lhs.stoppedTasks != rhs.stoppedTasks {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

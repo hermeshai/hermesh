@@ -3,6 +3,11 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { FailureKind } from "@hermesh/proto/session";
 import {
+  ActorKind,
+  ActorSchema,
+  BackgroundTaskKind,
+  BackgroundTaskSchema,
+  BackgroundTaskStatus,
   QuestionItemSchema,
   QuestionOptionSchema,
   RunSchema,
@@ -138,5 +143,57 @@ describe("a thread at work: working or thinking", () => {
     proj.thread!.activeRunId = "";
     expect(threadToolRunning(proj)).toBe(false); // no run under way
     expect(threadToolRunning(undefined)).toBe(false);
+  });
+
+  it("keeps a background command item spinning in the transcript after its launching run completes", () => {
+    const bgProj = create(ThreadProjectionSchema, {
+      thread: create(ThreadSchema, { threadId: "th_bg", status: ThreadStatus.IDLE, activeBackgroundCount: 1 }),
+      runs: [create(RunSchema, { runId: "r1", ordinal: 1, status: RunStatus.COMPLETED })],
+      items: [item(1, "r1", TurnItemKind.COMMAND_EXECUTION, { itemId: "r1:cmd_bg", command: "make e2e", status: "running" })],
+      backgroundTasks: [
+        create(BackgroundTaskSchema, {
+          taskId: "cmd_bg",
+          runId: "r1",
+          itemId: "r1:cmd_bg",
+          kind: BackgroundTaskKind.COMMAND,
+          status: BackgroundTaskStatus.RUNNING,
+          awaited: true,
+        }),
+      ],
+    });
+    const rows = threadTranscript(bgProj);
+    const tool = rows.find((r) => r.kind === "tool");
+    expect(tool?.kind === "tool" && tool.running).toBe(true);
+    expect(tool?.kind === "tool" && tool.result).toBeUndefined();
+  });
+
+  it("attaches wakeReason only to system continuation runs", () => {
+    const wakeProj = create(ThreadProjectionSchema, {
+      thread: create(ThreadSchema, { threadId: "th_wake", status: ThreadStatus.IDLE }),
+      runs: [
+        create(RunSchema, {
+          runId: "r1",
+          ordinal: 1,
+          status: RunStatus.COMPLETED,
+          author: create(ActorSchema, { kind: ActorKind.OWNER, id: "owner" }),
+        }),
+        create(RunSchema, {
+          runId: "r2",
+          ordinal: 2,
+          status: RunStatus.COMPLETED,
+          author: create(ActorSchema, { kind: ActorKind.SYSTEM, id: "background" }),
+          wakeReason: "pytest -q",
+        }),
+      ],
+      items: [
+        item(1, "r1", TurnItemKind.USER_MESSAGE, { text: "run tests" }),
+        item(2, "r1", TurnItemKind.ASSISTANT_MESSAGE, { text: "running in background" }),
+        item(3, "r2", TurnItemKind.ASSISTANT_MESSAGE, { text: "all passed" }),
+      ],
+    });
+    const turns = threadTranscript(wakeProj).filter((r) => r.kind === "turn");
+    expect(turns).toHaveLength(2);
+    expect(turns[0]?.kind === "turn" ? turns[0].wakeReason : undefined).toBeUndefined();
+    expect(turns[1]?.kind === "turn" ? turns[1].wakeReason : undefined).toBe("pytest -q");
   });
 });

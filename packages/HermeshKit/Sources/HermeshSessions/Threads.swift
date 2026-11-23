@@ -167,6 +167,14 @@ public func applyThreadEvent(
         })
     }
 
+    if event.hasBackgroundTask {
+        if let idx = next.backgroundTasks.firstIndex(where: { $0.taskID == event.backgroundTask.taskID }) {
+            next.backgroundTasks[idx] = event.backgroundTask
+        } else {
+            next.backgroundTasks.append(event.backgroundTask)
+        }
+    }
+
     if event.type == "thread.rolled_back" && event.hasCheckpoint {
         let maxOrd = event.checkpoint.runOrdinal
         let removedRunIDs = Set(
@@ -178,6 +186,7 @@ public func applyThreadEvent(
             next.runs[i].status = .rolledBack
         }
         next.items.removeAll { removedRunIDs.contains($0.runID) }
+        next.backgroundTasks.removeAll { removedRunIDs.contains($0.runID) }
         next.checkpoints.removeAll { $0.runOrdinal > maxOrd }
     }
 
@@ -216,4 +225,39 @@ public func pendingRequest(of projection: Hermesh_Thread_V2_ThreadProjection?) -
         return found
     }
     return projection.requests.first(where: { $0.status == .pending })
+}
+
+public func activeBackgroundTasks(of projection: Hermesh_Thread_V2_ThreadProjection?) -> [Hermesh_Thread_V2_BackgroundTask] {
+    guard let projection else { return [] }
+    return projection.backgroundTasks
+        .filter { $0.status == .running }
+        .sorted { a, b in
+            if a.awaited != b.awaited { return a.awaited && !b.awaited }
+            return a.startedAt.seconds < b.startedAt.seconds
+        }
+}
+
+public func backgroundTasks(of projection: Hermesh_Thread_V2_ThreadProjection?) -> [Hermesh_Thread_V2_BackgroundTask] {
+    guard let projection else { return [] }
+    return projection.backgroundTasks.sorted { a, b in
+        let ar = a.status == .running
+        let br = b.status == .running
+        if ar != br { return ar }
+        if ar {
+            if a.awaited != b.awaited { return a.awaited && !b.awaited }
+            return a.startedAt.seconds < b.startedAt.seconds
+        }
+        let at = a.hasCompletedAt ? a.completedAt.seconds : a.startedAt.seconds
+        let bt = b.hasCompletedAt ? b.completedAt.seconds : b.startedAt.seconds
+        return at > bt
+    }
+}
+
+public func activeBackgroundItemIDs(of projection: Hermesh_Thread_V2_ThreadProjection?) -> Set<String> {
+    guard let projection else { return [] }
+    var out = Set<String>()
+    for bt in projection.backgroundTasks where bt.status == .running && !bt.itemID.isEmpty {
+        out.insert(bt.itemID)
+    }
+    return out
 }

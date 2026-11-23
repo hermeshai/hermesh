@@ -62,6 +62,9 @@ const (
 	// ThreadServiceInterruptRunProcedure is the fully-qualified name of the ThreadService's
 	// InterruptRun RPC.
 	ThreadServiceInterruptRunProcedure = "/hermesh.thread.v2.ThreadService/InterruptRun"
+	// ThreadServiceStopBackgroundTaskProcedure is the fully-qualified name of the ThreadService's
+	// StopBackgroundTask RPC.
+	ThreadServiceStopBackgroundTaskProcedure = "/hermesh.thread.v2.ThreadService/StopBackgroundTask"
 	// ThreadServiceManageQueueProcedure is the fully-qualified name of the ThreadService's ManageQueue
 	// RPC.
 	ThreadServiceManageQueueProcedure = "/hermesh.thread.v2.ThreadService/ManageQueue"
@@ -109,6 +112,7 @@ type ThreadServiceClient interface {
 	SubscribeThread(context.Context, *v2.SubscribeThreadRequest) (*connect.ServerStreamForClient[v2.ThreadEvent], error)
 	DispatchMessage(context.Context, *v2.DispatchMessageRequest) (*v2.DispatchMessageResponse, error)
 	InterruptRun(context.Context, *v2.InterruptRunRequest) (*v2.InterruptRunResponse, error)
+	StopBackgroundTask(context.Context, *v2.StopBackgroundTaskRequest) (*v2.StopBackgroundTaskResponse, error)
 	ManageQueue(context.Context, *v2.ManageQueueRequest) (*v2.ManageQueueResponse, error)
 	UpdateThreadConfig(context.Context, *v2.UpdateThreadConfigRequest) (*v2.UpdateThreadConfigResponse, error)
 	RespondRuntimeRequest(context.Context, *v2.RespondRuntimeRequestRequest) (*v2.RespondRuntimeRequestResponse, error)
@@ -193,6 +197,12 @@ func NewThreadServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(threadServiceMethods.ByName("InterruptRun")),
 			connect.WithClientOptions(opts...),
 		),
+		stopBackgroundTask: connect.NewClient[v2.StopBackgroundTaskRequest, v2.StopBackgroundTaskResponse](
+			httpClient,
+			baseURL+ThreadServiceStopBackgroundTaskProcedure,
+			connect.WithSchema(threadServiceMethods.ByName("StopBackgroundTask")),
+			connect.WithClientOptions(opts...),
+		),
 		manageQueue: connect.NewClient[v2.ManageQueueRequest, v2.ManageQueueResponse](
 			httpClient,
 			baseURL+ThreadServiceManageQueueProcedure,
@@ -274,6 +284,7 @@ type threadServiceClient struct {
 	subscribeThread        *connect.Client[v2.SubscribeThreadRequest, v2.ThreadEvent]
 	dispatchMessage        *connect.Client[v2.DispatchMessageRequest, v2.DispatchMessageResponse]
 	interruptRun           *connect.Client[v2.InterruptRunRequest, v2.InterruptRunResponse]
+	stopBackgroundTask     *connect.Client[v2.StopBackgroundTaskRequest, v2.StopBackgroundTaskResponse]
 	manageQueue            *connect.Client[v2.ManageQueueRequest, v2.ManageQueueResponse]
 	updateThreadConfig     *connect.Client[v2.UpdateThreadConfigRequest, v2.UpdateThreadConfigResponse]
 	respondRuntimeRequest  *connect.Client[v2.RespondRuntimeRequestRequest, v2.RespondRuntimeRequestResponse]
@@ -363,6 +374,15 @@ func (c *threadServiceClient) DispatchMessage(ctx context.Context, req *v2.Dispa
 // InterruptRun calls hermesh.thread.v2.ThreadService.InterruptRun.
 func (c *threadServiceClient) InterruptRun(ctx context.Context, req *v2.InterruptRunRequest) (*v2.InterruptRunResponse, error) {
 	response, err := c.interruptRun.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// StopBackgroundTask calls hermesh.thread.v2.ThreadService.StopBackgroundTask.
+func (c *threadServiceClient) StopBackgroundTask(ctx context.Context, req *v2.StopBackgroundTaskRequest) (*v2.StopBackgroundTaskResponse, error) {
+	response, err := c.stopBackgroundTask.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -480,6 +500,7 @@ type ThreadServiceHandler interface {
 	SubscribeThread(context.Context, *v2.SubscribeThreadRequest, *connect.ServerStream[v2.ThreadEvent]) error
 	DispatchMessage(context.Context, *v2.DispatchMessageRequest) (*v2.DispatchMessageResponse, error)
 	InterruptRun(context.Context, *v2.InterruptRunRequest) (*v2.InterruptRunResponse, error)
+	StopBackgroundTask(context.Context, *v2.StopBackgroundTaskRequest) (*v2.StopBackgroundTaskResponse, error)
 	ManageQueue(context.Context, *v2.ManageQueueRequest) (*v2.ManageQueueResponse, error)
 	UpdateThreadConfig(context.Context, *v2.UpdateThreadConfigRequest) (*v2.UpdateThreadConfigResponse, error)
 	RespondRuntimeRequest(context.Context, *v2.RespondRuntimeRequestRequest) (*v2.RespondRuntimeRequestResponse, error)
@@ -558,6 +579,12 @@ func NewThreadServiceHandler(svc ThreadServiceHandler, opts ...connect.HandlerOp
 		ThreadServiceInterruptRunProcedure,
 		svc.InterruptRun,
 		connect.WithSchema(threadServiceMethods.ByName("InterruptRun")),
+		connect.WithHandlerOptions(opts...),
+	)
+	threadServiceStopBackgroundTaskHandler := connect.NewUnaryHandlerSimple(
+		ThreadServiceStopBackgroundTaskProcedure,
+		svc.StopBackgroundTask,
+		connect.WithSchema(threadServiceMethods.ByName("StopBackgroundTask")),
 		connect.WithHandlerOptions(opts...),
 	)
 	threadServiceManageQueueHandler := connect.NewUnaryHandlerSimple(
@@ -648,6 +675,8 @@ func NewThreadServiceHandler(svc ThreadServiceHandler, opts ...connect.HandlerOp
 			threadServiceDispatchMessageHandler.ServeHTTP(w, r)
 		case ThreadServiceInterruptRunProcedure:
 			threadServiceInterruptRunHandler.ServeHTTP(w, r)
+		case ThreadServiceStopBackgroundTaskProcedure:
+			threadServiceStopBackgroundTaskHandler.ServeHTTP(w, r)
 		case ThreadServiceManageQueueProcedure:
 			threadServiceManageQueueHandler.ServeHTTP(w, r)
 		case ThreadServiceUpdateThreadConfigProcedure:
@@ -717,6 +746,10 @@ func (UnimplementedThreadServiceHandler) DispatchMessage(context.Context, *v2.Di
 
 func (UnimplementedThreadServiceHandler) InterruptRun(context.Context, *v2.InterruptRunRequest) (*v2.InterruptRunResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.thread.v2.ThreadService.InterruptRun is not implemented"))
+}
+
+func (UnimplementedThreadServiceHandler) StopBackgroundTask(context.Context, *v2.StopBackgroundTaskRequest) (*v2.StopBackgroundTaskResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.thread.v2.ThreadService.StopBackgroundTask is not implemented"))
 }
 
 func (UnimplementedThreadServiceHandler) ManageQueue(context.Context, *v2.ManageQueueRequest) (*v2.ManageQueueResponse, error) {

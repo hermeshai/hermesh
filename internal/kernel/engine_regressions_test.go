@@ -698,9 +698,9 @@ CREATE TABLE thread_events (thread_id TEXT NOT NULL, seq INTEGER NOT NULL, occur
 }
 
 type customTestDriver struct {
-	kind       string
-	caps       *threadv2.ProviderCapabilities
-	onStart    func(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error)
+	kind    string
+	caps    *threadv2.ProviderCapabilities
+	onStart func(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error)
 }
 
 func (d *customTestDriver) Kind() string { return d.kind }

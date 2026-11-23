@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -149,15 +150,21 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	if err != nil {
 		return nil, err
 	}
+	sessCtx, sessCancel := context.WithCancel(ctx)
 	s := &session{
 		proc:            proc,
 		spec:            spec,
 		events:          make(chan runtime.Event, 256),
 		pending:         map[int64]chan rpcRes{},
+		runningCmds:     map[string]*codexCmdState{},
+		bgCmds:          map[string]*codexCmdState{},
+		bgSubagents:     map[string]*codexSubagentState{},
 		selection:       proto.Clone(spec.Selection).(*threadv2.ModelSelection),
 		effectiveMode:   spec.EffectiveMode,
 		interactionMode: spec.InteractionMode,
-		turnCtx:         ctx,
+		sessionCtx:      sessCtx,
+		sessionCancel:   sessCancel,
+		turnCtx:         sessCtx,
 	}
 	s.alive.Store(true)
 	go s.readLoop()
@@ -196,6 +203,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 			raw, err = s.call(ctx, "thread/resume", params)
 		}
 		if err != nil && strings.Contains(strings.ToLower(err.Error()), "active writer") {
+			method = "thread/fork"
 			raw, err = s.call(ctx, "thread/fork", params)
 		}
 	}
@@ -219,6 +227,9 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		NativeID:     tr.Thread.ID,
 		ResumeCursor: tr.Thread.ID,
 	})
+	if method == "thread/resume" {
+		s.syncResumedBackgroundTerminals(ctx)
+	}
 	return s, nil
 }
 
@@ -265,6 +276,32 @@ type rpcRes struct {
 	err    error
 }
 
+type codexCmdState struct {
+	itemID    string
+	processID string
+	command   string
+	output    string
+	lastEmit  time.Time
+}
+
+type codexSubagentState struct {
+	threadID string
+	itemID   string
+	title    string
+	running  bool
+}
+
+func tailUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	start := len(s) - maxBytes
+	for start < len(s) && !utf8.RuneStart(s[start]) {
+		start++
+	}
+	return s[start:]
+}
+
 type session struct {
 	proc          *provider.Proc
 	spec          runtime.StartSpec
@@ -280,14 +317,31 @@ type session struct {
 
 	mu              sync.Mutex
 	pending         map[int64]chan rpcRes
+	sessionCtx      context.Context
+	sessionCancel   context.CancelFunc
 	turnCtx         context.Context
 	turnID          string
 	msgItemID       string
 	msgUsed         bool
 	lastTurnErr     string
+	runningCmds     map[string]*codexCmdState      // itemId -> running command state
+	bgCmds          map[string]*codexCmdState      // taskId (itemId or processId) -> background terminal state
+	bgSubagents     map[string]*codexSubagentState // child threadId -> background subagent state
 	selection       *threadv2.ModelSelection
 	effectiveMode   identityv1.RuntimeMode
 	interactionMode threadv2.InteractionMode
+}
+
+func (s *session) gateCtx() context.Context {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.turnID != "" && s.turnCtx != nil && s.turnCtx.Err() == nil {
+		return s.turnCtx
+	}
+	if s.sessionCtx != nil {
+		return s.sessionCtx
+	}
+	return context.Background()
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -435,14 +489,140 @@ func (s *session) Interrupt(ctx context.Context) error {
 	return err
 }
 
+func (s *session) syncResumedBackgroundTerminals(ctx context.Context) {
+	lctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	raw, err := s.call(lctx, "thread/backgroundTerminals/list", map[string]any{
+		"threadId": s.codexThreadID,
+	})
+	if err != nil || len(raw) == 0 {
+		return
+	}
+	var page struct {
+		Data []struct {
+			ProcessID string `json:"processId"`
+			Command   string `json:"command"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(raw, &page) != nil {
+		return
+	}
+	var events []runtime.Event
+	s.mu.Lock()
+	for _, t := range page.Data {
+		pid := strings.TrimSpace(t.ProcessID)
+		if pid == "" {
+			continue
+		}
+		cmd := strings.TrimSpace(t.Command)
+		if cmd == "" {
+			cmd = "background terminal " + pid
+		}
+		if s.bgCmds[pid] == nil {
+			s.bgCmds[pid] = &codexCmdState{itemID: pid, processID: pid, command: cmd}
+			events = append(events, runtime.Event{
+				Kind:                runtime.EventBackgroundTask,
+				TaskID:              pid,
+				ToolName:            cmd,
+				Command:             cmd,
+				BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+				BackgroundAwaited:   false,
+			})
+		}
+	}
+	s.mu.Unlock()
+	for _, ev := range events {
+		s.emit(ev)
+	}
+}
+
+func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	taskID = strings.TrimSpace(taskID)
+
+	s.mu.Lock()
+	var targets []*codexCmdState
+	if taskID != "" {
+		if st := s.bgCmds[taskID]; st != nil {
+			targets = append(targets, st)
+			delete(s.bgCmds, taskID)
+		} else {
+			targets = append(targets, &codexCmdState{itemID: taskID, processID: taskID})
+		}
+	} else {
+		for k, st := range s.bgCmds {
+			targets = append(targets, st)
+			delete(s.bgCmds, k)
+		}
+	}
+	hasActiveTurn := s.turnID != ""
+	s.mu.Unlock()
+
+	var firstErr error
+	for _, st := range targets {
+		procID := st.processID
+		if procID == "" {
+			procID = st.itemID
+		}
+		_, err := s.call(cctx, "thread/backgroundTerminals/terminate", map[string]any{
+			"threadId":  s.codexThreadID,
+			"processId": procID,
+		})
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		s.emit(runtime.Event{
+			Kind:                runtime.EventBackgroundTask,
+			TaskID:              st.itemID,
+			ItemID:              st.itemID,
+			ToolName:            st.command,
+			Command:             st.command,
+			Output:              st.output,
+			Text:                "stopped by user",
+			ExitCode:            130,
+			HasExitCode:         true,
+			BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundAwaited:   false,
+		})
+		if st.itemID != "" {
+			s.emit(runtime.Event{
+				Kind:        runtime.EventToolCompleted,
+				ItemID:      st.itemID,
+				ToolName:    "CommandExecution",
+				Command:     st.command,
+				ExitCode:    130,
+				HasExitCode: true,
+				Output:      st.output,
+			})
+		}
+	}
+	if taskID == "" && hasActiveTurn {
+		if err := s.Interrupt(ctx); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (s *session) ForceStop() error {
 	s.alive.Store(false)
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.closeOnce.Do(func() { s.proc.Stop(0) })
 	return nil
 }
 
 func (s *session) Close() error {
 	s.alive.Store(false)
+	if s.sessionCancel != nil {
+		s.sessionCancel()
+	}
 	s.closeOnce.Do(func() { s.proc.Stop(2 * time.Second) })
 	return nil
 }
@@ -511,9 +691,7 @@ func (s *session) readLoop() {
 }
 
 func (s *session) handleServerRequest(id json.RawMessage, method string, params json.RawMessage) {
-	s.mu.Lock()
-	tctx := s.turnCtx
-	s.mu.Unlock()
+	tctx := s.gateCtx()
 
 	reply := func(res any) {
 		_ = s.writeJSON(map[string]any{"id": id, "result": res})
@@ -700,21 +878,76 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: rsnID, Text: p.Delta})
 		}
 
+	case "item/commandExecution/terminalInteraction":
+		var p struct {
+			ItemID    string `json:"itemId"`
+			ProcessID string `json:"processId"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.ItemID != "" && p.ProcessID != "" {
+			s.mu.Lock()
+			if st := s.runningCmds[p.ItemID]; st != nil {
+				st.processID = p.ProcessID
+			}
+			if st := s.bgCmds[p.ItemID]; st != nil {
+				st.processID = p.ProcessID
+			}
+			s.mu.Unlock()
+		}
+
+	case "item/commandExecution/outputDelta":
+		var p struct {
+			ItemID string `json:"itemId"`
+			Delta  string `json:"delta"`
+		}
+		if json.Unmarshal(params, &p) == nil && p.ItemID != "" && p.Delta != "" {
+			var bgEv *runtime.Event
+			s.mu.Lock()
+			if st := s.runningCmds[p.ItemID]; st != nil {
+				st.output = tailUTF8(st.output+p.Delta, 16384)
+			}
+			if st := s.bgCmds[p.ItemID]; st != nil {
+				st.output = tailUTF8(st.output+p.Delta, 16384)
+				now := time.Now()
+				if now.Sub(st.lastEmit) >= 250*time.Millisecond {
+					st.lastEmit = now
+					bgEv = &runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              st.itemID,
+						ItemID:              st.itemID,
+						ToolName:            st.command,
+						Command:             st.command,
+						Output:              st.output,
+						BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundAwaited:   false,
+					}
+				}
+			}
+			s.mu.Unlock()
+			if bgEv != nil {
+				s.emit(*bgEv)
+			}
+		}
+
 	case "item/started", "item/completed":
 		var p struct {
 			Item struct {
-				ID               string          `json:"id"`
-				Type             string          `json:"type"`
-				Text             string          `json:"text"`
-				Command          string          `json:"command"`
-				Server           string          `json:"server"`
-				Tool             string          `json:"tool"`
-				Query            string          `json:"query"`
-				Status           string          `json:"status"`
-				ExitCode         *int            `json:"exitCode"`
-				AggregatedOutput string          `json:"aggregatedOutput"`
-				Result           json.RawMessage `json:"result"`
-				Error            *struct {
+				ID                string          `json:"id"`
+				Type              string          `json:"type"`
+				Text              string          `json:"text"`
+				Prompt            string          `json:"prompt"`
+				Command           string          `json:"command"`
+				ProcessID         string          `json:"processId"`
+				Server            string          `json:"server"`
+				Tool              string          `json:"tool"`
+				Query             string          `json:"query"`
+				Status            string          `json:"status"`
+				ExitCode          *int            `json:"exitCode"`
+				AggregatedOutput  string          `json:"aggregatedOutput"`
+				ReceiverThreadIDs []string        `json:"receiverThreadIds"`
+				Result            json.RawMessage `json:"result"`
+				Error             *struct {
 					Message string `json:"message"`
 				} `json:"error"`
 				Changes []struct {
@@ -742,6 +975,22 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		case "commandExecution":
 			s.advanceFallbackMsgID()
 			if !done {
+				s.mu.Lock()
+				if s.runningCmds == nil {
+					s.runningCmds = map[string]*codexCmdState{}
+				}
+				st := s.runningCmds[p.Item.ID]
+				if st == nil {
+					st = &codexCmdState{itemID: p.Item.ID}
+					s.runningCmds[p.Item.ID] = st
+				}
+				if p.Item.Command != "" {
+					st.command = p.Item.Command
+				}
+				if p.Item.ProcessID != "" {
+					st.processID = p.Item.ProcessID
+				}
+				s.mu.Unlock()
 				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command})
 			} else {
 				exit := int32(0)
@@ -750,8 +999,124 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 				} else if p.Item.Status == "failed" {
 					exit = 1
 				}
-				kept, _ := provider.KeepOutput(p.Item.AggregatedOutput)
-				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: p.Item.Command, ExitCode: exit, Output: kept})
+				s.mu.Lock()
+				runSt := s.runningCmds[p.Item.ID]
+				delete(s.runningCmds, p.Item.ID)
+				bgSt, wasBg := s.bgCmds[p.Item.ID]
+				delete(s.bgCmds, p.Item.ID)
+				s.mu.Unlock()
+
+				rawOut := p.Item.AggregatedOutput
+				if rawOut == "" {
+					if bgSt != nil && bgSt.output != "" {
+						rawOut = bgSt.output
+					} else if runSt != nil && runSt.output != "" {
+						rawOut = runSt.output
+					}
+				}
+				kept, _ := provider.KeepOutput(rawOut)
+				cmd := p.Item.Command
+				if cmd == "" && bgSt != nil {
+					cmd = bgSt.command
+				} else if cmd == "" && runSt != nil {
+					cmd = runSt.command
+				}
+				if wasBg {
+					bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+					if exit != 0 {
+						bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					}
+					s.emit(runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              p.Item.ID,
+						ItemID:              p.Item.ID,
+						ToolName:            cmd,
+						Command:             cmd,
+						Output:              kept,
+						ExitCode:            exit,
+						HasExitCode:         true,
+						BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+						BackgroundStatus:    bgStatus,
+						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundAwaited:   false,
+					})
+				}
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: "CommandExecution", Command: cmd, ExitCode: exit, HasExitCode: true, Output: kept})
+			}
+		case "collabAgentToolCall":
+			s.advanceFallbackMsgID()
+			toolLabel := "Subagent"
+			if p.Item.Tool != "" {
+				toolLabel = "Subagent:" + p.Item.Tool
+			}
+			summary := strings.TrimSpace(p.Item.Prompt)
+			if !done {
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: p.Item.ID, ToolName: toolLabel, FilePath: summary})
+			} else {
+				exit := int32(0)
+				if p.Item.Status == "failed" {
+					exit = 1
+				}
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: toolLabel, FilePath: summary, ExitCode: exit, HasExitCode: true})
+				var subEvents []runtime.Event
+				s.mu.Lock()
+				switch p.Item.Tool {
+				case "spawn_agent":
+					for _, cid := range p.Item.ReceiverThreadIDs {
+						if cid == "" {
+							continue
+						}
+						lbl := summary
+						if lbl == "" {
+							lbl = "Subagent " + cid
+						}
+						s.bgSubagents[cid] = &codexSubagentState{threadID: cid, itemID: p.Item.ID, title: lbl, running: true}
+						subEvents = append(subEvents, runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              cid,
+							ItemID:              p.Item.ID,
+							ToolName:            lbl,
+							BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+							BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+							BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+							BackgroundAwaited:   false,
+						})
+					}
+				case "wait", "close_agent":
+					targets := p.Item.ReceiverThreadIDs
+					if len(targets) == 0 {
+						for cid := range s.bgSubagents {
+							targets = append(targets, cid)
+						}
+					}
+					for _, cid := range targets {
+						if sub := s.bgSubagents[cid]; sub != nil && sub.running {
+							sub.running = false
+							st := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+							if p.Item.Tool == "close_agent" {
+								st = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+							} else if exit != 0 {
+								st = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+							}
+							subEvents = append(subEvents, runtime.Event{
+								Kind:                runtime.EventBackgroundTask,
+								TaskID:              cid,
+								ItemID:              sub.itemID,
+								ToolName:            sub.title,
+								BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+								BackgroundStatus:    st,
+								BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+								BackgroundAwaited:   false,
+								HasExitCode:         true,
+								ExitCode:            exit,
+							})
+						}
+					}
+				}
+				s.mu.Unlock()
+				for _, ev := range subEvents {
+					s.emit(ev)
+				}
 			}
 		case "mcpToolCall":
 			s.advanceFallbackMsgID()
@@ -849,7 +1214,32 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		s.turnID = ""
 		lastErr := s.lastTurnErr
 		s.lastTurnErr = ""
+		var promoted []runtime.Event
+		if p.Turn.Status == "completed" || p.Turn.Status == "" {
+			if s.bgCmds == nil {
+				s.bgCmds = map[string]*codexCmdState{}
+			}
+			for id, st := range s.runningCmds {
+				s.bgCmds[id] = st
+				promoted = append(promoted, runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              id,
+					ItemID:              id,
+					ToolName:            st.command,
+					Command:             st.command,
+					Output:              st.output,
+					BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundAwaited:   false,
+				})
+			}
+		}
+		s.runningCmds = nil
 		s.mu.Unlock()
+		for _, ev := range promoted {
+			s.emit(ev)
+		}
 		switch p.Turn.Status {
 		case "completed", "":
 			s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})

@@ -3,6 +3,7 @@ package runtime_test
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -84,6 +85,11 @@ func runMockClaude() {
 				}
 			} else if sub == "interrupt" {
 				write(map[string]any{"type": "result", "subtype": "interrupted"})
+			} else if sub == "stop_task" {
+				if rec := os.Getenv("MOCK_CLAUDE_STOP_REC"); rec != "" {
+					tid, _ := reqObj["task_id"].(string)
+					_ = os.WriteFile(rec, []byte(tid), 0o644)
+				}
 			}
 			write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": reqID}})
 
@@ -128,6 +134,105 @@ func runMockClaude() {
 					"type":  "result",
 					"usage": map[string]any{"input_tokens": 60, "output_tokens": 15},
 				})
+			} else if strings.Contains(prompt, "bg_claude_task") {
+				outFile := os.Getenv("MOCK_CLAUDE_BG_OUT")
+				_ = os.WriteFile(outFile, []byte("step 1 ok\nall 99 specs green\n"), 0o644)
+				write(map[string]any{
+					"type":        "system",
+					"subtype":     "task_started",
+					"task_id":     "ctask_1",
+					"tool_use_id": "tu_bg_1",
+					"description": "Run full suite",
+					"task_type":   "local_bash",
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Running suite in background."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 30, "output_tokens": 12},
+				})
+				go func() {
+					time.Sleep(180 * time.Millisecond)
+					write(map[string]any{
+						"type":        "system",
+						"subtype":     "task_notification",
+						"task_id":     "ctask_1",
+						"tool_use_id": "tu_bg_1",
+						"status":      "completed",
+						"summary":     "Suite passed",
+						"output_file": outFile,
+					})
+					write(map[string]any{
+						"type":    "assistant",
+						"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Suite finished with 99 green specs!"}}},
+					})
+					write(map[string]any{
+						"type":  "result",
+						"usage": map[string]any{"input_tokens": 45, "output_tokens": 18},
+					})
+				}()
+			} else if strings.Contains(prompt, "claude_deep_bg") {
+				outFile := os.Getenv("MOCK_CLAUDE_BG_OUT")
+				_ = os.WriteFile(outFile, []byte("booting worker...\n"), 0o644)
+				// 1. Assistant launches Bash(run_in_background:true) + ScheduleWakeup:
+				write(map[string]any{
+					"type": "assistant",
+					"message": map[string]any{"content": []any{
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_async_bash",
+							"name":  "Bash",
+							"input": map[string]any{"command": "pytest -n auto", "description": "Parallel pytest", "run_in_background": true},
+						},
+						map[string]any{
+							"type":  "tool_use",
+							"id":    "tu_sched",
+							"name":  "ScheduleWakeup",
+							"input": map[string]any{"delaySeconds": 5, "description": "Check deploy health"},
+						},
+					}},
+				})
+				// 2. Immediate launch-ack tool_result MUST NOT complete tu_async_bash or tu_sched!
+				write(map[string]any{
+					"type": "user",
+					"message": map[string]any{"content": []any{
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_async_bash", "content": "Command running in background with ID: ctask_stop"},
+						map[string]any{"type": "tool_result", "tool_use_id": "tu_sched", "content": "Scheduled wakeup in 5s"},
+					}},
+				})
+				write(map[string]any{
+					"type":        "system",
+					"subtype":     "task_started",
+					"task_id":     "ctask_stop",
+					"tool_use_id": "tu_async_bash",
+					"description": "Parallel pytest",
+					"task_type":   "local_bash",
+					"output_file": outFile,
+				})
+				write(map[string]any{
+					"type":    "assistant",
+					"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Launched background pytest and timer."}}},
+				})
+				write(map[string]any{
+					"type":  "result",
+					"usage": map[string]any{"input_tokens": 40, "output_tokens": 14},
+				})
+				// Append live output after 120ms so startClaudeOutputTailer picks it up; then fire scheduled wakeup!
+				go func() {
+					time.Sleep(120 * time.Millisecond)
+					_ = os.WriteFile(outFile, []byte("booting worker...\ncollecting 42 items...\n"), 0o644)
+					time.Sleep(550 * time.Millisecond)
+					write(map[string]any{
+						"type":    "assistant",
+						"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "Timer fired: deploy healthy."}}},
+					})
+					write(map[string]any{
+						"type":  "result",
+						"usage": map[string]any{"input_tokens": 20, "output_tokens": 8},
+					})
+				}()
 			} else if strings.Contains(prompt, "run_bash") {
 				pendingCtrl["perm_1"] = func(res map[string]any) {
 					beh, _ := res["behavior"].(string)
@@ -219,6 +324,28 @@ func runMockCodex() {
 			} else {
 				write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_99"}}})
 			}
+		case "thread/backgroundTerminals/list":
+			if os.Getenv("MOCK_CODEX_RESUMED_BG") == "1" {
+				write(map[string]any{
+					"id": *m.ID,
+					"result": map[string]any{
+						"data": []any{
+							map[string]any{"processId": "pty_resumed_1", "command": "pnpm dev --port 4000"},
+						},
+					},
+				})
+			} else {
+				write(map[string]any{"id": *m.ID, "result": map[string]any{"data": []any{}}})
+			}
+		case "thread/backgroundTerminals/terminate":
+			var p struct {
+				ProcessID string `json:"processId"`
+			}
+			_ = json.Unmarshal(m.Params, &p)
+			if rec := os.Getenv("MOCK_CODEX_TERM_REC"); rec != "" {
+				_ = os.WriteFile(rec, []byte(p.ProcessID), 0o644)
+			}
+			write(map[string]any{"id": *m.ID, "result": map[string]any{}})
 		case "thread/fork":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_forked"}}})
 		case "thread/unarchive":
@@ -259,6 +386,60 @@ func runMockCodex() {
 				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
 				continue
 			}
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "codex_bg_and_collab") {
+				// 1. Spawn a background dev server commandExecution whose processId arrives via terminalInteraction:
+				write(map[string]any{
+					"method": "item/started",
+					"params": map[string]any{
+						"item": map[string]any{
+							"id":      "cmd_dev_1",
+							"type":    "commandExecution",
+							"command": "npm run dev",
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/commandExecution/terminalInteraction",
+					"params": map[string]any{"itemId": "cmd_dev_1", "processId": "pty_real_77"},
+				})
+				write(map[string]any{
+					"method": "item/commandExecution/outputDelta",
+					"params": map[string]any{"itemId": "cmd_dev_1", "delta": "listening on :5173\n"},
+				})
+				// 2. Spawn + wait a collab subagent:
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{
+							"id":                "col_spawn_1",
+							"type":              "collabAgentToolCall",
+							"tool":              "spawn_agent",
+							"prompt":            "Audit auth module",
+							"receiverThreadIds": []string{"sub_cx_1"},
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{
+							"id":                "col_wait_1",
+							"type":              "collabAgentToolCall",
+							"tool":              "wait",
+							"receiverThreadIds": []string{"sub_cx_1"},
+						},
+					},
+				})
+				write(map[string]any{
+					"method": "item/completed",
+					"params": map[string]any{
+						"item": map[string]any{"id": "msg_bg", "type": "agentMessage", "text": "Dev server left running and subagent finished."},
+					},
+				})
+				// Notice cmd_dev_1 is NOT completed before turn/completed -> promoted to DAEMON!
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
 			waitingApproval = true
 			write(map[string]any{
 				"id":     777,
@@ -279,6 +460,7 @@ func runMockACP() {
 	}
 	var promptReqID int64
 	var curModel = "gemini-2.5-pro"
+	var busyOnceDone bool
 	for sc.Scan() {
 		var m struct {
 			ID     *int64          `json:"id"`
@@ -427,6 +609,9 @@ func runMockACP() {
 		}
 		switch m.Method {
 		case "initialize":
+			if rec := os.Getenv("MOCK_ACP_INIT_REC"); rec != "" {
+				_ = os.WriteFile(rec, m.Params, 0o644)
+			}
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{"agentCapabilities": map[string]any{"loadSession": true}}})
 		case "session/new":
 			write(map[string]any{"jsonrpc": "2.0", "id": *m.ID, "result": map[string]any{"sessionId": "acp_sess_42"}})
@@ -591,6 +776,228 @@ func runMockACP() {
 						},
 					},
 				})
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "acp_bg_wakeup") {
+				// Antigravity-style background run_command (CommandLine + IsDaemon:false) + daemon (IsDaemon:true):
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_daemon",
+							"title":         "run_command",
+							"kind":          "execute",
+							"status":        "in_progress",
+							"rawInput": map[string]any{
+								"CommandLine":       "npm run dev",
+								"IsDaemon":          true,
+								"WaitMsBeforeAsync": 500,
+								"toolSummary":       "Dev server startup",
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_e2e",
+							"title":         "run_command",
+							"kind":          "execute",
+							"status":        "in_progress",
+							"rawInput": map[string]any{
+								"CommandLine":       "make e2e",
+								"IsDaemon":          false,
+								"WaitMsBeforeAsync": 500,
+								"toolSummary":       "Run E2E suite",
+							},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "E2E running in background, I will report back."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+				// Out-of-turn wakeup after PostPromptMergeWindow: completes tc_e2e, streams summary, and emits usage_update!
+				go func() {
+					time.Sleep(250 * time.Millisecond)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "tool_call_update",
+								"toolCallId":    "tc_e2e",
+								"status":        "completed",
+								"rawOutput":     map[string]any{"exitCode": 0, "stdout": "PASS e2e (14s)"},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "Wakeup report: all E2E tests passed!"},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "usage_update",
+								"used":          1200,
+								"size":          200000,
+							},
+						},
+					})
+				}()
+			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "acp_busy_then_utf8_and_copilot") {
+				if !busyOnceDone {
+					busyOnceDone = true
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"id":      promptReqID,
+						"error":   map[string]any{"code": -32000, "message": "Agent is already processing a prompt"},
+					})
+					continue
+				}
+				// 1. Agent-side embedded terminal streaming split 4-byte UTF-8 emoji 🎉 (\xf0\x9f\x8e\x89) across 2 base64 chunks:
+				rawLine := []byte("build 🎉 ok\n")
+				splitIdx := len("build ") + 2 // right in the middle of 4-byte 🎉!
+				c1 := base64.StdEncoding.EncodeToString(rawLine[:splitIdx])
+				c2 := base64.StdEncoding.EncodeToString(rawLine[splitIdx:])
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "terminal_update",
+							"terminalId":    "aterm_1",
+							"command":       "cargo build",
+							"status":        "running",
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "terminal_output_chunk",
+							"terminalId":    "aterm_1",
+							"data":          c1,
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "terminal_output_chunk",
+							"terminalId":    "aterm_1",
+							"data":          c2,
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "terminal_update",
+							"terminalId":    "aterm_1",
+							"status":        "completed",
+							"exitCode":      0,
+						},
+					},
+				})
+				// 2. OpenCode/Claude-ACP style run_in_background:true tool that immediately reports status:"completed" on launch:
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "tool_call",
+							"toolCallId":    "tc_async_launch",
+							"title":         "Bash",
+							"kind":          "execute",
+							"status":        "completed",
+							"rawInput":      map[string]any{"command": "pnpm test:ci", "run_in_background": true},
+						},
+					},
+				})
+				// 3. GitHub Copilot detached subagent started before end_turn:
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "github.com/copilot/sessionEvent",
+					"params": map[string]any{
+						"type":    "subagent.started",
+						"agentId": "cp_agent_9",
+						"title":   "Security Reviewer",
+						"data":    map[string]any{"toolCallId": "tc_cp_sub"},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"method":  "session/update",
+					"params": map[string]any{
+						"update": map[string]any{
+							"sessionUpdate": "agent_message_chunk",
+							"content":       map[string]any{"type": "text", "text": "Started CI and Security Reviewer."},
+						},
+					},
+				})
+				write(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      promptReqID,
+					"result":  map[string]any{"stopReason": "end_turn"},
+				})
+				// Out-of-turn completion: Copilot subagent completes + wake summary + assistant.idle settles both!
+				go func() {
+					time.Sleep(220 * time.Millisecond)
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "github.com/copilot/sessionEvent",
+						"params": map[string]any{
+							"type":    "subagent.completed",
+							"agentId": "cp_agent_9",
+							"data":    map[string]any{"toolCallId": "tc_cp_sub", "summary": "0 vulnerabilities found"},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "session/update",
+						"params": map[string]any{
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content":       map[string]any{"type": "text", "text": "CI and Security Reviewer both succeeded!"},
+							},
+						},
+					})
+					write(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  "github.com/copilot/sessionEvent",
+						"params":  map[string]any{"type": "assistant.idle"},
+					})
+				}()
 			} else if len(p.Prompt) > 0 && strings.Contains(p.Prompt[0].Text, "multistep_acp") {
 				write(map[string]any{
 					"jsonrpc": "2.0",
@@ -1112,5 +1519,407 @@ cxLoop:
 	}
 	if cxPlan == nil || !cxPlan.RequestReview || !strings.Contains(cxPlan.Text, "# Codex Plan") {
 		t.Fatalf("expected Codex plan item to set RequestReview=true, got %+v", cxPlan)
+	}
+}
+
+func TestACPAndClaudeBackgroundTasksAndOutOfTurnWakeups(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. ACP Antigravity-style background run_command + daemon + post-prompt wakeup settled by usage_update + debounce:
+	acpDrv := acp.NewDriver("")
+	acpDrv.PostPromptMergeWindow = 80 * time.Millisecond
+	acpDrv.OutOfTurnDebounce = 80 * time.Millisecond
+	acpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_acp_bg",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "antigravity",
+			Driver:     "acp",
+			AcpFlavor:  "antigravity",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "acp"},
+			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession ACP: %v", err)
+	}
+	defer acpSess.Close()
+
+	// Pass a per-turn ctx that we cancel right after Turn #1 completes (simulating driveRun returning)!
+	turn1Ctx, cancelTurn1 := context.WithCancel(ctx)
+	if err := acpSess.StartTurn(turn1Ctx, runtime.TurnInput{RunID: "r1", Prompt: "acp_bg_wakeup"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var turn1Bg []*runtime.Event
+	timeout := time.After(8 * time.Second)
+turn1Loop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for ACP Turn #1 completion")
+		case ev := <-acpSess.Events():
+			if ev.Kind == runtime.EventBackgroundTask {
+				cp := ev
+				turn1Bg = append(turn1Bg, &cp)
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break turn1Loop
+			}
+		}
+	}
+	cancelTurn1()
+
+	var sawDaemon, sawAwaitedCmd bool
+	for _, b := range turn1Bg {
+		if b.TaskID == "tc_daemon" && b.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !b.BackgroundAwaited {
+			sawDaemon = true
+		}
+		if b.TaskID == "tc_e2e" && b.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND && b.BackgroundAwaited && b.Command == "make e2e" {
+			sawAwaitedCmd = true
+		}
+	}
+	if !sawDaemon || !sawAwaitedCmd {
+		t.Fatalf("expected both daemon (IsDaemon=true) and awaited command (CommandLine='make e2e'), got %+v", turn1Bg)
+	}
+
+	// Now read the out-of-turn wakeup events until the synthesized EventTurnCompleted fires!
+	var wakeMsg string
+	var e2eSettled bool
+wakeLoop:
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("timed out waiting for ACP out-of-turn wakeup settlement")
+		case ev := <-acpSess.Events():
+			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "tc_e2e" && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+				e2eSettled = true
+			}
+			if ev.Kind == runtime.EventAssistantMessage || ev.Kind == runtime.EventAssistantDelta {
+				wakeMsg += ev.Text
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break wakeLoop
+			}
+		}
+	}
+	if !e2eSettled || !strings.Contains(wakeMsg, "Wakeup report: all E2E tests passed!") {
+		t.Fatalf("expected ACP wakeup completion & report, e2eSettled=%v wakeMsg=%q", e2eSettled, wakeMsg)
+	}
+
+	// 2. Claude Code system/task_started + system/task_notification (reading output_file tail) + continuation result:
+	bgOutPath := filepath.Join(t.TempDir(), "claude_bg.out")
+	clDrv := claude.NewDriver("")
+	clSess, err := clDrv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_cl_bg",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "claude",
+			Driver:     "claude",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER": "claude",
+				"MOCK_CLAUDE_BG_OUT":  bgOutPath,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession Claude: %v", err)
+	}
+	defer clSess.Close()
+
+	if err := clSess.StartTurn(ctx, runtime.TurnInput{RunID: "rc1", Prompt: "bg_claude_task"}); err != nil {
+		t.Fatal(err)
+	}
+	// Drain Turn #1 + Turn #2 (task_notification continuation)
+	var claudeTurns int
+	var claudeBgCompleted *runtime.Event
+	var claudeWakeText string
+	timeoutCl := time.After(8 * time.Second)
+	for claudeTurns < 2 {
+		select {
+		case <-timeoutCl:
+			t.Fatalf("timed out waiting for Claude background continuation (turns=%d)", claudeTurns)
+		case ev := <-clSess.Events():
+			if ev.Kind == runtime.EventBackgroundTask && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+				cp := ev
+				claudeBgCompleted = &cp
+			}
+			if claudeTurns == 1 && ev.Kind == runtime.EventAssistantMessage {
+				claudeWakeText = ev.Text
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				claudeTurns++
+			}
+		}
+	}
+	if claudeBgCompleted == nil || !strings.Contains(claudeBgCompleted.Output, "all 99 specs green") {
+		t.Fatalf("expected Claude task_notification to attach output_file tail, got %+v", claudeBgCompleted)
+	}
+	if !strings.Contains(claudeWakeText, "Suite finished with 99 green specs!") {
+		t.Fatalf("expected Claude continuation assistant message, got %q", claudeWakeText)
+	}
+}
+
+func TestCrossProviderDeepBackgroundAdaptations(t *testing.T) {
+	ctx := context.Background()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Claude Code: async launch-ack suppression + live output_file tailer + ScheduleWakeup + single-task stop_task:
+	clOutFile := filepath.Join(t.TempDir(), "cl_live.out")
+	clStopRec := filepath.Join(t.TempDir(), "cl_stop.rec")
+	clSess, err := claude.NewDriver("").StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_cl_deep",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "claude",
+			Driver:     "claude",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER":  "claude",
+				"MOCK_CLAUDE_BG_OUT":   clOutFile,
+				"MOCK_CLAUDE_STOP_REC": clStopRec,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession Claude deep: %v", err)
+	}
+	defer clSess.Close()
+
+	if err := clSess.StartTurn(ctx, runtime.TurnInput{RunID: "rc_deep", Prompt: "claude_deep_bg"}); err != nil {
+		t.Fatal(err)
+	}
+	var prematureToolDone []string
+	var sawLiveTail, sawSchedRunning, sawSchedSettled bool
+	clTurns := 0
+	timeoutCl := time.After(8 * time.Second)
+	for clTurns < 2 {
+		select {
+		case <-timeoutCl:
+			t.Fatalf("timed out waiting for Claude deep background test (turns=%d)", clTurns)
+		case ev := <-clSess.Events():
+			if clTurns == 0 && ev.Kind == runtime.EventToolCompleted {
+				prematureToolDone = append(prematureToolDone, ev.ItemID)
+			}
+			if ev.Kind == runtime.EventBackgroundTask {
+				if ev.TaskID == "ctask_stop" && strings.Contains(ev.Output, "collecting 42 items...") {
+					sawLiveTail = true
+				}
+				if ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+						sawSchedRunning = true
+					}
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+						sawSchedSettled = true
+					}
+				}
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				clTurns++
+			}
+		}
+	}
+	if len(prematureToolDone) > 0 {
+		t.Fatalf("async launch-ack tool_result must NOT emit premature EventToolCompleted in Turn #1, got %v", prematureToolDone)
+	}
+	if !sawLiveTail {
+		t.Fatalf("expected live output_file tailer to stream 'collecting 42 items...' before task_notification")
+	}
+	if !sawSchedRunning || !sawSchedSettled {
+		t.Fatalf("expected ScheduleWakeup task to transition RUNNING -> COMPLETED on wake, got running=%v settled=%v", sawSchedRunning, sawSchedSettled)
+	}
+	if err := clSess.(runtime.BackgroundController).StopBackgroundTask(ctx, "ctask_stop"); err != nil {
+		t.Fatalf("Claude StopBackgroundTask: %v", err)
+	}
+	var sawClaudeStopped bool
+	stopWait := time.After(3 * time.Second)
+clStopLoop:
+	for {
+		select {
+		case <-stopWait:
+			t.Fatal("timed out waiting for Claude STOPPED event")
+		case ev := <-clSess.Events():
+			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "ctask_stop" && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+				sawClaudeStopped = true
+				break clStopLoop
+			}
+		}
+	}
+	// Wait briefly for mock subprocess to write MOCK_CLAUDE_STOP_REC.
+	deadline := time.Now().Add(2 * time.Second)
+	var stopTaskWire string
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(clStopRec); err == nil && len(b) > 0 {
+			stopTaskWire = string(b)
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !sawClaudeStopped || stopTaskWire != "ctask_stop" {
+		t.Fatalf("expected control_request subtype=stop_task with task_id=ctask_stop, got wire=%q stopped=%v", stopTaskWire, sawClaudeStopped)
+	}
+
+	// 2. Codex app-server: resume backgroundTerminals/list + DAEMON promotion + real processId terminate + collab subagents:
+	cxTermRec := filepath.Join(t.TempDir(), "cx_term.rec")
+	cxSess, err := codex.NewDriver("").StartSession(ctx, runtime.StartSpec{
+		ThreadID:     "th_cx_deep",
+		Workdir:      t.TempDir(),
+		ResumeCursor: "cx_existing_thread",
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "codex",
+			Driver:     "codex",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER":   "codex",
+				"MOCK_CODEX_RESUMED_BG": "1",
+				"MOCK_CODEX_TERM_REC":   cxTermRec,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession Codex deep: %v", err)
+	}
+	defer cxSess.Close()
+
+	if err := cxSess.StartTurn(ctx, runtime.TurnInput{RunID: "rcx_1", Prompt: "codex_bg_and_collab"}); err != nil {
+		t.Fatal(err)
+	}
+	var sawResumedPty, sawPromotedDaemon, sawSubRunning, sawSubCompleted bool
+	timeoutCx := time.After(8 * time.Second)
+cxDeepLoop:
+	for {
+		select {
+		case <-timeoutCx:
+			t.Fatal("timed out waiting for Codex deep background turn")
+		case ev := <-cxSess.Events():
+			if ev.Kind == runtime.EventBackgroundTask {
+				if ev.TaskID == "pty_resumed_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+					sawResumedPty = true
+				}
+				if ev.TaskID == "cmd_dev_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !ev.BackgroundAwaited && strings.Contains(ev.Output, ":5173") {
+					sawPromotedDaemon = true
+				}
+				if ev.TaskID == "sub_cx_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT {
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+						sawSubRunning = true
+					}
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+						sawSubCompleted = true
+					}
+				}
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				break cxDeepLoop
+			}
+		}
+	}
+	if !sawResumedPty || !sawPromotedDaemon || !sawSubRunning || !sawSubCompleted {
+		t.Fatalf("Codex deep mismatch: resumedPty=%v promotedDaemon=%v subRun=%v subDone=%v", sawResumedPty, sawPromotedDaemon, sawSubRunning, sawSubCompleted)
+	}
+	if err := cxSess.(runtime.BackgroundController).StopBackgroundTask(ctx, "cmd_dev_1"); err != nil {
+		t.Fatalf("Codex StopBackgroundTask: %v", err)
+	}
+	terminatedPID, _ := os.ReadFile(cxTermRec)
+	if string(terminatedPID) != "pty_real_77" {
+		t.Fatalf("expected thread/backgroundTerminals/terminate to receive real processId 'pty_real_77' (not itemId 'cmd_dev_1'), got %q", string(terminatedPID))
+	}
+
+	// 3. ACP: Copilot _meta capabilities + busy prompt retry + split-UTF8 terminal_output_chunk + run_in_background launch ack:
+	acpInitRec := filepath.Join(t.TempDir(), "acp_init.json")
+	acpDrv := acp.NewDriver("")
+	acpDrv.BusyPromptRetryDelay = 50 * time.Millisecond
+	acpDrv.PostPromptMergeWindow = 80 * time.Millisecond
+	acpDrv.OutOfTurnDebounce = 80 * time.Millisecond
+	acpDrv.OutOfTurnToolWait = 150 * time.Millisecond
+	cpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
+		ThreadID: "th_acp_deep",
+		Workdir:  t.TempDir(),
+		Instance: &threadv2.ProviderInstanceConfig{
+			InstanceId: "copilot",
+			Driver:     "acp",
+			AcpFlavor:  "copilot",
+			BinaryPath: exe,
+			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "--acp"},
+			Env: map[string]string{
+				"HERMESH_MOCK_DRIVER": "acp",
+				"MOCK_ACP_INIT_REC":   acpInitRec,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("StartSession ACP Copilot deep: %v", err)
+	}
+	defer cpSess.Close()
+
+	initRaw, _ := os.ReadFile(acpInitRec)
+	if !strings.Contains(string(initRaw), "github.com/copilot") || !strings.Contains(string(initRaw), "subagent.completed") {
+		t.Fatalf("expected Copilot initialize clientCapabilities._meta subscription, got %s", string(initRaw))
+	}
+
+	if err := cpSess.StartTurn(ctx, runtime.TurnInput{RunID: "racp_deep", Prompt: "acp_busy_then_utf8_and_copilot"}); err != nil {
+		t.Fatal(err)
+	}
+	var utf8TermOut string
+	var asyncPrematureDone bool
+	var sawAsyncRunning, sawAsyncSettled, sawCopilotSubRunning, sawCopilotSubDone bool
+	acpTurns := 0
+	timeoutACP := time.After(8 * time.Second)
+	for acpTurns < 2 {
+		select {
+		case <-timeoutACP:
+			t.Fatalf("timed out waiting for ACP deep background turns (turns=%d)", acpTurns)
+		case ev := <-cpSess.Events():
+			if ev.Kind == runtime.EventTurnFailed {
+				t.Fatalf("ACP turn failed instead of retrying busy prompt: %s", ev.ErrorMessage)
+			}
+			if ev.Kind == runtime.EventToolCompleted && ev.ItemID == "aterm_1" {
+				utf8TermOut = ev.Output
+			}
+			if acpTurns == 0 && ev.Kind == runtime.EventToolCompleted && ev.ItemID == "tc_async_launch" {
+				asyncPrematureDone = true
+			}
+			if ev.Kind == runtime.EventBackgroundTask {
+				if ev.TaskID == "tc_async_launch" {
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+						sawAsyncRunning = true
+					}
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+						sawAsyncSettled = true
+					}
+				}
+				if ev.TaskID == "cp_agent_9" {
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+						sawCopilotSubRunning = true
+					}
+					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED && strings.Contains(ev.Text, "0 vulnerabilities") {
+						sawCopilotSubDone = true
+					}
+				}
+			}
+			if ev.Kind == runtime.EventTurnCompleted {
+				acpTurns++
+			}
+		}
+	}
+	if utf8TermOut != "build 🎉 ok" && utf8TermOut != "build 🎉 ok\n" {
+		t.Fatalf("expected split base64 UTF-8 chunks to assemble cleanly into 'build 🎉 ok', got %q", utf8TermOut)
+	}
+	if asyncPrematureDone || !sawAsyncRunning || !sawAsyncSettled {
+		t.Fatalf("ACP asyncLaunch mismatch: prematureDone=%v running=%v settled=%v", asyncPrematureDone, sawAsyncRunning, sawAsyncSettled)
+	}
+	if !sawCopilotSubRunning || !sawCopilotSubDone {
+		t.Fatalf("Copilot sessionEvent subagent mismatch: running=%v done=%v", sawCopilotSubRunning, sawCopilotSubDone)
 	}
 }

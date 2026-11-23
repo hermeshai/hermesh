@@ -54,9 +54,10 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(rows.map(kind) == ["turn", "user", "tool", "tool", "tool", "tool", "agent", "turn", "user", "agent", "turnEnd"])
     #expect(Set(rows.map(\.seq)).count == rows.count)
     #expect(rows.map(\.seq) == rows.map(\.seq).sorted())
-    if case .turn(_, let n, let at) = rows[0] {
+    if case .turn(_, let n, let at, let wake) = rows[0] {
         #expect(n == 1)
         #expect(at == Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(wake.isEmpty)
     } else { Issue.record("no time line first") }
     if case .turnEnd(_, let end, _) = rows.last! { #expect(end.failure.kind == .interrupted) } else { Issue.record("no end") }
 }
@@ -119,4 +120,45 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(!threadToolRunning(p), "done: back to thinking")
     p.thread.activeRunID = ""
     #expect(!threadToolRunning(p), "no run under way")
+}
+
+@Test func backgroundCommandStaysRunningInTranscriptAfterRunCompletes() {
+    var p = Hermesh_Thread_V2_ThreadProjection()
+    p.thread = .with { $0.threadID = "th_bg"; $0.status = .idle; $0.activeBackgroundCount = 1 }
+    p.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed }]
+    p.items = [item(1, "r1", .commandExecution) { $0.itemID = "r1:cmd_bg"; $0.command = "make e2e"; $0.status = "running" }]
+    p.backgroundTasks = [.with {
+        $0.taskID = "cmd_bg"
+        $0.runID = "r1"
+        $0.itemID = "r1:cmd_bg"
+        $0.kind = .command
+        $0.status = .running
+        $0.awaited = true
+    }]
+    let rows = threadTranscript(p)
+    let tool = rows.compactMap { row -> ToolItem? in
+        if case .tool(let t) = row { return t }
+        return nil
+    }.first
+    #expect(tool?.running == true)
+    #expect(tool?.result == nil)
+}
+
+@Test func continuationRunSurfacesWakeReasonOnTurnRow() {
+    var p = Hermesh_Thread_V2_ThreadProjection()
+    p.thread = .with { $0.threadID = "th_wake"; $0.status = .idle }
+    p.runs = [
+        .with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed; $0.author = .with { $0.kind = .owner } },
+        .with { $0.runID = "r2"; $0.ordinal = 2; $0.status = .completed; $0.author = .with { $0.kind = .system }; $0.wakeReason = "pytest -q" },
+    ]
+    p.items = [
+        item(1, "r1", .userMessage) { $0.text = "run tests" },
+        item(2, "r1", .assistantMessage) { $0.text = "running" },
+        item(3, "r2", .assistantMessage) { $0.text = "all passed" },
+    ]
+    let wakes = threadTranscript(p).compactMap { row -> String? in
+        if case .turn(_, _, _, let w) = row { return w }
+        return nil
+    }
+    #expect(wakes == ["", "pytest -q"])
 }

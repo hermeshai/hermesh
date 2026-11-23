@@ -26,7 +26,7 @@ private func isRunActive(_ run: Hermesh_Thread_V2_Run?) -> Bool {
     return run.status == .preparing || run.status == .running || run.status == .waitingRequest
 }
 
-private func toolItem(_ it: Hermesh_Thread_V2_TurnItem, run: Hermesh_Thread_V2_Run?) -> ToolItem {
+private func toolItem(_ it: Hermesh_Thread_V2_TurnItem, run: Hermesh_Thread_V2_Run?, activeBgItems: Set<String>) -> ToolItem {
     var call = ToolCall()
     call.callID = it.itemID
     var result = ToolResult()
@@ -42,7 +42,7 @@ private func toolItem(_ it: Hermesh_Thread_V2_TurnItem, run: Hermesh_Thread_V2_R
     call.name = it.toolName.isEmpty && shell ? "Bash" : it.toolName
     call.kind = shell ? "shell" : threadToolKind(call.name)
     call.summary = shell ? it.command : it.filePath
-    let running = it.status == "running" && isRunActive(run)
+    let running = it.status == "running" && (isRunActive(run) || activeBgItems.contains(it.itemID))
     result.summary = it.output
     result.isError = it.status == "failed" || it.exitCode != 0
     result.truncated = it.outputTruncated
@@ -69,6 +69,7 @@ private func runFailure(_ message: String) -> Failure {
 public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [TranscriptItem] {
     guard let proj else { return [] }
     let runs = Dictionary(proj.runs.map { ($0.runID, $0) }, uniquingKeysWith: { _, b in b })
+    let activeBgItems = activeBackgroundItemIDs(of: proj)
     let items = proj.items
     var out: [TranscriptItem] = []
     for (i, it) in items.enumerated() {
@@ -76,13 +77,14 @@ public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [Tr
         let seq = itemSeq(it)
         if let run, i == 0 || items[i - 1].runID != it.runID {
             let at = dateOf(run.startedAt, set: run.hasStartedAt) ?? dateOf(run.createdAt, set: run.hasCreatedAt) ?? dateOf(it.createdAt, set: it.hasCreatedAt)
-            out.append(.turn(seq: seq - 2, turn: Int(run.ordinal), at: at))
+            let wakeReason = run.author.kind == .system ? run.wakeReason : ""
+            out.append(.turn(seq: seq - 2, turn: Int(run.ordinal), at: at, wakeReason: wakeReason))
         }
         switch it.kind {
         case .userMessage: out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt)))
         case .assistantMessage: out.append(.agent(seq: seq, text: it.text))
         case .proposedPlan: out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text)))
-        case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it, run: run)))
+        case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
         case .error:
             var e = ErrorEvent()
             e.message = it.text

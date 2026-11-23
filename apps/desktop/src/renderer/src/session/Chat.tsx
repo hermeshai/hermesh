@@ -350,7 +350,7 @@ function draftRow(seq: bigint, text: string): ChatRow {
 function draws(it: Step, previous: Date | undefined, current: Failure | undefined): boolean {
   switch (it.kind) {
     case "turn":
-      return !!it.at && turnTimeLine(it.at, previous, new Date()) !== null;
+      return !!it.wakeReason || (!!it.at && turnTimeLine(it.at, previous, new Date()) !== null);
     case "question":
       return !!it.resolution;
     case "turnEnd":
@@ -380,7 +380,7 @@ function sameStep(a: Step, b: Step): boolean {
   if (a.kind !== b.kind || a.seq !== b.seq) return false;
   switch (a.kind) {
     case "turn":
-      return a.at?.getTime() === (b as typeof a).at?.getTime();
+      return a.at?.getTime() === (b as typeof a).at?.getTime() && a.wakeReason === (b as typeof a).wakeReason;
     case "agent":
       return a.text === (b as typeof a).text;
     case "tools": {
@@ -398,7 +398,7 @@ function RowView({ it, rowKey, end, live, sessionId, clients, grant, previous }:
   const { t } = useTranslation("session");
   switch (it.kind) {
     case "turn":
-      return <TimeLine at={it.at} previous={previous} />;
+      return <TimeLine at={it.at} previous={previous} wakeReason={it.wakeReason} />;
     case "user":
       // The one who started the session speaks on the right; no name (the card says who).
       return <UserBubble text={it.text} at={it.at} />;
@@ -479,11 +479,14 @@ function InterruptNote({ failure, clients, grant }: { failure: Failure | undefin
   return <div className="tnote">{label ? t("chat.interruptedBy", { name: agentName(label), grant }) : t("chat.interrupted", { grant })}</div>;
 }
 
-/** A time line before a turn, for the first one and after a pause. */
-export function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | undefined }) {
+/** A time line before a turn, for the first one, after a pause, or when woken by a background task. */
+export function TimeLine({ at, previous, wakeReason }: { at: Date | undefined; previous: Date | undefined; wakeReason?: string }) {
+  const { t } = useTranslation("session");
   const now = useNow(60_000);
-  const text = at ? turnTimeLine(at, previous, now) : null;
-  return text ? <div className="tdiv">{text}</div> : null;
+  const timeText = at ? turnTimeLine(at, previous, now) : null;
+  const wakeText = wakeReason ? t("chat.wakeLine", { reason: wakeReason }) : null;
+  const text = timeText && wakeText ? `${timeText} · ${wakeText}` : wakeText ?? timeText;
+  return text ? <div className="tdiv" data-testid={wakeReason ? "turn-wake-line" : undefined}>{text}</div> : null;
 }
 
 /** Under a message on hover: when it was sent, and Copy. */

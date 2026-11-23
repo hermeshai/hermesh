@@ -1,6 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import {
+  BackgroundTaskStatus,
   InteractionMode,
   ModelSelectionSchema,
   OptionDescriptorType,
@@ -9,6 +10,7 @@ import {
   RuntimeRequestStatus,
   ThreadProjectionSchema,
   ThreadStatus,
+  type BackgroundTask,
   type ModelCatalogEntry,
   type ModelSelection,
   type OptionDescriptor,
@@ -77,6 +79,35 @@ export function queuedRunsOf(proj?: ThreadProjection | null): Run[] {
   return proj.runs
     .filter((r) => r.status === RunStatus.QUEUED)
     .sort((a, b) => a.queueOrder - b.queueOrder);
+}
+
+/** Background tasks still running, awaited tasks before long-lived daemons. */
+export function activeBackgroundTasksOf(proj?: ThreadProjection | null): BackgroundTask[] {
+  if (!proj) return [];
+  return proj.backgroundTasks
+    .filter((t) => t.status === BackgroundTaskStatus.RUNNING)
+    .sort((a, b) => Number(b.awaited) - Number(a.awaited) || Number((a.startedAt?.seconds ?? 0n) - (b.startedAt?.seconds ?? 0n)));
+}
+
+/** All recorded background tasks of a thread: running ones first, then newest finished ones. */
+export function backgroundTasksOf(proj?: ThreadProjection | null): BackgroundTask[] {
+  if (!proj) return [];
+  return [...proj.backgroundTasks].sort((a, b) => {
+    const ar = a.status === BackgroundTaskStatus.RUNNING ? 0 : 1;
+    const br = b.status === BackgroundTaskStatus.RUNNING ? 0 : 1;
+    if (ar !== br) return ar - br;
+    if (ar === 0) return Number(b.awaited) - Number(a.awaited) || Number((a.startedAt?.seconds ?? 0n) - (b.startedAt?.seconds ?? 0n));
+    return Number((b.completedAt?.seconds ?? b.startedAt?.seconds ?? 0n) - (a.completedAt?.seconds ?? a.startedAt?.seconds ?? 0n));
+  });
+}
+
+/** TurnItem IDs backed by a background task that is still running. */
+export function activeBackgroundItemIdsOf(proj?: ThreadProjection | null): Set<string> {
+  const out = new Set<string>();
+  for (const bt of proj?.backgroundTasks ?? []) {
+    if (bt.status === BackgroundTaskStatus.RUNNING && bt.itemId !== "") out.add(bt.itemId);
+  }
+  return out;
 }
 
 export function pendingRequestOf(proj?: ThreadProjection | null): RuntimeRequest | undefined {
@@ -222,6 +253,7 @@ export function applyThreadEvent(
       requests: [],
       checkpoints: [],
       providerThreads: [],
+      backgroundTasks: [],
     });
 
   const prevLastSeq = base.thread?.lastSeq ?? 0n;
@@ -248,6 +280,10 @@ export function applyThreadEvent(
   } else if (ev.item) {
     items = upsertBy(items, ev.item, (it) => it.itemId).sort((a, b) => Number(a.seq - b.seq));
   }
+  let backgroundTasks = base.backgroundTasks;
+  if (ev.backgroundTask) {
+    backgroundTasks = upsertBy(backgroundTasks, ev.backgroundTask, (t) => t.taskId);
+  }
   if (ev.type === "thread.rolled_back" && ev.checkpoint) {
     const maxOrd = ev.checkpoint.runOrdinal;
     const removedRunIds = new Set(
@@ -255,6 +291,7 @@ export function applyThreadEvent(
     );
     runs = runs.map((r) => (removedRunIds.has(r.runId) ? { ...r, status: RunStatus.ROLLED_BACK } : r));
     items = items.filter((it) => !removedRunIds.has(it.runId));
+    backgroundTasks = backgroundTasks.filter((bt) => !removedRunIds.has(bt.runId));
   }
   let requests = base.requests;
   if (ev.request) {
@@ -272,6 +309,7 @@ export function applyThreadEvent(
     requests,
     checkpoints,
     providerThreads: base.providerThreads,
+    backgroundTasks,
   });
 }
 
