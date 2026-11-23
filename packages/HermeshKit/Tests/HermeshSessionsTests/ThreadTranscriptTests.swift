@@ -89,3 +89,17 @@ private func kind(_ it: TranscriptItem) -> String {
     #expect(q.items[0].allowOther && !q.items[0].optional)
     #expect(q.items[0].options[0].label == "Red")
 }
+
+@Test func aToolRunningInTheRunUnderWayIsWorking() {
+    var p = projection
+    p.thread.activeRunID = "r2"
+    #expect(!threadToolRunning(p), "only r1's tool runs: r2 thinks")
+    p.items.append(item(11, "r2", .reasoning) { $0.status = "running" })
+    #expect(!threadToolRunning(p), "reasoning is thinking")
+    p.items.append(item(12, "r2", .commandExecution) { $0.command = "go test ./..."; $0.status = "running" })
+    #expect(threadToolRunning(p))
+    p.items[p.items.count - 1].status = "completed"
+    #expect(!threadToolRunning(p), "done: back to thinking")
+    p.thread.activeRunID = ""
+    #expect(!threadToolRunning(p), "no run under way")
+}

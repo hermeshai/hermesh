@@ -142,12 +142,20 @@ extension HermeshUITests {
         // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
         send("sleep 20s")
         XCTAssertTrue(app.buttons["thread-stop"].waitForExistence(timeout: 30), "Stop while it runs")
+        // And a line at the end of the conversation, whatever its last row: the mark at work, thinking (no tool runs while it sleeps) and how long.
+        let working = app.descendants(matching: .any)["thread-working"].firstMatch
+        XCTAssertTrue(working.waitForExistence(timeout: 30), "said while it runs")
+        XCTAssertTrue(waitUntil(timeout: 30) { working.label.contains("思考中") }, working.label)
+        XCTAssertGreaterThan(working.frame.minY, app.staticTexts["sleep 20s"].firstMatch.frame.maxY, "under the last message")
+        XCTAssertLessThan(working.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
+        shot("composer-working")
         send("say after_the_stop")
         XCTAssertTrue(app.descendants(matching: .any)["thread-queued-0"].waitForExistence(timeout: 15), "waiting for the next turn")
         shot("composer-queued")
         tap("thread-stop")
         XCTAssertTrue(reply("after_the_stop").waitForExistence(timeout: 60), "the waiting message, once stopped")
         XCTAssertTrue(app.buttons["thread-stop"].waitForNonExistence(timeout: 30), "nothing runs")
+        XCTAssertTrue(working.waitForNonExistence(timeout: 10), "nothing runs: the line goes")
 
         // Archived from its ⋯ menu, as a session: read-only, said at the top with Unarchive, and no box.
         tap("session-more")

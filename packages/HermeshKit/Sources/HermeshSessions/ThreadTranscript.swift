@@ -95,6 +95,15 @@ public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [Tr
     return out
 }
 
+/// Whether a tool or command of the thread's run under way is running (its line at work says "Working", not
+/// "Thinking").
+public func threadToolRunning(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> Bool {
+    guard let proj, !proj.thread.activeRunID.isEmpty else { return false }
+    return proj.items.contains {
+        $0.runID == proj.thread.activeRunID && $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind)
+    }
+}
+
 /// Why the thread stopped, or why the machine rejected what was sent, until the next run starts (which clears
 /// it): told once, at the end of the conversation.
 public func threadFailure(_ th: Hermesh_Thread_V2_Thread?) -> Failure? {

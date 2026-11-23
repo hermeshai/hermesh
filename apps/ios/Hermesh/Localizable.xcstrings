@@ -8000,6 +8000,26 @@
         }
       }
     },
+    "Thinking…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "思考中"
+          }
+        }
+      }
+    },
+    "Working…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "处理中"
+          }
+        }
+      }
+    },
     "step-summary-separator": {
       "comment": "Separates the parts of a step's summary, as a session's does",
       "localizations": {
