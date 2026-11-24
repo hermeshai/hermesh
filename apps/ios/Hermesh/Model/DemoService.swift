@@ -95,7 +95,8 @@ final class DemoService {
         let extra = UserDefaults.standard.integer(forKey: "DemoSessions")
         for i in 0 ..< max(0, extra) {
             var s = session("demo-extra-\(i)", title: "Sidebar Task \(i + 1)", machine: i.isMultiple(of: 2) ? "demo-mac" : "demo-linux", status: .idle)
-            s.agent = i.isMultiple(of: 2) ? "codex" : "claude"
+            // With large usage, as many agents as a busy owner's, the busiest first.
+            s.agent = Self.bigUsage ? ["codex", "codex", "codex", "antigravity", "claude", "gemini", "opencode"][i % 7] : i.isMultiple(of: 2) ? "codex" : "claude"
             s.updatedAt = .init(date: .now.addingTimeInterval(Double(-600 - i * 120)))
             world.sessions.append(s)
             syncSession(s.sessionID)
@@ -349,6 +350,16 @@ final class DemoService {
     static let manyTools: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-DemoManyTools")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only: each turn counts as a very busy owner's do (billions of tokens over a month, hours of work), so
+    // the Usage page can be checked at its largest numbers (DemoUITests.testUsageAtLargeNumbers).
+    private static let bigUsage: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoBigUsage")
         #else
         false
         #endif
@@ -741,7 +752,8 @@ final class DemoService {
             let done = s.status == .idle || s.status == .archived
             let count = Hermesh_Local_V1_SessionCount.with { $0.bucket = bucket; $0.group = group; $0.sessions = 1; $0.done = done ? 1 : 0 }
             let turn = Hermesh_Local_V1_TurnCount.with {
-                $0.bucket = bucket; $0.group = group; $0.turns = 1; $0.inputTokens = 1200; $0.outputTokens = 350; $0.busySeconds = 45
+                $0.bucket = bucket; $0.group = group; $0.turns = 1
+                $0.inputTokens = Self.bigUsage ? 23_456_789 : 1200; $0.outputTokens = Self.bigUsage ? 63_210 : 350; $0.busySeconds = Self.bigUsage ? 1_720 : 45
             }
             if before {
                 if !r.turnsOnly { result.previousSessions.append(count) }

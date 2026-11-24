@@ -678,6 +678,46 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["start-new"].waitForExistence(timeout: 15))
     }
 
+    /// The Usage page at a very busy owner's numbers (billions of tokens, hundreds of hours, many agents), in the
+    /// narrowest phone: every number whole on one line, the legend in one column when two would squeeze it.
+    func testUsageAtLargeNumbers() {
+        app.terminate()
+        app.launchArguments += ["-DemoBigUsage", "-DemoSessions", "300"]
+        app.launch()
+        enterWorkDemo()
+        view(1)
+        reach("filter-range"); pick("filter-range", "30 Days")
+        let any = app.descendants(matching: .any)
+        let big = any["usage-tokens-big"].firstMatch
+        XCTAssertTrue(big.waitForExistence(timeout: 10))
+        XCTAssertTrue(wait { big.label.contains("M") }, big.label)
+        // A cell is one line high, its number never broken; names may be cut short, numbers not.
+        for prefix in ["usage-sessions-part-", "usage-tokens-part-"] {
+            let cells = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", prefix)).allElementsBoundByIndex
+            XCTAssertGreaterThanOrEqual(cells.count, 3, prefix)
+            for c in cells { XCTAssertLessThanOrEqual(c.frame.height, 36, "\(c.identifier) is one line: \(c.label)") }
+        }
+        let others = any["usage-tokens-others"].firstMatch
+        XCTAssertTrue(others.exists && others.frame.height <= 36, "Other is one line")
+        // The big numbers and the figures stay on their lines, within the card.
+        let card = any["usage-tokens"].firstMatch.frame
+        XCTAssertLessThanOrEqual(big.frame.maxX, card.maxX)
+        XCTAssertLessThanOrEqual(big.frame.height, 64, "the number is one line")
+        let busy = any.matching(NSPredicate(format: "label BEGINSWITH %@", "Time at work")).firstMatch
+        XCTAssertTrue(busy.exists && busy.frame.height <= 48, "the time at work is one line under its name: \(busy.label), \(busy.frame.height)")
+        checkpoint("usage-large-numbers")
+        // A number lines up with the others' in its column, Other's too.
+        let numbers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-sessions-part-")).allElementsBoundByIndex.map(\.frame.maxX)
+        XCTAssertEqual(Set(numbers.map { Int($0.rounded()) }).count, 1, "the cells end together")
+        // Other opened lists every agent (five here: the busiest three and Other's two), each on one line.
+        others.tap()
+        XCTAssertTrue(wait { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-tokens-part-")).count == 5 })
+        for c in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-tokens-part-")).allElementsBoundByIndex {
+            XCTAssertLessThanOrEqual(c.frame.height, 36, "\(c.identifier) is one line: \(c.label)")
+        }
+        checkpoint("usage-large-numbers-all")
+    }
+
     /// Host-side audit seeds real preferences, then compares the app container
     /// before/after this UI-only flow. No production test hooks are used.
     func testReviewPersistentSettingsIsolation() {
