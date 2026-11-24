@@ -490,7 +490,7 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
    and a half rows it stops growing and scrolls inside (the half row says there is more); where there is more above or
    below, that edge fades into the page. */
 .tg-b{position:relative;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:var(--r-box);overflow:hidden}
-.tg-s{max-height:300px;overflow-y:auto;overscroll-behavior-y:auto}
+.tg-s{max-height:367px;overflow-y:auto;overscroll-behavior-y:auto}
 .tg-l{display:flex;flex-direction:column}
 .tg-l>.vrow+.vrow{border-top:1px solid var(--sep)}
 .tg-b::before,.tg-b::after{content:"";position:absolute;left:0;right:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .15s}
