@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type Keybo
 import { useTranslation } from "react-i18next";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
+  bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime, needsAttention,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
   SCRATCH_PROJECT,
 } from "@hermesh/core";
@@ -148,25 +148,24 @@ function HerItem() {
   );
 }
 
-/** What the overview's marks say: something needs the owner, and how many sessions run. */
+/** What the overview's mark says: how many things need the owner. */
 function overviewMarks(st: Store, now: Date) {
   const team = teamState(st.sessions, st.pairings.length);
-  return { waits: team.waiting.length + st.pairings.length + expiringClients(st, now).length, running: team.running.length };
+  return { waits: team.waiting.length + st.pairings.length + expiringClients(st, now).length };
 }
 
-/** The overview (⌘1): an orange dot when something needs the owner, a ring while anything runs. */
+/** The overview (⌘1): an orange dot when something needs the owner; nothing while sessions run (each row shows its own). */
 function OverviewItem({ now }: { now: Date }) {
   const st = useStore();
   const { t } = useTranslation("common");
-  const { waits, running } = overviewMarks(st, now);
+  const { waits } = overviewMarks(st, now);
   return (
     <button className={`nav-i ${st.selection.kind === "overview" ? "sel" : ""}`} onClick={() => st.set({ selection: { kind: "overview" } })}>
       <Icon name="grid" />
       <span>{t("sidebar.overview")}</span>
       <span className="nav-marks">
         {waits > 0 && <span className="dot-w" role="img" aria-label={t("sidebar.attention", { count: waits })} />}
-        {running > 0 && <Ring label={t("sidebar.running", { count: running })} />}
-        {waits === 0 && running === 0 && <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
+        {waits === 0 && <span className="kbd">{keys("CmdOrCtrl+1")}</span>}
       </span>
     </button>
   );
@@ -391,7 +390,8 @@ export function AccountMenu() {
 
 /**
  * A session in the sidebar (docs/her-team.md §16): the coding agent's logo, the title, and one mark (an orange dot
- * while it waits for the owner, a red one when it failed, a ring while it runs); with metadata, who sent the work
+ * while it waits for the owner, a red one when it failed, a ring while it runs, its title shimmering as on the
+ * iPhone); with metadata, who sent the work
  * to which agent, the project and the time. ⋯ in the mark's place on hover; right-click for the native menu.
  */
 export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renaming, store }: {
@@ -417,7 +417,7 @@ export const SessionRow = memo(function SessionRow({ s, sel, sender, meta, renam
       <span className="slogo"><AgentLogo agent={s.agent} size={16} /></span>
       <div className="smain">
         <div className="sl1">
-          {renaming ? <RenameField s={s} store={store} /> : <span className="stitle" title={displayTitle(s)}>{displayTitle(s)}</span>}
+          {renaming ? <RenameField s={s} store={store} /> : <RowTitle s={s} />}
           <span className="smeta"><RowMark s={s} /></span>
           <button
             className="rowact"
@@ -542,6 +542,23 @@ function RowMenu({ s, at, store, onClose }: { s: Session; at: { x: number; y: nu
         ),
       )}
     </div>
+  );
+}
+
+/** A row's title; while it runs (and nothing needs the owner), a fainter band crosses it left to right (app.css .stitle.run). */
+function RowTitle({ s }: { s: Session }) {
+  const title = displayTitle(s);
+  const run = isActive(s) && !needsAttention(s);
+  return (
+    <span className={`stitle ${run ? "run" : ""}`} title={title}>
+      {title}
+      {run && (
+        <>
+          <span className="shine" data-t={title} aria-hidden="true" />
+          <span className="shine band" data-t={title} aria-hidden="true" />
+        </>
+      )}
+    </span>
   );
 }
 
