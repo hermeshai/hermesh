@@ -1179,7 +1179,7 @@ code's word.
 |---|---|---|
 | Top band (Mac) | The sidebar toggle after the traffic lights; Search (⌘K) at its end | |
 | Places | Her; Overview (⌘1, the page Work was) | Her: a blue dot while something is unread, "Off" while she runs nowhere. Overview: an orange dot when something needs the owner. The Mac sidebar can also show a ring while tasks run; the iPhone’s collapsed rail shimmers the icon instead. |
-| Sessions | The heading "Sessions" with the view menu at its end; every session, as the view lays them out | Per row, below |
+| Sessions | The heading "Sessions" with the view menu at its end (where the system stands the bars on the side, iPhone Duo, in that bar under Search instead); every session, as the view lays them out | Per row, below |
 | Foot | The account (Mac: "Connected", no count of machines) | A dot only when not connected |
 
 **No numbers** anywhere in it: no unread count, no count of sessions, of
