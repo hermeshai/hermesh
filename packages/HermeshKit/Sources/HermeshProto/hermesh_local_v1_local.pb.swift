@@ -224,6 +224,12 @@ public nonisolated struct Hermesh_Local_V1_WatchResponse: @unchecked Sendable {
     set {_uniqueStorage()._workVersion = newValue}
   }
 
+  /// Moves when this device's kept Her state changed: ask GetHerConversation again.
+  public var herKeptVersion: UInt64 {
+    get {_storage._herKeptVersion}
+    set {_uniqueStorage()._herKeptVersion = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3563,7 +3569,7 @@ nonisolated extension Hermesh_Local_V1_WatchRequest: SwiftProtobuf.Message, Swif
 
 nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".WatchResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reset\0\u{1}status\0\u{1}machines\0\u{3}removed_machine_ids\0\u{1}clients\0\u{3}removed_grant_ids\0\u{1}devices\0\u{3}removed_device_key_ids\0\u{1}projects\0\u{3}removed_projects\0\u{1}pairings\0\u{3}removed_pairing_codes\0\u{1}sessions\0\u{3}deleted_session_ids\0\u{1}next\0\u{3}work_version\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}reset\0\u{1}status\0\u{1}machines\0\u{3}removed_machine_ids\0\u{1}clients\0\u{3}removed_grant_ids\0\u{1}devices\0\u{3}removed_device_key_ids\0\u{1}projects\0\u{3}removed_projects\0\u{1}pairings\0\u{3}removed_pairing_codes\0\u{1}sessions\0\u{3}deleted_session_ids\0\u{1}next\0\u{3}work_version\0\u{3}her_kept_version\0")
 
   fileprivate class _StorageClass {
     var _reset: Bool = false
@@ -3582,6 +3588,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
     var _deletedSessionIds: [String] = []
     var _next: Hermesh_Session_V1_SessionCursor? = nil
     var _workVersion: UInt64 = 0
+    var _herKeptVersion: UInt64 = 0
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -3608,6 +3615,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
       _deletedSessionIds = source._deletedSessionIds
       _next = source._next
       _workVersion = source._workVersion
+      _herKeptVersion = source._herKeptVersion
     }
   }
 
@@ -3642,6 +3650,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
         case 14: try { try decoder.decodeRepeatedStringField(value: &_storage._deletedSessionIds) }()
         case 15: try { try decoder.decodeSingularMessageField(value: &_storage._next) }()
         case 16: try { try decoder.decodeSingularUInt64Field(value: &_storage._workVersion) }()
+        case 17: try { try decoder.decodeSingularUInt64Field(value: &_storage._herKeptVersion) }()
         default: break
         }
       }
@@ -3702,6 +3711,9 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
       if _storage._workVersion != 0 {
         try visitor.visitSingularUInt64Field(value: _storage._workVersion, fieldNumber: 16)
       }
+      if _storage._herKeptVersion != 0 {
+        try visitor.visitSingularUInt64Field(value: _storage._herKeptVersion, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3727,6 +3739,7 @@ nonisolated extension Hermesh_Local_V1_WatchResponse: SwiftProtobuf.Message, Swi
         if _storage._deletedSessionIds != rhs_storage._deletedSessionIds {return false}
         if _storage._next != rhs_storage._next {return false}
         if _storage._workVersion != rhs_storage._workVersion {return false}
+        if _storage._herKeptVersion != rhs_storage._herKeptVersion {return false}
         return true
       }
       if !storagesAreEqual {return false}

@@ -260,6 +260,9 @@ func ask(_ s: inout Session) {
                             machine("m4", syncing: true)], known: known)
     #expect(out.map { $0.status.agents.map(\.name) } == [["claude"], ["codex", "claude"], [], []])
     #expect(out[0].syncing && !out[3].hasStatus)
+    // Without the relay, whether m3 is online is not known: keep what was last shown.
+    let offlineOut = holdingState([machine("m3", online: false)], known: known, relayConnected: false)
+    #expect(offlineOut.map { $0.status.agents.map(\.name) } == [["gemini"]])
 }
 
 @Test func aFailureIsToldOfTheCodingAgentEveryKindInItsOwnWords() {

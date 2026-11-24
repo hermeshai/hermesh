@@ -12,6 +12,8 @@ import Foundation
 /// A conversation: its snapshot, with every event after it applied.
 public struct HerSession: Equatable, Sendable {
     public var sessionID: String
+    /// Optional server resume_epoch persisted across restarts for incremental bots/open.
+    public var resumeEpoch: String?
     /// The model it answers with ("provider/model").
     public var model: String
     /// How hard it thinks: "default" (the provider decides), "off", "low"… (her's ThinkingLevel).
@@ -55,6 +57,7 @@ public struct HerSession: Equatable, Sendable {
     /// A conversation from a snapshot's transcript and task: a sub-agent's has no settings of its own.
     init(id: String, snapshot s: JSON) {
         sessionID = id
+        resumeEpoch = s["resume_epoch"].string
         model = ""
         thinking = "default"
         permissionMode = ""

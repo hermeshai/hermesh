@@ -4889,9 +4889,11 @@ func (x *LaunchThreadResponse) GetQueuedOffline() bool {
 }
 
 type GetThreadRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
-	ThreadId      string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	MachineId string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	ThreadId  string                 `protobuf:"bytes,2,opt,name=thread_id,json=threadId,proto3" json:"thread_id,omitempty"`
+	// Return only the locally cached projection on the owner device without dialing remote.
+	CachedOnly    bool `protobuf:"varint,3,opt,name=cached_only,json=cachedOnly,proto3" json:"cached_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4940,9 +4942,18 @@ func (x *GetThreadRequest) GetThreadId() string {
 	return ""
 }
 
+func (x *GetThreadRequest) GetCachedOnly() bool {
+	if x != nil {
+		return x.CachedOnly
+	}
+	return false
+}
+
 type GetThreadResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Projection    *ThreadProjection      `protobuf:"bytes,1,opt,name=projection,proto3" json:"projection,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Projection *ThreadProjection      `protobuf:"bytes,1,opt,name=projection,proto3" json:"projection,omitempty"`
+	// True when projection was served from local cache rather than a live machine.
+	FromCache     bool `protobuf:"varint,2,opt,name=from_cache,json=fromCache,proto3" json:"from_cache,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4982,6 +4993,13 @@ func (x *GetThreadResponse) GetProjection() *ThreadProjection {
 		return x.Projection
 	}
 	return nil
+}
+
+func (x *GetThreadResponse) GetFromCache() bool {
+	if x != nil {
+		return x.FromCache
+	}
+	return false
 }
 
 type ListThreadsRequest struct {
@@ -7613,15 +7631,19 @@ const file_hermesh_thread_v2_thread_proto_rawDesc = "" +
 	"\x06thread\x18\x01 \x01(\v2\x19.hermesh.thread.v2.ThreadR\x06thread\x127\n" +
 	"\vinitial_run\x18\x02 \x01(\v2\x16.hermesh.thread.v2.RunR\n" +
 	"initialRun\x12%\n" +
-	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"N\n" +
+	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"o\n" +
 	"\x10GetThreadRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1b\n" +
-	"\tthread_id\x18\x02 \x01(\tR\bthreadId\"X\n" +
+	"\tthread_id\x18\x02 \x01(\tR\bthreadId\x12\x1f\n" +
+	"\vcached_only\x18\x03 \x01(\bR\n" +
+	"cachedOnly\"w\n" +
 	"\x11GetThreadResponse\x12C\n" +
 	"\n" +
 	"projection\x18\x01 \x01(\v2#.hermesh.thread.v2.ThreadProjectionR\n" +
-	"projection\"\x93\x01\n" +
+	"projection\x12\x1d\n" +
+	"\n" +
+	"from_cache\x18\x02 \x01(\bR\tfromCache\"\x93\x01\n" +
 	"\x12ListThreadsRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -112,6 +114,18 @@ func (o *Owner) resolveMachineForThread(ctx context.Context, threadID string) (l
 		}
 		return nil, cachedMachine, nil
 	}
+	o.mu.Lock()
+	for _, m := range o.lastMachines {
+		if kernel.OwnsThread(m.GetMachineId(), threadID) {
+			mid := m.GetMachineId()
+			o.mu.Unlock()
+			if eng, lid := o.localEngineFor(mid); eng != nil {
+				return eng, lid, nil
+			}
+			return nil, mid, nil
+		}
+	}
+	o.mu.Unlock()
 	machines, mErr := o.ListMachines(ctx)
 	if mErr == nil {
 		for _, m := range machines {
@@ -129,23 +143,14 @@ func (o *Owner) resolveMachineForThread(ctx context.Context, threadID string) (l
 func (o *Owner) dialRemoteThreadMachine(ctx context.Context, machineID string) (*peer.Machine, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	c, err := o.relay(cctx)
+	_, pm, err := o.machine(cctx, machineID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
-	}
-	pm, err := c.Machine(cctx, machineID)
-	if err != nil {
-		if o.recoverTunnel(c, machineID, err) {
-			if c2, err2 := o.relay(cctx); err2 == nil {
-				if pm2, err2 := c2.Machine(cctx, machineID); err2 == nil {
-					o.noteTunnelOK(machineID)
-					return pm2, nil
-				}
-			}
+		var ce *connect.Error
+		if errors.As(err, &ce) {
+			return nil, ce
 		}
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	o.noteTunnelOK(machineID)
 	return pm, nil
 }
 
@@ -740,6 +745,19 @@ func (s *ownerThreadService) LaunchThread(ctx context.Context, req *threadv2.Lau
 
 func (s *ownerThreadService) GetThread(ctx context.Context, req *threadv2.GetThreadRequest) (*threadv2.GetThreadResponse, error) {
 	o := s.o()
+	if req.GetCachedOnly() {
+		if eng, _, err := o.resolveMachineForThread(ctx, req.ThreadId); err == nil && eng != nil {
+			proj, err := eng.GetThread(ctx, o.ownerPrincipal(), req.ThreadId)
+			if err != nil {
+				return nil, err
+			}
+			return &threadv2.GetThreadResponse{Projection: proj}, nil
+		}
+		if cached := o.cachedProjection(req.ThreadId); cached != nil {
+			return &threadv2.GetThreadResponse{Projection: cached, FromCache: true}, nil
+		}
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread is not cached locally"))
+	}
 	eng, machineID, err := o.resolveMachineForThread(ctx, req.ThreadId)
 	if err != nil {
 		return nil, err
@@ -758,49 +776,18 @@ func (s *ownerThreadService) GetThread(ctx context.Context, req *threadv2.GetThr
 		} else if !isOfflineErr(gErr) {
 			// An offline-queued thread exists only here until (or unless) the machine accepts it.
 			if cached := o.cachedProjection(req.ThreadId); connect.CodeOf(gErr) == connect.CodeNotFound && cached.GetThread().GetOfflineQueued() {
-				return &threadv2.GetThreadResponse{Projection: cached}, nil
+				return &threadv2.GetThreadResponse{Projection: cached, FromCache: true}, nil
 			}
 			return nil, gErr
 		}
 	}
 	if cached := o.cachedProjection(req.ThreadId); cached != nil {
-		return &threadv2.GetThreadResponse{Projection: cached}, nil
+		return &threadv2.GetThreadResponse{Projection: cached, FromCache: true}, nil
 	}
 	return nil, connect.NewError(connect.CodeUnavailable, errors.New("machine is offline and thread is not cached locally"))
 }
 
-func (s *ownerThreadService) ListThreads(ctx context.Context, req *threadv2.ListThreadsRequest) (*threadv2.ListThreadsResponse, error) {
-	o := s.o()
-	byID := map[string]*threadv2.Thread{}
-	for _, ct := range o.cachedThreads(req.IncludeArchived) {
-		if (req.MachineId == "" || ct.MachineId == req.MachineId) && (req.ProjectId == "" || ct.ProjectId == req.ProjectId) {
-			byID[ct.ThreadId] = ct
-		}
-	}
-	if eng, localID := o.localEngineFor(""); eng != nil && (req.MachineId == "" || req.MachineId == localID) {
-		if list, err := eng.ListThreads(ctx, o.ownerPrincipal(), req.ProjectId, req.IncludeArchived, req.Limit); err == nil {
-			for _, t := range list {
-				byID[t.ThreadId] = t
-			}
-		}
-	}
-	machines, _ := o.ListMachines(ctx)
-	for _, m := range machines {
-		if _, isLocal := o.localEngineFor(m.MachineId); isLocal != "" || !m.Online {
-			continue
-		}
-		if req.MachineId != "" && req.MachineId != m.MachineId {
-			continue
-		}
-		if pm, err := o.dialRemoteThreadMachine(ctx, m.MachineId); err == nil {
-			if rList, lErr := pm.Thread.ListThreads(ctx, req); lErr == nil {
-				for _, t := range rList.Threads {
-					byID[t.ThreadId] = t
-					o.cacheThread(t, nil)
-				}
-			}
-		}
-	}
+func sortAndCapThreads(byID map[string]*threadv2.Thread, limit uint32) []*threadv2.Thread {
 	out := make([]*threadv2.Thread, 0, len(byID))
 	for _, t := range byID {
 		out = append(out, t)
@@ -814,10 +801,59 @@ func (s *ownerThreadService) ListThreads(ctx context.Context, req *threadv2.List
 		}
 		return b.GetUpdatedAt().AsTime().Compare(a.GetUpdatedAt().AsTime())
 	})
-	if req.Limit > 0 && len(out) > int(req.Limit) {
-		out = out[:req.Limit]
+	if limit > 0 && len(out) > int(limit) {
+		out = out[:limit]
 	}
-	return &threadv2.ListThreadsResponse{Threads: out}, nil
+	return out
+}
+
+func (o *Owner) localAndCachedThreads(req *threadv2.ListThreadsRequest) map[string]*threadv2.Thread {
+	byID := map[string]*threadv2.Thread{}
+	for _, ct := range o.cachedThreads(req.IncludeArchived) {
+		if (req.MachineId == "" || ct.MachineId == req.MachineId) && (req.ProjectId == "" || ct.ProjectId == req.ProjectId) {
+			byID[ct.ThreadId] = ct
+		}
+	}
+	if eng, localID := o.localEngineFor(""); eng != nil && (req.MachineId == "" || req.MachineId == localID) {
+		if list, err := eng.ListThreads(context.Background(), o.ownerPrincipal(), req.ProjectId, req.IncludeArchived, req.Limit); err == nil {
+			for _, t := range list {
+				byID[t.ThreadId] = t
+			}
+		}
+	}
+	return byID
+}
+
+func (s *ownerThreadService) ListThreads(ctx context.Context, req *threadv2.ListThreadsRequest) (*threadv2.ListThreadsResponse, error) {
+	o := s.o()
+	byID := o.localAndCachedThreads(req)
+	machines, _ := o.ListMachines(ctx)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, m := range machines {
+		if _, isLocal := o.localEngineFor(m.MachineId); isLocal != "" || !m.Online {
+			continue
+		}
+		if req.MachineId != "" && req.MachineId != m.MachineId {
+			continue
+		}
+		wg.Add(1)
+		go func(machineID string) {
+			defer wg.Done()
+			if pm, err := o.dialRemoteThreadMachine(ctx, machineID); err == nil {
+				if rList, lErr := pm.Thread.ListThreads(ctx, req); lErr == nil {
+					mu.Lock()
+					for _, t := range rList.Threads {
+						byID[t.ThreadId] = t
+						o.cacheThread(t, nil)
+					}
+					mu.Unlock()
+				}
+			}
+		}(m.MachineId)
+	}
+	wg.Wait()
+	return &threadv2.ListThreadsResponse{Threads: sortAndCapThreads(byID, req.Limit)}, nil
 }
 
 func (s *ownerThreadService) SubscribeThreads(ctx context.Context, req *threadv2.SubscribeThreadsRequest, stream *connect.ServerStream[threadv2.SubscribeThreadsResponse]) error {
@@ -847,13 +883,30 @@ func (s *ownerThreadService) SubscribeThreads(ctx context.Context, req *threadv2
 		}()
 	}
 
-	initRes, err := s.ListThreads(ctx, &threadv2.ListThreadsRequest{IncludeArchived: req.IncludeArchived})
-	if err != nil {
+	// Emit locally cached + local-engine threads immediately (0 ms) so UI never
+	// blocks on Relay ListMachines or slow remote machine dials.
+	fastInit := sortAndCapThreads(o.localAndCachedThreads(&threadv2.ListThreadsRequest{
+		MachineId:       req.MachineId,
+		IncludeArchived: req.IncludeArchived,
+	}), 0)
+	if err := stream.Send(&threadv2.SubscribeThreadsResponse{Snapshot: true, Threads: fastInit}); err != nil {
 		return err
 	}
-	if err := stream.Send(&threadv2.SubscribeThreadsResponse{Snapshot: true, Threads: initRes.Threads}); err != nil {
-		return err
-	}
+
+	// Refresh live remote machines in parallel in the background and push updated snapshot.
+	go func() {
+		liveRes, err := s.ListThreads(ctx, &threadv2.ListThreadsRequest{
+			MachineId:       req.MachineId,
+			IncludeArchived: req.IncludeArchived,
+		})
+		if err != nil || ctx.Err() != nil {
+			return
+		}
+		select {
+		case ch <- &threadv2.SubscribeThreadsResponse{Snapshot: true, Threads: liveRes.Threads}:
+		case <-ctx.Done():
+		}
+	}()
 
 	for {
 		select {
@@ -867,6 +920,102 @@ func (s *ownerThreadService) SubscribeThreads(ctx context.Context, req *threadv2
 	}
 }
 
+func foldThreadEventIntoProjection(proj *threadv2.ThreadProjection, ev *threadv2.ThreadEvent) *threadv2.ThreadProjection {
+	if ev == nil {
+		return proj
+	}
+	if proj == nil {
+		if ev.Thread == nil {
+			return nil
+		}
+		proj = &threadv2.ThreadProjection{Thread: proto.Clone(ev.Thread).(*threadv2.Thread)}
+	}
+	prevLastSeq := proj.GetThread().GetLastSeq()
+	if ev.Thread != nil {
+		proj.Thread = proto.Clone(ev.Thread).(*threadv2.Thread)
+	}
+	if proj.Thread != nil {
+		maxSeq := max(prevLastSeq, max(proj.Thread.LastSeq, ev.Seq))
+		proj.Thread.LastSeq = maxSeq
+	}
+	if ev.Run != nil {
+		cloned := proto.Clone(ev.Run).(*threadv2.Run)
+		idx := slices.IndexFunc(proj.Runs, func(r *threadv2.Run) bool { return r.GetRunId() == cloned.GetRunId() })
+		if idx >= 0 {
+			proj.Runs[idx] = cloned
+		} else {
+			proj.Runs = append(proj.Runs, cloned)
+		}
+	}
+	if ev.Type == "item.delta" && ev.TargetItemId != "" && ev.TextDelta != "" && ev.Item == nil {
+		if ev.Seq == 0 || ev.Seq != prevLastSeq {
+			idx := slices.IndexFunc(proj.Items, func(it *threadv2.TurnItem) bool { return it.GetItemId() == ev.TargetItemId })
+			if idx >= 0 {
+				proj.Items[idx].Text += ev.TextDelta
+				proj.Items[idx].Streaming = true
+			}
+		}
+	} else if ev.Item != nil {
+		cloned := proto.Clone(ev.Item).(*threadv2.TurnItem)
+		idx := slices.IndexFunc(proj.Items, func(it *threadv2.TurnItem) bool { return it.GetItemId() == cloned.GetItemId() })
+		if idx >= 0 {
+			proj.Items[idx] = cloned
+		} else {
+			proj.Items = append(proj.Items, cloned)
+		}
+		slices.SortFunc(proj.Items, func(a, b *threadv2.TurnItem) int {
+			if a.GetSeq() < b.GetSeq() {
+				return -1
+			}
+			if a.GetSeq() > b.GetSeq() {
+				return 1
+			}
+			return 0
+		})
+	}
+	if ev.BackgroundTask != nil {
+		cloned := proto.Clone(ev.BackgroundTask).(*threadv2.BackgroundTask)
+		idx := slices.IndexFunc(proj.BackgroundTasks, func(bt *threadv2.BackgroundTask) bool { return bt.GetTaskId() == cloned.GetTaskId() })
+		if idx >= 0 {
+			proj.BackgroundTasks[idx] = cloned
+		} else {
+			proj.BackgroundTasks = append(proj.BackgroundTasks, cloned)
+		}
+	}
+	if ev.Type == "thread.rolled_back" && ev.Checkpoint != nil {
+		maxOrd := ev.Checkpoint.RunOrdinal
+		removed := map[string]bool{}
+		for _, r := range proj.Runs {
+			if r.Ordinal > maxOrd && r.Status != threadv2.RunStatus_RUN_STATUS_QUEUED {
+				removed[r.RunId] = true
+				r.Status = threadv2.RunStatus_RUN_STATUS_ROLLED_BACK
+			}
+		}
+		proj.Items = slices.DeleteFunc(proj.Items, func(it *threadv2.TurnItem) bool { return removed[it.GetRunId()] })
+		proj.BackgroundTasks = slices.DeleteFunc(proj.BackgroundTasks, func(bt *threadv2.BackgroundTask) bool { return removed[bt.GetRunId()] })
+		proj.Checkpoints = slices.DeleteFunc(proj.Checkpoints, func(cp *threadv2.Checkpoint) bool { return cp.GetRunOrdinal() > maxOrd })
+	}
+	if ev.Request != nil {
+		cloned := proto.Clone(ev.Request).(*threadv2.RuntimeRequest)
+		idx := slices.IndexFunc(proj.Requests, func(r *threadv2.RuntimeRequest) bool { return r.GetRequestId() == cloned.GetRequestId() })
+		if idx >= 0 {
+			proj.Requests[idx] = cloned
+		} else {
+			proj.Requests = append(proj.Requests, cloned)
+		}
+	}
+	if ev.Checkpoint != nil {
+		cloned := proto.Clone(ev.Checkpoint).(*threadv2.Checkpoint)
+		idx := slices.IndexFunc(proj.Checkpoints, func(cp *threadv2.Checkpoint) bool { return cp.GetCheckpointId() == cloned.GetCheckpointId() })
+		if idx >= 0 {
+			proj.Checkpoints[idx] = cloned
+		} else {
+			proj.Checkpoints = append(proj.Checkpoints, cloned)
+		}
+	}
+	return proj
+}
+
 func (s *ownerThreadService) SubscribeThread(ctx context.Context, req *threadv2.SubscribeThreadRequest, stream *connect.ServerStream[threadv2.ThreadEvent]) error {
 	o := s.o()
 	eng, machineID, err := o.resolveMachineForThread(ctx, req.ThreadId)
@@ -876,25 +1025,111 @@ func (s *ownerThreadService) SubscribeThread(ctx context.Context, req *threadv2.
 	if eng != nil {
 		return eng.SubscribeThread(ctx, o.ownerPrincipal(), req.ThreadId, req.AfterSeq, stream.Send)
 	}
-	pm, err := o.dialRemoteThreadMachine(ctx, machineID)
-	if err != nil {
-		return err
-	}
-	rStream, err := pm.Thread.SubscribeThread(ctx, req)
-	if err != nil {
-		return err
-	}
-	defer rStream.Close()
-	for rStream.Receive() {
-		ev := rStream.Msg()
-		if ev.Thread != nil {
+	afterSeq := req.AfterSeq
+	proj := o.cachedProjection(req.ThreadId)
+	var sendMu sync.Mutex
+	sentSubscribed := false
+	sendEvent := func(ev *threadv2.ThreadEvent) error {
+		sendMu.Lock()
+		defer sendMu.Unlock()
+		if ev.GetSeq() > afterSeq {
+			afterSeq = ev.GetSeq()
+		}
+		proj = foldThreadEventIntoProjection(proj, ev)
+		if proj != nil && proj.Thread != nil {
+			o.cacheThread(proj.Thread, proj)
+		} else if ev.Thread != nil {
 			o.cacheThread(ev.Thread, nil)
 		}
-		if err := stream.Send(ev); err != nil {
+		if ev.GetType() == "thread.subscribed" {
+			if sentSubscribed {
+				return nil
+			}
+			sentSubscribed = true
+		}
+		return stream.Send(ev)
+	}
+	for {
+		pm, err := o.dialRemoteThreadMachine(ctx, machineID)
+		if err != nil {
 			return err
 		}
+		subCtx, subCancel := context.WithCancel(ctx)
+		subReq := &threadv2.SubscribeThreadRequest{
+			MachineId: req.MachineId,
+			ThreadId:  req.ThreadId,
+			AfterSeq:  afterSeq,
+		}
+		var firstHeard atomic.Bool
+		var fallbackErr atomic.Value
+		err = func() error {
+			var bgWG sync.WaitGroup
+			defer func() {
+				subCancel()
+				bgWG.Wait()
+			}()
+			// Legacy hermeshd compatibility: older daemons flush HTTP/2 response
+			// headers only on the first event, so SubscribeThread itself blocks when
+			// EventsAfter(afterSeq) is empty. Start the 120 ms liveness check before
+			// SubscribeThread so clients never wait 1 s or hang on caught-up streams.
+			bgWG.Add(1)
+			go func() {
+				defer bgWG.Done()
+				t := time.NewTimer(120 * time.Millisecond)
+				defer t.Stop()
+				select {
+				case <-t.C:
+				case <-subCtx.Done():
+					return
+				}
+				if firstHeard.Load() {
+					return
+				}
+				gCtx, gCancel := context.WithTimeout(subCtx, 5*time.Second)
+				res, gErr := pm.Thread.GetThread(gCtx, &threadv2.GetThreadRequest{ThreadId: req.ThreadId})
+				gCancel()
+				if subCtx.Err() != nil || firstHeard.Load() {
+					return
+				}
+				if gErr != nil {
+					fallbackErr.Store(gErr)
+					subCancel()
+					return
+				}
+				if firstHeard.CompareAndSwap(false, true) && res.GetProjection().GetThread() != nil {
+					o.cacheThread(res.Projection.GetThread(), res.Projection)
+					_ = sendEvent(&threadv2.ThreadEvent{
+						Seq:      res.Projection.GetThread().GetLastSeq(),
+						ThreadId: req.ThreadId,
+						Type:     "thread.subscribed",
+						Thread:   res.Projection.GetThread(),
+					})
+				}
+			}()
+			rStream, sErr := pm.Thread.SubscribeThread(subCtx, subReq)
+			if sErr != nil {
+				if fErr, ok := fallbackErr.Load().(error); ok && fErr != nil && ctx.Err() == nil {
+					return fErr
+				}
+				return sErr
+			}
+			defer rStream.Close()
+			for rStream.Receive() {
+				firstHeard.Store(true)
+				if err := sendEvent(rStream.Msg()); err != nil {
+					return err
+				}
+			}
+			if fErr, ok := fallbackErr.Load().(error); ok && fErr != nil && ctx.Err() == nil {
+				return fErr
+			}
+			return rStream.Err()
+		}()
+		if ctx.Err() == nil && o.hasReplacementFor(machineID, pm) {
+			continue
+		}
+		return err
 	}
-	return rStream.Err()
 }
 
 func (s *ownerThreadService) DispatchMessage(ctx context.Context, req *threadv2.DispatchMessageRequest) (*threadv2.DispatchMessageResponse, error) {

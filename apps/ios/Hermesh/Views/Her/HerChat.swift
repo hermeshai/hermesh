@@ -62,6 +62,13 @@ final class HerPlace {
         for chat in chats.values { chat.reconnectNow() }
     }
 
+    /// Reloads SQLite-kept Her state across created chats after encrypted delta sync.
+    func reloadKept() {
+        for chat in chats.values {
+            Task { await chat.loadKept() }
+        }
+    }
+
     /// Wakes every environment chat's (or one machine's) retry backoff sleep after connectivity returns.
     func wakeRetries(for machineID: String? = nil) {
         if let machineID {
@@ -165,8 +172,16 @@ final class HerChat {
     /// Her: the environment's default assistant, as her lists it, else as this iPhone keeps it.
     var bot: HerBot? { bots.first(where: \.isDefault) ?? kept?.bot }
 
-    /// The conversation shown: her's, else the kept one.
-    var session: HerSession? { live ?? kept?.session }
+    /// The conversation shown: her's live stream, or a newer kept snapshot delivered via encrypted delta sync while disconnected.
+    var session: HerSession? {
+        if let l = live {
+            if !convUp, let k = kept?.session, k.sessionID == l.sessionID, k.lastSeq > l.lastSeq {
+                return k
+            }
+            return l
+        }
+        return kept?.session
+    }
 
     private var api: AppAPI? { model?.api }
     /// A demo can only open its in-memory transport; it never falls back to the core.
@@ -356,11 +371,14 @@ final class HerChat {
             let started = Date()
             let c = HerConnection(local: transport, machineID: machineID)
             var didOpen = false
+            var setupFailed = false
+            var streamFailed = false
             do {
                 events: for try await e in c.open(setup: [("bots/subscribe", [:]), ("models/list", [:])]) {
                     switch e {
                     case .opened(let r):
                         guard case .success(let listed)? = r.first else {
+                            setupFailed = true
                             if case .failure(let err)? = r.first { envError = err.message }
                             break events
                         }
@@ -387,6 +405,7 @@ final class HerChat {
                     }
                 }
             } catch {
+                streamFailed = true
                 if !Task.isCancelled && !paused {
                     let msg = (error as? APIError)?.message ?? error.localizedDescription
                     envError = msg
@@ -396,6 +415,10 @@ final class HerChat {
             }
             if env === c { env = nil; envUp = false }
             guard !Task.isCancelled && !paused else { break }
+            if didOpen && !streamFailed && !setupFailed {
+                failures = 0
+                continue
+            }
             failures += 1
             if await pause(failures) { failures = 0 }
         }
@@ -411,6 +434,8 @@ final class HerChat {
             if convConnectingSince == nil { convConnectingSince = started }
             let c = HerConnection(local: transport, machineID: machineID)
             var opened: String?
+            var setupRefused = false
+            var streamFailed = false
             // Its last items, earlier ones read as it is scrolled up (earlier()).
             // When reconnecting to the same live conversation, pass (session_id,
             // resume_epoch, after_seq) so her sends only missed events instead
@@ -463,6 +488,7 @@ final class HerChat {
                         case .failure(let refused)?:
                             // Without a model, the page says so; deleted meanwhile, the list hears of it too. The
                             // connection stays until what it waits on changes.
+                            setupRefused = true
                             convConnectingSince = nil
                             if refused.kind == "no_model" { noModel = true } else if refused.kind != "bot_not_found" {
                                 convError = refused.message
@@ -489,6 +515,7 @@ final class HerChat {
                     }
                 }
             } catch {
+                streamFailed = true
                 if !Task.isCancelled && !paused {
                     let msg = (error as? APIError)?.message ?? error.localizedDescription
                     convError = msg
@@ -502,6 +529,11 @@ final class HerChat {
                 break
             }
             if convConnectingSince == nil { convConnectingSince = Date() }
+            if opened != nil && !streamFailed && !setupRefused {
+                failures = 0
+                convRetries = 0
+                continue
+            }
             failures += 1
             if await pause(failures, forConv: true) { failures = 0 }
         }

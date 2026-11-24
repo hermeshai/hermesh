@@ -219,6 +219,7 @@ func (o *Owner) pullDeltas(ctx context.Context, ctl relayv1connect.OwnerControlS
 		}
 	}
 	if applied > 0 {
+		o.herKeptVersion.Add(1)
 		o.log.Info("her delta sync applied", "count", applied)
 		if o.rep != nil {
 			o.rep.kick()

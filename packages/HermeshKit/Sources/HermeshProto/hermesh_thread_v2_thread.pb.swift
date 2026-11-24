@@ -2585,6 +2585,9 @@ public nonisolated struct Hermesh_Thread_V2_GetThreadRequest: Sendable {
 
   public var threadID: String = String()
 
+  /// Return only the locally cached projection on the owner device without dialing remote.
+  public var cachedOnly: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -2603,6 +2606,9 @@ public nonisolated struct Hermesh_Thread_V2_GetThreadResponse: Sendable {
   public var hasProjection: Bool {self._projection != nil}
   /// Clears the value of `projection`. Subsequent reads from it will return its default value.
   public mutating func clearProjection() {self._projection = nil}
+
+  /// True when projection was served from local cache rather than a live machine.
+  public var fromCache: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -6612,7 +6618,7 @@ nonisolated extension Hermesh_Thread_V2_LaunchThreadResponse: SwiftProtobuf.Mess
 
 nonisolated extension Hermesh_Thread_V2_GetThreadRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetThreadRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}thread_id\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}thread_id\0\u{3}cached_only\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6622,6 +6628,7 @@ nonisolated extension Hermesh_Thread_V2_GetThreadRequest: SwiftProtobuf.Message,
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.machineID) }()
       case 2: try { try decoder.decodeSingularStringField(value: &self.threadID) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.cachedOnly) }()
       default: break
       }
     }
@@ -6634,12 +6641,16 @@ nonisolated extension Hermesh_Thread_V2_GetThreadRequest: SwiftProtobuf.Message,
     if !self.threadID.isEmpty {
       try visitor.visitSingularStringField(value: self.threadID, fieldNumber: 2)
     }
+    if self.cachedOnly != false {
+      try visitor.visitSingularBoolField(value: self.cachedOnly, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Thread_V2_GetThreadRequest, rhs: Hermesh_Thread_V2_GetThreadRequest) -> Bool {
     if lhs.machineID != rhs.machineID {return false}
     if lhs.threadID != rhs.threadID {return false}
+    if lhs.cachedOnly != rhs.cachedOnly {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -6647,7 +6658,7 @@ nonisolated extension Hermesh_Thread_V2_GetThreadRequest: SwiftProtobuf.Message,
 
 nonisolated extension Hermesh_Thread_V2_GetThreadResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".GetThreadResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}projection\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}projection\0\u{3}from_cache\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -6656,6 +6667,7 @@ nonisolated extension Hermesh_Thread_V2_GetThreadResponse: SwiftProtobuf.Message
       // enabled. https://github.com/apple/swift-protobuf/issues/1034
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularMessageField(value: &self._projection) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.fromCache) }()
       default: break
       }
     }
@@ -6669,11 +6681,15 @@ nonisolated extension Hermesh_Thread_V2_GetThreadResponse: SwiftProtobuf.Message
     try { if let v = self._projection {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 1)
     } }()
+    if self.fromCache != false {
+      try visitor.visitSingularBoolField(value: self.fromCache, fieldNumber: 2)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Thread_V2_GetThreadResponse, rhs: Hermesh_Thread_V2_GetThreadResponse) -> Bool {
     if lhs._projection != rhs._projection {return false}
+    if lhs.fromCache != rhs.fromCache {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

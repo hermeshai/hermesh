@@ -74,7 +74,6 @@ enum ThreadChoices {
 
 struct ThreadPage: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.scenePhase) private var scenePhase
     /// The session shown; empty on a new one.
     let threadID: String
     private let askedMachine: String
@@ -174,8 +173,13 @@ struct ThreadPage: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: threadID) { await start() }
-        // Opened again at once when its machine can be reached again, or the app is back in front.
-        .task(id: "\(threadID)/\(reachable)/\(scenePhase == .active)") { if !isNew { await followThread() } }
+        // Keep following while not background-paused; quick app switches (< 15 s) stay live with zero reconnect.
+        .task(id: "\(threadID)/\(!model.isBackgroundPaused)") {
+            if !isNew && !model.isBackgroundPaused { await followThread() }
+        }
+        .onChange(of: reachable) {
+            if reachable && !following { wakeRetry() }
+        }
         .task(id: "\(machineID)/\(projectID)") { await loadProviders() }
         .onChange(of: model.projects) { ThreadChoices.keepProjects(model.projects, machines: model.machines) }
         .onChange(of: model.addedProject) {
@@ -809,26 +813,52 @@ struct ThreadPage: View {
         }
     }
 
-    /// A session's projection, then its events as they come, until the page goes; read and subscribed again after
-    /// the subscription ended or failed (in 1 s, then up to every 30 s), and at once when its machine can be reached
-    /// again (the task's id). `following` says it is open, for the line above the box.
+    @State private var retrySleep: Task<Void, Never>?
+
+    private func wakeRetry() {
+        retrySleep?.cancel()
+        retrySleep = nil
+    }
+
+    private func waitBeforeRetry(seconds: Int) async {
+        let sleep = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
+        retrySleep = sleep
+        defer { if retrySleep == sleep { retrySleep = nil } }
+        await withTaskCancellationHandler {
+            await sleep.value
+        } onCancel: {
+            sleep.cancel()
+        }
+    }
+
+    /// A session's projection, then its events as they come, until the page goes: renders local SQLite cache in 0 ms
+    /// when available, then subscribes incrementally from `lastSeq` (confirming `following` in 1 RTT with no artificial
+    /// 1 s sleep). Retries in 1..30 s on disconnect, waking immediately when `reachable` becomes true.
     private func followThread() async {
         guard let live = model.api?.live else { return }
+        if projection == nil,
+           let cached = try? await live.getThread(threadID: threadID, cachedOnly: true),
+           cached.hasProjection {
+            apply(cached.projection.thread)
+            projection = cached.projection
+        }
         var failures = 0
         while !Task.isCancelled {
             do {
-                let first = try await live.getThread(threadID: threadID)
-                if projection == nil { apply(first.projection.thread) } // its model and modes: later, the owner's own choices stay
-                projection = first.projection
-                // Open a moment without failing: followed (a subscription that can't reach the machine fails at once).
-                let open = Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    if !Task.isCancelled { following = true }
+                if projection == nil {
+                    let first = try await live.getThread(threadID: threadID)
+                    apply(first.projection.thread)
+                    projection = first.projection
+                    if !first.fromCache {
+                        following = true
+                        failures = 0
+                    }
                 }
-                defer { open.cancel() }
-                for try await ev in live.subscribeThread(threadID: threadID, afterSeq: first.projection.thread.lastSeq) {
-                    projection = applyThreadEvent(ev, to: projection)
+                let afterSeq = projection?.thread.lastSeq ?? 0
+                for try await ev in live.subscribeThread(threadID: threadID, afterSeq: afterSeq) {
+                    following = true
                     failures = 0
+                    projection = applyThreadEvent(ev, to: projection)
                 }
             } catch {
                 // Never read and not to be read now: the session as the list has it, with the box and the line
@@ -842,7 +872,7 @@ struct ThreadPage: View {
             following = false
             guard !Task.isCancelled else { return }
             failures += 1
-            try? await Task.sleep(for: .seconds(min(30, 1 << min(5, failures - 1))))
+            await waitBeforeRetry(seconds: min(30, 1 << min(5, failures - 1)))
         }
     }
 
