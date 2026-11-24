@@ -88,10 +88,12 @@ func (c *changeLog) since(n uint64) (sessions, projects []string, now uint64) {
 }
 
 // changes is the machine's change log, made on first use.
-func (s *Sessions) changes() *changeLog {
-	s.changesOnce.Do(func() { s.changeLog = newChangeLog() })
-	return s.changeLog
+func (n *Machine) changes() *changeLog {
+	n.changesOnce.Do(func() { n.changeLog = newChangeLog() })
+	return n.changeLog
 }
+
+const watchEvery = 100 * time.Millisecond
 
 // statusEvery: how often a watch compares the machine's state with what it
 // last sent (counts of sessions, pausing, agents checked); in process only.
@@ -100,7 +102,7 @@ const statusEvery = time.Second
 // Watch sends what p may see of this machine, then each change (see
 // MachineService.Watch), until ctx is done.
 func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchRequest, send func(*machinev1.WatchResponse) error) error {
-	c := n.sessions.changes()
+	c := n.changes()
 	kick := make(chan struct{}, 1)
 	c.mu.Lock()
 	c.kicks[kick] = true
@@ -123,7 +125,7 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		if limit == 0 {
 			limit = 50
 		}
-		list, next, err := n.sessions.List(p, &sessionv1.ListSessionsRequest{Limit: limit, View: req.View})
+		list, next, err := n.ListSessionsPage(ctx, p, &sessionv1.ListSessionsRequest{Limit: limit, View: req.View, IncludeArchived: true})
 		if err != nil {
 			return err
 		}
@@ -133,12 +135,12 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		}
 		first = &machinev1.WatchResponse{Reset_: true, Sessions: list, Next: next, Projects: projects.Projects}
 		if req.HeldAt != nil { // a watcher from before this start: what went meanwhile
-			first.DeletedSessionIds = n.sessions.deletedSince(p, req.HeldAt.AsTime())
+			first.DeletedSessionIds = n.deletedSince(p, req.HeldAt.AsTime())
 		}
 	}
 	status := n.statusFor(p)
 	first.Status = status
-	work := n.sessions.st.WorkSeq()
+	work := n.st.WorkSeq()
 	first.WorkSeq = uint64(work)
 	if err := n.sendWatch(c, at, first, send); err != nil {
 		return err
@@ -159,7 +161,7 @@ func (n *Machine) Watch(ctx context.Context, p *Principal, req *machinev1.WatchR
 		if st := n.statusFor(p); !proto.Equal(st, status) {
 			status, m.Status = st, st
 		}
-		ws := n.sessions.st.WorkSeq()
+		ws := n.st.WorkSeq()
 		m.WorkSeq = uint64(ws)
 		if now != at || m.Status != nil || ws != work {
 			at, work = now, ws
@@ -183,15 +185,15 @@ func (n *Machine) sendWatch(c *changeLog, at uint64, m *machinev1.WatchResponse,
 // changesSince is what p may see of the sessions and projects changed after
 // change from, and the change it is at.
 func (n *Machine) changesSince(ctx context.Context, p *Principal, view sessionv1.SessionView, from uint64) (*machinev1.WatchResponse, uint64, error) {
-	sessions, projects, now := n.sessions.changes().since(from)
+	sessions, projects, now := n.changes().since(from)
 	m := &machinev1.WatchResponse{}
 	for _, id := range sessions {
-		if s, err := n.sessions.Get(p, id); err == nil {
+		if s, err := n.GetSessionFor(ctx, p, id); err == nil {
 			if view == sessionv1.SessionView_SESSION_VIEW_BASIC {
 				s = BasicSession(s)
 			}
 			m.Sessions = append(m.Sessions, s)
-		} else if n.sessions.deletedFor(p, id) {
+		} else if n.deletedFor(p, id) {
 			m.DeletedSessionIds = append(m.DeletedSessionIds, id)
 		}
 	}
@@ -214,19 +216,4 @@ func (n *Machine) changesSince(ctx context.Context, p *Principal, view sessionv1
 		}
 	}
 	return m, now, nil
-}
-
-// deletedSince is the sessions p could read that were deleted at or after t.
-func (s *Sessions) deletedSince(p *Principal, t time.Time) []string {
-	rows, err := s.st.DeletedSessionsSince(t)
-	if err != nil {
-		return nil
-	}
-	var out []string
-	for _, r := range rows {
-		if s.canRead(p, r) {
-			out = append(out, r.ID)
-		}
-	}
-	return out
 }

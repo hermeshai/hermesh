@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -19,10 +20,9 @@ import (
 
 	inboxv1 "github.com/hermeshai/hermesh/gen/go/hermesh/inbox/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
-	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -65,7 +65,7 @@ func (n *Machine) serveSessionTools(ctx context.Context) {
 }
 
 // mcpServers are the tools a session's coding agent gets.
-func (n *Machine) mcpServers(sessionID string) []provider.MCPServer {
+func (n *Machine) mcpServers(sessionID string) []rt.MCPServer {
 	n.tools.mu.Lock()
 	defer n.tools.mu.Unlock()
 	if n.tools.path == "" {
@@ -85,7 +85,7 @@ func (n *Machine) mcpServers(sessionID string) []provider.MCPServer {
 		}
 		n.tools.tokens[token], n.tools.byID[sessionID] = sessionID, token
 	}
-	return []provider.MCPServer{{Name: "hermesh", Command: exe, Args: []string{"message-mcp"},
+	return []rt.MCPServer{{Name: "hermesh", Command: exe, Args: []string{"message-mcp"},
 		Env: map[string]string{"HERMESH_TOOLS_SOCKET": n.tools.path, "HERMESH_TOOLS_TOKEN": token}}}
 }
 
@@ -149,12 +149,16 @@ func (n *Machine) toolHandler(f func(ctx context.Context, session string, req To
 	}
 }
 
-func (n *Machine) toolWhoAmI(ctx context.Context, session string, _ ToolRequest) (any, error) {
-	r, err := n.st.Session(session)
-	if err != nil || r == nil {
+func (n *Machine) toolWhoAmI(_ context.Context, session string, _ ToolRequest) (any, error) {
+	if n.sessions == nil {
 		return nil, errors.New("no such session")
 	}
-	out := ToolWhoAmI{Session: session, Machine: n.Name(), RequesterID: r.CreatedBy, Requester: n.knownClients()[r.CreatedBy].Label}
+	s, err := n.sessions.Store().Session(session)
+	if err != nil || s == nil {
+		return nil, errors.New("no such session")
+	}
+	createdBy := cmp.Or(s.CreatedBy, s.GetActor().GetId())
+	out := ToolWhoAmI{Session: session, Machine: n.Name(), RequesterID: createdBy, Requester: n.knownClients()[createdBy].Label}
 	return out, nil
 }
 
@@ -207,16 +211,19 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 	}
 	to := strings.TrimSpace(req.To)
 	if to == "" { // the agent that started the session, in its conversation
-		r, err := n.st.Session(session)
-		if err != nil || r == nil {
+		if n.sessions == nil {
 			return nil, errors.New("no such session")
 		}
-		to = r.CreatedBy
-		if r.Conversation != "" {
-			to += "/" + r.Conversation
+		s, err := n.sessions.Store().Session(session)
+		if err != nil || s == nil {
+			return nil, errors.New("no such session")
+		}
+		to = cmp.Or(s.CreatedBy, s.GetActor().GetId())
+		if s.CreatedAs != "" {
+			to += "/" + s.CreatedAs
 		}
 	}
-	if strings.HasPrefix(to, "m_") || strings.HasPrefix(to, "s_") {
+	if strings.HasPrefix(to, "m_") || strings.HasPrefix(to, "s_") || strings.HasPrefix(to, "th_") {
 		return nil, errors.New("sessions write to agents, not to other sessions")
 	}
 	list, err := n.agentContacts(ctx)
@@ -273,7 +280,8 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 	if err := n.sendMessage(m); err != nil {
 		return nil, err
 	}
-	n.sessions.record(session, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_MessageSent{MessageSent: &sessionv1.MessageSent{
-		MessageId: m.MessageId, To: inboxAddress(m.To), ToName: who, Text: m.Text, InReplyTo: m.InReplyTo}}})
+	if n.sessions != nil {
+		n.sessions.RecordSentMail(session, m.MessageId, inboxAddress(m.To), who, m.InReplyTo, m.Text, "sent")
+	}
 	return ToolSent{MessageID: m.MessageId, To: inboxAddress(m.To), Name: who}, nil
 }

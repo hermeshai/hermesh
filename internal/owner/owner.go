@@ -34,7 +34,6 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
 	"github.com/hermeshai/hermesh/internal/connaddr"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/machine"
@@ -149,9 +148,9 @@ type Owner struct {
 	directDialing  map[string]*directDial   // per-machine singleflight for directFastMachine
 	cellularOnly   atomic.Bool              // true when device has only cellular (no Wi-Fi/wired): skip RFC1918 LAN addrs
 
-	threadMu   sync.Mutex
-	threadWake chan struct{}
-	threadSubs map[chan *threadv2.SubscribeThreadsResponse]struct{}
+	sessionMu   sync.Mutex
+	sessionWake chan struct{}
+	sessionSubs map[chan *sessionv1.WatchSessionsResponse]struct{}
 }
 
 type directDial struct {
@@ -194,14 +193,14 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 		return nil, err
 	}
 	o := &Owner{
-		cfg:        cfg,
-		log:        cfg.Logger,
-		st:         st,
-		lock:       lock,
-		hub:        hub,
-		herWake:    make(chan struct{}, 1),
-		threadWake: make(chan struct{}, 1),
-		threadSubs: map[chan *threadv2.SubscribeThreadsResponse]struct{}{},
+		cfg:         cfg,
+		log:         cfg.Logger,
+		st:          st,
+		lock:        lock,
+		hub:         hub,
+		herWake:     make(chan struct{}, 1),
+		sessionWake: make(chan struct{}, 1),
+		sessionSubs: map[chan *sessionv1.WatchSessionsResponse]struct{}{},
 	}
 	o.rep = newReplica(o)
 	return o, o.load()
@@ -294,7 +293,7 @@ func (o *Owner) Run(ctx context.Context) {
 	}
 	go o.namePending(ctx)
 	go o.deliverWaiting(ctx)
-	go o.flushThreadOutboxLoop(ctx)
+	go o.flushSessionOutboxLoop(ctx)
 	o.stayConnected(ctx)
 	o.mu.Lock()
 	if o.client != nil && o.client != o.kept {
@@ -2823,7 +2822,7 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 			more = more || f.more
 		}
 	})
-	page := &sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View}
+	page := &sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View, IncludeArchived: true}
 	add := func(res *sessionv1.ListSessionsResponse) {
 		if basic {
 			res.Sessions = machine.BasicSessions(res.Sessions) // a machine from before views sends them whole
@@ -2847,6 +2846,23 @@ func (o *Owner) ListSessions(ctx context.Context, req *localv1.ListSessionsReque
 		return err
 	})
 	out.Unreachable = append(out.Unreachable, bad...)
+	// Include locally queued offline sessions that have not yet reached their target machine.
+	seen := make(map[string]bool, len(out.Sessions))
+	for _, s := range out.Sessions {
+		seen[s.SessionId] = true
+	}
+	for _, cs := range o.cachedSessions(false) {
+		if !cs.OfflineQueued || seen[cs.SessionId] {
+			continue
+		}
+		if req.MachineId != "" && cs.MachineId != req.MachineId {
+			continue
+		}
+		if basic {
+			cs = machine.BasicSession(cs)
+		}
+		out.Sessions = append(out.Sessions, cs)
+	}
 	if req.Limit > 0 {
 		out.Sessions, out.Next = onePage(out.Sessions, int(req.Limit), req.Before, more)
 	} else {
@@ -2881,224 +2897,4 @@ func onePage(sessions []*sessionv1.Session, limit int, before *sessionv1.Session
 		next = machine.CursorAt(page[len(page)-1])
 	}
 	return append(page, unsettled...), next
-}
-
-// localSession is this device's own machine when it owns the session (by
-// the session id's prefix), else nil.
-func (o *Owner) localSession(sessionID string) *machine.Local {
-	l := o.local()
-	parts := strings.SplitN(sessionID, "_", 3)
-	if l == nil || len(parts) != 3 || parts[0] != "s" || !strings.HasPrefix(strings.TrimPrefix(l.MachineID(), "m_"), parts[1]) {
-		return nil
-	}
-	return l
-}
-
-// sessionMachine finds the machine that owns a session from its id prefix.
-func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Machine, error) {
-	if parts := strings.SplitN(sessionID, "_", 3); len(parts) != 3 || parts[0] != "s" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bad session id"))
-	}
-	machines, err := o.machines(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, n := range machines {
-		if ownsSession(n.MachineId, sessionID) {
-			c, err := o.relay(ctx)
-			if err != nil {
-				return nil, err
-			}
-			pn, err := c.Machine(ctx, n.MachineId)
-			if err != nil {
-				if o.recoverTunnel(c, n.MachineId, err) {
-					if c2, err2 := o.relay(ctx); err2 == nil {
-						if pn2, err2 := c2.Machine(ctx, n.MachineId); err2 == nil {
-							o.noteTunnelOK(n.MachineId)
-							return pn2, nil
-						}
-					}
-				}
-				return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("%s is unreachable: %w", n.MachineName, err))
-			}
-			o.noteTunnelOK(n.MachineId)
-			return pn, nil
-		}
-	}
-	return nil, connect.NewError(connect.CodeNotFound, errors.New("no machine owns this session"))
-}
-
-func (o *Owner) StreamSessionEvents(ctx context.Context, req *localv1.StreamSessionEventsRequest, send func(*sessionv1.SessionEvent) error) error {
-	ask := &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial, View: req.View}
-	if l := o.localSession(req.SessionId); l != nil {
-		return l.StreamEvents(ctx, ask, send)
-	}
-	n, err := o.sessionMachine(ctx, req.SessionId)
-	if err != nil {
-		return err
-	}
-	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC { // a machine from before views sends events whole
-		full := send
-		send = func(e *sessionv1.SessionEvent) error { return full(machine.BasicEvent(e)) }
-	}
-	stream, err := n.Session.StreamEvents(ctx, ask)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-	for stream.Receive() {
-		if err := send(stream.Msg()); err != nil {
-			return err
-		}
-	}
-	return stream.Err()
-}
-
-// ListSessionEvents pages through a session's events on its machine.
-func (o *Owner) ListSessionEvents(ctx context.Context, req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
-	if l := o.localSession(req.SessionId); l != nil {
-		return l.ListEvents(req)
-	}
-	n, err := o.sessionMachine(ctx, req.SessionId)
-	if err != nil {
-		return nil, err
-	}
-	res, err := n.Session.ListEvents(ctx, req)
-	if err == nil && req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
-		for i, e := range res.Events {
-			res.Events[i] = machine.BasicEvent(e)
-		}
-	}
-	return res, err
-}
-
-// ReadToolOutput streams a tool's whole output from its session's machine.
-// One from before ReadToolOutput gives it as the event at req.Seq recorded
-// it (its first 16 KiB).
-func (o *Owner) ReadToolOutput(ctx context.Context, req *localv1.ReadToolOutputRequest, send func(*sessionv1.ToolOutputChunk) error) error {
-	ask := &sessionv1.ReadToolOutputRequest{SessionId: req.SessionId, CallId: req.CallId}
-	if l := o.localSession(req.SessionId); l != nil {
-		return l.ReadToolOutput(ask, send)
-	}
-	n, err := o.sessionMachine(ctx, req.SessionId)
-	if err != nil {
-		return err
-	}
-	stream, err := n.Session.ReadToolOutput(ctx, ask)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-	for stream.Receive() {
-		if err := send(stream.Msg()); err != nil {
-			return err
-		}
-	}
-	if connect.CodeOf(stream.Err()) != connect.CodeUnimplemented || req.Seq == 0 {
-		return stream.Err()
-	}
-	res, err := n.Session.ListEvents(ctx, &sessionv1.ListEventsRequest{SessionId: req.SessionId, AfterSeq: req.Seq - 1, Limit: 1})
-	if err != nil {
-		return err
-	}
-	for _, e := range res.Events {
-		if r := e.GetToolResult(); r != nil && r.CallId == req.CallId {
-			return send(&sessionv1.ToolOutputChunk{Data: []byte(r.Summary), Size: uint64(len(r.Summary))})
-		}
-	}
-	return connect.NewError(connect.CodeNotFound, fmt.Errorf("no output of %s at %d", req.CallId, req.Seq))
-}
-
-func (o *Owner) InterruptSession(ctx context.Context, id string) (*sessionv1.Session, error) {
-	if l := o.localSession(id); l != nil {
-		return l.Interrupt(ctx, id)
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return o.written(id)(n.Session.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: id}))
-}
-
-func (o *Owner) ArchiveSession(ctx context.Context, id string) (*sessionv1.Session, error) {
-	if l := o.localSession(id); l != nil {
-		return l.Archive(ctx, id)
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return o.written(id)(n.Session.ArchiveSession(ctx, &sessionv1.ArchiveSessionRequest{SessionId: id}))
-}
-
-func (o *Owner) UnarchiveSession(ctx context.Context, id string) (*sessionv1.Session, error) {
-	if l := o.localSession(id); l != nil {
-		return l.Unarchive(ctx, id)
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return o.written(id)(n.Session.UnarchiveSession(ctx, &sessionv1.UnarchiveSessionRequest{SessionId: id}))
-}
-
-// DeleteSession deletes a session for good on its machine.
-func (o *Owner) DeleteSession(ctx context.Context, id string) error {
-	if l := o.localSession(id); l != nil {
-		return l.Delete(ctx, id)
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return err
-	}
-	if _, err = n.Session.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: id}); err == nil {
-		o.rep.sessionWritten(id, nil, true)
-	}
-	return err
-}
-
-// written keeps in the replica what a change to another machine's session
-// returned, and passes it on.
-func (o *Owner) written(id string) func(*sessionv1.Session, error) (*sessionv1.Session, error) {
-	return func(s *sessionv1.Session, err error) (*sessionv1.Session, error) {
-		if err == nil {
-			o.rep.sessionWritten(id, s, false)
-		}
-		return s, err
-	}
-}
-
-// RenameSession changes a session's title on its machine.
-func (o *Owner) RenameSession(ctx context.Context, id, title string) (*sessionv1.Session, error) {
-	if l := o.localSession(id); l != nil {
-		return l.Rename(ctx, id, title)
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return o.written(id)(n.Session.RenameSession(ctx, &sessionv1.RenameSessionRequest{SessionId: id, Title: title}))
-}
-
-// AnswerQuestion answers a session's question as the owner.
-func (o *Owner) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	if l := o.localSession(req.SessionId); l != nil {
-		return l.AnswerQuestion(ctx, req)
-	}
-	n, err := o.sessionMachine(ctx, req.SessionId)
-	if err != nil {
-		return nil, err
-	}
-	return o.written(req.SessionId)(n.Session.AnswerQuestion(ctx, req))
-}
-
-func (o *Owner) GetDiff(ctx context.Context, id string, turn uint32) (*sessionv1.GetDiffResponse, error) {
-	if l := o.localSession(id); l != nil {
-		return l.Diff(ctx, &sessionv1.GetDiffRequest{SessionId: id, Turn: turn})
-	}
-	n, err := o.sessionMachine(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return n.Session.GetDiff(ctx, &sessionv1.GetDiffRequest{SessionId: id, Turn: turn})
 }

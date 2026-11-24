@@ -12,15 +12,15 @@ import Testing
     #expect(isRuntimeModeAllowed(.autoEdits, ceiling: .auto))
 }
 
-@Test func threadEventProjectionReducerAndRollback() {
-    var initEv = Hermesh_Thread_V2_ThreadEvent()
-    initEv.threadID = "th_mac_1"
+@Test func sessionEventProjectionReducerAndRollback() {
+    var initEv = Hermesh_Session_V1_SessionEvent()
+    initEv.sessionID = "s_mac_1"
     initEv.seq = 1
-    initEv.type = "thread.created"
-    initEv.thread = .with {
-        $0.threadID = "th_mac_1"
+    initEv.type = "session.created"
+    initEv.session = .with {
+        $0.sessionID = "s_mac_1"
         $0.status = .running
-        $0.lastSeq = 1
+        $0.progress.lastEventSeq = 1
     }
     initEv.item = .with {
         $0.itemID = "it_1"
@@ -30,39 +30,39 @@ import Testing
         $0.text = "Hello "
     }
 
-    var state = applyThreadEvent(initEv, to: nil)
-    #expect(state.thread.lastSeq == 1)
+    var state = applySessionEvent(initEv, to: nil)
+    #expect(state.session.progress.lastEventSeq == 1)
 
     // Duplicate seq is ignored; streaming delta appends onto targetItemID.
-    state = applyThreadEvent(initEv, to: state)
+    state = applySessionEvent(initEv, to: state)
     #expect(state.items.first?.text == "Hello ")
 
-    var deltaEv = Hermesh_Thread_V2_ThreadEvent()
-    deltaEv.threadID = "th_mac_1"
+    var deltaEv = Hermesh_Session_V1_SessionEvent()
+    deltaEv.sessionID = "s_mac_1"
     deltaEv.seq = 2
     deltaEv.type = "item.delta"
     deltaEv.targetItemID = "it_1"
     deltaEv.textDelta = "mesh!"
-    state = applyThreadEvent(deltaEv, to: state)
-    state = applyThreadEvent(deltaEv, to: state) // exact duplicate delta seq is not doubled
+    state = applySessionEvent(deltaEv, to: state)
+    state = applySessionEvent(deltaEv, to: state) // exact duplicate delta seq is not doubled
     #expect(state.items.first?.text == "Hello mesh!")
     #expect(state.items.first?.streaming == true)
 
-    // An out-of-band unary thread snapshot with higher lastSeq must not drop in-flight item events.
-    var ahead = Hermesh_Thread_V2_ThreadProjection()
-    ahead.thread = .with { $0.threadID = "th_mac_1"; $0.lastSeq = 25 }
-    ahead = applyThreadEvent(initEv, to: ahead)
+    // An out-of-band unary session snapshot with higher lastEventSeq must not drop in-flight item events.
+    var ahead = Hermesh_Session_V1_SessionProjection()
+    ahead.session = .with { $0.sessionID = "s_mac_1"; $0.progress.lastEventSeq = 25 }
+    ahead = applySessionEvent(initEv, to: ahead)
     #expect(ahead.items.first?.text == "Hello ")
-    #expect(ahead.thread.lastSeq == 25)
+    #expect(ahead.session.progress.lastEventSeq == 25)
 
     // Pending runtime request opens and resolves cleanly.
-    var reqEv = Hermesh_Thread_V2_ThreadEvent()
-    reqEv.threadID = "th_mac_1"
+    var reqEv = Hermesh_Session_V1_SessionEvent()
+    reqEv.sessionID = "s_mac_1"
     reqEv.seq = 3
     reqEv.type = "request.opened"
-    reqEv.thread = .with {
-        $0.threadID = "th_mac_1"
-        $0.status = .waitingRequest
+    reqEv.session = .with {
+        $0.sessionID = "s_mac_1"
+        $0.status = .waitingInput
         $0.pendingRequestID = "req_1"
     }
     reqEv.request = .with {
@@ -70,16 +70,16 @@ import Testing
         $0.kind = .toolApproval
         $0.status = .pending
     }
-    state = applyThreadEvent(reqEv, to: state)
+    state = applySessionEvent(reqEv, to: state)
     #expect(pendingRequest(of: state)?.requestID == "req_1")
-    #expect(state.thread.status == .waitingRequest)
+    #expect(state.session.status == .waitingInput)
 
-    var resEv = Hermesh_Thread_V2_ThreadEvent()
-    resEv.threadID = "th_mac_1"
+    var resEv = Hermesh_Session_V1_SessionEvent()
+    resEv.sessionID = "s_mac_1"
     resEv.seq = 4
     resEv.type = "request.resolved"
-    resEv.thread = .with {
-        $0.threadID = "th_mac_1"
+    resEv.session = .with {
+        $0.sessionID = "s_mac_1"
         $0.status = .running
         $0.pendingRequestID = ""
     }
@@ -88,7 +88,7 @@ import Testing
         $0.kind = .toolApproval
         $0.status = .resolved
     }
-    state = applyThreadEvent(resEv, to: state)
+    state = applySessionEvent(resEv, to: state)
     #expect(pendingRequest(of: state) == nil)
 
     // Queued runs stay sorted by queueOrder and survive rollback of completed higher-ordinal runs.
@@ -105,15 +105,15 @@ import Testing
     ]
     #expect(queuedRuns(of: state).map(\.runID) == ["q_a", "q_b"])
 
-    var rbEv = Hermesh_Thread_V2_ThreadEvent()
-    rbEv.threadID = "th_mac_1"
+    var rbEv = Hermesh_Session_V1_SessionEvent()
+    rbEv.sessionID = "s_mac_1"
     rbEv.seq = 6
-    rbEv.type = "thread.rolled_back"
+    rbEv.type = "session.rolled_back"
     rbEv.checkpoint = .with {
         $0.checkpointID = "cp_1"
         $0.runOrdinal = 1
     }
-    state = applyThreadEvent(rbEv, to: state)
+    state = applySessionEvent(rbEv, to: state)
     #expect(state.checkpoints.map(\.checkpointID) == ["cp_1"])
     #expect(state.items.map(\.itemID) == ["it_1"])
     #expect(state.runs.first(where: { $0.runID == "run_2" })?.status == .rolledBack)
@@ -121,66 +121,45 @@ import Testing
 }
 
 @Test func polymorphicComposerActions() {
-    #expect(composerPrimaryAction(hasThread: false, status: .idle, draftNotEmpty: false, machineOnline: true, supportsLiveSteer: true) == .start)
-    #expect(composerPrimaryAction(hasThread: true, status: .running, draftNotEmpty: false, machineOnline: true, supportsLiveSteer: true) == .stop)
-    #expect(composerPrimaryAction(hasThread: true, status: .running, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .steer)
-    #expect(composerPrimaryAction(hasThread: true, status: .running, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: false) == .queue)
-    #expect(composerPrimaryAction(hasThread: true, status: .idle, draftNotEmpty: true, machineOnline: false, supportsLiveSteer: true) == .queueOffline)
-    #expect(composerPrimaryAction(hasThread: true, status: .idle, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .send)
+    #expect(composerPrimaryAction(hasSession: false, status: .idle, draftNotEmpty: false, machineOnline: true, supportsLiveSteer: true) == .start)
+    #expect(composerPrimaryAction(hasSession: true, status: .running, draftNotEmpty: false, machineOnline: true, supportsLiveSteer: true) == .stop)
+    #expect(composerPrimaryAction(hasSession: true, status: .running, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .steer)
+    #expect(composerPrimaryAction(hasSession: true, status: .running, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: false) == .queue)
+    #expect(composerPrimaryAction(hasSession: true, status: .idle, draftNotEmpty: true, machineOnline: false, supportsLiveSteer: true) == .queueOffline)
+    #expect(composerPrimaryAction(hasSession: true, status: .idle, draftNotEmpty: true, machineOnline: true, supportsLiveSteer: true) == .send)
 }
 
-// The new-session composer's rules (ThreadComposer.swift), as the Mac's composer.test.ts checks them.
-@Suite struct ThreadComposerTests {
-    private func effort(_ ids: [String], _ def: String) -> Hermesh_Thread_V2_OptionDescriptor {
-        var d = Hermesh_Thread_V2_OptionDescriptor()
+@Suite struct SessionComposerTests {
+    private func effort(_ ids: [String], _ def: String) -> Hermesh_Session_V1_OptionDescriptor {
+        var d = Hermesh_Session_V1_OptionDescriptor()
         d.id = "effort"
         d.role = "reasoning"
         d.type = .select
-        d.choices = ids.map { id in var c = Hermesh_Thread_V2_OptionChoice(); c.id = id; c.label = id; c.isDefault = id == def; return c }
-        var v = Hermesh_Thread_V2_OptionValue(); v.kind = .stringValue(def)
+        d.choices = ids.map { id in var c = Hermesh_Session_V1_OptionChoice(); c.id = id; c.label = id; c.isDefault = id == def; return c }
+        var v = Hermesh_Session_V1_OptionValue(); v.kind = .stringValue(def)
         d.currentValue = v
         return d
     }
-    private func model(_ slug: String, _ levels: [String] = [], _ def: String = "", isDefault: Bool = false) -> Hermesh_Thread_V2_ModelCatalogEntry {
-        var m = Hermesh_Thread_V2_ModelCatalogEntry()
+    private func model(_ slug: String, _ levels: [String] = [], _ def: String = "", isDefault: Bool = false) -> Hermesh_Session_V1_ModelCatalogEntry {
+        var m = Hermesh_Session_V1_ModelCatalogEntry()
         m.slug = slug; m.name = "Claude \(slug)"; m.shortName = slug; m.isDefault = isDefault
         if !levels.isEmpty { m.optionDescriptors = [effort(levels, def)] }
         return m
     }
-    private var providers: [Hermesh_Thread_V2_ProviderInstance] {
-        var c = Hermesh_Thread_V2_ProviderInstance()
+    private var providers: [Hermesh_Session_V1_ProviderInstance] {
+        var c = Hermesh_Session_V1_ProviderInstance()
         c.instanceID = "claude"; c.driver = "claude"; c.displayName = "Claude Code"; c.enabled = true; c.installed = true; c.authenticated = true
         c.models = [model("opus", ["low", "medium", "high", "max"], "high"), model("sonnet", ["low", "medium", "high"], "medium", isDefault: true), model("haiku")]
-        var g = Hermesh_Thread_V2_ProviderInstance()
+        var g = Hermesh_Session_V1_ProviderInstance()
         g.instanceID = "gemini"; g.driver = "acp"; g.acpFlavor = "gemini"; g.displayName = "Gemini CLI"; g.enabled = true; g.installed = true
-        var gm = Hermesh_Thread_V2_ModelCatalogEntry(); gm.slug = "gemini-3-pro"; gm.name = "Gemini 3 Pro"; gm.isDefault = true
+        var gm = Hermesh_Session_V1_ModelCatalogEntry(); gm.slug = "gemini-3-pro"; gm.name = "Gemini 3 Pro"; gm.isDefault = true
         g.models = [gm]
         return [c, g]
     }
-    private func sel(_ model: String, _ level: String? = nil) -> Hermesh_Thread_V2_ModelSelection {
-        var s = Hermesh_Thread_V2_ModelSelection(); s.instanceID = "claude"; s.model = model
+    private func sel(_ model: String, _ level: String? = nil) -> Hermesh_Session_V1_ModelSelection {
+        var s = Hermesh_Session_V1_ModelSelection(); s.instanceID = "claude"; s.model = model
         if let level { s = withReasoning(s, id: "effort", value: level) }
         return s
-    }
-
-    @Test func testThreadsAreSessionRows() {
-        var th = Hermesh_Thread_V2_Thread()
-        th.threadID = "th_ab_01"; th.machineID = "m1"; th.projectID = "hermesh"; th.title = "Fix it"; th.status = .waitingRequest
-        th.modelSelection.instanceID = "codex"
-        var owner = Hermesh_Thread_V2_Actor(); owner.kind = .owner; owner.id = "owner"
-        th.createdBy = owner
-        let s = threadAsSession(th)
-        #expect([s.sessionID, s.machineID, s.projectID, s.agent, s.createdBy, s.title] == ["th_ab_01", "m1", "hermesh", "codex", "owner", "Fix it"])
-        #expect(s.status == .waitingInput)
-        var bot = Hermesh_Thread_V2_Actor(); bot.kind = .externalAgent; bot.id = "c_grok"
-        th.createdBy = bot; th.status = .failed
-        #expect(threadAsSession(th).createdBy == "c_grok")
-        #expect(threadAsSession(th).status == .crashed)
-        th.status = .idle; th.activeBackgroundCount = 1
-        #expect(threadAsSession(th).status == .running)
-        th.activeBackgroundCount = 0; th.activeDaemonCount = 1
-        #expect(threadAsSession(th).status == .idle)
-        #expect(isThreadID("th_x")); #expect(!isThreadID("s_x"))
     }
 
     @Test func testThinkingLevelsFollowTheModel() {

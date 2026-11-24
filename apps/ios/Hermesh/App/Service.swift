@@ -14,17 +14,22 @@ final class AppAPI {
     func call<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 10) async throws -> Res {
         if let live { return try await live.call(method, req, as: Res.self, timeout: timeout) }
         guard let demo else { throw CancellationError() }
-        return try Res(jsonUTF8Data: demo.call(method, req.jsonUTF8Data()))
+        var o = JSONDecodingOptions()
+        o.ignoreUnknownFields = true
+        return try Res(jsonUTF8Data: demo.call(method, req.jsonUTF8Data()), options: o)
     }
 
     func stream<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
         if let live { return live.stream(method, req, as: Res.self) }
+        var o = JSONDecodingOptions()
+        o.ignoreUnknownFields = true
+        let options = o
         return AsyncThrowingStream { continuation in
             guard let demo else { continuation.finish(); return }
             let task = Task {
                 do {
                     for try await data in try demo.stream(method, req.jsonUTF8Data()) {
-                        continuation.yield(try Res(jsonUTF8Data: data))
+                        continuation.yield(try Res(jsonUTF8Data: data, options: options))
                     }
                     continuation.finish()
                 } catch { continuation.finish(throwing: error) }
@@ -34,7 +39,7 @@ final class AppAPI {
     }
 }
 
-// LocalService's messages by shorter names, and its calls typed.
+// LocalService + SessionService messages by shorter names, and calls typed.
 
 typealias StatusResponse = Hermesh_Local_V1_GetStatusResponse
 typealias Machine = Hermesh_Local_V1_Machine
@@ -55,6 +60,8 @@ typealias WakeRing = Hermesh_Local_V1_WakeRing
 /// How long a call that waits for Face ID may take.
 let signingTimeout = 180
 
+private let sessionSvc = "/hermesh.session.v1.SessionService"
+
 extension AppAPI {
     func status() async throws -> StatusResponse { try await call("GetStatus", Hermesh_Local_V1_GetStatusRequest()) }
 
@@ -71,77 +78,136 @@ extension AppAPI {
         stream("Watch", Hermesh_Local_V1_WatchRequest())
     }
 
-    func events(_ sessionID: String, after: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Session_V1_SessionEvent, Error> {
-        var r = Hermesh_Local_V1_StreamSessionEventsRequest()
-        r.sessionID = sessionID
-        r.afterSeq = after
-        r.follow = true
-        r.partial = true // the reply as the agent writes it (docs/reply-streaming.md)
-        r.view = .basic // a long tool output as its first lines, which is what the conversation shows
-        return stream("StreamSessionEvents", r)
+    // MARK: Unified SessionService
+
+    func listProviders(machineID: String, projectID: String = "", refresh: Bool = false) async throws -> Hermesh_Session_V1_ListProvidersResponse {
+        var r = Hermesh_Session_V1_ListProvidersRequest()
+        r.machineID = machineID
+        r.projectID = projectID
+        r.refresh = refresh
+        return try await call("\(sessionSvc)/ListProviders", r, timeout: 15)
     }
 
-    /// A tool's whole output as recorded (up to 1 MiB), in chunks; seq: its
-    /// result's event, which a machine from before ReadToolOutput reads it from.
-    func toolOutput(_ sessionID: String, callID: String, seq: UInt64) -> AsyncThrowingStream<Hermesh_Session_V1_ToolOutputChunk, Error> {
-        var r = Hermesh_Local_V1_ReadToolOutputRequest()
+    func startSession(_ r: Hermesh_Session_V1_StartSessionRequest) async throws -> Hermesh_Session_V1_StartSessionResponse {
+        try await call("\(sessionSvc)/StartSession", r, timeout: 30)
+    }
+
+    func getSession(_ sessionID: String, machineID: String = "") async throws -> Hermesh_Session_V1_GetSessionResponse {
+        var r = Hermesh_Session_V1_GetSessionRequest()
+        r.machineID = machineID
         r.sessionID = sessionID
-        r.callID = callID
-        r.seq = seq
-        return stream("ReadToolOutput", r)
+        return try await call("\(sessionSvc)/GetSession", r, timeout: 15)
+    }
+
+    func subscribeSession(_ sessionID: String, machineID: String = "", afterSeq: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Session_V1_SessionEvent, Error> {
+        var r = Hermesh_Session_V1_SubscribeSessionRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        r.afterSeq = afterSeq
+        return stream("\(sessionSvc)/SubscribeSession", r)
+    }
+
+    func dispatchMessage(_ r: Hermesh_Session_V1_DispatchMessageRequest) async throws -> Hermesh_Session_V1_DispatchMessageResponse {
+        try await call("\(sessionSvc)/DispatchMessage", r, timeout: 20)
+    }
+
+    func uploadBlob(machineID: String = "", name: String, mimeType: String, data: Data) async throws -> Hermesh_Session_V1_UploadBlobResponse {
+        var r = Hermesh_Session_V1_UploadBlobRequest()
+        r.machineID = machineID
+        r.name = name
+        r.mimeType = mimeType
+        r.data = data
+        return try await call("\(sessionSvc)/UploadBlob", r, timeout: 60)
+    }
+
+    func downloadBlob(_ sessionID: String, sha256: String, machineID: String = "") async throws -> Data {
+        var r = Hermesh_Session_V1_DownloadBlobRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        r.blobSha256 = sha256
+        let res: Hermesh_Session_V1_DownloadBlobResponse = try await call("\(sessionSvc)/DownloadBlob", r, timeout: 30)
+        return res.data
+    }
+
+    func respondRuntimeRequest(_ r: Hermesh_Session_V1_RespondRuntimeRequestRequest) async throws -> Hermesh_Session_V1_RespondRuntimeRequestResponse {
+        try await call("\(sessionSvc)/RespondRuntimeRequest", r, timeout: 15)
     }
 
     func answer(_ sessionID: String, question: String, answers: [Answer], decline: Bool) async throws -> Hermesh_Session_V1_Session {
-        var r = Hermesh_Local_V1_AnswerQuestionRequest()
+        var r = Hermesh_Session_V1_RespondRuntimeRequestRequest()
+        r.commandID = UUID().uuidString
         r.sessionID = sessionID
-        r.questionID = question
-        r.answers = answers
+        r.requestID = question
         r.decline = decline
-        let res: Hermesh_Local_V1_AnswerQuestionResponse = try await call("AnswerQuestion", r)
+        r.decision = decline ? .decline : .acceptOnce
+        if !decline {
+            for a in answers {
+                r.answers[a.itemID] = .with {
+                    $0.selectedOptions = a.selected
+                    $0.customText = a.text
+                }
+            }
+        }
+        return try await respondRuntimeRequest(r).session
+    }
+
+    func interrupt(_ sessionID: String, runID: String = "", force: Bool = false) async throws -> Hermesh_Session_V1_Session {
+        var r = Hermesh_Session_V1_InterruptSessionRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.runID = runID
+        r.force = force
+        let res: Hermesh_Session_V1_InterruptSessionResponse = try await call("\(sessionSvc)/InterruptSession", r, timeout: 15)
         return res.session
     }
 
-    func interrupt(_ sessionID: String) async throws -> Hermesh_Session_V1_Session {
-        var r = Hermesh_Local_V1_InterruptSessionRequest()
+    func stopBackgroundTask(_ sessionID: String, taskID: String = "") async throws -> Hermesh_Session_V1_StopBackgroundTaskResponse {
+        var r = Hermesh_Session_V1_StopBackgroundTaskRequest()
         r.sessionID = sessionID
-        let res: Hermesh_Local_V1_SessionResponse = try await call("InterruptSession", r)
-        return res.session
+        r.taskID = taskID
+        return try await call("\(sessionSvc)/StopBackgroundTask", r, timeout: 15)
+    }
+
+    func manageQueue(_ r: Hermesh_Session_V1_ManageQueueRequest) async throws -> Hermesh_Session_V1_ManageQueueResponse {
+        try await call("\(sessionSvc)/ManageQueue", r, timeout: 15)
+    }
+
+    func updateSession(_ r: Hermesh_Session_V1_UpdateSessionRequest) async throws -> Hermesh_Session_V1_UpdateSessionResponse {
+        try await call("\(sessionSvc)/UpdateSession", r, timeout: 15)
     }
 
     func archive(_ sessionID: String, _ archived: Bool) async throws -> Hermesh_Session_V1_Session {
-        let res: Hermesh_Local_V1_SessionResponse
-        if archived {
-            var r = Hermesh_Local_V1_ArchiveSessionRequest()
-            r.sessionID = sessionID
-            res = try await call("ArchiveSession", r)
-        } else {
-            var r = Hermesh_Local_V1_UnarchiveSessionRequest()
-            r.sessionID = sessionID
-            res = try await call("UnarchiveSession", r)
-        }
-        return res.session
+        var r = Hermesh_Session_V1_UpdateSessionRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.hasArchived_p = true
+        r.archived = archived
+        return try await updateSession(r).session
     }
 
     func delete(_ sessionID: String) async throws {
-        var r = Hermesh_Local_V1_DeleteSessionRequest()
+        var r = Hermesh_Session_V1_DeleteSessionRequest()
+        r.commandID = UUID().uuidString
         r.sessionID = sessionID
-        let _: Hermesh_Local_V1_DeleteSessionResponse = try await call("DeleteSession", r)
+        let _: Hermesh_Session_V1_DeleteSessionResponse = try await call("\(sessionSvc)/DeleteSession", r, timeout: 15)
     }
 
     func rename(_ sessionID: String, to title: String) async throws -> Hermesh_Session_V1_Session {
-        var r = Hermesh_Local_V1_RenameSessionRequest()
+        var r = Hermesh_Session_V1_UpdateSessionRequest()
+        r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.title = title
-        let res: Hermesh_Local_V1_SessionResponse = try await call("RenameSession", r)
-        return res.session
+        return try await updateSession(r).session
     }
 
     func diff(_ sessionID: String) async throws -> String {
-        var r = Hermesh_Local_V1_GetDiffRequest()
+        var r = Hermesh_Session_V1_GetDiffRequest()
         r.sessionID = sessionID
-        let res: Hermesh_Session_V1_GetDiffResponse = try await call("GetDiff", r, timeout: 30)
+        let res: Hermesh_Session_V1_GetDiffResponse = try await call("\(sessionSvc)/GetDiff", r, timeout: 30)
         return res.diff
     }
+
+    // MARK: LocalService
 
     /// Work counted over a range, from what the core holds (docs/work-stats.md §7).
     func queryWork(_ r: Hermesh_Local_V1_QueryWorkRequest) async throws -> Hermesh_Local_V1_QueryWorkResponse {

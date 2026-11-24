@@ -3,14 +3,13 @@ package runtime
 import (
 	"strings"
 
-	"github.com/hermeshai/hermesh/internal/provider"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
 // BuildEnv constructs a clean subprocess environment with login-shell PATH plus
 // instance-level and per-session overrides.
 func BuildEnv(pathEnv string, layers ...map[string]string) []string {
-	env := provider.ProbeEnv(pathEnv)
+	env := ProbeEnv(pathEnv)
 	var dropKeys []string
 	for _, m := range layers {
 		for k := range m {

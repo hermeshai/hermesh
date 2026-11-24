@@ -17,18 +17,11 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
-
-// The control socket lets `hermeshd project …` change a running machine's
-// projects, `hermeshd doctor` and `status` ask it how it is, and
-// `uninstall` and `erase` whether Her's data is kept (the machine holds its
-// data directory). Projects are the machine's own settings: whoever has a
-// shell as this user can do as much already, so only this user may connect.
 
 func (n *Machine) serveControl(ctx context.Context) {
 	path := paths.Control(n.cfg.DataDir)
@@ -64,7 +57,6 @@ func (n *Machine) serveControl(ctx context.Context) {
 	mux.HandleFunc("GET /check", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(n.Check(r.Context()))
 	})
-	// `hermeshd screen stop`: the Computer Control session under way ends.
 	mux.HandleFunc("POST /screen/stop", func(w http.ResponseWriter, r *http.Request) {
 		n.screen.Stop()
 	})
@@ -80,15 +72,13 @@ func (n *Machine) serveControl(ctx context.Context) {
 	srv.Serve(ln)
 }
 
-// Check is how this machine is, for `hermeshd doctor`, `status` and
-// `update`; its coding agents are looked at now.
 type Check struct {
 	MachineID, Name, OwnerID, RelayURL, Version string
 	Paired, Connected                           bool
-	Agents                                      map[string]provider.Info
-	Busy                                        int                  // sessions a restart would stop, Her's work among them
-	Her                                         *machinev1.HerStatus // as hermeshd last saw her
-	Screen                                      *ScreenCheck         // nil where Computer Control has no helper
+	Agents                                      map[string]rt.Info
+	Busy                                        int
+	Her                                         *machinev1.HerStatus
+	Screen                                      *ScreenCheck
 }
 
 func (n *Machine) Check(ctx context.Context) Check {
@@ -96,19 +86,14 @@ func (n *Machine) Check(ctx context.Context) Check {
 		Paired: n.Paired(), Connected: n.Connected(), Agents: n.Discover(ctx), Busy: n.Busy(), Her: n.herStatus(), Screen: n.screenCheck()}
 }
 
-// Busy counts the sessions a restart would stop: queued, preparing,
-// running or waiting for an answer; and Her's assistants at work, which
-// stop with her.
 func (n *Machine) Busy() int {
-	b := n.sessions.Running() + int(n.sessions.counts[sessionv1.SessionStatus_SESSION_STATUS_QUEUED].Load()) + n.her.Busy()
-	if n.threads != nil {
-		b += n.threads.BusyCount()
+	b := n.her.Busy()
+	if n.sessions != nil {
+		b += n.sessions.BusyCount()
 	}
 	return b
 }
 
-// ApplyLocal applies a project change from this machine's own user: adding
-// or removing a project, nothing else.
 func (n *Machine) ApplyLocal(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
 	switch cmd.Command.(type) {
 	case *identityv1.AdminCommand_AddProject, *identityv1.AdminCommand_RemoveProject:
@@ -120,8 +105,6 @@ func (n *Machine) ApplyLocal(ctx context.Context, cmd *identityv1.AdminCommand) 
 	return n.applyAdmin(ctx, cmd, "this machine's user")
 }
 
-// ControlRequest sends a running machine's control socket a request; ok is
-// false when no machine listens there.
 func ControlRequest(ctx context.Context, dataDir, method, path string, body []byte) (out []byte, ok bool, err error) {
 	sock := paths.Control(dataDir)
 	if _, err := os.Stat(sock); err != nil {
@@ -133,7 +116,7 @@ func ControlRequest(ctx context.Context, dataDir, method, path string, body []by
 	req, _ := http.NewRequestWithContext(ctx, method, "http://machine"+path, bytes.NewReader(body))
 	res, err := hc.Do(req)
 	if err != nil {
-		return nil, false, nil // a stale socket: nobody listens
+		return nil, false, nil
 	}
 	defer res.Body.Close()
 	out, _ = io.ReadAll(res.Body)

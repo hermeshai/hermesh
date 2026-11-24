@@ -1,6 +1,6 @@
-// Package acp implements the unified Hermesh v2 runtime.Driver for Agent Client
+// Package acp implements the unified Hermesh runtime.Driver for Agent Client
 // Protocol (ACP) JSON-RPC 2.0 stdio servers (Gemini CLI, Antigravity, Cursor,
-// OpenCode, Copilot, Kiro, Qwen, Goose, and custom user ACP servers).
+// OpenCode, Copilot, Kiro, Qwen, Goose, DSH, Grok, and custom user ACP servers).
 package acp
 
 import (
@@ -14,35 +14,297 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/internal/provider"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
-type Flavor struct {
-	Name    string
-	Command string
-	Args    []string
-	Paths   []string
+// Agent describes how to start one ACP agent.
+type Agent struct {
+	Name        string
+	Command     string
+	Args        []string
+	Paths       []string
+	Apps        []App
+	DesktopApps []string
+	Auth        []string
+	fallback    *fallbackAgent
 }
 
-var builtinFlavors = map[string]Flavor{
-	"gemini":      {Name: "gemini", Command: "gemini", Args: []string{"--acp"}},
-	"antigravity": {Name: "antigravity", Command: "agy", Args: []string{"acp"}},
-	"cursor":      {Name: "cursor", Command: "cursor-agent", Args: []string{"acp"}},
-	"opencode":    {Name: "opencode", Command: "opencode", Args: []string{"acp"}, Paths: []string{".opencode/bin/opencode"}},
-	"copilot":     {Name: "copilot", Command: "copilot", Args: []string{"--acp"}},
-	"kiro":        {Name: "kiro", Command: "kiro-cli", Args: []string{"acp"}},
-	"qwen":        {Name: "qwen", Command: "qwen", Args: []string{"--acp"}},
-	"goose":       {Name: "goose", Command: "goose", Args: []string{"acp"}},
+type fallbackAgent struct {
+	command string
+	args    []string
+	paths   []string
+}
+
+type App struct {
+	Bundle, Exec, Script string
+}
+
+type Provider struct {
+	Agent
+	PathEnv      string
+	Binary       string
+	drv          *Driver
+	modelsMu     sync.Mutex
+	list         *modelList
+	acpMu        sync.Mutex
+	acpProbe     map[string]bool
+	chosenStamp  string
+	chosenLaunch launch
+}
+
+type launch struct {
+	bin      string
+	pre      []string
+	args     []string
+	env      []string
+	mode     antigravityMode
+	probeErr error
+}
+
+func (l launch) probeArgs() []string {
+	return append(slices.Clone(l.pre), "--version")
+}
+
+func (l launch) acpArgs() []string {
+	return append(slices.Clone(l.pre), l.args...)
+}
+
+var systemBinDirs = []string{"/opt/homebrew/bin", "/usr/local/bin"}
+
+func (p *Provider) Name() string { return p.Agent.Name }
+
+func (p *Provider) effectiveBinary() string {
+	if p.Binary != "" {
+		return p.Binary
+	}
+	if p.Name() != "" {
+		if b := os.Getenv("HERMESH_" + strings.ToUpper(p.Name()) + "_BIN"); b != "" {
+			return b
+		}
+	}
+	return ""
+}
+
+func (p *Provider) binary() string {
+	if b := p.effectiveBinary(); b != "" {
+		return b
+	}
+	home, _ := os.UserHomeDir()
+	var extra []string
+	for _, dir := range systemBinDirs {
+		extra = append(extra, filepath.Join(dir, p.Command))
+	}
+	extra = append(extra, filepath.Join(home, ".local/bin", p.Command))
+	for _, x := range p.Paths {
+		if !filepath.IsAbs(x) {
+			x = filepath.Join(home, x)
+		}
+		extra = append(extra, x)
+	}
+	return runtime.LookPath(p.Command, runtime.SearchPath(p.PathEnv), extra...)
+}
+
+func (p *Provider) lookAll(command string, paths ...string) []string {
+	home, _ := os.UserHomeDir()
+	var candidates []string
+	for _, dir := range filepath.SplitList(runtime.SearchPath(p.PathEnv)) {
+		if dir != "" {
+			candidates = append(candidates, filepath.Join(dir, command))
+		}
+	}
+	for _, dir := range systemBinDirs {
+		candidates = append(candidates, filepath.Join(dir, command))
+	}
+	if home != "" {
+		candidates = append(candidates, filepath.Join(home, ".local/bin", command))
+	}
+	for _, x := range paths {
+		if !filepath.IsAbs(x) {
+			x = filepath.Join(home, x)
+		}
+		candidates = append(candidates, x)
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, c := range candidates {
+		found := runtime.LookPath("", "", c)
+		if found == "" {
+			continue
+		}
+		key := filepath.Clean(found)
+		if goruntime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, found)
+	}
+	return out
+}
+
+func (p *Provider) resolve(ctx context.Context) launch {
+	if p.Name() == "antigravity" {
+		return p.resolveAntigravityLogin(ctx)
+	}
+	bin, pre, env := p.command()
+	return launch{bin: bin, pre: pre, args: p.Args, env: env}
+}
+
+func (p *Provider) resolveForStart(ctx context.Context, env []string) launch {
+	if p.Name() == "antigravity" {
+		return p.resolveAntigravityStart(ctx, env)
+	}
+	bin, pre, extraEnv := p.command()
+	return launch{bin: bin, pre: pre, args: p.Args, env: extraEnv}
+}
+
+func (p *Provider) notFoundDetail() string {
+	if p.Name() == "antigravity" && p.fallback != nil {
+		return p.Command + " or " + p.fallback.command + " not found"
+	}
+	return p.Command + " not found"
+}
+
+func (p *Provider) notFoundInfo() runtime.Info {
+	info := runtime.Info{Name: p.Name(), Problem: runtime.ProblemNotFound, Detail: p.notFoundDetail()}
+	if app := runtime.AppWithoutCLI(p.DesktopApps...); app != "" && p.effectiveBinary() == "" {
+		info.Problem, info.Detail = runtime.ProblemAppWithoutCLI, app
+	}
+	return info
+}
+
+func (p *Provider) command() (bin string, pre, env []string) {
+	if bin := p.binary(); bin != "" {
+		return bin, nil, nil
+	}
+	home, _ := os.UserHomeDir()
+	dirs := []string{filepath.Join(home, "Applications"), "/Applications"}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		dirs = append(dirs, filepath.Join(local, "Programs"))
+	}
+	if pf := os.Getenv("ProgramFiles"); pf != "" {
+		dirs = append(dirs, pf)
+	}
+	for _, a := range p.Apps {
+		for _, dir := range dirs {
+			app := filepath.Join(dir, a.Bundle)
+			exe, script := filepath.Join(app, a.Exec), filepath.Join(app, a.Script)
+			if scriptThere(script) && runtime.LookPath("", "", exe) != "" {
+				return exe, []string{script}, []string{"ELECTRON_RUN_AS_NODE=1"}
+			}
+		}
+	}
+	return "", nil, nil
+}
+
+func scriptThere(script string) bool {
+	if _, err := os.Stat(script); err == nil {
+		return true
+	}
+	for dir := filepath.Dir(script); ; dir = filepath.Dir(dir) {
+		if strings.HasSuffix(filepath.Base(dir), ".asar") {
+			st, err := os.Stat(dir)
+			return err == nil && !st.IsDir()
+		}
+		if dir == filepath.Dir(dir) {
+			return false
+		}
+	}
+}
+
+var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
+
+func (p *Provider) Discover(ctx context.Context) runtime.Info {
+	if p.Name() == "antigravity" {
+		return p.discoverAntigravity(ctx)
+	}
+	return p.discoverLaunch(ctx, p.resolve(ctx), runtime.ProbeEnv(p.PathEnv))
+}
+
+func (p *Provider) discoverLaunch(ctx context.Context, cmd launch, baseEnv []string) runtime.Info {
+	info := runtime.Info{Name: p.Name()}
+	if !runtime.Exists(cmd.bin) {
+		return p.notFoundInfo()
+	}
+	info.Binary = cmd.bin
+	if cmd.probeErr != nil {
+		info.Problem, info.Detail = runtime.ProblemFailed, cmd.probeErr.Error()
+		switch {
+		case errors.Is(cmd.probeErr, context.DeadlineExceeded):
+			info.Problem = runtime.ProblemTimedOut
+		case errors.Is(cmd.probeErr, syscall.EAGAIN):
+			info.Problem = runtime.ProblemNoProcesses
+		}
+		return info
+	}
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	env := append(slices.Clip(baseEnv), cmd.env...)
+	out, problem, detail := runtime.Probe(ctx, env, cmd.bin, cmd.probeArgs()...)
+	if problem != runtime.ProblemNone {
+		info.Problem, info.Detail = problem, detail
+		return info
+	}
+	info.Available = true
+	info.Version = versionRE.FindString(string(out))
+	info.LoggedIn = true
+	if cmd.mode == antigravityStandalone {
+		info.LoggedIn = antigravityStandaloneConfigured(env)
+	}
+	if info.LoggedIn {
+		p.fillModels(ctx, &info, cmd, env)
+	} else {
+		info.ModelsState, info.ModelsAt = runtime.ModelsAuthRequired, time.Now()
+	}
+	return info
+}
+
+func authMethod(want []string, offered []struct {
+	ID string `json:"id"`
+}) string {
+	for _, w := range want {
+		for _, o := range offered {
+			if o.ID == w {
+				return w
+			}
+		}
+	}
+	return ""
+}
+
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *rpcError) Error() string {
+	return fmt.Sprintf("%s (code %d)", e.Message, e.Code)
+}
+
+func newProbeSession(proc *runtime.Proc, ctx context.Context) *session {
+	s := &session{
+		proc:      proc,
+		events:    make(chan runtime.Event, 256),
+		pending:   map[int64]func(rpcRes){},
+		terminals: map[string]*managedTerm{},
+		tools:     map[string]*acpToolState{},
+		turnCtx:   ctx,
+	}
+	s.alive.Store(true)
+	return s
 }
 
 type Driver struct {
@@ -53,53 +315,77 @@ type Driver struct {
 	OutOfTurnDebounce     time.Duration
 	OutOfTurnQuietLimit   time.Duration
 	BusyPromptRetryDelay  time.Duration
+
+	mu        sync.Mutex
+	providers map[string]*Provider
 }
 
 func (d *Driver) mergeWindow() time.Duration {
-	if d.PostPromptMergeWindow > 0 {
+	if d != nil && d.PostPromptMergeWindow > 0 {
 		return d.PostPromptMergeWindow
 	}
 	return 1500 * time.Millisecond
 }
 
 func (d *Driver) outOfTurnToolWait() time.Duration {
-	if d.OutOfTurnToolWait > 0 {
+	if d != nil && d.OutOfTurnToolWait > 0 {
 		return d.OutOfTurnToolWait
 	}
 	return 6 * time.Second
 }
 
 func (d *Driver) outOfTurnDebounce() time.Duration {
-	if d.OutOfTurnDebounce > 0 {
+	if d != nil && d.OutOfTurnDebounce > 0 {
 		return d.OutOfTurnDebounce
 	}
 	return 1500 * time.Millisecond
 }
 
 func (d *Driver) outOfTurnQuietLimit() time.Duration {
-	if d.OutOfTurnQuietLimit > 0 {
+	if d != nil && d.OutOfTurnQuietLimit > 0 {
 		return d.OutOfTurnQuietLimit
 	}
 	return 45 * time.Second
 }
 
 func (d *Driver) busyPromptRetryDelay() time.Duration {
-	if d.BusyPromptRetryDelay > 0 {
+	if d != nil && d.BusyPromptRetryDelay > 0 {
 		return d.BusyPromptRetryDelay
 	}
 	return 350 * time.Millisecond
 }
 
-func NewDriver(pathEnv string) *Driver { return &Driver{PathEnv: pathEnv} }
+func NewDriver(pathEnv string) *Driver {
+	return &Driver{PathEnv: pathEnv, providers: map[string]*Provider{}}
+}
 
 func (d *Driver) Kind() string { return "acp" }
 
-func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
-	return &threadv2.ProviderCapabilities{
+func (d *Driver) ProviderFor(flavor, binary string) *Provider {
+	if flavor == "" {
+		flavor = "gemini"
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.providers == nil {
+		d.providers = map[string]*Provider{}
+	}
+	key := flavor + "\x00" + binary
+	p, ok := d.providers[key]
+	if !ok {
+		ag, _ := AgentByName(flavor)
+		p = &Provider{Agent: ag, PathEnv: d.PathEnv, Binary: binary, drv: d}
+		d.providers[key] = p
+	}
+	return p
+}
+
+func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{
 		InSessionModelSwitch:  true,
 		InSessionOptionSwitch: true,
 		InSessionModeSwitch:   true,
-		MidTurnSteer:          false, // ACP processes one session/prompt per turn
+		MidTurnSteer:          false,
 		LiveApproval:          true,
 		LiveUserInput:         true,
 		NativeResume:          true,
@@ -115,88 +401,114 @@ func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
 	}
 }
 
-var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
-
-func (d *Driver) resolveLaunch(cfg *threadv2.ProviderInstanceConfig) (bin string, args []string) {
+func (d *Driver) resolveLaunch(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, env []string) (*Provider, launch) {
 	flavorName := "gemini"
-	if cfg != nil && cfg.AcpFlavor != "" {
-		flavorName = cfg.AcpFlavor
-	}
-	flv := builtinFlavors[flavorName]
-	if cfg != nil && cfg.BinaryPath != "" {
-		if len(cfg.LaunchArgs) > 0 {
-			return cfg.BinaryPath, slices.Clone(cfg.LaunchArgs)
+	var binOverride string
+	if cfg != nil {
+		if cfg.AcpFlavor != "" {
+			flavorName = cfg.AcpFlavor
+		} else if cfg.InstanceId != "" {
+			flavorName = cfg.InstanceId
 		}
-		return cfg.BinaryPath, slices.Clone(flv.Args)
+		binOverride = cfg.BinaryPath
 	}
-	cmdName := flv.Command
-	if cmdName == "" {
-		cmdName = flavorName
+	p := d.ProviderFor(flavorName, binOverride)
+	if cfg != nil && cfg.BinaryPath != "" && len(cfg.LaunchArgs) > 0 {
+		return p, launch{bin: cfg.BinaryPath, args: slices.Clone(cfg.LaunchArgs)}
 	}
-	home, _ := os.UserHomeDir()
-	var extra []string
-	extra = append(extra, "/opt/homebrew/bin/"+cmdName, "/usr/local/bin/"+cmdName, filepath.Join(home, ".local/bin", cmdName))
-	for _, rel := range flv.Paths {
-		extra = append(extra, filepath.Join(home, rel))
-	}
-	found := provider.LookPath(cmdName, provider.SearchPath(d.PathEnv), extra...)
-	launchArgs := slices.Clone(flv.Args)
+	l := p.resolveForStart(ctx, env)
 	if cfg != nil && len(cfg.LaunchArgs) > 0 {
-		launchArgs = slices.Clone(cfg.LaunchArgs)
+		l.pre = nil
+		l.args = slices.Clone(cfg.LaunchArgs)
 	}
-	return found, launchArgs
+	return p, l
 }
 
-func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig, _ string) runtime.ProbeResult {
-	bin, _ := d.resolveLaunch(cfg)
-	if !provider.Exists(bin) {
-		return runtime.ProbeResult{
-			Installed:            false,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
-			CompatibilityMessage: "ACP CLI not found on PATH",
-		}
-	}
-	pctx, cancel := context.WithTimeout(ctx, 12*time.Second)
-	defer cancel()
+func (d *Driver) Probe(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, _ string) runtime.ProbeResult {
 	var instEnv map[string]string
 	if cfg != nil {
 		instEnv = cfg.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv)
-	out, prob, detail := provider.Probe(pctx, env, bin, "--version")
-	if prob != provider.ProblemNone {
+	_, cmd := d.resolveLaunch(ctx, cfg, env)
+	if !runtime.Exists(cmd.bin) {
+		return runtime.ProbeResult{
+			Installed:            false,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
+			CompatibilityMessage: "ACP CLI not found on PATH",
+		}
+	}
+	pctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+	defer cancel()
+	probeEnv := append(slices.Clip(env), cmd.env...)
+	out, prob, detail := runtime.Probe(pctx, probeEnv, cmd.bin, cmd.probeArgs()...)
+	if prob != runtime.ProblemNone {
 		return runtime.ProbeResult{
 			Installed:            true,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
+			Binary:               cmd.bin,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
 			CompatibilityMessage: detail,
 		}
 	}
 	return runtime.ProbeResult{
 		Installed:     true,
+		Binary:        cmd.bin,
 		Authenticated: true,
 		Version:       versionRE.FindString(string(out)),
-		Compatibility: threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
+		Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
 	}
 }
 
-func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error) {
-	bin, args := d.resolveLaunch(spec.Instance)
-	if !provider.Exists(bin) {
-		return nil, errors.New("ACP binary not found")
+func formatACPMCPServers(servers []runtime.MCPServer) []any {
+	out := make([]any, 0, len(servers))
+	for _, m := range servers {
+		envList := make([]map[string]string, 0, len(m.Env))
+		for k, v := range m.Env {
+			envList = append(envList, map[string]string{"name": k, "value": v})
+		}
+		args := m.Args
+		if args == nil {
+			args = []string{}
+		}
+		out = append(out, map[string]any{
+			"name":    m.Name,
+			"command": m.Command,
+			"args":    args,
+			"env":     envList,
+		})
 	}
+	return out
+}
+
+func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error) {
 	var instEnv map[string]string
 	if spec.Instance != nil {
 		instEnv = spec.Instance.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv, spec.ExtraEnv)
-	proc, err := provider.StartProc(ctx, bin, args, spec.Workdir, env)
+	prov, cmd := d.resolveLaunch(ctx, spec.Instance, env)
+	return prov.startRuntimeSession(ctx, cmd, env, spec)
+}
+
+func (p *Provider) startRuntimeSession(ctx context.Context, cmd launch, baseEnv []string, spec runtime.StartSpec) (runtime.Session, error) {
+	if cmd.probeErr != nil {
+		return nil, cmd.probeErr
+	}
+	if !runtime.Exists(cmd.bin) {
+		return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_START_FAILED, p.notFoundDetail())
+	}
+	env := append(slices.Clip(baseEnv), cmd.env...)
+	proc, err := runtime.StartProc(ctx, cmd.bin, cmd.acpArgs(), spec.Workdir, env)
 	if err != nil {
 		return nil, err
 	}
 	sessCtx, sessCancel := context.WithCancel(ctx)
 	s := &session{
-		drv:           d,
+		drv:           p.drv,
 		proc:          proc,
+		prov:          p,
+		bin:           cmd.bin,
+		env:           env,
 		spec:          spec,
 		events:        make(chan runtime.Event, 256),
 		pending:       map[int64]func(rpcRes){},
@@ -249,14 +561,24 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	_ = json.Unmarshal(initRes, &caps)
 	s.supportsImages = caps.AgentCapabilities.PromptCapabilities.Image
 
-	if authID := pickAuthMethod(caps.AuthMethods, env); authID != "" {
-		_, _ = s.call(ctx, "authenticate", map[string]any{"methodId": authID})
+	authID := authMethod(p.Auth, caps.AuthMethods)
+	if authID == "" {
+		authID = pickAuthMethod(caps.AuthMethods, env)
+	}
+	if authID != "" {
+		if _, authErr := s.call(ctx, "authenticate", map[string]any{"methodId": authID}); authErr != nil {
+			proc.Stop(time.Second)
+			return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, authErr.Error())
+		}
 	}
 
 	canResume := len(caps.AgentCapabilities.SessionCapabilities.Resume) > 0 &&
 		string(bytes.TrimSpace(caps.AgentCapabilities.SessionCapabilities.Resume)) != "null"
 
-	params := map[string]any{"cwd": spec.Workdir, "mcpServers": []any{}}
+	params := map[string]any{
+		"cwd":        spec.Workdir,
+		"mcpServers": formatACPMCPServers(spec.MCPServers),
+	}
 	var sessRes json.RawMessage
 	if spec.ResumeCursor != "" {
 		params["sessionId"] = spec.ResumeCursor
@@ -273,13 +595,29 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		}
 		if resumeErr != nil {
 			proc.Stop(time.Second)
-			return nil, fmt.Errorf("acp session resume: %w", resumeErr)
+			var rpc *rpcError
+			if errors.As(resumeErr, &rpc) && rpc.Code == codeAuthRequired {
+				msg := resumeErr.Error()
+				if p.Name() == "antigravity" {
+					msg += "; run `hermesh agent login antigravity`"
+				}
+				return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, msg)
+			}
+			return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, resumeErr.Error())
 		}
 		s.sessionID = spec.ResumeCursor
 	} else {
 		newRes, newErr := s.call(ctx, "session/new", params)
 		if newErr != nil {
 			proc.Stop(time.Second)
+			var rpc *rpcError
+			if errors.As(newErr, &rpc) && rpc.Code == codeAuthRequired {
+				msg := newErr.Error()
+				if p.Name() == "antigravity" {
+					msg += "; run `hermesh agent login antigravity`"
+				}
+				return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_AUTH, msg)
+			}
 			return nil, fmt.Errorf("acp session/new: %w", newErr)
 		}
 		sessRes = newRes
@@ -293,16 +631,24 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		}
 		s.sessionID = nr.SessionID
 	}
-	s.parseSessionConfigOptions(sessRes)
-
+	opts := s.parseSessionConfigOptions(sessRes)
+	if p != nil && spec.ResumeCursor == "" {
+		p.learn(modelContext(cmd.bin, env), opts, true)
+	}
+	if spec.Selection != nil {
+		if err := s.applyInitialSelection(ctx, spec.Selection, opts); err != nil {
+			proc.Stop(time.Second)
+			return nil, err
+		}
+	}
+	_, curOwn, _ := s.curOptions.list()
 	s.emit(runtime.Event{
 		Kind:         runtime.EventNativeSession,
 		NativeID:     s.sessionID,
 		ResumeCursor: s.sessionID,
+		Model:        curOwn.Model,
+		Effort:       curOwn.Effort,
 	})
-	if spec.Selection != nil {
-		_ = s.SetSelection(ctx, spec.Selection)
-	}
 	_ = s.SetModes(ctx, spec.EffectiveMode, spec.InteractionMode)
 	return s, nil
 }
@@ -418,24 +764,28 @@ type acpBgTask struct {
 	taskID      string
 	itemID      string
 	agentID     string
-	kind        threadv2.BackgroundTaskKind
+	kind        sessionv1.BackgroundTaskKind
 	title       string
 	command     string
 	output      string
 	awaited     bool
 	asyncLaunch bool
-	stopScope   threadv2.BackgroundTaskStopScope
+	stopScope   sessionv1.BackgroundTaskStopScope
 	running     bool
 }
 
 type session struct {
 	drv             *Driver
-	proc            *provider.Proc
+	proc            *runtime.Proc
+	prov            *Provider
+	bin             string
+	env             []string
 	spec            runtime.StartSpec
 	sessionID       string
 	supportsImages  bool
 	modelOptionID   string
 	thoughtOptionID string
+	curOptions      sessionOptions
 	replaying       atomic.Bool
 	events          chan runtime.Event
 	alive           atomic.Bool
@@ -592,7 +942,7 @@ func (s *session) settleOutOfTurn() {
 						ExitCode:            0,
 						HasExitCode:         true,
 						BackgroundKind:      bg.kind,
-						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
 						BackgroundStopScope: bg.stopScope,
 						BackgroundAwaited:   bg.awaited,
 					},
@@ -632,27 +982,107 @@ func (s *session) finishDeferredPrompt() {
 	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
 }
 
-func (s *session) parseSessionConfigOptions(raw json.RawMessage) {
-	if len(raw) == 0 {
-		return
+func (s *session) parseSessionConfigOptions(raw json.RawMessage) sessionOptions {
+	opts := optionsOf(raw)
+	s.curOptions = opts
+	if opts.model != nil {
+		s.modelOptionID = opts.model.ID
 	}
-	var sr struct {
-		ConfigOptions []struct {
-			ID       string `json:"id"`
-			Category string `json:"category"`
-		} `json:"configOptions"`
+	if opts.thought != nil {
+		s.thoughtOptionID = opts.thought.ID
 	}
-	if json.Unmarshal(raw, &sr) != nil {
-		return
+	return opts
+}
+
+func (s *session) applyInitialSelection(ctx context.Context, sel *sessionv1.ModelSelection, opts sessionOptions) error {
+	if sel == nil {
+		return nil
 	}
-	for _, opt := range sr.ConfigOptions {
-		switch {
-		case opt.Category == "model" || opt.ID == "model":
-			s.modelOptionID = opt.ID
-		case opt.Category == "thought_level":
-			s.thoughtOptionID = opt.ID
+	wantModel := strings.TrimSpace(sel.Model)
+	if wantModel == "default" {
+		wantModel = ""
+	}
+	wantEffort := sel.Options["reasoningEffort"].GetStringValue()
+
+	if opts.model != nil {
+		if wantModel != "" {
+			var avail []string
+			found := false
+			for _, c := range opts.model.values() {
+				avail = append(avail, c.Value)
+				if c.Value == wantModel {
+					found = true
+				}
+			}
+			if len(avail) > 0 && !found {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE,
+					fmt.Sprintf("model %q: not offered by the agent (available: %s)", wantModel, strings.Join(avail, ", ")))
+			}
+			if wantModel != opts.model.current() {
+				res, err := s.call(ctx, "session/set_config_option", map[string]any{
+					"sessionId": s.sessionID,
+					"configId":  opts.model.ID,
+					"value":     wantModel,
+				})
+				if err != nil {
+					return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, err.Error())
+				}
+				opts = s.parseSessionConfigOptions(res)
+				if s.prov != nil {
+					s.prov.learn(modelContext(s.bin, s.env), opts, false)
+				}
+			}
 		}
+		if wantEffort != "" {
+			if opts.thought == nil {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
+			}
+			effs := opts.efforts()
+			if len(effs) > 0 && !slices.Contains(effs, wantEffort) {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE,
+					fmt.Sprintf("reasoning effort %q: not offered by the agent (available: %s)", wantEffort, strings.Join(effs, ", ")))
+			}
+			if wantEffort != opts.thought.current() {
+				res, err := s.call(ctx, "session/set_config_option", map[string]any{
+					"sessionId": s.sessionID,
+					"configId":  opts.thought.ID,
+					"value":     wantEffort,
+				})
+				if err != nil {
+					return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, err.Error())
+				}
+				opts = s.parseSessionConfigOptions(res)
+			}
+		}
+		return nil
 	}
+
+	if len(opts.legacy) > 0 {
+		if wantEffort != "" {
+			return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, "agent takes no reasoning effort")
+		}
+		if wantModel != "" {
+			var avail []string
+			found := false
+			for _, m := range opts.legacy {
+				avail = append(avail, m.ID)
+				if m.ID == wantModel {
+					found = true
+				}
+			}
+			if !found {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE,
+					fmt.Sprintf("model %q: not offered by the agent (available: %s)", wantModel, strings.Join(avail, ", ")))
+			}
+			if _, err := s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": wantModel}); err != nil {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, err.Error())
+			}
+			s.curOptions.current = wantModel
+		}
+		return nil
+	}
+
+	return s.SetSelection(ctx, sel)
 }
 
 func (s *session) flushAssistantSegment() {
@@ -853,7 +1283,7 @@ func detectACPAsyncLaunch(rawInput, meta json.RawMessage) (isAsync bool, agentID
 	return isAsync, agentID
 }
 
-func classifyACPBackgroundTool(st *acpToolState) (kind threadv2.BackgroundTaskKind, title string, cmd string, awaited bool, ok bool) {
+func classifyACPBackgroundTool(st *acpToolState) (kind sessionv1.BackgroundTaskKind, title string, cmd string, awaited bool, ok bool) {
 	if st == nil || (!st.asyncLaunch && st.status != "in_progress" && st.status != "pending") {
 		return 0, "", "", false, false
 	}
@@ -895,16 +1325,16 @@ func classifyACPBackgroundTool(st *acpToolState) (kind threadv2.BackgroundTaskKi
 	switch {
 	case lowerKind == "execute" || lowerKind == "command" || lowerKind == "bash" || cmd != "":
 		if isDaemon {
-			return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
+			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
 		}
-		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND, title, cmd, true, true
+		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND, title, cmd, true, true
 	case strings.Contains(lowerTitle, "schedule") || in.CronExpression != "" || in.DurationSeconds > 0:
 		if isDaemon {
-			return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
+			return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON, title, cmd, false, true
 		}
-		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE, title, cmd, true, true
+		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE, title, cmd, true, true
 	case strings.Contains(lowerTitle, "subagent") || strings.Contains(lowerTitle, "agent") || lowerKind == "agent" || in.Role != "" || in.TypeName != "" || in.SubagentType != "" || st.asyncLaunch:
-		return threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT, title, cmd, true, true
+		return sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT, title, cmd, true, true
 	default:
 		return 0, "", "", false, false
 	}
@@ -931,7 +1361,7 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 				output:      tailUTF8(st.output, 16384),
 				awaited:     awaited,
 				asyncLaunch: st.asyncLaunch,
-				stopScope:   threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				stopScope:   sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 				running:     true,
 			}
 			s.bgTasks[id] = bg
@@ -943,7 +1373,7 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 				Command:             bg.command,
 				Output:              bg.output,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			})
@@ -973,12 +1403,12 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 			bg = &acpBgTask{
 				taskID:    taskKey,
 				itemID:    taskKey,
-				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+				kind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 				title:     title,
 				command:   at.command,
 				output:    tailUTF8(at.outBuf.String(), 16384),
 				awaited:   true,
-				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				stopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 				running:   true,
 			}
 			s.bgTasks[taskKey] = bg
@@ -990,7 +1420,7 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 				Command:             bg.command,
 				Output:              bg.output,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			})
@@ -1015,12 +1445,12 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 			bg = &acpBgTask{
 				taskID:    termID,
 				itemID:    termID,
-				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+				kind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 				title:     mt.command,
 				command:   mt.command,
 				output:    outSnap,
 				awaited:   true,
-				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+				stopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 				running:   true,
 			}
 			s.bgTasks[termID] = bg
@@ -1032,7 +1462,7 @@ func (s *session) promoteOpenBackgroundWork() (newEvents []runtime.Event, hasAwa
 				Command:             bg.command,
 				Output:              bg.output,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			})
@@ -1057,7 +1487,20 @@ func (s *session) onPromptResult(r rpcRes) {
 		s.inPrompt = false
 		s.stopTimersLocked()
 		s.mu.Unlock()
-		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "acp_error", ErrorMessage: r.err.Error()})
+		var rpc *rpcError
+		kind := runtime.Classify(r.err.Error())
+		if errors.As(r.err, &rpc) && rpc.Code == codeAuthRequired {
+			kind = sessionv1.FailureKind_FAILURE_KIND_AUTH
+		}
+		if kind == sessionv1.FailureKind_FAILURE_KIND_UNKNOWN {
+			kind = sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR
+		}
+		s.emit(runtime.Event{
+			Kind:         runtime.EventTurnFailed,
+			ErrorCode:    "acp_error",
+			ErrorMessage: r.err.Error(),
+			Failure:      &runtime.Failure{Kind: kind, Message: r.err.Error()},
+		})
 		return
 	}
 	var res struct {
@@ -1074,7 +1517,7 @@ func (s *session) onPromptResult(r rpcRes) {
 	if inTok > 0 || res.Usage.OutputTokens > 0 {
 		s.emit(runtime.Event{
 			Kind: runtime.EventUsage,
-			Usage: &threadv2.ContextWindowUsage{
+			Usage: &sessionv1.ContextWindowUsage{
 				InputTokens:        inTok,
 				OutputTokens:       res.Usage.OutputTokens,
 				CacheReadTokens:    res.Usage.CachedReadTokens,
@@ -1101,7 +1544,7 @@ func (s *session) onPromptResult(r rpcRes) {
 					Output:              bg.output,
 					Text:                "cancelled",
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				})
@@ -1112,7 +1555,7 @@ func (s *session) onPromptResult(r rpcRes) {
 			s.emit(ev)
 		}
 		s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
-	case "refusal", "max_tokens", "max_turn_requests":
+	case "refusal":
 		s.mu.Lock()
 		s.inPrompt = false
 		s.stopTimersLocked()
@@ -1121,6 +1564,18 @@ func (s *session) onPromptResult(r rpcRes) {
 			Kind:         runtime.EventTurnFailed,
 			ErrorCode:    res.StopReason,
 			ErrorMessage: "acp turn stopped: " + res.StopReason,
+			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_REFUSED, Message: "acp turn stopped: " + res.StopReason},
+		})
+	case "max_tokens", "max_turn_requests":
+		s.mu.Lock()
+		s.inPrompt = false
+		s.stopTimersLocked()
+		s.mu.Unlock()
+		s.emit(runtime.Event{
+			Kind:         runtime.EventTurnFailed,
+			ErrorCode:    res.StopReason,
+			ErrorMessage: "acp turn stopped: " + res.StopReason,
+			Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_LIMIT_REACHED, Message: "acp turn stopped: " + res.StopReason},
 		})
 	default:
 		bgEvents, hasAwaited := s.promoteOpenBackgroundWork()
@@ -1144,46 +1599,52 @@ func (s *session) Steer(context.Context, string, []runtime.TurnAttachment) error
 	return runtime.ErrSteerUnsupported
 }
 
-func (s *session) SetSelection(ctx context.Context, sel *threadv2.ModelSelection) error {
+func (s *session) SetSelection(ctx context.Context, sel *sessionv1.ModelSelection) error {
 	if sel == nil {
 		return nil
 	}
 	if sel.Model != "" && sel.Model != "default" {
+		var err error
 		if s.modelOptionID != "" {
-			_, _ = s.call(ctx, "session/set_config_option", map[string]any{
+			_, err = s.call(ctx, "session/set_config_option", map[string]any{
 				"sessionId": s.sessionID,
 				"configId":  s.modelOptionID,
 				"value":     sel.Model,
 			})
 		} else {
-			_, _ = s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": sel.Model})
+			_, err = s.call(ctx, "session/set_model", map[string]any{"sessionId": s.sessionID, "modelId": sel.Model})
+		}
+		if err != nil {
+			return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, err.Error())
 		}
 	}
 	for k, v := range sel.Options {
 		var rawVal any
-		if sv, ok := v.Kind.(*threadv2.OptionValue_StringValue); ok {
+		if sv, ok := v.Kind.(*sessionv1.OptionValue_StringValue); ok {
 			rawVal = sv.StringValue
-		} else if bv, ok := v.Kind.(*threadv2.OptionValue_BoolValue); ok {
+		} else if bv, ok := v.Kind.(*sessionv1.OptionValue_BoolValue); ok {
 			rawVal = bv.BoolValue
 		}
 		if rawVal != nil {
 			cfgID := k
-			if k == "reasoningEffort" && s.thoughtOptionID != "" {
+			if (k == "reasoningEffort" || k == "effort") && s.thoughtOptionID != "" {
 				cfgID = s.thoughtOptionID
 			}
-			_, _ = s.call(ctx, "session/set_config_option", map[string]any{
+			if _, err := s.call(ctx, "session/set_config_option", map[string]any{
 				"sessionId": s.sessionID,
 				"configId":  cfgID,
 				"value":     rawVal,
-			})
+			}); err != nil {
+				return runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_MODEL_UNAVAILABLE, err.Error())
+			}
 		}
 	}
 	return nil
 }
 
-func (s *session) SetModes(ctx context.Context, _ identityv1.RuntimeMode, im threadv2.InteractionMode) error {
+func (s *session) SetModes(ctx context.Context, _ identityv1.RuntimeMode, im sessionv1.InteractionMode) error {
 	modeID := "default"
-	if im == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+	if im == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 		modeID = "plan"
 	}
 	_, _ = s.call(ctx, "session/set_mode", map[string]any{"sessionId": s.sessionID, "modeId": modeID})
@@ -1191,6 +1652,7 @@ func (s *session) SetModes(ctx context.Context, _ identityv1.RuntimeMode, im thr
 }
 
 func (s *session) Interrupt(context.Context) error {
+	s.killTerminals()
 	s.mu.Lock()
 	wasOutOfTurn := s.outOfTurnActive
 	s.outOfTurnActive = false
@@ -1236,7 +1698,7 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 					Output:              bg.output,
 					Text:                "stopped by user",
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				})
@@ -1263,7 +1725,7 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 				Output:              bg.output,
 				Text:                "stopped by user",
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			})
@@ -1349,10 +1811,7 @@ func (s *session) readLoop() {
 			Method string           `json:"method"`
 			Params json.RawMessage  `json:"params"`
 			Result json.RawMessage  `json:"result"`
-			Error  *struct {
-				Code    int    `json:"code"`
-				Message string `json:"message"`
-			} `json:"error"`
+			Error  *rpcError        `json:"error"`
 		}
 		if json.Unmarshal(bytes.TrimSpace(raw), &m) != nil {
 			return
@@ -1368,7 +1827,7 @@ func (s *session) readLoop() {
 			if cb != nil {
 				r := rpcRes{result: m.Result}
 				if m.Error != nil {
-					r.err = fmt.Errorf("%s (code %d)", m.Error.Message, m.Error.Code)
+					r.err = m.Error
 				}
 				cb(r)
 			}
@@ -1415,8 +1874,9 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 				Content string `json:"content"`
 				Status  string `json:"status"`
 			} `json:"entries"`
-			Used uint64 `json:"used"`
-			Size uint64 `json:"size"`
+			ConfigOptions json.RawMessage `json:"configOptions"`
+			Used          uint64          `json:"used"`
+			Size          uint64          `json:"size"`
 		} `json:"update"`
 	}
 	if json.Unmarshal(params, &p) != nil {
@@ -1424,6 +1884,12 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 	}
 	u := p.Update
 	switch u.SessionUpdate {
+	case "config_option_update":
+		if len(u.ConfigOptions) > 0 && s.prov != nil {
+			wrap, _ := json.Marshal(map[string]any{"configOptions": u.ConfigOptions})
+			opts := s.parseSessionConfigOptions(wrap)
+			s.prov.learn(modelContext(s.bin, s.env), opts, false)
+		}
 	case "agent_message_chunk":
 		var cb struct {
 			Type string `json:"type"`
@@ -1528,10 +1994,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			if termDone && standalone {
 				bg.running = false
-				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 				code := at.exitCode
 				if u.Status == "failed" || (at.hasExit && code != 0) {
-					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 					if code == 0 {
 						code = 1
 					}
@@ -1550,7 +2016,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				}
-				kept, _ := provider.KeepOutput(outSnap)
+				kept, _ := runtime.KeepOutput(outSnap)
 				toolEv = &runtime.Event{
 					Kind:        runtime.EventToolCompleted,
 					ItemID:      bg.itemID,
@@ -1569,7 +2035,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					Command:             bg.command,
 					Output:              bg.output,
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				}
@@ -1593,7 +2059,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if name == "" {
 				name = "Terminal"
 			}
-			kept, _ := provider.KeepOutput(outSnap)
+			kept, _ := runtime.KeepOutput(outSnap)
 			toolEv = &runtime.Event{
 				Kind:        runtime.EventToolCompleted,
 				ItemID:      termID,
@@ -1671,7 +2137,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		if trimmedIn := bytes.TrimSpace(u.RawInput); len(trimmedIn) > 0 && string(trimmedIn) != "null" && string(trimmedIn) != "{}" {
 			st.rawInput = append(st.rawInput[:0], trimmedIn...)
 		}
-		toolName, cmd, filePath := mapACPToolFields(st)
+		toolName, cmd, filePath := mapACPToolFields(st, s.spec.Workdir)
 		wasStarted := st.started
 		st.started = true
 		status := st.status
@@ -1698,7 +2164,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					output:      tailUTF8(outText, 16384),
 					awaited:     awaited,
 					asyncLaunch: true,
-					stopScope:   threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+					stopScope:   sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 					running:     true,
 				}
 				s.bgTasks[id] = bg
@@ -1710,7 +2176,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					Command:             bg.command,
 					Output:              bg.output,
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				}
@@ -1722,10 +2188,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			}
 			if status == "completed" || status == "failed" {
 				bg.running = false
-				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 				exitCode := int32(0)
 				if status == "failed" {
-					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 					exitCode = 1
 				}
 				bgEv = &runtime.Event{
@@ -1751,7 +2217,7 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 					Command:             bg.command,
 					Output:              bg.output,
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 					BackgroundStopScope: bg.stopScope,
 					BackgroundAwaited:   bg.awaited,
 				}
@@ -1772,7 +2238,10 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 			if status == "failed" {
 				exit = 1
 			}
-			kept, _ := provider.KeepOutput(outText)
+			if outText == "" {
+				outText = status
+			}
+			kept, _ := runtime.KeepOutput(outText)
 			s.emit(runtime.Event{
 				Kind:        runtime.EventToolCompleted,
 				ItemID:      id,
@@ -1805,16 +2274,16 @@ func (s *session) handleSessionUpdate(params json.RawMessage) {
 		s.mu.Lock()
 		s.noteWakeActivityLocked(true)
 		s.mu.Unlock()
-		var steps []*threadv2.TodoStep
+		var steps []*sessionv1.TodoStep
 		for _, e := range u.Entries {
-			steps = append(steps, &threadv2.TodoStep{Text: e.Content, Status: e.Status})
+			steps = append(steps, &sessionv1.TodoStep{Text: e.Content, Status: e.Status})
 		}
 		s.emit(runtime.Event{Kind: runtime.EventTodoUpdated, TodoSteps: steps})
 	case "usage_update":
 		if u.Size > 0 || u.Used > 0 {
 			s.emit(runtime.Event{
 				Kind: runtime.EventUsage,
-				Usage: &threadv2.ContextWindowUsage{
+				Usage: &sessionv1.ContextWindowUsage{
 					ContextUsedTokens:  u.Used,
 					ContextLimitTokens: u.Size,
 				},
@@ -1889,10 +2358,10 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 				taskID:    agentID,
 				itemID:    itemID,
 				agentID:   agentID,
-				kind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+				kind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
 				title:     title,
 				awaited:   true,
-				stopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+				stopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 				running:   true,
 			}
 			s.bgTasks[agentID] = bg
@@ -1920,7 +2389,7 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 			ItemID:              bgSnap.itemID,
 			ToolName:            bgSnap.title,
 			BackgroundKind:      bgSnap.kind,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 			BackgroundStopScope: bgSnap.stopScope,
 			BackgroundAwaited:   bgSnap.awaited,
 		})
@@ -1947,10 +2416,10 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 		var bgEv *runtime.Event
 		var toolEv *runtime.Event
 		exitCode := int32(0)
-		bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 		if failed {
 			exitCode = 1
-			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 		}
 		if bg != nil {
 			bg.running = false
@@ -1978,7 +2447,7 @@ func (s *session) handleCopilotSessionEvent(params json.RawMessage) {
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			}
-			kept, _ := provider.KeepOutput(bg.output)
+			kept, _ := runtime.KeepOutput(bg.output)
 			toolEv = &runtime.Event{
 				Kind:        runtime.EventToolCompleted,
 				ItemID:      bg.itemID,
@@ -2336,7 +2805,7 @@ func (s *session) maybeEmitACPArtifact(st acpToolState) string {
 	return sig
 }
 
-func (s *session) extractACPPlanExit(toolCallID, name, title, kind string, rawInput, content json.RawMessage, locPath string) (*threadv2.PlanReviewPayload, bool) {
+func (s *session) extractACPPlanExit(toolCallID, name, title, kind string, rawInput, content json.RawMessage, locPath string) (*sessionv1.PlanReviewPayload, bool) {
 	var in struct {
 		Plan          string `json:"plan"`
 		Title         string `json:"title"`
@@ -2401,15 +2870,20 @@ func (s *session) extractACPPlanExit(toolCallID, name, title, kind string, rawIn
 	if planTitle == "" {
 		planTitle = deriveACPPlanTitle(planMD, "", targetPath)
 	}
-	return &threadv2.PlanReviewPayload{
+	return &sessionv1.PlanReviewPayload{
 		PlanId:   planID,
 		Title:    planTitle,
 		Markdown: planMD,
 	}, true
 }
 
-func mapACPToolFields(st *acpToolState) (toolName, cmd, filePath string) {
+func mapACPToolFields(st *acpToolState, workdir string) (toolName, cmd, filePath string) {
 	filePath = st.filePath
+	if workdir != "" && filepath.IsAbs(filePath) {
+		if rel, err := filepath.Rel(workdir, filePath); err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			filePath = filepath.ToSlash(rel)
+		}
+	}
 	switch st.kind {
 	case "execute", "command", "bash":
 		cmd = st.command
@@ -2428,7 +2902,11 @@ func mapACPToolFields(st *acpToolState) (toolName, cmd, filePath string) {
 			filePath = st.title
 		}
 	case "edit", "delete", "move", "write":
-		toolName = "Edit"
+		if st.kind == "write" || strings.HasPrefix(strings.ToLower(st.title), "write ") {
+			toolName = "Write"
+		} else {
+			toolName = "Edit"
+		}
 		if filePath == "" {
 			filePath = st.title
 		}
@@ -2523,7 +3001,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			allowed := true
 			if s.spec.Gate != nil {
 				res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-					Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+					Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
 					Plan: planPayload,
 				})
 				if err != nil || res.CancelTurn {
@@ -2552,8 +3030,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		allowed := true
 		if s.spec.Gate != nil {
 			res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-				Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-				Approval: &threadv2.ToolApprovalPayload{
+				Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+				Approval: &sessionv1.ToolApprovalPayload{
 					ToolCategory: cat,
 					ToolName:     p.ToolCall.Title,
 					Command:      p.ToolCall.Title,
@@ -2587,8 +3065,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		}
 		if s.spec.Gate != nil {
 			res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-				Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-				Approval: &threadv2.ToolApprovalPayload{
+				Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+				Approval: &sessionv1.ToolApprovalPayload{
 					ToolCategory: "read",
 					ToolName:     "fs/read_text_file",
 					TargetPath:   target,
@@ -2618,8 +3096,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		}
 		if s.spec.Gate != nil {
 			res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-				Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-				Approval: &threadv2.ToolApprovalPayload{
+				Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+				Approval: &sessionv1.ToolApprovalPayload{
 					ToolCategory: "file_write",
 					ToolName:     "fs/write_text_file",
 					TargetPath:   target,
@@ -2662,8 +3140,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		fullCmd := strings.TrimSpace(p.Command + " " + strings.Join(p.Args, " "))
 		if s.spec.Gate != nil {
 			res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-				Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-				Approval: &threadv2.ToolApprovalPayload{
+				Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+				Approval: &sessionv1.ToolApprovalPayload{
 					ToolCategory: "command",
 					ToolName:     "terminal/create",
 					Command:      fullCmd,
@@ -2680,7 +3158,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			cwd = s.spec.Workdir
 		}
 		termID := fmt.Sprintf("term_%d", s.itemSeq.Add(1))
-		cmd := provider.Command(context.Background(), p.Command, p.Args...)
+		cmd := runtime.Command(context.Background(), p.Command, p.Args...)
 		cmd.Dir = cwd
 		mt := &managedTerm{id: termID, command: fullCmd, cmd: cmd, done: make(chan struct{})}
 		lw := &lockedTermWriter{s: s, mt: mt}
@@ -2707,7 +3185,7 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			mt.mu.Lock()
 			outStr := mt.outBuf.String()
 			mt.mu.Unlock()
-			kept, _ := provider.KeepOutput(outStr)
+			kept, _ := runtime.KeepOutput(outStr)
 
 			s.mu.Lock()
 			bg := s.bgTasks[termID]
@@ -2715,9 +3193,9 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			if bg != nil && bg.running {
 				bg.running = false
 				bg.output = tailUTF8(outStr, 16384)
-				bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+				bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 				if mt.exit != 0 {
-					bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+					bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 				}
 				bgEv = &runtime.Event{
 					Kind:                runtime.EventBackgroundTask,
@@ -2823,7 +3301,7 @@ func (w *lockedTermWriter) Write(p []byte) (int, error) {
 				Command:             bg.command,
 				Output:              bg.output,
 				BackgroundKind:      bg.kind,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 				BackgroundStopScope: bg.stopScope,
 				BackgroundAwaited:   bg.awaited,
 			}
@@ -2904,23 +3382,23 @@ func (s *session) handleElicitation(tctx context.Context, params json.RawMessage
 	}
 	slices.Sort(keys)
 
-	var qItems []*threadv2.QuestionItem
+	var qItems []*sessionv1.QuestionItem
 	var metas []propMeta
 	if len(keys) == 0 {
-		qItems = append(qItems, &threadv2.QuestionItem{
-			Id:          "response",
-			Question:    p.Message,
-			AllowCustom: true,
-			Required:    true,
+		qItems = append(qItems, &sessionv1.QuestionItem{
+			Id:         "response",
+			Text:       p.Message,
+			AllowOther: true,
+			Optional:   false,
 		})
 		metas = append(metas, propMeta{key: "response", typ: "string"})
 	} else {
 		for _, k := range keys {
 			prop := p.RequestedSchema.Properties[k]
 			meta := propMeta{key: k, typ: prop.Type, choiceID: map[string]string{}}
-			var opts []*threadv2.QuestionOption
+			var opts []*sessionv1.QuestionOption
 			if prop.Type == "boolean" {
-				opts = []*threadv2.QuestionOption{
+				opts = []*sessionv1.QuestionOption{
 					{Id: "true", Label: "Yes"},
 					{Id: "false", Label: "No"},
 				}
@@ -2932,12 +3410,12 @@ func (s *session) handleElicitation(tctx context.Context, params json.RawMessage
 					if lbl == "" {
 						lbl = o.Const
 					}
-					opts = append(opts, &threadv2.QuestionOption{Id: o.Const, Label: lbl})
+					opts = append(opts, &sessionv1.QuestionOption{Id: o.Const, Label: lbl})
 					meta.choiceID[lbl] = o.Const
 				}
 			} else {
 				for _, e := range prop.Enum {
-					opts = append(opts, &threadv2.QuestionOption{Id: e, Label: e})
+					opts = append(opts, &sessionv1.QuestionOption{Id: e, Label: e})
 					meta.choiceID[e] = e
 				}
 			}
@@ -2948,21 +3426,21 @@ func (s *session) handleElicitation(tctx context.Context, params json.RawMessage
 			if qText == "" {
 				qText = k
 			}
-			qItems = append(qItems, &threadv2.QuestionItem{
-				Id:          k,
-				Header:      prop.Title,
-				Question:    qText,
-				Options:     opts,
-				AllowCustom: len(opts) == 0,
-				Required:    slices.Contains(p.RequestedSchema.Required, k),
+			qItems = append(qItems, &sessionv1.QuestionItem{
+				Id:         k,
+				Header:     prop.Title,
+				Text:       qText,
+				Options:    opts,
+				AllowOther: len(opts) == 0,
+				Optional:   !slices.Contains(p.RequestedSchema.Required, k),
 			})
 			metas = append(metas, meta)
 		}
 	}
 
 	res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-		Kind:      threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
-		UserInput: &threadv2.UserInputPayload{Questions: qItems},
+		Kind:      sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+		UserInput: &sessionv1.UserInputPayload{Questions: qItems},
 	})
 	if err != nil || !res.Allowed {
 		if res.CancelTurn {

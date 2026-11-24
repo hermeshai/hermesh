@@ -1,8 +1,9 @@
-// Package codex implements the long-lived Hermesh v2 runtime.Driver for Codex
+// Package codex implements the long-lived Hermesh runtime.Driver for Codex
 // via `codex app-server` JSON-RPC over stdio.
 package codex
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -21,8 +22,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/internal/provider"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -34,9 +34,10 @@ type Driver struct {
 func NewDriver(pathEnv string) *Driver { return &Driver{PathEnv: pathEnv} }
 
 func (d *Driver) Kind() string { return "codex" }
+func (d *Driver) Name() string { return "codex" }
 
-func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
-	return &threadv2.ProviderCapabilities{
+func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{
 		InSessionModelSwitch:  true,
 		InSessionOptionSwitch: true,
 		InSessionModeSwitch:   true,
@@ -60,7 +61,7 @@ func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
 
 var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+[-\w.]*`)
 
-func (d *Driver) resolveBinary(cfg *threadv2.ProviderInstanceConfig) string {
+func (d *Driver) resolveBinary(cfg *sessionv1.ProviderInstanceConfig) string {
 	if cfg != nil && cfg.BinaryPath != "" {
 		return cfg.BinaryPath
 	}
@@ -68,21 +69,193 @@ func (d *Driver) resolveBinary(cfg *threadv2.ProviderInstanceConfig) string {
 		return d.Binary
 	}
 	home, _ := os.UserHomeDir()
-	return provider.LookPath("codex", provider.SearchPath(d.PathEnv),
+	return runtime.LookPath("codex", runtime.SearchPath(d.PathEnv),
 		"/opt/homebrew/bin/codex",
 		"/usr/local/bin/codex",
 		filepath.Join(home, ".local/bin/codex"),
 		"/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
 		"/Applications/Codex.app/Contents/Resources/codex",
+		filepath.Join(home, "Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"),
+		filepath.Join(home, "Applications/Codex.app/Contents/Resources/codex"),
 	)
 }
 
-func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig, _ string) runtime.ProbeResult {
+func (d *Driver) Discover(ctx context.Context) runtime.Info {
+	info := runtime.Info{Name: "codex"}
+	bin := d.resolveBinary(nil)
+	if !runtime.Exists(bin) {
+		info.Problem, info.Detail = runtime.ProblemNotFound, "codex not found"
+		if app := runtime.AppWithoutCLI("Codex.app", "ChatGPT.app"); app != "" && d.Binary == "" {
+			info.Problem, info.Detail = runtime.ProblemAppWithoutCLI, app
+		}
+		return info
+	}
+	info.Binary = bin
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	env := runtime.ProbeEnv(d.PathEnv)
+	out, problem, detail := runtime.Probe(ctx, env, bin, "--version")
+	if problem != runtime.ProblemNone {
+		info.Problem, info.Detail = problem, detail
+		return info
+	}
+	info.Available = true
+	info.Version = versionRE.FindString(string(out))
+	login := runtime.Command(ctx, bin, "login", "status")
+	login.Env = env
+	if out, err := login.CombinedOutput(); err == nil && strings.Contains(string(out), "Logged in") {
+		info.LoggedIn = true
+	} else if os.Getenv("OPENAI_API_KEY") != "" {
+		info.LoggedIn = true
+	}
+	info.Models, info.Own, _ = catalog(ctx, env, bin)
+	info.AllModels = len(info.Models) > 0
+	info.ModelsState, info.ModelsAt = runtime.ModelsKnown, time.Now()
+	if len(info.Models) == 0 {
+		info.ModelsState = runtime.ModelsError
+		if !info.LoggedIn {
+			info.ModelsState = runtime.ModelsAuthRequired
+		}
+	}
+	return info
+}
+
+func appServer(ctx context.Context, env []string, bin string, do func(call func(method string, params, v any) error) error) error {
+	cmd := runtime.Command(ctx, bin, "app-server")
+	cmd.Env = env
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	defer cmd.Wait()
+	defer in.Close()
+	sc := bufio.NewScanner(out)
+	sc.Buffer(make([]byte, 64<<10), 16<<20)
+	id := 0
+	call := func(method string, params, v any) error {
+		id++
+		b, _ := json.Marshal(map[string]any{"id": id, "method": method, "params": params})
+		if _, err := in.Write(append(b, '\n')); err != nil {
+			return err
+		}
+		for sc.Scan() {
+			var m struct {
+				ID     *int            `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Error  *struct {
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(sc.Bytes(), &m) != nil || m.ID == nil || *m.ID != id {
+				continue
+			}
+			if m.Error != nil {
+				return errors.New(m.Error.Message)
+			}
+			return json.Unmarshal(m.Result, v)
+		}
+		return fmt.Errorf("codex app-server ended before answering %s", method)
+	}
+	if err := call("initialize", map[string]any{"clientInfo": map[string]any{"name": "hermesh", "version": "0.1.0"}}, &struct{}{}); err != nil {
+		return err
+	}
+	return do(call)
+}
+
+// Archive archives or unarchives a native Codex thread in Codex's local database.
+func (d *Driver) Archive(ctx context.Context, ref string, archived bool) error {
+	bin := d.resolveBinary(nil)
+	if bin == "" {
+		return errors.New("codex not found")
+	}
+	method := "thread/unarchive"
+	if archived {
+		method = "thread/archive"
+	}
+	return appServer(ctx, runtime.ProbeEnv(d.PathEnv), bin, func(call func(string, any, any) error) error {
+		err := call(method, map[string]any{"threadId": ref}, &struct{}{})
+		if err != nil && strings.Contains(err.Error(), "rollout found") {
+			return nil
+		}
+		return err
+	})
+}
+
+func catalog(ctx context.Context, env []string, bin string) (models []runtime.Model, own runtime.Settings, err error) {
+	err = appServer(ctx, env, bin, func(call func(string, any, any) error) error {
+		models, own, err = catalogFrom(call)
+		return err
+	})
+	return models, own, err
+}
+
+func catalogFrom(call func(method string, params, v any) error) ([]runtime.Model, runtime.Settings, error) {
+	var own runtime.Settings
+	var list struct {
+		Data []struct {
+			ID, DisplayName           string
+			IsDefault                 bool
+			DefaultReasoningEffort    string
+			SupportedReasoningEfforts []struct {
+				ReasoningEffort string
+			}
+		}
+	}
+	if err := call("model/list", map[string]any{}, &list); err != nil {
+		return nil, own, err
+	}
+	var models []runtime.Model
+	for _, m := range list.Data {
+		x := runtime.Model{ID: m.ID, Name: m.DisplayName}
+		for _, e := range m.SupportedReasoningEfforts {
+			x.Efforts = append(x.Efforts, e.ReasoningEffort)
+		}
+		models = append(models, x)
+		if m.IsDefault && own.Model == "" {
+			own.Model, own.Effort = m.ID, m.DefaultReasoningEffort
+		}
+	}
+	var cfg struct {
+		Config struct {
+			Model           string `json:"model"`
+			ReasoningEffort string `json:"model_reasoning_effort"`
+			ServiceTier     string `json:"service_tier"`
+		}
+	}
+	if err := call("config/read", map[string]any{}, &cfg); err != nil {
+		return models, own, err
+	}
+	if cfg.Config.Model != "" {
+		own.Model, own.Effort = cfg.Config.Model, ""
+		for _, m := range list.Data {
+			if m.ID == own.Model {
+				own.Effort = m.DefaultReasoningEffort
+			}
+		}
+	}
+	if cfg.Config.ReasoningEffort != "" {
+		own.Effort = cfg.Config.ReasoningEffort
+	}
+	own.Speed = identityv1.AgentSpeed_AGENT_SPEED_STANDARD
+	if cfg.Config.ServiceTier == "priority" || cfg.Config.ServiceTier == "fast" {
+		own.Speed = identityv1.AgentSpeed_AGENT_SPEED_FAST
+	}
+	return models, own, nil
+}
+
+func (d *Driver) Probe(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, _ string) runtime.ProbeResult {
 	bin := d.resolveBinary(cfg)
-	if !provider.Exists(bin) {
+	if !runtime.Exists(bin) {
 		return runtime.ProbeResult{
 			Installed:            false,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
 			CompatibilityMessage: "codex CLI not found on PATH",
 		}
 	}
@@ -93,20 +266,22 @@ func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig
 		instEnv = cfg.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv)
-	out, prob, detail := provider.Probe(pctx, env, bin, "--version")
-	if prob != provider.ProblemNone {
+	out, prob, detail := runtime.Probe(pctx, env, bin, "--version")
+	if prob != runtime.ProblemNone {
 		return runtime.ProbeResult{
 			Installed:            true,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
+			Binary:               bin,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
 			CompatibilityMessage: detail,
 		}
 	}
 	res := runtime.ProbeResult{
 		Installed:     true,
+		Binary:        bin,
 		Version:       versionRE.FindString(string(out)),
-		Compatibility: threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
+		Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
 	}
-	login := provider.Command(pctx, bin, "login", "status")
+	login := runtime.Command(pctx, bin, "login", "status")
 	login.Env = env
 	if lOut, err := login.CombinedOutput(); err == nil && strings.Contains(string(lOut), "Logged in") {
 		res.Authenticated = true
@@ -118,8 +293,8 @@ func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig
 	return res
 }
 
-func mapSandboxAndPolicy(rm identityv1.RuntimeMode, im threadv2.InteractionMode) (sandbox, approvalPolicy string) {
-	if im == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+func mapSandboxAndPolicy(rm identityv1.RuntimeMode, im sessionv1.InteractionMode) (sandbox, approvalPolicy string) {
+	if im == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 		return "read-only", "on-request"
 	}
 	switch rm {
@@ -134,8 +309,8 @@ func mapSandboxAndPolicy(rm identityv1.RuntimeMode, im threadv2.InteractionMode)
 
 func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error) {
 	bin := d.resolveBinary(spec.Instance)
-	if !provider.Exists(bin) {
-		return nil, errors.New("codex CLI not found")
+	if !runtime.Exists(bin) {
+		return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_START_FAILED, "codex CLI not found")
 	}
 	var instEnv map[string]string
 	var args = []string{"app-server"}
@@ -146,7 +321,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		}
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv, spec.ExtraEnv)
-	proc, err := provider.StartProc(ctx, bin, args, spec.Workdir, env)
+	proc, err := runtime.StartProc(ctx, bin, args, spec.Workdir, env)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +334,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		runningCmds:     map[string]*codexCmdState{},
 		bgCmds:          map[string]*codexCmdState{},
 		bgSubagents:     map[string]*codexSubagentState{},
-		selection:       proto.Clone(spec.Selection).(*threadv2.ModelSelection),
+		selection:       proto.Clone(spec.Selection).(*sessionv1.ModelSelection),
 		effectiveMode:   spec.EffectiveMode,
 		interactionMode: spec.InteractionMode,
 		sessionCtx:      sessCtx,
@@ -183,7 +358,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		"sandbox":        sandbox,
 		"approvalPolicy": approval,
 	}
-	applyThreadSelectionParams(params, spec.Selection)
+	applyThreadSelectionParams(params, spec.Selection, spec.MCPServers)
 
 	method := "thread/start"
 	if spec.ResumeCursor != "" {
@@ -191,6 +366,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		params["threadId"] = spec.ResumeCursor
 		_, _ = s.call(ctx, "thread/unarchive", map[string]any{"threadId": spec.ResumeCursor})
 	}
+	forked := false
 	raw, err := s.call(ctx, method, params)
 	if err != nil && method == "thread/resume" && strings.Contains(strings.ToLower(err.Error()), "active writer") {
 		for attempt := 0; attempt < 3 && err != nil; attempt++ {
@@ -205,16 +381,24 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		if err != nil && strings.Contains(strings.ToLower(err.Error()), "active writer") {
 			method = "thread/fork"
 			raw, err = s.call(ctx, "thread/fork", params)
+			if err == nil {
+				forked = true
+			}
 		}
 	}
 	if err != nil {
 		proc.Stop(time.Second)
+		if method == "thread/resume" && runtime.IsResumeRejected(err.Error()) {
+			return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, err.Error())
+		}
 		return nil, fmt.Errorf("codex %s: %w", method, err)
 	}
 	var tr struct {
 		Thread struct {
 			ID string `json:"id"`
 		} `json:"thread"`
+		Model           string `json:"model"`
+		ReasoningEffort string `json:"reasoningEffort"`
 	}
 	_ = json.Unmarshal(raw, &tr)
 	if tr.Thread.ID == "" {
@@ -222,37 +406,58 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		return nil, errors.New("codex returned empty thread id")
 	}
 	s.codexThreadID = tr.Thread.ID
+	if spec.Title != "" {
+		_, _ = s.call(ctx, "thread/name/set", map[string]any{"threadId": s.codexThreadID, "name": spec.Title})
+	}
 	s.emit(runtime.Event{
 		Kind:         runtime.EventNativeSession,
 		NativeID:     tr.Thread.ID,
 		ResumeCursor: tr.Thread.ID,
+		Model:        tr.Model,
+		Effort:       tr.ReasoningEffort,
 	})
+	if forked {
+		s.emit(runtime.Event{
+			Kind: runtime.EventNotice,
+			Text: "Thread is open in another Codex program; continued in a copy of the conversation.",
+		})
+	}
 	if method == "thread/resume" {
 		s.syncResumedBackgroundTerminals(ctx)
 	}
 	return s, nil
 }
 
-func applyThreadSelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
-	if sel == nil {
-		return
-	}
-	if sel.Model != "" && sel.Model != "default" {
-		params["model"] = sel.Model
-	}
-	if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
-		params["config"] = map[string]any{"model_reasoning_effort": eff}
-	}
-	if opt, ok := sel.Options["fastMode"]; ok {
-		if opt.GetBoolValue() {
-			params["serviceTier"] = "fast"
-		} else {
-			params["serviceTier"] = nil
+func applyThreadSelectionParams(params map[string]any, sel *sessionv1.ModelSelection, mcpServers []runtime.MCPServer) {
+	config := map[string]any{}
+	if sel != nil {
+		if sel.Model != "" && sel.Model != "default" {
+			params["model"] = sel.Model
 		}
+		if eff := sel.Options["reasoningEffort"].GetStringValue(); eff != "" {
+			config["model_reasoning_effort"] = eff
+		}
+		if opt, ok := sel.Options["fastMode"]; ok {
+			if opt.GetBoolValue() {
+				params["serviceTier"] = "fast"
+			} else {
+				params["serviceTier"] = nil
+			}
+		}
+	}
+	if len(mcpServers) > 0 {
+		servers := map[string]any{}
+		for _, m := range mcpServers {
+			servers[m.Name] = map[string]any{"command": m.Command, "args": m.Args, "env": m.Env}
+		}
+		config["mcp_servers"] = servers
+	}
+	if len(config) > 0 {
+		params["config"] = config
 	}
 }
 
-func applyTurnSelectionParams(params map[string]any, sel *threadv2.ModelSelection) {
+func applyTurnSelectionParams(params map[string]any, sel *sessionv1.ModelSelection) {
 	if sel == nil {
 		return
 	}
@@ -303,7 +508,7 @@ func tailUTF8(s string, maxBytes int) string {
 }
 
 type session struct {
-	proc          *provider.Proc
+	proc          *runtime.Proc
 	spec          runtime.StartSpec
 	codexThreadID string
 	events        chan runtime.Event
@@ -327,9 +532,9 @@ type session struct {
 	runningCmds     map[string]*codexCmdState      // itemId -> running command state
 	bgCmds          map[string]*codexCmdState      // taskId (itemId or processId) -> background terminal state
 	bgSubagents     map[string]*codexSubagentState // child threadId -> background subagent state
-	selection       *threadv2.ModelSelection
+	selection       *sessionv1.ModelSelection
 	effectiveMode   identityv1.RuntimeMode
-	interactionMode threadv2.InteractionMode
+	interactionMode sessionv1.InteractionMode
 }
 
 func (s *session) gateCtx() context.Context {
@@ -346,6 +551,14 @@ func (s *session) gateCtx() context.Context {
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
+
+func (s *session) SetTitle(ctx context.Context, title string) error {
+	if s.codexThreadID == "" || title == "" {
+		return nil
+	}
+	_, err := s.call(ctx, "thread/name/set", map[string]any{"threadId": s.codexThreadID, "name": title})
+	return err
+}
 
 func (s *session) writeJSON(v any) error {
 	b, err := json.Marshal(v)
@@ -404,12 +617,12 @@ func (s *session) StartTurn(ctx context.Context, in runtime.TurnInput) error {
 	s.mu.Lock()
 	s.turnCtx = ctx
 	if in.Selection != nil {
-		s.selection = proto.Clone(in.Selection).(*threadv2.ModelSelection)
+		s.selection = proto.Clone(in.Selection).(*sessionv1.ModelSelection)
 	}
 	if in.EffectiveMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		s.effectiveMode = in.EffectiveMode
 	}
-	if in.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
+	if in.InteractionMode != sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
 		s.interactionMode = in.InteractionMode
 	}
 	sel := s.selection
@@ -461,14 +674,14 @@ func (s *session) Steer(ctx context.Context, text string, atts []runtime.TurnAtt
 	return err
 }
 
-func (s *session) SetSelection(_ context.Context, sel *threadv2.ModelSelection) error {
+func (s *session) SetSelection(_ context.Context, sel *sessionv1.ModelSelection) error {
 	s.mu.Lock()
-	s.selection = proto.Clone(sel).(*threadv2.ModelSelection)
+	s.selection = proto.Clone(sel).(*sessionv1.ModelSelection)
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *session) SetModes(_ context.Context, rm identityv1.RuntimeMode, im threadv2.InteractionMode) error {
+func (s *session) SetModes(_ context.Context, rm identityv1.RuntimeMode, im sessionv1.InteractionMode) error {
 	s.mu.Lock()
 	s.effectiveMode = rm
 	s.interactionMode = im
@@ -525,9 +738,9 @@ func (s *session) syncResumedBackgroundTerminals(ctx context.Context) {
 				TaskID:              pid,
 				ToolName:            cmd,
 				Command:             cmd,
-				BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
-				BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-				BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+				BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+				BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+				BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 				BackgroundAwaited:   false,
 			})
 		}
@@ -584,9 +797,9 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 			Text:                "stopped by user",
 			ExitCode:            130,
 			HasExitCode:         true,
-			BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   false,
 		})
 		if st.itemID != "" {
@@ -709,8 +922,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		}
 		_ = json.Unmarshal(params, &p)
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-			Approval: &threadv2.ToolApprovalPayload{
+			Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+			Approval: &sessionv1.ToolApprovalPayload{
 				ToolCategory: "command",
 				ToolName:     "CommandExecution",
 				Command:      p.Command,
@@ -734,8 +947,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		}
 		_ = json.Unmarshal(params, &p)
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-			Approval: &threadv2.ToolApprovalPayload{
+			Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+			Approval: &sessionv1.ToolApprovalPayload{
 				ToolCategory: "file_write",
 				ToolName:     "FileChange",
 				TargetPath:   p.Path,
@@ -771,8 +984,8 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 		}
 		if len(p.Questions) == 1 && p.Questions[0].IsSecret {
 			res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-				Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT,
-				Secret: &threadv2.SecretInputPayload{
+				Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT,
+				Secret: &sessionv1.SecretInputPayload{
 					Label:    p.Questions[0].Header,
 					Reason:   p.Questions[0].Question,
 					Delivery: "memory",
@@ -789,24 +1002,24 @@ func (s *session) handleServerRequest(id json.RawMessage, method string, params 
 			})
 			return
 		}
-		var qItems []*threadv2.QuestionItem
+		var qItems []*sessionv1.QuestionItem
 		for _, q := range p.Questions {
-			var opts []*threadv2.QuestionOption
+			var opts []*sessionv1.QuestionOption
 			for _, o := range q.Options {
-				opts = append(opts, &threadv2.QuestionOption{Id: o.Label, Label: o.Label, Description: o.Description})
+				opts = append(opts, &sessionv1.QuestionOption{Id: o.Label, Label: o.Label, Description: o.Description})
 			}
-			qItems = append(qItems, &threadv2.QuestionItem{
-				Id:          q.ID,
-				Header:      q.Header,
-				Question:    q.Question,
-				Options:     opts,
-				AllowCustom: true,
-				Required:    true,
+			qItems = append(qItems, &sessionv1.QuestionItem{
+				Id:         q.ID,
+				Header:     q.Header,
+				Text:       q.Question,
+				Options:    opts,
+				AllowOther: true,
+				Optional:   false,
 			})
 		}
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind:      threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
-			UserInput: &threadv2.UserInputPayload{Questions: qItems},
+			Kind:      sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+			UserInput: &sessionv1.UserInputPayload{Questions: qItems},
 		})
 		if err != nil || !res.Allowed {
 			reply(map[string]any{"answers": map[string]any{}})
@@ -917,9 +1130,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 						ToolName:            st.command,
 						Command:             st.command,
 						Output:              st.output,
-						BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
-						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 						BackgroundAwaited:   false,
 					}
 				}
@@ -1014,7 +1227,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 						rawOut = runSt.output
 					}
 				}
-				kept, _ := provider.KeepOutput(rawOut)
+				kept, _ := runtime.KeepOutput(rawOut)
 				cmd := p.Item.Command
 				if cmd == "" && bgSt != nil {
 					cmd = bgSt.command
@@ -1022,9 +1235,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 					cmd = runSt.command
 				}
 				if wasBg {
-					bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+					bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 					if exit != 0 {
-						bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+						bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 					}
 					s.emit(runtime.Event{
 						Kind:                runtime.EventBackgroundTask,
@@ -1035,9 +1248,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 						Output:              kept,
 						ExitCode:            exit,
 						HasExitCode:         true,
-						BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+						BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
 						BackgroundStatus:    bgStatus,
-						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 						BackgroundAwaited:   false,
 					})
 				}
@@ -1076,9 +1289,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 							TaskID:              cid,
 							ItemID:              p.Item.ID,
 							ToolName:            lbl,
-							BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
-							BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-							BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+							BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 							BackgroundAwaited:   false,
 						})
 					}
@@ -1092,20 +1305,20 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 					for _, cid := range targets {
 						if sub := s.bgSubagents[cid]; sub != nil && sub.running {
 							sub.running = false
-							st := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+							st := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 							if p.Item.Tool == "close_agent" {
-								st = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+								st = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
 							} else if exit != 0 {
-								st = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+								st = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 							}
 							subEvents = append(subEvents, runtime.Event{
 								Kind:                runtime.EventBackgroundTask,
 								TaskID:              cid,
 								ItemID:              sub.itemID,
 								ToolName:            sub.title,
-								BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+								BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
 								BackgroundStatus:    st,
-								BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+								BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 								BackgroundAwaited:   false,
 								HasExitCode:         true,
 								ExitCode:            exit,
@@ -1135,7 +1348,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 				} else if p.Item.Status == "failed" {
 					exit = 1
 				}
-				kept, _ := provider.KeepOutput(out)
+				kept, _ := runtime.KeepOutput(out)
 				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: p.Item.ID, ToolName: name, ExitCode: exit, Output: kept})
 			}
 		case "webSearch":
@@ -1191,7 +1404,7 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			outTok := p.TokenUsage.Total.OutputTokens
 			s.emit(runtime.Event{
 				Kind: runtime.EventUsage,
-				Usage: &threadv2.ContextWindowUsage{
+				Usage: &sessionv1.ContextWindowUsage{
 					InputTokens:        inTok,
 					OutputTokens:       outTok,
 					ContextUsedTokens:  inTok + outTok,
@@ -1228,9 +1441,9 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 					ToolName:            st.command,
 					Command:             st.command,
 					Output:              st.output,
-					BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 					BackgroundAwaited:   false,
 				})
 			}
@@ -1252,7 +1465,8 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			} else if lastErr != "" {
 				msg = lastErr
 			}
-			s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: p.Turn.Status, ErrorMessage: msg})
+			f := runtime.FailureOf(errors.New(msg), sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR)
+			s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: p.Turn.Status, ErrorMessage: msg, Failure: f})
 		}
 	}
 }

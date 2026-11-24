@@ -434,7 +434,7 @@ test("benchmark", async () => {
     await frames(c, "overview.live");
 
     // The long running conversation while it grows.
-    await timed(page, () => row(page, titles.bigLive).click(), { sel: ".cbar" });
+    await timed(page, () => row(page, titles.bigLive).click(), { sel: "[data-testid='thread-composer']" });
     await sleep(3000);
     await steady(c, "session.live");
     await frames(c, "session.live");
@@ -442,7 +442,7 @@ test("benchmark", async () => {
 
     // An idle session's page: only the sidebar's clocks change.
     await row(page, titles.bigIdle).click();
-    await page.locator(".livebar").first().waitFor();
+    await page.locator("[data-testid='thread-composer']").first().waitFor();
     await sleep(2000);
     await steady(c, "session.quiet");
 

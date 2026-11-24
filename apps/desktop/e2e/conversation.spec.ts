@@ -246,7 +246,7 @@ test("a growing conversation follows its end; scrolled up it stays put until the
   daemon.live(true);
   try {
     await open(titles.bigLive);
-    await expect(page.locator(".cbar")).toBeVisible();
+    await expect(page.getByTestId("thread-composer")).toBeVisible();
     await settle();
     // Following: events every 250 ms and a reply written as drafts, the end always in view.
     for (let i = 0; i < 10; i++) {
@@ -254,9 +254,9 @@ test("a growing conversation follows its end; scrolled up it stays put until the
       expect(await below(), "the conversation grew past the view").toBeLessThan(80);
     }
     // A reply being written keeps its tables once stored: the same elements. The last row is the reply being
-    // written while its key is the event after the last one the daemon stored; its tables are marked then, and
-    // looked for again once the next event came (the reply stored).
-    const stored = () => daemon.world.events.get(ids.bigLive)!;
+    // written while the last item in the projection is still streaming; its tables are marked then, and
+    // looked for again once the next item came (the reply stored).
+    const lastItem = () => daemon.world.projections.get(ids.bigLive)!.items.at(-1)!;
     let key = "";
     await expect
       .poll(
@@ -267,13 +267,14 @@ test("a growing conversation follows its end; scrolled up it stays put until the
             row.querySelectorAll("table").forEach((t) => ((t as unknown as { __kept: boolean }).__kept = true));
             return row.dataset.stepKey!;
           });
-          if (k && BigInt(k) === stored().at(-1)!.seq + 1n) key = k;
+          const it = lastItem();
+          if (k && it.streaming && BigInt(k) === it.seq * 4n) key = k;
           return key;
         },
         { timeout: 30_000 },
       )
       .not.toBe("");
-    await expect(page.locator(`.vrow[data-step-key="${BigInt(key) + 1n}"]`)).toBeAttached({ timeout: 30_000 });
+    await expect(page.locator(`.vrow[data-step-key="${BigInt(key) + 4n}"]`)).toBeAttached({ timeout: 30_000 });
     const kept = await page.locator(`.vrow[data-step-key="${key}"] table`).evaluateAll((els) => els.some((el) => (el as unknown as { __kept?: boolean }).__kept === true));
     expect(kept, "the table was drawn anew when its reply was stored").toBe(true);
     await expect(page.locator(`.vrow[data-step-key="${key}"] .md-table-tools`).first().locator("button")).toHaveCount(2);

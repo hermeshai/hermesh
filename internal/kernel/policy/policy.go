@@ -10,11 +10,14 @@ import (
 	"strings"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
-// DefaultThreadRuntimeMode is used when a thread launches without an explicit mode.
-const DefaultThreadRuntimeMode = identityv1.RuntimeMode_RUNTIME_MODE_AUTO
+// DefaultSessionRuntimeMode is used when an owner session starts without an explicit mode.
+const DefaultSessionRuntimeMode = identityv1.RuntimeMode_RUNTIME_MODE_AUTO
+
+// DefaultThreadRuntimeMode aliases DefaultSessionRuntimeMode.
+const DefaultThreadRuntimeMode = DefaultSessionRuntimeMode
 
 // Rank orders RuntimeMode monotonically from narrowest (1) to broadest (4).
 func Rank(m identityv1.RuntimeMode) int {
@@ -320,8 +323,8 @@ type ToolEvalInput struct {
 	Command         string
 	TargetPath      string
 	EffectiveMode   identityv1.RuntimeMode
-	GrantCeiling    identityv1.RuntimeMode // non-zero if thread is constrained by an external grant
-	InteractionMode threadv2.InteractionMode
+	GrantCeiling    identityv1.RuntimeMode // non-zero if session is constrained by an external grant
+	InteractionMode sessionv1.InteractionMode
 	Sandbox         SandboxScope
 	AllowedRuleKeys map[string]bool
 }
@@ -397,13 +400,13 @@ func EvaluateTool(in ToolEvalInput) ToolDecision {
 	}
 
 	// Plan mode forbids mutations and side-effecting commands until the plan is approved.
-	if in.InteractionMode == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+	if in.InteractionMode == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 		if in.Category == "command" && ClassifyCommand(in.Command) == RiskRoutine && isReadOnlyStage(strings.TrimSpace(in.Command)) {
 			return ToolDecision{Allow: true}
 		}
 		return ToolDecision{
 			DenyImmediately: true,
-			Reason:          "Thread is in Plan mode; file modifications and mutating commands are disabled until the plan is approved.",
+			Reason:          "Session is in Plan mode; file modifications and mutating commands are disabled until the plan is approved.",
 		}
 	}
 

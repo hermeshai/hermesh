@@ -8,7 +8,7 @@ import (
 	"time"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // probe is a coding agent whose check counts how often it ran, and waits
@@ -20,28 +20,22 @@ type probe struct {
 	hold      sync.Mutex
 }
 
-func (p *probe) Name() string { return p.name }
-
-func (p *probe) Discover(context.Context) provider.Info {
+func (p *probe) Discover(context.Context) rt.Info {
 	p.hold.Lock()
 	defer p.hold.Unlock()
 	p.runs.Add(1)
 	if !p.installed.Load() {
-		return provider.Info{Name: p.name, Detail: p.name + " not found"}
+		return rt.Info{Name: p.name, Detail: p.name + " not found"}
 	}
-	return provider.Info{Name: p.name, Available: true, Version: "1.0.0", LoggedIn: true}
-}
-
-func (p *probe) Start(context.Context, provider.StartSpec) (provider.Session, error) {
-	panic("not started in these tests")
+	return rt.Info{Name: p.name, Available: true, Version: "1.0.0", LoggedIn: true}
 }
 
 func agentsMachine(t *testing.T, ps ...*probe) *Machine {
-	providers := map[string]provider.Provider{}
+	discoverers := map[string]AgentDiscoverer{}
 	for _, p := range ps {
-		providers[p.name] = p
+		discoverers[p.name] = p
 	}
-	n, err := Open(Config{DataDir: t.TempDir(), Providers: providers})
+	n, err := Open(Config{DataDir: t.TempDir(), Discoverers: discoverers})
 	if err != nil {
 		t.Fatal(err)
 	}

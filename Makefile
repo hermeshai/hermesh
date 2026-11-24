@@ -37,7 +37,7 @@ e2e:
 
 # End-to-end with this machine's real Claude Code and Codex (costs tokens).
 e2e-real:
-	HERMESH_REAL_CLI=1 go test ./e2e/ ./internal/provider/providertest/ -count=1 -v -timeout 30m
+	HERMESH_REAL_CLI=1 go test ./e2e/ -count=1 -v -timeout 30m
 
 # Real Codex under injected faults: killed processes, relay restart,
 # provider outage, missing login, concurrency, agent git rewrites.

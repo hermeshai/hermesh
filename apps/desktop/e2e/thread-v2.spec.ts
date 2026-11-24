@@ -8,7 +8,7 @@ async function pickDemoAndScripted(page: Page) {
   await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
   // The model is in the box, once it is open; choosing one closes the panel.
   await page.getByTestId("thread-composer-input").click();
-  await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-model-scripted-pro"));
+  await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
   await expect(page.getByTestId("model-traits-popover")).toBeHidden();
 }
 // What the menu bar counts (main/tray.ts): a session started here counts as any session does.
@@ -50,8 +50,8 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await page.setViewportSize({ width: 1440, height: 800 });
     const openStreams = () =>
       app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
-    // Watch, and the thread list the window keeps for its sidebar (store.tsx useThreads).
-    await expect.poll(openStreams).toBe(2);
+    // Unified Watch stream keeps the window's session list and status live.
+    await expect.poll(openStreams).toBe(1);
 
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-page")).toBeVisible();
@@ -128,9 +128,9 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await expect(note).toHaveCount(0);
     await expect(page.getByTestId("thread-composer-input")).toBeVisible();
 
-    // Navigating back to Overview closes the thread's own subscription: Watch and the thread list stay.
+    // Navigating back to Overview closes the session's own subscription: Watch stays.
     await page.locator(".side-nav").getByRole("button", { name: /^概览/ }).click();
-    await expect.poll(openStreams).toBe(2);
+    await expect.poll(openStreams).toBe(1);
   } finally {
     await app.close();
   }

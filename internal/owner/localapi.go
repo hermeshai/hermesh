@@ -15,7 +15,7 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/localipc"
 )
 
@@ -52,7 +52,7 @@ func (d *Device) LocalHandler() http.Handler {
 	mux := http.NewServeMux()
 	opts := connect.WithInterceptors(connect.UnaryInterceptorFunc(d.kickAfterWrites))
 	mux.Handle(localv1connect.NewLocalServiceHandler(&localService{d: d}, opts))
-	mux.Handle(threadv2connect.NewThreadServiceHandler(&ownerThreadService{d: d}, opts))
+	mux.Handle(sessionv1connect.NewSessionServiceHandler(&ownerSessionService{d: d}, opts))
 	return mux
 }
 
@@ -535,7 +535,7 @@ func (l *localService) ListSessions(ctx context.Context, req *localv1.ListSessio
 		if err != nil {
 			return nil, err
 		}
-		res, err := m.ListSessions(&sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View})
+		res, err := m.ListSessions(&sessionv1.ListSessionsRequest{Limit: req.Limit, Before: req.Before, View: req.View, IncludeArchived: true})
 		if err != nil {
 			return nil, err
 		}
@@ -562,177 +562,4 @@ func (l *localService) WatchSessions(ctx context.Context, _ *localv1.WatchSessio
 		return onlyMachineWatch(ctx, m, stream.Send)
 	}
 	return l.o().WatchSessions(ctx, stream.Send)
-}
-
-func (l *localService) StreamSessionEvents(ctx context.Context, req *localv1.StreamSessionEventsRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return err
-		}
-		return m.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, Follow: req.Follow, Partial: req.Partial, View: req.View}, stream.Send)
-	}
-	return l.o().StreamSessionEvents(ctx, req, stream.Send)
-}
-
-func (l *localService) ListSessionEvents(ctx context.Context, req *localv1.ListSessionEventsRequest) (*localv1.ListSessionEventsResponse, error) {
-	list := l.o().ListSessionEvents
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		list = func(_ context.Context, r *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
-			return m.ListEvents(r)
-		}
-	}
-	res, err := list(ctx, &sessionv1.ListEventsRequest{SessionId: req.SessionId, AfterSeq: req.AfterSeq, BeforeSeq: req.BeforeSeq, Limit: req.Limit, View: req.View})
-	if err != nil {
-		return nil, err
-	}
-	return &localv1.ListSessionEventsResponse{Events: res.Events, HasMoreBefore: res.HasMoreBefore, HasMoreAfter: res.HasMoreAfter}, nil
-}
-
-func (l *localService) ReadToolOutput(ctx context.Context, req *localv1.ReadToolOutputRequest, stream *connect.ServerStream[sessionv1.ToolOutputChunk]) error {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return err
-		}
-		return m.ReadToolOutput(&sessionv1.ReadToolOutputRequest{SessionId: req.SessionId, CallId: req.CallId}, stream.Send)
-	}
-	return l.o().ReadToolOutput(ctx, req, stream.Send)
-}
-
-func (l *localService) CodingConsent(ctx context.Context, req *localv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
-	consent := req.GetConsent()
-	if consent == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("choose a coding agent or session"))
-	}
-	o := l.o()
-	if !o.Initialized() {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("coding consent requires a trusted owner device"))
-	}
-	host := req.GetMachineId()
-	if consent.GetSessionId() != "" {
-		if local := o.localSession(consent.SessionId); local != nil {
-			return local.CodingConsent(consent)
-		}
-		n, err := o.sessionMachine(ctx, consent.SessionId)
-		if err != nil {
-			return nil, err
-		}
-		return codingConsentResult(n.Session.CodingConsent(ctx, consent))
-	}
-	if host == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("choose an execution host"))
-	}
-	if local := o.local(); local != nil && local.MachineID() == host {
-		return local.CodingConsent(consent)
-	}
-	c, err := o.relay(ctx)
-	if err != nil {
-		return nil, err
-	}
-	n, err := c.Machine(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	return codingConsentResult(n.Session.CodingConsent(ctx, consent))
-}
-
-func codingConsentResult(out *sessionv1.CodingConsentResponse, err error) (*sessionv1.CodingConsentResponse, error) {
-	if connect.CodeOf(err) == connect.CodeUnimplemented {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("update the execution host for coding agent consent"))
-	}
-	return out, err
-}
-
-func (l *localService) AnswerQuestion(ctx context.Context, req *localv1.AnswerQuestionRequest) (*localv1.AnswerQuestionResponse, error) {
-	if req.Decline && len(req.Answers) != 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("declining a question takes no answer content"))
-	}
-	answer := &sessionv1.AnswerQuestionRequest{SessionId: req.SessionId, QuestionId: req.QuestionId, Answers: req.Answers, Decline: req.Decline, CodingConsentVersion: req.CodingConsentVersion}
-	answerer := l.o().AnswerQuestion
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		answerer = m.AnswerQuestion
-	}
-	s, err := answerer(ctx, answer)
-	if err != nil {
-		return nil, err
-	}
-	return &localv1.AnswerQuestionResponse{Session: s}, nil
-}
-
-func (l *localService) InterruptSession(ctx context.Context, req *localv1.InterruptSessionRequest) (*localv1.SessionResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		return sessionResponse(m.Interrupt(ctx, req.SessionId))
-	}
-	return sessionResponse(l.o().InterruptSession(ctx, req.SessionId))
-}
-
-func (l *localService) ArchiveSession(ctx context.Context, req *localv1.ArchiveSessionRequest) (*localv1.SessionResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		return sessionResponse(m.Archive(ctx, req.SessionId))
-	}
-	return sessionResponse(l.o().ArchiveSession(ctx, req.SessionId))
-}
-
-func (l *localService) DeleteSession(ctx context.Context, req *localv1.DeleteSessionRequest) (*localv1.DeleteSessionResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err == nil {
-			err = m.Delete(ctx, req.SessionId)
-		}
-		if err != nil {
-			return nil, err
-		}
-		return &localv1.DeleteSessionResponse{}, nil
-	}
-	if err := l.o().DeleteSession(ctx, req.SessionId); err != nil {
-		return nil, err
-	}
-	return &localv1.DeleteSessionResponse{}, nil
-}
-
-func (l *localService) RenameSession(ctx context.Context, req *localv1.RenameSessionRequest) (*localv1.SessionResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		return sessionResponse(m.Rename(ctx, req.SessionId, req.Title))
-	}
-	return sessionResponse(l.o().RenameSession(ctx, req.SessionId, req.Title))
-}
-
-func (l *localService) UnarchiveSession(ctx context.Context, req *localv1.UnarchiveSessionRequest) (*localv1.SessionResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		return sessionResponse(m.Unarchive(ctx, req.SessionId))
-	}
-	return sessionResponse(l.o().UnarchiveSession(ctx, req.SessionId))
-}
-
-func sessionResponse(s *sessionv1.Session, err error) (*localv1.SessionResponse, error) {
-	if err != nil {
-		return nil, err
-	}
-	return &localv1.SessionResponse{Session: s}, nil
-}
-
-func (l *localService) GetDiff(ctx context.Context, req *localv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
-	if m, ok, err := l.o().onlyMachine(); ok {
-		if err != nil {
-			return nil, err
-		}
-		return m.Diff(ctx, &sessionv1.GetDiffRequest{SessionId: req.SessionId, Turn: req.Turn})
-	}
-	return l.o().GetDiff(ctx, req.SessionId, req.Turn)
 }

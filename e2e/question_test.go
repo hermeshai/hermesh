@@ -42,8 +42,11 @@ func TestOptionalQuestionItem(t *testing.T) {
 	if len(q.Items) != 2 || q.Items[0].Optional || !q.Items[1].Optional {
 		t.Fatalf("items: %+v", q.Items)
 	}
-	if _, err := w.app.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: s.SessionID, QuestionId: q.QuestionId,
-		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"红"}}}}); err != nil {
+	if _, err := w.app.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: s.SessionID, RequestId: q.QuestionId,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"红"}}},
+	}); err != nil {
 		t.Fatalf("answer without the optional note: %v", err)
 	}
 	eventually(t, time.Minute, "the turn finishes with the answer", func() bool {

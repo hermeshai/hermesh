@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/hermeshai/hermesh/internal/machine"
-	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 // herWasOn makes the machine in dataDir one where Her was on and is off
@@ -31,7 +30,7 @@ func herWasOn(t *testing.T, dataDir string) (home string) {
 	if err := os.WriteFile(filepath.Join(home, ".her-home"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg := machine.Config{DataDir: filepath.Join(dataDir, "machine"), Providers: map[string]provider.Provider{}}
+	cfg := machine.Config{DataDir: filepath.Join(dataDir, "machine"), Discoverers: map[string]machine.AgentDiscoverer{}}
 	n, err := machine.Open(cfg)
 	if err != nil {
 		t.Fatal(err)

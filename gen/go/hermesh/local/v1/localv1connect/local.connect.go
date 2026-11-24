@@ -11,7 +11,6 @@ import (
 	v12 "github.com/hermeshai/hermesh/gen/go/hermesh/her/v1"
 	v1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	v11 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	v13 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	http "net/http"
 	strings "strings"
 )
@@ -220,38 +219,6 @@ const (
 	// LocalServiceWatchSessionsProcedure is the fully-qualified name of the LocalService's
 	// WatchSessions RPC.
 	LocalServiceWatchSessionsProcedure = "/hermesh.local.v1.LocalService/WatchSessions"
-	// LocalServiceStreamSessionEventsProcedure is the fully-qualified name of the LocalService's
-	// StreamSessionEvents RPC.
-	LocalServiceStreamSessionEventsProcedure = "/hermesh.local.v1.LocalService/StreamSessionEvents"
-	// LocalServiceListSessionEventsProcedure is the fully-qualified name of the LocalService's
-	// ListSessionEvents RPC.
-	LocalServiceListSessionEventsProcedure = "/hermesh.local.v1.LocalService/ListSessionEvents"
-	// LocalServiceReadToolOutputProcedure is the fully-qualified name of the LocalService's
-	// ReadToolOutput RPC.
-	LocalServiceReadToolOutputProcedure = "/hermesh.local.v1.LocalService/ReadToolOutput"
-	// LocalServiceInterruptSessionProcedure is the fully-qualified name of the LocalService's
-	// InterruptSession RPC.
-	LocalServiceInterruptSessionProcedure = "/hermesh.local.v1.LocalService/InterruptSession"
-	// LocalServiceArchiveSessionProcedure is the fully-qualified name of the LocalService's
-	// ArchiveSession RPC.
-	LocalServiceArchiveSessionProcedure = "/hermesh.local.v1.LocalService/ArchiveSession"
-	// LocalServiceUnarchiveSessionProcedure is the fully-qualified name of the LocalService's
-	// UnarchiveSession RPC.
-	LocalServiceUnarchiveSessionProcedure = "/hermesh.local.v1.LocalService/UnarchiveSession"
-	// LocalServiceDeleteSessionProcedure is the fully-qualified name of the LocalService's
-	// DeleteSession RPC.
-	LocalServiceDeleteSessionProcedure = "/hermesh.local.v1.LocalService/DeleteSession"
-	// LocalServiceRenameSessionProcedure is the fully-qualified name of the LocalService's
-	// RenameSession RPC.
-	LocalServiceRenameSessionProcedure = "/hermesh.local.v1.LocalService/RenameSession"
-	// LocalServiceAnswerQuestionProcedure is the fully-qualified name of the LocalService's
-	// AnswerQuestion RPC.
-	LocalServiceAnswerQuestionProcedure = "/hermesh.local.v1.LocalService/AnswerQuestion"
-	// LocalServiceCodingConsentProcedure is the fully-qualified name of the LocalService's
-	// CodingConsent RPC.
-	LocalServiceCodingConsentProcedure = "/hermesh.local.v1.LocalService/CodingConsent"
-	// LocalServiceGetDiffProcedure is the fully-qualified name of the LocalService's GetDiff RPC.
-	LocalServiceGetDiffProcedure = "/hermesh.local.v1.LocalService/GetDiff"
 	// LocalServiceQueryWorkProcedure is the fully-qualified name of the LocalService's QueryWork RPC.
 	LocalServiceQueryWorkProcedure = "/hermesh.local.v1.LocalService/QueryWork"
 	// LocalServiceRegisterPushProcedure is the fully-qualified name of the LocalService's RegisterPush
@@ -416,27 +383,10 @@ type LocalServiceClient interface {
 	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
 	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
 	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
-	// Sessions (read across all reachable machines over E2E).
+	// Sessions (paged across all reachable machines; interactive actions go via
+	// hermesh.session.v1.SessionService on the same local endpoint).
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
-	// WatchSessions pushes session changes from every reachable machine as
-	// they happen (hermeshd keeps one SessionService.WatchSessions stream per
-	// online machine while anyone watches). A watcher that falls behind is
-	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest) (*connect.ServerStreamForClient[v1.WatchSessionsResponse], error)
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v13.SessionEvent], error)
-	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
-	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
-	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v13.ToolOutputChunk], error)
-	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
-	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
-	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
-	// DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
-	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
-	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
-	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
 	// (docs/work-stats.md §7).
@@ -866,72 +816,6 @@ func NewLocalServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(localServiceMethods.ByName("WatchSessions")),
 			connect.WithClientOptions(opts...),
 		),
-		streamSessionEvents: connect.NewClient[v1.StreamSessionEventsRequest, v13.SessionEvent](
-			httpClient,
-			baseURL+LocalServiceStreamSessionEventsProcedure,
-			connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
-			connect.WithClientOptions(opts...),
-		),
-		listSessionEvents: connect.NewClient[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse](
-			httpClient,
-			baseURL+LocalServiceListSessionEventsProcedure,
-			connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
-			connect.WithClientOptions(opts...),
-		),
-		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v13.ToolOutputChunk](
-			httpClient,
-			baseURL+LocalServiceReadToolOutputProcedure,
-			connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
-			connect.WithClientOptions(opts...),
-		),
-		interruptSession: connect.NewClient[v1.InterruptSessionRequest, v1.SessionResponse](
-			httpClient,
-			baseURL+LocalServiceInterruptSessionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("InterruptSession")),
-			connect.WithClientOptions(opts...),
-		),
-		archiveSession: connect.NewClient[v1.ArchiveSessionRequest, v1.SessionResponse](
-			httpClient,
-			baseURL+LocalServiceArchiveSessionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("ArchiveSession")),
-			connect.WithClientOptions(opts...),
-		),
-		unarchiveSession: connect.NewClient[v1.UnarchiveSessionRequest, v1.SessionResponse](
-			httpClient,
-			baseURL+LocalServiceUnarchiveSessionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("UnarchiveSession")),
-			connect.WithClientOptions(opts...),
-		),
-		deleteSession: connect.NewClient[v1.DeleteSessionRequest, v1.DeleteSessionResponse](
-			httpClient,
-			baseURL+LocalServiceDeleteSessionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("DeleteSession")),
-			connect.WithClientOptions(opts...),
-		),
-		renameSession: connect.NewClient[v1.RenameSessionRequest, v1.SessionResponse](
-			httpClient,
-			baseURL+LocalServiceRenameSessionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("RenameSession")),
-			connect.WithClientOptions(opts...),
-		),
-		answerQuestion: connect.NewClient[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse](
-			httpClient,
-			baseURL+LocalServiceAnswerQuestionProcedure,
-			connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
-			connect.WithClientOptions(opts...),
-		),
-		codingConsent: connect.NewClient[v1.CodingConsentRequest, v13.CodingConsentResponse](
-			httpClient,
-			baseURL+LocalServiceCodingConsentProcedure,
-			connect.WithSchema(localServiceMethods.ByName("CodingConsent")),
-			connect.WithClientOptions(opts...),
-		),
-		getDiff: connect.NewClient[v1.GetDiffRequest, v13.GetDiffResponse](
-			httpClient,
-			baseURL+LocalServiceGetDiffProcedure,
-			connect.WithSchema(localServiceMethods.ByName("GetDiff")),
-			connect.WithClientOptions(opts...),
-		),
 		queryWork: connect.NewClient[v1.QueryWorkRequest, v1.QueryWorkResponse](
 			httpClient,
 			baseURL+LocalServiceQueryWorkProcedure,
@@ -1017,17 +901,6 @@ type localServiceClient struct {
 	openWakeLink             *connect.Client[v1.OpenWakeLinkRequest, v1.OpenWakeLinkResponse]
 	listSessions             *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
 	watchSessions            *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
-	streamSessionEvents      *connect.Client[v1.StreamSessionEventsRequest, v13.SessionEvent]
-	listSessionEvents        *connect.Client[v1.ListSessionEventsRequest, v1.ListSessionEventsResponse]
-	readToolOutput           *connect.Client[v1.ReadToolOutputRequest, v13.ToolOutputChunk]
-	interruptSession         *connect.Client[v1.InterruptSessionRequest, v1.SessionResponse]
-	archiveSession           *connect.Client[v1.ArchiveSessionRequest, v1.SessionResponse]
-	unarchiveSession         *connect.Client[v1.UnarchiveSessionRequest, v1.SessionResponse]
-	deleteSession            *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
-	renameSession            *connect.Client[v1.RenameSessionRequest, v1.SessionResponse]
-	answerQuestion           *connect.Client[v1.AnswerQuestionRequest, v1.AnswerQuestionResponse]
-	codingConsent            *connect.Client[v1.CodingConsentRequest, v13.CodingConsentResponse]
-	getDiff                  *connect.Client[v1.GetDiffRequest, v13.GetDiffResponse]
 	queryWork                *connect.Client[v1.QueryWorkRequest, v1.QueryWorkResponse]
 	registerPush             *connect.Client[v1.RegisterPushRequest, v1.RegisterPushResponse]
 }
@@ -1628,97 +1501,6 @@ func (c *localServiceClient) WatchSessions(ctx context.Context, req *v1.WatchSes
 	return c.watchSessions.CallServerStream(ctx, connect.NewRequest(req))
 }
 
-// StreamSessionEvents calls hermesh.local.v1.LocalService.StreamSessionEvents.
-func (c *localServiceClient) StreamSessionEvents(ctx context.Context, req *v1.StreamSessionEventsRequest) (*connect.ServerStreamForClient[v13.SessionEvent], error) {
-	return c.streamSessionEvents.CallServerStream(ctx, connect.NewRequest(req))
-}
-
-// ListSessionEvents calls hermesh.local.v1.LocalService.ListSessionEvents.
-func (c *localServiceClient) ListSessionEvents(ctx context.Context, req *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error) {
-	response, err := c.listSessionEvents.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// ReadToolOutput calls hermesh.local.v1.LocalService.ReadToolOutput.
-func (c *localServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v13.ToolOutputChunk], error) {
-	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
-}
-
-// InterruptSession calls hermesh.local.v1.LocalService.InterruptSession.
-func (c *localServiceClient) InterruptSession(ctx context.Context, req *v1.InterruptSessionRequest) (*v1.SessionResponse, error) {
-	response, err := c.interruptSession.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// ArchiveSession calls hermesh.local.v1.LocalService.ArchiveSession.
-func (c *localServiceClient) ArchiveSession(ctx context.Context, req *v1.ArchiveSessionRequest) (*v1.SessionResponse, error) {
-	response, err := c.archiveSession.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// UnarchiveSession calls hermesh.local.v1.LocalService.UnarchiveSession.
-func (c *localServiceClient) UnarchiveSession(ctx context.Context, req *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error) {
-	response, err := c.unarchiveSession.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// DeleteSession calls hermesh.local.v1.LocalService.DeleteSession.
-func (c *localServiceClient) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
-	response, err := c.deleteSession.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// RenameSession calls hermesh.local.v1.LocalService.RenameSession.
-func (c *localServiceClient) RenameSession(ctx context.Context, req *v1.RenameSessionRequest) (*v1.SessionResponse, error) {
-	response, err := c.renameSession.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// AnswerQuestion calls hermesh.local.v1.LocalService.AnswerQuestion.
-func (c *localServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error) {
-	response, err := c.answerQuestion.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// CodingConsent calls hermesh.local.v1.LocalService.CodingConsent.
-func (c *localServiceClient) CodingConsent(ctx context.Context, req *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error) {
-	response, err := c.codingConsent.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// GetDiff calls hermesh.local.v1.LocalService.GetDiff.
-func (c *localServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {
-	response, err := c.getDiff.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
 // QueryWork calls hermesh.local.v1.LocalService.QueryWork.
 func (c *localServiceClient) QueryWork(ctx context.Context, req *v1.QueryWorkRequest) (*v1.QueryWorkResponse, error) {
 	response, err := c.queryWork.CallUnary(ctx, connect.NewRequest(req))
@@ -1894,27 +1676,10 @@ type LocalServiceHandler interface {
 	CheckWake(context.Context, *v1.CheckWakeRequest) (*v1.CheckWakeResponse, error)
 	ClearWake(context.Context, *v1.ClearWakeRequest) (*v1.ClearWakeResponse, error)
 	OpenWakeLink(context.Context, *v1.OpenWakeLinkRequest) (*v1.OpenWakeLinkResponse, error)
-	// Sessions (read across all reachable machines over E2E).
+	// Sessions (paged across all reachable machines; interactive actions go via
+	// hermesh.session.v1.SessionService on the same local endpoint).
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
-	// WatchSessions pushes session changes from every reachable machine as
-	// they happen (hermeshd keeps one SessionService.WatchSessions stream per
-	// online machine while anyone watches). A watcher that falls behind is
-	// ended (RESOURCE_EXHAUSTED) and should watch again.
 	WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error
-	StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v13.SessionEvent]) error
-	// A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
-	ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error)
-	// A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v13.ToolOutputChunk]) error
-	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error)
-	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error)
-	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error)
-	// DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
-	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
-	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error)
-	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error)
-	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error)
-	GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error)
 	// QueryWork counts the work done over a range, by hour or day, from what
 	// this device holds of every machine's counts: no machine is asked
 	// (docs/work-stats.md §7).
@@ -2340,72 +2105,6 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(localServiceMethods.ByName("WatchSessions")),
 		connect.WithHandlerOptions(opts...),
 	)
-	localServiceStreamSessionEventsHandler := connect.NewServerStreamHandlerSimple(
-		LocalServiceStreamSessionEventsProcedure,
-		svc.StreamSessionEvents,
-		connect.WithSchema(localServiceMethods.ByName("StreamSessionEvents")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceListSessionEventsHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceListSessionEventsProcedure,
-		svc.ListSessionEvents,
-		connect.WithSchema(localServiceMethods.ByName("ListSessionEvents")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceReadToolOutputHandler := connect.NewServerStreamHandlerSimple(
-		LocalServiceReadToolOutputProcedure,
-		svc.ReadToolOutput,
-		connect.WithSchema(localServiceMethods.ByName("ReadToolOutput")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceInterruptSessionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceInterruptSessionProcedure,
-		svc.InterruptSession,
-		connect.WithSchema(localServiceMethods.ByName("InterruptSession")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceArchiveSessionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceArchiveSessionProcedure,
-		svc.ArchiveSession,
-		connect.WithSchema(localServiceMethods.ByName("ArchiveSession")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceUnarchiveSessionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceUnarchiveSessionProcedure,
-		svc.UnarchiveSession,
-		connect.WithSchema(localServiceMethods.ByName("UnarchiveSession")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceDeleteSessionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceDeleteSessionProcedure,
-		svc.DeleteSession,
-		connect.WithSchema(localServiceMethods.ByName("DeleteSession")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceRenameSessionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceRenameSessionProcedure,
-		svc.RenameSession,
-		connect.WithSchema(localServiceMethods.ByName("RenameSession")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceAnswerQuestionHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceAnswerQuestionProcedure,
-		svc.AnswerQuestion,
-		connect.WithSchema(localServiceMethods.ByName("AnswerQuestion")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceCodingConsentHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceCodingConsentProcedure,
-		svc.CodingConsent,
-		connect.WithSchema(localServiceMethods.ByName("CodingConsent")),
-		connect.WithHandlerOptions(opts...),
-	)
-	localServiceGetDiffHandler := connect.NewUnaryHandlerSimple(
-		LocalServiceGetDiffProcedure,
-		svc.GetDiff,
-		connect.WithSchema(localServiceMethods.ByName("GetDiff")),
-		connect.WithHandlerOptions(opts...),
-	)
 	localServiceQueryWorkHandler := connect.NewUnaryHandlerSimple(
 		LocalServiceQueryWorkProcedure,
 		svc.QueryWork,
@@ -2556,28 +2255,6 @@ func NewLocalServiceHandler(svc LocalServiceHandler, opts ...connect.HandlerOpti
 			localServiceListSessionsHandler.ServeHTTP(w, r)
 		case LocalServiceWatchSessionsProcedure:
 			localServiceWatchSessionsHandler.ServeHTTP(w, r)
-		case LocalServiceStreamSessionEventsProcedure:
-			localServiceStreamSessionEventsHandler.ServeHTTP(w, r)
-		case LocalServiceListSessionEventsProcedure:
-			localServiceListSessionEventsHandler.ServeHTTP(w, r)
-		case LocalServiceReadToolOutputProcedure:
-			localServiceReadToolOutputHandler.ServeHTTP(w, r)
-		case LocalServiceInterruptSessionProcedure:
-			localServiceInterruptSessionHandler.ServeHTTP(w, r)
-		case LocalServiceArchiveSessionProcedure:
-			localServiceArchiveSessionHandler.ServeHTTP(w, r)
-		case LocalServiceUnarchiveSessionProcedure:
-			localServiceUnarchiveSessionHandler.ServeHTTP(w, r)
-		case LocalServiceDeleteSessionProcedure:
-			localServiceDeleteSessionHandler.ServeHTTP(w, r)
-		case LocalServiceRenameSessionProcedure:
-			localServiceRenameSessionHandler.ServeHTTP(w, r)
-		case LocalServiceAnswerQuestionProcedure:
-			localServiceAnswerQuestionHandler.ServeHTTP(w, r)
-		case LocalServiceCodingConsentProcedure:
-			localServiceCodingConsentHandler.ServeHTTP(w, r)
-		case LocalServiceGetDiffProcedure:
-			localServiceGetDiffHandler.ServeHTTP(w, r)
 		case LocalServiceQueryWorkProcedure:
 			localServiceQueryWorkHandler.ServeHTTP(w, r)
 		case LocalServiceRegisterPushProcedure:
@@ -2861,50 +2538,6 @@ func (UnimplementedLocalServiceHandler) ListSessions(context.Context, *v1.ListSe
 
 func (UnimplementedLocalServiceHandler) WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.WatchSessions is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) StreamSessionEvents(context.Context, *v1.StreamSessionEventsRequest, *connect.ServerStream[v13.SessionEvent]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.StreamSessionEvents is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) ListSessionEvents(context.Context, *v1.ListSessionEventsRequest) (*v1.ListSessionEventsResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ListSessionEvents is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v13.ToolOutputChunk]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ReadToolOutput is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.SessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.InterruptSession is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.SessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.ArchiveSession is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.SessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.UnarchiveSession is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.DeleteSession is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.SessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.RenameSession is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.AnswerQuestionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.AnswerQuestion is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) CodingConsent(context.Context, *v1.CodingConsentRequest) (*v13.CodingConsentResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.CodingConsent is not implemented"))
-}
-
-func (UnimplementedLocalServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v13.GetDiffResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.local.v1.LocalService.GetDiff is not implemented"))
 }
 
 func (UnimplementedLocalServiceHandler) QueryWork(context.Context, *v1.QueryWorkRequest) (*v1.QueryWorkResponse, error) {

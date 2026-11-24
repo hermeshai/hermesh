@@ -20,12 +20,11 @@ import (
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/internal/herhost/hertest"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 func openHerMachine(t *testing.T, dir, bin string) *Machine {
 	t.Helper()
-	n, err := Open(Config{DataDir: dir, HerBin: bin, Providers: map[string]provider.Provider{}})
+	n, err := Open(Config{DataDir: dir, HerBin: bin, Discoverers: map[string]AgentDiscoverer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +70,7 @@ func TestUnknownAdminCommand(t *testing.T) {
 	}
 	n.Close()
 
-	n, err := Open(Config{DataDir: t.TempDir(), Providers: map[string]provider.Provider{}, TestBeforeHer: true})
+	n, err := Open(Config{DataDir: t.TempDir(), Discoverers: map[string]AgentDiscoverer{}, TestBeforeHer: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +144,7 @@ func TestHerErased(t *testing.T) {
 		return &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: on, Erase: true}}}
 	}
 	dir := t.TempDir()
-	cfg := Config{DataDir: dir, Providers: map[string]provider.Provider{}}
+	cfg := Config{DataDir: dir, Discoverers: map[string]AgentDiscoverer{}}
 	mkHome()
 
 	// Never on here: Erase Everything leaves a her of the user's own, and
@@ -236,7 +235,7 @@ func TestHerExtensionHost(t *testing.T) {
 	bin, calls := hertest.Fake(t)
 	t.Setenv("HER_HOME", "/hers")
 	dir := t.TempDir()
-	n, err := Open(Config{DataDir: dir, HerBin: bin, Providers: map[string]provider.Provider{}, HerExtensionHost: true})
+	n, err := Open(Config{DataDir: dir, HerBin: bin, Discoverers: map[string]AgentDiscoverer{}, HerExtensionHost: true})
 	if err != nil {
 		t.Fatal(err)
 	}

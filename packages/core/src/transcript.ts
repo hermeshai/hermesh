@@ -1,112 +1,294 @@
+import { create } from "@bufbuild/protobuf";
 import {
+  ActorKind,
+  AnswerSchema,
+  ErrorEventSchema,
   FailureKind,
+  FailureSchema,
+  QuestionItemSchema,
+  QuestionOptionSchema,
   QuestionResolution,
+  QuestionResolvedSchema,
+  QuestionSchema,
+  RunStatus,
+  RuntimeRequestKind,
+  RuntimeRequestStatus,
+  ToolCallSchema,
+  ToolResultSchema,
+  TurnCompletedSchema,
+  TurnItemKind,
+  type Actor,
   type ErrorEvent,
   type Failure,
   type Question,
   type QuestionResolved,
-  type SessionEvent,
+  type Run,
+  type RuntimeRequest,
+  type Session,
+  type SessionProjection,
   type ToolCall,
   type ToolResult,
   type TurnCompleted,
+  type TurnItem,
 } from "@hermesh/proto/session";
 import { t } from "./i18n";
 import { dateOf } from "./sessions";
+import { activeBackgroundItemIdsOf } from "./threads";
 
-// A session's conversation as the window shows it, made from its events.
+// A unified session's conversation as the window shows it: its messages, tool
+// calls, settled questions, inter-agent mail, time lines before turns, and
+// run interruptions/failures.
 
 /** One row of the conversation. */
 export type TranscriptItem =
-  /** asker: who asked for the turn (a client id; "" from before messages). wakeReason: when woken by a background task. */
+  /** asker: who asked for the turn (a client id, "owner", or ""). wakeReason: when woken by a background task. */
   | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string; wakeReason?: string }
   /** asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say). */
   | { kind: "user"; seq: bigint; text: string; at: Date | undefined; asker: string }
   | { kind: "agent"; seq: bigint; text: string; at: Date | undefined }
-  /** A tool call with its result, once there is one; running: the agent is still in it. */
-  /** resultSeq: its result's event, when it has one. */
   | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
   | { kind: "turnEnd"; seq: bigint; end: TurnCompleted }
   | { kind: "error"; seq: bigint; error: ErrorEvent }
-  /**
-   * A message between the session and one of the owner's agents
-   * (docs/agent-messages.md): in, written to the session (delivered: what
-   * became of it), or out, written by its coding agent.
-   */
   | { kind: "message"; seq: bigint; direction: "in" | "out"; name: string; address: string; text: string; delivered: string };
 
-/**
- * transcript pairs tool calls with their results and questions with their
- * answers; status changes are left out (the header shows the status).
- * running: a turn is in progress, so its last unanswered tool call runs.
- */
-export function transcript(events: SessionEvent[], running: boolean): TranscriptItem[] {
-  const results = new Map<string, ToolResult>();
-  const resultSeqs = new Map<string, bigint>();
-  const resolutions = new Map<string, QuestionResolved>();
-  let lastCall: bigint | undefined;
-  for (const e of events) {
-    if (e.kind.case === "toolResult") {
-      results.set(e.kind.value.callId, e.kind.value);
-      resultSeqs.set(e.kind.value.callId, e.seq);
-    }
-    if (e.kind.case === "questionResolved") resolutions.set(e.kind.value.questionId, e.kind.value);
-    if (e.kind.case === "toolCall") lastCall = e.seq;
-  }
-  const items: TranscriptItem[] = [];
-  let asker = "";
-  for (const e of events) {
-    const at = dateOf(e.ts);
-    const seq = e.seq;
-    switch (e.kind.case) {
-      case "turnStarted":
-        asker = e.kind.value.asker;
-        items.push({ kind: "turn", seq, turn: e.kind.value.turn, at, asker });
-        break;
-      case "userMessage":
-        items.push({ kind: "user", seq, text: e.kind.value.text, at, asker });
-        break;
-      case "agentMessage":
-        items.push({ kind: "agent", seq, text: e.kind.value.text, at });
-        break;
-      case "toolCall": {
-        const c = e.kind.value;
-        const result = results.get(c.callId);
-        items.push({ kind: "tool", seq, call: c, result, resultSeq: resultSeqs.get(c.callId), running: !result && running && seq === lastCall && c.decision !== "deny" });
-        break;
-      }
-      case "questionAsked": {
-        const q = e.kind.value.question;
-        if (q) items.push({ kind: "question", seq, question: q, resolution: resolutions.get(q.questionId) });
-        break;
-      }
-      case "turnCompleted":
-        items.push({ kind: "turnEnd", seq, end: e.kind.value });
-        break;
-      case "error":
-        items.push({ kind: "error", seq, error: e.kind.value });
-        break;
-      case "messageReceived": {
-        const m = e.kind.value;
-        items.push({ kind: "message", seq, direction: "in", name: m.fromName, address: m.from, text: m.text, delivered: m.delivered });
-        break;
-      }
-      case "messageSent": {
-        const m = e.kind.value;
-        items.push({ kind: "message", seq, direction: "out", name: m.toName, address: m.to, text: m.text, delivered: "" });
-        break;
-      }
-    }
-  }
-  return items;
+const itemSeq = (it: TurnItem) => it.seq * 4n;
+
+/** Who an actor is, as a session's created_by and a turn's asker say it: "owner" for the owner (or none told), else its client id. */
+export function actorClientId(a: Actor | undefined): string {
+  return !a || a.kind === ActorKind.OWNER ? "owner" : a.id;
 }
 
-/** When the latest turn started, if the events tell. */
-export function turnStartedAt(events: SessionEvent[]): Date | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].kind.case === "turnStarted") return dateOf(events[i].ts);
+function toolKind(name: string): string {
+  if (name.startsWith("mcp__") || name === "message_send") return "mcp";
+  switch (name) {
+    case "Read":
+    case "NotebookRead":
+    case "read_file":
+    case "view":
+      return "read";
+    case "Grep":
+    case "Glob":
+    case "LS":
+    case "search":
+      return "search";
+    case "Edit":
+    case "MultiEdit":
+    case "Write":
+    case "WriteFile":
+    case "NotebookEdit":
+    case "apply_patch":
+      return "edit";
+    case "Bash":
+    case "BashOutput":
+    case "KillShell":
+    case "shell":
+      return "shell";
+    case "WebFetch":
+    case "WebSearch":
+      return "network";
+    default:
+      return "other";
   }
+}
+
+function isRunActive(run: Run | undefined): boolean {
+  if (!run) return true;
+  return (
+    run.status === RunStatus.PREPARING ||
+    run.status === RunStatus.RUNNING ||
+    run.status === RunStatus.WAITING_REQUEST
+  );
+}
+
+function toolItem(it: TurnItem, run: Run | undefined, activeBgItems: ReadonlySet<string>): TranscriptItem {
+  const seq = itemSeq(it);
+  const callId = it.itemId;
+  if (it.kind === TurnItemKind.FILE_CHANGE) {
+    return {
+      kind: "tool",
+      seq,
+      call: create(ToolCallSchema, { callId, kind: "edit", name: "Edit", summary: it.filePath }),
+      result: create(ToolResultSchema, { callId, summary: it.diff }),
+      running: false,
+    };
+  }
+  const shell = it.kind === TurnItemKind.COMMAND_EXECUTION;
+  const name = it.toolName || (shell ? "Bash" : "");
+  const running = it.status === "running" && (isRunActive(run) || activeBgItems.has(it.itemId));
+  return {
+    kind: "tool",
+    seq,
+    call: create(ToolCallSchema, { callId, kind: shell ? "shell" : toolKind(name), name, summary: shell ? it.command : it.filePath }),
+    result: running
+      ? undefined
+      : create(ToolResultSchema, { callId, summary: it.output, isError: it.status === "failed" || it.exitCode !== 0, truncated: it.outputTruncated }),
+    running,
+  };
+}
+
+function actorIdString(run: Run | undefined): string {
+  if (!run?.author) return "";
+  return run.author.kind === ActorKind.OWNER ? "owner" : run.author.id;
+}
+
+/**
+ * sessionTranscript converts a unified SessionProjection into conversation rows.
+ */
+export function sessionTranscript(proj: SessionProjection | null | undefined): TranscriptItem[] {
+  if (!proj) return [];
+  const runs = new Map(proj.runs.map((r) => [r.runId, r]));
+  const reqs = new Map(proj.requests.map((r) => [r.requestId, r]));
+  const activeBgItems = activeBackgroundItemIdsOf(proj);
+  const out: TranscriptItem[] = [];
+  const items = proj.items;
+  items.forEach((it, i) => {
+    const run = runs.get(it.runId);
+    const seq = itemSeq(it);
+    if (run && items[i - 1]?.runId !== it.runId) {
+      const wakeReason = run.author?.kind === ActorKind.SYSTEM && run.wakeReason ? run.wakeReason : undefined;
+      out.push({
+        kind: "turn",
+        seq: seq - 2n,
+        turn: run.ordinal,
+        at: dateOf(run.startedAt) ?? dateOf(run.createdAt) ?? dateOf(it.createdAt),
+        asker: actorIdString(run),
+        ...(wakeReason ? { wakeReason } : {}),
+      });
+    }
+    const at = dateOf(it.createdAt);
+    switch (it.kind) {
+      case TurnItemKind.USER_MESSAGE:
+        out.push({
+          kind: "user",
+          seq,
+          text: it.text,
+          at,
+          asker: it.actor ? actorClientId(it.actor) : run ? actorClientId(run.author) : "",
+        });
+        break;
+      case TurnItemKind.ASSISTANT_MESSAGE:
+        out.push({ kind: "agent", seq, text: it.text, at });
+        break;
+      case TurnItemKind.PROPOSED_PLAN:
+        out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at });
+        break;
+      case TurnItemKind.TOOL_CALL:
+      case TurnItemKind.COMMAND_EXECUTION:
+      case TurnItemKind.FILE_CHANGE:
+        out.push(toolItem(it, run, activeBgItems));
+        break;
+      case TurnItemKind.RUNTIME_REQUEST: {
+        const req = reqs.get(it.requestId);
+        if (req && req.kind === RuntimeRequestKind.USER_INPUT && req.status !== RuntimeRequestStatus.PENDING) {
+          const by = req.resolvedBy?.kind === ActorKind.OWNER ? "owner" : (req.resolvedBy?.id ?? "");
+          const answers = Object.entries(req.resolvedAnswers).map(([itemId, a]) =>
+            create(AnswerSchema, { itemId, selected: a.selectedOptions, text: a.customText }),
+          );
+          out.push({
+            kind: "question",
+            seq,
+            question: sessionQuestion(req),
+            resolution: create(QuestionResolvedSchema, {
+              questionId: req.requestId,
+              resolution: req.questionResolution,
+              by,
+              answers,
+            }),
+          });
+        }
+        break;
+      }
+      case TurnItemKind.MESSAGE_RECEIVED:
+        out.push({
+          kind: "message",
+          seq,
+          direction: "in",
+          name: it.mailName,
+          address: it.mailAddress,
+          text: it.text,
+          delivered: it.mailDelivered,
+        });
+        break;
+      case TurnItemKind.MESSAGE_SENT:
+        out.push({
+          kind: "message",
+          seq,
+          direction: "out",
+          name: it.mailName,
+          address: it.mailAddress,
+          text: it.text,
+          delivered: "",
+        });
+        break;
+      case TurnItemKind.ERROR:
+        out.push({
+          kind: "error",
+          seq,
+          error: create(ErrorEventSchema, { message: it.text, failure: it.failure ?? runFailure(it.text) }),
+        });
+        break;
+    }
+    if (run?.status === RunStatus.INTERRUPTED && items[i + 1]?.runId !== it.runId) {
+      out.push({
+        kind: "turnEnd",
+        seq: seq + 1n,
+        end: create(TurnCompletedSchema, {
+          turn: run.ordinal,
+          isError: true,
+          failure: create(FailureSchema, { kind: FailureKind.INTERRUPTED, message: run.errorMessage }),
+        }),
+      });
+    }
+  });
+  return out;
+}
+
+function formatProposedPlan(title: string, text: string): string {
+  if (!title || text.trimStart().startsWith("#")) return text;
+  return `### ${title}\n\n${text}`;
+}
+
+const runFailure = (message: string): Failure => create(FailureSchema, { kind: FailureKind.UNSPECIFIED, message });
+
+export function sessionFailure(s: Session | undefined): Failure | undefined {
+  if (!s) return undefined;
+  if (s.progress?.lastFailure && s.progress.lastFailure.kind !== FailureKind.INTERRUPTED) {
+    return s.progress.lastFailure;
+  }
+  if (s.error !== "") return runFailure(s.error);
   return undefined;
+}
+
+export function sessionToolRunning(proj: SessionProjection | null | undefined): boolean {
+  const run = proj?.session?.activeRunId;
+  if (!proj || !run) return false;
+  const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
+  return proj.items.some((it) => it.runId === run && it.status === "running" && tools.includes(it.kind));
+}
+
+export function sessionLiveReplies(proj: SessionProjection | null | undefined): Set<bigint> {
+  return new Set((proj?.items ?? []).filter((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming).map(itemSeq));
+}
+
+export function sessionQuestion(req: RuntimeRequest): Question {
+  return create(QuestionSchema, {
+    questionId: req.requestId,
+    askedAt: req.createdAt,
+    expiresAt: req.expiresAt,
+    items: (req.userInput?.questions ?? []).map((q) =>
+      create(QuestionItemSchema, {
+        id: q.id,
+        header: q.header,
+        text: q.text,
+        options: q.options.map((o) => create(QuestionOptionSchema, { id: o.id, label: o.label, description: o.description })),
+        multiSelect: q.multiSelect,
+        allowOther: q.allowOther,
+        optional: q.optional,
+        secret: q.secret,
+      }),
+    ),
+  });
 }
 
 /** The turn was stopped on purpose (by the owner or the agent), not by a failure. */

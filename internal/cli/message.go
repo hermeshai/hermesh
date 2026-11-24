@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
@@ -712,7 +711,7 @@ func (a *app) resolveTarget(to string, contacts []contactRec, machines []machine
 		return target{}, &exitError{code: exitUsage, kind: "not_found", err: errors.New(why), hint: "see `hermesh message contacts`, or `hermesh session list` for sessions"}
 	}
 	inbox, session, _ := strings.Cut(to, "/")
-	if strings.HasPrefix(to, "s_") && session == "" {
+	if (strings.HasPrefix(to, "s_") || strings.HasPrefix(to, "th_")) && session == "" {
 		ref, err := resolveMachine(machines, "", to)
 		if err != nil {
 			return notFound(fmt.Sprintf("no session %q on the machines this agent can reach", to))
@@ -855,7 +854,7 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 			if err != nil {
 				return err
 			}
-			atts, err := readFiles(files)
+			raws, err := readRawFiles(files)
 			if err != nil {
 				return err
 			}
@@ -889,9 +888,9 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 				return err
 			}
 			if t.session != "" && t.machine != nil && t.machine.Online {
-				return a.deliverDirect(ctx, cmd, c, t, signed, m, atts, wait)
+				return a.deliverDirect(ctx, cmd, c, t, signed, m, raws, wait)
 			}
-			if len(atts) > 0 {
+			if len(raws) > 0 {
 				what := "an agent"
 				if t.machine != nil {
 					what = "an offline machine"
@@ -958,32 +957,26 @@ func (a *app) post(ctx context.Context, ms relayv1connect.MessageServiceClient, 
 
 // deliverDirect hands a message to its session's machine over the
 // end-to-end tunnel and says at once what became of it.
-func (a *app) deliverDirect(ctx context.Context, cmd *cobra.Command, c *peer.Client, t target, signed *identityv1.Signed, m *inboxv1.Message, atts []*sessionv1.Attachment, wait bool) error {
+func (a *app) deliverDirect(ctx context.Context, cmd *cobra.Command, c *peer.Client, t target, signed *identityv1.Signed, m *inboxv1.Message, raws []rawAttachment, wait bool) error {
 	return a.onMachine(ctx, c, *t.machine, func(c *peer.Client, n *peer.Machine, ref machineRef) error {
-		before, err := n.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: t.session})
+		projRes, err := n.Session.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: t.session})
 		if err != nil {
 			return err
 		}
-		if before.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		before := projRes.GetProjection().GetSession()
+		if before.GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
 			return &exitError{code: exitUsage, kind: "invalid_state", err: fmt.Errorf("session %s is archived (read-only)", t.session),
 				hint: fmt.Sprintf("`hermesh session unarchive %s` to go on with it", t.session)}
 		}
-		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: atts})
-		delivered := ""
-		var sess *sessionv1.Session
-		switch {
-		case connect.CodeOf(err) == connect.CodeUnimplemented && before.CreatedBy == a.g.ClientId:
-			// A machine older than messages: as session send.
-			r, err := n.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: t.session, Text: m.Text, Attachments: atts})
-			if err != nil {
-				return err
-			}
-			sess, delivered = r.Session, "joined"
-		case err != nil:
+		attRefs, err := uploadAttachments(ctx, n.Session, raws)
+		if err != nil {
 			return err
-		default:
-			sess, delivered = res.Session, res.Delivered
 		}
+		res, err := n.Session.DeliverMessage(ctx, &sessionv1.DeliverMessageRequest{SessionId: t.session, Message: signed, Attachments: attRefs})
+		if err != nil {
+			return err
+		}
+		sess, delivered := res.Session, res.Delivered
 		sent := sentJSON{ID: m.MessageId, To: address(m.To), Name: ref.Name, Delivered: delivered}
 		if delivered == "queued" {
 			sent.Expect = "another agent's turn is running: this waits for a turn of its own, whose news comes to your inbox"

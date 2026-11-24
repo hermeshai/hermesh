@@ -41,27 +41,27 @@ test("the page has no Node and cannot leave the app", async () => {
 test("a cancelled stream releases the daemon connection", async () => {
   const { app, page } = await launch();
   const open = () => app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
-  // The window keeps two streams open: its watch on the sessions, and the v2 thread list (store.tsx useThreads).
+  // The window keeps one stream open: its unified Watch on the owner's state and sessions.
   await expect((await sessionList(page))).toContainText("写 hello");
-  await expect.poll(open).toBe(2);
+  await expect.poll(open).toBe(1);
   const id = (await import("./app")).fixture.sessions["跑很久"];
   await page.evaluate(async (sessionId) => {
     const ctl = new AbortController();
     (globalThis as { abortStream?: () => void }).abortStream = () => ctl.abort();
-    const body = JSON.stringify({ sessionId, follow: true });
+    const body = JSON.stringify({ sessionId });
     const env = new Uint8Array(5 + body.length);
     new DataView(env.buffer).setUint32(1, body.length);
     env.set(new TextEncoder().encode(body), 5);
-    fetch("app://hermesh/api/hermesh.local.v1.LocalService/StreamSessionEvents", {
+    fetch("app://hermesh/api/hermesh.session.v1.SessionService/SubscribeSession", {
       method: "POST",
       headers: { "content-type": "application/connect+json", "connect-protocol-version": "1" },
       body: env,
       signal: ctl.signal,
     }).then((r) => r.body?.getReader().read()).catch(() => {});
   }, id);
-  await expect.poll(open).toBe(3);
-  await page.evaluate(() => (globalThis as { abortStream?: () => void }).abortStream?.());
   await expect.poll(open).toBe(2);
+  await page.evaluate(() => (globalThis as { abortStream?: () => void }).abortStream?.());
+  await expect.poll(open).toBe(1);
   await app.close();
 });
 

@@ -3,68 +3,34 @@ import HermeshProto
 import SwiftProtobuf
 
 // The new-session composer's rules (docs/thread-composer.md), as the Mac has
-// them in @hermesh/core's composer.ts: a thread as a row of the session list,
-// how hard a model thinks, the project a session takes on a machine, and why
-// a provider can't be chosen.
+// them in @hermesh/core's composer.ts: how hard a model thinks, the project a
+// session takes on a machine, and why a provider can't be chosen.
 
-/// The workspace each machine's thread kernel makes for threads that name no project.
+/// The workspace each machine's session kernel makes for sessions that name no project.
 public let scratchProject = "scratch"
 
-/// A v2 thread's id ("th_…"), as against a v1 session's.
-public func isThreadID(_ id: String) -> Bool { id.hasPrefix("th_") }
-
 /// Who an actor is, as a session's created_by and a turn's asker say it: "owner" for the owner (or none told), else its client id.
-public func actorClientID(_ a: Hermesh_Thread_V2_Actor?) -> String {
+public func actorClientID(_ a: Hermesh_Session_V1_Actor?) -> String {
     guard let a, a.kind != .owner else { return "owner" }
     return a.id
 }
-
-/// A thread as a row of the session list, so both kinds group, sort and filter alike.
-public func threadAsSession(_ th: Hermesh_Thread_V2_Thread) -> Session {
-    var s = Session()
-    s.sessionID = th.threadID
-    s.machineID = th.machineID
-    s.projectID = th.projectID
-    s.agent = th.modelSelection.instanceID
-    s.model = th.modelSelection.model
-    s.branch = th.workspace.branch
-    s.title = th.title
-    s.error = th.lastError
-    s.progress.turnCount = th.runCount
-    if let f = threadFailure(th) { s.progress.lastFailure = f }
-    s.createdBy = actorClientID(th.hasCreatedBy ? th.createdBy : nil)
-    if th.hasCreatedAt { s.createdAt = th.createdAt }
-    if th.hasUpdatedAt { s.updatedAt = th.updatedAt }
-    s.status = switch th.status {
-    case .preparing: .preparing
-    case .queued: .queued
-    case .running: .running
-    case .waitingRequest: .waitingInput
-    case .failed: .crashed
-    case .archived: .archived
-    case .idle where th.activeBackgroundCount > 0: .running
-    default: .idle
-    }
-    return s
-}
-
 /// How hard the selected model thinks: its "reasoning" option, the levels it offers and the one chosen.
 public struct Reasoning: Equatable, Sendable {
     public let id: String
-    public let choices: [Hermesh_Thread_V2_OptionChoice]
+    public let choices: [Hermesh_Session_V1_OptionChoice]
     public let value: String
 }
 
-public func providerInstance(_ providers: [Hermesh_Thread_V2_ProviderInstance], _ id: String) -> Hermesh_Thread_V2_ProviderInstance? {
+public func providerInstance(_ providers: [Hermesh_Session_V1_ProviderInstance], _ id: String) -> Hermesh_Session_V1_ProviderInstance? {
     providers.first { $0.instanceID == id }
 }
 
-public func modelEntry(_ providers: [Hermesh_Thread_V2_ProviderInstance], _ sel: Hermesh_Thread_V2_ModelSelection) -> Hermesh_Thread_V2_ModelCatalogEntry? {
+public func modelEntry(_ providers: [Hermesh_Session_V1_ProviderInstance], _ sel: Hermesh_Session_V1_ModelSelection) -> Hermesh_Session_V1_ModelCatalogEntry? {
     guard let inst = providerInstance(providers, sel.instanceID) else { return nil }
     return inst.models.first { $0.slug == sel.model } ?? inst.models.first(where: \.isDefault) ?? inst.models.first
 }
 
-public func reasoningOf(_ providers: [Hermesh_Thread_V2_ProviderInstance], _ sel: Hermesh_Thread_V2_ModelSelection) -> Reasoning? {
+public func reasoningOf(_ providers: [Hermesh_Session_V1_ProviderInstance], _ sel: Hermesh_Session_V1_ModelSelection) -> Reasoning? {
     guard let d = modelEntry(providers, sel)?.optionDescriptors.first(where: { $0.role == "reasoning" && $0.type == .select && !$0.choices.isEmpty }) else { return nil }
     let value: String
     if case .stringValue(let v)? = sel.options[d.id]?.kind {
@@ -77,9 +43,9 @@ public func reasoningOf(_ providers: [Hermesh_Thread_V2_ProviderInstance], _ sel
     return Reasoning(id: d.id, choices: d.choices, value: value)
 }
 
-public func withReasoning(_ sel: Hermesh_Thread_V2_ModelSelection, id: String, value: String) -> Hermesh_Thread_V2_ModelSelection {
+public func withReasoning(_ sel: Hermesh_Session_V1_ModelSelection, id: String, value: String) -> Hermesh_Session_V1_ModelSelection {
     var next = sel
-    var v = Hermesh_Thread_V2_OptionValue()
+    var v = Hermesh_Session_V1_OptionValue()
     v.kind = .stringValue(value)
     next.options[id] = v
     return next
@@ -88,10 +54,10 @@ public func withReasoning(_ sel: Hermesh_Thread_V2_ModelSelection, id: String, v
 /// Another model: its own default options, with how hard it thinks kept when it offers that level. changed
 /// names the level that could not be kept and the one it became.
 public func selectModel(
-    _ providers: [Hermesh_Thread_V2_ProviderInstance], from prev: Hermesh_Thread_V2_ModelSelection, instanceID: String, slug: String
-) -> (selection: Hermesh_Thread_V2_ModelSelection, changed: (from: String, to: String)?) {
+    _ providers: [Hermesh_Session_V1_ProviderInstance], from prev: Hermesh_Session_V1_ModelSelection, instanceID: String, slug: String
+) -> (selection: Hermesh_Session_V1_ModelSelection, changed: (from: String, to: String)?) {
     guard let inst = providerInstance(providers, instanceID), let entry = inst.models.first(where: { $0.slug == slug }) else { return (prev, nil) }
-    var sel = Hermesh_Thread_V2_ModelSelection()
+    var sel = Hermesh_Session_V1_ModelSelection()
     sel.instanceID = inst.instanceID
     sel.model = entry.slug
     for d in entry.optionDescriptors where d.hasCurrentValue { sel.options[d.id] = d.currentValue }
@@ -101,15 +67,15 @@ public func selectModel(
 }
 
 /// The selection a provider starts with: its default model and that model's own options.
-public func defaultSelection(_ inst: Hermesh_Thread_V2_ProviderInstance) -> Hermesh_Thread_V2_ModelSelection {
+public func defaultSelection(_ inst: Hermesh_Session_V1_ProviderInstance) -> Hermesh_Session_V1_ModelSelection {
     let slug = (inst.models.first(where: \.isDefault) ?? inst.models.first)?.slug ?? "default"
-    return selectModel([inst], from: Hermesh_Thread_V2_ModelSelection(), instanceID: inst.instanceID, slug: slug).selection
+    return selectModel([inst], from: Hermesh_Session_V1_ModelSelection(), instanceID: inst.instanceID, slug: slug).selection
 }
 
 /// Why a provider can't be chosen here, or nil when it can.
 public enum ProviderUnusable: String, Sendable { case off, notInstalled, notForProject, signedOut }
 
-public func providerUnusable(_ inst: Hermesh_Thread_V2_ProviderInstance, projectAgents: [String]) -> ProviderUnusable? {
+public func providerUnusable(_ inst: Hermesh_Session_V1_ProviderInstance, projectAgents: [String]) -> ProviderUnusable? {
     if !inst.enabled { return .off }
     if !inst.installed { return .notInstalled }
     if !projectAgents.isEmpty, ![inst.instanceID, inst.driver, inst.acpFlavor].contains(where: { !$0.isEmpty && projectAgents.contains($0) }) { return .notForProject }
@@ -119,13 +85,13 @@ public func providerUnusable(_ inst: Hermesh_Thread_V2_ProviderInstance, project
 
 /// The provider a new session starts with when nothing was used on the machine before: the coding agents most
 /// people use first, then any ready one.
-public func preferredProvider(_ providers: [Hermesh_Thread_V2_ProviderInstance]) -> Hermesh_Thread_V2_ProviderInstance? {
+public func preferredProvider(_ providers: [Hermesh_Session_V1_ProviderInstance]) -> Hermesh_Session_V1_ProviderInstance? {
     let ready = providers.filter { providerUnusable($0, projectAgents: []) == nil }
     return ["claude", "codex", "gemini"].lazy.compactMap { id in ready.first { $0.instanceID == id } }.first ?? ready.first ?? providers.first
 }
 
 /// What the search finds, by provider: a model matches by its name, short name or slug, or its provider's name.
-public func findModels(_ providers: [Hermesh_Thread_V2_ProviderInstance], query: String) -> [(provider: Hermesh_Thread_V2_ProviderInstance, models: [Hermesh_Thread_V2_ModelCatalogEntry])] {
+public func findModels(_ providers: [Hermesh_Session_V1_ProviderInstance], query: String) -> [(provider: Hermesh_Session_V1_ProviderInstance, models: [Hermesh_Session_V1_ModelCatalogEntry])] {
     let q = query.trimmingCharacters(in: .whitespaces).lowercased()
     guard !q.isEmpty else { return [] }
     return providers.compactMap { inst in
