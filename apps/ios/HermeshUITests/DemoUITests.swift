@@ -44,6 +44,11 @@ final class DemoUITests: XCTestCase {
         let result = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "The sample page now says “Welcome aboard!”")).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 15))
         XCTAssertFalse(app.buttons["answer"].exists)
+        // ChatGPT sent the task in, not the owner: its prompt has ChatGPT's face on the corner, and no name over it.
+        let sender = app.descendants(matching: .any)["prompt-sender"].firstMatch
+        XCTAssertTrue(sender.waitForExistence(timeout: 10), "who sent it")
+        XCTAssertEqual(sender.label, "Sent by ChatGPT")
+        XCTAssertFalse(app.staticTexts["Sent by ChatGPT"].exists, "a face, not a line of text")
         tap("session-info")
         XCTAssertTrue(app.buttons["close"].waitForExistence(timeout: 10), "Task Info sheet")
         let file = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "src/welcome.ts")).firstMatch

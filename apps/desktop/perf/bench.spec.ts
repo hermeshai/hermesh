@@ -281,12 +281,71 @@ async function loadAll(page: Page) {
   throw new Error("the sidebar never loaded every session");
 }
 
+/**
+ * A turn of hundreds of tool calls in a row: opening its folded steps, what that draws, scrolling them and the page
+ * around them, opening one step, folding them again.
+ */
+async function toolsBench(c: Ctx) {
+  const { page } = c;
+  // The newest session: near the top of the list, scrolled to if it is not in sight.
+  await row(page, titles.manyTools).scrollIntoViewIfNeeded();
+  await row(page, titles.manyTools).click();
+  const head = page.locator(".tg-h").first();
+  await head.waitFor();
+  await sleep(1000);
+  await observeEvents(page);
+  record("tools.expand.ms", await timed(page, () => head.click(), { sel: ".tg-b .tool" }));
+  await sleep(1000);
+  record("tools.drawnRows", await page.locator(".tg-b .tool").count());
+  record("tools.domNodes", await page.evaluate(() => document.querySelectorAll("*").length));
+  const box = (await page.locator(".tg-b").boundingBox())!;
+  record("tools.card.height", box.height);
+  // Scrolling inside the card (where it scrolls on its own), then the page with the card open.
+  await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height, 200) / 2);
+  const inCard = (async () => {
+    for (let i = 0; i < 60; i++) {
+      await page.mouse.wheel(0, i < 30 ? 300 : -300);
+      await sleep(40);
+    }
+  })();
+  await frames(c, "tools.scroll.card", 2400);
+  await inCard;
+  await page.mouse.move(box.x + box.width / 2, 120);
+  const onPage = (async () => {
+    for (let i = 0; i < 60; i++) {
+      await page.mouse.wheel(0, i < 30 ? 400 : -400);
+      await sleep(40);
+    }
+  })();
+  await frames(c, "tools.scroll.page", 2400);
+  await onPage;
+  // Opening one step's output, and folding the group again.
+  const one = page.locator(".tg-b .tool .th[aria-expanded]").first();
+  record("tools.openOne.ms", await timed(page, () => one.click(), { sel: ".tg-b .tool.open .out" }));
+  await sleep(300);
+  record("tools.fold.ms", await timed(page, () => head.click(), { sel: ".tgroup:not(.open)" }));
+  const clicks = await eventDurations(page);
+  record("tools.inp.max", Math.max(0, ...clicks));
+  await toOverview(page);
+  await sleep(1000);
+}
+
 test("benchmark", async () => {
   const socket = path.join("/tmp", `hmperf-${process.pid}.sock`);
   const daemon: Daemon = await startDaemon(socket);
   const main = path.join(out, "main", "index.js");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "hmperf-"));
   try {
+    // PERF_ONLY=tools: the tool steps alone, in a window opened on its own profile.
+    if (process.env.PERF_ONLY === "tools") {
+      const c = await launch(main, socket, path.join(tmp, "tools"));
+      await ready(c, [".srow"]);
+      await sleep(2000);
+      await toolsBench(c);
+      await c.app.close();
+      return;
+    }
+
     // The floor: an empty window of the same kind.
     {
       const starts: number[] = [];
@@ -356,6 +415,8 @@ test("benchmark", async () => {
     const c = await launch(main, socket, profile);
     const { page } = c;
     await ready(c, overviewReady);
+
+    await toolsBench(c);
     await sleep(2000);
     await memory(c, "fresh");
 

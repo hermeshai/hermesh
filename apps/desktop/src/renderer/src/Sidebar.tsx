@@ -30,7 +30,7 @@ export function herClients(st: Pick<Store, "clients">): string[] {
 }
 
 /** Who sent work, in a row (docs/her-team.md §4.7): Her by her name alone, the owner as "You", the others as their grants name them. */
-export function senderName(st: Store, clientId: string): string {
+export function senderName(st: Pick<Store, "clients">, clientId: string): string {
   if (clientId === "owner") return i18n.t("common:sidebar.you");
   if (herClients(st).includes(clientId)) return "Her";
   return st.clients.find((c) => c.clientId === clientId)?.label ?? i18n.t("common:sidebar.disconnectedGrant");

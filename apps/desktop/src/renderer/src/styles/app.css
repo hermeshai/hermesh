@@ -417,6 +417,11 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .um{position:relative;align-self:flex-end;max-width:80%;margin-top:var(--sp-1)}
 .um .bub{background:var(--bub);color:var(--bub-fg);border-radius:var(--r-xl);padding:9px 15px;font-size:var(--chat-size);line-height:1.625;white-space:pre-wrap;overflow-wrap:anywhere}
 .um .bub::selection{background:rgba(255,255,255,.32)}
+/* Work another of the owner's agents sent in (Her, a granted one): a quiet bubble, its sender's face on the corner, ringed by the page. */
+.um.from{margin-top:calc(var(--sp-1) + 8px)}
+.um.from .bub{background:var(--fill2);color:var(--msg)}
+.um.from .bub::selection{background:var(--sel)}
+.um-badge{position:absolute;left:-11px;top:-11px;z-index:1;padding:2px;border-radius:50%;background:var(--win);display:flex}
 .am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
 /* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left. */
 .um,.am.end{margin-bottom:var(--sp-3)}
@@ -481,13 +486,27 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .tgroup.open .tg-h .chev,.tool.open .th .chev{transform:none}
 .tool .out{display:none;margin:4px 0 6px;background:var(--code);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--l2);line-height:1.5}
 .tool.open .out{display:block}
-/* Opened, a group is a hairline card a size down: one row per call, its output opening inside the card. */
-.tg-b{display:flex;flex-direction:column;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:var(--r-box);overflow:hidden}
+/* Opened, a group is a hairline card a size down: one row per call, its output opening inside the card. Past ten
+   and a half rows it stops growing and scrolls inside (the half row says there is more); where there is more above or
+   below, that edge fades into the page. */
+.tg-b{position:relative;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:var(--r-box);overflow:hidden}
+.tg-s{max-height:300px;overflow-y:auto;overscroll-behavior-y:auto}
+.tg-l{display:flex;flex-direction:column}
+.tg-l>.vrow+.vrow{border-top:1px solid var(--sep)}
+.tg-b::before,.tg-b::after{content:"";position:absolute;left:0;right:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .15s}
+.tg-b::before{top:0;height:22px;background:linear-gradient(var(--win),transparent)}
+.tg-b::after{bottom:0;height:28px;background:linear-gradient(transparent,var(--win))}
+.tg-b.more-up::before,.tg-b.more-down::after{opacity:1}
+/* Back to the newest step, while the turn runs and the person scrolled up: the conversation's arrow, a size down. */
+.tg-end{position:absolute;right:8px;bottom:8px;z-index:2;width:26px;height:26px;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--l1);
+  background:var(--glass);box-shadow:var(--glass-sh);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
+  opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .18s,transform .18s}
+.tg-b.away .tg-end{opacity:1;transform:none;pointer-events:auto}
+.tg-end .ic{width:14px;height:14px}
 .tg-b .tool{border-radius:0;font-size:var(--fs-text)}
-.tg-b .tool+.tool{border-top:1px solid var(--sep)}
 .tg-b .tool .th{width:100%;gap:5px;padding:var(--sp-1) var(--sp-2);border-radius:0}
 .tg-b .tool .th[aria-expanded]:hover,.tg-b .tool.open .th{background:var(--fill)}
-.tg-b .tool .out{margin:0;border-radius:0;padding:var(--sp-1) var(--sp-2) 10px;background:var(--fill);color:var(--l2);max-height:320px;overflow:auto}
+.tg-b .tool .out{margin:0;border-radius:0;padding:var(--sp-1) var(--sp-2) 10px;background:var(--fill);color:var(--l2);max-height:180px;overflow:auto}
 .tool.err .th .vb{color:var(--red)}
 .tnote{align-self:center;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:999px}
 .tq{border-radius:var(--r-card);background:var(--fill);padding:10px 12px;font-size:12.5px}

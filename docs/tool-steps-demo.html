@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具步骤 · 限高滚动 · 原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --font-mac:"Google Sans Flex","Google Sans",system-ui,-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+[data-theme=light]{
+  --page:#e9e9ee;--page-fg:#1b1c22;--page-fg2:#62646f;--card:#fff;--card-bd:rgba(0,0,0,.08);
+  --bg:#fbfbfc;--win:#fff;--side:#f4f4f7;--side-sel:rgba(0,0,0,.075);
+  --l1:rgba(0,0,0,.86);--l2:rgba(0,0,0,.54);--l3:rgba(0,0,0,.32);--l4:rgba(0,0,0,.14);
+  --fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);--sep:rgba(0,0,0,.08);--code:#f6f7fa;
+  --glass:rgba(250,250,252,.78);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 10px 30px rgba(20,24,40,.10),0 2px 6px rgba(20,24,40,.06);
+  --pill:#fff;--pill-bd:rgba(0,0,0,.10);--accent:#3d5bff;--red:#e5484d;
+  --hl-cmd:#1f6feb;--hl-str:#0a7a3d;--hl-flag:#8250df;
+  --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--card:#1a1b20;--card-bd:rgba(255,255,255,.08);
+  --bg:#000;--win:#1e1e21;--side:#25252a;--side-sel:rgba(255,255,255,.1);
+  --l1:rgba(255,255,255,.9);--l2:rgba(255,255,255,.56);--l3:rgba(255,255,255,.32);--l4:rgba(255,255,255,.14);
+  --fill:rgba(255,255,255,.05);--fill2:rgba(255,255,255,.085);--sep:rgba(255,255,255,.10);--code:#18181b;
+  --glass:rgba(38,38,42,.74);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),inset 0 .5px 0 rgba(255,255,255,.14),0 10px 30px rgba(0,0,0,.5);
+  --pill:#29292d;--pill-bd:rgba(255,255,255,.12);--accent:#4a66ff;--red:#ff6369;
+  --hl-cmd:#79b8ff;--hl-str:#85e89d;--hl-flag:#d2a8ff;
+  --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;min-height:100vh;padding-bottom:110px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1560px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1560px;margin:0 auto;padding:16px 24px;display:flex;gap:32px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.notes{width:380px;max-width:100%;background:var(--card);border:1px solid var(--card-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.notes h3{margin:0 0 6px;font-size:14px}
+.notes .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--card-bd)}
+.notes .blk>b{display:block;margin-bottom:2px}
+.notes p{margin:0;color:var(--page-fg2)}
+.notes ul{margin:4px 0 0;padding-left:19px;color:var(--page-fg2)}
+.notes li{margin:3px 0}
+.notes code{font:12px var(--mono);background:var(--fill);padding:1px 4px;border-radius:4px}
+.notes .q{color:var(--page-fg)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--card-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;justify-content:center;font-size:12.5px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:4px 11px;border-radius:7px;background:var(--fill2)}
+.ctl button.on{background:var(--accent);color:#fff}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- what both share: the steps card ---------- */
+.caret{width:11px;height:11px;stroke-width:2.4;color:var(--l3);transform:rotate(-90deg);transition:transform .18s}
+.open>.gh .caret,.row.open .caret{transform:none}
+.gh{display:flex;align-items:center;gap:6px;color:var(--l2);text-align:left;max-width:100%}
+.gh span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sweep{-webkit-mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);-webkit-mask-size:300% 100%;mask-size:300% 100%;animation:sweep 2.4s linear infinite}
+@keyframes sweep{from{-webkit-mask-position:100% 0;mask-position:100% 0}to{-webkit-mask-position:0 0;mask-position:0 0}}
+.spin{width:12px;height:12px;border-radius:50%;border:1.6px solid var(--l4);border-top-color:var(--l2);animation:rot .8s linear infinite;flex:none}
+@keyframes rot{to{transform:rotate(360deg)}}
+/* the card */
+.card{position:relative;margin-top:8px;border:1px solid var(--sep);overflow:hidden}
+.scroller{overflow-y:auto;overscroll-behavior:auto;scrollbar-width:thin;scrollbar-color:var(--l4) transparent}
+.scroller::-webkit-scrollbar{width:6px}
+.scroller::-webkit-scrollbar-thumb{background:var(--l4);border-radius:3px}
+/* new: at most N rows high; a soft edge where there is more above or below */
+.capped .scroller{max-height:var(--cap)}
+.capped .scroller{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);--ft:0px;--fb:0px;transition:--ft .2s,--fb .2s}
+.capped.more-up .scroller{--ft:22px}
+.capped.more-down .scroller{--fb:28px}
+@property --ft{syntax:"<length>";inherits:false;initial-value:0px}
+@property --fb{syntax:"<length>";inherits:false;initial-value:0px}
+.row{display:block;width:100%}
+.row+.row{border-top:.5px solid var(--sep)}
+.rh{display:flex;align-items:center;gap:5px;width:100%;text-align:left;color:var(--l2);white-space:nowrap}
+.rh .vb{flex:none}
+.rh .ob{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rh code{font-family:var(--mono);color:var(--l1);opacity:.9}
+.rh code .c{color:var(--hl-cmd)}.rh code .s{color:var(--hl-str)}.rh code .f{color:var(--hl-flag)}
+.row.err .vb{color:var(--red)}
+.row.open .rh{background:var(--fill)}
+.out{background:var(--fill);font-family:var(--mono);white-space:pre-wrap;color:var(--l2);overflow:auto}
+/* back to the newest: the conversation's arrow, a size down, in the card's corner */
+.toend{position:absolute;right:10px;bottom:10px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s;pointer-events:none}
+.toend.on{opacity:1;transform:none;pointer-events:auto}
+.toend .ic{width:15px;height:15px;stroke-width:2.2}
+
+/* ---------- iPhone ---------- */
+.phone{width:402px;height:874px;border-radius:58px;background:var(--bg);position:relative;overflow:hidden;overflow:clip;flex:none;
+  box-shadow:0 0 0 11px #1a1a1c,0 0 0 12px #3a3a3e,0 30px 80px rgba(10,20,50,.30);color:var(--l1);font:17px/1.3 var(--font-ios)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:8}
+.status{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;padding:6px 34px 0 46px;font-weight:600;z-index:7}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:var(--l1);z-index:20}
+.glass{background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5)}
+.fade{position:absolute;top:0;left:0;right:0;height:116px;z-index:4;pointer-events:none;background:linear-gradient(var(--bg) 46%,transparent)}
+.nav{position:absolute;top:56px;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:center;z-index:5}
+.gb{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;position:absolute}
+.tcap{height:44px;max-width:250px;border-radius:22px;padding:0 18px;display:flex;flex-direction:column;justify-content:center;text-align:center;line-height:1.18}
+.tcap b{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcap small{font-size:11px;color:var(--l2)}
+.chat{position:absolute;inset:0;overflow-y:auto;padding:116px 20px 110px;display:flex;flex-direction:column;gap:13px;scrollbar-width:none}
+.chat::-webkit-scrollbar{display:none}
+.chat>:first-child{margin-top:auto}
+.bub{align-self:flex-end;background:var(--accent);color:#fff;border-radius:18px;padding:9px 14px;line-height:1.42;margin:8px 0 8px 48px}
+.md{line-height:1.5}
+.md code{font:15px var(--mono);background:var(--fill2);padding:1px 4px;border-radius:5px}
+.phone .gh{font-size:15px}
+.phone .card{border-radius:10px}
+.phone .rh{font-size:13px;padding:8px 13px}
+.phone .rh code{font-size:12px}
+.phone .out{font-size:12px;padding:0 13px 10px;max-height:var(--out)}
+.work{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--l2)}
+.work i{font-style:normal;color:var(--l3);font-variant-numeric:tabular-nums}
+.mk{width:18px;height:18px}
+.mk circle{animation:breathe 1.2s ease-in-out infinite}
+.mk circle:nth-child(2){animation-delay:.2s}.mk circle:nth-child(3){animation-delay:.4s}
+@keyframes breathe{0%,100%{opacity:.3}50%{opacity:1}}
+.dock{position:absolute;left:12px;right:12px;bottom:30px;z-index:6}
+.box{border-radius:24px;padding:6px;display:flex;align-items:center;gap:8px}
+.box .ph{flex:1;color:var(--l3)}
+.cbtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:var(--fill2)}
+.cbtn .sq{width:11px;height:11px;border-radius:2.5px;background:var(--l1)}
+.send{background:var(--accent);color:#fff;opacity:.4}
+
+/* ---------- Mac ---------- */
+.mac{position:relative;width:1060px;height:720px;display:flex;background:var(--win);border-radius:12px;box-shadow:var(--shadow-win);overflow:hidden;font:13px/1.38 var(--font-mac);color:var(--l1);flex:none}
+.mac .ic{width:16px;height:16px;stroke-width:1.4}
+.lights{position:absolute;top:16px;left:18px;display:flex;gap:8px;z-index:9}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.side{width:220px;flex:none;background:var(--side);border-right:.5px solid var(--sep);padding:48px 8px 8px}
+.side .it{display:flex;align-items:center;gap:8px;height:30px;padding:0 9px;border-radius:8px;font-size:13px;white-space:nowrap;overflow:hidden}
+.side .it.sel{background:var(--side-sel)}
+.side .lh{font-size:12px;color:var(--l2);padding:14px 10px 4px}
+.content{position:relative;flex:1;display:flex;flex-direction:column;min-width:0}
+.ctool{height:44px;flex:none;display:flex;align-items:center;gap:10px;padding:0 14px 0 22px}
+.ctool h2{margin:0;font-size:14px;font-weight:500}
+.ctool .where{font-size:12.5px;color:var(--l3)}
+.cscroll{flex:1;min-height:0;overflow-y:auto}
+.dbody{max-width:800px;margin:0 auto;padding:22px 16px 130px;display:flex;flex-direction:column;gap:10px}
+.mac .bub{border-radius:16px;padding:9px 15px;font-size:14.5px;line-height:1.625;margin:4px 0 16px;max-width:80%}
+.mac .md{font-size:14.5px;line-height:1.625}
+.mac .md code{font-size:13px}
+.mac .gh{font-size:14px}
+.mac .card{border-radius:10px}
+.mac .rh{font-size:13px;padding:4px 8px}
+.mac .rh code{font-size:12px}
+.mac .row.has .rh:hover{background:var(--fill)}
+.mac .out{font-size:11.5px;padding:4px 8px 10px;line-height:1.5;max-height:var(--out)}
+.mac .work{font-size:12px}
+.zone{position:absolute;left:0;right:0;bottom:0;padding:28px 16px 16px;background:linear-gradient(to bottom,transparent,var(--win) 28px)}
+.cmp{max-width:768px;margin:0 auto;background:var(--pill);border-radius:12px;box-shadow:0 0 0 .5px var(--pill-bd),0 6px 20px rgba(0,0,0,.06);padding:6px;display:flex;align-items:center;gap:4px}
+.cmp .ph{flex:1;font-size:15px;color:var(--l3);padding:0 6px}
+.mbtn{width:32px;height:32px;border-radius:6px;background:var(--fill2);display:flex;align-items:center;justify-content:center}
+.mbtn i{width:10px;height:10px;border-radius:2px;background:var(--l1)}
+</style>
+</head>
+<body>
+<div class="top"><h1>工具步骤 · 限高滚动 · 原型</h1><span>一轮里工具调用很多时，展开后的卡片限高、在卡片里滚动；iPhone 和 Mac 同一套规则</span></div>
+<div class="wrap">
+  <div id="stage"></div>
+  <div class="notes">
+    <h3>改什么</h3>
+    <div class="blk"><b>现在的问题</b>
+      <p>一组工具步骤展开后，每一条都铺成一行，卡片没有高度上限。上百条时卡片有几千高，而且每一行都要排版，所以展开会卡；对话也被推得很长。单条工具的输出现在已经有限高（320），卡片本身没有。底部切「现在」可以对比。</p></div>
+    <div class="blk"><b>1 · 卡片限高，在里面滚</b>
+      <p>步骤少时和现在一样，有几行就多高。超过上限后卡片固定高度，在卡片里滚动：</p>
+      <ul><li>iPhone 约 7 行半（260pt），Mac 约 10 行半（300px）。最后半行露出来，一看就知道下面还有</li>
+        <li>上面或下面还有内容时，那一边的边缘淡出，不另加线或阴影</li>
+        <li>滚到卡片顶或底后，再滚就带着整页走，不会被卡住</li></ul></div>
+    <div class="blk"><b>2 · 进行中：跟着最新一步</b>
+      <p>这一轮还在跑时，卡片自动停在最下面，新的一步出来就滚过去，和对话本身跟随最新消息是同一个规则。你往上翻，就不再跟随，卡片右下角出现「回到底部」的小箭头（就是对话那个箭头的小号），点一下回到最新并继续跟随。</p></div>
+    <div class="blk"><b>3 · 只排看得见的行</b>
+      <p>卡片里只排版看得见的那十来行，其余的只占位置。上百条展开也不卡。Mac 对话本身已经这样做了（useVirtualRows），这里复用；iPhone 改成按需排版的列表。</p></div>
+    <div class="blk"><b>4 · 卡片里点开某一步的输出</b>
+      <p>输出跟在那一行下面，限高从 320 降到约 160，免得一条输出就占满整张卡。点开时卡片滚动，让这条输出整个露出来。</p></div>
+    <div class="blk"><b>想和你确认的</b>
+      <ul class="q">
+        <li>上限高度：iPhone 7 行半、Mac 10 行半，合适吗？</li>
+        <li>要不要在卡片底部加一个「展开全部」，让想一次看完的人取消限高？这版没加：几百条全部铺开又会回到卡的问题。</li>
+      </ul></div>
+  </div>
+</div>
+<div class="ctl" id="ctl"></div>
+
+<script>
+const S = { plat: "iphone", ver: "new", n: "120", run: "running", open: "on", theme: "light" };
+const P = { chev: "M6 9l6 6 6-6", down: "M12 5v14M6 13l6 6 6-6", plus: "M12 5v14M5 12h14", up: "M12 19V5M6 11l6-6 6 6", menu: "M5 8h14M5 12h14M5 16h14", more: "M6 12h.01M12 12h.01M18 12h.01" };
+const ic = (n, c = "") => `<svg class="ic ${c}" viewBox="0 0 24 24"><path d="${P[n]}"/></svg>`;
+const mark = `<svg class="mk" viewBox="0 0 16 16"><circle cx="5" cy="8" r="2.2" fill="currentColor"/><circle cx="11" cy="5" r="1.8" fill="currentColor"/><circle cx="11" cy="11" r="1.8" fill="currentColor"/></svg>`;
+
+// What the agent does, step by step: a long, real-shaped turn (read, search, edit, run tests, run again).
+const files = ["src/auth/redirect.ts", "src/auth/session.ts", "src/auth/login.tsx", "src/router/index.ts", "src/router/guards.ts", "src/lib/url.ts", "src/lib/storage.ts", "src/pages/Home.tsx", "src/pages/Login.tsx", "test/auth/login.test.ts", "test/auth/redirect.test.ts", "test/router/guards.test.ts", "package.json", "vite.config.ts", "src/api/client.ts", "src/hooks/useAuth.ts"];
+const greps = ["redirect", "returnTo", "navigate(", "useAuth", "sessionStorage", "location.search", "beforeEach", "/home"];
+const cmds = [["pnpm", "test", "login"], ["pnpm", "test", "redirect"], ["rg", "-n", "\"returnTo\"", "src"], ["git", "diff", "--stat"], ["pnpm", "tsc", "--noEmit"], ["pnpm", "lint", "src/auth"], ["pnpm", "test", "router"]];
+function stepAt(i) {
+  const r = (i * 7919) % 100, f = files[(i * 5) % files.length];
+  if (r < 34) return { k: "read", obj: f };
+  if (r < 52) return { k: "search", obj: greps[(i * 3) % greps.length] };
+  if (r < 70) return { k: "edit", obj: f, out: `@@ -${12 + i % 30},6 +${12 + i % 30},9 @@\n-  navigate("/home");\n+  const to = safeReturnTo(params.get("redirect"));\n+  navigate(to ?? "/home", { replace: true });` };
+  const c = cmds[i % cmds.length], fail = i % 11 === 6;
+  return { k: "shell", cmd: c, fail, out: fail
+    ? `FAIL  test/auth/redirect.test.ts > keeps the query\n  expected "/orders?page=2" to be "/orders?page=2&sort=desc"\n\nTest Files  1 failed | 3 passed (4)\n     Tests  1 failed | 11 passed (12)`
+    : c[0] === "pnpm" && c[1] === "test" ? ` ✓ test/auth/login.test.ts (6)\n ✓ test/auth/redirect.test.ts (4)\n ✓ test/router/guards.test.ts (2)\n\nTest Files  3 passed (3)\n     Tests  12 passed (12)\n  Duration  1.84s`
+    : c[0] === "git" ? ` src/auth/redirect.ts   | 24 ++++++++++++++------\n src/lib/url.ts         | 11 +++++++++++\n test/auth/redirect.test.ts | 18 ++++++++++++++++\n 3 files changed, 47 insertions(+), 6 deletions(-)` : "" };
+}
+const VERB = {
+  iphone: { read: ["已读取", "正在读取"], search: ["已搜索", "正在搜索"], edit: ["已修改", "正在修改"], shell: ["已运行", "正在运行"] },
+  mac: { read: ["已读取", "正在读取"], search: ["已搜索", "正在搜索"], edit: ["已编辑", "正在编辑"], shell: ["已运行", "正在运行"] },
+};
+const COUNT = {
+  iphone: { read: (n) => `读取了 ${n} 个文件`, search: (n) => `搜索了 ${n} 次`, edit: (n) => `修改了 ${n} 个文件`, shell: (n) => `运行了 ${n} 条命令` },
+  mac: { read: (n) => `读取了 ${n} 个文件`, search: (n) => `搜索了 ${n} 次`, edit: (n) => `编辑了 ${n} 个文件`, shell: (n) => `运行了 ${n} 条命令` },
+};
+function summary(steps) {
+  const order = [], n = {};
+  for (const s of steps) { if (!n[s.k]) order.push(s.k); n[s.k] = (n[s.k] || 0) + 1; }
+  return order.map((k) => COUNT[S.plat][k](n[k])).join(S.plat === "mac" ? "、" : " · ");
+}
+const code = (c) => `<code><span class="c">${c[0]}</span> ${c.slice(1).map((a) => a.startsWith("-") ? `<span class="f">${a}</span>` : a.startsWith("\"") ? `<span class="s">${a}</span>` : a).join(" ")}</code>`;
+
+// state that lives across renders
+let count = 0, following = true, opened = new Set(), timer = null, started = Date.now();
+const total = () => +S.n;
+
+function rowHTML(s, i, running) {
+  const [done, doing] = VERB[S.plat][s.k];
+  const verb = running ? doing : done;
+  const obj = s.k === "shell" ? code(s.cmd) : `<span class="ob">${s.obj}</span>`;
+  const has = !!s.out && !running, open = has && opened.has(i);
+  const lead = running && S.plat === "mac" ? `<span class="spin"></span>` : "";
+  return `<div class="row ${s.fail ? "err" : ""} ${open ? "open" : ""} ${has ? "has" : ""}" data-i="${i}">
+    <button class="rh">${lead}<span class="vb ${running && S.plat === "iphone" ? "sweep" : ""}">${verb}</span>${obj}${has ? ic("chev", "caret") : ""}</button>
+    ${open ? `<div class="out">${s.out}</div>` : ""}</div>`;
+}
+
+function group() {
+  const steps = Array.from({ length: count }, (_, i) => stepAt(i));
+  const running = S.run === "running" && count < total();
+  const open = S.open === "on";
+  const lead = running && S.plat === "mac" ? `<span class="spin"></span>` : "";
+  const capped = S.ver === "new";
+  return `<div class="grp ${open ? "open" : ""}">
+    <button class="gh" data-k="open" data-v="${open ? "off" : "on"}">${lead}<span class="${running && S.plat === "iphone" ? "sweep" : ""}">${summary(steps)}</span>${ic("chev", "caret")}</button>
+    ${open ? `<div class="card ${capped ? "capped" : ""}" style="--cap:${S.plat === "mac" ? 300 : 260}px;--out:${capped ? (S.plat === "mac" ? 180 : 160) : 320}px">
+      <div class="scroller" id="sc">${steps.map((s, i) => rowHTML(s, i, running && i === count - 1)).join("")}</div>
+      ${capped ? `<button class="toend ${!following ? "on" : ""}" id="toend" title="回到底部">${ic("down")}</button>` : ""}
+    </div>` : ""}
+  </div>`;
+}
+
+function conversation() {
+  const running = S.run === "running" && count < total();
+  const s = Math.floor((Date.now() - started) / 1000);
+  return `<div class="bub">把登录跳转整理一下：登录后回到原来的页面，查询参数也要保留，测试补齐</div>
+    <div class="md">好的，我先通读一遍登录和路由相关的代码，再改跳转逻辑并补测试。</div>
+    ${group()}
+    ${running ? `<div class="work">${mark}处理中<i id="timer">${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}</i></div>`
+      : `<div class="md">改好了：登录前把来源路径和查询参数放进 <code>redirect</code>，登录后校验再跳回；补了 6 个测试，<code>pnpm test</code> 全部通过。</div>`}`;
+}
+
+function phone() {
+  const running = S.run === "running" && count < total();
+  return `<div class="phone"><div class="status">09:41</div><div class="island"></div>
+    <div class="chat" id="chat">${conversation()}</div><div class="fade"></div>
+    <div class="nav"><span class="gb glass" style="left:16px">${ic("menu")}</span>
+      <div class="tcap glass"><b>登录后跳回原来的页面</b><small>work-mac/fresh-app</small></div>
+      <span class="gb glass" style="right:16px">${ic("more")}</span></div>
+    <div class="dock"><div class="box glass"><span class="cbtn">${ic("plus")}</span><span class="ph">${running ? "继续说，会排到下一轮…" : "继续聊…"}</span>${running ? `<span class="cbtn"><i class="sq"></i></span>` : ""}<span class="cbtn send">${ic("up")}</span></div></div>
+    <div class="home"></div></div>`;
+}
+function mac() {
+  const running = S.run === "running" && count < total();
+  return `<div class="mac"><div class="lights"><i></i><i></i><i></i></div>
+    <div class="side"><div class="it">${ic("plus")}新会话</div><div class="lh">任务</div><div class="it sel">登录后跳回原来的页面</div><div class="it">整理 README 的安装步骤</div></div>
+    <div class="content"><div class="ctool"><h2>登录后跳回原来的页面</h2><span class="where">work-mac · fresh-app</span></div>
+      <div class="cscroll" id="chat"><div class="dbody">${conversation()}</div></div>
+      <div class="zone"><div class="cmp"><span class="ph">${running ? "继续说，会排到下一轮…" : "继续聊…"}</span>${running ? `<span class="mbtn"><i></i></span>` : ""}<span class="mbtn">${ic("up")}</span></div></div></div></div>`;
+}
+
+function edges() {
+  const sc = document.getElementById("sc"), card = sc?.parentElement;
+  if (!sc || !card.classList.contains("capped")) return;
+  const below = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+  card.classList.toggle("more-up", sc.scrollTop > 2);
+  card.classList.toggle("more-down", below > 2);
+}
+function render(keepScroll) {
+  const sc0 = document.getElementById("sc"), top0 = sc0?.scrollTop ?? 0;
+  const chat0 = document.getElementById("chat"), chatTop = chat0?.scrollTop;
+  document.documentElement.dataset.theme = S.theme;
+  document.getElementById("stage").innerHTML = S.plat === "mac" ? mac() : phone();
+  const sc = document.getElementById("sc"), chat = document.getElementById("chat");
+  if (sc) {
+    if (S.ver === "new" && following) sc.scrollTop = sc.scrollHeight;
+    else if (keepScroll) sc.scrollTop = top0;
+    sc.addEventListener("scroll", () => {
+      if (!sc.isConnected) return; // a card already replaced measures nothing
+      const below = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+      if (below < 8) following = true;
+      else if (sc._user) following = false;
+      document.getElementById("toend")?.classList.toggle("on", !following && S.run === "running" && count < total());
+      edges();
+    });
+    for (const ev of ["wheel", "touchmove", "pointerdown"]) sc.addEventListener(ev, () => { sc._user = true; clearTimeout(sc._t); sc._t = setTimeout(() => (sc._user = false), 600); }, { passive: true });
+    edges();
+  }
+  if (chat) chat.scrollTop = keepScroll && chatTop != null && S.ver === "now" ? chatTop : chat.scrollHeight;
+  const grp = (name, key, opts) => `<div class="g"><b>${name}</b>${opts.map(([v, t]) => `<button class="${S[key] === v ? "on" : ""}" data-k="${key}" data-v="${v}">${t}</button>`).join("")}</div>`;
+  document.getElementById("ctl").innerHTML =
+    grp("平台", "plat", [["iphone", "iPhone"], ["mac", "Mac"]]) +
+    grp("版本", "ver", [["now", "现在"], ["new", "新版"]]) +
+    grp("步骤数", "n", [["8", "8"], ["40", "40"], ["120", "120"]]) +
+    grp("状态", "run", [["running", "进行中"], ["done", "已完成"]]) +
+    grp("展开", "open", [["on", "展开"], ["off", "折叠"]]) +
+    grp("外观", "theme", [["light", "浅色"], ["dark", "深色"]]);
+}
+// A running turn adds a step every so often; done shows them all.
+function restart() {
+  clearInterval(timer);
+  following = true; opened = new Set(); started = Date.now();
+  count = S.run === "running" ? Math.min(total(), Math.max(5, total() - 12)) : total();
+  render();
+  if (S.run === "running") timer = setInterval(() => {
+    if (count >= total()) { clearInterval(timer); render(true); return; }
+    count++; render(true);
+  }, 1100);
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-k]");
+  if (b) {
+    S[b.dataset.k] = b.dataset.v;
+    if (["n", "run", "plat"].includes(b.dataset.k)) return restart();
+    return render(true);
+  }
+  if (e.target.closest("#toend")) {
+    const sc = document.getElementById("sc");
+    following = true; sc.scrollTo({ top: sc.scrollHeight, behavior: "smooth" });
+    document.getElementById("toend").classList.remove("on");
+    return;
+  }
+  const row = e.target.closest(".row.has .rh");
+  if (row) {
+    const i = +row.parentElement.dataset.i;
+    opened.has(i) ? opened.delete(i) : opened.add(i);
+    following = false;
+    render(true);
+    // Opened, its output comes into view in the card.
+    const el = document.querySelector(`.row[data-i="${i}"]`), sc = document.getElementById("sc");
+    if (el && sc && opened.has(i) && S.ver === "new") {
+      const over = el.offsetTop + el.offsetHeight - (sc.scrollTop + sc.clientHeight);
+      if (over > 0) sc.scrollTo({ top: sc.scrollTop + over + 4, behavior: "smooth" });
+    }
+  }
+});
+setInterval(() => { const t = document.getElementById("timer"); if (t) { const s = Math.floor((Date.now() - started) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; } }, 1000);
+new URLSearchParams(location.hash.slice(1)).forEach((v, k) => { if (k in S) S[k] = v; });
+restart();
+</script>
+</body>
+</html>

@@ -99,6 +99,9 @@ final class DemoService {
         if Self.sessionDetailRegression {
             seedSessionDetailRegression()
         }
+        if Self.manyTools {
+            seedManyTools()
+        }
         #endif
         _ = pairing(.client)
     }
@@ -221,6 +224,15 @@ final class DemoService {
     private static let holdWorkTaskForUITest: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for ToolStepsUITests: turns of hundreds of tool calls in a row.
+    static let manyTools: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoManyTools")
         #else
         false
         #endif
@@ -536,6 +548,51 @@ final class DemoService {
     }
 
     #if targetEnvironment(simulator)
+    /// Two sessions of one turn of many tool calls in a row, nothing said between them (one folded group): "Many steps",
+    /// done, of 600 calls with outputs of a line to a page; "Many steps, running", which adds a call a second.
+    private func seedManyTools() {
+        func call(_ id: String, _ i: Int, result: Bool) {
+            let kinds = [("read", "Read", "internal/pkg\(i % 40)/file\(i % 90).go"), ("search", "Grep", "log.Printf"),
+                         ("edit", "Edit", "internal/pkg\(i % 40)/file\((i * 7) % 90).go"), ("shell", "Bash", "go test ./internal/pkg\(i % 40)/... -run Test\(i) -count=1")]
+            let (kind, name, summary) = kinds[(i * 7919) % 4]
+            append(id, .with { $0.toolCall = .with { $0.callID = "\(id)-\(i)"; $0.kind = kind; $0.name = name; $0.summary = summary; $0.decision = "allow" } })
+            guard result else { return }
+            let lines = 1 + (i * 37) % 60
+            let output = (1 ... lines).map { "\($0)\tlog.Printf(\"handled %d of %s\", n, \(i * 1000 + $0))" }.joined(separator: "\n")
+            append(id, .with { $0.toolResult = .with { $0.callID = "\(id)-\(i)"; $0.summary = output; $0.isError = i % 37 == 11 } })
+        }
+        func start(_ id: String, title: String, status: SessionStatus) {
+            var s = session(id, title: title, machine: "demo-mac", status: status)
+            s.agent = "codex"
+            s.updatedAt = .init(date: .now.addingTimeInterval(40))
+            s.progress.turnCount = status == .running ? 0 : 1
+            if status == .running { s.progress.turnStartedAt = .init(date: .now) }
+            world.sessions.append(s)
+            append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "owner" } })
+            append(id, .with { $0.userMessage.text = "Switch every log call in the repository to structured logging, and keep the tests green." })
+            append(id, .with { $0.agentMessage.text = "Sure. First I'll find every call, then change them one by one." })
+        }
+        start("demo-many-steps", title: "Many steps", status: .idle)
+        for i in 0 ..< 600 { call("demo-many-steps", i, result: true) }
+        append("demo-many-steps", .with { $0.agentMessage.text = "Done: after 600 steps every call uses slog, and the tests pass." })
+        append("demo-many-steps", .with { $0.turnCompleted = .with { $0.turn = 1 } })
+
+        start("demo-many-steps-running", title: "Many steps, running", status: .running)
+        for i in 0 ..< 80 { call("demo-many-steps-running", i, result: true) }
+        call("demo-many-steps-running", 80, result: false)
+        tasks["demo-many-steps-running"] = Task { @MainActor [weak self] in
+            var i = 80
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                // The call under way finishes and the next starts.
+                append("demo-many-steps-running", .with { $0.toolResult = .with { $0.callID = "demo-many-steps-running-\(i)"; $0.summary = "ok" } })
+                i += 1
+                call("demo-many-steps-running", i, result: false)
+            }
+        }
+    }
+
     private func seedSessionDetailRegression() {
         let now = Date.now
 

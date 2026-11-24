@@ -53,7 +53,7 @@ import { layoutOf, setCard } from "../layout";
 import { keys, ownKeys } from "../platform";
 import { grantLabel, unarchive } from "../Sidebar";
 import { errorText, useNow, useStore } from "../store";
-import { ChatFrame, DoneLine, Failed, Row, Stale, rowHeights, rowsOf } from "../session/Chat";
+import { ChatFrame, Failed, Row, Stale, rowHeights, rowsOf } from "../session/Chat";
 import { Inspector } from "../session/Inspector";
 import { ContentScope } from "../session/scope";
 import "../session/markdown/markdown.css";
@@ -712,7 +712,7 @@ export function ThreadPage() {
                 initial={rowHeights}
                 label={ts("chat.log")}
                 follow={currentThread?.status}
-                row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeThreadId} clients={st.clients} grant={grant} previous={r.previous} />}
+                row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={activeThreadId} clients={st.clients} starter={session?.createdBy ?? "owner"} previous={r.previous} />}
                 head={
                   archived && session && (
                     <div className="anote">
@@ -728,18 +728,16 @@ export function ThreadPage() {
                       {workLine}
                       <Stale s={session} behind={false} />
                       {failure && <Failed s={session} failure={failure} grant={grant} />}
-                      {currentThread?.status === ThreadStatus.IDLE && !failure && rows.length > 0 && rows.at(-1)?.it.kind !== "turnEnd" && (
-                        currentThread.activeBackgroundCount > 0 || activeAwaitedBgTasks.length > 0 ? (
+                      {/* A turn that went well needs no line; one whose background tasks still run says it waits on them. */}
+                      {currentThread?.status === ThreadStatus.IDLE && !failure && rows.length > 0 && rows.at(-1)?.it.kind !== "turnEnd" &&
+                        (currentThread.activeBackgroundCount > 0 || activeAwaitedBgTasks.length > 0) && (
                           <WorkLine
                             text={t("background.waitingDone", {
                               count: Math.max(currentThread.activeBackgroundCount, activeAwaitedBgTasks.length),
                             })}
                             since={dateOf(activeAwaitedBgTasks[0]?.startedAt)}
                           />
-                        ) : (
-                          <DoneLine text={ts("chat.turnDone", { grant })} />
-                        )
-                      )}
+                        )}
                     </>
                   )
                 }

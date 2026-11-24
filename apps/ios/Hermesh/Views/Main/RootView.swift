@@ -25,6 +25,10 @@ struct RootView: View {
                 }
             }
         }
+        #if targetEnvironment(simulator)
+        // ToolStepsUITests' frame counts, in the Simulator's many-steps fixture only.
+        .overlay(alignment: .leading) { if DemoService.manyTools { FrameMeterView() } }
+        #endif
         // Signing: the confirmation for a batch the app had not asked for,
         // and the digits to type on a device just approved.
         .sheet(item: Binding(get: { model.signer.shown }, set: { if $0 == nil { model.signer.rejectShown() } })) { c in

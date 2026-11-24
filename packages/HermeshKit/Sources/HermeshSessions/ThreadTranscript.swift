@@ -81,7 +81,11 @@ public func threadTranscript(_ proj: Hermesh_Thread_V2_ThreadProjection?) -> [Tr
             out.append(.turn(seq: seq - 2, turn: Int(run.ordinal), at: at, wakeReason: wakeReason))
         }
         switch it.kind {
-        case .userMessage: out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt)))
+        case .userMessage:
+            // Who wrote it: the owner, Her or another of the owner's agents. The item says (a message steered into a run
+            // someone else started, a background wake-up's, is its writer's); else its run's author.
+            let asker = it.hasActor ? actorClientID(it.actor) : run.map { actorClientID($0.hasAuthor ? $0.author : nil) } ?? ""
+            out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt), asker: asker))
         case .assistantMessage: out.append(.agent(seq: seq, text: it.text))
         case .proposedPlan: out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text)))
         case .toolCall, .commandExecution, .fileChange: out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))

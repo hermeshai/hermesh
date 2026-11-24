@@ -1,6 +1,16 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ interrupted this turn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 打断了这一轮"
+          }
+        }
+      }
+    },
     "Can’t reach Hermesh · Retrying" : {
       "localizations" : {
         "zh-Hans" : {
@@ -87,6 +97,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前"
+          }
+        }
+      }
+    },
+    "This turn was interrupted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮被打断了"
           }
         }
       }
@@ -187,6 +207,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 %1$@ %2$@？"
+          }
+        }
+      }
+    },
+    "You interrupted this turn": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你打断了这一轮"
           }
         }
       }
@@ -1779,22 +1809,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@ 没有「%2$@」档，推理强度改为「%3$@」"
-          }
-        }
-      }
-    },
-    "%@ interrupted this turn. The session stays; when %@ sends another message, it continues.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ interrupted this turn. The task stays; when %@ sends another message, it continues."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ 打断了这一轮。任务还在，%2$@ 再发消息就会接着做。"
           }
         }
       }
@@ -11807,38 +11821,6 @@
         }
       }
     },
-    "This turn is done. When %@ sends another message, it continues in this session.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This turn is done. When %@ sends another message, it continues in this task."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这一轮做完了。%@ 再发消息时，会在这个任务里接着做。"
-          }
-        }
-      }
-    },
-    "This turn was interrupted. The session stays; when %@ sends another message, it continues.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This turn was interrupted. The task stays; when %@ sends another message, it continues."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "这一轮被打断了。任务还在，%@ 再发消息就会接着做。"
-          }
-        }
-      }
-    },
     "Those aren’t the digits. Check the other device and try again.": {
       "localizations": {
         "zh-Hans": {
@@ -12894,22 +12876,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "你在「%@」上全部清空了 Hermesh"
-          }
-        }
-      }
-    },
-    "You interrupted this turn. The session stays; when %@ sends another message, it continues.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You interrupted this turn. The task stays; when %@ sends another message, it continues."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "你打断了这一轮。任务还在，%@ 再发消息就会接着做。"
           }
         }
       }

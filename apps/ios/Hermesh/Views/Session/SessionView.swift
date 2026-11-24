@@ -80,7 +80,7 @@ struct SessionView: View {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
-                    StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
+                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
                 }
                 if !draft.isEmpty {
                     DraftMarkdownText(text: draft).frame(maxWidth: .infinity, alignment: .leading)
@@ -105,34 +105,7 @@ struct SessionView: View {
             if events.isEmpty && !caughtUp(s) { unread(s) }
         }
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(s.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if model.shownSync != nil {
-                        SyncLine(small: true) // in place of the line below while what shows is not current
-                    } else {
-                        Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
-            }
-            if model.path.isEmpty { MenuToolbarItem() }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
-                    .accessibilityIdentifier("session-info")
-                Menu {
-                    Button("Copy Session ID", systemImage: "doc.on.doc") {
-                        UIPasteboard.general.string = s.sessionID
-                        model.show(String(localized: "Copied the session ID"))
-                    }
-                    SessionActions(session: s, renaming: $renaming, deleting: $deleting)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .accessibilityLabel("More")
-                .accessibilityIdentifier("session-more")
-            }
-        }
+        .toolbar { SessionToolbar(session: s, sync: true, renaming: $renaming, deleting: $deleting) }
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
         .confirmationDialog("Interrupt this turn?", isPresented: $confirmInterrupt, titleVisibility: .visible) {
             Button("Interrupt", role: .destructive) { Task { await model.interrupt(s) } }
@@ -212,14 +185,12 @@ struct SessionView: View {
         }
     }
 
-    /// How the conversation ends: the failure it stopped on, or that the turn
-    /// is done (an interrupted turn says so in the conversation).
+    /// How the conversation ends: the failure it stopped on. A turn that went well needs no line: the box under it
+    /// shows it can go on (an interrupted turn says so in the conversation).
     @ViewBuilder private func ending(_ s: Session, grant: String) -> some View {
         let failure = s.progress.hasLastFailure ? s.progress.lastFailure : nil
         if s.isFailed, failure != nil || !s.error.isEmpty {
             FailedView(session: s, failure: failure, grant: grant)
-        } else if s.status == .idle, !isInterruption(failure), !steps.isEmpty {
-            DoneLine(text: String(localized: "This turn is done. When \(grant) sends another message, it continues in this session."))
         }
     }
 
@@ -324,7 +295,6 @@ struct StepView: View {
     @Environment(AppModel.self) private var model
     let step: Step
     let session: Session
-    let grant: String
     let previousTurn: Date?
 
     var body: some View {
@@ -340,15 +310,9 @@ struct StepView: View {
         }
     }
 
-    /// Who sent a prompt: their picture and "Sent by Grok"; the owner is "You".
-    private func sender(_ clientID: String) -> some View {
-        HStack(spacing: 5) {
-            if let c = model.clients.first(where: { $0.clientID == clientID }) { GrantAvatar(client: c, size: 16) }
-            Text(clientID == "owner" ? String(localized: "You") : String(localized: "Sent by \(model.senderName(clientID))"))
-        }
-        .font(.caption).foregroundStyle(.secondary)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("prompt-sender")
+    /// Who sent a prompt when it isn't the owner: Her, or another of the owner's agents.
+    private func sender(_ clientID: String) -> PromptSender? {
+        clientID == "owner" ? nil : PromptSender(name: model.senderName(clientID), client: model.clients.first { $0.clientID == clientID })
     }
 
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
@@ -363,9 +327,10 @@ struct StepView: View {
                     .accessibilityIdentifier(wakeReason.isEmpty ? "turn-time-line" : "turn-wake-line")
             }
         case .user(_, let text, let at, let asker):
-            // Who asked for the turn speaks on the right, under their name: a session takes work from several
-            // (the one who started it, Her, the owner), and none of it is a chat with Her.
-            PromptBubble(text: text, sent: at) { sender(asker.isEmpty ? session.createdBy : asker) }
+            // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another
+            // of the owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says
+            // its own: a session Her started can hold the owner's words too.
+            PromptBubble(text: text, sent: at, from: sender(asker.isEmpty ? session.createdBy : asker)) { EmptyView() }
         case .agent(_, let text):
             MarkdownText(text: text)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -425,13 +390,12 @@ struct StepView: View {
         }
     }
 
-    /// A turn stopped on purpose: by you, by one of your agents, or by Hermesh.
+    /// A turn stopped on purpose: by you, by one of your agents, or by Hermesh. That it can go on, the box under it shows.
     private func interruptNote(_ f: Failure) -> some View {
         let by = interrupter(f)
         let label = model.clients.first { $0.clientID == by }?.label
-        let text = by == "owner" ? String(localized: "You interrupted this turn. The session stays; when \(grant) sends another message, it continues.")
-            : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn. The session stays; when \(grant) sends another message, it continues.") }
-            ?? String(localized: "This turn was interrupted. The session stays; when \(grant) sends another message, it continues.")
+        let text = by == "owner" ? String(localized: "You interrupted this turn")
+            : label.map { String(localized: "\(AgentLogo.name($0)) interrupted this turn") } ?? String(localized: "This turn was interrupted")
         return TurnNote(text: text)
     }
 
@@ -442,10 +406,18 @@ struct StepView: View {
     }
 }
 
-/// What was sent to the agent, on the right in a blue bubble under who sent it; a long press copies it.
+/// Who sent work in when it isn't the owner: Her, or another of the owner's agents (its grant, when still known).
+struct PromptSender {
+    let name: String
+    let client: Client?
+}
+
+/// What was sent to the agent, on the right, under `sender`; a long press copies it. The owner's is a blue bubble;
+/// one another of the owner's agents sent (`from`) is a quiet one with that agent's face on its corner.
 struct PromptBubble<Sender: View>: View {
     let text: String
     let sent: Date?
+    var from: PromptSender?
     @ViewBuilder let sender: () -> Sender
 
     var body: some View {
@@ -453,27 +425,107 @@ struct PromptBubble<Sender: View>: View {
             sender()
             Text(text)
                 .lineSpacing(3)
-                .foregroundStyle(Palette.bubbleText)
+                .foregroundStyle(from == nil ? Palette.bubbleText : Color.primary)
                 .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(Palette.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(from == nil ? Palette.bubble : Palette.fill2, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .contextMenu { CopyMenu(text: text, sent: sent) }
+                .contextMenu { CopyMenu(text: text, sent: sent, from: from?.name) }
+                .overlay(alignment: .topLeading) { if let from { badge(from).offset(x: -10, y: -10) } }
         }
         .padding(.leading, 48)
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.top, 8).padding(.bottom, 8)
+        .padding(.top, from == nil ? 8 : 14).padding(.bottom, 8)
+    }
+
+    /// The sender's face on the bubble's corner: its grant's avatar (Her's cat, an app's logo, an initial), ringed by the page.
+    private func badge(_ from: PromptSender) -> some View {
+        Group {
+            if let c = from.client { GrantAvatar(client: c, size: 20) } else { AgentLogo(id: from.name, size: 20, initialOnly: true) }
+        }
+        .padding(2)
+        .background(Color(UIColor.systemBackground), in: .circle)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Sent by \(from.name)"))
+        .accessibilityIdentifier("prompt-sender")
     }
 }
 
-/// The long-press menu of a message: Copy, and when the owner sent it.
+/// The long-press menu of a message: Copy, who sent it when it isn't the owner, and when.
 struct CopyMenu: View {
     @Environment(AppModel.self) private var model
     let text: String
     let sent: Date?
+    var from: String?
 
     var body: some View {
         Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = text }
+        if let from { Text("Sent by \(from)") }
         if let sent { Text("Sent \(agoText(sent, now: model.now))") }
+    }
+}
+
+/// A session page's bar, on either kind of session (SessionView, ThreadPage): the menu button on a root page; in the
+/// middle its title over where it runs, in a glass capsule that opens Session Info; ⋯ with its actions.
+struct SessionToolbar: ToolbarContent {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    /// The sync line in place of where it runs while what shows is not current (a page with no box to say it over).
+    var sync = false
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    /// A thread's background tasks, when it has any: a button beside ⋯ while one runs, and always an entry in ⋯.
+    var backgroundTasks: BackgroundTasks?
+
+    struct BackgroundTasks {
+        let running: Bool
+        let open: () -> Void
+    }
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            Button { model.sheet = .sessionInfo(session.sessionID) } label: {
+                VStack(spacing: 1) {
+                    Text(session.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    if sync && model.shownSync != nil {
+                        SyncLine(small: true)
+                    } else {
+                        Text(verbatim: "\(model.machineName(session.machineID))/\(session.projectID)").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .contentShape(.capsule)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Session Info"))
+            .accessibilityIdentifier("session-info")
+        }
+        .sharedBackgroundVisibility(.hidden)
+        if model.path.isEmpty { MenuToolbarItem() }
+        if let tasks = backgroundTasks, tasks.running {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                    .accessibilityIdentifier("thread-background-tasks")
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                if let tasks = backgroundTasks {
+                    Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                }
+                Button("Copy Session ID", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = session.sessionID
+                    model.show(String(localized: "Copied the session ID"))
+                }
+                SessionActions(session: session, renaming: $renaming, deleting: $deleting)
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .accessibilityLabel("More")
+            .accessibilityIdentifier("session-more")
+        }
     }
 }
 

@@ -197,3 +197,26 @@ describe("a thread at work: working or thinking", () => {
     expect(turns[1]?.kind === "turn" ? turns[1].wakeReason : undefined).toBe("pytest -q");
   });
 });
+
+describe("who asked for each run", () => {
+  it("is the run's author: the owner, or the agent's client id", () => {
+    const proj = create(ThreadProjectionSchema, {
+      thread: create(ThreadSchema, { threadId: "th_1", status: ThreadStatus.IDLE }),
+      runs: [
+        create(RunSchema, { runId: "r1", ordinal: 1, status: RunStatus.COMPLETED, author: { kind: ActorKind.HER, id: "c_her", label: "Her" } }),
+        create(RunSchema, { runId: "r2", ordinal: 2, status: RunStatus.COMPLETED, author: { kind: ActorKind.OWNER, id: "dev_1" } }),
+        create(RunSchema, { runId: "r3", ordinal: 3, status: RunStatus.COMPLETED }),
+      ],
+      items: [
+        item(1, "r1", TurnItemKind.USER_MESSAGE, { text: "log in, come back" }),
+        item(2, "r2", TurnItemKind.USER_MESSAGE, { text: "keep the query too" }),
+        item(3, "r3", TurnItemKind.USER_MESSAGE, { text: "and test it" }),
+        item(4, "r9", TurnItemKind.USER_MESSAGE, { text: "a run not read" }),
+        // Steered into a background wake-up's run: the writer's, not the run's.
+        item(5, "r4", TurnItemKind.USER_MESSAGE, { text: "also the docs", actor: { kind: ActorKind.HER, id: "c_her" } }),
+      ],
+    });
+    proj.runs.push(create(RunSchema, { runId: "r4", ordinal: 4, status: RunStatus.RUNNING, author: { kind: ActorKind.SYSTEM, id: "background", label: "Background" } }));
+    expect(threadTranscript(proj).flatMap((r) => (r.kind === "user" ? [r.asker] : []))).toEqual(["c_her", "owner", "owner", "", "c_her"]);
+  });
+});

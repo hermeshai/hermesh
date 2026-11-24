@@ -312,7 +312,7 @@ struct ThreadPage: View {
     // MARK: A session under way
 
     /// Its conversation as a session's page has it (SessionView): the same rows, the same ending, the same
-    /// toolbar; under it, what the agent waits on, then the box.
+    /// toolbar; under it, what the agent waits on, then the box. A run that went well needs no line at its end.
     private func session(_ s: Session) -> some View {
         let grant = model.grantLabel(s)
         let steps = groupSteps(threadTranscript(projection))
@@ -320,12 +320,13 @@ struct ThreadPage: View {
             VStack(alignment: .leading, spacing: 13) {
                 if s.status == .archived { ArchivedNote(session: s) }
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
-                    StepView(step: step, session: s, grant: grant, previousTurn: previousTurn(steps, before: i))
+                    StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
                 }
                 workLine.frame(maxWidth: .infinity, alignment: .leading)
                 if let f = threadFailure(thread) {
                     FailedView(session: s, failure: f, grant: grant)
                 } else if thread?.status == .idle, let last = steps.last {
+                    // A turn that went well needs no line; one whose background tasks still run says it waits on them.
                     if case .item(.turnEnd) = last {} else if (thread?.activeBackgroundCount ?? 0) > 0 || activeBgTasks.contains(where: \.awaited) {
                         let count = max(Int(thread?.activeBackgroundCount ?? 0), activeBgTasks.filter(\.awaited).count)
                         let since = activeBgTasks.first(where: \.awaited).flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) }
@@ -334,8 +335,6 @@ struct ThreadPage: View {
                             since: since
                         )
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    } else {
-                        DoneLine(text: String(localized: "This turn is done. When \(grant) sends another message, it continues in this session."))
                     }
                 }
             }
@@ -364,35 +363,8 @@ struct ThreadPage: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(spacing: 0) {
-                    Text(s.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    Text("\(grant) · \(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            if model.path.isEmpty { MenuToolbarItem() }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if !activeBgTasks.isEmpty {
-                    Button("Background Tasks", systemImage: "terminal") { showingBackgroundTasks = true }
-                        .accessibilityIdentifier("thread-background-tasks")
-                }
-                Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
-                    .accessibilityIdentifier("session-info")
-                Menu {
-                    if !allBgTasks.isEmpty {
-                        Button("Background Tasks", systemImage: "terminal") { showingBackgroundTasks = true }
-                    }
-                    Button("Copy Session ID", systemImage: "doc.on.doc") {
-                        UIPasteboard.general.string = s.sessionID
-                        model.show(String(localized: "Copied the session ID"))
-                    }
-                    SessionActions(session: s, renaming: $renaming, deleting: $deleting)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .accessibilityLabel("More")
-                .accessibilityIdentifier("session-more")
-            }
+            SessionToolbar(session: s, renaming: $renaming, deleting: $deleting,
+                           backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
         }
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
     }

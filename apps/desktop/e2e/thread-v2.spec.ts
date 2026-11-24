@@ -86,7 +86,15 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await steps.locator("button").first().click();
     await expect(conversation(page)).toContainText("ui_v2.txt");
     await expect(conversation(page)).toContainText("+hello_from_v2_ui");
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    // The owner sent it: a blue bubble with nothing on it. A turn that went well ends without a line of its own.
+    await expect(conversation(page).locator(".um").first()).not.toHaveClass(/\bfrom\b/);
+    // In the brand blue with white words, as on the iPhone.
+    expect(await conversation(page).locator(".um .bub").first().evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color])).toEqual([
+      "rgb(61, 91, 255)",
+      "rgb(255, 255, 255)",
+    ]);
+    await expect(conversation(page).getByTestId("prompt-sender")).toHaveCount(0);
+    await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
 
     // Its info cards, as a session's: who started it, the agent, this Mac, the project; then the model.
     const env = page.getByRole("complementary", { name: "任务信息" });

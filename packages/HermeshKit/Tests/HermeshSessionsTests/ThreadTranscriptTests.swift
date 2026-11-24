@@ -62,6 +62,29 @@ private func kind(_ it: TranscriptItem) -> String {
     if case .turnEnd(_, let end, _) = rows.last! { #expect(end.failure.kind == .interrupted) } else { Issue.record("no end") }
 }
 
+@Test func threadPromptsSayWhoAskedForTheirRun() {
+    let proj: Hermesh_Thread_V2_ThreadProjection = .with {
+        $0.runs = [
+            .with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed; $0.author = .with { $0.kind = .her; $0.id = "c_her"; $0.label = "Her" } },
+            .with { $0.runID = "r2"; $0.ordinal = 2; $0.status = .completed; $0.author = .with { $0.kind = .owner; $0.id = "dev_1" } },
+            .with { $0.runID = "r3"; $0.ordinal = 3; $0.status = .completed },
+            .with { $0.runID = "r4"; $0.ordinal = 4; $0.status = .running; $0.author = .with { $0.kind = .system; $0.id = "background"; $0.label = "Background" } },
+        ]
+        $0.items = [
+            item(1, "r1", .userMessage) { $0.text = "log in, come back" },
+            item(2, "r2", .userMessage) { $0.text = "keep the query too" },
+            item(3, "r3", .userMessage) { $0.text = "and test it" },
+            item(4, "r9", .userMessage) { $0.text = "a run not read" },
+            // Steered into a background wake-up's run: the writer's, not the run's.
+            item(5, "r4", .userMessage) { $0.text = "also the docs"; $0.actor = .with { $0.kind = .her; $0.id = "c_her" } },
+        ]
+    }
+    let askers = threadTranscript(proj).compactMap { r -> String? in
+        if case .user(_, _, _, let asker) = r { return asker } else { return nil }
+    }
+    #expect(askers == ["c_her", "owner", "owner", "", "c_her"])
+}
+
 @Test func threadToolsAreASessionsSteps() {
     guard case .tools(_, let calls)? = groupSteps(threadTranscript(projection)).first(where: { if case .tools = $0 { true } else { false } }) else {
         Issue.record("no tools"); return

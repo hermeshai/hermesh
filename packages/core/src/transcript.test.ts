@@ -41,6 +41,18 @@ describe("transcript", () => {
     expect(items[1]).toMatchObject({ kind: "message", direction: "in", name: "helper", address: "c_helper", text: "check staging", delivered: "queued" });
     expect(items[2]).toMatchObject({ kind: "message", direction: "out", name: "bot", address: "c_bot", text: "halfway" });
   });
+  test("a prompt says who asked for its turn", () => {
+    const items = transcript(
+      [
+        ev(0, { case: "turnStarted", value: { turn: 1, asker: "c_her" } }),
+        ev(1, { case: "userMessage", value: { text: "log in, come back" } }),
+        ev(2, { case: "turnStarted", value: { turn: 2, asker: "owner" } }),
+        ev(3, { case: "userMessage", value: { text: "keep the query too" } }),
+      ],
+      false,
+    );
+    expect(items.flatMap((i) => (i.kind === "user" ? [i.asker] : []))).toEqual(["c_her", "owner"]);
+  });
   test("pairs calls with results and questions with answers, without status changes", () => {
     const items = transcript(conversation(), true);
     expect(items.map((i) => i.kind)).toEqual(["turn", "user", "tool", "question", "tool"]);
