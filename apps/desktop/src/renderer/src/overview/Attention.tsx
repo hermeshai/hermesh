@@ -100,7 +100,7 @@ export function Attention({ now, onLimits }: { now: Date; onLimits: () => void }
             key={`limit:${card.agent}`}
             icon="gauge"
             tint="y"
-            title={t("limits.needTitle", { agent: codingAgentTitle(card.agent), window: windowName(w.minutes, true), left: w.left })}
+            title={t(w.group ? "limits.needTitleGroup" : "limits.needTitle", { agent: codingAgentTitle(card.agent), group: w.group, window: windowName(w.minutes, true), left: w.left })}
             detail={`${reportedText(st, card, now)} · ${resetText(w, now)}`}
           >
             <button className="btn" onClick={onLimits}>{t("limits.see")}</button>

@@ -265,12 +265,15 @@ public func usageChoices(_ res: Hermesh_Local_V1_QueryWorkResponse?, filter f: U
 /// Left of a window at or below this is a thing that needs the owner.
 public let limitLow = 20
 
-/// A window as the page shows it: how long, how much is left of it and of its time, and when it starts again.
-public struct LimitShown: Equatable, Sendable {
+/// A window as the page shows it: how long, how much is left of it and of its time, and when it starts again; and
+/// the models it counts, when the agent counts groups of them apart ("" for the account's).
+public struct LimitShown: Equatable, Identifiable, Sendable {
     public var minutes: Int
     public var left: Int
     public var timeLeft: Int
     public var resetsAt: Date
+    public var group: String = ""
+    public var id: String { "\(group)/\(minutes)" }
 }
 
 public struct AgentLimitsCard: Equatable, Identifiable, Sendable {
@@ -280,7 +283,8 @@ public struct AgentLimitsCard: Equatable, Identifiable, Sendable {
     public var machineID: String
     public var observedAt: Date?
     public var plan: String
-    /// Not yet reset, the shortest first; empty when none was said or all have reset since.
+    /// Not yet reset, by group as the agent gave them, the shortest first in each; empty when none was said or all have
+    /// reset since.
     public var windows: [LimitShown]
     /// It said some, and every one of them has reset since: what is left now is not known.
     public var stale: Bool
@@ -298,11 +302,13 @@ public func agentLimits(_ machines: [(machineID: String, agents: [Hermesh_Machin
             let at = a.hasLimits && a.limits.hasObservedAt ? a.limits.observedAt.date : nil
             if let had = cards[a.name], at == nil || (had.observedAt.map { $0 >= at! } ?? false) { continue }
             let said = a.hasLimits ? a.limits.windows : []
+            var groups: [String] = []
+            for w in said where !groups.contains(w.group) { groups.append(w.group) }
             let windows = said.filter { $0.resetsAt.date > now }.map { w in
                 LimitShown(minutes: Int(w.minutes), left: max(0, 100 - Int(w.usedPercent)),
                            timeLeft: min(100, max(0, Int((w.resetsAt.date.timeIntervalSince(now) / (Double(w.minutes) * 60) * 100).rounded()))),
-                           resetsAt: w.resetsAt.date)
-            }.sorted { $0.minutes < $1.minutes }
+                           resetsAt: w.resetsAt.date, group: w.group)
+            }.sorted { (groups.firstIndex(of: $0.group)!, $0.minutes) < (groups.firstIndex(of: $1.group)!, $1.minutes) }
             if cards[a.name] == nil { order.append(a.name) }
             cards[a.name] = AgentLimitsCard(agent: a.name, machineID: at == nil ? "" : m.machineID, observedAt: at, plan: a.hasLimits ? a.limits.plan : "",
                                             windows: windows, stale: !said.isEmpty && windows.isEmpty)

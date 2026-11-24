@@ -52,6 +52,10 @@ type Config struct {
 	// SelfErase: a machine on its own (not a trusted device's) stops with
 	// ErrErased when its owner erased everything, to be erased (Erase).
 	SelfErase bool
+	// AllowUnpaired lets an embedded local machine (the desktop app's own
+	// execution engine) run locally before it is paired with a relay/owner,
+	// starting its mesh listeners and relay link once Install pairs it.
+	AllowUnpaired bool
 	// HerBin is the her program (docs/her-server.md), "" when this machine
 	// has none; HerConsole is the folder of her's console.
 	HerBin, HerConsole string
@@ -78,7 +82,9 @@ type Machine struct {
 	log       *slog.Logger
 	st        *Store
 	key       *identity.SoftwareKey
+	keyPtr    atomic.Pointer[identity.SoftwareKey]
 	machineID string
+	idVal     atomic.Value // string: current machineID
 	audit     *Audit
 	sessions  *kernel.Engine
 
@@ -117,6 +123,9 @@ type Machine struct {
 	// store, so only first sight and upgrades touch the database.
 	grantSeen  map[string]uint64
 	statusKick chan struct{}
+	meshWake   chan struct{}
+	meshCancel context.CancelFunc
+	meshDone   chan struct{}
 	lock       *flock.Lock
 	// conn is the relay connection while there is one (notices go over it).
 	conn    *transport.RelayConn
@@ -199,7 +208,9 @@ func Open(cfg Config) (*Machine, error) {
 	}
 	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, inboxWake: make(chan struct{}, 1), machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
 		infos: map[string]rt.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
-		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
+		statusKick: make(chan struct{}, 1), meshWake: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
+	n.keyPtr.Store(key)
+	n.idVal.Store(n.machineID)
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
 		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, OnDefaultBotChanged: n.herDeltaChanged, Mesh: n.herMeshNow})
 	n.openHerMesh()
@@ -222,6 +233,13 @@ func (n *Machine) loadState() error {
 	on, _ := n.st.Get(kHer)
 	n.herOn = string(on) == "1"
 	n.herData = len(on) > 0 && n.herHomeExists()
+	if name, _ := n.st.Get(kName); len(name) > 0 {
+		n.machineName = string(name)
+	} else if n.cfg.AllowUnpaired {
+		def := SanitizeName(HostLabel(""))
+		_ = n.st.Set(kName, []byte(def))
+		n.machineName = def
+	}
 	owner, _ := n.st.Get(kOwnerID)
 	relay, _ := n.st.Get(kRelayURL)
 	n.ownerID, n.relayURL = string(owner), string(relay)
@@ -272,7 +290,40 @@ func (n *Machine) Close() error {
 	return err
 }
 
-func (n *Machine) MachineID() string { return n.machineID }
+func (n *Machine) MachineID() string {
+	if v, _ := n.idVal.Load().(string); v != "" {
+		return v
+	}
+	return n.machineID
+}
+
+func (n *Machine) currentKey() *identity.SoftwareKey {
+	if k := n.keyPtr.Load(); k != nil {
+		return k
+	}
+	return n.key
+}
+
+func (n *Machine) currentTrust() *identity.Trust {
+	n.mu.Lock()
+	t := n.trust
+	n.mu.Unlock()
+	return t
+}
+
+func (n *Machine) wakeMesh() {
+	select {
+	case n.meshWake <- struct{}{}:
+	default:
+	}
+}
+
+// SetSelfErase toggles whether a relay erase order makes Run exit with ErrErased.
+func (n *Machine) SetSelfErase(v bool) {
+	n.mu.Lock()
+	n.cfg.SelfErase = v
+	n.mu.Unlock()
+}
 
 var nameRE = regexp.MustCompile(`[^a-z0-9-]+`)
 
@@ -394,6 +445,7 @@ func (n *Machine) providerInfo(name string) rt.Info {
 		return i
 	}
 	i = p.Discover(context.Background())
+	n.noteAsked(name, i)
 	n.mu.Lock()
 	n.infos[name] = i
 	n.mu.Unlock()
@@ -410,11 +462,15 @@ func (n *Machine) kickStatus() {
 func (n *Machine) credentials() *identityv1.Credentials {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.trust == nil || n.machineCert == nil {
+		return &identityv1.Credentials{MachineName: n.machineName}
+	}
 	return &identityv1.Credentials{RootChain: n.trust.RootChain(), MachineName: n.machineName, Subject: &identityv1.Credentials_MachineCert{MachineCert: n.machineCert}}
 }
 
-// The coding agents are checked (installed, version, logged in: each CLI is
-// run) only when something needs to know: the app showing them, an agent
+// The coding agents are checked (installed, version, logged in, and the
+// account's rate limits where the agent answers them: each CLI is run) only
+// when something needs to know: the app showing them, an agent
 // asking where it can work, a session about to start. Nothing checks them
 // in the background.
 
@@ -453,6 +509,7 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 			go func() {
 				defer wg.Done()
 				info := p.Discover(context.Background())
+				n.noteAsked(name, info)
 				n.mu.Lock()
 				n.infos[name] = info
 				delete(n.pending, name)
@@ -520,26 +577,97 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 
 // Run serves until ctx is done.
 func (n *Machine) Run(ctx context.Context) error {
-	if !n.Paired() {
+	if !n.Paired() && !n.cfg.AllowUnpaired {
 		return errors.New("this machine is not paired yet; run `hermeshd pair <connection address>`")
 	}
 	go n.Janitor(ctx)
 	go n.CountWork(ctx)
 	go n.serveSessionTools(ctx)
 	go n.serveControl(ctx)
-	go n.serveLocal(ctx)
-	go n.serveDirect(ctx)
-	go n.serveDirectQUIC(ctx)
+	n.ensureLocalHerGrant()
 	n.startHer()
-	n.log.Info("hermeshd machine running", "machine", n.machineID, "name", n.Name(), "relay", n.relayURL)
-	n.runLink(ctx)
-	n.mu.Lock()
-	erased := n.erased
-	n.mu.Unlock()
-	if erased {
-		return ErrErased
+	n.log.Info("hermeshd machine running", "machine", n.MachineID(), "name", n.Name(), "paired", n.Paired(), "relay", n.RelayURL())
+	for {
+		if n.Paired() {
+			n.startMeshIfNeeded(ctx)
+		}
+		n.mu.Lock()
+		erased := n.erased
+		done := n.meshDone
+		n.mu.Unlock()
+		if erased {
+			n.stopMesh()
+			return ErrErased
+		}
+		select {
+		case <-ctx.Done():
+			n.stopMesh()
+			return nil
+		case <-n.meshWake:
+		case <-done:
+		}
 	}
-	return nil
+}
+
+func (n *Machine) startMeshIfNeeded(parent context.Context) {
+	n.mu.Lock()
+	if n.machineCert == nil || n.meshCancel != nil || parent.Err() != nil {
+		n.mu.Unlock()
+		return
+	}
+	mctx, mcancel := context.WithCancel(parent)
+	done := make(chan struct{})
+	n.meshCancel, n.meshDone = mcancel, done
+	n.mu.Unlock()
+
+	var wg sync.WaitGroup
+	wg.Go(func() { n.serveLocal(mctx) })
+	wg.Go(func() { n.serveDirect(mctx) })
+	wg.Go(func() { n.serveDirectQUIC(mctx) })
+	wg.Go(func() {
+		n.runLink(mctx)
+		mcancel()
+	})
+	go func() {
+		wg.Wait()
+		n.mu.Lock()
+		if n.meshDone == done {
+			n.meshCancel, n.meshDone = nil, nil
+		}
+		n.mu.Unlock()
+		close(done)
+		n.wakeMesh()
+	}()
+}
+
+// StopMesh disconnects the relay link and mesh listeners without stopping
+// local sessions or Her.
+func (n *Machine) StopMesh() {
+	n.mu.Lock()
+	n.machineCert = nil
+	n.mu.Unlock()
+	n.stopMesh()
+}
+
+func (n *Machine) stopMesh() {
+	n.mu.Lock()
+	mcancel, done := n.meshCancel, n.meshDone
+	n.meshCancel, n.meshDone = nil, nil
+	var closeTunnels []*tunnel
+	for t := range n.tunnels {
+		closeTunnels = append(closeTunnels, t)
+	}
+	n.connected = false
+	n.mu.Unlock()
+	for _, t := range closeTunnels {
+		_ = t.conn.Close()
+	}
+	if mcancel != nil {
+		mcancel()
+	}
+	if done != nil {
+		<-done
+	}
 }
 
 // applyRevocations merges r (which can only reduce permissions), closes
@@ -645,7 +773,7 @@ func (n *Machine) grantProblemLocked(g *identityv1.Grant) error {
 	if g.ExpiresAt != nil && time.Now().After(g.ExpiresAt.AsTime().Add(identity.ClockSkew)) {
 		return errors.New("grant expired")
 	}
-	if !identity.Allows(g.MachineIds, n.machineID) {
+	if !identity.Allows(g.MachineIds, n.MachineID()) {
 		return errors.New("grant does not cover this machine")
 	}
 	return nil
@@ -684,5 +812,5 @@ func (n *Machine) RelayURL() string {
 func (n *Machine) Projects() ([]Project, error) { return n.st.Projects() }
 
 func (n *Machine) VerifyAudit() (int, error) {
-	return VerifyAudit(filepath.Join(n.cfg.DataDir, "audit"), append([]identity.Signer{n.key}, retiredKeys(n.cfg.DataDir)...)...)
+	return VerifyAudit(filepath.Join(n.cfg.DataDir, "audit"), append([]identity.Signer{n.currentKey()}, retiredKeys(n.cfg.DataDir)...)...)
 }

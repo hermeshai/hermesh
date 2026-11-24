@@ -241,7 +241,7 @@ test("release history fits short content and keeps its actions visible with long
   await snap(history, "history-long");
   await clickToClose(history.getByRole("button", { name: "完成", exact: true }));
   await expect.poll(() => app.windows().some((p) => p.url().endsWith("#whats-new"))).toBe(false);
-  await expect(main.locator(".side-nav, .rail-nav")).toBeVisible();
+  await expect(main.locator(".side-nav, .side-float")).toBeVisible();
 });
 
 test("Done waits for native close even when it interrupts the click acknowledgement", async () => {
@@ -267,7 +267,7 @@ test("Done waits for native close even when it interrupts the click acknowledgem
     await clickToClose(done);
     expect(clicked).toBe(true);
     await expect.poll(() => app.evaluate(({ BrowserWindow }, id) => BrowserWindow.fromId(id) === null, id)).toBe(true);
-    await expect(main.locator(".side-nav, .rail-nav")).toBeVisible();
+    await expect(main.locator(".side-nav, .side-float")).toBeVisible();
   }
 });
 

@@ -219,6 +219,22 @@ func (a *app) connectRelay(ctx context.Context, warm func([]machineRef) []machin
 	if err := a.load(); err != nil {
 		return nil, nil, err
 	}
+	if a.st.RelayURL == "" && a.mem != nil && a.mem.LocalMachine != nil {
+		lm := a.mem.LocalMachine
+		var c *peer.Client
+		var err error
+		if p := a.kept(); p != nil {
+			c, err = p.open(ctx, a)
+		} else {
+			c = a.dialer(false).Detached()
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+		machines := []machineRef{{ID: lm.ID(), Name: lm.Name(), Online: true}}
+		a.remember(machines)
+		return c, machines, nil
+	}
 	warn := func(warnings []string) {
 		for _, w := range warnings {
 			fmt.Fprintln(os.Stderr, "warning:", w)
@@ -323,6 +339,15 @@ func (a *app) settle(ctx context.Context, c *peer.Client, warm func([]machineRef
 		return nil, warnings, err
 	}
 	machines = a.machineRefs(listed) // with the root the sync may have renewed
+	if a.mem != nil && a.mem.LocalMachine != nil {
+		localID := a.mem.LocalMachine.ID()
+		localName := a.mem.LocalMachine.Name()
+		for i := range machines {
+			if machines[i].ID == localID && (machines[i].Name == "" || machines[i].Name == localID) && localName != "" {
+				machines[i].Name = localName
+			}
+		}
+	}
 	a.remember(machines)
 	if c.Linked() {
 		// The link's tunnels outlive a command: one made before a machine
@@ -377,6 +402,9 @@ func (a *app) dial(ctx context.Context, pipeline bool) (*peer.Client, error) {
 func (a *app) dialer(pipeline bool) *peer.Dialer {
 	d := &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: a.credentials, Trust: a.trust, HTTPClient: a.hc,
 		Pipeline: pipeline}
+	if a.mem != nil && a.mem.LocalMachine != nil {
+		d.InProcess = a.mem.LocalMachine.Dial
+	}
 	if a.local {
 		d.Local = localDial
 	}

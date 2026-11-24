@@ -1702,8 +1702,9 @@ type AgentStatus struct {
 	// could not tell); empty when it was not asked (or a machine from before).
 	ModelsState            string `protobuf:"bytes,14,opt,name=models_state,json=modelsState,proto3" json:"models_state,omitempty"`
 	ModelsObservedAtUnixMs int64  `protobuf:"varint,15,opt,name=models_observed_at_unix_ms,json=modelsObservedAtUnixMs,proto3" json:"models_observed_at_unix_ms,omitempty"`
-	// What it last said of its account's limits, from a session here
-	// (docs/overview-usage.md §7); unset: it never said. The owner's only.
+	// What it last said of its account's limits, from a session here or asked
+	// when the agents are checked (docs/overview-usage.md §7); unset: it never
+	// said. The owner's only.
 	Limits        *AgentLimits `protobuf:"bytes,16,opt,name=limits,proto3" json:"limits,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1848,7 +1849,7 @@ func (x *AgentStatus) GetLimits() *AgentLimits {
 // An agent's rate limits as it said them.
 type AgentLimits struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The shortest first.
+	// By group in the order the agent gives them, the shortest first in each.
 	Windows []*LimitWindow `protobuf:"bytes,1,rep,name=windows,proto3" json:"windows,omitempty"`
 	// Its plan, when it says (Codex: "pro").
 	Plan          string                 `protobuf:"bytes,2,opt,name=plan,proto3" json:"plan,omitempty"`
@@ -1912,8 +1913,11 @@ type LimitWindow struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Minutes uint32                 `protobuf:"varint,1,opt,name=minutes,proto3" json:"minutes,omitempty"`
 	// 0 to 100.
-	UsedPercent   uint32                 `protobuf:"varint,2,opt,name=used_percent,json=usedPercent,proto3" json:"used_percent,omitempty"`
-	ResetsAt      *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=resets_at,json=resetsAt,proto3" json:"resets_at,omitempty"`
+	UsedPercent uint32                 `protobuf:"varint,2,opt,name=used_percent,json=usedPercent,proto3" json:"used_percent,omitempty"`
+	ResetsAt    *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=resets_at,json=resetsAt,proto3" json:"resets_at,omitempty"`
+	// The models it counts, as the agent names them, when it counts groups of
+	// models apart (Antigravity: "Gemini Models"); empty for the account's.
+	Group         string `protobuf:"bytes,4,opt,name=group,proto3" json:"group,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1967,6 +1971,13 @@ func (x *LimitWindow) GetResetsAt() *timestamppb.Timestamp {
 		return x.ResetsAt
 	}
 	return nil
+}
+
+func (x *LimitWindow) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
 }
 
 // AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).
@@ -3752,11 +3763,12 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\awindows\x18\x01 \x03(\v2\x1f.hermesh.machine.v1.LimitWindowR\awindows\x12\x12\n" +
 	"\x04plan\x18\x02 \x01(\tR\x04plan\x12;\n" +
 	"\vobserved_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\"\x83\x01\n" +
+	"observedAt\"\x99\x01\n" +
 	"\vLimitWindow\x12\x18\n" +
 	"\aminutes\x18\x01 \x01(\rR\aminutes\x12!\n" +
 	"\fused_percent\x18\x02 \x01(\rR\vusedPercent\x127\n" +
-	"\tresets_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\"\xb9\x02\n" +
+	"\tresets_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\bresetsAt\x12\x14\n" +
+	"\x05group\x18\x04 \x01(\tR\x05group\"\xb9\x02\n" +
 	"\x11AgentModelCatalog\x12\x14\n" +
 	"\x05scope\x18\x01 \x01(\tR\x05scope\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12\x14\n" +

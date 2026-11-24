@@ -246,6 +246,34 @@ func (o *Owner) SetHer(ctx context.Context, machineID string, enabled, erase boo
 	if enabled && erase {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("her data is erased only with Her turned off"))
 	}
+	if !o.Initialized() {
+		if l := o.local(); l != nil {
+			if err := onlyThisMachine(l, machineID); err != nil {
+				return err
+			}
+			st := l.Info().Status
+			if enabled && st.GetHer() == nil {
+				return errBeforeHer
+			}
+			msg, err := l.SetHerLocal(ctx, enabled, erase)
+			if err != nil {
+				return err
+			}
+			if !enabled && erase {
+				switch msg {
+				case machine.HerErased:
+					o.dropHerWaiting(l.MachineID())
+					o.forgetHer(l.MachineID())
+				case machine.HerOff:
+					return connect.NewError(connect.CodeFailedPrecondition, errors.New("Her is off, but her data stays"))
+				default:
+					return connect.NewError(connect.CodeInternal, errors.New(msg))
+				}
+			}
+			o.rep.kick()
+			return nil
+		}
+	}
 	cmd := &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
 		ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute)),
 		Command:   &identityv1.AdminCommand_SetHer{SetHer: &identityv1.SetHer{Enabled: enabled, Erase: erase}}}
@@ -438,6 +466,16 @@ func (o *Owner) SetHerCommandConnector(ctx context.Context, machineID string, c 
 	}
 	if _, ok, _ := o.onlyMachine(); ok {
 		return errNoRootKey("add or remove connectors started as commands")
+	}
+	if !o.Initialized() {
+		if l := o.local(); l != nil {
+			if err := onlyThisMachine(l, machineID); err != nil {
+				return err
+			}
+			_, err := l.SetHerCommandConnectorLocal(ctx, c)
+			o.rep.kick()
+			return err
+		}
 	}
 	_, err := o.admin(ctx, machineID, func(cmd *identityv1.AdminCommand) {
 		cmd.Command = &identityv1.AdminCommand_SetHerCommandConnector{SetHerCommandConnector: c}

@@ -76,7 +76,7 @@ func (n *Machine) registerInbox(ctx context.Context, conn *transport.RelayConn) 
 	if err != nil {
 		return
 	}
-	reg, err := identity.SignRegistration(n.key, n.OwnerID(), n.machineID, pub, "session")
+	reg, err := identity.SignRegistration(n.currentKey(), n.OwnerID(), n.MachineID(), pub, "session")
 	if err != nil {
 		return
 	}
@@ -119,9 +119,13 @@ func (n *Machine) isWoken(a *inboxv1.Address) bool {
 func (n *Machine) contact(ctx context.Context, ms relayv1connect.MessageServiceClient, inbox string) (*identity.ContactInfo, error) {
 	n.contacts.mu.Lock()
 	defer n.contacts.mu.Unlock()
+	trust := n.currentTrust()
+	if trust == nil {
+		return nil, errors.New("this machine has no owner")
+	}
 	find := func() *identity.ContactInfo {
 		for _, c := range n.contacts.list {
-			if info, err := n.trust.VerifyContact(c); err == nil && info.Inbox == inbox {
+			if info, err := trust.VerifyContact(c); err == nil && info.Inbox == inbox {
 				return info
 			}
 		}
@@ -260,7 +264,7 @@ func (n *Machine) newsMessage(to *inboxv1.Address, sess *sessionv1.Session, ev *
 	}
 	return &inboxv1.Message{
 		MessageId:   "msg_" + strings.ToLower(ulid.Make().String()),
-		From:        &inboxv1.Address{Inbox: n.machineID, Session: sess.SessionId},
+		From:        &inboxv1.Address{Inbox: n.MachineID(), Session: sess.SessionId},
 		To:          to,
 		SentAt:      timestamppb.Now(),
 		Text:        newsText(news),
@@ -287,7 +291,7 @@ func (n *Machine) sendMessage(m *inboxv1.Message) error {
 	if err != nil {
 		return err
 	}
-	signed, err := identity.Sign(m, n.key)
+	signed, err := identity.Sign(m, n.currentKey())
 	if err != nil {
 		return err
 	}

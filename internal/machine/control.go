@@ -100,7 +100,7 @@ func (n *Machine) ApplyLocal(ctx context.Context, cmd *identityv1.AdminCommand) 
 	default:
 		return "", errors.New("only projects can be changed on the machine itself")
 	}
-	cmd.OwnerId, cmd.TargetMachineId, cmd.CommandId = n.OwnerID(), n.machineID, identity.RandomCode(16)
+	cmd.OwnerId, cmd.TargetMachineId, cmd.CommandId = n.OwnerID(), n.MachineID(), identity.RandomCode(16)
 	cmd.ExpiresAt = timestamppb.New(time.Now().Add(time.Minute))
 	return n.applyAdmin(ctx, cmd, "this machine's user")
 }

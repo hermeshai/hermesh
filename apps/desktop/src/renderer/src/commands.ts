@@ -28,13 +28,13 @@ export function useCommands() {
           answerable: pendingQuestion(s) !== undefined,
           archivable: isArchivable(s),
           archived: s.status === SessionStatus.ARCHIVED,
-          inspector: layoutOf(st).card !== "hidden",
+          inspector: layoutOf(st).card !== "hidden" && !st.background,
           grant: s.createdBy,
           grantLabel: grantLabel(st, s),
           project: s.projectId,
         }
       : null,
-    sidebar: layoutOf(st).sidebar !== "rail",
+    sidebar: layoutOf(st).sidebar !== "hidden",
     undo: st.toast?.undo !== undefined,
   };
   const key = JSON.stringify(state);
@@ -61,9 +61,9 @@ function run(st: Store, c: Command) {
     case "nextActive":
       return next(st, isActive);
     case "toggleInspector":
-      return s && setCard(st, layoutOf(st).card === "hidden");
+      return s && setCard(st, layoutOf(st).card === "hidden" || st.background);
     case "toggleSidebar":
-      return setSidebar(st, layoutOf(st).sidebar === "rail");
+      return setSidebar(st, layoutOf(st).sidebar === "hidden");
     case "newGrant":
     case "addMachine":
     case "addProject":

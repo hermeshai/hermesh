@@ -106,6 +106,26 @@ func logHint(path string, follow bool) string {
 	return "tail " + path
 }
 
+// resolveMachineDir finds this user's active machine directory: the top-level
+// <dataDir>/machine when present (headless / paired CLI machine), or else the
+// active profile's machine inside <dataDir>/owner/profiles/<current>/machine
+// (the desktop app's standalone or trusted-device machine).
+func resolveMachineDir(dataDir string) string {
+	top := filepath.Join(dataDir, "machine")
+	if _, err := os.Stat(machine.KeyPath(top)); err == nil {
+		return top
+	}
+	if cur, err := os.ReadFile(filepath.Join(dataDir, "owner", "current")); err == nil {
+		if id := strings.TrimSpace(string(cur)); id != "" {
+			prof := filepath.Join(dataDir, "owner", "profiles", id, "machine")
+			if _, err := os.Stat(machine.KeyPath(prof)); err == nil {
+				return prof
+			}
+		}
+	}
+	return top
+}
+
 func main() {
 	if err := rootCommand().Execute(); err != nil {
 		os.Exit(1)
@@ -158,6 +178,11 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS")), TestBeforeHer: os.Getenv("HERMESH_TEST_BEFORE_HER") == "1"}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
+	openActiveMachine := func() (*machine.Machine, error) {
+		cfg := machineConfig()
+		cfg.DataDir = resolveMachineDir(dataDir)
+		return machine.Open(cfg)
+	}
 
 	var ownerMode, noMachine, supervise bool
 	var socket string
@@ -427,7 +452,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 				fmt.Print(text)
 				return nil
 			}
-			c, running, err := machineCheck(cmd.Context(), dataDir, openMachine)
+			c, running, err := machineCheck(cmd.Context(), resolveMachineDir(dataDir), openActiveMachine)
 			if err != nil {
 				return err
 			}
@@ -479,13 +504,13 @@ to that owner's devices by itself. Then it installs the background service.`,
 		},
 	}
 
-	projects := projectCommand(&dataDir, openMachine)
+	projects := projectCommand(&dataDir, openActiveMachine)
 	status := &cobra.Command{
 		Use:   "status",
 		Short: "Show this machine: its name, whether it is connected, the service and its projects",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, running, err := machineCheck(cmd.Context(), dataDir, openMachine)
+			c, running, err := machineCheck(cmd.Context(), resolveMachineDir(dataDir), openActiveMachine)
 			if err != nil {
 				return err
 			}
@@ -513,7 +538,7 @@ to that owner's devices by itself. Then it installs the background service.`,
 		Use:   "audit-verify",
 		Short: "Verify the tamper-evident audit log",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			n, err := openMachine()
+			n, err := openActiveMachine()
 			if err != nil {
 				return err
 			}
@@ -645,9 +670,9 @@ var serviceLine func(byHand bool) bool
 
 // machineCheck asks the running machine how it is (it holds the data
 // directory), or opens it when it isn't running.
-func machineCheck(ctx context.Context, dataDir string, open func() (*machine.Machine, error)) (machine.Check, bool, error) {
+func machineCheck(ctx context.Context, machineDir string, open func() (*machine.Machine, error)) (machine.Check, bool, error) {
 	var c machine.Check
-	if out, ok, err := machine.ControlRequest(ctx, filepath.Join(dataDir, "machine"), "GET", "/check", nil); ok {
+	if out, ok, err := machine.ControlRequest(ctx, machineDir, "GET", "/check", nil); ok {
 		if err == nil {
 			err = json.Unmarshal(out, &c)
 		}

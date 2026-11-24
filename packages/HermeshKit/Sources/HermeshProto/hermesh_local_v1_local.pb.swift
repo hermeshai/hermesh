@@ -466,7 +466,8 @@ public nonisolated struct Hermesh_Local_V1_RelayHealth: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// "idle", "connecting", "connected", "reconnecting", "offline"
+  /// "local", "idle", "connecting", "connected", "reconnecting", "offline",
+  /// "leaving_relay", "leaving_cleanup"
   public var phase: String = String()
 
   /// Smoothed round-trip time to the relay in milliseconds (0 when unknown).
@@ -931,6 +932,10 @@ public nonisolated struct Hermesh_Local_V1_LeaveRequest: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
+
+  /// Skip contacting the relay (or bypass waiting for another trusted device's
+  /// removal) and demote this device back to local standalone mode immediately.
+  public var forceLocal: Bool = false
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -4846,18 +4851,29 @@ nonisolated extension Hermesh_Local_V1_RemoveDeviceResponse: SwiftProtobuf.Messa
 
 nonisolated extension Hermesh_Local_V1_LeaveRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".LeaveRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}force_local\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    // Load everything into unknown fields
-    while try decoder.nextFieldNumber() != nil {}
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.forceLocal) }()
+      default: break
+      }
+    }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.forceLocal != false {
+      try visitor.visitSingularBoolField(value: self.forceLocal, fieldNumber: 1)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Local_V1_LeaveRequest, rhs: Hermesh_Local_V1_LeaveRequest) -> Bool {
+    if lhs.forceLocal != rhs.forceLocal {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

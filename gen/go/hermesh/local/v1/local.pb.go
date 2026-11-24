@@ -792,7 +792,8 @@ func (x *GetStatusResponse) GetRelayHealth() *RelayHealth {
 
 type RelayHealth struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// "idle", "connecting", "connected", "reconnecting", "offline"
+	// "local", "idle", "connecting", "connected", "reconnecting", "offline",
+	// "leaving_relay", "leaving_cleanup"
 	Phase string `protobuf:"bytes,1,opt,name=phase,proto3" json:"phase,omitempty"`
 	// Smoothed round-trip time to the relay in milliseconds (0 when unknown).
 	RttMs uint32 `protobuf:"varint,2,opt,name=rtt_ms,json=rttMs,proto3" json:"rtt_ms,omitempty"`
@@ -2352,7 +2353,10 @@ func (x *RemoveDeviceResponse) GetReissuedGrants() uint32 {
 }
 
 type LeaveRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Skip contacting the relay (or bypass waiting for another trusted device's
+	// removal) and demote this device back to local standalone mode immediately.
+	ForceLocal    bool `protobuf:"varint,1,opt,name=force_local,json=forceLocal,proto3" json:"force_local,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2385,6 +2389,13 @@ func (x *LeaveRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use LeaveRequest.ProtoReflect.Descriptor instead.
 func (*LeaveRequest) Descriptor() ([]byte, []int) {
 	return file_hermesh_local_v1_local_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *LeaveRequest) GetForceLocal() bool {
+	if x != nil {
+		return x.ForceLocal
+	}
+	return false
 }
 
 type LeaveResponse struct {
@@ -9695,8 +9706,10 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\terase_her\x18\x02 \x01(\bR\beraseHer\"l\n" +
 	"\x14RemoveDeviceResponse\x12+\n" +
 	"\x11reissued_machines\x18\x01 \x01(\rR\x10reissuedMachines\x12'\n" +
-	"\x0freissued_grants\x18\x02 \x01(\rR\x0ereissuedGrants\"\x0e\n" +
-	"\fLeaveRequest\"\x0f\n" +
+	"\x0freissued_grants\x18\x02 \x01(\rR\x0ereissuedGrants\"/\n" +
+	"\fLeaveRequest\x12\x1f\n" +
+	"\vforce_local\x18\x01 \x01(\bR\n" +
+	"forceLocal\"\x0f\n" +
 	"\rLeaveResponse\"\x18\n" +
 	"\x16EraseEverythingRequest\"4\n" +
 	"\x17EraseEverythingResponse\x12\x19\n" +

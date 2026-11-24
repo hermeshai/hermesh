@@ -117,7 +117,8 @@ struct NeedCard: View {
             if let c = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now).first(where: { $0.agent == agent }),
                let w = c.least {
                 card(dot: .orange, label: Text("Limits"), trailing: Text(verbatim: resetText(w, now: model.now)),
-                     title: Text("\(agentTitle(agent))’s \(windowName(w.minutes, short: true)) limit is at \(w.left)%"),
+                     title: w.group.isEmpty ? Text("\(agentTitle(agent))’s \(windowName(w.minutes, short: true)) limit is at \(w.left)%")
+                         : Text("\(agentTitle(agent))’s \(w.group) \(windowName(w.minutes, short: true)) limit is at \(w.left)%"),
                      detail: Text(verbatim: reportedText(model, c))) {
                     AgentLogo(id: agent, size: 30)
                 } actions: {

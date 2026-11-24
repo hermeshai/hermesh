@@ -493,7 +493,31 @@ drivers' fixtures (`internal/provider/claude/testdata/claude-2.1.330-rate-limit-
 |---|---|---|
 | Claude Code (2.1.330) | a `rate_limit_event` line of its output, once a turn | `rate_limit_info.unifiedWindows`: per window by name (`five_hour`, `seven_day`) a `utilization` from 0 to 1 (0.26 is 26% used) and `resetsAt` in Unix seconds |
 | Codex (app-server 0.171) | the notification `account/rateLimits/updated` during a turn (dropped today in `skipNotifications`) | `rateLimits.primary` and `.secondary`, either of them null (the account seen has only a week: 10,080 minutes): `usedPercent` a whole number, `windowDurationMins`, `resetsAt` in Unix seconds; `planType` |
+| Antigravity (agy 1.5.16) | nothing in a turn; asked only (below) | |
 | Others (ACP) | nothing common | no limits; the page says the agent gives none |
+
+**Asked, without a turn** (2026-11-25; fixtures `claude-2.1.330-get-usage.json`
+and `codex-0.171-rate-limits-read.json` beside the others). Both answer the
+same windows through their own CLI when asked, so the machine asks them
+whenever it checks its coding agents (§7.2):
+
+| Agent | How | What |
+|---|---|---|
+| Claude Code (2.1.330) | the control request `get_usage` (`skip_behaviors`: only the limits, not the scan of every transcript), on the process that already answers `initialize` for the models | `subscription_type` (the plan); `rate_limits.five_hour` and `.seven_day`: `utilization` from 0 to 100 here, `resets_at` in RFC 3339; `rate_limits_available` false with an API key. Much else (per-model weeks, spend) is left out |
+| Codex (app-server 0.171) | the request `account/rateLimits/read` (no params), on the app-server that already answers `model/list` | `rateLimits` as the notification has them, and the account's id, which is not kept |
+| Antigravity (agy 1.5.16) | its own `/usage`, run headless: `agy -p /usage --output-format json` (no turn, no tokens, no conversation), once the agy CLI is chosen and signed in | `command.data.groups`: groups of models counted apart (`Gemini Models`, `Claude and GPT models`), each with buckets of `window` `5h` or `weekly`, `remaining_fraction` 0 to 1 and `reset_time` in RFC 3339. With an API key it exits 2: none (fixture `internal/runtime/acp/testdata/agy-1.5.16-usage.json`) |
+
+Antigravity's ACP says its plan (`_meta.antigravity.tier`) and nothing of
+its limits, and `/usage` sent as a prompt over ACP goes to the model. Its
+`-p` slash commands are agy's own (its changelog: `/usage`, `/quota` and
+`/credits` in `-p` runs). The standalone ACP server (no agy) is not asked.
+Hermesh does not read agy's sign-in or call Google's unpublished endpoints
+itself.
+
+**Groups.** A window may name the models it counts (`LimitWindow.group`):
+Antigravity counts groups apart, each with its own five hours and week;
+Claude Code and Codex count the account's, with no group. Windows come by
+group in the order the agent gave them, the shortest first in each.
 
 **Neither names the account.** Codex's id is only in the answer to the
 request `account/rateLimits/read`, which a turn does not make. So a device
@@ -513,6 +537,7 @@ type LimitWindow struct {
     Minutes     uint32
     UsedPercent uint32    // 0 to 100
     ResetsAt    time.Time
+    Group       string    // the models it counts, when counted apart; "" for the account's
 }
 
 type StartSpec struct {
@@ -524,6 +549,11 @@ type StartSpec struct {
 
 A callback, not an `Event`: limits belong to the account, not to the
 session, and must not enter a session's event log.
+
+Asked, they come back with the agent's check: `Info.Limits`, filled by the
+Claude Code, Codex and Antigravity (agy) drivers' `Discover` when the agent is logged in, nil
+when it said none. The machine keeps them as it keeps a turn's
+(`noteAsked`).
 
 Claude Code says its line once a turn and Codex once or a few times; both
 are small, so the drivers parse each one (Codex's is no longer skipped). The
@@ -552,6 +582,7 @@ message LimitWindow {
   uint32 minutes = 1;
   uint32 used_percent = 2;
   google.protobuf.Timestamp resets_at = 3;
+  string group = 4; // Antigravity: "Gemini Models"; empty for the account's
 }
 ```
 
@@ -569,14 +600,22 @@ screen: they are the owner's accounts.
   one agent show as one card, the latest.
 - A window whose `resets_at` has passed is not shown until the agent speaks
   again: what is left then is not known.
-- A window with 20% or less left, not yet reset, is a `Need` (§4.1).
-- Limits move only while that agent runs. The page says the numbers are the
-  agent's as of when it last ran; nothing polls.
+- An agent that counts groups of models apart shows each group's name over
+  its windows; one that does not, its windows alone.
+- A window with 20% or less left, not yet reset, is a `Need` (§4.1); the
+  least left of the card's, named with its group when it has one.
+- Limits move while that agent runs, and when the agents are checked: the
+  machine's first check after it starts, and on the Mac each time the page
+  opens (it asks for a check, as the Providers page does). Nothing polls; a
+  card from another computer has what that one last said.
 
 ### 7.5 What it costs
 
 A machine: one gated parse every five seconds per running session, one small
-`meta` write a minute at most, one status a minute at most. A device:
+`meta` write a minute at most, one status a minute at most; asked, one more
+request each on the processes a check of Claude Code and Codex already
+starts (a second or two of network), and one `agy -p /usage` (a few
+seconds) beside Antigravity's; never a turn. A device:
 nothing beyond the status it already receives. The center learns nothing:
 the status travels end to end as it does today.
 

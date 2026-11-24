@@ -38,10 +38,19 @@ type Identity struct {
 	InboxRegistered string
 }
 
+// LocalMachine describes an execution machine running inside the same process
+// (such as the host machine of Her), reachable without a relay or TLS socket.
+type LocalMachine struct {
+	ID   func() string
+	Name func() string
+	Dial func(ctx context.Context, machineID string) (conn net.Conn, machineName string, ok bool)
+}
+
 // ExecOptions run a command for an Identity.
 type ExecOptions struct {
-	Identity   Identity
-	HTTPClient *http.Client
+	Identity     Identity
+	HTTPClient   *http.Client
+	LocalMachine *LocalMachine
 	// Peer, when set, keeps the relay connection, the tunnels to machines
 	// and the machine list from one command to the next.
 	Peer *Peer
@@ -57,7 +66,7 @@ type ExecOptions struct {
 // "s_..."), for opts.Identity, with JSON output: it returns the command's
 // document (docs/cli-output.md) and its exit code.
 func Exec(ctx context.Context, opts ExecOptions, args []string) ([]byte, int) {
-	a := &app{hc: opts.HTTPClient, mem: &opts}
+	a := &app{hc: opts.HTTPClient, mem: &opts, local: opts.LocalMachine != nil}
 	if a.hc == nil {
 		a.hc = http.DefaultClient
 	}
@@ -89,9 +98,11 @@ func (a *app) loadMem() error {
 		p.mu.Unlock()
 	}
 	a.key = id.Key
-	a.trust = identity.NewTrust(id.OwnerID)
-	if _, err := a.trust.AcceptRootChain(id.RootChain); err != nil {
-		return fmt.Errorf("owner root chain: %w", err)
+	if id.RootChain != nil {
+		a.trust = identity.NewTrust(id.OwnerID)
+		if _, err := a.trust.AcceptRootChain(id.RootChain); err != nil {
+			return fmt.Errorf("owner root chain: %w", err)
+		}
 	}
 	a.grant = id.Grant
 	a.g = &identityv1.Grant{}
@@ -104,8 +115,9 @@ func (a *app) loadMem() error {
 // command then reaches its machine over the tunnel the last one made.
 // Commands running at once share it.
 type Peer struct {
-	mu     sync.Mutex
-	client *peer.Client
+	mu       sync.Mutex
+	client   *peer.Client
+	relayURL string
 	// trust verifies the machines the client reaches; creds is what it
 	// presents (read without mu: the client reads it while it dials).
 	trust    *identity.Trust
@@ -137,20 +149,45 @@ func (p *Peer) open(ctx context.Context, a *app) (*peer.Client, error) {
 	if p.closed {
 		return nil, net.ErrClosed
 	}
-	if p.client == nil {
-		p.trust = identity.NewTrust(a.st.OwnerID)
-		if _, err := p.trust.AcceptRootChain(a.trust.RootChain()); err != nil {
-			return nil, err
+	if p.client != nil && p.relayURL != a.st.RelayURL {
+		p.client.Close()
+		p.client = nil
+		p.machines = nil
+	}
+	if p.client != nil && p.relayURL != "" {
+		select {
+		case <-p.client.Done():
+			p.client.Close()
+			p.client = nil
+		default:
 		}
-		p.creds.Store(a.credentials())
-		p.grant, p.version = a.grant, a.g.Version
+	}
+	if p.client == nil {
+		if a.trust != nil {
+			p.trust = identity.NewTrust(a.st.OwnerID)
+			if _, err := p.trust.AcceptRootChain(a.trust.RootChain()); err != nil {
+				return nil, err
+			}
+			p.creds.Store(a.credentials())
+		} else {
+			p.trust = nil
+			p.creds.Store(nil)
+		}
+		p.grant, p.version, p.relayURL = a.grant, a.g.Version, a.st.RelayURL
 		d := &peer.Dialer{RelayURL: a.st.RelayURL, Role: relayv1.Role_ROLE_CLIENT, Key: a.key, Credentials: p.creds.Load, Trust: p.trust, HTTPClient: a.hc,
 			Pipeline: true}
-		c, err := d.Connect(ctx)
-		if err != nil {
-			return nil, err
+		if a.mem != nil && a.mem.LocalMachine != nil {
+			d.InProcess = a.mem.LocalMachine.Dial
 		}
-		p.client = c
+		if a.st.RelayURL == "" {
+			p.client = d.Detached()
+		} else {
+			c, err := d.Connect(ctx)
+			if err != nil {
+				return nil, err
+			}
+			p.client = c
+		}
 	}
 	p.client.Hold()
 	return p.client, nil

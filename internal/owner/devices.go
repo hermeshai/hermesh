@@ -300,7 +300,8 @@ func (o *Owner) ConfirmJoin(ctx context.Context, code string, accept bool, match
 	o.mu.Lock()
 	o.join = nil
 	o.mu.Unlock()
-	if o.machineOnly() {
+	wasMachineOnly := o.machineOnly()
+	if wasMachineOnly {
 		// It was only a machine of this owner: its machine runs on, now this
 		// trusted device's own.
 		o.st.set(kLocalMachine, []byte("1"))
@@ -311,10 +312,29 @@ func (o *Owner) ConfirmJoin(ctx context.Context, code string, accept bool, match
 			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
 	} else if j.machineCert != nil {
-		if err := o.installLocalMachine(ctx, j.machineCert, j.machineName); err != nil {
+		herPub := o.localMachineHerKeyIfEnabled()
+		if err := o.installLocalMachine(ctx, j.machineCert, j.machineName, nil); err != nil {
 			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
+		if len(herPub) > 0 {
+			if l := o.local(); l != nil {
+				hg := HerGrant(j.ownerID, l.MachineID(), l.Info().MachineName, herPub)
+				if signedHG, sErr := o.signRoot(ctx, hg); sErr == nil {
+					_ = l.SetHerGrant(signedHG[0], o.trust.RootChain())
+					if ctl, _, cErr := o.control(ctx); cErr == nil {
+						if _, pErr := ctl.PublishGrant(ctx, &relayv1.PublishGrantRequest{Grant: signedHG[0]}); pErr == nil {
+							o.st.putGrant(signedHG[0], false)
+							go o.refreshCards()
+						}
+					}
+				}
+			}
+		}
+	} else if !wasMachineOnly {
+		_ = o.st.set(kLocalMachine, []byte("0"))
+		o.stopLocalMachine()
 	}
+	o.wakeRelay()
 	return &localv1.ConfirmJoinResponse{OwnerId: j.ownerID, ConnectAddress: connaddr.Format(j.relayURL, j.ownerID)}, nil
 }
 
@@ -567,9 +587,9 @@ func (o *Owner) RemoveDevice(ctx context.Context, keyID string, eraseHer bool) (
 // owner started over on a hosted center.
 func (o *Owner) checkRemoved() {
 	o.mu.Lock()
-	ownerID, relayURL, rootPub, trust := o.ownerID, o.relayURL, o.rootPub, o.trust
+	ownerID, relayURL, rootPub, trust, leaving := o.ownerID, o.relayURL, o.rootPub, o.trust, o.leavingPhase != ""
 	o.mu.Unlock()
-	if ownerID == "" {
+	if ownerID == "" || leaving {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -584,59 +604,194 @@ func (o *Owner) checkRemoved() {
 		removed = !hasKey(trust.Root(), identity.MarshalPublicKey(rootPub))
 	}
 	o.mu.Lock()
-	if o.ownerID == ownerID { // not left meanwhile
+	sameOwner := o.ownerID == ownerID && o.leavingPhase == ""
+	if sameOwner { // not left meanwhile
 		o.removed = removed
 	}
 	erasing, onErase := o.erasing != nil, o.onErase
 	o.mu.Unlock()
 	// The owner erased everything from another device: this one erases
 	// itself (the one that erased waits for FinishErase).
-	if removed && !erasing && onErase != nil {
+	if sameOwner && removed && !erasing && onErase != nil {
 		if order := o.eraseOrder(info); order != nil {
 			go onErase(o, order.EraseId, o.deviceName(info.EraseOrder.SignerKeyId))
 		}
 	}
 }
 
-// Leave forgets the owner on this device once it was removed, so it can
-// be set up or join again, and has the signer delete its root key. Its own
-// machine, removed with it, is retired: it keeps its projects and comes
-// back under a new id.
-func (o *Owner) Leave(ctx context.Context) error {
+func (o *Owner) setLeavingPhase(phase string) {
+	o.mu.Lock()
+	o.leavingPhase = phase
+	o.mu.Unlock()
+	o.rep.kick()
+}
+
+// Leave forgets the owner on this device and smoothly transitions its local
+// machine back to standalone mode without interrupting active sessions.
+//
+//   - If this device was already removed by another device (or forceLocal is
+//     true), it disconnects locally at once.
+//   - If this device is the owner's sole trusted device, it attempts a bounded
+//     erase order on the relay (when reachable) so remote grants/machines are
+//     revoked, while preserving all local projects, sessions, and Her data.
+//   - If other trusted devices still remain and forceLocal is false, it asks
+//     the person to remove this device from another trusted device first so
+//     credentials this device signed can be re-issued.
+func (o *Owner) Leave(ctx context.Context, forceLocal bool) error {
 	if !o.Initialized() && o.machineOnly() {
-		return o.leaveAsMachine(ctx)
+		return o.leaveAsMachine(ctx, forceLocal)
+	}
+	if !o.Initialized() {
+		return connect.NewError(connect.CodeFailedPrecondition, errors.New("Hermesh is already in local mode"))
 	}
 	o.mu.Lock()
 	removed := o.removed
+	ownerID := o.ownerID
+	relayURL := o.relayURL
+	rootPub := o.rootPub
+	trust := o.trust
+	signedOut := o.signedOut
 	o.mu.Unlock()
-	if !removed {
-		return connect.NewError(connect.CodeFailedPrecondition, errors.New("this device is still one of the owner's; remove it from another device first"))
+
+	rootKeys := 0
+	if trust != nil {
+		rootKeys = len(trust.Root().GetRootKeys())
 	}
-	o.stopLocalMachine()
-	if err := machine.Retire(o.localMachineConfig()); err != nil {
-		return err
+	if !removed && !forceLocal {
+		if rootKeys > 1 {
+			return connect.NewError(connect.CodeFailedPrecondition, errors.New("this device is still one of the owner's; remove it from another device first"))
+		}
+		// Sole trusted device: if signed in and the relay answers quickly, sign
+		// an EraseOrder so remote grants and subordinate machines are revoked
+		// on the relay, while keeping all local projects/sessions/Her intact.
+		if !signedOut && relayURL != "" {
+			pctx, pcancel := context.WithTimeout(ctx, 3*time.Second)
+			_, probeErr := o.publicClient(relayURL).GetInfo(pctx, &relayv1.GetInfoRequest{OwnerId: ownerID})
+			pcancel()
+			if probeErr == nil {
+				o.setLeavingPhase("leaving_relay")
+				eraseID := identity.RandomCode(16)
+				signed, sErr := o.signRoot(ctx, &identityv1.EraseOrder{OwnerId: ownerID, EraseId: eraseID, IssuedAt: timestamppb.Now()})
+				if sErr != nil {
+					o.setLeavingPhase("")
+					return sErr
+				}
+				o.mu.Lock()
+				preRunning := o.localMachine
+				o.mu.Unlock()
+				if preRunning != nil {
+					preRunning.SetSelfErase(false)
+					preRunning.StopMesh()
+				}
+				rctx, rcancel := context.WithTimeout(ctx, 5*time.Second)
+				if ctl, _, cErr := o.control(rctx); cErr == nil {
+					if _, eErr := ctl.EraseOwner(rctx, &relayv1.EraseOwnerRequest{Order: signed[0]}); eErr != nil {
+						o.log.Warn("leaving: relay did not record owner erase; continuing local downgrade", "err", eErr)
+					}
+				} else {
+					o.log.Warn("leaving: relay unreachable during owner erase; continuing local downgrade", "err", cErr)
+				}
+				rcancel()
+			}
+		}
 	}
+
+	o.setLeavingPhase("leaving_cleanup")
+	defer o.setLeavingPhase("")
+
+	o.rep.clear()
 	o.mu.Lock()
 	if o.client != nil {
 		o.client.Close()
 		o.client = nil
 	}
-	rootPub := o.rootPub
+	if o.kept != nil {
+		o.kept.Close()
+		o.kept = nil
+	}
+	o.mu.Unlock()
+	o.closeDirectMachines()
+
+	var oldLocalID, newLocalID string
+	var running *machine.Machine
+	var hasRunCtx bool
+	if err := func() error {
+		o.localStartMu.Lock()
+		defer o.localStartMu.Unlock()
+		o.mu.Lock()
+		running = o.localMachine
+		hasRunCtx = o.runCtx != nil && o.runCtx.Err() == nil
+		o.mu.Unlock()
+		if running != nil && !o.cfg.NoLocalMachine {
+			oldLocalID = running.MachineID()
+			var err error
+			newLocalID, err = running.DemoteToLocal()
+			return err
+		}
+		o.stopLocalMachineLocked()
+		if !o.cfg.NoLocalMachine {
+			cfg := o.localMachineConfig()
+			if oldKey, kErr := identity.LoadKey(machine.KeyPath(cfg.DataDir)); kErr == nil {
+				oldLocalID = identity.MachineID(identity.MarshalPublicKey(oldKey.Public()))
+				if err := machine.Retire(cfg); err != nil {
+					return err
+				}
+				if newKey, nErr := identity.LoadKey(machine.KeyPath(cfg.DataDir)); nErr == nil {
+					newLocalID = identity.MachineID(identity.MarshalPublicKey(newKey.Public()))
+				}
+			}
+		}
+		return nil
+	}(); err != nil {
+		return err
+	}
+
+	if ws, wErr := o.st.herWaiting("", ""); wErr == nil {
+		for _, w := range ws {
+			if w.MachineId != oldLocalID && w.MachineId != newLocalID {
+				o.dropPictures(w.Id)
+			}
+		}
+	}
+	o.herMu.Lock()
+	var keptLocalHer *machinev1.HerStatus
+	if oldLocalID != "" {
+		keptLocalHer = o.herSeen[oldLocalID]
+	}
+	clear(o.herSeen)
+	if keptLocalHer != nil && newLocalID != "" {
+		o.herSeen[newLocalID] = keptLocalHer
+	}
+	o.herMu.Unlock()
+
+	o.mu.Lock()
 	o.ownerID, o.relayURL, o.rootPub, o.trust, o.device, o.deviceCert, o.relayInfo, o.removed = "", "", nil, nil, nil, nil, nil, false
 	o.mcpURL, o.avatarURL = "", ""
 	o.signedOut, o.account = false, ""
+	o.lastMachines, o.lastClients, o.seen = nil, nil, ""
+	o.machineCerts = nil
+	o.relayRetries, o.relayErr = 0, ""
 	o.mu.Unlock()
-	o.closeDirectMachines()
-	for _, k := range []string{kOwnerID, kSignedOut, kAccount, kDirectAddrs} {
+
+	for _, k := range []string{kOwnerID, kRelayURL, kRootPub, kRootChain, kDeviceCert, kSignedOut, kAccount, kDirectAddrs, kLastMachines, kLastClients, kSeenOnline, kLocalMachine, kSyncKey, kHeldAt} {
 		if err := o.st.set(k, []byte{}); err != nil {
 			return err
 		}
 	}
-	if err := o.st.clearGrants(); err != nil {
+	if err := o.st.clearRemoteAccountData(oldLocalID, newLocalID); err != nil {
 		return err
 	}
-	if err := o.hub.deleteKey(ctx, identity.KeyID(rootPub)); err != nil {
-		o.log.Warn("leaving: the old root key stays in the signer", "err", err)
+	if rootPub != nil {
+		dctx, dcancel := context.WithTimeout(ctx, 3*time.Second)
+		if err := o.hub.deleteKey(dctx, identity.KeyID(rootPub)); err != nil {
+			o.log.Warn("leaving: the old root key stays in the signer", "err", err)
+		}
+		dcancel()
+	}
+	if running == nil && hasRunCtx && o.wantsLocalMachine() {
+		if err := o.startLocalMachine(); err != nil {
+			o.log.Warn("local machine did not restart in standalone mode", "err", err)
+		}
 	}
 	return nil
 }

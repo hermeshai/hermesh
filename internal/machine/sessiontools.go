@@ -42,7 +42,7 @@ type sessionTools struct {
 
 // serveSessionTools listens until ctx ends.
 func (n *Machine) serveSessionTools(ctx context.Context) {
-	path := paths.Tools(n.cfg.DataDir, n.machineID)
+	path := paths.Tools(n.cfg.DataDir, n.MachineID())
 	ln, err := localipc.Listen(path)
 	if err != nil {
 		n.log.Warn("sessions' tools socket", "err", err)
@@ -181,9 +181,13 @@ func (n *Machine) agentContacts(ctx context.Context) ([]*identity.ContactInfo, e
 	n.contacts.mu.Lock()
 	n.contacts.keep(res)
 	n.contacts.mu.Unlock()
+	trust := n.currentTrust()
+	if trust == nil {
+		return nil, nil
+	}
 	var out []*identity.ContactInfo
 	for _, c := range res.Contacts {
-		if info, err := n.trust.VerifyContact(c); err == nil && info.Kind != "machine" {
+		if info, err := trust.VerifyContact(c); err == nil && info.Kind != "machine" {
 			out = append(out, info)
 		}
 	}
@@ -275,7 +279,7 @@ func (n *Machine) toolSend(ctx context.Context, session string, req ToolRequest)
 	if conv != "" {
 		who += "/" + conv
 	}
-	m := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: session},
+	m := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.MachineID(), Session: session},
 		To: &inboxv1.Address{Inbox: c.Inbox, Session: conv}, SentAt: timestamppb.Now(), InReplyTo: req.ReplyTo, Subject: req.Subject, Text: req.Text}
 	if err := n.sendMessage(m); err != nil {
 		return nil, err

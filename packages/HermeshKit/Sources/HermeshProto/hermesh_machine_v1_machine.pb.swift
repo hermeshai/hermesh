@@ -942,8 +942,9 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._modelsObservedAtUnixMs = newValue}
   }
 
-  /// What it last said of its account's limits, from a session here
-  /// (docs/overview-usage.md §7); unset: it never said. The owner's only.
+  /// What it last said of its account's limits, from a session here or asked
+  /// when the agents are checked (docs/overview-usage.md §7); unset: it never
+  /// said. The owner's only.
   public var limits: Hermesh_Machine_V1_AgentLimits {
     get {_storage._limits ?? Hermesh_Machine_V1_AgentLimits()}
     set {_uniqueStorage()._limits = newValue}
@@ -966,7 +967,7 @@ public nonisolated struct Hermesh_Machine_V1_AgentLimits: Sendable {
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
   // methods supported on all messages.
 
-  /// The shortest first.
+  /// By group in the order the agent gives them, the shortest first in each.
   public var windows: [Hermesh_Machine_V1_LimitWindow] = []
 
   /// Its plan, when it says (Codex: "pro").
@@ -1006,6 +1007,10 @@ public nonisolated struct Hermesh_Machine_V1_LimitWindow: Sendable {
   public var hasResetsAt: Bool {self._resetsAt != nil}
   /// Clears the value of `resetsAt`. Subsequent reads from it will return its default value.
   public mutating func clearResetsAt() {self._resetsAt = nil}
+
+  /// The models it counts, as the agent names them, when it counts groups of
+  /// models apart (Antigravity: "Gemini Models"); empty for the account's.
+  public var group: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2811,7 +2816,7 @@ nonisolated extension Hermesh_Machine_V1_AgentLimits: SwiftProtobuf.Message, Swi
 
 nonisolated extension Hermesh_Machine_V1_LimitWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".LimitWindow"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}minutes\0\u{3}used_percent\0\u{3}resets_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}minutes\0\u{3}used_percent\0\u{3}resets_at\0\u{1}group\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -2822,6 +2827,7 @@ nonisolated extension Hermesh_Machine_V1_LimitWindow: SwiftProtobuf.Message, Swi
       case 1: try { try decoder.decodeSingularUInt32Field(value: &self.minutes) }()
       case 2: try { try decoder.decodeSingularUInt32Field(value: &self.usedPercent) }()
       case 3: try { try decoder.decodeSingularMessageField(value: &self._resetsAt) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.group) }()
       default: break
       }
     }
@@ -2841,6 +2847,9 @@ nonisolated extension Hermesh_Machine_V1_LimitWindow: SwiftProtobuf.Message, Swi
     try { if let v = self._resetsAt {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
     } }()
+    if !self.group.isEmpty {
+      try visitor.visitSingularStringField(value: self.group, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2848,6 +2857,7 @@ nonisolated extension Hermesh_Machine_V1_LimitWindow: SwiftProtobuf.Message, Swi
     if lhs.minutes != rhs.minutes {return false}
     if lhs.usedPercent != rhs.usedPercent {return false}
     if lhs._resetsAt != rhs._resetsAt {return false}
+    if lhs.group != rhs.group {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

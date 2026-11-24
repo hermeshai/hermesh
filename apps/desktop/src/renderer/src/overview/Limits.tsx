@@ -3,16 +3,18 @@ import { useTranslation } from "react-i18next";
 import { agentLimits, agoText, codingAgentTitle, hourMinute, limitLow, sameDay, weekday, type AgentLimitsCard, type LimitShown } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
+import { useCheckAgents } from "../agents";
 import { Icon } from "../icons";
 import { machineName } from "../Sidebar";
 import { useStore, type Store } from "../store";
 
 // "Limits" (docs/overview-usage.md §7.4): what each coding agent last said of its account's rate limits, a row an
 // agent, the one with the least left first. Each window says what is left twice, of its allowance and of its time
-// until it resets, so that one is read against the other.
+// until it resets, so that one is read against the other. Opening it checks this Mac's agents, which asks those that
+// answer for their limits.
 
 /** The agents that report their limits (the others never will). */
-const reporting = new Set(["claude", "codex"]);
+const reporting = new Set(["claude", "codex", "antigravity"]);
 
 /** "5-Hour Window", "Weekly Window"; short: "5-hour", "weekly". */
 export function windowName(minutes: number, short = false): string {
@@ -44,6 +46,7 @@ export function Limits({ now }: { now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const cards = useMemo(() => agentLimits(st.machines, now), [st.machines, now]);
+  useCheckAgents();
   return (
     <section aria-label={t("limits.title")}>
       <div className="us-stack">
@@ -73,7 +76,16 @@ function Card({ c, now }: { c: AgentLimitsCard; now: Date }) {
           )}
         </div>
       </div>
-      {c.windows.length ? (
+      {c.windows.some((w) => w.group) ? (
+        <div className="lim-groups">
+          {[...new Set(c.windows.map((w) => w.group))].map((g) => (
+            <div key={g} className="lim-grp" role="group" aria-label={g}>
+              <div className="lim-gname">{g}</div>
+              <div className="lim-ws">{c.windows.filter((w) => w.group === g).map((w) => <Window key={w.minutes} w={w} now={now} />)}</div>
+            </div>
+          ))}
+        </div>
+      ) : c.windows.length ? (
         <div className="lim-ws">{c.windows.map((w) => <Window key={w.minutes} w={w} now={now} />)}</div>
       ) : (
         <div className="lim-none">{empty}</div>

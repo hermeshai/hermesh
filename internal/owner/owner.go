@@ -99,8 +99,11 @@ type Owner struct {
 	machineCerts map[string]*identityv1.Signed // cached machine certs for delta signature checks
 	removed      bool                          // the relay no longer counts this device as the owner's
 	signedOut    bool                          // SignOut: set up, but it neither connects nor signs
+	leavingPhase string                        // Leave in progress: "leaving_relay" or "leaving_cleanup"
 	account      string                        // the account, as the center named it (display)
+	relayWake    chan struct{}                 // wakes stayConnected immediately on Setup/ConfirmJoin
 
+	localStartMu sync.Mutex // serializes start/stop/demote/retire of localMachine
 	localMachine *machine.Machine
 	// lastMachines: the machines as the relay last listed them, shown
 	// offline while the relay cannot be reached.
@@ -208,6 +211,7 @@ func openProfile(cfg Config, hub *signHub) (*Owner, error) {
 		lock:        lock,
 		hub:         hub,
 		herWake:     make(chan struct{}, 1),
+		relayWake:   make(chan struct{}, 1),
 		sessionWake: make(chan struct{}, 1),
 		sessionSubs: map[chan *sessionv1.WatchSessionsResponse]struct{}{},
 	}
@@ -283,6 +287,26 @@ func (o *Owner) Initialized() bool {
 	return o.ownerID != ""
 }
 
+func (o *Owner) wantsLocalMachine() bool {
+	if o.cfg.NoLocalMachine || o.isSignedOut() {
+		return false
+	}
+	if o.machineOnly() {
+		return true
+	}
+	if v, _ := o.st.get(kLocalMachine); len(v) > 0 {
+		return string(v) == "1"
+	}
+	return !o.Initialized()
+}
+
+func (o *Owner) wakeRelay() {
+	select {
+	case o.relayWake <- struct{}{}:
+	default:
+	}
+}
+
 // Run keeps background work going: the local execution machine (if
 // enabled) and the owner relay connection. A profile that is signed out
 // does neither.
@@ -295,7 +319,7 @@ func (o *Owner) Run(ctx context.Context) {
 		<-ctx.Done()
 		return
 	}
-	if v, _ := o.st.get(kLocalMachine); (string(v) == "1" && o.Initialized()) || o.machineOnly() {
+	if o.wantsLocalMachine() {
 		if err := o.startLocalMachine(); err != nil {
 			o.log.Warn("local machine did not start", "err", err)
 		}
@@ -314,6 +338,12 @@ func (o *Owner) Run(ctx context.Context) {
 	o.stopLocalMachine()
 }
 
+func (o *Owner) isLeaving() bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.leavingPhase != ""
+}
+
 // stayConnected keeps the relay connection up once set up, so the relay
 // sees the owner online and pairing requests reach it without waiting for
 // the next call.
@@ -323,14 +353,14 @@ func (o *Owner) stayConnected(ctx context.Context) {
 	for ctx.Err() == nil {
 		var done <-chan struct{}
 		var c *peer.Client
-		if o.Initialized() {
+		if o.Initialized() && !o.isLeaving() {
 			started := time.Now()
 			var err error
 			if c, err = o.relay(ctx); err == nil {
 				done = c.Done()
 				warned = false
 				o.log.Info("owner: relay connected", "after", time.Since(started).Round(time.Millisecond), "rtt_ms", durToMs(c.RTT()))
-			} else if !warned && ctx.Err() == nil {
+			} else if !warned && ctx.Err() == nil && !o.isLeaving() {
 				warned = true
 				o.log.Warn("owner: relay unreachable", "err", err, "retry_in", backoff)
 			} else {
@@ -345,6 +375,10 @@ func (o *Owner) stayConnected(ctx context.Context) {
 			}
 			o.log.Info("owner: relay disconnected")
 			o.kickScreens()
+			if o.isLeaving() || !o.Initialized() {
+				backoff = time.Second
+				continue
+			}
 			if err := c.Refused(); err == nil {
 				backoff = time.Second
 				continue
@@ -353,6 +387,9 @@ func (o *Owner) stayConnected(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
+		case <-o.relayWake:
+			backoff = time.Second
+			continue
 		case <-time.After(backoff):
 		}
 		if o.Initialized() {
@@ -1065,7 +1102,10 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 			relayRTT = durToMs(o.client.RTT())
 		}
 	}
-	if st.Initialized && !o.signedOut {
+	switch {
+	case o.leavingPhase != "":
+		st.RelayHealth = &localv1.RelayHealth{Phase: o.leavingPhase}
+	case st.Initialized && !o.signedOut:
 		rh := &localv1.RelayHealth{RttMs: relayRTT, RetryCount: o.relayRetries, LastError: o.relayErr}
 		switch {
 		case st.RelayConnected:
@@ -1084,7 +1124,9 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 			rh.Phase = "connecting"
 		}
 		st.RelayHealth = rh
-	} else {
+	case !st.Initialized && !o.signedOut && o.localMachine != nil:
+		st.RelayHealth = &localv1.RelayHealth{Phase: "local"}
+	default:
 		st.RelayHealth = &localv1.RelayHealth{Phase: "idle"}
 	}
 	if o.localMachine != nil {
@@ -1169,6 +1211,9 @@ func (o *Owner) Setup(ctx context.Context, req *localv1.SetupRequest) (*localv1.
 			return nil, err
 		}
 		msgs = append(msgs, nc)
+		if herPub := o.localMachineHerKeyIfEnabled(); len(herPub) > 0 {
+			msgs = append(msgs, HerGrant(ownerID, nc.MachineId, SanitizeMachineName(req.LocalMachineName), herPub))
+		}
 	}
 	signed, err := o.signRoot(ctx, msgs...) // one Touch ID for all of it
 	if err != nil {
@@ -1182,10 +1227,18 @@ func (o *Owner) Setup(ctx context.Context, req *localv1.SetupRequest) (*localv1.
 		return nil, err
 	}
 	if len(signed) > 2 {
-		if err := o.installLocalMachine(ctx, signed[2], req.LocalMachineName); err != nil {
+		var signedHerGrant *identityv1.Signed
+		if len(signed) > 3 {
+			signedHerGrant = signed[3]
+		}
+		if err := o.installLocalMachine(ctx, signed[2], req.LocalMachineName, signedHerGrant); err != nil {
 			return nil, fmt.Errorf("this computer as a machine: %w", err)
 		}
+	} else {
+		_ = o.st.set(kLocalMachine, []byte("0"))
+		o.stopLocalMachine()
 	}
+	o.wakeRelay()
 	return &localv1.SetupResponse{OwnerId: ownerID, ConnectAddress: connaddr.Format(relayURL, ownerID)}, nil
 }
 
@@ -1858,47 +1911,61 @@ func (o *Owner) SetLocalMachine(ctx context.Context, enabled bool, name string) 
 		return "", errNoLocalMachine
 	}
 	if !enabled {
-		o.mu.Lock()
-		if o.localCancel != nil {
-			o.localCancel()
-			o.localCancel, o.localMachine = nil, nil
-		}
-		o.mu.Unlock()
+		o.stopLocalMachine()
 		return "", o.st.set(kLocalMachine, []byte("0"))
 	}
+	o.localStartMu.Lock()
 	o.mu.Lock()
 	running := o.localMachine
+	ownerID := o.ownerID
+	rootPub := o.rootPub
 	o.mu.Unlock()
-	if running != nil {
+	if running != nil && running.Paired() && running.OwnerID() == ownerID {
+		o.localStartMu.Unlock()
 		return running.MachineID(), o.st.set(kLocalMachine, []byte("1"))
 	}
-	n, err := o.openLocalMachine()
-	if err != nil {
-		return "", err
-	}
-	paired := n.Paired() && n.OwnerID() == o.ownerID
-	n.Close()
-	if paired {
-		if err := o.st.set(kLocalMachine, []byte("1")); err != nil {
+	if running == nil {
+		n, err := o.openLocalMachine()
+		if err != nil {
+			o.localStartMu.Unlock()
 			return "", err
 		}
-		if err := o.startLocalMachine(); err != nil {
-			return "", err
+		paired := n.Paired() && n.OwnerID() == ownerID
+		n.Close()
+		if paired {
+			if err := o.st.set(kLocalMachine, []byte("1")); err != nil {
+				o.localStartMu.Unlock()
+				return "", err
+			}
+			err := o.startLocalMachineLocked()
+			o.localStartMu.Unlock()
+			if err != nil {
+				return "", err
+			}
+			return o.Status().LocalMachineId, nil
 		}
-		return o.Status().LocalMachineId, nil
 	}
+	o.localStartMu.Unlock()
 	if name == "" {
 		name, _ = os.Hostname()
 	}
-	nc, err := o.localMachineCert(o.ownerID, o.rootPub)
+	nc, err := o.localMachineCert(ownerID, rootPub)
 	if err != nil {
 		return "", err
 	}
-	signed, err := o.signRoot(ctx, nc)
+	msgs := []proto.Message{nc}
+	if herPub := o.localMachineHerKeyIfEnabled(); len(herPub) > 0 {
+		msgs = append(msgs, HerGrant(ownerID, nc.MachineId, SanitizeMachineName(name), herPub))
+	}
+	signed, err := o.signRoot(ctx, msgs...)
 	if err != nil {
 		return "", err
 	}
-	if err := o.installLocalMachine(ctx, signed[0], name); err != nil {
+	var signedHerGrant *identityv1.Signed
+	if len(signed) > 1 {
+		signedHerGrant = signed[1]
+	}
+	if err := o.installLocalMachine(ctx, signed[0], name, signedHerGrant); err != nil {
 		return "", err
 	}
 	return o.Status().LocalMachineId, nil
@@ -1907,6 +1974,15 @@ func (o *Owner) SetLocalMachine(ctx context.Context, enabled bool, name string) 
 // localMachineCert certifies this device's own machine, for this device's
 // root key to sign: removing the device removes the machine too.
 func (o *Owner) localMachineCert(ownerID string, rootPub *ecdsa.PublicKey) (*identityv1.MachineCert, error) {
+	o.localStartMu.Lock()
+	defer o.localStartMu.Unlock()
+	o.mu.Lock()
+	running := o.localMachine
+	o.mu.Unlock()
+	if running != nil {
+		return &identityv1.MachineCert{OwnerId: ownerID, MachineId: running.MachineID(), MachinePublicKey: running.PublicKeySPKI(),
+			IssuedAt: timestamppb.Now(), DeviceKeyId: identity.KeyID(rootPub)}, nil
+	}
 	n, err := o.openLocalMachine()
 	if err != nil {
 		return nil, err
@@ -1916,9 +1992,38 @@ func (o *Owner) localMachineCert(ownerID string, rootPub *ecdsa.PublicKey) (*ide
 		IssuedAt: timestamppb.Now(), DeviceKeyId: identity.KeyID(rootPub)}, nil
 }
 
+// localMachineHerKeyIfEnabled returns the local machine's Her client public key
+// when Her is already enabled locally, so Setup/SetLocalMachine can sign her
+// mesh grant in the same single approval batch.
+func (o *Owner) localMachineHerKeyIfEnabled() []byte {
+	o.localStartMu.Lock()
+	defer o.localStartMu.Unlock()
+	o.mu.Lock()
+	running := o.localMachine
+	o.mu.Unlock()
+	if running != nil {
+		her := running.Status().GetHer()
+		if her.GetEnabled() && len(her.GetClientPublicKey()) > 0 {
+			return her.GetClientPublicKey()
+		}
+		return nil
+	}
+	n, err := o.openLocalMachine()
+	if err != nil {
+		return nil
+	}
+	defer n.Close()
+	her := n.Status().GetHer()
+	if her.GetEnabled() && len(her.GetClientPublicKey()) > 0 {
+		return her.GetClientPublicKey()
+	}
+	return nil
+}
+
 // installLocalMachine publishes this device's signed machine cert, installs
-// it, names the machine and starts it.
-func (o *Owner) installLocalMachine(ctx context.Context, cert *identityv1.Signed, name string) error {
+// it in place if already running locally (or starts it), names the machine,
+// and optionally activates Her's signed mesh grant.
+func (o *Owner) installLocalMachine(ctx context.Context, cert *identityv1.Signed, name string, herGrant *identityv1.Signed) error {
 	ctl, _, err := o.control(ctx)
 	if err != nil {
 		return err
@@ -1926,22 +2031,57 @@ func (o *Owner) installLocalMachine(ctx context.Context, cert *identityv1.Signed
 	if _, err := ctl.PublishMachineCert(ctx, &relayv1.PublishMachineCertRequest{MachineCert: cert}); err != nil {
 		return err
 	}
-	n, err := o.openLocalMachine()
-	if err != nil {
+	if err := func() error {
+		o.localStartMu.Lock()
+		defer o.localStartMu.Unlock()
+		o.mu.Lock()
+		running := o.localMachine
+		ownerID, relayURL, trust := o.ownerID, o.relayURL, o.trust
+		o.mu.Unlock()
+		if running != nil {
+			running.SetSelfErase(false)
+			err := running.Install(ownerID, relayURL, trust.RootChain(), cert)
+			if err == nil && name != "" {
+				err = running.SetName(name)
+			}
+			if err != nil {
+				return err
+			}
+			return o.st.set(kLocalMachine, []byte("1"))
+		}
+		n, err := o.openLocalMachine()
+		if err != nil {
+			return err
+		}
+		err = n.Install(ownerID, relayURL, trust.RootChain(), cert)
+		if err == nil && name != "" {
+			err = n.SetName(name)
+		}
+		n.Close()
+		if err != nil {
+			return err
+		}
+		if err := o.st.set(kLocalMachine, []byte("1")); err != nil {
+			return err
+		}
+		return o.startLocalMachineLocked()
+	}(); err != nil {
 		return err
 	}
-	err = n.Install(o.ownerID, o.relayURL, o.trust.RootChain(), cert)
-	if err == nil && name != "" {
-		err = n.SetName(name)
+	if herGrant != nil {
+		if l := o.local(); l != nil {
+			if gErr := l.SetHerGrant(herGrant, o.trust.RootChain()); gErr != nil {
+				o.log.Warn("local Her did not take her grant on upgrade", "err", gErr)
+			}
+		}
+		if _, pErr := ctl.PublishGrant(ctx, &relayv1.PublishGrantRequest{Grant: herGrant}); pErr != nil {
+			o.log.Warn("local Her grant not published yet", "err", pErr)
+		} else {
+			o.st.putGrant(herGrant, false)
+			go o.refreshCards()
+		}
 	}
-	n.Close()
-	if err != nil {
-		return err
-	}
-	if err := o.st.set(kLocalMachine, []byte("1")); err != nil {
-		return err
-	}
-	return o.startLocalMachine()
+	return nil
 }
 
 func (o *Owner) openLocalMachine() (*machine.Machine, error) {
@@ -1963,10 +2103,17 @@ func (o *Owner) localMachineConfig() machine.Config {
 	// A device that is only a machine has no owner of its own to hear an
 	// erase on: its machine does (erase.go).
 	cfg.SelfErase = !o.Initialized() && o.machineOnly()
+	cfg.AllowUnpaired = true
 	return cfg
 }
 
 func (o *Owner) startLocalMachine() error {
+	o.localStartMu.Lock()
+	defer o.localStartMu.Unlock()
+	return o.startLocalMachineLocked()
+}
+
+func (o *Owner) startLocalMachineLocked() error {
 	o.mu.Lock()
 	if o.localMachine != nil {
 		o.mu.Unlock()
@@ -1974,6 +2121,9 @@ func (o *Owner) startLocalMachine() error {
 	}
 	parent := o.runCtx
 	o.mu.Unlock()
+	if parent != nil && parent.Err() != nil {
+		return nil
+	}
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -2005,6 +2155,12 @@ func (o *Owner) startLocalMachine() error {
 
 // stopLocalMachine stops the local machine and waits until it is closed.
 func (o *Owner) stopLocalMachine() {
+	o.localStartMu.Lock()
+	defer o.localStartMu.Unlock()
+	o.stopLocalMachineLocked()
+}
+
+func (o *Owner) stopLocalMachineLocked() {
 	o.mu.Lock()
 	cancel, done := o.localCancel, o.localDone
 	o.localCancel, o.localMachine, o.localDone = nil, nil, nil
@@ -2455,6 +2611,24 @@ func (o *Owner) local() *machine.Local {
 // with its state (Online: whether the relay can reach it), and the others
 // as the replica last polled them from the relay (see listedMachines).
 func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
+	if !o.Initialized() {
+		if o.isSignedOut() {
+			return nil, errSignedOut
+		}
+		if l := o.local(); l != nil {
+			info := l.Info()
+			return []*localv1.Machine{{
+				MachineId:   info.MachineId,
+				MachineName: info.MachineName,
+				Online:      true,
+				Version:     machine.Version,
+				Local:       true,
+				Status:      info.Status,
+				Tunnel:      &localv1.TunnelHealth{Phase: "ready", Path: "local"},
+			}}, nil
+		}
+		return nil, o.requireInit()
+	}
 	s, err := o.rep.use(ctx)
 	if err != nil {
 		return nil, err
@@ -2571,7 +2745,10 @@ func (o *Owner) findMachine(ctx context.Context, idOrName string) (*localv1.Mach
 // agent defaults) grant nothing and go without a root signature, over this trusted
 // device's own connection; anything else is signed (Touch ID).
 func (o *Owner) admin(ctx context.Context, machineID string, build func(*identityv1.AdminCommand)) (string, error) {
-	cmd := &identityv1.AdminCommand{OwnerId: o.ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
+	o.mu.Lock()
+	ownerID := o.ownerID
+	o.mu.Unlock()
+	cmd := &identityv1.AdminCommand{OwnerId: ownerID, CommandId: identity.RandomCode(16), TargetMachineId: machineID,
 		ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute))}
 	build(cmd)
 	req := &machinev1.ApplyAdminCommandRequest{}
@@ -2906,6 +3083,15 @@ func specFromGrant(g *identityv1.Grant) *localv1.GrantSpec {
 
 // ListClients lists the owner's agents, as the replica last polled them.
 func (o *Owner) ListClients(ctx context.Context) ([]*localv1.Client, error) {
+	if !o.Initialized() {
+		if o.isSignedOut() {
+			return nil, errSignedOut
+		}
+		if l := o.local(); l != nil {
+			return o.standaloneClients(l), nil
+		}
+		return nil, o.requireInit()
+	}
 	s, err := o.rep.use(ctx)
 	if err != nil {
 		return nil, err
@@ -2920,6 +3106,32 @@ func (o *Owner) ListClients(ctx context.Context) ([]*localv1.Client, error) {
 		err = nil
 	}
 	return list, err
+}
+
+func (o *Owner) standaloneClients(l *machine.Local) []*localv1.Client {
+	info := l.Info()
+	var out []*localv1.Client
+	her := info.GetStatus().GetHer()
+	if her.GetEnabled() && len(her.GetClientPublicKey()) > 0 {
+		pub := her.GetClientPublicKey()
+		out = append(out, &localv1.Client{
+			ClientId:     identity.ClientID(pub),
+			GrantId:      "g_local_her",
+			Label:        "Her",
+			Fingerprint:  identity.ShortFingerprint(pub),
+			GrantVersion: 1,
+			Online:       her.GetRunning(),
+			HerMachineId: info.MachineId,
+			Spec: &localv1.GrantSpec{
+				Label:          "Her",
+				MachineIds:     []string{"*"},
+				ProjectIds:     []string{"*"},
+				Agents:         []string{"*"},
+				TaskVisibility: identityv1.TaskVisibility_TASK_VISIBILITY_ALL,
+			},
+		})
+	}
+	return out
 }
 
 // listClients asks the relay for the owner's agents.

@@ -166,8 +166,8 @@ func (l *localService) RemoveDevice(ctx context.Context, req *localv1.RemoveDevi
 	return res, err
 }
 
-func (l *localService) Leave(ctx context.Context, _ *localv1.LeaveRequest) (*localv1.LeaveResponse, error) {
-	return &localv1.LeaveResponse{}, l.d.Leave(ctx)
+func (l *localService) Leave(ctx context.Context, req *localv1.LeaveRequest) (*localv1.LeaveResponse, error) {
+	return &localv1.LeaveResponse{}, l.d.Leave(ctx, req.GetForceLocal())
 }
 
 func (l *localService) EraseEverything(ctx context.Context, _ *localv1.EraseEverythingRequest) (*localv1.EraseEverythingResponse, error) {
@@ -390,6 +390,8 @@ func (l *localService) GetDiagnostics(ctx context.Context, _ *localv1.GetDiagnos
 		role = "machine only"
 	case st.Initialized:
 		role = "trusted device"
+	case st.LocalMachineEnabled:
+		role = "local only"
 	}
 	text := fmt.Sprintf("this device  %s, owner %s\n", role, st.OwnerId)
 	m, ok, err := l.o().onlyMachine()
@@ -560,6 +562,11 @@ func (l *localService) WatchSessions(ctx context.Context, _ *localv1.WatchSessio
 			return err
 		}
 		return onlyMachineWatch(ctx, m, stream.Send)
+	}
+	if !l.o().Initialized() && !l.o().isSignedOut() {
+		if m := l.o().local(); m != nil {
+			return onlyMachineWatch(ctx, m, stream.Send)
+		}
 	}
 	return l.o().WatchSessions(ctx, stream.Send)
 }

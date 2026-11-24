@@ -58,11 +58,11 @@ test("进行中 is a row per session at work: who sent it to whom, the tool in u
   const needs = page.getByRole("region", { name: "需要你处理" });
   await expect(needs.getByRole("listitem")).toHaveText([/选颜色/, /限流|崩溃/, /限流|崩溃/]);
   await expect(page.getByRole("button", { name: /^概览/ }).getByRole("img", { name: /项需要处理/ })).toBeVisible();
-  // What finished last, under it; every session is the sidebar's list, so 查看全部 is there only while its rail shows.
+  // What finished last, under it; every session is the sidebar's list, so 查看全部 is there only while it is hidden.
   const finished = page.getByRole("region", { name: "最近完成" });
   await expect(finished.locator(".tm-row")).toHaveText(/写 hello.*2 个文件/);
   await expect(finished.getByRole("button", { name: "查看全部" })).toHaveCount(0);
-  await page.getByRole("button", { name: "收成窄栏" }).click();
+  await page.getByRole("button", { name: "隐藏边栏" }).click();
   await finished.getByRole("button", { name: "查看全部" }).click();
   await expect(await sessionList(page)).toBeVisible();
   await expect(finished.getByRole("button", { name: "查看全部" })).toHaveCount(0);
@@ -361,7 +361,7 @@ test("the overview stays centered when resizing the window or hiding the sidebar
     for (const width of [980, 1360]) {
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 900), width);
       for (const sidebar of [true, false]) {
-        if (!sidebar) await page.getByRole("button", { name: "收成窄栏" }).click();
+        if (!sidebar) await page.getByRole("button", { name: "隐藏边栏" }).click();
         await page.locator(".mainwrap").evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
         await expect.poll(() => page.locator(".ov").evaluate((el) => {
           const scroll = el.parentElement!;
@@ -378,7 +378,7 @@ test("the overview stays centered when resizing the window or hiding the sidebar
         expect(layout.width).toBeCloseTo(Math.min(980, layout.available), 0);
         expect(layout.overflow).toBeLessThanOrEqual(1);
         await snap(page, `overview-centered-${width}-${sidebar ? "sidebar" : "no-sidebar"}`);
-        if (!sidebar) await page.getByRole("button", { name: "展开边栏" }).click();
+        if (!sidebar) await page.getByRole("button", { name: "显示边栏" }).click();
       }
     }
   } finally {

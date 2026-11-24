@@ -34,7 +34,7 @@ func projectName(folder string) string {
 // (docs/onboarding.md §6.7): through the running service's control socket,
 // or directly when it isn't running.
 func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error)) *cobra.Command {
-	machineDir := func() string { return filepath.Join(*dataDir, "machine") }
+	machineDir := func() string { return resolveMachineDir(*dataDir) }
 	apply := func(ctx context.Context, cmd *identityv1.AdminCommand) (string, error) {
 		body, _ := protojson.Marshal(cmd)
 		if out, ok, err := machine.ControlRequest(ctx, machineDir(), "POST", "/settings", body); ok {
@@ -45,9 +45,6 @@ func projectCommand(dataDir *string, openMachine func() (*machine.Machine, error
 			return "", err
 		}
 		defer n.Close()
-		if !n.Paired() {
-			return "", fmt.Errorf("this machine is not paired yet; run `hermeshd pair`")
-		}
 		return n.ApplyLocal(ctx, cmd)
 	}
 	project := &cobra.Command{Use: "project", Short: "This machine's projects: the folders agents may work in"}

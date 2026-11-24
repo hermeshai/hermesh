@@ -99,10 +99,14 @@ func (l *Link) options() (cli.ExecOptions, bool) {
 	if l.peer == nil {
 		l.peer = &cli.Peer{}
 	}
+	var localMachine *cli.LocalMachine
+	if c.LocalMachineID != nil {
+		localMachine = &cli.LocalMachine{ID: c.LocalMachineID, Name: c.LocalMachineName, Dial: c.LocalMachineDial}
+	}
 	return cli.ExecOptions{
 		Identity: cli.Identity{RelayURL: c.RelayURL, OwnerID: c.OwnerID, Key: c.Key, RootChain: c.RootChain, Grant: c.Grant, InboxKey: c.InboxKey,
 			TakesMessages: TakesMessages, InboxRegistered: l.st.Registered},
-		HTTPClient: l.cfg.HTTPClient, Peer: l.peer,
+		HTTPClient: l.cfg.HTTPClient, LocalMachine: localMachine, Peer: l.peer,
 		Adopted: func(chain *identityv1.RootChain, grant *identityv1.Signed) { l.cfg.Adopted(chain, grant) },
 		InboxRegistered: func(takes string) {
 			l.mu.Lock()
@@ -368,6 +372,12 @@ func (l *Link) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		opts, ok := l.options()
 		if !ok {
+			return
+		}
+		if opts.Identity.RelayURL == "" {
+			// Local standalone mode: this machine's session news reaches Her in
+			// process (Machine.herTakes) without polling a relay inbox.
+			<-ctx.Done()
 			return
 		}
 		start := time.Now()
