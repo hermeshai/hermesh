@@ -23,15 +23,14 @@ import { MenuButton } from "../her/menus";
 import { Tile } from "../her/Composer";
 import "../her/her.css";
 
-// The composer (docs/thread-composer.md §16), a new session's and a
+// The composer (docs/thread-composer.md §16, §17), a new session's and a
 // session's: Her's box, with what the session runs with inside it (＋ for
 // files and the permission mode, the model, how hard it thinks); over a new
 // session's box where it works and on which branch.
 
 /**
- * The box (docs/thread-composer.md §16): one line (＋, the text, Send) until it is clicked into or typed in; then the
- * text grows and a row along its bottom holds ＋, the model and how hard it thinks, Stop and Send. With words or
- * files in it, it stays open.
+ * The box (docs/thread-composer.md §17): the text, growing with what is written, over a row that holds ＋, the model
+ * and how hard it thinks, Stop and Send. It is always both: it does not fold to one line while empty.
  */
 export function ThreadComposer({ value, onChange, onSend, onStop, running, sending, placeholder, attachments, onAttach, onRemove, offline, blocked = false, mode, maxCeiling, onMode, model }: {
   value: string;
@@ -57,10 +56,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
 }) {
   const { t } = useTranslation("thread");
   const area = useRef<HTMLTextAreaElement>(null);
-  const box = useRef<HTMLDivElement>(null);
   const file = useRef<HTMLInputElement>(null);
-  const [active, setActive] = useState(false);
-  const open = active || value !== "" || attachments.length > 0;
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
   // The text grows with what is written, up to ten lines, then scrolls (as Her's).
   useLayoutEffect(() => {
@@ -68,18 +64,7 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [value, open]);
-  // A click away from the box and its menus folds it back to one line: once the click is done, not as the button goes
-  // down, or what is over the box (a queued message's buttons) would move from under the pointer mid-click.
-  useEffect(() => {
-    if (!active) return;
-    const away = (e: MouseEvent) => {
-      const at = e.target as Element;
-      if (!box.current?.contains(at) && !at.closest?.("[role=menu]")) setActive(false);
-    };
-    document.addEventListener("click", away);
-    return () => document.removeEventListener("click", away);
-  }, [active]);
+  }, [value]);
   // Typing anywhere on the page (not in another field, no shortcut) goes into the box.
   useEffect(() => {
     const type = (e: globalThis.KeyboardEvent) => {
@@ -122,26 +107,10 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
       )}
     </MenuButton>
   );
-  const ends = (
-    <>
-      {running && onStop && (
-        <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>
-          <Icon name="stop" />
-        </button>
-      )}
-      <button className="send" disabled={!ready} title={sendTitle} aria-label={sendTitle} data-testid="composer-submit-btn" onClick={onSend}>
-        <Icon name="arrowUp" />
-      </button>
-    </>
-  );
   return (
     <div
-      ref={box}
-      className={`cmp th-cmp ${open ? "open" : ""}`}
+      className="cmp th-cmp"
       data-testid="thread-composer"
-      onFocus={(e) => {
-        if (!(e.target instanceof HTMLElement && e.target.closest(".th-stop"))) setActive(true);
-      }}
       onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att,.th-bar") && (e.preventDefault(), area.current?.focus())}
     >
       <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach(e.target.files), (e.target.value = ""))} />
@@ -153,7 +122,6 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
         </div>
       )}
       <div className="cmp-row">
-        {!open && plus}
         <textarea
           ref={area}
           className="cmp-in"
@@ -170,16 +138,20 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
             if (ready) onSend();
           }}
         />
-        {!open && ends}
       </div>
-      {open && (
-        <div className="th-bar" data-testid="composer-bar">
-          {plus}
-          {model}
-          <span className="th-grow" />
-          {ends}
-        </div>
-      )}
+      <div className="th-bar" data-testid="composer-bar">
+        {plus}
+        {model}
+        <span className="th-grow" />
+        {running && onStop && (
+          <button className="th-stop" title={t("composer.stop")} aria-label={t("composer.stop")} data-testid="composer-stop-btn" onClick={onStop}>
+            <Icon name="stop" />
+          </button>
+        )}
+        <button className="send" disabled={!ready} title={sendTitle} aria-label={sendTitle} data-testid="composer-submit-btn" onClick={onSend}>
+          <Icon name="arrowUp" />
+        </button>
+      </div>
     </div>
   );
 }
