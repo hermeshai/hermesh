@@ -12,7 +12,7 @@ import (
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/internal/peer"
-	"github.com/hermeshai/hermesh/internal/provider/acp"
+	"github.com/hermeshai/hermesh/internal/runtime/acp"
 )
 
 // machineAgent is a coding agent this client may run on a machine, with

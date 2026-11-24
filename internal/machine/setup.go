@@ -19,7 +19,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
@@ -260,9 +260,17 @@ const testTimeout = 90 * time.Second
 // reports its answer: proof that it is installed and signed in. Nothing is
 // kept and no tool may run.
 func (n *Machine) TestAgent(ctx context.Context, name string) (*machinev1.TestAgentResponse, error) {
-	p, ok := n.cfg.Providers[name]
-	if !ok {
+	_, hasDisc := n.cfg.Discoverers[name]
+	_, hasDrv := n.cfg.Drivers[name]
+	if !hasDisc && !hasDrv {
 		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no coding agent %q here", name))
+	}
+	if n.sessions == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("sessions engine not initialized"))
+	}
+	inst, drv, err := n.sessions.ResolveDriver(name)
+	if err != nil {
+		return nil, err
 	}
 	dir, err := os.MkdirTemp("", "hermesh-test-")
 	if err != nil {
@@ -270,41 +278,72 @@ func (n *Machine) TestAgent(ctx context.Context, name string) (*machinev1.TestAg
 	}
 	defer os.RemoveAll(dir)
 	tmp := filepath.Join(dir, "tmp")
-	os.Mkdir(tmp, 0o700)
+	_ = os.Mkdir(tmp, 0o700)
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
 	start := time.Now()
 	n.audit.Log(AuditRecord{Kind: "test", Subject: name})
-	sess, err := p.Start(ctx, provider.StartSpec{WorkDir: dir, TempDir: tmp, Prompt: testPrompt, Env: shellenv.Env(tmp),
-		Gate: func(context.Context, provider.ToolAction) provider.Decision {
-			return provider.Decision{Reason: "a test turn uses no tools"}
-		}})
+	envMap := map[string]string{}
+	for _, kv := range shellenv.Env(tmp) {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			envMap[k] = v
+		}
+	}
+	sess, err := drv.StartSession(ctx, rt.StartSpec{
+		SessionID:     "test",
+		Workdir:       dir,
+		Instance:      inst,
+		EffectiveMode: identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
+		ExtraEnv:      envMap,
+		Gate: func(context.Context, rt.ToolGateRequest) (rt.ToolGateResult, error) {
+			return rt.ToolGateResult{Allowed: false, Feedback: "a test turn uses no tools"}, nil
+		},
+	})
 	if err != nil {
 		return &machinev1.TestAgentResponse{Reply: err.Error(), Millis: uint32(time.Since(start).Milliseconds())}, nil
 	}
 	defer sess.Close()
+	if err := sess.StartTurn(ctx, rt.TurnInput{
+		RunID:         "run_test",
+		Prompt:        testPrompt,
+		EffectiveMode: identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
+	}); err != nil {
+		return &machinev1.TestAgentResponse{Reply: err.Error(), Millis: uint32(time.Since(start).Milliseconds())}, nil
+	}
+	var streamed strings.Builder
 	var reply string
 	for {
 		select {
 		case <-ctx.Done():
 			return &machinev1.TestAgentResponse{Reply: "no answer in time", Millis: uint32(time.Since(start).Milliseconds())}, nil
-		case <-sess.Done():
-			why := "it stopped before answering"
-			if err := sess.Err(); err != nil && !errors.Is(err, fs.ErrClosed) {
-				why = err.Error()
+		case e, ok := <-sess.Events():
+			if !ok {
+				return &machinev1.TestAgentResponse{Reply: "it stopped before answering", Millis: uint32(time.Since(start).Milliseconds())}, nil
 			}
-			return &machinev1.TestAgentResponse{Reply: why, Millis: uint32(time.Since(start).Milliseconds())}, nil
-		case e := <-sess.Events():
 			switch e.Kind {
-			case provider.EventAgentMessage:
-				reply = strings.TrimSpace(e.Text)
-			case provider.EventError:
-				return &machinev1.TestAgentResponse{Reply: e.Text, Millis: uint32(time.Since(start).Milliseconds())}, nil
-			case provider.EventTurnCompleted:
+			case rt.EventAssistantDelta:
+				streamed.WriteString(e.Text)
+			case rt.EventAssistantMessage:
+				if strings.TrimSpace(e.Text) != "" {
+					reply = strings.TrimSpace(e.Text)
+				}
+			case rt.EventTurnFailed:
+				why := strings.TrimSpace(e.ErrorMessage)
+				if why == "" && e.Failure != nil {
+					why = strings.TrimSpace(e.Failure.Message)
+				}
+				if why == "" {
+					why = strings.TrimSpace(e.Text)
+				}
+				return &machinev1.TestAgentResponse{Reply: why, Millis: uint32(time.Since(start).Milliseconds())}, nil
+			case rt.EventTurnCompleted:
 				if reply == "" {
 					reply = strings.TrimSpace(e.Text)
 				}
-				return &machinev1.TestAgentResponse{Ok: !e.IsError && reply != "", Reply: reply, Millis: uint32(time.Since(start).Milliseconds())}, nil
+				if reply == "" {
+					reply = strings.TrimSpace(streamed.String())
+				}
+				return &machinev1.TestAgentResponse{Ok: reply != "", Reply: reply, Millis: uint32(time.Since(start).Milliseconds())}, nil
 			}
 		}
 	}

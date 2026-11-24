@@ -2,14 +2,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ConnectError } from "@connectrpc/connect";
 import type { Client, Device, GetStatusResponse, Machine, PairingDetails, Project, Unreachable, Wake } from "@hermesh/proto/local";
 import type { Session } from "@hermesh/proto/session";
-import type { Thread } from "@hermesh/proto/thread";
-import { isThreadId, sessionView, threadAsSession, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
+import { sessionView, unreachableMachines, withKnownState, type SessionFilter, type SessionView } from "@hermesh/core";
 import type { Peek } from "./layout";
 import { notNow, setNotNow, startPage } from "./start";
 import { useWorld } from "./useWorld";
 import { i18n } from "../../shared/i18n";
 import { needsUpdate } from "./skew";
-import { threads as threadApi } from "./api";
 import { noteRelay } from "./connection";
 
 // What the window knows: the owner's world as hermeshd pushes it
@@ -27,102 +25,64 @@ export type Data = {
   devices: Device[];
 };
 
-/**
- * her: the Her entry, at an environment (a machine id) when one was chosen. progress: the work Her sent out, in the
- * environment the Her entry shows, or one of its cards opened (docs/her-team.md §15).
- */
 export type Selection =
   | { kind: "overview" }
+  | { kind: "newSession"; machineId?: string; projectId?: string }
   | { kind: "session"; id: string }
-  | { kind: "newThread"; machineId?: string; projectId?: string }
-  | { kind: "thread"; id: string }
   | { kind: "her"; machine?: string }
   | { kind: "progress"; machine?: string; task?: ProgressTaskRef };
 
-/** A card of the Progress page: a sub-agent of Her's, by its id; opened from her conversation's busy bubble, its way back goes there. */
 export type ProgressTaskRef = { agent: string; fromHer?: boolean };
 
 export type Sheet =
   | { kind: "newGrant" }
   | { kind: "addMachine" }
-  /** then: the project was added (its id, and whether its sessions get their own worktree): a new session takes it. */
   | { kind: "addProject"; machineId?: string; agent?: string; then?: (projectId: string, worktree: boolean) => void }
   | { kind: "addDevice" }
   | { kind: "enterCode" }
-  /** details: from LookupPairing, until the poll lists the request. */
   | { kind: "pairing"; code: string; details?: PairingDetails }
   | { kind: "scope"; clientId: string; renew: boolean }
-  /**
-   * An agent's doorbell (docs/agent-names.md §7): with wake, see and change it;
-   * with code, set one up from the agent's wake link (name: the bot it is for).
-   */
   | { kind: "wake"; clientId: string; agent: string; wake?: Wake; code?: string; name?: string }
-  /**
-   * With herData, removing a machine that has Her's data: the choice to erase it too, given to run, or a line
-   * that it stays while the machine is offline (docs/her-server.md §5.6).
-   */
   | { kind: "confirm"; title: string; message: string; button: string; run: (eraseHer: boolean) => Promise<unknown>; done?: string; herData?: { name: string; offline: boolean }; safe?: boolean }
-  /** Erase Everything (docs/erase-everything.md). */
   | { kind: "erase" }
-  /** Turning Her off on a machine, her data kept or erased (docs/her-server.md §5.6). */
   | { kind: "herOff"; machineId: string; machineName: string };
 
 export type Toast = { text: string; undo?: () => void; failed?: boolean; id: number };
 
-/** The list by status, titles alone, until the owner picks a view (docs/her-team.md §16). */
 export const defaultView = () => sessionView({ metadata: false });
 
 type UI = {
   selection: Selection;
   inspector: boolean;
   sidebar: boolean;
-  /** What shows over the conversation for now, though there is no room for it beside it (layout.ts). */
   peek: Peek;
-  /** How the session list is laid out, and whether it shows archived sessions. */
   view: SessionView;
-  /** The owner picked the view in its menu: otherwise the list is the default one. */
   viewChosen: boolean;
   archived: boolean;
-  /** The list's collapsed groups, as "grouping:key" (each grouping keeps its own). */
   collapsed: string[];
   searching: boolean;
-  /** The session whose title is being edited in the list. */
   renaming: string | null;
-  /** What the search palette opens narrowed to ("Show in Main Window" in the settings). */
   searchFor: Partial<SessionFilter>;
   sheet: Sheet | null;
   toast: Toast | null;
-  /** Pairing codes the owner put off ("Deny"): left out of pairings until opened again. */
   dismissed: string[];
-  /** The request whose card is in front (a notification's, clicked). */
   frontRequest: string | null;
-  /** A machine only asked to become a trusted device: the join pages show. */
   upgrading: boolean;
-  /**
-   * Her's sub-agents that wait for the owner and that work, as the conversation the Her page follows says; null
-   * while no page of hers follows one.
-   */
   herAgents: { waits: number; running: number } | null;
 };
 
 export type Store = Data &
   UI & {
-    /** The window's width, which lays it out (layout.ts). */
     width: number;
-    /** The sessions loaded so far (the newest page, older pages the list asked for, and every change since), and every v2 thread as one. */
     sessions: Session[];
-    /** Moves when the counts of work changed (QueryWork). */
     workVersion: number;
     sessionsUnreachable: Unreachable[];
-    /** The first page of sessions arrived. */
     sessionsLoaded: boolean;
-    /** Older sessions than those loaded exist. */
     moreSessions: boolean;
     loadOlderSessions: () => void;
     set: (patch: Partial<UI>) => void;
     select: (id: string) => void;
     refresh: () => Promise<void>;
-    /** Runs a change against hermeshd, then refreshes; failures become a toast. Resolves to whether it worked. */
     run: (action: () => Promise<unknown>, done?: string) => Promise<boolean>;
     show: (text: string, undo?: () => void) => void;
   };
@@ -135,17 +95,21 @@ export function useStore(): Store {
   return s;
 }
 
-/** Message of an error from hermeshd, for the person. */
 export function errorText(e: unknown): string {
   if (needsUpdate(e)) return i18n.t("common:needsUpdate.text");
   if (declinedToSign(e)) return i18n.t("common:signing.declined");
+  if (signerUnavailable(e)) return i18n.t("common:signing.unavailable");
   if (e instanceof ConnectError) return e.rawMessage;
   return e instanceof Error ? e.message : String(e);
 }
 
-/** hermeshd's ErrSigningRejected: nothing was signed; the signer said why, in its own window. */
 function declinedToSign(e: unknown): boolean {
   return (e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e)).includes("the owner declined to sign");
+}
+
+/** hermeshd's ErrSignerUnavailable: the signer kept exiting before the request could be confirmed. */
+function signerUnavailable(e: unknown): boolean {
+  return (e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e)).includes("the signer exited unexpectedly before confirming");
 }
 
 function saved(key: string, fallback: boolean): boolean {
@@ -169,10 +133,20 @@ type SavedView = Pick<UI, "selection" | "sidebar" | "view" | "viewChosen" | "arc
 function savedView(): Partial<SavedView> {
   if (location.hash.startsWith("#settings")) return {};
   try {
-    const v: Partial<SavedView> = JSON.parse(localStorage.getItem("main-view") ?? "{}");
+    const v = JSON.parse(localStorage.getItem("main-view") ?? "{}") as Omit<Partial<SavedView>, "selection"> & {
+      selection?: { kind?: string; id?: string; machineId?: string; projectId?: string; machine?: string; task?: ProgressTaskRef };
+    };
     const chosen = v.viewChosen === true;
-    // The list's column of earlier versions is gone: its place is the sidebar.
-    const selection = (v.selection?.kind as string) === "list" ? undefined : v.selection;
+    let selection: Selection | undefined;
+    if (v.selection?.kind === "list") {
+      selection = undefined;
+    } else if (v.selection?.kind === "thread" && v.selection.id) {
+      selection = { kind: "session", id: v.selection.id };
+    } else if (v.selection?.kind === "newThread") {
+      selection = { kind: "newSession", machineId: v.selection.machineId, projectId: v.selection.projectId };
+    } else {
+      selection = v.selection as Selection | undefined;
+    }
     return { selection, sidebar: v.sidebar, view: chosen ? sessionView(v.view) : undefined, viewChosen: chosen, archived: v.archived, collapsed: Array.isArray(v.collapsed) ? v.collapsed : undefined };
   } catch {
     return {};
@@ -181,22 +155,17 @@ function savedView(): Partial<SavedView> {
 
 export function HermeshProvider({ children }: { children: ReactNode }) {
   const world = useWorld();
-  // Each part changes only when its own list does: a session's change leaves them all.
   const unreachable = useMemo(() => unreachableMachines(world.machines), [world.machines]);
   const status = world.down ? null : world.loaded ? world.status : undefined;
-  // How long the relay has been down, for the line above a page's box (ConnectionCapsule).
   const relayUp = status === undefined || status?.relayConnected === true;
   useEffect(() => noteRelay(relayUp), [relayUp]);
   const data = useMemo<Data>(
     () => ({ status, clients: world.clients, machines: world.machines, projects: world.projects, projectsUnreachable: unreachable, pairings: world.pairings, devices: world.devices }),
     [status, world.clients, world.machines, world.projects, unreachable, world.pairings, world.devices],
   );
-  // A session is a session wherever it started: v2 threads are rows of the same list, for every view that counts,
-  // groups or finds sessions (docs/thread-composer.md §4.7, §14).
-  const threads = useThreads(!location.hash.startsWith("#settings"));
   const sessions = useMemo(
-    () => withKnownState(threads.length ? [...world.sessions, ...threads.map(threadAsSession)] : world.sessions, world.machines),
-    [world.sessions, threads, world.machines],
+    () => withKnownState(world.sessions, world.machines),
+    [world.sessions, world.machines],
   );
   const [ui, setUI] = useState<UI>(() => ({
     selection: { kind: "overview" },
@@ -218,8 +187,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     herAgents: null,
     ...Object.fromEntries(Object.entries(savedView()).filter(([, v]) => v !== undefined)),
   }));
-  // The start page (docs/her-team.md §14.1), chosen once from an initialized owner's world, unless something
-  // (a notification, a click) chose a page since the window opened.
   const opened = useRef(ui.selection);
   const started = useRef(false);
   useEffect(() => {
@@ -229,7 +196,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     const kind = startPage({ machines: world.machines, machineOnly: s.machineOnly, notNow: notNow(), onSession: opened.current.kind === "session" });
     if (kind) setUI((u) => (u.selection === opened.current ? { ...u, selection: { kind } } : u));
   }, [world.loaded, world.status, world.machines]);
-  // Not Now is forgotten as soon as a machine runs Her.
   useEffect(() => {
     if (world.machines.some((m) => m.her?.enabled)) setNotNow(false);
   }, [world.machines]);
@@ -246,7 +212,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   }, []);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Watch brings every change; a step that waits on one (signing in) reads the status at once.
   const refresh = world.refreshStatus;
 
   const set = useCallback((patch: Partial<UI>) => {
@@ -269,7 +234,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
         await refresh();
         return true;
       } catch (e) {
-        // A signer older than the app (Windows) can't show what this version asks it to sign: update it, then try again.
         const signer = declinedToSign(e) ? await window.hermesh?.signerUpdate().catch(() => undefined) : undefined;
         if (signer) {
           setUI((u) => ({
@@ -291,8 +255,7 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
     [refresh, show],
   );
 
-  // A v2 thread opens on its own page; the rows of both kinds share the list (docs/thread-composer.md §4.7).
-  const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: isThreadId(id) ? { kind: "thread", id } : { kind: "session", id } })), []);
+  const select = useCallback((id: string) => setUI((u) => ({ ...u, selection: { kind: "session", id } })), []);
 
   const store = useMemo<Store>(
     () => ({
@@ -317,47 +280,6 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }
 
-/**
- * Every machine's v2 threads as hermeshd pushes them (SubscribeThreads: a
- * snapshot, then each change), in the main window only. The stream is opened
- * again a moment after it ends (hermeshd restarting, an update).
- */
-function useThreads(on: boolean): Thread[] {
-  const [list, setList] = useState<Thread[]>([]);
-  useEffect(() => {
-    if (!on) return;
-    const ctl = new AbortController();
-    (async () => {
-      while (!ctl.signal.aborted) {
-        try {
-          for await (const msg of threadApi.subscribeThreads({ includeArchived: true }, { signal: ctl.signal })) {
-            setList((prev) => {
-              if (msg.snapshot) return msg.threads;
-              const gone = new Set(msg.deletedThreadIds);
-              const byId = new Map(prev.filter((x) => !gone.has(x.threadId)).map((x) => [x.threadId, x]));
-              for (const t of msg.threads) byId.set(t.threadId, t);
-              return [...byId.values()];
-            });
-          }
-        } catch {
-          // hermeshd went away or the window closed: try again below, unless closed.
-        }
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-    })();
-    return () => ctl.abort();
-  }, [on]);
-  return list;
-}
-
-/**
- * The current time, ticking every interval ms (for elapsed times and
- * countdowns). One clock per interval for the whole window, so everything
- * on the same interval changes in the same frame. Ticks fall halfway
- * between wall-clock multiples of interval, so a clock counting whole
- * seconds (elapsedSeconds) moves by exactly one on each, however late a
- * tick comes.
- */
 export function useNow(interval = 1000): Date {
   const c = clock(interval);
   return useSyncExternalStore(c.subscribe, c.now);

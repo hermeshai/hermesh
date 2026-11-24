@@ -389,29 +389,35 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .knote-b{margin:0 0 4px 24px;font-size:12.5px;line-height:19px;color:var(--l2);overflow-wrap:anywhere}
 
 /* The composer: one line while empty ("+", the text, Send), growing with what is written; what is attached shows as
-   tiles above the text. */
-.cmp{position:relative;cursor:text;background:var(--pill);border-radius:var(--r-xl);box-shadow:0 0 0 .5px var(--pill-bd),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06);padding:6px;display:flex;flex-direction:column;gap:6px;transition:box-shadow .18s ease,transform .18s ease}
-/* Focus deepens its edge, no ring, as a session's box (thread.css .th-cmp). */
-.cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--l3),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06)}
-.cmp-row{display:flex;align-items:flex-end;gap:4px}
+   tiles above the text. One raised surface (docs/composer-redesign-mac-demo.html), a step lighter than the window,
+   lit along its top; its buttons are glyphs on it, grey until pointed at. */
+.cmp{position:relative;cursor:text;background:var(--pill);border-radius:18px;box-shadow:inset 0 .5px 0 var(--cmp-hi),0 0 0 .5px var(--pill-bd),var(--cmp-lift);padding:7px 8px 7px 9px;display:flex;flex-direction:column;gap:6px;transition:box-shadow .24s var(--ease-out),transform .18s ease}
+/* Written in, it rises a little: deeper shadows, no ring (a session's box too, session/composer.css .th-cmp). */
+.cmp:focus-within:not(.dropping){box-shadow:inset 0 .5px 0 var(--cmp-hi),0 0 0 .5px var(--l4),var(--cmp-lift-f)}
+.cmp-row{display:flex;align-items:flex-end;gap:2px}
 .cmp button,.cmp .tile{cursor:default}
-.cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 4px;min-height:32px;max-height:220px;overflow-y:auto;caret-color:var(--l1)}
+.cmp-in{flex:1;min-width:0;resize:none;border:0;outline:none;background:none;font:inherit;font-size:15px;line-height:21px;color:var(--l1);padding:5.5px 6px;min-height:32px;max-height:220px;overflow-y:auto;caret-color:var(--accent)}
 /* The text has no focus ring of its own (the page's :focus-visible would draw one inside the box): the box shows it. */
 .cmp-in:focus-visible{outline:none}
 .cmp-in::placeholder{color:var(--l3)}
-.cmp-plus{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:none;color:var(--l2);display:flex;align-items:center;justify-content:center;flex:none}
-.cmp-plus:hover{background:var(--fill2);color:var(--l1)}
+.cmp-plus{width:32px;height:32px;border-radius:50%;border:0;background:none;color:var(--l3);display:flex;align-items:center;justify-content:center;flex:none;transition:color .15s,background .15s,transform .12s ease}
+.cmp-plus:hover,.cmp-plus[aria-expanded="true"]{background:var(--fill);color:var(--l1)}
+.cmp-plus:active{transform:scale(.92)}
 .cmp-plus:disabled{opacity:.42;pointer-events:none}
 .cmp:has(.cmp-in:disabled){cursor:default}
-.cmp-plus .ic{width:18px;height:18px;stroke-width:2.25}
-.send{width:32px;height:32px;border-radius:var(--r-sm);border:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 1px 2px rgba(40,60,200,.3);transition:background .15s}
-.send:disabled{color:var(--l3);background:var(--fill2);box-shadow:none}
-.send .ic{width:16px;height:16px;stroke-width:2.85}
+.cmp-plus .ic{width:17px;height:17px;stroke-width:1.5}
+/* Send: an arrow while there is nothing to send; the brand's blue, round, once there is, coming in with a small bounce. */
+.send{width:30px;height:30px;margin:1px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:inset 0 .5px 0 rgba(255,255,255,.28),0 1px 3px rgba(40,60,200,.4);transition:background .15s,transform .12s ease;animation:cmp-send-in .24s cubic-bezier(.34,1.45,.64,1)}
+.send:disabled{color:var(--l3);background:none;box-shadow:none;animation:none}
+.send:not(:disabled):active{transform:scale(.92)}
+.send .ic{width:16px;height:16px;stroke-width:2.3}
+.send:disabled .ic{stroke-width:1.9}
+@keyframes cmp-send-in{from{transform:scale(.55);opacity:.3}}
 .cmp.dropping{transform:translateY(-3px);box-shadow:0 0 0 1.5px var(--accent),0 0 0 6px var(--accent-bg),0 14px 40px rgba(0,0,0,.14)}
-.cmp-drop{position:absolute;inset:4px;z-index:5;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 16px;border-radius:calc(var(--r-xl) - 4px);border:1.5px dashed var(--accent);background:color-mix(in srgb,var(--pill) 88%,var(--accent));color:var(--l1);font-size:13.5px;pointer-events:none}
+.cmp-drop{position:absolute;inset:4px;z-index:5;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 16px;border-radius:14px;border:1.5px dashed var(--accent);background:color-mix(in srgb,var(--pill) 88%,var(--accent));color:var(--l1);font-size:13.5px;pointer-events:none}
 .cmp-drop b{font-weight:600}
 .cmp-drop-hint{color:var(--l2);font-size:12px}
-@media (prefers-reduced-motion:reduce){.cmp.dropping{transform:none}}
+@media (prefers-reduced-motion:reduce){.cmp.dropping{transform:none}.send{animation:none}}
 
 /* An attachment, the same in the composer and the conversation: a picture is a 96 px square; a file a row card, a
    badge in its type's colour, its name on one line and its type. × shows on hover. */

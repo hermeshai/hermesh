@@ -98,7 +98,7 @@ struct DrawerView: View {
     /// New Session, over Her (docs/thread-composer.md §4.6): the composer, on the machine and project used last.
     private var newSessionPlace: some View {
         Button {
-            model.open(.newThread("", ""))
+            model.open(.newSession("", ""))
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "square.and.pencil").frame(width: 28)
@@ -108,7 +108,7 @@ struct DrawerView: View {
             .font(.body).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16).frame(height: 48)
         }
-        .buttonStyle(RowStyle(selected: { if case .newThread = model.root { model.path.isEmpty } else { false } }()))
+        .buttonStyle(RowStyle(selected: { if case .newSession = model.root { model.path.isEmpty } else { false } }()))
         .padding(.horizontal, 10)
         .accessibilityIdentifier("new-session-place")
     }
@@ -251,7 +251,7 @@ private struct MenuSessions: View {
             if section.grouping == .project {
                 Button {
                     let latest = section.sessions.max { $0.updatedDate < $1.updatedDate }
-                    model.open(.newThread(latest?.machineID ?? "", section.key))
+                    model.open(.newSession(latest?.machineID ?? "", section.key))
                 } label: {
                     Image(systemName: "plus").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                         .frame(width: 44, height: 32).contentShape(.rect)

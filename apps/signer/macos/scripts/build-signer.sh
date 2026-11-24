@@ -30,9 +30,11 @@ case "$arch" in
   universal) archs=(--arch arm64 --arch x86_64) ;;
   *) echo "Invalid HERMESH_ARCH: $arch" >&2; exit 1 ;;
 esac
+scratch=()
+if [ -n "${HERMESH_SIGNER_SCRATCH:-}" ]; then scratch=(--scratch-path "$HERMESH_SIGNER_SCRATCH"); fi
 echo "› building HermeshSigner ($arch)"
-swift build -c release "${archs[@]}"
-BIN_DIR="$(swift build -c release "${archs[@]}" --show-bin-path)"
+swift build -c release "${archs[@]}" "${scratch[@]}"
+BIN_DIR="$(swift build -c release "${archs[@]}" "${scratch[@]}" --show-bin-path)"
 BIN="$BIN_DIR/HermeshSigner"
 
 echo "› assembling $APP"
@@ -41,7 +43,7 @@ mkdir -p "$APP/Contents/MacOS"
 MAIN="$APP/Contents/MacOS/HermeshSigner"
 cp "$BIN" "$MAIN"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" Bundle/Info.plist > "$APP/Contents/Info.plist"
-# The UI strings (English and Simplified Chinese), found through Bundle.module in Contents/Resources.
+# The UI strings (English and Simplified Chinese), loaded from Contents/Resources.
 mkdir -p "$APP/Contents/Resources"
 cp -R "$BIN_DIR/HermeshSigner_HermeshSigner.bundle" "$APP/Contents/Resources/"
 # The signing cards' strings come from the shared HermeshKit package.

@@ -924,11 +924,12 @@ extension HermeshUITests {
         for _ in 0..<12 where !card.isHittable { app.swipeDown() }
         XCTAssertTrue(waitUntil { card.isHittable }, "the card is in view before opening it")
         herShot("Her: a session she started")
-        // It opens the session, whose prompt says Her sent it.
+        // It opens the session, whose prompt has Her's face on its corner, and no name over it.
         press(card)
         let sender = app.descendants(matching: .any)["prompt-sender"].firstMatch
         XCTAssertTrue(sender.waitForExistence(timeout: 20), "who sent the prompt")
-        XCTAssertTrue(sender.label.contains("Her"), sender.label)
+        XCTAssertEqual(sender.label, "Her 派的活")
+        XCTAssertFalse(app.staticTexts["Her 派的活"].exists, "a face, not a line of text")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(tag.waitForExistence(timeout: 10), "back on Her's page")
         // What the team did today, as she counted it (docs/her-team.md §6.3): a card, which opens Work. Reading

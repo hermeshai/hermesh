@@ -155,10 +155,15 @@ final class SidebarUITests: XCTestCase {
         XCTAssertTrue(account.waitForExistence(timeout: 10), "account button")
         XCTAssertTrue(account.isHittable, "account button hittable")
         account.tap()
+        // Appearance is a page of the account sheet's own.
+        let page = app.descendants(matching: .any)["account-appearance"].firstMatch
+        XCTAssertTrue(page.waitForExistence(timeout: 10), "account-appearance")
+        page.tap()
         let option = app.buttons["appearance-\(tag)"]
         for _ in 0..<4 where !option.exists || !option.isHittable { app.swipeUp() }
         XCTAssertTrue(option.waitForExistence(timeout: 10), "appearance-\(tag)")
         option.tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         let close = app.buttons["close"]
         XCTAssertTrue(close.waitForExistence(timeout: 10), "close account sheet")
         close.tap()

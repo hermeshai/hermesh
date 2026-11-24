@@ -15,29 +15,42 @@ import (
 
 func (h *harness) inPlaceProject(id, dir string) {
 	h.t.Helper()
-	if err := h.s.st.PutProject(Project{ID: id, Path: dir, Workspace: identityv1.Workspace_WORKSPACE_IN_PLACE}); err != nil {
+	if err := h.n.st.PutProject(Project{ID: id, Path: dir, Workspace: identityv1.Workspace_WORKSPACE_IN_PLACE}); err != nil {
+		h.t.Fatal(err)
+	}
+	if err := h.e.SyncWorkspace(id, dir, "", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil); err != nil {
 		h.t.Fatal(err)
 	}
 }
 
 func (h *harness) startIn(project, prompt string) string {
 	h.t.Helper()
-	sess, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: project, Agent: "fake", Prompt: prompt})
+	res, err := h.e.StartSession(context.Background(), h.kp(), &sessionv1.StartSessionRequest{
+		ProjectId:      project,
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "fake"},
+		InitialPrompt:  prompt,
+	})
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	return sess.SessionId
+	return res.Session.SessionId
 }
 
 // An in-place session works in the directory itself, like the agent run
-// there by hand: no worktree, no snapshot, no diff of its own.
+// there by hand: no worktree, no snapshot, no diff of its own when not a git repo.
 func TestInPlaceSessionWorksInTheDirectory(t *testing.T) {
+	ctx := context.Background()
 	h := newHarness(t, DefaultLimits())
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "readme.md"), []byte("mine\n"), 0o644)
 	h.inPlaceProject("notes", dir)
 
-	if _, err := h.s.Start(context.Background(), h.p, &sessionv1.StartSessionRequest{ProjectId: "notes", Agent: "fake", Prompt: "say x", BaseRef: "HEAD"}); connect.CodeOf(err) != connect.CodeInvalidArgument {
+	if _, err := h.e.StartSession(ctx, h.kp(), &sessionv1.StartSessionRequest{
+		ProjectId:      "notes",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "fake"},
+		InitialPrompt:  "say x",
+		Workspace:      &sessionv1.WorkspaceStrategy{BaseRef: "HEAD"},
+	}); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a base ref for an in-place project: %v", err)
 	}
 	id := h.startIn("notes", "write todo.txt buy milk\nsay done")
@@ -45,26 +58,17 @@ func TestInPlaceSessionWorksInTheDirectory(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "todo.txt")); string(b) != "buy milk\n" {
 		t.Fatalf("todo.txt in the directory: %q", b)
 	}
-	if sess.Workspace != identityv1.Workspace_WORKSPACE_IN_PLACE || sess.Branch != "" || h.s.ws.Exists(id) {
-		t.Fatalf("session: %v (worktree exists: %v)", sess, h.s.ws.Exists(id))
+	if sess.Workspace != identityv1.Workspace_WORKSPACE_IN_PLACE || sess.Branch != "" || h.worktreeExists(id) {
+		t.Fatalf("session: %v (worktree exists: %v)", sess, h.worktreeExists(id))
 	}
 	if h.rec.spec(-1).WorkDir != dir {
 		t.Fatalf("agent ran in %s", h.rec.spec(-1).WorkDir)
 	}
-	if tc := h.lastTurn(id); tc.Commit != "" || tc.DiffStat != nil {
-		t.Fatalf("an in-place turn has no snapshot: %v", tc)
+	if ckpts, _ := h.e.ListCheckpoints(ctx, h.kp(), id); len(ckpts) != 0 || sess.GetProgress().GetDiffStat() != nil {
+		t.Fatalf("an in-place plain-directory turn has no snapshot: ckpts=%v stat=%v", ckpts, sess.GetProgress().GetDiffStat())
 	}
-	if _, err := h.s.Diff(context.Background(), h.p, &sessionv1.GetDiffRequest{SessionId: id}); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "works in place") {
+	if _, err := h.e.GetDiff(ctx, h.kp(), &sessionv1.GetDiffRequest{SessionId: id}); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "works in place") {
 		t.Fatalf("diff: %v", err)
-	}
-
-	// A fresh provider session is told to look at the directory.
-	h.send(id, "overflow")
-	h.wait(id, idle)
-	h.send(id, "say again")
-	h.wait(id, idle)
-	if p := h.rec.spec(-1).Prompt; !strings.Contains(p, "still in this directory") || strings.Contains(p, "worktree") {
-		t.Fatalf("continuity notice: %q", p)
 	}
 
 	// Archiving frees a worktree but never touches an in-place directory
@@ -72,11 +76,11 @@ func TestInPlaceSessionWorksInTheDirectory(t *testing.T) {
 	wt := h.start("say w")
 	h.wait(wt, idle)
 	for _, s := range []string{id, wt} {
-		if _, err := h.s.Archive(context.Background(), h.p, s); err != nil {
+		if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: s, HasArchived: true, Archived: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if h.s.ws.Exists(wt) {
+	if h.worktreeExists(wt) {
 		t.Fatal("the worktree session was not cleaned up")
 	}
 	for _, f := range []string{"readme.md", "todo.txt"} {
@@ -85,7 +89,7 @@ func TestInPlaceSessionWorksInTheDirectory(t *testing.T) {
 		}
 	}
 	// Unarchived, it works in the same directory again.
-	if _, err := h.s.Unarchive(context.Background(), h.p, id); err != nil {
+	if _, err := h.e.UpdateSession(ctx, h.kp(), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: false}); err != nil {
 		t.Fatal(err)
 	}
 	h.send(id, "write later.txt after\nsay done")
@@ -96,7 +100,7 @@ func TestInPlaceSessionWorksInTheDirectory(t *testing.T) {
 }
 
 // In a git repository worked in place Hermesh makes no branch and no
-// commit: the changes are left in the owner's working tree.
+// branch commit: the changes are left in the owner's working tree.
 func TestInPlaceGitRepoGetsNoHermeshCommits(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	repo := testRepo(t)

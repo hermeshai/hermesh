@@ -6,95 +6,83 @@ import "google/protobuf/timestamp.proto";
 import "hermesh/identity/v1/identity.proto";
 import "hermesh/options/v1/options.proto";
 
-// SessionService runs coding-agent sessions on a machine.
+// SessionService is the unified session and provider control plane served both
+// on each execution machine (over E2E tunnels) and on each owner device (over
+// local IPC / loopback with local projection caching and offline outbox).
 service SessionService {
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc UpsertProviderInstance(UpsertProviderInstanceRequest) returns (UpsertProviderInstanceResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  rpc RemoveProviderInstance(RemoveProviderInstanceRequest) returns (RemoveProviderInstanceResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+
   rpc StartSession(StartSessionRequest) returns (StartSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  rpc GetSession(GetSessionRequest) returns (Session) {
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  // WatchSessions sends the sessions the caller can read as they change:
-  // first an empty message once the watch is in place, then the sessions
-  // started or changed since the last message, each as it is now (changes
-  // that come close together are sent together).
   rpc WatchSessions(WatchSessionsRequest) returns (stream WatchSessionsResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  rpc StreamEvents(StreamEventsRequest) returns (stream SessionEvent) {
+  rpc SubscribeSession(SubscribeSessionRequest) returns (stream SessionEvent) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  // ListEvents returns one page of a session's events, oldest first.
-  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse) {
-    option (hermesh.options.v1.access) = ACCESS_READ;
-  }
-  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {
+
+  rpc DispatchMessage(DispatchMessageRequest) returns (DispatchMessageResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // DeliverMessage hands the session a message an agent wrote, signed by
-  // that agent (docs/agent-messages.md §7): it joins its sender's own turn,
-  // answers its sender's own question, or starts, or waits for, a turn of
-  // its own. Any agent whose grant covers the session and that may read it
-  // can deliver one.
+  // DeliverMessage delivers a cryptographically signed inbox.v1.Message from
+  // another agent of the owner into the session.
   rpc DeliverMessage(DeliverMessageRequest) returns (DeliverMessageResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // InterruptSession stops the turn in progress; the session stays, idle,
-  // and the next message goes on in the same agent conversation.
-  rpc InterruptSession(InterruptSessionRequest) returns (Session) {
+  rpc InterruptSession(InterruptSessionRequest) returns (InterruptSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // ArchiveSession makes an idle session read-only and frees its worktree
-  // (its branch keeps the work). Sessions never end otherwise.
-  rpc ArchiveSession(ArchiveSessionRequest) returns (Session) {
+  rpc StopBackgroundTask(StopBackgroundTaskRequest) returns (StopBackgroundTaskResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // UnarchiveSession restores the worktree from the branch; the session is
-  // idle again.
-  rpc UnarchiveSession(UnarchiveSessionRequest) returns (Session) {
+  rpc ManageQueue(ManageQueueRequest) returns (ManageQueueResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // DeleteSession deletes a session for good: its record, events,
-  // attachments and worktree. Its branch stays in the project, with every
-  // turn's work, and its tokens stay in GetUsage. A turn in progress is
-  // interrupted first. Only the owner's devices may delete.
-  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse) {
+  rpc UpdateSession(UpdateSessionRequest) returns (UpdateSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // RenameSession changes the session's title. Only the owner's devices
-  // may rename.
-  rpc RenameSession(RenameSessionRequest) returns (Session) {
+  rpc RespondRuntimeRequest(RespondRuntimeRequestRequest) returns (RespondRuntimeRequestResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+
+  rpc ListCheckpoints(ListCheckpointsRequest) returns (ListCheckpointsResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc RollbackCheckpoint(RollbackCheckpointRequest) returns (RollbackCheckpointResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
   rpc GetDiff(GetDiffRequest) returns (GetDiffResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  // AnswerQuestion answers (or declines) a question the agent asked.
-  rpc AnswerQuestion(AnswerQuestionRequest) returns (Session) {
+  rpc ForkSession(ForkSessionRequest) returns (ForkSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
-  // and applies the same authorization and validation rules as AnswerQuestion.
-  rpc AnswerLocalQuestion(AnswerQuestionRequest) returns (Session) {
+  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse) {
     option (hermesh.options.v1.access) = ACCESS_WRITE;
   }
-  // CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
-  // Her clients after coding-specific consent was removed.
-  rpc CheckLocalCodingRecipient(CheckLocalCodingRecipientRequest) returns (CheckLocalCodingRecipientResponse) {
+
+  rpc UploadBlob(UploadBlobRequest) returns (UploadBlobResponse) {
+    option (hermesh.options.v1.access) = ACCESS_WRITE;
+  }
+  rpc DownloadBlob(DownloadBlobRequest) returns (DownloadBlobResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
-  // CodingConsent is retained for wire compatibility with v0.1.7 owner clients
-  // after coding-specific consent was removed.
-  rpc CodingConsent(CodingConsentRequest) returns (CodingConsentResponse) {
-    option (hermesh.options.v1.access) = ACCESS_WRITE;
-  }
-  // ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
-  // past that its first and last 512 KiB), in chunks of at most 64 KiB:
-  // what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
-  rpc ReadToolOutput(ReadToolOutputRequest) returns (stream ToolOutputChunk) {
+  rpc ListOutbox(ListOutboxRequest) returns (ListOutboxResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
 }
@@ -105,165 +93,209 @@ enum SessionStatus {
   SESSION_STATUS_PREPARING = 2;
   SESSION_STATUS_RUNNING = 3;
   SESSION_STATUS_IDLE = 4;
-  // Read-only: no messages until unarchived. The only way a session stops
-  // being usable; it is never ended by time or by a failure.
+  // Read-only: no messages until unarchived.
   SESSION_STATUS_ARCHIVED = 5;
   reserved 6, 7;
-  // The last turn did not finish (the agent crashed or could not start,
-  // or hermeshd restarted); the next message retries in the same session.
+  // The last run failed or crashed; the next message continues in the session.
   SESSION_STATUS_CRASHED = 8;
-  // The turn is paused until someone answers the agent's question (see
-  // SessionProgress.pending_question).
+  // A run is paused waiting on a RuntimeRequest (approval, question, plan, or secret).
   SESSION_STATUS_WAITING_INPUT = 9;
 }
 
-// FailureKind classifies why a turn or a session failed (see
-// docs/reliability-plan.md).
+// FailureKind classifies why a run or session failed.
 enum FailureKind {
   FAILURE_KIND_UNSPECIFIED = 0;
-  // Not logged in or credentials rejected; the owner must log in on the machine.
   FAILURE_KIND_AUTH = 1;
-  // Usage or billing limit reached.
   FAILURE_KIND_QUOTA = 2;
-  // Rate limited or provider over capacity; retry later.
   FAILURE_KIND_RATE_LIMIT = 3;
-  // Provider server error (5xx); retry later.
   FAILURE_KIND_PROVIDER_ERROR = 4;
-  // Connection to the provider failed or dropped; retry.
   FAILURE_KIND_NETWORK = 5;
-  // The conversation no longer fits the model's context window.
   FAILURE_KIND_CONTEXT_OVERFLOW = 6;
-  // The model does not exist or this account cannot use it.
   FAILURE_KIND_MODEL_UNAVAILABLE = 7;
-  // The provider rejected the request (400).
   FAILURE_KIND_INVALID_REQUEST = 8;
-  // The model or a policy refused the task.
   FAILURE_KIND_REFUSED = 9;
-  // The turn hit the agent's step or token limit.
   FAILURE_KIND_LIMIT_REACHED = 10;
-  // The provider session could not be resumed.
   FAILURE_KIND_RESUME_REJECTED = 11;
-  // The agent process exited unexpectedly.
   FAILURE_KIND_AGENT_CRASHED = 12;
-  // The agent made no progress for too long.
   FAILURE_KIND_STALLED = 13;
-  // The turn exceeded the machine's turn time limit.
   FAILURE_KIND_TIMEOUT = 14;
-  // The agent could not be started.
   FAILURE_KIND_START_FAILED = 15;
   FAILURE_KIND_UNKNOWN = 16;
-  // Someone interrupted the turn on purpose (the session goes on).
   FAILURE_KIND_INTERRUPTED = 17;
-  // The worktree's base ref does not resolve to a local commit.
   FAILURE_KIND_BASE_REF_UNAVAILABLE = 18;
 }
 
 message Failure {
   FailureKind kind = 1;
-  // Redacted and truncated provider or daemon message.
   string message = 2;
-  // Retrying the same request later may succeed.
   bool retryable = 3;
   uint32 retry_after_seconds = 4;
-  // One-line advice for the caller.
   string hint = 5;
   uint32 http_status = 6;
 }
 
-message StartSessionRequest {
-  string idempotency_key = 1;
-  string project_id = 2;
-  // "claude" | "codex" | an ACP agent ("gemini", "cursor", ...)
-  string agent = 3;
-  string prompt = 4;
-  string base_ref = 5;
-  string model = 6;
-  reserved 7;
-  reserved "preset";
-  repeated Attachment attachments = 8;
-  // How long the agent's questions wait for an answer; then the agent is
-  // told to continue on its best judgment. Unset: 30 minutes; 0: nobody
-  // answers (the agent is told so at once).
-  optional uint32 question_timeout_seconds = 9;
-  // A short title for session lists. Without one, the session is titled
-  // by the first line of the prompt.
-  string title = 10;
-  // The starter's own conversation (a Claude Code session id, a Codex
-  // thread): the session's news goes to it (docs/agent-messages.md §6.2).
-  string conversation = 11;
-  // Reasoning effort, one the model offers (AgentModel.efforts); unset:
-  // the machine's default for the agent, else the agent's own.
-  string effort = 12;
-  string coding_consent_version = 13;
+enum ActorKind {
+  ACTOR_KIND_UNSPECIFIED = 0;
+  ACTOR_KIND_OWNER = 1;
+  ACTOR_KIND_HER = 2;
+  ACTOR_KIND_EXTERNAL_AGENT = 3;
+  ACTOR_KIND_SUBAGENT = 4;
+  ACTOR_KIND_SYSTEM = 5;
 }
 
-// Attachment is a file sent with a message (at most 20 files and 32 MiB
-// per message). The machine saves it next to the session, outside the
-// worktree, and lists its path in the message; PNG, JPEG, GIF and WebP
-// images up to 3.5 MiB are also shown to the agent as images.
-message Attachment {
-  // File name; directories are dropped.
+message Actor {
+  ActorKind kind = 1;
+  string id = 2;
+  string label = 3;
+  string grant_id = 4;
+}
+
+enum InteractionMode {
+  INTERACTION_MODE_UNSPECIFIED = 0;
+  INTERACTION_MODE_CODE = 1;
+  INTERACTION_MODE_PLAN = 2;
+}
+
+message OptionValue {
+  oneof kind {
+    string string_value = 1;
+    bool bool_value = 2;
+  }
+}
+
+message ModelSelection {
+  string instance_id = 1;
+  string model = 2;
+  map<string, OptionValue> options = 3;
+}
+
+enum OptionDescriptorType {
+  OPTION_DESCRIPTOR_TYPE_UNSPECIFIED = 0;
+  OPTION_DESCRIPTOR_TYPE_SELECT = 1;
+  OPTION_DESCRIPTOR_TYPE_BOOLEAN = 2;
+}
+
+message OptionChoice {
+  string id = 1;
+  string label = 2;
+  string description = 3;
+  bool is_default = 4;
+}
+
+message OptionDescriptor {
+  string id = 1;
+  string label = 2;
+  string description = 3;
+  OptionDescriptorType type = 4;
+  string role = 5;
+  repeated OptionChoice choices = 6;
+  OptionValue current_value = 7;
+}
+
+message ProviderCapabilities {
+  bool in_session_model_switch = 1;
+  bool in_session_option_switch = 2;
+  bool in_session_mode_switch = 3;
+  bool mid_turn_steer = 4;
+  bool live_approval = 5;
+  bool live_user_input = 6;
+  bool native_resume = 7;
+  bool native_fork = 8;
+  bool conversation_rollback = 9;
+  bool supports_images = 10;
+  bool supports_files = 11;
+  bool reports_context_window = 12;
+  repeated hermesh.identity.v1.RuntimeMode supported_runtime_modes = 13;
+}
+
+message ModelCatalogEntry {
+  string slug = 1;
+  string name = 2;
+  string short_name = 3;
+  string badge = 4;
+  bool is_custom = 5;
+  bool is_default = 6;
+  bool is_legacy = 7;
+  string min_cli_version = 8;
+  repeated OptionDescriptor option_descriptors = 9;
+}
+
+message SlashCommand {
   string name = 1;
-  // Detected from the name and content when empty.
-  string media_type = 2;
-  bytes data = 3;
+  string description = 2;
+  string input_hint = 3;
 }
 
-// AttachmentInfo describes a saved attachment.
-message AttachmentInfo {
+message SkillEntry {
   string name = 1;
-  string media_type = 2;
-  uint64 size = 3;
-  // Where the machine saved it.
-  string path = 4;
-  string sha256 = 5;
-  // Shown to the agent as an image (not only listed by path).
-  bool image = 6;
+  string description = 2;
+  string path = 3;
+  bool user_invocable = 4;
 }
 
-message StartSessionResponse {
-  Session session = 1;
+enum CompatibilityStatus {
+  COMPATIBILITY_STATUS_UNSPECIFIED = 0;
+  COMPATIBILITY_STATUS_SUPPORTED = 1;
+  COMPATIBILITY_STATUS_GRACEFUL = 2;
+  COMPATIBILITY_STATUS_UNSUPPORTED = 3;
+  COMPATIBILITY_STATUS_BROKEN = 4;
 }
 
-// What a trusted device is told on its lock screen, sealed to its notice
-// key end to end (identity.v1.PushRegistration): the relay forwards it
-// without reading it.
-message Notice {
-  // "question", "failure", "turn_done", "session_started", "pairing" or
-  // "her".
-  string kind = 1;
-  google.protobuf.Timestamp at = 2;
-  // A session's notice.
-  string session_id = 3;
-  string title = 4;
-  // Who started the session: its grant's label.
-  string grant = 5;
-  // The coding agent.
-  string agent = 6;
-  string project = 7;
-  string machine = 8;
-  // kind "question": what the agent asks.
-  Question question = 9;
-  // kind "failure".
-  FailureKind failure = 10;
-  string failure_message = 11;
-  // kind "turn_done": the turn and what it changed.
-  uint32 turn = 12;
-  DiffStat diff_stat = 13;
-  // kind "pairing": who asks to connect, and the code to compare.
-  hermesh.identity.v1.PairingKind pairing_kind = 14;
-  string pairing_label = 15;
-  string verification_code = 16;
-  string pairing_code = 17;
-  // kind "her": what an assistant of Her's on the machine (machine names
-  // it) has for the owner, as HerLatest says it: "message", "question" (it
-  // asks the owner to choose) or "approval" (it waits for an approval or a
-  // secure card), and its first words.
-  string her_kind = 18;
-  string machine_id = 19;
-  string bot_id = 20;
-  string bot_name = 21;
-  string text = 22;
+message ProviderInstance {
+  string instance_id = 1;
+  string driver = 2;
+  string acp_flavor = 3;
+  string display_name = 4;
+  bool enabled = 5;
+  bool installed = 6;
+  bool authenticated = 7;
+  string auth_label = 8;
+  string version = 9;
+  CompatibilityStatus compatibility = 10;
+  string compatibility_message = 11;
+  ProviderCapabilities capabilities = 12;
+  repeated ModelCatalogEntry models = 13;
+  repeated OptionDescriptor workspace_options = 14;
+  repeated SlashCommand slash_commands = 15;
+  repeated SkillEntry skills = 16;
+  string binary_path = 17;
+  repeated string launch_args = 18;
+  map<string, string> redacted_env = 19;
+}
+
+message ProviderInstanceConfig {
+  string instance_id = 1;
+  string driver = 2;
+  string acp_flavor = 3;
+  string display_name = 4;
+  bool enabled = 5;
+  string binary_path = 6;
+  repeated string launch_args = 7;
+  map<string, string> env = 8;
+  repeated string custom_models = 9;
+}
+
+message WorkspaceStrategy {
+  hermesh.identity.v1.Workspace mode = 1;
+  string base_ref = 2;
+  string branch = 3;
+  string worktree_path = 4;
+  bool from_remote = 5;
+}
+
+message SessionLineage {
+  string parent_session_id = 1;
+  uint32 forked_from_run_ordinal = 2;
+  string relationship = 3;
+  bool controllable = 4;
+}
+
+message ContextWindowUsage {
+  uint64 input_tokens = 1;
+  uint64 output_tokens = 2;
+  uint64 cache_read_tokens = 3;
+  uint64 context_used_tokens = 4;
+  uint64 context_limit_tokens = 5;
 }
 
 message DiffStat {
@@ -278,6 +310,80 @@ message Usage {
   double cost_usd = 3;
 }
 
+// What a trusted device is told on its lock screen, sealed to its notice key.
+message Notice {
+  // "question", "failure", "turn_done", "session_started", "pairing" or "her".
+  string kind = 1;
+  google.protobuf.Timestamp at = 2;
+  string session_id = 3;
+  string title = 4;
+  string grant = 5;
+  string agent = 6;
+  string project = 7;
+  string machine = 8;
+  Question question = 9;
+  FailureKind failure = 10;
+  string failure_message = 11;
+  uint32 turn = 12;
+  DiffStat diff_stat = 13;
+  hermesh.identity.v1.PairingKind pairing_kind = 14;
+  string pairing_label = 15;
+  string verification_code = 16;
+  string pairing_code = 17;
+  string her_kind = 18;
+  string machine_id = 19;
+  string bot_id = 20;
+  string bot_name = 21;
+  string text = 22;
+}
+
+message Question {
+  string question_id = 1;
+  uint32 turn = 2;
+  repeated QuestionItem items = 3;
+  google.protobuf.Timestamp asked_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  bool local_answer_available = 6;
+}
+
+message QuestionItem {
+  string id = 1;
+  string header = 2;
+  string text = 3;
+  repeated QuestionOption options = 4;
+  bool multi_select = 5;
+  bool allow_other = 6;
+  bool secret = 7;
+  bool optional = 8;
+}
+
+message QuestionOption {
+  string label = 1;
+  string description = 2;
+  string id = 3;
+}
+
+message Answer {
+  string item_id = 1;
+  repeated string selected = 2;
+  string text = 3;
+}
+
+enum QuestionResolution {
+  QUESTION_RESOLUTION_UNSPECIFIED = 0;
+  QUESTION_RESOLUTION_ANSWERED = 1;
+  QUESTION_RESOLUTION_DECLINED = 2;
+  QUESTION_RESOLUTION_TIMED_OUT = 3;
+  QUESTION_RESOLUTION_CANCELLED = 4;
+}
+
+message QuestionResolved {
+  string question_id = 1;
+  QuestionResolution resolution = 2;
+  string by = 3;
+  repeated Answer answers = 4;
+}
+
 message SessionProgress {
   uint32 turn_count = 1;
   string phase = 2;
@@ -286,82 +392,13 @@ message SessionProgress {
   DiffStat diff_stat = 5;
   Usage usage = 6;
   uint64 last_event_seq = 7;
-  // The most recent turn or session failure; cleared by a successful turn.
   Failure last_failure = 8;
-  // The question the agent waits on (status WAITING_INPUT).
   Question pending_question = 9;
-  // When the turn in progress started (waiting for an answer included);
-  // unset once the turn is over.
   google.protobuf.Timestamp turn_started_at = 10;
 }
 
-// Question is a question the agent asks mid-turn (Claude Code's
-// AskUserQuestion, Codex's questions, ACP elicitation).
-message Question {
-  string question_id = 1;
-  uint32 turn = 2;
-  repeated QuestionItem items = 3;
-  google.protobuf.Timestamp asked_at = 4;
-  // When the agent is told to continue without an answer.
-  google.protobuf.Timestamp expires_at = 5;
-  // An older mobile client can answer using the current host authorization.
-  bool local_answer_available = 6;
-}
-
-// QuestionItem is one question of a Question; answer each by its id.
-message QuestionItem {
-  string id = 1;
-  // Short label (e.g. "Color").
-  string header = 2;
-  string text = 3;
-  repeated QuestionOption options = 4;
-  // Several options may be chosen.
-  bool multi_select = 5;
-  // A free-text answer is accepted (always, when there are no options).
-  bool allow_other = 6;
-  // The answer is a secret: it goes to the agent but is not recorded.
-  bool secret = 7;
-  // The agent can go on without an answer to this item (an optional form field).
-  bool optional = 8;
-}
-
-message QuestionOption {
-  string label = 1;
-  string description = 2;
-}
-
-message Answer {
-  string item_id = 1;
-  // Labels of the chosen options.
-  repeated string selected = 2;
-  // A free-text answer (with or instead of options).
-  string text = 3;
-}
-
-enum QuestionResolution {
-  QUESTION_RESOLUTION_UNSPECIFIED = 0;
-  QUESTION_RESOLUTION_ANSWERED = 1;
-  // Declined by whoever answers: the agent is told no answer is coming.
-  QUESTION_RESOLUTION_DECLINED = 2;
-  // Nobody answered in time: the agent is told to continue on its own.
-  QUESTION_RESOLUTION_TIMED_OUT = 3;
-  // The turn ended or was stopped before an answer.
-  QUESTION_RESOLUTION_CANCELLED = 4;
-}
-
-message QuestionAsked {
-  Question question = 1;
-}
-
-message QuestionResolved {
-  string question_id = 1;
-  QuestionResolution resolution = 2;
-  // Who answered: a client id, or "owner".
-  string by = 3;
-  // Secret answers read "[secret]".
-  repeated Answer answers = 4;
-}
-
+// Session is the unified coding-agent session record across all initiators
+// (owner UI, Her, MCP, CLI).
 message Session {
   string session_id = 1;
   string machine_id = 2;
@@ -376,241 +413,285 @@ message Session {
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
   string error = 12;
-  // Worktree sessions only.
   string branch = 13;
   hermesh.identity.v1.Workspace workspace = 14;
-  // The agent's full reply in the last turn that finished (when that turn
-  // failed, progress.last_failure says why). A caller that did not wait
-  // reads it here once the session is idle again.
   string result = 15;
-  // A short title for lists: the one the client gave, or the first line of
-  // the prompt. Empty for sessions started by an older machine.
   string title = 16;
-  // The name under created_by that started it (an agent's bot, or its own
-  // conversation), "" for the agent itself.
   string created_as = 17;
-  // The model it runs on: the one the agent reported when it started
-  // (Claude Code and Codex), else the one Hermesh passed it; "" until
-  // known.
   string model = 18;
-  // The reasoning effort Hermesh passed, else the agent's own as it
-  // reported it (Codex); "": the agent's own setting, which it does not
-  // report (Claude Code).
   string effort = 19;
+
+  bool title_renamed = 20;
+  ModelSelection model_selection = 21;
+  hermesh.identity.v1.RuntimeMode runtime_mode = 22;
+  hermesh.identity.v1.RuntimeMode effective_runtime_mode = 23;
+  hermesh.identity.v1.RuntimeMode max_runtime_mode = 24;
+  InteractionMode interaction_mode = 25;
+  WorkspaceStrategy workspace_strategy = 26;
+  string active_provider_session_id = 27;
+  Actor actor = 28;
+  SessionLineage lineage = 29;
+  bool queue_held = 30;
+  uint32 queued_run_count = 31;
+  string active_run_id = 32;
+  string pending_request_id = 33;
+  ContextWindowUsage context_usage = 34;
+  bool pinned = 35;
+  bool offline_queued = 36;
+  google.protobuf.Timestamp archived_at = 37;
+  uint32 active_background_count = 38;
+  uint32 active_daemon_count = 39;
 }
 
-message GetSessionRequest {
-  string session_id = 1;
-}
-
-message ListSessionsRequest {
-  SessionStatus status = 1;
-  google.protobuf.Timestamp since = 2;
-  // Paging: at most limit sessions, newest first by (updated_at,
-  // session_id), from the newest or from just past the session `before`
-  // names. 0: every session, unpaged and in no set order.
-  //
-  // The first page (limit without before) also carries every unsettled
-  // session however old, so lists can show those in full: queued,
-  // preparing, running, waiting for an answer or crashed, or whose last
-  // turn failed (not interrupted). A session that changes moves to the
-  // start (updated_at only grows), where WatchSessions reports it, so the
-  // pages after it never miss one.
-  uint32 limit = 3;
-  SessionCursor before = 4;
-  SessionView view = 5;
-}
-
-// How much of a session a call returns (AIP-157).
 enum SessionView {
-  // FULL: what callers that predate views get.
   SESSION_VIEW_UNSPECIFIED = 0;
-  // What lists show: all but result, progress.last_message_excerpt and
-  // provider_session_ref.
   SESSION_VIEW_BASIC = 1;
   SESSION_VIEW_FULL = 2;
 }
 
-// How much of each event a call returns.
-enum EventView {
-  // FULL: what callers that predate views get.
-  EVENT_VIEW_UNSPECIFIED = 0;
-  // A tool result longer than 3 lines or 512 bytes comes as its first 3
-  // lines, at most 512 bytes (cut at a UTF-8 boundary), with preview set;
-  // ReadToolOutput reads it whole.
-  EVENT_VIEW_BASIC = 1;
-  // A tool result's first 16 KiB, with its size when it is longer.
-  EVENT_VIEW_FULL = 2;
-}
-
-// SessionCursor is where a page of sessions ends: its last session's
-// updated_at and id.
 message SessionCursor {
   google.protobuf.Timestamp updated_at = 1;
   string session_id = 2;
 }
 
-message ListSessionsResponse {
-  repeated Session sessions = 1;
-  // Paging: where the next page starts; unset on the last page.
-  SessionCursor next = 2;
+message ProviderSession {
+  string provider_session_id = 1;
+  string session_id = 2;
+  string instance_id = 3;
+  string driver = 4;
+  string native_session_id = 5;
+  string resume_cursor = 6;
+  uint32 synced_run_ordinal = 7;
+  bool process_alive = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
 }
 
-message WatchSessionsRequest {
-  SessionView view = 1;
+enum DispatchIntent {
+  DISPATCH_INTENT_UNSPECIFIED = 0;
+  DISPATCH_INTENT_AUTO = 1;
+  DISPATCH_INTENT_START = 2;
+  DISPATCH_INTENT_STEER = 3;
+  DISPATCH_INTENT_QUEUE = 4;
+  DISPATCH_INTENT_FRESH_CONTEXT = 5;
 }
 
-message WatchSessionsResponse {
-  repeated Session sessions = 1;
-  // Sessions deleted since the last message.
-  repeated string deleted_session_ids = 2;
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_PREPARING = 1;
+  RUN_STATUS_QUEUED = 2;
+  RUN_STATUS_RUNNING = 3;
+  RUN_STATUS_WAITING_REQUEST = 4;
+  RUN_STATUS_COMPLETED = 5;
+  RUN_STATUS_INTERRUPTED = 6;
+  RUN_STATUS_FAILED = 7;
+  RUN_STATUS_CANCELLED = 8;
+  RUN_STATUS_ROLLED_BACK = 9;
 }
 
-message StreamEventsRequest {
-  string session_id = 1;
-  uint64 after_seq = 2;
-  // When false, the stream ends after replaying stored events.
-  bool follow = 3;
-  EventView view = 4;
-  // Also send AgentDraft events while the agent writes (docs/reply-streaming.md).
-  bool partial = 5;
+message AttachmentRef {
+  string blob_sha256 = 1;
+  string name = 2;
+  string mime_type = 3;
+  uint64 size_bytes = 4;
 }
 
-// ListEventsRequest pages through a session's events by seq: the latest
-// `limit` events, the `limit` right after after_seq, or the `limit` right
-// before before_seq (at most one of the two).
-message ListEventsRequest {
-  string session_id = 1;
-  uint64 after_seq = 2;
-  uint64 before_seq = 3;
-  // 1 to 1000; 0 means 50.
-  uint32 limit = 4;
-  EventView view = 5;
+message Run {
+  string run_id = 1;
+  string session_id = 2;
+  uint32 ordinal = 3;
+  RunStatus status = 4;
+  double queue_order = 5;
+  Actor author = 6;
+  string author_conversation = 7;
+  string prompt = 8;
+  repeated AttachmentRef attachments = 9;
+  DispatchIntent intent = 10;
+  ModelSelection model_selection = 11;
+  hermesh.identity.v1.RuntimeMode runtime_mode = 12;
+  InteractionMode interaction_mode = 13;
+  string provider_session_id = 14;
+  string checkpoint_id = 15;
+  string handoff_summary = 16;
+  ContextWindowUsage usage = 17;
+  Failure failure = 18;
+  string error_code = 19;
+  string error_message = 20;
+  optional uint32 question_timeout_seconds = 21;
+  google.protobuf.Timestamp created_at = 22;
+  google.protobuf.Timestamp started_at = 23;
+  google.protobuf.Timestamp completed_at = 24;
+  string wake_reason = 25;
 }
 
-message ListEventsResponse {
-  // Oldest first.
-  repeated SessionEvent events = 1;
-  bool has_more_before = 2;
-  bool has_more_after = 3;
+enum RuntimeRequestKind {
+  RUNTIME_REQUEST_KIND_UNSPECIFIED = 0;
+  RUNTIME_REQUEST_KIND_TOOL_APPROVAL = 1;
+  RUNTIME_REQUEST_KIND_USER_INPUT = 2;
+  RUNTIME_REQUEST_KIND_PLAN_REVIEW = 3;
+  RUNTIME_REQUEST_KIND_SECRET_INPUT = 4;
 }
 
-message SessionEvent {
-  uint64 seq = 1;
-  google.protobuf.Timestamp ts = 2;
-  string turn_id = 3;
-  oneof kind {
-    StatusChanged status = 10;
-    TurnStarted turn_started = 11;
-    UserMessage user_message = 12;
-    AgentMessage agent_message = 13;
-    ToolCall tool_call = 14;
-    ToolResult tool_result = 15;
-    TurnCompleted turn_completed = 16;
-    ErrorEvent error = 17;
-    QuestionAsked question_asked = 18;
-    QuestionResolved question_resolved = 19;
-    // Reply text the agent is still writing. Never stored, and seq is 0:
-    // it is not a position to resume from. Sent only to streams that ask
-    // (StreamEventsRequest.partial). Any stored event that follows ends the
-    // draft; its text is then in that event, or the agent dropped it.
-    AgentDraft agent_draft = 20;
-    MessageReceived message_received = 21;
-    MessageSent message_sent = 22;
-  }
+enum RuntimeRequestStatus {
+  RUNTIME_REQUEST_STATUS_UNSPECIFIED = 0;
+  RUNTIME_REQUEST_STATUS_PENDING = 1;
+  RUNTIME_REQUEST_STATUS_RESOLVED = 2;
+  RUNTIME_REQUEST_STATUS_DISMISSED = 3;
+  RUNTIME_REQUEST_STATUS_EXPIRED = 4;
 }
 
-message StatusChanged {
-  SessionStatus status = 1;
+enum ResponseMode {
+  RESPONSE_MODE_UNSPECIFIED = 0;
+  RESPONSE_MODE_LIVE_RPC = 1;
+  RESPONSE_MODE_RESUME_TURN = 2;
+}
+
+enum ApprovalDecision {
+  APPROVAL_DECISION_UNSPECIFIED = 0;
+  APPROVAL_DECISION_ACCEPT_ONCE = 1;
+  APPROVAL_DECISION_ACCEPT_FOR_SESSION = 2;
+  APPROVAL_DECISION_DECLINE = 3;
+  APPROVAL_DECISION_CANCEL_TURN = 4;
+}
+
+message ToolApprovalPayload {
+  string tool_category = 1;
+  string tool_name = 2;
+  string command = 3;
+  string target_path = 4;
+  string diff_preview = 5;
+  string reason = 6;
+  bool outside_workspace = 7;
+  string rule_key = 8;
+}
+
+message UserInputPayload {
+  repeated QuestionItem questions = 1;
+}
+
+message PlanReviewPayload {
+  string plan_id = 1;
+  string title = 2;
+  string markdown = 3;
+}
+
+message SecretInputPayload {
+  string label = 1;
   string reason = 2;
+  string placeholder = 3;
+  string delivery = 4;
 }
 
-message TurnStarted {
-  uint32 turn = 1;
-  // Who asked for the turn: the client id of the agent whose session start
-  // or message began it (docs/agent-messages.md §7.2).
-  string asker = 2;
+message QuestionAnswer {
+  repeated string selected_options = 1;
+  string custom_text = 2;
+  repeated AttachmentRef attachments = 3;
 }
 
-// A message an agent wrote to the session (docs/agent-messages.md §7.2).
-message MessageReceived {
-  string message_id = 1;
-  // The sender's address: a client id, or a machine id and session.
-  string from = 2;
-  string from_name = 3;
-  string text = 4;
-  string in_reply_to = 5;
-  // What became of it: "turn" (it began a turn), "joined" (it joined its
-  // sender's turn), "answer" (it answered its sender's question) or
-  // "queued" (it waits for a turn of its own).
-  string delivered = 6;
-  repeated AttachmentInfo attachments = 7;
+message RuntimeRequest {
+  string request_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  RuntimeRequestKind kind = 4;
+  RuntimeRequestStatus status = 5;
+  ResponseMode response_mode = 6;
+  ToolApprovalPayload approval = 7;
+  UserInputPayload user_input = 8;
+  PlanReviewPayload plan_review = 9;
+  SecretInputPayload secret_input = 10;
+  ApprovalDecision resolved_decision = 11;
+  string resolved_feedback = 12;
+  map<string, QuestionAnswer> resolved_answers = 13;
+  QuestionResolution question_resolution = 14;
+  Actor resolved_by = 15;
+  google.protobuf.Timestamp expires_at = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp resolved_at = 18;
 }
 
-// A message the session's coding agent wrote to an agent.
-message MessageSent {
-  string message_id = 1;
-  // The recipient's address.
-  string to = 2;
-  string to_name = 3;
-  string text = 4;
-  string in_reply_to = 5;
+enum TurnItemKind {
+  TURN_ITEM_KIND_UNSPECIFIED = 0;
+  TURN_ITEM_KIND_USER_MESSAGE = 1;
+  TURN_ITEM_KIND_ASSISTANT_MESSAGE = 2;
+  TURN_ITEM_KIND_REASONING = 3;
+  TURN_ITEM_KIND_TOOL_CALL = 4;
+  TURN_ITEM_KIND_COMMAND_EXECUTION = 5;
+  TURN_ITEM_KIND_FILE_CHANGE = 6;
+  TURN_ITEM_KIND_PROPOSED_PLAN = 7;
+  TURN_ITEM_KIND_TODO_LIST = 8;
+  TURN_ITEM_KIND_RUNTIME_REQUEST = 9;
+  TURN_ITEM_KIND_HANDOFF = 10;
+  TURN_ITEM_KIND_MODEL_SWITCH = 11;
+  TURN_ITEM_KIND_CHECKPOINT = 12;
+  TURN_ITEM_KIND_SYSTEM_NOTICE = 13;
+  TURN_ITEM_KIND_ERROR = 14;
+  TURN_ITEM_KIND_MESSAGE_RECEIVED = 15;
+  TURN_ITEM_KIND_MESSAGE_SENT = 16;
 }
 
-message UserMessage {
-  // As the agent got it (with the list of attached files).
-  string text = 1;
-  repeated AttachmentInfo attachments = 2;
+message TodoStep {
+  string id = 1;
+  string text = 2;
+  string status = 3;
 }
 
-message AgentMessage {
-  string text = 1;
+message TurnItem {
+  string item_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  uint64 seq = 4;
+  TurnItemKind kind = 5;
+  string status = 6;
+  Actor actor = 7;
+  string text = 8;
+  bool streaming = 9;
+  repeated AttachmentRef attachments = 10;
+  string tool_name = 11;
+  string command = 12;
+  int32 exit_code = 13;
+  string output = 14;
+  bool output_truncated = 15;
+  string output_blob_sha256 = 16;
+  uint64 output_size = 17;
+  string file_path = 18;
+  string diff = 19;
+  uint32 additions = 20;
+  uint32 deletions = 21;
+  string plan_title = 22;
+  repeated TodoStep todo_steps = 23;
+  string request_id = 24;
+  string checkpoint_id = 25;
+  ModelSelection from_selection = 26;
+  ModelSelection to_selection = 27;
+  string handoff_strategy = 28;
+  string mail_message_id = 29;
+  string mail_address = 30;
+  string mail_name = 31;
+  string mail_delivered = 32;
+  string mail_in_reply_to = 33;
+  Failure failure = 34;
+  google.protobuf.Timestamp created_at = 35;
+  google.protobuf.Timestamp updated_at = 36;
 }
 
-message AgentDraft {
-  // Text to append to the draft.
-  string text = 1;
-  // Text is the whole draft so far, not an addition: the first draft a
-  // stream sends, and the first after a stored event the reply went on past.
-  bool whole = 2;
-}
-
+// Value types used by UI conversation step reducers.
 message ToolCall {
   string call_id = 1;
-  // read | search | edit | shell | network | mcp | other
   string kind = 2;
   string name = 3;
   string summary = 4;
-  // allow | deny
   string decision = 5;
   string reason = 6;
 }
 
 message ToolResult {
   string call_id = 1;
-  // The output: whole, or its first part when size is set.
   string summary = 2;
   bool is_error = 3;
-  // summary is not the whole output: its first 16 KiB (FULL), or an
-  // output cut when recorded (past 1 MiB its first and last 512 KiB are
-  // kept; machines from before that kept its first 16 KiB only).
   bool truncated = 4;
-  // summary is a preview (EVENT_VIEW_BASIC).
   bool preview = 5;
-  // The whole output's length in bytes, when it is longer than summary:
-  // ReadToolOutput reads it.
   uint64 size = 6;
-}
-
-message ReadToolOutputRequest {
-  string session_id = 1;
-  string call_id = 2;
-}
-
-message ToolOutputChunk {
-  bytes data = 1;
-  // On the first chunk: the whole length.
-  uint64 size = 2;
+  string blob_sha256 = 7;
 }
 
 message TurnCompleted {
@@ -620,7 +701,6 @@ message TurnCompleted {
   Usage usage = 4;
   DiffStat diff_stat = 5;
   string commit = 6;
-  // Set when is_error is true.
   Failure failure = 7;
 }
 
@@ -629,120 +709,412 @@ message ErrorEvent {
   Failure failure = 2;
 }
 
-// SendMessage starts a turn on an idle session. While a turn runs, the
-// message joins it when the agent takes input mid-turn (Claude Code,
-// Codex), or becomes the next turn, started right after with no idle in
-// between (ACP agents). A turn that fails drops the messages that waited
-// for it.
-message SendMessageRequest {
-  string session_id = 1;
-  string text = 2;
-  repeated Attachment attachments = 3;
-  string coding_consent_version = 4;
+message CheckpointFile {
+  string path = 1;
+  string status = 2;
+  uint32 additions = 3;
+  uint32 deletions = 4;
 }
 
-message SendMessageResponse {
+message Checkpoint {
+  string checkpoint_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  uint32 run_ordinal = 4;
+  string git_tree_oid = 5;
+  string head_oid = 6;
+  repeated CheckpointFile files = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+enum BackgroundTaskKind {
+  BACKGROUND_TASK_KIND_UNSPECIFIED = 0;
+  BACKGROUND_TASK_KIND_COMMAND = 1;
+  BACKGROUND_TASK_KIND_SUBAGENT = 2;
+  BACKGROUND_TASK_KIND_SCHEDULE = 3;
+  BACKGROUND_TASK_KIND_DAEMON = 4;
+}
+
+enum BackgroundTaskStatus {
+  BACKGROUND_TASK_STATUS_UNSPECIFIED = 0;
+  BACKGROUND_TASK_STATUS_RUNNING = 1;
+  BACKGROUND_TASK_STATUS_COMPLETED = 2;
+  BACKGROUND_TASK_STATUS_FAILED = 3;
+  BACKGROUND_TASK_STATUS_STOPPED = 4;
+}
+
+enum BackgroundTaskStopScope {
+  BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED = 0;
+  BACKGROUND_TASK_STOP_SCOPE_SINGLE = 1;
+  BACKGROUND_TASK_STOP_SCOPE_SESSION = 2;
+}
+
+message BackgroundTask {
+  string task_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string item_id = 4;
+  BackgroundTaskKind kind = 5;
+  BackgroundTaskStatus status = 6;
+  string title = 7;
+  string command = 8;
+  string output_tail = 9;
+  string summary = 10;
+  optional int32 exit_code = 11;
+  bool awaited = 12;
+  BackgroundTaskStopScope stop_scope = 13;
+  google.protobuf.Timestamp started_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  google.protobuf.Timestamp completed_at = 16;
+}
+
+message SessionEvent {
+  uint64 seq = 1;
+  string session_id = 2;
+  string type = 3;
+  Session session = 4;
+  Run run = 5;
+  TurnItem item = 6;
+  RuntimeRequest request = 7;
+  Checkpoint checkpoint = 8;
+  string text_delta = 9;
+  string target_item_id = 10;
+  google.protobuf.Timestamp occurred_at = 11;
+  BackgroundTask background_task = 12;
+}
+
+message SessionProjection {
   Session session = 1;
+  repeated Run runs = 2;
+  repeated TurnItem items = 3;
+  repeated RuntimeRequest requests = 4;
+  repeated Checkpoint checkpoints = 5;
+  repeated ProviderSession provider_sessions = 6;
+  repeated BackgroundTask background_tasks = 7;
+}
+
+// ---------------------------------------------------------------------------
+// RPC Requests & Responses
+
+message ListProvidersRequest {
+  string machine_id = 1;
+  string project_id = 2;
+  bool refresh = 3;
+}
+
+message ListProvidersResponse {
+  repeated ProviderInstance providers = 1;
+  hermesh.identity.v1.RuntimeMode max_runtime_mode = 2;
+}
+
+message UpsertProviderInstanceRequest {
+  string machine_id = 1;
+  ProviderInstanceConfig config = 2;
+}
+
+message UpsertProviderInstanceResponse {
+  ProviderInstance provider = 1;
+}
+
+message RemoveProviderInstanceRequest {
+  string machine_id = 1;
+  string instance_id = 2;
+}
+
+message RemoveProviderInstanceResponse {}
+
+message StartSessionRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string project_id = 3;
+  string title = 4;
+  ModelSelection model_selection = 5;
+  hermesh.identity.v1.RuntimeMode runtime_mode = 6;
+  InteractionMode interaction_mode = 7;
+  WorkspaceStrategy workspace = 8;
+  string initial_prompt = 9;
+  repeated AttachmentRef attachments = 10;
+  string parent_session_id = 11;
+  optional uint32 question_timeout_seconds = 12;
+  string conversation = 13;
+}
+
+message StartSessionResponse {
+  Session session = 1;
+  Run initial_run = 2;
+  bool queued_offline = 3;
+}
+
+message GetSessionRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  // Return immediately from local SQLite cache without dialing remote machines.
+  bool cached_only = 3;
+}
+
+message GetSessionResponse {
+  SessionProjection projection = 1;
+  // True when projection was served from local SQLite cache rather than live machine state.
+  bool from_cache = 2;
+}
+
+message ListSessionsRequest {
+  string machine_id = 1;
+  string project_id = 2;
+  SessionStatus status = 3;
+  google.protobuf.Timestamp since = 4;
+  bool include_archived = 5;
+  uint32 limit = 6;
+  SessionCursor before = 7;
+  SessionView view = 8;
+}
+
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  SessionCursor next = 2;
+}
+
+message WatchSessionsRequest {
+  string machine_id = 1;
+  bool include_archived = 2;
+  SessionView view = 3;
+}
+
+message WatchSessionsResponse {
+  bool snapshot = 1;
+  repeated Session sessions = 2;
+  repeated string deleted_session_ids = 3;
+}
+
+message SubscribeSessionRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  uint64 after_seq = 3;
+}
+
+message DispatchMessageRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  string text = 4;
+  repeated AttachmentRef attachments = 5;
+  DispatchIntent intent = 6;
+  ModelSelection model_selection = 7;
+  hermesh.identity.v1.RuntimeMode runtime_mode = 8;
+  InteractionMode interaction_mode = 9;
+  string conversation = 10;
+  optional uint32 question_timeout_seconds = 11;
+}
+
+message DispatchMessageResponse {
+  Session session = 1;
+  Run run = 2;
+  bool steered_active_run = 3;
+  bool queued_offline = 4;
 }
 
 message DeliverMessageRequest {
   string session_id = 1;
-  // An inbox.v1.Message, signed by the sender's identity key.
   hermesh.identity.v1.Signed message = 2;
-  repeated Attachment attachments = 3;
-  string coding_consent_version = 4;
+  repeated AttachmentRef attachments = 3;
 }
 
 message DeliverMessageResponse {
   Session session = 1;
-  // As MessageReceived.delivered.
   string delivered = 2;
 }
 
 message InterruptSessionRequest {
-  string session_id = 1;
-}
-
-message ArchiveSessionRequest {
-  string session_id = 1;
-}
-
-message UnarchiveSessionRequest {
-  string session_id = 1;
-}
-
-message DeleteSessionRequest {
-  string session_id = 1;
-}
-
-message DeleteSessionResponse {}
-
-message RenameSessionRequest {
-  string session_id = 1;
-  // The new title; it can't be empty.
-  string title = 2;
-}
-
-message AnswerQuestionRequest {
-  string session_id = 1;
-  // Empty: the pending question.
-  string question_id = 2;
-  repeated Answer answers = 3;
-  // No answer: the agent is told nobody will answer and to continue.
-  bool decline = 4;
-  string coding_consent_version = 5;
-}
-
-message CheckLocalCodingRecipientRequest {
-  oneof destination {
-    string agent = 1;
-    string session_id = 2;
-  }
-  string project_id = 3;
-}
-
-message CheckLocalCodingRecipientResponse { string version = 1; }
-
-enum CodingConsentScope {
-  CODING_CONSENT_SCOPE_UNSPECIFIED = 0;
-  CODING_CONSENT_SCOPE_HER = 1;
-  CODING_CONSENT_SCOPE_MOBILE_ANSWER = 2;
-}
-
-message CodingConsentRequest {
-  string agent = 1;
-  string project_id = 2;
+  string command_id = 1;
+  string machine_id = 2;
   string session_id = 3;
-  CodingConsentScope scope = 4;
-  // Approval must echo the version of the disclosure the owner saw.
-  string approve_version = 5;
-  bool revoke = 6;
+  string run_id = 4;
+  string reason = 5;
+  bool hold_queue = 6;
+  bool force = 7;
 }
 
-message CodingConsentResponse {
-  string recipient = 1;
-  string route = 2;
-  string machine_id = 3;
-  string data_categories = 4;
-  string purpose = 5;
-  string version = 6;
-  bool approved = 7;
-  bool local = 8;
+message InterruptSessionResponse {
+  Session session = 1;
+}
+
+message StopBackgroundTaskRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  // Empty stops all running background tasks on the session.
+  string task_id = 4;
+}
+
+message StopBackgroundTaskResponse {
+  Session session = 1;
+  repeated BackgroundTask stopped_tasks = 2;
+}
+
+enum QueueOperation {
+  QUEUE_OPERATION_UNSPECIFIED = 0;
+  QUEUE_OPERATION_EDIT = 1;
+  QUEUE_OPERATION_REORDER = 2;
+  QUEUE_OPERATION_CANCEL = 3;
+  QUEUE_OPERATION_PROMOTE_TO_STEER = 4;
+  QUEUE_OPERATION_RESUME_QUEUE = 5;
+}
+
+message ManageQueueRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  QueueOperation operation = 4;
+  string run_id = 5;
+  string before_run_id = 6;
+  string text = 7;
+  repeated AttachmentRef attachments = 8;
+}
+
+message ManageQueueResponse {
+  Session session = 1;
+  repeated Run queued_runs = 2;
+}
+
+message UpdateSessionRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  ModelSelection model_selection = 4;
+  hermesh.identity.v1.RuntimeMode runtime_mode = 5;
+  InteractionMode interaction_mode = 6;
+  string title = 7;
+  bool has_archived = 8;
+  bool archived = 9;
+  bool has_pinned = 10;
+  bool pinned = 11;
+}
+
+message UpdateSessionResponse {
+  Session session = 1;
+  string transition_applied = 2;
+}
+
+message RespondRuntimeRequestRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  string request_id = 4;
+  ApprovalDecision decision = 5;
+  string feedback = 6;
+  map<string, QuestionAnswer> answers = 7;
+  string secret_value = 8;
+  bool approve_plan = 9;
+  bool decline = 10;
+}
+
+message RespondRuntimeRequestResponse {
+  Session session = 1;
+  RuntimeRequest request = 2;
+  bool queued_offline = 3;
+}
+
+message ListCheckpointsRequest {
+  string machine_id = 1;
+  string session_id = 2;
+}
+
+message ListCheckpointsResponse {
+  repeated Checkpoint checkpoints = 1;
+}
+
+message RollbackCheckpointRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  string checkpoint_id = 4;
+  bool restore_files = 5;
+}
+
+message RollbackCheckpointResponse {
+  Session session = 1;
+  Checkpoint checkpoint = 2;
 }
 
 message GetDiffRequest {
-  string session_id = 1;
-  // 0 = cumulative since the base commit.
-  uint32 turn = 2;
-  bool stat_only = 3;
-  uint64 offset = 4;
+  string machine_id = 1;
+  string session_id = 2;
+  uint32 turn = 3;
+  string checkpoint_id = 4;
+  bool stat_only = 5;
+  uint64 offset = 6;
 }
 
 message GetDiffResponse {
   string diff = 1;
   DiffStat stat = 2;
-  bool truncated = 3;
-  uint64 next_offset = 4;
-  string base_commit = 5;
-  string head_commit = 6;
+  repeated CheckpointFile files = 3;
+  bool truncated = 4;
+  uint64 next_offset = 5;
+  string base_commit = 6;
+  string head_commit = 7;
+}
+
+message ForkSessionRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string source_session_id = 3;
+  uint32 up_to_run_ordinal = 4;
+  string title = 5;
+  WorkspaceStrategy workspace = 6;
+  ModelSelection model_selection = 7;
+}
+
+message ForkSessionResponse {
+  Session session = 1;
+}
+
+message DeleteSessionRequest {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+}
+
+message DeleteSessionResponse {}
+
+message UploadBlobRequest {
+  string machine_id = 1;
+  string name = 2;
+  string mime_type = 3;
+  bytes data = 4;
+}
+
+message UploadBlobResponse {
+  AttachmentRef attachment = 1;
+}
+
+message DownloadBlobRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  string blob_sha256 = 3;
+}
+
+message DownloadBlobResponse {
+  bytes data = 1;
+  string mime_type = 2;
+  string name = 3;
+  uint64 size_bytes = 4;
+}
+
+message OutboxEntry {
+  string command_id = 1;
+  string machine_id = 2;
+  string session_id = 3;
+  string method = 4;
+  string summary = 5;
+  string last_error = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListOutboxRequest {
+  string machine_id = 1;
+}
+
+message ListOutboxResponse {
+  repeated OutboxEntry entries = 1;
 }

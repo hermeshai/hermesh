@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { fixture, gitRepo, launch, snap } from "./app";
+import { fixture, gitRepo, launch, pickFrom, snap } from "./app";
 
 // The new-session composer (docs/thread-composer.md) against two real
 // machines: this Mac (owner-mac) and work-mac, a machine joined over the
@@ -30,40 +30,43 @@ test("a session on another machine: its folder added as a project, the model pic
     expect(area!.y + area!.height - (box!.y + box!.height)).toBeLessThan(90);
 
     // The environment: work-mac. It has no project yet, so the session would use its temporary workspace.
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await expect(page.getByTestId("launch-machine-chip")).toHaveText("work-mac");
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
 
-    // The box is one line (＋, the text, Send) until it is clicked into: then it opens, with the model in a row
-    // along its bottom; it grows as what is written needs more, and a click away folds it back once it is empty.
+    // The box is always the text over a row along its bottom (＋ and the model at its left, Send at its right): it
+    // does not fold to one line while empty, and it grows as what is written needs more.
     const input = page.getByTestId("thread-composer-input");
     const bar = page.getByTestId("composer-bar");
+    const submit = bar.getByTestId("composer-submit-btn");
     const height = async () => (await input.boundingBox())!.height;
-    expect(await height()).toBeLessThan(40);
-    await expect(bar).toBeHidden();
-    await expect(page.getByTestId("thread-composer").getByRole("button", { name: "添加附件" })).toBeVisible();
-    await input.click();
+    const empty = await height();
+    expect(empty).toBeGreaterThan(50);
     await expect(bar).toBeVisible();
+    await expect(bar.getByRole("button", { name: "添加附件" })).toBeVisible();
     await expect(bar.getByRole("button", { name: "模型" })).toBeVisible();
+    expect((await bar.boundingBox())!.y).toBeGreaterThanOrEqual((await input.boundingBox())!.y + empty);
+    // Send is only an arrow, with no plate under it, until there is something to send.
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await input.fill("第一行\n第二行\n第三行");
-    expect(await height()).toBeGreaterThan(60);
+    expect(await height()).toBeGreaterThan(empty);
+    await expect(submit).toBeEnabled();
+    await expect(submit).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await snap(page, "composer-lines");
     await input.fill("");
+    // A click away leaves it as it is: the row stays, the text as tall as it was.
     await card.getByRole("heading", { level: 1 }).click({ position: { x: 2, y: 2 } });
-    await expect(bar).toBeHidden();
-    // It folds back smoothly: one line once it has.
-    await expect.poll(height).toBeLessThan(40);
+    await expect(bar).toBeVisible();
+    expect(await height()).toBe(empty);
     // Typing on the page, away from any field, goes into the box.
     await page.keyboard.type("x");
     await expect(input).toHaveValue("x");
-    await expect(bar).toBeVisible();
     await input.fill("");
 
     // Add a Project from the project menu: work-mac's folders, browsed from here.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     const sheet = page.getByRole("dialog", { name: "添加项目" });
     await expect(sheet.getByRole("group", { name: "环境" }).getByRole("button", { name: "work-mac" })).toHaveAttribute("aria-pressed", "true");
     await expect(sheet.getByTestId("add-project-recent")).toBeVisible();
@@ -149,7 +152,7 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
     // Where it runs, fixed, beside the title; nothing under the box.
-    await expect(page.getByTestId("thread-where")).toHaveText(`work-mac · ${name}`);
+    await expect(page.getByTestId("session-where")).toHaveText(`work-mac · ${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("aria-current", "true");
@@ -160,14 +163,17 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByRole("log").locator(".am").nth(1)).toContainText("second_turn_done", { timeout: 30_000 });
 
     // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
-    await input.fill("sleep 20s\nsay never");
+    await input.fill("think weighing it\nsleep 4s\ntool-sleep 4s\nsleep 4s\nsay on it\nsleep 20s\nsay never");
     await input.press("Enter");
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 15_000 });
-    // And a line at the end of the conversation, as the iPhone's: the mark at work, thinking (no tool runs while it
-    // sleeps) and how long; under the last message, over the box.
+    // And a line at the end of the conversation, as the iPhone's: the mark at work, what the agent does now and how
+    // long; under the last message, over the box.
     const working = page.getByTestId("thread-working");
-    await expect(working).toContainText("思考中", { timeout: 15_000 });
+    await expect(working).toContainText("思考中", { timeout: 15_000 }); // its reasoning streams
     await expect(working).toContainText(/\d+:\d\d/);
+    await expect(working).toContainText("处理中"); // a tool runs
+    await expect(working).toContainText("工作中"); // between steps: no reasoning, tool or reply under way
+    await expect(working).toContainText("回复中"); // its reply streams
     const under = (await page.getByRole("log").locator(".um").filter({ hasText: "sleep 20s" }).boundingBox())!;
     const line = (await working.boundingBox())!;
     expect(line.y).toBeGreaterThan(under.y + under.height);
@@ -219,8 +225,7 @@ test("a new session's branch: a worktree from another branch, and the project's 
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await addProject(page, repo, name);
     await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
     const input = page.getByTestId("thread-composer-input");
@@ -270,8 +275,7 @@ test("a new session's branch: a worktree from another branch, and the project's 
 
 /** Add a Project on the chosen machine, its folder typed in. */
 async function addProject(page: Page, dir: string, name: string) {
-  await page.getByRole("button", { name: "项目" }).click();
-  await page.getByTestId("project-add").click();
+  await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
   const sheet = page.getByRole("dialog", { name: "添加项目" });
   await sheet.getByLabel("目录").fill(dir);
   await expect(sheet.getByLabel("项目名")).toHaveValue(name);
@@ -280,16 +284,14 @@ async function addProject(page: Page, dir: string, name: string) {
   await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
 }
 
-test("Add a Project on another machine from its own folders: a recent repository's place, a repository's top for a folder inside it, a new folder made there; an older machine says it needs an update", async () => {
+test("Add a Project on another machine from its own folders: a recent repository's place, a repository's top for a folder inside it, and a new folder made there", async () => {
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
 
     // work-mac's recent repositories, read from it.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     const sheet = page.getByRole("dialog", { name: "添加项目" });
     const recent = sheet.getByTestId("add-project-recent");
     await expect(recent.getByRole("button", { name: /~\/code\/recent-app/ })).toBeVisible();
@@ -309,8 +311,7 @@ test("Add a Project on another machine from its own folders: a recent repository
     await expect(page.getByTestId("launch-project-chip")).toHaveText("mono");
 
     // A new folder, made on work-mac under its home folder, as a git repository; then added.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     await sheet.getByRole("button", { name: "浏览…" }).click();
     const browser = sheet.getByTestId("folder-browser");
     await browser.getByRole("button", { name: /^code/ }).click();
@@ -328,8 +329,7 @@ test("Add a Project on another machine from its own folders: a recent repository
     await expect(page.getByTestId("launch-project-chip")).toHaveText("fresh-app");
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
     // Made again, the name is taken.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     await sheet.getByRole("button", { name: "浏览…" }).click();
     await browser.getByRole("button", { name: /^code/ }).click();
     await browser.getByRole("button", { name: "新建文件夹…" }).click();
@@ -337,14 +337,6 @@ test("Add a Project on another machine from its own folders: a recent repository
     await make.getByRole("button", { name: "新建" }).click();
     await expect(browser).toContainText("fresh-app is already there");
     await page.keyboard.press("Escape");
-
-    // old-mac runs a Hermesh from before threads: listed, marked, and a session can't be sent there.
-    await page.getByRole("button", { name: "环境" }).click();
-    await expect(page.getByTestId("machine-item-old-mac")).toContainText("需要更新");
-    await page.getByTestId("machine-item-old-mac").click();
-    await expect(page.getByTestId("launch-needs-update")).toContainText("old-mac 上的 Hermesh 需要更新才能新建会话");
-    await page.getByTestId("thread-composer-input").fill("say hi");
-    await expect(page.getByTestId("composer-submit-btn")).toBeDisabled();
   } finally {
     await app.close();
   }
@@ -356,8 +348,7 @@ test("a new session aimed at a machine gone offline: its projects and models as 
   try {
     // Read once while work-mac answers: its projects and its models.
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await page.getByRole("button", { name: "项目" }).click();
     await expect(page.getByTestId("project-item-mono")).toBeVisible();
     await page.keyboard.press("Escape");

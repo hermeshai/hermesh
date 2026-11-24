@@ -1,7 +1,7 @@
 import Foundation
 import HermeshProto
 
-/// Ordered v2 runtime autonomy modes from strictest to broadest.
+/// Ordered runtime autonomy modes from strictest to broadest.
 public let orderedRuntimeModes: [Hermesh_Identity_V1_RuntimeMode] = [
     .supervised,
     .autoEdits,
@@ -12,8 +12,8 @@ public let orderedRuntimeModes: [Hermesh_Identity_V1_RuntimeMode] = [
 public func runtimeModeRank(_ mode: Hermesh_Identity_V1_RuntimeMode) -> Int {
     switch mode {
     case .supervised: 1
-    case .autoEdits, .unspecified, .UNRECOGNIZED: 2
-    case .auto: 3
+    case .autoEdits: 2
+    case .auto, .unspecified, .UNRECOGNIZED: 3
     case .fullAccess: 4
     }
 }
@@ -24,7 +24,7 @@ public func clampRuntimeMode(
     _ requested: Hermesh_Identity_V1_RuntimeMode,
     ceiling: Hermesh_Identity_V1_RuntimeMode
 ) -> Hermesh_Identity_V1_RuntimeMode {
-    let req: Hermesh_Identity_V1_RuntimeMode = requested == .unspecified ? .autoEdits : requested
+    let req: Hermesh_Identity_V1_RuntimeMode = requested == .unspecified ? .auto : requested
     let cap: Hermesh_Identity_V1_RuntimeMode = ceiling == .unspecified ? .fullAccess : ceiling
     return runtimeModeRank(req) <= runtimeModeRank(cap) ? req : cap
 }
@@ -40,33 +40,33 @@ public func isRuntimeModeAllowed(
 public func runtimeModeTitle(_ mode: Hermesh_Identity_V1_RuntimeMode) -> String {
     switch mode {
     case .supervised: String(localized: "Supervised", bundle: .module)
-    case .autoEdits, .unspecified, .UNRECOGNIZED: String(localized: "Auto Edits", bundle: .module)
-    case .auto: String(localized: "Auto", bundle: .module)
+    case .autoEdits: String(localized: "Auto Edits", bundle: .module)
+    case .auto, .unspecified, .UNRECOGNIZED: String(localized: "Auto", bundle: .module)
     case .fullAccess: String(localized: "Full Access", bundle: .module)
     }
 }
 
-public func interactionModeTitle(_ mode: Hermesh_Thread_V2_InteractionMode) -> String {
+public func interactionModeTitle(_ mode: Hermesh_Session_V1_InteractionMode) -> String {
     switch mode {
     case .plan: String(localized: "Plan", bundle: .module)
     default: String(localized: "Code", bundle: .module)
     }
 }
 
-public func threadStatusTitle(_ status: Hermesh_Thread_V2_ThreadStatus) -> String {
+public func sessionStatusTitle(_ status: Hermesh_Session_V1_SessionStatus) -> String {
     switch status {
     case .preparing: String(localized: "Preparing", bundle: .module)
     case .running: String(localized: "Running", bundle: .module)
-    case .waitingRequest: String(localized: "Waiting for you", bundle: .module)
+    case .waitingInput: String(localized: "Waiting for you", bundle: .module)
     case .queued: String(localized: "Queued", bundle: .module)
-    case .failed: String(localized: "Failed", bundle: .module)
+    case .crashed: String(localized: "Failed", bundle: .module)
     case .archived: String(localized: "Archived", bundle: .module)
     default: String(localized: "Idle", bundle: .module)
     }
 }
 
-/// Polymorphic primary composer action in `ThreadWorkspaceView`.
-public enum ThreadComposerAction: String, Equatable, Sendable {
+/// Polymorphic primary composer action in unified session UI.
+public enum SessionComposerAction: String, Equatable, Sendable {
     case start
     case send
     case stop
@@ -87,16 +87,16 @@ public enum ThreadComposerAction: String, Equatable, Sendable {
 }
 
 public func composerPrimaryAction(
-    hasThread: Bool,
-    status: Hermesh_Thread_V2_ThreadStatus,
+    hasSession: Bool,
+    status: Hermesh_Session_V1_SessionStatus,
     draftNotEmpty: Bool,
     machineOnline: Bool,
     supportsLiveSteer: Bool
-) -> ThreadComposerAction {
+) -> SessionComposerAction {
     if !machineOnline {
         return .queueOffline
     }
-    if !hasThread {
+    if !hasSession {
         return .start
     }
     let running = status == .preparing || status == .running
@@ -106,7 +106,7 @@ public func composerPrimaryAction(
         }
         return supportsLiveSteer && status == .running ? .steer : .queue
     }
-    if status == .waitingRequest {
+    if status == .waitingInput {
         return draftNotEmpty ? .queue : .stop
     }
     if status == .queued {
@@ -115,11 +115,11 @@ public func composerPrimaryAction(
     return .send
 }
 
-/// Shared localized labels for v2 Thread UI surfaces.
-public enum ThreadWorkspaceStrings {
-    public static var newThread: String { String(localized: "New Thread", bundle: .module) }
+/// Shared localized labels for unified Session UI surfaces.
+public enum SessionWorkspaceStrings {
+    public static var newSession: String { String(localized: "New Thread", bundle: .module) }
     public static var approveOnce: String { String(localized: "Approve Once", bundle: .module) }
-    public static var allowInThread: String { String(localized: "Allow in Thread", bundle: .module) }
+    public static var allowInSession: String { String(localized: "Allow in Thread", bundle: .module) }
     public static var decline: String { String(localized: "Decline", bundle: .module) }
     public static var approvePlan: String { String(localized: "Approve Plan & Code", bundle: .module) }
     public static var checkpoints: String { String(localized: "Checkpoints", bundle: .module) }
@@ -128,18 +128,18 @@ public enum ThreadWorkspaceStrings {
 }
 
 /// Deterministic client-side event-sourced reducer matching Go `kernel.Engine` and `@hermesh/core`.
-public func applyThreadEvent(
-    _ event: Hermesh_Thread_V2_ThreadEvent,
-    to current: Hermesh_Thread_V2_ThreadProjection?
-) -> Hermesh_Thread_V2_ThreadProjection {
-    var next = current ?? Hermesh_Thread_V2_ThreadProjection()
-    let prevLastSeq = next.thread.lastSeq
-    if event.hasThread {
-        next.thread = event.thread
+public func applySessionEvent(
+    _ event: Hermesh_Session_V1_SessionEvent,
+    to current: Hermesh_Session_V1_SessionProjection?
+) -> Hermesh_Session_V1_SessionProjection {
+    var next = current ?? Hermesh_Session_V1_SessionProjection()
+    let prevLastSeq = next.session.progress.lastEventSeq
+    if event.hasSession {
+        next.session = event.session
     }
-    let maxSeq = max(prevLastSeq, max(next.thread.lastSeq, event.seq))
-    if next.thread.lastSeq != maxSeq {
-        next.thread.lastSeq = maxSeq
+    let maxSeq = max(prevLastSeq, max(next.session.progress.lastEventSeq, event.seq))
+    if next.session.progress.lastEventSeq != maxSeq {
+        next.session.progress.lastEventSeq = maxSeq
     }
 
     if event.hasRun {
@@ -162,7 +162,7 @@ public func applyThreadEvent(
         } else {
             next.items.append(event.item)
         }
-        next.items.sort(by: { (a: Hermesh_Thread_V2_TurnItem, b: Hermesh_Thread_V2_TurnItem) -> Bool in
+        next.items.sort(by: { (a: Hermesh_Session_V1_TurnItem, b: Hermesh_Session_V1_TurnItem) -> Bool in
             a.seq < b.seq
         })
     }
@@ -175,7 +175,7 @@ public func applyThreadEvent(
         }
     }
 
-    if event.type == "thread.rolled_back" && event.hasCheckpoint {
+    if event.type == "session.rolled_back" && event.hasCheckpoint {
         let maxOrd = event.checkpoint.runOrdinal
         let removedRunIDs = Set(
             next.runs
@@ -209,25 +209,25 @@ public func applyThreadEvent(
     return next
 }
 
-public func queuedRuns(of projection: Hermesh_Thread_V2_ThreadProjection?) -> [Hermesh_Thread_V2_Run] {
+public func queuedRuns(of projection: Hermesh_Session_V1_SessionProjection?) -> [Hermesh_Session_V1_Run] {
     guard let projection else { return [] }
     return projection.runs
         .filter { $0.status == .queued }
-        .sorted(by: { (a: Hermesh_Thread_V2_Run, b: Hermesh_Thread_V2_Run) -> Bool in
+        .sorted(by: { (a: Hermesh_Session_V1_Run, b: Hermesh_Session_V1_Run) -> Bool in
             a.queueOrder < b.queueOrder
         })
 }
 
-public func pendingRequest(of projection: Hermesh_Thread_V2_ThreadProjection?) -> Hermesh_Thread_V2_RuntimeRequest? {
+public func pendingRequest(of projection: Hermesh_Session_V1_SessionProjection?) -> Hermesh_Session_V1_RuntimeRequest? {
     guard let projection else { return nil }
-    let pid = projection.thread.pendingRequestID
+    let pid = projection.session.pendingRequestID
     if !pid.isEmpty, let found = projection.requests.first(where: { $0.requestID == pid && $0.status == .pending }) {
         return found
     }
     return projection.requests.first(where: { $0.status == .pending })
 }
 
-public func activeBackgroundTasks(of projection: Hermesh_Thread_V2_ThreadProjection?) -> [Hermesh_Thread_V2_BackgroundTask] {
+public func activeBackgroundTasks(of projection: Hermesh_Session_V1_SessionProjection?) -> [Hermesh_Session_V1_BackgroundTask] {
     guard let projection else { return [] }
     return projection.backgroundTasks
         .filter { $0.status == .running }
@@ -237,7 +237,7 @@ public func activeBackgroundTasks(of projection: Hermesh_Thread_V2_ThreadProject
         }
 }
 
-public func backgroundTasks(of projection: Hermesh_Thread_V2_ThreadProjection?) -> [Hermesh_Thread_V2_BackgroundTask] {
+public func backgroundTasks(of projection: Hermesh_Session_V1_SessionProjection?) -> [Hermesh_Session_V1_BackgroundTask] {
     guard let projection else { return [] }
     return projection.backgroundTasks.sorted { a, b in
         let ar = a.status == .running
@@ -253,7 +253,7 @@ public func backgroundTasks(of projection: Hermesh_Thread_V2_ThreadProjection?) 
     }
 }
 
-public func activeBackgroundItemIDs(of projection: Hermesh_Thread_V2_ThreadProjection?) -> Set<String> {
+public func activeBackgroundItemIDs(of projection: Hermesh_Session_V1_SessionProjection?) -> Set<String> {
     guard let projection else { return [] }
     var out = Set<String>()
     for bt in projection.backgroundTasks where bt.status == .running && !bt.itemID.isEmpty {

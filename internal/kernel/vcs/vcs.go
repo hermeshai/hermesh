@@ -1,22 +1,26 @@
 // Package vcs provides Git worktree isolation, shadow-index tree checkpoints
 // (without polluting the user's index or commit log), unified diffs, and
-// checkpoint file rollback for Hermesh v2 threads.
+// checkpoint file rollback for Hermesh sessions.
 package vcs
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
 type Manager struct {
@@ -31,6 +35,8 @@ func NewManager(worktreesRoot string) *Manager {
 		repoLocks:     map[string]*sync.Mutex{},
 	}
 }
+
+func (m *Manager) WorktreesRoot() string { return m.worktreesRoot }
 
 func (m *Manager) lockRepo(repoPath string) func() {
 	m.mu.Lock()
@@ -61,10 +67,6 @@ func CurrentBranch(ctx context.Context, dir string) string {
 	return ""
 }
 
-// SwitchBranch checks branch out in the project's own folder, for a session
-// that works in place on a branch other than the one checked out. Only when
-// no tracked file has uncommitted changes: they are the person's, and a
-// switch would carry them along or fail half way.
 func (m *Manager) SwitchBranch(ctx context.Context, dir, branch string) error {
 	unlock := m.lockRepo(dir)
 	defer unlock()
@@ -84,9 +86,6 @@ func (m *Manager) SwitchBranch(ctx context.Context, dir, branch string) error {
 	return nil
 }
 
-// FetchBase brings base up to date from origin and returns what a worktree
-// starts from then: origin/<base>. An empty or HEAD base is the branch
-// checked out.
 func FetchBase(ctx context.Context, dir, base string) (string, error) {
 	if base == "" || base == "HEAD" {
 		base = CurrentBranch(ctx, dir)
@@ -97,8 +96,8 @@ func FetchBase(ctx context.Context, dir, base string) (string, error) {
 	return "origin/" + base, nil
 }
 
-// PrepareWorktree creates or restores an isolated git worktree for threadID.
-func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, threadID, baseRef, branch string) (worktreePath, resolvedBranch string, err error) {
+// PrepareWorktree creates or restores an isolated git worktree for sessionID.
+func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, sessionID, baseRef, branch string) (worktreePath, resolvedBranch string, err error) {
 	if !IsGitRepo(ctx, repoPath) {
 		return "", "", fmt.Errorf("project directory %q is not a git repository", repoPath)
 	}
@@ -108,24 +107,21 @@ func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, threadID, baseR
 	if err := os.MkdirAll(m.worktreesRoot, 0o755); err != nil {
 		return "", "", err
 	}
-	wtPath := filepath.Join(m.worktreesRoot, threadID)
+	wtPath := filepath.Join(m.worktreesRoot, sessionID)
 	if branch == "" {
-		branch = "hermesh/" + threadID
+		branch = "hermesh/" + sessionID
 	}
 	if baseRef == "" {
 		baseRef = "HEAD"
 	}
 
-	// If the worktree already exists on disk and is valid, reuse it.
 	if st, statErr := os.Stat(wtPath); statErr == nil && st.IsDir() && IsGitRepo(ctx, wtPath) {
 		return wtPath, branch, nil
 	}
 
-	// Prune any stale worktree registrations first.
 	_, _ = runGit(ctx, repoPath, nil, "worktree", "prune")
 	_ = os.RemoveAll(wtPath)
 
-	// Verify baseRef exists unless branch already exists (resuming missing worktree).
 	branchExists := false
 	if _, bErr := runGit(ctx, repoPath, nil, "rev-parse", "--verify", "refs/heads/"+branch); bErr == nil {
 		branchExists = true
@@ -136,8 +132,8 @@ func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, threadID, baseR
 		}
 		return wtPath, branch, nil
 	}
-	if _, err := runGit(ctx, repoPath, nil, "rev-parse", "--verify", baseRef+"^{commit}"); err != nil {
-		return "", "", fmt.Errorf("base ref %q not found in repository: %w", baseRef, err)
+	if _, err := runGit(ctx, repoPath, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", baseRef+"^{commit}"); err != nil {
+		return "", "", &BaseRefError{Ref: baseRef}
 	}
 	if _, err := runGit(ctx, repoPath, nil, "worktree", "add", "-b", branch, wtPath, baseRef); err != nil {
 		return "", "", fmt.Errorf("create worktree from %s: %w", baseRef, err)
@@ -145,7 +141,153 @@ func (m *Manager) PrepareWorktree(ctx context.Context, repoPath, threadID, baseR
 	return wtPath, branch, nil
 }
 
-// RemoveWorktree detaches and deletes a thread's isolated worktree while leaving its branch intact.
+type BaseRefError struct {
+	Ref     string
+	Looked  bool
+	Remotes []string
+	Fetch   error
+}
+
+func (e *BaseRefError) Error() string {
+	return fmt.Sprintf("base ref %q does not resolve to a commit in the local repository%s", e.Ref, e.Upstream())
+}
+
+func (e *BaseRefError) Upstream() string {
+	switch {
+	case !e.Looked:
+		return ""
+	case e.Fetch != nil:
+		return ", and fetching it failed: " + strings.ReplaceAll(e.Fetch.Error(), "\n", "; ")
+	case len(e.Remotes) == 0:
+		return ", which has no remote to fetch it from"
+	case len(e.Remotes) == 1:
+		return " or on its remote " + e.Remotes[0]
+	}
+	return " or on its remotes " + strings.Join(e.Remotes, ", ")
+}
+
+type upstreamRef struct{ src, dst string }
+
+var commitIDRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
+
+func upstreamRefs(baseRef, r string, remotes []string) []upstreamRef {
+	switch {
+	case commitIDRE.MatchString(baseRef):
+		return []upstreamRef{{baseRef, ""}}
+	case strings.HasPrefix(baseRef, "refs/tags/"):
+		return []upstreamRef{{baseRef, baseRef}}
+	case strings.HasPrefix(baseRef, "refs/heads/"):
+		return []upstreamRef{{baseRef, "refs/remotes/" + r + "/" + strings.TrimPrefix(baseRef, "refs/heads/")}}
+	case strings.HasPrefix(baseRef, "refs/"):
+		return nil
+	}
+	for _, other := range remotes {
+		if b, ok := strings.CutPrefix(baseRef, other+"/"); ok {
+			if other != r {
+				return nil
+			}
+			return []upstreamRef{{"refs/heads/" + b, "refs/remotes/" + r + "/" + b}}
+		}
+	}
+	return []upstreamRef{{"refs/tags/" + baseRef, "refs/tags/" + baseRef}, {"refs/heads/" + baseRef, "refs/remotes/" + r + "/" + baseRef}}
+}
+
+func validRefs(ctx context.Context, repo string, names ...string) bool {
+	for _, n := range names {
+		if _, err := runGit(ctx, repo, nil, "check-ref-format", n); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func isCommit(ctx context.Context, repo, ref string) bool {
+	_, err := runGit(ctx, repo, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", ref+"^{commit}")
+	return err == nil
+}
+
+// FetchRef fetches a missing base ref alone from the repository's remotes (origin first).
+func (m *Manager) FetchRef(ctx context.Context, repo, baseRef string) (local, remote string, err error) {
+	if strings.HasPrefix(baseRef, "-") || strings.TrimSpace(baseRef) == "" {
+		return "", "", &BaseRefError{Ref: baseRef}
+	}
+	unlock := m.lockRepo("fetch:" + repo)
+	defer unlock()
+	if isCommit(ctx, repo, baseRef) {
+		return baseRef, "", nil
+	}
+	if _, err := runGit(ctx, repo, nil, "rev-parse", "--verify", "--quiet", "--end-of-options", baseRef+"^{object}"); err == nil {
+		return "", "", &BaseRefError{Ref: baseRef}
+	}
+	out, err := runGit(ctx, repo, nil, "remote")
+	if err != nil {
+		return "", "", err
+	}
+	remotes := strings.Fields(out)
+	if i := slices.Index(remotes, "origin"); i > 0 {
+		remotes = append([]string{"origin"}, slices.Delete(remotes, i, i+1)...)
+	}
+	missing := &BaseRefError{Ref: baseRef, Looked: true, Remotes: remotes}
+	var failed []error
+	gitRemote := func(args ...string) (string, error) {
+		rctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		return runGit(rctx, repo, shellenv.Environ(), args...)
+	}
+	fetch := func(r, refspec string) bool {
+		_, fErr := gitRemote("fetch", "--quiet", "--no-tags", "--no-recurse-submodules", r, refspec)
+		if fErr != nil {
+			failed = append(failed, fmt.Errorf("%s: %w", r, fErr))
+		}
+		return fErr == nil
+	}
+	for _, r := range remotes {
+		wants := slices.DeleteFunc(upstreamRefs(baseRef, r, remotes), func(u upstreamRef) bool {
+			return u.dst != "" && !validRefs(ctx, repo, u.src, u.dst)
+		})
+		switch {
+		case len(wants) == 0:
+			continue
+		case wants[0].dst == "":
+			if fetch(r, baseRef) && isCommit(ctx, repo, baseRef) {
+				return baseRef, r, nil
+			}
+			continue
+		}
+		args := []string{"ls-remote", r}
+		for _, u := range wants {
+			args = append(args, u.src)
+		}
+		lsOut, lsErr := gitRemote(args...)
+		if lsErr != nil {
+			failed = append(failed, fmt.Errorf("%s: %w", r, lsErr))
+			continue
+		}
+		there := map[string]bool{}
+		for _, line := range strings.Split(lsOut, "\n") {
+			if _, name, ok := strings.Cut(line, "\t"); ok {
+				there[strings.TrimSpace(name)] = true
+			}
+		}
+		for _, u := range wants {
+			if !there[u.src] {
+				continue
+			}
+			refspec := u.src + ":" + u.dst
+			if strings.HasPrefix(u.dst, "refs/remotes/") {
+				refspec = "+" + refspec
+			}
+			if fetch(r, refspec) && isCommit(ctx, repo, u.dst) {
+				return u.dst, r, nil
+			}
+			break
+		}
+	}
+	missing.Fetch = errors.Join(failed...)
+	return "", "", missing
+}
+
+// RemoveWorktree detaches and deletes a session's isolated worktree while leaving its branch intact.
 func (m *Manager) RemoveWorktree(ctx context.Context, repoPath, worktreePath string) error {
 	if worktreePath == "" {
 		return nil
@@ -159,6 +301,12 @@ func (m *Manager) RemoveWorktree(ctx context.Context, repoPath, worktreePath str
 	return os.RemoveAll(worktreePath)
 }
 
+// SnapshotWorkingTree computes the git tree OID of workdir's current files (tracked + untracked,
+// excluding standard gitignore) via a throwaway shadow index without touching the real index.
+func (m *Manager) SnapshotWorkingTree(ctx context.Context, workdir string) (treeOID, headOID string, err error) {
+	return m.snapshotWorkingTree(ctx, workdir)
+}
+
 func (m *Manager) snapshotWorkingTree(ctx context.Context, workdir string) (treeOID, headOID string, err error) {
 	tmpDir, err := os.MkdirTemp("", "hermesh-idx-*")
 	if err != nil {
@@ -167,7 +315,6 @@ func (m *Manager) snapshotWorkingTree(ctx context.Context, workdir string) (tree
 	defer os.RemoveAll(tmpDir)
 	shadowIndex := filepath.Join(tmpDir, "index")
 
-	// Seed shadow index from real index if HEAD exists so unchanged stat entries stay fast.
 	hOut, headErr := runGit(ctx, workdir, nil, "rev-parse", "--verify", "HEAD")
 	headOID = strings.TrimSpace(hOut)
 	env := []string{"GIT_INDEX_FILE=" + shadowIndex}
@@ -192,11 +339,9 @@ func (m *Manager) snapshotWorkingTree(ctx context.Context, workdir string) (tree
 	return strings.TrimSpace(treeOut), headOID, nil
 }
 
-// CaptureCheckpoint snapshots the entire working tree (tracked + untracked,
-// excluding .git and standard gitignore) into a Git tree object via a temporary
-// GIT_INDEX_FILE, pinning it under refs/hermesh/checkpoints/<threadID>/<ordinal>.
-// The user's real .git/index and commit history remain untouched.
-func (m *Manager) CaptureCheckpoint(ctx context.Context, workdir, checkpointID, threadID, runID string, runOrdinal uint32, prevTreeOID string) (*threadv2.Checkpoint, error) {
+// CaptureCheckpoint snapshots the entire working tree into a Git tree object via a temporary
+// GIT_INDEX_FILE, pinning it under refs/hermesh/checkpoints/<sessionID>/<ordinal>.
+func (m *Manager) CaptureCheckpoint(ctx context.Context, workdir, checkpointID, sessionID, runID string, runOrdinal uint32, prevTreeOID string) (*sessionv1.Checkpoint, error) {
 	if !IsGitRepo(ctx, workdir) {
 		return nil, nil
 	}
@@ -205,9 +350,7 @@ func (m *Manager) CaptureCheckpoint(ctx context.Context, workdir, checkpointID, 
 		return nil, err
 	}
 
-	// Pin tree via a parentless commit under refs/hermesh/checkpoints/ so git gc
-	// and git fsck keep all reachable blobs valid while the thread lives.
-	refName := fmt.Sprintf("refs/hermesh/checkpoints/%s/%d", sanitizeRefSegment(threadID), runOrdinal)
+	refName := fmt.Sprintf("refs/hermesh/checkpoints/%s/%d", sanitizeRefSegment(sessionID), runOrdinal)
 	if commitOut, cErr := runGit(ctx, workdir, nil, "commit-tree", treeOID, "-m", "hermesh checkpoint"); cErr == nil {
 		_, _ = runGit(ctx, workdir, nil, "update-ref", refName, strings.TrimSpace(commitOut))
 	}
@@ -218,14 +361,14 @@ func (m *Manager) CaptureCheckpoint(ctx context.Context, workdir, checkpointID, 
 			compareBase = strings.TrimSpace(ht)
 		}
 	}
-	var files []*threadv2.CheckpointFile
+	var files []*sessionv1.CheckpointFile
 	if compareBase != "" && compareBase != treeOID {
 		files = diffTreesSummary(ctx, workdir, compareBase, treeOID)
 	}
 
-	return &threadv2.Checkpoint{
+	return &sessionv1.Checkpoint{
 		CheckpointId: checkpointID,
-		ThreadId:     threadID,
+		SessionId:    sessionID,
 		RunId:        runID,
 		RunOrdinal:   runOrdinal,
 		GitTreeOid:   treeOID,
@@ -239,31 +382,38 @@ func (m *Manager) RestoreTree(ctx context.Context, workdir, treeOID string) erro
 	if !IsGitRepo(ctx, workdir) || treeOID == "" {
 		return fmt.Errorf("cannot restore git tree %q in %q", treeOID, workdir)
 	}
-	// Work through a throwaway index so the user's real .git/index (staged work)
-	// is never rewritten, matching how checkpoints are captured.
 	tmpDir, err := os.MkdirTemp("", "hermesh-restore-*")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmpDir)
 	env := []string{"GIT_INDEX_FILE=" + filepath.Join(tmpDir, "index")}
-	// 1. Load target tree into the shadow index.
 	if _, err := runGit(ctx, workdir, env, "read-tree", "--reset", treeOID); err != nil {
 		return fmt.Errorf("read-tree %s: %w", treeOID, err)
 	}
-	// 2. Force-write every file from treeOID to working directory.
 	if _, err := runGit(ctx, workdir, env, "checkout-index", "-f", "-a"); err != nil {
 		return fmt.Errorf("checkout-index %s: %w", treeOID, err)
 	}
-	// 3. Remove any file/dir on disk not present in treeOID (excluding gitignored).
 	if _, err := runGit(ctx, workdir, env, "clean", "-fd"); err != nil {
 		return fmt.Errorf("clean untracked files after restore: %w", err)
 	}
 	return nil
 }
 
+// DiffTrees computes unified diff and file summary between two git tree OIDs in repoOrWorkdir.
+func (m *Manager) DiffTrees(ctx context.Context, dir, baseTreeOID, targetTreeOID string) (string, []*sessionv1.CheckpointFile, error) {
+	if !IsGitRepo(ctx, dir) || baseTreeOID == "" || targetTreeOID == "" || baseTreeOID == targetTreeOID {
+		return "", nil, nil
+	}
+	patch, err := runGit(ctx, dir, nil, "diff-tree", "-p", "--no-commit-id", "-r", baseTreeOID, targetTreeOID)
+	if err != nil {
+		return "", nil, err
+	}
+	return patch, diffTreesSummary(ctx, dir, baseTreeOID, targetTreeOID), nil
+}
+
 // DiffWorkingTree computes unified diff and file stats between baseTreeOID (or HEAD) and current working tree.
-func (m *Manager) DiffWorkingTree(ctx context.Context, workdir, baseTreeOID string) (string, []*threadv2.CheckpointFile, error) {
+func (m *Manager) DiffWorkingTree(ctx context.Context, workdir, baseTreeOID string) (string, []*sessionv1.CheckpointFile, error) {
 	if !IsGitRepo(ctx, workdir) {
 		return "", nil, nil
 	}
@@ -278,7 +428,6 @@ func (m *Manager) DiffWorkingTree(ctx context.Context, workdir, baseTreeOID stri
 		}
 	}
 	if base == "" {
-		// Empty repo fallback: diff against Git's canonical empty tree.
 		emptyOut, _ := runGit(ctx, workdir, nil, "hash-object", "-t", "tree", "/dev/null")
 		base = strings.TrimSpace(emptyOut)
 		if base == "" {
@@ -295,7 +444,7 @@ func (m *Manager) DiffWorkingTree(ctx context.Context, workdir, baseTreeOID stri
 	return patch, diffTreesSummary(ctx, workdir, base, treeOID), nil
 }
 
-func diffTreesSummary(ctx context.Context, workdir, baseTree, nextTree string) []*threadv2.CheckpointFile {
+func diffTreesSummary(ctx context.Context, workdir, baseTree, nextTree string) []*sessionv1.CheckpointFile {
 	statusMap := map[string]string{}
 	if nameStatus, err := runGit(ctx, workdir, nil, "diff-tree", "--name-status", "--no-commit-id", "-r", baseTree, nextTree); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(nameStatus), "\n") {
@@ -309,7 +458,7 @@ func diffTreesSummary(ctx context.Context, workdir, baseTree, nextTree string) [
 	if err != nil {
 		return nil
 	}
-	var out []*threadv2.CheckpointFile
+	var out []*sessionv1.CheckpointFile
 	for _, line := range strings.Split(strings.TrimSpace(numstat), "\n") {
 		if line == "" {
 			continue
@@ -324,7 +473,7 @@ func diffTreesSummary(ctx context.Context, workdir, baseTree, nextTree string) [
 		if st == "" {
 			st = "M"
 		}
-		out = append(out, &threadv2.CheckpointFile{
+		out = append(out, &sessionv1.CheckpointFile{
 			Path:      parts[2],
 			Status:    st,
 			Additions: uint32(max(0, add)),
@@ -359,7 +508,7 @@ func sanitizeRefSegment(s string) string {
 		}
 	}
 	if b.Len() == 0 {
-		return "thread"
+		return "session"
 	}
 	return b.String()
 }

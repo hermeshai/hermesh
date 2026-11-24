@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 // Regression: destructive commands classified as routine -> auto-run in AUTO (the default mode)
@@ -24,7 +24,7 @@ func TestDestructiveCommandsAreNotRoutine(t *testing.T) {
 		risk := ClassifyCommand(c)
 		auto := EvaluateTool(ToolEvalInput{Category: "command", Command: c, EffectiveMode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO})
 		plan := EvaluateTool(ToolEvalInput{Category: "command", Command: c, EffectiveMode: identityv1.RuntimeMode_RUNTIME_MODE_AUTO,
-			InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_PLAN})
+			InteractionMode: sessionv1.InteractionMode_INTERACTION_MODE_PLAN})
 		t.Logf("%-55q risk=%d AUTO.allow=%v PLAN.allow=%v", c, risk, auto.Allow, plan.Allow)
 		if risk == RiskRoutine || auto.Allow {
 			t.Errorf("%q classified RiskRoutine (auto-allowed in AUTO)", c)

@@ -158,7 +158,7 @@ func TestOwnerReplica(t *testing.T) {
 		res, err := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{Limit: 50, View: sessionv1.SessionView_SESSION_VIEW_BASIC})
 		return err == nil && slices.ContainsFunc(res.Sessions, func(x *sessionv1.Session) bool { return x.SessionId == s.SessionID })
 	})
-	if _, err := w.app.client.ArchiveSession(ctx, &localv1.ArchiveSessionRequest{SessionId: onVPS}); err != nil {
+	if _, err := w.app.sessions.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{SessionId: onVPS, HasArchived: true, Archived: true}); err != nil {
 		t.Fatal(err)
 	}
 	res, err := w.app.client.ListSessions(ctx, &localv1.ListSessionsRequest{Limit: 50, View: sessionv1.SessionView_SESSION_VIEW_BASIC})

@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/kernel/catalog"
 	"github.com/hermeshai/hermesh/internal/kernel/policy"
 	"github.com/hermeshai/hermesh/internal/kernel/store"
@@ -30,13 +30,23 @@ import (
 )
 
 // ScratchProjectID is the workspace the kernel makes on every machine for
-// threads that name no project. It is not one of the machine's projects, so a
+// sessions that name no project. It is not one of the machine's projects, so a
 // grant's "*" does not cover it: a grant must list it by name.
 const ScratchProjectID = "scratch"
 
+const (
+	DefaultQuestionTimeout = 30 * time.Minute
+	maxInlineToolOutput    = 16384
+	maxDiffPageBytes       = 256 << 10
+
+	declinedQuestionMessage = "The user declined to answer. Do not wait for an answer; continue with your best judgment and state the assumption you made."
+	noAnswerQuestionFormat  = "No one answered within %s. Do not wait for an answer; continue with your best judgment and state the assumption you made."
+	noAnswerersPrompt       = "No one can answer questions in this session. Continue with your best judgment and state the assumption you made."
+)
+
 // Principal represents the verified cryptographic identity calling the kernel.
 type Principal struct {
-	Actor             *threadv2.Actor
+	Actor             *sessionv1.Actor
 	GrantCeiling      identityv1.RuntimeMode
 	AllowedProjects   []string
 	AllowedAgents     []string
@@ -50,8 +60,8 @@ func OwnerPrincipal(deviceID, label string) *Principal {
 		label = "Owner"
 	}
 	return &Principal{
-		Actor: &threadv2.Actor{
-			Kind:  threadv2.ActorKind_ACTOR_KIND_OWNER,
+		Actor: &sessionv1.Actor{
+			Kind:  sessionv1.ActorKind_ACTOR_KIND_OWNER,
 			Id:    deviceID,
 			Label: label,
 		},
@@ -61,16 +71,16 @@ func OwnerPrincipal(deviceID, label string) *Principal {
 }
 
 func GrantPrincipal(g *identityv1.Grant) *Principal {
-	kind := threadv2.ActorKind_ACTOR_KIND_EXTERNAL_AGENT
+	kind := sessionv1.ActorKind_ACTOR_KIND_EXTERNAL_AGENT
 	label := g.GetClientLabel()
 	if g.GetHerMachineId() != "" {
-		kind = threadv2.ActorKind_ACTOR_KIND_HER
+		kind = sessionv1.ActorKind_ACTOR_KIND_HER
 		if label == "" {
 			label = "Her"
 		}
 	}
 	return &Principal{
-		Actor: &threadv2.Actor{
+		Actor: &sessionv1.Actor{
 			Kind:    kind,
 			Id:      g.GetClientId(),
 			Label:   label,
@@ -89,7 +99,7 @@ func (p *Principal) allowsProject(projectID string) bool {
 	if p == nil {
 		return false
 	}
-	if p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_HER {
+	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
 		return true
 	}
 	if projectID == ScratchProjectID {
@@ -102,7 +112,7 @@ func (p *Principal) allowsAgent(instanceID, driverKind, acpFlavor string) bool {
 	if p == nil {
 		return false
 	}
-	if p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_HER {
+	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
 		return true
 	}
 	return identity.Allows(p.AllowedAgents, instanceID) ||
@@ -110,34 +120,58 @@ func (p *Principal) allowsAgent(instanceID, driverKind, acpFlavor string) bool {
 		(acpFlavor != "" && identity.Allows(p.AllowedAgents, acpFlavor))
 }
 
-func (p *Principal) canViewThread(t *threadv2.Thread) bool {
-	if p == nil {
+func (p *Principal) canViewSession(s *sessionv1.Session) bool {
+	if p == nil || s == nil {
 		return false
 	}
-	if p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == threadv2.ActorKind_ACTOR_KIND_HER {
+	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
 		return true
 	}
-	if !p.allowsProject(t.ProjectId) {
+	if !p.allowsProject(s.ProjectId) {
 		return false
 	}
 	if p.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL {
 		return true
 	}
-	return t.GetCreatedBy().GetId() == p.Actor.GetId()
+	return s.GetActor().GetId() == p.Actor.GetId() || s.GetCreatedBy() == p.Actor.GetId()
 }
 
-type NoticeHook func(thread *threadv2.Thread, ev *threadv2.ThreadEvent)
+func defaultRuntimeModeFor(p *Principal, requested identityv1.RuntimeMode) identityv1.RuntimeMode {
+	if policy.Rank(requested) > 0 {
+		return requested
+	}
+	if p != nil && (p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER || p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_EXTERNAL_AGENT) {
+		if policy.Rank(p.GrantCeiling) > 0 {
+			return p.GrantCeiling
+		}
+		return identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS
+	}
+	return policy.DefaultSessionRuntimeMode
+}
+
+type NoticeHook func(sess *sessionv1.Session, ev *sessionv1.SessionEvent)
 
 type Config struct {
-	DataDir         string
-	MachineID       string
-	Logger          *slog.Logger
-	Drivers         map[string]runtime.Driver
-	IncludeScripted bool
-	IdleTTL         time.Duration
-	MachineMaxMode  identityv1.RuntimeMode
-	IsPaused        func() bool
-	OnNotice        NoticeHook
+	DataDir          string
+	MachineID        string
+	Logger           *slog.Logger
+	Drivers          map[string]runtime.Driver
+	IncludeScripted  bool
+	IdleTTL          time.Duration
+	QuestionTimeout  time.Duration
+	MachineMaxMode   identityv1.RuntimeMode
+	IsPaused         func() bool
+	DefaultAgent     func(projectID string) string
+	MCPServers       func(sessionID string) []runtime.MCPServer
+	ReadDirs         func(projectID string) []string
+	ExtraEnv         func(sessionID string) map[string]string
+	ResolveSelection func(instanceID string, sel *sessionv1.ModelSelection) (*sessionv1.ModelSelection, error)
+	CheckRelease     func(ctx context.Context, sess *sessionv1.Session) error
+	OnNotice         NoticeHook
+	OnWork           func(sess *sessionv1.Session, run *sessionv1.Run, ev *sessionv1.SessionEvent)
+	OnSessionChanged func(sess *sessionv1.Session)
+	OnSessionDeleted func(sessionID string)
+	OnDeliverMessage func(ctx context.Context, p *Principal, req *sessionv1.DeliverMessageRequest) (*sessionv1.DeliverMessageResponse, error)
 	// AgentModels: each coding agent's own list of models, as the machine
 	// last read it; nil offers the manifest's.
 	AgentModels catalog.AgentModels
@@ -145,7 +179,12 @@ type Config struct {
 
 type shellSub struct {
 	includeArchived bool
-	ch              chan *threadv2.SubscribeThreadsResponse
+	ch              chan *sessionv1.WatchSessionsResponse
+}
+
+type sessionSub struct {
+	actorID string
+	ch      chan *sessionv1.SessionEvent
 }
 
 type Engine struct {
@@ -160,23 +199,27 @@ type Engine struct {
 	bgCtx      context.Context
 	bgCancel   context.CancelFunc
 
-	mu          sync.Mutex
-	wg          sync.WaitGroup
-	threadLocks map[string]*sync.Mutex
-	cmdLocks    map[string]*refLock                    // command_id -> in-flight idempotent command
-	waiters     map[string]chan runtime.ToolGateResult // request_id -> waiter
-	runCancels  map[string]context.CancelFunc          // run_id -> cancel
-	runDoneChs  map[string]<-chan struct{}             // run_id -> runCtx.Done()
-	pumps       map[string]*leasePump                  // provider_thread_id -> pump
-	threadSubs  map[string]map[chan *threadv2.ThreadEvent]struct{}
-	shellSubs   map[*shellSub]struct{}
+	mu               sync.Mutex
+	wg               sync.WaitGroup
+	sessionLocks     map[string]*sync.Mutex
+	cmdLocks         map[string]*refLock                    // command_id -> in-flight idempotent command
+	waiters          map[string]chan runtime.ToolGateResult // request_id -> waiter
+	runCancels       map[string]context.CancelFunc          // run_id -> cancel
+	runDoneChs       map[string]<-chan struct{}             // run_id -> runCtx.Done()
+	runInterruptedBy map[string]string                      // run_id -> "interrupted by <actor>"
+	pumps            map[string]*leasePump                  // provider_session_id -> pump
+	sessionSubs      map[string]map[*sessionSub]struct{}
+	shellSubs        map[*shellSub]struct{}
 }
 
 func Open(cfg Config) (*Engine, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	st, err := store.Open(filepath.Join(cfg.DataDir, "threads_v2.db"))
+	if cfg.QuestionTimeout <= 0 {
+		cfg.QuestionTimeout = DefaultQuestionTimeout
+	}
+	st, err := store.Open(filepath.Join(cfg.DataDir, "sessions_v2.db"))
 	if err != nil {
 		return nil, err
 	}
@@ -185,23 +228,24 @@ func Open(cfg Config) (*Engine, error) {
 
 	bgCtx, bgCancel := context.WithCancel(context.Background())
 	e := &Engine{
-		cfg:         cfg,
-		log:         cfg.Logger,
-		st:          st,
-		vcs:         vcs.NewManager(filepath.Join(cfg.DataDir, "worktrees_v2")),
-		cat:         catalog.NewService(cfg.Drivers, cfg.AgentModels),
-		sup:         runtime.NewSupervisor(cfg.IdleTTL),
-		scratchDir:  scratchDir,
-		bgCtx:       bgCtx,
-		bgCancel:    bgCancel,
-		threadLocks: map[string]*sync.Mutex{},
-		cmdLocks:    map[string]*refLock{},
-		waiters:     map[string]chan runtime.ToolGateResult{},
-		runCancels:  map[string]context.CancelFunc{},
-		runDoneChs:  map[string]<-chan struct{}{},
-		pumps:       map[string]*leasePump{},
-		threadSubs:  map[string]map[chan *threadv2.ThreadEvent]struct{}{},
-		shellSubs:   map[*shellSub]struct{}{},
+		cfg:              cfg,
+		log:              cfg.Logger,
+		st:               st,
+		vcs:              vcs.NewManager(filepath.Join(cfg.DataDir, "worktrees")),
+		cat:              catalog.NewService(cfg.Drivers, cfg.AgentModels),
+		sup:              runtime.NewSupervisor(cfg.IdleTTL),
+		scratchDir:       scratchDir,
+		bgCtx:            bgCtx,
+		bgCancel:         bgCancel,
+		sessionLocks:     map[string]*sync.Mutex{},
+		cmdLocks:         map[string]*refLock{},
+		waiters:          map[string]chan runtime.ToolGateResult{},
+		runCancels:       map[string]context.CancelFunc{},
+		runDoneChs:       map[string]<-chan struct{}{},
+		runInterruptedBy: map[string]string{},
+		pumps:            map[string]*leasePump{},
+		sessionSubs:      map[string]map[*sessionSub]struct{}{},
+		shellSubs:        map[*shellSub]struct{}{},
 	}
 	e.sup.SetOnReap(e.onLeaseReaped)
 	e.maxMode.Store(int32(cfg.MachineMaxMode))
@@ -223,7 +267,7 @@ func (e *Engine) Close() error {
 	return e.st.Close()
 }
 
-func (e *Engine) spawnRun(threadID, runID string, freshContext bool) {
+func (e *Engine) spawnRun(sessionID, runID string, freshContext bool) {
 	runCtx, cancelRun := context.WithCancel(e.bgCtx)
 	e.mu.Lock()
 	e.runCancels[runID] = cancelRun
@@ -240,35 +284,35 @@ func (e *Engine) spawnRun(threadID, runID string, freshContext bool) {
 			delete(e.runDoneChs, runID)
 			e.mu.Unlock()
 		}()
-		e.driveRun(runCtx, threadID, runID, freshContext)
+		e.driveRun(runCtx, sessionID, runID, freshContext)
 	}()
 }
 
 func (e *Engine) onLeaseReaped(lease *runtime.LeaseEntry) {
 	if lease != nil {
-		e.stopLeasePump(lease.ProviderThreadID, lease)
+		e.stopLeasePump(lease.ProviderSessionID, lease)
 	}
 	if lease == nil || e.bgCtx.Err() != nil {
 		return
 	}
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		th, err := tx.GetThread(lease.ThreadID)
+		sess, err := tx.GetSession(lease.SessionID)
 		if err != nil {
 			return nil
 		}
-		stopped, items, err := tx.StopRunningBackgroundTasks(lease.ThreadID, "", "session closed after inactivity")
+		stopped, items, err := tx.StopRunningBackgroundTasks(lease.SessionID, "", "session closed after inactivity")
 		if err != nil || len(stopped) == 0 {
 			return err
 		}
-		_, _, _ = tx.RefreshThreadBackgroundCounts(th)
-		if err := tx.PutThread(th); err != nil {
+		_, _, _ = tx.RefreshSessionBackgroundCounts(sess)
+		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
 		for _, it := range items {
-			_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: th.ThreadId, Type: "item.updated", Thread: th, Item: it})
+			_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sess.SessionId, Type: "item.updated", Session: sess, Item: it})
 		}
 		for _, bt := range stopped {
-			_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: th.ThreadId, Type: "background_task.updated", Thread: th, BackgroundTask: bt})
+			_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sess.SessionId, Type: "background_task.updated", Session: sess, BackgroundTask: bt})
 		}
 		return nil
 	})
@@ -286,23 +330,69 @@ func (e *Engine) SetMachineMaxMode(m identityv1.RuntimeMode) { e.maxMode.Store(i
 
 func (e *Engine) Store() *store.Store             { return e.st }
 func (e *Engine) Supervisor() *runtime.Supervisor { return e.sup }
+func (e *Engine) VCS() *vcs.Manager               { return e.vcs }
+func (e *Engine) Catalog() *catalog.Service       { return e.cat }
 
 func (e *Engine) BusyCount() int {
-	threads, err := e.st.ListThreads("", false, 0)
+	sessions, err := e.st.ListSessions("", false, 0)
 	if err != nil {
 		return 0
 	}
 	n := 0
-	for _, t := range threads {
-		switch t.Status {
-		case threadv2.ThreadStatus_THREAD_STATUS_PREPARING,
-			threadv2.ThreadStatus_THREAD_STATUS_QUEUED,
-			threadv2.ThreadStatus_THREAD_STATUS_RUNNING,
-			threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST:
+	for _, s := range sessions {
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
 			n++
 		}
 	}
 	return n
+}
+
+func (e *Engine) RunningCount() uint32 {
+	sessions, err := e.st.ListSessions("", false, 0)
+	if err != nil {
+		return 0
+	}
+	var n uint32
+	for _, s := range sessions {
+		if s.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING ||
+			s.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING ||
+			s.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
+			n++
+		}
+	}
+	return n
+}
+
+func (e *Engine) ActiveByProject() map[string]uint32 {
+	out := map[string]uint32{}
+	sessions, err := e.st.ListSessions("", false, 0)
+	if err != nil {
+		return out
+	}
+	for _, s := range sessions {
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			out[s.ProjectId]++
+		}
+	}
+	return out
+}
+
+// ListAllSessions returns every stored session on this machine without actor filtering.
+func (e *Engine) ListAllSessions(includeArchived bool) ([]*sessionv1.Session, error) {
+	return e.st.ListSessions("", includeArchived, 0)
+}
+
+// ResolveDriver returns the configured provider instance and runtime driver for instanceID.
+func (e *Engine) ResolveDriver(instanceID string) (*sessionv1.ProviderInstanceConfig, runtime.Driver, error) {
+	return e.resolveInstanceConfig(OwnerPrincipal("owner", "Owner"), ScratchProjectID, instanceID)
 }
 
 func (e *Engine) seedDefaults() error {
@@ -315,7 +405,7 @@ func (e *Engine) seedDefaults() error {
 		have[c.InstanceId] = true
 	}
 	_, err = e.st.Mutate(func(tx *store.Tx) error {
-		// Always register a default "scratch" workspace so ad-hoc threads work immediately.
+		// Always register a default "scratch" workspace so ad-hoc sessions work immediately.
 		if _, wErr := e.st.Workspace(ScratchProjectID); errors.Is(wErr, store.ErrNotFound) {
 			if err := tx.PutWorkspace(store.WorkspaceRow{
 				ProjectID:     ScratchProjectID,
@@ -338,7 +428,7 @@ func (e *Engine) seedDefaults() error {
 	return err
 }
 
-// SyncWorkspace keeps v2 workspaces synchronized with Machine's configured projects.
+// SyncWorkspace keeps workspaces synchronized with Machine's configured projects.
 func (e *Engine) SyncWorkspace(projectID, path, defaultBaseRef string, mode identityv1.Workspace, description string, agents []string) error {
 	_, err := e.st.Mutate(func(tx *store.Tx) error {
 		return tx.PutWorkspace(store.WorkspaceRow{
@@ -360,105 +450,172 @@ func (e *Engine) RemoveWorkspace(projectID string) error {
 	return err
 }
 
-// recoverOrphans reconciles threads interrupted by a daemon crash or power loss:
+func syncSessionSummary(s *sessionv1.Session) {
+	if s == nil {
+		return
+	}
+	if s.Progress == nil {
+		s.Progress = &sessionv1.SessionProgress{}
+	}
+	if sel := s.ModelSelection; sel != nil {
+		if sel.InstanceId != "" {
+			s.Agent = sel.InstanceId
+		}
+		if sel.Model != "" {
+			s.Model = sel.Model
+		}
+		s.Effort = extractEffort(sel.Options)
+	}
+	if ws := s.WorkspaceStrategy; ws != nil {
+		s.Workspace = ws.Mode
+		if ws.Branch != "" {
+			s.Branch = ws.Branch
+		}
+	}
+	if s.CreatedBy == "" && s.Actor != nil {
+		if s.Actor.Kind == sessionv1.ActorKind_ACTOR_KIND_OWNER {
+			s.CreatedBy = "owner"
+		} else {
+			s.CreatedBy = s.Actor.Id
+		}
+	}
+	switch s.Status {
+	case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
+		s.Progress.Phase = "running"
+	case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
+		s.Progress.Phase = "preparing"
+	case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+		s.Progress.Phase = "waiting_input"
+	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
+		s.Progress.Phase = "queued"
+	default:
+		s.Progress.Phase = ""
+		s.Progress.CurrentTool = ""
+		s.Progress.TurnStartedAt = nil
+	}
+}
+
+func extractEffort(opts map[string]*sessionv1.OptionValue) string {
+	for _, key := range []string{"reasoningEffort", "thought_level", "effort"} {
+		if v, ok := opts[key]; ok && v != nil {
+			if sv, ok := v.Kind.(*sessionv1.OptionValue_StringValue); ok && sv.StringValue != "" {
+				return sv.StringValue
+			}
+		}
+	}
+	return ""
+}
+
+func putSessionSynced(tx *store.Tx, s *sessionv1.Session) error {
+	syncSessionSummary(s)
+	return tx.PutSession(s)
+}
+
+// recoverOrphans reconciles sessions interrupted by a daemon crash or power loss:
 // in-flight runs become INTERRUPTED, LIVE_RPC requests downgrade to RESUME_TURN
 // so they remain answerable, and QUEUED runs stay intact in queue order.
 func (e *Engine) recoverOrphans() error {
-	threads, err := e.st.ListThreads("", true, 0)
+	sessions, err := e.st.ListSessions("", true, 0)
 	if err != nil {
 		return err
 	}
-	for _, t := range threads {
-		hasOrphanBg := t.ActiveBackgroundCount > 0 || t.ActiveDaemonCount > 0
-		if t.Status != threadv2.ThreadStatus_THREAD_STATUS_RUNNING &&
-			t.Status != threadv2.ThreadStatus_THREAD_STATUS_PREPARING &&
-			t.Status != threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST &&
+	for _, s := range sessions {
+		hasOrphanBg := s.ActiveBackgroundCount > 0 || s.ActiveDaemonCount > 0
+		if s.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
+			s.Status != sessionv1.SessionStatus_SESSION_STATUS_PREPARING &&
+			s.Status != sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT &&
 			!hasOrphanBg {
 			continue
 		}
-		runs, _ := e.st.Runs(t.ThreadId)
-		reqs, _ := e.st.RuntimeRequests(t.ThreadId)
-		pts, _ := e.st.ProviderThreads(t.ThreadId)
+		runs, _ := e.st.Runs(s.SessionId)
+		reqs, _ := e.st.RuntimeRequests(s.SessionId)
+		pss, _ := e.st.ProviderSessions(s.SessionId)
 		events, err := e.st.Mutate(func(tx *store.Tx) error {
-			th, err := tx.GetThread(t.ThreadId)
+			sess, err := tx.GetSession(s.SessionId)
 			if err != nil {
 				return nil
 			}
-			for _, pt := range pts {
-				if pt.ProcessAlive {
-					pt.ProcessAlive = false
-					_ = tx.PutProviderThread(pt)
+			for _, ps := range pss {
+				if ps.ProcessAlive {
+					ps.ProcessAlive = false
+					_ = tx.PutProviderSession(ps)
 				}
 			}
-			stoppedBg, stoppedItems, _ := tx.StopRunningBackgroundTasks(th.ThreadId, "", "hermeshd restarted while background task was running")
+			stoppedBg, stoppedItems, _ := tx.StopRunningBackgroundTasks(sess.SessionId, "", "hermeshd restarted while background task was running")
 			for _, sit := range stoppedItems {
-				_ = tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: th.ThreadId,
-					Type:     "item.updated",
-					Item:     sit,
+				_ = tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sess.SessionId,
+					Type:      "item.updated",
+					Item:      sit,
 				})
 			}
 			for _, bt := range stoppedBg {
-				_ = tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId:       th.ThreadId,
+				_ = tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId:      sess.SessionId,
 					Type:           "background_task.updated",
 					BackgroundTask: bt,
 				})
 			}
-			_, _, _ = tx.RefreshThreadBackgroundCounts(th)
+			_, _, _ = tx.RefreshSessionBackgroundCounts(sess)
 			hasPendingResumeReq := false
 			for _, rq := range reqs {
-				if rq.Status == threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
-					if rq.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT ||
-						rq.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
-						rq.ResponseMode = threadv2.ResponseMode_RESPONSE_MODE_RESUME_TURN
+				if rq.Status == sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+					if rq.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT ||
+						rq.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
+						rq.ResponseMode = sessionv1.ResponseMode_RESPONSE_MODE_RESUME_TURN
 						_ = tx.PutRuntimeRequest(rq)
 						hasPendingResumeReq = true
 					} else {
-						rq.Status = threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_EXPIRED
+						rq.Status = sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_EXPIRED
 						rq.ResolvedAt = timestamppb.Now()
 						_ = tx.PutRuntimeRequest(rq)
 					}
 				}
 			}
 			for _, r := range runs {
-				if r.Status == threadv2.RunStatus_RUN_STATUS_RUNNING ||
-					r.Status == threadv2.RunStatus_RUN_STATUS_PREPARING ||
-					r.Status == threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST {
-					r.Status = threadv2.RunStatus_RUN_STATUS_INTERRUPTED
+				if r.Status == sessionv1.RunStatus_RUN_STATUS_RUNNING ||
+					r.Status == sessionv1.RunStatus_RUN_STATUS_PREPARING ||
+					r.Status == sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST {
+					r.Status = sessionv1.RunStatus_RUN_STATUS_INTERRUPTED
 					r.ErrorMessage = "hermeshd restarted while turn was active"
 					r.CompletedAt = timestamppb.Now()
 					_ = tx.PutRun(r)
-					settled, _ := tx.SettleRunItems(th.ThreadId, r.RunId, "interrupted")
+					settled, _ := tx.SettleRunItems(sess.SessionId, r.RunId, "interrupted")
 					for _, sit := range settled {
-						_ = tx.AppendEvent(&threadv2.ThreadEvent{
-							ThreadId: th.ThreadId,
-							Type:     "item.updated",
-							Item:     sit,
+						_ = tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sess.SessionId,
+							Type:      "item.updated",
+							Item:      sit,
 						})
 					}
 				}
 			}
-			queued, _ := tx.QueuedRuns(th.ThreadId)
-			th.QueuedRunCount = uint32(len(queued))
-			th.ActiveRunId = ""
+			queued, _ := tx.QueuedRuns(sess.SessionId)
+			sess.QueuedRunCount = uint32(len(queued))
+			sess.ActiveRunId = ""
 			if hasPendingResumeReq {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			} else if len(queued) > 0 {
-				th.QueueHeld = true // Hold queue after unexpected crash so user can inspect or resume.
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
-				th.PendingRequestId = ""
+				sess.QueueHeld = true // Hold queue after unexpected crash so user can inspect or resume.
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
+				sess.PendingRequestId = ""
+				if sess.Progress != nil {
+					sess.Progress.PendingQuestion = nil
+				}
 			} else {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
-				th.PendingRequestId = ""
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				sess.PendingRequestId = ""
+				if sess.Progress != nil {
+					sess.Progress.PendingQuestion = nil
+				}
 			}
-			if err := tx.PutThread(th); err != nil {
+			if err := putSessionSynced(tx, sess); err != nil {
 				return err
 			}
-			return tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: th.ThreadId,
-				Type:     "thread.recovered",
-				Thread:   th,
+			return tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sess.SessionId,
+				Type:      "session.recovered",
+				Session:   sess,
 			})
 		})
 		if err == nil {
@@ -468,12 +625,12 @@ func (e *Engine) recoverOrphans() error {
 	return nil
 }
 
-func (e *Engine) lockThread(threadID string) func() {
+func (e *Engine) lockSession(sessionID string) func() {
 	e.mu.Lock()
-	lk := e.threadLocks[threadID]
+	lk := e.sessionLocks[sessionID]
 	if lk == nil {
 		lk = &sync.Mutex{}
-		e.threadLocks[threadID] = lk
+		e.sessionLocks[sessionID] = lk
 	}
 	e.mu.Unlock()
 	lk.Lock()
@@ -515,8 +672,8 @@ func newID(prefix string) string {
 	return prefix + "_" + strings.ToLower(ulid.Make().String())
 }
 
-// ThreadPrefix returns the deterministic 8-char machine routing tag embedded in thread IDs.
-func ThreadPrefix(machineID string) string {
+// SessionPrefix returns the deterministic 8-char machine routing tag embedded in session IDs.
+func SessionPrefix(machineID string) string {
 	s := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(machineID)), "m_")
 	if len(s) > 8 {
 		s = s[:8]
@@ -524,71 +681,128 @@ func ThreadPrefix(machineID string) string {
 	return s
 }
 
-// OwnsThread reports whether threadID carries machineID's routing prefix.
-func OwnsThread(machineID, threadID string) bool {
-	parts := strings.SplitN(threadID, "_", 3)
-	if len(parts) != 3 || parts[0] != "th" {
+// OwnsSession reports whether sessionID carries machineID's routing prefix.
+func OwnsSession(machineID, sessionID string) bool {
+	parts := strings.SplitN(sessionID, "_", 3)
+	if len(parts) != 3 || (parts[0] != "s" && parts[0] != "th") {
 		return false
 	}
-	p := ThreadPrefix(machineID)
+	p := SessionPrefix(machineID)
 	return p != "" && p == parts[1]
 }
 
-func (e *Engine) newThreadID() string {
-	if p := ThreadPrefix(e.cfg.MachineID); p != "" {
-		return "th_" + p + "_" + strings.ToLower(ulid.Make().String())
+func (e *Engine) newSessionID() string {
+	if p := SessionPrefix(e.cfg.MachineID); p != "" {
+		return "s_" + p + "_" + strings.ToLower(ulid.Make().String())
 	}
-	return newID("th")
+	return newID("s")
 }
 
-func (e *Engine) publish(events []*threadv2.ThreadEvent, deletedThreadIDs []string) {
-	if len(events) == 0 && len(deletedThreadIDs) == 0 {
+// Following reports whether actorID currently has an active SubscribeSession stream on sessionID.
+func (e *Engine) Following(sessionID, actorID string) bool {
+	if actorID == "" {
+		return false
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for sub := range e.sessionSubs[sessionID] {
+		if sub.actorID == actorID {
+			return true
+		}
+	}
+	return false
+}
+
+// InterruptByClient stops active or waiting runs on sessions created by clientID (e.g. when a grant is revoked).
+func (e *Engine) InterruptByClient(ctx context.Context, clientID string) {
+	if clientID == "" {
 		return
 	}
-	var updatedThreads []*threadv2.Thread
-	seenThread := map[string]bool{}
+	all, err := e.st.ListSessions("", true, 0)
+	if err != nil {
+		return
+	}
+	owner := OwnerPrincipal("owner", "Owner")
+	for _, s := range all {
+		if s.CreatedBy != clientID && s.GetActor().GetId() != clientID {
+			continue
+		}
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
+			sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			_, _ = e.InterruptSession(ctx, owner, &sessionv1.InterruptSessionRequest{
+				SessionId: s.SessionId,
+				HoldQueue: true,
+			})
+		}
+	}
+}
+
+func (e *Engine) publish(events []*sessionv1.SessionEvent, deletedSessionIDs []string) {
+	if len(events) == 0 && len(deletedSessionIDs) == 0 {
+		return
+	}
+	var updatedSessions []*sessionv1.Session
+	seenSession := map[string]bool{}
 	for _, ev := range events {
 		e.mu.Lock()
-		subs := e.threadSubs[ev.ThreadId]
-		for ch := range subs {
+		subs := e.sessionSubs[ev.SessionId]
+		for sub := range subs {
 			select {
-			case ch <- ev:
+			case sub.ch <- ev:
 			default:
 			}
 		}
 		e.mu.Unlock()
 
-		if ev.Thread != nil && !seenThread[ev.ThreadId] {
-			seenThread[ev.ThreadId] = true
-			updatedThreads = append(updatedThreads, ev.Thread)
-		} else if !seenThread[ev.ThreadId] {
-			if t, err := e.st.Thread(ev.ThreadId); err == nil {
-				seenThread[ev.ThreadId] = true
-				updatedThreads = append(updatedThreads, t)
-			}
+		var sess *sessionv1.Session
+		if ev.Session != nil {
+			sess = ev.Session
+		} else if s, err := e.st.Session(ev.SessionId); err == nil {
+			sess = s
 		}
-		if e.cfg.OnNotice != nil && (ev.Type == "request.created" || ev.Type == "run.failed" || ev.Type == "run.completed") {
-			if t, err := e.st.Thread(ev.ThreadId); err == nil {
-				e.cfg.OnNotice(t, ev)
+		if sess != nil && !seenSession[ev.SessionId] {
+			seenSession[ev.SessionId] = true
+			updatedSessions = append(updatedSessions, sess)
+		}
+		if sess != nil {
+			if e.cfg.OnNotice != nil && (ev.Type == "session.created" || ev.Type == "request.created" || ev.Type == "request.resolved" || ev.Type == "run.failed" || ev.Type == "run.completed") {
+				e.cfg.OnNotice(sess, ev)
+			}
+			if e.cfg.OnWork != nil && (ev.Type == "session.created" || ev.Type == "run.started" || ((ev.Type == "item.updated" || ev.Type == "queue.updated") && ev.Run != nil) || ev.Type == "request.created" || ev.Type == "request.resolved" || ev.Type == "run.failed" || ev.Type == "run.completed" || ev.Type == "run.interrupted" || ev.Type == "session.updated" || ev.Type == "session.recovered") {
+				e.cfg.OnWork(sess, ev.Run, ev)
 			}
 		}
 	}
 
-	if len(updatedThreads) > 0 || len(deletedThreadIDs) > 0 {
+	if e.cfg.OnSessionChanged != nil {
+		for _, s := range updatedSessions {
+			e.cfg.OnSessionChanged(s)
+		}
+	}
+	if e.cfg.OnSessionDeleted != nil {
+		for _, id := range deletedSessionIDs {
+			e.cfg.OnSessionDeleted(id)
+		}
+	}
+
+	if len(updatedSessions) > 0 || len(deletedSessionIDs) > 0 {
 		e.mu.Lock()
 		for sub := range e.shellSubs {
-			var filtered []*threadv2.Thread
-			for _, t := range updatedThreads {
-				if sub.includeArchived || t.Status != threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED {
-					filtered = append(filtered, t)
+			var filtered []*sessionv1.Session
+			for _, s := range updatedSessions {
+				if sub.includeArchived || s.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+					filtered = append(filtered, s)
 				}
 			}
-			if len(filtered) == 0 && len(deletedThreadIDs) == 0 {
+			if len(filtered) == 0 && len(deletedSessionIDs) == 0 {
 				continue
 			}
-			msg := &threadv2.SubscribeThreadsResponse{
-				Threads:          filtered,
-				DeletedThreadIds: deletedThreadIDs,
+			msg := &sessionv1.WatchSessionsResponse{
+				Sessions:          filtered,
+				DeletedSessionIds: deletedSessionIDs,
 			}
 			select {
 			case sub.ch <- msg:
@@ -602,7 +816,7 @@ func (e *Engine) publish(events []*threadv2.ThreadEvent, deletedThreadIDs []stri
 // ---------------------------------------------------------------------------
 // Provider Catalog Operations
 
-func (e *Engine) ListProviders(ctx context.Context, p *Principal, projectID string, refresh bool) (*threadv2.ListProvidersResponse, error) {
+func (e *Engine) ListProviders(ctx context.Context, p *Principal, projectID string, refresh bool) (*sessionv1.ListProvidersResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
@@ -616,20 +830,20 @@ func (e *Engine) ListProviders(ctx context.Context, p *Principal, projectID stri
 	if err != nil {
 		return nil, err
 	}
-	var out []*threadv2.ProviderInstance
+	var out []*sessionv1.ProviderInstance
 	for _, cfg := range cfgs {
 		if !p.allowsAgent(cfg.InstanceId, cfg.Driver, cfg.AcpFlavor) {
 			continue
 		}
 		out = append(out, e.cat.ResolveInstance(ctx, cfg, workdir, refresh))
 	}
-	return &threadv2.ListProvidersResponse{
+	return &sessionv1.ListProvidersResponse{
 		Providers:      out,
 		MaxRuntimeMode: policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling),
 	}, nil
 }
 
-func (e *Engine) UpsertProviderInstance(ctx context.Context, p *Principal, cfg *threadv2.ProviderInstanceConfig) (*threadv2.ProviderInstance, error) {
+func (e *Engine) UpsertProviderInstance(ctx context.Context, p *Principal, cfg *sessionv1.ProviderInstanceConfig) (*sessionv1.ProviderInstance, error) {
 	if p == nil || !p.CanManageProvider {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only the owner may configure provider instances"))
 	}
@@ -673,12 +887,12 @@ func (e *Engine) RemoveProviderInstance(_ context.Context, p *Principal, instanc
 	return err
 }
 
-func (e *Engine) resolveInstanceConfig(p *Principal, instanceID string) (*threadv2.ProviderInstanceConfig, runtime.Driver, error) {
+func (e *Engine) resolveInstanceConfig(p *Principal, projectID, instanceID string) (*sessionv1.ProviderInstanceConfig, runtime.Driver, error) {
 	cfgs, err := e.st.ProviderInstances()
 	if err != nil {
 		return nil, nil, err
 	}
-	var chosen *threadv2.ProviderInstanceConfig
+	var chosen *sessionv1.ProviderInstanceConfig
 	if instanceID != "" {
 		for _, c := range cfgs {
 			if c.InstanceId == instanceID {
@@ -687,10 +901,18 @@ func (e *Engine) resolveInstanceConfig(p *Principal, instanceID string) (*thread
 			}
 		}
 	} else {
-		preferred := []string{"scripted", "claude", "codex", "gemini", "antigravity", "cursor", "opencode"}
+		var preferred []string
+		if e.cfg.DefaultAgent != nil {
+			if da := strings.TrimSpace(e.cfg.DefaultAgent(projectID)); da != "" {
+				preferred = append(preferred, da)
+			}
+		}
+		preferred = append(preferred, "scripted", "fake", "claude", "codex", "gemini", "antigravity", "cursor", "opencode")
 		for _, want := range preferred {
 			for _, c := range cfgs {
-				if c.InstanceId == want && c.Enabled && e.cat.Driver(c.Driver) != nil && (p == nil || p.allowsAgent(c.InstanceId, c.Driver, c.AcpFlavor)) {
+				if c.InstanceId == want && c.Enabled && e.cat.Driver(c.Driver) != nil &&
+					(p == nil || p.allowsAgent(c.InstanceId, c.Driver, c.AcpFlavor)) &&
+					e.projectAllowsInstance(projectID, c.InstanceId) == nil {
 					chosen = c
 					break
 				}
@@ -701,7 +923,9 @@ func (e *Engine) resolveInstanceConfig(p *Principal, instanceID string) (*thread
 		}
 		if chosen == nil {
 			for _, c := range cfgs {
-				if c.Enabled && e.cat.Driver(c.Driver) != nil && (p == nil || p.allowsAgent(c.InstanceId, c.Driver, c.AcpFlavor)) {
+				if c.Enabled && e.cat.Driver(c.Driver) != nil &&
+					(p == nil || p.allowsAgent(c.InstanceId, c.Driver, c.AcpFlavor)) &&
+					e.projectAllowsInstance(projectID, c.InstanceId) == nil {
 					chosen = c
 					break
 				}
@@ -737,10 +961,12 @@ func (e *Engine) principalAllowsInstance(p *Principal, instanceID string) bool {
 }
 
 // projectAllowsInstance checks that the project is set up for the provider
-// instance (the machine's Project.agents, as v1 sessions check it): by
-// instance id, driver or ACP flavour. It holds for the owner too: it is the
-// project's own setting, not a grant's.
+// instance (the machine's Project.agents): by instance id, driver or ACP
+// flavour. It holds for the owner too: it is the project's own setting, not a grant's.
 func (e *Engine) projectAllowsInstance(projectID, instanceID string) error {
+	if projectID == "" {
+		return nil
+	}
 	ws, err := e.st.Workspace(projectID)
 	if err != nil || len(ws.Agents) == 0 {
 		return nil
@@ -759,18 +985,18 @@ func (e *Engine) projectAllowsInstance(projectID, instanceID string) error {
 }
 
 // ---------------------------------------------------------------------------
-// Thread Launch & Dispatch
+// Session Start & Dispatch
 
-func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.LaunchThreadRequest) (*threadv2.LaunchThreadResponse, error) {
+func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.StartSessionRequest) (*sessionv1.StartSessionResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
 	if e.cfg.IsPaused != nil && e.cfg.IsPaused() {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("machine is paused"))
 	}
-	var cached threadv2.LaunchThreadResponse
+	var cached sessionv1.StartSessionResponse
 	defer e.lockCommand(req.CommandId)()
-	if ok, err := e.st.GetReceipt(req.CommandId, "LaunchThread", &cached); err != nil {
+	if ok, err := e.st.GetReceipt(req.CommandId, "StartSession", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
 		return &cached, nil
@@ -791,11 +1017,11 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 		return nil, err
 	}
 
-	sel := proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
+	sel := proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection)
 	if sel == nil {
-		sel = &threadv2.ModelSelection{}
+		sel = &sessionv1.ModelSelection{}
 	}
-	instCfg, _, err := e.resolveInstanceConfig(p, sel.InstanceId)
+	instCfg, _, err := e.resolveInstanceConfig(p, projectID, sel.InstanceId)
 	if err != nil {
 		return nil, err
 	}
@@ -809,7 +1035,13 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 	if sel.InstanceId == "" {
 		sel.InstanceId = instCfg.InstanceId
 	}
-	if sel.Model == "" {
+	if e.cfg.ResolveSelection != nil {
+		var sErr error
+		sel, sErr = e.cfg.ResolveSelection(sel.InstanceId, sel)
+		if sErr != nil {
+			return nil, sErr
+		}
+	} else if sel.Model == "" {
 		def := catalog.DefaultSelection(resolvedInst)
 		sel.Model = def.Model
 		if len(sel.Options) == 0 {
@@ -817,18 +1049,18 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 		}
 	}
 
-	reqRuntimeMode := policy.NormalizeRequested(req.RuntimeMode)
+	reqRuntimeMode := defaultRuntimeModeFor(p, req.RuntimeMode)
 	maxMode := policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling)
 	effMode := policy.EffectiveMode(e.machineMax(), p.GrantCeiling, reqRuntimeMode)
 
 	imode := req.InteractionMode
-	if imode == threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
-		imode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+	if imode == sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
+		imode = sessionv1.InteractionMode_INTERACTION_MODE_CODE
 	}
 
-	wsStrategy := proto.Clone(req.Workspace).(*threadv2.WorkspaceStrategy)
+	wsStrategy := proto.Clone(req.Workspace).(*sessionv1.WorkspaceStrategy)
 	if wsStrategy == nil {
-		wsStrategy = &threadv2.WorkspaceStrategy{}
+		wsStrategy = &sessionv1.WorkspaceStrategy{}
 	}
 	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_UNSPECIFIED {
 		wsStrategy.Mode = identityv1.Workspace(ws.WorkspaceMode)
@@ -840,16 +1072,22 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 			}
 		}
 	}
-	if wsStrategy.BaseRef == "" {
+	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_IN_PLACE && req.GetWorkspace().GetBaseRef() != "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("an in-place project takes no base_ref"))
+	}
+	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_WORKTREE && wsStrategy.BaseRef == "" {
 		wsStrategy.BaseRef = ws.DefaultBaseRef
 	}
 
-	threadID := e.newThreadID()
-	title := strings.TrimSpace(req.Title)
+	sessionID := e.newSessionID()
+	title := runtime.CleanTitle(req.Title)
 	titleRenamed := title != ""
 	if title == "" {
 		title = deriveTitle(req.InitialPrompt)
 	}
+
+	hasInitial := strings.TrimSpace(req.InitialPrompt) != "" || len(req.Attachments) > 0
+	var initFailure *sessionv1.Failure
 
 	// Prepare workspace directory before first run (fast for in-place, isolated git worktree for WORKTREE).
 	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_WORKTREE {
@@ -860,18 +1098,35 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 			}
 			wsStrategy.BaseRef = base
 		}
-		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, threadID, wsStrategy.BaseRef, wsStrategy.Branch)
-		if wtErr != nil {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, wtErr)
+		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, sessionID, wsStrategy.BaseRef, wsStrategy.Branch)
+		var baseErr *vcs.BaseRefError
+		if errors.As(wtErr, &baseErr) && !wsStrategy.FromRemote {
+			fetchStart := time.Now()
+			if localRef, remote, fErr := e.vcs.FetchRef(ctx, ws.Path, wsStrategy.BaseRef); fErr == nil {
+				e.log.Info("fetched the base ref", "session", sessionID, "ref", wsStrategy.BaseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
+				wtPath, branch, wtErr = e.vcs.PrepareWorktree(ctx, ws.Path, sessionID, localRef, wsStrategy.Branch)
+			} else {
+				wtErr = fErr
+			}
 		}
-		wsStrategy.WorktreePath = wtPath
-		wsStrategy.Branch = branch
+		if wtErr != nil {
+			if errors.As(wtErr, &baseErr) && hasInitial {
+				initFailure = (&runtime.Failure{
+					Kind:    sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
+					Message: fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", projectID, baseErr.Ref, ws.Path, baseErr.Upstream()),
+				}).Proto()
+			} else {
+				return nil, connect.NewError(connect.CodeFailedPrecondition, wtErr)
+			}
+		} else {
+			wsStrategy.WorktreePath = wtPath
+			wsStrategy.Branch = branch
+		}
 	} else {
 		wsStrategy.WorktreePath = ""
 		if wsStrategy.Branch == "" {
 			wsStrategy.Branch = vcs.CurrentBranch(ctx, ws.Path)
 		} else if wsStrategy.Branch != vcs.CurrentBranch(ctx, ws.Path) {
-			// Another branch in the project's own folder: switched to first, unless a session works there now.
 			if e.busyInPlace(projectID) {
 				return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("a session is working in %s now; switch branches once it is done", ws.Path))
 			}
@@ -881,122 +1136,170 @@ func (e *Engine) LaunchThread(ctx context.Context, p *Principal, req *threadv2.L
 		}
 	}
 
-	hasInitial := strings.TrimSpace(req.InitialPrompt) != "" || len(req.Attachments) > 0
-	status := threadv2.ThreadStatus_THREAD_STATUS_IDLE
-	if hasInitial {
-		status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+	status := sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	if initFailure != nil {
+		status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+	} else if hasInitial {
+		status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
 	}
 
-	lineage := &threadv2.ThreadLineage{Relationship: "root", Controllable: true}
-	if req.ParentThreadId != "" {
-		lineage = &threadv2.ThreadLineage{
-			ParentThreadId: req.ParentThreadId,
-			Relationship:   "subagent",
-			Controllable:   true,
+	lineage := &sessionv1.SessionLineage{Relationship: "root", Controllable: true}
+	if req.ParentSessionId != "" {
+		lineage = &sessionv1.SessionLineage{
+			ParentSessionId: req.ParentSessionId,
+			Relationship:    "subagent",
+			Controllable:    true,
 		}
 	}
 
-	th := &threadv2.Thread{
-		ThreadId:             threadID,
+	createdBy := p.Actor.GetId()
+	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER {
+		createdBy = "owner"
+	}
+
+	sess := &sessionv1.Session{
+		SessionId:            sessionID,
 		MachineId:            e.cfg.MachineID,
 		ProjectId:            projectID,
 		Title:                title,
 		TitleRenamed:         titleRenamed,
 		Status:               status,
+		CreatedBy:            createdBy,
+		CreatedAs:            strings.TrimSpace(req.Conversation),
 		ModelSelection:       sel,
 		RuntimeMode:          reqRuntimeMode,
 		EffectiveRuntimeMode: effMode,
 		MaxRuntimeMode:       maxMode,
 		InteractionMode:      imode,
-		Workspace:            wsStrategy,
-		CreatedBy:            proto.Clone(p.Actor).(*threadv2.Actor),
+		WorkspaceStrategy:    wsStrategy,
+		Actor:                proto.Clone(p.Actor).(*sessionv1.Actor),
 		Lineage:              lineage,
+		Progress:             &sessionv1.SessionProgress{},
 	}
 
-	var initRun *threadv2.Run
-	var res *threadv2.LaunchThreadResponse
+	var initRun *sessionv1.Run
+	var res *sessionv1.StartSessionResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		if err := tx.PutThread(th); err != nil {
+		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: threadID,
-			Type:     "thread.created",
-			Thread:   th,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "session.created",
+			Session:   sess,
 		}); err != nil {
 			return err
 		}
 		if hasInitial {
-			initRun = &threadv2.Run{
-				RunId:           newID("run"),
-				ThreadId:        threadID,
-				Ordinal:         1,
-				Status:          threadv2.RunStatus_RUN_STATUS_RUNNING,
-				Author:          proto.Clone(p.Actor).(*threadv2.Actor),
-				Prompt:          req.InitialPrompt,
-				Attachments:     req.Attachments,
-				Intent:          threadv2.DispatchIntent_DISPATCH_INTENT_START,
-				ModelSelection:  proto.Clone(sel).(*threadv2.ModelSelection),
-				RuntimeMode:     effMode,
-				InteractionMode: imode,
-				StartedAt:       timestamppb.Now(),
+			now := timestamppb.Now()
+			initRun = &sessionv1.Run{
+				RunId:                  newID("run"),
+				SessionId:              sessionID,
+				Ordinal:                1,
+				Status:                 sessionv1.RunStatus_RUN_STATUS_RUNNING,
+				Author:                 proto.Clone(p.Actor).(*sessionv1.Actor),
+				AuthorConversation:     strings.TrimSpace(req.Conversation),
+				Prompt:                 req.InitialPrompt,
+				Attachments:            req.Attachments,
+				Intent:                 sessionv1.DispatchIntent_DISPATCH_INTENT_START,
+				ModelSelection:         proto.Clone(sel).(*sessionv1.ModelSelection),
+				RuntimeMode:            effMode,
+				InteractionMode:        imode,
+				QuestionTimeoutSeconds: req.QuestionTimeoutSeconds,
+				StartedAt:              now,
 			}
-			th.RunCount = 1
-			th.ActiveRunId = initRun.RunId
+			sess.Progress.TurnCount = 1
+			sess.Progress.TurnStartedAt = now
+			if initFailure != nil {
+				initRun.Status = sessionv1.RunStatus_RUN_STATUS_FAILED
+				initRun.Failure = initFailure
+				initRun.ErrorCode = "base_ref_unavailable"
+				initRun.ErrorMessage = initFailure.Message
+				initRun.CompletedAt = now
+				sess.ActiveRunId = ""
+				sess.Error = initFailure.Message
+				sess.Progress.LastFailure = initFailure
+			} else {
+				sess.ActiveRunId = initRun.RunId
+			}
 			if err := tx.PutRun(initRun); err != nil {
 				return err
 			}
 			if err := tx.SetRunGrantCeiling(initRun.RunId, p.GrantCeiling); err != nil {
 				return err
 			}
-			userItem := &threadv2.TurnItem{
+			userItem := &sessionv1.TurnItem{
 				ItemId:      newID("itm"),
-				ThreadId:    threadID,
+				SessionId:   sessionID,
 				RunId:       initRun.RunId,
-				Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+				Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 				Status:      "completed",
-				Actor:       proto.Clone(p.Actor).(*threadv2.Actor),
+				Actor:       proto.Clone(p.Actor).(*sessionv1.Actor),
 				Text:        req.InitialPrompt,
 				Attachments: req.Attachments,
 			}
 			if err := tx.PutTurnItem(userItem); err != nil {
 				return err
 			}
-			if err := tx.PutThread(th); err != nil {
+			if err := putSessionSynced(tx, sess); err != nil {
 				return err
 			}
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "item.updated",
-				Thread:   th,
-				Run:      initRun,
-				Item:     userItem,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Session:   sess,
+				Run:       initRun,
+				Item:      userItem,
 			}); err != nil {
 				return err
 			}
+			if initFailure != nil {
+				errItem := &sessionv1.TurnItem{
+					ItemId:    newID("err"),
+					SessionId: sessionID,
+					RunId:     initRun.RunId,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ERROR,
+					Status:    "failed",
+					Text:      initFailure.Message,
+					Failure:   initFailure,
+				}
+				_ = tx.PutTurnItem(errItem)
+				if err := putSessionSynced(tx, sess); err != nil {
+					return err
+				}
+				if err := tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "run.failed",
+					Session:   sess,
+					Run:       initRun,
+					Item:      errItem,
+				}); err != nil {
+					return err
+				}
+			}
 		}
-		res = &threadv2.LaunchThreadResponse{
-			Thread:     proto.Clone(th).(*threadv2.Thread),
+		res = &sessionv1.StartSessionResponse{
+			Session:    proto.Clone(sess).(*sessionv1.Session),
 			InitialRun: initRun,
 		}
-		return tx.PutReceipt(req.CommandId, "LaunchThread", res)
+		return tx.PutReceipt(req.CommandId, "StartSession", res)
 	})
 	if err != nil {
 		return nil, err
 	}
 	e.publish(events, nil)
 
-	if initRun != nil {
-		e.spawnRun(threadID, initRun.RunId, false)
+	if initRun != nil && initFailure == nil {
+		e.spawnRun(sessionID, initRun.RunId, false)
 	}
 	return res, nil
 }
 
-func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv2.DispatchMessageRequest) (*threadv2.DispatchMessageResponse, error) {
+func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *sessionv1.DispatchMessageRequest) (*sessionv1.DispatchMessageResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.DispatchMessageResponse
+	var cached sessionv1.DispatchMessageResponse
 	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "DispatchMessage", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -1007,34 +1310,38 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("message text or attachment is required"))
 	}
 
-	unlock := e.lockThread(req.ThreadId)
-	th, err := e.st.Thread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
+	sess, err := e.st.Session(req.SessionId)
 	if errors.Is(err, store.ErrNotFound) {
 		unlock()
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
 	if err != nil {
 		unlock()
 		return nil, err
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied for thread"))
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied for session"))
 	}
-	if th.Status == threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED {
+	if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
 		unlock()
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("archived thread is read-only; unarchive first"))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("archived session is read-only; unarchive first"))
+	}
+	if e.cfg.IsPaused != nil && e.cfg.IsPaused() {
+		unlock()
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("machine is paused"))
 	}
 
 	intent := req.Intent
-	if intent == threadv2.DispatchIntent_DISPATCH_INTENT_UNSPECIFIED {
-		intent = threadv2.DispatchIntent_DISPATCH_INTENT_AUTO
+	if intent == sessionv1.DispatchIntent_DISPATCH_INTENT_UNSPECIFIED {
+		intent = sessionv1.DispatchIntent_DISPATCH_INTENT_AUTO
 	}
 
 	// Resolve effective selection & modes (applying optional per-dispatch overrides).
-	sel := proto.Clone(th.ModelSelection).(*threadv2.ModelSelection)
+	sel := proto.Clone(sess.ModelSelection).(*sessionv1.ModelSelection)
 	if req.ModelSelection != nil && req.ModelSelection.InstanceId != "" {
-		instCfg, _, err := e.resolveInstanceConfig(p, req.ModelSelection.InstanceId)
+		instCfg, _, err := e.resolveInstanceConfig(p, sess.ProjectId, req.ModelSelection.InstanceId)
 		if err != nil {
 			unlock()
 			return nil, err
@@ -1043,73 +1350,85 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 			unlock()
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
 		}
-		sel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
-	} else if !e.principalAllowsInstance(p, sel.GetInstanceId()) {
-		unlock()
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this thread's provider"))
+		sel = proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection)
+		if sel.Model == "" && sess.ModelSelection != nil && sess.ModelSelection.InstanceId == sel.InstanceId {
+			sel.Model = sess.ModelSelection.Model
+		}
+	} else if req.ModelSelection != nil && req.ModelSelection.Model != "" {
+		if sel == nil {
+			sel = &sessionv1.ModelSelection{}
+		}
+		sel.Model = req.ModelSelection.Model
+		if len(req.ModelSelection.Options) > 0 {
+			sel.Options = proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection).Options
+		}
 	}
-	if err := e.projectAllowsInstance(th.ProjectId, sel.GetInstanceId()); err != nil {
+	if !e.principalAllowsInstance(p, sel.GetInstanceId()) {
+		unlock()
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this session's provider"))
+	}
+	if err := e.projectAllowsInstance(sess.ProjectId, sel.GetInstanceId()); err != nil {
 		unlock()
 		return nil, err
 	}
-	reqMode := th.RuntimeMode
+	reqMode := sess.RuntimeMode
 	if req.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		reqMode = req.RuntimeMode
 	}
 	effMode := policy.EffectiveMode(e.machineMax(), p.GrantCeiling, reqMode)
-	imode := th.InteractionMode
-	if req.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
+	imode := sess.InteractionMode
+	if req.InteractionMode != sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
 		imode = req.InteractionMode
 	}
 
-	isActive := th.ActiveRunId != "" && (th.Status == threadv2.ThreadStatus_THREAD_STATUS_RUNNING || th.Status == threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST)
+	isActive := sess.ActiveRunId != "" && (sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING || sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
 
 	// Mid-turn STEER path when an active run is running!
-	if isActive && intent != threadv2.DispatchIntent_DISPATCH_INTENT_QUEUE && intent != threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT {
-		lease := e.sup.Get(th.ActiveProviderThreadId)
-		canLiveSteer := th.Status == threadv2.ThreadStatus_THREAD_STATUS_RUNNING &&
+	if isActive && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE && intent != sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT {
+		lease := e.sup.Get(sess.ActiveProviderSessionId)
+		canLiveSteer := sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
 			lease != nil && SelectionsEqual(lease.Selection, sel)
 		if canLiveSteer {
 			atts := e.loadTurnAttachments(req.Attachments)
 			if sErr := lease.Session.Steer(ctx, req.Text, atts); sErr == nil {
-				var res *threadv2.DispatchMessageResponse
+				var res *sessionv1.DispatchMessageResponse
 				events, mErr := e.st.Mutate(func(tx *store.Tx) error {
-					tNow, err := tx.GetThread(th.ThreadId)
+					sNow, err := tx.GetSession(sess.SessionId)
 					if err != nil {
 						return err
 					}
-					activeRun, err := tx.GetRun(tNow.ActiveRunId)
+					activeRun, err := tx.GetRun(sNow.ActiveRunId)
 					if err != nil {
 						return err
 					}
-					item := &threadv2.TurnItem{
+					item := &sessionv1.TurnItem{
 						ItemId:      newID("itm"),
-						ThreadId:    tNow.ThreadId,
+						SessionId:   sNow.SessionId,
 						RunId:       activeRun.RunId,
-						Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+						Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 						Status:      "steered",
-						Actor:       proto.Clone(p.Actor).(*threadv2.Actor),
+						Actor:       proto.Clone(p.Actor).(*sessionv1.Actor),
 						Text:        req.Text,
 						Attachments: req.Attachments,
 					}
 					if err := tx.PutTurnItem(item); err != nil {
 						return err
 					}
-					if err := tx.PutThread(tNow); err != nil {
+					if err := putSessionSynced(tx, sNow); err != nil {
 						return err
 					}
-					if err := tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: tNow.ThreadId,
-						Type:     "item.updated",
-						Thread:   tNow,
-						Run:      activeRun,
-						Item:     item,
+					if err := tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: sNow.SessionId,
+						Type:      "item.updated",
+						Session:   sNow,
+						Run:       activeRun,
+						Item:      item,
 					}); err != nil {
 						return err
 					}
-					res = &threadv2.DispatchMessageResponse{
-						Thread:           proto.Clone(tNow).(*threadv2.Thread),
-						Run:              proto.Clone(activeRun).(*threadv2.Run),
+					res = &sessionv1.DispatchMessageResponse{
+						Session:          proto.Clone(sNow).(*sessionv1.Session),
+						Run:              proto.Clone(activeRun).(*sessionv1.Run),
 						SteeredActiveRun: true,
 					}
 					return tx.PutReceipt(req.CommandId, "DispatchMessage", res)
@@ -1122,65 +1441,64 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 				return res, nil
 			}
 		}
-		// If explicit STEER was requested on a driver that doesn't support live steer,
-		// interrupt the active run without holding the queue so this message takes over next!
-		if intent == threadv2.DispatchIntent_DISPATCH_INTENT_STEER && lease != nil {
+		if intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER && lease != nil {
 			_ = lease.Session.Interrupt(ctx)
 		}
 	}
 
 	// Otherwise, either start immediately (if idle and queue not held) or enqueue!
-	var startedRun *threadv2.Run
-	var res *threadv2.DispatchMessageResponse
-	freshCtx := intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT
+	var startedRun *sessionv1.Run
+	var res *sessionv1.DispatchMessageResponse
+	freshCtx := intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT
 
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(th.ThreadId)
+		sNow, err := tx.GetSession(sess.SessionId)
 		if err != nil {
 			return err
 		}
-		if tNow.ActiveRunId == "" {
-			// While a run is active the thread fields describe that run; a queued
-			// message's selection and modes are applied when it starts.
-			tNow.ModelSelection = sel
-			tNow.RuntimeMode = reqMode
-			tNow.EffectiveRuntimeMode = effMode
-			tNow.InteractionMode = imode
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		if sNow.ActiveRunId == "" {
+			sNow.ModelSelection = sel
+			sNow.RuntimeMode = reqMode
+			sNow.EffectiveRuntimeMode = effMode
+			sNow.InteractionMode = imode
 		}
 
-		queued, err := tx.QueuedRuns(tNow.ThreadId)
+		queued, err := tx.QueuedRuns(sNow.SessionId)
 		if err != nil {
 			return err
 		}
-		// QUEUE means "after what is running": with nothing running and the queue not held, that is now.
-		// (Parked behind nothing, it would never start, and the next message would pass it.)
-		queueIntent := intent == threadv2.DispatchIntent_DISPATCH_INTENT_QUEUE
-		shouldQueue := tNow.ActiveRunId != "" ||
-			(tNow.QueueHeld && (len(queued) > 0 || queueIntent)) ||
+		queueIntent := intent == sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE
+		shouldQueue := sNow.ActiveRunId != "" ||
+			(sNow.QueueHeld && (len(queued) > 0 || queueIntent)) ||
 			(queueIntent && len(queued) > 0)
 
 		if shouldQueue {
 			qOrder := 1000.0
 			if len(queued) > 0 {
-				if intent == threadv2.DispatchIntent_DISPATCH_INTENT_STEER {
+				if intent == sessionv1.DispatchIntent_DISPATCH_INTENT_STEER {
 					qOrder = queued[0].QueueOrder - 1000.0
 				} else {
 					qOrder = queued[len(queued)-1].QueueOrder + 1000.0
 				}
 			}
-			qRun := &threadv2.Run{
-				RunId:           newID("run"),
-				ThreadId:        tNow.ThreadId,
-				Ordinal:         0,
-				Status:          threadv2.RunStatus_RUN_STATUS_QUEUED,
-				QueueOrder:      qOrder,
-				Author:          proto.Clone(p.Actor).(*threadv2.Actor),
-				Prompt:          req.Text,
-				Attachments:     req.Attachments,
-				Intent:          intent,
-				ModelSelection:  proto.Clone(sel).(*threadv2.ModelSelection),
-				RuntimeMode:     effMode,
-				InteractionMode: imode,
+			qRun := &sessionv1.Run{
+				RunId:                  newID("run"),
+				SessionId:              sNow.SessionId,
+				Ordinal:                0,
+				Status:                 sessionv1.RunStatus_RUN_STATUS_QUEUED,
+				QueueOrder:             qOrder,
+				Author:                 proto.Clone(p.Actor).(*sessionv1.Actor),
+				AuthorConversation:     strings.TrimSpace(req.Conversation),
+				Prompt:                 req.Text,
+				Attachments:            req.Attachments,
+				Intent:                 intent,
+				ModelSelection:         proto.Clone(sel).(*sessionv1.ModelSelection),
+				RuntimeMode:            effMode,
+				InteractionMode:        imode,
+				QuestionTimeoutSeconds: req.QuestionTimeoutSeconds,
 			}
 			if err := tx.PutRun(qRun); err != nil {
 				return err
@@ -1188,100 +1506,102 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 			if err := tx.SetRunGrantCeiling(qRun.RunId, p.GrantCeiling); err != nil {
 				return err
 			}
-			tNow.QueuedRunCount = uint32(len(queued) + 1)
-			if tNow.ActiveRunId == "" {
-				tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
+			sNow.QueuedRunCount = uint32(len(queued) + 1)
+			if sNow.ActiveRunId == "" {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
 			}
-			if err := tx.PutThread(tNow); err != nil {
+			if err := putSessionSynced(tx, sNow); err != nil {
 				return err
 			}
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: tNow.ThreadId,
-				Type:     "run.queued",
-				Thread:   tNow,
-				Run:      qRun,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sNow.SessionId,
+				Type:      "run.queued",
+				Session:   sNow,
+				Run:       qRun,
 			}); err != nil {
 				return err
 			}
-			res = &threadv2.DispatchMessageResponse{
-				Thread: proto.Clone(tNow).(*threadv2.Thread),
-				Run:    proto.Clone(qRun).(*threadv2.Run),
+			res = &sessionv1.DispatchMessageResponse{
+				Session: proto.Clone(sNow).(*sessionv1.Session),
+				Run:     proto.Clone(qRun).(*sessionv1.Run),
 			}
 			return tx.PutReceipt(req.CommandId, "DispatchMessage", res)
 		}
 
-		// Start immediately! If the thread was parked on a post-turn resumable
-		// request (such as PLAN_REVIEW or USER_INPUT) and the user replied in the
-		// composer instead of clicking the card, supersede that request cleanly.
-		supersededReq, supersededItem, err := dismissPendingRequestTx(tx, tNow, p.Actor)
+		supersededReq, supersededItem, err := dismissPendingRequestTx(tx, sNow, p.Actor)
 		if err != nil {
 			return err
 		}
 
-		tNow.QueueHeld = false
-		tNow.LastError = ""
-		tNow.RunCount++
-		startedRun = &threadv2.Run{
-			RunId:           newID("run"),
-			ThreadId:        tNow.ThreadId,
-			Ordinal:         tNow.RunCount,
-			Status:          threadv2.RunStatus_RUN_STATUS_RUNNING,
-			Author:          proto.Clone(p.Actor).(*threadv2.Actor),
-			Prompt:          req.Text,
-			Attachments:     req.Attachments,
-			Intent:          intent,
-			ModelSelection:  proto.Clone(sel).(*threadv2.ModelSelection),
-			RuntimeMode:     effMode,
-			InteractionMode: imode,
-			StartedAt:       timestamppb.Now(),
+		now := timestamppb.Now()
+		sNow.QueueHeld = false
+		sNow.Error = ""
+		sNow.Progress.LastFailure = nil
+		sNow.Progress.TurnCount++
+		sNow.Progress.TurnStartedAt = now
+		startedRun = &sessionv1.Run{
+			RunId:                  newID("run"),
+			SessionId:              sNow.SessionId,
+			Ordinal:                sNow.Progress.TurnCount,
+			Status:                 sessionv1.RunStatus_RUN_STATUS_RUNNING,
+			Author:                 proto.Clone(p.Actor).(*sessionv1.Actor),
+			AuthorConversation:     strings.TrimSpace(req.Conversation),
+			Prompt:                 req.Text,
+			Attachments:            req.Attachments,
+			Intent:                 intent,
+			ModelSelection:         proto.Clone(sel).(*sessionv1.ModelSelection),
+			RuntimeMode:            effMode,
+			InteractionMode:        imode,
+			QuestionTimeoutSeconds: req.QuestionTimeoutSeconds,
+			StartedAt:              now,
 		}
-		tNow.ActiveRunId = startedRun.RunId
-		tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+		sNow.ActiveRunId = startedRun.RunId
+		sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
 		if err := tx.PutRun(startedRun); err != nil {
 			return err
 		}
 		if err := tx.SetRunGrantCeiling(startedRun.RunId, p.GrantCeiling); err != nil {
 			return err
 		}
-		userItem := &threadv2.TurnItem{
+		userItem := &sessionv1.TurnItem{
 			ItemId:      newID("itm"),
-			ThreadId:    tNow.ThreadId,
+			SessionId:   sNow.SessionId,
 			RunId:       startedRun.RunId,
-			Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+			Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 			Status:      "completed",
-			Actor:       proto.Clone(p.Actor).(*threadv2.Actor),
+			Actor:       proto.Clone(p.Actor).(*sessionv1.Actor),
 			Text:        req.Text,
 			Attachments: req.Attachments,
 		}
 		if err := tx.PutTurnItem(userItem); err != nil {
 			return err
 		}
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		if supersededReq != nil {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: tNow.ThreadId,
-				Type:     "request.resolved",
-				Thread:   tNow,
-				Item:     supersededItem,
-				Request:  supersededReq,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sNow.SessionId,
+				Type:      "request.resolved",
+				Session:   sNow,
+				Item:      supersededItem,
+				Request:   supersededReq,
 			}); err != nil {
 				return err
 			}
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: tNow.ThreadId,
-			Type:     "item.updated",
-			Thread:   tNow,
-			Run:      startedRun,
-			Item:     userItem,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sNow.SessionId,
+			Type:      "item.updated",
+			Session:   sNow,
+			Run:       startedRun,
+			Item:      userItem,
 		}); err != nil {
 			return err
 		}
-		res = &threadv2.DispatchMessageResponse{
-			Thread: proto.Clone(tNow).(*threadv2.Thread),
-			Run:    proto.Clone(startedRun).(*threadv2.Run),
+		res = &sessionv1.DispatchMessageResponse{
+			Session: proto.Clone(sNow).(*sessionv1.Session),
+			Run:     proto.Clone(startedRun).(*sessionv1.Run),
 		}
 		return tx.PutReceipt(req.CommandId, "DispatchMessage", res)
 	})
@@ -1291,46 +1611,446 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *threadv
 	}
 	e.publish(events, nil)
 	if startedRun != nil {
-		e.spawnRun(th.ThreadId, startedRun.RunId, freshCtx)
+		e.spawnRun(sess.SessionId, startedRun.RunId, freshCtx)
 	}
 	return res, nil
+}
+
+// DeliverMessage handles SessionService.DeliverMessage for signed inter-agent mail.
+func (e *Engine) DeliverMessage(ctx context.Context, p *Principal, req *sessionv1.DeliverMessageRequest) (*sessionv1.DeliverMessageResponse, error) {
+	if e.cfg.OnDeliverMessage != nil {
+		return e.cfg.OnDeliverMessage(ctx, p, req)
+	}
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("mail delivery is not configured on this engine"))
+}
+
+// DeliverInboundMail records a verified inbound agent/Her mail item on sessionID and answers, steers, queues, or starts a turn.
+func (e *Engine) DeliverInboundMail(ctx context.Context, p *Principal, sessionID, msgID, senderConv, fromAddr, fromName, inReplyTo, promptText, rawText string, attachments []*sessionv1.AttachmentRef) (*sessionv1.Session, string, error) {
+	if p == nil {
+		return nil, "", connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	unlock := e.lockSession(sessionID)
+	sess, err := e.st.Session(sessionID)
+	if errors.Is(err, store.ErrNotFound) {
+		unlock()
+		return nil, "", connect.NewError(connect.CodeNotFound, errors.New("session not found"))
+	}
+	if err != nil {
+		unlock()
+		return nil, "", err
+	}
+	if !p.canViewSession(sess) {
+		unlock()
+		return nil, "", connect.NewError(connect.CodePermissionDenied, errors.New("permission denied for session"))
+	}
+	if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+		unlock()
+		return nil, "", connect.NewError(connect.CodeFailedPrecondition, errors.New("archived session cannot receive messages"))
+	}
+	if e.cfg.IsPaused != nil && e.cfg.IsPaused() {
+		unlock()
+		return nil, "", connect.NewError(connect.CodeUnavailable, errors.New("this machine is paused"))
+	}
+
+	senderActor := proto.Clone(p.Actor).(*sessionv1.Actor)
+	if senderActor.Label == "" {
+		if fromName != "" {
+			senderActor.Label = fromName
+		} else {
+			senderActor.Label = fromAddr
+		}
+	}
+	if promptText == "" {
+		promptText = fmt.Sprintf("[Message from %s (%s)]\n%s", senderActor.Label, fromAddr, rawText)
+	}
+
+	// 1. Answer pending USER_INPUT question if this sender is authorized to answer it!
+	if sess.PendingRequestId != "" && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT {
+		reqs, _ := e.st.RuntimeRequests(sessionID)
+		var pendingReq *sessionv1.RuntimeRequest
+		for _, r := range reqs {
+			if r.RequestId == sess.PendingRequestId && r.Status == sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+				pendingReq = r
+				break
+			}
+		}
+		if pendingReq != nil && pendingReq.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			activeRun, _ := e.st.Run(pendingReq.RunId)
+			if e.canAnswerQuestion(p, sess, activeRun) {
+				ansMap := map[string]*sessionv1.QuestionAnswer{}
+				if qs := pendingReq.GetUserInput().GetQuestions(); len(qs) > 0 {
+					ansMap[qs[0].Id] = &sessionv1.QuestionAnswer{CustomText: rawText, Attachments: attachments}
+				} else {
+					ansMap["q1"] = &sessionv1.QuestionAnswer{CustomText: rawText, Attachments: attachments}
+				}
+				evs, mErr := e.st.Mutate(func(tx *store.Tx) error {
+					sNow, err := tx.GetSession(sessionID)
+					if err != nil {
+						return err
+					}
+					item := &sessionv1.TurnItem{
+						ItemId:        newID("mail"),
+						SessionId:     sessionID,
+						RunId:         pendingReq.RunId,
+						Kind:          sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED,
+						Status:        "completed",
+						Actor:         senderActor,
+						Text:          rawText,
+						Attachments:   attachments,
+						MailMessageId: msgID,
+						MailAddress:   fromAddr,
+						MailName:      fromName,
+						MailDelivered: "answer",
+						MailInReplyTo: inReplyTo,
+					}
+					if err := tx.PutTurnItem(item); err != nil {
+						return err
+					}
+					if err := putSessionSynced(tx, sNow); err != nil {
+						return err
+					}
+					return tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: sessionID,
+						Type:      "item.updated",
+						Session:   sNow,
+						Item:      item,
+					})
+				})
+				unlock()
+				if mErr != nil {
+					return nil, "", mErr
+				}
+				e.publish(evs, nil)
+				res, rErr := e.RespondRuntimeRequest(ctx, p, &sessionv1.RespondRuntimeRequestRequest{
+					SessionId: sessionID,
+					RequestId: pendingReq.RequestId,
+					Answers:   ansMap,
+				})
+				if rErr != nil {
+					return nil, "", rErr
+				}
+				return res.Session, "answer", nil
+			}
+		}
+	}
+
+	// 2. Live steer if currently running and this sender owns the active turn!
+	if sess.ActiveRunId != "" && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+		activeRun, _ := e.st.Run(sess.ActiveRunId)
+		sameAsker := activeRun != nil && activeRun.GetAuthor().GetId() == senderActor.GetId()
+		if sameAsker {
+			if lease := e.sup.Get(sess.ActiveProviderSessionId); lease != nil {
+				if sErr := lease.Session.Steer(ctx, promptText, e.loadTurnAttachments(attachments)); sErr == nil {
+					var updated *sessionv1.Session
+					events, mErr := e.st.Mutate(func(tx *store.Tx) error {
+						sNow, err := tx.GetSession(sessionID)
+						if err != nil {
+							return err
+						}
+						item := &sessionv1.TurnItem{
+							ItemId:        newID("mail"),
+							SessionId:     sessionID,
+							RunId:         sNow.ActiveRunId,
+							Kind:          sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED,
+							Status:        "completed",
+							Actor:         senderActor,
+							Text:          rawText,
+							Attachments:   attachments,
+							MailMessageId: msgID,
+							MailAddress:   fromAddr,
+							MailName:      fromName,
+							MailDelivered: "joined",
+							MailInReplyTo: inReplyTo,
+						}
+						if err := tx.PutTurnItem(item); err != nil {
+							return err
+						}
+						if err := putSessionSynced(tx, sNow); err != nil {
+							return err
+						}
+						updated = proto.Clone(sNow).(*sessionv1.Session)
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "item.updated",
+							Session:   sNow,
+							Item:      item,
+						})
+					})
+					unlock()
+					if mErr != nil {
+						return nil, "", mErr
+					}
+					e.publish(events, nil)
+					return updated, "joined", nil
+				}
+			}
+		}
+	}
+
+	// 3. Otherwise either enqueue (if busy/held) or start a turn on the idle session!
+	var startedRun *sessionv1.Run
+	var updated *sessionv1.Session
+	var delivered string
+	effMode := policy.EffectiveMode(e.machineMax(), p.GrantCeiling, sess.RuntimeMode)
+	events, err := e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sessionID)
+		if err != nil {
+			return err
+		}
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		queued, _ := tx.QueuedRuns(sessionID)
+		if sNow.ActiveRunId != "" || sNow.QueueHeld || len(queued) > 0 {
+			delivered = "queued"
+			qOrder := 1000.0
+			if len(queued) > 0 {
+				qOrder = queued[len(queued)-1].QueueOrder + 1000.0
+			}
+			qRun := &sessionv1.Run{
+				RunId:              newID("run"),
+				SessionId:          sessionID,
+				Ordinal:            0,
+				Status:             sessionv1.RunStatus_RUN_STATUS_QUEUED,
+				QueueOrder:         qOrder,
+				Author:             senderActor,
+				AuthorConversation: senderConv,
+				Prompt:             promptText,
+				Attachments:        attachments,
+				Intent:             sessionv1.DispatchIntent_DISPATCH_INTENT_QUEUE,
+				ModelSelection:     proto.Clone(sNow.ModelSelection).(*sessionv1.ModelSelection),
+				RuntimeMode:        effMode,
+				InteractionMode:    sNow.InteractionMode,
+			}
+			if err := tx.PutRun(qRun); err != nil {
+				return err
+			}
+			if err := tx.SetRunGrantCeiling(qRun.RunId, p.GrantCeiling); err != nil {
+				return err
+			}
+			mailItem := &sessionv1.TurnItem{
+				ItemId:        newID("mail"),
+				SessionId:     sessionID,
+				RunId:         qRun.RunId,
+				Kind:          sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED,
+				Status:        "completed",
+				Actor:         senderActor,
+				Text:          rawText,
+				Attachments:   attachments,
+				MailMessageId: msgID,
+				MailAddress:   fromAddr,
+				MailName:      fromName,
+				MailDelivered: delivered,
+				MailInReplyTo: inReplyTo,
+			}
+			if err := tx.PutTurnItem(mailItem); err != nil {
+				return err
+			}
+			sNow.QueuedRunCount = uint32(len(queued) + 1)
+			if sNow.ActiveRunId == "" {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
+			}
+			if err := putSessionSynced(tx, sNow); err != nil {
+				return err
+			}
+			updated = proto.Clone(sNow).(*sessionv1.Session)
+			_ = tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Session:   sNow,
+				Run:       qRun,
+				Item:      mailItem,
+			})
+			return tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "run.queued",
+				Session:   sNow,
+				Run:       qRun,
+			})
+		}
+
+		delivered = "turn"
+		supReq, supItem, dErr := dismissPendingRequestTx(tx, sNow, senderActor)
+		if dErr != nil {
+			return dErr
+		}
+		now := timestamppb.Now()
+		sNow.Error = ""
+		sNow.Progress.LastFailure = nil
+		sNow.Progress.TurnCount++
+		sNow.Progress.TurnStartedAt = now
+		startedRun = &sessionv1.Run{
+			RunId:              newID("run"),
+			SessionId:          sessionID,
+			Ordinal:            sNow.Progress.TurnCount,
+			Status:             sessionv1.RunStatus_RUN_STATUS_RUNNING,
+			Author:             senderActor,
+			AuthorConversation: senderConv,
+			Prompt:             promptText,
+			Attachments:        attachments,
+			Intent:             sessionv1.DispatchIntent_DISPATCH_INTENT_START,
+			ModelSelection:     proto.Clone(sNow.ModelSelection).(*sessionv1.ModelSelection),
+			RuntimeMode:        effMode,
+			InteractionMode:    sNow.InteractionMode,
+			StartedAt:          now,
+		}
+		sNow.ActiveRunId = startedRun.RunId
+		sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+		sNow.EffectiveRuntimeMode = effMode
+		if err := tx.PutRun(startedRun); err != nil {
+			return err
+		}
+		if err := tx.SetRunGrantCeiling(startedRun.RunId, p.GrantCeiling); err != nil {
+			return err
+		}
+		mailItem := &sessionv1.TurnItem{
+			ItemId:        newID("mail"),
+			SessionId:     sessionID,
+			RunId:         startedRun.RunId,
+			Kind:          sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED,
+			Status:        "completed",
+			Actor:         senderActor,
+			Text:          rawText,
+			Attachments:   attachments,
+			MailMessageId: msgID,
+			MailAddress:   fromAddr,
+			MailName:      fromName,
+			MailDelivered: delivered,
+			MailInReplyTo: inReplyTo,
+		}
+		if err := tx.PutTurnItem(mailItem); err != nil {
+			return err
+		}
+		if err := putSessionSynced(tx, sNow); err != nil {
+			return err
+		}
+		updated = proto.Clone(sNow).(*sessionv1.Session)
+		if supReq != nil {
+			_ = tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "request.resolved",
+				Session:   sNow,
+				Item:      supItem,
+				Request:   supReq,
+			})
+		}
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "item.updated",
+			Session:   sNow,
+			Run:       startedRun,
+			Item:      mailItem,
+		})
+	})
+	unlock()
+	if err != nil {
+		return nil, "", err
+	}
+	e.publish(events, nil)
+	if startedRun != nil {
+		e.spawnRun(sessionID, startedRun.RunId, false)
+	}
+	return updated, delivered, nil
+}
+
+// RecordSentMail appends a TURN_ITEM_KIND_MESSAGE_SENT item when a session sends mail via herlink/MCP.
+func (e *Engine) RecordSentMail(sessionID, msgID, toAddr, toName, inReplyTo, body, delivered string) {
+	evs, err := e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sessionID)
+		if err != nil {
+			return err
+		}
+		it := &sessionv1.TurnItem{
+			ItemId:        newID("sent"),
+			SessionId:     sessionID,
+			RunId:         sNow.ActiveRunId,
+			Kind:          sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_SENT,
+			Status:        "completed",
+			Text:          body,
+			MailMessageId: msgID,
+			MailAddress:   toAddr,
+			MailName:      toName,
+			MailDelivered: delivered,
+			MailInReplyTo: inReplyTo,
+		}
+		if err := tx.PutTurnItem(it); err != nil {
+			return err
+		}
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "item.updated",
+			Session:   sNow,
+			Item:      it,
+		})
+	})
+	if err == nil {
+		e.publish(evs, nil)
+	}
 }
 
 // ---------------------------------------------------------------------------
 // Core Run Execution Loop (TransitionPolicy + Checkpoints + RuntimeRequest Gate + Queue Drain)
 
-func (e *Engine) resolveWorkdir(th *threadv2.Thread) (string, error) {
-	ws, err := e.st.Workspace(th.ProjectId)
+func (e *Engine) resolveWorkdir(sess *sessionv1.Session) (string, error) {
+	ws, err := e.st.Workspace(sess.ProjectId)
 	if err != nil {
 		return "", err
 	}
-	if th.GetWorkspace().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE {
-		wtPath := th.GetWorkspace().GetWorktreePath()
+	if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE {
+		wtPath := sess.GetWorkspaceStrategy().GetWorktreePath()
 		if wtPath != "" {
 			if st, err := os.Stat(wtPath); err == nil && st.IsDir() {
 				return wtPath, nil
 			}
 		}
-		// Restore missing worktree transparently!
-		restored, branch, err := e.vcs.PrepareWorktree(e.bgCtx, ws.Path, th.ThreadId, th.GetWorkspace().GetBaseRef(), th.GetWorkspace().GetBranch())
+		targetWTDir := filepath.Join(e.vcs.WorktreesRoot(), sess.SessionId)
+		_, statErr := os.Stat(targetWTDir)
+		wasMissing := os.IsNotExist(statErr)
+
+		baseRef := sess.GetWorkspaceStrategy().GetBaseRef()
+		restored, branch, err := e.vcs.PrepareWorktree(e.bgCtx, ws.Path, sess.SessionId, baseRef, sess.GetWorkspaceStrategy().GetBranch())
+		var baseErr *vcs.BaseRefError
+		if errors.As(err, &baseErr) && !sess.GetWorkspaceStrategy().GetFromRemote() {
+			fetchStart := time.Now()
+			if localRef, remote, fErr := e.vcs.FetchRef(e.bgCtx, ws.Path, baseRef); fErr == nil {
+				e.log.Info("fetched the base ref", "session", sess.SessionId, "ref", baseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
+				restored, branch, err = e.vcs.PrepareWorktree(e.bgCtx, ws.Path, sess.SessionId, localRef, sess.GetWorkspaceStrategy().GetBranch())
+			} else {
+				err = fErr
+			}
+		}
 		if err != nil {
+			if errors.As(err, &baseErr) {
+				return "", runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
+					fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", sess.ProjectId, baseErr.Ref, ws.Path, baseErr.Upstream()))
+			}
 			return "", err
 		}
+		if wasMissing {
+			if ckpts, cErr := e.st.Checkpoints(sess.SessionId); cErr == nil && len(ckpts) > 0 {
+				if latest := ckpts[len(ckpts)-1]; latest.GitTreeOid != "" {
+					_ = e.vcs.RestoreTree(e.bgCtx, restored, latest.GitTreeOid)
+				}
+			}
+		}
 		_, _ = e.st.Mutate(func(tx *store.Tx) error {
-			tNow, err := tx.GetThread(th.ThreadId)
+			sNow, err := tx.GetSession(sess.SessionId)
 			if err != nil {
 				return err
 			}
-			tNow.Workspace.WorktreePath = restored
-			tNow.Workspace.Branch = branch
-			return tx.PutThread(tNow)
+			if sNow.WorkspaceStrategy == nil {
+				sNow.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace_WORKSPACE_WORKTREE}
+			}
+			sNow.WorkspaceStrategy.WorktreePath = restored
+			sNow.WorkspaceStrategy.Branch = branch
+			return putSessionSynced(tx, sNow)
 		})
 		return restored, nil
 	}
 	return ws.Path, nil
 }
 
-func (e *Engine) loadTurnAttachments(refs []*threadv2.AttachmentRef) []runtime.TurnAttachment {
+func (e *Engine) loadTurnAttachments(refs []*sessionv1.AttachmentRef) []runtime.TurnAttachment {
 	var out []runtime.TurnAttachment
 	for _, r := range refs {
 		data, name, mime, err := e.st.GetBlob(r.BlobSha256)
@@ -1353,38 +2073,75 @@ func (e *Engine) loadTurnAttachments(refs []*threadv2.AttachmentRef) []runtime.T
 	return out
 }
 
-func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshContext bool) {
+func (e *Engine) buildStartSpec(sess *sessionv1.Session, workdir string, instCfg *sessionv1.ProviderInstanceConfig, curRun *sessionv1.Run, resumeCursor string) runtime.StartSpec {
+	spec := runtime.StartSpec{
+		SessionID:       sess.SessionId,
+		Workdir:         workdir,
+		Title:           sess.Title,
+		Instance:        instCfg,
+		Selection:       curRun.ModelSelection,
+		EffectiveMode:   curRun.RuntimeMode,
+		InteractionMode: curRun.InteractionMode,
+		ResumeCursor:    resumeCursor,
+		Gate:            e.makeGate(sess.SessionId, workdir),
+	}
+	if e.cfg.MCPServers != nil {
+		spec.MCPServers = e.cfg.MCPServers(sess.SessionId)
+	}
+	if e.cfg.ReadDirs != nil {
+		spec.ReadDirs = e.cfg.ReadDirs(sess.ProjectId)
+	}
+	if e.cfg.ExtraEnv != nil {
+		spec.ExtraEnv = e.cfg.ExtraEnv(sess.SessionId)
+	}
+	if e.cfg.DataDir != "" {
+		tmp := filepath.Join(e.cfg.DataDir, "sessions", sess.SessionId, "tmp")
+		_ = os.MkdirAll(tmp, 0o700)
+		if spec.ExtraEnv == nil {
+			spec.ExtraEnv = map[string]string{}
+		}
+		for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
+			if _, ok := spec.ExtraEnv[k]; !ok {
+				spec.ExtraEnv[k] = tmp
+			}
+		}
+	}
+	return spec
+}
+
+func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, freshContext bool) {
 	if runCtx.Err() != nil {
+		e.finishRunInterrupted(sessionID, runID, "interrupted", nil, nil)
 		return
 	}
 
-	th, err := e.st.Thread(threadID)
+	sess, err := e.st.Session(sessionID)
 	if err != nil {
 		return
 	}
-	runs, _ := e.st.Runs(threadID)
-	var curRun *threadv2.Run
+	runs, _ := e.st.Runs(sessionID)
+	var curRun *sessionv1.Run
 	for _, r := range runs {
 		if r.RunId == runID {
 			curRun = r
 			break
 		}
 	}
-	if curRun == nil || curRun.Status != threadv2.RunStatus_RUN_STATUS_RUNNING {
+	if curRun == nil || curRun.Status != sessionv1.RunStatus_RUN_STATUS_RUNNING {
 		return
 	}
 
-	workdir, err := e.resolveWorkdir(th)
+	workdir, err := e.resolveWorkdir(sess)
 	if err != nil {
-		e.finishRunFailed(threadID, runID, "workspace_error", err.Error())
+		e.finishRunFailed(sessionID, runID, "workspace_error", err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
 		return
 	}
 
 	// Capture baseline checkpoint (ordinal 0) before the very first run so user can rewind even Run 1!
-	existingCkpts, _ := e.st.Checkpoints(threadID)
+	existingCkpts, _ := e.st.Checkpoints(sessionID)
 	prevTreeOID := ""
 	if len(existingCkpts) == 0 {
-		if baseCp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), threadID, "", 0, ""); cpErr == nil && baseCp != nil {
+		if baseCp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), sessionID, "", 0, ""); cpErr == nil && baseCp != nil {
 			prevTreeOID = baseCp.GitTreeOid
 			_, _ = e.st.Mutate(func(tx *store.Tx) error { return tx.PutCheckpoint(baseCp) })
 		}
@@ -1392,30 +2149,33 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		prevTreeOID = existingCkpts[len(existingCkpts)-1].GitTreeOid
 	}
 
-	instCfg, drv, err := e.resolveInstanceConfig(nil, curRun.ModelSelection.GetInstanceId())
+	instCfg, drv, err := e.resolveInstanceConfig(nil, sess.ProjectId, curRun.ModelSelection.GetInstanceId())
 	if err != nil {
-		e.finishRunFailed(threadID, runID, "provider_unavailable", err.Error())
+		e.finishRunFailed(sessionID, runID, "provider_unavailable", err.Error(), &runtime.Failure{
+			Kind:    sessionv1.FailureKind_FAILURE_KIND_START_FAILED,
+			Message: err.Error(),
+		})
 		return
 	}
 	caps := drv.Capabilities(instCfg.AcpFlavor)
 
-	var currentPT *threadv2.ProviderThread
-	if th.ActiveProviderThreadId != "" {
-		pts, _ := e.st.ProviderThreads(threadID)
-		for _, pt := range pts {
-			if pt.ProviderThreadId == th.ActiveProviderThreadId {
-				currentPT = pt
+	var currentPS *sessionv1.ProviderSession
+	if sess.ActiveProviderSessionId != "" {
+		pss, _ := e.st.ProviderSessions(sessionID)
+		for _, ps := range pss {
+			if ps.ProviderSessionId == sess.ActiveProviderSessionId {
+				currentPS = ps
 				break
 			}
 		}
 	}
 	var liveLease *runtime.LeaseEntry
-	if currentPT != nil {
-		liveLease = e.sup.Get(currentPT.ProviderThreadId)
+	if currentPS != nil {
+		liveLease = e.sup.Get(currentPS.ProviderSessionId)
 	}
 
 	plan := DecideTransition(TransitionInput{
-		CurrentBinding:      currentPT,
+		CurrentBinding:      currentPS,
 		LiveLease:           liveLease,
 		NextSelection:       curRun.ModelSelection,
 		NextEffectiveMode:   curRun.RuntimeMode,
@@ -1426,27 +2186,26 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 
 	var handoffPrefix string
 	var activeLease *runtime.LeaseEntry
-	var activePT *threadv2.ProviderThread
+	var activePS *sessionv1.ProviderSession
 
 	switch plan.Action {
 	case TransitionReuseInPlace:
 		activeLease = liveLease
-		activePT = currentPT
+		activePS = currentPS
 
 	case TransitionSwitchInSession:
-		prevSel := proto.Clone(liveLease.Selection).(*threadv2.ModelSelection)
+		prevSel := proto.Clone(liveLease.Selection).(*sessionv1.ModelSelection)
 		if plan.ModelChanged || plan.OptionsChanged {
 			if err := liveLease.Session.SetSelection(runCtx, curRun.ModelSelection); err != nil {
-				// Fallback to restart if hot switch failed dynamically.
-				e.sup.Detach(currentPT.ProviderThreadId, false)
+				e.sup.Detach(currentPS.ProviderSessionId, false)
 				liveLease = nil
 			} else {
-				liveLease.Selection = proto.Clone(curRun.ModelSelection).(*threadv2.ModelSelection)
+				liveLease.Selection = proto.Clone(curRun.ModelSelection).(*sessionv1.ModelSelection)
 			}
 		}
 		if liveLease != nil && plan.ModeChanged {
 			if err := liveLease.Session.SetModes(runCtx, curRun.RuntimeMode, curRun.InteractionMode); err != nil {
-				e.sup.Detach(currentPT.ProviderThreadId, false)
+				e.sup.Detach(currentPS.ProviderSessionId, false)
 				liveLease = nil
 			} else {
 				liveLease.RuntimeMode = curRun.RuntimeMode
@@ -1455,28 +2214,29 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		}
 		if liveLease != nil {
 			activeLease = liveLease
-			activePT = currentPT
+			activePS = currentPS
 			if plan.ModelChanged || plan.OptionsChanged {
-				e.recordSwitchItem(threadID, runID, prevSel, curRun.ModelSelection, "", "")
+				e.recordSwitchItem(sessionID, runID, prevSel, curRun.ModelSelection, "", "")
 			}
 		}
 	}
 
 	if activeLease == nil {
 		if runCtx.Err() != nil {
+			if e.bgCtx.Err() == nil {
+				e.finishRunInterrupted(sessionID, runID, "interrupted", nil, nil)
+			}
 			return
 		}
-		// Detach any old live session before spawning the replacement.
-		if currentPT != nil {
-			e.sup.Detach(currentPT.ProviderThreadId, false)
+		if currentPS != nil {
+			e.sup.Detach(currentPS.ProviderSessionId, false)
 		}
 		buildHandoff := func() string {
 			if freshContext {
 				return ""
 			}
-			priorItems, _ := e.st.TurnItems(threadID)
-			// Exclude current run's just-added user message from handoff history!
-			var historyItems []*threadv2.TurnItem
+			priorItems, _ := e.st.TurnItems(sessionID)
+			var historyItems []*sessionv1.TurnItem
 			for _, it := range priorItems {
 				if it.RunId != runID {
 					historyItems = append(historyItems, it)
@@ -1486,85 +2246,81 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		}
 
 		resumeCursor := ""
-		if plan.Action == TransitionSpawnAndResume && currentPT != nil {
-			resumeCursor = currentPT.ResumeCursor
-			activePT = currentPT
+		var unstartedPrompts []string
+		if currentPS == nil && !freshContext {
+			for _, pr := range runs {
+				if pr.RunId != runID && pr.ProviderSessionId == "" && strings.TrimSpace(pr.Prompt) != "" {
+					unstartedPrompts = append(unstartedPrompts, pr.Prompt)
+				}
+			}
+		}
+		if plan.Action == TransitionSpawnAndResume && currentPS != nil {
+			resumeCursor = currentPS.ResumeCursor
+			activePS = currentPS
 		} else {
-			handoffPrefix = buildHandoff()
-			activePT = &threadv2.ProviderThread{
-				ProviderThreadId: newID("pt"),
-				ThreadId:         threadID,
-				InstanceId:       instCfg.InstanceId,
-				Driver:           instCfg.Driver,
-				ProcessAlive:     true,
+			if len(unstartedPrompts) == 0 {
+				handoffPrefix = buildHandoff()
+			}
+			activePS = &sessionv1.ProviderSession{
+				ProviderSessionId: newID("ps"),
+				SessionId:         sessionID,
+				InstanceId:        instCfg.InstanceId,
+				Driver:            instCfg.Driver,
+				ProcessAlive:      true,
 			}
 		}
 
-		sess, startErr := drv.StartSession(e.bgCtx, runtime.StartSpec{
-			ThreadID:        threadID,
-			Workdir:         workdir,
-			Instance:        instCfg,
-			Selection:       curRun.ModelSelection,
-			EffectiveMode:   curRun.RuntimeMode,
-			InteractionMode: curRun.InteractionMode,
-			ResumeCursor:    resumeCursor,
-			Gate:            e.makeGate(threadID, workdir),
-		})
+		drvSess, startErr := drv.StartSession(e.bgCtx, e.buildStartSpec(sess, workdir, instCfg, curRun, resumeCursor))
 		if startErr != nil && resumeCursor != "" && runCtx.Err() == nil && e.bgCtx.Err() == nil {
 			// Native session cursor expired or cannot be resumed; self-heal by spawning a
-			// fresh ProviderThread carrying the Hermesh transcript handoff.
-			if currentPT != nil {
+			// fresh ProviderSession carrying the Hermesh transcript handoff.
+			if currentPS != nil {
 				_, _ = e.st.Mutate(func(tx *store.Tx) error {
-					if pt, err := tx.GetProviderThread(currentPT.ProviderThreadId); err == nil {
-						pt.ProcessAlive = false
-						_ = tx.PutProviderThread(pt)
+					if ps, err := tx.GetProviderSession(currentPS.ProviderSessionId); err == nil {
+						ps.ProcessAlive = false
+						_ = tx.PutProviderSession(ps)
 					}
 					return nil
 				})
 			}
 			handoffPrefix = buildHandoff()
 			plan.HandoffStrategy = "transcript_pack"
-			activePT = &threadv2.ProviderThread{
-				ProviderThreadId: newID("pt"),
-				ThreadId:         threadID,
-				InstanceId:       instCfg.InstanceId,
-				Driver:           instCfg.Driver,
-				ProcessAlive:     true,
+			activePS = &sessionv1.ProviderSession{
+				ProviderSessionId: newID("ps"),
+				SessionId:         sessionID,
+				InstanceId:        instCfg.InstanceId,
+				Driver:            instCfg.Driver,
+				ProcessAlive:      true,
 			}
-			sess, startErr = drv.StartSession(e.bgCtx, runtime.StartSpec{
-				ThreadID:        threadID,
-				Workdir:         workdir,
-				Instance:        instCfg,
-				Selection:       curRun.ModelSelection,
-				EffectiveMode:   curRun.RuntimeMode,
-				InteractionMode: curRun.InteractionMode,
-				Gate:            e.makeGate(threadID, workdir),
-			})
+			drvSess, startErr = drv.StartSession(e.bgCtx, e.buildStartSpec(sess, workdir, instCfg, curRun, ""))
 		}
 		if startErr != nil {
-			e.finishRunFailed(threadID, runID, "session_start_failed", startErr.Error())
+			e.finishRunFailed(sessionID, runID, "session_start_failed", startErr.Error(), runtime.FailureOf(startErr, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
 			return
 		}
 		if runCtx.Err() != nil {
-			_ = sess.ForceStop()
+			_ = drvSess.ForceStop()
+			if e.bgCtx.Err() == nil {
+				e.finishRunInterrupted(sessionID, runID, "interrupted", nil, nil)
+			}
 			return
 		}
-		activePT.ProcessAlive = true
+		activePS.ProcessAlive = true
 		events, _ := e.st.Mutate(func(tx *store.Tx) error {
-			tNow, err := tx.GetThread(threadID)
+			sNow, err := tx.GetSession(sessionID)
 			if err != nil {
 				return err
 			}
-			tNow.ActiveProviderThreadId = activePT.ProviderThreadId
-			if err := tx.PutProviderThread(activePT); err != nil {
+			sNow.ActiveProviderSessionId = activePS.ProviderSessionId
+			if err := tx.PutProviderSession(activePS); err != nil {
 				return err
 			}
-			return tx.PutThread(tNow)
+			return putSessionSynced(tx, sNow)
 		})
 		e.publish(events, nil)
 
-		if handoffPrefix != "" || (currentPT != nil && currentPT.ProviderThreadId != activePT.ProviderThreadId) {
-			var fromSel *threadv2.ModelSelection
+		if handoffPrefix != "" || (currentPS != nil && currentPS.ProviderSessionId != activePS.ProviderSessionId) {
+			var fromSel *sessionv1.ModelSelection
 			if liveLease != nil {
 				fromSel = liveLease.Selection
 			} else {
@@ -1575,18 +2331,18 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 					}
 				}
 			}
-			e.recordSwitchItem(threadID, runID, fromSel, curRun.ModelSelection, plan.HandoffStrategy, handoffPrefix)
+			e.recordSwitchItem(sessionID, runID, fromSel, curRun.ModelSelection, plan.HandoffStrategy, handoffPrefix)
 		}
 
 		activeLease = &runtime.LeaseEntry{
-			ProviderThreadID: activePT.ProviderThreadId,
-			ThreadID:         threadID,
-			InstanceID:       instCfg.InstanceId,
-			DriverKind:       instCfg.Driver,
-			Selection:        proto.Clone(curRun.ModelSelection).(*threadv2.ModelSelection),
-			RuntimeMode:      curRun.RuntimeMode,
-			InteractionMode:  curRun.InteractionMode,
-			Session:          sess,
+			ProviderSessionID: activePS.ProviderSessionId,
+			SessionID:         sessionID,
+			InstanceID:        instCfg.InstanceId,
+			DriverKind:        instCfg.Driver,
+			Selection:         proto.Clone(curRun.ModelSelection).(*sessionv1.ModelSelection),
+			RuntimeMode:       curRun.RuntimeMode,
+			InteractionMode:   curRun.InteractionMode,
+			Session:           drvSess,
 		}
 		e.sup.Register(activeLease)
 		e.startLeasePump(activeLease, workdir)
@@ -1596,18 +2352,28 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 	turn := pump.attachTurn(runID, curRun.Ordinal, workdir, prevTreeOID)
 	activeLease.SetInTurn(true)
 
-	// Record provider_thread_id and handoff summary on the run.
 	_, _ = e.st.Mutate(func(tx *store.Tx) error {
 		rNow, err := tx.GetRun(runID)
 		if err != nil {
 			return err
 		}
-		rNow.ProviderThreadId = activePT.ProviderThreadId
+		rNow.ProviderSessionId = activePS.ProviderSessionId
 		rNow.HandoffSummary = handoffPrefix
 		return tx.PutRun(rNow)
 	})
 
 	promptToSend := curRun.Prompt
+	if currentPS == nil && !freshContext {
+		var priorUnexecuted []string
+		for _, pr := range runs {
+			if pr.RunId != runID && pr.ProviderSessionId == "" && strings.TrimSpace(pr.Prompt) != "" {
+				priorUnexecuted = append(priorUnexecuted, pr.Prompt)
+			}
+		}
+		if len(priorUnexecuted) > 0 {
+			promptToSend = strings.Join(append(priorUnexecuted, curRun.Prompt), "\n")
+		}
+	}
 	if handoffPrefix != "" {
 		promptToSend = handoffPrefix + "\n\n" + curRun.Prompt
 	}
@@ -1623,8 +2389,8 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 	}); err != nil {
 		pump.clearActiveIf(runID)
 		activeLease.SetInTurn(false)
-		e.sup.DetachSession(activePT.ProviderThreadId, activeLease.Session, false)
-		e.finishRunFailed(threadID, runID, "turn_start_failed", err.Error())
+		e.sup.DetachSession(activePS.ProviderSessionId, activeLease.Session, false)
+		e.finishRunFailed(sessionID, runID, "turn_start_failed", err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_UNKNOWN))
 		return
 	}
 
@@ -1637,10 +2403,35 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		}
 		if pump.clearActiveIf(runID) {
 			activeLease.SetInTurn(false)
-			e.finishRunInterrupted(threadID, runID, "interrupted")
+			cp, cumStat := e.captureTurnCheckpoint(sessionID, runID, curRun.Ordinal, workdir, prevTreeOID)
+			e.finishRunInterrupted(sessionID, runID, "interrupted", cp, cumStat)
 		}
 		return
 	}
+}
+
+func (e *Engine) captureTurnCheckpoint(sessionID, runID string, ordinal uint32, workdir, prevTreeOID string) (*sessionv1.Checkpoint, *sessionv1.DiffStat) {
+	if e.bgCtx.Err() != nil || workdir == "" {
+		return nil, nil
+	}
+	cp, cpErr := e.vcs.CaptureCheckpoint(e.bgCtx, workdir, newID("ckpt"), sessionID, runID, ordinal, prevTreeOID)
+	if cpErr != nil || cp == nil {
+		return nil, nil
+	}
+	var cumStat *sessionv1.DiffStat
+	existingCkpts, _ := e.st.Checkpoints(sessionID)
+	baseTree := ""
+	if len(existingCkpts) > 0 && existingCkpts[0].RunOrdinal == 0 {
+		baseTree = existingCkpts[0].GitTreeOid
+	}
+	if baseTree != "" {
+		if _, files, dErr := e.vcs.DiffTrees(e.bgCtx, workdir, baseTree, cp.GitTreeOid); dErr == nil {
+			cumStat = summarizeDiffFiles(files)
+		}
+	} else {
+		cumStat = summarizeDiffFiles(cp.Files)
+	}
+	return cp, cumStat
 }
 
 type activeTurnHandle struct {
@@ -1746,7 +2537,7 @@ func (p *leasePump) lookupScopedItem(nativeID string) string {
 
 func (e *Engine) startLeasePump(lease *runtime.LeaseEntry, workdir string) *leasePump {
 	e.mu.Lock()
-	if existing := e.pumps[lease.ProviderThreadID]; existing != nil && existing.lease == lease {
+	if existing := e.pumps[lease.ProviderSessionID]; existing != nil && existing.lease == lease {
 		e.mu.Unlock()
 		return existing
 	}
@@ -1756,7 +2547,7 @@ func (e *Engine) startLeasePump(lease *runtime.LeaseEntry, workdir string) *leas
 		workdir:    workdir,
 		itemScopes: map[string]string{},
 	}
-	e.pumps[lease.ProviderThreadID] = pump
+	e.pumps[lease.ProviderSessionID] = pump
 	e.mu.Unlock()
 
 	e.wg.Add(1)
@@ -1767,14 +2558,14 @@ func (e *Engine) startLeasePump(lease *runtime.LeaseEntry, workdir string) *leas
 	return pump
 }
 
-func (e *Engine) stopLeasePump(ptID string, lease *runtime.LeaseEntry) {
-	if ptID == "" {
+func (e *Engine) stopLeasePump(psID string, lease *runtime.LeaseEntry) {
+	if psID == "" {
 		return
 	}
 	e.mu.Lock()
-	p := e.pumps[ptID]
+	p := e.pumps[psID]
 	if p != nil && (lease == nil || p.lease == lease) {
-		delete(e.pumps, ptID)
+		delete(e.pumps, psID)
 	} else {
 		p = nil
 	}
@@ -1788,34 +2579,34 @@ func (e *Engine) ensureLeasePump(lease *runtime.LeaseEntry, workdir string) *lea
 	return e.startLeasePump(lease, workdir)
 }
 
-func (e *Engine) getLeasePump(ptID string) *leasePump {
-	if ptID == "" {
+func (e *Engine) getLeasePump(psID string) *leasePump {
+	if psID == "" {
 		return nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.pumps[ptID]
+	return e.pumps[psID]
 }
 
-// ensureContinuationTurn attaches to an already-active run on pump's thread or
+// ensureContinuationTurn attaches to an already-active run on pump's session or
 // spawns a system-authored Continuation Run when out-of-turn agent work arrives.
 func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 	if cur := pump.getActive(); cur != nil {
 		return cur
 	}
-	threadID := pump.lease.ThreadID
-	unlock := e.lockThread(threadID)
+	sessionID := pump.lease.SessionID
+	unlock := e.lockSession(sessionID)
 
 	if cur := pump.getActive(); cur != nil {
 		unlock()
 		return cur
 	}
-	th, err := e.st.Thread(threadID)
-	if err != nil || th.Status == threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED {
+	sess, err := e.st.Session(sessionID)
+	if err != nil || sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
 		unlock()
 		return nil
 	}
-	existingCkpts, _ := e.st.Checkpoints(threadID)
+	existingCkpts, _ := e.st.Checkpoints(sessionID)
 	prevTreeOID := ""
 	if len(existingCkpts) > 0 {
 		prevTreeOID = existingCkpts[len(existingCkpts)-1].GitTreeOid
@@ -1825,73 +2616,80 @@ func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 	wakeReason := pump.lastWake
 	pump.mu.Unlock()
 	if workdir == "" {
-		workdir, _ = e.resolveWorkdir(th)
+		workdir, _ = e.resolveWorkdir(sess)
 	}
 	if wakeReason == "" {
 		wakeReason = "background_task"
 	}
 
 	// If a foreground run was just dispatched and holds ActiveRunId, attach to it.
-	if th.ActiveRunId != "" {
-		r, rErr := e.st.Run(th.ActiveRunId)
-		ord := th.RunCount
+	if sess.ActiveRunId != "" {
+		r, rErr := e.st.Run(sess.ActiveRunId)
+		ord := sess.GetProgress().GetTurnCount()
 		if rErr == nil {
 			ord = r.Ordinal
 		}
-		h := pump.attachTurn(th.ActiveRunId, ord, workdir, prevTreeOID)
+		h := pump.attachTurn(sess.ActiveRunId, ord, workdir, prevTreeOID)
 		pump.lease.SetInTurn(true)
 		unlock()
 		return h
 	}
 
-	var contRun *threadv2.Run
+	var contRun *sessionv1.Run
 	events, mErr := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(threadID)
+		sNow, err := tx.GetSession(sessionID)
 		if err != nil {
 			return err
 		}
-		supReq, supItem, err := dismissPendingRequestTx(tx, tNow, nil)
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		supReq, supItem, err := dismissPendingRequestTx(tx, sNow, nil)
 		if err != nil {
 			return err
 		}
-		tNow.LastError = ""
-		tNow.RunCount++
-		contRun = &threadv2.Run{
-			RunId:            newID("run"),
-			ThreadId:         threadID,
-			Ordinal:          tNow.RunCount,
-			Status:           threadv2.RunStatus_RUN_STATUS_RUNNING,
-			Author:           &threadv2.Actor{Kind: threadv2.ActorKind_ACTOR_KIND_SYSTEM, Id: "background", Label: "Background"},
-			WakeReason:       wakeReason,
-			Intent:           threadv2.DispatchIntent_DISPATCH_INTENT_START,
-			ModelSelection:   proto.Clone(tNow.ModelSelection).(*threadv2.ModelSelection),
-			RuntimeMode:      tNow.EffectiveRuntimeMode,
-			InteractionMode:  tNow.InteractionMode,
-			ProviderThreadId: pump.lease.ProviderThreadID,
-			StartedAt:        timestamppb.Now(),
+		now := timestamppb.Now()
+		sNow.Error = ""
+		sNow.Progress.LastFailure = nil
+		sNow.Progress.TurnCount++
+		sNow.Progress.TurnStartedAt = now
+		contRun = &sessionv1.Run{
+			RunId:             newID("run"),
+			SessionId:         sessionID,
+			Ordinal:           sNow.Progress.TurnCount,
+			Status:            sessionv1.RunStatus_RUN_STATUS_RUNNING,
+			Author:            &sessionv1.Actor{Kind: sessionv1.ActorKind_ACTOR_KIND_SYSTEM, Id: "background", Label: "Background"},
+			WakeReason:        wakeReason,
+			Intent:            sessionv1.DispatchIntent_DISPATCH_INTENT_START,
+			ModelSelection:    proto.Clone(sNow.ModelSelection).(*sessionv1.ModelSelection),
+			RuntimeMode:       sNow.EffectiveRuntimeMode,
+			InteractionMode:   sNow.InteractionMode,
+			ProviderSessionId: pump.lease.ProviderSessionID,
+			CreatedAt:         now,
+			StartedAt:         now,
 		}
-		tNow.ActiveRunId = contRun.RunId
-		tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+		sNow.ActiveRunId = contRun.RunId
+		sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
 		if err := tx.PutRun(contRun); err != nil {
 			return err
 		}
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		if supReq != nil {
-			_ = tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "request.resolved",
-				Thread:   tNow,
-				Item:     supItem,
-				Request:  supReq,
+			_ = tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "request.resolved",
+				Session:   sNow,
+				Item:      supItem,
+				Request:   supReq,
 			})
 		}
-		return tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: threadID,
-			Type:     "run.started",
-			Thread:   tNow,
-			Run:      contRun,
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "run.started",
+			Session:   sNow,
+			Run:       contRun,
 		})
 	})
 	if mErr != nil || contRun == nil {
@@ -1912,7 +2710,7 @@ func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 
 	e.publish(events, nil)
 
-	// Watch for explicit InterruptRun cancelling contCtx!
+	// Watch for explicit InterruptSession cancelling contCtx!
 	e.wg.Add(1)
 	go func() {
 		defer e.wg.Done()
@@ -1921,7 +2719,8 @@ func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 		case <-contCtx.Done():
 			if e.bgCtx.Err() == nil && pump.clearActiveIf(runID) {
 				pump.lease.SetInTurn(false)
-				e.finishRunInterrupted(threadID, runID, "interrupted")
+				cp, cumStat := e.captureTurnCheckpoint(sessionID, runID, h.ordinal, h.workdir, h.prevTreeOID)
+				e.finishRunInterrupted(sessionID, runID, "interrupted", cp, cumStat)
 			}
 		}
 		contCancel()
@@ -1934,17 +2733,53 @@ func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
 }
 
 func (e *Engine) runLeasePump(pump *leasePump) {
-	threadID := pump.lease.ThreadID
-	ptID := pump.lease.ProviderThreadID
+	sessionID := pump.lease.SessionID
+	psID := pump.lease.ProviderSessionID
 
 	msgBufs := map[string]*strings.Builder{}
 	rsnBufs := map[string]*strings.Builder{}
-	var pendingPlan *threadv2.PlanReviewPayload
+	var lastAssistantText string
+	var pendingPlan *sessionv1.PlanReviewPayload
 
 	resetTurnBuffers := func() {
 		clear(msgBufs)
 		clear(rsnBufs)
+		lastAssistantText = ""
 		pendingPlan = nil
+	}
+
+	// Reasoning still streaming (item -> run): shown as thinking until it ends, except for the one item given.
+	liveRsn := map[string]string{}
+	settleReasoning := func(keep string) {
+		for itemID, runID := range liveRsn {
+			if itemID == keep {
+				continue
+			}
+			delete(liveRsn, itemID)
+			var text string
+			if buf := rsnBufs[itemID]; buf != nil {
+				text = buf.String()
+			}
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
+					Status:    "completed",
+					Text:      text,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
+				})
+			})
+			e.publish(evs, nil)
+		}
 	}
 
 	for {
@@ -1952,42 +2787,43 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		var ok bool
 		select {
 		case <-e.bgCtx.Done():
-			e.stopLeasePump(ptID, pump.lease)
+			e.stopLeasePump(psID, pump.lease)
 			return
 		case <-pump.stopCh:
 			return
 		case ev, ok = <-pump.lease.Session.Events():
 		}
 		if !ok {
+			settleReasoning("")
 			e.mu.Lock()
-			if e.pumps[ptID] == pump {
-				delete(e.pumps, ptID)
+			if e.pumps[psID] == pump {
+				delete(e.pumps, psID)
 			}
 			e.mu.Unlock()
 			if e.bgCtx.Err() != nil {
 				return
 			}
-			e.sup.DetachSession(ptID, pump.lease.Session, false)
+			e.sup.DetachSession(psID, pump.lease.Session, false)
 
 			// Settle any background tasks tied to this closed process.
 			bgEvs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				th, err := tx.GetThread(threadID)
+				sess, err := tx.GetSession(sessionID)
 				if err != nil {
 					return nil
 				}
-				stopped, items, err := tx.StopRunningBackgroundTasks(threadID, "", "provider session exited")
+				stopped, items, err := tx.StopRunningBackgroundTasks(sessionID, "", "provider session exited")
 				if err != nil || len(stopped) == 0 {
 					return err
 				}
-				_, _, _ = tx.RefreshThreadBackgroundCounts(th)
-				if err := tx.PutThread(th); err != nil {
+				_, _, _ = tx.RefreshSessionBackgroundCounts(sess)
+				if err := putSessionSynced(tx, sess); err != nil {
 					return err
 				}
 				for _, it := range items {
-					_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: threadID, Type: "item.updated", Thread: th, Item: it})
+					_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "item.updated", Session: sess, Item: it})
 				}
 				for _, bt := range stopped {
-					_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: threadID, Type: "background_task.updated", Thread: th, BackgroundTask: bt})
+					_ = tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sessionID, Type: "background_task.updated", Session: sess, BackgroundTask: bt})
 				}
 				return nil
 			})
@@ -2007,10 +2843,14 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					default:
 					}
 				}
+				cp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
 				if cancelled {
-					e.finishRunInterrupted(threadID, cur.runID, "interrupted")
+					e.finishRunInterrupted(sessionID, cur.runID, "interrupted", cp, cumStat)
 				} else {
-					e.finishRunFailed(threadID, cur.runID, "session_closed", "provider session closed mid-turn")
+					e.finishRunFailedWithCheckpoint(sessionID, cur.runID, "session_closed", "agent process exited unexpectedly", &runtime.Failure{
+						Kind:    sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED,
+						Message: "agent process exited unexpectedly",
+					}, cp, cumStat)
 				}
 				cur.closeDone()
 			}
@@ -2019,20 +2859,46 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 
 		pump.lease.Touch()
 
+		// Any next step of the model ends its thinking; reasoning ends its own other reasoning.
+		switch ev.Kind {
+		case runtime.EventReasoningDelta, runtime.EventNativeSession, runtime.EventUsage, runtime.EventNotice, runtime.EventBackgroundTask:
+		default:
+			settleReasoning("")
+		}
+
 		switch ev.Kind {
 		case runtime.EventNativeSession:
 			_, _ = e.st.Mutate(func(tx *store.Tx) error {
-				pt, err := tx.GetProviderThread(ptID)
+				ps, err := tx.GetProviderSession(psID)
 				if err != nil {
 					return err
 				}
 				if ev.NativeID != "" {
-					pt.NativeSessionId = ev.NativeID
+					ps.NativeSessionId = ev.NativeID
 				}
 				if ev.ResumeCursor != "" {
-					pt.ResumeCursor = ev.ResumeCursor
+					ps.ResumeCursor = ev.ResumeCursor
 				}
-				return tx.PutProviderThread(pt)
+				if err := tx.PutProviderSession(ps); err != nil {
+					return err
+				}
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+					ref := ps.ResumeCursor
+					if ref == "" {
+						ref = ps.NativeSessionId
+					}
+					if ref != "" {
+						sNow.ProviderSessionRef = ref
+					}
+					if ev.Model != "" {
+						sNow.Model = ev.Model
+					}
+					if ev.Effort != "" {
+						sNow.Effort = ev.Effort
+					}
+					_ = putSessionSynced(tx, sNow)
+				}
+				return nil
 			})
 
 		case runtime.EventBackgroundTask:
@@ -2064,13 +2930,13 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			var awaitedCnt, daemonCnt uint32
 			evs, err := e.st.Mutate(func(tx *store.Tx) error {
-				th, err := tx.GetThread(threadID)
+				sNow, err := tx.GetSession(sessionID)
 				if err != nil {
 					return err
 				}
-				bt := &threadv2.BackgroundTask{
+				bt := &sessionv1.BackgroundTask{
 					TaskId:     taskID,
-					ThreadId:   threadID,
+					SessionId:  sessionID,
 					RunId:      runID,
 					ItemId:     scopedItemID,
 					Kind:       ev.BackgroundKind,
@@ -2089,14 +2955,14 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutBackgroundTask(bt); err != nil {
 					return err
 				}
-				awaitedCnt, daemonCnt, _ = tx.RefreshThreadBackgroundCounts(th)
-				if err := tx.PutThread(th); err != nil {
+				awaitedCnt, daemonCnt, _ = tx.RefreshSessionBackgroundCounts(sNow)
+				if err := putSessionSynced(tx, sNow); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId:       threadID,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId:      sessionID,
 					Type:           "background_task.updated",
-					Thread:         th,
+					Session:        sNow,
 					BackgroundTask: bt,
 				})
 			})
@@ -2109,18 +2975,25 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			if ev.Usage != nil {
 				cur := pump.getActive()
 				_, _ = e.st.Mutate(func(tx *store.Tx) error {
-					tNow, err := tx.GetThread(threadID)
+					sNow, err := tx.GetSession(sessionID)
 					if err != nil {
 						return err
 					}
-					tNow.Usage = ev.Usage
+					sNow.ContextUsage = ev.Usage
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					sNow.Progress.Usage = &sessionv1.Usage{
+						InputTokens:  ev.Usage.InputTokens,
+						OutputTokens: ev.Usage.OutputTokens,
+					}
 					if cur != nil {
 						if rNow, rErr := tx.GetRun(cur.runID); rErr == nil {
 							rNow.Usage = ev.Usage
 							_ = tx.PutRun(rNow)
 						}
 					}
-					return tx.PutThread(tNow)
+					return putSessionSynced(tx, sNow)
 				})
 			}
 
@@ -2132,14 +3005,28 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					status = "failed"
 				}
 			}
+			output := ev.Output
+			outputSize := uint64(len(output))
+			truncated := false
+			blobSha := ""
+			if len(output) > maxInlineToolOutput {
+				if ref, bErr := e.st.PutBlob("output.txt", "text/plain; charset=utf-8", []byte(output)); bErr == nil {
+					blobSha = ref.BlobSha256
+				}
+				cut := maxInlineToolOutput
+				for cut > 0 && !utf8.RuneStart(output[cut]) {
+					cut--
+				}
+				output = output[:cut] + "\n...[output truncated]..."
+				truncated = true
+			}
 			existingScoped := pump.lookupScopedItem(ev.ItemID)
 			cur := pump.getActive()
 			// A background task completing on its own updates its original TurnItem
 			// without spawning an empty Continuation Run.
 			if cur == nil && ev.Kind == runtime.EventToolCompleted && existingScoped != "" {
-				output, truncated := truncateTurnOutput(ev.Output)
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					prev, err := tx.GetTurnItem(threadID, existingScoped)
+					prev, err := tx.GetTurnItem(sessionID, existingScoped)
 					if err != nil {
 						return nil
 					}
@@ -2148,14 +3035,16 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					if output != "" {
 						prev.Output = output
 						prev.OutputTruncated = truncated
+						prev.OutputBlobSha256 = blobSha
+						prev.OutputSize = outputSize
 					}
 					if err := tx.PutTurnItem(prev); err != nil {
 						return err
 					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     prev,
+					return tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: sessionID,
+						Type:      "item.updated",
+						Item:      prev,
 					})
 				})
 				e.publish(evs, nil)
@@ -2176,9 +3065,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					itemID = newID("tool")
 				}
 			}
-			output, truncated := truncateTurnOutput(ev.Output)
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				prev, _ := tx.GetTurnItem(threadID, itemID)
+				prev, _ := tx.GetTurnItem(sessionID, itemID)
 				ownerRunID := cur.runID
 				toolName := ev.ToolName
 				cmd := ev.Command
@@ -2199,32 +3087,51 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					if output == "" && prev.Output != "" {
 						output = prev.Output
 						truncated = prev.OutputTruncated
+						blobSha = prev.OutputBlobSha256
+						outputSize = prev.OutputSize
 					}
 				}
-				kind := threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
-				if cmd != "" || (prev != nil && prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION) {
-					kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
+				kind := sessionv1.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
+				if cmd != "" || (prev != nil && prev.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION) {
+					kind = sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
 				}
-				it := &threadv2.TurnItem{
-					ItemId:          itemID,
-					ThreadId:        threadID,
-					RunId:           ownerRunID,
-					Kind:            kind,
-					Status:          status,
-					ToolName:        toolName,
-					Command:         cmd,
-					FilePath:        filePath,
-					ExitCode:        ev.ExitCode,
-					Output:          output,
-					OutputTruncated: truncated,
+				it := &sessionv1.TurnItem{
+					ItemId:           itemID,
+					SessionId:        sessionID,
+					RunId:            ownerRunID,
+					Kind:             kind,
+					Status:           status,
+					ToolName:         toolName,
+					Command:          cmd,
+					FilePath:         filePath,
+					ExitCode:         ev.ExitCode,
+					Output:           output,
+					OutputTruncated:  truncated,
+					OutputBlobSha256: blobSha,
+					OutputSize:       outputSize,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil {
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					if ev.Kind == runtime.EventToolStarted {
+						curTool := toolName
+						if curTool == "" {
+							curTool = cmd
+						}
+						sNow.Progress.CurrentTool = curTool
+					} else {
+						sNow.Progress.CurrentTool = ""
+					}
+					_ = putSessionSynced(tx, sNow)
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
@@ -2242,12 +3149,13 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			buf.WriteString(ev.Text)
 			fullText := buf.String()
+			lastAssistantText = fullText
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
+				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
-					ThreadId:  threadID,
+					SessionId: sessionID,
 					RunId:     cur.runID,
-					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
 					Status:    "running",
 					Text:      fullText,
 					Streaming: true,
@@ -2255,8 +3163,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId:     threadID,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId:    sessionID,
 					Type:         "item.delta",
 					Item:         it,
 					TextDelta:    ev.Text,
@@ -2276,12 +3184,15 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				text = msgBufs[itemID].String()
 			}
 			delete(msgBufs, itemID)
+			if text != "" {
+				lastAssistantText = text
+			}
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
+				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
-					ThreadId:  threadID,
+					SessionId: sessionID,
 					RunId:     cur.runID,
-					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
 					Status:    "completed",
 					Text:      text,
 					Streaming: false,
@@ -2289,10 +3200,17 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				if sNow, sErr := tx.GetSession(sessionID); sErr == nil && text != "" {
+					if sNow.Progress == nil {
+						sNow.Progress = &sessionv1.SessionProgress{}
+					}
+					sNow.Progress.LastMessageExcerpt = excerptText(text, 240)
+					_ = putSessionSynced(tx, sNow)
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
@@ -2303,6 +3221,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				continue
 			}
 			itemID := scopeRunItemID(cur.runID, ev.ItemID, "rsn")
+			settleReasoning(itemID)
+			liveRsn[itemID] = cur.runID
 			buf := rsnBufs[itemID]
 			if buf == nil {
 				buf = &strings.Builder{}
@@ -2310,21 +3230,22 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			buf.WriteString(ev.Text)
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
-					ItemId:   itemID,
-					ThreadId: threadID,
-					RunId:    cur.runID,
-					Kind:     threadv2.TurnItemKind_TURN_ITEM_KIND_REASONING,
-					Status:   "completed",
-					Text:     buf.String(),
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     cur.runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
+					Status:    "completed",
+					Text:      buf.String(),
+					Streaming: true,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
@@ -2341,11 +3262,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				itemID = newID("file")
 			}
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
+				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
-					ThreadId:  threadID,
+					SessionId: sessionID,
 					RunId:     cur.runID,
-					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE,
 					Status:    "completed",
 					FilePath:  ev.FilePath,
 					Diff:      ev.Diff,
@@ -2355,10 +3276,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
@@ -2375,7 +3296,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				itemID = newID("plan")
 			}
 			if ev.RequestReview {
-				pendingPlan = &threadv2.PlanReviewPayload{
+				pendingPlan = &sessionv1.PlanReviewPayload{
 					PlanId:   itemID,
 					Title:    ev.PlanTitle,
 					Markdown: ev.Text,
@@ -2384,11 +3305,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				pendingPlan = nil
 			}
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
+				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
-					ThreadId:  threadID,
+					SessionId: sessionID,
 					RunId:     cur.runID,
-					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN,
 					Status:    "completed",
 					PlanTitle: ev.PlanTitle,
 					Text:      ev.Text,
@@ -2396,10 +3317,10 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
@@ -2411,24 +3332,58 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			itemID := scopeRunItemID(cur.runID, ev.ItemID, "todo")
 			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-				it := &threadv2.TurnItem{
+				it := &sessionv1.TurnItem{
 					ItemId:    itemID,
-					ThreadId:  threadID,
+					SessionId: sessionID,
 					RunId:     cur.runID,
-					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
 					Status:    "completed",
 					TodoSteps: ev.TodoSteps,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err
 				}
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: threadID,
-					Type:     "item.updated",
-					Item:     it,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
 				})
 			})
 			e.publish(evs, nil)
+
+		case runtime.EventNotice:
+			text := ev.Text
+			if text == "" && ev.Notice != nil {
+				text = ev.Notice.Text
+				if text == "" {
+					text = ev.Notice.FailureMessage
+				}
+			}
+			if text != "" {
+				runID := ""
+				if cur := pump.getActive(); cur != nil {
+					runID = cur.runID
+				}
+				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+					it := &sessionv1.TurnItem{
+						ItemId:    newID("ntc"),
+						SessionId: sessionID,
+						RunId:     runID,
+						Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_SYSTEM_NOTICE,
+						Status:    "completed",
+						Text:      text,
+					}
+					if err := tx.PutTurnItem(it); err != nil {
+						return err
+					}
+					return tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: sessionID,
+						Type:      "item.updated",
+						Item:      it,
+					})
+				})
+				e.publish(evs, nil)
+			}
 
 		case runtime.EventTurnCompleted:
 			cur := pump.takeActive()
@@ -2438,38 +3393,39 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			}
 			for itemID, buf := range msgBufs {
 				if buf.Len() > 0 {
+					full := buf.String()
+					lastAssistantText = full
 					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-						it := &threadv2.TurnItem{
+						it := &sessionv1.TurnItem{
 							ItemId:    itemID,
-							ThreadId:  threadID,
+							SessionId: sessionID,
 							RunId:     cur.runID,
-							Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+							Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
 							Status:    "completed",
-							Text:      buf.String(),
+							Text:      full,
 							Streaming: false,
 						}
 						if err := tx.PutTurnItem(it); err != nil {
 							return err
 						}
-						return tx.AppendEvent(&threadv2.ThreadEvent{
-							ThreadId: threadID,
-							Type:     "item.updated",
-							Item:     it,
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "item.updated",
+							Item:      it,
 						})
 					})
 					e.publish(evs, nil)
 				}
 			}
+			if ev.Text != "" {
+				lastAssistantText = ev.Text
+			}
+			resultText := lastAssistantText
 			planToReview := pendingPlan
 			resetTurnBuffers()
 
-			var capturedCp *threadv2.Checkpoint
-			if cur.workdir != "" {
-				if cp, cpErr := e.vcs.CaptureCheckpoint(e.bgCtx, cur.workdir, newID("ckpt"), threadID, cur.runID, cur.ordinal, cur.prevTreeOID); cpErr == nil && cp != nil {
-					capturedCp = cp
-				}
-			}
-			e.finishRunCompleted(threadID, cur.runID, ptID, capturedCp, planToReview)
+			capturedCp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
+			e.finishRunCompleted(sessionID, cur.runID, psID, capturedCp, cumStat, resultText, planToReview)
 			pump.lease.SetInTurn(false)
 			cur.closeDone()
 
@@ -2485,11 +3441,11 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			for itemID, buf := range msgBufs {
 				if buf.Len() > 0 {
 					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-						it := &threadv2.TurnItem{
+						it := &sessionv1.TurnItem{
 							ItemId:    itemID,
-							ThreadId:  threadID,
+							SessionId: sessionID,
 							RunId:     cur.runID,
-							Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+							Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
 							Status:    "interrupted",
 							Text:      buf.String(),
 							Streaming: false,
@@ -2497,17 +3453,18 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 						if err := tx.PutTurnItem(it); err != nil {
 							return err
 						}
-						return tx.AppendEvent(&threadv2.ThreadEvent{
-							ThreadId: threadID,
-							Type:     "item.updated",
-							Item:     it,
+						return tx.AppendEvent(&sessionv1.SessionEvent{
+							SessionId: sessionID,
+							Type:      "item.updated",
+							Item:      it,
 						})
 					})
 					e.publish(evs, nil)
 				}
 			}
 			resetTurnBuffers()
-			e.finishRunInterrupted(threadID, cur.runID, "interrupted")
+			cp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
+			e.finishRunInterrupted(sessionID, cur.runID, "interrupted", cp, cumStat)
 			pump.lease.SetInTurn(false)
 			cur.closeDone()
 
@@ -2515,7 +3472,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 			cur := pump.takeActive()
 			resetTurnBuffers()
 			if cur != nil {
-				e.finishRunFailed(threadID, cur.runID, ev.ErrorCode, ev.ErrorMessage)
+				cp, cumStat := e.captureTurnCheckpoint(sessionID, cur.runID, cur.ordinal, cur.workdir, cur.prevTreeOID)
+				e.finishRunFailedWithCheckpoint(sessionID, cur.runID, ev.ErrorCode, ev.ErrorMessage, ev.Failure, cp, cumStat)
 				pump.lease.SetInTurn(false)
 				cur.closeDone()
 			} else {
@@ -2546,15 +3504,36 @@ func scopeRunItemID(runID, rawID, fallbackPrefix string) string {
 	return runID + ":" + rawID
 }
 
-func (e *Engine) recordSwitchItem(threadID, runID string, fromSel, toSel *threadv2.ModelSelection, handoffStrategy, summary string) {
-	kind := threadv2.TurnItemKind_TURN_ITEM_KIND_MODEL_SWITCH
+func excerptText(s string, maxRunes int) string {
+	s = strings.TrimSpace(s)
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "…"
+}
+
+func summarizeDiffFiles(files []*sessionv1.CheckpointFile) *sessionv1.DiffStat {
+	if len(files) == 0 {
+		return nil
+	}
+	st := &sessionv1.DiffStat{FilesChanged: uint32(len(files))}
+	for _, f := range files {
+		st.Insertions += f.Additions
+		st.Deletions += f.Deletions
+	}
+	return st
+}
+
+func (e *Engine) recordSwitchItem(sessionID, runID string, fromSel, toSel *sessionv1.ModelSelection, handoffStrategy, summary string) {
+	kind := sessionv1.TurnItemKind_TURN_ITEM_KIND_MODEL_SWITCH
 	if handoffStrategy != "" {
-		kind = threadv2.TurnItemKind_TURN_ITEM_KIND_HANDOFF
+		kind = sessionv1.TurnItemKind_TURN_ITEM_KIND_HANDOFF
 	}
 	evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-		it := &threadv2.TurnItem{
+		it := &sessionv1.TurnItem{
 			ItemId:          newID("sw"),
-			ThreadId:        threadID,
+			SessionId:       sessionID,
 			RunId:           runID,
 			Kind:            kind,
 			Status:          "completed",
@@ -2566,154 +3545,168 @@ func (e *Engine) recordSwitchItem(threadID, runID string, fromSel, toSel *thread
 		if err := tx.PutTurnItem(it); err != nil {
 			return err
 		}
-		return tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: threadID,
-			Type:     "item.updated",
-			Item:     it,
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "item.updated",
+			Item:      it,
 		})
 	})
 	e.publish(evs, nil)
 }
 
-func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.Checkpoint, pendingPlan *threadv2.PlanReviewPayload) {
-	unlock := e.lockThread(threadID)
+func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, resultText string, pendingPlan *sessionv1.PlanReviewPayload) {
+	unlock := e.lockSession(sessionID)
 	if pendingPlan != nil {
-		if existing, rErr := e.st.RuntimeRequests(threadID); rErr == nil {
+		if existing, rErr := e.st.RuntimeRequests(sessionID); rErr == nil {
 			for _, rq := range existing {
-				if rq.RunId == runID && rq.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
+				if rq.RunId == runID && rq.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
 					pendingPlan = nil
 					break
 				}
 			}
 		}
 	}
-	var nextQueued *threadv2.Run
-	var nextItem *threadv2.TurnItem
+	var nextQueued *sessionv1.Run
+	var nextItem *sessionv1.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		th, err := tx.GetThread(threadID)
+		sess, err := tx.GetSession(sessionID)
 		if err != nil {
 			return err
+		}
+		if sess.Progress == nil {
+			sess.Progress = &sessionv1.SessionProgress{}
 		}
 		r, err := tx.GetRun(runID)
 		if err != nil {
 			return err
 		}
-		if r.Status != threadv2.RunStatus_RUN_STATUS_RUNNING && r.Status != threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST {
+		if r.Status != sessionv1.RunStatus_RUN_STATUS_RUNNING && r.Status != sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST {
 			return nil
 		}
-		settled, _ := tx.SettleRunItems(threadID, runID, "completed")
+		settled, _ := tx.SettleRunItems(sessionID, runID, "completed")
 		for _, sit := range settled {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "item.updated",
-				Item:     sit,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Item:      sit,
 			}); err != nil {
 				return err
 			}
 		}
-		r.Status = threadv2.RunStatus_RUN_STATUS_COMPLETED
+		r.Status = sessionv1.RunStatus_RUN_STATUS_COMPLETED
 		r.CompletedAt = timestamppb.Now()
-		var cpItem *threadv2.TurnItem
+		var cpItem *sessionv1.TurnItem
 		if cp != nil {
 			r.CheckpointId = cp.CheckpointId
 			if err := tx.PutCheckpoint(cp); err != nil {
 				return err
 			}
-			cpItem = &threadv2.TurnItem{
+			cpItem = &sessionv1.TurnItem{
 				ItemId:       "ckpt_" + cp.CheckpointId,
-				ThreadId:     threadID,
+				SessionId:    sessionID,
 				RunId:        runID,
-				Kind:         threadv2.TurnItemKind_TURN_ITEM_KIND_CHECKPOINT,
+				Kind:         sessionv1.TurnItemKind_TURN_ITEM_KIND_CHECKPOINT,
 				Status:       "completed",
 				CheckpointId: cp.CheckpointId,
 			}
 			_ = tx.PutTurnItem(cpItem)
 		}
+		if cumStat != nil {
+			sess.Progress.DiffStat = cumStat
+		}
+		if strings.TrimSpace(resultText) != "" {
+			sess.Result = resultText
+			sess.Progress.LastMessageExcerpt = excerptText(resultText, 240)
+		}
 		if err := tx.PutRun(r); err != nil {
 			return err
 		}
-		if pt, ptErr := tx.GetProviderThread(ptID); ptErr == nil {
-			pt.SyncedRunOrdinal = r.Ordinal
-			_ = tx.PutProviderThread(pt)
+		if ps, psErr := tx.GetProviderSession(psID); psErr == nil {
+			ps.SyncedRunOrdinal = r.Ordinal
+			_ = tx.PutProviderSession(ps)
 		}
 
-		// Automatically dequeue the next queued run unless queue is held!
-		queued, _ := tx.QueuedRuns(threadID)
-		var resumeReq *threadv2.RuntimeRequest
-		var resumeReqItem *threadv2.TurnItem
-		if len(queued) > 0 && !th.QueueHeld {
+		queued, _ := tx.QueuedRuns(sessionID)
+		var resumeReq *sessionv1.RuntimeRequest
+		var resumeReqItem *sessionv1.TurnItem
+		if len(queued) > 0 && !sess.QueueHeld {
+			now := timestamppb.Now()
 			nextQueued = queued[0]
-			th.RunCount++
-			nextQueued.Ordinal = th.RunCount
-			nextQueued.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
-			nextQueued.StartedAt = timestamppb.Now()
+			sess.Progress.TurnCount++
+			sess.Progress.TurnStartedAt = now
+			nextQueued.Ordinal = sess.Progress.TurnCount
+			nextQueued.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+			nextQueued.StartedAt = now
 			if err := tx.PutRun(nextQueued); err != nil {
 				return err
 			}
-			nextItem = &threadv2.TurnItem{
+			nextItem = &sessionv1.TurnItem{
 				ItemId:      newID("itm"),
-				ThreadId:    threadID,
+				SessionId:   sessionID,
 				RunId:       nextQueued.RunId,
-				Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+				Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 				Status:      "completed",
 				Actor:       nextQueued.Author,
 				Text:        nextQueued.Prompt,
 				Attachments: nextQueued.Attachments,
 			}
 			_ = tx.PutTurnItem(nextItem)
-			th.ActiveRunId = nextQueued.RunId
-			th.QueuedRunCount = uint32(len(queued) - 1)
-			th.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
-			th.ModelSelection = nextQueued.ModelSelection
-			th.EffectiveRuntimeMode = nextQueued.RuntimeMode
-			th.InteractionMode = nextQueued.InteractionMode
-			th.PendingRequestId = ""
+			sess.ActiveRunId = nextQueued.RunId
+			sess.QueuedRunCount = uint32(len(queued) - 1)
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			sess.ModelSelection = nextQueued.ModelSelection
+			sess.EffectiveRuntimeMode = nextQueued.RuntimeMode
+			sess.InteractionMode = nextQueued.InteractionMode
+			sess.PendingRequestId = ""
+			sess.Progress.PendingQuestion = nil
 		} else if pendingPlan != nil {
 			reqID := newID("req")
-			resumeReq = &threadv2.RuntimeRequest{
+			resumeReq = &sessionv1.RuntimeRequest{
 				RequestId:    reqID,
-				ThreadId:     threadID,
+				SessionId:    sessionID,
 				RunId:        runID,
-				Kind:         threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
-				Status:       threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
-				ResponseMode: threadv2.ResponseMode_RESPONSE_MODE_RESUME_TURN,
+				Kind:         sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+				Status:       sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
+				ResponseMode: sessionv1.ResponseMode_RESPONSE_MODE_RESUME_TURN,
 				PlanReview:   pendingPlan,
 			}
 			if err := tx.PutRuntimeRequest(resumeReq); err != nil {
 				return err
 			}
-			resumeReqItem = &threadv2.TurnItem{
+			resumeReqItem = &sessionv1.TurnItem{
 				ItemId:    "reqitm_" + reqID,
-				ThreadId:  threadID,
+				SessionId: sessionID,
 				RunId:     runID,
-				Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+				Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
 				Status:    "waiting",
 				RequestId: reqID,
 			}
 			if err := tx.PutTurnItem(resumeReqItem); err != nil {
 				return err
 			}
-			th.ActiveRunId = ""
-			th.QueuedRunCount = uint32(len(queued))
-			th.Status = threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST
-			th.PendingRequestId = reqID
+			sess.ActiveRunId = ""
+			sess.QueuedRunCount = uint32(len(queued))
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
+			sess.PendingRequestId = reqID
+			sess.Progress.PendingQuestion = nil
 		} else {
-			th.ActiveRunId = ""
-			th.QueuedRunCount = uint32(len(queued))
+			sess.ActiveRunId = ""
+			sess.QueuedRunCount = uint32(len(queued))
 			if len(queued) > 0 {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
 			} else {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 			}
-			th.PendingRequestId = ""
+			sess.PendingRequestId = ""
+			sess.Progress.PendingQuestion = nil
 		}
-		if err := tx.PutThread(th); err != nil {
+		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId:   threadID,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId:  sessionID,
 			Type:       "run.completed",
-			Thread:     th,
+			Session:    sess,
 			Run:        r,
 			Item:       cpItem,
 			Checkpoint: cp,
@@ -2721,193 +3714,246 @@ func (e *Engine) finishRunCompleted(threadID, runID, ptID string, cp *threadv2.C
 			return err
 		}
 		if resumeReq != nil {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "request.created",
-				Thread:   th,
-				Run:      r,
-				Item:     resumeReqItem,
-				Request:  resumeReq,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "request.created",
+				Session:   sess,
+				Run:       r,
+				Item:      resumeReqItem,
+				Request:   resumeReq,
 			}); err != nil {
 				return err
 			}
 		}
-		return appendRunStarted(tx, th, nextQueued, nextItem)
+		return appendRunStarted(tx, sess, nextQueued, nextItem)
 	})
 	unlock()
 	if err == nil {
 		e.publish(events, nil)
 		if nextQueued != nil {
-			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
+			e.spawnRun(sessionID, nextQueued.RunId, nextQueued.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 		}
 	}
 }
 
-func (e *Engine) finishRunInterrupted(threadID, runID, reason string) {
-	unlock := e.lockThread(threadID)
-	var nextQueued *threadv2.Run
-	var nextItem *threadv2.TurnItem
+func (e *Engine) finishRunInterrupted(sessionID, runID, reason string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) {
+	unlock := e.lockSession(sessionID)
+	var nextQueued *sessionv1.Run
+	var nextItem *sessionv1.TurnItem
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		th, err := tx.GetThread(threadID)
+		sess, err := tx.GetSession(sessionID)
 		if err != nil {
 			return err
+		}
+		if sess.Progress == nil {
+			sess.Progress = &sessionv1.SessionProgress{}
 		}
 		r, err := tx.GetRun(runID)
 		if err != nil {
 			return err
 		}
-		if r.Status == threadv2.RunStatus_RUN_STATUS_INTERRUPTED || r.Status == threadv2.RunStatus_RUN_STATUS_COMPLETED {
+		if r.Status == sessionv1.RunStatus_RUN_STATUS_INTERRUPTED || r.Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
 			return nil
 		}
-		settled, _ := tx.SettleRunItems(threadID, runID, "interrupted")
+		settled, _ := tx.SettleRunItems(sessionID, runID, "interrupted")
 		for _, sit := range settled {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "item.updated",
-				Item:     sit,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Item:      sit,
 			}); err != nil {
 				return err
 			}
 		}
-		r.Status = threadv2.RunStatus_RUN_STATUS_INTERRUPTED
+		e.mu.Lock()
+		if recorded := e.runInterruptedBy[runID]; recorded != "" {
+			reason = recorded
+			delete(e.runInterruptedBy, runID)
+		}
+		e.mu.Unlock()
+		if strings.TrimSpace(reason) == "" {
+			reason = "interrupted"
+		}
+		intFailure := &sessionv1.Failure{
+			Kind:    sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED,
+			Message: reason,
+		}
+		r.Status = sessionv1.RunStatus_RUN_STATUS_INTERRUPTED
 		r.ErrorMessage = reason
+		r.Failure = intFailure
 		r.CompletedAt = timestamppb.Now()
+		if cp != nil {
+			r.CheckpointId = cp.CheckpointId
+			_ = tx.PutCheckpoint(cp)
+		}
+		if cumStat != nil {
+			sess.Progress.DiffStat = cumStat
+		}
 		if err := tx.PutRun(r); err != nil {
 			return err
 		}
-		queued, _ := tx.QueuedRuns(threadID)
-		if len(queued) > 0 && !th.QueueHeld {
+		queued, _ := tx.QueuedRuns(sessionID)
+		if len(queued) > 0 && !sess.QueueHeld {
+			now := timestamppb.Now()
 			nextQueued = queued[0]
-			th.RunCount++
-			nextQueued.Ordinal = th.RunCount
-			nextQueued.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
-			nextQueued.StartedAt = timestamppb.Now()
+			sess.Progress.TurnCount++
+			sess.Progress.TurnStartedAt = now
+			sess.Progress.LastFailure = nil
+			nextQueued.Ordinal = sess.Progress.TurnCount
+			nextQueued.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+			nextQueued.StartedAt = now
 			_ = tx.PutRun(nextQueued)
-			nextItem = &threadv2.TurnItem{
+			nextItem = &sessionv1.TurnItem{
 				ItemId:      newID("itm"),
-				ThreadId:    threadID,
+				SessionId:   sessionID,
 				RunId:       nextQueued.RunId,
-				Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+				Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 				Status:      "completed",
 				Actor:       nextQueued.Author,
 				Text:        nextQueued.Prompt,
 				Attachments: nextQueued.Attachments,
 			}
 			_ = tx.PutTurnItem(nextItem)
-			th.ActiveRunId = nextQueued.RunId
-			th.QueuedRunCount = uint32(len(queued) - 1)
-			th.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
-			th.ModelSelection = nextQueued.ModelSelection
-			th.EffectiveRuntimeMode = nextQueued.RuntimeMode
-			th.InteractionMode = nextQueued.InteractionMode
+			sess.ActiveRunId = nextQueued.RunId
+			sess.QueuedRunCount = uint32(len(queued) - 1)
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			sess.ModelSelection = nextQueued.ModelSelection
+			sess.EffectiveRuntimeMode = nextQueued.RuntimeMode
+			sess.InteractionMode = nextQueued.InteractionMode
 		} else {
-			th.ActiveRunId = ""
-			th.QueuedRunCount = uint32(len(queued))
+			sess.ActiveRunId = ""
+			sess.QueuedRunCount = uint32(len(queued))
+			sess.Progress.LastFailure = intFailure
 			if len(queued) > 0 {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
 			} else {
-				th.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
+				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 			}
 		}
-		th.PendingRequestId = ""
-		if err := tx.PutThread(th); err != nil {
+		sess.PendingRequestId = ""
+		sess.Progress.PendingQuestion = nil
+		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: threadID,
-			Type:     "run.interrupted",
-			Thread:   th,
-			Run:      r,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "run.interrupted",
+			Session:   sess,
+			Run:       r,
 		}); err != nil {
 			return err
 		}
-		return appendRunStarted(tx, th, nextQueued, nextItem)
+		return appendRunStarted(tx, sess, nextQueued, nextItem)
 	})
 	unlock()
 	if err == nil {
 		e.publish(events, nil)
 		if nextQueued != nil {
-			e.spawnRun(threadID, nextQueued.RunId, nextQueued.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
+			e.spawnRun(sessionID, nextQueued.RunId, nextQueued.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 		}
 	}
 }
 
-// appendRunStarted tells subscribers that a queued run left the queue and
-// started (its run, and its message in the conversation), when one did.
-func appendRunStarted(tx *store.Tx, th *threadv2.Thread, run *threadv2.Run, item *threadv2.TurnItem) error {
+func appendRunStarted(tx *store.Tx, sess *sessionv1.Session, run *sessionv1.Run, item *sessionv1.TurnItem) error {
 	if run == nil {
 		return nil
 	}
-	return tx.AppendEvent(&threadv2.ThreadEvent{
-		ThreadId: th.ThreadId,
-		Type:     "run.started",
-		Thread:   th,
-		Run:      run,
-		Item:     item,
+	return tx.AppendEvent(&sessionv1.SessionEvent{
+		SessionId: sess.SessionId,
+		Type:      "run.started",
+		Session:   sess,
+		Run:       run,
+		Item:      item,
 	})
 }
 
-func (e *Engine) finishRunFailed(threadID, runID, code, msg string) {
-	unlock := e.lockThread(threadID)
+func (e *Engine) finishRunFailed(sessionID, runID, code, msg string, f *runtime.Failure) {
+	e.finishRunFailedWithCheckpoint(sessionID, runID, code, msg, f, nil, nil)
+}
+
+func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg string, f *runtime.Failure, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) {
+	unlock := e.lockSession(sessionID)
+	var protoFail *sessionv1.Failure
+	if f != nil {
+		protoFail = f.Proto()
+	} else {
+		protoFail = &sessionv1.Failure{
+			Kind:    sessionv1.FailureKind_FAILURE_KIND_UNKNOWN,
+			Message: msg,
+		}
+	}
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		th, err := tx.GetThread(threadID)
+		sess, err := tx.GetSession(sessionID)
 		if err != nil {
 			return err
+		}
+		if sess.Progress == nil {
+			sess.Progress = &sessionv1.SessionProgress{}
 		}
 		r, err := tx.GetRun(runID)
 		if err != nil {
 			return err
 		}
-		if r.Status != threadv2.RunStatus_RUN_STATUS_RUNNING && r.Status != threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST {
+		if r.Status != sessionv1.RunStatus_RUN_STATUS_RUNNING && r.Status != sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST {
 			return nil
 		}
-		settled, _ := tx.SettleRunItems(threadID, runID, "interrupted")
+		settled, _ := tx.SettleRunItems(sessionID, runID, "failed")
 		for _, sit := range settled {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "item.updated",
-				Item:     sit,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "item.updated",
+				Item:      sit,
 			}); err != nil {
 				return err
 			}
 		}
-		r.Status = threadv2.RunStatus_RUN_STATUS_FAILED
+		r.Status = sessionv1.RunStatus_RUN_STATUS_FAILED
+		r.Failure = protoFail
 		r.ErrorCode = code
 		r.ErrorMessage = msg
 		r.CompletedAt = timestamppb.Now()
+		if cp != nil {
+			r.CheckpointId = cp.CheckpointId
+			_ = tx.PutCheckpoint(cp)
+		}
+		if cumStat != nil {
+			sess.Progress.DiffStat = cumStat
+		}
 		if err := tx.PutRun(r); err != nil {
 			return err
 		}
-		errItem := &threadv2.TurnItem{
-			ItemId:   newID("err"),
-			ThreadId: threadID,
-			RunId:    runID,
-			Kind:     threadv2.TurnItemKind_TURN_ITEM_KIND_ERROR,
-			Status:   "failed",
-			Text:     msg,
+		errItem := &sessionv1.TurnItem{
+			ItemId:    newID("err"),
+			SessionId: sessionID,
+			RunId:     runID,
+			Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ERROR,
+			Status:    "failed",
+			Text:      msg,
+			Failure:   protoFail,
 		}
 		_ = tx.PutTurnItem(errItem)
-		queued, _ := tx.QueuedRuns(threadID)
-		if th.ActiveRunId == runID {
-			th.ActiveRunId = ""
-			th.PendingRequestId = ""
-			th.LastError = msg
-			th.QueuedRunCount = uint32(len(queued))
+		queued, _ := tx.QueuedRuns(sessionID)
+		if sess.ActiveRunId == runID {
+			sess.ActiveRunId = ""
+			sess.PendingRequestId = ""
+			sess.Progress.PendingQuestion = nil
+			sess.Progress.LastFailure = protoFail
+			sess.Error = msg
+			sess.QueuedRunCount = uint32(len(queued))
 			if len(queued) > 0 {
-				// Hold queue on failure so queued follow-ups are never lost AND never blindly run on broken state!
-				th.QueueHeld = true
+				sess.QueueHeld = true
 			}
-			th.Status = threadv2.ThreadStatus_THREAD_STATUS_FAILED
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
 		}
-		if err := tx.PutThread(th); err != nil {
+		if err := putSessionSynced(tx, sess); err != nil {
 			return err
 		}
-		return tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: threadID,
-			Type:     "run.failed",
-			Thread:   th,
-			Run:      r,
-			Item:     errItem,
+		return tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: sessionID,
+			Type:      "run.failed",
+			Session:   sess,
+			Run:       r,
+			Item:      errItem,
 		})
 	})
 	unlock()
@@ -2919,32 +3965,34 @@ func (e *Engine) finishRunFailed(threadID, runID, code, msg string) {
 // ---------------------------------------------------------------------------
 // Policy Gate & Durable RuntimeRequest Lifecycle
 
-func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
+func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 	return func(ctx context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
-		th, err := e.st.Thread(threadID)
+		sess, err := e.st.Session(sessionID)
 		if err != nil {
 			return runtime.ToolGateResult{}, err
 		}
-		if th.ActiveRunId == "" && th.ActiveProviderThreadId != "" {
-			if pump := e.getLeasePump(th.ActiveProviderThreadId); pump != nil {
+		if sess.ActiveRunId == "" && sess.ActiveProviderSessionId != "" {
+			if pump := e.getLeasePump(sess.ActiveProviderSessionId); pump != nil {
 				if h := e.ensureContinuationTurn(pump); h != nil {
-					if refreshed, rErr := e.st.Thread(threadID); rErr == nil {
-						th = refreshed
+					if refreshed, rErr := e.st.Session(sessionID); rErr == nil {
+						sess = refreshed
 					}
 				}
 			}
 		}
-		runID := th.ActiveRunId
+		runID := sess.ActiveRunId
+		curRun, _ := e.st.Run(runID)
 
-		if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil {
-			// Judge the call by the run that is executing it: its mode was capped by its
-			// author's grant at dispatch, and later queued messages or config edits must
-			// not widen (or narrow) a turn that is already in flight.
-			mode, imode := th.EffectiveRuntimeMode, th.InteractionMode
-			if run, rErr := e.st.Run(runID); rErr == nil {
-				mode, imode = run.RuntimeMode, run.InteractionMode
+		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil {
+			mode, imode := sess.EffectiveRuntimeMode, sess.InteractionMode
+			if curRun != nil {
+				mode, imode = curRun.RuntimeMode, curRun.InteractionMode
 			}
-			rules, _ := e.st.AllowRules(threadID)
+			rules, _ := e.st.AllowRules(sessionID)
+			var extraRoots []string
+			if e.cfg.ReadDirs != nil {
+				extraRoots = e.cfg.ReadDirs(sess.ProjectId)
+			}
 			dec := policy.EvaluateTool(policy.ToolEvalInput{
 				Category:        req.Approval.ToolCategory,
 				ToolName:        req.Approval.ToolName,
@@ -2953,7 +4001,7 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 				EffectiveMode:   mode,
 				GrantCeiling:    e.st.RunGrantCeiling(runID),
 				InteractionMode: imode,
-				Sandbox:         policy.SandboxScope{WorkspaceRoot: workdir},
+				Sandbox:         policy.SandboxScope{WorkspaceRoot: workdir, ExtraRoots: extraRoots},
 				AllowedRuleKeys: rules,
 			})
 			if dec.Allow {
@@ -2969,6 +4017,19 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 			}
 		}
 
+		// Handle question_timeout_seconds == 0 (no one can answer; resolve immediately without pausing).
+		var qTimeout time.Duration
+		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			if curRun != nil && curRun.QuestionTimeoutSeconds != nil {
+				if *curRun.QuestionTimeoutSeconds == 0 {
+					return runtime.ToolGateResult{Allowed: false, Feedback: noAnswerersPrompt}, nil
+				}
+				qTimeout = time.Duration(*curRun.QuestionTimeoutSeconds) * time.Second
+			} else {
+				qTimeout = e.cfg.QuestionTimeout
+			}
+		}
+
 		reqID := newID("req")
 		waitCh := make(chan runtime.ToolGateResult, 1)
 		e.mu.Lock()
@@ -2980,38 +4041,58 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 			e.mu.Unlock()
 		}()
 
-		rr := &threadv2.RuntimeRequest{
+		now := time.Now()
+		var expiresAt *timestamppb.Timestamp
+		if qTimeout > 0 {
+			expiresAt = timestamppb.New(now.Add(qTimeout))
+		}
+
+		rr := &sessionv1.RuntimeRequest{
 			RequestId:    reqID,
-			ThreadId:     threadID,
+			SessionId:    sessionID,
 			RunId:        runID,
 			Kind:         req.Kind,
-			Status:       threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
-			ResponseMode: threadv2.ResponseMode_RESPONSE_MODE_LIVE_RPC,
+			Status:       sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING,
+			ResponseMode: sessionv1.ResponseMode_RESPONSE_MODE_LIVE_RPC,
 			Approval:     req.Approval,
 			UserInput:    req.UserInput,
 			PlanReview:   req.Plan,
 			SecretInput:  req.Secret,
+			ExpiresAt:    expiresAt,
 		}
 		events, err := e.st.Mutate(func(tx *store.Tx) error {
-			tNow, err := tx.GetThread(threadID)
+			sNow, err := tx.GetSession(sessionID)
 			if err != nil {
 				return err
+			}
+			if sNow.Progress == nil {
+				sNow.Progress = &sessionv1.SessionProgress{}
 			}
 			rNow, err := tx.GetRun(runID)
 			if err != nil {
 				return err
 			}
-			rNow.Status = threadv2.RunStatus_RUN_STATUS_WAITING_REQUEST
-			tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST
-			tNow.PendingRequestId = reqID
+			rNow.Status = sessionv1.RunStatus_RUN_STATUS_WAITING_REQUEST
+			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
+			sNow.PendingRequestId = reqID
+			if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT && req.UserInput != nil {
+				sNow.Progress.PendingQuestion = &sessionv1.Question{
+					QuestionId:           reqID,
+					Turn:                 rNow.Ordinal,
+					Items:                req.UserInput.Questions,
+					AskedAt:              timestamppb.New(now),
+					ExpiresAt:            expiresAt,
+					LocalAnswerAvailable: true,
+				}
+			}
 			if err := tx.PutRuntimeRequest(rr); err != nil {
 				return err
 			}
-			item := &threadv2.TurnItem{
+			item := &sessionv1.TurnItem{
 				ItemId:    "reqitm_" + reqID,
-				ThreadId:  threadID,
+				SessionId: sessionID,
 				RunId:     runID,
-				Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+				Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
 				Status:    "waiting",
 				RequestId: reqID,
 			}
@@ -3021,22 +4102,29 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 			if err := tx.PutRun(rNow); err != nil {
 				return err
 			}
-			if err := tx.PutThread(tNow); err != nil {
+			if err := putSessionSynced(tx, sNow); err != nil {
 				return err
 			}
-			return tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: threadID,
-				Type:     "request.created",
-				Thread:   tNow,
-				Run:      rNow,
-				Item:     item,
-				Request:  rr,
+			return tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: sessionID,
+				Type:      "request.created",
+				Session:   sNow,
+				Run:       rNow,
+				Item:      item,
+				Request:   rr,
 			})
 		})
 		if err != nil {
 			return runtime.ToolGateResult{}, err
 		}
 		e.publish(events, nil)
+
+		var timerC <-chan time.Time
+		if qTimeout > 0 {
+			timer := time.NewTimer(qTimeout)
+			defer timer.Stop()
+			timerC = timer.C
+		}
 
 		e.mu.Lock()
 		runDoneCh := e.runDoneChs[runID]
@@ -3046,8 +4134,11 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 			if e.bgCtx.Err() == nil {
 				_, _ = e.st.Mutate(func(tx *store.Tx) error {
 					cur, err := tx.GetRuntimeRequest(reqID)
-					if err == nil && cur.Status == threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
-						cur.Status = threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_EXPIRED
+					if err == nil && cur.Status == sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+						cur.Status = sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_EXPIRED
+						if cur.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+							cur.QuestionResolution = sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED
+						}
 						cur.ResolvedAt = timestamppb.Now()
 						_ = tx.PutRuntimeRequest(cur)
 					}
@@ -3059,6 +4150,51 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 		select {
 		case res := <-waitCh:
 			return res, nil
+		case <-timerC:
+			expEvs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				cur, err := tx.GetRuntimeRequest(reqID)
+				if err != nil || cur.Status != sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+					return nil
+				}
+				cur.Status = sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_EXPIRED
+				cur.QuestionResolution = sessionv1.QuestionResolution_QUESTION_RESOLUTION_TIMED_OUT
+				cur.ResolvedAt = timestamppb.Now()
+				_ = tx.PutRuntimeRequest(cur)
+				reqItem := &sessionv1.TurnItem{
+					ItemId:    "reqitm_" + reqID,
+					SessionId: sessionID,
+					RunId:     runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+					Status:    "expired",
+					RequestId: reqID,
+				}
+				_ = tx.PutTurnItem(reqItem)
+				sNow, sErr := tx.GetSession(sessionID)
+				if sErr != nil {
+					return nil
+				}
+				if rNow, rErr := tx.GetRun(runID); rErr == nil {
+					rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+					_ = tx.PutRun(rNow)
+				}
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				if sNow.PendingRequestId == reqID {
+					sNow.PendingRequestId = ""
+				}
+				if sNow.Progress != nil {
+					sNow.Progress.PendingQuestion = nil
+				}
+				_ = putSessionSynced(tx, sNow)
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "request.resolved",
+					Session:   sNow,
+					Item:      reqItem,
+					Request:   cur,
+				})
+			})
+			e.publish(expEvs, nil)
+			return runtime.ToolGateResult{Allowed: false, Feedback: fmt.Sprintf(noAnswerQuestionFormat, qTimeout)}, nil
 		case <-runDoneCh:
 			expirePending()
 			return runtime.ToolGateResult{CancelTurn: true}, context.Canceled
@@ -3069,11 +4205,36 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 	}
 }
 
-func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *threadv2.RespondRuntimeRequestRequest) (*threadv2.RespondRuntimeRequestResponse, error) {
+func (e *Engine) canAnswerQuestion(p *Principal, sess *sessionv1.Session, run *sessionv1.Run) bool {
+	if p == nil {
+		return false
+	}
+	if p.CanApproveRequest ||
+		p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER ||
+		p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
+		return true
+	}
+	id := p.Actor.GetId()
+	if id == "" {
+		return false
+	}
+	if sess.GetActor().GetId() == id || sess.GetCreatedBy() == id {
+		return true
+	}
+	if run != nil && run.GetAuthor().GetId() == id {
+		return true
+	}
+	return false
+}
+
+func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *sessionv1.RespondRuntimeRequestRequest) (*sessionv1.RespondRuntimeRequestResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.RespondRuntimeRequestResponse
+	if req.Decline && len(req.Answers) > 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("declining a question takes no answer content"))
+	}
+	var cached sessionv1.RespondRuntimeRequestResponse
 	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "RespondRuntimeRequest", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -3081,95 +4242,122 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 		return &cached, nil
 	}
 
-	unlock := e.lockThread(req.ThreadId)
-	th, err := e.st.Thread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
 		unlock()
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
-	reqs, _ := e.st.RuntimeRequests(req.ThreadId)
-	var target *threadv2.RuntimeRequest
+	reqs, _ := e.st.RuntimeRequests(req.SessionId)
+	var target *sessionv1.RuntimeRequest
 	for _, r := range reqs {
 		if r.RequestId == req.RequestId {
 			target = r
 			break
 		}
 	}
+	if target == nil && req.RequestId == "" && sess.PendingRequestId != "" {
+		for _, r := range reqs {
+			if r.RequestId == sess.PendingRequestId {
+				target = r
+				break
+			}
+		}
+	}
 	if target == nil {
 		unlock()
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("runtime request not found"))
 	}
-	if target.Status != threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+	if target.Status != sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
 		unlock()
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("runtime request is already resolved"))
 	}
 
 	// Enforce cryptographic security boundary: external Grants CANNOT approve
 	// tool executions, plan mode exits, or supply secrets! Only Owner can.
-	if (target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL ||
-		target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW ||
-		target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT) && !p.CanApproveRequest {
-		unlock()
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only a trusted owner device may approve permissions, plans, or secrets"))
+	if target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL ||
+		target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW ||
+		target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT {
+		if !p.CanApproveRequest {
+			unlock()
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only a trusted owner device may approve permissions, plans, or secrets"))
+		}
+	} else if target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+		targetRun, _ := e.st.Run(target.RunId)
+		if !e.canAnswerQuestion(p, sess, targetRun) {
+			unlock()
+			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("caller is not authorized to answer this question"))
+		}
+		if req.Decline && len(req.Answers) > 0 {
+			unlock()
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("cannot decline and provide answers simultaneously"))
+		}
 	}
 
 	e.mu.Lock()
-	waitCh := e.waiters[req.RequestId]
+	waitCh := e.waiters[target.RequestId]
 	e.mu.Unlock()
 
 	var gateRes runtime.ToolGateResult
 	var resumePrompt string
 
 	switch target.Kind {
-	case threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL:
+	case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL:
 		dec := req.Decision
-		if dec == threadv2.ApprovalDecision_APPROVAL_DECISION_UNSPECIFIED {
-			dec = threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
+		if dec == sessionv1.ApprovalDecision_APPROVAL_DECISION_UNSPECIFIED {
+			dec = sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
 		}
 		target.ResolvedDecision = dec
 		target.ResolvedFeedback = req.Feedback
 		switch dec {
-		case threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
-			threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_FOR_THREAD:
+		case sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+			sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_FOR_SESSION:
 			gateRes = runtime.ToolGateResult{Allowed: true}
-		case threadv2.ApprovalDecision_APPROVAL_DECISION_DECLINE:
+		case sessionv1.ApprovalDecision_APPROVAL_DECISION_DECLINE:
 			gateRes = runtime.ToolGateResult{Allowed: false, Feedback: req.Feedback}
-		case threadv2.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN:
+		case sessionv1.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN:
 			gateRes = runtime.ToolGateResult{Allowed: false, CancelTurn: true}
 		}
 
-	case threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT:
-		target.ResolvedAnswers = req.Answers
-		gateRes = runtime.ToolGateResult{Allowed: true, Answers: req.Answers}
-		var parts []string
-		for qid, a := range req.Answers {
-			vals := append([]string{}, a.SelectedOptions...)
-			if a.CustomText != "" {
-				vals = append(vals, a.CustomText)
+	case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT:
+		if req.Decline {
+			target.QuestionResolution = sessionv1.QuestionResolution_QUESTION_RESOLUTION_DECLINED
+			gateRes = runtime.ToolGateResult{Allowed: false, Feedback: declinedQuestionMessage}
+			resumePrompt = declinedQuestionMessage
+		} else {
+			target.QuestionResolution = sessionv1.QuestionResolution_QUESTION_RESOLUTION_ANSWERED
+			target.ResolvedAnswers = req.Answers
+			gateRes = runtime.ToolGateResult{Allowed: true, Answers: req.Answers}
+			var parts []string
+			for qid, a := range req.Answers {
+				vals := append([]string{}, a.SelectedOptions...)
+				if a.CustomText != "" {
+					vals = append(vals, a.CustomText)
+				}
+				parts = append(parts, qid+": "+strings.Join(vals, ", "))
 			}
-			parts = append(parts, qid+": "+strings.Join(vals, ", "))
+			resumePrompt = "Answers to previous questions:\n" + strings.Join(parts, "\n")
 		}
-		resumePrompt = "Answers to previous questions:\n" + strings.Join(parts, "\n")
 
-	case threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW:
+	case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW:
 		target.ResolvedFeedback = req.Feedback
 		if req.ApprovePlan {
-			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
+			target.ResolvedDecision = sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
 			gateRes = runtime.ToolGateResult{Allowed: true, PlanApproved: true}
-			if th.InteractionMode == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+			if sess.InteractionMode == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 				resumePrompt = "Plan approved. Proceed with implementation in Code mode."
 			} else {
 				resumePrompt = "Approved. Proceed."
 			}
-		} else if req.Decision == threadv2.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN {
-			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN
+		} else if req.Decision == sessionv1.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN {
+			target.ResolvedDecision = sessionv1.ApprovalDecision_APPROVAL_DECISION_CANCEL_TURN
 			gateRes = runtime.ToolGateResult{Allowed: false, PlanApproved: false, CancelTurn: true}
 		} else {
-			target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_DECLINE
+			target.ResolvedDecision = sessionv1.ApprovalDecision_APPROVAL_DECISION_DECLINE
 			gateRes = runtime.ToolGateResult{Allowed: false, PlanApproved: false, Feedback: req.Feedback}
 			if fb := strings.TrimSpace(req.Feedback); fb != "" {
 				resumePrompt = "Please revise the plan: " + fb
@@ -3178,80 +4366,85 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 			}
 		}
 
-	case threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT:
+	case sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT:
 		// NEVER persist req.SecretValue onto target!
-		target.ResolvedDecision = threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
+		target.ResolvedDecision = sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE
 		gateRes = runtime.ToolGateResult{Allowed: true, SecretValue: req.SecretValue}
 	}
 
-	target.Status = threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_RESOLVED
-	target.ResolvedBy = proto.Clone(p.Actor).(*threadv2.Actor)
+	target.Status = sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_RESOLVED
+	target.ResolvedBy = proto.Clone(p.Actor).(*sessionv1.Actor)
 	target.ResolvedAt = timestamppb.Now()
 
-	var res *threadv2.RespondRuntimeRequestResponse
+	var res *sessionv1.RespondRuntimeRequestResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(req.ThreadId)
+		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
 		}
-		if target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL &&
-			req.Decision == threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_FOR_THREAD &&
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		if target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL &&
+			req.Decision == sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_FOR_SESSION &&
 			target.Approval != nil && target.Approval.RuleKey != "" {
-			if err := tx.AddAllowRule(req.ThreadId, target.Approval.RuleKey); err != nil {
+			if err := tx.AddAllowRule(req.SessionId, target.Approval.RuleKey); err != nil {
 				return err
 			}
 		}
-		if target.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW && req.ApprovePlan {
-			tNow.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+		if target.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW && req.ApprovePlan {
+			sNow.InteractionMode = sessionv1.InteractionMode_INTERACTION_MODE_CODE
 			if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
-				rNow.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+				rNow.InteractionMode = sessionv1.InteractionMode_INTERACTION_MODE_CODE
 				if err := tx.PutRun(rNow); err != nil {
 					return err
 				}
 			}
-			if lease := e.sup.Get(tNow.ActiveProviderThreadId); lease != nil {
-				_ = lease.Session.SetModes(ctx, tNow.EffectiveRuntimeMode, threadv2.InteractionMode_INTERACTION_MODE_CODE)
-				lease.InteractionMode = threadv2.InteractionMode_INTERACTION_MODE_CODE
+			if lease := e.sup.Get(sNow.ActiveProviderSessionId); lease != nil {
+				_ = lease.Session.SetModes(ctx, sNow.EffectiveRuntimeMode, sessionv1.InteractionMode_INTERACTION_MODE_CODE)
+				lease.InteractionMode = sessionv1.InteractionMode_INTERACTION_MODE_CODE
 			}
 		}
 		if err := tx.PutRuntimeRequest(target); err != nil {
 			return err
 		}
-		reqItem := &threadv2.TurnItem{
+		reqItem := &sessionv1.TurnItem{
 			ItemId:    "reqitm_" + target.RequestId,
-			ThreadId:  req.ThreadId,
+			SessionId: req.SessionId,
 			RunId:     target.RunId,
-			Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+			Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
 			Status:    "completed",
 			RequestId: target.RequestId,
 		}
 		_ = tx.PutTurnItem(reqItem)
 		if waitCh != nil {
 			if rNow, rErr := tx.GetRun(target.RunId); rErr == nil {
-				rNow.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
+				rNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
 				_ = tx.PutRun(rNow)
 			}
-			tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
-			tNow.PendingRequestId = ""
+			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+			sNow.PendingRequestId = ""
+			sNow.Progress.PendingQuestion = nil
 		} else {
-			tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
-			tNow.PendingRequestId = ""
+			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			sNow.PendingRequestId = ""
+			sNow.Progress.PendingQuestion = nil
 		}
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: req.ThreadId,
-			Type:     "request.resolved",
-			Thread:   tNow,
-			Item:     reqItem,
-			Request:  target,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: req.SessionId,
+			Type:      "request.resolved",
+			Session:   sNow,
+			Item:      reqItem,
+			Request:   target,
 		}); err != nil {
 			return err
 		}
-		res = &threadv2.RespondRuntimeRequestResponse{
-			Thread:  proto.Clone(tNow).(*threadv2.Thread),
-			Request: proto.Clone(target).(*threadv2.RuntimeRequest),
+		res = &sessionv1.RespondRuntimeRequestResponse{
+			Session: proto.Clone(sNow).(*sessionv1.Session),
+			Request: proto.Clone(target).(*sessionv1.RuntimeRequest),
 		}
 		return tx.PutReceipt(req.CommandId, "RespondRuntimeRequest", res)
 	})
@@ -3264,118 +4457,123 @@ func (e *Engine) RespondRuntimeRequest(ctx context.Context, p *Principal, req *t
 	if waitCh != nil {
 		waitCh <- gateRes
 	} else if resumePrompt != "" {
-		// Resumable request answered after turn completion or daemon restart -> automatically continue!
-		if dispRes, dErr := e.DispatchMessage(ctx, p, &threadv2.DispatchMessageRequest{
-			ThreadId: req.ThreadId,
-			Text:     resumePrompt,
-			Intent:   threadv2.DispatchIntent_DISPATCH_INTENT_START,
-		}); dErr == nil && dispRes.GetThread() != nil {
-			res.Thread = dispRes.Thread
+		if dispRes, dErr := e.DispatchMessage(ctx, p, &sessionv1.DispatchMessageRequest{
+			SessionId: req.SessionId,
+			Text:      resumePrompt,
+			Intent:    sessionv1.DispatchIntent_DISPATCH_INTENT_START,
+		}); dErr == nil && dispRes.GetSession() != nil {
+			res.Session = dispRes.Session
 		}
 	}
 	return res, nil
 }
 
-func dismissPendingRequestTx(tx *store.Tx, tNow *threadv2.Thread, actor *threadv2.Actor) (*threadv2.RuntimeRequest, *threadv2.TurnItem, error) {
-	if tNow.PendingRequestId == "" {
+func dismissPendingRequestTx(tx *store.Tx, sNow *sessionv1.Session, actor *sessionv1.Actor) (*sessionv1.RuntimeRequest, *sessionv1.TurnItem, error) {
+	if sNow.PendingRequestId == "" {
 		return nil, nil, nil
 	}
-	var supersededReq *threadv2.RuntimeRequest
-	var supersededItem *threadv2.TurnItem
-	if prevReq, rErr := tx.GetRuntimeRequest(tNow.PendingRequestId); rErr == nil &&
-		prevReq.Status == threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
-		prevReq.Status = threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_DISMISSED
+	var supersededReq *sessionv1.RuntimeRequest
+	var supersededItem *sessionv1.TurnItem
+	if prevReq, rErr := tx.GetRuntimeRequest(sNow.PendingRequestId); rErr == nil &&
+		prevReq.Status == sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+		prevReq.Status = sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_DISMISSED
+		if prevReq.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			prevReq.QuestionResolution = sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED
+		}
 		if actor != nil {
-			prevReq.ResolvedBy = proto.Clone(actor).(*threadv2.Actor)
+			prevReq.ResolvedBy = proto.Clone(actor).(*sessionv1.Actor)
 		}
 		prevReq.ResolvedAt = timestamppb.Now()
 		if err := tx.PutRuntimeRequest(prevReq); err != nil {
 			return nil, nil, err
 		}
-		supersededItem = &threadv2.TurnItem{
+		supersededItem = &sessionv1.TurnItem{
 			ItemId:    "reqitm_" + prevReq.RequestId,
-			ThreadId:  tNow.ThreadId,
+			SessionId: sNow.SessionId,
 			RunId:     prevReq.RunId,
-			Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
+			Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST,
 			Status:    "dismissed",
 			RequestId: prevReq.RequestId,
 		}
 		_ = tx.PutTurnItem(supersededItem)
 		supersededReq = prevReq
 	}
-	tNow.PendingRequestId = ""
+	sNow.PendingRequestId = ""
+	if sNow.Progress != nil {
+		sNow.Progress.PendingQuestion = nil
+	}
 	return supersededReq, supersededItem, nil
 }
 
 // ---------------------------------------------------------------------------
-// Interrupt, Queue Management, Config Updates, Checkpoints & Fork
+// Interrupt, Queue Management, Session Updates, Checkpoints, Diff & Fork
 
-func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.InterruptRunRequest) (*threadv2.InterruptRunResponse, error) {
+func (e *Engine) InterruptSession(ctx context.Context, p *Principal, req *sessionv1.InterruptSessionRequest) (*sessionv1.InterruptSessionResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	unlock := e.lockThread(req.ThreadId)
-	th, err := e.st.Thread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
 		unlock()
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	if req.RunId != "" && req.RunId != th.ActiveRunId {
+	if req.RunId != "" && req.RunId != sess.ActiveRunId {
 		unlock()
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is not this thread's active run"))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is not this session's active run"))
 	}
-	activeRunID := th.ActiveRunId
-	ptID := th.ActiveProviderThreadId
-	var dismissEvents []*threadv2.ThreadEvent
+	activeRunID := sess.ActiveRunId
+	psID := sess.ActiveProviderSessionId
+	var dismissEvents []*sessionv1.SessionEvent
 
-	if req.RunId == "" && activeRunID == "" && th.PendingRequestId == "" && !req.HoldQueue && (th.ActiveBackgroundCount > 0 || th.ActiveDaemonCount > 0) {
+	if req.RunId == "" && activeRunID == "" && sess.PendingRequestId == "" && !req.HoldQueue && (sess.ActiveBackgroundCount > 0 || sess.ActiveDaemonCount > 0) {
 		unlock()
-		stopRes, err := e.StopBackgroundTask(ctx, p, &threadv2.StopBackgroundTaskRequest{ThreadId: req.ThreadId})
+		stopRes, err := e.StopBackgroundTask(ctx, p, &sessionv1.StopBackgroundTaskRequest{SessionId: req.SessionId})
 		if err != nil {
 			return nil, err
 		}
-		return &threadv2.InterruptRunResponse{Thread: stopRes.Thread}, nil
+		return &sessionv1.InterruptSessionResponse{Session: stopRes.Session}, nil
 	}
 
-	if req.HoldQueue || (activeRunID == "" && th.PendingRequestId != "") {
+	if req.HoldQueue || (activeRunID == "" && sess.PendingRequestId != "") {
 		dismissEvents, _ = e.st.Mutate(func(tx *store.Tx) error {
-			tNow, err := tx.GetThread(req.ThreadId)
+			sNow, err := tx.GetSession(req.SessionId)
 			if err != nil {
 				return err
 			}
 			if req.HoldQueue {
-				tNow.QueueHeld = true
+				sNow.QueueHeld = true
 			}
-			var supReq *threadv2.RuntimeRequest
-			var supItem *threadv2.TurnItem
-			if activeRunID == "" && tNow.PendingRequestId != "" {
-				supReq, supItem, err = dismissPendingRequestTx(tx, tNow, p.Actor)
+			var supReq *sessionv1.RuntimeRequest
+			var supItem *sessionv1.TurnItem
+			if activeRunID == "" && sNow.PendingRequestId != "" {
+				supReq, supItem, err = dismissPendingRequestTx(tx, sNow, p.Actor)
 				if err != nil {
 					return err
 				}
-				queued, _ := tx.QueuedRuns(req.ThreadId)
-				tNow.QueuedRunCount = uint32(len(queued))
+				queued, _ := tx.QueuedRuns(req.SessionId)
+				sNow.QueuedRunCount = uint32(len(queued))
 				if len(queued) > 0 {
-					tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_QUEUED
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_QUEUED
 				} else {
-					tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
+					sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 				}
 			}
-			if err := tx.PutThread(tNow); err != nil {
+			if err := putSessionSynced(tx, sNow); err != nil {
 				return err
 			}
 			if supReq != nil {
-				return tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: req.ThreadId,
-					Type:     "request.resolved",
-					Thread:   tNow,
-					Item:     supItem,
-					Request:  supReq,
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: req.SessionId,
+					Type:      "request.resolved",
+					Session:   sNow,
+					Item:      supItem,
+					Request:   supReq,
 				})
 			}
 			return nil
@@ -3386,37 +4584,85 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 		e.publish(dismissEvents, nil)
 	}
 
-	if req.Force && activeRunID != "" {
+	who := "owner"
+	if p.Actor != nil && p.Actor.Kind != sessionv1.ActorKind_ACTOR_KIND_OWNER && p.Actor.Id != "" {
+		who = p.Actor.Id
+	}
+	intReason := "interrupted by " + who
+	if strings.TrimSpace(req.Reason) != "" {
+		intReason = req.Reason
+	}
+	pendingReqID := sess.PendingRequestId
+	if activeRunID != "" {
 		e.mu.Lock()
-		if cancel, ok := e.runCancels[activeRunID]; ok {
-			cancel()
+		e.runInterruptedBy[activeRunID] = intReason
+		var waitCh chan runtime.ToolGateResult
+		if pendingReqID != "" {
+			waitCh = e.waiters[pendingReqID]
 		}
 		e.mu.Unlock()
-	}
-	if lease := e.sup.Get(ptID); lease != nil {
-		if req.Force {
-			e.stopLeasePump(ptID, lease)
-			e.sup.DetachSession(ptID, lease.Session, true)
-		} else {
-			_ = lease.Session.Interrupt(ctx)
+		if waitCh != nil {
+			select {
+			case waitCh <- runtime.ToolGateResult{CancelTurn: true}:
+			default:
+			}
 		}
 	}
-	if req.Force && activeRunID != "" {
-		e.finishRunInterrupted(req.ThreadId, activeRunID, "force stopped")
+	lease := e.sup.Get(psID)
+	if req.Force || lease == nil {
+		if lease != nil {
+			e.stopLeasePump(psID, lease)
+			e.sup.DetachSession(psID, lease.Session, true)
+		}
+		if activeRunID != "" {
+			e.mu.Lock()
+			cancel := e.runCancels[activeRunID]
+			e.mu.Unlock()
+			if cancel != nil {
+				cancel()
+			}
+			if req.Force {
+				e.finishRunInterrupted(req.SessionId, activeRunID, intReason, nil, nil)
+			}
+		}
+	} else {
+		_ = lease.Session.Interrupt(ctx)
+		if activeRunID != "" {
+			sid := req.SessionId
+			rid := activeRunID
+			targetSession := lease.Session
+			time.AfterFunc(2*time.Second, func() {
+				if e.bgCtx.Err() != nil {
+					return
+				}
+				e.mu.Lock()
+				cancel, stillActive := e.runCancels[rid]
+				e.mu.Unlock()
+				if !stillActive {
+					return
+				}
+				e.stopLeasePump(psID, lease)
+				e.sup.DetachSession(psID, targetSession, true)
+				if cancel != nil {
+					cancel()
+				}
+				_ = sid
+			})
+		}
 	}
 
-	updated, err := e.st.Thread(req.ThreadId)
+	updated, err := e.st.Session(req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.InterruptRunResponse{Thread: updated}, nil
+	return &sessionv1.InterruptSessionResponse{Session: updated}, nil
 }
 
-func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *threadv2.StopBackgroundTaskRequest) (*threadv2.StopBackgroundTaskResponse, error) {
+func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *sessionv1.StopBackgroundTaskRequest) (*sessionv1.StopBackgroundTaskResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.StopBackgroundTaskResponse
+	var cached sessionv1.StopBackgroundTaskResponse
 	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "StopBackgroundTask", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -3424,32 +4670,32 @@ func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *thre
 		return &cached, nil
 	}
 
-	unlock := e.lockThread(req.ThreadId)
-	th, err := e.st.Thread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
 		unlock()
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	existingTasks, _ := e.st.BackgroundTasks(req.ThreadId)
+	existingTasks, _ := e.st.BackgroundTasks(req.SessionId)
 	effectiveTaskID := strings.TrimSpace(req.TaskId)
 	if effectiveTaskID != "" {
 		for _, bt := range existingTasks {
-			if bt.TaskId == effectiveTaskID && bt.StopScope == threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION {
+			if bt.TaskId == effectiveTaskID && bt.StopScope == sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION {
 				// Session-scoped background tasks share session/cancel, stopping all session tasks.
 				effectiveTaskID = ""
 				break
 			}
 		}
 	}
-	ptID := th.ActiveProviderThreadId
+	psID := sess.ActiveProviderSessionId
 	unlock()
 
-	if lease := e.sup.Get(ptID); lease != nil {
+	if lease := e.sup.Get(psID); lease != nil {
 		if bc, ok := lease.Session.(runtime.BackgroundController); ok {
 			_ = bc.StopBackgroundTask(ctx, req.TaskId)
 		} else {
@@ -3457,44 +4703,44 @@ func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *thre
 		}
 	}
 
-	unlock = e.lockThread(req.ThreadId)
-	var res *threadv2.StopBackgroundTaskResponse
+	unlock = e.lockSession(req.SessionId)
+	var res *sessionv1.StopBackgroundTaskResponse
 	var awaitedCnt, daemonCnt uint32
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(req.ThreadId)
+		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
 		}
-		stopped, items, err := tx.StopRunningBackgroundTasks(req.ThreadId, effectiveTaskID, "stopped by user")
+		stopped, items, err := tx.StopRunningBackgroundTasks(req.SessionId, effectiveTaskID, "stopped by user")
 		if err != nil {
 			return err
 		}
-		awaitedCnt, daemonCnt, _ = tx.RefreshThreadBackgroundCounts(tNow)
-		if err := tx.PutThread(tNow); err != nil {
+		awaitedCnt, daemonCnt, _ = tx.RefreshSessionBackgroundCounts(sNow)
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		for _, it := range items {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: req.ThreadId,
-				Type:     "item.updated",
-				Thread:   tNow,
-				Item:     it,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: req.SessionId,
+				Type:      "item.updated",
+				Session:   sNow,
+				Item:      it,
 			}); err != nil {
 				return err
 			}
 		}
 		for _, bt := range stopped {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId:       req.ThreadId,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId:      req.SessionId,
 				Type:           "background_task.updated",
-				Thread:         tNow,
+				Session:        sNow,
 				BackgroundTask: bt,
 			}); err != nil {
 				return err
 			}
 		}
-		res = &threadv2.StopBackgroundTaskResponse{
-			Thread:       proto.Clone(tNow).(*threadv2.Thread),
+		res = &sessionv1.StopBackgroundTaskResponse{
+			Session:      proto.Clone(sNow).(*sessionv1.Session),
 			StoppedTasks: stopped,
 		}
 		return tx.PutReceipt(req.CommandId, "StopBackgroundTask", res)
@@ -3503,18 +4749,18 @@ func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *thre
 	if err != nil {
 		return nil, err
 	}
-	if lease := e.sup.Get(ptID); lease != nil {
+	if lease := e.sup.Get(psID); lease != nil {
 		lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
 	}
 	e.publish(events, nil)
 	return res, nil
 }
 
-func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.ManageQueueRequest) (*threadv2.ManageQueueResponse, error) {
+func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *sessionv1.ManageQueueRequest) (*sessionv1.ManageQueueResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.ManageQueueResponse
+	var cached sessionv1.ManageQueueResponse
 	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "ManageQueue", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -3522,23 +4768,23 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 		return &cached, nil
 	}
 
-	unlock := e.lockThread(req.ThreadId)
-	th, err := e.st.Thread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
 		unlock()
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
 	// Promote-to-steer while an active run is running:
-	if req.Operation == threadv2.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER && th.ActiveRunId != "" {
-		runs, _ := e.st.Runs(req.ThreadId)
-		var qRun *threadv2.Run
+	if req.Operation == sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER && sess.ActiveRunId != "" {
+		runs, _ := e.st.Runs(req.SessionId)
+		var qRun *sessionv1.Run
 		for _, r := range runs {
-			if r.RunId == req.RunId && r.Status == threadv2.RunStatus_RUN_STATUS_QUEUED {
+			if r.RunId == req.RunId && r.Status == sessionv1.RunStatus_RUN_STATUS_QUEUED {
 				qRun = r
 				break
 			}
@@ -3547,36 +4793,36 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			unlock()
 			return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
 		}
-		lease := e.sup.Get(th.ActiveProviderThreadId)
+		lease := e.sup.Get(sess.ActiveProviderSessionId)
 		if lease != nil {
 			if err := lease.Session.Steer(ctx, qRun.Prompt, e.loadTurnAttachments(qRun.Attachments)); err == nil {
-				var res *threadv2.ManageQueueResponse
+				var res *sessionv1.ManageQueueResponse
 				events, mErr := e.st.Mutate(func(tx *store.Tx) error {
-					tNow, _ := tx.GetThread(req.ThreadId)
-					qRun.Status = threadv2.RunStatus_RUN_STATUS_CANCELLED
+					sNow, _ := tx.GetSession(req.SessionId)
+					qRun.Status = sessionv1.RunStatus_RUN_STATUS_CANCELLED
 					_ = tx.PutRun(qRun)
-					item := &threadv2.TurnItem{
+					item := &sessionv1.TurnItem{
 						ItemId:      newID("itm"),
-						ThreadId:    req.ThreadId,
-						RunId:       tNow.ActiveRunId,
-						Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+						SessionId:   req.SessionId,
+						RunId:       sNow.ActiveRunId,
+						Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 						Status:      "promoted_to_steer",
 						Actor:       qRun.Author,
 						Text:        qRun.Prompt,
 						Attachments: qRun.Attachments,
 					}
 					_ = tx.PutTurnItem(item)
-					rem, _ := tx.QueuedRuns(req.ThreadId)
-					tNow.QueuedRunCount = uint32(len(rem))
-					_ = tx.PutThread(tNow)
-					_ = tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: req.ThreadId,
-						Type:     "queue.promoted",
-						Thread:   tNow,
-						Run:      qRun,
-						Item:     item,
+					rem, _ := tx.QueuedRuns(req.SessionId)
+					sNow.QueuedRunCount = uint32(len(rem))
+					_ = putSessionSynced(tx, sNow)
+					_ = tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: req.SessionId,
+						Type:      "queue.promoted",
+						Session:   sNow,
+						Run:       qRun,
+						Item:      item,
 					})
-					res = &threadv2.ManageQueueResponse{Thread: proto.Clone(tNow).(*threadv2.Thread), QueuedRuns: rem}
+					res = &sessionv1.ManageQueueResponse{Session: proto.Clone(sNow).(*sessionv1.Session), QueuedRuns: rem}
 					return tx.PutReceipt(req.CommandId, "ManageQueue", res)
 				})
 				unlock()
@@ -3589,24 +4835,27 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 		}
 	}
 
-	var startNow *threadv2.Run
-	var res *threadv2.ManageQueueResponse
+	var startNow *sessionv1.Run
+	var res *sessionv1.ManageQueueResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(req.ThreadId)
+		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
 		}
-		queued, err := tx.QueuedRuns(req.ThreadId)
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		queued, err := tx.QueuedRuns(req.SessionId)
 		if err != nil {
 			return err
 		}
 
-		var updatedRuns []*threadv2.Run
-		var startedItem *threadv2.TurnItem
+		var updatedRuns []*sessionv1.Run
+		var startedItem *sessionv1.TurnItem
 
 		switch req.Operation {
-		case threadv2.QueueOperation_QUEUE_OPERATION_EDIT:
-			var target *threadv2.Run
+		case sessionv1.QueueOperation_QUEUE_OPERATION_EDIT:
+			var target *sessionv1.Run
 			for _, r := range queued {
 				if r.RunId == req.RunId {
 					target = r
@@ -3626,10 +4875,10 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			if err := tx.PutRun(target); err != nil {
 				return err
 			}
-			updatedRuns = []*threadv2.Run{target}
+			updatedRuns = []*sessionv1.Run{target}
 
-		case threadv2.QueueOperation_QUEUE_OPERATION_CANCEL:
-			var target *threadv2.Run
+		case sessionv1.QueueOperation_QUEUE_OPERATION_CANCEL:
+			var target *sessionv1.Run
 			for _, r := range queued {
 				if r.RunId == req.RunId {
 					target = r
@@ -3639,15 +4888,15 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			if target == nil {
 				return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
 			}
-			target.Status = threadv2.RunStatus_RUN_STATUS_CANCELLED
+			target.Status = sessionv1.RunStatus_RUN_STATUS_CANCELLED
 			target.CompletedAt = timestamppb.Now()
 			if err := tx.PutRun(target); err != nil {
 				return err
 			}
-			updatedRuns = []*threadv2.Run{target}
+			updatedRuns = []*sessionv1.Run{target}
 
-		case threadv2.QueueOperation_QUEUE_OPERATION_REORDER:
-			idx := slices.IndexFunc(queued, func(r *threadv2.Run) bool { return r.RunId == req.RunId })
+		case sessionv1.QueueOperation_QUEUE_OPERATION_REORDER:
+			idx := slices.IndexFunc(queued, func(r *sessionv1.Run) bool { return r.RunId == req.RunId })
 			if idx < 0 {
 				return connect.NewError(connect.CodeFailedPrecondition, errors.New("run is no longer queued"))
 			}
@@ -3655,7 +4904,7 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			rest := slices.Delete(slices.Clone(queued), idx, idx+1)
 			insertAt := len(rest)
 			if req.BeforeRunId != "" {
-				if bIdx := slices.IndexFunc(rest, func(r *threadv2.Run) bool { return r.RunId == req.BeforeRunId }); bIdx >= 0 {
+				if bIdx := slices.IndexFunc(rest, func(r *sessionv1.Run) bool { return r.RunId == req.BeforeRunId }); bIdx >= 0 {
 					insertAt = bIdx
 				}
 			}
@@ -3668,52 +4917,56 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			}
 			updatedRuns = reordered
 
-		case threadv2.QueueOperation_QUEUE_OPERATION_RESUME_QUEUE,
-			threadv2.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER:
-			tNow.QueueHeld = false
-			if tNow.ActiveRunId == "" && len(queued) > 0 {
-				supReq, supItem, dErr := dismissPendingRequestTx(tx, tNow, p.Actor)
+		case sessionv1.QueueOperation_QUEUE_OPERATION_RESUME_QUEUE,
+			sessionv1.QueueOperation_QUEUE_OPERATION_PROMOTE_TO_STEER:
+			sNow.QueueHeld = false
+			if sNow.ActiveRunId == "" && len(queued) > 0 {
+				supReq, supItem, dErr := dismissPendingRequestTx(tx, sNow, p.Actor)
 				if dErr != nil {
 					return dErr
 				}
 				pickIdx := 0
 				if req.RunId != "" {
-					if idx := slices.IndexFunc(queued, func(r *threadv2.Run) bool { return r.RunId == req.RunId }); idx >= 0 {
+					if idx := slices.IndexFunc(queued, func(r *sessionv1.Run) bool { return r.RunId == req.RunId }); idx >= 0 {
 						pickIdx = idx
 					}
 				}
+				now := timestamppb.Now()
 				startNow = queued[pickIdx]
-				tNow.RunCount++
-				startNow.Ordinal = tNow.RunCount
-				startNow.Status = threadv2.RunStatus_RUN_STATUS_RUNNING
-				startNow.StartedAt = timestamppb.Now()
+				sNow.Error = ""
+				sNow.Progress.LastFailure = nil
+				sNow.Progress.TurnCount++
+				sNow.Progress.TurnStartedAt = now
+				startNow.Ordinal = sNow.Progress.TurnCount
+				startNow.Status = sessionv1.RunStatus_RUN_STATUS_RUNNING
+				startNow.StartedAt = now
 				if err := tx.PutRun(startNow); err != nil {
 					return err
 				}
-				startedItem = &threadv2.TurnItem{
+				startedItem = &sessionv1.TurnItem{
 					ItemId:      newID("itm"),
-					ThreadId:    req.ThreadId,
+					SessionId:   req.SessionId,
 					RunId:       startNow.RunId,
-					Kind:        threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+					Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
 					Status:      "completed",
 					Actor:       startNow.Author,
 					Text:        startNow.Prompt,
 					Attachments: startNow.Attachments,
 				}
 				_ = tx.PutTurnItem(startedItem)
-				tNow.ActiveRunId = startNow.RunId
-				tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
-				tNow.ModelSelection = startNow.ModelSelection
-				tNow.EffectiveRuntimeMode = startNow.RuntimeMode
-				tNow.InteractionMode = startNow.InteractionMode
-				updatedRuns = []*threadv2.Run{startNow}
+				sNow.ActiveRunId = startNow.RunId
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
+				sNow.ModelSelection = startNow.ModelSelection
+				sNow.EffectiveRuntimeMode = startNow.RuntimeMode
+				sNow.InteractionMode = startNow.InteractionMode
+				updatedRuns = []*sessionv1.Run{startNow}
 				if supReq != nil {
-					_ = tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: req.ThreadId,
-						Type:     "request.resolved",
-						Thread:   tNow,
-						Item:     supItem,
-						Request:  supReq,
+					_ = tx.AppendEvent(&sessionv1.SessionEvent{
+						SessionId: req.SessionId,
+						Type:      "request.resolved",
+						Session:   sNow,
+						Item:      supItem,
+						Request:   supReq,
 					})
 				}
 			}
@@ -3722,44 +4975,44 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("unsupported queue operation"))
 		}
 
-		rem, err := tx.QueuedRuns(req.ThreadId)
+		rem, err := tx.QueuedRuns(req.SessionId)
 		if err != nil {
 			return err
 		}
-		tNow.QueuedRunCount = uint32(len(rem))
-		if tNow.ActiveRunId == "" && len(rem) == 0 && tNow.Status == threadv2.ThreadStatus_THREAD_STATUS_QUEUED {
-			tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
+		sNow.QueuedRunCount = uint32(len(rem))
+		if sNow.ActiveRunId == "" && len(rem) == 0 && sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_QUEUED {
+			sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
 		}
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
 		if len(updatedRuns) == 0 {
-			if err := tx.AppendEvent(&threadv2.ThreadEvent{
-				ThreadId: req.ThreadId,
-				Type:     "queue.updated",
-				Thread:   tNow,
+			if err := tx.AppendEvent(&sessionv1.SessionEvent{
+				SessionId: req.SessionId,
+				Type:      "queue.updated",
+				Session:   sNow,
 			}); err != nil {
 				return err
 			}
 		} else {
 			for i, ur := range updatedRuns {
-				var it *threadv2.TurnItem
+				var it *sessionv1.TurnItem
 				if i == 0 {
 					it = startedItem
 				}
-				if err := tx.AppendEvent(&threadv2.ThreadEvent{
-					ThreadId: req.ThreadId,
-					Type:     "queue.updated",
-					Thread:   tNow,
-					Run:      ur,
-					Item:     it,
+				if err := tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: req.SessionId,
+					Type:      "queue.updated",
+					Session:   sNow,
+					Run:       ur,
+					Item:      it,
 				}); err != nil {
 					return err
 				}
 			}
 		}
-		res = &threadv2.ManageQueueResponse{
-			Thread:     proto.Clone(tNow).(*threadv2.Thread),
+		res = &sessionv1.ManageQueueResponse{
+			Session:    proto.Clone(sNow).(*sessionv1.Session),
 			QueuedRuns: rem,
 		}
 		return tx.PutReceipt(req.CommandId, "ManageQueue", res)
@@ -3770,80 +5023,90 @@ func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.Ma
 	}
 	e.publish(events, nil)
 	if startNow != nil {
-		e.spawnRun(req.ThreadId, startNow.RunId, startNow.Intent == threadv2.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
+		e.spawnRun(req.SessionId, startNow.RunId, startNow.Intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT)
 	}
 	return res, nil
 }
 
-func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *threadv2.UpdateThreadConfigRequest) (*threadv2.UpdateThreadConfigResponse, error) {
+func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1.UpdateSessionRequest) (*sessionv1.UpdateSessionResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.UpdateThreadConfigResponse
+	var cached sessionv1.UpdateSessionResponse
 	defer e.lockCommand(req.CommandId)()
-	if ok, err := e.st.GetReceipt(req.CommandId, "UpdateThreadConfig", &cached); err != nil {
+	if ok, err := e.st.GetReceipt(req.CommandId, "UpdateSession", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
 		return &cached, nil
 	}
 
-	unlock := e.lockThread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
 	defer unlock()
 
-	th, err := e.st.Thread(req.ThreadId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	nextSel := proto.Clone(th.ModelSelection).(*threadv2.ModelSelection)
+	nextSel := proto.Clone(sess.ModelSelection).(*sessionv1.ModelSelection)
 	if req.ModelSelection != nil && req.ModelSelection.InstanceId != "" {
-		instCfg, _, err := e.resolveInstanceConfig(p, req.ModelSelection.InstanceId)
+		instCfg, _, err := e.resolveInstanceConfig(p, sess.ProjectId, req.ModelSelection.InstanceId)
 		if err != nil {
 			return nil, err
 		}
 		if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
 		}
-		if err := e.projectAllowsInstance(th.ProjectId, instCfg.InstanceId); err != nil {
+		if err := e.projectAllowsInstance(sess.ProjectId, instCfg.InstanceId); err != nil {
 			return nil, err
 		}
-		nextSel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
+		nextSel = proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection)
+	} else if req.ModelSelection != nil && (req.ModelSelection.Model != "" || len(req.ModelSelection.Options) > 0) {
+		if nextSel == nil {
+			nextSel = &sessionv1.ModelSelection{}
+		}
+		if req.ModelSelection.Model != "" {
+			nextSel.Model = req.ModelSelection.Model
+		}
+		if len(req.ModelSelection.Options) > 0 {
+			nextSel.Options = proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection).Options
+		}
 	}
 
 	// Pinning, renaming or archiving must not recompute the ceiling with the caller's grant.
-	nextReqMode, nextEffMode, nextMaxMode := th.RuntimeMode, th.EffectiveRuntimeMode, th.MaxRuntimeMode
+	nextReqMode, nextEffMode, nextMaxMode := sess.RuntimeMode, sess.EffectiveRuntimeMode, sess.MaxRuntimeMode
 	if req.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		nextReqMode = req.RuntimeMode
 		nextEffMode = policy.EffectiveMode(e.machineMax(), p.GrantCeiling, nextReqMode)
 		nextMaxMode = policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling)
 	}
 
-	nextIMode := th.InteractionMode
-	if req.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
+	nextIMode := sess.InteractionMode
+	if req.InteractionMode != sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
 		nextIMode = req.InteractionMode
 	}
 
-	instCfg, drv, _ := e.resolveInstanceConfig(p, nextSel.GetInstanceId())
-	var caps *threadv2.ProviderCapabilities
+	instCfg, drv, _ := e.resolveInstanceConfig(p, sess.ProjectId, nextSel.GetInstanceId())
+	var caps *sessionv1.ProviderCapabilities
 	if drv != nil && instCfg != nil {
 		caps = drv.Capabilities(instCfg.AcpFlavor)
 	}
-	var currentPT *threadv2.ProviderThread
-	if th.ActiveProviderThreadId != "" {
-		pts, _ := e.st.ProviderThreads(req.ThreadId)
-		for _, pt := range pts {
-			if pt.ProviderThreadId == th.ActiveProviderThreadId {
-				currentPT = pt
+	var currentPS *sessionv1.ProviderSession
+	if sess.ActiveProviderSessionId != "" {
+		pss, _ := e.st.ProviderSessions(req.SessionId)
+		for _, ps := range pss {
+			if ps.ProviderSessionId == sess.ActiveProviderSessionId {
+				currentPS = ps
 				break
 			}
 		}
 	}
-	lease := e.sup.Get(th.ActiveProviderThreadId)
+	lease := e.sup.Get(sess.ActiveProviderSessionId)
 	plan := DecideTransition(TransitionInput{
-		CurrentBinding:      currentPT,
+		CurrentBinding:      currentPS,
 		LiveLease:           lease,
 		NextSelection:       nextSel,
 		NextEffectiveMode:   nextEffMode,
@@ -3851,11 +5114,10 @@ func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *thre
 		Capabilities:        caps,
 	})
 
-	// Apply in-session hot switch immediately if idle!
-	if th.ActiveRunId == "" && plan.Action == TransitionSwitchInSession && lease != nil {
+	if sess.ActiveRunId == "" && plan.Action == TransitionSwitchInSession && lease != nil {
 		if plan.ModelChanged || plan.OptionsChanged {
 			if err := lease.Session.SetSelection(ctx, nextSel); err == nil {
-				lease.Selection = proto.Clone(nextSel).(*threadv2.ModelSelection)
+				lease.Selection = proto.Clone(nextSel).(*sessionv1.ModelSelection)
 			}
 		}
 		if plan.ModeChanged {
@@ -3866,119 +5128,227 @@ func (e *Engine) UpdateThreadConfig(ctx context.Context, p *Principal, req *thre
 		}
 	}
 
-	// Archiving detaches any idle live process and cleans up isolated worktree directory (leaving branch intact).
-	archivingNow := req.HasArchived && req.Archived && th.Status != threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED
-	if archivingNow && th.ActiveRunId != "" {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot archive a thread while a run is active; stop it first"))
+	cleanTitle := runtime.CleanTitle(req.Title)
+	if cleanTitle != "" && lease != nil {
+		if titler, ok := lease.Session.(runtime.Titler); ok {
+			_ = titler.SetTitle(ctx, cleanTitle)
+		}
 	}
 
-	var res *threadv2.UpdateThreadConfigResponse
+	archivingNow := req.HasArchived && req.Archived && sess.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+	unarchivingNow := req.HasArchived && !req.Archived && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+	if archivingNow && sess.ActiveRunId != "" {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot archive a session while a run is active; interrupt it first"))
+	}
+	if archivingNow && e.cfg.CheckRelease != nil &&
+		sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE &&
+		sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
+		if err := e.cfg.CheckRelease(ctx, sess); err != nil {
+			return nil, err
+		}
+	}
+
+	var res *sessionv1.UpdateSessionResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(req.ThreadId)
+		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
 		}
-		tNow.ModelSelection = nextSel
-		tNow.RuntimeMode = nextReqMode
-		tNow.EffectiveRuntimeMode = nextEffMode
-		tNow.MaxRuntimeMode = nextMaxMode
-		tNow.InteractionMode = nextIMode
-		if strings.TrimSpace(req.Title) != "" {
-			tNow.Title = strings.TrimSpace(req.Title)
-			tNow.TitleRenamed = true
+		sNow.ModelSelection = nextSel
+		sNow.RuntimeMode = nextReqMode
+		sNow.EffectiveRuntimeMode = nextEffMode
+		sNow.MaxRuntimeMode = nextMaxMode
+		sNow.InteractionMode = nextIMode
+		if cleanTitle != "" {
+			sNow.Title = cleanTitle
+			sNow.TitleRenamed = true
 		}
 		if req.HasPinned {
-			tNow.Pinned = req.Pinned
+			sNow.Pinned = req.Pinned
 		}
 		if req.HasArchived {
 			if req.Archived {
-				tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED
-				tNow.ArchivedAt = timestamppb.Now()
-			} else if tNow.Status == threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED {
-				tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
-				tNow.ArchivedAt = nil
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+				sNow.ArchivedAt = timestamppb.Now()
+			} else if sNow.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+				sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+				sNow.ArchivedAt = nil
 			}
 		}
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: req.ThreadId,
-			Type:     "thread.config_updated",
-			Thread:   tNow,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: req.SessionId,
+			Type:      "session.updated",
+			Session:   sNow,
 		}); err != nil {
 			return err
 		}
-		res = &threadv2.UpdateThreadConfigResponse{
-			Thread:            proto.Clone(tNow).(*threadv2.Thread),
+		res = &sessionv1.UpdateSessionResponse{
+			Session:           proto.Clone(sNow).(*sessionv1.Session),
 			TransitionApplied: string(plan.Action),
 		}
-		return tx.PutReceipt(req.CommandId, "UpdateThreadConfig", res)
+		return tx.PutReceipt(req.CommandId, "UpdateSession", res)
 	})
 	if err != nil {
 		return nil, err
 	}
+	nativeRef := currentPS.GetNativeSessionId()
 	if archivingNow {
-		if th.ActiveProviderThreadId != "" {
-			e.sup.Detach(th.ActiveProviderThreadId, false)
+		if sess.ActiveProviderSessionId != "" {
+			e.sup.Detach(sess.ActiveProviderSessionId, false)
 		}
-		if th.GetWorkspace().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && th.GetWorkspace().GetWorktreePath() != "" {
-			if ws, wErr := e.st.Workspace(th.ProjectId); wErr == nil {
-				_ = e.vcs.RemoveWorktree(ctx, ws.Path, th.GetWorkspace().GetWorktreePath())
+		if e.cfg.DataDir != "" {
+			_ = os.RemoveAll(filepath.Join(e.cfg.DataDir, "sessions", sess.SessionId, "tmp"))
+		}
+		if nativeRef != "" {
+			if arch, ok := drv.(runtime.Archiver); ok {
+				_ = arch.Archive(ctx, nativeRef, true)
 			}
+		}
+		if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
+			if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {
+				_ = e.vcs.RemoveWorktree(ctx, ws.Path, sess.GetWorkspaceStrategy().GetWorktreePath())
+			}
+		}
+	}
+	if unarchivingNow {
+		if e.cfg.DataDir != "" {
+			_ = os.MkdirAll(filepath.Join(e.cfg.DataDir, "sessions", sess.SessionId, "tmp"), 0o700)
+		}
+		if nativeRef != "" {
+			if arch, ok := drv.(runtime.Archiver); ok {
+				_ = arch.Archive(ctx, nativeRef, false)
+			}
+		}
+		if res != nil && res.Session != nil {
+			_, _ = e.resolveWorkdir(res.Session)
 		}
 	}
 	e.publish(events, nil)
 	return res, nil
 }
 
-func (e *Engine) ListCheckpoints(_ context.Context, p *Principal, threadID string) ([]*threadv2.Checkpoint, error) {
-	th, err := e.st.Thread(threadID)
+func (e *Engine) ListCheckpoints(_ context.Context, p *Principal, sessionID string) ([]*sessionv1.Checkpoint, error) {
+	sess, err := e.st.Session(sessionID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
-	return e.st.Checkpoints(threadID)
+	return e.st.Checkpoints(sessionID)
 }
 
-func (e *Engine) GetThreadDiff(ctx context.Context, p *Principal, threadID, checkpointID string) (*threadv2.GetThreadDiffResponse, error) {
-	th, err := e.st.Thread(threadID)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
-	}
-	if !p.canViewThread(th) {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
-	}
-	workdir, err := e.resolveWorkdir(th)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
-	}
-	baseTree := ""
-	ckpts, _ := e.st.Checkpoints(threadID)
-	if checkpointID != "" {
-		for _, c := range ckpts {
-			if c.CheckpointId == checkpointID {
-				baseTree = c.GitTreeOid
-				break
-			}
-		}
-	} else if len(ckpts) > 0 && ckpts[0].RunOrdinal == 0 {
-		baseTree = ckpts[0].GitTreeOid
-	}
-	diff, files, err := e.vcs.DiffWorkingTree(ctx, workdir, baseTree)
-	if err != nil {
-		return nil, err
-	}
-	return &threadv2.GetThreadDiffResponse{UnifiedDiff: diff, Files: files}, nil
-}
-
-func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *threadv2.RollbackCheckpointRequest) (*threadv2.RollbackCheckpointResponse, error) {
+func (e *Engine) GetDiff(ctx context.Context, p *Principal, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.RollbackCheckpointResponse
+	sess, err := e.st.Session(req.SessionId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
+	}
+	if !p.canViewSession(sess) {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+	}
+	workdir, err := e.resolveWorkdir(sess)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	if !vcs.IsGitRepo(ctx, workdir) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("session works in place without a Git repository"))
+	}
+	ckpts, _ := e.st.Checkpoints(req.SessionId)
+
+	var fullDiff string
+	var files []*sessionv1.CheckpointFile
+	var baseCommit, headCommit string
+
+	if req.Turn > 0 {
+		var prevCp, turnCp *sessionv1.Checkpoint
+		for _, c := range ckpts {
+			if c.RunOrdinal < req.Turn {
+				prevCp = c
+			}
+			if c.RunOrdinal == req.Turn {
+				turnCp = c
+				break
+			}
+		}
+		if turnCp != nil && prevCp != nil {
+			baseCommit = prevCp.HeadOid
+			headCommit = turnCp.HeadOid
+			fullDiff, files, err = e.vcs.DiffTrees(ctx, workdir, prevCp.GitTreeOid, turnCp.GitTreeOid)
+			if err != nil {
+				return nil, err
+			}
+		} else if turnCp != nil {
+			files = turnCp.Files
+			headCommit = turnCp.HeadOid
+		}
+	} else {
+		baseTree := ""
+		if req.CheckpointId != "" {
+			for _, c := range ckpts {
+				if c.CheckpointId == req.CheckpointId {
+					baseTree = c.GitTreeOid
+					baseCommit = c.HeadOid
+					break
+				}
+			}
+		} else if len(ckpts) > 0 && ckpts[0].RunOrdinal == 0 {
+			baseTree = ckpts[0].GitTreeOid
+			baseCommit = ckpts[0].HeadOid
+		}
+		fullDiff, files, err = e.vcs.DiffWorkingTree(ctx, workdir, baseTree)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	stat := summarizeDiffFiles(files)
+	if stat == nil {
+		stat = &sessionv1.DiffStat{}
+	}
+	if req.StatOnly {
+		return &sessionv1.GetDiffResponse{
+			Stat:       stat,
+			Files:      files,
+			BaseCommit: baseCommit,
+			HeadCommit: headCommit,
+		}, nil
+	}
+
+	start := int(min(req.Offset, uint64(len(fullDiff))))
+	rem := fullDiff[start:]
+	truncated := false
+	var nextOffset uint64
+	if len(rem) > maxDiffPageBytes {
+		cut := maxDiffPageBytes
+		for cut > 0 && !utf8.RuneStart(rem[cut]) {
+			cut--
+		}
+		rem = rem[:cut]
+		truncated = true
+		nextOffset = uint64(start + cut)
+	}
+	return &sessionv1.GetDiffResponse{
+		Diff:       rem,
+		Stat:       stat,
+		Files:      files,
+		Truncated:  truncated,
+		NextOffset: nextOffset,
+		BaseCommit: baseCommit,
+		HeadCommit: headCommit,
+	}, nil
+}
+
+func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *sessionv1.RollbackCheckpointRequest) (*sessionv1.RollbackCheckpointResponse, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	var cached sessionv1.RollbackCheckpointResponse
 	defer e.lockCommand(req.CommandId)()
 	if ok, err := e.st.GetReceipt(req.CommandId, "RollbackCheckpoint", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -3986,22 +5356,22 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 		return &cached, nil
 	}
 
-	unlock := e.lockThread(req.ThreadId)
+	unlock := e.lockSession(req.SessionId)
 	defer unlock()
 
-	th, err := e.st.Thread(req.ThreadId)
+	sess, err := e.st.Session(req.SessionId)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
-	if th.ActiveRunId != "" {
+	if sess.ActiveRunId != "" {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("cannot rollback while a run is active; stop it first"))
 	}
 
-	ckpts, _ := e.st.Checkpoints(req.ThreadId)
-	var target *threadv2.Checkpoint
+	ckpts, _ := e.st.Checkpoints(req.SessionId)
+	var target *sessionv1.Checkpoint
 	for _, c := range ckpts {
 		if c.CheckpointId == req.CheckpointId {
 			target = c
@@ -4013,7 +5383,7 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 	}
 
 	if req.RestoreFiles {
-		workdir, err := e.resolveWorkdir(th)
+		workdir, err := e.resolveWorkdir(sess)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 		}
@@ -4022,58 +5392,61 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 		}
 	}
 
-	// Detach current provider binding so the next run cleanly rebuilds context from surviving history!
-	if th.ActiveProviderThreadId != "" {
-		e.sup.Detach(th.ActiveProviderThreadId, false)
+	if sess.ActiveProviderSessionId != "" {
+		e.sup.Detach(sess.ActiveProviderSessionId, false)
 	}
 
-	runs, _ := e.st.Runs(req.ThreadId)
-	var res *threadv2.RollbackCheckpointResponse
+	runs, _ := e.st.Runs(req.SessionId)
+	var res *sessionv1.RollbackCheckpointResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		tNow, err := tx.GetThread(req.ThreadId)
+		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
 			return err
 		}
+		if sNow.Progress == nil {
+			sNow.Progress = &sessionv1.SessionProgress{}
+		}
 		removedRuns := map[string]bool{}
 		for _, r := range runs {
-			if r.Ordinal > target.RunOrdinal && r.Status != threadv2.RunStatus_RUN_STATUS_QUEUED {
-				r.Status = threadv2.RunStatus_RUN_STATUS_ROLLED_BACK
+			if r.Ordinal > target.RunOrdinal && r.Status != sessionv1.RunStatus_RUN_STATUS_QUEUED {
+				r.Status = sessionv1.RunStatus_RUN_STATUS_ROLLED_BACK
 				_ = tx.PutRun(r)
 				removedRuns[r.RunId] = true
 			}
 		}
-		if err := tx.DeleteTurnItemsAfterRunIds(req.ThreadId, removedRuns); err != nil {
+		if err := tx.DeleteTurnItemsAfterRunIds(req.SessionId, removedRuns); err != nil {
 			return err
 		}
-		_, _, _ = tx.StopRunningBackgroundTasks(req.ThreadId, "", "rewound to earlier checkpoint")
-		_, _, _ = tx.RefreshThreadBackgroundCounts(tNow)
-		tNow.RunCount = target.RunOrdinal
-		tNow.ActiveProviderThreadId = ""
-		tNow.LastError = ""
-		tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_IDLE
-		notice := &threadv2.TurnItem{
+		_, _, _ = tx.StopRunningBackgroundTasks(req.SessionId, "", "rewound to earlier checkpoint")
+		_, _, _ = tx.RefreshSessionBackgroundCounts(sNow)
+		sNow.Progress.TurnCount = target.RunOrdinal
+		sNow.Progress.LastFailure = nil
+		sNow.ActiveProviderSessionId = ""
+		sNow.Error = ""
+		sNow.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+		notice := &sessionv1.TurnItem{
 			ItemId:       newID("rb"),
-			ThreadId:     req.ThreadId,
-			Kind:         threadv2.TurnItemKind_TURN_ITEM_KIND_SYSTEM_NOTICE,
+			SessionId:    req.SessionId,
+			Kind:         sessionv1.TurnItemKind_TURN_ITEM_KIND_SYSTEM_NOTICE,
 			Status:       "completed",
 			CheckpointId: target.CheckpointId,
-			Text:         fmt.Sprintf("Rewound thread to checkpoint #%d (restore_files=%v)", target.RunOrdinal, req.RestoreFiles),
+			Text:         fmt.Sprintf("Rewound session to checkpoint #%d (restore_files=%v)", target.RunOrdinal, req.RestoreFiles),
 		}
 		_ = tx.PutTurnItem(notice)
-		if err := tx.PutThread(tNow); err != nil {
+		if err := putSessionSynced(tx, sNow); err != nil {
 			return err
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId:   req.ThreadId,
-			Type:       "thread.rolled_back",
-			Thread:     tNow,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId:  req.SessionId,
+			Type:       "session.rolled_back",
+			Session:    sNow,
 			Checkpoint: target,
 			Item:       notice,
 		}); err != nil {
 			return err
 		}
-		res = &threadv2.RollbackCheckpointResponse{
-			Thread:     proto.Clone(tNow).(*threadv2.Thread),
+		res = &sessionv1.RollbackCheckpointResponse{
+			Session:    proto.Clone(sNow).(*sessionv1.Session),
 			Checkpoint: target,
 		}
 		return tx.PutReceipt(req.CommandId, "RollbackCheckpoint", res)
@@ -4085,45 +5458,48 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 	return res, nil
 }
 
-func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.ForkThreadRequest) (*threadv2.ForkThreadResponse, error) {
+func (e *Engine) ForkSession(ctx context.Context, p *Principal, req *sessionv1.ForkSessionRequest) (*sessionv1.ForkSessionResponse, error) {
 	if p == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	var cached threadv2.ForkThreadResponse
+	var cached sessionv1.ForkSessionResponse
 	defer e.lockCommand(req.CommandId)()
-	if ok, err := e.st.GetReceipt(req.CommandId, "ForkThread", &cached); err != nil {
+	if ok, err := e.st.GetReceipt(req.CommandId, "ForkSession", &cached); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	} else if ok {
 		return &cached, nil
 	}
 
-	srcProj, err := e.st.Projection(req.SourceThreadId)
+	srcProj, err := e.st.Projection(req.SourceSessionId)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("source thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("source session not found"))
 	}
-	if !p.canViewThread(srcProj.Thread) {
+	if !p.canViewSession(srcProj.Session) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
 	upTo := req.UpToRunOrdinal
 	if upTo == 0 {
-		upTo = srcProj.Thread.RunCount
+		upTo = srcProj.Session.GetProgress().GetTurnCount()
 	}
 	includedRuns := map[string]bool{}
-	var copiedRuns []*threadv2.Run
+	var copiedRuns []*sessionv1.Run
 	for _, r := range srcProj.Runs {
-		if r.Ordinal > 0 && r.Ordinal <= upTo && r.Status != threadv2.RunStatus_RUN_STATUS_ROLLED_BACK {
+		if r.Ordinal > 0 && r.Ordinal <= upTo && r.Status != sessionv1.RunStatus_RUN_STATUS_ROLLED_BACK {
 			includedRuns[r.RunId] = true
 			copiedRuns = append(copiedRuns, r)
 		}
 	}
 
-	newThreadID := e.newThreadID()
-	wsStrategy := proto.Clone(req.Workspace).(*threadv2.WorkspaceStrategy)
+	newSessionID := e.newSessionID()
+	wsStrategy := proto.Clone(req.Workspace).(*sessionv1.WorkspaceStrategy)
 	if wsStrategy == nil {
-		wsStrategy = &threadv2.WorkspaceStrategy{Mode: srcProj.Thread.GetWorkspace().GetMode(), BaseRef: srcProj.Thread.GetWorkspace().GetBranch()}
+		wsStrategy = &sessionv1.WorkspaceStrategy{
+			Mode:    srcProj.Session.GetWorkspaceStrategy().GetMode(),
+			BaseRef: srcProj.Session.GetWorkspaceStrategy().GetBranch(),
+		}
 	}
-	ws, err := e.st.Workspace(srcProj.Thread.ProjectId)
+	ws, err := e.st.Workspace(srcProj.Session.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -4132,14 +5508,12 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 		if baseRef == "" {
 			baseRef = ws.DefaultBaseRef
 		}
-		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, newThreadID, baseRef, wsStrategy.Branch)
+		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, newSessionID, baseRef, wsStrategy.Branch)
 		if wtErr != nil {
 			return nil, connect.NewError(connect.CodeFailedPrecondition, wtErr)
 		}
 		wsStrategy.WorktreePath = wtPath
 		wsStrategy.Branch = branch
-		// The branch HEAD lacks the source thread's uncommitted edits: lay down the
-		// files of the last checkpoint at or before the fork point.
 		if cp := forkCheckpoint(srcProj.Checkpoints, includedRuns, upTo); cp != nil {
 			if err := e.vcs.RestoreTree(ctx, wtPath, cp.GitTreeOid); err != nil {
 				_ = e.vcs.RemoveWorktree(ctx, ws.Path, wtPath)
@@ -4148,71 +5522,77 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 		}
 	}
 
-	sel := proto.Clone(srcProj.Thread.ModelSelection).(*threadv2.ModelSelection)
+	sel := proto.Clone(srcProj.Session.ModelSelection).(*sessionv1.ModelSelection)
 	if req.ModelSelection != nil && req.ModelSelection.InstanceId != "" {
-		instCfg, _, err := e.resolveInstanceConfig(p, req.ModelSelection.InstanceId)
+		instCfg, _, err := e.resolveInstanceConfig(p, srcProj.Session.ProjectId, req.ModelSelection.InstanceId)
 		if err != nil {
 			return nil, err
 		}
 		if !p.allowsAgent(instCfg.InstanceId, instCfg.Driver, instCfg.AcpFlavor) {
 			return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit target provider"))
 		}
-		sel = proto.Clone(req.ModelSelection).(*threadv2.ModelSelection)
+		sel = proto.Clone(req.ModelSelection).(*sessionv1.ModelSelection)
 	} else if !e.principalAllowsInstance(p, sel.GetInstanceId()) {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this thread's provider"))
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("grant does not permit this session's provider"))
 	}
-	if err := e.projectAllowsInstance(srcProj.Thread.ProjectId, sel.GetInstanceId()); err != nil {
+	if err := e.projectAllowsInstance(srcProj.Session.ProjectId, sel.GetInstanceId()); err != nil {
 		return nil, err
 	}
-	title := strings.TrimSpace(req.Title)
+	title := runtime.CleanTitle(req.Title)
 	if title == "" {
-		title = srcProj.Thread.Title + " (fork)"
+		title = srcProj.Session.Title + " (fork)"
 	}
 
-	forked := &threadv2.Thread{
-		ThreadId:             newThreadID,
+	createdBy := p.Actor.GetId()
+	if p.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_OWNER {
+		createdBy = "owner"
+	}
+
+	forked := &sessionv1.Session{
+		SessionId:            newSessionID,
 		MachineId:            e.cfg.MachineID,
-		ProjectId:            srcProj.Thread.ProjectId,
+		ProjectId:            srcProj.Session.ProjectId,
 		Title:                title,
 		TitleRenamed:         true,
-		Status:               threadv2.ThreadStatus_THREAD_STATUS_IDLE,
+		Status:               sessionv1.SessionStatus_SESSION_STATUS_IDLE,
+		CreatedBy:            createdBy,
 		ModelSelection:       sel,
-		RuntimeMode:          srcProj.Thread.RuntimeMode,
-		EffectiveRuntimeMode: policy.EffectiveMode(e.machineMax(), p.GrantCeiling, srcProj.Thread.RuntimeMode),
+		RuntimeMode:          srcProj.Session.RuntimeMode,
+		EffectiveRuntimeMode: policy.EffectiveMode(e.machineMax(), p.GrantCeiling, srcProj.Session.RuntimeMode),
 		MaxRuntimeMode:       policy.EffectiveCeiling(e.machineMax(), p.GrantCeiling),
-		InteractionMode:      srcProj.Thread.InteractionMode,
-		Workspace:            wsStrategy,
-		CreatedBy:            proto.Clone(p.Actor).(*threadv2.Actor),
-		RunCount:             uint32(len(copiedRuns)),
-		Lineage: &threadv2.ThreadLineage{
-			ParentThreadId:       req.SourceThreadId,
+		InteractionMode:      srcProj.Session.InteractionMode,
+		WorkspaceStrategy:    wsStrategy,
+		Actor:                proto.Clone(p.Actor).(*sessionv1.Actor),
+		Progress:             &sessionv1.SessionProgress{TurnCount: uint32(len(copiedRuns))},
+		Lineage: &sessionv1.SessionLineage{
+			ParentSessionId:      req.SourceSessionId,
 			ForkedFromRunOrdinal: upTo,
 			Relationship:         "fork",
 			Controllable:         true,
 		},
 	}
 
-	var res *threadv2.ForkThreadResponse
+	var res *sessionv1.ForkSessionResponse
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
-		if err := tx.PutThread(forked); err != nil {
+		if err := putSessionSynced(tx, forked); err != nil {
 			return err
 		}
 		runIDMap := map[string]string{}
 		for _, r := range copiedRuns {
-			cp := proto.Clone(r).(*threadv2.Run)
+			cp := proto.Clone(r).(*sessionv1.Run)
 			cp.RunId = newID("run")
-			cp.ThreadId = newThreadID
-			cp.ProviderThreadId = ""
+			cp.SessionId = newSessionID
+			cp.ProviderSessionId = ""
 			runIDMap[r.RunId] = cp.RunId
 			if err := tx.PutRun(cp); err != nil {
 				return err
 			}
 		}
 		for _, it := range srcProj.Items {
-			if newRunID, ok := runIDMap[it.RunId]; ok && it.Kind != threadv2.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST {
-				cpIt := proto.Clone(it).(*threadv2.TurnItem)
+			if newRunID, ok := runIDMap[it.RunId]; ok && it.Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_RUNTIME_REQUEST {
+				cpIt := proto.Clone(it).(*sessionv1.TurnItem)
 				cpIt.ItemId = newID("itm")
-				cpIt.ThreadId = newThreadID
+				cpIt.SessionId = newSessionID
 				cpIt.RunId = newRunID
 				cpIt.Seq = 0
 				if err := tx.PutTurnItem(cpIt); err != nil {
@@ -4220,15 +5600,15 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 				}
 			}
 		}
-		if err := tx.AppendEvent(&threadv2.ThreadEvent{
-			ThreadId: newThreadID,
-			Type:     "thread.forked",
-			Thread:   forked,
+		if err := tx.AppendEvent(&sessionv1.SessionEvent{
+			SessionId: newSessionID,
+			Type:      "session.forked",
+			Session:   forked,
 		}); err != nil {
 			return err
 		}
-		res = &threadv2.ForkThreadResponse{Thread: proto.Clone(forked).(*threadv2.Thread)}
-		return tx.PutReceipt(req.CommandId, "ForkThread", res)
+		res = &sessionv1.ForkSessionResponse{Session: proto.Clone(forked).(*sessionv1.Session)}
+		return tx.PutReceipt(req.CommandId, "ForkSession", res)
 	})
 	if err != nil {
 		return nil, err
@@ -4237,10 +5617,8 @@ func (e *Engine) ForkThread(ctx context.Context, p *Principal, req *threadv2.For
 	return res, nil
 }
 
-// forkCheckpoint picks the latest checkpoint at or before run ordinal upTo that
-// belongs to a surviving run (or the ordinal-0 baseline).
-func forkCheckpoint(ckpts []*threadv2.Checkpoint, includedRuns map[string]bool, upTo uint32) *threadv2.Checkpoint {
-	var best *threadv2.Checkpoint
+func forkCheckpoint(ckpts []*sessionv1.Checkpoint, includedRuns map[string]bool, upTo uint32) *sessionv1.Checkpoint {
+	var best *sessionv1.Checkpoint
 	for _, c := range ckpts {
 		if c.RunOrdinal > upTo || (c.RunOrdinal != 0 && !includedRuns[c.RunId]) {
 			continue
@@ -4252,12 +5630,12 @@ func forkCheckpoint(ckpts []*threadv2.Checkpoint, includedRuns map[string]bool, 
 	return best
 }
 
-func (e *Engine) DeleteThread(ctx context.Context, p *Principal, threadID string) error {
+func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID string) error {
 	if p == nil {
 		return connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
-	unlock := e.lockThread(threadID)
-	th, err := e.st.Thread(threadID)
+	unlock := e.lockSession(sessionID)
+	sess, err := e.st.Session(sessionID)
 	if errors.Is(err, store.ErrNotFound) {
 		unlock()
 		return nil
@@ -4266,31 +5644,57 @@ func (e *Engine) DeleteThread(ctx context.Context, p *Principal, threadID string
 		unlock()
 		return err
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		unlock()
 		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
-	if th.ActiveRunId != "" {
+	if sess.ActiveRunId != "" {
 		e.mu.Lock()
-		if cancel, ok := e.runCancels[th.ActiveRunId]; ok {
+		if cancel, ok := e.runCancels[sess.ActiveRunId]; ok {
 			cancel()
 		}
 		e.mu.Unlock()
 	}
-	if th.ActiveProviderThreadId != "" {
-		e.sup.Detach(th.ActiveProviderThreadId, true)
+	if sess.ActiveProviderSessionId != "" {
+		e.sup.Detach(sess.ActiveProviderSessionId, true)
 	}
-	if th.GetWorkspace().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && th.GetWorkspace().GetWorktreePath() != "" {
-		if ws, wErr := e.st.Workspace(th.ProjectId); wErr == nil {
-			_ = e.vcs.RemoveWorktree(ctx, ws.Path, th.GetWorkspace().GetWorktreePath())
+	if sess.GetWorkspaceStrategy().GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE && sess.GetWorkspaceStrategy().GetWorktreePath() != "" {
+		if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil {
+			_ = e.vcs.RemoveWorktree(ctx, ws.Path, sess.GetWorkspaceStrategy().GetWorktreePath())
+		}
+	}
+	if e.cfg.DataDir != "" {
+		_ = os.RemoveAll(filepath.Join(e.cfg.DataDir, "sessions", sessionID))
+	}
+	var candidateBlobs []string
+	if items, iErr := e.st.TurnItems(sessionID); iErr == nil {
+		for _, it := range items {
+			if it.OutputBlobSha256 != "" {
+				candidateBlobs = append(candidateBlobs, it.OutputBlobSha256)
+			}
+			for _, a := range it.Attachments {
+				if a.BlobSha256 != "" {
+					candidateBlobs = append(candidateBlobs, a.BlobSha256)
+				}
+			}
+		}
+	}
+	if runs, rErr := e.st.Runs(sessionID); rErr == nil {
+		for _, r := range runs {
+			for _, a := range r.Attachments {
+				if a.BlobSha256 != "" {
+					candidateBlobs = append(candidateBlobs, a.BlobSha256)
+				}
+			}
 		}
 	}
 	_, err = e.st.Mutate(func(tx *store.Tx) error {
-		return tx.DeleteThread(threadID)
+		return tx.DeleteSession(sessionID)
 	})
 	unlock()
 	if err == nil {
-		e.publish(nil, []string{threadID})
+		e.st.PruneBlobs(candidateBlobs)
+		e.publish(nil, []string{sessionID})
 	}
 	return err
 }
@@ -4298,62 +5702,92 @@ func (e *Engine) DeleteThread(ctx context.Context, p *Principal, threadID string
 // ---------------------------------------------------------------------------
 // Reads & Streaming Subscriptions
 
-func (e *Engine) GetThread(_ context.Context, p *Principal, threadID string) (*threadv2.ThreadProjection, error) {
-	proj, err := e.st.Projection(threadID)
+func (e *Engine) GetSession(_ context.Context, p *Principal, sessionID string) (*sessionv1.SessionProjection, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	proj, err := e.st.Projection(sessionID)
 	if errors.Is(err, store.ErrNotFound) {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
 	if err != nil {
 		return nil, err
 	}
-	if !p.canViewThread(proj.Thread) {
+	if !p.canViewSession(proj.Session) {
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
-	for _, pt := range proj.ProviderThreads {
-		pt.ProcessAlive = e.sup.Get(pt.ProviderThreadId) != nil
+	for _, ps := range proj.ProviderSessions {
+		ps.ProcessAlive = e.sup.Get(ps.ProviderSessionId) != nil
 	}
 	return proj, nil
 }
 
-// busyInPlace says whether a session works in a project's own folder now
-// (queued, preparing, running or waiting): its branch is not to be switched
-// under it.
 func (e *Engine) busyInPlace(projectID string) bool {
-	threads, err := e.st.ListThreads(projectID, false, 0)
+	sessions, err := e.st.ListSessions(projectID, false, 0)
 	if err != nil {
 		return true
 	}
-	for _, th := range threads {
-		if th.GetWorkspace().GetMode() != identityv1.Workspace_WORKSPACE_IN_PLACE {
+	for _, s := range sessions {
+		if s.GetWorkspaceStrategy().GetMode() != identityv1.Workspace_WORKSPACE_IN_PLACE {
 			continue
 		}
-		switch th.GetStatus() {
-		case threadv2.ThreadStatus_THREAD_STATUS_QUEUED, threadv2.ThreadStatus_THREAD_STATUS_PREPARING,
-			threadv2.ThreadStatus_THREAD_STATUS_RUNNING, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST:
+		switch s.GetStatus() {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
 			return true
 		}
 	}
 	return false
 }
 
-func (e *Engine) ListThreads(_ context.Context, p *Principal, projectID string, includeArchived bool, limit uint32) ([]*threadv2.Thread, error) {
-	all, err := e.st.ListThreads(projectID, includeArchived, limit)
+func (e *Engine) ListSessions(_ context.Context, p *Principal, req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	var since time.Time
+	if req.Since != nil {
+		since = req.Since.AsTime()
+	}
+	fetchLimit := req.Limit
+	if fetchLimit > 0 {
+		fetchLimit++
+	}
+	all, err := e.st.QuerySessions(store.SessionFilter{
+		ProjectID:       req.ProjectId,
+		Status:          req.Status,
+		Since:           since,
+		IncludeArchived: req.IncludeArchived,
+		Before:          req.Before,
+		Limit:           fetchLimit,
+	})
 	if err != nil {
 		return nil, err
 	}
-	var out []*threadv2.Thread
-	for _, t := range all {
-		if p.canViewThread(t) {
-			out = append(out, t)
+	var out []*sessionv1.Session
+	for _, s := range all {
+		if p.canViewSession(s) {
+			out = append(out, s)
 		}
 	}
-	return out, nil
+	var next *sessionv1.SessionCursor
+	if req.Limit > 0 && uint32(len(out)) > req.Limit {
+		out = out[:req.Limit]
+		last := out[len(out)-1]
+		next = &sessionv1.SessionCursor{
+			UpdatedAt: last.UpdatedAt,
+			SessionId: last.SessionId,
+		}
+	}
+	return &sessionv1.ListSessionsResponse{Sessions: out, Next: next}, nil
 }
 
-func (e *Engine) SubscribeThreads(ctx context.Context, p *Principal, includeArchived bool, send func(*threadv2.SubscribeThreadsResponse) error) error {
+func (e *Engine) WatchSessions(ctx context.Context, p *Principal, includeArchived bool, send func(*sessionv1.WatchSessionsResponse) error) error {
+	if p == nil {
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
 	sub := &shellSub{
 		includeArchived: includeArchived,
-		ch:              make(chan *threadv2.SubscribeThreadsResponse, 64),
+		ch:              make(chan *sessionv1.WatchSessionsResponse, 64),
 	}
 	e.mu.Lock()
 	e.shellSubs[sub] = struct{}{}
@@ -4364,11 +5798,11 @@ func (e *Engine) SubscribeThreads(ctx context.Context, p *Principal, includeArch
 		e.mu.Unlock()
 	}()
 
-	initial, err := e.ListThreads(ctx, p, "", includeArchived, 0)
+	initialRes, err := e.ListSessions(ctx, p, &sessionv1.ListSessionsRequest{IncludeArchived: includeArchived})
 	if err != nil {
 		return err
 	}
-	if err := send(&threadv2.SubscribeThreadsResponse{Snapshot: true, Threads: initial}); err != nil {
+	if err := send(&sessionv1.WatchSessionsResponse{Snapshot: true, Sessions: initialRes.Sessions}); err != nil {
 		return err
 	}
 	for {
@@ -4376,18 +5810,18 @@ func (e *Engine) SubscribeThreads(ctx context.Context, p *Principal, includeArch
 		case <-ctx.Done():
 			return nil
 		case msg := <-sub.ch:
-			var visible []*threadv2.Thread
-			for _, t := range msg.Threads {
-				if p.canViewThread(t) {
-					visible = append(visible, t)
+			var visible []*sessionv1.Session
+			for _, s := range msg.Sessions {
+				if p.canViewSession(s) {
+					visible = append(visible, s)
 				}
 			}
-			if len(visible) == 0 && len(msg.DeletedThreadIds) == 0 {
+			if len(visible) == 0 && len(msg.DeletedSessionIds) == 0 {
 				continue
 			}
-			if err := send(&threadv2.SubscribeThreadsResponse{
-				Threads:          visible,
-				DeletedThreadIds: msg.DeletedThreadIds,
+			if err := send(&sessionv1.WatchSessionsResponse{
+				Sessions:          visible,
+				DeletedSessionIds: msg.DeletedSessionIds,
 			}); err != nil {
 				return err
 			}
@@ -4395,32 +5829,38 @@ func (e *Engine) SubscribeThreads(ctx context.Context, p *Principal, includeArch
 	}
 }
 
-func (e *Engine) SubscribeThread(ctx context.Context, p *Principal, threadID string, afterSeq uint64, send func(*threadv2.ThreadEvent) error) error {
-	th, err := e.st.Thread(threadID)
+func (e *Engine) SubscribeSession(ctx context.Context, p *Principal, sessionID string, afterSeq uint64, send func(*sessionv1.SessionEvent) error) error {
+	if p == nil {
+		return connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	sess, err := e.st.Session(sessionID)
 	if errors.Is(err, store.ErrNotFound) {
-		return connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+		return connect.NewError(connect.CodeNotFound, errors.New("session not found"))
 	}
 	if err != nil {
 		return err
 	}
-	if !p.canViewThread(th) {
+	if !p.canViewSession(sess) {
 		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
 
-	ch := make(chan *threadv2.ThreadEvent, 256)
-	e.mu.Lock()
-	if e.threadSubs[threadID] == nil {
-		e.threadSubs[threadID] = map[chan *threadv2.ThreadEvent]struct{}{}
+	sub := &sessionSub{
+		actorID: p.Actor.GetId(),
+		ch:      make(chan *sessionv1.SessionEvent, 256),
 	}
-	e.threadSubs[threadID][ch] = struct{}{}
+	e.mu.Lock()
+	if e.sessionSubs[sessionID] == nil {
+		e.sessionSubs[sessionID] = map[*sessionSub]struct{}{}
+	}
+	e.sessionSubs[sessionID][sub] = struct{}{}
 	e.mu.Unlock()
 	defer func() {
 		e.mu.Lock()
-		delete(e.threadSubs[threadID], ch)
+		delete(e.sessionSubs[sessionID], sub)
 		e.mu.Unlock()
 	}()
 
-	history, err := e.st.EventsAfter(threadID, afterSeq)
+	history, err := e.st.EventsAfter(sessionID, afterSeq)
 	if err != nil {
 		return err
 	}
@@ -4428,15 +5868,16 @@ func (e *Engine) SubscribeThread(ctx context.Context, p *Principal, threadID str
 	if len(history) == 0 {
 		// Confirm subscription readiness immediately in 1 RTT when the client is
 		// already caught up at afterSeq so callers never need a synthetic timer.
-		if cur, tErr := e.st.Thread(threadID); tErr == nil && cur != nil {
-			if cur.LastSeq > highWater {
-				highWater = cur.LastSeq
+		if cur, sErr := e.st.Session(sessionID); sErr == nil && cur != nil {
+			curSeq := cur.GetProgress().GetLastEventSeq()
+			if curSeq > highWater {
+				highWater = curSeq
 			}
-			if err := send(&threadv2.ThreadEvent{
-				Seq:      cur.LastSeq,
-				ThreadId: threadID,
-				Type:     "thread.subscribed",
-				Thread:   cur,
+			if err := send(&sessionv1.SessionEvent{
+				Seq:       curSeq,
+				SessionId: sessionID,
+				Type:      "session.subscribed",
+				Session:   cur,
 			}); err != nil {
 				return err
 			}
@@ -4455,7 +5896,7 @@ func (e *Engine) SubscribeThread(ctx context.Context, p *Principal, threadID str
 		select {
 		case <-ctx.Done():
 			return nil
-		case ev := <-ch:
+		case ev := <-sub.ch:
 			if ev.Seq <= highWater {
 				continue
 			}
@@ -4470,7 +5911,7 @@ func (e *Engine) SubscribeThread(ctx context.Context, p *Principal, threadID str
 func deriveTitle(prompt string) string {
 	s := strings.TrimSpace(prompt)
 	if s == "" {
-		return "New Thread"
+		return "New Session"
 	}
 	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
 		s = strings.TrimSpace(s[:idx])

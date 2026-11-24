@@ -34,11 +34,11 @@ import (
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/owner"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider"
-	"github.com/hermeshai/hermesh/internal/provider/acp"
-	"github.com/hermeshai/hermesh/internal/provider/claude"
-	"github.com/hermeshai/hermesh/internal/provider/codex"
-	"github.com/hermeshai/hermesh/internal/provider/fake"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
+	"github.com/hermeshai/hermesh/internal/runtime/acp"
+	rtclaude "github.com/hermeshai/hermesh/internal/runtime/claude"
+	rtcodex "github.com/hermeshai/hermesh/internal/runtime/codex"
+	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/internal/service"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/internal/spawn"
@@ -153,10 +153,9 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 			}
 		}
 		her := herBin()
-		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Providers: providers(), Limits: lim, WorkspaceMode: workspaceMode,
+		return machine.Config{DataDir: filepath.Join(dataDir, "machine"), Logger: logger(verbose), Discoverers: discoverers(), Limits: lim, WorkspaceMode: workspaceMode,
 			HerBin: her, HerConsole: herConsole(her), HerExtensionHost: herExtensionHost(), NewHerLink: herlink.New,
-			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS")), TestBeforeHer: os.Getenv("HERMESH_TEST_BEFORE_HER") == "1",
-			TestBeforeThreads: os.Getenv("HERMESH_TEST_BEFORE_THREADS") == "1"}
+			ScreenBin: screenBin(), ScreenArgs: strings.Fields(os.Getenv("HERMESH_SCREEN_ARGS")), TestBeforeHer: os.Getenv("HERMESH_TEST_BEFORE_HER") == "1"}
 	}
 	openMachine := func() (*machine.Machine, error) { return machine.Open(machineConfig()) }
 
@@ -211,7 +210,7 @@ A computer that runs no coding agents can approve instead: hermeshd device.`}
 					hs = append(hs, h)
 					defer h.Close()
 				}
-				provider.UseSpawnHelpers(hs...)
+				rt.UseSpawnHelpers(hs...)
 			}
 			if debugAddr != "" {
 				go func() { log.Warn("debug server stopped", "err", metrics.Serve(debugAddr)) }()
@@ -691,23 +690,26 @@ func askDiagnostics(ctx context.Context, sock string) (string, error) {
 	return res.Text, nil
 }
 
-// providers returns the coding agents; HERMESH_FAKE_PROVIDERS=1 replaces
-// them with a scripted fake (tests only; it can only be set locally).
-func providers() map[string]provider.Provider {
+// discoverers returns the coding agent probes; HERMESH_FAKE_PROVIDERS=1 replaces
+// them with scripted fakes (tests only; it can only be set locally).
+func discoverers() map[string]machine.AgentDiscoverer {
 	if os.Getenv("HERMESH_FAKE_PROVIDERS") == "1" {
-		ps := map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}
-		// HERMESH_FAKE_AGENTS=gemini,opencode: more agents played by the same fake (the README's demo).
+		ps := map[string]machine.AgentDiscoverer{"claude": scripted.NewDriver(), "codex": scripted.NewDriver()}
 		for _, name := range strings.FieldsFunc(os.Getenv("HERMESH_FAKE_AGENTS"), func(r rune) bool { return r == ',' }) {
-			ps[name] = fake.Provider{}
+			ps[name] = scripted.NewDriver()
 		}
 		return ps
 	}
-	ps := machine.DefaultProviders()
+	ps := machine.DefaultDiscoverers()
 	if b := os.Getenv("HERMESH_CODEX_BIN"); b != "" {
-		ps["codex"] = &codex.Provider{PathEnv: shellenv.Path(), Binary: b}
+		d := rtcodex.NewDriver(shellenv.Path())
+		d.Binary = b
+		ps["codex"] = d
 	}
 	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
-		ps["claude"] = &claude.Provider{PathEnv: shellenv.Path(), Binary: b}
+		d := rtclaude.NewDriver(shellenv.Path())
+		d.Binary = b
+		ps["claude"] = d
 	}
 	for _, a := range acp.Agents {
 		if b := os.Getenv("HERMESH_" + strings.ToUpper(a.Name) + "_BIN"); b != "" {
@@ -829,7 +831,7 @@ var installPages = map[string]string{
 	"antigravity": "https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json",
 }
 
-func report(name string, i provider.Info) bool {
+func report(name string, i rt.Info) bool {
 	switch {
 	case !i.Available:
 		fmt.Printf("  %-10s not installed: %s\n", name, installPages[name])

@@ -1,0 +1,126 @@
+/* A session started here (ThreadPage.tsx): a session's page (app.css .dwrap, session.css) with Her's box at the bottom. */
+/* With the cards docked, the box centres under the conversation as the conversation does (app.css .dwrap.dock). */
+.dwrap.dock .cmp-zone{padding-right:286px}
+.th-badge{display:inline-flex;align-items:center;height:18px;padding:0 8px;border-radius:999px;background:var(--fill2);color:var(--l2);font-size:11px;margin-left:8px;flex:none}
+/* A question asks in Her's card, as a session's panel (app.css .qx) lays it out. */
+.appr.th-ask{padding:0;gap:0}
+/* What waits its turn: Her's note card, a row each. */
+.th-qrow{display:flex;align-items:center;gap:6px;min-width:0;margin-left:24px;font-size:12.5px;color:var(--l1)}
+.th-qtext{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-qrow .field{flex:1;height:26px;border-radius:var(--r-sm)}
+.btn.th-qbtn{height:26px;padding:0 10px;font-size:12px;flex:none}
+
+/* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
+.th{--pill:var(--win);--pill-bd:var(--menu-bd)}
+@media (prefers-color-scheme:dark){.th{--pill:var(--win2)}}
+/* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
+   environment under it; the box where a session's is (her.css .cmp-zone). */
+.th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
+/* Under a new session's question once sent: kept out of the layout (the question stays where it is), shown after 400 ms. */
+.th-ask-after{height:0;min-height:0;margin-top:-14px;display:flex;justify-content:center;overflow:visible}
+.th-ask-after .th-work{padding-top:26px;animation:th-work-in .2s ease-out .4s both}
+@keyframes th-work-in{from{opacity:0}to{opacity:1}}
+/* A session at work, at the end of its conversation: the mark, what it does, for how long. */
+.th-work{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2);padding:10px 2px 0}
+.th-work .el{color:var(--l3);font-variant-numeric:tabular-nums}
+.th-ask h1{margin:0;max-width:var(--conversation-width);font-size:28px;line-height:1.3;font-weight:var(--font-weight-semibold);letter-spacing:-.01em;text-wrap:balance}
+.th-pick{display:inline-flex;align-items:center;gap:4px;max-width:100%;vertical-align:bottom;border:0;padding:0 2px;margin:0 2px;background:none;color:inherit;font:inherit;letter-spacing:inherit;border-bottom:1.5px solid var(--l4);border-radius:0;cursor:pointer}
+.th-pick:hover,.th-pick[aria-expanded="true"]{border-bottom-color:var(--l2)}
+.th-pick .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:420px}
+.th-pick .ic{width:16px;height:16px;color:var(--l3);flex:none}
+.th-on{height:28px;border:0;border-radius:var(--r-sm);background:none;padding:0 8px;display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--l2);white-space:nowrap}
+.th-on:hover,.th-on[aria-expanded="true"]{background:var(--fill);color:var(--l1)}
+.th-on .ic{width:14px;height:14px;flex:none}
+.th-on .lbl{max-width:260px;overflow:hidden;text-overflow:ellipsis}
+/* The box (Composer.tsx): Her's surface (her.css .cmp), always two parts: the text, at least two lines of it and
+   growing with what is written, over a row of ＋, the model (how hard it thinks after it), and Stop and Send at the
+   right. The text, ＋ and what sits over the box (.th-place) start on one line. */
+.th-cmp{flex:none;gap:0;padding-bottom:8px}
+.th-cmp .cmp-in{min-height:56px;padding:8px 9px 6px 8px}
+.th-cmp .cmp-in::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th-cmp .cmp-att{padding:6px 5px 0}
+/* Stop: a ring round its square, no plate; it gives a little as it is pressed, as Send does. */
+.th-stop{width:30px;height:30px;margin:1px 3px 1px 1px;border:0;border-radius:50%;background:none;color:var(--l1);box-shadow:inset 0 0 0 1.5px var(--l4);display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .15s,transform .12s ease}
+.th-stop:hover{box-shadow:inset 0 0 0 1.5px var(--l3)}
+.th-stop:active{transform:scale(.92)}
+.th-stop .ic{width:13px;height:13px;fill:currentColor}
+.th-bar{display:flex;align-items:center;gap:1px;min-width:0}
+.mb.th-pickbtn{height:28px;padding:0 7px;gap:6px;border-radius:8px}
+.mb.th-pickbtn>.ic{width:11px;height:11px;stroke-width:1.7;color:var(--l3)}
+.mb.th-pickbtn .lbl{max-width:200px}
+.th-lvl{color:var(--l3)}
+.th-lvl::before{content:"·";margin-right:6px}
+.th-grow{flex:1}
+.th-off{width:6px;height:6px;border-radius:50%;background:var(--l4);flex:none}
+.th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.th-where .ic{width:13px;height:13px;flex:none}
+/* Over a new session's box: where it works, and on which branch. */
+.th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px}
+.th-place .mb{height:26px;padding:0 7px;gap:5px}
+.th-place .mb .lbl{max-width:280px}
+.th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}
+.th-br b{color:var(--l1)}
+.th-slash{display:flex;gap:6px;flex-wrap:wrap;padding:6px 2px 0}
+.th-modes{width:330px}
+/* The model panel: a search, then the providers one under another, a model a row. */
+.her-menu:has(.th-mpanel),.her-menu:has(.th-branches){padding:0;overflow:hidden}
+.th-mpanel{width:320px;display:flex;flex-direction:column}
+.th-mfind{display:flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-bottom:.5px solid var(--sep);color:var(--l3)}
+.th-mfind input{flex:1;min-width:0;height:100%;border:0;padding:0;background:none;outline:none;color:var(--l1);font-size:13px}
+.th-mfind input::placeholder{color:var(--l3)}
+.th-mlist{max-height:min(340px,46vh);overflow-y:auto;padding:5px}
+.th-mlist .mgh.th-mgh{position:static;gap:6px}
+.th-why{color:var(--l3)}
+.th-mpanel .mi .val .th-badge-new{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:5px;background:var(--accent-bg);color:var(--accent-t)}
+/* How hard it thinks, at the panel's top: its levels side by side on a sunken track, the chosen one on a plate that
+   slides to it (Composer.tsx Effort). */
+.th-effort{padding:10px 10px 11px;border-bottom:.5px solid var(--sep)}
+.th-effort-h{display:flex;align-items:center;gap:6px;margin:0 3px 8px;font-size:11.5px;font-weight:var(--font-weight-semibold);color:var(--l2)}
+.th-effort-h .ic{width:13px;height:13px}
+.th-effort-keys{margin-left:auto;font-weight:var(--font-weight-normal);color:var(--l3);letter-spacing:.08em}
+.th-seg{position:relative;display:grid;grid-template-columns:repeat(var(--n),1fr);padding:2px;border-radius:8px;background:var(--fill2);touch-action:none;user-select:none}
+/* At rest the plate sits on its level; dragged (--at, Composer.tsx) it follows the pointer, swollen a little, and lets go
+   with a small bounce onto the level. */
+.th-seg-plate{position:absolute;top:2px;bottom:2px;left:2px;width:calc((100% - 4px) / var(--n));transform:translateX(calc(100% * var(--i)));border-radius:6px;background:var(--win);box-shadow:0 0 0 .5px var(--sep),0 1px 3px rgba(0,0,0,.12);transition:transform .38s cubic-bezier(.34,1.45,.64,1),box-shadow .2s}
+@media (prefers-color-scheme:dark){.th-seg-plate{background:var(--win3)}}
+.th-seg.drag .th-seg-plate{transform:translateX(var(--at)) scale(1.06,1.14);box-shadow:0 0 0 .5px var(--sep),0 3px 10px rgba(0,0,0,.18);transition:transform .08s linear,box-shadow .2s}
+.th-seg.drag button[aria-checked=true]{transform:scale(1.06)}
+.th-seg button{position:relative;height:26px;border:0;background:none;padding:0 4px;font-size:12px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s,transform .2s}
+.th-seg button[aria-checked=true]{color:var(--l1);font-weight:var(--font-weight-semibold)}
+.th-seg button:hover:not([aria-checked=true]){color:var(--l1)}
+.th-seg button:focus-visible{outline:none}
+.th-seg:has(button:focus-visible) .th-seg-plate{box-shadow:0 0 0 2px var(--accent-bg),0 0 0 .5px var(--accent)}
+@media (prefers-reduced-motion:reduce){.th-seg-plate{transition:none}}
+/* The branch panel: a search, starting from the remote, the branches. */
+.th-branches{width:340px;display:flex;flex-direction:column}
+.th-branches>.mgh,.th-branches>.mi,.th-branches>.th-brlist{margin:0 5px}
+.th-branches>.mgh{margin-top:4px}
+.th-brlist{max-height:min(260px,40vh);overflow-y:auto;padding-bottom:5px}
+.th-brlist .mi .ic{color:var(--l2)}
+.th-brnote{margin:2px 14px 4px;font-size:11.5px;line-height:16px;color:var(--orange)}
+.sw.th-sw{margin-left:auto;flex:none}
+/* Rows with a line under them grow, as her.css means for its menus (app.css fixes .vmenu rows at 28px). */
+.vmenu.her-menu .mi{height:auto;min-height:28px}
+.th-note{margin:10px 2px 0;font-size:12.5px;color:var(--orange)}
+.th-mstale{padding:6px 13px;border-bottom:.5px solid var(--sep);font-size:11.5px;color:var(--l2)}
+
+/* ---------- Background tasks: pill above the composer, toolbar badge, and Inspector card ---------- */
+.th-bgbadge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border:0;border-radius:999px;background:var(--fill2);color:var(--l2);font-size:11.5px;margin-right:4px;cursor:pointer;flex:none;-webkit-app-region:no-drag}
+.th-bgbadge:hover{background:var(--fill3);color:var(--l1)}
+.th-bgstrip .knote-h{gap:8px;min-width:0}
+.th-bgdur{color:var(--l3);font-size:11.5px;font-variant-numeric:tabular-nums;flex:none}
+.th-bgh{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.th-bgh .insp-h{margin-bottom:0}
+.th-bglist{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.th-bgitem{display:flex;flex-direction:column;gap:4px;padding-top:6px;border-top:.5px solid var(--sep)}
+.th-bgitem:first-child{padding-top:0;border-top:0}
+.th-bgrow{display:flex;align-items:center;gap:6px;min-width:0}
+.th-bgtoggle{flex:1;min-width:0;display:flex;align-items:center;gap:6px;border:0;padding:0;background:none;color:var(--l1);font-size:12.5px;text-align:left;cursor:pointer}
+.th-bgtoggle .ic{width:14px;height:14px;color:var(--l2);flex:none}
+.th-bgtitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--font-weight-medium)}
+.th-bgmeta{display:flex;align-items:center;gap:5px;padding-left:20px;font-size:11px;color:var(--l3)}
+.th-bgerr{color:var(--red, var(--orange))}
+.th-bgdetail{display:flex;flex-direction:column;gap:5px;margin-top:2px}
+.th-bgcmd{display:block;padding:4px 7px;border-radius:6px;background:var(--fill);color:var(--l2);font-family:var(--mono);font-size:11px;overflow-x:auto;white-space:pre-wrap;word-break:break-all}
+.th-bgout{margin:0;max-height:160px;padding:6px 8px;border-radius:6px;background:var(--fill);color:var(--l1);font-family:var(--mono);font-size:11px;line-height:1.45;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.th-bgempty{padding-left:20px;font-size:11.5px;color:var(--l3)}

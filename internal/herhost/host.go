@@ -21,7 +21,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 type Config struct {
@@ -204,7 +204,7 @@ func (h *Host) serve(ctx context.Context) error {
 	h.home = herHome(env, home)
 	h.mu.Unlock()
 	stopStale(filepath.Join(filepath.Dir(h.cfg.Socket), "her.lock"))
-	p, err := provider.StartProc(ctx, h.cfg.Bin, []string{"serve", "--listen", "unix://" + h.cfg.Socket}, home, env)
+	p, err := rt.StartProc(ctx, h.cfg.Bin, []string{"serve", "--listen", "unix://" + h.cfg.Socket}, home, env)
 	if err != nil {
 		return fmt.Errorf("her could not start: %w", err)
 	}
@@ -227,7 +227,7 @@ func (h *Host) serve(ctx context.Context) error {
 
 // ready waits until her answers; the connection that answered is the
 // monitor's.
-func (h *Host) ready(ctx context.Context, p *provider.Proc) (*conn, error) {
+func (h *Host) ready(ctx context.Context, p *rt.Proc) (*conn, error) {
 	deadline := time.Now().Add(readyWait)
 	for {
 		dctx, cancel := context.WithTimeout(ctx, dialWait)
@@ -251,7 +251,7 @@ func (h *Host) ready(ctx context.Context, p *provider.Proc) (*conn, error) {
 
 // watch keeps the snapshot current from the monitor's connection until her
 // stops, the connection fails or ctx ends.
-func (h *Host) watch(ctx context.Context, mon *conn, p *provider.Proc) error {
+func (h *Host) watch(ctx context.Context, mon *conn, p *rt.Proc) error {
 	subscribe, cancel := context.WithTimeout(ctx, dialWait)
 	res, err := mon.call(subscribe, "bots/subscribe", nil)
 	cancel()
@@ -383,7 +383,7 @@ func (h *Host) followModels(ctx context.Context, mon *conn, snap *snapshot, kick
 	}
 }
 
-func stopped(p *provider.Proc) error {
+func stopped(p *rt.Proc) error {
 	if err := p.Err(); err != nil {
 		return fmt.Errorf("her stopped: %w", err)
 	}

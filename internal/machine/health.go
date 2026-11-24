@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
@@ -86,7 +86,7 @@ func (n *Machine) refreshHealth() {
 		n.mu.Lock()
 		short := false
 		for _, i := range n.infos {
-			short = short || i.Problem == provider.ProblemNoProcesses
+			short = short || i.Problem == rt.ProblemNoProcesses
 		}
 		n.mu.Unlock()
 		if short {

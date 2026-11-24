@@ -1,9 +1,9 @@
 import Foundation
 import HermeshProto
 
-// A session's conversation as the app shows it, made from its events, and
-// how tool calls are summed up. A port of @hermesh/core's transcript.ts and
-// steps.ts.
+// A session's conversation as the app shows it, reduced from its unified
+// SessionProjection, and how tool calls are summed up. A port of
+// @hermesh/core's transcript.ts and steps.ts.
 
 public typealias ToolCall = Hermesh_Session_V1_ToolCall
 public typealias ToolResult = Hermesh_Session_V1_ToolResult
@@ -19,6 +19,14 @@ public struct ToolItem: Equatable {
     public let result: ToolResult?
     public var resultSeq: UInt64? = nil
     public let running: Bool
+
+    public init(seq: UInt64, call: ToolCall, result: ToolResult?, resultSeq: UInt64? = nil, running: Bool) {
+        self.seq = seq
+        self.call = call
+        self.result = result
+        self.resultSeq = resultSeq
+        self.running = running
+    }
 }
 
 /// Whether a result's event holds only part of its output: a preview, or its first 16 KiB.
@@ -51,53 +59,195 @@ public enum TranscriptItem: Equatable {
     }
 }
 
-/// Pairs tool calls with their results and questions with their answers;
-/// status changes are left out. running: a turn is in progress, so its last
-/// unanswered tool call runs.
-public func transcript(_ events: [SessionEvent], running: Bool) -> [TranscriptItem] {
-    var results: [String: ToolResult] = [:]
-    var resultSeqs: [String: UInt64] = [:]
-    var resolutions: [String: QuestionResolved] = [:]
-    var lastCall: UInt64?
-    for e in events {
-        switch e.kind {
-        case .toolResult(let r):
-            results[r.callID] = r
-            resultSeqs[r.callID] = e.seq
-        case .questionResolved(let r): resolutions[r.questionID] = r
-        case .toolCall: lastCall = e.seq
-        default: break
+/// Each row's seq, unique and in order: an item's is its own ×4, the time line
+/// before its run's first item 2 less, the end of its run's last 1 more.
+private func itemSeq(_ it: Hermesh_Session_V1_TurnItem) -> UInt64 { it.seq * 4 }
+
+/// The kind of step a tool is, by its name.
+func sessionToolKind(_ name: String) -> String {
+    if name.hasPrefix("mcp__") { return "mcp" }
+    switch name {
+    case "Read", "NotebookRead", "read_file", "view": return "read"
+    case "Grep", "Glob", "LS", "search": return "search"
+    case "Edit", "MultiEdit", "Write", "NotebookEdit", "apply_patch": return "edit"
+    case "Bash", "BashOutput", "KillShell", "shell": return "shell"
+    case "WebFetch", "WebSearch": return "network"
+    default: return "other"
+    }
+}
+
+private func isRunActive(_ run: Hermesh_Session_V1_Run?) -> Bool {
+    guard let run else { return true }
+    return run.status == .preparing || run.status == .running || run.status == .waitingRequest
+}
+
+private func actorID(_ actor: Hermesh_Session_V1_Actor?) -> String {
+    guard let actor, actor.kind != .unspecified else { return "" }
+    return actor.kind == .owner ? "owner" : actor.id
+}
+
+private func toolItem(_ it: Hermesh_Session_V1_TurnItem, run: Hermesh_Session_V1_Run?, activeBgItems: Set<String>) -> ToolItem {
+    var call = ToolCall()
+    call.callID = it.itemID
+    if it.status == "denied" { call.decision = "deny" }
+    var result = ToolResult()
+    result.callID = it.itemID
+    if it.kind == .fileChange {
+        call.kind = "edit"
+        call.name = "Edit"
+        call.summary = it.filePath.isEmpty ? it.text : it.filePath
+        result.summary = it.diff
+        return ToolItem(seq: itemSeq(it), call: call, result: result, running: false)
+    }
+    let shell = it.kind == .commandExecution
+    call.name = it.toolName.isEmpty && shell ? "Bash" : it.toolName
+    call.kind = shell ? "shell" : sessionToolKind(call.name)
+    call.summary = shell ? it.command : (it.filePath.isEmpty ? it.text : it.filePath)
+    let running = it.status == "running" && (isRunActive(run) || activeBgItems.contains(it.itemID)) && call.decision != "deny"
+    result.summary = it.output
+    result.isError = it.status == "failed" || it.exitCode != 0
+    result.truncated = it.outputTruncated
+    result.size = it.outputSize
+    result.blobSha256 = it.outputBlobSha256
+    return ToolItem(seq: itemSeq(it), call: call, result: running ? nil : result, running: running)
+}
+
+private func formatProposedPlan(title: String, text: String) -> String {
+    if title.isEmpty || text.drop(while: { $0.isWhitespace || $0.isNewline }).hasPrefix("#") {
+        return text
+    }
+    return "### \(title)\n\n\(text)"
+}
+
+private func runFailure(_ message: String) -> Failure {
+    var f = Failure()
+    f.kind = .unspecified
+    f.message = message
+    return f
+}
+
+private func settledQuestionResolution(_ req: Hermesh_Session_V1_RuntimeRequest) -> QuestionResolved {
+    var r = QuestionResolved()
+    r.questionID = req.requestID
+    r.by = actorID(req.hasResolvedBy ? req.resolvedBy : nil)
+    if req.questionResolution != .unspecified {
+        r.resolution = req.questionResolution
+    } else {
+        switch req.status {
+        case .expired: r.resolution = .timedOut
+        case .dismissed: r.resolution = .cancelled
+        default: r.resolution = req.resolvedDecision == .decline ? .declined : .answered
         }
     }
-    var items: [TranscriptItem] = []
-    var turnStart: Date?
-    var asker = ""
-    for e in events {
-        let at = dateOf(e.ts, set: e.hasTs)
-        switch e.kind {
-        case .turnStarted(let t):
-            turnStart = at
-            asker = t.asker
-            items.append(.turn(seq: e.seq, turn: Int(t.turn), at: at))
-        case .userMessage(let m): items.append(.user(seq: e.seq, text: m.text, at: at, asker: asker))
-        case .agentMessage(let m): items.append(.agent(seq: e.seq, text: m.text))
-        case .toolCall(let c):
-            let r = results[c.callID]
-            items.append(.tool(ToolItem(seq: e.seq, call: c, result: r, resultSeq: resultSeqs[c.callID], running: r == nil && running && e.seq == lastCall && c.decision != "deny")))
-        case .questionAsked(let q) where q.hasQuestion:
-            items.append(.question(seq: e.seq, question: q.question, resolution: resolutions[q.question.questionID]))
-        case .turnCompleted(let t):
-            let took = at.flatMap { a in turnStart.map { a.timeIntervalSince($0) } }
-            items.append(.turnEnd(seq: e.seq, end: t, took: took))
-        case .error(let err): items.append(.error(seq: e.seq, error: err))
-        case .messageReceived(let m):
-            items.append(.message(seq: e.seq, incoming: true, name: m.fromName.isEmpty ? m.from : m.fromName, text: m.text, queued: m.delivered == "queued"))
-        case .messageSent(let m):
-            items.append(.message(seq: e.seq, incoming: false, name: m.toName.isEmpty ? m.to : m.toName, text: m.text, queued: false))
-        default: break
+    if r.resolution == .answered {
+        let orderedIDs = req.userInput.questions.map(\.id)
+        for qid in orderedIDs {
+            if let ans = req.resolvedAnswers[qid] {
+                var a = Hermesh_Session_V1_Answer()
+                a.itemID = qid
+                a.selected = ans.selectedOptions
+                a.text = ans.customText
+                r.answers.append(a)
+            }
         }
     }
-    return items
+    return r
+}
+
+/// A session's items reduced into conversation rows.
+public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> [TranscriptItem] {
+    guard let proj else { return [] }
+    let runs = Dictionary(proj.runs.map { ($0.runID, $0) }, uniquingKeysWith: { _, b in b })
+    let requests = Dictionary(proj.requests.map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
+    let activeBgItems = activeBackgroundItemIDs(of: proj)
+    let items = proj.items
+    var out: [TranscriptItem] = []
+    for (i, it) in items.enumerated() {
+        let run = runs[it.runID]
+        let seq = itemSeq(it)
+        if let run, i == 0 || items[i - 1].runID != it.runID {
+            let at = dateOf(run.startedAt, set: run.hasStartedAt) ?? dateOf(run.createdAt, set: run.hasCreatedAt) ?? dateOf(it.createdAt, set: it.hasCreatedAt)
+            let wakeReason = run.author.kind == .system ? run.wakeReason : ""
+            out.append(.turn(seq: seq - 2, turn: Int(run.ordinal), at: at, wakeReason: wakeReason))
+        }
+        switch it.kind {
+        case .userMessage:
+            let asker = actorID(it.hasActor ? it.actor : (run?.hasAuthor == true ? run?.author : nil))
+            out.append(.user(seq: seq, text: it.text, at: dateOf(it.createdAt, set: it.hasCreatedAt), asker: asker))
+        case .assistantMessage:
+            out.append(.agent(seq: seq, text: it.text))
+        case .proposedPlan:
+            out.append(.agent(seq: seq, text: formatProposedPlan(title: it.planTitle, text: it.text)))
+        case .toolCall, .commandExecution, .fileChange:
+            out.append(.tool(toolItem(it, run: run, activeBgItems: activeBgItems)))
+        case .runtimeRequest:
+            if let req = requests[it.requestID], req.kind == .userInput, req.status != .pending {
+                out.append(.question(seq: seq, question: sessionQuestion(req), resolution: settledQuestionResolution(req)))
+            }
+        case .messageReceived:
+            out.append(.message(seq: seq, incoming: true, name: it.mailName.isEmpty ? it.mailAddress : it.mailName, text: it.text, queued: it.mailDelivered == "queued"))
+        case .messageSent:
+            out.append(.message(seq: seq, incoming: false, name: it.mailName.isEmpty ? it.mailAddress : it.mailName, text: it.text, queued: false))
+        case .error:
+            var e = ErrorEvent()
+            e.message = it.text
+            e.failure = it.hasFailure ? it.failure : runFailure(it.text)
+            out.append(.error(seq: seq, error: e))
+        default:
+            break
+        }
+        // A run stopped on purpose ends with a line that says so.
+        if run?.status == .interrupted, i == items.count - 1 || items[i + 1].runID != it.runID {
+            var end = TurnCompleted()
+            end.turn = run!.ordinal
+            end.isError = true
+            if run!.hasFailure {
+                end.failure = run!.failure
+            } else {
+                end.failure.kind = .interrupted
+                end.failure.message = run!.errorMessage
+            }
+            let start = dateOf(run!.startedAt, set: run!.hasStartedAt)
+            let done = dateOf(run!.completedAt, set: run!.hasCompletedAt)
+            let took = done.flatMap { d in start.map { d.timeIntervalSince($0) } }
+            out.append(.turnEnd(seq: seq + 1, end: end, took: took))
+        }
+    }
+    return out
+}
+
+/// What the session's active run does now: runs a tool, thinks, writes its reply, or anything else (working).
+public enum SessionWork: Equatable, Sendable { case tool, thinking, replying, working }
+
+public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> SessionWork {
+    guard let proj, !proj.session.activeRunID.isEmpty else { return .working }
+    let now = proj.items.filter { $0.runID == proj.session.activeRunID }
+    if now.contains(where: { $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind) }) { return .tool }
+    if now.contains(where: { $0.kind == .reasoning && $0.streaming }) { return .thinking }
+    if now.contains(where: { $0.kind == .assistantMessage && $0.streaming }) { return .replying }
+    return .working
+}
+
+/// Why the session stopped, or why the machine rejected what was sent, until the next run starts.
+public func sessionFailure(_ s: Session?) -> Failure? {
+    guard let s else { return nil }
+    if s.progress.hasLastFailure && s.progress.lastFailure.kind != .interrupted {
+        return s.progress.lastFailure
+    }
+    if !s.error.isEmpty {
+        return runFailure(s.error)
+    }
+    return nil
+}
+
+/// A runtime `USER_INPUT` request projected as `Question` for `QuestionPanel`.
+public func sessionQuestion(_ req: Hermesh_Session_V1_RuntimeRequest) -> Question {
+    var q = Question()
+    q.questionID = req.requestID
+    if req.hasCreatedAt { q.askedAt = req.createdAt }
+    if req.hasExpiresAt { q.expiresAt = req.expiresAt }
+    q.items = req.userInput.questions
+    return q
 }
 
 /// How long a turn took: "42s", "3m 05s", "1h 12m".

@@ -478,7 +478,18 @@ func TestUserJourney(t *testing.T) {
 	if r.code != 8 {
 		t.Fatalf("question for the owner: %+v", r)
 	}
-	if _, err := app.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: ownerQ, Answers: []*sessionv1.Answer{{Selected: []string{"Blue"}}}}); err != nil {
+	ownerProj, err := app.sessions.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: ownerQ})
+	if err != nil || len(ownerProj.GetProjection().GetRequests()) == 0 {
+		t.Fatalf("owner get question: %v %+v", err, ownerProj)
+	}
+	pendingReq := ownerProj.Projection.Requests[len(ownerProj.Projection.Requests)-1]
+	itemID := pendingReq.GetUserInput().GetQuestions()[0].GetId()
+	if _, err := app.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: ownerQ,
+		RequestId: pendingReq.RequestId,
+		Decision:  sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:   map[string]*sessionv1.QuestionAnswer{itemID: {SelectedOptions: []string{"Blue"}}},
+	}); err != nil {
 		t.Fatalf("owner answer: %v", err)
 	}
 	eventually(t, 4*time.Minute, "the owner's answer is used", func() bool {
@@ -506,7 +517,7 @@ func TestUserJourney(t *testing.T) {
 	func() {
 		sctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
 		defer cancel()
-		stream, err := app.client.StreamSessionEvents(sctx, &localv1.StreamSessionEventsRequest{SessionId: streamed.SessionID, Follow: true, Partial: true})
+		stream, err := app.sessions.SubscribeSession(sctx, &sessionv1.SubscribeSessionRequest{SessionId: streamed.SessionID})
 		if err != nil {
 			t.Fatalf("stream with drafts: %v", err)
 		}
@@ -515,20 +526,22 @@ func TestUserJourney(t *testing.T) {
 		drafts := 0
 		for stream.Receive() {
 			e := stream.Msg()
-			if d := e.GetAgentDraft(); d != nil {
+			if e.Type == "item.delta" && e.TextDelta != "" {
 				drafts++
-				if d.Whole {
-					draft = d.Text
-				} else {
-					draft += d.Text
-				}
+				draft += e.TextDelta
 				lastDraft = draft
 				continue
 			}
-			if m := e.GetAgentMessage(); m != nil {
-				message = m.Text
+			if it := e.GetItem(); it != nil && it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE {
+				if it.Streaming {
+					drafts++
+					draft = it.Text
+					lastDraft = draft
+				} else {
+					message = it.Text
+				}
 			}
-			if e.GetTurnCompleted() != nil {
+			if e.Type == "run.completed" {
 				break
 			}
 		}

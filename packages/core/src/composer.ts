@@ -1,77 +1,21 @@
 import { create } from "@bufbuild/protobuf";
-import { timestampDate } from "@bufbuild/protobuf/wkt";
 import type { Client, Project } from "@hermesh/proto/local";
-import { SessionSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  ActorKind,
   ModelSelectionSchema,
   OptionDescriptorType,
   OptionValueSchema,
-  ThreadStatus,
   type ModelCatalogEntry,
   type ModelSelection,
   type OptionChoice,
   type ProviderInstance,
-  type Thread,
-} from "@hermesh/proto/thread";
+} from "@hermesh/proto/session";
 import { activeOptionDescriptors, findModelEntry, findProviderInstance } from "./threads";
-import { threadFailure } from "./threadtranscript";
 
-// The new-session composer (docs/thread-composer.md): where a session runs
-// (machine, project), with what (provider, model, how hard it thinks) and
-// how it may act (permission mode), and the list rows of v2 threads.
+// The session composer: where a session runs (machine, project), with what
+// (provider, model, reasoning effort) and how it may act (permission mode).
 
-/** The workspace each machine's thread kernel makes for threads that name no project. */
+/** The workspace each machine's session kernel makes for sessions that name no project. */
 export const SCRATCH_PROJECT = "scratch";
-
-/** A v2 thread's id ("th_…"), as against a v1 session's. */
-export function isThreadId(id: string): boolean {
-  return id.startsWith("th_");
-}
-
-const threadStatusAsSession: Record<ThreadStatus, SessionStatus> = {
-  [ThreadStatus.UNSPECIFIED]: SessionStatus.IDLE,
-  [ThreadStatus.IDLE]: SessionStatus.IDLE,
-  [ThreadStatus.PREPARING]: SessionStatus.PREPARING,
-  [ThreadStatus.QUEUED]: SessionStatus.QUEUED,
-  [ThreadStatus.RUNNING]: SessionStatus.RUNNING,
-  [ThreadStatus.WAITING_REQUEST]: SessionStatus.WAITING_INPUT,
-  [ThreadStatus.FAILED]: SessionStatus.CRASHED,
-  [ThreadStatus.ARCHIVED]: SessionStatus.ARCHIVED,
-};
-
-/**
- * A thread as a session, so both kinds list, count, notify and act alike: who
- * started it ("owner", else the grant's client id), its provider instance as
- * the agent, its state, its runs as turns and why it stopped.
- */
-export function threadAsSession(th: Thread): Session {
-  const by = th.createdBy;
-  return create(SessionSchema, {
-    sessionId: th.threadId,
-    machineId: th.machineId,
-    projectId: th.projectId,
-    agent: th.modelSelection?.instanceId ?? "",
-    model: th.modelSelection?.model ?? "",
-    branch: th.workspace?.branch ?? "",
-    status:
-      th.status === ThreadStatus.IDLE && th.activeBackgroundCount > 0
-        ? SessionStatus.RUNNING
-        : (threadStatusAsSession[th.status] ?? SessionStatus.IDLE),
-    createdBy: !by || by.kind === ActorKind.OWNER ? "owner" : by.id,
-    title: th.title,
-    error: th.lastError,
-    progress: { turnCount: th.runCount, lastFailure: threadFailure(th) },
-    createdAt: th.createdAt,
-    updatedAt: th.updatedAt,
-  });
-}
-
-/** The newest first: the list's order before it is grouped. */
-export function newestThreads(list: readonly Thread[]): Thread[] {
-  const at = (t: Thread) => (t.updatedAt ? timestampDate(t.updatedAt).getTime() : 0);
-  return [...list].sort((a, b) => at(b) - at(a));
-}
 
 /** How hard the selected model thinks: its "reasoning" option, the levels it offers and the one chosen. */
 export interface Reasoning {
@@ -115,7 +59,7 @@ export function selectModel(
   if (!inst || !entry) return { sel: prev };
   const options: ModelSelection["options"] = {};
   for (const d of entry.optionDescriptors) if (d.currentValue) options[d.id] = d.currentValue;
-  let sel = create(ModelSelectionSchema, { instanceId: inst.instanceId, model: entry.slug, options });
+  const sel = create(ModelSelectionSchema, { instanceId: inst.instanceId, model: entry.slug, options });
   const before = reasoningOf(providers, prev);
   const after = reasoningOf(providers, sel);
   if (!before || !after || before.value === after.value) return { sel };
@@ -165,7 +109,7 @@ export function projectOnMachine(projects: readonly Pick<Project, "machineId" | 
 /**
  * The grants a new project on a machine would reach at once, without anyone
  * signing anything: those whose machines include it and whose projects are
- * all ("*") or name it (docs/thread-composer.md §3.2). all: by "*".
+ * all ("*") or name it. all: by "*".
  */
 export function grantsReaching(clients: readonly Client[], machineId: string, projectId: string): { client: Client; all: boolean }[] {
   return clients

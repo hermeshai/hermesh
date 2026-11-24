@@ -143,7 +143,7 @@ export function Composer({ above, onHeight, value, onChange, onSend, placeholder
  * Files dragged over the window: true while they are, so the composer shows it takes them; dropped
  * anywhere in the window, they go to `drop` (the window would otherwise open the file in itself).
  */
-function useFileDrop(drop: (files: File[]) => void): boolean {
+export function useFileDrop(drop: (files: File[]) => void): boolean {
   const [over, setOver] = useState(false);
   const latest = useRef(drop);
   latest.current = drop;

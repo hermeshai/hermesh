@@ -38,6 +38,8 @@
   "work": {
     "starting": "Starting…",
     "thinking": "Thinking…",
+    "replying": "Replying…",
+    "tool": "Running tools…",
     "working": "Working…"
   },
   "mode": {
@@ -86,6 +88,8 @@
   "composer": {
     "placeholder": "Reply, steer mid-turn, or queue a follow-up…",
     "attach": "Attach File",
+    "dropTitle": "Drop to attach",
+    "dropHint": "Files or pictures",
     "start": "Start Thread",
     "send": "Send",
     "steer": "Steer",

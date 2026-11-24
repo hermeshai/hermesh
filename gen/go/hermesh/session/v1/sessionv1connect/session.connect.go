@@ -33,6 +33,15 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// SessionServiceListProvidersProcedure is the fully-qualified name of the SessionService's
+	// ListProviders RPC.
+	SessionServiceListProvidersProcedure = "/hermesh.session.v1.SessionService/ListProviders"
+	// SessionServiceUpsertProviderInstanceProcedure is the fully-qualified name of the SessionService's
+	// UpsertProviderInstance RPC.
+	SessionServiceUpsertProviderInstanceProcedure = "/hermesh.session.v1.SessionService/UpsertProviderInstance"
+	// SessionServiceRemoveProviderInstanceProcedure is the fully-qualified name of the SessionService's
+	// RemoveProviderInstance RPC.
+	SessionServiceRemoveProviderInstanceProcedure = "/hermesh.session.v1.SessionService/RemoveProviderInstance"
 	// SessionServiceStartSessionProcedure is the fully-qualified name of the SessionService's
 	// StartSession RPC.
 	SessionServiceStartSessionProcedure = "/hermesh.session.v1.SessionService/StartSession"
@@ -45,105 +54,82 @@ const (
 	// SessionServiceWatchSessionsProcedure is the fully-qualified name of the SessionService's
 	// WatchSessions RPC.
 	SessionServiceWatchSessionsProcedure = "/hermesh.session.v1.SessionService/WatchSessions"
-	// SessionServiceStreamEventsProcedure is the fully-qualified name of the SessionService's
-	// StreamEvents RPC.
-	SessionServiceStreamEventsProcedure = "/hermesh.session.v1.SessionService/StreamEvents"
-	// SessionServiceListEventsProcedure is the fully-qualified name of the SessionService's ListEvents
-	// RPC.
-	SessionServiceListEventsProcedure = "/hermesh.session.v1.SessionService/ListEvents"
-	// SessionServiceSendMessageProcedure is the fully-qualified name of the SessionService's
-	// SendMessage RPC.
-	SessionServiceSendMessageProcedure = "/hermesh.session.v1.SessionService/SendMessage"
+	// SessionServiceSubscribeSessionProcedure is the fully-qualified name of the SessionService's
+	// SubscribeSession RPC.
+	SessionServiceSubscribeSessionProcedure = "/hermesh.session.v1.SessionService/SubscribeSession"
+	// SessionServiceDispatchMessageProcedure is the fully-qualified name of the SessionService's
+	// DispatchMessage RPC.
+	SessionServiceDispatchMessageProcedure = "/hermesh.session.v1.SessionService/DispatchMessage"
 	// SessionServiceDeliverMessageProcedure is the fully-qualified name of the SessionService's
 	// DeliverMessage RPC.
 	SessionServiceDeliverMessageProcedure = "/hermesh.session.v1.SessionService/DeliverMessage"
 	// SessionServiceInterruptSessionProcedure is the fully-qualified name of the SessionService's
 	// InterruptSession RPC.
 	SessionServiceInterruptSessionProcedure = "/hermesh.session.v1.SessionService/InterruptSession"
-	// SessionServiceArchiveSessionProcedure is the fully-qualified name of the SessionService's
-	// ArchiveSession RPC.
-	SessionServiceArchiveSessionProcedure = "/hermesh.session.v1.SessionService/ArchiveSession"
-	// SessionServiceUnarchiveSessionProcedure is the fully-qualified name of the SessionService's
-	// UnarchiveSession RPC.
-	SessionServiceUnarchiveSessionProcedure = "/hermesh.session.v1.SessionService/UnarchiveSession"
+	// SessionServiceStopBackgroundTaskProcedure is the fully-qualified name of the SessionService's
+	// StopBackgroundTask RPC.
+	SessionServiceStopBackgroundTaskProcedure = "/hermesh.session.v1.SessionService/StopBackgroundTask"
+	// SessionServiceManageQueueProcedure is the fully-qualified name of the SessionService's
+	// ManageQueue RPC.
+	SessionServiceManageQueueProcedure = "/hermesh.session.v1.SessionService/ManageQueue"
+	// SessionServiceUpdateSessionProcedure is the fully-qualified name of the SessionService's
+	// UpdateSession RPC.
+	SessionServiceUpdateSessionProcedure = "/hermesh.session.v1.SessionService/UpdateSession"
+	// SessionServiceRespondRuntimeRequestProcedure is the fully-qualified name of the SessionService's
+	// RespondRuntimeRequest RPC.
+	SessionServiceRespondRuntimeRequestProcedure = "/hermesh.session.v1.SessionService/RespondRuntimeRequest"
+	// SessionServiceListCheckpointsProcedure is the fully-qualified name of the SessionService's
+	// ListCheckpoints RPC.
+	SessionServiceListCheckpointsProcedure = "/hermesh.session.v1.SessionService/ListCheckpoints"
+	// SessionServiceRollbackCheckpointProcedure is the fully-qualified name of the SessionService's
+	// RollbackCheckpoint RPC.
+	SessionServiceRollbackCheckpointProcedure = "/hermesh.session.v1.SessionService/RollbackCheckpoint"
+	// SessionServiceGetDiffProcedure is the fully-qualified name of the SessionService's GetDiff RPC.
+	SessionServiceGetDiffProcedure = "/hermesh.session.v1.SessionService/GetDiff"
+	// SessionServiceForkSessionProcedure is the fully-qualified name of the SessionService's
+	// ForkSession RPC.
+	SessionServiceForkSessionProcedure = "/hermesh.session.v1.SessionService/ForkSession"
 	// SessionServiceDeleteSessionProcedure is the fully-qualified name of the SessionService's
 	// DeleteSession RPC.
 	SessionServiceDeleteSessionProcedure = "/hermesh.session.v1.SessionService/DeleteSession"
-	// SessionServiceRenameSessionProcedure is the fully-qualified name of the SessionService's
-	// RenameSession RPC.
-	SessionServiceRenameSessionProcedure = "/hermesh.session.v1.SessionService/RenameSession"
-	// SessionServiceGetDiffProcedure is the fully-qualified name of the SessionService's GetDiff RPC.
-	SessionServiceGetDiffProcedure = "/hermesh.session.v1.SessionService/GetDiff"
-	// SessionServiceAnswerQuestionProcedure is the fully-qualified name of the SessionService's
-	// AnswerQuestion RPC.
-	SessionServiceAnswerQuestionProcedure = "/hermesh.session.v1.SessionService/AnswerQuestion"
-	// SessionServiceAnswerLocalQuestionProcedure is the fully-qualified name of the SessionService's
-	// AnswerLocalQuestion RPC.
-	SessionServiceAnswerLocalQuestionProcedure = "/hermesh.session.v1.SessionService/AnswerLocalQuestion"
-	// SessionServiceCheckLocalCodingRecipientProcedure is the fully-qualified name of the
-	// SessionService's CheckLocalCodingRecipient RPC.
-	SessionServiceCheckLocalCodingRecipientProcedure = "/hermesh.session.v1.SessionService/CheckLocalCodingRecipient"
-	// SessionServiceCodingConsentProcedure is the fully-qualified name of the SessionService's
-	// CodingConsent RPC.
-	SessionServiceCodingConsentProcedure = "/hermesh.session.v1.SessionService/CodingConsent"
-	// SessionServiceReadToolOutputProcedure is the fully-qualified name of the SessionService's
-	// ReadToolOutput RPC.
-	SessionServiceReadToolOutputProcedure = "/hermesh.session.v1.SessionService/ReadToolOutput"
+	// SessionServiceUploadBlobProcedure is the fully-qualified name of the SessionService's UploadBlob
+	// RPC.
+	SessionServiceUploadBlobProcedure = "/hermesh.session.v1.SessionService/UploadBlob"
+	// SessionServiceDownloadBlobProcedure is the fully-qualified name of the SessionService's
+	// DownloadBlob RPC.
+	SessionServiceDownloadBlobProcedure = "/hermesh.session.v1.SessionService/DownloadBlob"
+	// SessionServiceListOutboxProcedure is the fully-qualified name of the SessionService's ListOutbox
+	// RPC.
+	SessionServiceListOutboxProcedure = "/hermesh.session.v1.SessionService/ListOutbox"
 )
 
 // SessionServiceClient is a client for the hermesh.session.v1.SessionService service.
 type SessionServiceClient interface {
+	ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error)
+	UpsertProviderInstance(context.Context, *v1.UpsertProviderInstanceRequest) (*v1.UpsertProviderInstanceResponse, error)
+	RemoveProviderInstance(context.Context, *v1.RemoveProviderInstanceRequest) (*v1.RemoveProviderInstanceResponse, error)
 	StartSession(context.Context, *v1.StartSessionRequest) (*v1.StartSessionResponse, error)
-	GetSession(context.Context, *v1.GetSessionRequest) (*v1.Session, error)
+	GetSession(context.Context, *v1.GetSessionRequest) (*v1.GetSessionResponse, error)
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
-	// WatchSessions sends the sessions the caller can read as they change:
-	// first an empty message once the watch is in place, then the sessions
-	// started or changed since the last message, each as it is now (changes
-	// that come close together are sent together).
 	WatchSessions(context.Context, *v1.WatchSessionsRequest) (*connect.ServerStreamForClient[v1.WatchSessionsResponse], error)
-	StreamEvents(context.Context, *v1.StreamEventsRequest) (*connect.ServerStreamForClient[v1.SessionEvent], error)
-	// ListEvents returns one page of a session's events, oldest first.
-	ListEvents(context.Context, *v1.ListEventsRequest) (*v1.ListEventsResponse, error)
-	SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error)
-	// DeliverMessage hands the session a message an agent wrote, signed by
-	// that agent (docs/agent-messages.md §7): it joins its sender's own turn,
-	// answers its sender's own question, or starts, or waits for, a turn of
-	// its own. Any agent whose grant covers the session and that may read it
-	// can deliver one.
+	SubscribeSession(context.Context, *v1.SubscribeSessionRequest) (*connect.ServerStreamForClient[v1.SessionEvent], error)
+	DispatchMessage(context.Context, *v1.DispatchMessageRequest) (*v1.DispatchMessageResponse, error)
+	// DeliverMessage delivers a cryptographically signed inbox.v1.Message from
+	// another agent of the owner into the session.
 	DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error)
-	// InterruptSession stops the turn in progress; the session stays, idle,
-	// and the next message goes on in the same agent conversation.
-	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error)
-	// ArchiveSession makes an idle session read-only and frees its worktree
-	// (its branch keeps the work). Sessions never end otherwise.
-	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.Session, error)
-	// UnarchiveSession restores the worktree from the branch; the session is
-	// idle again.
-	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error)
-	// DeleteSession deletes a session for good: its record, events,
-	// attachments and worktree. Its branch stays in the project, with every
-	// turn's work, and its tokens stay in GetUsage. A turn in progress is
-	// interrupted first. Only the owner's devices may delete.
-	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
-	// RenameSession changes the session's title. Only the owner's devices
-	// may rename.
-	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error)
+	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.InterruptSessionResponse, error)
+	StopBackgroundTask(context.Context, *v1.StopBackgroundTaskRequest) (*v1.StopBackgroundTaskResponse, error)
+	ManageQueue(context.Context, *v1.ManageQueueRequest) (*v1.ManageQueueResponse, error)
+	UpdateSession(context.Context, *v1.UpdateSessionRequest) (*v1.UpdateSessionResponse, error)
+	RespondRuntimeRequest(context.Context, *v1.RespondRuntimeRequestRequest) (*v1.RespondRuntimeRequestResponse, error)
+	ListCheckpoints(context.Context, *v1.ListCheckpointsRequest) (*v1.ListCheckpointsResponse, error)
+	RollbackCheckpoint(context.Context, *v1.RollbackCheckpointRequest) (*v1.RollbackCheckpointResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
-	// AnswerQuestion answers (or declines) a question the agent asked.
-	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
-	// and applies the same authorization and validation rules as AnswerQuestion.
-	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
-	// Her clients after coding-specific consent was removed.
-	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
-	// CodingConsent is retained for wire compatibility with v0.1.7 owner clients
-	// after coding-specific consent was removed.
-	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
-	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
-	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
-	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v1.ToolOutputChunk], error)
+	ForkSession(context.Context, *v1.ForkSessionRequest) (*v1.ForkSessionResponse, error)
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	UploadBlob(context.Context, *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error)
+	DownloadBlob(context.Context, *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error)
+	ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error)
 }
 
 // NewSessionServiceClient constructs a client for the hermesh.session.v1.SessionService service. By
@@ -157,13 +143,31 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 	baseURL = strings.TrimRight(baseURL, "/")
 	sessionServiceMethods := v1.File_hermesh_session_v1_session_proto.Services().ByName("SessionService").Methods()
 	return &sessionServiceClient{
+		listProviders: connect.NewClient[v1.ListProvidersRequest, v1.ListProvidersResponse](
+			httpClient,
+			baseURL+SessionServiceListProvidersProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ListProviders")),
+			connect.WithClientOptions(opts...),
+		),
+		upsertProviderInstance: connect.NewClient[v1.UpsertProviderInstanceRequest, v1.UpsertProviderInstanceResponse](
+			httpClient,
+			baseURL+SessionServiceUpsertProviderInstanceProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("UpsertProviderInstance")),
+			connect.WithClientOptions(opts...),
+		),
+		removeProviderInstance: connect.NewClient[v1.RemoveProviderInstanceRequest, v1.RemoveProviderInstanceResponse](
+			httpClient,
+			baseURL+SessionServiceRemoveProviderInstanceProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RemoveProviderInstance")),
+			connect.WithClientOptions(opts...),
+		),
 		startSession: connect.NewClient[v1.StartSessionRequest, v1.StartSessionResponse](
 			httpClient,
 			baseURL+SessionServiceStartSessionProcedure,
 			connect.WithSchema(sessionServiceMethods.ByName("StartSession")),
 			connect.WithClientOptions(opts...),
 		),
-		getSession: connect.NewClient[v1.GetSessionRequest, v1.Session](
+		getSession: connect.NewClient[v1.GetSessionRequest, v1.GetSessionResponse](
 			httpClient,
 			baseURL+SessionServiceGetSessionProcedure,
 			connect.WithSchema(sessionServiceMethods.ByName("GetSession")),
@@ -181,22 +185,16 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("WatchSessions")),
 			connect.WithClientOptions(opts...),
 		),
-		streamEvents: connect.NewClient[v1.StreamEventsRequest, v1.SessionEvent](
+		subscribeSession: connect.NewClient[v1.SubscribeSessionRequest, v1.SessionEvent](
 			httpClient,
-			baseURL+SessionServiceStreamEventsProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("StreamEvents")),
+			baseURL+SessionServiceSubscribeSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("SubscribeSession")),
 			connect.WithClientOptions(opts...),
 		),
-		listEvents: connect.NewClient[v1.ListEventsRequest, v1.ListEventsResponse](
+		dispatchMessage: connect.NewClient[v1.DispatchMessageRequest, v1.DispatchMessageResponse](
 			httpClient,
-			baseURL+SessionServiceListEventsProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("ListEvents")),
-			connect.WithClientOptions(opts...),
-		),
-		sendMessage: connect.NewClient[v1.SendMessageRequest, v1.SendMessageResponse](
-			httpClient,
-			baseURL+SessionServiceSendMessageProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("SendMessage")),
+			baseURL+SessionServiceDispatchMessageProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("DispatchMessage")),
 			connect.WithClientOptions(opts...),
 		),
 		deliverMessage: connect.NewClient[v1.DeliverMessageRequest, v1.DeliverMessageResponse](
@@ -205,34 +203,46 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("DeliverMessage")),
 			connect.WithClientOptions(opts...),
 		),
-		interruptSession: connect.NewClient[v1.InterruptSessionRequest, v1.Session](
+		interruptSession: connect.NewClient[v1.InterruptSessionRequest, v1.InterruptSessionResponse](
 			httpClient,
 			baseURL+SessionServiceInterruptSessionProcedure,
 			connect.WithSchema(sessionServiceMethods.ByName("InterruptSession")),
 			connect.WithClientOptions(opts...),
 		),
-		archiveSession: connect.NewClient[v1.ArchiveSessionRequest, v1.Session](
+		stopBackgroundTask: connect.NewClient[v1.StopBackgroundTaskRequest, v1.StopBackgroundTaskResponse](
 			httpClient,
-			baseURL+SessionServiceArchiveSessionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("ArchiveSession")),
+			baseURL+SessionServiceStopBackgroundTaskProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("StopBackgroundTask")),
 			connect.WithClientOptions(opts...),
 		),
-		unarchiveSession: connect.NewClient[v1.UnarchiveSessionRequest, v1.Session](
+		manageQueue: connect.NewClient[v1.ManageQueueRequest, v1.ManageQueueResponse](
 			httpClient,
-			baseURL+SessionServiceUnarchiveSessionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("UnarchiveSession")),
+			baseURL+SessionServiceManageQueueProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ManageQueue")),
 			connect.WithClientOptions(opts...),
 		),
-		deleteSession: connect.NewClient[v1.DeleteSessionRequest, v1.DeleteSessionResponse](
+		updateSession: connect.NewClient[v1.UpdateSessionRequest, v1.UpdateSessionResponse](
 			httpClient,
-			baseURL+SessionServiceDeleteSessionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
+			baseURL+SessionServiceUpdateSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("UpdateSession")),
 			connect.WithClientOptions(opts...),
 		),
-		renameSession: connect.NewClient[v1.RenameSessionRequest, v1.Session](
+		respondRuntimeRequest: connect.NewClient[v1.RespondRuntimeRequestRequest, v1.RespondRuntimeRequestResponse](
 			httpClient,
-			baseURL+SessionServiceRenameSessionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("RenameSession")),
+			baseURL+SessionServiceRespondRuntimeRequestProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RespondRuntimeRequest")),
+			connect.WithClientOptions(opts...),
+		),
+		listCheckpoints: connect.NewClient[v1.ListCheckpointsRequest, v1.ListCheckpointsResponse](
+			httpClient,
+			baseURL+SessionServiceListCheckpointsProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ListCheckpoints")),
+			connect.WithClientOptions(opts...),
+		),
+		rollbackCheckpoint: connect.NewClient[v1.RollbackCheckpointRequest, v1.RollbackCheckpointResponse](
+			httpClient,
+			baseURL+SessionServiceRollbackCheckpointProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("RollbackCheckpoint")),
 			connect.WithClientOptions(opts...),
 		),
 		getDiff: connect.NewClient[v1.GetDiffRequest, v1.GetDiffResponse](
@@ -241,34 +251,34 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("GetDiff")),
 			connect.WithClientOptions(opts...),
 		),
-		answerQuestion: connect.NewClient[v1.AnswerQuestionRequest, v1.Session](
+		forkSession: connect.NewClient[v1.ForkSessionRequest, v1.ForkSessionResponse](
 			httpClient,
-			baseURL+SessionServiceAnswerQuestionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("AnswerQuestion")),
+			baseURL+SessionServiceForkSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ForkSession")),
 			connect.WithClientOptions(opts...),
 		),
-		answerLocalQuestion: connect.NewClient[v1.AnswerQuestionRequest, v1.Session](
+		deleteSession: connect.NewClient[v1.DeleteSessionRequest, v1.DeleteSessionResponse](
 			httpClient,
-			baseURL+SessionServiceAnswerLocalQuestionProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("AnswerLocalQuestion")),
+			baseURL+SessionServiceDeleteSessionProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
 			connect.WithClientOptions(opts...),
 		),
-		checkLocalCodingRecipient: connect.NewClient[v1.CheckLocalCodingRecipientRequest, v1.CheckLocalCodingRecipientResponse](
+		uploadBlob: connect.NewClient[v1.UploadBlobRequest, v1.UploadBlobResponse](
 			httpClient,
-			baseURL+SessionServiceCheckLocalCodingRecipientProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("CheckLocalCodingRecipient")),
+			baseURL+SessionServiceUploadBlobProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("UploadBlob")),
 			connect.WithClientOptions(opts...),
 		),
-		codingConsent: connect.NewClient[v1.CodingConsentRequest, v1.CodingConsentResponse](
+		downloadBlob: connect.NewClient[v1.DownloadBlobRequest, v1.DownloadBlobResponse](
 			httpClient,
-			baseURL+SessionServiceCodingConsentProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("CodingConsent")),
+			baseURL+SessionServiceDownloadBlobProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("DownloadBlob")),
 			connect.WithClientOptions(opts...),
 		),
-		readToolOutput: connect.NewClient[v1.ReadToolOutputRequest, v1.ToolOutputChunk](
+		listOutbox: connect.NewClient[v1.ListOutboxRequest, v1.ListOutboxResponse](
 			httpClient,
-			baseURL+SessionServiceReadToolOutputProcedure,
-			connect.WithSchema(sessionServiceMethods.ByName("ReadToolOutput")),
+			baseURL+SessionServiceListOutboxProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ListOutbox")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -276,25 +286,56 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // sessionServiceClient implements SessionServiceClient.
 type sessionServiceClient struct {
-	startSession              *connect.Client[v1.StartSessionRequest, v1.StartSessionResponse]
-	getSession                *connect.Client[v1.GetSessionRequest, v1.Session]
-	listSessions              *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
-	watchSessions             *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
-	streamEvents              *connect.Client[v1.StreamEventsRequest, v1.SessionEvent]
-	listEvents                *connect.Client[v1.ListEventsRequest, v1.ListEventsResponse]
-	sendMessage               *connect.Client[v1.SendMessageRequest, v1.SendMessageResponse]
-	deliverMessage            *connect.Client[v1.DeliverMessageRequest, v1.DeliverMessageResponse]
-	interruptSession          *connect.Client[v1.InterruptSessionRequest, v1.Session]
-	archiveSession            *connect.Client[v1.ArchiveSessionRequest, v1.Session]
-	unarchiveSession          *connect.Client[v1.UnarchiveSessionRequest, v1.Session]
-	deleteSession             *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
-	renameSession             *connect.Client[v1.RenameSessionRequest, v1.Session]
-	getDiff                   *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
-	answerQuestion            *connect.Client[v1.AnswerQuestionRequest, v1.Session]
-	answerLocalQuestion       *connect.Client[v1.AnswerQuestionRequest, v1.Session]
-	checkLocalCodingRecipient *connect.Client[v1.CheckLocalCodingRecipientRequest, v1.CheckLocalCodingRecipientResponse]
-	codingConsent             *connect.Client[v1.CodingConsentRequest, v1.CodingConsentResponse]
-	readToolOutput            *connect.Client[v1.ReadToolOutputRequest, v1.ToolOutputChunk]
+	listProviders          *connect.Client[v1.ListProvidersRequest, v1.ListProvidersResponse]
+	upsertProviderInstance *connect.Client[v1.UpsertProviderInstanceRequest, v1.UpsertProviderInstanceResponse]
+	removeProviderInstance *connect.Client[v1.RemoveProviderInstanceRequest, v1.RemoveProviderInstanceResponse]
+	startSession           *connect.Client[v1.StartSessionRequest, v1.StartSessionResponse]
+	getSession             *connect.Client[v1.GetSessionRequest, v1.GetSessionResponse]
+	listSessions           *connect.Client[v1.ListSessionsRequest, v1.ListSessionsResponse]
+	watchSessions          *connect.Client[v1.WatchSessionsRequest, v1.WatchSessionsResponse]
+	subscribeSession       *connect.Client[v1.SubscribeSessionRequest, v1.SessionEvent]
+	dispatchMessage        *connect.Client[v1.DispatchMessageRequest, v1.DispatchMessageResponse]
+	deliverMessage         *connect.Client[v1.DeliverMessageRequest, v1.DeliverMessageResponse]
+	interruptSession       *connect.Client[v1.InterruptSessionRequest, v1.InterruptSessionResponse]
+	stopBackgroundTask     *connect.Client[v1.StopBackgroundTaskRequest, v1.StopBackgroundTaskResponse]
+	manageQueue            *connect.Client[v1.ManageQueueRequest, v1.ManageQueueResponse]
+	updateSession          *connect.Client[v1.UpdateSessionRequest, v1.UpdateSessionResponse]
+	respondRuntimeRequest  *connect.Client[v1.RespondRuntimeRequestRequest, v1.RespondRuntimeRequestResponse]
+	listCheckpoints        *connect.Client[v1.ListCheckpointsRequest, v1.ListCheckpointsResponse]
+	rollbackCheckpoint     *connect.Client[v1.RollbackCheckpointRequest, v1.RollbackCheckpointResponse]
+	getDiff                *connect.Client[v1.GetDiffRequest, v1.GetDiffResponse]
+	forkSession            *connect.Client[v1.ForkSessionRequest, v1.ForkSessionResponse]
+	deleteSession          *connect.Client[v1.DeleteSessionRequest, v1.DeleteSessionResponse]
+	uploadBlob             *connect.Client[v1.UploadBlobRequest, v1.UploadBlobResponse]
+	downloadBlob           *connect.Client[v1.DownloadBlobRequest, v1.DownloadBlobResponse]
+	listOutbox             *connect.Client[v1.ListOutboxRequest, v1.ListOutboxResponse]
+}
+
+// ListProviders calls hermesh.session.v1.SessionService.ListProviders.
+func (c *sessionServiceClient) ListProviders(ctx context.Context, req *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error) {
+	response, err := c.listProviders.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// UpsertProviderInstance calls hermesh.session.v1.SessionService.UpsertProviderInstance.
+func (c *sessionServiceClient) UpsertProviderInstance(ctx context.Context, req *v1.UpsertProviderInstanceRequest) (*v1.UpsertProviderInstanceResponse, error) {
+	response, err := c.upsertProviderInstance.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// RemoveProviderInstance calls hermesh.session.v1.SessionService.RemoveProviderInstance.
+func (c *sessionServiceClient) RemoveProviderInstance(ctx context.Context, req *v1.RemoveProviderInstanceRequest) (*v1.RemoveProviderInstanceResponse, error) {
+	response, err := c.removeProviderInstance.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
 }
 
 // StartSession calls hermesh.session.v1.SessionService.StartSession.
@@ -307,7 +348,7 @@ func (c *sessionServiceClient) StartSession(ctx context.Context, req *v1.StartSe
 }
 
 // GetSession calls hermesh.session.v1.SessionService.GetSession.
-func (c *sessionServiceClient) GetSession(ctx context.Context, req *v1.GetSessionRequest) (*v1.Session, error) {
+func (c *sessionServiceClient) GetSession(ctx context.Context, req *v1.GetSessionRequest) (*v1.GetSessionResponse, error) {
 	response, err := c.getSession.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
@@ -329,23 +370,14 @@ func (c *sessionServiceClient) WatchSessions(ctx context.Context, req *v1.WatchS
 	return c.watchSessions.CallServerStream(ctx, connect.NewRequest(req))
 }
 
-// StreamEvents calls hermesh.session.v1.SessionService.StreamEvents.
-func (c *sessionServiceClient) StreamEvents(ctx context.Context, req *v1.StreamEventsRequest) (*connect.ServerStreamForClient[v1.SessionEvent], error) {
-	return c.streamEvents.CallServerStream(ctx, connect.NewRequest(req))
+// SubscribeSession calls hermesh.session.v1.SessionService.SubscribeSession.
+func (c *sessionServiceClient) SubscribeSession(ctx context.Context, req *v1.SubscribeSessionRequest) (*connect.ServerStreamForClient[v1.SessionEvent], error) {
+	return c.subscribeSession.CallServerStream(ctx, connect.NewRequest(req))
 }
 
-// ListEvents calls hermesh.session.v1.SessionService.ListEvents.
-func (c *sessionServiceClient) ListEvents(ctx context.Context, req *v1.ListEventsRequest) (*v1.ListEventsResponse, error) {
-	response, err := c.listEvents.CallUnary(ctx, connect.NewRequest(req))
-	if response != nil {
-		return response.Msg, err
-	}
-	return nil, err
-}
-
-// SendMessage calls hermesh.session.v1.SessionService.SendMessage.
-func (c *sessionServiceClient) SendMessage(ctx context.Context, req *v1.SendMessageRequest) (*v1.SendMessageResponse, error) {
-	response, err := c.sendMessage.CallUnary(ctx, connect.NewRequest(req))
+// DispatchMessage calls hermesh.session.v1.SessionService.DispatchMessage.
+func (c *sessionServiceClient) DispatchMessage(ctx context.Context, req *v1.DispatchMessageRequest) (*v1.DispatchMessageResponse, error) {
+	response, err := c.dispatchMessage.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -362,7 +394,7 @@ func (c *sessionServiceClient) DeliverMessage(ctx context.Context, req *v1.Deliv
 }
 
 // InterruptSession calls hermesh.session.v1.SessionService.InterruptSession.
-func (c *sessionServiceClient) InterruptSession(ctx context.Context, req *v1.InterruptSessionRequest) (*v1.Session, error) {
+func (c *sessionServiceClient) InterruptSession(ctx context.Context, req *v1.InterruptSessionRequest) (*v1.InterruptSessionResponse, error) {
 	response, err := c.interruptSession.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
@@ -370,36 +402,54 @@ func (c *sessionServiceClient) InterruptSession(ctx context.Context, req *v1.Int
 	return nil, err
 }
 
-// ArchiveSession calls hermesh.session.v1.SessionService.ArchiveSession.
-func (c *sessionServiceClient) ArchiveSession(ctx context.Context, req *v1.ArchiveSessionRequest) (*v1.Session, error) {
-	response, err := c.archiveSession.CallUnary(ctx, connect.NewRequest(req))
+// StopBackgroundTask calls hermesh.session.v1.SessionService.StopBackgroundTask.
+func (c *sessionServiceClient) StopBackgroundTask(ctx context.Context, req *v1.StopBackgroundTaskRequest) (*v1.StopBackgroundTaskResponse, error) {
+	response, err := c.stopBackgroundTask.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// UnarchiveSession calls hermesh.session.v1.SessionService.UnarchiveSession.
-func (c *sessionServiceClient) UnarchiveSession(ctx context.Context, req *v1.UnarchiveSessionRequest) (*v1.Session, error) {
-	response, err := c.unarchiveSession.CallUnary(ctx, connect.NewRequest(req))
+// ManageQueue calls hermesh.session.v1.SessionService.ManageQueue.
+func (c *sessionServiceClient) ManageQueue(ctx context.Context, req *v1.ManageQueueRequest) (*v1.ManageQueueResponse, error) {
+	response, err := c.manageQueue.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// DeleteSession calls hermesh.session.v1.SessionService.DeleteSession.
-func (c *sessionServiceClient) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
-	response, err := c.deleteSession.CallUnary(ctx, connect.NewRequest(req))
+// UpdateSession calls hermesh.session.v1.SessionService.UpdateSession.
+func (c *sessionServiceClient) UpdateSession(ctx context.Context, req *v1.UpdateSessionRequest) (*v1.UpdateSessionResponse, error) {
+	response, err := c.updateSession.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// RenameSession calls hermesh.session.v1.SessionService.RenameSession.
-func (c *sessionServiceClient) RenameSession(ctx context.Context, req *v1.RenameSessionRequest) (*v1.Session, error) {
-	response, err := c.renameSession.CallUnary(ctx, connect.NewRequest(req))
+// RespondRuntimeRequest calls hermesh.session.v1.SessionService.RespondRuntimeRequest.
+func (c *sessionServiceClient) RespondRuntimeRequest(ctx context.Context, req *v1.RespondRuntimeRequestRequest) (*v1.RespondRuntimeRequestResponse, error) {
+	response, err := c.respondRuntimeRequest.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ListCheckpoints calls hermesh.session.v1.SessionService.ListCheckpoints.
+func (c *sessionServiceClient) ListCheckpoints(ctx context.Context, req *v1.ListCheckpointsRequest) (*v1.ListCheckpointsResponse, error) {
+	response, err := c.listCheckpoints.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// RollbackCheckpoint calls hermesh.session.v1.SessionService.RollbackCheckpoint.
+func (c *sessionServiceClient) RollbackCheckpoint(ctx context.Context, req *v1.RollbackCheckpointRequest) (*v1.RollbackCheckpointResponse, error) {
+	response, err := c.rollbackCheckpoint.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
@@ -415,100 +465,78 @@ func (c *sessionServiceClient) GetDiff(ctx context.Context, req *v1.GetDiffReque
 	return nil, err
 }
 
-// AnswerQuestion calls hermesh.session.v1.SessionService.AnswerQuestion.
-func (c *sessionServiceClient) AnswerQuestion(ctx context.Context, req *v1.AnswerQuestionRequest) (*v1.Session, error) {
-	response, err := c.answerQuestion.CallUnary(ctx, connect.NewRequest(req))
+// ForkSession calls hermesh.session.v1.SessionService.ForkSession.
+func (c *sessionServiceClient) ForkSession(ctx context.Context, req *v1.ForkSessionRequest) (*v1.ForkSessionResponse, error) {
+	response, err := c.forkSession.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// AnswerLocalQuestion calls hermesh.session.v1.SessionService.AnswerLocalQuestion.
-func (c *sessionServiceClient) AnswerLocalQuestion(ctx context.Context, req *v1.AnswerQuestionRequest) (*v1.Session, error) {
-	response, err := c.answerLocalQuestion.CallUnary(ctx, connect.NewRequest(req))
+// DeleteSession calls hermesh.session.v1.SessionService.DeleteSession.
+func (c *sessionServiceClient) DeleteSession(ctx context.Context, req *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	response, err := c.deleteSession.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// CheckLocalCodingRecipient calls hermesh.session.v1.SessionService.CheckLocalCodingRecipient.
-func (c *sessionServiceClient) CheckLocalCodingRecipient(ctx context.Context, req *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error) {
-	response, err := c.checkLocalCodingRecipient.CallUnary(ctx, connect.NewRequest(req))
+// UploadBlob calls hermesh.session.v1.SessionService.UploadBlob.
+func (c *sessionServiceClient) UploadBlob(ctx context.Context, req *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error) {
+	response, err := c.uploadBlob.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// CodingConsent calls hermesh.session.v1.SessionService.CodingConsent.
-func (c *sessionServiceClient) CodingConsent(ctx context.Context, req *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error) {
-	response, err := c.codingConsent.CallUnary(ctx, connect.NewRequest(req))
+// DownloadBlob calls hermesh.session.v1.SessionService.DownloadBlob.
+func (c *sessionServiceClient) DownloadBlob(ctx context.Context, req *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error) {
+	response, err := c.downloadBlob.CallUnary(ctx, connect.NewRequest(req))
 	if response != nil {
 		return response.Msg, err
 	}
 	return nil, err
 }
 
-// ReadToolOutput calls hermesh.session.v1.SessionService.ReadToolOutput.
-func (c *sessionServiceClient) ReadToolOutput(ctx context.Context, req *v1.ReadToolOutputRequest) (*connect.ServerStreamForClient[v1.ToolOutputChunk], error) {
-	return c.readToolOutput.CallServerStream(ctx, connect.NewRequest(req))
+// ListOutbox calls hermesh.session.v1.SessionService.ListOutbox.
+func (c *sessionServiceClient) ListOutbox(ctx context.Context, req *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error) {
+	response, err := c.listOutbox.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
 }
 
 // SessionServiceHandler is an implementation of the hermesh.session.v1.SessionService service.
 type SessionServiceHandler interface {
+	ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error)
+	UpsertProviderInstance(context.Context, *v1.UpsertProviderInstanceRequest) (*v1.UpsertProviderInstanceResponse, error)
+	RemoveProviderInstance(context.Context, *v1.RemoveProviderInstanceRequest) (*v1.RemoveProviderInstanceResponse, error)
 	StartSession(context.Context, *v1.StartSessionRequest) (*v1.StartSessionResponse, error)
-	GetSession(context.Context, *v1.GetSessionRequest) (*v1.Session, error)
+	GetSession(context.Context, *v1.GetSessionRequest) (*v1.GetSessionResponse, error)
 	ListSessions(context.Context, *v1.ListSessionsRequest) (*v1.ListSessionsResponse, error)
-	// WatchSessions sends the sessions the caller can read as they change:
-	// first an empty message once the watch is in place, then the sessions
-	// started or changed since the last message, each as it is now (changes
-	// that come close together are sent together).
 	WatchSessions(context.Context, *v1.WatchSessionsRequest, *connect.ServerStream[v1.WatchSessionsResponse]) error
-	StreamEvents(context.Context, *v1.StreamEventsRequest, *connect.ServerStream[v1.SessionEvent]) error
-	// ListEvents returns one page of a session's events, oldest first.
-	ListEvents(context.Context, *v1.ListEventsRequest) (*v1.ListEventsResponse, error)
-	SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error)
-	// DeliverMessage hands the session a message an agent wrote, signed by
-	// that agent (docs/agent-messages.md §7): it joins its sender's own turn,
-	// answers its sender's own question, or starts, or waits for, a turn of
-	// its own. Any agent whose grant covers the session and that may read it
-	// can deliver one.
+	SubscribeSession(context.Context, *v1.SubscribeSessionRequest, *connect.ServerStream[v1.SessionEvent]) error
+	DispatchMessage(context.Context, *v1.DispatchMessageRequest) (*v1.DispatchMessageResponse, error)
+	// DeliverMessage delivers a cryptographically signed inbox.v1.Message from
+	// another agent of the owner into the session.
 	DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error)
-	// InterruptSession stops the turn in progress; the session stays, idle,
-	// and the next message goes on in the same agent conversation.
-	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error)
-	// ArchiveSession makes an idle session read-only and frees its worktree
-	// (its branch keeps the work). Sessions never end otherwise.
-	ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.Session, error)
-	// UnarchiveSession restores the worktree from the branch; the session is
-	// idle again.
-	UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error)
-	// DeleteSession deletes a session for good: its record, events,
-	// attachments and worktree. Its branch stays in the project, with every
-	// turn's work, and its tokens stay in GetUsage. A turn in progress is
-	// interrupted first. Only the owner's devices may delete.
-	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
-	// RenameSession changes the session's title. Only the owner's devices
-	// may rename.
-	RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error)
+	InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.InterruptSessionResponse, error)
+	StopBackgroundTask(context.Context, *v1.StopBackgroundTaskRequest) (*v1.StopBackgroundTaskResponse, error)
+	ManageQueue(context.Context, *v1.ManageQueueRequest) (*v1.ManageQueueResponse, error)
+	UpdateSession(context.Context, *v1.UpdateSessionRequest) (*v1.UpdateSessionResponse, error)
+	RespondRuntimeRequest(context.Context, *v1.RespondRuntimeRequestRequest) (*v1.RespondRuntimeRequestResponse, error)
+	ListCheckpoints(context.Context, *v1.ListCheckpointsRequest) (*v1.ListCheckpointsResponse, error)
+	RollbackCheckpoint(context.Context, *v1.RollbackCheckpointRequest) (*v1.RollbackCheckpointResponse, error)
 	GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error)
-	// AnswerQuestion answers (or declines) a question the agent asked.
-	AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// AnswerLocalQuestion is retained for wire compatibility with v0.1.7 clients
-	// and applies the same authorization and validation rules as AnswerQuestion.
-	AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error)
-	// CheckLocalCodingRecipient is retained for wire compatibility with v0.1.7
-	// Her clients after coding-specific consent was removed.
-	CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error)
-	// CodingConsent is retained for wire compatibility with v0.1.7 owner clients
-	// after coding-specific consent was removed.
-	CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error)
-	// ReadToolOutput streams a tool's whole output, as recorded (up to 1 MiB;
-	// past that its first and last 512 KiB), in chunks of at most 64 KiB:
-	// what a BASIC event's preview, or a FULL one's first 16 KiB, is part of.
-	ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v1.ToolOutputChunk]) error
+	ForkSession(context.Context, *v1.ForkSessionRequest) (*v1.ForkSessionResponse, error)
+	DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error)
+	UploadBlob(context.Context, *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error)
+	DownloadBlob(context.Context, *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error)
+	ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -518,6 +546,24 @@ type SessionServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	sessionServiceMethods := v1.File_hermesh_session_v1_session_proto.Services().ByName("SessionService").Methods()
+	sessionServiceListProvidersHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceListProvidersProcedure,
+		svc.ListProviders,
+		connect.WithSchema(sessionServiceMethods.ByName("ListProviders")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceUpsertProviderInstanceHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceUpsertProviderInstanceProcedure,
+		svc.UpsertProviderInstance,
+		connect.WithSchema(sessionServiceMethods.ByName("UpsertProviderInstance")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceRemoveProviderInstanceHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceRemoveProviderInstanceProcedure,
+		svc.RemoveProviderInstance,
+		connect.WithSchema(sessionServiceMethods.ByName("RemoveProviderInstance")),
+		connect.WithHandlerOptions(opts...),
+	)
 	sessionServiceStartSessionHandler := connect.NewUnaryHandlerSimple(
 		SessionServiceStartSessionProcedure,
 		svc.StartSession,
@@ -542,22 +588,16 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("WatchSessions")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceStreamEventsHandler := connect.NewServerStreamHandlerSimple(
-		SessionServiceStreamEventsProcedure,
-		svc.StreamEvents,
-		connect.WithSchema(sessionServiceMethods.ByName("StreamEvents")),
+	sessionServiceSubscribeSessionHandler := connect.NewServerStreamHandlerSimple(
+		SessionServiceSubscribeSessionProcedure,
+		svc.SubscribeSession,
+		connect.WithSchema(sessionServiceMethods.ByName("SubscribeSession")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceListEventsHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceListEventsProcedure,
-		svc.ListEvents,
-		connect.WithSchema(sessionServiceMethods.ByName("ListEvents")),
-		connect.WithHandlerOptions(opts...),
-	)
-	sessionServiceSendMessageHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceSendMessageProcedure,
-		svc.SendMessage,
-		connect.WithSchema(sessionServiceMethods.ByName("SendMessage")),
+	sessionServiceDispatchMessageHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceDispatchMessageProcedure,
+		svc.DispatchMessage,
+		connect.WithSchema(sessionServiceMethods.ByName("DispatchMessage")),
 		connect.WithHandlerOptions(opts...),
 	)
 	sessionServiceDeliverMessageHandler := connect.NewUnaryHandlerSimple(
@@ -572,28 +612,40 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("InterruptSession")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceArchiveSessionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceArchiveSessionProcedure,
-		svc.ArchiveSession,
-		connect.WithSchema(sessionServiceMethods.ByName("ArchiveSession")),
+	sessionServiceStopBackgroundTaskHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceStopBackgroundTaskProcedure,
+		svc.StopBackgroundTask,
+		connect.WithSchema(sessionServiceMethods.ByName("StopBackgroundTask")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceUnarchiveSessionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceUnarchiveSessionProcedure,
-		svc.UnarchiveSession,
-		connect.WithSchema(sessionServiceMethods.ByName("UnarchiveSession")),
+	sessionServiceManageQueueHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceManageQueueProcedure,
+		svc.ManageQueue,
+		connect.WithSchema(sessionServiceMethods.ByName("ManageQueue")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceDeleteSessionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceDeleteSessionProcedure,
-		svc.DeleteSession,
-		connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
+	sessionServiceUpdateSessionHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceUpdateSessionProcedure,
+		svc.UpdateSession,
+		connect.WithSchema(sessionServiceMethods.ByName("UpdateSession")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceRenameSessionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceRenameSessionProcedure,
-		svc.RenameSession,
-		connect.WithSchema(sessionServiceMethods.ByName("RenameSession")),
+	sessionServiceRespondRuntimeRequestHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceRespondRuntimeRequestProcedure,
+		svc.RespondRuntimeRequest,
+		connect.WithSchema(sessionServiceMethods.ByName("RespondRuntimeRequest")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceListCheckpointsHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceListCheckpointsProcedure,
+		svc.ListCheckpoints,
+		connect.WithSchema(sessionServiceMethods.ByName("ListCheckpoints")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceRollbackCheckpointHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceRollbackCheckpointProcedure,
+		svc.RollbackCheckpoint,
+		connect.WithSchema(sessionServiceMethods.ByName("RollbackCheckpoint")),
 		connect.WithHandlerOptions(opts...),
 	)
 	sessionServiceGetDiffHandler := connect.NewUnaryHandlerSimple(
@@ -602,38 +654,44 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("GetDiff")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceAnswerQuestionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceAnswerQuestionProcedure,
-		svc.AnswerQuestion,
-		connect.WithSchema(sessionServiceMethods.ByName("AnswerQuestion")),
+	sessionServiceForkSessionHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceForkSessionProcedure,
+		svc.ForkSession,
+		connect.WithSchema(sessionServiceMethods.ByName("ForkSession")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceAnswerLocalQuestionHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceAnswerLocalQuestionProcedure,
-		svc.AnswerLocalQuestion,
-		connect.WithSchema(sessionServiceMethods.ByName("AnswerLocalQuestion")),
+	sessionServiceDeleteSessionHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceDeleteSessionProcedure,
+		svc.DeleteSession,
+		connect.WithSchema(sessionServiceMethods.ByName("DeleteSession")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceCheckLocalCodingRecipientHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceCheckLocalCodingRecipientProcedure,
-		svc.CheckLocalCodingRecipient,
-		connect.WithSchema(sessionServiceMethods.ByName("CheckLocalCodingRecipient")),
+	sessionServiceUploadBlobHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceUploadBlobProcedure,
+		svc.UploadBlob,
+		connect.WithSchema(sessionServiceMethods.ByName("UploadBlob")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceCodingConsentHandler := connect.NewUnaryHandlerSimple(
-		SessionServiceCodingConsentProcedure,
-		svc.CodingConsent,
-		connect.WithSchema(sessionServiceMethods.ByName("CodingConsent")),
+	sessionServiceDownloadBlobHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceDownloadBlobProcedure,
+		svc.DownloadBlob,
+		connect.WithSchema(sessionServiceMethods.ByName("DownloadBlob")),
 		connect.WithHandlerOptions(opts...),
 	)
-	sessionServiceReadToolOutputHandler := connect.NewServerStreamHandlerSimple(
-		SessionServiceReadToolOutputProcedure,
-		svc.ReadToolOutput,
-		connect.WithSchema(sessionServiceMethods.ByName("ReadToolOutput")),
+	sessionServiceListOutboxHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceListOutboxProcedure,
+		svc.ListOutbox,
+		connect.WithSchema(sessionServiceMethods.ByName("ListOutbox")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/hermesh.session.v1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case SessionServiceListProvidersProcedure:
+			sessionServiceListProvidersHandler.ServeHTTP(w, r)
+		case SessionServiceUpsertProviderInstanceProcedure:
+			sessionServiceUpsertProviderInstanceHandler.ServeHTTP(w, r)
+		case SessionServiceRemoveProviderInstanceProcedure:
+			sessionServiceRemoveProviderInstanceHandler.ServeHTTP(w, r)
 		case SessionServiceStartSessionProcedure:
 			sessionServiceStartSessionHandler.ServeHTTP(w, r)
 		case SessionServiceGetSessionProcedure:
@@ -642,36 +700,38 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceListSessionsHandler.ServeHTTP(w, r)
 		case SessionServiceWatchSessionsProcedure:
 			sessionServiceWatchSessionsHandler.ServeHTTP(w, r)
-		case SessionServiceStreamEventsProcedure:
-			sessionServiceStreamEventsHandler.ServeHTTP(w, r)
-		case SessionServiceListEventsProcedure:
-			sessionServiceListEventsHandler.ServeHTTP(w, r)
-		case SessionServiceSendMessageProcedure:
-			sessionServiceSendMessageHandler.ServeHTTP(w, r)
+		case SessionServiceSubscribeSessionProcedure:
+			sessionServiceSubscribeSessionHandler.ServeHTTP(w, r)
+		case SessionServiceDispatchMessageProcedure:
+			sessionServiceDispatchMessageHandler.ServeHTTP(w, r)
 		case SessionServiceDeliverMessageProcedure:
 			sessionServiceDeliverMessageHandler.ServeHTTP(w, r)
 		case SessionServiceInterruptSessionProcedure:
 			sessionServiceInterruptSessionHandler.ServeHTTP(w, r)
-		case SessionServiceArchiveSessionProcedure:
-			sessionServiceArchiveSessionHandler.ServeHTTP(w, r)
-		case SessionServiceUnarchiveSessionProcedure:
-			sessionServiceUnarchiveSessionHandler.ServeHTTP(w, r)
-		case SessionServiceDeleteSessionProcedure:
-			sessionServiceDeleteSessionHandler.ServeHTTP(w, r)
-		case SessionServiceRenameSessionProcedure:
-			sessionServiceRenameSessionHandler.ServeHTTP(w, r)
+		case SessionServiceStopBackgroundTaskProcedure:
+			sessionServiceStopBackgroundTaskHandler.ServeHTTP(w, r)
+		case SessionServiceManageQueueProcedure:
+			sessionServiceManageQueueHandler.ServeHTTP(w, r)
+		case SessionServiceUpdateSessionProcedure:
+			sessionServiceUpdateSessionHandler.ServeHTTP(w, r)
+		case SessionServiceRespondRuntimeRequestProcedure:
+			sessionServiceRespondRuntimeRequestHandler.ServeHTTP(w, r)
+		case SessionServiceListCheckpointsProcedure:
+			sessionServiceListCheckpointsHandler.ServeHTTP(w, r)
+		case SessionServiceRollbackCheckpointProcedure:
+			sessionServiceRollbackCheckpointHandler.ServeHTTP(w, r)
 		case SessionServiceGetDiffProcedure:
 			sessionServiceGetDiffHandler.ServeHTTP(w, r)
-		case SessionServiceAnswerQuestionProcedure:
-			sessionServiceAnswerQuestionHandler.ServeHTTP(w, r)
-		case SessionServiceAnswerLocalQuestionProcedure:
-			sessionServiceAnswerLocalQuestionHandler.ServeHTTP(w, r)
-		case SessionServiceCheckLocalCodingRecipientProcedure:
-			sessionServiceCheckLocalCodingRecipientHandler.ServeHTTP(w, r)
-		case SessionServiceCodingConsentProcedure:
-			sessionServiceCodingConsentHandler.ServeHTTP(w, r)
-		case SessionServiceReadToolOutputProcedure:
-			sessionServiceReadToolOutputHandler.ServeHTTP(w, r)
+		case SessionServiceForkSessionProcedure:
+			sessionServiceForkSessionHandler.ServeHTTP(w, r)
+		case SessionServiceDeleteSessionProcedure:
+			sessionServiceDeleteSessionHandler.ServeHTTP(w, r)
+		case SessionServiceUploadBlobProcedure:
+			sessionServiceUploadBlobHandler.ServeHTTP(w, r)
+		case SessionServiceDownloadBlobProcedure:
+			sessionServiceDownloadBlobHandler.ServeHTTP(w, r)
+		case SessionServiceListOutboxProcedure:
+			sessionServiceListOutboxHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -681,11 +741,23 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 // UnimplementedSessionServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedSessionServiceHandler struct{}
 
+func (UnimplementedSessionServiceHandler) ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListProviders is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) UpsertProviderInstance(context.Context, *v1.UpsertProviderInstanceRequest) (*v1.UpsertProviderInstanceResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.UpsertProviderInstance is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) RemoveProviderInstance(context.Context, *v1.RemoveProviderInstanceRequest) (*v1.RemoveProviderInstanceResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RemoveProviderInstance is not implemented"))
+}
+
 func (UnimplementedSessionServiceHandler) StartSession(context.Context, *v1.StartSessionRequest) (*v1.StartSessionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.StartSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) GetSession(context.Context, *v1.GetSessionRequest) (*v1.Session, error) {
+func (UnimplementedSessionServiceHandler) GetSession(context.Context, *v1.GetSessionRequest) (*v1.GetSessionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.GetSession is not implemented"))
 }
 
@@ -697,62 +769,66 @@ func (UnimplementedSessionServiceHandler) WatchSessions(context.Context, *v1.Wat
 	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.WatchSessions is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) StreamEvents(context.Context, *v1.StreamEventsRequest, *connect.ServerStream[v1.SessionEvent]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.StreamEvents is not implemented"))
+func (UnimplementedSessionServiceHandler) SubscribeSession(context.Context, *v1.SubscribeSessionRequest, *connect.ServerStream[v1.SessionEvent]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.SubscribeSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) ListEvents(context.Context, *v1.ListEventsRequest) (*v1.ListEventsResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListEvents is not implemented"))
-}
-
-func (UnimplementedSessionServiceHandler) SendMessage(context.Context, *v1.SendMessageRequest) (*v1.SendMessageResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.SendMessage is not implemented"))
+func (UnimplementedSessionServiceHandler) DispatchMessage(context.Context, *v1.DispatchMessageRequest) (*v1.DispatchMessageResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DispatchMessage is not implemented"))
 }
 
 func (UnimplementedSessionServiceHandler) DeliverMessage(context.Context, *v1.DeliverMessageRequest) (*v1.DeliverMessageResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DeliverMessage is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.Session, error) {
+func (UnimplementedSessionServiceHandler) InterruptSession(context.Context, *v1.InterruptSessionRequest) (*v1.InterruptSessionResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.InterruptSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) ArchiveSession(context.Context, *v1.ArchiveSessionRequest) (*v1.Session, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ArchiveSession is not implemented"))
+func (UnimplementedSessionServiceHandler) StopBackgroundTask(context.Context, *v1.StopBackgroundTaskRequest) (*v1.StopBackgroundTaskResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.StopBackgroundTask is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) UnarchiveSession(context.Context, *v1.UnarchiveSessionRequest) (*v1.Session, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.UnarchiveSession is not implemented"))
+func (UnimplementedSessionServiceHandler) ManageQueue(context.Context, *v1.ManageQueueRequest) (*v1.ManageQueueResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ManageQueue is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DeleteSession is not implemented"))
+func (UnimplementedSessionServiceHandler) UpdateSession(context.Context, *v1.UpdateSessionRequest) (*v1.UpdateSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.UpdateSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) RenameSession(context.Context, *v1.RenameSessionRequest) (*v1.Session, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RenameSession is not implemented"))
+func (UnimplementedSessionServiceHandler) RespondRuntimeRequest(context.Context, *v1.RespondRuntimeRequestRequest) (*v1.RespondRuntimeRequestResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RespondRuntimeRequest is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ListCheckpoints(context.Context, *v1.ListCheckpointsRequest) (*v1.ListCheckpointsResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListCheckpoints is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) RollbackCheckpoint(context.Context, *v1.RollbackCheckpointRequest) (*v1.RollbackCheckpointResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.RollbackCheckpoint is not implemented"))
 }
 
 func (UnimplementedSessionServiceHandler) GetDiff(context.Context, *v1.GetDiffRequest) (*v1.GetDiffResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.GetDiff is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) AnswerQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.AnswerQuestion is not implemented"))
+func (UnimplementedSessionServiceHandler) ForkSession(context.Context, *v1.ForkSessionRequest) (*v1.ForkSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ForkSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) AnswerLocalQuestion(context.Context, *v1.AnswerQuestionRequest) (*v1.Session, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.AnswerLocalQuestion is not implemented"))
+func (UnimplementedSessionServiceHandler) DeleteSession(context.Context, *v1.DeleteSessionRequest) (*v1.DeleteSessionResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DeleteSession is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) CheckLocalCodingRecipient(context.Context, *v1.CheckLocalCodingRecipientRequest) (*v1.CheckLocalCodingRecipientResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.CheckLocalCodingRecipient is not implemented"))
+func (UnimplementedSessionServiceHandler) UploadBlob(context.Context, *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.UploadBlob is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) CodingConsent(context.Context, *v1.CodingConsentRequest) (*v1.CodingConsentResponse, error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.CodingConsent is not implemented"))
+func (UnimplementedSessionServiceHandler) DownloadBlob(context.Context, *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.DownloadBlob is not implemented"))
 }
 
-func (UnimplementedSessionServiceHandler) ReadToolOutput(context.Context, *v1.ReadToolOutputRequest, *connect.ServerStream[v1.ToolOutputChunk]) error {
-	return connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ReadToolOutput is not implemented"))
+func (UnimplementedSessionServiceHandler) ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListOutbox is not implemented"))
 }

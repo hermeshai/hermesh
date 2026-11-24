@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import type { Session } from "@hermesh/proto/session";
+import { create } from "@bufbuild/protobuf";
+import { ApprovalDecision, QuestionAnswerSchema, type Session } from "@hermesh/proto/session";
 import {
   clockText, codingAgentTitle, createdDate, dateOf, displayTitle, elapsedSeconds, listTime, pendingQuestion, quickChoice, teamState, todayStats, updatedDate,
   type TeamState,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
-import { local } from "./api";
+import { sessions } from "./api";
 import { Icon } from "./icons";
 import { senderLine } from "./Sidebar";
 import { useNow, useStore, type Store } from "./store";
@@ -59,7 +60,13 @@ export function QuickAnswer({ s }: { s: Session }) {
   if (!q || !item) return null;
   const answer = (label: string) =>
     st.run(
-      () => local.answerQuestion({ sessionId: s.sessionId, questionId: q.questionId, answers: [{ itemId: item.id, selected: [label], text: "" }], decline: false }),
+      () =>
+        sessions.respondRuntimeRequest({
+          sessionId: s.sessionId,
+          requestId: q.questionId,
+          decision: ApprovalDecision.ACCEPT_ONCE,
+          answers: { [item.id]: create(QuestionAnswerSchema, { selectedOptions: [label] }) },
+        }),
       t("team.answered", { answer: label }),
     );
   return (
