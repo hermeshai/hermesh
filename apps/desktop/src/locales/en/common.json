@@ -207,6 +207,7 @@
     "inProgress": "In Progress",
     "justFinished": "Just Finished",
     "recentlyFinished": "Recently Finished",
+    "seeAll": "See All",
     "waiting": "{{agent}} is waiting",
     "needYou_one": "{{count}} needs you",
     "needYou_other": "{{count}} need you",

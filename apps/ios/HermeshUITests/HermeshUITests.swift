@@ -36,7 +36,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "approves a computer asking to be a trusted device, and shows the digits to type on it") { _ in try approveDevice() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
-        try XCTContext.runActivity(named: "shows the work on the overview, and usage in the account") { _ in try usage() }
+        try XCTContext.runActivity(named: "shows the work in Statistics: usage under its filters, and limits") { _ in try usage() }
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "adds a machine: the app on a Mac or a PC, or a command; Linux has only the command") { _ in try addMachine() }
@@ -240,10 +240,8 @@ final class HermeshUITests: XCTestCase {
     }
 
     func interrupt() throws {
-        // There is running work now: its count scrolls Work to that list.
-        reach("running-now")
-        tap("running-now")
-        try waitFor("In Progress in view") { text("进行中").isHittable ? true : nil }
+        // There is running work now: its tile is on Work, under the link map.
+        reach("session-跑很久")
         tap("session-跑很久")
         XCTAssertTrue(text("跑很久").waitForExistence(timeout: 20))
         tap("interrupt")
@@ -776,8 +774,8 @@ final class HermeshUITests: XCTestCase {
 
     func swipeOnRow() throws {
         // The page follows the finger, so the finger ends where it started on
-        // the row: the row must not open as well.
-        for id in ["flow-client-bot"] {
+        // the row: the row must not open as well (See All would push the sessions' page).
+        for id in ["see-all"] {
             let row = app.descendants(matching: .any)[id].firstMatch
             XCTAssertTrue(row.waitForExistence(timeout: 20), id)
             // The overview is longer than the screen: the row in view first.
@@ -865,77 +863,58 @@ final class HermeshUITests: XCTestCase {
     }
 
     func usage() throws {
-        showOverview()
-        // Nothing runs since the interrupt; today's sessions as the machine
-        // counts them; who sent work to which coding agent: bot to Gemini
-        // CLI, the agent approved sending none; Gemini CLI's day; the machine.
-        let today = app.descendants(matching: .any)["working-today"]
-        XCTAssertTrue(today.waitForExistence(timeout: 20))
-        let inToday = { (s: String) in today.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", s)).count > 0 }
-        try waitFor("nothing runs, today's work counted") { inToday("个任务运行过") && inToday("0 个运行中") && inToday("已完成") ? true : nil }
-        XCTAssertTrue(text("今日任务来源与去向").exists, "the flow")
-        // The last 7 days, from the segmented control where the title was; then today again.
-        let period = app.segmentedControls["work-period"]
-        XCTAssertTrue(period.exists, "the range")
-        period.buttons["7 天"].tap()
-        XCTAssertTrue(text("近 7 天任务来源与去向").waitForExistence(timeout: 10), "the flow over 7 days")
-        XCTAssertTrue(inToday("0 个运行中"), "what runs stays live")
-        let week = XCTAttachment(screenshot: app.screenshot())
-        week.name = "overview, 7 days"
-        week.lifetime = .keepAlways
-        add(week)
-        period.buttons["今天"].tap()
-        XCTAssertTrue(text("今日任务来源与去向").waitForExistence(timeout: 10), "today again")
-        let bot = app.descendants(matching: .any)["flow-client-bot"].firstMatch
-        XCTAssertTrue(bot.exists, "the agent that sent work")
-        let toGemini = app.descendants(matching: .any)["flow-agent-gemini"].firstMatch
-        XCTAssertTrue(toGemini.exists && toGemini.label.contains("Gemini CLI") && toGemini.label.contains("轮"), "the coding agent that did it, and its turns: \(toGemini.label)")
-        XCTAssertTrue(text("Cursor 今天未发起任务").exists, "the agent approved, which sent nothing")
-        let gemini = app.descendants(matching: .any)["coding-agent-gemini"].firstMatch
-        XCTAssertTrue(gemini.exists && gemini.label.contains("空闲") && gemini.label.contains("1 个环境"), gemini.label)
-        // Tapping the band between them says how much: bot to Gemini CLI, its turns and tokens.
-        let bands = app.descendants(matching: .any)["flow-bands"].firstMatch
-        XCTAssertTrue(bands.exists && bands.label.contains("bot → Gemini CLI"), bands.label)
-        bands.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        let tip = app.descendants(matching: .any)["flow-tip"].firstMatch
-        XCTAssertTrue(tip.waitForExistence(timeout: 5), "the band's popover")
-        XCTAssertTrue(tip.label.contains("bot → Gemini CLI") && tip.label.contains("轮") && tip.label.contains("token"), tip.label)
+        // The counts are a place of the menu's, under Work: Usage, then Limits.
+        openMenu()
+        tap("statistics-place")
+        XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the menu closed")
+        // Today, as the machine counts it: the sessions that worked, of them those done, and their tokens.
+        tap("filter-range"); tap("今天")
+        let sessions = app.descendants(matching: .any)["usage-sessions"].firstMatch
+        XCTAssertTrue(sessions.waitForExistence(timeout: 20))
+        let big = app.descendants(matching: .any)["usage-sessions-big"].firstMatch
+        try waitFor("today's work counted") { big.label.contains("个任务运行过") && !big.label.hasPrefix("0") ? true : nil }
+        let worked = big.label
+        XCTAssertTrue(text("已完成").exists && text("工作时长").exists && text("输入").exists, "each measure's figures")
+        XCTAssertTrue(app.descendants(matching: .any)["usage-tokens-big"].firstMatch.label.contains("token"))
         let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "flow tip"
+        shot.name = "usage, today"
         shot.lifetime = .keepAlways
         add(shot)
-        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
-        XCTAssertTrue(tip.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
-        // Picking bot says what it sent each coding agent; picking it again lets go.
-        press(bot)
-        try waitFor("what bot sent Gemini CLI") { gemini.label.contains("bot 发起") ? true : nil }
-        press(bot)
-        try waitFor("all of Gemini CLI's turns again") { gemini.label.contains("1 个环境") ? true : nil }
-        // Every coding agent is listed, the idle ones too: no fold.
-        let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
-        XCTAssertTrue(agentRows.count > 1 && !app.descendants(matching: .any)["more-agents"].exists, "every agent, nothing folded: \(agentRows.count)")
-        XCTAssertFalse(app.descendants(matching: .any)["agents-loading"].exists, "no skeleton once the coding agents are known")
-        // Tapping a heat cell (now's: Gemini CLI worked this hour) says whose it is, when, and its sessions.
-        if !gemini.isHittable { app.swipeUp() }
-        // The hour's cell among the day's 24, in the row's tap area under its name, wherever that lies.
-        let cells = gemini.descendants(matching: .other).firstMatch
-        let hour = CGFloat(Calendar.current.component(.hour, from: Date()))
-        cells.coordinate(withNormalizedOffset: CGVector(dx: (hour + 0.5) / 24, dy: 0.5)).tap()
-        let heat = app.descendants(matching: .any)["heat-tip"].firstMatch
-        XCTAssertTrue(heat.waitForExistence(timeout: 5), "the cell's popover")
-        XCTAssertTrue(heat.label.contains("Gemini CLI") && heat.label.contains("个任务运行过"), heat.label)
-        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
-        XCTAssertTrue(heat.waitForNonExistence(timeout: 5), "a tap elsewhere closes it")
-        // Nothing runs now; interrupt checked that count's link while a session was running.
-        // Usage is in the account, from the menu.
+        // The agent's menu: each coding agent that worked today, with its work under it; Gemini CLI did all of it.
+        tap("filter-agent")
+        let gemini = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Gemini CLI")).firstMatch
+        XCTAssertTrue(gemini.waitForExistence(timeout: 5) && gemini.label.contains("个任务 ·") && gemini.label.contains("token"), gemini.label)
+        gemini.tap()
+        XCTAssertTrue(app.buttons["filter-agent"].label.contains("Gemini CLI"), app.buttons["filter-agent"].label)
+        try waitFor("the same work, Gemini CLI's alone") { big.label == worked ? true : nil }
+        // The sender's: bot sent it.
+        tap("filter-client")
+        let bot = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "bot")).firstMatch
+        XCTAssertTrue(bot.waitForExistence(timeout: 5), "bot sent work today")
+        bot.tap()
+        try waitFor("bot's work") { big.label == worked ? true : nil }
+        // Back to everything.
+        tap("filter-client"); tap("全部")
+        tap("filter-agent"); tap("全部")
+        XCTAssertFalse(app.buttons["filter-agent"].label.contains("Gemini CLI"))
+        // 18 weeks of tokens, today's among them; what the input counts.
+        app.swipeUp()
+        XCTAssertTrue(app.descendants(matching: .any)["usage-weeks"].firstMatch.exists && text("活跃天数").exists, "the weeks")
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "输入含各提供方的缓存读写")).firstMatch.exists)
+        // Limits: a card an agent; Gemini CLI says none.
+        app.segmentedControls["stats-segment"].buttons["额度"].tap()
+        let limits = app.descendants(matching: .any)["limits-gemini"].firstMatch
+        XCTAssertTrue(limits.waitForExistence(timeout: 10), "Gemini CLI's card")
+        XCTAssertTrue(text("它没有提供额度信息").exists)
+        app.segmentedControls["stats-segment"].buttons["用量"].tap()
+        // The account sheet no longer has usage: it is Usage's last card.
         openMenu()
         tap("account")
-        // Usage in place: the numbers and the weeks of days, no page to open.
-        XCTAssertTrue(app.descendants(matching: .any)["usage"].firstMatch.waitForExistence(timeout: 20), "usage")
-        XCTAssertTrue(text("近 30 天 · tokens").exists && text("活跃天数").exists && text("连续使用").exists)
-        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "近 18 周的用量")).firstMatch.exists, "the weeks")
+        XCTAssertTrue(app.descendants(matching: .any)["account-card"].firstMatch.waitForExistence(timeout: 20))
+        XCTAssertFalse(app.descendants(matching: .any)["account-usage"].exists, "no usage in the account")
         tap("close")
-        app.descendants(matching: .any)["drawer-dim"].tap()
+        // Back on Work, where the next steps start.
+        tap("overview-place")
     }
 
     func search() throws {
@@ -1074,7 +1053,8 @@ final class HermeshUITests: XCTestCase {
         _ = try control("relay?up=0", method: "POST")
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.descendants(matching: .any)["coding-agent-gemini"].waitForExistence(timeout: 3), "what it kept shows at once")
+        // The link map from what it kept: the agents that may use the Mac, and the Mac (its coding agents come with its status, once it is reached).
+        XCTAssertTrue(app.descendants(matching: .any)["map-owner-mac"].waitForExistence(timeout: 3) && app.descendants(matching: .any)["map-bot"].exists, "what it kept shows at once")
         let line = app.descendants(matching: .any)["sync-line"].firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 5), "it says it is connecting")
         try waitFor("it says it can't reach the relay", timeout: 30) { line.exists && line.label.contains("连不上") ? true : nil }
@@ -1095,14 +1075,14 @@ final class HermeshUITests: XCTestCase {
 
     /// To the home screen and back, slowly and at once, a few times: each
     /// time the app is current again, and on the way it never says its Mac
-    /// can't be reached (it stayed online), nor drops the coding agents the
-    /// overview showed while it reads the Mac again.
+    /// can't be reached (it stayed online), nor drops the environments and
+    /// their coding agents the link map showed while it reads the Mac again.
     func backAndForth() throws {
         let line = app.descendants(matching: .any)["sync-line"].firstMatch
         let unreachable = app.descendants(matching: .any)["unreachable"].firstMatch
-        let agentRows = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'coding-agent-'"))
+        let agentRows = environments(with: "Gemini CLI")
         let agents = agentRows.count
-        XCTAssertTrue(agents > 1, "the overview's coding agents: \(agents)")
+        XCTAssertTrue(agents > 0, "the link map's environments with their coding agents: \(agents)")
         for away: UInt32 in [3, 0, 0, 3] {
             XCUIDevice.shared.press(.home)
             sleep(away)
@@ -1111,11 +1091,11 @@ final class HermeshUITests: XCTestCase {
             let deadline = Date().addingTimeInterval(30)
             repeat {
                 XCTAssertFalse(unreachable.exists, "the Mac shown unreachable on the way back")
-                XCTAssertEqual(agentRows.count, agents, "the coding agents held while the Mac is read again")
+                XCTAssertEqual(agentRows.count, agents, "the environments and their coding agents held while the Mac is read again")
             } while line.exists && Date() < deadline
             // Foregrounding may publish its sync line just after the loop first sees it absent.
             XCTAssertTrue(line.waitForNonExistence(timeout: 30), "current again")
-            XCTAssertTrue(app.descendants(matching: .any)["coding-agent-gemini"].exists)
+            XCTAssertTrue(agentRows.firstMatch.exists)
         }
         // The Notification Center pulled part way and let go: the app was
         // only inactive, and stays current.
@@ -1229,6 +1209,11 @@ final class HermeshUITests: XCTestCase {
     }
 
     /// The overview, from wherever the app is: by the menu.
+    /// The link map's environments that have a coding agent (their label names them).
+    func environments(with agent: String) -> XCUIElementQuery {
+        app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH 'map-' AND label CONTAINS %@", agent))
+    }
+
     func showOverview() {
         openMenu()
         tap("overview-place")

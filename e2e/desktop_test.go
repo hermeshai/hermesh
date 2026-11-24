@@ -153,6 +153,9 @@ func TestDesktop(t *testing.T) {
 			if name == "thread-composer" {
 				f.OtherMac = otherMacThreads(t, f)
 			}
+			if name == "limits" {
+				otherMacLimits(t, f)
+			}
 			if name == "windows" {
 				f.OldSigner = t.TempDir()
 				bin := filepath.Join(f.OldSigner, "hermesh-signer.exe")
@@ -548,6 +551,29 @@ func otherMacThreads(t *testing.T, f desktopFixture) int {
 	old, _ := w.otherMac("old-mac", []string{"HERMESH_TEST_BEFORE_THREADS=1"})
 	w.joinTyped(old, home, "old-mac")
 	return daemon.cmd.Process.Pid
+}
+
+// otherMacLimits joins a second Mac, limits-mac, as a machine only, whose
+// coding agents are the fake, and runs a session there in which the agent
+// says its account's rate limits (limits.spec.ts): five hours 86% used, a
+// week 52%, on Pro. The grant's agent is gemini, so the fake plays it.
+func otherMacLimits(t *testing.T, f desktopFixture) {
+	w := f.owner
+	ctx := context.Background()
+	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac, _ := w.otherMac("limits-mac", []string{"HERMESH_FAKE_PROVIDERS=1", "HERMESH_FAKE_AGENTS=gemini"})
+	st := w.joinTyped(mac, home, "limits-mac")
+	if _, err := mac.AddProject(ctx, &localv1.AddProjectRequest{MachineId: st.LocalMachineId, ProjectId: "quota", Path: gitRepo(t, map[string]string{"README.md": "# quota\n"})}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, time.Minute, "a session on limits-mac", func() bool {
+		s := firstSession(w.cli(2*time.Minute, "session", "start", "--project", "limits-mac/quota", "-o", "json", "--agent", "gemini", "--title", "用掉一些额度",
+			"--prompt", "limits 300:86,10080:52,plan=pro\nsay 好了", "--wait").stdout)
+		return s.Status == "idle"
+	})
 }
 
 // otherMacSession joins a second Mac, work-mac, as a machine only, runs two

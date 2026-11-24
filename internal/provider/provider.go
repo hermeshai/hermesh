@@ -218,6 +218,24 @@ type StartSpec struct {
 	// MCPServers are tools Hermesh gives the agent, as stdio MCP servers:
 	// the session's messages (docs/agent-messages.md §7.4).
 	MCPServers []MCPServer
+	// Limits is told what the agent says of its account's limits, when it
+	// does (docs/overview-usage.md §7). A callback, not an Event: they are
+	// the account's, not the session's, and stay out of its event log.
+	Limits func(Limits)
+}
+
+// Limits is what an agent says of its account's rate limits.
+type Limits struct {
+	Plan    string
+	Windows []LimitWindow // the shortest first
+}
+
+// LimitWindow is one of them: how long it is, how much of it is used, and
+// when it starts again.
+type LimitWindow struct {
+	Minutes     uint32
+	UsedPercent uint32 // 0 to 100
+	ResetsAt    time.Time
 }
 
 // MCPServer is a stdio MCP server the agent starts.

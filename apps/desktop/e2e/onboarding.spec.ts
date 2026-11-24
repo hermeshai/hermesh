@@ -344,8 +344,8 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   await page.getByRole("button", { name: /^概览/ }).click();
   await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
-  // Once the first session is done, 正在运行 rests: the mark, what runs (nothing), and what will show there.
-  const working = page.getByRole("region", { name: "正在运行" });
+  // Once the first session is done, 进行中 rests: the mark, what runs (nothing), and what will show there.
+  const working = page.getByRole("region", { name: "进行中" });
   await expect(working.getByRole("status")).toContainText("当前没有运行中的任务", { timeout: 30_000 });
   await expect(working.getByRole("status")).toContainText("Agent 开始工作后，任务会显示在这里，链路图也会同步点亮。");
   await expect(working.locator(".hm-mark")).toBeVisible();
@@ -615,8 +615,8 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
   await expect(grok).toContainText("尚无任务", { timeout: 30_000 });
   await expect(map).toContainText("尚无任务");
-  // Nothing has run here yet: 正在运行 rests, with no prompt to send.
-  const working = page.getByRole("region", { name: "正在运行" });
+  // Nothing has run here yet: 进行中 rests, with no prompt to send.
+  const working = page.getByRole("region", { name: "进行中" });
   await expect(working.getByRole("status")).toContainText("当前没有运行中的任务");
   await expect(working).not.toContainText("发一句试试");
   // No session at all: the sidebar says what will show there (a machine alone has no Her to ask).

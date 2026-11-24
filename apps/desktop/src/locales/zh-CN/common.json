@@ -202,6 +202,7 @@
     "inProgress": "进行中",
     "justFinished": "刚完成",
     "recentlyFinished": "最近完成",
+    "seeAll": "查看全部",
     "waiting": "{{agent}} 在等你",
     "needYou_other": "{{count}} 个在等你",
     "failed_other": "{{count}} 个失败",

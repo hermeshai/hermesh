@@ -56,6 +56,7 @@ private struct PageView: View {
         switch model.root {
         case .her: HerView()
         case .overview: OverviewView()
+        case .statistics: StatisticsView()
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
         case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
@@ -68,6 +69,7 @@ private struct PageView: View {
 @ViewBuilder func routePage(_ route: Route) -> some View {
     switch route {
     case .machines: EnvironmentsView(isRoot: false)
+    case .tasks: TasksView()
     case .grants: GrantsView(isRoot: false)
     case .session(let id): SessionView(id: id).id(id) // the sync line in its title's second line
     case .grant(let id): GrantView(id: id).syncSubtitle()
@@ -569,7 +571,20 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         guard arrangement != .beside else { return false }
         let v = pan.velocity(in: view)
         guard abs(v.x) > abs(v.y) * 1.4 else { return false }
+        guard isOpen || !(panAnywhere && v.x > 0) || !scrollsBack(at: pan.location(in: view)) else { return false }
         return isOpen ? v.x < 0 : panAnywhere && v.x > 0
+    }
+
+    /// A sideways scroller under the finger that is not at its start (the
+    /// overview's deck on a later card): a swipe to the right is its own, to
+    /// go back in it, before it is the menu's.
+    private func scrollsBack(at point: CGPoint) -> Bool {
+        var v = view.hitTest(point, with: nil)
+        while let cur = v {
+            if let s = cur as? UIScrollView, s.isScrollEnabled, s.contentSize.width > s.bounds.width + 1, s.contentOffset.x > 1 - s.adjustedContentInset.left { return true }
+            v = cur.superview
+        }
+        return false
     }
 
     /// Alongside the page's scrolling, but not a row's tap: the page follows

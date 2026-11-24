@@ -2,8 +2,10 @@ package machine
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -30,7 +32,7 @@ func countWork(t *testing.T, st *Store, tz, first string, days int, hourly bool)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ss, ts, keys, err := st.CountWork(context.Background(), buckets, whole)
+	ss, ts, keys, err := st.CountWork(context.Background(), workstats.Ask{Buckets: buckets, Whole: whole})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,6 +133,49 @@ func TestWorkFromEvents(t *testing.T) {
 	// one that crashed (10:00 in Shanghai) on the 4th.
 	if utc := countWork(t, st, "UTC", "2026-03-03", 1, false); utc.sessions != 1 || utc.turns != 1 {
 		t.Fatalf("UTC: %+v", utc)
+	}
+
+	// The span before a range is counted in the same pass and is what a
+	// range of its own counts there; the range's own rows do not change.
+	// With turns only the sessions are left out and the turns are the same.
+	_, d3, _ := workstats.Buckets("Asia/Shanghai", "2026-03-03", 1, false)
+	b4, d4, _ := workstats.Buckets("Asia/Shanghai", "2026-03-04", 1, true)
+	count := func(a workstats.Ask) (ss, ts []workstats.Row) {
+		t.Helper()
+		ss, ts, _, err := st.CountWork(context.Background(), a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ss, ts
+	}
+	// of is the rows of one bucket, as the whole range's, by key.
+	of := func(rows []workstats.Row, bucket int) (out []workstats.Row) {
+		for _, r := range rows {
+			if r.Bucket == bucket {
+				r.Bucket = workstats.Whole
+				out = append(out, r)
+			}
+		}
+		slices.SortFunc(out, func(a, b workstats.Row) int { return cmp.Compare(a.K, b.K) })
+		return out
+	}
+	ss, ts := count(workstats.Ask{Buckets: b4, Whole: d4, Previous: d3})
+	s3, t3 := count(workstats.Ask{Whole: d3})
+	if len(s3) == 0 || len(t3) == 0 || !slices.Equal(of(ss, workstats.Previous), of(s3, workstats.Whole)) || !slices.Equal(of(ts, workstats.Previous), of(t3, workstats.Whole)) {
+		t.Fatalf("the span before: %+v %+v, alone %+v %+v", of(ss, workstats.Previous), of(ts, workstats.Previous), s3, t3)
+	}
+	s4, t4 := count(workstats.Ask{Buckets: b4, Whole: d4})
+	for _, b := range []int{workstats.Whole, 0, 10} {
+		if !slices.Equal(of(ss, b), of(s4, b)) || !slices.Equal(of(ts, b), of(t4, b)) {
+			t.Fatalf("bucket %d changed with the span before: %+v %+v, without %+v %+v", b, of(ss, b), of(ts, b), of(s4, b), of(t4, b))
+		}
+	}
+	if len(of(s4, workstats.Previous)) != 0 {
+		t.Fatalf("a span before that was not asked: %+v", s4)
+	}
+	so, to := count(workstats.Ask{Buckets: b4, Whole: d4, Previous: d3, TurnsOnly: true})
+	if so != nil || !slices.Equal(to, ts) {
+		t.Fatalf("turns only: %+v %+v, want %+v", so, to, ts)
 	}
 }
 

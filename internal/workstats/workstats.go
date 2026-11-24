@@ -71,8 +71,49 @@ func Buckets(tz, firstDay string, days int, hourly bool) ([]Bound, Bound, error)
 	return out, whole, nil
 }
 
-// Row is what the counting queries return for one bucket (-1: the whole
-// range), machine (0 on a machine itself) and key.
+// Earlier is the span of as many days just before the days days from
+// firstDay. When the range holds now it ends as long before now as the range
+// is, by the clock (yesterday at this time, whatever the clocks did between),
+// so a range in progress is set against as much of the one before; the
+// quarter now is in is counted in both.
+func Earlier(tz, firstDay string, days int, now time.Time) (Bound, error) {
+	loc, err := time.LoadLocation(tz)
+	if err != nil || tz == "" {
+		return Bound{}, fmt.Errorf("unknown time zone %q", tz)
+	}
+	first, err := time.ParseInLocation(time.DateOnly, firstDay, loc)
+	if err != nil {
+		return Bound{}, errors.New("first_day must be YYYY-MM-DD")
+	}
+	day := func(n int) time.Time { return time.Date(first.Year(), first.Month(), first.Day()+n, 0, 0, 0, 0, loc) }
+	out := Bound{Quarter(day(-days)), Quarter(first)}
+	if now = now.In(loc); !now.Before(first) && now.Before(day(days)) {
+		then := time.Date(now.Year(), now.Month(), now.Day()-days, now.Hour(), now.Minute(), now.Second(), 0, loc)
+		out.To = min(Quarter(then)+1, out.To)
+	}
+	return out, nil
+}
+
+// Ask is what Count adds up: each bucket, the whole range and, unless it is
+// empty, the span before it. The buckets, when there are any, are the whole
+// range cut up (Buckets).
+type Ask struct {
+	Buckets         []Bound
+	Whole, Previous Bound
+	// TurnsOnly leaves the sessions out (the dearer of the two statements).
+	TurnsOnly bool
+}
+
+// Whole and Previous are what Row.Bucket is for the whole range and for the
+// span before it.
+const (
+	Whole    = -1
+	Previous = -2
+)
+
+// Row is what the counting queries return for one bucket (Whole: the whole
+// range; Previous: the span before it), machine (0 on a machine itself) and
+// key.
 type Row struct {
 	Bucket                    int
 	M, K                      int64
@@ -87,21 +128,34 @@ type Querier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-// Count adds up the work tables in db over each bucket and the whole range:
-// sessions at work (each once a bucket) and of them those done now, by key;
-// and turns, failed turns, tokens and busy seconds, by key. withMachine:
-// db is an owner device's, its tables keyed by machine too.
-func Count(ctx context.Context, db Querier, withMachine bool, buckets []Bound, whole Bound) (sessions, turns []Row, err error) {
-	var b strings.Builder
-	b.WriteString("WITH b(i, q0, q1) AS (VALUES ")
-	for i, x := range append([]Bound{whole}, buckets...) {
-		if i > 0 {
-			b.WriteByte(',')
+// Count adds up the work tables in db over each bucket, the whole range and
+// the span before it: sessions at work (each once a bucket) and of them those
+// done now, by key; and turns, failed turns, tokens and busy seconds, by key.
+// withMachine: db is an owner device's, its tables keyed by machine too.
+func Count(ctx context.Context, db Querier, withMachine bool, a Ask) (sessions, turns []Row, err error) {
+	// The bounds as a table; whole: with the whole range among them.
+	values := func(whole bool) string {
+		var b strings.Builder
+		b.WriteString("WITH b(i, q0, q1) AS (VALUES ")
+		add := func(i int, x Bound) {
+			if b.Len() > 30 {
+				b.WriteByte(',')
+			}
+			fmt.Fprintf(&b, "(%d,%d,%d)", i, x.From, x.To)
 		}
-		fmt.Fprintf(&b, "(%d,%d,%d)", i-1, x.From, x.To)
+		if whole {
+			add(Whole, a.Whole)
+		}
+		if a.Previous.From < a.Previous.To {
+			add(Previous, a.Previous)
+		}
+		for i, x := range a.Buckets {
+			add(i, x)
+		}
+		b.WriteString(") ")
+		return b.String()
 	}
-	b.WriteString(") ")
-	bounds := b.String()
+	bounds := values(true)
 	m, join, group := "0", "s.n = p.n", ""
 	if withMachine {
 		m, join, group = "p.m", "s.m = p.m AND s.n = p.n", ", p.m"
@@ -110,31 +164,38 @@ func Count(ctx context.Context, db Querier, withMachine bool, buckets []Bound, w
 	// quarters' primary key.
 	done := "(s.status = " + strconv.Itoa(int(sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED)) +
 		" OR (s.status = " + strconv.Itoa(int(sessionv1.SessionStatus_SESSION_STATUS_IDLE)) + " AND s.failed = 0))"
-	q := bounds + `SELECT b.i, ` + m + `, p.k, count(DISTINCT p.n), count(DISTINCT CASE WHEN ` + done + ` THEN p.n END)
+	if !a.TurnsOnly {
+		q := bounds + `SELECT b.i, ` + m + `, p.k, count(DISTINCT p.n), count(DISTINCT CASE WHEN ` + done + ` THEN p.n END)
 		FROM b CROSS JOIN work_quarters p ON p.q >= b.q0 AND p.q < b.q1
 		JOIN work_sessions s ON ` + join + `
 		GROUP BY b.i` + group + `, p.k`
-	rows, err := db.QueryContext(ctx, q)
-	if err != nil {
-		return nil, nil, err
-	}
-	for rows.Next() {
-		var r Row
-		if err := rows.Scan(&r.Bucket, &r.M, &r.K, &r.Sessions, &r.Done); err != nil {
-			rows.Close()
+		rows, err := db.QueryContext(ctx, q)
+		if err != nil {
 			return nil, nil, err
 		}
-		sessions = append(sessions, r)
+		for rows.Next() {
+			var r Row
+			if err := rows.Scan(&r.Bucket, &r.M, &r.K, &r.Sessions, &r.Done); err != nil {
+				rows.Close()
+				return nil, nil, err
+			}
+			sessions = append(sessions, r)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, nil, err
+		}
 	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
+	// A session at work in two buckets is one in the whole range, so the
+	// range is counted for itself above. Turns add up: with buckets the
+	// range is their sum, and its rows are not read a second time.
+	sum := len(a.Buckets) > 0
 	wm, wgroup := strings.ReplaceAll(m, "p.", "w."), strings.ReplaceAll(group, "p.", "w.")
-	q = bounds + `SELECT b.i, ` + wm + `, w.k, sum(w.turns), sum(w.failed_turns), sum(w.input_tokens), sum(w.output_tokens), sum(w.busy_seconds)
+	q := values(!sum) + `SELECT b.i, ` + wm + `, w.k, sum(w.turns), sum(w.failed_turns), sum(w.input_tokens), sum(w.output_tokens), sum(w.busy_seconds)
 		FROM b CROSS JOIN work_measures w ON w.q >= b.q0 AND w.q < b.q1
 		GROUP BY b.i` + wgroup + `, w.k`
-	if rows, err = db.QueryContext(ctx, q); err != nil {
+	rows, err := db.QueryContext(ctx, q)
+	if err != nil {
 		return nil, nil, err
 	}
 	defer rows.Close()
@@ -144,6 +205,26 @@ func Count(ctx context.Context, db Querier, withMachine bool, buckets []Bound, w
 			return nil, nil, err
 		}
 		turns = append(turns, r)
+	}
+	if sum {
+		at := map[[2]int64]int{}
+		for _, r := range turns[:len(turns):len(turns)] {
+			if r.Bucket < 0 {
+				continue
+			}
+			i, ok := at[[2]int64{r.M, r.K}]
+			if !ok {
+				i = len(turns)
+				at[[2]int64{r.M, r.K}] = i
+				turns = append(turns, Row{Bucket: Whole, M: r.M, K: r.K})
+			}
+			w := &turns[i]
+			w.Turns += r.Turns
+			w.FailedTurns += r.FailedTurns
+			w.InputTokens += r.InputTokens
+			w.OutputTokens += r.OutputTokens
+			w.BusySeconds += r.BusySeconds
+		}
 	}
 	return sessions, turns, rows.Err()
 }

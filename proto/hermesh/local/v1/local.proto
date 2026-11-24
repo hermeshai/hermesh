@@ -1162,12 +1162,25 @@ message QueryWorkRequest {
   WorkBucket bucket = 4;
   // What the counts are grouped by; none: everything together.
   repeated WorkDimension group_by = 5;
+  // Only the work of this client, agent or machine; an empty field: any.
+  // project_id needs machine_id (a project is its machine's own): alone it
+  // is refused. As group_by: sessions by who started them, turns by who
+  // asked.
+  WorkGroup filter = 6;
+  // Also count the span of as many days just before the range, cut at the
+  // same moment before now when the range holds now: previous_* below.
+  bool previous = 7;
+  // Leave out sessions, range_sessions and previous_sessions: for charts of
+  // turns and tokens.
+  bool turns_only = 8;
 }
 
 enum WorkBucket {
   WORK_BUCKET_UNSPECIFIED = 0;
   WORK_BUCKET_HOUR = 1;
   WORK_BUCKET_DAY = 2;
+  // The range's totals only: no sessions or turns per bucket.
+  WORK_BUCKET_NONE = 3;
 }
 
 enum WorkDimension {
@@ -1228,6 +1241,10 @@ message QueryWorkResponse {
   repeated TurnCount turns = 3;
   repeated TurnCount range_turns = 4;
   repeated WorkSource sources = 5;
+  // With previous: the span before the range, as range_sessions and
+  // range_turns.
+  repeated SessionCount previous_sessions = 6;
+  repeated TurnCount previous_turns = 7;
 }
 
 message GetDiffRequest {

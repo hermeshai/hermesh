@@ -29,13 +29,6 @@ struct AccountSheet: View {
                     NavigationLink(value: Route.account) { AccountCard() }
                         .accessibilityIdentifier("account-card")
                 }
-                if let u = model.usage {
-                    Section {
-                        UsageSummary(usage: u)
-                    } header: {
-                        Text("Usage").accessibilityIdentifier("account-usage")
-                    }
-                }
                 Section {
                     if !model.isDemo {
                         NavigationLink {
@@ -102,7 +95,6 @@ struct AccountSheet: View {
             // Again when back from the notifications page or from Settings.
             .onAppear { Task { await readNotifications() } }
             .onChange(of: scenePhase) { if scenePhase == .active { Task { await readNotifications() } } }
-            .refreshable { await model.loadUsage() }
         }
     }
 
@@ -465,56 +457,6 @@ struct AppearanceOption: View {
                 }
                 .padding(.horizontal, 7).padding(.top, 10)
             }
-    }
-}
-
-/// Usage in place: the last 30 days, active days and streak, the weeks as
-/// a grid of days in ink grey, and each coding agent's share.
-struct UsageSummary: View {
-    let usage: UsageYear
-
-    var body: some View {
-        let u = usage
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                stat(tokensText(u.last30), "Last 30 days · tokens")
-                stat(String(localized: "\(u.active) days"), "Active days")
-                stat(String(localized: "\(u.streak) days"), "Streak")
-            }
-            Grid(horizontalSpacing: 3, verticalSpacing: 3) {
-                ForEach(0 ..< 7, id: \.self) { row in
-                    GridRow {
-                        ForEach(0 ..< u.weeks, id: \.self) { col in
-                            let cell = u.cells[col * 7 + row]
-                            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                                .fill(cell.map { Color.primary.opacity([0.07, 0.18, 0.32, 0.5, 0.74][$0.level]) } ?? .clear)
-                                .aspectRatio(1, contentMode: .fit)
-                        }
-                    }
-                }
-            }
-            .accessibilityElement()
-            .accessibilityLabel(Text("Usage over the last \(u.weeks) weeks"))
-            if !u.byAgent.isEmpty {
-                HStack(spacing: 14) {
-                    ForEach(u.byAgent.prefix(3), id: \.agent) { a in
-                        Text("\(agentTitle(a.agent)) \(Int((a.share * 100).rounded()))%")
-                    }
-                }
-                .font(.footnote).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 6)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("usage")
-    }
-
-    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

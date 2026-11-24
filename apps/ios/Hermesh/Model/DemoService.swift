@@ -103,6 +103,21 @@ final class DemoService {
         _ = pairing(.client)
     }
 
+    private static func demoLimits(_ agent: String) -> Hermesh_Machine_V1_AgentLimits {
+        let window = { (minutes: UInt32, used: UInt32, resetsIn: TimeInterval) in
+            Hermesh_Machine_V1_LimitWindow.with { $0.minutes = minutes; $0.usedPercent = used; $0.resetsAt = .init(date: .now.addingTimeInterval(resetsIn)) }
+        }
+        return .with {
+            $0.observedAt = .init(date: .now.addingTimeInterval(-120))
+            if agent == "claude" {
+                $0.windows = [window(300, 82, 140 * 60), window(10080, 41, 3 * 86400)]
+            } else {
+                $0.plan = "pro"
+                $0.windows = [window(10080, 61, 2 * 86400)]
+            }
+        }
+    }
+
     private func machine(_ id: String, _ name: String, _ platform: String) -> Machine {
         .with {
             $0.machineID = id; $0.machineName = name; $0.online = true; $0.version = "Demo"
@@ -111,6 +126,8 @@ final class DemoService {
                 $0.agents = ["claude", "codex"].map { name in .with {
                     $0.name = name; $0.available = true; $0.loggedIn = true; $0.version = "Demo"
                     $0.models = [.with { $0.id = "demo-model"; $0.name = "Demo Model"; $0.efforts = ["low", "high"] }]
+                    // What the agents last said of their limits, on the Mac mini: Claude Code's five hours nearly used up.
+                    if id == "demo-mac" { $0.limits = Self.demoLimits(name) }
                 } }
             }
         }
@@ -483,10 +500,15 @@ final class DemoService {
         let parts = r.firstDay.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3, let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return .init() }
         var result = Hermesh_Local_V1_QueryWorkResponse()
-        for s in world.sessions {
+        // As hermeshd answers: only what the filter keeps, the range's totals (and per bucket unless NONE), and with
+        // previous the as many days before it.
+        let f = r.filter
+        for s in world.sessions where (f.client.isEmpty || f.client == s.createdBy) && (f.agent.isEmpty || f.agent == s.agent)
+            && (f.machineID.isEmpty || f.machineID == s.machineID) && (f.projectID.isEmpty || f.projectID == s.projectID) {
             let day = calendar.dateComponents([.day], from: start, to: calendar.startOfDay(for: s.createdAt.date)).day ?? 0
-            guard day >= 0, day < Int(r.days) else { continue }
-            let bucket = UInt32(r.bucket == .hour ? day * 24 + calendar.component(.hour, from: s.createdAt.date) : day)
+            let before = r.previous && day < 0 && day >= -Int(r.days)
+            guard day >= 0 && day < Int(r.days) || before else { continue }
+            let bucket = UInt32(r.bucket == .hour ? day * 24 + calendar.component(.hour, from: s.createdAt.date) : max(day, 0))
             let group = Hermesh_Local_V1_WorkGroup.with {
                 if r.groupBy.contains(.client) { $0.client = s.createdBy }
                 if r.groupBy.contains(.agent) { $0.agent = s.agent }
@@ -495,12 +517,21 @@ final class DemoService {
             }
             let done = s.status == .idle || s.status == .archived
             let count = Hermesh_Local_V1_SessionCount.with { $0.bucket = bucket; $0.group = group; $0.sessions = 1; $0.done = done ? 1 : 0 }
-            result.sessions.append(count); result.rangeSessions.append(count)
+            let turn = Hermesh_Local_V1_TurnCount.with {
+                $0.bucket = bucket; $0.group = group; $0.turns = 1; $0.inputTokens = 1200; $0.outputTokens = 350; $0.busySeconds = 45
+            }
+            if before {
+                if !r.turnsOnly { result.previousSessions.append(count) }
+                if done { result.previousTurns.append(turn) }
+                continue
+            }
+            if !r.turnsOnly {
+                if r.bucket != .none { result.sessions.append(count) }
+                result.rangeSessions.append(count)
+            }
             if done {
-                let turn = Hermesh_Local_V1_TurnCount.with {
-                    $0.bucket = bucket; $0.group = group; $0.turns = 1; $0.inputTokens = 1200; $0.outputTokens = 350; $0.busySeconds = 45
-                }
-                result.turns.append(turn); result.rangeTurns.append(turn)
+                if r.bucket != .none { result.turns.append(turn) }
+                result.rangeTurns.append(turn)
             }
         }
         result.sources = world.machines.map { m in .with { $0.machineID = m.machineID; $0.live = true; $0.syncedAt = .init(date: .now) } }

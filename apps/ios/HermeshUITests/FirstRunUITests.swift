@@ -69,11 +69,11 @@ extension HermeshUITests {
         tap("set-up-later")
         // No machine yet, so nowhere Her could run: Work is the first page, with the way to a first machine.
         XCTAssertTrue(app.navigationBars["概览"].waitForExistence(timeout: 30), "Work")
-        XCTAssertTrue(step(0).waitForExistence(timeout: 30), "Get Started, with what the guide left")
-        XCTAssertTrue(text("连上你的电脑").exists)
+        XCTAssertTrue(getStarted.waitForExistence(timeout: 30), "Get Started, with what the guide left")
+        XCTAssertTrue(text("连上你的电脑").exists && text("第 1 步，共 4 步").exists, "its next step, and which it is")
         // No machine yet, so no second-device row.
         XCTAssertFalse(app.descendants(matching: .any)["second-device"].exists)
-        press(step(0).buttons["get-started-continue"])
+        press(getStarted.buttons["get-started-continue"])
         XCTAssertTrue(text("你的代码在哪台电脑上？").waitForExistence(timeout: 30), "back in the guide")
     }
 
@@ -144,7 +144,13 @@ extension HermeshUITests {
         let row = app.descendants(matching: .any)["second-device"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the second-device row")
         XCTAssertTrue(text("只有这台 iPhone 能批准").exists)
-        press(row.buttons["隐藏"])
+        // A card of the deck on Work: brought to the front when another is before it (Her not on yet).
+        let hide = row.buttons["隐藏"], next = app.descendants(matching: .any)["needs-next"].firstMatch
+        for _ in 0..<6 where !hide.isHittable && next.exists {
+            next.tap()
+            sleep(1)
+        }
+        press(hide)
         XCTAssertTrue(row.waitForNonExistence(timeout: 10))
     }
 
@@ -207,8 +213,8 @@ extension HermeshUITests {
         XCTAssertTrue(app.descendants(matching: .any)[id].firstMatch.waitForExistence(timeout: 15), "back to \(id)")
     }
 
-    /// A row of Get Started.
-    func step(_ i: Int) -> XCUIElement {
-        app.descendants(matching: .any)["get-started-\(i)"].firstMatch
+    /// Get Started's card in the deck on Work: the guide's next step.
+    var getStarted: XCUIElement {
+        app.descendants(matching: .any)["get-started"].firstMatch
     }
 }

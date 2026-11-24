@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
-import { Trans, useTranslation } from "react-i18next";
-import type { Client, Machine, QueryWorkResponse } from "@hermesh/proto/local";
+import { useTranslation } from "react-i18next";
+import type { Client, Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay, todayStats, tokensText, usageYear } from "@hermesh/core";
+import { agoText, codingAgentTitle, createdDate, dateOf, isActive, isFailed, monthDay, sameDay } from "@hermesh/core";
 import { AgentLogo, agentName, grantColor, Mark, type GrantLook } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { grantFace } from "../components";
@@ -14,7 +14,8 @@ import { useStore, type Store } from "../store";
 // "Connections": who may use this computer (grants: a personal agent connects only
 // while it runs a command, so they are never drawn offline), Hermesh in the middle, the
 // machines, and their projects; each session that is live runs along its
-// grant → machine → project path. On a machine only it is this Mac's: the
+// grant → machine → project path, alike whatever its state (what waits or
+// failed is under Needs You), with a dot moving along those at work. On a machine only it is this Mac's: the
 // grants that cover it, this Mac in the middle, its projects; one that never
 // came is drawn faint, and a grant clicked opens a card of what it may do
 // here. Drawn on a fixed stage that is scaled to the width, so the lines
@@ -24,6 +25,8 @@ const W = 820;
 const GAP = 64;
 const TOP = 13;
 const MAX = 6;
+// The projects' column shows four (more while more have a session at work), the rest in a line under them.
+const PROJECTS = 4;
 const COL = { g: 24, m: 448, p: 670 };
 const WIDTH = { g: 164, m: 168, p: 134 };
 const HEIGHT = { g: 42, m: 46, p: 34 };
@@ -80,8 +83,8 @@ function layout(st: Store, live: Session[]) {
   );
 
   const extras: Extra[] = [];
-  const column = <T,>(items: T[], kind: Kind, ghost: ExtraItem | null, more: "moreGrants" | "moreMachines" | "moreProjects") => {
-    const shown = items.length > MAX ? items.slice(0, MAX - 1) : items;
+  const column = <T,>(items: T[], kind: Kind, ghost: ExtraItem | null, more: "moreGrants" | "moreMachines" | "moreProjects", max = MAX - 1) => {
+    const shown = items.length > max + 1 ? items.slice(0, max) : items;
     const rest = items.length - shown.length;
     const tail: ExtraItem[] = [];
     if (rest > 0) tail.push({ key: `more:${kind}`, label: i18n.t(`overview:map.${more}`, { count: rest }) });
@@ -90,9 +93,10 @@ function layout(st: Store, live: Session[]) {
   };
   const g = column(clients, "g", !only && clients.length < 3 ? { key: "ghost:g", label: i18n.t("overview:map.connectMore"), action: () => st.set({ sheet: { kind: "newGrant" } }) } : null, "moreGrants");
   const m = column(machines, "m", !only && machines.length < 3 ? { key: "ghost:m", label: i18n.t("overview:map.addMachine"), action: () => st.set({ sheet: { kind: "addMachine" } }) } : null, "moreMachines");
-  const p = column(projectList, "p", null, "moreProjects");
+  const busy = projectList.filter(([key]) => (byProject.get(key) ?? 0) > 0).length;
+  const p = column(projectList, "p", null, "moreProjects", Math.min(MAX - 1, Math.max(PROJECTS, busy)));
 
-  const rows = Math.max(g.shown.length + g.tail.length, m.shown.length + m.tail.length, p.shown.length + p.tail.length, 1);
+  const rows = Math.max(g.shown.length + g.tail.length, m.shown.length + m.tail.length, p.shown.length, 1);
   const H = Math.max(190, rows * GAP + TOP + 44);
   // The hub with its label (about 127 tall, the icon on top) is what sits in the middle.
   const cy = TOP + (H - TOP) / 2 - 19;
@@ -106,10 +110,11 @@ function layout(st: Store, live: Session[]) {
   const mn = m.shown.length + m.tail.length;
   const machineNodes: MachineNode[] = m.shown.map((x, i) => ({ ...spot("m", i, mn), kind: "m", key: machineKey(x.machineId), machine: x }));
   m.tail.forEach((t, i) => extras.push({ ...spot("m", m.shown.length + i, mn), ...t }));
-  const pn = p.shown.length + p.tail.length;
+  const pn = p.shown.length;
   const online = new Map(st.machines.map((x) => [x.machineId, x.online]));
   const projectNodes: ProjectNode[] = p.shown.map(([key, x], i) => ({ ...spot("p", i, pn), kind: "p", key, ...x, online: online.get(x.machineId) ?? false }));
-  p.tail.forEach((t, i) => extras.push({ ...spot("p", p.shown.length + i, pn), ...t }));
+  // How many more there are takes no row: a line close under the last.
+  p.tail.forEach((t) => extras.push({ ...spot("p", pn - 1, pn), y: y(pn - 1, pn) + HEIGHT.p / 2 + 16, h: 20, ...t }));
 
   const hx = only ? ONE.hub : HUB.x;
   const hub = { x: hx, y: cy, l: hx - HUB.s - 4, r: hx + HUB.s + 4 };
@@ -140,7 +145,7 @@ function layout(st: Store, live: Session[]) {
       `${curve(hub.r, hub.y, b.x, b.y)} L${b.x + b.w} ${b.y} ${curve(b.x + b.w, b.y, c.x, c.y)}`;
     paths.push({ s, keys: [a.key, b.key, c.key], d });
   }
-  return { H, hub, grants, machines: machineNodes, projects: projectNodes, extras, edges, paths, byGrant, byMachine, byProject, at };
+  return { H, hub, grants, machines: machineNodes, projects: projectNodes, extras, edges, paths, at };
 }
 
 /** The keys of the nodes a session runs through: its grant, machine and project. */
@@ -150,17 +155,15 @@ export function sessionKeys(s: Session): string[] {
 
 /**
  * The map; pick is the node the owner clicked (its links stay lit and
- * Working Now narrows to the sessions through it), onPick toggles it ("" for
+ * In Progress turns into the sessions through it), onPick toggles it ("" for
  * none).
  */
-export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (key: string) => void; now: Date; usage: QueryWorkResponse | null }) {
+export function LinkMap({ pick, onPick, now }: { pick: string; onPick: (key: string) => void; now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
   const live = useMemo(() => st.sessions.filter(liveOnMap), [st.sessions]);
   const L = useMemo(() => layout(st, live), [st, live]);
-  const running = live.filter((s) => s.status === SessionStatus.RUNNING || s.status === SessionStatus.PREPARING || s.status === SessionStatus.QUEUED);
-  const waiting = live.filter((s) => s.status === SessionStatus.WAITING_INPUT);
-  const failed = live.filter(isFailed);
+  const running = live.some(isActive);
   const offline = st.machines.some((m) => !m.online);
   const only = st.status?.machineOnly === true;
   // A machine only: grants that never came here, and the card of the one picked.
@@ -286,12 +289,11 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
     <div className={`lmap ${lit ? "focus" : ""}`}>
       <div className="lmap-top">
         <b>{t("map.title")}</b>
-        <Today now={now} usage={usage} running={running.length > 0} />
       </div>
       <div className="lmap-box" ref={box} style={{ height: L.H * scale }}>
         <div className="lmap-stage" style={{ width: W, height: L.H, transform: `scale(${scale})` }}>
           <div
-            className={`lmap-aura ${running.length ? "on" : ""}`}
+            className={`lmap-aura ${running ? "on" : ""}`}
             style={{ left: L.hub.x - HUB.s - 22, top: L.hub.y - HUB.s - 16, width: (HUB.s + 22) * 2, height: (HUB.s + 16) * 2 }}
             aria-hidden="true"
           />
@@ -300,11 +302,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
               <path key={i} className={`lm-edge ${e.off ? "off" : ""} ${on(e.keys)} ${inScope(e.keys)}`} d={e.d} />
             ))}
             {L.paths.map((p) => (
-              <path
-                key={p.s.sessionId}
-                className={`lm-flow ${isRunning(p.s) ? "" : p.s.status === SessionStatus.WAITING_INPUT ? "wait" : "fail"} ${onPath(p.keys)}`}
-                d={p.d}
-              />
+              <path key={p.s.sessionId} className={`lm-flow ${onPath(p.keys)}`} d={p.d} />
             ))}
           </svg>
           <div className="lmap-comets" ref={comets} aria-hidden="true">
@@ -358,7 +356,6 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
                 <b>{agentName(n.client.label)}</b>
                 {only && !n.client.lastSeen ? <small>{t("map.notYet")}</small> : <Expiry c={n.client} now={now} />}
               </span>
-              <Tail online running={runningCount(L.paths, n.key)} />
             </Node>
           ))}
           {L.machines.map((n) => (
@@ -383,7 +380,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
                   ))}
                 </span>
               </span>
-              <MachineMeta m={n.machine} running={runningCount(L.paths, n.key)} />
+              <MachineMeta m={n.machine} />
             </Node>
           ))}
           {L.projects.map((n) => (
@@ -398,7 +395,7 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             >
               <span className="lm-ic"><Icon name="folder" /></span>
               <span className="lm-t"><b>{n.projectId}</b></span>
-              <Tail online={n.online} running={runningCount(L.paths, n.key)} />
+              {!n.online && <small className="lm-meta">{t("map.offline")}</small>}
             </Node>
           ))}
           {L.extras.map((n) =>
@@ -411,47 +408,11 @@ export function LinkMap({ pick, onPick, now, usage }: { pick: string; onPick: (k
             ),
           )}
 
-          {/* A question's ping, under its dots (drawn by the compositor, as the comets). */}
-          <div className="lmap-pings" aria-hidden="true">
-            {L.paths.map((p) => {
-              const a = L.at.get(p.keys[0])!;
-              return p.s.status === SessionStatus.WAITING_INPUT ? (
-                <span key={p.s.sessionId} className={`lm-mark wait ${onPath(p.keys)}`} style={{ left: a.x + a.w, top: a.y }}>
-                  <i className="ping" />
-                </span>
-              ) : null;
-            })}
-          </div>
-          <svg className="lmap-front" viewBox={`0 0 ${W} ${L.H}`} width={W} height={L.H} aria-hidden="true">
-            {L.paths.map((p) => {
-              const a = L.at.get(p.keys[0])!;
-              const c = L.at.get(p.keys[2])!;
-              if (p.s.status === SessionStatus.WAITING_INPUT)
-                return (
-                  <g key={p.s.sessionId} className={`lm-mark wait ${onPath(p.keys)}`}>
-                    <circle cx={a.x + a.w} cy={a.y} r={3.5} />
-                    <circle cx={c.x} cy={c.y} r={3.5} />
-                  </g>
-                );
-              if (isFailed(p.s))
-                return (
-                  <g key={p.s.sessionId} className={`lm-mark fail ${onPath(p.keys)}`}>
-                    <circle cx={c.x} cy={c.y} r={7} />
-                    <text x={c.x} y={c.y + 3.5} textAnchor="middle">!</text>
-                  </g>
-                );
-              return null;
-            })}
-          </svg>
         </div>
       </div>
       <div className="lmap-foot">
-        {running.length > 0 && <span><i className="run" />{t("map.running")}</span>}
-        {waiting.length > 0 && <span><i className="wait" />{t("map.waiting")}</span>}
-        {failed.length > 0 && <span><i className="fail" />{t("map.failed")}</span>}
         {offline && <span><i className="off" />{t("map.offline")}</span>}
         {unseen && <span><i className="off" />{t("map.notYet")}</span>}
-        {live.length > 0 && <span className="hint">{pick ? t("map.hintPicked") : t("map.hintPick")}</span>}
       </div>
     </div>
     {card && cardAt && (
@@ -489,27 +450,6 @@ function Node({ n, className, pinned, label, onFocus, onClick, onMenu, children 
     >
       {children}
     </button>
-  );
-}
-
-/** The map's headline: today's sessions, how they ended, and the tokens they used; the dot beats while one runs. */
-function Today({ now, usage, running }: { now: Date; usage: QueryWorkResponse | null; running: boolean }) {
-  const { t } = useTranslation("overview");
-  const st = useStore();
-  const n = todayStats(st.sessions, now);
-  const tokens = useMemo(() => (usage ? usageYear(usage, now).today : null), [usage, now]);
-  return (
-    <span className={`lmap-pill ${running ? "" : "quiet"}`} role="status" aria-label={t("map.today")}>
-      <i />
-      <Trans
-        t={t}
-        i18nKey="map.todayStats"
-        count={n.sessions}
-        values={{ done: n.done, failed: n.failed }}
-        components={{ b: <b />, bad: <b className={n.failed ? "bad" : ""} /> }}
-      />
-      {tokens !== null && <> · <b>{tokensText(tokens)}</b> tokens</>}
-    </span>
   );
 }
 
@@ -552,13 +492,13 @@ function ThisMacHub() {
   );
 }
 
-/** A machine node's last word: what keeps it from working, paused, offline, or how many run. */
-function MachineMeta({ m, running }: { m: Machine; running: number }) {
+/** A machine node's last word: what keeps it from working, paused, or offline. */
+function MachineMeta({ m }: { m: Machine }) {
   const { t } = useTranslation("overview");
   const p = problemsOf(m)[0];
   if (p && m.online) return <small className={`lm-meta ${severe(p) ? "bad" : "warn"}`}>{problemShort(p)}</small>;
   if (m.status?.paused) return <small className="lm-meta">{t("map.paused")}</small>;
-  return <Tail online={m.online} running={running} />;
+  return m.online ? null : <small className="lm-meta">{t("map.offline")}</small>;
 }
 
 /**
@@ -608,19 +548,6 @@ function ClientCard({ c, now, style, ref, onMouseEnter, onMouseLeave }: {
 async function machineMenu(m: Machine) {
   const id = await window.hermesh?.popupMenu([{ id: "settings", label: i18n.t("overview:map.machineSettings") }]);
   if (id === "settings") window.hermesh?.openSettings(`env/${m.machineId}`);
-}
-
-/** Offline, or how many of its sessions run now. */
-function Tail({ online, running }: { online: boolean; running: number }) {
-  const { t } = useTranslation("overview");
-  if (!online) return <small className="lm-meta">{t("map.offline")}</small>;
-  if (!running) return null;
-  return (
-    <span className="lm-badge" aria-label={t("runningCount", { count: running })}>
-      <i />
-      {running}
-    </span>
-  );
 }
 
 function GrantIcon({ c }: { c: GrantLook }) {
@@ -704,10 +631,6 @@ const dot = (t: number) => {
   const r = t ? 2.2 - t * 0.3 : 2.6;
   return { left: -r, top: -r, width: r * 2, height: r * 2 };
 };
-
-function runningCount(paths: Path[], key: string): number {
-  return paths.filter((p) => isActive(p.s) && p.keys.includes(key)).length;
-}
 
 function machineIcon(m: Machine): string {
   if (m.local) return "laptop";

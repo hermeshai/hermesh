@@ -195,10 +195,10 @@ type workSource struct {
 	history   bool
 }
 
-// countWork adds up the copy over a range, with the keys and machines its
-// rows name.
-func (s *store) countWork(ctx context.Context, buckets []workstats.Bound, whole workstats.Bound) (sessions, turns []workstats.Row, keys map[[2]int64]machine.WorkKey, sources []workSource, err error) {
-	if sessions, turns, err = workstats.Count(ctx, s.db, true, buckets, whole); err != nil {
+// countWork adds up the copy over what a asks, with the keys and machines
+// its rows name.
+func (s *store) countWork(ctx context.Context, a workstats.Ask) (sessions, turns []workstats.Row, keys map[[2]int64]machine.WorkKey, sources []workSource, err error) {
+	if sessions, turns, err = workstats.Count(ctx, s.db, true, a); err != nil {
 		return nil, nil, nil, nil, err
 	}
 	keys = map[[2]int64]machine.WorkKey{}
@@ -373,12 +373,12 @@ func (o *Owner) screenWorkVersion(mode string) uint64 {
 // QueryWork counts the work over a range (LocalService.QueryWork): the
 // other machines from this device's copy, its own in process.
 func (o *Owner) QueryWork(ctx context.Context, req *localv1.QueryWorkRequest) (*localv1.QueryWorkResponse, error) {
-	buckets, whole, err := workBuckets(req)
+	ask, err := workAsk(req, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	var parts []workPart
-	sessions, turns, keys, sources, err := o.st.countWork(ctx, buckets, whole)
+	sessions, turns, keys, sources, err := o.st.countWork(ctx, ask)
 	if err != nil {
 		return nil, err
 	}
@@ -397,13 +397,13 @@ func (o *Owner) QueryWork(ctx context.Context, req *localv1.QueryWorkRequest) (*
 	}
 	parts = append(parts, workPart{sessions, turns, key})
 	if l != nil {
-		ls, lt, lk, err := l.CountWork(ctx, buckets, whole)
+		ls, lt, lk, err := l.CountWork(ctx, ask)
 		if err != nil {
 			return nil, err
 		}
 		parts = append(parts, workPart{ls, lt, func(r workstats.Row) (machine.WorkKey, string, bool) { return lk[r.K], localID, true }})
 	}
-	out := groupWork(req.GroupBy, parts)
+	out := groupWork(req.GroupBy, req.Filter, parts)
 	r := o.rep
 	r.mu.Lock()
 	for _, x := range sources {
@@ -428,29 +428,49 @@ func (o *Owner) QueryWork(ctx context.Context, req *localv1.QueryWorkRequest) (*
 // QueryWorkOnly is QueryWork for a computer that is only a machine: its own
 // counts.
 func QueryWorkOnly(ctx context.Context, l *machine.Local, req *localv1.QueryWorkRequest) (*localv1.QueryWorkResponse, error) {
-	buckets, whole, err := workBuckets(req)
+	ask, err := workAsk(req, time.Now())
 	if err != nil {
 		return nil, err
 	}
-	ls, lt, lk, err := l.CountWork(ctx, buckets, whole)
+	ls, lt, lk, err := l.CountWork(ctx, ask)
 	if err != nil {
 		return nil, err
 	}
 	id := l.MachineID()
-	out := groupWork(req.GroupBy, []workPart{{ls, lt, func(r workstats.Row) (machine.WorkKey, string, bool) { return lk[r.K], id, true }}})
+	out := groupWork(req.GroupBy, req.Filter, []workPart{{ls, lt, func(r workstats.Row) (machine.WorkKey, string, bool) { return lk[r.K], id, true }}})
 	out.Sources = []*localv1.WorkSource{{MachineId: id, Live: true}}
 	return out, nil
 }
 
-func workBuckets(req *localv1.QueryWorkRequest) ([]workstats.Bound, workstats.Bound, error) {
-	if req.Bucket != localv1.WorkBucket_WORK_BUCKET_HOUR && req.Bucket != localv1.WorkBucket_WORK_BUCKET_DAY {
-		return nil, workstats.Bound{}, connect.NewError(connect.CodeInvalidArgument, errors.New("bucket must be HOUR or DAY"))
+// workAsk is what a request asks the stores to count: its buckets (none for
+// WORK_BUCKET_NONE), the whole range and, with previous, the span before it
+// as of now.
+func workAsk(req *localv1.QueryWorkRequest, now time.Time) (workstats.Ask, error) {
+	bad := func(err error) (workstats.Ask, error) {
+		return workstats.Ask{}, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	switch req.Bucket {
+	case localv1.WorkBucket_WORK_BUCKET_HOUR, localv1.WorkBucket_WORK_BUCKET_DAY, localv1.WorkBucket_WORK_BUCKET_NONE:
+	default:
+		return bad(errors.New("bucket must be HOUR, DAY or NONE"))
+	}
+	if req.Filter.GetProjectId() != "" && req.Filter.GetMachineId() == "" {
+		return bad(errors.New("filter: project_id needs machine_id"))
 	}
 	buckets, whole, err := workstats.Buckets(req.TimeZone, req.FirstDay, int(req.Days), req.Bucket == localv1.WorkBucket_WORK_BUCKET_HOUR)
 	if err != nil {
-		return nil, workstats.Bound{}, connect.NewError(connect.CodeInvalidArgument, err)
+		return bad(err)
 	}
-	return buckets, whole, nil
+	a := workstats.Ask{Buckets: buckets, Whole: whole, TurnsOnly: req.TurnsOnly}
+	if req.Bucket == localv1.WorkBucket_WORK_BUCKET_NONE {
+		a.Buckets = nil
+	}
+	if req.Previous {
+		if a.Previous, err = workstats.Earlier(req.TimeZone, req.FirstDay, int(req.Days), now); err != nil {
+			return bad(err)
+		}
+	}
+	return a, nil
 }
 
 // workPart is counted rows from one store, and what each names: its key,
@@ -460,9 +480,15 @@ type workPart struct {
 	name            func(workstats.Row) (machine.WorkKey, string, bool)
 }
 
-// groupWork adds rows up by the dimensions asked (exact: a session has one
-// client, agent, machine and project).
-func groupWork(dims []localv1.WorkDimension, parts []workPart) *localv1.QueryWorkResponse {
+// groupWork adds the rows that match the filter (nil: all) up by the
+// dimensions asked (exact: a session has one client, agent, machine and
+// project). A project matches only on the filter's machine: its id is that
+// machine's own.
+func groupWork(dims []localv1.WorkDimension, f *localv1.WorkGroup, parts []workPart) *localv1.QueryWorkResponse {
+	match := func(w machine.WorkKey, machineID string) bool {
+		return (f.GetClient() == "" || f.GetClient() == w.Client) && (f.GetAgent() == "" || f.GetAgent() == w.Agent) &&
+			(f.GetMachineId() == "" || f.GetMachineId() == machineID) && (f.GetProjectId() == "" || f.GetProjectId() == w.Project)
+	}
 	type sk struct {
 		bucket                          int
 		client, agent, machine, project string
@@ -490,7 +516,7 @@ func groupWork(dims []localv1.WorkDimension, parts []workPart) *localv1.QueryWor
 	for _, p := range parts {
 		for _, r := range p.sessions {
 			w, id, ok := p.name(r)
-			if !ok {
+			if !ok || !match(w, id) {
 				continue
 			}
 			k := keyOf(r.Bucket, w, id)
@@ -504,7 +530,7 @@ func groupWork(dims []localv1.WorkDimension, parts []workPart) *localv1.QueryWor
 		}
 		for _, r := range p.turns {
 			w, id, ok := p.name(r)
-			if !ok {
+			if !ok || !match(w, id) {
 				continue
 			}
 			k := keyOf(r.Bucket, w, id)
@@ -522,26 +548,32 @@ func groupWork(dims []localv1.WorkDimension, parts []workPart) *localv1.QueryWor
 	}
 	out := &localv1.QueryWorkResponse{}
 	for k, x := range sessions {
-		if k.bucket < 0 {
+		switch k.bucket {
+		case workstats.Whole:
 			out.RangeSessions = append(out.RangeSessions, x)
-		} else {
+		case workstats.Previous:
+			out.PreviousSessions = append(out.PreviousSessions, x)
+		default:
 			out.Sessions = append(out.Sessions, x)
 		}
 	}
 	for k, x := range turns {
-		if k.bucket < 0 {
+		switch k.bucket {
+		case workstats.Whole:
 			out.RangeTurns = append(out.RangeTurns, x)
-		} else {
+		case workstats.Previous:
+			out.PreviousTurns = append(out.PreviousTurns, x)
+		default:
 			out.Turns = append(out.Turns, x)
 		}
 	}
 	order := func(ab, bb uint32, a, b *localv1.WorkGroup) int {
 		return cmp.Or(cmp.Compare(ab, bb), cmp.Compare(a.Client, b.Client), cmp.Compare(a.Agent, b.Agent), cmp.Compare(a.MachineId, b.MachineId), cmp.Compare(a.ProjectId, b.ProjectId))
 	}
-	for _, l := range [][]*localv1.SessionCount{out.Sessions, out.RangeSessions} {
+	for _, l := range [][]*localv1.SessionCount{out.Sessions, out.RangeSessions, out.PreviousSessions} {
 		slices.SortFunc(l, func(a, b *localv1.SessionCount) int { return order(a.Bucket, b.Bucket, a.Group, b.Group) })
 	}
-	for _, l := range [][]*localv1.TurnCount{out.Turns, out.RangeTurns} {
+	for _, l := range [][]*localv1.TurnCount{out.Turns, out.RangeTurns, out.PreviousTurns} {
 		slices.SortFunc(l, func(a, b *localv1.TurnCount) int { return order(a.Bucket, b.Bucket, a.Group, b.Group) })
 	}
 	return out

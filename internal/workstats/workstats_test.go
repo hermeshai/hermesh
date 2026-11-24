@@ -65,3 +65,38 @@ func TestSpread(t *testing.T) {
 		t.Fatalf("start after end (a clock that went back): %v", got)
 	}
 }
+
+// The span before a range: as many days just before it; when the range
+// holds now, cut as long before now as the range is by the clock, the
+// quarter in progress included, also across a change of clocks.
+func TestEarlier(t *testing.T) {
+	sh, _ := time.LoadLocation("Asia/Shanghai")
+	q := func(loc *time.Location, month time.Month, day, hour, min int) int64 {
+		return Quarter(time.Date(2026, month, day, hour, min, 0, 0, loc))
+	}
+	// Seven days long past: the seven before them, whole.
+	got, err := Earlier("Asia/Shanghai", "2026-03-08", 7, time.Date(2026, 4, 1, 9, 0, 0, 0, sh))
+	if want := (Bound{q(sh, 3, 1, 0, 0), q(sh, 3, 8, 0, 0)}); err != nil || got != want {
+		t.Fatalf("a range that is over: %+v, %v; want %+v", got, err, want)
+	}
+	// Today at 14:20: yesterday up to the quarter 14:20 is in.
+	got, _ = Earlier("Asia/Shanghai", "2026-03-08", 1, time.Date(2026, 3, 8, 14, 20, 0, 0, sh))
+	if want := (Bound{q(sh, 3, 7, 0, 0), q(sh, 3, 7, 14, 30)}); got != want {
+		t.Fatalf("today in progress: %+v, want %+v", got, want)
+	}
+	// Seven days ending today: the cut is seven days back, at this time.
+	got, _ = Earlier("Asia/Shanghai", "2026-03-02", 7, time.Date(2026, 3, 8, 14, 20, 0, 0, sh))
+	if want := (Bound{q(sh, 2, 23, 0, 0), q(sh, 3, 1, 14, 30)}); got != want {
+		t.Fatalf("a week in progress: %+v, want %+v", got, want)
+	}
+	// New York put its clocks forward on 8 March 2026: at 15:00 that day 14
+	// hours have passed, and the day before is counted to its own 15:00.
+	ny, _ := time.LoadLocation("America/New_York")
+	got, _ = Earlier("America/New_York", "2026-03-08", 1, time.Date(2026, 3, 8, 15, 0, 0, 0, ny))
+	if want := (Bound{q(ny, 3, 7, 0, 0), q(ny, 3, 7, 15, 15)}); got != want || got.To-got.From != 61 {
+		t.Fatalf("across a change of clocks: %+v (%d quarters), want %+v", got, got.To-got.From, want)
+	}
+	if _, err := Earlier("Nowhere/Land", "2026-03-08", 1, time.Now()); err == nil {
+		t.Fatal("an unknown time zone was taken")
+	}
+}

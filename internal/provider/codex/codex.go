@@ -5,13 +5,16 @@ package codex
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -234,7 +237,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	if err != nil {
 		return nil, err
 	}
-	s := &session{proc: proc, events: make(chan provider.Event, 256), pending: map[int64]chan rpcResult{}, gate: spec.Gate, ctx: ctx, workDir: spec.WorkDir}
+	s := &session{proc: proc, events: make(chan provider.Event, 256), pending: map[int64]chan rpcResult{}, gate: spec.Gate, ctx: ctx, workDir: spec.WorkDir, limits: spec.Limits}
 	go s.read()
 	fail := func(err error) (provider.Session, error) {
 		proc.Stop(time.Second)
@@ -371,6 +374,8 @@ type session struct {
 	// status notifications do not count, nor do the retries it keeps
 	// sending while it waits for the network (Codex 0.162 retries forever).
 	progress atomic.Int64
+	// limits is told the account's rate limits (StartSpec.Limits).
+	limits func(provider.Limits)
 }
 
 // notProgress are notifications Codex sends without doing any work.
@@ -717,6 +722,15 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 			return
 		}
 		s.handleItem(method == "item/completed", p.Item)
+	case "account/rateLimits/updated":
+		var p struct {
+			RateLimits rateLimits `json:"rateLimits"`
+		}
+		if s.limits != nil && json.Unmarshal(params, &p) == nil {
+			if lim, ok := p.RateLimits.limits(); ok {
+				s.limits(lim)
+			}
+		}
 	case "thread/tokenUsage/updated":
 		var p struct {
 			TokenUsage struct {
@@ -936,9 +950,34 @@ func (s *session) toolCall(id string, kind provider.ToolKind, name, summary stri
 	s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: kind, ToolName: name, Summary: sum, Decision: &d})
 }
 
+// rateLimits is account/rateLimits/updated's (Codex 0.171,
+// testdata/codex-0.171-rate-limits-updated.json): a primary and a secondary
+// window, either of them null, each how much is used (whole percent), how
+// long (minutes) and when it starts again (Unix seconds); and the plan.
+type rateLimits struct {
+	Primary, Secondary *rateWindow
+	PlanType           string `json:"planType"`
+}
+
+type rateWindow struct {
+	UsedPercent        float64 `json:"usedPercent"`
+	WindowDurationMins uint32  `json:"windowDurationMins"`
+	ResetsAt           int64   `json:"resetsAt"`
+}
+
+func (r rateLimits) limits() (provider.Limits, bool) {
+	out := provider.Limits{Plan: r.PlanType}
+	for _, w := range []*rateWindow{r.Primary, r.Secondary} {
+		if w != nil && w.WindowDurationMins > 0 && w.ResetsAt > 0 {
+			out.Windows = append(out.Windows, provider.LimitWindow{Minutes: w.WindowDurationMins, UsedPercent: uint32(min(100, max(0, math.Round(w.UsedPercent)))), ResetsAt: time.Unix(w.ResetsAt, 0)})
+		}
+	}
+	slices.SortFunc(out.Windows, func(a, b provider.LimitWindow) int { return cmp.Compare(a.Minutes, b.Minutes) })
+	return out, len(out.Windows) > 0
+}
+
 var skipNotifications = [][]byte{
 	[]byte(`"method":"item/commandExecution/outputDelta"`),
 	[]byte(`"method":"item/reasoning/`),
-	[]byte(`"method":"account/rateLimits/updated"`),
 	[]byte(`"method":"mcpServer/startupStatus/updated"`),
 }

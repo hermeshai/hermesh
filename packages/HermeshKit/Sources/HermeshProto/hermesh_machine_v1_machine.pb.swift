@@ -941,11 +941,76 @@ public nonisolated struct Hermesh_Machine_V1_AgentStatus: @unchecked Sendable {
     set {_uniqueStorage()._modelsObservedAtUnixMs = newValue}
   }
 
+  /// What it last said of its account's limits, from a session here
+  /// (docs/overview-usage.md §7); unset: it never said. The owner's only.
+  public var limits: Hermesh_Machine_V1_AgentLimits {
+    get {_storage._limits ?? Hermesh_Machine_V1_AgentLimits()}
+    set {_uniqueStorage()._limits = newValue}
+  }
+  /// Returns true if `limits` has been explicitly set.
+  public var hasLimits: Bool {_storage._limits != nil}
+  /// Clears the value of `limits`. Subsequent reads from it will return its default value.
+  public mutating func clearLimits() {_uniqueStorage()._limits = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// An agent's rate limits as it said them.
+public nonisolated struct Hermesh_Machine_V1_AgentLimits: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// The shortest first.
+  public var windows: [Hermesh_Machine_V1_LimitWindow] = []
+
+  /// Its plan, when it says (Codex: "pro").
+  public var plan: String = String()
+
+  public var observedAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_observedAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_observedAt = newValue}
+  }
+  /// Returns true if `observedAt` has been explicitly set.
+  public var hasObservedAt: Bool {self._observedAt != nil}
+  /// Clears the value of `observedAt`. Subsequent reads from it will return its default value.
+  public mutating func clearObservedAt() {self._observedAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _observedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+}
+
+public nonisolated struct Hermesh_Machine_V1_LimitWindow: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var minutes: UInt32 = 0
+
+  /// 0 to 100.
+  public var usedPercent: UInt32 = 0
+
+  public var resetsAt: SwiftProtobuf.Google_Protobuf_Timestamp {
+    get {_resetsAt ?? SwiftProtobuf.Google_Protobuf_Timestamp()}
+    set {_resetsAt = newValue}
+  }
+  /// Returns true if `resetsAt` has been explicitly set.
+  public var hasResetsAt: Bool {self._resetsAt != nil}
+  /// Clears the value of `resetsAt`. Subsequent reads from it will return its default value.
+  public mutating func clearResetsAt() {self._resetsAt = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _resetsAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
 }
 
 /// AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).
@@ -2540,7 +2605,7 @@ nonisolated extension Hermesh_Machine_V1_MachineProblem: SwiftProtobuf.Message, 
 
 nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".AgentStatus"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{3}model_catalogs\0\u{3}models_state\0\u{3}models_observed_at_unix_ms\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}name\0\u{1}available\0\u{1}version\0\u{3}logged_in\0\u{2}\u{2}detail\0\u{1}checking\0\u{1}models\0\u{1}defaults\0\u{1}own\0\u{1}problem\0\u{1}binary\0\u{3}model_catalogs\0\u{3}models_state\0\u{3}models_observed_at_unix_ms\0\u{1}limits\0\u{b}sandbox_available\0\u{c}\u{5}\u{1}")
 
   fileprivate class _StorageClass {
     var _name: String = String()
@@ -2557,6 +2622,7 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
     var _modelCatalogs: [Hermesh_Machine_V1_AgentModelCatalog] = []
     var _modelsState: String = String()
     var _modelsObservedAtUnixMs: Int64 = 0
+    var _limits: Hermesh_Machine_V1_AgentLimits? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -2581,6 +2647,7 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       _modelCatalogs = source._modelCatalogs
       _modelsState = source._modelsState
       _modelsObservedAtUnixMs = source._modelsObservedAtUnixMs
+      _limits = source._limits
     }
   }
 
@@ -2613,6 +2680,7 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         case 13: try { try decoder.decodeRepeatedMessageField(value: &_storage._modelCatalogs) }()
         case 14: try { try decoder.decodeSingularStringField(value: &_storage._modelsState) }()
         case 15: try { try decoder.decodeSingularInt64Field(value: &_storage._modelsObservedAtUnixMs) }()
+        case 16: try { try decoder.decodeSingularMessageField(value: &_storage._limits) }()
         default: break
         }
       }
@@ -2667,6 +2735,9 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
       if _storage._modelsObservedAtUnixMs != 0 {
         try visitor.visitSingularInt64Field(value: _storage._modelsObservedAtUnixMs, fieldNumber: 15)
       }
+      try { if let v = _storage._limits {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 16)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2690,10 +2761,99 @@ nonisolated extension Hermesh_Machine_V1_AgentStatus: SwiftProtobuf.Message, Swi
         if _storage._modelCatalogs != rhs_storage._modelCatalogs {return false}
         if _storage._modelsState != rhs_storage._modelsState {return false}
         if _storage._modelsObservedAtUnixMs != rhs_storage._modelsObservedAtUnixMs {return false}
+        if _storage._limits != rhs_storage._limits {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_AgentLimits: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".AgentLimits"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}windows\0\u{1}plan\0\u{3}observed_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeRepeatedMessageField(value: &self.windows) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.plan) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._observedAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.windows.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.windows, fieldNumber: 1)
+    }
+    if !self.plan.isEmpty {
+      try visitor.visitSingularStringField(value: self.plan, fieldNumber: 2)
+    }
+    try { if let v = self._observedAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_AgentLimits, rhs: Hermesh_Machine_V1_AgentLimits) -> Bool {
+    if lhs.windows != rhs.windows {return false}
+    if lhs.plan != rhs.plan {return false}
+    if lhs._observedAt != rhs._observedAt {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Machine_V1_LimitWindow: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".LimitWindow"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}minutes\0\u{3}used_percent\0\u{3}resets_at\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularUInt32Field(value: &self.minutes) }()
+      case 2: try { try decoder.decodeSingularUInt32Field(value: &self.usedPercent) }()
+      case 3: try { try decoder.decodeSingularMessageField(value: &self._resetsAt) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.minutes != 0 {
+      try visitor.visitSingularUInt32Field(value: self.minutes, fieldNumber: 1)
+    }
+    if self.usedPercent != 0 {
+      try visitor.visitSingularUInt32Field(value: self.usedPercent, fieldNumber: 2)
+    }
+    try { if let v = self._resetsAt {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 3)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Machine_V1_LimitWindow, rhs: Hermesh_Machine_V1_LimitWindow) -> Bool {
+    if lhs.minutes != rhs.minutes {return false}
+    if lhs.usedPercent != rhs.usedPercent {return false}
+    if lhs._resetsAt != rhs._resetsAt {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

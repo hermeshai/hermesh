@@ -4,103 +4,97 @@ import HermeshSessions
 import SwiftUI
 import UserNotifications
 
-/// What a pairing request is, in a line.
-enum PairingText {
-    static func title(_ p: PairingDetails) -> String {
-        switch p.kind {
-        case .device: String(localized: "“\(p.label)” wants to become your trusted device")
-        case .machine: String(localized: "A machine calling itself “\(p.label)” wants to join")
-        default: String(localized: "“\(p.label)” wants to connect to your computer")
-        }
-    }
-}
-
-/// The overview (docs/her-team.md §4.6): what waits for the owner beyond the
-/// sessions (requests to connect, grants that end); then the work: today's
-/// sessions hour by hour, who sent work to which coding agent, the sessions
-/// that need the owner, run and ended last, and each coding agent's day.
+/// The overview (docs/overview-usage.md §4): only now. What needs the owner,
+/// as a deck with the most pressing in front; the link map of who may use
+/// which environment, with a line for each session that has not finished;
+/// then what runs, as live tiles, and the sessions that ended last. A node
+/// of the map picked shows the sessions through it instead. All of it is
+/// what the device already holds: the page asks for no counts (those are on
+/// Statistics, the menu's next place: the bar has room for one button beside
+/// the line that says how the connection stands).
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
-    @State private var picked: FlowPick?
-    @State private var notificationsOff = false
     @AppStorage("hideSecondDevice") private var hideSecondDevice = false
+    @AppStorage(Guide.key) private var guide = ""
+    @State private var notificationsOff = false
+    /// The node of the map picked.
+    @State private var picked: String?
+    /// The card in front of the deck, and where it was among the others.
+    @State private var front: String?
+    @State private var frontIndex = 0
+    /// Moves when the card in front changes: the map shows where it is.
+    @State private var spot = 0
 
     var body: some View {
-        ScrollViewReader { scroll in
+        let team = teamState(model.sessions, requests: 0)
+        let step = guide == Guide.later ? GuideStep.next(model) : nil
+        let low = lowLimits(agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now))
+        let list = needs(team: team, pairings: model.pairings.map(\.code), limits: low.map(\.agent), expiring: model.expiringClients.map(\.grantID), guide: step != nil,
+                         herOff: herEnvironments(model.machines).isEmpty, notificationsOff: notificationsOff, secondDevice: onlyDevice)
+        let map = linkMap(senders: model.clients.filter { !$0.revoked }.map { MapSender(clientID: $0.clientID, title: model.senderName($0.clientID)) },
+                          environments: model.machines.map { m in
+                              MapEnvironment(machineID: m.machineID, title: m.machineName, local: m.local, online: m.online || m.local,
+                                             agents: m.status.agents.filter(\.available).map(\.name))
+                          },
+                          team: team, owner: String(localized: "You"))
+        let about = about(list.first { $0.id == front } ?? list.first, team: team, step: step)
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 22) {
                 UnreachableNotice()
                 if model.hasWorld {
-                    if model.isDemo {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Explore Hermesh").font(.title2.bold())
-                            Text("Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated.").foregroundStyle(.secondary)
-                            Button("Run Demo Task", systemImage: "play.fill") { model.runDemoTask() }
-                                .buttonStyle(.borderedProminent).accessibilityIdentifier("run-demo-task")
-                        }.padding(.horizontal, 20)
-                    } else { GetStarted() }
-                    if herEnvironments(model.machines).isEmpty { herOff }
-                    todo
-                    working { withAnimation { scroll.scrollTo(TeamLists.inProgress, anchor: .top) } }
+                    if model.isDemo { demo }
+                    if !list.isEmpty { NeedsDeck(needs: list, team: team, step: step, front: $front) }
+                    LinkMapView(map: map, lit: picked.map { map.touched(by: $0, sessions: team.waiting + team.failed + team.running + team.finished) },
+                                mine: about.nodes, mineLine: about.line, spot: spot, awake: phase == .active, picked: $picked)
+                        .padding(.horizontal, 20)
+                    if let picked, let node = (map.senders + map.environments).first(where: { $0.id == picked }) {
+                        through(node, team: team)
+                    } else {
+                        RunningTiles(sessions: team.running)
+                        finished(team)
+                        if team.running.isEmpty && team.finished.isEmpty && team.waiting.isEmpty && team.failed.isEmpty && !model.machines.isEmpty { first }
+                    }
                 } else { // nothing kept yet: the first launch, or after joining
                     PageLoader(text: "Reading your machines…")
                 }
             }
-            .padding(.bottom, 40)
-        }
+            .padding(.top, 8).padding(.bottom, 40)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Overview")
-        .navigationBarTitleDisplayMode(.inline) // in the bar: the range picker is the page's top
+        .navigationBarTitleDisplayMode(.inline)
         .rootToolbar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
-        .task(id: "\(dayKey(model.now)) \(model.workPeriod)") { await model.loadWork() }
-        .onAppear { model.overviewShown = true }
-        .onDisappear { model.overviewShown = false }
-        .refreshable { await model.loadWork() }
         .task(id: phase) {
             guard phase == .active, !model.isDemo else { return }
             notificationsOff = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
         }
-    }
-
-    /// Her runs nowhere: the way to her first run.
-    private var herOff: some View {
-        Button { model.open(.her) } label: {
-            HStack(spacing: 12) {
-                HerAvatar(size: 40, asleep: true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Her isn’t on").font(.callout.weight(.semibold))
-                    Text("She runs on a computer of yours and leads these agents for you").font(.footnote).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+        // The deck keeps its place as what needs the owner comes and goes.
+        // What just came to wait on the owner goes in front.
+        .onChange(of: list.map(\.id), initial: true) { old, ids in
+            if old != ids, let new = arrived(list, before: old) {
+                front = new.id
+                return
             }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-            .contentShape(.rect)
+            let at = deckFront(list, was: front, at: frontIndex)
+            frontIndex = at
+            let now = ids.indices.contains(at) ? ids[at] : nil
+            if now != front { front = now }
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .accessibilityIdentifier("her-off")
-    }
-
-    private enum Todo: Identifiable {
-        case pairing(PairingDetails)
-        case expiring(Client)
-        case notificationsOff
-        case secondDevice
-
-        var id: String {
-            switch self {
-            case .pairing(let p): "p" + p.code
-            case .expiring(let c): "g" + c.grantID
-            case .notificationsOff: "n"
-            case .secondDevice: "d"
-            }
+        .onChange(of: front) { old, new in
+            if let i = list.firstIndex(where: { $0.id == new }) { frontIndex = i }
+            if old != nil, new != nil { spot += 1 }
+        }
+        // A node that is gone is not picked.
+        .onChange(of: (map.senders + map.environments).map(\.id)) { _, ids in
+            if let picked, !ids.contains(picked) { self.picked = nil }
+        }
+        // The guide's steps were done elsewhere (the Mac, the menus): it is gone for good.
+        .onChange(of: guide == Guide.later && step == nil, initial: true) { _, over in
+            if over { guide = Guide.done }
         }
     }
 
@@ -110,998 +104,249 @@ struct OverviewView: View {
         !model.isDemo && !hideSecondDevice && !model.machines.isEmpty && model.devices.count == 1 && model.devices[0].thisDevice
     }
 
-    @ViewBuilder private var todo: some View {
-        let items = model.pairings.map(Todo.pairing) + model.expiringClients.map(Todo.expiring)
-            + (notificationsOff ? [.notificationsOff] : []) + (onlyDevice ? [.secondDevice] : [])
-        if !items.isEmpty {
-            Section {
-                card {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                        if i > 0 { Divider().padding(.leading, 56) }
-                        switch item {
-                        case .pairing(let p): pairingRow(p)
-                        case .expiring(let c): expiringRow(c)
-                        case .notificationsOff: notificationsRow
-                        case .secondDevice: secondDeviceRow
-                        }
+    /// The nodes of the map a need is about, and its session's line.
+    private func about(_ need: Need?, team: TeamState, step: GuideStep?) -> (nodes: Set<String>, line: String?) {
+        switch need {
+        case .question(let id), .failed(let id):
+            guard let s = (team.waiting + team.failed).first(where: { $0.sessionID == id }) else { return ([], nil) }
+            return ([LinkMap.sender(s.createdBy), LinkMap.environment(s.machineID)], id)
+        case .expiring(let id):
+            return (Set(model.clients.filter { $0.grantID == id }.map { LinkMap.sender($0.clientID) }), nil)
+        case .limit(let agent):
+            let card = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now).first { $0.agent == agent }
+            return (card.map { [LinkMap.environment($0.machineID)] } ?? [], nil)
+        case .guide:
+            return step == .connect ? ([LinkMap.addSender], nil) : step == .computer ? ([LinkMap.addEnvironment], nil) : ([], nil)
+        default:
+            return ([], nil)
+        }
+    }
+
+    private var demo: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Explore Hermesh").font(.title2.bold())
+            Text("Try a task, answer the agent’s question, then inspect its changes. Machines, approvals and results here are simulated.").foregroundStyle(.secondary)
+            Button("Run Demo Task", systemImage: "play.fill") { model.runDemoTask() }
+                .buttonStyle(.borderedProminent).accessibilityIdentifier("run-demo-task")
+        }
+        .padding(.horizontal, 20)
+    }
+
+    /// The sessions that ended last, and the way to all of them.
+    @ViewBuilder private func finished(_ team: TeamState) -> some View {
+        if !team.finished.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                OverviewHeading(title: Text("Recently Finished"))
+                OverviewCard {
+                    ForEach(Array(team.finished.prefix(3).enumerated()), id: \.element.sessionID) { i, s in
+                        if i > 0 { Divider().padding(.leading, 16) }
+                        Button { model.openSession(s.sessionID) } label: { SessionRow(session: s) }.buttonStyle(.plain)
                     }
-                }
-                .padding(.horizontal, 16)
-            } header: {
-                SectionTitle(title: "To Do")
-            }
-        }
-    }
-
-    private func pairingRow(_ p: PairingDetails) -> some View {
-        HStack(spacing: 12) {
-            AgentLogo(id: p.label, size: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(PairingText.title(p))
-                Text("Verification code \(Text(p.verificationCode).monospaced())").font(.footnote).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Verify") { model.sheet = .pairing(p.code) }
-                .buttonStyle(.glassProminent)
-                .accessibilityIdentifier("verify-pairing")
-        }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-    }
-
-    private var notificationsRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "bell.slash").foregroundStyle(.orange).frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Notifications are off")
-                Text("You’ll see requests and questions only while Hermesh is open.").font(.footnote).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Turn On…") {
-                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
-            }
-            .buttonStyle(.glass)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("notifications-off")
-    }
-
-    private var secondDeviceRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "iphone.gen3").foregroundStyle(.secondary).frame(width: 28)
-            Text("Only this iPhone can approve. If you lose it, you’ll set up again and pair your machines and agents again.")
-                .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
-            VStack(spacing: 6) {
-                Button("Add Another…") { model.sheet = .addDevice }.buttonStyle(.glass)
-                Button("Hide") { hideSecondDevice = true }.font(.footnote)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("second-device")
-    }
-
-    private func expiringRow(_ c: Client) -> some View {
-        let days = c.daysLeft(now: model.now)
-        return HStack(spacing: 12) {
-            GrantAvatar(client: c)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(days == 0 ? String(localized: "“\(c.label)”’s grant ends today") : String(localized: "“\(c.label)”’s grant ends in \(days) days"))
-                Text("Then it can no longer use your machines").font(.footnote).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Renew…") { model.sheet = .renew(c.grantID) }.buttonStyle(.glass)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 11)
-    }
-
-    /// The work over the range picked (today, or the last 7 or 30 days): the
-    /// sessions at work, hour by hour or day by day, and what runs now; then
-    /// who asked which coding agent for the work, the sessions as lists and
-    /// the way to all of them, and each coding agent's range (those that
-    /// worked first, then the others). toRunning: shows what runs.
-    private func working(toRunning: @escaping () -> Void) -> some View {
-        let running = model.sessions.filter(\.isActive)
-        let period = model.workPeriod
-        let work = model.work[period]
-        let flow = WorkFlow(work?.pairs ?? [])
-        let agents = codingAgents(running: running, work: work)
-        // None known yet: nothing watched since the app came to the front, or a machine never read before is being read.
-        let reading = agents.isEmpty && (!model.watched || model.machines.contains { $0.syncing && !$0.hasStatus })
-        let runs = { (a: String) in running.filter { $0.agent == a }.count }
-        let turns = { (a: String) in work?.turns(agent: a) ?? 0 }
-        let worked = { (a: String) in work?.sessions(agent: a) ?? 0 }
-        let busy = agents.filter { runs($0) > 0 || worked($0) > 0 }.sorted { (runs($0), turns($0), worked($0)) > (runs($1), turns($1), worked($1)) }
-        let rest = agents.filter { runs($0) == 0 && worked($0) == 0 }
-        let shown = busy + rest
-        let idleClients = model.clients.filter { c in
-            !c.revoked && !(work?.pairs.contains { $0.client == c.clientID } ?? false) && !running.contains { $0.createdBy == c.clientID }
-        }
-        let now = Bucket.now(period, model.now)
-        return VStack(alignment: .leading, spacing: 10) {
-            // The range, as the Health app's: a segmented control the width of the cards, right above them.
-            Picker("Range", selection: Binding(get: { model.workPeriod }, set: { p in withAnimation(.smooth) { model.workPeriod = p } })) {
-                Text("Today").tag(WorkPeriod.today)
-                Text("7 Days").tag(WorkPeriod.week)
-                Text("30 Days").tag(WorkPeriod.month)
-            }
-            .pickerStyle(.segmented)
-            .padding(.bottom, 4)
-            .accessibilityIdentifier("work-period")
-            WorkCard(running: running.count, work: work, period: period, now: now, showRunning: toRunning)
-            if let work, !flow.bands.isEmpty {
-                caption(flowTitle(period), detail: "\(work.turns) turns · \(tokensText(work.tokens)) tokens")
-                FlowCard(flow: flow, picked: $picked, clientName: { model.clientLabel($0) }, idle: idleClients.map { AgentLogo.name($0.label) }, period: period)
-            }
-            TeamLists(team: teamState(model.sessions, requests: 0))
-            if !agents.isEmpty || reading {
-                HStack {
-                    Text("Agents")
-                    Spacer()
-                    HeatLegend()
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                .padding(.horizontal, 4).padding(.top, 8)
-                if reading {
-                    agentsSkeleton
-                } else {
-                    card {
-                        ForEach(Array(shown.enumerated()), id: \.element) { i, a in
-                            if i > 0 { Divider().padding(.leading, 50) }
-                            agentRow(a, running: runs(a), turns: turns(a), flow: flow, work: work, cells: work?.byAgent[a], now: now, period: period)
+                    Divider()
+                    Button { model.path.append(.tasks) } label: {
+                        HStack {
+                            Text("See All").foregroundStyle(.tint)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                         }
-                        HeatAxis(period: period, now: now, date: model.now)
-                            .padding(.leading, 50).padding(.trailing, 14).padding(.bottom, 12)
+                        .padding(.horizontal, 16).frame(minHeight: 44).contentShape(.rect)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("see-all")
                 }
             }
-            if let note = sourcesNote(work) {
-                Text(note).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
-                    .accessibilityIdentifier("work-sources")
+            .padding(.horizontal, 16)
+        }
+    }
+
+    /// Every session through the node picked, in place of what runs and what finished.
+    private func through(_ node: LinkMap.Node, team: TeamState) -> some View {
+        let list = sessions(through: node.id, team: team)
+        return VStack(alignment: .leading, spacing: 8) {
+            OverviewHeading(title: Text("Sessions through \(node.title)")) {
+                Button("Show All") { withAnimation(.smooth) { picked = nil } }.font(.footnote).accessibilityIdentifier("show-all")
+            }
+            OverviewCard {
+                if list.isEmpty {
+                    Text("No sessions yet").foregroundStyle(.secondary)
+                        .padding(.horizontal, 16).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                ForEach(Array(list.enumerated()), id: \.element.sessionID) { i, s in
+                    if i > 0 { Divider().padding(.leading, 16) }
+                    Button { model.openSession(s.sessionID) } label: { SessionRow(session: s, doing: true) }.buttonStyle(.plain)
+                }
             }
         }
         .padding(.horizontal, 16)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("through")
     }
 
-    private func flowTitle(_ p: WorkPeriod) -> LocalizedStringKey {
-        switch p {
-        case .today: "Where Today’s Work Came From and Went"
-        case .week: "Where the Last 7 Days’ Work Came From and Went"
-        case .month: "Where the Last 30 Days’ Work Came From and Went"
-        }
-    }
-
-    /// Machines whose work is counted only up to their last sync, or not yet
-    /// all: said under the counts.
-    private func sourcesNote(_ work: RangeWork?) -> String? {
-        guard let work else { return nil }
-        let syncing = work.sources.filter(\.syncing).map { model.machineName($0.machineID) }
-        if !syncing.isEmpty { return String(localized: "Syncing \(listText(syncing))’s work…") }
-        let behind = work.sources.filter { !$0.live && $0.hasSyncedAt }
-        guard let oldest = behind.map(\.syncedAt.date).min() else { return nil }
-        return String(localized: "\(listText(behind.map { model.machineName($0.machineID) })) counted up to \(oldest.formatted(date: .abbreviated, time: .shortened))")
-    }
-
-    /// The coding agents ready on any machine, and any that worked in the range or runs now.
-    private func codingAgents(running: [Session], work: RangeWork?) -> [String] {
-        var ids = Set(model.machines.flatMap { $0.status.agents.filter(\.available).map(\.name) })
-        ids.formUnion(running.map(\.agent))
-        ids.formUnion(work?.pairs.map(\.agent) ?? [])
-        ids.remove("")
-        return ids.sorted()
-    }
-
-    /// A coding agent's day: what it runs, on how many machines, its turns
-    /// (or, with a client picked in the flow, the turns that client sent
-    /// it), and its sessions hour by hour.
-    private func agentRow(_ a: String, running: Int, turns: Int, flow: WorkFlow, work: RangeWork?, cells: [Int]?, now: Int, period: WorkPeriod) -> some View {
-        let machines = model.machines.filter { $0.status.agents.contains { $0.name == a && $0.available } }.count
-        var detail = machines > 0 ? (turns > 0 ? String(localized: "\(machines) machines · \(turns) turns") : String(localized: "\(machines) machines"))
-            : (turns > 0 ? String(localized: "\(turns) turns") : "")
-        var dim = false
-        switch picked {
-        case .client(let c):
-            let shown = Set(flow.clients.map(\.id))
-            let sent = work?.pairs.filter { $0.agent == a && (c.isEmpty ? !shown.contains($0.client) : $0.client == c) }
-            let n = sent?.reduce(0) { $0 + $1.turns } ?? 0
-            let name = c.isEmpty ? String(localized: "The others") : AgentLogo.name(model.clientLabel(c))
-            detail = String(localized: "\(name) sent \(n) turns")
-            dim = sent?.isEmpty ?? true
-        case .agent(let x):
-            dim = x.isEmpty ? flow.agents.contains { $0.id == a } : x != a
-        case nil:
-            break
-        }
-        return HStack(alignment: .top, spacing: 10) {
-            AgentLogo(id: a, size: 26).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(agentTitle(a)).font(.callout.weight(.medium)).lineLimit(1)
-                    Spacer()
-                    Text(running > 0 ? String(localized: "\(running) running") : String(localized: "Idle"))
-                        .font(.footnote).foregroundStyle(running > 0 ? .primary : .secondary).monospacedDigit()
-                }
-                if !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
-                }
-                BucketCells(counts: cells ?? Array(repeating: 0, count: period.hourly ? 24 : period.days), now: now, loading: work == nil,
-                            title: agentTitle(a), when: { bucketText($0, period: period) })
-                    .padding(.top, 6)
+    /// No session yet, from anyone: the way to start one, where the first tile will be.
+    private var first: some View {
+        Button { model.open(.newThread("", "")) } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("New Session", systemImage: "plus").font(.callout.weight(.semibold)).foregroundStyle(.tint)
+                Text("Sessions from Her, a connected agent or you all show here.").font(.footnote).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
             }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay { RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color(.tertiaryLabel), style: StrokeStyle(lineWidth: 1, dash: [4, 4])) }
+            .contentShape(.rect)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .opacity(dim ? 0.35 : 1)
-        .animation(.smooth, value: picked)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("coding-agent-\(a)")
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16)
+        .accessibilityIdentifier("first-session")
     }
+}
 
-    /// A bucket of the range, as its heat cell's popover says it: its hour
-    /// today, its day over 7 or 30.
-    private func bucketText(_ i: Int, period: WorkPeriod) -> String {
-        let calendar = Calendar.current
-        if period.hourly {
-            let start = calendar.date(byAdding: .hour, value: i, to: calendar.startOfDay(for: model.now)) ?? model.now
-            let end = calendar.date(byAdding: .hour, value: 1, to: start) ?? start
-            return "\(start.formatted(date: .omitted, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened))"
-        }
-        let first = period.firstDay(model.now, calendar: calendar)
-        let day = calendar.date(byAdding: .day, value: i, to: first) ?? first
-        return "\(day.formatted(.dateTime.weekday(.abbreviated))) \(day.formatted(.dateTime.month(.defaultDigits).day()))"
-    }
+/// A section's name over it, and what stands at its end.
+struct OverviewHeading<Trailing: View>: View {
+    let title: Text
+    @ViewBuilder var trailing: Trailing
 
-    /// Where the coding agents' rows go while none is known yet: their shapes.
-    private var agentsSkeleton: some View {
-        card {
-            VStack(spacing: 0) {
-                ForEach(0 ..< 3, id: \.self) { i in
-                    if i > 0 { Divider().padding(.leading, 50) }
-                    HStack(alignment: .top, spacing: 10) {
-                        Circle().frame(width: 26, height: 26).padding(.top, 1)
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Capsule().frame(width: [96, 72, 84][i], height: 12)
-                                Spacer()
-                                Capsule().frame(width: 36, height: 12)
-                            }
-                            .frame(height: 22)
-                            Capsule().frame(width: 64, height: 10).frame(height: 18)
-                            Capsule().frame(height: 8)
-                        }
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                }
-            }
-            .foregroundStyle(Skeleton.grey)
-            .skeleton()
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Reading your machines…"))
-        .accessibilityIdentifier("agents-loading")
-    }
-
-    private func caption(_ title: LocalizedStringKey, detail: LocalizedStringKey? = nil) -> some View {
+    var body: some View {
         HStack {
-            Text(title)
+            title.fontWeight(.semibold).foregroundStyle(.secondary)
             Spacer()
-            if let detail { Text(detail) }
+            trailing
         }
-        .font(.caption).foregroundStyle(.secondary)
-        .padding(.horizontal, 4).padding(.top, 8)
+        .font(.footnote)
+        .padding(.horizontal, 4)
     }
+}
 
-    private func card(@ViewBuilder _ content: () -> some View) -> some View {
-        VStack(spacing: 0, content: content)
+extension OverviewHeading where Trailing == EmptyView {
+    init(title: Text) {
+        self.init(title: title) { EmptyView() }
+    }
+}
+
+/// The ground of a group of rows.
+struct OverviewCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) { content }
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 }
 
-/// Which hour (today) or day (of the last 7 or 30) is now: the bucket in
-/// the accent; those after it are still to come.
-enum Bucket {
-    static func now(_ period: WorkPeriod, _ now: Date, calendar: Calendar = .current) -> Int {
-        period.hourly ? calendar.component(.hour, from: now) : period.days - 1
-    }
-}
-
-/// The range's work: the sessions that worked in it, with those done now,
-/// their turns and tokens, and a live glass button of what runs now (it
-/// opens the menu, which lists them); then the
-/// sessions at work hour by hour (today) or day by day: past ones in ink
-/// grey, now in the accent, those to come faint.
-struct WorkCard: View {
-    let running: Int
-    let work: RangeWork?
-    let period: WorkPeriod
-    let now: Int
-    let showRunning: () -> Void
+/// What runs, as tiles that show it: the time the turn has taken, counted
+/// by the system, the tool in use, and a bar that moves. One session takes
+/// the row.
+struct RunningTiles: View {
+    @Environment(AppModel.self) private var model
+    let sessions: [Session]
 
     var body: some View {
-        let counts = work?.buckets ?? Array(repeating: 0, count: period.hourly ? 24 : period.days)
-        let top = max(counts.max() ?? 0, 1)
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    if let work {
-                        Text("\(work.sessions)").font(.system(size: 56, weight: .bold)).monospacedDigit()
-                            .contentTransition(.numericText())
-                    } else { // not counted yet: two digits' room, as a skeleton
-                        Text(verbatim: "00").font(.system(size: 56, weight: .bold)).monospacedDigit().hidden()
-                            .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Skeleton.grey).frame(height: 44).skeleton() }
+        if !sessions.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                OverviewHeading(title: Text("In Progress")) { Text(verbatim: "\(sessions.count)").foregroundStyle(.secondary).monospacedDigit() }
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: sessions.count == 1 ? 1 : 2), spacing: 10) {
+                    ForEach(sessions, id: \.sessionID) { s in
+                        Button { model.openSession(s.sessionID) } label: { tile(s, alone: sessions.count == 1) }.buttonStyle(.plain)
                     }
-                    Text("sessions worked").foregroundStyle(.secondary)
-                }
-                .accessibilityElement(children: .combine)
-                Spacer()
-                // What runs now, whatever the range.
-                Button(action: showRunning) {
-                    HStack(spacing: 6) {
-                        Circle().fill(running > 0 ? Color.green : Color.secondary.opacity(0.5)).frame(width: 7, height: 7)
-                        Text("\(running) running").font(.footnote).monospacedDigit()
-                    }
-                    .padding(.horizontal, 10).frame(height: 28)
-                    .contentShape(.capsule)
-                }
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .accessibilityIdentifier("running-now")
-            }
-            if let work {
-                Text("Done \(Text("\(work.done)").bold().foregroundStyle(.primary)) · \(work.turns) turns · \(tokensText(work.tokens)) tokens")
-                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-            } else {
-                Capsule().fill(Skeleton.grey).frame(width: 190, height: 10).skeleton().frame(height: 18)
-            }
-            HStack(alignment: .bottom, spacing: period == .month ? 2 : period == .week ? 8 : 3) {
-                ForEach(counts.indices, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: period == .week ? 5 : 3, style: .continuous)
-                        .fill(work == nil ? AnyShapeStyle(Skeleton.grey) : i > now ? AnyShapeStyle(.quaternary) : i == now ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Color.primary.opacity(0.32)))
-                        .frame(height: i > now ? 3 : max(3, CGFloat(counts[i]) / CGFloat(top) * 56))
                 }
             }
-            .skeleton(work == nil)
-            .frame(height: 56, alignment: .bottom)
-            .accessibilityHidden(true)
-            if period.hourly {
-                HourAxis(hour: now)
-            } else {
-                DayAxis(period: period)
-            }
+            .padding(.horizontal, 16)
+            .id(TeamLists.inProgress)
         }
-        .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .animation(.smooth, value: work)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("working-today")
     }
-}
 
-/// Under the days of a range: its first, its middle and today.
-struct DayAxis: View {
-    let period: WorkPeriod
-    @Environment(\.calendar) private var calendar
-
-    var body: some View {
-        let first = period.firstDay(Date(), calendar: calendar)
-        let mid = calendar.date(byAdding: .day, value: period.days / 2, to: first) ?? first
-        HStack {
-            Text(first.formatted(.dateTime.month(.abbreviated).day()))
-            Spacer()
-            Text(mid.formatted(.dateTime.month(.abbreviated).day()))
-            Spacer()
-            Text("Today").foregroundStyle(Color.accentColor)
-        }
-        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
-        .frame(height: 12)
-    }
-}
-
-/// What is picked in the flow: a client or a coding agent ("" for the
-/// others together on that side).
-enum FlowPick: Hashable {
-    case client(String)
-    case agent(String)
-}
-
-/// Who sent the day's work to which coding agent: the clients on the left,
-/// the agents on the right, their logos at the bands' ends, each band as
-/// thick as its turns; the turns once, under each agent. Tapping a side
-/// picks it, its bands in the accent and the rest faint; tapping it again
-/// lets go. Tapping a band says, in a popover, who sent how much to whom.
-/// Under it, the clients that sent nothing.
-struct FlowCard: View {
-    let flow: WorkFlow
-    @Binding var picked: FlowPick?
-    let clientName: (String) -> String
-    let idle: [String]
-    let period: WorkPeriod
-    /// The band whose popover shows.
-    @State private var tipped: Int?
-
-    private let rowHeight: CGFloat = 52
-
-    var body: some View {
-        let rows = CGFloat(max(flow.clients.count, flow.agents.count, 1))
-        VStack(alignment: .leading, spacing: 8) {
+    private func tile(_ s: Session, alone: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Sent the work")
+                AgentLogo(id: s.agent, size: 22)
                 Spacer()
-                Text("Did the work")
+                if let start = s.turnStartedDate { Text(start, style: .timer).font(.footnote).foregroundStyle(.secondary).monospacedDigit() }
             }
-            .font(.caption2).foregroundStyle(.secondary)
-            GeometryReader { g in
-                let layout = FlowLayout(flow: flow, width: g.size.width, height: rows * rowHeight)
-                ZStack(alignment: .topLeading) {
-                    Canvas { ctx, _ in
-                        for (i, band) in layout.bands.enumerated() {
-                            var p = Path()
-                            p.move(to: CGPoint(x: layout.left, y: band.from))
-                            p.addCurve(to: CGPoint(x: layout.right, y: band.to),
-                                       control1: CGPoint(x: (layout.left + layout.right) / 2, y: band.from),
-                                       control2: CGPoint(x: (layout.left + layout.right) / 2, y: band.to))
-                            ctx.stroke(p, with: .color(color(i)), lineWidth: band.width)
-                        }
-                    }
-                    // Under the names, so they keep their taps: a tap on a band opens its popover.
-                    Color.clear
-                        .frame(width: g.size.width, height: rows * rowHeight)
-                        .contentShape(.rect)
-                        .onTapGesture(coordinateSpace: .local) { at in
-                            let i = layout.band(at: at)
-                            withAnimation(.smooth) { tipped = i == tipped ? nil : i }
-                        }
-                        .accessibilityElement()
-                        .accessibilityLabel(flow.bands.map { "\(title(client: $0.client)) → \(title(agent: $0.agent)), \(String(localized: "\($0.turns) turns"))" }.joined(separator: "; "))
-                        .accessibilityIdentifier("flow-bands")
-                    if let i = tipped, i < flow.bands.count {
-                        let b = flow.bands[i]
-                        Color.clear.frame(width: 1, height: 1)
-                            .position(layout.middle(of: i))
-                            .popover(isPresented: Binding(get: { tipped == i }, set: { if !$0 { tipped = nil } })) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(verbatim: "\(title(client: b.client)) → \(title(agent: b.agent))").font(.subheadline.weight(.semibold))
-                                    Text("\(b.turns) turns · \(tokensText(b.tokens)) tokens").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .accessibilityElement(children: .combine)
-                                .accessibilityIdentifier("flow-tip")
-                                .presentationCompactAdaptation(.popover)
-                            }
-                            .id(i)
-                    }
-                    ForEach(Array(flow.clients.enumerated()), id: \.element.id) { i, n in
-                        node(n, pick: .client(n.id), name: title(client: n.id), logo: n.id.isEmpty ? nil : clientName(n.id), trailing: true)
-                            .frame(width: layout.nodeWidth, height: 44)
-                            .position(x: layout.nodeWidth / 2, y: layout.clientY[i])
-                    }
-                    ForEach(Array(flow.agents.enumerated()), id: \.element.id) { i, n in
-                        node(n, pick: .agent(n.id), name: title(agent: n.id), logo: n.id.isEmpty ? nil : n.id)
-                            .frame(width: layout.nodeWidth, height: 44)
-                            .position(x: g.size.width - layout.nodeWidth / 2, y: layout.agentY[i])
-                    }
-                }
+            ShimmerText(s.displayTitle, paused: false).font(.subheadline.weight(.semibold)).lineLimit(alone ? 1 : 2)
+                .multilineTextAlignment(.leading).padding(.top, 10)
+            Text(model.senderLine(s)).font(.caption).foregroundStyle(.secondary).lineLimit(1).padding(.top, 3)
+            if !s.progress.currentTool.isEmpty {
+                Text(s.progress.currentTool).font(.caption2.monospaced()).foregroundStyle(.secondary).lineLimit(1).padding(.top, 6)
             }
-            .frame(height: rows * rowHeight)
-            if !idle.isEmpty {
-                Text(idleText).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-            }
+            Spacer(minLength: 12)
+            ActivityBar()
         }
-        .padding(.horizontal, 18).padding(.vertical, 14)
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, minHeight: alone ? nil : 146, alignment: .topLeading)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-    }
-
-    private var idleText: String {
-        switch period {
-        case .today: String(localized: "\(listText(idle)) sent no work today")
-        case .week: String(localized: "\(listText(idle)) sent no work in the last 7 days")
-        case .month: String(localized: "\(listText(idle)) sent no work in the last 30 days")
-        }
-    }
-
-    /// A client's name, or how many the rest together are.
-    private func title(client id: String) -> String {
-        id.isEmpty ? String(localized: "\(flow.clients.last?.count ?? 0) more") : AgentLogo.name(clientName(id))
-    }
-
-    /// A coding agent's name, or how many the rest together are.
-    private func title(agent id: String) -> String {
-        id.isEmpty ? String(localized: "\(flow.agents.last?.count ?? 0) more") : agentTitle(id)
-    }
-
-    /// A client (its logo trailing, next to its bands) or an agent (its
-    /// logo leading, its turns under its name).
-    private func node(_ n: WorkFlow.Node, pick: FlowPick, name: String, logo: String?, trailing: Bool = false) -> some View {
-        let on = picked == pick
-        return Button {
-            withAnimation(.smooth) { picked = on ? nil : pick }
-        } label: {
-            HStack(spacing: 8) {
-                if trailing { Spacer(minLength: 0) }
-                if !trailing { mark(logo) }
-                VStack(alignment: trailing ? .trailing : .leading, spacing: 1) {
-                    Text(name).font(.subheadline.weight(on ? .semibold : .regular)).foregroundStyle(on ? Color.accentColor : .primary).lineLimit(1)
-                    if !trailing { Text("\(n.turns) turns").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
-                }
-                if trailing { mark(logo) }
-                if !trailing { Spacer(minLength: 0) }
-            }
-            .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .opacity(linked(pick) ? 1 : 0.35)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityIdentifier(pick.identifier(name))
-    }
-
-    @ViewBuilder private func mark(_ logo: String?) -> some View {
-        if let logo {
-            AgentLogo(id: logo, size: 22)
-        } else {
-            Image(systemName: "ellipsis").font(.caption.weight(.semibold)).foregroundStyle(.secondary).frame(width: 22, height: 22)
-        }
-    }
-
-    /// Whether nothing is picked, or this is picked or sends work to (or gets work from) what is.
-    private func linked(_ p: FlowPick) -> Bool {
-        guard let picked, picked != p else { return true }
-        return flow.bands.contains { touches($0, picked) && touches($0, p) }
-    }
-
-    private func touches(_ b: WorkFlow.Band, _ p: FlowPick) -> Bool {
-        switch p {
-        case .client(let c): b.client == c
-        case .agent(let a): b.agent == a
-        }
-    }
-
-    /// A band's colour: the one tapped, or those of what is picked, in the
-    /// accent and the rest faint.
-    private func color(_ i: Int) -> Color {
-        // The asset's colour, not the tint: a popover dims the tint of what is under it.
-        if let tipped { return i == tipped ? Color("AccentColor").opacity(0.55) : Color.primary.opacity(0.05) }
-        guard let picked else { return Color.primary.opacity(0.16) }
-        return touches(flow.bands[i], picked) ? Color.accentColor.opacity(0.55) : Color.primary.opacity(0.05)
-    }
-}
-
-extension FlowPick {
-    func identifier(_ name: String) -> String {
-        switch self {
-        case .client: "flow-client-\(name)"
-        case .agent(let a): "flow-agent-\(a.isEmpty ? "more" : a)"
-        }
-    }
-}
-
-/// Where the flow's nodes sit and its bands run: nodes spread down each
-/// side; each band leaves its client and reaches its agent stacked with
-/// the node's other bands, in the order of the other side, as thick as its
-/// turns (the busiest node 16 points; a band without a finished turn still
-/// shows, thin).
-struct FlowLayout {
-    struct BandLine { var from: CGFloat, to: CGFloat, width: CGFloat }
-
-    let nodeWidth: CGFloat
-    let left: CGFloat
-    let right: CGFloat
-    var clientY: [CGFloat] = []
-    var agentY: [CGFloat] = []
-    var bands: [BandLine] = []
-
-    init(flow: WorkFlow, width: CGFloat, height: CGFloat) {
-        nodeWidth = (width - max(56, width * 0.22)) / 2
-        left = nodeWidth + 2
-        right = width - nodeWidth - 2
-        func spread(_ n: Int) -> [CGFloat] { (0 ..< n).map { (CGFloat($0) + 0.5) * height / CGFloat(n) } }
-        clientY = spread(flow.clients.count)
-        agentY = spread(flow.agents.count)
-        let top = CGFloat(max((flow.clients + flow.agents).map(\.turns).max() ?? 1, 1))
-        let k = 16 / top
-        let widths = flow.bands.map { max(1.5, CGFloat($0.turns) * k) }
-        let ci = { (id: String) in flow.clients.firstIndex { $0.id == id } ?? 0 }
-        let ai = { (id: String) in flow.agents.firstIndex { $0.id == id } ?? 0 }
-        var from = Array(repeating: CGFloat(0), count: flow.bands.count)
-        var to = from
-        for (i, n) in flow.clients.enumerated() {
-            let mine = flow.bands.indices.filter { flow.bands[$0].client == n.id }.sorted { ai(flow.bands[$0].agent) < ai(flow.bands[$1].agent) }
-            var y = clientY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
-            for b in mine { from[b] = y + widths[b] / 2; y += widths[b] }
-        }
-        for (i, n) in flow.agents.enumerated() {
-            let mine = flow.bands.indices.filter { flow.bands[$0].agent == n.id }.sorted { ci(flow.bands[$0].client) < ci(flow.bands[$1].client) }
-            var y = agentY[i] - mine.reduce(0) { $0 + widths[$1] } / 2
-            for b in mine { to[b] = y + widths[b] / 2; y += widths[b] }
-        }
-        bands = flow.bands.indices.map { BandLine(from: from[$0], to: to[$0], width: widths[$0]) }
-    }
-
-    /// A point along band i's curve, t from its client (0) to its agent (1).
-    func point(_ i: Int, _ t: CGFloat) -> CGPoint {
-        let b = bands[i], m = (left + right) / 2, u = 1 - t
-        let x = u * u * u * left + 3 * u * u * t * m + 3 * u * t * t * m + t * t * t * right
-        let y = (u * u * u + 3 * u * u * t) * b.from + (3 * u * t * t + t * t * t) * b.to
-        return CGPoint(x: x, y: y)
-    }
-
-    func middle(of i: Int) -> CGPoint { point(i, 0.5) }
-
-    /// The band under a tap, or close enough to it for a finger; nil for none.
-    func band(at p: CGPoint) -> Int? {
-        var best: (i: Int, d: CGFloat)?
-        for i in bands.indices {
-            let d = stride(from: 0, through: 1, by: 0.025).map { point(i, CGFloat($0)) }
-                .map { hypot($0.x - p.x, $0.y - p.y) }.min()! - bands[i].width / 2
-            if d < 14, d < best?.d ?? .infinity { best = (i, d) }
-        }
-        return best?.i
-    }
-}
-
-/// Under the hours: midnight, every six hours and now, where they don't
-/// crowd each other.
-struct HourAxis: View {
-    let hour: Int
-
-    var body: some View {
-        GeometryReader { g in
-            let w = g.size.width
-            let now = w * (CGFloat(hour) + 0.5) / 24
-            ForEach([0, 6, 12, 18, 24], id: \.self) { mark in
-                let x = w * CGFloat(mark) / 24
-                if abs(x - now) > 30 {
-                    Text(mark == 0 || mark == 24 ? String(localized: "\(mark) h") : "\(mark)")
-                        .fixedSize()
-                        .position(x: min(max(x, 14), w - 14), y: 6)
-                }
-            }
-            Text("Now").fixedSize().foregroundStyle(Color.accentColor)
-                .position(x: min(max(now, 14), w - 14), y: 6)
-        }
-        .frame(height: 12)
-        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
-    }
-}
-
-/// A coding agent's range as a row of heat cells, one an hour or a day:
-/// those past as deep in the accent as its sessions at work in them (none:
-/// faint grey), now ringed in the accent, those to come hollow; a skeleton
-/// while not counted yet. Tapping one past or now says, in a popover, whose
-/// it is, when, and its sessions; tapping it again, or elsewhere, closes it.
-struct BucketCells: View {
-    let counts: [Int]
-    let now: Int
-    var loading = false
-    var title = ""
-    /// When a cell is, as its popover says it.
-    var when: ((Int) -> String)?
-    /// The cell whose popover shows.
-    @State private var tipped: Int?
-
-    var body: some View {
-        HStack(spacing: HeatAxis.gap(counts.count)) {
-            ForEach(counts.indices, id: \.self) { i in
-                let cell = RoundedRectangle(cornerRadius: 2, style: .continuous)
-                Group {
-                    if loading {
-                        cell.fill(Skeleton.grey)
-                    } else if i > now {
-                        cell.strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
-                    } else {
-                        cell.fill(Self.heat(counts[i]))
-                    }
-                }
-                .frame(height: 8)
-                .overlay {
-                    if !loading && i == now {
-                        RoundedRectangle(cornerRadius: 3.5, style: .continuous).strokeBorder(Color.accentColor, lineWidth: 1.5).padding(-1.5)
-                    }
-                }
-            }
-        }
-        .skeleton(loading)
-        .overlay {
-            if let when, !loading {
-                GeometryReader { g in
-                    let n = counts.count, gap = HeatAxis.gap(n)
-                    let cell = (g.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
-                    // Taller than the cells, which are too thin to tap.
-                    Color.clear
-                        .frame(width: g.size.width, height: 32)
-                        .contentShape(.rect)
-                        .onTapGesture(coordinateSpace: .local) { at in
-                            let i = min(max(Int(at.x / (cell + gap)), 0), n - 1)
-                            withAnimation(.smooth) { tipped = i == tipped || i > now ? nil : i }
-                        }
-                        .position(x: g.size.width / 2, y: g.size.height / 2)
-                    if let i = tipped, i < n {
-                        Color.clear.frame(width: 1, height: 1)
-                            .position(x: CGFloat(i) * (cell + gap) + cell / 2, y: 0)
-                            .popover(isPresented: Binding(get: { tipped == i }, set: { if !$0 { tipped = nil } })) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(verbatim: title).font(.subheadline.weight(.semibold))
-                                    Text(verbatim: "\(when(i)) · \(String(localized: "\(counts[i]) sessions worked"))")
-                                        .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                                .padding(.horizontal, 14).padding(.vertical, 10)
-                                .accessibilityElement(children: .combine)
-                                .accessibilityIdentifier("heat-tip")
-                                .presentationCompactAdaptation(.popover)
-                            }
-                            .id(i)
-                    }
-                }
-            }
-        }
-        .accessibilityHidden(true)
-    }
-
-    /// The cell of a bucket with n sessions at work.
-    static func heat(_ n: Int) -> Color {
-        n <= 0 ? Color.primary.opacity(0.08) : Color.accentColor.opacity([0.4, 0.65, 0.85, 1][min(n, 4) - 1])
-    }
-}
-
-/// What the heat cells' shades mean: fewer sessions to more.
-struct HeatLegend: View {
-    var body: some View {
-        HStack(spacing: 3) {
-            Text("Less work").padding(.trailing, 2)
-            ForEach(1 ... 4, id: \.self) { n in
-                RoundedRectangle(cornerRadius: 2, style: .continuous).fill(BucketCells.heat(n)).frame(width: 8, height: 8)
-            }
-            Text("More work").padding(.leading, 2)
-        }
-        .font(.caption2)
-        .accessibilityHidden(true)
-    }
-}
-
-/// Under the coding agents' cells: a few marks, and now in the accent under
-/// its cell (the time today, the day over 7 or 30 days); marks near it give
-/// way.
-struct HeatAxis: View {
-    let period: WorkPeriod
-    let now: Int
-    let date: Date
-    @Environment(\.calendar) private var calendar
-
-    /// The room between cells: wider for 7 days.
-    static func gap(_ n: Int) -> CGFloat { n > 7 ? 2 : 4 }
-
-    var body: some View {
-        let n = period.hourly ? 24 : period.days
-        GeometryReader { g in
-            let gap = Self.gap(n)
-            let cell = (g.size.width - gap * CGFloat(n - 1)) / CGFloat(n)
-            let start = { (i: Int) in i >= n ? g.size.width : CGFloat(i) * (cell + gap) }
-            let w = g.size.width
-            // Each label in a box placed by its middle: the first's text at the start, the last's at the end.
-            let place = { (x: CGFloat, width: CGFloat) -> (CGFloat, Alignment) in
-                x - width / 2 < 0 ? (width / 2, .leading) : x + width / 2 > w ? (w - width / 2, .trailing) : (x, .center)
-            }
-            ForEach(marks(n), id: \.0) { i, label in
-                if abs(i - now) > n / 5 {
-                    let (x, a) = place(i == 0 ? 0 : i >= n ? w : start(i), 40)
-                    Text(label).frame(width: 40, alignment: a).position(x: x, y: 7)
-                }
-            }
-            let (x, a) = place(start(now) + cell / 2, 90)
-            Text(nowText).fontWeight(.semibold).foregroundStyle(Color.accentColor)
-                .frame(width: 90, alignment: a).position(x: x, y: 7)
-        }
-        .frame(height: 14)
-        .font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
-    }
-
-    private var nowText: String {
-        switch period {
-        case .today: date.formatted(date: .omitted, time: .shortened)
-        case .week: "\(date.formatted(.dateTime.weekday(.abbreviated))) \(date.formatted(.dateTime.month(.defaultDigits).day()))"
-        case .month: date.formatted(.dateTime.month(.defaultDigits).day())
-        }
-    }
-
-    private func marks(_ n: Int) -> [(Int, String)] {
-        if period.hourly { return [0, 6, 12, 18, 24].map { ($0, "\($0)") } }
-        let first = period.firstDay(date, calendar: calendar)
-        let day = { (i: Int) in (calendar.date(byAdding: .day, value: i, to: first) ?? first).formatted(.dateTime.month(.defaultDigits).day()) }
-        return period == .week ? [(0, day(0))] : [(0, day(0)), (15, day(15))]
-    }
-}
-
-struct SectionTitle: View {
-    let title: LocalizedStringKey
-
-    var body: some View {
-        Text(title).font(.title3.bold()).padding(.horizontal, 20)
-    }
-}
-
-/// A machine whose sessions couldn't be listed: which one, what it means,
-/// when it was last seen, and that it catches up by itself. The details
-/// are on the machine's page.
-struct UnreachableNotice: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let gone = model.unreachableMachines
-        if !gone.isEmpty {
-            Button {
-                if gone.count == 1, let m = model.machines.first(where: { $0.machineName == gone[0].name }) {
-                    model.path.append(.machine(m.machineID))
-                } else {
-                    model.open(.machines)
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "wifi.slash").foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(line1(gone)).font(.subheadline)
-                        Text(line2(gone)).font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 20)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("unreachable")
-        }
-    }
-
-    private func line1(_ gone: [(name: String, lastSeen: Date?, online: Bool)]) -> AttributedString {
-        if gone.count > 1 { return AttributedString(localized: "**\(gone.count) machines can’t be reached**; their sessions can’t be shown for now") }
-        let g = gone[0]
-        return g.online ? AttributedString(localized: "**\(g.name) isn’t responding**; its sessions may be missing")
-            : AttributedString(localized: "**\(g.name) is offline**; its sessions can’t be shown for now")
-    }
-
-    private func line2(_ gone: [(name: String, lastSeen: Date?, online: Bool)]) -> String {
-        if gone.count > 1 { return listText(gone.map(\.name)) }
-        let g = gone[0]
-        if g.online { return String(localized: "Retrying") }
-        if let seen = g.lastSeen { return String(localized: "Last online \(agoText(seen, now: model.now)) · they’ll appear once it reconnects") }
-        return String(localized: "They’ll appear once it reconnects")
-    }
-}
-
-/// A session in a list, as the Mac's sidebar and the menu show it: its title
-/// (shimmering while it runs), and at its end a dot and a word for a state
-/// that is not plain (waiting, failed, preparing…); under it who sent the
-/// work to which coding agent, the project, and when. Without its metadata
-/// (the list's view menu), the first line alone, as tall as the menu's rows.
-/// doing: while it runs, a third line names the tool it is in.
-struct SessionRow: View {
-    @Environment(AppModel.self) private var model
-    let session: Session
-    var metadata = true
-    var doing = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Group {
-                    if session.isActive && !session.needsAttention { ShimmerText(session.displayTitle, paused: false) } else { Text(session.displayTitle) }
-                }
-                .foregroundStyle(session.status == .archived ? .secondary : .primary)
-                .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                if let state {
-                    HStack(spacing: 6) {
-                        if session.needsAttention { Circle().fill(session.status == .waitingInput ? .orange : .red).frame(width: 8, height: 8) }
-                        Text(state)
-                    }
-                    .font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            if metadata {
-                HStack(spacing: 8) {
-                    Text(model.senderLine(session))
-                        .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    time.monospacedDigit()
-                }
-                .font(.footnote).foregroundStyle(.secondary)
-            }
-            if doing, session.isActive, !session.progress.currentTool.isEmpty {
-                Text(session.progress.currentTool).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, metadata ? 9 : 0)
-        .frame(minHeight: 44)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("session-\(session.displayTitle)")
+        .accessibilityIdentifier("session-\(s.displayTitle)")
     }
+}
 
-    /// The Mac's RowStatus: nothing for a plain running, idle or archived session.
-    private var state: String? {
-        if session.isFailed && session.status != .crashed && session.status != .waitingInput { return String(localized: "Failed") }
-        switch session.status {
-        case .waitingInput, .crashed, .preparing, .queued, .unspecified: return statusTitle(session.status)
-        default: return nil
+/// A bar that says something is at work: a run of it going across, moved by
+/// the render server (an offset, animated once).
+private struct ActivityBar: View {
+    @Environment(\.accessibilityReduceMotion) private var still
+    @State private var across = false
+
+    var body: some View {
+        GeometryReader { geo in
+            Capsule().fill(Color.live)
+                .frame(width: geo.size.width * 0.38)
+                .offset(x: still ? geo.size.width * 0.31 : across ? geo.size.width : -geo.size.width * 0.38)
         }
-    }
-
-    /// How long a running turn has run, else when the session last changed.
-    @ViewBuilder private var time: some View {
-        if session.status == .running, let start = session.turnStartedDate {
-            Text(start, style: .timer)
-        } else {
-            Text(listTime(session.updatedDate, now: model.now))
+        .frame(height: 3)
+        .background(Color(.tertiarySystemFill), in: Capsule())
+        .clipShape(Capsule())
+        .onAppear {
+            guard !still else { return }
+            withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: false)) { across = true }
         }
     }
 }
 
-/// Get Started (docs/onboarding.md §5.2): what the guide has left, on the
-/// iPhone that set the owner up and put the guide off. Continue goes back
-/// to it; done or hidden, it is gone for good.
-struct GetStarted: View {
+extension Color {
+    /// What is at work on the overview: the map's lines and dots, a tile's bar.
+    static let live = Color(UIColor.live)
+}
+
+extension UIColor {
+    static let live = UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.655, green: 0.694, blue: 0.78, alpha: 1) : UIColor(red: 0.373, green: 0.42, blue: 0.522, alpha: 1) }
+}
+
+/// Every session, the newest day first: where See All under Recently
+/// Finished leads. A second view of the menu's list, not a second store:
+/// older ones load as its end comes into view.
+struct TasksView: View {
     @Environment(AppModel.self) private var model
-    @AppStorage(Guide.key) private var guide = ""
-
-    private enum Step: Int, CaseIterable {
-        case computer, project, connect, tryIt
-    }
-
-    private func done(_ s: Step) -> Bool {
-        switch s {
-        case .computer: !model.machines.isEmpty
-        case .project: !model.projects.isEmpty
-        case .connect: model.clients.contains { !$0.revoked }
-        case .tryIt: model.sessions.contains { s in model.clients.contains { $0.clientID == s.createdBy } && !s.isActive }
-        }
-    }
-
-    private func title(_ s: Step) -> LocalizedStringKey {
-        switch s {
-        case .computer: "Connect your computer"
-        case .project: "Add a project"
-        case .connect: "Connect your agent"
-        case .tryIt: "Try it"
-        }
-    }
 
     var body: some View {
-        if guide == Guide.later {
-            if let next = Step.allCases.first(where: { !done($0) }) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        SectionTitle(title: "Get Started").accessibilityIdentifier("get-started")
-                        Spacer()
-                        Menu {
-                            Button("Hide", systemImage: "eye.slash") { guide = Guide.done }
-                        } label: {
-                            Image(systemName: "ellipsis").frame(width: 32, height: 32)
-                        }
-                        .padding(.trailing, 20)
-                        .accessibilityIdentifier("get-started-menu")
-                    }
-                    VStack(spacing: 0) {
-                        ForEach(Step.allCases, id: \.self) { s in
-                            if s.rawValue > 0 { Divider().padding(.leading, 52) }
-                            HStack(spacing: 12) {
-                                Image(systemName: done(s) ? "checkmark.circle.fill" : s == next ? "circle.inset.filled" : "circle")
-                                    .foregroundStyle(done(s) ? AnyShapeStyle(.green) : s == next ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
-                                    .frame(width: 24)
-                                Text(title(s)).foregroundStyle(s == next || done(s) ? .primary : .secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if s == next {
-                                    Button("Continue") { guide = Guide.on }.buttonStyle(.glassProminent)
-                                        .accessibilityIdentifier("get-started-continue")
-                                }
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 11)
-                            .accessibilityElement(children: .contain)
-                            .accessibilityIdentifier("get-started-\(s.rawValue)")
+        let sections = sessionSections(model.sessions, view: SessionListLayout(group: .date), archived: false, now: model.now)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8) {
+                ForEach(sections) { section in
+                    OverviewHeading(title: Text(verbatim: SessionBucket(rawValue: section.key)?.title ?? section.key)).padding(.top, 14)
+                    OverviewCard {
+                        ForEach(Array(section.sessions.enumerated()), id: \.element.sessionID) { i, s in
+                            if i > 0 { Divider().padding(.leading, 16) }
+                            Button { model.openSession(s.sessionID) } label: { SessionRow(session: s, doing: true) }.buttonStyle(.plain)
                         }
                     }
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .padding(.horizontal, 16)
                 }
-            } else {
-                // Done from elsewhere (the Mac, the menus): gone for good.
-                Color.clear.frame(height: 0).onAppear { guide = Guide.done }
+                Group {
+                    if !model.hasWorld {
+                        InlineLoader(text: "Reading your sessions…")
+                    } else if !model.noOlder {
+                        InlineLoader(text: "Loading earlier sessions…").task(id: model.olderKey) { await model.loadOlder() }
+                    } else if sections.isEmpty {
+                        Text("No sessions yet").foregroundStyle(.secondary)
+                    }
+                }
+                .font(.subheadline).frame(maxWidth: .infinity).padding(.top, 16)
             }
+            .padding(.horizontal, 16).padding(.bottom, 40)
         }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("Sessions")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tasks")
     }
 }

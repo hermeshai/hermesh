@@ -30,6 +30,9 @@ public nonisolated enum Hermesh_Local_V1_WorkBucket: SwiftProtobuf.Enum, Swift.C
   case unspecified // = 0
   case hour // = 1
   case day // = 2
+
+  /// The range's totals only: no sessions or turns per bucket.
+  case none // = 3
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -41,6 +44,7 @@ public nonisolated enum Hermesh_Local_V1_WorkBucket: SwiftProtobuf.Enum, Swift.C
     case 0: self = .unspecified
     case 1: self = .hour
     case 2: self = .day
+    case 3: self = .none
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -50,6 +54,7 @@ public nonisolated enum Hermesh_Local_V1_WorkBucket: SwiftProtobuf.Enum, Swift.C
     case .unspecified: return 0
     case .hour: return 1
     case .day: return 2
+    case .none: return 3
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -59,6 +64,7 @@ public nonisolated enum Hermesh_Local_V1_WorkBucket: SwiftProtobuf.Enum, Swift.C
     .unspecified,
     .hour,
     .day,
+    .none,
   ]
 
 }
@@ -2828,9 +2834,32 @@ public nonisolated struct Hermesh_Local_V1_QueryWorkRequest: Sendable {
   /// What the counts are grouped by; none: everything together.
   public var groupBy: [Hermesh_Local_V1_WorkDimension] = []
 
+  /// Only the work of this client, agent or machine; an empty field: any.
+  /// project_id needs machine_id (a project is its machine's own): alone it
+  /// is refused. As group_by: sessions by who started them, turns by who
+  /// asked.
+  public var filter: Hermesh_Local_V1_WorkGroup {
+    get {_filter ?? Hermesh_Local_V1_WorkGroup()}
+    set {_filter = newValue}
+  }
+  /// Returns true if `filter` has been explicitly set.
+  public var hasFilter: Bool {self._filter != nil}
+  /// Clears the value of `filter`. Subsequent reads from it will return its default value.
+  public mutating func clearFilter() {self._filter = nil}
+
+  /// Also count the span of as many days just before the range, cut at the
+  /// same moment before now when the range holds now: previous_* below.
+  public var previous: Bool = false
+
+  /// Leave out sessions, range_sessions and previous_sessions: for charts of
+  /// turns and tokens.
+  public var turnsOnly: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _filter: Hermesh_Local_V1_WorkGroup? = nil
 }
 
 /// The dimensions asked for; the others are empty.
@@ -2964,6 +2993,12 @@ public nonisolated struct Hermesh_Local_V1_QueryWorkResponse: Sendable {
   public var rangeTurns: [Hermesh_Local_V1_TurnCount] = []
 
   public var sources: [Hermesh_Local_V1_WorkSource] = []
+
+  /// With previous: the span before the range, as range_sessions and
+  /// range_turns.
+  public var previousSessions: [Hermesh_Local_V1_SessionCount] = []
+
+  public var previousTurns: [Hermesh_Local_V1_TurnCount] = []
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -3535,7 +3570,7 @@ public nonisolated struct Hermesh_Local_V1_SetWorkspacePolicyResponse: Sendable 
 fileprivate nonisolated let _protobuf_package = "hermesh.local.v1"
 
 nonisolated extension Hermesh_Local_V1_WorkBucket: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0WORK_BUCKET_UNSPECIFIED\0\u{1}WORK_BUCKET_HOUR\0\u{1}WORK_BUCKET_DAY\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0WORK_BUCKET_UNSPECIFIED\0\u{1}WORK_BUCKET_HOUR\0\u{1}WORK_BUCKET_DAY\0\u{1}WORK_BUCKET_NONE\0")
 }
 
 nonisolated extension Hermesh_Local_V1_WorkDimension: SwiftProtobuf._ProtoNameProviding {
@@ -8818,7 +8853,7 @@ nonisolated extension Hermesh_Local_V1_SessionResponse: SwiftProtobuf.Message, S
 
 nonisolated extension Hermesh_Local_V1_QueryWorkRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QueryWorkRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}time_zone\0\u{3}first_day\0\u{1}days\0\u{1}bucket\0\u{3}group_by\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}time_zone\0\u{3}first_day\0\u{1}days\0\u{1}bucket\0\u{3}group_by\0\u{1}filter\0\u{1}previous\0\u{3}turns_only\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8831,12 +8866,19 @@ nonisolated extension Hermesh_Local_V1_QueryWorkRequest: SwiftProtobuf.Message, 
       case 3: try { try decoder.decodeSingularUInt32Field(value: &self.days) }()
       case 4: try { try decoder.decodeSingularEnumField(value: &self.bucket) }()
       case 5: try { try decoder.decodeRepeatedEnumField(value: &self.groupBy) }()
+      case 6: try { try decoder.decodeSingularMessageField(value: &self._filter) }()
+      case 7: try { try decoder.decodeSingularBoolField(value: &self.previous) }()
+      case 8: try { try decoder.decodeSingularBoolField(value: &self.turnsOnly) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if !self.timeZone.isEmpty {
       try visitor.visitSingularStringField(value: self.timeZone, fieldNumber: 1)
     }
@@ -8852,6 +8894,15 @@ nonisolated extension Hermesh_Local_V1_QueryWorkRequest: SwiftProtobuf.Message, 
     if !self.groupBy.isEmpty {
       try visitor.visitPackedEnumField(value: self.groupBy, fieldNumber: 5)
     }
+    try { if let v = self._filter {
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 6)
+    } }()
+    if self.previous != false {
+      try visitor.visitSingularBoolField(value: self.previous, fieldNumber: 7)
+    }
+    if self.turnsOnly != false {
+      try visitor.visitSingularBoolField(value: self.turnsOnly, fieldNumber: 8)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8861,6 +8912,9 @@ nonisolated extension Hermesh_Local_V1_QueryWorkRequest: SwiftProtobuf.Message, 
     if lhs.days != rhs.days {return false}
     if lhs.bucket != rhs.bucket {return false}
     if lhs.groupBy != rhs.groupBy {return false}
+    if lhs._filter != rhs._filter {return false}
+    if lhs.previous != rhs.previous {return false}
+    if lhs.turnsOnly != rhs.turnsOnly {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -9075,7 +9129,7 @@ nonisolated extension Hermesh_Local_V1_WorkSource: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hermesh_Local_V1_QueryWorkResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".QueryWorkResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}sessions\0\u{3}range_sessions\0\u{1}turns\0\u{3}range_turns\0\u{1}sources\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}sessions\0\u{3}range_sessions\0\u{1}turns\0\u{3}range_turns\0\u{1}sources\0\u{3}previous_sessions\0\u{3}previous_turns\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9088,6 +9142,8 @@ nonisolated extension Hermesh_Local_V1_QueryWorkResponse: SwiftProtobuf.Message,
       case 3: try { try decoder.decodeRepeatedMessageField(value: &self.turns) }()
       case 4: try { try decoder.decodeRepeatedMessageField(value: &self.rangeTurns) }()
       case 5: try { try decoder.decodeRepeatedMessageField(value: &self.sources) }()
+      case 6: try { try decoder.decodeRepeatedMessageField(value: &self.previousSessions) }()
+      case 7: try { try decoder.decodeRepeatedMessageField(value: &self.previousTurns) }()
       default: break
       }
     }
@@ -9109,6 +9165,12 @@ nonisolated extension Hermesh_Local_V1_QueryWorkResponse: SwiftProtobuf.Message,
     if !self.sources.isEmpty {
       try visitor.visitRepeatedMessageField(value: self.sources, fieldNumber: 5)
     }
+    if !self.previousSessions.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.previousSessions, fieldNumber: 6)
+    }
+    if !self.previousTurns.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.previousTurns, fieldNumber: 7)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -9118,6 +9180,8 @@ nonisolated extension Hermesh_Local_V1_QueryWorkResponse: SwiftProtobuf.Message,
     if lhs.turns != rhs.turns {return false}
     if lhs.rangeTurns != rhs.rangeTurns {return false}
     if lhs.sources != rhs.sources {return false}
+    if lhs.previousSessions != rhs.previousSessions {return false}
+    if lhs.previousTurns != rhs.previousTurns {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

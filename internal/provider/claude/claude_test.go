@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -365,5 +366,45 @@ func TestModels(t *testing.T) {
 	os.WriteFile(bin, []byte("#!/bin/sh\ncase \"$1\" in\n--version) echo '2.1.0 (Claude Code)';;\nesac\n"), 0o755)
 	if i := (&Provider{Binary: bin}).Discover(context.Background()); len(i.Models) != len(Models) || i.Models[0].ID != "fable" || i.ModelsState != provider.ModelsKnown {
 		t.Fatalf("older: %+v", i)
+	}
+}
+
+// Claude Code says the account's limits on a rate_limit_event line once a
+// turn (2.1.330, recorded): each window's use from 0 to 1 and when it
+// resets. The driver tells StartSpec.Limits, the shortest window first, in
+// whole percent; the line is no event of the session's.
+func TestRateLimitEventTellsLimits(t *testing.T) {
+	scripted(t)
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	script := "#!/bin/sh\nread init\nread prompt\ncat " + filepath.Join(mustAbs(t, "testdata"), "claude-2.1.330-rate-limit-event.json") + "\n" +
+		`echo '{"type":"rate_limit_event","rate_limit_info":{"unifiedWindows":{"seven_day_sonnet":{"utilization":0.1,"resetsAt":1795939200}}}}'` + "\nsleep 1\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	said := make(chan provider.Limits, 2)
+	s, err := (&Provider{Binary: bin}).Start(context.Background(), provider.StartSpec{WorkDir: dir, Prompt: "hi", Env: os.Environ(), Limits: func(l provider.Limits) { said <- l }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	select {
+	case l := <-said:
+		want := []provider.LimitWindow{{Minutes: 300, UsedPercent: 26, ResetsAt: time.Unix(1795534800, 0)}, {Minutes: 10080, UsedPercent: 48, ResetsAt: time.Unix(1795939200, 0)}}
+		if l.Plan != "" || !slices.Equal(l.Windows, want) {
+			t.Fatalf("limits: %+v", l)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("no limits")
+	}
+	// A window it does not know the length of is left out; with none left there is nothing to tell.
+	select {
+	case l := <-said:
+		t.Fatalf("an unknown window told: %+v", l)
+	case e, ok := <-s.Events():
+		if ok {
+			t.Fatalf("an event of the session's: %+v", e)
+		}
+	case <-time.After(1500 * time.Millisecond):
 	}
 }
