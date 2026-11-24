@@ -99,6 +99,13 @@
       "counts_other": "{{count}} 个任务 · {{tokens}} token",
       "none": "没有任务"
     },
+    "group": {
+      "label": "分组",
+      "agent": "Agent 提供方",
+      "place": "环境 / 项目",
+      "total": "合计",
+      "other": "其他"
+    },
     "sessions": {
       "title": "任务",
       "unit_other": "个任务运行过",

@@ -113,10 +113,20 @@ type WorkRequest = MessageInitShape<typeof QueryWorkRequestSchema>;
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const firstDayOf = (today: Date, days: number) => dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days + 1));
 
-/** The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it. */
-export function usagePageRequest(range: UsageRange, filter: UsageFilter, today: Date, timeZone = zone()): WorkRequest {
+/** What the page's bars are grouped by: the agents, where (environments, or one environment's projects), or nothing (the total). */
+export type UsageGroup = "agent" | "place" | "total";
+export const usageGroups: UsageGroup[] = ["agent", "place", "total"];
+
+/**
+ * The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it;
+ * grouped as the bars are (a place by machine and project, so either can be drawn).
+ */
+export function usagePageRequest(range: UsageRange, filter: UsageFilter, group: UsageGroup, today: Date, timeZone = zone()): WorkRequest {
   const days = rangeDays[range];
-  return { timeZone, firstDay: firstDayOf(today, days), days, bucket: range === "today" ? WorkBucket.HOUR : WorkBucket.DAY, filter, previous: true };
+  const req: WorkRequest = { timeZone, firstDay: firstDayOf(today, days), days, bucket: range === "today" ? WorkBucket.HOUR : WorkBucket.DAY, filter, previous: true };
+  if (group === "agent") req.groupBy = [WorkDimension.AGENT];
+  if (group === "place") req.groupBy = [WorkDimension.MACHINE, WorkDimension.PROJECT];
+  return req;
 }
 
 /** The menus' question: the range's totals by all four dimensions, not filtered (each menu's lines are added up from it under the other filters). */
@@ -171,6 +181,73 @@ export function usagePage(res: QueryWorkResponse | null | undefined, range: Usag
     sessionsDelta: delta(sessions, sum(res?.previousSessions, (x) => x.sessions)),
     tokensDelta: delta(inputTokens + outputTokens, sum(res?.previousTurns, (x) => Number(x.inputTokens) + Number(x.outputTokens))),
   };
+}
+
+/** A part of the page's bars: what it is, its colour (0 to 5; -1 for Other), its whole in the range and its share of each bucket. */
+export type UsagePart = { id: string; color: number; sessions: number; tokens: number; buckets: { sessions: number; tokens: number }[] };
+/** What the bars are in parts of: agents, machines, or one machine's projects (its id in machineId). */
+export type UsageParts = { by: "agent" | "machine" | "project"; machineId: string; parts: UsagePart[] };
+
+/** The colours a page's parts are told apart by; past them the least busy are one part, Other. */
+export const usagePartColors = 6;
+
+/**
+ * The parts of the page's bars from the answer to its grouped question: the agents; or the machines, or (one
+ * machine chosen, or only one that worked) its projects. The busiest first. A part's colour follows it, not its
+ * rank: its place in order (the coding agents' own list, the machines as the app lists them, projects by name)
+ * when all of those drawn fall within the colours, else its place among them in that order. More parts than
+ * colours: the least busy are added up as Other (id "", colour -1).
+ */
+export function usageParts(
+  res: Pick<QueryWorkResponse, "sessions" | "turns" | "rangeSessions" | "rangeTurns"> | null | undefined,
+  range: UsageRange,
+  group: UsageGroup,
+  filter: UsageFilter,
+  order: { agents: readonly string[]; machines: readonly string[] },
+): UsageParts | null {
+  if (group === "total") return null;
+  const n = range === "today" ? 24 : rangeDays[range];
+  const machineIds = new Set([...(res?.rangeSessions ?? []), ...(res?.rangeTurns ?? [])].map((x) => x.group?.machineId ?? ""));
+  const machineId = group === "place" ? filter.machineId || (machineIds.size === 1 ? [...machineIds][0] : "") : "";
+  const by: UsageParts["by"] = group === "agent" ? "agent" : machineId ? "project" : "machine";
+  const keyOf = (g: { agent: string; machineId: string; projectId: string } | undefined) =>
+    by === "agent" ? (g?.agent ?? "") : by === "machine" ? (g?.machineId ?? "") : g?.machineId === machineId ? g.projectId : null;
+  const all = new Map<string, UsagePart>();
+  const part = (id: string) => {
+    let p = all.get(id);
+    if (!p) all.set(id, (p = { id, color: 0, sessions: 0, tokens: 0, buckets: Array.from({ length: n }, () => ({ sessions: 0, tokens: 0 })) }));
+    return p;
+  };
+  const each = <T extends { group?: { agent: string; machineId: string; projectId: string } }>(list: T[] | undefined, add: (p: UsagePart, x: T) => void) => {
+    for (const x of list ?? []) {
+      const id = keyOf(x.group);
+      // A group with no name is the answer to another question (the last one, shown while this is asked): no part.
+      if (id) add(part(id), x);
+    }
+  };
+  const tok = (x: { inputTokens: bigint; outputTokens: bigint }) => Number(x.inputTokens) + Number(x.outputTokens);
+  each(res?.rangeSessions, (p, x) => (p.sessions += x.sessions));
+  each(res?.rangeTurns, (p, x) => (p.tokens += tok(x)));
+  each(res?.sessions, (p, x) => p.buckets[x.bucket] && (p.buckets[x.bucket].sessions += x.sessions));
+  each(res?.turns, (p, x) => p.buckets[x.bucket] && (p.buckets[x.bucket].tokens += tok(x)));
+
+  const parts = [...all.values()].filter((p) => p.sessions || p.tokens).sort((a, b) => b.sessions - a.sessions || b.tokens - a.tokens || a.id.localeCompare(b.id));
+  const shown = parts.length > usagePartColors ? parts.slice(0, usagePartColors - 1) : parts;
+  const known = by === "agent" ? order.agents : by === "machine" ? order.machines : shown.map((p) => p.id).sort();
+  const place = (id: string) => (known.indexOf(id) < 0 ? Infinity : known.indexOf(id));
+  const inOrder = [...shown].sort((a, b) => place(a.id) - place(b.id) || a.id.localeCompare(b.id));
+  const fits = shown.every((p) => place(p.id) < usagePartColors);
+  for (const p of shown) p.color = fits ? place(p.id) : inOrder.indexOf(p);
+  if (shown.length < parts.length) {
+    const other = { id: "", color: -1, sessions: 0, tokens: 0, buckets: Array.from({ length: n }, () => ({ sessions: 0, tokens: 0 })) };
+    for (const p of parts.slice(shown.length)) {
+      other.sessions += p.sessions;
+      other.tokens += p.tokens;
+      p.buckets.forEach((b, i) => ((other.buckets[i].sessions += b.sessions), (other.buckets[i].tokens += b.tokens)));
+    }
+    shown.push(other);
+  }
+  return { by, machineId, parts: shown };
 }
 
 /** A choice of a filter's menu: what it is, and its sessions and tokens in the range under the other filters. */

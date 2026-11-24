@@ -18,6 +18,8 @@ final class StatsModel {
         didSet { if !isDemo { UserDefaults.standard.set(period.rawValue, forKey: "workPeriod") } }
     }
     var filter = UsageFilter()
+    /// What the bars are in parts of (§6.9): the agents to start with.
+    var group: UsageGroup = .agent
     private(set) var answers: [String: Hermesh_Local_V1_QueryWorkResponse] = [:]
     /// The page's last answer shown, while a new state's is asked.
     private(set) var lastPage: Hermesh_Local_V1_QueryWorkResponse?
@@ -33,7 +35,7 @@ final class StatsModel {
         if !isDemo, let p = UserDefaults.standard.string(forKey: "workPeriod").flatMap(WorkPeriod.init) { period = p }
     }
 
-    func pageRequest(_ now: Date) -> Hermesh_Local_V1_QueryWorkRequest { usagePageRequest(period, filter: filter, now: now) }
+    func pageRequest(_ now: Date) -> Hermesh_Local_V1_QueryWorkRequest { usagePageRequest(period, filter: filter, group: group, now: now) }
     func menusRequest(_ now: Date) -> Hermesh_Local_V1_QueryWorkRequest { usageMenusRequest(period, now: now) }
     func weeksRequest(_ now: Date) -> Hermesh_Local_V1_QueryWorkRequest { usageWeeksRequest(filter: filter, now: now) }
 

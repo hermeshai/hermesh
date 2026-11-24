@@ -218,17 +218,51 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     await expect(tasks.locator(".us-facts")).toHaveText(/^已完成\d+出错\d+ 轮工作时长.+$/);
     await expect(tokens.locator(".us-big")).toHaveText(/^\d+(\.\d)?[KM]?token$/);
     await expect(tokens.locator(".us-facts")).toHaveText(/^输入\d+(\.\d)?[KM]?输出\d+(\.\d)?[KM]?$/);
-    // Nothing ran before today: no change to say, and today's is the only bar, in colour, named under the chart.
+    // Nothing ran before today: no change to say, and today's is the only bar, named under the chart.
     await expect(tasks.locator(".us-delta")).toHaveText(" ");
     await expect(tasks.locator(".us-slots i")).toHaveCount(7);
+    await expect(tasks.locator(".us-x span.now")).toHaveText("今天");
+
+    // The bars are in parts of the agents to start with (分组): a part an agent, in its own colour, named over the chart
+    // with its number and share; the left side's figures stay. Here one agent did it all.
+    const group = usage.getByRole("radiogroup", { name: "分组" });
+    await expect(group.getByRole("radio")).toHaveText(["Agent 提供方", "环境 / 项目", "合计"]);
+    await expect(group.getByRole("radio", { name: "Agent 提供方" })).toHaveAttribute("aria-checked", "true");
+    const legend = tasks.locator(".us-legend").getByRole("button");
+    await expect(legend).toHaveText([`Gemini CLI${ran}100%`]);
+    await expect(tokens.locator(".us-legend").getByRole("button")).toHaveText([/^Gemini CLI\d+(\.\d)?[KM]?100%$/]);
+    await expect(tasks.locator(".us-facts")).toHaveText(/^已完成\d+出错\d+ 轮工作时长.+$/);
+    const part = tasks.locator(".us-slots .us-bar u");
+    await expect(part).toHaveCount(1);
+    expect(await part.evaluate((el) => el.style.background)).toBe("var(--us-s3)"); // Gemini's, the third coding agent
+    // A bar's top is barely rounded, as the cards' corners are.
+    expect(await tasks.locator(".us-bar").evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("3px");
+    await tasks.locator(".us-slots i").last().hover();
+    await expect(tasks.locator(".u-tip")).toHaveText(new RegExp(`^${ran} 个任务运行过.*周.*Gemini CLI${ran}$`));
+    await snap(page, "overview-usage");
+    // Clicked in the legend a part is seen alone in both charts; the page's filters and numbers stay. Again, all.
+    await legend.first().click();
+    await expect(legend.first()).toHaveAttribute("aria-pressed", "true");
+    await tasks.locator(".us-slots i").last().hover();
+    await expect(tasks.locator(".u-tip")).toHaveText(new RegExp(`^${ran} 个任务运行过Gemini CLI · .*周.$`));
+    await expect(usage.getByRole("button", { name: "Agent 提供方" })).toHaveText("Agent 提供方");
+    await expect(tasks.locator(".us-big b")).toHaveText(String(ran));
+    await legend.first().click();
+    await expect(legend.first()).toHaveAttribute("aria-pressed", "false");
+    // By where: one environment worked, so its projects are the parts.
+    await group.getByRole("radio", { name: "环境 / 项目" }).click();
+    await expect(legend).toHaveText([`demo${ran}100%`]);
+    // The total: a bar a bucket, today's in colour, as before there were parts.
+    await group.getByRole("radio", { name: "合计" }).click();
+    await expect(tasks.locator(".us-legend")).toHaveCount(0);
     await expect(tasks.locator(".us-slots u")).toHaveCount(1);
     await expect(tasks.locator(".us-slots i.now u")).toHaveCount(1);
-    await expect(tasks.locator(".us-x span.now")).toHaveText("今天");
+    expect(await tasks.locator(".us-slots u").evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("3px");
     await tasks.locator(".us-slots i.now").hover();
     await expect(tasks.locator(".u-tip")).toHaveText(new RegExp(`^${ran} 个任务运行过.*周`));
     await tokens.locator(".us-slots i.now").hover();
     await expect(tokens.locator(".u-tip")).toHaveText(/^\d+(\.\d)?[KM]? token/);
-    await snap(page, "overview-usage");
+    await snap(page, "overview-usage-total");
 
     // A filter's menu is the system's, under its button: each choice with its work in the range, the chosen checked.
     const agent = usage.getByRole("button", { name: "Agent 提供方" });
@@ -284,6 +318,7 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     await page.getByRole("tab", { name: "实时" }).click();
     await page.getByRole("tab", { name: "用量" }).click();
     await expect(range).toHaveText("今天");
+    await expect(group.getByRole("radio", { name: "合计" })).toHaveAttribute("aria-checked", "true");
 
     // A year of tokens by day, under the filters: today's is the one day with any.
     const year = usage.getByRole("group", { name: "近一年" });

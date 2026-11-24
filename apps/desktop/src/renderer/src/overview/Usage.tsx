@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import type { QueryWorkRequestSchema, QueryWorkResponse } from "@hermesh/proto/local";
 import {
-  codingAgentTitle, dayKey, language, noUsageFilter, tokensText, usageChoices, usageMenusRequest, usagePage, usagePageRequest, usageRanges, usageWeeksRequest, usageYear,
-  type UsageChoice, type UsageFilter, type UsageRange,
+  codingAgentIds, codingAgentTitle, dayKey, language, noUsageFilter, tokensText, usageChoices, usageGroups, usageMenusRequest, usagePage, usagePageRequest, usageParts, usageRanges,
+  usageWeeksRequest, usageYear, type UsageChoice, type UsageFilter, type UsageGroup, type UsagePart, type UsageRange,
 } from "@hermesh/core";
 import type { MenuItem } from "../../../shared/bridge";
 import { i18n } from "../../../shared/i18n";
@@ -20,9 +20,9 @@ export function dayText(d: Date): string {
   return i18n.t("overview:day", { date, weekday });
 }
 
-/** What the Usage view shows: kept by the overview, so it is there again when the view is. */
-export type UsageState = { range: UsageRange; filter: UsageFilter };
-export const usageStart: UsageState = { range: "week", filter: noUsageFilter };
+/** What the Usage view shows: kept by the overview, so it is there again when the view is. By agent to start with. */
+export type UsageState = { range: UsageRange; filter: UsageFilter; group: UsageGroup };
+export const usageStart: UsageState = { range: "week", filter: noUsageFilter, group: "agent" };
 
 type WorkRequest = MessageInitShape<typeof QueryWorkRequestSchema>;
 
@@ -63,14 +63,24 @@ const placeName = (st: Store, id: string) => (st.machines.find((m) => m.machineI
 export function Usage({ now, state, onChange }: { now: Date; state: UsageState; onChange: (s: UsageState) => void }) {
   const { t } = useTranslation("overview");
   const st = useStore();
-  const { range, filter } = state;
+  const { range, filter, group } = state;
   const today = dayKey(now);
   // Asked again each day, and as the counts move.
-  const res = useWork(useMemo(() => usagePageRequest(range, filter, now), [range, filter, today]), st.workVersion);
+  const res = useWork(useMemo(() => usagePageRequest(range, filter, group, now), [range, filter, group, today]), st.workVersion);
   const menus = useWork(useMemo(() => usageMenusRequest(range, now), [range, today]), st.workVersion);
   const weeks = useWork(useMemo(() => usageWeeksRequest(filter, now), [filter, today]), st.workVersion);
   const page = useMemo(() => usagePage(res, range, now), [res, range, today]);
   const choices = useMemo(() => usageChoices(menus, filter), [menus, filter]);
+  // The bars in parts (docs/overview-usage.md §6.9): this Mac first, then the machines as the app lists them.
+  const machineOrder = useMemo(() => [...st.machines].sort((a, b) => Number(!!b.local) - Number(!!a.local)).map((m) => m.machineId), [st.machines]);
+  const split = useMemo(() => usageParts(res, range, group, filter, { agents: codingAgentIds, machines: machineOrder }), [res, range, group, filter, machineOrder]);
+  // A part named in a legend: pointed at, it stands out in both charts; clicked, it is seen alone in them (the page's filters stay).
+  const [lit, setLit] = useState<string | null>(null);
+  const [solo, setSolo] = useState<string | null>(null);
+  const parts = split?.parts ?? [];
+  const alone = parts.find((p) => p.id === solo) ?? null;
+  const partName = (p: UsagePart) =>
+    p.color < 0 ? t("usage.group.other") : split!.by === "agent" ? codingAgentTitle(p.id) : split!.by === "machine" ? placeName(st, p.id) : p.id;
 
   const said = (c: UsageChoice) => (c.sessions || c.tokens ? t("usage.filter.counts", { count: c.sessions, tokens: tokensText(c.tokens) }) : t("usage.filter.none"));
   // A filter's menu is the system's, under its button; a choice's second line is its work in the range.
@@ -79,10 +89,10 @@ export function Usage({ now, state, onChange }: { now: Date; state: UsageState; 
     const id = await window.hermesh?.popupMenu(items, { x: r.left, y: r.bottom + 4 });
     if (id != null) onChange(choose(id));
   };
-  const set = (f: Partial<UsageFilter>): UsageState => ({ range, filter: { ...filter, ...f } });
+  const set = (f: Partial<UsageFilter>): UsageState => ({ ...state, filter: { ...filter, ...f } });
   const all = (chosen: boolean): MenuItem[] => [{ id: "", label: t("usage.filter.all"), checked: !chosen }, { separator: true }];
   const rangeMenu = (e: MouseEvent<HTMLButtonElement>) =>
-    pop(e, usageRanges.map((r) => ({ id: r, label: t(`usage.range.${r}`), checked: r === range })), (id) => ({ range: id as UsageRange, filter }));
+    pop(e, usageRanges.map((r) => ({ id: r, label: t(`usage.range.${r}`), checked: r === range })), (id) => ({ ...state, range: id as UsageRange }));
   const agentMenu = (e: MouseEvent<HTMLButtonElement>) =>
     pop(e, [...all(!!filter.agent), ...choices.agents.map((c) => ({ id: c.id, label: codingAgentTitle(c.id), detail: said(c), checked: c.id === filter.agent }))], (agent) => set({ agent }));
   const clientMenu = (e: MouseEvent<HTMLButtonElement>) =>
@@ -134,6 +144,20 @@ export function Usage({ now, state, onChange }: { now: Date; state: UsageState; 
           {filter.machineId ? placeName(st, filter.machineId) + (filter.projectId ? `/${filter.projectId}` : "") : t("usage.filter.place")}
         </Pop>
         <Pop label={t("usage.filter.client")} on={!!filter.client} onClick={clientMenu}>{filter.client ? senderName(st, filter.client) : t("usage.filter.client")}</Pop>
+        {/* What the bars are in parts of: not a filter, so not a pop-up beside them; its three ways shown at once. */}
+        <span className="us-group">
+          <span aria-hidden="true">{t("usage.group.label")}</span>
+          <span className="seg" role="radiogroup" aria-label={t("usage.group.label")}>
+            {usageGroups.map((g) => (
+              <button key={g} role="radio" aria-checked={g === group} className={g === group ? "on" : ""} onClick={() => {
+                  setSolo(null);
+                  onChange({ ...state, group: g });
+                }}>
+                {t(`usage.group.${g}`)}
+              </button>
+            ))}
+          </span>
+        </span>
       </div>
       <div className="us-stack">
         <Measure
@@ -142,8 +166,17 @@ export function Usage({ now, state, onChange }: { now: Date; state: UsageState; 
           unit={t("usage.sessions.unit", { count: page.sessions })}
           delta={delta(page.sessionsDelta)}
           facts={[[t("usage.sessions.done"), String(page.done)], [t("usage.sessions.failed"), t("usage.sessions.failedTurns", { count: page.failedTurns })], [t("usage.sessions.busy"), durationText(page.busySeconds)]]}
+          legend={split && <Legend parts={parts} name={partName} value={(p) => String(p.sessions)} whole={page.sessions} lit={setLit} solo={solo} onSolo={setSolo} />}
         >
-          <Chart values={page.buckets.map((b) => b.sessions)} now={page.now} whole label={label} scale={String} tip={(i) => [when(i), t("usage.tip.sessions", { count: page.buckets[i].sessions })]} />
+          <Chart
+            values={page.buckets.map((b) => b.sessions)}
+            now={page.now}
+            whole
+            label={label}
+            scale={String}
+            tip={(i) => [when(i), t("usage.tip.sessions", { count: (alone ? alone.buckets[i] : page.buckets[i]).sessions })]}
+            parts={split && { parts, value: (b) => b.sessions, name: partName, text: String, lit, alone }}
+          />
         </Measure>
         <Measure
           title={t("usage.tokens.title")}
@@ -151,8 +184,16 @@ export function Usage({ now, state, onChange }: { now: Date; state: UsageState; 
           unit={t("usage.tokens.unit")}
           delta={delta(page.tokensDelta)}
           facts={[[t("usage.tokens.input"), tokensText(page.inputTokens)], [t("usage.tokens.output"), tokensText(page.outputTokens)]]}
+          legend={split && <Legend parts={parts} name={partName} value={(p) => tokensText(p.tokens)} whole={page.inputTokens + page.outputTokens} share={(p) => p.tokens} lit={setLit} solo={solo} onSolo={setSolo} />}
         >
-          <Chart values={page.buckets.map((b) => b.tokens)} now={page.now} label={label} scale={(v) => tokensText(v).replace(".0", "")} tip={(i) => [when(i), t("usage.tip.tokens", { tokens: tokensText(page.buckets[i].tokens) })]} />
+          <Chart
+            values={page.buckets.map((b) => b.tokens)}
+            now={page.now}
+            label={label}
+            scale={(v) => tokensText(v).replace(".0", "")}
+            tip={(i) => [when(i), t("usage.tip.tokens", { tokens: tokensText((alone ? alone.buckets[i] : page.buckets[i]).tokens) })]}
+            parts={split && { parts, value: (b) => b.tokens, name: partName, text: tokensText, lit, alone }}
+          />
         </Measure>
         <Year res={weeks} now={now} />
       </div>
@@ -176,8 +217,8 @@ function Pop({ label, on, onClick, children }: { label: string; on?: boolean; on
   );
 }
 
-/** A measure's row: its number, how it stands against the span before and its other figures; beside them its chart. */
-function Measure({ title, big, unit, delta, facts, children }: { title: string; big: string; unit: string; delta: string; facts: [string, string][]; children: ReactNode }) {
+/** A measure's row: its number, how it stands against the span before and its other figures; beside them its chart, under the parts' legend when it is in parts. */
+function Measure({ title, big, unit, delta, facts, legend, children }: { title: string; big: string; unit: string; delta: string; facts: [string, string][]; legend?: ReactNode; children: ReactNode }) {
   return (
     <div className="card tint us-m" role="group" aria-label={title}>
       <div className="us-lead">
@@ -188,17 +229,64 @@ function Measure({ title, big, unit, delta, facts, children }: { title: string; 
           {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
         </dl>
       </div>
-      <div className="us-plot">{children}</div>
+      <div className="us-plot">
+        {legend}
+        {children}
+      </div>
     </div>
   );
 }
 
+/** The colour of a part: its own of six, or Other's grey. */
+const partColor = (p: UsagePart) => (p.color < 0 ? "var(--us-other)" : `var(--us-s${p.color + 1})`);
+
+/**
+ * The parts of a measure in a line over its chart, the busiest first: each its colour, its number and its share of
+ * the whole. Pointed at, a part stands out; clicked, it is seen alone in the charts, and again, they are whole.
+ */
+function Legend({ parts, name, value, whole, share = (p) => p.sessions, lit, solo, onSolo }: {
+  parts: UsagePart[];
+  name: (p: UsagePart) => string;
+  value: (p: UsagePart) => string;
+  whole: number;
+  share?: (p: UsagePart) => number;
+  lit: (id: string | null) => void;
+  solo: string | null;
+  onSolo: (id: string | null) => void;
+}) {
+  const alone = parts.some((p) => p.id === solo);
+  return (
+    <div className={`us-legend ${alone ? "alone" : ""}`}>
+      {parts.map((p) => (
+        <button key={p.id} aria-pressed={p.id === solo} onMouseEnter={() => lit(p.id)} onMouseLeave={() => lit(null)} onClick={() => onSolo(p.id === solo ? null : p.id)}>
+          <i style={{ background: partColor(p) }} />
+          {name(p)}
+          <em>{value(p)}</em>
+          <small>{whole ? `${Math.round((share(p) / whole) * 100)}%` : ""}</small>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** A chart's bars in parts: each part's share of a bucket, by its value; one part seen alone, or one pointed at. */
+type ChartParts = { parts: UsagePart[]; value: (b: { sessions: number; tokens: number }) => number; name: (p: UsagePart) => string; text: (v: number) => string; lit: string | null; alone: UsagePart | null };
+
 /**
  * A measure over time: a thin bar a bucket in the map's own ink, the one now is in in colour, with a ruled scale
  * at the trailing edge and a name under the buckets there is room for. whole: the measure is counted in ones, so
- * the scale's middle is one too.
+ * the scale's middle is one too. In parts, a bar is its parts one on another, the busiest at its foot, each in its
+ * colour; one part seen alone is its bars alone on the same scale.
  */
-function Chart({ values, now, whole, label, scale, tip }: { values: number[]; now: number; whole?: boolean; label: (i: number) => string; scale: (v: number) => string; tip: (i: number) => [string, string] }) {
+function Chart({ values, now, whole, label, scale, tip, parts }: {
+  values: number[];
+  now: number;
+  whole?: boolean;
+  label: (i: number) => string;
+  scale: (v: number) => string;
+  tip: (i: number) => [string, string];
+  parts?: ChartParts | null;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [at, setAt] = useState<{ i: number; x: number } | null>(null);
   const raw = Math.max(1, ...values);
@@ -214,9 +302,20 @@ function Chart({ values, now, whole, label, scale, tip }: { values: number[]; no
         {[1, 0.5, 0].map((f) => <div key={f} className="us-rule" style={{ bottom: `${f * 100}%` }}><span>{scale(top * f)}</span></div>)}
         <div className="us-slots" role="img" aria-label={values.slice(0, now + 1).map((_, i) => tip(i).join(" ")).join("; ")}>
           {values.map((v, i) =>
-            i > now ? <i key={i} /> : (
+            i > now ? <i key={i} /> : !parts ? (
               <i key={i} className={`in ${i === now ? "now" : ""}`} onMouseEnter={(e) => hover(i, e.currentTarget)}>
                 {v > 0 && <u style={{ height: `${(v / top) * 100}%` }} />}
+              </i>
+            ) : (
+              <i key={i} className="in" onMouseEnter={(e) => hover(i, e.currentTarget)}>
+                {(parts.alone ? parts.value(parts.alone.buckets[i]) : v) > 0 && (
+                  <span className="us-bar" style={{ height: `${((parts.alone ? parts.value(parts.alone.buckets[i]) : v) / top) * 100}%` }}>
+                    {(parts.alone ? [parts.alone] : parts.parts).map((p) => {
+                      const n = parts.value(p.buckets[i]);
+                      return n > 0 && <u key={p.id} className={parts.lit !== null && parts.lit !== p.id ? "dim" : ""} style={{ flexGrow: n, background: partColor(p) }} />;
+                    })}
+                  </span>
+                )}
               </i>
             ),
           )}
@@ -227,7 +326,17 @@ function Chart({ values, now, whole, label, scale, tip }: { values: number[]; no
         <div className="u-tip" style={{ left: at.x, top: 0 }}>
           <b>{tip(at.i)[1]}</b>
           <br />
-          {tip(at.i)[0]}
+          {parts?.alone ? `${parts.name(parts.alone)} · ${tip(at.i)[0]}` : tip(at.i)[0]}
+          {parts && !parts.alone && (
+            <span className="u-parts">
+              {parts.parts.filter((p) => parts.value(p.buckets[at.i]) > 0).map((p) => (
+                <span key={p.id}>
+                  <span><i style={{ background: partColor(p) }} />{parts.name(p)}</span>
+                  <em>{parts.text(parts.value(p.buckets[at.i]))}</em>
+                </span>
+              ))}
+            </span>
+          )}
         </div>
       )}
     </div>

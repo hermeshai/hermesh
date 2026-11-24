@@ -186,7 +186,7 @@ compositor).
 
 | State | Request | Answer |
 |---|---|---|
-| The page (range and filters) | the range by hour (Today) or day, `filter`, `previous`, no `group_by` | ≤ 30 rows of sessions and of turns, the range's totals, the earlier period's totals |
+| The page (range and filters) | the range by hour (Today) or day, `filter`, `previous`; `group_by` as the bars are grouped (§6.9) | ≤ 30 rows of sessions and of turns, as many a part, the range's totals, the earlier period's totals |
 | The three menus' choices | the range, `WORK_BUCKET_NONE`, `group_by` all four dimensions, no `filter` | one row per (sender, agent, machine, project) that worked: tens of rows, a few hundred at most |
 | 18 weeks | 126 days by day, `filter`, `turns_only` | ≤ 126 rows |
 
@@ -245,6 +245,9 @@ whole environment" unless the environment menu stays, and then is the first
 again.
 
 ### 6.3 The menus are the system's
+
+(Since §6.9 the range's menu is its own button and the other three are menus
+inside one Filters button's; what follows holds for each of them.)
 
 The four filters are SwiftUI `Menu`s, built as the app's own already are
 (`SessionsView`'s Group and Sort, `ThreadPage`'s project and environment).
@@ -412,6 +415,71 @@ page does not wait; it is not the instant answer §9 asked for. What would
 bring it under the targets is the counts kept by `(m, k, q)` as well (an
 index, or the finished days added up once), which is a change of the tables
 work-stats.md owns and is not part of this step.
+
+### 6.9 Grouping the bars
+
+A filter says whose work is counted; **分组** (Group) says what the bars are
+in parts of. It is a segmented control at the trailing end of the filter row,
+not a fourth pop-up beside them, so the two are not read as one kind of thing:
+**Agent 提供方 | 环境 / 项目 | 合计** (Agent Provider | Environment / Project |
+Total). The page opens on Agent Provider; the choice is kept with the range
+and filters while the overview shows its other views. The screens are in
+[overview-usage-breakdown-mac-demo.html](overview-usage-breakdown-mac-demo.html).
+
+- **The bars in parts.** Grouped, each bucket's bar in both charts is its
+  parts one on another (the busiest at the foot), each in its colour; the bar's
+  height is still the whole, so the scale and the left side's number, change
+  and figures are as they were. Total is a bar a bucket, as before.
+- **The legend** is a line over each chart: a part's colour, name, number and
+  share of the whole, the busiest first. Pointed at, the part stands out in
+  both charts. Clicked, the part is seen alone in both, on the same scale; the
+  page's filters and numbers do not change, and clicking it again, or changing
+  the group, shows all. Picking a part as a filter is the filter menus' job.
+- **Where** has two levels, as its menu: the environments; with one
+  environment chosen in the filter, or only one that worked, its projects (a
+  project is its machine's own, §6.2).
+- **Colours** are the data-viz palette's first six, told apart in colour
+  blindness on the light and dark cards. A part's colour is its place in a
+  fixed order (the coding agents' own list, this Mac and then the machines as
+  the app lists them, projects by name) while every part drawn falls within
+  six, so an agent keeps its colour whatever the range or the filters; else
+  each takes its place among those drawn, in that order. More than six parts:
+  the five busiest, and the rest added up as one grey part, Other.
+- **One question.** The page's own `QueryWork` carries `group_by` (`AGENT`, or
+  `MACHINE` and `PROJECT`), and `usageParts` (`packages/core/src/usage.ts`)
+  makes the parts from its answer; the totals are the sum of the groups, as a
+  session has one agent, machine and project. `groupWork` groups rows hermeshd
+  has already read, so this asks nothing more of SQLite (§6.8).
+- Every bar's top is rounded 3 px, as the page's other corners, not a capsule.
+
+**The iPhone** groups by the same rules (`usageParts` in
+`HermeshSessions/Statistics.swift`, the same cases as the Mac's tests), drawn
+for its width. The screens are in
+[overview-usage-breakdown-iphone-demo.html](overview-usage-breakdown-iphone-demo.html).
+
+- **Two rows of controls, not three.** Under Live | Usage | Limits, one row
+  holds how the page is looked at: the range (a menu), the grouping (a
+  segmented control: By Agent | By Environment | Total, and By Project in
+  place of By Environment once one environment is all there is to split), and
+  one button the three filters are behind. Its menu holds a menu a filter,
+  each saying under its name what is chosen. A filter in force tints the
+  button, which counts them, and is named in a row under it that scrolls
+  sideways; its cross lets it go. So the row is there only when something is
+  filtered, and what is filtered is always said. The cost is one more tap to
+  choose a filter; a part tapped in a legend answers most of what a filter was
+  opened for.
+- **Four parts in the bars**, where the Mac draws six: every part when there
+  are four or fewer, else the three busiest and the rest as Other. A bar is
+  72 pt tall (56 before), in every grouping, so four parts can be told apart.
+- **The legend is the card's own**, in two columns between its number and its
+  bars (one column at the accessibility type sizes): a part's colour, short
+  name, number and share. Other says how many it holds and opens in place to
+  every part, those in it grey; both cards open and close together. A part
+  tapped is seen alone in both charts (one of Other's in the accent).
+- **A bar tapped** says over itself what it stands for, as the Mac's does
+  under the pointer: its whole, when, and each part that has any. Tapped
+  again it is let go; held, the finger moves along the bars (a day of thirty
+  is 8 pt wide). It works in every grouping, the total too.
 
 ## 7. Limits
 
@@ -623,6 +691,11 @@ Each is one change that can ship alone.
    the spec `limits.spec.ts`, on a second Mac whose fake agent says limits).
    An agent that reports limits and has not yet says so ("shows after it
    runs a task"); one that never will says it gives none.
+   Grouping the bars (§6.9) is built (2026-11-25): `usageParts`, the 分组
+   control and the legends in `overview/Usage.tsx`, checked in
+   `overview.spec.ts`. The iPhone's is built too (2026-11-25): the row of
+   controls, the legends and the bars in `StatsPages.swift`, checked in
+   `DemoUITests.testReviewOverviewAndSettings` and `HermeshUITests.usage`.
 7. **Docs** (§8).
 
 ## 13. To settle

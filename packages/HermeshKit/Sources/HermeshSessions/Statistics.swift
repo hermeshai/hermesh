@@ -28,8 +28,15 @@ public struct UsageFilter: Hashable, Sendable {
     }
 }
 
-/// The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it.
-public func usagePageRequest(_ period: WorkPeriod, filter: UsageFilter, now: Date, calendar: Calendar = .current) -> Hermesh_Local_V1_QueryWorkRequest {
+/// What the page's bars are in parts of: the agents, where (the environments, or one environment's projects), or
+/// nothing (the total).
+public enum UsageGroup: String, CaseIterable, Sendable {
+    case agent, place, total
+}
+
+/// The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it;
+/// grouped as the bars are (where by machine and project, so either can be drawn).
+public func usagePageRequest(_ period: WorkPeriod, filter: UsageFilter, group: UsageGroup = .total, now: Date, calendar: Calendar = .current) -> Hermesh_Local_V1_QueryWorkRequest {
     var r = Hermesh_Local_V1_QueryWorkRequest()
     r.timeZone = calendar.timeZone.identifier
     r.firstDay = dayKey(period.firstDay(now, calendar: calendar), calendar: calendar)
@@ -37,6 +44,11 @@ public func usagePageRequest(_ period: WorkPeriod, filter: UsageFilter, now: Dat
     r.bucket = period.hourly ? .hour : .day
     r.filter = filter.group
     r.previous = true
+    switch group {
+    case .agent: r.groupBy = [.agent]
+    case .place: r.groupBy = [.machine, .project]
+    case .total: break
+    }
     return r
 }
 
@@ -100,6 +112,100 @@ public func usagePage(_ res: Hermesh_Local_V1_QueryWorkResponse?, period: WorkPe
                      done: (res?.rangeSessions ?? []).reduce(0) { $0 + Int($1.done) }, failedTurns: (res?.rangeTurns ?? []).reduce(0) { $0 + Int($1.failedTurns) },
                      busySeconds: (res?.rangeTurns ?? []).reduce(UInt64(0)) { $0 + $1.busySeconds }, inputTokens: input, outputTokens: output,
                      sessionsDelta: delta(Double(sessions), Double(before)), tokensDelta: delta(Double(input + output), Double(tokensBefore)))
+}
+
+/// A part of the page's bars: what it is, its colour (0 to 5; -1: none of its own, it is among Other or is Other),
+/// its whole in the range and its share of each bucket.
+public struct UsagePart: Equatable, Identifiable, Sendable {
+    public struct Bucket: Equatable, Sendable {
+        public var sessions = 0
+        public var tokens: UInt64 = 0
+
+        public init(sessions: Int = 0, tokens: UInt64 = 0) {
+            self.sessions = sessions
+            self.tokens = tokens
+        }
+    }
+
+    public var id: String
+    public var color = -1
+    public var sessions = 0
+    public var tokens: UInt64 = 0
+    public var buckets: [Bucket]
+
+    /// The id of the part the least busy are added up as.
+    public static let other = ""
+}
+
+/// What the bars are in parts of: agents, machines, or one machine's projects (its id in machineID). all: every
+/// part, the busiest first. drawn: those the bars are coloured by, all of them when they are few, else the
+/// busiest and the rest as one, Other.
+public struct UsageParts: Equatable, Sendable {
+    public enum By: Sendable { case agent, machine, project }
+
+    public var by: By
+    public var machineID = ""
+    public var all: [UsagePart] = []
+    public var drawn: [UsagePart] = []
+
+    /// The parts added up as Other.
+    public var folded: Int { all.count - drawn.count(where: { $0.id != UsagePart.other }) }
+}
+
+/// The colours the parts are told apart by (the Mac's palette).
+public let usagePartColors = 6
+
+/// The parts of the page's bars from the answer to its grouped question (the Mac's usageParts, by the same rules):
+/// the agents; or the machines, or (one machine chosen, or only one that worked) its projects. A part's colour
+/// follows it, not its rank: its place in order (the coding agents' own list, the machines as the app lists them,
+/// projects by name) when all of those drawn fall within the colours, else its place among them in that order.
+/// More parts than can be drawn (the phone draws four, the Mac six): the busiest, and the rest as Other.
+public func usageParts(_ res: Hermesh_Local_V1_QueryWorkResponse?, period: WorkPeriod, group: UsageGroup, filter: UsageFilter,
+                       agents: [String], machines: [String], drawn most: Int = 4) -> UsageParts? {
+    if group == .total { return nil }
+    let n = period.hourly ? 24 : period.days
+    let ids = Set((res?.rangeSessions ?? []).map(\.group.machineID) + (res?.rangeTurns ?? []).map(\.group.machineID))
+    let machineID = group == .place ? (filter.machineID.isEmpty ? (ids.count == 1 ? ids.first! : "") : filter.machineID) : ""
+    let by: UsageParts.By = group == .agent ? .agent : machineID.isEmpty ? .machine : .project
+    func key(_ g: Hermesh_Local_V1_WorkGroup) -> String? {
+        switch by {
+        case .agent: g.agent
+        case .machine: g.machineID
+        case .project: g.machineID == machineID ? g.projectID : nil
+        }
+    }
+    var parts: [String: UsagePart] = [:]
+    func add(_ g: Hermesh_Local_V1_WorkGroup, _ change: (inout UsagePart) -> Void) {
+        // A group with no name is the answer to another question (the last one, shown while this is asked): no part.
+        guard let id = key(g), !id.isEmpty else { return }
+        change(&parts[id, default: UsagePart(id: id, buckets: Array(repeating: .init(), count: n))])
+    }
+    for x in res?.rangeSessions ?? [] { add(x.group) { $0.sessions += Int(x.sessions) } }
+    for x in res?.rangeTurns ?? [] { add(x.group) { $0.tokens += x.inputTokens + x.outputTokens } }
+    for x in res?.sessions ?? [] where Int(x.bucket) < n { add(x.group) { $0.buckets[Int(x.bucket)].sessions += Int(x.sessions) } }
+    for x in res?.turns ?? [] where Int(x.bucket) < n { add(x.group) { $0.buckets[Int(x.bucket)].tokens += x.inputTokens + x.outputTokens } }
+
+    var all = parts.values.filter { $0.sessions > 0 || $0.tokens > 0 }.sorted { ($0.sessions, $0.tokens, $1.id) > ($1.sessions, $1.tokens, $0.id) }
+    let top = all.count > most ? most - 1 : all.count
+    let known = by == .agent ? agents : by == .machine ? machines : all[..<top].map(\.id).sorted()
+    func place(_ id: String) -> Int { known.firstIndex(of: id) ?? Int.max }
+    let inOrder = all[..<top].map(\.id).sorted { (place($0), $0) < (place($1), $1) }
+    let fits = all[..<top].allSatisfy { place($0.id) < usagePartColors }
+    for i in 0 ..< top { all[i].color = fits ? place(all[i].id) : inOrder.firstIndex(of: all[i].id)! }
+    var drawn = Array(all[..<top])
+    if top < all.count {
+        var other = UsagePart(id: UsagePart.other, buckets: Array(repeating: .init(), count: n))
+        for p in all[top...] {
+            other.sessions += p.sessions
+            other.tokens += p.tokens
+            for i in 0 ..< n {
+                other.buckets[i].sessions += p.buckets[i].sessions
+                other.buckets[i].tokens += p.buckets[i].tokens
+            }
+        }
+        drawn.append(other)
+    }
+    return UsageParts(by: by, machineID: machineID, all: all, drawn: drawn)
 }
 
 /// A choice of a filter's menu: what it is, and its sessions and tokens in the range under the other filters.

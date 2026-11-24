@@ -885,23 +885,54 @@ final class HermeshUITests: XCTestCase {
         shot.name = "usage, today"
         shot.lifetime = .keepAlways
         add(shot)
-        // The agent's menu: each coding agent that worked today, with its work under it; Gemini CLI did all of it.
+        // The bars are in parts of the agents to start with (docs/overview-usage.md §6.9): Gemini CLI did all of it.
+        let group = app.segmentedControls["usage-group"]
+        XCTAssertTrue(group.buttons["按 Agent"].isSelected, "grouped by agent to start with")
+        let part = app.buttons["usage-sessions-part-gemini"]
+        XCTAssertTrue(part.waitForExistence(timeout: 10) && part.label.hasPrefix("Gemini CLI, ") && part.label.hasSuffix("100%"), part.label)
+        XCTAssertTrue(app.buttons["usage-tokens-part-gemini"].label.contains("token"))
+        // Tapped, a part is seen alone, and the page's number stays; a bar tapped says what it stands for.
+        part.tap()
+        try waitFor("Gemini CLI alone in the charts") { part.isSelected ? true : nil }
+        XCTAssertEqual(big.label, worked)
+        let nowMark = text("现在")
+        nowMark.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -1.5)).tap()
+        let callout = app.descendants(matching: .any)["usage-sessions-callout"].firstMatch
+        XCTAssertTrue(callout.waitForExistence(timeout: 5) && callout.label.contains("个任务") && callout.label.contains("Gemini CLI"), "this hour's bar says Gemini CLI's sessions")
+        let day = XCTAttachment(screenshot: app.screenshot())
+        day.name = "usage, a bar picked"
+        day.lifetime = .keepAlways
+        add(day)
+        part.tap()
+        try waitFor("all the parts again") { part.isSelected ? nil : true }
+        // By where: one environment worked, so its projects are the parts, and the control says so. The total has none.
+        group.buttons["按项目"].tap()
+        XCTAssertTrue(app.buttons["usage-sessions-part-demo"].waitForExistence(timeout: 10), "the project's part")
+        group.buttons["合计"].tap()
+        XCTAssertTrue(app.buttons["usage-sessions-part-demo"].waitForNonExistence(timeout: 10), "the total is not in parts")
+        group.buttons["按 Agent"].tap()
+        XCTAssertTrue(part.waitForExistence(timeout: 10))
+        // The filters are behind one button. The agent's menu: each coding agent that worked today, with its work
+        // under it; Gemini CLI did all of it. One in force is said under the row.
+        tap("filters")
         tap("filter-agent")
-        let gemini = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Gemini CLI")).firstMatch
+        let gemini = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Gemini CLI,")).firstMatch
         XCTAssertTrue(gemini.waitForExistence(timeout: 5) && gemini.label.contains("个任务 ·") && gemini.label.contains("token"), gemini.label)
         gemini.tap()
-        XCTAssertTrue(app.buttons["filter-agent"].label.contains("Gemini CLI"), app.buttons["filter-agent"].label)
+        let agentInForce = app.buttons["filter-in-force-agent"]
+        XCTAssertTrue(agentInForce.waitForExistence(timeout: 5) && agentInForce.label.contains("Gemini CLI"), agentInForce.label)
         try waitFor("the same work, Gemini CLI's alone") { big.label == worked ? true : nil }
         // The sender's: bot sent it.
+        tap("filters")
         tap("filter-client")
         let bot = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "bot")).firstMatch
         XCTAssertTrue(bot.waitForExistence(timeout: 5), "bot sent work today")
         bot.tap()
         try waitFor("bot's work") { big.label == worked ? true : nil }
-        // Back to everything.
-        tap("filter-client"); tap("全部")
-        tap("filter-agent"); tap("全部")
-        XCTAssertFalse(app.buttons["filter-agent"].label.contains("Gemini CLI"))
+        // Back to everything: each let go by its cross.
+        tap("filter-in-force-client")
+        tap("filter-in-force-agent")
+        XCTAssertTrue(agentInForce.waitForNonExistence(timeout: 5), "no filter in force")
         // 18 weeks of tokens, today's among them; what the input counts.
         app.swipeUp()
         XCTAssertTrue(app.descendants(matching: .any)["usage-weeks"].firstMatch.exists && text("活跃天数").exists, "the weeks")

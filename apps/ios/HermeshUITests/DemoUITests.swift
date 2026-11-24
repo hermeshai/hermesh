@@ -497,10 +497,36 @@ final class DemoUITests: XCTestCase {
         view(1)
         reach("filter-range")
         for range in ["30 Days", "Today", "7 Days"] { pick("filter-range", range) }
-        pick("filter-agent", "Codex")
+        // The bars are in parts of the agents to start with, each named over them with its number and share; a part
+        // tapped there is seen alone, and the total has none.
+        let group = app.segmentedControls["usage-group"]
+        XCTAssertTrue(group.waitForExistence(timeout: 5) && group.buttons["Agents"].isSelected, "grouped by agent to start with")
+        let codex = app.buttons["usage-sessions-part-codex"]
+        XCTAssertTrue(codex.waitForExistence(timeout: 5) && codex.label.hasPrefix("Codex, ") && codex.label.hasSuffix("%"), codex.label)
+        codex.tap()
+        XCTAssertTrue(wait { codex.isSelected }, "Codex alone in the charts")
+        codex.tap()
+        XCTAssertTrue(wait { !codex.isSelected })
+        // A bar tapped says what it stands for: today's, over the axis's Today.
+        let today = app.staticTexts.matching(NSPredicate(format: "label == %@", "Today")).firstMatch
+        XCTAssertTrue(today.waitForExistence(timeout: 5))
+        today.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -1.5)).tap()
+        let callout = app.descendants(matching: .any)["usage-sessions-callout"].firstMatch
+        XCTAssertTrue(callout.waitForExistence(timeout: 5) && callout.label.contains("task"), "today's bar says its tasks")
+        checkpoint("overview-usage-day")
+        today.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -1.5)).tap()
+        XCTAssertTrue(callout.waitForNonExistence(timeout: 5))
+        group.buttons["Total"].tap()
+        XCTAssertTrue(codex.waitForNonExistence(timeout: 5), "the total is not in parts")
+        group.buttons["Agents"].tap()
+        // The filters are behind one button; one in force is said under the row, and let go there.
+        filter("filter-agent", "Codex")
+        let inForce = app.buttons["filter-in-force-agent"]
+        XCTAssertTrue(inForce.waitForExistence(timeout: 5) && inForce.label.contains("Codex"), "Codex's work alone")
         XCTAssertTrue(app.descendants(matching: .any)["usage-sessions"].firstMatch.waitForExistence(timeout: 5))
         checkpoint("overview-usage")
-        pick("filter-agent", "All", shows: "Agent Provider")
+        inForce.tap()
+        XCTAssertTrue(inForce.waitForNonExistence(timeout: 5), "every agent's again")
         view(2)
         // The least left first: Claude Code's five hours, 18% left.
         let five = app.descendants(matching: .any)["limit-claude-300"].firstMatch
@@ -705,6 +731,14 @@ final class DemoUITests: XCTestCase {
         line.tap()
         let b = app.buttons[button]
         XCTAssertTrue(wait { b.isHittable && b.label == (shows ?? item) }, "\(button): \(b.label)")
+    }
+
+    /// Chooses item in one of the filters' menus, which are inside the Filters button's.
+    private func filter(_ menu: String, _ item: String) {
+        tap("filters"); tap(menu)
+        let line = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", item, item + ",")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5), item)
+        line.tap()
     }
 
     private func menuItem(_ prefix: String) {
