@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { consoleURL, inConsole, opensOutside } from "../shared/herConsole";
 import { i18n } from "../shared/i18n";
+import { preferences } from "./notify";
 import { platform } from "./platform";
 
 export const origin = "app://hermesh";
@@ -67,7 +68,7 @@ function webPreferences() {
     contextIsolation: true,
     nodeIntegration: false,
     spellcheck: false,
-    additionalArguments: [`--hermesh-user=${os.userInfo().username}`, `--hermesh-version=${app.getVersion()}`, `--hermesh-lang=${language()}`, `--hermesh-material=${platform.material ? 1 : 0}`],
+    additionalArguments: [`--hermesh-user=${os.userInfo().username}`, `--hermesh-version=${app.getVersion()}`, `--hermesh-lang=${language()}`, `--hermesh-material=${platform.material ? 1 : 0}`, `--hermesh-appearance=${preferences().appearance}`],
   };
 }
 

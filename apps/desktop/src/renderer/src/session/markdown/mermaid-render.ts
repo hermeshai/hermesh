@@ -5,9 +5,14 @@ const cache = new Map<string, string>();
 let queue: Promise<unknown> = Promise.resolve();
 let serial = 0;
 
-export function renderDiagram(source: string, dark: boolean): Promise<string> {
+export type DiagramTheme = "light" | "dark" | "black";
+
+export function renderDiagram(source: string, mode: DiagramTheme | boolean): Promise<string> {
   if (!validDiagram(source)) return Promise.reject(new Error("unsupported diagram"));
-  const key = `${dark}:${source}`;
+  const theme: DiagramTheme = typeof mode === "boolean" ? (mode ? "dark" : "light") : mode;
+  const dark = theme !== "light";
+  const black = theme === "black";
+  const key = `${theme}:${source}`;
   const found = cache.get(key);
   if (found) return Promise.resolve(found);
   const result = queue.then(async () => {
@@ -16,11 +21,11 @@ export function renderDiagram(source: string, dark: boolean): Promise<string> {
       theme: "base", maxTextSize: MAX_DIAGRAM_LENGTH, maxEdges: 400,
       htmlLabels: false, fontFamily: '"Google Sans Flex", "Google Sans", system-ui, "PingFang SC", sans-serif',
       themeVariables: {
-        darkMode: dark, background: dark ? "#161619" : "#FFFFFF",
-        primaryColor: dark ? "#242428" : "#F4F5F7", primaryTextColor: dark ? "#DEDEDB" : "#202127",
-        primaryBorderColor: dark ? "#8AB4F8" : "#285FB8", lineColor: dark ? "#999993" : "#60636D",
-        secondaryColor: dark ? "#2A2A2D" : "#EBEDF2", tertiaryColor: dark ? "#303034" : "#E3E7EE",
-        fontSize: "14px", edgeLabelBackground: dark ? "#161619" : "#FFFFFF",
+        darkMode: dark, background: black ? "#0D0D11" : dark ? "#161619" : "#FFFFFF",
+        primaryColor: black ? "#15151A" : dark ? "#242428" : "#F4F5F7", primaryTextColor: black ? "#FAFAFA" : dark ? "#DEDEDB" : "#202127",
+        primaryBorderColor: dark ? "#8AB4F8" : "#285FB8", lineColor: black ? "#87888F" : dark ? "#999993" : "#60636D",
+        secondaryColor: black ? "#131317" : dark ? "#2A2A2D" : "#EBEDF2", tertiaryColor: black ? "#1F1F24" : dark ? "#303034" : "#E3E7EE",
+        fontSize: "14px", edgeLabelBackground: black ? "#0D0D11" : dark ? "#161619" : "#FFFFFF",
       },
       flowchart: { htmlLabels: false, useMaxWidth: false, padding: 16 },
       sequence: { useMaxWidth: false },

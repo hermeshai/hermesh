@@ -9,7 +9,10 @@
 
 /* Connections: one muted ink for every session's line. */
 :root{--live:#5f6b85;--lm-node:#ffffff;--lm-node-bd:rgba(0,0,0,.09);--lm-line:rgba(0,0,0,.12);--lm-hover:rgba(0,0,0,.28)}
-@media (prefers-color-scheme:dark){:root{--live:#a7b1c7;--lm-node:#323237;--lm-node-bd:rgba(255,255,255,.08);--lm-line:rgba(255,255,255,.13);--lm-hover:rgba(255,255,255,.3)}}
+@media (prefers-color-scheme:dark){
+  :root{--live:#a7b1c7;--lm-node:#323237;--lm-node-bd:rgba(255,255,255,.08);--lm-line:rgba(255,255,255,.13);--lm-hover:rgba(255,255,255,.3)}
+  :root[data-dark-style="black"]{--lm-node:#1a1a20;--lm-node-bd:rgba(255,255,255,.075)}
+}
 .lmap{background:var(--win2);border-radius:14px;overflow:hidden}
 .lmap-top{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-3) 0;flex-wrap:wrap}
 .lmap-top b{font-size:14px;font-weight:600}

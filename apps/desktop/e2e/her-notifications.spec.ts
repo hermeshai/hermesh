@@ -4,7 +4,7 @@ import { LocalService } from "@hermesh/proto/local";
 import type { BotResult } from "@hermesh/her-protocol";
 import { expect, test } from "@playwright/test";
 import type { BrowserWindow } from "electron";
-import { fixture, launch, openWork, thisComputer } from "./app";
+import { fixture, launch, navTo, openWork, thisComputer } from "./app";
 
 type Hook = { mainWindow(): BrowserWindow; notifications(): { id: string; body: string }[] };
 declare const hermeshTest: Hook;
@@ -35,8 +35,7 @@ test("Her notifications follow the visible, focused conversation", async () => {
     }, on);
     await setFocus(true);
 
-    const her = page.locator(".side-nav, .rail-nav").getByRole("button", { name: /^Her/ });
-    await her.click();
+    await navTo(page, /^Her/);
     await page.getByRole("list", { name: "选择 Her 在哪里运行" }).getByRole("listitem")
       .filter({ hasText: thisComputer }).getByRole("button", { name: "开启 Her" }).click({ timeout: 60_000 });
     await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
@@ -66,7 +65,7 @@ test("Her notifications follow the visible, focused conversation", async () => {
     await send("[[mock:send:other page synthetic reply]] hi");
     await expect.poll(notices).toContain("other page synthetic reply");
 
-    await her.click();
+    await navTo(page, /^Her/);
     await expect(replies.filter({ hasText: "other page synthetic reply" })).toBeVisible();
     await setFocus(true);
     await expect.poll(notices).not.toContain("other page synthetic reply");

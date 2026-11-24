@@ -4,7 +4,7 @@ import { applyWatch, emptyWorld, filterNotices, herNotices, herSnapshots, notice
 import { LocalService, type Client, type GetStatusResponse, type Machine, type PairingDetails } from "@hermesh/proto/local";
 import { HerLatestKind } from "@hermesh/proto/machine";
 import type { Session } from "@hermesh/proto/session";
-import { app, nativeTheme, Notification } from "electron";
+import { app, BrowserWindow, nativeTheme, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { Command, Preferences } from "../shared/bridge";
@@ -38,13 +38,15 @@ let prefs: Preferences | undefined;
 let legacy: { keepDaemonOnQuit?: boolean; stayOnline?: boolean } = {};
 const prefsFile = () => path.join(app.getPath("userData"), "preferences.json");
 
+const isAppearance = (a: unknown): a is Preferences["appearance"] => a === "system" || a === "light" || a === "dark" || a === "black";
+
 export function preferences(): Preferences {
   if (!prefs) {
     try {
       const raw = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
       legacy = { keepDaemonOnQuit: raw.keepDaemonOnQuit, stayOnline: raw.stayOnline };
       delete raw.keepDaemonOnQuit;
-      prefs = { ...defaults, ...raw };
+      prefs = { ...defaults, ...raw, appearance: isAppearance(raw.appearance) ? raw.appearance : defaults.appearance };
     } catch {
       prefs = { ...defaults };
     }
@@ -65,7 +67,8 @@ export async function migrateStayOnline(loginItem: () => Promise<{ on: boolean }
 }
 
 export function applyAppearance() {
-  nativeTheme.themeSource = preferences().appearance;
+  const appearance = preferences().appearance;
+  nativeTheme.themeSource = appearance === "black" ? "dark" : appearance;
 }
 
 export function setPreferences(p: Partial<Preferences>): Preferences {
@@ -73,12 +76,13 @@ export function setPreferences(p: Partial<Preferences>): Preferences {
   const next = { ...before };
   for (const k of ["notifyStarted", "notifyQuestion", "notifyFailed", "notifyTurnDone", "menuBadge", "stayOnline"] as const) if (typeof p[k] === "boolean") next[k] = p[k];
   if (p.language === "system" || languages.includes(p.language as Language)) next[kLanguage] = p.language!;
-  if (p.appearance === "system" || p.appearance === "light" || p.appearance === "dark") next.appearance = p.appearance;
+  if (isAppearance(p.appearance)) next.appearance = p.appearance;
   prefs = next;
   legacy.stayOnline = next.stayOnline;
   applyAppearance();
   fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
   fs.writeFileSync(prefsFile(), JSON.stringify(next));
+  for (const w of BrowserWindow.getAllWindows()) if (!w.isDestroyed()) w.webContents.send("preferences", next);
   if (next.stayOnline !== before.stayOnline) stayOnlineListeners.forEach((f) => f(next.stayOnline));
   changed();
   return next;

@@ -13,8 +13,8 @@
     "stopping": "正在停止后台服务…"
   },
   "window": {
-    "showSidebar": "展开边栏",
-    "hideSidebar": "收成窄栏",
+    "showSidebar": "显示边栏",
+    "hideSidebar": "隐藏边栏",
     "undo": "撤销",
     "menu": "菜单"
   },
@@ -223,13 +223,6 @@
     "openWork": "打开概览",
     "herOff": "Her 还没启用",
     "turnHerOn": "选择她在哪里运行…"
-  },
-  "rail": {
-    "label": "窄栏",
-    "expand": "展开边栏",
-    "herOff": "Her · 未启用",
-    "waiting_other": "{{count}} 个在等你",
-    "failed_other": "{{count}} 个出错"
   },
   "needsUpdate": {
     "mark": "需更新",
