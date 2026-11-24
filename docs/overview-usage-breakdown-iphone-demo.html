@@ -175,7 +175,7 @@ h1,h2,p,ul{margin:0;padding:0}
     <ul>
       <li>第一行：实时｜用量｜额度。第二行：分法，然后是时间范围和一个筛选按钮。<b>平时只有这两行</b>。</li>
       <li><b>分法放最左</b>：这一行里最常点、面积最大的控件。<b>时间和筛选挨着放在右边</b>：两个都是「看哪些数据」，是一组。</li>
-      <li>分法是「合计｜按 Agent｜按环境」，先整体再拆分，默认按 Agent。选了某个环境（或只有一个环境有数据）时，「按环境」变成「按项目」。</li>
+      <li>分法是「不分组｜按 Agent｜按环境」，先不拆再拆分，默认按 Agent。选了某个环境（或只有一个环境有数据）时，「按环境」变成「按项目」。</li>
       <li>筛选按钮点开是系统菜单：Agent 提供方、环境 / 项目、发起方，各自再点进去选，和现在环境 / 项目的两级菜单是同一种。</li>
       <li><b>有筛选时才多出一行</b>：按钮变成强调色并带上个数，下面列出生效的筛选，点叉去掉；这一行可以横滑。</li>
       <li>「实时｜用量｜额度」不挪进导航栏：导航栏中间留给连接状态那一行。</li>
@@ -232,7 +232,7 @@ function world(many){
 world('');
 const st={range:'week',group:'agent',machine:'',agent:'',solo:null,sel:-1,more:false,legend:'grid'};
 const RANGE={today:'今天',week:'7 天',month:'30 天'},PREV={today:'较昨天此时',week:'较前 7 天',month:'较前 30 天'};
-const GROUP={total:'合计',agent:'按 Agent',place:'按环境'};
+const GROUP={total:'不分组',agent:'按 Agent',place:'按环境'};
 const tokens=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1).replace('.0','')+'K':String(n);
 const md=d=>`${d.getMonth()+1}月${d.getDate()}日`,wd=d=>'周'+'日一二三四五六'[d.getDay()];
 const span=()=>st.range==='today'?[T,T]:st.range==='week'?[T-6,T]:[0,T];

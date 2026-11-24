@@ -7,9 +7,10 @@ import type { Machine } from "@hermesh/proto/local";
 
 /**
  * A window as the page shows it: how long, how much is left and of its time, and when it starts again; and the models
- * it counts, when the agent counts groups of them apart ("" for the account's).
+ * it counts, when the agent counts groups of them apart ("" for the account's). resetsAt null: it has not started (no
+ * reset time said, as agy says 1970 for a window not yet used), so it is whole until first used, its time too.
  */
-export type LimitShown = { minutes: number; left: number; timeLeft: number; resetsAt: Date; group: string };
+export type LimitShown = { minutes: number; left: number; timeLeft: number; resetsAt: Date | null; group: string };
 
 export type AgentLimitsCard = {
   agent: string;
@@ -41,12 +42,13 @@ export function agentLimits(machines: Pick<Machine, "machineId" | "status">[], n
       const said = a.limits?.windows ?? [];
       const groups = [...new Set(said.map((w) => w.group))];
       const windows = said
-        .map((w) => ({ minutes: w.minutes, used: w.usedPercent, resetsAt: w.resetsAt ? timestampDate(w.resetsAt) : new Date(0), group: w.group }))
-        .filter((w) => w.resetsAt > now)
+        .map((w) => ({ minutes: w.minutes, used: w.usedPercent, resetsAt: w.resetsAt && Number(w.resetsAt.seconds) > 0 ? timestampDate(w.resetsAt) : null, group: w.group }))
+        // One that has reset since is not shown (what is left now is not known); one not started is.
+        .filter((w) => !w.resetsAt || w.resetsAt > now)
         .map((w) => ({
           minutes: w.minutes,
           left: Math.max(0, 100 - w.used),
-          timeLeft: Math.min(100, Math.max(0, Math.round(((w.resetsAt.getTime() - now.getTime()) / (w.minutes * 60_000)) * 100))),
+          timeLeft: w.resetsAt ? Math.min(100, Math.max(0, Math.round(((w.resetsAt.getTime() - now.getTime()) / (w.minutes * 60_000)) * 100))) : 100,
           resetsAt: w.resetsAt,
           group: w.group,
         }))

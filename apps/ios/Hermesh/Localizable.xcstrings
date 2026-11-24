@@ -219,6 +219,22 @@
         }
       }
     },
+    "None · bars" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不分组"
+          }
+        }
+      }
+    },
     "Other" : {
       "localizations" : {
         "zh-Hans" : {
@@ -295,6 +311,16 @@
         }
       }
     },
+    "Starts counting when first used": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用后开始计时"
+          }
+        }
+      }
+    },
     "Stop All": {
       "localizations": {
         "zh-Hans": {
@@ -341,16 +367,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "这一轮被打断了"
-          }
-        }
-      }
-    },
-    "Total" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "合计"
           }
         }
       }

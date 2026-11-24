@@ -266,12 +266,14 @@ public func usageChoices(_ res: Hermesh_Local_V1_QueryWorkResponse?, filter f: U
 public let limitLow = 20
 
 /// A window as the page shows it: how long, how much is left of it and of its time, and when it starts again; and
-/// the models it counts, when the agent counts groups of them apart ("" for the account's).
+/// the models it counts, when the agent counts groups of them apart ("" for the account's). resetsAt nil: it has not
+/// started (no reset time said, as agy says 1970 for a window not yet used), so it is whole until first used, its
+/// time too.
 public struct LimitShown: Equatable, Identifiable, Sendable {
     public var minutes: Int
     public var left: Int
     public var timeLeft: Int
-    public var resetsAt: Date
+    public var resetsAt: Date?
     public var group: String = ""
     public var id: String { "\(group)/\(minutes)" }
 }
@@ -304,10 +306,13 @@ public func agentLimits(_ machines: [(machineID: String, agents: [Hermesh_Machin
             let said = a.hasLimits ? a.limits.windows : []
             var groups: [String] = []
             for w in said where !groups.contains(w.group) { groups.append(w.group) }
-            let windows = said.filter { $0.resetsAt.date > now }.map { w in
-                LimitShown(minutes: Int(w.minutes), left: max(0, 100 - Int(w.usedPercent)),
-                           timeLeft: min(100, max(0, Int((w.resetsAt.date.timeIntervalSince(now) / (Double(w.minutes) * 60) * 100).rounded()))),
-                           resetsAt: w.resetsAt.date, group: w.group)
+            // One that has reset since is not shown (what is left now is not known); one not started is.
+            let windows = said.compactMap { w -> LimitShown? in
+                let at = w.hasResetsAt && w.resetsAt.seconds > 0 ? w.resetsAt.date : nil
+                if let at, at <= now { return nil }
+                return LimitShown(minutes: Int(w.minutes), left: max(0, 100 - Int(w.usedPercent)),
+                                  timeLeft: at.map { min(100, max(0, Int(($0.timeIntervalSince(now) / (Double(w.minutes) * 60) * 100).rounded()))) } ?? 100,
+                                  resetsAt: at, group: w.group)
             }.sorted { (groups.firstIndex(of: $0.group)!, $0.minutes) < (groups.firstIndex(of: $1.group)!, $1.minutes) }
             if cards[a.name] == nil { order.append(a.name) }
             cards[a.name] = AgentLimitsCard(agent: a.name, machineID: at == nil ? "" : m.machineID, observedAt: at, plan: a.hasLimits ? a.limits.plan : "",

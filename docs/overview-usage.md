@@ -421,8 +421,10 @@ work-stats.md owns and is not part of this step.
 A filter says whose work is counted; **分组** (Group) says what the bars are
 in parts of. It is a segmented control at the trailing end of the filter row,
 not a fourth pop-up beside them, so the two are not read as one kind of thing:
-**合计 | Agent 提供方 | 环境 / 项目** (Total | Agent Provider | Environment /
-Project): the whole first, then the ways to split it. The page opens on Agent Provider; the choice is kept with the range
+**不分组 | Agent 提供方 | 环境 / 项目** (None | Agent Provider | Environment /
+Project). Every way shows the same totals (the number, the bars' heights);
+they differ only in whether, and by what, the bars are split, so the first
+is named for what it leaves out, not "Total", which all of them are. The page opens on Agent Provider; the choice is kept with the range
 and filters while the overview shows its other views. The screens are in
 [overview-usage-breakdown-mac-demo.html](overview-usage-breakdown-mac-demo.html).
 
@@ -459,8 +461,8 @@ for its width. The screens are in
 
 - **Two rows of controls, not three.** Under Live | Usage | Limits, one row
   holds how the page is looked at: first the grouping, the row's widest and
-  most used control (a segmented control: Total | By Agent | By Environment,
-  the whole before its parts, and By Project in place of By Environment once
+  most used control (a segmented control: 不分组 | 按 Agent | 按环境, None |
+  Agents | Machines in English, and By Project in place of By Environment once
   one environment is chosen or only one worked); then what is counted, side
   by side at the trailing end: the range (a menu) and one button the three
   filters are behind. Its menu holds a menu a filter,
@@ -606,6 +608,11 @@ screen: they are the owner's accounts.
   its windows; one that does not, its windows alone.
 - A window with 20% or less left, not yet reset, is a `Need` (§4.1); the
   least left of the card's, named with its group when it has one.
+- A window not started (the agent gives no reset time; agy says
+  1970-01-01 for one not yet used) is whole until first used: shown at
+  100% left, its time whole, and "starts counting when first used" for
+  when it resets. Before, it was taken for one that had reset and hidden,
+  and a group of models all of whose windows were unused vanished.
 - On the card, such a window says so itself: its number and its bar in the
   warning colour. The card's corner always shows the account's plan (when
   the agent says one), not a "running low" badge: a card holds several

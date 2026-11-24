@@ -22,8 +22,12 @@ export function windowName(minutes: number, short = false): string {
   return minutes < 1440 ? i18n.t(`${k}.hours`, { count: Math.round(minutes / 60) }) : i18n.t(`${k}.days`, { count: Math.round(minutes / 1440) });
 }
 
-/** "Resets at 16:40", or on another day "Resets Thu 09:00"; for a window of a day or less, with how long is left. */
+/**
+ * "Resets at 16:40", or on another day "Resets Thu 09:00"; for a window of a day or less, with how long is left. One
+ * not started: that it counts from its first use.
+ */
 export function resetText(w: LimitShown, now: Date): string {
+  if (!w.resetsAt) return i18n.t("overview:limits.notStarted");
   const time = hourMinute(w.resetsAt);
   const at = sameDay(w.resetsAt, now) ? i18n.t("overview:limits.resets", { time }) : i18n.t("overview:limits.resetsOn", { day: weekday(w.resetsAt), time });
   if (w.minutes > 1440) return at;

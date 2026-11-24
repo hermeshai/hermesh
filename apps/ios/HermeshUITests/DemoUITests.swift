@@ -516,7 +516,7 @@ final class DemoUITests: XCTestCase {
         checkpoint("overview-usage-day")
         today.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: -1.5)).tap()
         XCTAssertTrue(callout.waitForNonExistence(timeout: 5))
-        group.buttons["Total"].tap()
+        group.buttons["None"].tap()
         XCTAssertTrue(codex.waitForNonExistence(timeout: 5), "the total is not in parts")
         group.buttons["Agents"].tap()
         // The filters are behind one button; one in force is said under the row, and let go there.
@@ -706,9 +706,11 @@ final class DemoUITests: XCTestCase {
         let busy = any.matching(NSPredicate(format: "label BEGINSWITH %@", "Time at work")).firstMatch
         XCTAssertTrue(busy.exists && busy.frame.height <= 48, "the time at work is one line under its name: \(busy.label), \(busy.frame.height)")
         checkpoint("usage-large-numbers")
-        // A number lines up with the others' in its column, Other's too.
-        let numbers = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-sessions-part-")).allElementsBoundByIndex.map(\.frame.maxX)
-        XCTAssertEqual(Set(numbers.map { Int($0.rounded()) }).count, 1, "the cells end together")
+        // A number lines up with the others' in its column (one or two of them, as the width allows), Other's too.
+        let frames = (app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-sessions-part-")).allElementsBoundByIndex + [app.buttons["usage-sessions-others"]]).map(\.frame)
+        for (column, cells) in Dictionary(grouping: frames, by: { Int($0.minX.rounded()) }) {
+            XCTAssertEqual(Set(cells.map { Int($0.maxX.rounded()) }).count, 1, "the cells of the column at \(column) end together")
+        }
         // Other opened lists every agent (five here: the busiest three and Other's two), each on one line.
         others.tap()
         XCTAssertTrue(wait { app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "usage-tokens-part-")).count == 5 })

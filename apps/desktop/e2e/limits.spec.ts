@@ -45,7 +45,9 @@ test("额度 shows what each agent last said, the least left first; a window run
     await expect(gem.getByRole("group", { name: "5 小时窗口" }).locator(".lim-left")).toHaveText("97%剩余");
     await expect(gem.getByRole("group", { name: "每周窗口" }).locator(".lim-left")).toHaveText("83%剩余");
     const third = agy.getByRole("group", { name: "Claude and GPT models" });
+    // Not started (agy says it resets in 1970): all of it left, and it counts from its first use.
     await expect(third.getByRole("group", { name: "5 小时窗口" }).locator(".lim-left")).toHaveText("100%剩余");
+    await expect(third.getByRole("group", { name: "5 小时窗口" }).locator(".lim-reset")).toHaveText("使用后开始计时");
     await expect(third.getByRole("group", { name: "每周窗口" }).locator(".lim-left")).toHaveText("35%剩余");
     await expect(agy.locator(".lim-badge")).toHaveCount(0); // agy says no plan
     // An agent that reports its limits and has not yet: it says so.

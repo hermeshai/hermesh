@@ -115,6 +115,19 @@ private func agent(_ name: String, available: Bool = true, said: Date? = nil, pl
     #expect(cards[0].least?.id == "Claude and GPT models/10080" && lowLimits(cards).map(\.agent) == ["antigravity"])
 }
 
+@Test func aWindowNotStartedIsShownWholeItsTimeToo() {
+    // As agy says it of a group of models not yet used: no time it resets (1970), all of it left.
+    let min = { (n: Double) in today.addingTimeInterval(n * 60) }
+    var a = agent("antigravity", said: min(-1), windows: [(10080, 0, Date(timeIntervalSince1970: 0)), (300, 0, Date(timeIntervalSince1970: 0)), (300, 3, min(-10))],
+                  groups: ["Claude and GPT models", "Claude and GPT models", "Gemini Models"])
+    a.limits.windows.append(.with { $0.minutes = 60; $0.group = "Other" }) // no reset time at all
+    let card = agentLimits([(machineID: "mac", agents: [a])], now: today)[0]
+    #expect(card.windows == [LimitShown(minutes: 300, left: 100, timeLeft: 100, resetsAt: nil, group: "Claude and GPT models"),
+                             LimitShown(minutes: 10080, left: 100, timeLeft: 100, resetsAt: nil, group: "Claude and GPT models"),
+                             LimitShown(minutes: 60, left: 100, timeLeft: 100, resetsAt: nil, group: "Other")])
+    #expect(!card.stale && lowLimits([card]).isEmpty)
+}
+
 @Test func aWindowThatHasResetSinceIsNotShown() {
     let min = { (n: Double) in today.addingTimeInterval(n * 60) }
     let cards = agentLimits([(machineID: "mac", agents: [agent("codex", said: min(-400), windows: [(300, 95, min(-100)), (10080, 70, min(3000))]),

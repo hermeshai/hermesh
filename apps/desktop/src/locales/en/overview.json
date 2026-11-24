@@ -109,7 +109,7 @@
       "label": "Group",
       "agent": "Agent Provider",
       "place": "Environment / Project",
-      "total": "Total",
+      "total": "None",
       "other": "Other"
     },
     "sessions": {
@@ -204,6 +204,7 @@
     "none": "It doesn’t report its limits",
     "notYet": "Not read yet; shows once it’s signed in with a subscription",
     "stale": "Its windows have reset; updates after the next check or run",
+    "notStarted": "Starts counting when first used",
     "foot": "Each provider gives its own limits: opening this page asks Claude Code, Codex and Antigravity on this Mac, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts. For other computers, these are the numbers they last gave.",
     "needTitle": "{{agent}}’s {{window}} limit is at {{left}}%",
     "needTitleGroup": "{{agent}}’s {{group}} {{window}} limit is at {{left}}%",
