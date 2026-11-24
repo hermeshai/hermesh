@@ -20,7 +20,7 @@ import { Markdown } from "./Markdown";
 import { partialOutput, useToolOutput } from "./output";
 import { QuestionPanel } from "./Question";
 import { ContentScope } from "./scope";
-import { useRowState } from "./useRowState";
+import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
 
 /**
@@ -564,14 +564,20 @@ export function ToolFold<T>({ id, summary, running, items, keyOf, row }: {
 }) {
   const { t } = useTranslation("session");
   const [open, setOpen] = useRowState(`group:${id}`, false);
+  // Where its card is scrolled to, kept while its row is not drawn; opened anew, it is at its newest step.
+  const kept = useRowKept(`card:${id}`, () => ({ follow: true, top: 0 }));
+  const toggle = () => {
+    if (!open) kept.follow = true;
+    setOpen(!open);
+  };
   return (
     <div className={`tgroup ${open ? "open" : ""}`}>
-      <button className="tg-h" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className="tg-h" aria-expanded={open} onClick={toggle}>
         {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
         <span>{summary}</span>
         <Icon name="caret" className="chev" />
       </button>
-      {open && <StepsCard items={items} keyOf={keyOf} row={row} running={running} />}
+      {open && <StepsCard kept={kept} items={items} keyOf={keyOf} row={row} running={running} />}
     </div>
   );
 }
@@ -584,9 +590,16 @@ const stepHeights: Record<string, number> = { step: 35 };
  * drawing only the rows near what is in sight (useVirtualRows, as the conversation does), so a turn of hundreds of
  * steps opens at once. It opens at the newest step and, while the turn runs, stays there as steps come, until the
  * person scrolls up or opens a step; then a small arrow takes them back. Where there is more above or below, that
- * edge fades.
+ * edge fades. Where it was scrolled to is kept while its row is not drawn (useRowKept), as what it has open is.
  */
-function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; keyOf: (item: T) => string; row: (item: T) => ReactNode; running: boolean }) {
+function StepsCard<T>({ kept, items, keyOf, row, running }: {
+  /** Whether it stays at the newest step and, when it does not, where it was left (ToolFold keeps it). */
+  kept: { follow: boolean; top: number };
+  items: readonly T[];
+  keyOf: (item: T) => string;
+  row: (item: T) => ReactNode;
+  running: boolean;
+}) {
   const { t } = useTranslation("session");
   // keyOf is the same function every time (ToolFold), so the rows follow the items alone.
   const rows = useMemo(() => items.map((it) => ({ key: keyOf(it), kind: "step" })), [items]);
@@ -594,9 +607,8 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
   const [list, setList] = useState<HTMLDivElement | null>(null);
   const card = useRef<HTMLDivElement>(null);
   const virtual = useVirtualRows({ scroller, list, rows, initial: stepHeights });
-  // Whether it stays at the newest step, and when the person last acted in it (a scroll they made, not one rows made).
-  // A held pointer (the scroll bar, a selection dragged past an edge) counts until it lets go, as in the conversation.
-  const follow = useRef(true);
+  // When the person last acted in it (a scroll they made, not one rows made). A held pointer (the scroll bar, a
+  // selection dragged past an edge) counts until it lets go, as in the conversation.
   const touched = useRef(-Infinity);
   const touch = () => {
     touched.current = performance.now();
@@ -612,7 +624,7 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
     const c = card.current;
     if (!el || !c) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const away = !follow.current && running && below > 1;
+    const away = !kept.follow && running && below > 1;
     c.classList.toggle("more-up", el.scrollTop > 1);
     c.classList.toggle("more-down", below > 1);
     c.classList.toggle("away", away);
@@ -623,22 +635,28 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
       back.setAttribute("aria-hidden", String(!away));
     }
   };
+  // Drawn again after its row was not: back where it was left (its rows above are as high as they were guessed).
+  const restored = useRef(false);
   useLayoutEffect(() => {
-    if (scroller && follow.current) scroller.scrollTop = scroller.scrollHeight;
+    if (!scroller) return;
+    if (kept.follow) scroller.scrollTop = scroller.scrollHeight;
+    else if (!restored.current) scroller.scrollTop = kept.top;
+    restored.current = true;
     mark();
   });
   const onScroll = () => {
     const el = scroller;
     if (!el) return;
     const below = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (below < 8) follow.current = true;
-    else if (performance.now() - touched.current < 1000) follow.current = false;
+    if (below < 8) kept.follow = true;
+    else if (performance.now() - touched.current < 1000) kept.follow = false;
+    kept.top = el.scrollTop;
     mark();
   };
   const toEnd = () => {
     const el = scroller;
     if (!el) return;
-    follow.current = true;
+    kept.follow = true;
     el.scrollTo({ top: el.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
     mark();
   };
@@ -646,7 +664,7 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
   const onClick = (e: MouseEvent) => {
     const head = (e.target as Element).closest(".th[aria-expanded]");
     if (!head) return;
-    follow.current = false;
+    kept.follow = false;
     const opening = head.getAttribute("aria-expanded") === "false";
     requestAnimationFrame(() => {
       if (opening) head.parentElement?.scrollIntoView({ block: "nearest", behavior: "smooth" });

@@ -131,6 +131,13 @@ class GitRouteTests(unittest.TestCase):
         self.assertEqual(result["ios"], "true")
         self.assertEqual(result["go"], "false")
 
+    def test_session_views_run_both_session_suites(self):
+        file = self.repo / "apps/ios/Hermesh/Views/Session/Tools.swift"
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.touch()
+        result = self.output(self.merge())
+        self.assertEqual(result["ios_suite"], "SessionDetailUITests ToolStepsUITests")
+
     def test_console_skips_desktop_only_for_isolated_changes(self):
         file = self.repo / "her/apps/console/src/editor.ts"
         file.parent.mkdir(parents=True)

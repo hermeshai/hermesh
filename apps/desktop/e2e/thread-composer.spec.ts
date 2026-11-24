@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { fixture, gitRepo, launch, snap } from "./app";
+import { fixture, gitRepo, launch, pickFrom, snap } from "./app";
 
 // The new-session composer (docs/thread-composer.md) against two real
 // machines: this Mac (owner-mac) and work-mac, a machine joined over the
@@ -30,8 +30,7 @@ test("a session on another machine: its folder added as a project, the model pic
     expect(area!.y + area!.height - (box!.y + box!.height)).toBeLessThan(90);
 
     // The environment: work-mac. It has no project yet, so the session would use its temporary workspace.
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await expect(page.getByTestId("launch-machine-chip")).toHaveText("work-mac");
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
@@ -62,8 +61,7 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.fill("");
 
     // Add a Project from the project menu: work-mac's folders, browsed from here.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     const sheet = page.getByRole("dialog", { name: "添加项目" });
     await expect(sheet.getByRole("group", { name: "环境" }).getByRole("button", { name: "work-mac" })).toHaveAttribute("aria-pressed", "true");
     await expect(sheet.getByTestId("add-project-recent")).toBeVisible();
@@ -219,8 +217,7 @@ test("a new session's branch: a worktree from another branch, and the project's 
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await addProject(page, repo, name);
     await expect(page.getByTestId("branch-trigger")).toHaveText("基于 main");
     const input = page.getByTestId("thread-composer-input");
@@ -270,8 +267,7 @@ test("a new session's branch: a worktree from another branch, and the project's 
 
 /** Add a Project on the chosen machine, its folder typed in. */
 async function addProject(page: Page, dir: string, name: string) {
-  await page.getByRole("button", { name: "项目" }).click();
-  await page.getByTestId("project-add").click();
+  await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
   const sheet = page.getByRole("dialog", { name: "添加项目" });
   await sheet.getByLabel("目录").fill(dir);
   await expect(sheet.getByLabel("项目名")).toHaveValue(name);
@@ -284,12 +280,10 @@ test("Add a Project on another machine from its own folders: a recent repository
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
 
     // work-mac's recent repositories, read from it.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     const sheet = page.getByRole("dialog", { name: "添加项目" });
     const recent = sheet.getByTestId("add-project-recent");
     await expect(recent.getByRole("button", { name: /~\/code\/recent-app/ })).toBeVisible();
@@ -309,8 +303,7 @@ test("Add a Project on another machine from its own folders: a recent repository
     await expect(page.getByTestId("launch-project-chip")).toHaveText("mono");
 
     // A new folder, made on work-mac under its home folder, as a git repository; then added.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     await sheet.getByRole("button", { name: "浏览…" }).click();
     const browser = sheet.getByTestId("folder-browser");
     await browser.getByRole("button", { name: /^code/ }).click();
@@ -328,8 +321,7 @@ test("Add a Project on another machine from its own folders: a recent repository
     await expect(page.getByTestId("launch-project-chip")).toHaveText("fresh-app");
     await expect(page.getByTestId("launch-worktree")).toHaveText("独立 worktree");
     // Made again, the name is taken.
-    await page.getByRole("button", { name: "项目" }).click();
-    await page.getByTestId("project-add").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-add"));
     await sheet.getByRole("button", { name: "浏览…" }).click();
     await browser.getByRole("button", { name: /^code/ }).click();
     await browser.getByRole("button", { name: "新建文件夹…" }).click();
@@ -356,8 +348,7 @@ test("a new session aimed at a machine gone offline: its projects and models as 
   try {
     // Read once while work-mac answers: its projects and its models.
     await page.getByTestId("nav-new-thread").click();
-    await page.getByRole("button", { name: "环境" }).click();
-    await page.getByTestId("machine-item-work-mac").click();
+    await pickFrom(page.getByRole("button", { name: "环境" }), page.getByTestId("machine-item-work-mac"));
     await page.getByRole("button", { name: "项目" }).click();
     await expect(page.getByTestId("project-item-mono")).toBeVisible();
     await page.keyboard.press("Escape");
