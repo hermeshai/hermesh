@@ -341,7 +341,7 @@ func (d *Device) eraseProfile(ctx context.Context, id string, o *Owner, eraseID 
 	if !current {
 		return nil
 	}
-	next, err := d.emptyProfile()
+	next, err := d.emptyProfile(!d.cfg.NoLocalMachine)
 	if err != nil {
 		return err
 	}

@@ -816,7 +816,7 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 func (s *ownerSessionService) GetSession(ctx context.Context, req *sessionv1.GetSessionRequest) (*sessionv1.GetSessionResponse, error) {
 	o := s.o()
 	if req.CachedOnly {
-		if eng, localID := o.localEngineFor(""); eng != nil && kernel.OwnsSession(localID, req.SessionId) {
+		if eng, _ := o.localEngineFor(""); eng != nil {
 			if proj, err := eng.GetSession(ctx, o.ownerPrincipal(), req.SessionId); err == nil {
 				return &sessionv1.GetSessionResponse{Projection: proj}, nil
 			}

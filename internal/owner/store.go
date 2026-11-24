@@ -90,6 +90,50 @@ func (s *store) clearGrants() error {
 	return err
 }
 
+// clearRemoteAccountData forgets remote caches, outboxes, work counts, delta
+// cursors, and remote Her caches when leaving an owner, while preserving and
+// re-keying any kept local Her state across local machine key rotation.
+func (s *store) clearRemoteAccountData(oldLocalID, newLocalID string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, q := range []string{
+		`DELETE FROM grants`,
+		`DELETE FROM sessions_cache`,
+		`DELETE FROM sessions_outbox`,
+		`DELETE FROM sessions_blobs`,
+		`DELETE FROM work_machines`,
+		`DELETE FROM work_keys`,
+		`DELETE FROM work_sessions`,
+		`DELETE FROM work_quarters`,
+		`DELETE FROM work_measures`,
+		`DELETE FROM delta_cursors`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	for _, tbl := range []string{"her_waiting", "her_status", "her_bots", "her_conversations", "her_deliveries"} {
+		if oldLocalID != "" && newLocalID != "" {
+			if _, err := tx.Exec(`DELETE FROM `+tbl+` WHERE machine_id <> ? AND machine_id <> ?`, oldLocalID, newLocalID); err != nil {
+				return err
+			}
+			if oldLocalID != newLocalID {
+				if _, err := tx.Exec(`UPDATE `+tbl+` SET machine_id = ? WHERE machine_id = ?`, newLocalID, oldLocalID); err != nil {
+					return err
+				}
+			}
+		} else {
+			if _, err := tx.Exec(`DELETE FROM ` + tbl); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *store) setRevoked(grantID string) error {
 	_, err := s.db.Exec(`UPDATE grants SET revoked=1, updated_at=? WHERE grant_id=?`, time.Now().Unix(), grantID)
 	return err

@@ -301,7 +301,8 @@ message GetStatusResponse {
 }
 
 message RelayHealth {
-  // "idle", "connecting", "connected", "reconnecting", "offline"
+  // "local", "idle", "connecting", "connected", "reconnecting", "offline",
+  // "leaving_relay", "leaving_cleanup"
   string phase = 1;
   // Smoothed round-trip time to the relay in milliseconds (0 when unknown).
   uint32 rtt_ms = 2;
@@ -496,7 +497,11 @@ message RemoveDeviceResponse {
   uint32 reissued_grants = 2;
 }
 
-message LeaveRequest {}
+message LeaveRequest {
+  // Skip contacting the relay (or bypass waiting for another trusted device's
+  // removal) and demote this device back to local standalone mode immediately.
+  bool force_local = 1;
+}
 
 message LeaveResponse {}
 

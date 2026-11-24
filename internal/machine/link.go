@@ -36,7 +36,7 @@ type tunnel struct {
 func (n *Machine) runLink(ctx context.Context) {
 	backoff := time.Second
 	for ctx.Err() == nil {
-		d := &transport.Dialer{RelayURL: n.relayURL, Role: relayv1.Role_ROLE_MACHINE, Key: n.key, Credentials: n.credentials, HTTPClient: n.cfg.HTTPClient}
+		d := &transport.Dialer{RelayURL: n.RelayURL(), Role: relayv1.Role_ROLE_MACHINE, Key: n.currentKey(), Credentials: n.credentials, HTTPClient: n.cfg.HTTPClient}
 		conn, err := d.Dial(ctx)
 		n.mu.Lock()
 		n.refused = gone(err)
@@ -194,21 +194,29 @@ func (n *Machine) handleUpdate(u *relayv1.MachineUpdate) {
 }
 
 func (n *Machine) acceptRootChain(rc *identityv1.RootChain) {
-	changed, err := n.trust.AcceptRootChain(rc)
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
+	changed, err := trust.AcceptRootChain(rc)
 	if err != nil {
 		n.log.Warn("ignored root chain", "err", err)
 		return
 	}
 	if changed {
-		n.st.SetProto(kRootChain, n.trust.RootChain())
-		n.audit.Log(AuditRecord{Kind: "root_chain", Detail: fmt.Sprintf("the owner's trusted devices changed (root cert v%d)", n.trust.RootVersion())})
-		n.log.Info("adopted a longer owner root chain", "version", n.trust.RootVersion())
+		n.st.SetProto(kRootChain, trust.RootChain())
+		n.audit.Log(AuditRecord{Kind: "root_chain", Detail: fmt.Sprintf("the owner's trusted devices changed (root cert v%d)", trust.RootVersion())})
+		n.log.Info("adopted a longer owner root chain", "version", trust.RootVersion())
 	}
 }
 
 func (n *Machine) acceptMachineCert(nc *identityv1.Signed) {
-	_, pub, err := n.trust.VerifyMachineCert(nc)
-	if err != nil || !pub.Equal(n.key.Public()) {
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
+	_, pub, err := trust.VerifyMachineCert(nc)
+	if err != nil || !pub.Equal(n.currentKey().Public()) {
 		return
 	}
 	n.mu.Lock()
@@ -238,8 +246,12 @@ func (n *Machine) tunnelPrincipal(sub *identity.Subject) *Principal {
 // (serveLocal / serveDirect): the end-to-end handshake, then their calls.
 func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, ownerOnly bool) {
 	defer raw.Close()
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
 	hsStart := time.Now()
-	tc, sub, err := transport.ServerHandshake(ctx, raw, n.key.CryptoSigner(), n.credentials, n.trust, func(s *identity.Subject) error {
+	tc, sub, err := transport.ServerHandshake(ctx, raw, n.currentKey().CryptoSigner(), n.credentials, trust, func(s *identity.Subject) error {
 		if ownerOnly && s.Kind != identity.SubjectOwnerDevice {
 			return errors.New("direct tunnel requires owner device")
 		}
@@ -273,7 +285,11 @@ func (n *Machine) serveTunnel(ctx context.Context, raw net.Conn, via string, own
 // serveQUICTunnel serves an owner device over a direct E2E QUIC/HTTP3 connection.
 func (n *Machine) serveQUICTunnel(ctx context.Context, qconn *quic.Conn, via string, ownerOnly bool) {
 	defer func() { _ = qconn.CloseWithError(0, "done") }()
-	sub, err := transport.VerifiedQUICSubject(n.trust, qconn)
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
+	sub, err := transport.VerifiedQUICSubject(trust, qconn)
 	if err != nil {
 		n.audit.Log(AuditRecord{Kind: "tunnel", Decision: "deny", Reason: err.Error(), Detail: via})
 		return

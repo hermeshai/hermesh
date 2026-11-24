@@ -49,6 +49,10 @@ type Dialer struct {
 	// as it does through a tunnel; a machine that is not here, or refuses
 	// it, is reached as without.
 	Local func(ctx context.Context, machineID string) (net.Conn, error)
+	// InProcess, when set, opens an already-authenticated HTTP/2 stream pipe
+	// to a machine running inside the same process (e.g. Her reaching its
+	// host machine without a relay or TLS handshake).
+	InProcess func(ctx context.Context, machineID string) (conn net.Conn, machineName string, ok bool)
 	// Direct, when set, returns direct E2E TCP/QUIC addresses (LAN IPv4 /
 	// public IPv6) for machineID to race against the relay.
 	Direct func(machineID string) []string
@@ -945,11 +949,34 @@ func (c *Client) openRelayTunnel(ctx context.Context, machineID string) (*Machin
 	return m, conn, nil
 }
 
+// machineInProcess reaches machineID inside this process when Dialer.InProcess
+// knows it.
+func (c *Client) machineInProcess(ctx context.Context, machineID string) *Machine {
+	if c.d.InProcess == nil {
+		return nil
+	}
+	conn, name, ok := c.d.InProcess(ctx, machineID)
+	if !ok || conn == nil {
+		return nil
+	}
+	h2, err := transport.NewH2Client(conn)
+	if err != nil {
+		conn.Close()
+		return nil
+	}
+	n := newMachine(machineID, name, h2)
+	n.path = "local"
+	return n
+}
+
 func (c *Client) dialMachine(ctx context.Context, machineID string) (*Machine, error) {
 	c.mu.Lock()
 	gen := c.gen
 	c.mu.Unlock()
-	n := c.machineHere(ctx, machineID)
+	n := c.machineInProcess(ctx, machineID)
+	if n == nil {
+		n = c.machineHere(ctx, machineID)
+	}
 	if n == nil {
 		n = c.machineByLink(ctx, machineID)
 	}

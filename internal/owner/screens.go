@@ -11,6 +11,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/machine"
 )
 
 // LocalService.Watch: what the screens show, pushed (docs/state-sync.md
@@ -36,13 +37,16 @@ func (l *localService) Watch(ctx context.Context, _ *localv1.WatchRequest, strea
 }
 
 // screenMode is what a round of Watch shows: an owner's world, a machine
-// only, or only the status (not set up, or signed out).
+// only, a standalone local machine, or only the status (not set up without a
+// local machine, or signed out).
 func screenMode(st *localv1.GetStatusResponse) string {
 	switch {
 	case st.Initialized && !st.SignedOut:
 		return "owner"
 	case !st.Initialized && st.MachineOnly:
 		return "machine"
+	case !st.Initialized && !st.SignedOut && st.LocalMachineEnabled:
+		return "standalone"
 	}
 	return "status"
 }
@@ -61,10 +65,19 @@ func (l *localService) watchRound(ctx context.Context, send func(*localv1.WatchR
 		ch := o.rep.add()
 		defer o.rep.remove(ch)
 		changes = ch
-	case "machine":
-		m, _, err := o.onlyMachine()
-		if err != nil {
-			return err
+	case "machine", "standalone":
+		var m *machine.Local
+		if mode == "machine" {
+			var err error
+			m, _, err = o.onlyMachine()
+			if err != nil {
+				return err
+			}
+		} else {
+			m = o.local()
+			if m == nil {
+				return connect.NewError(connect.CodeUnavailable, errors.New("this computer's machine is not running"))
+			}
 		}
 		ready, ch := make(chan struct{}), make(chan *localv1.WatchSessionsResponse, watcherBuffer)
 		changes = ch

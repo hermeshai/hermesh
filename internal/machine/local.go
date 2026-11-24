@@ -32,17 +32,20 @@ type Local struct {
 
 func (n *Machine) Local() *Local { return &Local{n: n, p: &Principal{Kind: PrincipalOwner}} }
 
-func (l *Local) MachineID() string { return l.n.machineID }
+func (l *Local) MachineID() string { return l.n.MachineID() }
 
 // Connected is whether the machine is connected to its relay: whether the
 // owner's agents and other devices can reach it.
 func (l *Local) Connected() bool { return l.n.Connected() }
 
+// Paired is whether the machine holds an owner's certificate.
+func (l *Local) Paired() bool { return l.n.Paired() }
+
 // Info is the machine's state; the coding agents as the last check found
 // them (the first check starts if none has run).
 func (l *Local) Info() *machinev1.GetInfoResponse {
 	l.n.CheckAgents(false, AgentsOnce)
-	return &machinev1.GetInfoResponse{MachineId: l.n.machineID, MachineName: l.n.Name(), Status: l.n.Status()}
+	return &machinev1.GetInfoResponse{MachineId: l.n.MachineID(), MachineName: l.n.Name(), Status: l.n.Status()}
 }
 
 // CheckAgents checks the coding agents again, in the background.
@@ -67,6 +70,24 @@ func (l *Local) SetHerGrant(signed *identityv1.Signed, chain *identityv1.RootCha
 	return l.n.SetHerGrant(signed, chain)
 }
 
+// SetHerLocal turns Her on or off on this machine in standalone mode, without
+// a root key signature or relay.
+func (l *Local) SetHerLocal(_ context.Context, enabled, erase bool) (string, error) {
+	msg, err := l.n.setHer(enabled, erase)
+	if err == nil {
+		l.n.kickStatus()
+	}
+	return msg, err
+}
+
+// SetHerCommandConnectorLocal adds, changes or removes a Her command connector
+// on this machine in standalone mode.
+func (l *Local) SetHerCommandConnectorLocal(ctx context.Context, c *identityv1.SetHerCommandConnector) (string, error) {
+	return l.n.execHer(ctx, &identityv1.AdminCommand{
+		Command: &identityv1.AdminCommand_SetHerCommandConnector{SetHerCommandConnector: c},
+	})
+}
+
 // ListProjects lists the projects, without their base branches (which the
 // owner's screens do not show, and which cost a git call each).
 func (l *Local) ListProjects(ctx context.Context) (*machinev1.ListProjectsResponse, error) {
@@ -76,7 +97,7 @@ func (l *Local) ListProjects(ctx context.Context) (*machinev1.ListProjectsRespon
 // ApplySettings applies a setting (a project, pausing, the name) as the
 // owner's devices send it.
 func (l *Local) ApplySettings(ctx context.Context, build func(*identityv1.AdminCommand)) (string, error) {
-	cmd := &identityv1.AdminCommand{OwnerId: l.n.OwnerID(), CommandId: identity.RandomCode(16), TargetMachineId: l.n.machineID,
+	cmd := &identityv1.AdminCommand{OwnerId: l.n.OwnerID(), CommandId: identity.RandomCode(16), TargetMachineId: l.n.MachineID(),
 		ExpiresAt: timestamppb.New(time.Now().Add(5 * time.Minute))}
 	build(cmd)
 	return l.n.ApplySettings(ctx, cmd)
@@ -231,7 +252,7 @@ func (l *Local) InterruptActive(ctx context.Context) {
 // LeaveOwner has the relay remove this machine from its owner, as a
 // trusted device would.
 func (n *Machine) LeaveOwner(ctx context.Context) error {
-	d := &transport.Dialer{RelayURL: n.RelayURL(), Role: relayv1.Role_ROLE_MACHINE, Key: n.key, Credentials: n.credentials, HTTPClient: n.cfg.HTTPClient}
+	d := &transport.Dialer{RelayURL: n.RelayURL(), Role: relayv1.Role_ROLE_MACHINE, Key: n.currentKey(), Credentials: n.credentials, HTTPClient: n.cfg.HTTPClient}
 	conn, err := d.Dial(ctx)
 	if gone(err) {
 		return nil // removed already
@@ -300,7 +321,7 @@ func retiredKeys(dataDir string) []identity.Signer {
 // SignPairingRequest signs pr with this machine's key, for a pairing the
 // caller drives itself (the app's join as a machine only).
 func (n *Machine) SignPairingRequest(pr *identityv1.PairingRequest) (*identityv1.Signed, error) {
-	return identity.Sign(pr, n.key)
+	return identity.Sign(pr, n.currentKey())
 }
 
 // Refused reports whether the relay refused this machine the last time it
@@ -349,6 +370,78 @@ func (n *Machine) Unpair() error {
 	n.mu.Unlock()
 	n.audit.Log(AuditRecord{Kind: "unpaired"})
 	return nil
+}
+
+// DemoteToLocal transitions a running paired machine back to standalone local
+// mode without stopping kernel.Engine or Her: it stops mesh listeners and the
+// relay link, archives the previous machine key into keys/retired, generates a
+// fresh machine key + id, rebinds local sessions, clears cloud credentials, and
+// switches Her back to her in-process local grant.
+func (n *Machine) DemoteToLocal() (string, error) {
+	n.mu.Lock()
+	n.ownerID, n.relayURL, n.trust, n.machineCert = "", "", nil, nil
+	n.refused, n.erased, n.goneSaid = false, false, false
+	n.cfg.SelfErase = false
+	n.mu.Unlock()
+
+	n.stopMesh()
+	n.stopHerLink()
+
+	oldID := n.MachineID()
+	keyPath := KeyPath(n.cfg.DataDir)
+	retiredDir := filepath.Join(filepath.Dir(keyPath), "retired")
+	if err := os.MkdirAll(retiredDir, 0o700); err != nil {
+		return "", err
+	}
+	newKey, err := identity.GenerateKey()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(keyPath); err == nil {
+		if err := os.Rename(keyPath, filepath.Join(retiredDir, oldID+".key")); err != nil {
+			return "", err
+		}
+	}
+	if err := identity.SaveKey(keyPath, newKey); err != nil {
+		return "", err
+	}
+	newID := identity.MachineID(identity.MarshalPublicKey(newKey.Public()))
+	n.audit.RotateSigner(oldID, newKey)
+
+	for _, k := range []string{kOwnerID, kRelayURL, kRootChain, kMachineCert, kGrants, kRevocations, kHerGrant} {
+		if err := n.st.Set(k, []byte{}); err != nil {
+			return "", err
+		}
+	}
+
+	n.mu.Lock()
+	n.key = newKey
+	n.keyPtr.Store(newKey)
+	n.machineID = newID
+	n.idVal.Store(newID)
+	n.ownerID, n.relayURL, n.trust, n.machineCert = "", "", nil, nil
+	n.refused, n.erased, n.goneSaid = false, false, false
+	n.cfg.SelfErase = false
+	n.grants = nil
+	n.revocations = &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}
+	n.mesh.grant, n.mesh.signed, n.mesh.local = nil, nil, false
+	herOn := n.herOn
+	n.mu.Unlock()
+
+	if n.mesh.link != nil {
+		n.mesh.link.Close()
+	}
+	if n.sessions != nil {
+		n.sessions.SetMachineID(newID)
+	}
+	n.ensureLocalHerGrant()
+	if herOn {
+		n.startHerLink()
+	} else {
+		n.her.MeshChanged()
+	}
+	n.kickStatus()
+	return newID, nil
 }
 
 // StopScreen ends the Computer Control session under way, if any.

@@ -129,6 +129,21 @@ func (a *Audit) appendLocked(r AuditRecord) error {
 	return nil
 }
 
+// RotateSigner records that oldSubject's key was retired, seals the chain head
+// up to that point with the previous signer, and switches subsequent
+// checkpoints to next.
+func (a *Audit) RotateSigner(oldSubject string, next identity.Signer) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	_ = a.appendLocked(AuditRecord{Kind: "retired", Subject: oldSubject, Detail: "the machine key is replaced; this machine gets a new id"})
+	if a.signer != nil && a.prev != "" {
+		if sig, err := a.signer.SignMessage([]byte("hermesh-audit-v1\x00" + a.prev)); err == nil {
+			_ = a.appendLocked(AuditRecord{Kind: "checkpoint", Sig: base64.StdEncoding.EncodeToString(sig)})
+		}
+	}
+	a.signer = next
+}
+
 // Close closes the month's file.
 func (a *Audit) Close() {
 	a.mu.Lock()
