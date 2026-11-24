@@ -49,14 +49,14 @@ test("the app menu drives the main window", async () => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "搜索任务" })).toHaveCount(0);
 
-  // 显示 → 收成窄栏 / 展开边栏 (⌃⌘S)
+  // 显示 → 隐藏边栏 / 显示边栏 (⌃⌘S)
   await clickMenu(app, "toggleSidebar");
-  await expect(page.getByRole("button", { name: "展开边栏" })).toBeVisible();
-  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "展开边栏" });
-  await expect(page.getByRole("complementary", { name: "窄栏" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "显示边栏" })).toBeVisible();
+  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "显示边栏" });
+  await expect(page.getByRole("complementary", { name: "边栏" })).toHaveCount(0);
   await clickMenu(app, "toggleSidebar");
-  await expect(page.getByRole("button", { name: "收成窄栏" })).toBeVisible();
-  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "收成窄栏" });
+  await expect(page.getByRole("button", { name: "隐藏边栏" })).toBeVisible();
+  await expect.poll(() => menuItem(app, "toggleSidebar")).toMatchObject({ label: "隐藏边栏" });
 
   // A session waiting on a question: 回答问题 yes, 归档 no.
   await (await row("选颜色")).click();

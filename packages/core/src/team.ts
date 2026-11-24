@@ -48,21 +48,6 @@ export function teamState(sessions: Session[], requests: number): TeamState {
 }
 
 /**
- * The sessions at hand by coding agent, as the sidebar's rail shows them (docs/her-team.md §16): those waiting for
- * the owner, then those that failed, then those at work, each kind in teamState's order; each agent once, in the
- * order of its first session, with its sessions in that order.
- */
-export function liveByAgent(team: TeamState): { agent: string; sessions: Session[] }[] {
-  const by = new Map<string, Session[]>();
-  for (const s of [...team.waiting, ...team.failed, ...team.running]) {
-    const list = by.get(s.agent);
-    if (list) list.push(s);
-    else by.set(s.agent, [s]);
-  }
-  return [...by].map(([agent, sessions]) => ({ agent, sessions }));
-}
-
-/**
  * The item one click can answer: a single, non-secret choice, with any other items optional. The item, not only
  * its options, so that an optional field before it cannot receive the answer.
  */
