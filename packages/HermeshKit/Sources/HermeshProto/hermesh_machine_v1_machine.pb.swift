@@ -89,6 +89,11 @@ public nonisolated enum Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf.Enu
   /// The login shell's PATH could not be read, so agents installed where
   /// only it says (nvm, npm, …) are not found.
   case shellPath // = 4
+
+  /// What an earlier Hermesh kept here could not all be moved to this one's
+  /// store (docs/data-migrations.md), so some of it does not show: detail
+  /// says which move and why. It is tried again each time hermeshd starts.
+  case dataMove // = 5
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -102,6 +107,7 @@ public nonisolated enum Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf.Enu
     case 2: self = .disk
     case 3: self = .files
     case 4: self = .shellPath
+    case 5: self = .dataMove
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -113,6 +119,7 @@ public nonisolated enum Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf.Enu
     case .disk: return 2
     case .files: return 3
     case .shellPath: return 4
+    case .dataMove: return 5
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -124,6 +131,7 @@ public nonisolated enum Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf.Enu
     .disk,
     .files,
     .shellPath,
+    .dataMove,
   ]
 
 }
@@ -1575,7 +1583,7 @@ nonisolated extension Hermesh_Machine_V1_HerLatestKind: SwiftProtobuf._ProtoName
 }
 
 nonisolated extension Hermesh_Machine_V1_MachineProblemKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0MACHINE_PROBLEM_KIND_UNSPECIFIED\0\u{1}MACHINE_PROBLEM_KIND_PROCESSES\0\u{1}MACHINE_PROBLEM_KIND_DISK\0\u{1}MACHINE_PROBLEM_KIND_FILES\0\u{1}MACHINE_PROBLEM_KIND_SHELL_PATH\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0MACHINE_PROBLEM_KIND_UNSPECIFIED\0\u{1}MACHINE_PROBLEM_KIND_PROCESSES\0\u{1}MACHINE_PROBLEM_KIND_DISK\0\u{1}MACHINE_PROBLEM_KIND_FILES\0\u{1}MACHINE_PROBLEM_KIND_SHELL_PATH\0\u{1}MACHINE_PROBLEM_KIND_DATA_MOVE\0")
 }
 
 nonisolated extension Hermesh_Machine_V1_AgentProblem: SwiftProtobuf._ProtoNameProviding {

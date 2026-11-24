@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -57,6 +58,9 @@ func (n *Machine) checkHealth() []*machinev1.MachineProblem {
 	// Out of processes, the shell can't start either: that says it already.
 	if why := shellenv.LastProblem(); why != "" && !hasProblem(out, machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_PROCESSES) {
 		out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_SHELL_PATH, Detail: why})
+	}
+	if len(n.moveFailed) > 0 {
+		out = append(out, &machinev1.MachineProblem{Kind: machinev1.MachineProblemKind_MACHINE_PROBLEM_KIND_DATA_MOVE, Detail: strings.Join(n.moveFailed, "; ")})
 	}
 	return out
 }

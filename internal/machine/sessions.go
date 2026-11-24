@@ -212,6 +212,17 @@ func (n *Machine) openSessions() error {
 		}
 	}
 	n.sessions = eng
+	// What an earlier Hermesh kept here moved into the kernel's store as it opened. A move that failed is said
+	// aloud: in the log, and to the owner with the machine's health; it is tried again at the next start.
+	for _, r := range eng.Store().Steps() {
+		switch {
+		case r.Err != nil:
+			n.log.Error("moving this machine's earlier data failed; it is tried again at the next start", "move", r.Name, "moved", r.Moved, "err", r.Err)
+			n.moveFailed = append(n.moveFailed, r.Name+": "+r.Err.Error())
+		case r.Ran && r.Moved > 0:
+			n.log.Info("moved this machine's earlier data", "move", r.Name, "moved", r.Moved)
+		}
+	}
 	if n.st.needsWorkRebuild() {
 		_ = n.st.RebuildWork(eng)
 	}

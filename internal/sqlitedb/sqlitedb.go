@@ -1,15 +1,32 @@
 // Package sqlitedb opens SQLite databases with sane defaults and applies
 // embedded, ordered migrations.
+//
+// How a store's data moves forward (docs/data-migrations.md):
+//
+//   - What a database's own tables look like changes by the migrations given
+//     to Open: ordered, each once and in a transaction, counted in
+//     user_version. They are only added to, never edited.
+//   - Data that comes from another store or another format (an old database
+//     file, old messages) moves by Steps (steps.go): named, each once, kept
+//     in a ledger with what it did, said aloud when it fails and tried again
+//     at the next start.
+//   - A database written by a newer Hermesh than this one is not opened.
 package sqlitedb
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"time"
 )
+
+// ErrNewer: the database was written by a newer Hermesh, whose tables this
+// one does not know. Opening it would run on a shape it was not written
+// for, so it is refused: update Hermesh (or put the newer one back).
+var ErrNewer = errors.New("written by a newer Hermesh")
 
 // Open opens (creating if needed) the database at path and applies
 // migrations whose index is above the stored user_version.
@@ -26,6 +43,10 @@ func Open(path string, migrations []string) (*sql.DB, error) {
 	if err := db.QueryRow("PRAGMA user_version").Scan(&v); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if v > len(migrations) {
+		db.Close()
+		return nil, fmt.Errorf("%w: %s is at schema %d, this Hermesh knows %d", ErrNewer, filepath.Base(path), v, len(migrations))
 	}
 	for i := v; i < len(migrations); i++ {
 		tx, err := db.Begin()
