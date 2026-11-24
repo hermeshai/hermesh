@@ -235,6 +235,7 @@
   },
   "signing": {
     "declined": "没有签名：请求在签名器里被拒绝了，或者没有完成确认。",
+    "unavailable": "没有签名：签名器在完成确认前意外退出了。",
     "title": "更新 Hermesh 签名器",
     "body": "没有签名：这台电脑的签名器（{{version}}）比 Hermesh 旧，看不懂这次的请求。更新签名器后再试一次。Windows 会请你允许一次。",
     "button": "更新签名器",

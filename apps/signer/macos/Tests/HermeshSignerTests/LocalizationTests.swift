@@ -27,8 +27,8 @@ private func specifiers(_ s: String) -> [String] {
 
 @Test func theBundleHasTheChineseStrings() throws {
     // Its folder is zh-Hans.lproj, or zh-hans.lproj from SwiftPM's older build system; Foundation takes either.
-    let lang = try #require(Bundle.module.localizations.first { $0.lowercased() == "zh-hans" })
-    let path = try #require(Bundle.module.path(forResource: lang, ofType: "lproj"))
+    let lang = try #require(Bundle.signer.localizations.first { $0.lowercased() == "zh-hans" })
+    let path = try #require(Bundle.signer.path(forResource: lang, ofType: "lproj"))
     let zh = try #require(Bundle(path: path))
     #expect(zh.localizedString(forKey: "Deny", value: nil, table: nil) == "拒绝")
     // The cards' text comes from HermeshKit's bundle, which the signer app carries too.

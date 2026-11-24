@@ -20,7 +20,12 @@ import (
 // body itself, shows it, signs and completes the request. It also creates
 // the root key when hermeshd asks for one.
 
-var ErrSigningRejected = errors.New("the owner declined to sign")
+var (
+	ErrSigningRejected   = errors.New("the owner declined to sign")
+	ErrSignerUnavailable = errors.New("the signer exited unexpectedly before confirming")
+)
+
+const maxSignerDrops = 3
 
 type signHub struct {
 	mu sync.Mutex
@@ -30,8 +35,11 @@ type signHub struct {
 }
 
 type pendingSign struct {
-	req  *localv1.SigningRequest
-	done chan []byte // the signature or the new public key; closed = rejected
+	req   *localv1.SigningRequest
+	done  chan []byte // the signature or the new public key; closed = err
+	err   error
+	sent  map[chan *localv1.SigningRequest]bool
+	drops int
 }
 
 func newSignHub() *signHub {
@@ -43,13 +51,44 @@ func (h *signHub) watch(show bool) (chan *localv1.SigningRequest, func()) {
 	h.mu.Lock()
 	h.watchers[ch] = show
 	for _, p := range h.pending {
-		ch <- p.req
+		select {
+		case ch <- p.req:
+			p.sent[ch] = true
+		default:
+		}
 	}
 	h.mu.Unlock()
 	return ch, func() {
 		h.mu.Lock()
+		defer h.mu.Unlock()
+		if _, ok := h.watchers[ch]; !ok {
+			return
+		}
 		delete(h.watchers, ch)
-		h.mu.Unlock()
+		// Requests still buffered in ch never left the daemon.
+		for {
+			select {
+			case r := <-ch:
+				if p := h.pending[r.RequestId]; p != nil {
+					delete(p.sent, ch)
+				}
+			default:
+				goto drained
+			}
+		}
+	drained:
+		for id, p := range h.pending {
+			if !p.sent[ch] {
+				continue
+			}
+			delete(p.sent, ch)
+			p.drops++
+			if p.drops >= maxSignerDrops {
+				delete(h.pending, id)
+				p.err = ErrSignerUnavailable
+				close(p.done)
+			}
+		}
 	}
 }
 
@@ -102,11 +141,12 @@ func (h *signHub) show() {
 
 // post registers req and hands it to every watcher. Callers hold h.mu.
 func (h *signHub) post(req *localv1.SigningRequest) *pendingSign {
-	p := &pendingSign{req: req, done: make(chan []byte, 1)}
+	p := &pendingSign{req: req, done: make(chan []byte, 1), err: ErrSigningRejected, sent: map[chan *localv1.SigningRequest]bool{}}
 	h.pending[req.RequestId] = p
 	for ch := range h.watchers {
 		select {
 		case ch <- req:
+			p.sent[ch] = true
 		default:
 		}
 	}
@@ -122,7 +162,7 @@ func (h *signHub) createKey(ctx context.Context) (*ecdsa.PublicKey, []byte, erro
 	select {
 	case der, ok := <-p.done:
 		if !ok {
-			return nil, nil, ErrSigningRejected
+			return nil, nil, p.err
 		}
 		pub, err := identity.ParsePublicKey(der)
 		if err != nil {
@@ -195,7 +235,7 @@ func (h *signHub) signBatch(ctx context.Context, root *ecdsa.PublicKey, msgs []p
 		case sig, ok := <-it.p.done:
 			if !ok {
 				h.drop(batch)
-				return nil, ErrSigningRejected
+				return nil, it.p.err
 			}
 			if identity.VerifyRaw(root, it.input, sig) != nil {
 				h.drop(batch)

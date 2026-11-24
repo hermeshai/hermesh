@@ -98,12 +98,18 @@ export function useStore(): Store {
 export function errorText(e: unknown): string {
   if (needsUpdate(e)) return i18n.t("common:needsUpdate.text");
   if (declinedToSign(e)) return i18n.t("common:signing.declined");
+  if (signerUnavailable(e)) return i18n.t("common:signing.unavailable");
   if (e instanceof ConnectError) return e.rawMessage;
   return e instanceof Error ? e.message : String(e);
 }
 
 function declinedToSign(e: unknown): boolean {
   return (e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e)).includes("the owner declined to sign");
+}
+
+/** hermeshd's ErrSignerUnavailable: the signer kept exiting before the request could be confirmed. */
+function signerUnavailable(e: unknown): boolean {
+  return (e instanceof ConnectError ? e.rawMessage : e instanceof Error ? e.message : String(e)).includes("the signer exited unexpectedly before confirming");
 }
 
 function saved(key: string, fallback: boolean): boolean {
