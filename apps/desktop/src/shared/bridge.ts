@@ -55,6 +55,8 @@ export type Bridge = {
   version: string;
   /** The app's language, chosen by the main process for this run (main/language.ts). */
   language: Language;
+  /** The app's appearance at the time this window was created, so its first frame matches without waiting for IPC. */
+  appearance?: Appearance;
   /** macOS's major version, 0 elsewhere: System Settings names its lists by it. */
   macos: number;
   /** Opens the pane of System Settings where the owner allows a computer use permission (main/computer.ts). */
@@ -135,6 +137,7 @@ export type Bridge = {
   /** What the main process does on its own: notifications and the menu bar (stored in the app's profile). */
   getPreferences(): Promise<Preferences>;
   setPreferences(p: Partial<Preferences>): Promise<Preferences>;
+  onPreferences(cb: (p: Preferences) => void): () => void;
   /** Quits and opens the app again (a new language takes effect). */
   relaunch(): void;
   /** Whether the app opens at login (Open Hermesh at login). */
@@ -181,8 +184,8 @@ export type Bridge = {
   traySize(height: number): void;
 };
 
-/** Light or dark: the system's, or one chosen for the app. */
-export type Appearance = "system" | "light" | "dark";
+/** Light, soft dark, deep black ("暗黑模式"), or the system's. */
+export type Appearance = "system" | "light" | "dark" | "black";
 
 export type Preferences = {
   appearance: Appearance;
