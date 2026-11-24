@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 )
 
@@ -66,7 +66,7 @@ func (l *Local) Diagnostics() string {
 				login = "signed in"
 			}
 			w("  %-10s %s · %s · %s", name, i.Version, login, i.Binary)
-		case i.Problem == provider.ProblemNotFound:
+		case i.Problem == rt.ProblemNotFound:
 			w("  %-10s not found", name)
 		default:
 			w("  %-10s %s · %s: %s", name, problemName(i.Problem), i.Binary, i.Detail)
@@ -75,15 +75,15 @@ func (l *Local) Diagnostics() string {
 	return b.String()
 }
 
-func problemName(p provider.Problem) string {
+func problemName(p rt.Problem) string {
 	switch p {
-	case provider.ProblemAppWithoutCLI:
+	case rt.ProblemAppWithoutCLI:
 		return "app without its CLI"
-	case provider.ProblemNoProcesses:
+	case rt.ProblemNoProcesses:
 		return "cannot run (out of processes)"
-	case provider.ProblemTimedOut:
+	case rt.ProblemTimedOut:
 		return "cannot run (timed out)"
-	case provider.ProblemMissingRuntime:
+	case rt.ProblemMissingRuntime:
 		return "cannot run (runtime missing)"
 	}
 	return "cannot run"

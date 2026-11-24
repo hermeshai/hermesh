@@ -30,10 +30,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/herhost"
 	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider"
-	"github.com/hermeshai/hermesh/internal/provider/acp"
-	"github.com/hermeshai/hermesh/internal/provider/claude"
-	"github.com/hermeshai/hermesh/internal/provider/codex"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	screenhost "github.com/hermeshai/hermesh/internal/screen"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -44,11 +41,12 @@ import (
 var Version = "0.1.0-dev"
 
 type Config struct {
-	DataDir    string
-	Logger     *slog.Logger
-	Providers  map[string]provider.Provider
-	Limits     Limits
-	HTTPClient *http.Client
+	DataDir     string
+	Logger      *slog.Logger
+	Discoverers map[string]AgentDiscoverer
+	Drivers     map[string]rt.Driver
+	Limits      Limits
+	HTTPClient  *http.Client
 	// WorkspaceMode "none" disables git worktrees (benchmarking only).
 	WorkspaceMode string
 	// SelfErase: a machine on its own (not a trusted device's) stops with
@@ -73,32 +71,6 @@ type Config struct {
 	// machine (docs/version-skew.md §6.7): its status carries no Her, and
 	// Her's admin commands are unknown, answered as that version did.
 	TestBeforeHer bool
-	// TestBeforeThreads makes it act as a hermeshd from before v2 threads,
-	// for the end-to-end tests of the composer against an older machine
-	// (docs/thread-composer.md §5.2): no ThreadService, and its status says so.
-	TestBeforeThreads bool
-}
-
-func DefaultProviders() map[string]provider.Provider {
-	// Each looks on the login shell's PATH as it is when it looks.
-	ps := map[string]provider.Provider{
-		"claude": &claude.Provider{},
-		"codex":  &codex.Provider{},
-	}
-	for _, p := range acp.Providers("") {
-		ps[p.Name()] = p
-	}
-	return ps
-}
-
-// AgentNames lists the agents in display order: Claude Code and Codex,
-// then the ACP agents.
-func AgentNames() []string {
-	names := []string{"claude", "codex"}
-	for _, a := range acp.Agents {
-		names = append(names, a.Name)
-	}
-	return names
 }
 
 type Machine struct {
@@ -108,8 +80,13 @@ type Machine struct {
 	key       *identity.SoftwareKey
 	machineID string
 	audit     *Audit
-	sessions  *Sessions
-	threads   *kernel.Engine
+	sessions  *kernel.Engine
+
+	changesOnce      sync.Once
+	changeLog        *changeLog
+	wsCache          workspaceCache
+	autoReleaseEvery time.Duration
+	testNotice       func(*sessionv1.Session, *sessionv1.SessionEvent)
 
 	mu          sync.Mutex
 	trust       *identity.Trust
@@ -122,10 +99,10 @@ type Machine struct {
 	health      []*machinev1.MachineProblem // what keeps it from working (health.go)
 	healthAt    time.Time                   // when it was read
 	paused      bool
-	infos       map[string]provider.Info // what the last check of each coding agent found
-	checked     time.Time                // when the last check of all of them ended
-	checking    chan struct{}            // closed when the check under way ends; nil when none is
-	pending     map[string]bool          // the agents the check under way has not finished yet
+	infos       map[string]rt.Info // what the last check of each coding agent found
+	checked     time.Time          // when the last check of all of them ended
+	checking    chan struct{}      // closed when the check under way ends; nil when none is
+	pending     map[string]bool    // the agents the check under way has not finished yet
 	defaults    map[string]*identityv1.AgentDefaults
 	limits      map[string]*machinev1.AgentLimits
 	tunnels     map[*tunnel]struct{}
@@ -197,8 +174,8 @@ func Open(cfg Config) (*Machine, error) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	if cfg.Providers == nil {
-		cfg.Providers = DefaultProviders()
+	if cfg.Discoverers == nil {
+		cfg.Discoverers = DefaultDiscoverers()
 	}
 	if cfg.Limits == (Limits{}) {
 		cfg.Limits = DefaultLimits()
@@ -220,7 +197,7 @@ func Open(cfg Config) (*Machine, error) {
 		return nil, err
 	}
 	n := &Machine{cfg: cfg, log: cfg.Logger, st: st, key: key, lock: lock, inboxWake: make(chan struct{}, 1), machineID: identity.MachineID(identity.MarshalPublicKey(key.Public())),
-		infos: map[string]provider.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
+		infos: map[string]rt.Info{}, defaults: map[string]*identityv1.AgentDefaults{}, tunnels: map[*tunnel]struct{}{}, adminSeen: map[string]time.Time{}, grantSeen: map[string]uint64{},
 		statusKick: make(chan struct{}, 1), revocations: &identityv1.RevocationList{MinGrantVersions: map[string]uint64{}}}
 	n.her = herhost.New(herhost.Config{Bin: cfg.HerBin, ConsoleDir: cfg.HerConsole, Socket: paths.Her(cfg.DataDir), Env: shellenv.Environ,
 		Version: Version, Logger: n.log, ExtensionHost: cfg.HerExtensionHost, Notice: n.herNotice, OnDefaultBotChanged: n.herDeltaChanged, Mesh: n.herMeshNow})
@@ -232,23 +209,8 @@ func Open(cfg Config) (*Machine, error) {
 	if err := n.loadState(); err != nil {
 		return nil, err
 	}
-	ws := NewWorkspace(filepath.Join(cfg.DataDir, "worktrees"))
-	ws.none = cfg.WorkspaceMode == "none"
-	n.sessions = &Sessions{st: st, ws: ws, audit: n.audit, log: n.log,
-		machineID: n.machineID, dataDir: cfg.DataDir, providers: cfg.Providers, info: n.providerInfo, limits: cfg.Limits,
-		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, autoReleaseOn: n.AutoRelease, live: map[string]*live{}}
-	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
-	n.sessions.mcp = n.mcpServers
-	n.sessions.limitsSaid = n.noteLimits
-	n.sessions.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
-		n.sessionNotice(s, e)
-		n.sessionNews(s, e)
-	}
-	n.sessions.registerMetrics()
-	if !cfg.TestBeforeThreads {
-		if err := n.openThreads(); err != nil {
-			return nil, err
-		}
+	if err := n.openSessions(); err != nil {
+		return nil, err
 	}
 	return n, nil
 }
@@ -300,10 +262,9 @@ func (n *Machine) Close() error {
 	n.screen.Stop()
 	n.stopHerLink()
 	n.her.Stop()
-	if n.threads != nil {
-		_ = n.threads.Close()
+	if n.sessions != nil {
+		_ = n.sessions.Close()
 	}
-	n.sessions.w.close()
 	err := n.st.Close()
 	n.audit.Close()
 	n.lock.Release()
@@ -360,8 +321,8 @@ func (n *Machine) setMaxRuntimeMode(m identityv1.RuntimeMode) error {
 	if err := n.st.Set(kMaxMode, []byte(strconv.Itoa(int(m)))); err != nil {
 		return err
 	}
-	if n.threads != nil {
-		n.threads.SetMachineMaxMode(m)
+	if n.sessions != nil {
+		n.sessions.SetMachineMaxMode(m)
 	}
 	return nil
 }
@@ -423,10 +384,10 @@ func (n *Machine) Connected() bool {
 // providerInfo is what the last check found of a coding agent; one it found
 // missing, or never checked, is checked again now, so a session with an
 // agent installed since is not refused.
-func (n *Machine) providerInfo(name string) provider.Info {
+func (n *Machine) providerInfo(name string) rt.Info {
 	n.mu.Lock()
 	i, ok := n.infos[name]
-	p := n.cfg.Providers[name]
+	p := n.cfg.Discoverers[name]
 	n.mu.Unlock()
 	if (ok && i.Available) || p == nil {
 		return i
@@ -481,12 +442,12 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 	done := make(chan struct{})
 	n.checking = done
 	n.pending = map[string]bool{}
-	for name := range n.cfg.Providers {
+	for name := range n.cfg.Discoverers {
 		n.pending[name] = true
 	}
 	go func() {
 		var wg sync.WaitGroup
-		for name, p := range n.cfg.Providers {
+		for name, p := range n.cfg.Discoverers {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -501,7 +462,7 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 		n.mu.Lock()
 		short := false // an agent could not start for want of processes: say so now
 		for _, i := range n.infos {
-			short = short || i.Problem == provider.ProblemNoProcesses
+			short = short || i.Problem == rt.ProblemNoProcesses
 		}
 		n.checked = time.Now()
 		n.checking = nil
@@ -515,7 +476,7 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 }
 
 // Discover checks every coding agent now and returns what it found.
-func (n *Machine) Discover(ctx context.Context) map[string]provider.Info {
+func (n *Machine) Discover(ctx context.Context) map[string]rt.Info {
 	select {
 	case <-n.CheckAgents(true, 0):
 	case <-ctx.Done():
@@ -530,13 +491,13 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	n.mu.Lock()
 	st := &machinev1.MachineStatus{Name: n.machineName, ProtocolVersion: transport.ProtocolVersion, Platform: runtime.GOOS + "/" + runtime.GOARCH,
 		MaxSessions: uint32(n.cfg.Limits.MaxConcurrent), Paused: n.paused, Version: Version,
-		Threads: n.threads != nil, MaxRuntimeMode: n.maxRuntimeMode()}
+		MaxRuntimeMode: n.maxRuntimeMode()}
 	for _, name := range append(AgentNames(), "fake") {
 		// Claude Code and Codex are always listed; other agents when found
 		// (working or not), when their app lacks the CLI, or while their
 		// first check is under way.
 		i, ok := n.infos[name]
-		if (ok && (i.Available || i.Problem != provider.ProblemNotFound || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
+		if (ok && (i.Available || i.Problem != rt.ProblemNotFound || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
 			a := &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
 				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name], Problem: machinev1.AgentProblem(i.Problem), Binary: i.Binary, Limits: n.limits[name]}
 			n.agentModels(a, i)
@@ -545,8 +506,8 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 	}
 	st.Problems = n.health
 	n.mu.Unlock()
-	st.RunningSessions = uint32(n.sessions.Running())
-	st.Sessions = n.sessions.Counts()
+	st.RunningSessions = uint32(n.Running())
+	st.Sessions = n.Counts()
 	if !n.cfg.TestBeforeHer {
 		st.Her = n.herStatus()
 	}
@@ -561,11 +522,8 @@ func (n *Machine) Run(ctx context.Context) error {
 	if !n.Paired() {
 		return errors.New("this machine is not paired yet; run `hermeshd pair <connection address>`")
 	}
-	if err := n.sessions.Recover(); err != nil {
-		return err
-	}
-	go n.sessions.Janitor(ctx)
-	go n.sessions.CountWork(ctx)
+	go n.Janitor(ctx)
+	go n.CountWork(ctx)
 	go n.serveSessionTools(ctx)
 	go n.serveControl(ctx)
 	go n.serveLocal(ctx)
@@ -611,7 +569,9 @@ func (n *Machine) applyRevocations(r *identityv1.RevocationList) {
 	}
 	for _, id := range r.RevokedGrantIds {
 		for _, c := range n.clientsForGrant(id) {
-			n.sessions.InterruptByClient(c, "agent access revoked")
+			if n.sessions != nil {
+				n.sessions.InterruptByClient(context.Background(), c)
+			}
 		}
 	}
 	n.checkHerGrant()
@@ -619,16 +579,26 @@ func (n *Machine) applyRevocations(r *identityv1.RevocationList) {
 }
 
 func (n *Machine) clientsForGrant(grantID string) []string {
-	rows, err := n.st.Sessions(`grant_id = ?`, grantID)
+	if n.sessions == nil {
+		return nil
+	}
+	all, err := n.sessions.ListAllSessions(true)
 	if err != nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
-	for _, r := range rows {
-		if !seen[r.CreatedBy] {
-			seen[r.CreatedBy] = true
-			out = append(out, r.CreatedBy)
+	for _, s := range all {
+		if s.GetActor().GetGrantId() != grantID {
+			continue
+		}
+		cid := s.CreatedBy
+		if cid == "" {
+			cid = s.GetActor().GetId()
+		}
+		if cid != "" && !seen[cid] {
+			seen[cid] = true
+			out = append(out, cid)
 		}
 	}
 	return out

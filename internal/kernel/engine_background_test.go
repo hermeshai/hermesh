@@ -7,7 +7,7 @@ import (
 	"time"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -24,7 +24,7 @@ func TestBackgroundTaskLifecycleContinuationCheckpointAndStop(t *testing.T) {
 	}
 	owner := OwnerPrincipal("dev_owner", "Owner")
 
-	launched, err := eng.LaunchThread(ctx, owner, &threadv2.LaunchThreadRequest{
+	launched, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
 		ProjectId: "bgproj",
 		InitialPrompt: strings.Join([]string{
 			"bg-daemon npm run dev|listening on :5173",
@@ -33,16 +33,16 @@ func TestBackgroundTaskLifecycleContinuationCheckpointAndStop(t *testing.T) {
 		}, "\n"),
 	})
 	if err != nil {
-		t.Fatalf("LaunchThread: %v", err)
+		t.Fatalf("StartSession: %v", err)
 	}
-	tid := launched.Thread.ThreadId
+	sid := launched.Session.SessionId
 
 	// 1. Wait for Run #1 to complete while bg-shell (350ms) and bg-daemon are still running.
-	var afterRun1 *threadv2.ThreadProjection
+	var afterRun1 *sessionv1.SessionProjection
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		p, err := eng.GetThread(ctx, owner, tid)
-		if err == nil && len(p.Runs) == 1 && p.Runs[0].Status == threadv2.RunStatus_RUN_STATUS_COMPLETED {
+		p, err := eng.GetSession(ctx, owner, sid)
+		if err == nil && len(p.Runs) == 1 && p.Runs[0].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED {
 			afterRun1 = p
 			break
 		}
@@ -51,16 +51,16 @@ func TestBackgroundTaskLifecycleContinuationCheckpointAndStop(t *testing.T) {
 	if afterRun1 == nil {
 		t.Fatalf("timed out waiting for Run #1 completion")
 	}
-	if afterRun1.Thread.Status != threadv2.ThreadStatus_THREAD_STATUS_IDLE {
-		t.Fatalf("Thread.Status after Run #1 = %v, want IDLE", afterRun1.Thread.Status)
+	if afterRun1.Session.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE {
+		t.Fatalf("Session.Status after Run #1 = %v, want IDLE", afterRun1.Session.Status)
 	}
-	if afterRun1.Thread.ActiveBackgroundCount != 1 || afterRun1.Thread.ActiveDaemonCount != 1 {
+	if afterRun1.Session.ActiveBackgroundCount != 1 || afterRun1.Session.ActiveDaemonCount != 1 {
 		t.Fatalf("expected ActiveBackgroundCount=1 ActiveDaemonCount=1, got bg=%d daemon=%d",
-			afterRun1.Thread.ActiveBackgroundCount, afterRun1.Thread.ActiveDaemonCount)
+			afterRun1.Session.ActiveBackgroundCount, afterRun1.Session.ActiveDaemonCount)
 	}
 
 	// Verify the bg-shell TurnItem stayed "running" (NOT prematurely settled by SettleRunItems).
-	var bgCmdItem *threadv2.TurnItem
+	var bgCmdItem *sessionv1.TurnItem
 	for _, it := range afterRun1.Items {
 		if it.Command == "make e2e" {
 			bgCmdItem = it
@@ -73,41 +73,41 @@ func TestBackgroundTaskLifecycleContinuationCheckpointAndStop(t *testing.T) {
 	// Wait longer than IdleTTL (80ms) and trigger ReapIdle explicitly: live session MUST stay alive!
 	time.Sleep(120 * time.Millisecond)
 	eng.sup.ReapIdle(time.Now())
-	if eng.sup.Get(afterRun1.Thread.ActiveProviderThreadId) == nil {
+	if eng.sup.Get(afterRun1.Session.ActiveProviderSessionId) == nil {
 		t.Fatalf("Supervisor.ReapIdle prematurely reaped a session with active background tasks!")
 	}
 
 	// 2. Wait for bg-shell wakeup -> automatic system Continuation Run #2 completes!
-	var afterCont *threadv2.ThreadProjection
+	var afterCont *sessionv1.SessionProjection
 	deadline = time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		p, err := eng.GetThread(ctx, owner, tid)
-		if err == nil && len(p.Runs) >= 2 && p.Runs[1].Status == threadv2.RunStatus_RUN_STATUS_COMPLETED && p.Thread.ActiveBackgroundCount == 0 {
+		p, err := eng.GetSession(ctx, owner, sid)
+		if err == nil && len(p.Runs) >= 2 && p.Runs[1].Status == sessionv1.RunStatus_RUN_STATUS_COMPLETED && p.Session.ActiveBackgroundCount == 0 {
 			afterCont = p
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	if afterCont == nil {
-		p, _ := eng.GetThread(ctx, owner, tid)
+		p, _ := eng.GetSession(ctx, owner, sid)
 		t.Fatalf("timed out waiting for Continuation Run #2; runs=%+v bg=%+v", p.GetRuns(), p.GetBackgroundTasks())
 	}
 
 	contRun := afterCont.Runs[1]
-	if contRun.GetAuthor().GetKind() != threadv2.ActorKind_ACTOR_KIND_SYSTEM || contRun.WakeReason == "" {
+	if contRun.GetAuthor().GetKind() != sessionv1.ActorKind_ACTOR_KIND_SYSTEM || contRun.WakeReason == "" {
 		t.Fatalf("expected Continuation Run #2 to have SYSTEM author and WakeReason, got author=%+v wake=%q", contRun.GetAuthor(), contRun.WakeReason)
 	}
-	if afterCont.Thread.ActiveDaemonCount != 1 {
-		t.Fatalf("expected daemon to remain running (ActiveDaemonCount=1), got %d", afterCont.Thread.ActiveDaemonCount)
+	if afterCont.Session.ActiveDaemonCount != 1 {
+		t.Fatalf("expected daemon to remain running (ActiveDaemonCount=1), got %d", afterCont.Session.ActiveDaemonCount)
 	}
 
-	var settledCmd *threadv2.TurnItem
+	var settledCmd *sessionv1.TurnItem
 	var sawWakeMsg bool
 	for _, it := range afterCont.Items {
 		if it.Command == "make e2e" {
 			settledCmd = it
 		}
-		if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && strings.Contains(it.Text, "Background verification succeeded!") {
+		if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && strings.Contains(it.Text, "Background verification succeeded!") {
 			sawWakeMsg = true
 		}
 	}
@@ -121,22 +121,22 @@ func TestBackgroundTaskLifecycleContinuationCheckpointAndStop(t *testing.T) {
 	// 3. Stop the remaining daemon via StopBackgroundTask -> ActiveDaemonCount drops to 0!
 	var daemonTaskID string
 	for _, bt := range afterCont.BackgroundTasks {
-		if bt.Kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && bt.Status == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		if bt.Kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && bt.Status == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 			daemonTaskID = bt.TaskId
 		}
 	}
 	if daemonTaskID == "" {
 		t.Fatalf("expected running daemon task in projection, got %+v", afterCont.BackgroundTasks)
 	}
-	stopRes, err := eng.StopBackgroundTask(ctx, owner, &threadv2.StopBackgroundTaskRequest{
+	stopRes, err := eng.StopBackgroundTask(ctx, owner, &sessionv1.StopBackgroundTaskRequest{
 		CommandId: "cmd_stop_daemon",
-		ThreadId:  tid,
+		SessionId: sid,
 		TaskId:    daemonTaskID,
 	})
 	if err != nil {
 		t.Fatalf("StopBackgroundTask: %v", err)
 	}
-	if stopRes.Thread.ActiveDaemonCount != 0 || len(stopRes.StoppedTasks) != 1 || stopRes.StoppedTasks[0].Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+	if stopRes.Session.ActiveDaemonCount != 0 || len(stopRes.StoppedTasks) != 1 || stopRes.StoppedTasks[0].Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
 		t.Fatalf("unexpected StopBackgroundTask response: %+v", stopRes)
 	}
 }
@@ -148,7 +148,7 @@ func TestOutOfTurnPermissionGateCreatesContinuationRunAndCapturesCheckpoint(t *t
 
 	drv := &customTestDriver{
 		kind: "oot",
-		caps: &threadv2.ProviderCapabilities{NativeResume: true},
+		caps: &sessionv1.ProviderCapabilities{NativeResume: true},
 		onStart: func(_ context.Context, spec runtime.StartSpec) (runtime.Session, error) {
 			ch := make(chan runtime.Event, 32)
 			sess := &customTestSession{
@@ -161,10 +161,10 @@ func TestOutOfTurnPermissionGateCreatesContinuationRunAndCapturesCheckpoint(t *t
 						ItemID:              "bg_1",
 						ToolName:            "run_command",
 						Command:             "sleep 1 && deploy",
-						BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
-						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+						BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
 						BackgroundAwaited:   true,
-						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+						BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 					}
 					out <- runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: "m_1", Text: "Started deploy watcher"}
 					out <- runtime.Event{Kind: runtime.EventTurnCompleted}
@@ -176,8 +176,8 @@ func TestOutOfTurnPermissionGateCreatesContinuationRunAndCapturesCheckpoint(t *t
 						// Verify turnCtx is indeed already cancelled, while out-of-turn Gate with background ctx works!
 						_ = turnCtx.Err()
 						res, err := spec.Gate(context.Background(), runtime.ToolGateRequest{
-							Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-							Approval: &threadv2.ToolApprovalPayload{
+							Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+							Approval: &sessionv1.ToolApprovalPayload{
 								ToolCategory: "command",
 								ToolName:     "Bash",
 								Command:      "npm publish",
@@ -193,10 +193,10 @@ func TestOutOfTurnPermissionGateCreatesContinuationRunAndCapturesCheckpoint(t *t
 							ItemID:              "bg_1",
 							ToolName:            "run_command",
 							Command:             "sleep 1 && deploy",
-							BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
-							BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+							BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
 							BackgroundAwaited:   true,
-							BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION,
 							HasExitCode:         true,
 							ExitCode:            0,
 						}
@@ -224,40 +224,40 @@ func TestOutOfTurnPermissionGateCreatesContinuationRunAndCapturesCheckpoint(t *t
 	defer eng.Close()
 
 	owner := OwnerPrincipal("dev_owner", "Owner")
-	_, _ = eng.UpsertProviderInstance(ctx, owner, &threadv2.ProviderInstanceConfig{
+	_, _ = eng.UpsertProviderInstance(ctx, owner, &sessionv1.ProviderInstanceConfig{
 		InstanceId: "oot-agent", Driver: "oot", DisplayName: "OOT", Enabled: true,
 	})
-	l, err := eng.LaunchThread(ctx, owner, &threadv2.LaunchThreadRequest{
-		ModelSelection: &threadv2.ModelSelection{InstanceId: "oot-agent", Model: "m1"},
+	l, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "oot-agent", Model: "m1"},
 		RuntimeMode:    identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
 		InitialPrompt:  "deploy when ready",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tid := l.Thread.ThreadId
-	waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_IDLE)
+	sid := l.Session.SessionId
+	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
 
 	// Trigger out-of-turn wakeup requiring permission!
 	close(trigger)
-	waitingProj := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST)
+	waitingProj := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
 	if gateCtxErr != nil {
 		t.Fatalf("out-of-turn Gate failed: %v", gateCtxErr)
 	}
-	if len(waitingProj.Runs) != 2 || waitingProj.Runs[1].GetAuthor().GetKind() != threadv2.ActorKind_ACTOR_KIND_SYSTEM {
+	if len(waitingProj.Runs) != 2 || waitingProj.Runs[1].GetAuthor().GetKind() != sessionv1.ActorKind_ACTOR_KIND_SYSTEM {
 		t.Fatalf("expected system Continuation Run #2 created for out-of-turn request, got runs=%+v", waitingProj.Runs)
 	}
 
-	_, err = eng.RespondRuntimeRequest(ctx, owner, &threadv2.RespondRuntimeRequestRequest{
-		ThreadId:  tid,
-		RequestId: waitingProj.Thread.PendingRequestId,
-		Decision:  threadv2.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+	_, err = eng.RespondRuntimeRequest(ctx, owner, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: sid,
+		RequestId: waitingProj.Session.PendingRequestId,
+		Decision:  sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
 	})
 	if err != nil {
 		t.Fatalf("RespondRuntimeRequest: %v", err)
 	}
-	doneProj := waitForThreadStatus(t, eng, owner, tid, threadv2.ThreadStatus_THREAD_STATUS_IDLE)
-	if doneProj.Thread.ActiveBackgroundCount != 0 {
-		t.Fatalf("expected ActiveBackgroundCount=0 after wakeup completion, got %d", doneProj.Thread.ActiveBackgroundCount)
+	doneProj := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	if doneProj.Session.ActiveBackgroundCount != 0 {
+		t.Fatalf("expected ActiveBackgroundCount=0 after wakeup completion, got %d", doneProj.Session.ActiveBackgroundCount)
 	}
 }

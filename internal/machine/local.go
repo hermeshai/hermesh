@@ -83,7 +83,7 @@ func (l *Local) ApplySettings(ctx context.Context, build func(*identityv1.AdminC
 }
 
 func (l *Local) ListSessions(req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
-	list, next, err := l.n.sessions.List(l.p, req)
+	list, next, err := l.n.ListSessionsPage(context.Background(), l.p, req)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +91,7 @@ func (l *Local) ListSessions(req *sessionv1.ListSessionsRequest) (*sessionv1.Lis
 }
 
 func (l *Local) WatchSessions(ctx context.Context, send func(*sessionv1.WatchSessionsResponse) error) error {
-	return l.n.sessions.Watch(ctx, l.p, send)
-}
-
-func (l *Local) StreamEvents(ctx context.Context, req *sessionv1.StreamEventsRequest, send func(*sessionv1.SessionEvent) error) error {
-	return l.n.sessions.Stream(ctx, l.p, req, send)
+	return l.n.sessions.WatchSessions(ctx, toKernelPrincipal(l.p), true, send)
 }
 
 // Watch follows this machine (MachineService.Watch), in process.
@@ -103,44 +99,44 @@ func (l *Local) Watch(ctx context.Context, req *machinev1.WatchRequest, send fun
 	return l.n.Watch(ctx, l.p, req, send)
 }
 
-func (l *Local) ReadToolOutput(req *sessionv1.ReadToolOutputRequest, send func(*sessionv1.ToolOutputChunk) error) error {
-	return l.n.sessions.ReadToolOutput(l.p, req, send)
-}
-
-func (l *Local) ListEvents(req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
-	return l.n.sessions.ListEvents(l.p, req)
-}
-
 func (l *Local) Interrupt(ctx context.Context, id string) (*sessionv1.Session, error) {
-	return l.n.sessions.Interrupt(ctx, l.p, id)
+	res, err := l.n.sessions.InterruptSession(ctx, toKernelPrincipal(l.p), &sessionv1.InterruptSessionRequest{SessionId: id})
+	if err != nil {
+		return nil, err
+	}
+	return res.Session, nil
 }
 
 func (l *Local) Archive(ctx context.Context, id string) (*sessionv1.Session, error) {
-	return l.n.sessions.Archive(ctx, l.p, id)
+	res, err := l.n.sessions.UpdateSession(ctx, toKernelPrincipal(l.p), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: true})
+	if err != nil {
+		return nil, err
+	}
+	return res.Session, nil
 }
 
 func (l *Local) Unarchive(ctx context.Context, id string) (*sessionv1.Session, error) {
-	return l.n.sessions.Unarchive(ctx, l.p, id)
+	res, err := l.n.sessions.UpdateSession(ctx, toKernelPrincipal(l.p), &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: false})
+	if err != nil {
+		return nil, err
+	}
+	return res.Session, nil
 }
 
 func (l *Local) Delete(ctx context.Context, id string) error {
-	return l.n.sessions.Delete(ctx, l.p, id)
+	return l.n.sessions.DeleteSession(ctx, toKernelPrincipal(l.p), id)
 }
 
 func (l *Local) Rename(ctx context.Context, id, title string) (*sessionv1.Session, error) {
-	return l.n.sessions.Rename(ctx, l.p, id, title)
-}
-
-func (l *Local) CodingConsent(req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
-	return l.n.sessions.codingConsentCompat(l.p, req)
-}
-
-func (l *Local) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return l.n.sessions.AnswerQuestion(ctx, l.p, req)
+	res, err := l.n.sessions.UpdateSession(ctx, toKernelPrincipal(l.p), &sessionv1.UpdateSessionRequest{SessionId: id, Title: title})
+	if err != nil {
+		return nil, err
+	}
+	return res.Session, nil
 }
 
 func (l *Local) Diff(ctx context.Context, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
-	return l.n.sessions.Diff(ctx, l.p, req)
+	return l.n.sessions.GetDiff(ctx, toKernelPrincipal(l.p), req)
 }
 
 // WorkSeq is where this machine's work counts are (work.go).
@@ -217,15 +213,15 @@ func (l *Local) Clients() []KnownClient {
 // InterruptActive stops every turn under way (running, or waiting for an
 // answer), as the owner would.
 func (l *Local) InterruptActive(ctx context.Context) {
-	list, _, err := l.n.sessions.List(l.p, &sessionv1.ListSessionsRequest{})
+	res, err := l.ListSessions(&sessionv1.ListSessionsRequest{})
 	if err != nil {
 		return
 	}
-	for _, s := range list {
+	for _, s := range res.Sessions {
 		switch s.Status {
 		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
 			sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			if _, err := l.n.sessions.Interrupt(ctx, l.p, s.SessionId); err != nil {
+			if _, err := l.Interrupt(ctx, s.SessionId); err != nil {
 				l.n.log.Warn("interrupting a session before leaving", "session", s.SessionId, "err", err)
 			}
 		}

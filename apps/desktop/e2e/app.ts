@@ -108,6 +108,22 @@ export function sys(mac: string, elsewhere?: string): string {
 }
 
 /** With HERMESH_SCREENS=<dir>, saves a screenshot of the page there (for looking at against the design). */
+/**
+ * Opens a menu with `open` and clicks `item` in it. A menu closes when its window is no longer the front one (as it
+ * should), and specs running side by side take the front from each other: opened again until the item is clicked.
+ */
+export async function pickFrom(open: Locator, item: Locator): Promise<void> {
+  for (let tries = 0; ; tries++) {
+    if (!(await item.isVisible())) await open.click();
+    try {
+      await item.click({ timeout: 3000 });
+      return;
+    } catch (e) {
+      if (tries >= 5) throw e;
+    }
+  }
+}
+
 export async function snap(page: Page, name: string): Promise<void> {
   const dir = process.env.HERMESH_SCREENS;
   if (!dir) return;

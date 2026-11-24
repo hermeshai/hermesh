@@ -16,7 +16,7 @@ public struct APIError: LocalizedError {
 
     /// The text for something a machine's Hermesh doesn't have yet: its own version is older than
     /// this app's (docs/version-skew.md §6.3).
-    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .module)
+    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .hermeshKit)
 
     /// An error as the core sent it. `unimplemented` only ever means a machine older than this app,
     /// so it says that, in place of the transport's words.
@@ -56,7 +56,7 @@ public final class LocalAPI: @unchecked Sendable {
     public let endpoint: LocalEndpoint
     private let ffi: (any LocalFFITransport)?
     private let service = "hermesh.local.v1.LocalService"
-    private let threadService = "hermesh.thread.v2.ThreadService"
+    private let sessionService = "hermesh.session.v1.SessionService"
     private let decodeOptions: JSONDecodingOptions = {
         var o = JSONDecodingOptions()
         o.ignoreUnknownFields = true
@@ -98,8 +98,8 @@ public final class LocalAPI: @unchecked Sendable {
         return try Res(jsonUTF8Data: data, options: decodeOptions)
     }
 
-    public func callThread<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 15) async throws -> Res {
-        try await call("/\(threadService)/\(method)", req, as: Res.self, timeout: timeout)
+    public func callSession<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self, timeout: Int = 15) async throws -> Res {
+        try await call("/\(sessionService)/\(method)", req, as: Res.self, timeout: timeout)
     }
 
     // MARK: Server streaming
@@ -187,111 +187,119 @@ public final class LocalAPI: @unchecked Sendable {
         }
     }
 
-    public func streamThread<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
-        stream("/\(threadService)/\(method)", req, as: Res.self)
+    public func streamSession<Req: SwiftProtobuf.Message, Res: SwiftProtobuf.Message>(_ method: String, _ req: Req, as _: Res.Type = Res.self) -> AsyncThrowingStream<Res, Error> {
+        stream("/\(sessionService)/\(method)", req, as: Res.self)
     }
 
-    // MARK: ThreadService v2 Convenience Wrappers
+    // MARK: SessionService Convenience Wrappers
 
-    public func listThreadProviders(machineID: String, projectID: String = "", refresh: Bool = false) async throws -> Hermesh_Thread_V2_ListProvidersResponse {
-        var r = Hermesh_Thread_V2_ListProvidersRequest()
+    public func listProviders(machineID: String, projectID: String = "", refresh: Bool = false) async throws -> Hermesh_Session_V1_ListProvidersResponse {
+        var r = Hermesh_Session_V1_ListProvidersRequest()
         r.machineID = machineID
         r.projectID = projectID
         r.refresh = refresh
-        return try await callThread("ListProviders", r)
+        return try await callSession("ListProviders", r)
     }
 
-    public func launchThread(_ req: Hermesh_Thread_V2_LaunchThreadRequest) async throws -> Hermesh_Thread_V2_LaunchThreadResponse {
-        try await callThread("LaunchThread", req, timeout: 30)
+    public func startSession(_ req: Hermesh_Session_V1_StartSessionRequest) async throws -> Hermesh_Session_V1_StartSessionResponse {
+        try await callSession("StartSession", req, timeout: 30)
     }
 
-    public func listThreads(_ req: Hermesh_Thread_V2_ListThreadsRequest = .init()) async throws -> Hermesh_Thread_V2_ListThreadsResponse {
-        try await callThread("ListThreads", req)
+    public func listSessions(_ req: Hermesh_Session_V1_ListSessionsRequest = .init()) async throws -> Hermesh_Session_V1_ListSessionsResponse {
+        try await callSession("ListSessions", req)
     }
 
-    public func getThread(threadID: String) async throws -> Hermesh_Thread_V2_GetThreadResponse {
-        var r = Hermesh_Thread_V2_GetThreadRequest()
-        r.threadID = threadID
-        return try await callThread("GetThread", r)
+    public func getSession(sessionID: String, machineID: String = "") async throws -> Hermesh_Session_V1_GetSessionResponse {
+        var r = Hermesh_Session_V1_GetSessionRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        return try await callSession("GetSession", r)
     }
 
-    public func subscribeThreads(machineID: String = "", includeArchived: Bool = false) -> AsyncThrowingStream<Hermesh_Thread_V2_SubscribeThreadsResponse, Error> {
-        var r = Hermesh_Thread_V2_SubscribeThreadsRequest()
+    public func watchSessions(machineID: String = "", includeArchived: Bool = false) -> AsyncThrowingStream<Hermesh_Session_V1_WatchSessionsResponse, Error> {
+        var r = Hermesh_Session_V1_WatchSessionsRequest()
         r.machineID = machineID
         r.includeArchived = includeArchived
-        return streamThread("SubscribeThreads", r)
+        return streamSession("WatchSessions", r)
     }
 
-    public func subscribeThread(threadID: String, machineID: String = "", afterSeq: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Thread_V2_ThreadEvent, Error> {
-        var r = Hermesh_Thread_V2_SubscribeThreadRequest()
+    public func subscribeSession(sessionID: String, machineID: String = "", afterSeq: UInt64 = 0) -> AsyncThrowingStream<Hermesh_Session_V1_SessionEvent, Error> {
+        var r = Hermesh_Session_V1_SubscribeSessionRequest()
         r.machineID = machineID
-        r.threadID = threadID
+        r.sessionID = sessionID
         r.afterSeq = afterSeq
-        return streamThread("SubscribeThread", r)
+        return streamSession("SubscribeSession", r)
     }
 
-    public func dispatchThreadMessage(_ req: Hermesh_Thread_V2_DispatchMessageRequest) async throws -> Hermesh_Thread_V2_DispatchMessageResponse {
-        try await callThread("DispatchMessage", req, timeout: 20)
+    public func dispatchMessage(_ req: Hermesh_Session_V1_DispatchMessageRequest) async throws -> Hermesh_Session_V1_DispatchMessageResponse {
+        try await callSession("DispatchMessage", req, timeout: 20)
     }
 
     /// A file for a session's message, kept by hermeshd until the message goes (and sent on to its machine then).
-    public func uploadThreadBlob(machineID: String = "", name: String, mimeType: String, data: Data) async throws -> Hermesh_Thread_V2_UploadBlobResponse {
-        var r = Hermesh_Thread_V2_UploadBlobRequest()
+    public func uploadBlob(machineID: String = "", name: String, mimeType: String, data: Data) async throws -> Hermesh_Session_V1_UploadBlobResponse {
+        var r = Hermesh_Session_V1_UploadBlobRequest()
         r.machineID = machineID
         r.name = name
         r.mimeType = mimeType
         r.data = data
-        return try await callThread("UploadBlob", r, timeout: 60)
+        return try await callSession("UploadBlob", r, timeout: 60)
     }
 
-    public func interruptThreadRun(threadID: String, runID: String = "", force: Bool = false) async throws -> Hermesh_Thread_V2_InterruptRunResponse {
-        var r = Hermesh_Thread_V2_InterruptRunRequest()
-        r.threadID = threadID
+    public func interruptSession(sessionID: String, runID: String = "", force: Bool = false) async throws -> Hermesh_Session_V1_InterruptSessionResponse {
+        var r = Hermesh_Session_V1_InterruptSessionRequest()
+        r.sessionID = sessionID
         r.runID = runID
         r.force = force
-        return try await callThread("InterruptRun", r)
+        return try await callSession("InterruptSession", r)
     }
 
-    public func stopThreadBackgroundTask(threadID: String, taskID: String = "", machineID: String = "") async throws -> Hermesh_Thread_V2_StopBackgroundTaskResponse {
-        var r = Hermesh_Thread_V2_StopBackgroundTaskRequest()
+    public func stopBackgroundTask(sessionID: String, taskID: String = "", machineID: String = "") async throws -> Hermesh_Session_V1_StopBackgroundTaskResponse {
+        var r = Hermesh_Session_V1_StopBackgroundTaskRequest()
         r.machineID = machineID
-        r.threadID = threadID
+        r.sessionID = sessionID
         r.taskID = taskID
-        return try await callThread("StopBackgroundTask", r)
+        return try await callSession("StopBackgroundTask", r)
     }
 
-    public func manageThreadQueue(_ req: Hermesh_Thread_V2_ManageQueueRequest) async throws -> Hermesh_Thread_V2_ManageQueueResponse {
-        try await callThread("ManageQueue", req)
+    public func manageQueue(_ req: Hermesh_Session_V1_ManageQueueRequest) async throws -> Hermesh_Session_V1_ManageQueueResponse {
+        try await callSession("ManageQueue", req)
     }
 
-    public func updateThreadConfig(_ req: Hermesh_Thread_V2_UpdateThreadConfigRequest) async throws -> Hermesh_Thread_V2_UpdateThreadConfigResponse {
-        try await callThread("UpdateThreadConfig", req)
+    public func updateSession(_ req: Hermesh_Session_V1_UpdateSessionRequest) async throws -> Hermesh_Session_V1_UpdateSessionResponse {
+        try await callSession("UpdateSession", req)
     }
 
-    public func respondThreadRuntimeRequest(_ req: Hermesh_Thread_V2_RespondRuntimeRequestRequest) async throws -> Hermesh_Thread_V2_RespondRuntimeRequestResponse {
-        try await callThread("RespondRuntimeRequest", req)
+    public func deleteSession(sessionID: String, machineID: String = "") async throws -> Hermesh_Session_V1_DeleteSessionResponse {
+        var r = Hermesh_Session_V1_DeleteSessionRequest()
+        r.machineID = machineID
+        r.sessionID = sessionID
+        return try await callSession("DeleteSession", r)
     }
 
-    public func listThreadCheckpoints(threadID: String) async throws -> Hermesh_Thread_V2_ListCheckpointsResponse {
-        var r = Hermesh_Thread_V2_ListCheckpointsRequest()
-        r.threadID = threadID
-        return try await callThread("ListCheckpoints", r)
+    public func respondRuntimeRequest(_ req: Hermesh_Session_V1_RespondRuntimeRequestRequest) async throws -> Hermesh_Session_V1_RespondRuntimeRequestResponse {
+        try await callSession("RespondRuntimeRequest", req)
     }
 
-    public func rollbackThreadCheckpoint(threadID: String, checkpointID: String, restoreFiles: Bool) async throws -> Hermesh_Thread_V2_RollbackCheckpointResponse {
-        var r = Hermesh_Thread_V2_RollbackCheckpointRequest()
-        r.threadID = threadID
+    public func listCheckpoints(sessionID: String) async throws -> Hermesh_Session_V1_ListCheckpointsResponse {
+        var r = Hermesh_Session_V1_ListCheckpointsRequest()
+        r.sessionID = sessionID
+        return try await callSession("ListCheckpoints", r)
+    }
+
+    public func rollbackCheckpoint(sessionID: String, checkpointID: String, restoreFiles: Bool) async throws -> Hermesh_Session_V1_RollbackCheckpointResponse {
+        var r = Hermesh_Session_V1_RollbackCheckpointRequest()
+        r.sessionID = sessionID
         r.checkpointID = checkpointID
         r.restoreFiles = restoreFiles
-        return try await callThread("RollbackCheckpoint", r)
+        return try await callSession("RollbackCheckpoint", r)
     }
 
-    public func getThreadDiff(threadID: String, checkpointID: String = "", machineID: String = "") async throws -> Hermesh_Thread_V2_GetThreadDiffResponse {
-        var r = Hermesh_Thread_V2_GetThreadDiffRequest()
+    public func getSessionDiff(sessionID: String, checkpointID: String = "", machineID: String = "") async throws -> Hermesh_Session_V1_GetDiffResponse {
+        var r = Hermesh_Session_V1_GetDiffRequest()
         r.machineID = machineID
-        r.threadID = threadID
+        r.sessionID = sessionID
         r.checkpointID = checkpointID
-        return try await callThread("GetThreadDiff", r)
+        return try await callSession("GetDiff", r)
     }
 
     // MARK: Plain HTTP on loopback

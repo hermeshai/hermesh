@@ -9,6 +9,7 @@ import (
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 // TestCodexThreads: the Codex apps list a session's thread by the
@@ -50,7 +51,7 @@ esac
 	}
 
 	// Renamed while its agent runs: the thread takes the name at once.
-	if _, err := w.app.client.RenameSession(context.Background(), &localv1.RenameSessionRequest{SessionId: s.SessionID, Title: "Feishu QR review"}); err != nil {
+	if _, err := w.app.sessions.UpdateSession(context.Background(), &sessionv1.UpdateSessionRequest{SessionId: s.SessionID, Title: "Feishu QR review"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := name(ref); got != "Feishu QR review" {

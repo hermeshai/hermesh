@@ -4,12 +4,12 @@ import { SessionStatus, type Session } from "@hermesh/proto/session";
 import {
   bucketTitle, clockText, elapsedSeconds, codingAgentShort, codingAgentTitle, createdDate, dateOf, displayTitle, isActive, isArchivable, isFailed, listTime,
   sessionSections, statusTitle, teamState, updatedDate, type SessionBucket, type SessionSection, type SessionView,
-  SCRATCH_PROJECT, isThreadId,
+  SCRATCH_PROJECT,
 } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../shared/i18n";
 import { UpdateReminder } from "./update";
-import { local, threads as threadApi } from "./api";
+import { sessions as sessionApi } from "./api";
 import { AppMenuButton } from "./MainWindow";
 import { Icon } from "./icons";
 import { setSidebar } from "./layout";
@@ -30,7 +30,7 @@ export function herClients(st: Pick<Store, "clients">): string[] {
 }
 
 /** Who sent work, in a row (docs/her-team.md §4.7): Her by her name alone, the owner as "You", the others as their grants name them. */
-export function senderName(st: Store, clientId: string): string {
+export function senderName(st: Pick<Store, "clients">, clientId: string): string {
   if (clientId === "owner") return i18n.t("common:sidebar.you");
   if (herClients(st).includes(clientId)) return "Her";
   return st.clients.find((c) => c.clientId === clientId)?.label ?? i18n.t("common:sidebar.disconnectedGrant");
@@ -45,17 +45,16 @@ export function machineName(st: Store, id: string): string {
   return st.machines.find((m) => m.machineId === id)?.machineName ?? id;
 }
 
-/** Archives or unarchives a v2 thread (UpdateThreadConfig). */
-const setThreadArchived = (id: string, archived: boolean) => threadApi.updateThreadConfig({ threadId: id, hasArchived: true, archived });
+const setSessionArchived = (id: string, archived: boolean) => sessionApi.updateSession({ sessionId: id, hasArchived: true, archived });
 
 export function archive(st: Store, s: Session) {
-  st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, true) : local.archiveSession({ sessionId: s.sessionId }))).then((ok) => {
+  st.run(() => setSessionArchived(s.sessionId, true)).then((ok) => {
     if (ok) st.show(i18n.t("common:sidebar.archived", { title: displayTitle(s) }), () => unarchive(st, s));
   });
 }
 
 export function unarchive(st: Store, s: Session, done?: string) {
-  return st.run(() => (isThreadId(s.sessionId) ? setThreadArchived(s.sessionId, false) : local.unarchiveSession({ sessionId: s.sessionId })), done);
+  return st.run(() => setSessionArchived(s.sessionId, false), done);
 }
 
 /** Delete, once confirmed: what goes for good, what stays (the branch), and that a turn in progress is interrupted. */
@@ -71,7 +70,11 @@ export function confirmDelete(st: Store, s: Session) {
       title: i18n.t("common:sessionMenu.deleteTitle", { title }),
       message,
       button: i18n.t("common:sessionMenu.deleteButton"),
-      run: () => (isThreadId(s.sessionId) ? threadApi.deleteThread({ threadId: s.sessionId }) : local.deleteSession({ sessionId: s.sessionId })),
+      run: () => sessionApi.deleteSession({ sessionId: s.sessionId }).then(() => {
+        if (st.selection.kind === "session" && st.selection.id === s.sessionId) {
+          st.set({ selection: { kind: "overview" } });
+        }
+      }),
       done: i18n.t("common:sessionMenu.deleted", { title }),
     },
   });
@@ -174,7 +177,7 @@ function NewSessionItem() {
   const st = useStore();
   const { t } = useTranslation("thread");
   return (
-    <button className={`nav-i ${st.selection.kind === "newThread" ? "sel" : ""}`} data-testid="nav-new-thread" onClick={() => st.set({ selection: { kind: "newThread" } })}>
+    <button className={`nav-i ${st.selection.kind === "newSession" ? "sel" : ""}`} data-testid="nav-new-thread" onClick={() => st.set({ selection: { kind: "newSession" } })}>
       <Icon name="plus" />
       <span>{t("nav.newThread")}</span>
       <span className="kbd">{keys("CmdOrCtrl+N")}</span>
@@ -197,7 +200,7 @@ function NewInProject({ sec }: { sec: SessionSection }) {
       className="tb grp-add"
       title={t("nav.newIn", { project: name })}
       aria-label={t("nav.newIn", { project: name })}
-      onClick={() => st.set({ selection: { kind: "newThread", machineId: latest?.machineId, projectId: sec.key } })}
+      onClick={() => st.set({ selection: { kind: "newSession", machineId: latest?.machineId, projectId: sec.key } })}
     >
       <Icon name="plus" />
     </button>
@@ -261,7 +264,7 @@ function Sessions({ now }: { now: Date }) {
                 <SessionRow
                   key={s.sessionId}
                   s={s}
-                  sel={(sel.kind === "session" || sel.kind === "thread") && sel.id === s.sessionId}
+                  sel={sel.kind === "session" && sel.id === s.sessionId}
                   sender={senderName(st, s.createdBy)}
                   meta={view.metadata}
                   renaming={st.renaming === s.sessionId}
@@ -557,7 +560,7 @@ function RenameField({ s, store }: { s: Session; store: RefObject<Store> }) {
     st.set({ renaming: null });
     const title = value.trim();
     if (keep && title && title !== displayTitle(s))
-      st.run(() => (isThreadId(s.sessionId) ? threadApi.updateThreadConfig({ threadId: s.sessionId, title }) : local.renameSession({ sessionId: s.sessionId, title })));
+      st.run(() => sessionApi.updateSession({ sessionId: s.sessionId, title }));
   };
   return (
     <input

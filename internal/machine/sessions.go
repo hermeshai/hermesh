@@ -3,61 +3,47 @@ package machine
 import (
 	"cmp"
 	"context"
-	"crypto/rand"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/hermeshai/hermesh/pkg/metrics"
-	"log/slog"
 	"os"
-	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
-	"github.com/oklog/ulid/v2"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	"github.com/hermeshai/hermesh/internal/kernel"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
+	rtacp "github.com/hermeshai/hermesh/internal/runtime/acp"
+	rtclaude "github.com/hermeshai/hermesh/internal/runtime/claude"
+	rtcodex "github.com/hermeshai/hermesh/internal/runtime/codex"
+	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/internal/shellenv"
-	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 type Limits struct {
-	// MaxConcurrent caps the sessions running at once; more wait queued.
-	// 0, the default: no cap.
-	MaxConcurrent int
-	// Liveness of a running turn (see docs/reliability-plan.md §3): the
-	// agent must write something within FirstOutputTimeout of starting,
-	// then may stay silent for IdleTimeout, or for ToolTimeout while one
-	// of its tools runs (0: no limit while a tool runs). TurnTimeout caps a
-	// turn that keeps making progress (0: no cap). StartTimeout caps the
-	// start before that (the worktree and the agent's own startup), which
-	// a busy machine makes slow, not stuck: generous, and the only limit
-	// on it (0: none).
+	MaxConcurrent      int
 	StartTimeout       time.Duration
 	FirstOutputTimeout time.Duration
 	IdleTimeout        time.Duration
 	ToolTimeout        time.Duration
 	TurnTimeout        time.Duration
 	IdleProcessTTL     time.Duration
-	// RetryDelay is how long a turn that failed on a rate limit (or a
-	// model at capacity) waits before it goes on by itself in the same
-	// conversation; the next waits are retryFactors times as long, then
-	// the turn fails (0: it fails at once).
-	RetryDelay time.Duration
+	RetryDelay         time.Duration
 }
 
 func DefaultLimits() Limits {
-	return Limits{StartTimeout: 10 * time.Minute, FirstOutputTimeout: 3 * time.Minute, IdleTimeout: 15 * time.Minute, ToolTimeout: 2 * time.Hour,
-		IdleProcessTTL: 10 * time.Minute, RetryDelay: 30 * time.Second}
+	return Limits{
+		StartTimeout:       10 * time.Minute,
+		FirstOutputTimeout: 3 * time.Minute,
+		IdleTimeout:        15 * time.Minute,
+		ToolTimeout:        2 * time.Hour,
+		IdleProcessTTL:     10 * time.Minute,
+		RetryDelay:         30 * time.Second,
+	}
 }
 
 type PrincipalKind int
@@ -81,2440 +67,555 @@ func (p *Principal) ID() string {
 	return p.ClientID
 }
 
-// Sessions is the session kernel of a machine.
-type Sessions struct {
-	// changeLog numbers its sessions' and projects' changes (feed.go).
-	changesOnce sync.Once
-	changeLog   *changeLog
-
-	st        *Store
-	ws        *Workspace
-	audit     *Audit
-	log       *slog.Logger
-	machineID string
-	dataDir   string
-	providers map[string]provider.Provider
-	info      func(name string) provider.Info
-	// outOfProcesses says why no program can start on this machine now, or "".
-	outOfProcesses func() string
-	limits         Limits
-	// janitorEvery is how often the Janitor checks (default 10s).
-	janitorEvery time.Duration
-	paused       func() bool
-	// defaults is what an agent's sessions run with when the client names
-	// no model.
-	defaults func(agent string) provider.Settings
-	// autoReleaseOn is whether idle checkouts go by themselves; the Janitor
-	// checks at most every autoReleaseEvery (default an hour).
-	autoReleaseOn    func() bool
-	autoReleaseEvery time.Duration
-	wsCache          workspaceCache
-
-	mu         sync.Mutex
-	live       map[string]*live
-	dispatchMu sync.Mutex
-	w          *writer
-	// counts tracks live sessions per status so hot paths never scan.
-	counts [10]atomic.Int64
-	// watchers are the WatchSessions streams.
-	watchMu  sync.Mutex
-	watchers map[*watcher]bool
-	// notice tells the owner's devices of a question, a failure or a
-	// finished turn (notify.go); nil in tests.
-	notice func(noticeSession, *sessionv1.SessionEvent)
-	// mcp are the tools a session's coding agent gets (sessiontools.go);
-	// nil in tests.
-	mcp func(sessionID string) []provider.MCPServer
-	// limitsSaid is told what an agent said of its account's rate limits.
-	limitsSaid func(agent string, l provider.Limits)
+// AgentDiscoverer probes whether a coding agent is installed, logged in, and what models it offers.
+type AgentDiscoverer interface {
+	Discover(ctx context.Context) rt.Info
 }
 
-// record adds an event to a live session's conversation (a message its
-// coding agent wrote).
-func (s *Sessions) record(id string, e *sessionv1.SessionEvent) {
-	s.mu.Lock()
-	l := s.live[id]
-	s.mu.Unlock()
-	if l != nil {
-		s.emit(l, e)
+func DefaultDiscoverers() map[string]AgentDiscoverer {
+	pathEnv := shellenv.Path()
+	cl := rtclaude.NewDriver(pathEnv)
+	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
+		cl.Binary = b
 	}
-}
-
-func (s *Sessions) count(st sessionv1.SessionStatus, d int64) {
-	if int(st) < len(s.counts) && !isTerminal(st) {
-		s.counts[st].Add(d)
+	cx := rtcodex.NewDriver(pathEnv)
+	if b := os.Getenv("HERMESH_CODEX_BIN"); b != "" {
+		cx.Binary = b
 	}
-}
-
-type live struct {
-	id            string
-	stop          *provider.Failure // an interrupt that came while preparing
-	emitMu        sync.Mutex        // orders emits of one session into the writer
-	persistedSeq  uint64
-	statRunning   bool
-	statPending   bool
-	repo          string
-	lastCommit    string
-	mayHaveEdits  bool // a tool that can change files ran this turn
-	mu            sync.Mutex
-	row           *sessionRow
-	releasing     chan struct{} // closed when the idle checkout can be used again
-	idleClose     chan struct{} // an idle process is still shutting down
-	sess          provider.Session
-	seq           uint64
-	turn          uint32
-	subs          map[chan *sessionv1.SessionEvent]bool   // true: it takes drafts
-	followers     map[chan *sessionv1.SessionEvent]string // who each subscriber is (Principal.ID)
-	lastEvent     time.Time
-	lastProgress  time.Time // last event that was not an error
-	turnStarted   time.Time
-	procStarted   time.Time
-	idleSince     time.Time
-	pending       message // the prompt of the turn to start
-	resume        bool
-	queuedAt      time.Time
-	awaitingFirst bool
-	tools         map[string]string
-	// The current turn: its prompt, tool calls so far, whether its process
-	// was started with a resume, and whether it is being finished (by its
-	// result, a crash or the watchdog; only one of them finishes it).
-	turnMsg   message
-	turnTools int
-	// asker is who asked for the current (or last) turn; asked are messages
-	// from others, each waiting for a turn of its own once the session is
-	// idle (docs/agent-messages.md §7.2).
-	asker string
-	asked []message
-	// askerConv is the conversation of the turn's asker, where its news
-	// goes (known since this hermeshd started; the creator's is the row's).
-	askerConv string
-	// followUps are messages sent while the turn could not take them
-	// (starting, finishing, or an agent without mid-turn input); they
-	// become the next turn when this one succeeds.
-	followUps []message
-	// questions the agent waits on, oldest first.
-	questions    []*question
-	questionSeq  int
-	resumedStart bool
-	finishing    bool
-	// turnFailed: the last turn failed and no status followed it yet (the
-	// crashed status that does is no news of its own).
-	turnFailed bool
-	// restarting re-runs the current turn in a fresh provider session
-	// (the resume was refused before the turn did anything), or resumes
-	// it after a rate limit (retryLater).
-	restarting bool
-	// retries counts the times the current turn went on by itself after a
-	// rate limit; retryTimer waits for the next (nil: not waiting).
-	retries    int
-	retryTimer *time.Timer
-	// lostContext says why the provider conversation was dropped; the next
-	// fresh provider session is told (see continuityNotice).
-	lostContext string
-	// prepCancel stops the start under way (worktree, agent process),
-	// begun at prepStarted; nil when the session is not PREPARING.
-	prepCancel  context.CancelCauseFunc
-	prepStarted time.Time
-	// lastErr is the agent's last error this turn (e.g. a retry it keeps
-	// making), and when: a stall after it is reported as that failure.
-	lastErr   *provider.Failure
-	lastErrAt time.Time
-	// draft is the reply the agent is still writing (docs/reply-streaming.md):
-	// draftQueued bytes of it are queued for subscribers (0: the next send
-	// is the whole draft), draftTimer is the pending send, and
-	// draftShown what subscribers have been sent of it.
-	draft       strings.Builder
-	draftQueued int
-	draftTimer  *time.Timer
-	draftShown  string
-}
-
-// continuityNotice tells an agent starting a fresh provider session in an
-// existing Hermesh session that the earlier conversation is gone.
-func continuityNotice(reason string, inPlace bool) string {
-	if reason == "" {
-		reason = "the agent's session ended"
+	ds := map[string]AgentDiscoverer{
+		"claude": cl,
+		"codex":  cx,
 	}
-	r, _ := provider.Truncate(provider.Redact(reason), 300)
-	work := "Work from previous turns is still in this worktree, committed once per turn; check `git log` and `git diff` to see what was done, "
-	if inPlace {
-		work = "Work from previous turns is still in this directory; look at its files (and `git status` if it is a git repository) to see what was done, "
+	for _, p := range rtacp.Providers(pathEnv) {
+		ds[p.Name()] = p
 	}
-	return "[Hermesh] The earlier conversation in this session could not be restored (" + strings.TrimSpace(r) + "). " + work +
-		"then continue with the request below.\n\n"
+	return ds
 }
 
-// isTerminal: an archived session takes no more messages until it is
-// unarchived. Nothing else ends a session.
-func isTerminal(s sessionv1.SessionStatus) bool {
-	return s == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
-}
-
-// unavailable says why agent can't run here, for the agent that asked.
-func unavailable(agent string, i provider.Info) string {
-	switch i.Problem {
-	case provider.ProblemAppWithoutCLI:
-		return fmt.Sprintf("%s's command line tool is not installed on this machine (only %s is)", agent, i.Detail)
-	case provider.ProblemNoProcesses:
-		return fmt.Sprintf("%s can't start on this machine: it is out of processes (%s)", agent, i.Detail)
-	case provider.ProblemTimedOut:
-		return fmt.Sprintf("%s on this machine did not answer when checked (%s)", agent, i.Binary)
-	case provider.ProblemMissingRuntime:
-		return fmt.Sprintf("%s on this machine can't run: %s, which runs it, is missing", agent, i.Detail)
-	case provider.ProblemFailed:
-		return fmt.Sprintf("%s on this machine can't run: %s", agent, i.Detail)
+// AgentNames lists the agents in display order: Claude Code and Codex, then the ACP agents.
+func AgentNames() []string {
+	names := []string{"claude", "codex"}
+	for _, a := range rtacp.Agents {
+		names = append(names, a.Name)
 	}
-	return fmt.Sprintf("%s is not installed on this machine", agent)
+	return names
 }
 
 func cerr(code connect.Code, format string, a ...any) error {
 	return connect.NewError(code, fmt.Errorf(format, a...))
 }
 
-func newUUID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+func buildRuntimeDrivers(cfg Config) (map[string]rt.Driver, bool) {
+	if cfg.Drivers != nil {
+		_, hasScripted := cfg.Drivers["scripted"]
+		return cfg.Drivers, hasScripted
+	}
+	if os.Getenv("HERMESH_FAKE_PROVIDERS") == "1" {
+		d := map[string]rt.Driver{
+			"scripted": scripted.NewDriver(),
+			"fake":     scripted.NewDriver(),
+			"claude":   scripted.NewDriver(),
+			"codex":    scripted.NewDriver(),
+			"acp":      &scripted.Driver{DisableSteer: true},
+		}
+		for _, name := range strings.FieldsFunc(os.Getenv("HERMESH_FAKE_AGENTS"), func(r rune) bool { return r == ',' }) {
+			d[name] = scripted.NewDriver()
+		}
+		return d, true
+	}
+	pathEnv := shellenv.Path()
+	cl := rtclaude.NewDriver(pathEnv)
+	if b := os.Getenv("HERMESH_CLAUDE_BIN"); b != "" {
+		cl.Binary = b
+	}
+	cx := rtcodex.NewDriver(pathEnv)
+	if b := os.Getenv("HERMESH_CODEX_BIN"); b != "" {
+		cx.Binary = b
+	}
+	drivers := map[string]rt.Driver{
+		"claude": cl,
+		"codex":  cx,
+		"acp":    rtacp.NewDriver(pathEnv),
+	}
+	includeScripted := os.Getenv("HERMESH_INCLUDE_SCRIPTED") == "1"
+	if includeScripted {
+		drivers["scripted"] = scripted.NewDriver()
+	}
+	return drivers, includeScripted
 }
 
-// Recover loads the sessions that are not archived after a restart. Running
-// processes from the previous daemon are killed and those sessions marked
-// crashed.
-func (s *Sessions) Recover() error {
-	rows, err := s.st.Sessions(`status != ?`, int(sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED))
+func (n *Machine) openSessions() error {
+	drivers, includeScripted := buildRuntimeDrivers(n.cfg)
+	idleTTL := n.cfg.Limits.IdleProcessTTL
+	if idleTTL <= 0 {
+		idleTTL = 10 * time.Minute
+	}
+	eng, err := kernel.Open(kernel.Config{
+		DataDir:          n.cfg.DataDir,
+		MachineID:        n.machineID,
+		Logger:           n.log,
+		Drivers:          drivers,
+		IncludeScripted:  includeScripted,
+		IdleTTL:          idleTTL,
+		QuestionTimeout:  30 * time.Minute,
+		MachineMaxMode:   n.maxRuntimeMode(),
+		IsPaused:         n.isPaused,
+		MCPServers:       n.mcpServers,
+		AgentModels:      n.agentModelList,
+		ResolveSelection: n.resolveModelSelection,
+		CheckRelease:     n.checkReleaseSession,
+		OnDeliverMessage: n.deliverMessageRPC,
+		OnNotice: func(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
+			n.kickStatus()
+			n.sessionNotice(sess, ev)
+			n.sessionNews(sess, ev)
+			if n.testNotice != nil {
+				n.testNotice(sess, ev)
+			}
+		},
+		OnWork: func(sess *sessionv1.Session, run *sessionv1.Run, ev *sessionv1.SessionEvent) {
+			n.st.recordKernelWork(sess, run, ev)
+		},
+		OnSessionChanged: func(sess *sessionv1.Session) {
+			n.changes().session(sess.SessionId)
+		},
+		OnSessionDeleted: func(sessionID string) {
+			n.changes().session(sessionID)
+		},
+		OnLimits: func(sess *sessionv1.Session, l rt.Limits) {
+			n.noteLimits(cmp.Or(sess.Agent, sess.GetModelSelection().GetInstanceId()), l)
+		},
+	})
 	if err != nil {
 		return err
 	}
-	for _, r := range rows {
-		if r.Pgid > 0 { // the previous daemon's agent and everything it started
-			provider.KillTree(r.Pgid)
-			r.Pgid = 0
+	// Register any extra custom drivers (e.g. test drivers like "fake" or "flaky") as provider instances.
+	existing, _ := eng.Store().ProviderInstances()
+	known := map[string]string{}
+	for _, inst := range existing {
+		known[inst.InstanceId] = inst.Driver
+	}
+	for name := range drivers {
+		if name == "acp" || known[name] == name {
+			continue
 		}
-		seq, _ := s.st.MaxSeq(r.ID)
-		s.count(r.Status, 1)
-		l := &live{id: r.ID, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, idleSince: time.Now(),
-			asked: s.loadAsked(r.ID)}
-		s.mu.Lock()
-		s.live[r.ID] = l
-		s.mu.Unlock()
-		if r.Status != sessionv1.SessionStatus_SESSION_STATUS_IDLE && r.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-			r.Progress.PendingQuestion, r.Progress.CurrentTool, r.Progress.TurnStartedAt = nil, "", nil // they went with the agent process
-			if turnActive(r.Status) || r.Status == sessionv1.SessionStatus_SESSION_STATUS_PREPARING {
-				r.Progress.LastFailure = (&provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "hermeshd restarted during the turn"}).Proto()
-			}
-			s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_CRASHED, "hermeshd restarted")
+		_, _ = eng.UpsertProviderInstance(context.Background(), kernel.OwnerPrincipal("owner", "Owner"), &sessionv1.ProviderInstanceConfig{
+			InstanceId:  name,
+			Driver:      name,
+			DisplayName: name,
+			Enabled:     true,
+		})
+	}
+	if projects, pErr := n.st.Projects(); pErr == nil {
+		for _, pr := range projects {
+			_ = eng.SyncWorkspace(pr.ID, pr.Path, pr.DefaultBaseRef, pr.Workspace, pr.Description, nil)
 		}
-		if len(l.asked) > 0 { // messages that waited for a turn of their own
-			go s.startAsked(l)
-		}
+	}
+	n.sessions = eng
+	if n.st.needsWorkRebuild() {
+		_ = n.st.RebuildWork(eng)
 	}
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Authorization helpers.
+func (n *Machine) Sessions() *kernel.Engine { return n.sessions }
 
-func (s *Sessions) canRead(p *Principal, r *sessionRow) bool {
-	if p.Kind == PrincipalOwner || r.CreatedBy == p.ClientID {
-		return true
-	}
-	g := p.Grant
-	return g.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL && identity.Allows(g.ProjectIds, r.ProjectID)
+func (l *Local) Sessions() *kernel.Engine { return l.n.sessions }
+
+func (n *Machine) sessionPrincipal(ctx context.Context) *kernel.Principal {
+	return toKernelPrincipal(principalFrom(ctx))
 }
 
-// canWrite: the client that started the session, or Her, whose grant
-// (her_machine_id) acts on every session she may read (docs/her-team.md
-// §6.1).
-func (s *Sessions) canWrite(p *Principal, r *sessionRow) bool {
-	if p.Kind != PrincipalClient {
-		return false
+func toKernelPrincipal(p *Principal) *kernel.Principal {
+	if p == nil {
+		return nil
 	}
-	return r.CreatedBy == p.ClientID || p.Grant.GetHerMachineId() != "" && s.canRead(p, r)
+	if p.Kind == PrincipalOwner {
+		return kernel.OwnerPrincipal("owner", "Owner")
+	}
+	if p.Grant != nil {
+		return kernel.GrantPrincipal(p.Grant)
+	}
+	return nil
 }
 
-func (s *Sessions) find(p *Principal, id string, write bool) (*live, *sessionRow, error) {
-	s.mu.Lock()
-	l := s.live[id]
-	s.mu.Unlock()
-	var r *sessionRow
-	if l != nil {
-		l.mu.Lock()
-		r = l.row
-		l.mu.Unlock()
+func (n *Machine) agentModelList(agent string) ([]rt.Model, rt.Settings, bool) {
+	i := n.providerInfo(agent)
+	if i.ModelsState != rt.ModelsKnown {
+		return nil, rt.Settings{}, false
+	}
+	d := n.agentDefaults(agent)
+	return i.Models, rt.Settings{Model: cmp.Or(d.Model, i.Own.Model), Effort: cmp.Or(d.Effort, i.Own.Effort)}, true
+}
+
+func (n *Machine) resolveModelSelection(instanceID string, sel *sessionv1.ModelSelection) (*sessionv1.ModelSelection, error) {
+	if sel == nil {
+		sel = &sessionv1.ModelSelection{InstanceId: instanceID}
 	} else {
-		var err error
-		if r, err = s.st.Session(id); err != nil {
-			return nil, nil, err
-		}
+		sel = proto.Clone(sel).(*sessionv1.ModelSelection)
 	}
-	if r == nil || !s.canRead(p, r) {
-		return nil, nil, cerr(connect.CodeNotFound, "session %s not found", id)
+	if why := n.outOfProcesses(); why != "" {
+		return nil, cerr(connect.CodeResourceExhausted, "%s", why)
 	}
-	if write && !s.canWrite(p, r) {
-		return nil, nil, cerr(connect.CodePermissionDenied, "only the client that started the session may change it")
+	info := n.providerInfo(instanceID)
+	reqModel := sel.Model
+	reqEffort := ""
+	if sel.Options != nil {
+		reqEffort = sel.Options["effort"].GetStringValue()
 	}
-	return l, r, nil
-}
-
-// ---------------------------------------------------------------------------
-// RPC operations.
-
-func (s *Sessions) Start(ctx context.Context, p *Principal, req *sessionv1.StartSessionRequest) (*sessionv1.Session, error) {
-	if p.Kind != PrincipalClient {
-		return nil, cerr(connect.CodePermissionDenied, "only clients may start sessions")
-	}
-	g := p.Grant
-	if req.IdempotencyKey != "" {
-		if id, err := s.st.Idempotent(p.ClientID, req.IdempotencyKey); err != nil {
-			return nil, err
-		} else if id != "" {
-			_, r, err := s.find(p, id, false)
-			if err != nil {
+	def := n.agentDefaults(instanceID)
+	runs := cmp.Or(reqModel, def.Model, info.Own.Model)
+	if len(info.Models) > 0 || info.AllModels || reqEffort != "" {
+		if _, hasDisc := n.cfg.Discoverers[instanceID]; hasDisc {
+			if err := checkSettings(instanceID, info, reqModel, reqEffort, runs); err != nil {
 				return nil, err
 			}
-			return s.toProto(r), nil
 		}
 	}
-	if s.paused() {
-		return nil, cerr(connect.CodeUnavailable, "this machine is paused by its owner")
+	if sel.Model == "" {
+		sel.Model = cmp.Or(def.Model, info.Own.Model)
 	}
-	if !identity.Allows(g.ProjectIds, req.ProjectId) {
-		return nil, cerr(connect.CodePermissionDenied, "project %q is not in this client's grant", req.ProjectId)
+	eff := reqEffort
+	if eff == "" && takesEffort(info, sel.Model, def.Effort) {
+		eff = def.Effort
 	}
-	if !identity.Allows(g.Agents, req.Agent) {
-		return nil, cerr(connect.CodePermissionDenied, "agent %q is not in this client's grant", req.Agent)
+	if eff == "" && takesEffort(info, sel.Model, info.Own.Effort) {
+		eff = info.Own.Effort
 	}
-	prov := s.providers[req.Agent]
-	if prov == nil {
-		return nil, cerr(connect.CodeInvalidArgument, "unknown agent %q (one of: %s)", req.Agent, strings.Join(AgentNames(), ", "))
+	if eff != "" {
+		if sel.Options == nil {
+			sel.Options = map[string]*sessionv1.OptionValue{}
+		}
+		sel.Options["effort"] = &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_StringValue{StringValue: eff}}
 	}
-	proj, err := s.st.Project(req.ProjectId)
-	if err != nil {
-		return nil, err
+	if def.Speed != identityv1.AgentSpeed_AGENT_SPEED_UNSPECIFIED {
+		if sel.Options == nil {
+			sel.Options = map[string]*sessionv1.OptionValue{}
+		}
+		if _, set := sel.Options["speed"]; !set {
+			speedStr := "standard"
+			if def.Speed == identityv1.AgentSpeed_AGENT_SPEED_FAST {
+				speedStr = "fast"
+			}
+			sel.Options["speed"] = &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_StringValue{StringValue: speedStr}}
+		}
+		if def.Speed == identityv1.AgentSpeed_AGENT_SPEED_FAST {
+			if _, set := sel.Options["fast_mode"]; !set {
+				sel.Options["fast_mode"] = &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_BoolValue{BoolValue: true}}
+			}
+		}
 	}
-	if proj == nil {
-		return nil, cerr(connect.CodeNotFound, "project %q does not exist on this machine", req.ProjectId)
-	}
-	if proj.InPlace() && req.BaseRef != "" {
-		return nil, cerr(connect.CodeInvalidArgument, "project %q works in place (no worktree), so it has no base ref", req.ProjectId)
-	}
-	if why := s.outOfProcesses(); why != "" {
-		return nil, cerr(connect.CodeUnavailable, "this machine can't start programs now: %s; start the session on another machine, or ask the owner to quit what holds them", why)
-	}
-	info := s.info(req.Agent)
-	if !info.Available {
-		return nil, cerr(connect.CodeFailedPrecondition, "%s", unavailable(req.Agent, info))
-	}
-	// The client's model and effort, else the machine's defaults; what
-	// neither sets follows the agent's own configuration.
-	set := s.defaults(req.Agent)
-	set.Model, set.Effort = cmp.Or(req.Model, set.Model), cmp.Or(req.Effort, set.Effort)
-	runs := cmp.Or(set.Model, info.Own.Model)
-	if err := checkSettings(req.Agent, info, req.Model, req.Effort, runs); err != nil {
-		return nil, err
-	}
-	// A default effort the model run does not take follows the agent's own.
-	if req.Effort == "" && !takesEffort(info, runs, set.Effort) {
-		set.Effort = ""
-	}
-	if strings.TrimSpace(req.Prompt) == "" && len(req.Attachments) == 0 {
-		return nil, cerr(connect.CodeInvalidArgument, "prompt is empty")
-	}
-	if err := checkAttachments(req.Prompt, req.Attachments); err != nil {
-		return nil, err
-	}
-	if max := g.MaxConcurrentSessions; max > 0 && s.activeFor(p.ClientID) >= int(max) {
-		return nil, cerr(connect.CodeResourceExhausted, "this client already has %d active sessions", max)
-	}
-	id := "s_" + strings.TrimPrefix(s.machineID, "m_")[:8] + "_" + strings.ToLower(ulid.Make().String())
-	prompt, err := newMessage(s.attachmentsDir(id), req.Prompt, req.Attachments)
-	if err != nil {
-		return nil, fmt.Errorf("saving attachments: %w", err)
-	}
-	now := time.Now()
-	title := provider.CleanTitle(req.Title)
-	if title == "" {
-		title = provider.CleanTitle(req.Prompt)
-	}
-	r := &sessionRow{ID: id, ProjectID: req.ProjectId, Agent: req.Agent,
-		Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED, CreatedBy: p.ClientID, GrantID: g.GrantId, Model: set.Model, Effort: set.Effort, Speed: set.Speed,
-		BaseCommit: req.BaseRef, Workspace: proj.Workspace, QuestionTimeout: -1, Title: title, Conversation: req.Conversation, Progress: &sessionv1.SessionProgress{Phase: "queued"}, CreatedAt: now, UpdatedAt: now}
-	if req.QuestionTimeoutSeconds != nil {
-		r.QuestionTimeout = int(*req.QuestionTimeoutSeconds)
-	}
-	s.count(r.Status, 1)
-	prompt.by, prompt.conv = p.ID(), req.Conversation
-	l := &live{id: id, row: r, subs: map[chan *sessionv1.SessionEvent]bool{}, tools: map[string]string{}, pending: prompt, lastEvent: now, queuedAt: now,
-		asker: p.ID(), askerConv: req.Conversation}
-	s.mu.Lock()
-	s.live[id] = l
-	s.mu.Unlock()
-	s.audit.Log(AuditRecord{Kind: "session.start", Subject: p.ID(), Session: id, Action: req.Agent + " " + req.ProjectId, Decision: "allow",
-		Detail: fmt.Sprintf("prompt_sha=%s%s", sha(req.Prompt), filesDetail(prompt.files))})
-	// The QUEUED status event carries the row; wait for it (and the
-	// idempotency key) to commit so a started session survives a crash.
-	// Not r.Status: once in s.live, dispatch may already be moving it on.
-	queued := &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Status{Status: &sessionv1.StatusChanged{Status: sessionv1.SessionStatus_SESSION_STATUS_QUEUED}}}
-	s.emit(l, queued)
-	var idem *idemKey
-	if req.IdempotencyKey != "" {
-		idem = &idemKey{p.ClientID, req.IdempotencyKey, id}
-	}
-	commit := time.Now()
-	err = s.w.sync(writeOp{idem: idem})
-	mStartCommit.Since(commit)
-	if err != nil { // never stored: forget it
-		s.mu.Lock()
-		delete(s.live, id)
-		s.mu.Unlock()
-		l.mu.Lock()
-		st := l.row.Status
-		l.mu.Unlock()
-		s.count(st, -1)
-		return nil, err
-	}
-	s.dispatch()
-	if s.notice != nil { // the owner hears of a session an agent started
-		go s.notice(noticeSession{id, r.Title, r.CreatedBy, r.ProjectID, r.Agent, l.asker, l.askerConv, r.Conversation, nil}, queued)
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return s.toProto(l.row), nil
+	return sel, nil
 }
 
-func (s *Sessions) activeFor(clientID string) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := 0
-	for _, l := range s.live {
-		l.mu.Lock()
-		st := l.row.Status
-		if l.row.CreatedBy == clientID && (st == sessionv1.SessionStatus_SESSION_STATUS_QUEUED ||
-			st == sessionv1.SessionStatus_SESSION_STATUS_PREPARING || turnActive(st)) {
-			n++
-		}
-		l.mu.Unlock()
+// BasicSession is s as lists show it: without result,
+// progress.last_message_excerpt and provider_session_ref.
+func BasicSession(s *sessionv1.Session) *sessionv1.Session {
+	if s == nil {
+		return nil
 	}
-	return n
+	if s.Result == "" && s.ProviderSessionRef == "" && s.GetProgress().GetLastMessageExcerpt() == "" {
+		return s
+	}
+	b := proto.CloneOf(s)
+	b.Result, b.ProviderSessionRef = "", ""
+	if b.Progress != nil {
+		b.Progress.LastMessageExcerpt = ""
+	}
+	return b
 }
 
-// Counts returns live sessions by status ("running", "idle", ...).
-func (s *Sessions) Counts() map[string]uint32 {
-	out := map[string]uint32{}
-	for i := range s.counts {
-		if n := s.counts[i].Load(); n > 0 {
-			out[strings.ToLower(strings.TrimPrefix(sessionv1.SessionStatus(i).String(), "SESSION_STATUS_"))] = uint32(n)
-		}
+// BasicSessions is BasicSession of each.
+func BasicSessions(list []*sessionv1.Session) []*sessionv1.Session {
+	out := make([]*sessionv1.Session, len(list))
+	for i, s := range list {
+		out[i] = BasicSession(s)
 	}
 	return out
 }
 
-// Running counts sessions that hold a slot.
-func (s *Sessions) Running() int {
-	return int(s.counts[sessionv1.SessionStatus_SESSION_STATUS_PREPARING].Load() + s.counts[sessionv1.SessionStatus_SESSION_STATUS_RUNNING].Load() +
-		s.counts[sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT].Load())
+// Preview is s's first 3 lines, at most 512 bytes, cut at a UTF-8 boundary.
+func Preview(s string) string {
+	const previewLines = 3
+	const previewBytes = 512
+	end := len(s)
+	for i, n := 0, 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			if n++; n == previewLines && i < len(s)-1 {
+				end = i
+				break
+			}
+		}
+	}
+	if end > previewBytes {
+		end = previewBytes
+		for end > 0 && !utf8.RuneStart(s[end]) {
+			end--
+		}
+	}
+	return s[:end]
 }
 
-func (s *Sessions) Get(p *Principal, id string) (*sessionv1.Session, error) {
-	l, r, err := s.find(p, id, false)
-	if err != nil {
-		return nil, err
+// Unsettled sessions need the owner or have a turn in progress.
+func Unsettled(s *sessionv1.Session) bool {
+	switch s.Status {
+	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
+		sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+		sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+		sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT,
+		sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
+		return true
+	case sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED:
+		return false
 	}
-	if l != nil { // r is the live row, changed by the session's goroutines
-		l.mu.Lock()
-		defer l.mu.Unlock()
-	}
-	return s.toProto(r), nil
+	f := s.GetProgress().GetLastFailure()
+	return f != nil && f.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED
 }
 
-// List returns the sessions p can read: all of them, or one page (with
-// where the next starts) when req has a limit; in req's view.
-func (s *Sessions) List(p *Principal, req *sessionv1.ListSessionsRequest) ([]*sessionv1.Session, *sessionv1.SessionCursor, error) {
-	list, next, err := s.list(p, req)
-	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
-		list = BasicSessions(list)
+// NewestFirst orders sessions as lists page them.
+func NewestFirst(a, b *sessionv1.Session) int {
+	if c := b.UpdatedAt.AsTime().Compare(a.UpdatedAt.AsTime()); c != 0 {
+		return c
 	}
-	return list, next, err
+	return strings.Compare(b.SessionId, a.SessionId)
 }
 
-func (s *Sessions) list(p *Principal, req *sessionv1.ListSessionsRequest) ([]*sessionv1.Session, *sessionv1.SessionCursor, error) {
-	if req.Limit > 0 {
-		return s.listPage(p, req)
+// CursorAt names s as where a page ends.
+func CursorAt(s *sessionv1.Session) *sessionv1.SessionCursor {
+	return &sessionv1.SessionCursor{UpdatedAt: s.UpdatedAt, SessionId: s.SessionId}
+}
+
+// Past says whether s comes after the cursor c (always, without one).
+func Past(s *sessionv1.Session, c *sessionv1.SessionCursor) bool {
+	return c == nil || NewestFirst(&sessionv1.Session{UpdatedAt: c.UpdatedAt, SessionId: c.SessionId}, s) < 0
+}
+
+func (n *Machine) ListSessionsPage(ctx context.Context, p *Principal, req *sessionv1.ListSessionsRequest) ([]*sessionv1.Session, *sessionv1.SessionCursor, error) {
+	if n.sessions == nil {
+		return nil, nil, nil
 	}
-	rows, err := s.st.Sessions("")
+	incArch := req.IncludeArchived || req.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+	listRes, err := n.sessions.ListSessions(ctx, toKernelPrincipal(p), &sessionv1.ListSessionsRequest{
+		ProjectId:       req.ProjectId,
+		IncludeArchived: incArch,
+	})
 	if err != nil {
 		return nil, nil, err
 	}
-	var out []*sessionv1.Session
-	for _, r := range rows {
-		s.mu.Lock()
-		l := s.live[r.ID]
-		s.mu.Unlock()
-		if l != nil {
-			l.mu.Lock()
-			r = l.row
-			l.mu.Unlock()
-		}
-		if !s.canRead(p, r) {
+	all := listRes.GetSessions()
+	var filtered []*sessionv1.Session
+	for _, s := range all {
+		if req.Status != 0 && s.Status != req.Status {
 			continue
 		}
-		if req.Status != 0 && r.Status != req.Status {
+		if req.Since != nil && s.UpdatedAt.AsTime().Before(req.Since.AsTime()) {
 			continue
 		}
-		if req.Since != nil && r.UpdatedAt.Before(req.Since.AsTime()) {
-			continue
-		}
-		out = append(out, s.toProto(r))
+		filtered = append(filtered, s)
 	}
-	return out, nil, nil
+	slices.SortFunc(filtered, NewestFirst)
+
+	var next *sessionv1.SessionCursor
+	out := filtered
+	if req.Limit > 0 {
+		limit := int(req.Limit)
+		var page, unsettled []*sessionv1.Session
+		for _, s := range filtered {
+			if !Past(s, req.Before) {
+				continue
+			}
+			if len(page) < limit {
+				page = append(page, s)
+				continue
+			}
+			if req.Before == nil && Unsettled(s) {
+				unsettled = append(unsettled, s)
+			}
+		}
+		if len(page) == limit {
+			// Check whether anything past cursor was cut.
+			pastCount := 0
+			for _, s := range filtered {
+				if Past(s, req.Before) {
+					pastCount++
+				}
+			}
+			if pastCount > limit {
+				next = CursorAt(page[limit-1])
+			}
+		}
+		out = append(page, unsettled...)
+	}
+	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
+		out = BasicSessions(out)
+	}
+	return out, next, nil
 }
 
-// ActiveByProject counts the sessions with a turn in progress (queued,
-// preparing, running, or waiting for an answer) in each project.
-func (s *Sessions) ActiveByProject() map[string]uint32 {
-	s.mu.Lock()
-	ls := make([]*live, 0, len(s.live))
-	for _, l := range s.live {
-		ls = append(ls, l)
+func (n *Machine) GetSessionFor(ctx context.Context, p *Principal, id string) (*sessionv1.Session, error) {
+	if n.sessions == nil {
+		return nil, cerr(connect.CodeNotFound, "session not found")
 	}
-	s.mu.Unlock()
+	proj, err := n.sessions.GetSession(ctx, toKernelPrincipal(p), id)
+	if err != nil {
+		return nil, err
+	}
+	return proj.GetSession(), nil
+}
+
+func (n *Machine) Running() int {
+	if n.sessions == nil {
+		return 0
+	}
+	all, err := n.sessions.ListAllSessions(false)
+	if err != nil {
+		return 0
+	}
+	r := 0
+	for _, s := range all {
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			r++
+		}
+	}
+	return r
+}
+
+func (n *Machine) Counts() map[string]uint32 {
+	c := map[string]uint32{}
+	if n.sessions == nil {
+		return c
+	}
+	all, err := n.sessions.ListAllSessions(false)
+	if err != nil {
+		return c
+	}
+	for _, s := range all {
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
+			c["queued"]++
+		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
+			c["preparing"]++
+		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
+			c["running"]++
+		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			c["waiting_input"]++
+		case sessionv1.SessionStatus_SESSION_STATUS_IDLE:
+			c["idle"]++
+		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
+			c["crashed"]++
+		}
+	}
+	return c
+}
+
+func (n *Machine) ActiveByProject() map[string]uint32 {
 	out := map[string]uint32{}
-	for _, l := range ls {
-		l.mu.Lock()
-		status, project := l.row.Status, l.row.ProjectID
-		l.mu.Unlock()
-		switch status {
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
-			sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			out[project]++
+	if n.sessions == nil {
+		return out
+	}
+	all, err := n.sessions.ListAllSessions(false)
+	if err != nil {
+		return out
+	}
+	for _, s := range all {
+		switch s.Status {
+		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED,
+			sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
+			sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+			sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			out[s.ProjectId]++
 		}
 	}
 	return out
 }
 
-func (s *Sessions) Send(ctx context.Context, p *Principal, id, text string, atts []*sessionv1.Attachment) (*sessionv1.Session, error) {
-	l, _, err := s.find(p, id, true)
-	if err != nil {
-		return nil, err
+func (n *Machine) canReadDeleted(p *Principal, projectID, createdBy string) bool {
+	if p == nil {
+		return false
 	}
-	if err := checkAttachments(text, atts); err != nil {
-		return nil, err
-	}
-	if l == nil {
-		return nil, cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", id)
-	}
-	if s.paused() {
-		return nil, cerr(connect.CodeUnavailable, "this machine is paused by its owner")
-	}
-	m, err := newMessage(s.attachmentsDir(id), text, atts)
-	if err != nil {
-		return nil, fmt.Errorf("saving attachments: %w", err)
-	}
-	m.by = p.ID()
-	if _, err := s.take(ctx, l, m); err != nil {
-		return nil, err
-	}
-	s.audit.Log(AuditRecord{Kind: "session.send", Subject: p.ID(), Session: id, Decision: "allow", Detail: "message_sha=" + sha(text) + filesDetail(m.files)})
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return s.toProto(l.row), nil
-}
-
-// take delivers a message by the session's state: a new turn when idle,
-// into the running turn when the agent takes input mid-turn, otherwise
-// as the turn after the current one. A message from someone else than the
-// turn's asker, an agent and its name (docs/agent-names.md §6), never goes
-// into that turn and never answers its question: it waits for a turn of
-// its own (docs/agent-messages.md §7.2). It says what became of m: "turn",
-// "joined", "answer" or "queued".
-func (s *Sessions) take(ctx context.Context, l *live, m message) (string, error) {
-	for {
-		l.mu.Lock()
-		if done := l.releasing; done != nil {
-			l.mu.Unlock()
-			select {
-			case <-done:
-				continue
-			case <-ctx.Done():
-				return "", ctx.Err()
-			}
-		}
-		if (l.asker != m.by || l.askerConv != m.conv) && turnBusy(l.row.Status) {
-			l.asked = append(l.asked, m)
-			s.saveAsked(l)
-			l.mu.Unlock()
-			return "queued", nil
-		}
-		switch l.row.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // the answer to the agent's question
-			l.mu.Unlock()
-			answered, err := s.answerWithText(l, m.by, m.answerText())
-			if err != nil {
-				return "", err
-			}
-			if answered {
-				return "answer", nil
-			}
-			continue // answered meanwhile
-		case sessionv1.SessionStatus_SESSION_STATUS_IDLE, sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-			return "turn", s.nextTurn(ctx, l, m)
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // not started: one prompt
-			l.pending = l.pending.join(m)
-			restarting := l.restarting
-			l.mu.Unlock()
-			if restarting { // a restarted turn records no prompt of its own
-				s.emitUser(l, m)
-			}
-			return "joined", nil
-		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
-			if l.retryTimer != nil { // waiting to retry after a rate limit: now, with m
-				s.startRetry(l, m)
-				return "joined", nil
-			}
-			ps := l.sess
-			if ps == nil || l.finishing {
-				break
-			}
-			l.mu.Unlock()
-			if ps.Steer(ctx, m.input()) == nil {
-				l.mu.Lock()
-				l.turnMsg = l.turnMsg.join(m) // a restarted turn includes it
-				l.mu.Unlock()
-				s.emitUser(l, m)
-				return "joined", nil
-			}
-			l.mu.Lock()
-			if st := l.row.Status; st != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
-				l.mu.Unlock()
-				continue // the turn ended meanwhile
-			}
-		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
-		default:
-			l.mu.Unlock()
-			return "", cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", l.id)
-		}
-		l.followUps = append(l.followUps, m)
-		l.mu.Unlock()
-		return "joined", nil
-	}
-}
-
-// askedBy reports whether who asked for the session's current turn.
-func (l *live) askedBy(who string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.asker == who
-}
-
-// Deliver hands the session a message an agent wrote (docs/agent-messages.md
-// §7.2): p is that agent, with its grant, which must cover the session's
-// project and coding agent, and the session must be one it may read. text
-// is what the coding agent is given; rec is what the session records.
-func (s *Sessions) Deliver(ctx context.Context, p *Principal, id, conv, text string, rec *sessionv1.MessageReceived, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
-	if p.Kind != PrincipalClient {
-		return nil, "", cerr(connect.CodePermissionDenied, "only an agent delivers messages")
-	}
-	l, r, err := s.find(p, id, false)
-	if err != nil {
-		return nil, "", err
-	}
-	if !identity.Allows(p.Grant.ProjectIds, r.ProjectID) || !identity.Allows(p.Grant.Agents, r.Agent) {
-		return nil, "", cerr(connect.CodePermissionDenied, "this agent's grant does not cover session %s", id)
-	}
-	if err := checkAttachments(text, atts); err != nil {
-		return nil, "", err
-	}
-	if l == nil {
-		return nil, "", cerr(connect.CodeFailedPrecondition, "session %s is archived (read-only); unarchive it to send messages", id)
-	}
-	if s.paused() {
-		return nil, "", cerr(connect.CodeUnavailable, "this machine is paused by its owner")
-	}
-	m, err := newMessage(s.attachmentsDir(id), text, atts)
-	if err != nil {
-		return nil, "", fmt.Errorf("saving attachments: %w", err)
-	}
-	m.by, m.conv, m.quiet, m.answer = p.ID(), conv, true, rec.Text
-	delivered, err := s.take(ctx, l, m)
-	if err != nil {
-		return nil, "", err
-	}
-	rec.Delivered, rec.Attachments = delivered, m.files
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_MessageReceived{MessageReceived: rec}})
-	s.audit.Log(AuditRecord{Kind: "session.message", Subject: p.ID(), Session: id, Decision: "allow", Detail: "message=" + rec.MessageId + " delivered=" + delivered + filesDetail(m.files)})
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return s.toProto(l.row), delivered, nil
-}
-
-// turnBusy: a turn is under way, from being queued to its question.
-func turnBusy(st sessionv1.SessionStatus) bool {
-	switch st {
-	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED, sessionv1.SessionStatus_SESSION_STATUS_PREPARING,
-		sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+	if p.Kind == PrincipalOwner {
 		return true
 	}
-	return false
-}
-
-// emitUser records what the agent was given of m.
-func (s *Sessions) emitUser(l *live, m message) {
-	for _, e := range m.userEvents() {
-		s.emit(l, e)
+	kp := toKernelPrincipal(p)
+	if kp == nil {
+		return false
 	}
-}
-
-// startAsked begins the turn the oldest message from another asker waits
-// for, with the later ones from that asker, once the session is idle.
-func (s *Sessions) startAsked(l *live) {
-	l.mu.Lock()
-	st := l.row.Status
-	if len(l.asked) == 0 || (st != sessionv1.SessionStatus_SESSION_STATUS_IDLE && st != sessionv1.SessionStatus_SESSION_STATUS_CRASHED) {
-		l.mu.Unlock()
-		return
+	dummy := &sessionv1.Session{
+		ProjectId: projectID,
+		CreatedBy: createdBy,
+		Actor:     &sessionv1.Actor{Id: createdBy},
 	}
-	m := l.asked[0]
-	var keep []message
-	for _, o := range l.asked[1:] {
-		if o.by == m.by && o.conv == m.conv {
-			m = m.join(o)
-		} else {
-			keep = append(keep, o)
+	// Owner & Her see all; External Grant checks project + TaskVisibility.
+	if kp.Actor.GetKind() == sessionv1.ActorKind_ACTOR_KIND_HER {
+		return true
+	}
+	if p.Grant == nil {
+		return false
+	}
+	if dummy.ProjectId == kernel.ScratchProjectID {
+		if !slices.Contains(p.Grant.ProjectIds, kernel.ScratchProjectID) {
+			return false
 		}
+	} else if !slices.Contains(p.Grant.ProjectIds, "*") && !slices.Contains(p.Grant.ProjectIds, dummy.ProjectId) {
+		return false
 	}
-	l.asked = keep
-	s.saveAsked(l)
-	if err := s.nextTurn(context.Background(), l, m); err != nil {
-		s.log.Warn("starting a waiting message's turn", "session", l.id, "err", err)
+	if p.Grant.TaskVisibility == identityv1.TaskVisibility_TASK_VISIBILITY_ALL {
+		return true
 	}
+	return createdBy == p.ClientID
 }
 
-// askedJSON is a message waiting for its turn, as the store keeps it.
-type askedJSON struct {
-	Text   string   `json:"text"`
-	Files  [][]byte `json:"files,omitempty"` // AttachmentInfo
-	By     string   `json:"by"`
-	Conv   string   `json:"conv,omitempty"`
-	Quiet  bool     `json:"quiet,omitempty"`
-	Answer string   `json:"answer,omitempty"`
-}
-
-func askedKey(id string) string { return "asked/" + id }
-
-// saveAsked stores the messages waiting for a turn of their own, so that
-// they outlast a restart; it is called with l.mu held.
-func (s *Sessions) saveAsked(l *live) {
-	out := []askedJSON{}
-	for _, m := range l.asked {
-		a := askedJSON{Text: m.text, By: m.by, Conv: m.conv, Quiet: m.quiet, Answer: m.answer}
-		for _, f := range m.files {
-			b, _ := proto.Marshal(f)
-			a.Files = append(a.Files, b)
-		}
-		out = append(out, a)
-	}
-	b, _ := json.Marshal(out)
-	if err := s.st.Set(askedKey(l.id), b); err != nil {
-		s.log.Warn("storing the messages waiting for a turn", "session", l.id, "err", err)
-	}
-}
-
-// loadAsked is what saveAsked stored.
-func (s *Sessions) loadAsked(id string) []message {
-	b, err := s.st.Get(askedKey(id))
-	if err != nil || b == nil {
+func (n *Machine) deletedSince(p *Principal, t time.Time) []string {
+	if n.sessions == nil {
 		return nil
 	}
-	var in []askedJSON
-	json.Unmarshal(b, &in)
-	var out []message
-	for _, a := range in {
-		m := message{text: a.Text, by: a.By, conv: a.Conv, quiet: a.Quiet, answer: a.Answer}
-		for _, f := range a.Files {
-			info := &sessionv1.AttachmentInfo{}
-			if proto.Unmarshal(f, info) == nil {
-				m.files = append(m.files, info)
-			}
+	rows, err := n.sessions.Store().DeletedSessionRecordsSince(t)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, r := range rows {
+		if n.canReadDeleted(p, r.ProjectID, r.CreatedBy) {
+			out = append(out, r.SessionID)
 		}
-		out = append(out, m)
 	}
 	return out
 }
 
-// nextTurn starts a turn with m, in the running agent process or a new
-// one. It is called with l.mu held and releases it.
-func (s *Sessions) nextTurn(ctx context.Context, l *live, m message) error {
-	ps := l.sess
-	alive := ps != nil
-	if alive {
-		select {
-		case <-ps.Done():
-			alive = false
-		default:
-		}
+func (n *Machine) deletedFor(p *Principal, id string) bool {
+	if n.sessions == nil {
+		return false
 	}
-	if alive && l.row.ProviderRef == "" && l.turn > 0 {
-		// The provider conversation was dropped (refused resume, context
-		// overflow): continue in a fresh process.
-		alive = false
-		l.sess = nil
-		go ps.Close()
+	if _, err := n.sessions.Store().Session(id); err == nil {
+		return false
 	}
-	l.asker, l.askerConv = m.by, m.conv
-	if !alive {
-		// pending: what a failed start never delivered (interruptStart).
-		l.pending, l.resume, l.queuedAt = l.pending.join(m), l.row.ProviderRef != "", time.Now()
-		l.row.Progress.TurnStartedAt = timestamppb.Now()
-		changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED)
-		l.mu.Unlock()
-		if changed {
-			s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "")
-		}
-		s.dispatch()
-		return nil
-	}
-	l.turn++
-	l.turnStarted, l.lastEvent, l.awaitingFirst = time.Now(), time.Now(), true
-	l.row.Progress.TurnStartedAt = timestamppb.Now()
-	l.lastProgress, l.lastErr = time.Now(), nil
-	l.turnMsg, l.turnTools, l.resumedStart, l.finishing, l.retries = m, 0, false, false, 0
-	turn := l.turn
-	// Running before the agent has the message: a fast agent may finish
-	// the turn, and the session go idle, before Send returns.
-	changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
-	l.mu.Unlock()
-	if changed {
-		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
-	}
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: m.by}}})
-	s.emitUser(l, m)
-	if err := ps.Send(ctx, m.input()); err != nil {
-		s.interruptTurn(l, ps, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "could not send the message: " + err.Error()})
-		return err
-	}
-	return nil
-}
-
-// Interrupt stops the turn in progress (or about to start). The session
-// stays, idle, and the next message goes on in the same conversation.
-func (s *Sessions) Interrupt(ctx context.Context, p *Principal, id string) (*sessionv1.Session, error) {
-	l, _, err := s.find(p, id, p.Kind != PrincipalOwner)
-	if err != nil {
-		return nil, err
-	}
-	if l == nil {
-		return nil, cerr(connect.CodeFailedPrecondition, "session %s is archived", id)
-	}
-	s.interrupt(l, "interrupted by "+p.ID())
-	s.audit.Log(AuditRecord{Kind: "session.interrupt", Subject: p.ID(), Session: id, Decision: "allow"})
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return s.toProto(l.row), nil
-}
-
-func (s *Sessions) interrupt(l *live, by string) {
-	f := &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED, Message: by}
-	l.mu.Lock()
-	switch l.row.Status {
-	case sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-		l.mu.Unlock()
-		s.stopTurn(l, nil, f, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-	case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // not started: it never runs
-		l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
-		l.mu.Unlock()
-		s.settle(l, f, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-	case sessionv1.SessionStatus_SESSION_STATUS_PREPARING: // prepare stops it
-		l.stop = f
-		if l.prepCancel != nil {
-			l.prepCancel(&provider.FailureError{Failure: *f})
-		}
-		l.mu.Unlock()
-	default:
-		l.mu.Unlock()
-	}
-}
-
-// InterruptByClient stops the turns of a revoked agent; its sessions stay
-// for the owner.
-func (s *Sessions) InterruptByClient(clientID, reason string) {
-	s.mu.Lock()
-	var ls []*live
-	for _, l := range s.live {
-		l.mu.Lock()
-		if l.row.CreatedBy == clientID {
-			ls = append(ls, l)
-		}
-		l.mu.Unlock()
-	}
-	s.mu.Unlock()
-	for _, l := range ls {
-		s.interrupt(l, reason)
-	}
-}
-
-// Archive makes an idle session read-only and frees its worktree; the
-// session's branch keeps every turn's work, and its events and diff stay
-// readable.
-func (s *Sessions) Archive(ctx context.Context, p *Principal, id string) (*sessionv1.Session, error) {
-	l, r, err := s.find(p, id, p.Kind != PrincipalOwner)
-	if err != nil {
-		return nil, err
-	}
-	if l == nil { // already archived
-		return s.toProto(r), nil
-	}
-	l.mu.Lock()
-	if st := l.row.Status; st != sessionv1.SessionStatus_SESSION_STATUS_IDLE && st != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-		l.mu.Unlock()
-		return nil, cerr(connect.CodeFailedPrecondition, "session %s has a turn in progress (%s); interrupt it first", id, phaseOf(st))
-	}
-	if len(l.asked) > 0 {
-		l.mu.Unlock()
-		return nil, cerr(connect.CodeFailedPrecondition, "session %s is starting the turn another agent's message waits for; interrupt it first", id)
-	}
-	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
-	if !inPlace && !s.ws.none {
-		if err := s.releaseCheckoutLocked(ctx, l); err != nil {
-			l.mu.Unlock()
-			return nil, err
-		}
-	}
-	ps := l.sess
-	l.sess = nil
-	changed := s.setStatusLocked(l, sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED)
-	row := snapshotRow(l.row)
-	l.mu.Unlock()
-	if ps != nil {
-		ps.Close()
-	}
-	// The agent's temporary files go with its process; its next start makes
-	// the directory again. Attachments stay: they belong to the record.
-	os.RemoveAll(filepath.Join(s.dataDir, "sessions", id, "tmp"))
-	if !inPlace && s.ws.none {
-		os.RemoveAll(s.ws.Path(id)) // synthetic, non-Git benchmark workspace
-	}
-	s.archiveInAgent(ctx, row, true)
-	if changed {
-		s.statusChanged(l, sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED, "archived by "+p.ID())
-	}
-	// Retire it now, and wait until the archive is stored, so an unarchive
-	// that follows at once sees an archived session and numbers its events
-	// after this one (delivery would retire it only later).
-	s.mu.Lock()
-	if s.live[id] == l {
-		delete(s.live, id)
-	}
-	s.mu.Unlock()
-	if err := s.w.sync(writeOp{}); err != nil {
-		return nil, err
-	}
-	s.audit.Log(AuditRecord{Kind: "session.archive", Subject: p.ID(), Session: id, Decision: "allow"})
-	return s.toProto(row), nil
-}
-
-// Unarchive checks the session's branch out again in its worktree and
-// makes the session idle; the next message resumes its conversation.
-func (s *Sessions) Unarchive(ctx context.Context, p *Principal, id string) (*sessionv1.Session, error) {
-	l, r, err := s.find(p, id, p.Kind != PrincipalOwner)
-	if err != nil {
-		return nil, err
-	}
-	if l != nil { // not archived
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		return s.toProto(l.row), nil
-	}
-	if r.Workspace != identityv1.Workspace_WORKSPACE_IN_PLACE && !s.ws.Exists(id) {
-		proj, err := s.st.Project(r.ProjectID)
-		if err != nil || proj == nil {
-			return nil, cerr(connect.CodeFailedPrecondition, "project %q no longer exists", r.ProjectID)
-		}
-		if err := s.ws.Restore(ctx, proj.Path, id); err != nil {
-			return nil, fmt.Errorf("restore the worktree: %w", err)
-		}
-		if err := s.ws.CopyIncluded(ctx, proj.Path, id); err != nil {
-			s.log.Warn("copying .worktreeinclude files", "session", id, "err", err)
-		}
-	}
-	s.archiveInAgent(ctx, r, false)
-	seq, _ := s.st.MaxSeq(id)
-	r.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
-	r.Progress.Phase = phaseOf(r.Status)
-	l = &live{id: id, row: r, seq: seq, persistedSeq: seq, turn: r.Progress.GetTurnCount(), subs: map[chan *sessionv1.SessionEvent]bool{},
-		tools: map[string]string{}, idleSince: time.Now()}
-	s.mu.Lock()
-	if s.live[id] != nil { // unarchived meanwhile
-		s.mu.Unlock()
-		return s.Get(p, id)
-	}
-	s.live[id] = l
-	s.mu.Unlock()
-	s.count(r.Status, 1)
-	s.statusChanged(l, r.Status, "unarchived by "+p.ID())
-	s.audit.Log(AuditRecord{Kind: "session.unarchive", Subject: p.ID(), Session: id, Decision: "allow"})
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return s.toProto(l.row), nil
-}
-
-// archiveInAgent archives (or unarchives) the session's conversation in the
-// agent's own apps, where it has one (Codex), so their lists keep to the
-// sessions in use. A failure only leaves those lists as they were.
-func (s *Sessions) archiveInAgent(ctx context.Context, r *sessionRow, archived bool) {
-	a, ok := s.providers[r.Agent].(provider.Archiver)
-	if !ok || r.ProviderRef == "" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	if err := a.Archive(ctx, r.ProviderRef, archived); err != nil {
-		s.log.Warn("archiving in the agent's apps", "session", r.ID, "archived", archived, "err", err)
-	}
-}
-
-// deleteWait bounds how long Delete waits for an interrupted turn to stop.
-const deleteWait = 15 * time.Second
-
-// Delete deletes a session for good (the owner only). A turn in progress is
-// interrupted; the session is then archived, which frees its worktree (its
-// branch keeps every turn's work), and its record, events, turns and
-// attachments go. Its tokens stay in Usage.
-func (s *Sessions) Delete(ctx context.Context, p *Principal, id string) error {
-	if p.Kind != PrincipalOwner {
-		return cerr(connect.CodePermissionDenied, "only the owner may delete a session")
-	}
-	if _, _, err := s.find(p, id, false); err != nil {
-		return err
-	}
-	// Archiving needs the session settled: interrupt it until it is (a
-	// stopped turn may hand over to a queued follow-up).
-	deadline := time.Now().Add(deleteWait)
-	for {
-		_, err := s.Archive(ctx, p, id)
-		if err == nil {
-			break
-		}
-		if connect.CodeOf(err) != connect.CodeFailedPrecondition || time.Now().After(deadline) {
-			return err
-		}
-		s.mu.Lock()
-		l := s.live[id]
-		s.mu.Unlock()
-		if l != nil {
-			s.interrupt(l, "deleted by "+p.ID())
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(50 * time.Millisecond):
-		}
-	}
-	r, err := s.st.Session(id)
+	r, err := n.sessions.Store().DeletedSession(id)
 	if err != nil || r == nil {
-		return err
-	}
-	if err := s.st.DeleteSession(r); err != nil {
-		return err
-	}
-	os.RemoveAll(filepath.Dir(s.attachmentsDir(id)))
-	s.audit.Log(AuditRecord{Kind: "session.delete", Subject: p.ID(), Session: id, Decision: "allow"})
-	s.changed(id)
-	return nil
-}
-
-// Rename changes a session's title (the owner only). It is not activity:
-// the session keeps its place in lists.
-func (s *Sessions) Rename(ctx context.Context, p *Principal, id, title string) (*sessionv1.Session, error) {
-	if p.Kind != PrincipalOwner {
-		return nil, cerr(connect.CodePermissionDenied, "only the owner may rename a session")
-	}
-	title = provider.CleanTitle(title)
-	if title == "" {
-		return nil, cerr(connect.CodeInvalidArgument, "a session's title can't be empty")
-	}
-	l, r, err := s.find(p, id, false)
-	if err != nil {
-		return nil, err
-	}
-	var row *sessionRow
-	var ps provider.Session
-	if l != nil {
-		l.mu.Lock()
-		l.row.Title = title
-		c := *l.row
-		c.Progress = proto.Clone(l.row.Progress).(*sessionv1.SessionProgress)
-		row = &c
-		ps = l.sess
-		l.mu.Unlock()
-	} else {
-		r.Title = title
-		row = r
-	}
-	if err := s.w.sync(writeOp{row: row}); err != nil {
-		return nil, err
-	}
-	// A running agent takes the new name now; one started later, at its
-	// start.
-	if t, ok := ps.(provider.Titler); ok {
-		if err := t.SetTitle(ctx, title); err != nil {
-			s.log.Warn("renaming in the agent's apps", "session", id, "err", err)
-		}
-	}
-	s.audit.Log(AuditRecord{Kind: "session.rename", Subject: p.ID(), Session: id, Decision: "allow"})
-	return s.toProto(row), nil
-}
-
-// following reports whether who (a Principal.ID) follows the session's
-// events at this moment: it has the news already.
-func (s *Sessions) following(id, who string) bool {
-	s.mu.Lock()
-	l := s.live[id]
-	s.mu.Unlock()
-	if l == nil {
 		return false
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for ch, f := range l.followers {
-		if _, ok := l.subs[ch]; ok && f == who {
-			return true
-		}
-	}
-	return false
+	return n.canReadDeleted(p, r.ProjectID, r.CreatedBy)
 }
 
-// Stream replays stored events after req.AfterSeq and then, if requested,
-// follows live events until the session ends or ctx is done.
-func (s *Sessions) Stream(ctx context.Context, p *Principal, req *sessionv1.StreamEventsRequest, send func(*sessionv1.SessionEvent) error) error {
-	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
-		full := send
-		send = func(e *sessionv1.SessionEvent) error { return full(BasicEvent(e)) }
-	}
-	l, _, err := s.find(p, req.SessionId, false)
-	if err != nil {
-		return err
-	}
-	var ch chan *sessionv1.SessionEvent
-	var upTo uint64
-	var draft string
-	if req.Follow && l != nil {
-		ch = make(chan *sessionv1.SessionEvent, 256)
-		l.mu.Lock()
-		l.subs[ch] = req.Partial
-		if l.followers == nil {
-			l.followers = map[chan *sessionv1.SessionEvent]string{}
-		}
-		l.followers[ch] = p.ID()
-		upTo = l.persistedSeq
-		if req.Partial {
-			draft = l.draftShown
-		}
-		l.mu.Unlock()
-		defer func() {
-			l.mu.Lock()
-			delete(l.subs, ch)
-			delete(l.followers, ch)
-			l.mu.Unlock()
-		}()
-	}
-	last := req.AfterSeq
-	for {
-		evs, err := s.st.Events(req.SessionId, last, 500)
-		if err != nil {
-			return err
-		}
-		for _, e := range evs {
-			if ch != nil && e.Seq > upTo {
-				break
-			}
-			if err := send(e); err != nil {
-				return err
-			}
-			last = e.Seq
-		}
-		if len(evs) < 500 || (ch != nil && last >= upTo) {
-			break
-		}
-	}
-	if ch == nil {
-		return nil
-	}
-	// A stream that starts mid-reply gets the draft so far, then its pieces.
-	if draft != "" {
-		if err := send(&sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentDraft{AgentDraft: &sessionv1.AgentDraft{Text: draft, Whole: true}}}); err != nil {
-			return err
-		}
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case e, ok := <-ch:
-			if !ok {
-				return cerr(connect.CodeResourceExhausted, "event stream fell behind; resume with after_seq=%d", last)
-			}
-			if e.GetAgentDraft() != nil {
-				if err := send(e); err != nil {
-					return err
-				}
-				continue
-			}
-			if e.Seq <= last {
-				continue
-			}
-			if err := send(e); err != nil {
-				return err
-			}
-			last = e.Seq
-			if st := e.GetStatus(); st != nil && isTerminal(st.Status) {
-				return nil
-			}
-		}
-	}
-}
+func (n *Machine) Janitor(ctx context.Context) {
+	// Mark startup so autoRelease waits autoReleaseEvery before first background sweep.
+	n.wsCache.autoDue(time.Now(), n.autoReleaseEvery)
+	n.wsCache.mu.Lock()
+	n.wsCache.autoRunning = false
+	n.wsCache.mu.Unlock()
 
-// ListEvents returns one page of a session's stored events, oldest first.
-func (s *Sessions) ListEvents(p *Principal, req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
-	if _, _, err := s.find(p, req.SessionId, false); err != nil {
-		return nil, err
-	}
-	if req.AfterSeq > 0 && req.BeforeSeq > 0 {
-		return nil, cerr(connect.CodeInvalidArgument, "give after_seq or before_seq, not both")
-	}
-	limit := int(req.Limit)
-	switch {
-	case limit == 0:
-		limit = 50
-	case limit > 1000:
-		return nil, cerr(connect.CodeInvalidArgument, "at most 1000 events per page")
-	}
-	// Events are stored in batches: wait for those already emitted, so a
-	// caller that saw a turn end (session get) reads that turn's last events.
-	if err := s.w.sync(writeOp{}); err != nil {
-		return nil, err
-	}
-	evs, before, after, err := s.st.EventPage(req.SessionId, req.AfterSeq, req.BeforeSeq, limit)
-	if err != nil {
-		return nil, err
-	}
-	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC {
-		for i, e := range evs {
-			evs[i] = BasicEvent(e)
-		}
-	}
-	return &sessionv1.ListEventsResponse{Events: evs, HasMoreBefore: before, HasMoreAfter: after}, nil
-}
-
-const maxDiff = 10 << 20
-
-func (s *Sessions) Diff(ctx context.Context, p *Principal, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
-	_, r, err := s.find(p, req.SessionId, false)
-	if err != nil {
-		return nil, err
-	}
-	if r.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE {
-		return nil, cerr(connect.CodeFailedPrecondition, "session %s works in place in its project directory, so it has no diff of its own; "+
-			"the changes are in the directory (ask the agent, e.g. for `git status`)", r.ID)
-	}
-	proj, err := s.st.Project(r.ProjectID)
-	if err != nil || proj == nil {
-		return nil, cerr(connect.CodeFailedPrecondition, "project %q no longer exists", r.ProjectID)
-	}
-	if r.BaseCommit == "" || len(r.BaseCommit) != 40 {
-		return &sessionv1.GetDiffResponse{}, nil
-	}
-	from, to := r.BaseCommit, r.BaseCommit
-	turns := r.Progress.GetTurnCount()
-	if req.Turn > 0 {
-		if req.Turn > turns {
-			return nil, cerr(connect.CodeInvalidArgument, "session has %d turns", turns)
-		}
-		if to, err = s.st.TurnCommit(r.ID, req.Turn); err != nil || to == "" {
-			return nil, cerr(connect.CodeNotFound, "turn %d has no snapshot", req.Turn)
-		}
-		if req.Turn > 1 {
-			if prev, _ := s.st.TurnCommit(r.ID, req.Turn-1); prev != "" {
-				from = prev
-			}
-		}
-	} else {
-		for t := turns; t >= 1; t-- {
-			if c, _ := s.st.TurnCommit(r.ID, t); c != "" {
-				to = c
-				break
-			}
-		}
-	}
-	stat, err := diffStat(ctx, proj.Path, from, to)
-	if err != nil {
-		return nil, err
-	}
-	resp := &sessionv1.GetDiffResponse{Stat: stat, BaseCommit: from, HeadCommit: to}
-	if req.StatOnly {
-		return resp, nil
-	}
-	d, err := git(ctx, proj.Path, "diff", "--binary", from, to)
-	if err != nil {
-		return nil, err
-	}
-	if req.Offset > uint64(len(d)) {
-		req.Offset = uint64(len(d))
-	}
-	d = d[req.Offset:]
-	if len(d) > maxDiff {
-		d, resp.Truncated, resp.NextOffset = d[:maxDiff], true, req.Offset+maxDiff
-	}
-	resp.Diff = d
-	return resp, nil
-}
-
-// ---------------------------------------------------------------------------
-// Lifecycle.
-
-// dispatch moves queued sessions to PREPARING while slots are free. It is
-// serialized so a session is never claimed twice.
-func (s *Sessions) dispatch() {
-	if s.counts[sessionv1.SessionStatus_SESSION_STATUS_QUEUED].Load() == 0 {
-		return
-	}
-	s.dispatchMu.Lock()
-	defer s.dispatchMu.Unlock()
-	s.mu.Lock()
-	var queued []*live
-	running := 0
-	for _, l := range s.live {
-		l.mu.Lock()
-		switch l.row.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED:
-			queued = append(queued, l)
-		case sessionv1.SessionStatus_SESSION_STATUS_PREPARING, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			running++
-		}
-		l.mu.Unlock()
-	}
-	s.mu.Unlock()
-	limited := s.limits.MaxConcurrent > 0
-	if len(queued) == 0 || limited && running >= s.limits.MaxConcurrent {
-		return
-	}
-	slices.SortFunc(queued, func(a, b *live) int { return a.queuedAt.Compare(b.queuedAt) })
-	for _, l := range queued {
-		if limited && running >= s.limits.MaxConcurrent {
-			return
-		}
-		l.mu.Lock()
-		if l.row.Status != sessionv1.SessionStatus_SESSION_STATUS_QUEUED {
-			l.mu.Unlock()
-			continue
-		}
-		mQueueWait.Since(l.queuedAt)
-		l.mu.Unlock()
-		s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_PREPARING, "")
-		running++
-		go s.prepare(l)
-	}
-}
-
-func (s *Sessions) prepare(l *live) {
-	// ctx ends the start early, for an interrupt or the watchdog
-	// (StartTimeout); nothing else limits it. It is not cancelled once
-	// the agent is up: the agent's session keeps it.
-	ctx, cancel := context.WithCancelCause(context.Background())
-	l.mu.Lock()
-	l.prepCancel, l.prepStarted = cancel, time.Now()
-	id, projectID, prompt, resume, restarting := l.row.ID, l.row.ProjectID, l.pending, l.resume, l.restarting
-	needWorktree := l.row.Worktree == "" || !s.ws.Exists(id)
-	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
-	l.mu.Unlock()
-	// failed ends a start that did not get the agent up: the session is
-	// kept, crashed (idle when interrupted), and a later message retries.
-	failed := func(f *provider.Failure) {
-		cancel(nil)
-		l.mu.Lock()
-		l.prepCancel = nil
-		stop := l.stop
-		l.stop = nil
-		if stop != nil { // interrupted: what it was to run never runs
-			l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
-		}
-		l.mu.Unlock()
-		if stop != nil {
-			s.settle(l, stop, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-			return
-		}
-		s.interruptStart(l, f)
-	}
-	fail := func(err error) {
-		if c := context.Cause(ctx); c != nil {
-			err = c // why it was stopped
-		}
-		s.log.Warn("session failed to start", "session", id, "err", err)
-		failed(provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
-	}
-	proj, err := s.st.Project(projectID)
-	if err != nil || proj == nil {
-		fail(fmt.Errorf("project %q no longer exists", projectID))
-		return
-	}
-	l.mu.Lock()
-	l.repo = proj.Path
-	if inPlace {
-		// The project directory itself, as it was when the session began.
-		needWorktree = false
-		if l.row.Worktree == "" {
-			l.row.Worktree = proj.Path
-		}
-	}
-	dir := l.row.Worktree
-	l.mu.Unlock()
-	if !needWorktree {
-		if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
-			fail(fmt.Errorf("the session's directory %s no longer exists", dir))
-			return
-		}
-	}
-	if needWorktree {
-		l.mu.Lock()
-		baseRef, branch := l.row.BaseCommit, l.row.Branch
-		l.mu.Unlock()
-		if baseRef == "" {
-			baseRef = proj.DefaultBaseRef
-		}
-		wtStart := time.Now()
-		base := baseRef
-		if branch != "" {
-			// The directory can disappear while the branch still holds earlier
-			// turns. Restore that work without changing the session's base.
-			err = s.ws.Restore(ctx, proj.Path, id)
-		} else {
-			base, branch, err = s.ws.Create(ctx, proj.Path, baseRef, id)
-			if errors.As(err, new(*baseRefError)) {
-				// Missing here may only mean not fetched yet (a tag CI pushed, a
-				// branch pushed from elsewhere): fetch that ref alone, start from it.
-				fetchStart := time.Now()
-				var local, remote string
-				if local, remote, err = s.ws.FetchRef(ctx, proj.Path, baseRef); err == nil {
-					s.log.Info("fetched the base ref", "session", id, "ref", baseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
-					base, branch, err = s.ws.Create(ctx, proj.Path, local, id)
-				}
-			}
-		}
-		mWorktree.Since(wtStart)
-		if err != nil {
-			var baseErr *baseRefError
-			if errors.As(err, &baseErr) {
-				err = provider.Fail(sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
-					fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", proj.ID, baseErr.ref, proj.Path, baseErr.upstream()))
-			}
-			fail(err)
-			return
-		}
-		if err := s.ws.CopyIncluded(ctx, proj.Path, id); err != nil {
-			s.log.Warn("copying .worktreeinclude files", "session", id, "err", err)
-		}
-		l.mu.Lock()
-		l.row.BaseCommit, l.row.Branch, l.row.Worktree = base, branch, s.ws.Path(id)
-		l.mu.Unlock()
-	}
-	tmp := filepath.Join(s.dataDir, "sessions", id, "tmp")
-	os.MkdirAll(tmp, 0o700)
-	files := s.attachmentsDir(id) // also for files sent later in the session
-	os.MkdirAll(files, 0o700)
-	gate := s.gate(l)
-	l.mu.Lock()
-	spec := provider.StartSpec{WorkDir: l.row.Worktree, TempDir: tmp, Prompt: prompt.text, Images: prompt.input().Images, ReadDirs: []string{files}, Model: l.row.Model,
-		Effort: l.row.Effort, Speed: l.row.Speed, Title: l.row.Title, Env: append(shellenv.Env(tmp), "HERMESH_SESSION="+id), Gate: gate}
-	if s.mcp != nil {
-		spec.MCPServers = s.mcp(l.id)
-	}
-	if resume && l.row.ProviderRef != "" {
-		spec.ResumeRef = l.row.ProviderRef
-	} else {
-		spec.NewRef = newUUID()
-		if l.turn > 0 { // an existing session in a fresh provider session
-			spec.Prompt = continuityNotice(l.lostContext, inPlace) + prompt.text
-		}
-	}
-	agent := l.row.Agent
-	l.mu.Unlock()
-	if s.limitsSaid != nil {
-		spec.Limits = func(x provider.Limits) { s.limitsSaid(agent, x) }
-	}
-	startAt := time.Now()
-	ps, err := s.providers[agent].Start(ctx, spec)
-	mProviderStart.Since(startAt)
-	if err != nil && spec.ResumeRef != "" && ctx.Err() == nil {
-		f := provider.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)
-		if f.Kind != sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED {
-			// Not evidence that the conversation is gone (login, network,
-			// ...): keep it for a later retry.
-			s.log.Warn("resume failed; session kept", "session", id, "err", err)
-			countResume(agent, "failed_kept")
-			failed(f)
-			return
-		}
-		s.log.Warn("resume refused, continuing in a fresh provider session", "session", id, "err", err)
-		countResume(agent, "rejected_fresh")
-		s.dropContext(l, nil, f, "the agent's session could not be resumed; continuing in a fresh one (the agent is told the earlier conversation is lost)")
-		spec.ResumeRef, spec.NewRef = "", newUUID()
-		spec.Prompt = continuityNotice(f.Message, inPlace) + prompt.text
-		ps, err = s.providers[agent].Start(ctx, spec)
-	} else if err == nil && spec.ResumeRef != "" {
-		countResume(agent, "resumed")
-	}
-	if err != nil { // the session is kept; a later message retries
-		fail(err)
-		return
-	}
-	l.mu.Lock()
-	l.prepCancel = nil
-	if f := l.stop; f != nil { // interrupted while preparing
-		l.stop = nil
-		l.pending, l.followUps, l.resume, l.restarting = message{}, nil, false, false
-		l.mu.Unlock()
-		ps.Close()
-		s.settle(l, f, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-		return
-	}
-	if ctx.Err() != nil { // the watchdog stopped it as it came up
-		l.mu.Unlock()
-		ps.Close()
-		fail(ctx.Err())
-		return
-	}
-	l.sess = ps
-	l.row.Pgid = ps.Pgid()
-	l.procStarted = time.Now()
-	if !restarting {
-		l.turn++
-		l.retries = 0
-	}
-	l.turnStarted, l.lastEvent, l.awaitingFirst = time.Now(), time.Now(), true
-	if !restarting || l.row.Progress.TurnStartedAt == nil { // a restarted turn is the same turn
-		l.row.Progress.TurnStartedAt = timestamppb.Now()
-	}
-	l.lastProgress, l.lastErr = time.Now(), nil
-	l.turnMsg, l.turnTools, l.resumedStart, l.finishing, l.restarting = prompt, 0, spec.ResumeRef != "", false, false
-	if prompt.by != "" {
-		l.asker, l.askerConv = prompt.by, prompt.conv
-	}
-	mProcs.Add(1)
-	l.pending, l.resume = message{}, false
-	turn, took := l.turn, time.Since(l.prepStarted).Round(time.Millisecond)
-	l.mu.Unlock()
-	s.log.Info("agent started", "session", id, "agent", agent, "pid", ps.Pgid(), "resumed", spec.ResumeRef != "", "took", took)
-	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_RUNNING, "")
-	if !restarting { // a restarted turn was already announced
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnStarted{TurnStarted: &sessionv1.TurnStarted{Turn: turn, Asker: prompt.by}}})
-		s.emitUser(l, prompt)
-	}
-	// Messages sent while the agent was starting: into this turn if it
-	// takes them (before pumping, so the turn cannot have finished).
-	l.mu.Lock()
-	pending := l.followUps
-	l.followUps = nil
-	l.mu.Unlock()
-	for _, m := range pending {
-		if ps.Steer(ctx, m.input()) == nil {
-			l.mu.Lock()
-			l.turnMsg = l.turnMsg.join(m)
-			l.mu.Unlock()
-			s.emitUser(l, m)
-			continue
-		}
-		l.mu.Lock()
-		l.followUps = append(l.followUps, m)
-		l.mu.Unlock()
-	}
-	go s.pump(l, ps)
-}
-
-func (s *Sessions) pump(l *live, ps provider.Session) {
-	for e := range ps.Events() {
-		s.onEvent(l, ps, e)
-	}
-	<-ps.Done()
-	mProcs.Add(-1)
-	l.mu.Lock()
-	mine := l.sess == ps
-	if mine {
-		l.sess = nil
-		l.row.Pgid = 0
-	}
-	st := l.row.Status
-	l.mu.Unlock()
-	if mine && turnActive(st) {
-		msg := "agent process exited unexpectedly"
-		if err := ps.Err(); err != nil {
-			msg += ": " + err.Error()
-		}
-		s.log.Warn("agent process exited during a turn", "session", l.id, "pid", ps.Pgid(), "err", ps.Err())
-		s.interruptTurn(l, ps, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: msg})
-	}
-	s.dispatch()
-}
-
-func (s *Sessions) onEvent(l *live, ps provider.Session, e provider.Event) {
-	l.mu.Lock()
-	l.lastEvent = time.Now()
-	if e.Kind != provider.EventError { // an error (a retry) is not progress
-		l.lastProgress = l.lastEvent
-	}
-	stale := l.sess != ps
-	if l.awaitingFirst && e.Kind != provider.EventRef {
-		l.awaitingFirst = false
-		mFirstEvent.Since(l.turnStarted)
-	}
-	l.mu.Unlock()
-	if stale {
-		return
-	}
-	switch e.Kind {
-	case provider.EventRef:
-		l.mu.Lock()
-		l.row.ProviderRef = e.Ref
-		if e.Model != "" {
-			l.row.AgentModel, l.row.AgentEffort = e.Model, e.Effort
-		}
-		row := snapshotRow(l.row)
-		l.mu.Unlock()
-		s.w.put(writeOp{row: row})
-	case provider.EventAgentDraft:
-		s.addDraft(l, e.Text)
-	case provider.EventAgentMessage:
-		l.mu.Lock()
-		l.clearDraft()
-		l.mu.Unlock()
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentMessage{AgentMessage: &sessionv1.AgentMessage{Text: e.Text}}})
-	case provider.EventQuestion:
-		if e.Question != nil {
-			s.storeDraft(l)
-			s.ask(l, ps, e.Question)
-		}
-	case provider.EventToolCall:
-		s.storeDraft(l)
-		tc := &sessionv1.ToolCall{CallId: e.CallID, Kind: string(e.ToolKind), Name: e.ToolName, Summary: e.Summary, Decision: "allow"}
-		if e.Decision != nil && !e.Decision.Allow {
-			tc.Decision, tc.Reason = "deny", e.Decision.Reason
-		}
-		l.mu.Lock()
-		l.turnTools++
-		l.tools[e.CallID] = e.ToolName + ": " + e.Summary
-		switch e.ToolKind {
-		case provider.ToolRead, provider.ToolSearch, provider.ToolNetwork:
-		default:
-			l.mayHaveEdits = true
-		}
-		l.mu.Unlock()
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_ToolCall{ToolCall: tc}})
-	case provider.EventToolResult:
-		l.mu.Lock()
-		delete(l.tools, e.CallID)
-		l.mu.Unlock()
-		r := &sessionv1.ToolResult{CallId: e.CallID, Summary: e.Summary, IsError: e.IsError, Truncated: e.Truncated}
-		var whole string
-		if len(e.Summary) > inlineOutput { // kept whole beside its event, which holds its start
-			whole = e.Summary
-			r.Summary, _ = provider.Truncate(e.Summary, inlineOutput)
-			r.Size, r.Truncated = uint64(len(e.Summary)), true
-		}
-		s.emitOutput(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_ToolResult{ToolResult: r}}, whole)
-	case provider.EventError:
-		f := e.Failure
-		if f == nil {
-			f = &provider.Failure{Kind: provider.Classify(e.Text), Message: e.Text}
-		}
-		l.mu.Lock()
-		l.lastErr, l.lastErrAt = f, time.Now()
-		l.mu.Unlock()
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: e.Text, Failure: f.Proto()}}})
-	case provider.EventTurnCompleted:
-		if e.IsError && e.Failure == nil { // as the turn reports it (finishTurn)
-			e.Failure = &provider.Failure{Kind: provider.Classify(e.Text), Message: e.Text}
-		}
-		switch e.Failure.GetKind() {
-		case sessionv1.FailureKind_FAILURE_KIND_RATE_LIMIT:
-			if s.retryLater(l, ps, e.Failure) {
-				return
-			}
-		case sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED:
-			l.mu.Lock()
-			retry := l.resumedStart && l.turnTools == 0
-			agent := l.row.Agent
-			l.mu.Unlock()
-			if retry {
-				countResume(agent, "rejected_fresh")
-				s.restartFresh(l, ps, e.Failure)
-				return
-			}
-			s.dropContext(l, ps, e.Failure, "")
-		case sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW:
-			s.dropContext(l, ps, e.Failure, "")
-		}
-		s.completeTurn(l, e, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-	}
-}
-
-// interruptTurn ends a running turn the agent did not finish (crash,
-// stall, timeout). The session stays resumable (INTERRUPTED) when its
-// provider session is known; otherwise it fails.
-// interruptTurn stops a turn that went wrong (stalled, crashed): the
-// session is crashed, and the next message retries.
-func (s *Sessions) interruptTurn(l *live, ps provider.Session, f *provider.Failure) {
-	s.stopTurn(l, ps, f, sessionv1.SessionStatus_SESSION_STATUS_CRASHED)
-}
-
-// stopTurn ends the turn in progress with failure f and moves the session
-// to status; the agent process goes, its conversation is resumed next time.
-func (s *Sessions) stopTurn(l *live, ps provider.Session, f *provider.Failure, status sessionv1.SessionStatus) {
-	l.mu.Lock()
-	if !turnActive(l.row.Status) || l.finishing {
-		l.mu.Unlock()
-		return
-	}
-	l.finishing = true
-	if ps == nil {
-		ps = l.sess
-	}
-	if l.sess == ps {
-		l.sess = nil
-	}
-	l.mu.Unlock()
-	go func() {
-		if ps != nil {
-			ps.Close()
-		}
-		s.finishTurn(l, provider.Event{Kind: provider.EventTurnCompleted, IsError: true, Text: f.Message, Failure: f}, status)
-	}()
-}
-
-// interruptStart reports a turn whose agent could not be started, keeping
-// the session (and its provider session) and the turn's prompt for a
-// later message.
-func (s *Sessions) interruptStart(l *live, f *provider.Failure) {
-	pf := f.Proto()
-	l.mu.Lock()
-	l.row.Error = pf.Message
-	l.row.Progress.LastFailure = pf
-	l.row.Progress.TurnStartedAt = nil
-	// The agent never got the prompt, nor what came while it was starting:
-	// kept for the next turn, which the next message starts.
-	for _, m := range l.followUps {
-		l.pending = l.pending.join(m)
-	}
-	l.followUps, l.resume, l.restarting = nil, false, false
-	l.idleSince = time.Now()
-	agent := l.row.Agent
-	l.mu.Unlock()
-	countFailure(agent, pf.Kind)
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: pf.Message, Failure: pf}}})
-	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_CRASHED, pf.Message)
-	s.dispatch()
-}
-
-// dropContext forgets a provider conversation that cannot continue; the
-// next turn starts a fresh provider session and is told why.
-func (s *Sessions) dropContext(l *live, ps provider.Session, f *provider.Failure, note string) {
-	l.mu.Lock()
-	l.row.ProviderRef = ""
-	l.lostContext = f.Message
-	if ps != nil && l.sess == ps {
-		l.sess = nil
-	}
-	row := snapshotRow(l.row)
-	l.mu.Unlock()
-	s.w.put(writeOp{row: row})
-	if ps != nil {
-		go ps.Close()
-	}
-	if note != "" {
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: note, Failure: f.Proto()}}})
-	}
-}
-
-// restartFresh re-runs the current turn in a fresh provider session after
-// the resume was refused before the turn did anything.
-func (s *Sessions) restartFresh(l *live, ps provider.Session, f *provider.Failure) {
-	s.dropContext(l, ps, f, "the agent's session could not be resumed; retrying this turn in a fresh one (the agent is told the earlier conversation is lost)")
-	l.mu.Lock()
-	l.clearDraft()
-	l.pending, l.resume, l.restarting, l.queuedAt = l.turnMsg, false, true, time.Now()
-	l.mu.Unlock()
-	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "restarting in a fresh agent session")
-	s.dispatch()
-}
-
-// retryFactors scale Limits.RetryDelay, one per automatic retry of a turn.
-var retryFactors = []time.Duration{1, 4, 10}
-
-// retryNote is what the agent is told when its turn goes on by itself
-// (the fake provider knows it by "automatic retry").
-const retryNote = "[Hermesh] Your last reply was stopped by a rate limit or capacity error from the model provider. This is an automatic retry: continue from where you stopped."
-
-// retryLater keeps a turn that failed on a rate limit going: some agents
-// give up on one at once (Codex on a model at capacity). The agent process
-// goes; after a wait the conversation is resumed and told to continue,
-// still in this turn, so nobody hears of the failure unless the retries
-// run out. false: the turn fails now.
-func (s *Sessions) retryLater(l *live, ps provider.Session, f *provider.Failure) bool {
-	s.storeDraft(l) // a reply cut short stays as far as it got
-	l.mu.Lock()
-	n := l.retries
-	if s.limits.RetryDelay <= 0 || n >= len(retryFactors) || l.finishing || l.sess != ps || l.row.ProviderRef == "" {
-		l.mu.Unlock()
-		return false
-	}
-	wait := s.limits.RetryDelay * retryFactors[n]
-	l.retries++
-	l.sess, l.row.Pgid = nil, 0
-	l.tools = map[string]string{}
-	var t *time.Timer
-	t = time.AfterFunc(wait, func() {
-		l.mu.Lock()
-		if l.retryTimer != t { // the turn ended, or a message started the retry
-			l.mu.Unlock()
-			return
-		}
-		s.startRetry(l, message{})
-	})
-	l.retryTimer = t
-	l.mu.Unlock()
-	go ps.Close()
-	in := strings.TrimSuffix(wait.String(), "m0s")
-	if in != wait.String() {
-		in += "m"
-	}
-	msg := fmt.Sprintf("%s (retrying in %s, %d of %d)", strings.TrimSpace(f.Message), in, n+1, len(retryFactors))
-	pf := f.Proto()
-	pf.Hint = "the machine retries the turn by itself; wait for the turn to end instead of sending the message again"
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: msg, Failure: pf}}})
-	return true
-}
-
-// startRetry resumes the turn waiting to retry, with m when a message came
-// meanwhile. It is called with l.mu held and releases it.
-func (s *Sessions) startRetry(l *live, m message) {
-	l.retryTimer.Stop()
-	l.retryTimer = nil
-	// The note records no message of its own, even if a failed start keeps
-	// it for the next turn.
-	p := message{text: retryNote, quiet: true}
-	withM := m.text != "" || len(m.files) > 0
-	if withM {
-		p = p.join(m)
-	}
-	l.pending, l.resume, l.restarting, l.queuedAt = p, true, true, time.Now()
-	l.mu.Unlock()
-	if withM { // a restarted turn records no prompt of its own
-		s.emitUser(l, m)
-	}
-	s.setStatus(l, sessionv1.SessionStatus_SESSION_STATUS_QUEUED, "retrying after a rate limit")
-	s.dispatch()
-}
-
-// completeTurn finishes the turn with the agent's result.
-func (s *Sessions) completeTurn(l *live, e provider.Event, status sessionv1.SessionStatus) {
-	l.mu.Lock()
-	if l.finishing {
-		l.mu.Unlock()
-		return
-	}
-	l.finishing = true
-	l.mu.Unlock()
-	s.finishTurn(l, e, status)
-}
-
-// finishTurn snapshots the worktree, records the turn and moves the
-// session to status (IDLE, or INTERRUPTED when the turn was cut short).
-func (s *Sessions) finishTurn(l *live, e provider.Event, status sessionv1.SessionStatus) {
-	ctx := context.Background()
-	s.storeDraft(l) // a reply cut short stays as far as it got
-	s.dropQuestions(l)
-	l.mu.Lock()
-	l.resumedStart = false
-	if l.retryTimer != nil { // ended (interrupted) while waiting to retry
-		l.retryTimer.Stop()
-		l.retryTimer = nil
-	}
-	id, turn, repo := l.row.ID, l.turn, l.repo
-	// In place: no snapshots, the directory and its git are the owner's.
-	inPlace := l.row.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE
-	edits := l.mayHaveEdits && !s.ws.none && !inPlace
-	l.mayHaveEdits = false
-	l.tools = map[string]string{}
-	mTurn.Since(l.turnStarted)
-	l.mu.Unlock()
-	tc := &sessionv1.TurnCompleted{Turn: turn, Result: e.Text, IsError: e.IsError,
-		Usage: &sessionv1.Usage{InputTokens: e.Usage.InputTokens, OutputTokens: e.Usage.OutputTokens, CostUsd: e.Usage.CostUSD}}
-	if e.IsError {
-		f := e.Failure
-		if f == nil {
-			f = &provider.Failure{Kind: provider.Classify(e.Text), Message: e.Text}
-		}
-		tc.Failure = f.Proto()
-		countFailure(l.row.Agent, tc.Failure.Kind)
-		if tc.Failure.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
-			s.log.Warn("turn failed", "session", id, "turn", turn, "kind", tc.Failure.Kind.String(), "message", tc.Failure.Message)
-		}
-	}
-	var commit string
-	var turnStat *sessionv1.DiffStat
-	var err error
-	if edits {
-		snapStart := time.Now()
-		commit, turnStat, err = s.ws.Snapshot(ctx, repo, id, turn)
-		mSnapshot.Since(snapStart)
-	} else {
-		// Nothing could have changed files: reuse the previous commit.
-		mSnapshotSkipped.Inc()
-		l.mu.Lock()
-		commit = l.lastCommit
-		base := l.row.BaseCommit
-		l.mu.Unlock()
-		// After a restart or unarchive, the in-memory last commit is empty.
-		// A reply without edits must still keep the earlier turns' snapshot.
-		if commit == "" && !inPlace && !s.ws.none {
-			for prev := turn - 1; prev > 0; prev-- {
-				commit, err = s.st.TurnCommit(id, prev)
-				if err != nil || commit != "" {
-					break
-				}
-			}
-		}
-		if commit == "" && err == nil {
-			commit = base
-		}
-		turnStat = &sessionv1.DiffStat{}
-	}
-	switch {
-	case inPlace:
-	case err != nil:
-		s.log.Warn("snapshot failed", "session", id, "err", err)
-	default:
-		tc.Commit, tc.DiffStat = commit, turnStat
-		// Committed with (or before) the TurnCompleted event that follows.
-		s.w.put(writeOp{turn: &turnRec{id, turn, commit}})
-	}
-	l.mu.Lock()
-	p := l.row.Progress
-	p.TurnCount = turn
-	p.TurnStartedAt = nil
-	if commit != "" {
-		l.lastCommit = commit
-	}
-	if p.Usage == nil {
-		p.Usage = &sessionv1.Usage{}
-	}
-	p.Usage.InputTokens += tc.Usage.InputTokens
-	p.Usage.OutputTokens += tc.Usage.OutputTokens
-	p.Usage.CostUsd += tc.Usage.CostUsd
-	p.LastFailure = tc.Failure
-	l.row.Result = e.Text
-	if e.Text != "" {
-		p.LastMessageExcerpt, _ = provider.Truncate(e.Text, 280)
-	}
-	l.idleSince = time.Now()
-	l.mu.Unlock()
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_TurnCompleted{TurnCompleted: tc}})
-	reason := ""
-	if status != sessionv1.SessionStatus_SESSION_STATUS_IDLE && tc.Failure != nil {
-		reason = tc.Failure.Message
-	}
-	// Messages that arrived too late for this turn: the next one, without
-	// an idle in between (callers waiting for idle wait for them too). A
-	// failed turn takes them with it, like the messages steered into it.
-	l.mu.Lock()
-	next, dropped := l.followUps, 0
-	l.followUps = nil
-	if isTerminal(l.row.Status) {
-		next = nil
-	} else if status != sessionv1.SessionStatus_SESSION_STATUS_IDLE || tc.IsError {
-		next, dropped = nil, len(next)
-	}
-	if len(next) > 0 {
-		m := next[0]
-		for _, o := range next[1:] {
-			m = m.join(o)
-		}
-		if err := s.nextTurn(ctx, l, m); err != nil {
-			s.interruptTurn(l, nil, &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: "could not send the next message: " + err.Error()})
-		}
-	} else {
-		changed := s.setStatusLocked(l, status)
-		l.mu.Unlock()
-		if dropped > 0 {
-			msg := fmt.Sprintf("%d message(s) sent during the turn were not delivered because it failed; send them again", dropped)
-			s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: msg}}})
-		}
-		if changed {
-			s.statusChanged(l, status, reason)
-		}
-	}
-	s.dispatch()
-	switch {
-	case tc.DiffStat == nil || tc.DiffStat.FilesChanged == 0:
-	case turn == 1:
-		// The cumulative stat of a one-turn session is the turn's stat.
-		l.mu.Lock()
-		l.row.Progress.DiffStat = tc.DiffStat
-		row := snapshotRow(l.row)
-		l.mu.Unlock()
-		s.w.put(writeOp{row: row})
-	default:
-		s.refreshDiffStat(l)
-	}
-}
-
-// refreshDiffStat recomputes the cumulative diff stat off the turn's
-// critical path, coalescing requests that arrive while one is running.
-func (s *Sessions) refreshDiffStat(l *live) {
-	l.mu.Lock()
-	if l.statRunning {
-		l.statPending = true
-		l.mu.Unlock()
-		return
-	}
-	l.statRunning = true
-	l.mu.Unlock()
-	go func() {
-		for {
-			l.mu.Lock()
-			repo, base, head := l.repo, l.row.BaseCommit, l.lastCommit
-			l.statPending = false
-			l.mu.Unlock()
-			st, err := diffStat(context.Background(), repo, base, head)
-			l.mu.Lock()
-			if err == nil {
-				l.row.Progress.DiffStat = st
-			}
-			row := snapshotRow(l.row)
-			again := l.statPending
-			if !again {
-				l.statRunning = false
-			}
-			l.mu.Unlock()
-			s.w.put(writeOp{row: row})
-			if !again {
-				return
-			}
-		}
-	}()
-}
-
-// settle records f for a turn that never ran and moves the session to
-// status.
-func (s *Sessions) settle(l *live, f *provider.Failure, status sessionv1.SessionStatus) {
-	pf := f.Proto()
-	l.mu.Lock()
-	l.row.Progress.LastFailure = pf
-	l.row.Progress.TurnStartedAt = nil
-	l.mu.Unlock()
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Error{Error: &sessionv1.ErrorEvent{Message: pf.Message, Failure: pf}}})
-	s.setStatus(l, status, pf.Message)
-	s.dispatch()
-}
-
-func (s *Sessions) setStatus(l *live, st sessionv1.SessionStatus, reason string) {
-	l.mu.Lock()
-	changed := s.setStatusLocked(l, st)
-	l.mu.Unlock()
-	if changed {
-		s.statusChanged(l, st, reason)
-	}
-}
-
-// setStatusLocked changes the status (l.mu held); the caller then calls
-// statusChanged when it reports a change.
-func (s *Sessions) setStatusLocked(l *live, st sessionv1.SessionStatus) bool {
-	if l.row.Status == st || isTerminal(l.row.Status) {
-		return false
-	}
-	s.count(l.row.Status, -1)
-	if isTerminal(st) {
-		mArchived.Inc()
-	} else {
-		s.count(st, 1)
-	}
-	l.row.Status = st
-	l.row.Progress.Phase = phaseOf(st)
-	if st == sessionv1.SessionStatus_SESSION_STATUS_IDLE || st == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-		l.idleSince = time.Now()
-	}
-	return true
-}
-
-func (s *Sessions) statusChanged(l *live, st sessionv1.SessionStatus, reason string) {
-	s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_Status{Status: &sessionv1.StatusChanged{Status: st, Reason: reason}}})
-	if st == sessionv1.SessionStatus_SESSION_STATUS_IDLE || st == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
-		go s.startAsked(l)
-	}
-}
-
-// deliver runs after an event is committed: fan out to subscribers and,
-// for a terminal status, retire the session.
-func (s *Sessions) deliver(l *live, e *sessionv1.SessionEvent) {
-	if d := e.GetAgentDraft(); d != nil {
-		l.mu.Lock()
-		if d.Whole {
-			l.draftShown = d.Text
-		} else {
-			l.draftShown += d.Text
-		}
-		for ch, partial := range l.subs {
-			if !partial {
-				continue
-			}
-			select {
-			case ch <- e:
-			default:
-				close(ch) // too slow: the client resumes by seq
-				delete(l.subs, ch)
-			}
-		}
-		l.mu.Unlock()
-		return
-	}
-	terminal := false
-	if st := e.GetStatus(); st != nil && isTerminal(st.Status) {
-		terminal = true
-	}
-	l.mu.Lock()
-	l.persistedSeq = e.Seq
-	l.draftShown = "" // a stored event ends the draft on every screen
-	for ch := range l.subs {
-		select {
-		case ch <- e:
-		default:
-			close(ch) // too slow: the client resumes by seq
-			delete(l.subs, ch)
-		}
-	}
-	if terminal {
-		for ch := range l.subs {
-			close(ch)
-			delete(l.subs, ch)
-		}
-	}
-	l.mu.Unlock()
-	if terminal {
-		s.mu.Lock()
-		if s.live[l.id] == l {
-			delete(s.live, l.id)
-		}
-		s.mu.Unlock()
-	}
-	s.changed(l.id)
-}
-
-func phaseOf(st sessionv1.SessionStatus) string {
-	return strings.ToLower(strings.TrimPrefix(st.String(), "SESSION_STATUS_"))
-}
-
-// emit assigns the next sequence number, updates progress and queues the
-// event for persistence; subscribers get it once it is committed.
-func (s *Sessions) emit(l *live, e *sessionv1.SessionEvent) { s.emitOutput(l, e, "") }
-
-// emitOutput is emit for a tool result whose whole output, longer than its
-// event holds, is kept beside it.
-func (s *Sessions) emitOutput(l *live, e *sessionv1.SessionEvent, output string) {
-	l.emitMu.Lock()
-	defer l.emitMu.Unlock()
-	l.mu.Lock()
-	l.seq++
-	e.Seq, e.Ts = l.seq, timestamppb.Now()
-	if l.draft.Len() > 0 { // the reply goes on after this event: send it whole again
-		l.draftQueued = 0
-		s.scheduleDraft(l)
-	}
-	e.TurnId = strconv.FormatUint(uint64(l.turn), 10)
-	p := l.row.Progress
-	p.LastEventSeq = l.seq
-	var row *sessionRow
-	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_TurnStarted:
-		p.LastMessageExcerpt = "" // what the agent said last turn is not this turn's progress
-	case *sessionv1.SessionEvent_AgentMessage:
-		p.LastMessageExcerpt, _ = provider.Truncate(k.AgentMessage.Text, 280)
-	case *sessionv1.SessionEvent_ToolCall:
-		p.CurrentTool = k.ToolCall.Name + ": " + k.ToolCall.Summary
-		switch k.ToolCall.Kind {
-		case "edit":
-			p.Phase = "editing"
-		case "shell":
-			p.Phase = "running_shell"
-		default:
-			p.Phase = "running"
-		}
-	case *sessionv1.SessionEvent_ToolResult:
-		p.CurrentTool = ""
-	case *sessionv1.SessionEvent_TurnCompleted:
-		p.CurrentTool = "" // a cut-short turn has no result for its last tool
-		row = snapshotRow(l.row)
-	case *sessionv1.SessionEvent_Status:
-		row = snapshotRow(l.row)
-	}
-	var who *workWho
-	switch e.Kind.(type) {
-	case *sessionv1.SessionEvent_TurnStarted, *sessionv1.SessionEvent_TurnCompleted:
-		who = &workWho{l.row.CreatedBy, l.row.Agent, l.row.ProjectID}
-	}
-	var ns *noticeSession
-	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_QuestionAsked, *sessionv1.SessionEvent_QuestionResolved, *sessionv1.SessionEvent_TurnCompleted:
-		ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation, nil}
-		if tc := e.GetTurnCompleted(); tc != nil {
-			l.turnFailed = tc.Failure != nil
-		}
-	case *sessionv1.SessionEvent_Status:
-		// A crash that ends a failed turn was told with the turn. Any
-		// other is told here: an agent that could not start says why.
-		if k.Status.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED && !l.turnFailed {
-			f := p.LastFailure
-			if f == nil || f.Message != k.Status.Reason { // an earlier turn's
-				f = &sessionv1.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: k.Status.Reason}
-			}
-			ns = &noticeSession{l.id, l.row.Title, l.row.CreatedBy, l.row.ProjectID, l.row.Agent, l.asker, l.askerConv, l.row.Conversation, f}
-		}
-		l.turnFailed = false
-	}
-	l.mu.Unlock()
-	mEvents.Inc()
-	s.w.put(writeOp{l: l, ev: e, row: row, output: output, who: who})
-	if ns != nil && s.notice != nil {
-		go s.notice(*ns, e)
-	}
-}
-
-// draftEvery paces drafts: subscribers get new reply text at most this often.
-const draftEvery = 100 * time.Millisecond
-
-// addDraft adds reply text the agent is still writing.
-func (s *Sessions) addDraft(l *live, text string) {
-	l.mu.Lock()
-	l.draft.WriteString(text)
-	s.scheduleDraft(l)
-	l.mu.Unlock()
-}
-
-// scheduleDraft sends the draft's new text soon (caller holds l.mu).
-func (s *Sessions) scheduleDraft(l *live) {
-	if l.draftTimer == nil {
-		l.draftTimer = time.AfterFunc(draftEvery, func() { s.sendDraft(l) })
-	}
-}
-
-// sendDraft queues the draft's text not yet queued, behind the events
-// before it, for the subscribers that take drafts. It is never stored.
-func (s *Sessions) sendDraft(l *live) {
-	l.emitMu.Lock()
-	defer l.emitMu.Unlock()
-	l.mu.Lock()
-	l.draftTimer = nil
-	d := &sessionv1.AgentDraft{Text: l.draft.String()[l.draftQueued:], Whole: l.draftQueued == 0}
-	l.draftQueued = l.draft.Len()
-	l.mu.Unlock()
-	if d.Text != "" {
-		s.w.put(writeOp{l: l, draft: &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentDraft{AgentDraft: d}}})
-	}
-}
-
-// clearDraft forgets the draft: its final message is stored, or the turn
-// is retried (caller holds l.mu).
-func (l *live) clearDraft() {
-	l.draft.Reset()
-	l.draftQueued = 0
-}
-
-// storeDraft stores a draft the agent never finished as its message, so
-// what the owner saw stays (the turn ends, or the agent moved on).
-func (s *Sessions) storeDraft(l *live) {
-	l.mu.Lock()
-	text := l.draft.String()
-	l.clearDraft()
-	l.mu.Unlock()
-	if strings.TrimSpace(text) != "" {
-		s.emit(l, &sessionv1.SessionEvent{Kind: &sessionv1.SessionEvent_AgentMessage{AgentMessage: &sessionv1.AgentMessage{Text: text}}})
-	}
-}
-
-func (s *Sessions) toProto(r *sessionRow) *sessionv1.Session {
-	return &sessionv1.Session{SessionId: r.ID, MachineId: s.machineID, ProjectId: r.ProjectID, Agent: r.Agent,
-		Status: r.Status, CreatedBy: r.CreatedBy, Progress: proto.Clone(r.Progress).(*sessionv1.SessionProgress),
-		ProviderSessionRef: r.ProviderRef, CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt),
-		Error: r.Error, Branch: r.Branch, Workspace: r.Workspace, Result: r.Result, Title: r.Title, CreatedAs: r.Conversation,
-		Model: cmp.Or(r.AgentModel, r.Model), Effort: cmp.Or(r.Effort, r.AgentEffort)}
-}
-
-// Janitor enforces timeouts and stops idle agent processes (their sessions
-// stay; the next message resumes them).
-func (s *Sessions) Janitor(ctx context.Context) {
-	every := s.janitorEvery
-	if every == 0 {
-		every = 10 * time.Second
-	}
-	tick := time.NewTicker(every)
+	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-tick.C:
-		}
-		now := time.Now()
-		if s.wsCache.autoDue(now, s.autoReleaseEvery) {
-			go s.autoRelease(ctx, now)
-		}
-		s.mu.Lock()
-		ls := make([]*live, 0, len(s.live))
-		for _, l := range s.live {
-			ls = append(ls, l)
-		}
-		s.mu.Unlock()
-		for _, l := range ls {
-			l.mu.Lock()
-			st, ps := l.row.Status, l.sess
-			idleSince := l.idleSince
-			stopStart, prepStarted := l.prepCancel, l.prepStarted
-			l.mu.Unlock()
-			switch st {
-			case sessionv1.SessionStatus_SESSION_STATUS_PREPARING:
-				if lim := s.limits.StartTimeout; lim > 0 && stopStart != nil && now.Sub(prepStarted) > lim {
-					s.log.Warn("stopping a stalled start", "session", l.id)
-					mWatchdog.Inc()
-					stopStart(provider.Fail(sessionv1.FailureKind_FAILURE_KIND_STALLED, fmt.Sprintf("the session did not finish starting in %s", lim)))
-				}
-			case sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT: // not stalled: waiting for an answer
-				s.expireQuestions(l, now)
-			case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
-				if f := s.stalled(l, ps, now); f != nil {
-					// What it was doing goes with the failure, or nobody can tell
-					// once the process is gone.
-					var d provider.Diagnosis
-					reason := f.Message
-					if ps != nil {
-						d = ps.Diagnose()
-						if what := d.String(); what != "" {
-							f.Message += "; " + what
-						}
-					}
-					s.log.Warn("stopping a stalled turn", "session", l.id, "reason", reason, "running", strings.Join(d.Running, ", "), "stderr", d.Stderr)
-					mWatchdog.Inc()
-					s.interruptTurn(l, ps, f)
-				}
-			case sessionv1.SessionStatus_SESSION_STATUS_IDLE, sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-				// The session never ends by itself; only its idle agent
-				// process goes, and the next message resumes it.
-				if ps != nil && now.Sub(idleSince) > s.limits.IdleProcessTTL {
-					l.mu.Lock()
-					if l.sess == ps && l.releasing == nil && l.idleClose == nil {
-						l.sess = nil
-						l.idleClose = make(chan struct{})
-						go func() {
-							ps.Close()
-							l.mu.Lock()
-							close(l.idleClose)
-							l.idleClose = nil
-							l.mu.Unlock()
-						}()
-					}
-					l.mu.Unlock()
-				}
+		case now := <-tick.C:
+			if n.wsCache.autoDue(now, n.autoReleaseEvery) {
+				go n.autoRelease(ctx, now)
 			}
 		}
-	}
-}
-
-// stalled decides whether a running turn has stopped making progress.
-// Progress is any agent output (ps.LastActivity) or event; a running tool
-// gets the tool window, since many tools are silent while they work.
-func (s *Sessions) stalled(l *live, ps provider.Session, now time.Time) *provider.Failure {
-	l.mu.Lock()
-	if l.finishing || l.retryTimer != nil { // waiting to retry is not a stall
-		l.mu.Unlock()
-		return nil
-	}
-	last, turnStarted, procStarted := l.lastProgress, l.turnStarted, l.procStarted
-	lastErr, lastErrAt := l.lastErr, l.lastErrAt
-	var tool string
-	for _, t := range l.tools {
-		tool = t
-		break
-	}
-	l.mu.Unlock()
-	var out time.Time
-	if ps != nil {
-		out = ps.LastActivity()
-		if out.After(last) {
-			last = out
-		}
-	}
-	lim := s.limits
-	stall := func(format string, a ...any) *provider.Failure {
-		msg := fmt.Sprintf(format, a...)
-		if lastErr != nil && lastErrAt.After(last) && lastErr.Kind != sessionv1.FailureKind_FAILURE_KIND_UNKNOWN {
-			// It was stuck on this (e.g. retrying a connection): say so.
-			return &provider.Failure{Kind: lastErr.Kind, Message: msg + "; last error: " + lastErr.Message, HTTPStatus: lastErr.HTTPStatus}
-		}
-		return &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_STALLED, Message: msg}
-	}
-	switch {
-	case lim.TurnTimeout > 0 && now.Sub(turnStarted) > lim.TurnTimeout:
-		return &provider.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_TIMEOUT, Message: fmt.Sprintf("the turn exceeded the %s limit", lim.TurnTimeout)}
-	case ps != nil && out.Before(procStarted) && lim.FirstOutputTimeout > 0 && now.Sub(procStarted) > lim.FirstOutputTimeout:
-		return stall("the agent produced no output for %s after starting", lim.FirstOutputTimeout)
-	case tool != "":
-		if lim.ToolTimeout > 0 && now.Sub(last) > lim.ToolTimeout {
-			t, _ := provider.Truncate(tool, 200)
-			return stall("no output for %s while running %s", lim.ToolTimeout, t)
-		}
-	case lim.IdleTimeout > 0 && now.Sub(last) > lim.IdleTimeout:
-		return stall("no output from the agent for %s", lim.IdleTimeout)
-	}
-	return nil
-}
-
-// attachmentsDir holds a session's attached files, outside its worktree;
-// it is removed with the worktree.
-func (s *Sessions) attachmentsDir(id string) string {
-	return filepath.Join(s.dataDir, "sessions", id, "attachments")
-}
-
-var (
-	mQueueWait       = metrics.Default.Histogram("hermesh_machine_queue_wait_seconds")
-	mWorktree        = metrics.Default.Histogram("hermesh_machine_worktree_create_seconds")
-	mProviderStart   = metrics.Default.Histogram("hermesh_machine_provider_start_seconds")
-	mFirstEvent      = metrics.Default.Histogram("hermesh_machine_first_event_seconds")
-	mTurn            = metrics.Default.Histogram("hermesh_machine_turn_seconds")
-	mSnapshot        = metrics.Default.Histogram("hermesh_machine_snapshot_seconds")
-	mSnapshotSkipped = metrics.Default.Counter("hermesh_machine_snapshot_skipped_total")
-	mEvents          = metrics.Default.Counter("hermesh_machine_events_total")
-	mProcs           = metrics.Default.Gauge("hermesh_machine_provider_processes")
-	mStartCommit     = metrics.Default.Histogram("hermesh_machine_start_commit_seconds")
-	mWatchdog        = metrics.Default.Counter("hermesh_machine_watchdog_stops_total")
-)
-
-var mArchived = metrics.Default.Counter("hermesh_machine_sessions_archived_total")
-
-// countResume counts resume attempts by outcome.
-func countResume(agent, outcome string) {
-	metrics.Default.Counter(`hermesh_machine_resume_total{agent="` + agent + `",outcome="` + outcome + `"}`).Inc()
-}
-
-// countFailure counts a turn or session failure by agent and kind.
-func countFailure(agent string, k sessionv1.FailureKind) {
-	kind := strings.ToLower(strings.TrimPrefix(k.String(), "FAILURE_KIND_"))
-	metrics.Default.Counter(`hermesh_machine_turn_failures_total{agent="` + agent + `",kind="` + kind + `"}`).Inc()
-}
-
-// registerMetrics exposes live session counts per status.
-func (s *Sessions) registerMetrics() {
-	for v := range s.counts {
-		st := sessionv1.SessionStatus(v)
-		if v == 0 || isTerminal(st) {
-			continue
-		}
-		metrics.Default.GaugeFunc(`hermesh_machine_sessions{status="`+phaseOf(st)+`"}`, func() int64 { return s.counts[v].Load() })
 	}
 }

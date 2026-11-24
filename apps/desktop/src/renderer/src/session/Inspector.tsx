@@ -1,13 +1,15 @@
 import { useEffect, useState, type MouseEvent } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import type { AgentModel } from "@hermesh/proto/machine";
-import type { Session } from "@hermesh/proto/session";
+import { create } from "@bufbuild/protobuf";
+import { AgentModelSchema, type AgentModel } from "@hermesh/proto/machine";
 import {
   BackgroundTaskKind,
   BackgroundTaskStatus,
   BackgroundTaskStopScope,
   type BackgroundTask,
-} from "@hermesh/proto/thread";
+  type ProviderInstance,
+  type Session,
+} from "@hermesh/proto/session";
 import { clockText, codingAgentTitle, dateOf, elapsedSeconds, modelTitle } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { local } from "../api";
@@ -29,12 +31,14 @@ type Menu = { of: "project" | "branch"; anchor: HTMLElement; keyboard: boolean }
  */
 export function Inspector({
   s,
+  providers,
   backgroundTasks,
   selectedTaskId,
   onSelectTask,
   onStopBackgroundTask,
 }: {
   s: Session;
+  providers?: ProviderInstance[];
   backgroundTasks?: readonly BackgroundTask[];
   selectedTaskId?: string;
   onSelectTask?: (taskId: string) => void;
@@ -117,7 +121,15 @@ export function Inspector({
         </ul>
         {menu && <PopMenu label={t(`inspector.${menu.of}Menu`)} items={items} anchor={menu.anchor} keyboard={menu.keyboard} onClose={() => setMenu(undefined)} />}
       </aside>
-      {(s.model !== "" || s.effort !== "") && <Context s={s} models={m?.status?.agents.find((a) => a.name === s.agent)?.models} />}
+      {(s.model !== "" || s.effort !== "") && (
+        <Context
+          s={s}
+          models={
+            m?.status?.agents.find((a) => a.name === s.agent)?.models ??
+            providers?.find((p) => p.instanceId === s.agent)?.models.map((x) => create(AgentModelSchema, { id: x.slug, name: x.shortName || x.name }))
+          }
+        />
+      )}
       {backgroundTasks && backgroundTasks.length > 0 && (
         <BackgroundTasksCard
           tasks={backgroundTasks}

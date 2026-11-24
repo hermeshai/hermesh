@@ -181,10 +181,9 @@ message MachineStatus {
   // offering 1-RTT handshakes, independent non-HoL streams, and connection
   // migration. Sent to the owner's devices only.
   repeated string direct_quic_addrs = 17;
-  // It serves hermesh.thread.v2.ThreadService (docs/thread-composer.md §5.2);
-  // unset on a machine from before it, which the apps take as "update it".
-  bool threads = 18;
-  // The broadest permission mode its threads may run in, whoever starts them
+  reserved 18;
+  reserved "threads";
+  // The broadest permission mode its sessions may run in, whoever starts them
   // (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
   hermesh.identity.v1.RuntimeMode max_runtime_mode = 19;
   // The MachineAdminService methods this hermeshd answers ("ListWorkspaces"),

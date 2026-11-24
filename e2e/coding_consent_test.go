@@ -89,41 +89,25 @@ func TestHerConsentRefusalAllowsDirectCodingAndMobileAnswers(t *testing.T) {
 		return q != nil
 	})
 	if !q.LocalAnswerAvailable {
-		t.Fatal("pending question should remain quick-answerable for v0.1.7 iPhone compatibility")
+		t.Fatal("pending question should remain quick-answerable on mobile")
 	}
-
-	// The phone may replace its first tunnel while this legacy status read is in flight.
-	eventually(t, 10*time.Second, "legacy v0.1.7 CodingConsent reports approval", func() bool {
-		compat, err := phone.client.CodingConsent(ctx, &localv1.CodingConsentRequest{
-			Consent: &sessionv1.CodingConsentRequest{
-				SessionId: id.SessionID,
-				Scope:     sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_MOBILE_ANSWER,
-			},
-		})
-		if connect.CodeOf(err) == connect.CodeUnavailable {
-			return false
-		}
-		if err != nil || !compat.Approved {
-			t.Fatalf("legacy v0.1.7 CodingConsent compat: %v %v", compat, err)
-		}
-		return true
-	})
 
 	// Decline with non-empty answer content is still rejected.
-	badDecline := &localv1.AnswerQuestionRequest{
-		SessionId: id.SessionID, QuestionId: q.QuestionId, Decline: true,
-		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"Plum"}}},
+	badDecline := &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: id.SessionID, RequestId: q.QuestionId, Decline: true,
+		Answers: map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"Plum"}}},
 	}
-	if _, err := phone.client.AnswerQuestion(ctx, badDecline); connect.CodeOf(err) != connect.CodeInvalidArgument {
+	if _, err := phone.sessions.RespondRuntimeRequest(ctx, badDecline); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("decline with content: %v", err)
 	}
 
 	// Direct mobile answer succeeds immediately without coding-specific consent.
-	reply := &localv1.AnswerQuestionRequest{
-		SessionId: id.SessionID, QuestionId: q.QuestionId,
-		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"Plum"}}},
+	reply := &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: id.SessionID, RequestId: q.QuestionId,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"Plum"}}},
 	}
-	if _, err := phone.client.AnswerQuestion(ctx, reply); err != nil {
+	if _, err := phone.sessions.RespondRuntimeRequest(ctx, reply); err != nil {
 		t.Fatalf("mobile answer while Her consent is revoked: %v", err)
 	}
 	eventually(t, 10*time.Second, "typed answer reaches the recording ACP adapter", func() bool {
@@ -245,33 +229,39 @@ func TestCodingAgentAnswerRejection(t *testing.T) {
 	}
 	const rejection = "this turn cannot accept an answer"
 	id := start()
-	var questionID string
+	var questionID, itemID string
 	eventually(t, 10*time.Second, "the phone sees the question", scr.has(func(s *screen) bool {
-		questionID = s.sessions[id].GetProgress().GetPendingQuestion().GetQuestionId()
+		q := s.sessions[id].GetProgress().GetPendingQuestion()
+		questionID = q.GetQuestionId()
+		if len(q.GetItems()) > 0 {
+			itemID = q.GetItems()[0].GetId()
+		}
 		return questionID != ""
 	}))
-	if _, err := phone.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{
-		SessionId: id, QuestionId: questionID, Answers: []*sessionv1.Answer{{Selected: []string{"Blue"}}},
+	if _, err := phone.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: id, RequestId: questionID,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{itemID: {SelectedOptions: []string{"Blue"}}},
 	}); err == nil || !strings.Contains(err.Error(), rejection) {
 		t.Fatalf("the phone should see the provider rejection: %v", err)
 	}
 	if s := w.get(id); s.Status != "waiting_input" {
 		t.Fatalf("rejected mobile answer changed the session: %+v", s)
 	}
-	if _, err := c.InterruptSession(ctx, &localv1.InterruptSessionRequest{SessionId: id}); err != nil {
+	if _, err := w.app.sessions.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: id}); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, 10*time.Second, "the owner sees the interrupted session idle", func() bool {
 		return w.get(id).Status == "idle"
 	})
-	history, err := c.ListSessionEvents(ctx, &localv1.ListSessionEventsRequest{SessionId: id})
+	projRes, err := w.app.sessions.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: id})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var resolutions []sessionv1.QuestionResolution
-	for _, event := range history.Events {
-		if resolution := event.GetQuestionResolved(); resolution.GetQuestionId() == questionID {
-			resolutions = append(resolutions, resolution.Resolution)
+	for _, req := range projRes.GetProjection().GetRequests() {
+		if req.RequestId == questionID && req.Status != sessionv1.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
+			resolutions = append(resolutions, req.QuestionResolution)
 		}
 	}
 	if len(resolutions) != 1 || resolutions[0] != sessionv1.QuestionResolution_QUESTION_RESOLUTION_CANCELLED {

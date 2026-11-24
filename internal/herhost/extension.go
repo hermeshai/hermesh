@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // The owner's own Chrome (her's `her browser extension`, in
@@ -31,7 +31,7 @@ func (h *Host) extension(ctx context.Context, args ...string) {
 	ctx, cancel := context.WithTimeout(ctx, extensionWait)
 	defer cancel()
 	home, _ := os.UserHomeDir()
-	out, errOut, err := provider.RunCommand(ctx, h.cfg.Bin, append([]string{"browser", "extension"}, args...), home, h.cfg.Env())
+	out, errOut, err := rt.RunCommand(ctx, h.cfg.Bin, append([]string{"browser", "extension"}, args...), home, h.cfg.Env())
 	said := strings.TrimSpace(string(out) + string(errOut))
 	if err != nil {
 		h.log.Info("her browser extension "+args[0]+" failed", "err", err, "output", said)

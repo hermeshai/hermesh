@@ -2,6 +2,7 @@ package owner
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,8 +10,11 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/proto"
 
+	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
+	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
 // A network that blocks the relay (here: a proxy answering 403, to every
@@ -126,4 +130,86 @@ func TestSignerState(t *testing.T) {
 	if st := h.state(); st.Busy {
 		t.Fatalf("answered: %v", st)
 	}
+}
+
+// A signer that restarts once or twice replays pending requests, while one
+// that keeps crashing after receiving a request fails the call promptly
+// instead of waiting out the confirmation timeout.
+func TestSignerCrashLoopFailsPromptly(t *testing.T) {
+	root, err := identity.GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("recovers after transient restart", func(t *testing.T) {
+		h := newSignHub()
+		done := make(chan error, 1)
+		go func() {
+			_, err := h.signBatch(context.Background(), root.Public(), []proto.Message{&identityv1.Grant{GrantId: "g1"}})
+			done <- err
+		}()
+		// Wait until signBatch has posted the request, then simulate two crashes
+		// and one unread disconnect before a healthy signer completes it.
+		for !h.hasPending() {
+			time.Sleep(time.Millisecond)
+		}
+		_, stopUnread := h.watch(false)
+		stopUnread() // never drained ch: does not count as a crash
+		for range 2 {
+			ch, stop := h.watch(false)
+			<-ch
+			stop()
+		}
+		ch, stop := h.watch(false)
+		defer stop()
+		req := <-ch
+		sig, err := root.SignMessage(req.Message)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := h.complete(&localv1.CompleteSigningRequestRequest{RequestId: req.RequestId, Signature: sig}); err != nil {
+			t.Fatal(err)
+		}
+		if err := <-done; err != nil {
+			t.Fatalf("expected recovery after transient restarts, got %v", err)
+		}
+	})
+
+	t.Run("fails after repeated crashes", func(t *testing.T) {
+		h := newSignHub()
+		done := make(chan error, 1)
+		go func() {
+			_, err := h.signBatch(context.Background(), root.Public(), []proto.Message{
+				&identityv1.RootCert{OwnerId: "o1"},
+				&identityv1.OwnerDeviceCert{OwnerId: "o1"},
+			})
+			done <- err
+		}()
+		for !h.hasPending() {
+			time.Sleep(time.Millisecond)
+		}
+		for range maxSignerDrops {
+			ch, stop := h.watch(false)
+			<-ch
+			<-ch
+			stop()
+		}
+		select {
+		case err := <-done:
+			if !errors.Is(err, ErrSignerUnavailable) {
+				t.Fatalf("got %v, want %v", err, ErrSignerUnavailable)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("signBatch did not fail promptly after repeated signer exits")
+		}
+		if h.hasPending() {
+			t.Fatal("pending batch was not cleaned up")
+		}
+	})
+}
+
+func (h *signHub) hasPending() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.pending) > 0
 }

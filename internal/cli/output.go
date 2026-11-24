@@ -6,12 +6,12 @@ package cli
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
@@ -314,66 +314,13 @@ func sessionView(s *sessionv1.Session, machine string) *sessionJSON {
 	if turnInProgress(s.Status) {
 		last = p.GetLastMessageExcerpt()
 	}
+	agent := cmp.Or(s.Agent, s.GetModelSelection().GetInstanceId())
+	wsMode := cmp.Or(s.Workspace, s.GetWorkspaceStrategy().GetMode())
+	branch := cmp.Or(s.Branch, s.GetWorkspaceStrategy().GetBranch())
+	createdBy := cmp.Or(s.CreatedBy, s.GetActor().GetId())
 	return &sessionJSON{SessionID: s.SessionId, Title: s.Title, Project: machine + "/" + s.ProjectId, Machine: machine, MachineID: s.MachineId, ProjectID: s.ProjectId,
-		Agent: s.Agent, AgentSession: s.ProviderSessionRef, Workspace: workspaceName(s.Workspace), Branch: s.Branch, Status: statusName(s.Status),
+		Agent: agent, AgentSession: s.ProviderSessionRef, Workspace: workspaceName(wsMode), Branch: branch, Status: statusName(s.Status),
 		Turns: p.GetTurnCount(), CurrentTool: p.GetCurrentTool(), LastMessage: last, Result: s.Result,
 		Question: questionView(p.GetPendingQuestion()), LastFailure: failureView(p.GetLastFailure()), DiffStat: diffStatView(p.GetDiffStat()),
-		Usage: usageView(p.GetUsage()), LastEventSeq: p.GetLastEventSeq(), CreatedBy: s.CreatedBy, CreatedAt: tsJSON(s.CreatedAt), UpdatedAt: tsJSON(s.UpdatedAt)}
-}
-
-// eventView is an event as the contract shows it: common fields, then
-// the fields of its type.
-func eventView(e *sessionv1.SessionEvent) object {
-	turn, _ := strconv.Atoi(e.TurnId)
-	o := object{{"seq", e.Seq}, {"ts", tsJSON(e.Ts)}, {"turn", turn}}
-	typed := func(t string, fs ...field) object { return append(append(o, field{"type", t}), fs...) }
-	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_Status:
-		return typed("status", field{"status", statusName(k.Status.Status)}, field{"reason", k.Status.Reason})
-	case *sessionv1.SessionEvent_TurnStarted:
-		return typed("turn_started", field{"asker", k.TurnStarted.Asker})
-	case *sessionv1.SessionEvent_MessageReceived:
-		m := k.MessageReceived
-		return typed("message_received", field{"message_id", m.MessageId}, field{"from", m.From}, field{"from_name", m.FromName}, field{"text", m.Text},
-			field{"in_reply_to", m.InReplyTo}, field{"delivered", m.Delivered})
-	case *sessionv1.SessionEvent_MessageSent:
-		m := k.MessageSent
-		return typed("message_sent", field{"message_id", m.MessageId}, field{"to", m.To}, field{"to_name", m.ToName}, field{"text", m.Text}, field{"in_reply_to", m.InReplyTo})
-	case *sessionv1.SessionEvent_UserMessage:
-		atts := []object{}
-		for _, f := range k.UserMessage.Attachments {
-			atts = append(atts, object{{"name", f.Name}, {"media_type", f.MediaType}, {"size", f.Size}, {"path", f.Path}, {"sha256", f.Sha256}, {"image", f.Image}})
-		}
-		return typed("user_message", field{"text", k.UserMessage.Text}, field{"attachments", atts})
-	case *sessionv1.SessionEvent_AgentMessage:
-		return typed("agent_message", field{"text", k.AgentMessage.Text})
-	case *sessionv1.SessionEvent_ToolCall:
-		c := k.ToolCall
-		return typed("tool_call", field{"call_id", c.CallId}, field{"kind", c.Kind}, field{"name", c.Name}, field{"summary", c.Summary},
-			field{"decision", c.Decision}, field{"reason", c.Reason})
-	case *sessionv1.SessionEvent_ToolResult:
-		r := k.ToolResult
-		return typed("tool_result", field{"call_id", r.CallId}, field{"summary", r.Summary}, field{"is_error", r.IsError}, field{"truncated", r.Truncated})
-	case *sessionv1.SessionEvent_TurnCompleted:
-		tc := k.TurnCompleted
-		return typed("turn_completed", field{"result", tc.Result}, field{"is_error", tc.IsError}, field{"failure", failureView(tc.Failure)},
-			field{"diff_stat", diffStatView(tc.DiffStat)}, field{"usage", usageView(tc.Usage)}, field{"commit", tc.Commit})
-	case *sessionv1.SessionEvent_Error:
-		return typed("error", field{"message", k.Error.Message}, field{"failure", failureView(k.Error.Failure)})
-	case *sessionv1.SessionEvent_QuestionAsked:
-		return typed("question_asked", field{"question", questionView(k.QuestionAsked.Question)})
-	case *sessionv1.SessionEvent_QuestionResolved:
-		r := k.QuestionResolved
-		answers := []object{}
-		for _, x := range r.Answers {
-			sel := x.Selected
-			if sel == nil {
-				sel = []string{}
-			}
-			answers = append(answers, object{{"item_id", x.ItemId}, {"selected", sel}, {"text", x.Text}})
-		}
-		return typed("question_resolved", field{"question_id", r.QuestionId}, field{"resolution", enumName(r.Resolution, "QUESTION_RESOLUTION_")},
-			field{"by", r.By}, field{"answers", answers})
-	}
-	return typed("unknown")
+		Usage: usageView(p.GetUsage()), LastEventSeq: p.GetLastEventSeq(), CreatedBy: createdBy, CreatedAt: tsJSON(s.CreatedAt), UpdatedAt: tsJSON(s.UpdatedAt)}
 }

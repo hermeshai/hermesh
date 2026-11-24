@@ -10,7 +10,7 @@ import (
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // A coding agent's defaults on this machine are what its sessions run with
@@ -60,19 +60,19 @@ func (n *Machine) setAgentDefaults(d *identityv1.AgentDefaults) error {
 
 // agentDefaults is what agent's sessions run with when the client names no
 // model.
-func (n *Machine) agentDefaults(agent string) provider.Settings {
+func (n *Machine) agentDefaults(agent string) rt.Settings {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	d := n.defaults[agent]
-	return provider.Settings{Model: d.GetModel(), Effort: d.GetEffort(), Speed: d.GetSpeed()}
+	return rt.Settings{Model: d.GetModel(), Effort: d.GetEffort(), Speed: d.GetSpeed()}
 }
 
 // checkSettings refuses a model or reasoning effort the agent does not
 // offer here, naming the ones it does. Only an agent that lists every model
 // it takes (Codex) has its model checked; an effort must be one the model
 // the session runs offers (runs: "" or unlisted, one any listed model does).
-func checkSettings(agent string, i provider.Info, model, effort, runs string) error {
-	if model != "" && i.AllModels && !slices.ContainsFunc(i.Models, func(m provider.Model) bool { return m.ID == model }) {
+func checkSettings(agent string, i rt.Info, model, effort, runs string) error {
+	if model != "" && i.AllModels && !slices.ContainsFunc(i.Models, func(m rt.Model) bool { return m.ID == model }) {
 		var ids []string
 		for _, m := range i.Models {
 			ids = append(ids, m.ID)
@@ -83,7 +83,7 @@ func checkSettings(agent string, i provider.Info, model, effort, runs string) er
 		return nil
 	}
 	var efforts []string
-	if k := slices.IndexFunc(i.Models, func(m provider.Model) bool { return m.ID == runs }); k >= 0 {
+	if k := slices.IndexFunc(i.Models, func(m rt.Model) bool { return m.ID == runs }); k >= 0 {
 		efforts = i.Models[k].Efforts
 	} else {
 		for _, m := range i.Models {
@@ -107,19 +107,19 @@ func checkSettings(agent string, i provider.Info, model, effort, runs string) er
 
 // takesEffort: the model listed by that id takes effort, or is not listed
 // (what it takes is not known).
-func takesEffort(i provider.Info, model, effort string) bool {
-	k := slices.IndexFunc(i.Models, func(m provider.Model) bool { return m.ID == model })
+func takesEffort(i rt.Info, model, effort string) bool {
+	k := slices.IndexFunc(i.Models, func(m rt.Model) bool { return m.ID == model })
 	return effort == "" || k < 0 || slices.Contains(i.Models[k].Efforts, effort)
 }
 
 // agentModels fills in what a's status says of models: the ones it offers,
 // this machine's defaults and the agent's own configuration. n.mu is held.
-func (n *Machine) agentModels(a *machinev1.AgentStatus, i provider.Info) {
+func (n *Machine) agentModels(a *machinev1.AgentStatus, i rt.Info) {
 	for _, m := range i.Models {
 		a.Models = append(a.Models, &machinev1.AgentModel{Id: m.ID, Name: m.Name, Efforts: m.Efforts})
 	}
 	a.Defaults = n.defaults[a.Name]
-	if i.Own != (provider.Settings{}) {
+	if i.Own != (rt.Settings{}) {
 		a.Own = &identityv1.AgentDefaults{Agent: a.Name, Model: i.Own.Model, Effort: i.Own.Effort, Speed: i.Own.Speed}
 	}
 	a.ModelsState = i.ModelsState

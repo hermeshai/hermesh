@@ -1,6 +1,6 @@
-// Package store implements the SQLite WAL persistence layer for Hermesh v2:
-// relational state tables, content-addressed blobs, idempotent command
-// receipts, and per-thread monotonic event logs committed in single transactions.
+// Package store implements the unified SQLite WAL persistence layer for Hermesh sessions:
+// relational state tables, content-addressed blobs, idempotent command receipts,
+// deletion tombstones for Watch sync, and per-session monotonic event logs.
 package store
 
 import (
@@ -20,7 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 )
 
@@ -33,6 +33,7 @@ CREATE TABLE workspaces (
   default_base_ref TEXT NOT NULL,
   workspace_mode INTEGER NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  agents TEXT NOT NULL DEFAULT '',
   updated_at INTEGER NOT NULL
 );
 
@@ -44,8 +45,8 @@ CREATE TABLE provider_instances (
   updated_at INTEGER NOT NULL
 );
 
-CREATE TABLE threads (
-  thread_id TEXT PRIMARY KEY,
+CREATE TABLE sessions (
+  session_id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
   status INTEGER NOT NULL,
   archived INTEGER NOT NULL DEFAULT 0,
@@ -55,65 +56,73 @@ CREATE TABLE threads (
   updated_at INTEGER NOT NULL,
   payload BLOB NOT NULL
 );
-CREATE INDEX idx_threads_updated ON threads(archived, pinned DESC, updated_at DESC);
+CREATE INDEX idx_sessions_updated ON sessions(archived, pinned DESC, updated_at DESC);
 
-CREATE TABLE provider_threads (
-  provider_thread_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+CREATE TABLE deleted_sessions (
+  session_id TEXT PRIMARY KEY,
+  deleted_at INTEGER NOT NULL
+);
+CREATE INDEX idx_deleted_sessions_at ON deleted_sessions(deleted_at ASC);
+
+CREATE TABLE provider_sessions (
+  provider_session_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
   instance_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   payload BLOB NOT NULL
 );
-CREATE INDEX idx_provider_threads_thread ON provider_threads(thread_id, created_at ASC);
+CREATE INDEX idx_provider_sessions_session ON provider_sessions(session_id, created_at ASC);
 
 CREATE TABLE runs (
   run_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
   ordinal INTEGER NOT NULL,
   status INTEGER NOT NULL,
   queue_order REAL NOT NULL DEFAULT 0,
+  grant_ceiling INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   payload BLOB NOT NULL
 );
-CREATE INDEX idx_runs_thread_ordinal ON runs(thread_id, ordinal ASC);
-CREATE INDEX idx_runs_thread_queue ON runs(thread_id, status, queue_order ASC);
+CREATE INDEX idx_runs_session_ordinal ON runs(session_id, ordinal ASC);
+CREATE INDEX idx_runs_session_queue ON runs(session_id, status, queue_order ASC);
 
 CREATE TABLE turn_items (
-  item_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   seq INTEGER NOT NULL,
   kind INTEGER NOT NULL,
-  payload BLOB NOT NULL
+  payload BLOB NOT NULL,
+  PRIMARY KEY (session_id, item_id)
 );
-CREATE INDEX idx_turn_items_thread_seq ON turn_items(thread_id, seq ASC);
+CREATE INDEX idx_turn_items_session_seq ON turn_items(session_id, seq ASC);
 
 CREATE TABLE runtime_requests (
   request_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   status INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   payload BLOB NOT NULL
 );
-CREATE INDEX idx_runtime_requests_thread ON runtime_requests(thread_id, created_at ASC);
+CREATE INDEX idx_runtime_requests_session ON runtime_requests(session_id, created_at ASC);
 
 CREATE TABLE checkpoints (
   checkpoint_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
   run_ordinal INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   payload BLOB NOT NULL
 );
-CREATE INDEX idx_checkpoints_thread ON checkpoints(thread_id, run_ordinal ASC);
+CREATE INDEX idx_checkpoints_session ON checkpoints(session_id, run_ordinal ASC);
 
-CREATE TABLE thread_allow_rules (
-  thread_id TEXT NOT NULL,
+CREATE TABLE session_allow_rules (
+  session_id TEXT NOT NULL,
   rule_key TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  PRIMARY KEY (thread_id, rule_key)
+  PRIMARY KEY (session_id, rule_key)
 );
 
 CREATE TABLE blobs (
@@ -131,43 +140,35 @@ CREATE TABLE command_receipts (
   created_at INTEGER NOT NULL
 );
 
-CREATE TABLE thread_events (
-  thread_id TEXT NOT NULL,
+CREATE TABLE session_events (
+  session_id TEXT NOT NULL,
   seq INTEGER NOT NULL,
   occurred_at INTEGER NOT NULL,
   payload BLOB NOT NULL,
-  PRIMARY KEY (thread_id, seq)
+  PRIMARY KEY (session_id, seq)
 );
 `, `
-ALTER TABLE runs ADD COLUMN grant_ceiling INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE deleted_sessions ADD COLUMN project_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE deleted_sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT '';
 `, `
-ALTER TABLE workspaces ADD COLUMN agents TEXT NOT NULL DEFAULT '';
-`, `
-ALTER TABLE turn_items RENAME TO turn_items_v3_legacy;
-DROP INDEX IF EXISTS idx_turn_items_thread_seq;
-CREATE TABLE turn_items (
-  thread_id TEXT NOT NULL,
-  item_id TEXT NOT NULL,
-  run_id TEXT NOT NULL,
-  seq INTEGER NOT NULL,
-  kind INTEGER NOT NULL,
-  payload BLOB NOT NULL,
-  PRIMARY KEY (thread_id, item_id)
-);
-CREATE INDEX idx_turn_items_thread_seq ON turn_items(thread_id, seq ASC);
-`, `
-CREATE TABLE background_tasks (
-  thread_id TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS background_tasks (
+  session_id TEXT NOT NULL,
   task_id TEXT NOT NULL,
   run_id TEXT NOT NULL,
   status INTEGER NOT NULL,
   started_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   payload BLOB NOT NULL,
-  PRIMARY KEY (thread_id, task_id)
+  PRIMARY KEY (session_id, task_id)
 );
-CREATE INDEX idx_background_tasks_thread ON background_tasks(thread_id, started_at ASC);
+CREATE INDEX IF NOT EXISTS idx_background_tasks_session ON background_tasks(session_id, started_at ASC);
 `}
+
+type DeletedSessionRecord struct {
+	SessionID string
+	ProjectID string
+	CreatedBy string
+}
 
 type WorkspaceRow struct {
 	ProjectID      string
@@ -175,9 +176,16 @@ type WorkspaceRow struct {
 	DefaultBaseRef string
 	WorkspaceMode  int32
 	Description    string
-	// Agents are the coding agents the project is set up for (the machine's
-	// Project.agents); empty: all.
-	Agents []string
+	Agents         []string
+}
+
+type SessionFilter struct {
+	ProjectID       string
+	Status          sessionv1.SessionStatus
+	Since           time.Time
+	IncludeArchived bool
+	Before          *sessionv1.SessionCursor
+	Limit           uint32
 }
 
 type Store struct {
@@ -194,10 +202,6 @@ func Open(dbPath string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := repairLegacyTurnItems(writer); err != nil {
-		writer.Close()
-		return nil, err
-	}
 	reader, err := sqlitedb.OpenReader(dbPath)
 	if err != nil {
 		writer.Close()
@@ -209,20 +213,132 @@ func Open(dbPath string) (*Store, error) {
 		writer.Close()
 		return nil, err
 	}
-	blobsDir := filepath.Join(filepath.Dir(dbPath), "blobs_v2")
+	dataDir := filepath.Dir(dbPath)
+	blobsDir := filepath.Join(dataDir, "blobs")
 	if err := os.MkdirAll(blobsDir, 0o700); err != nil {
 		ckpt.Close()
 		reader.Close()
 		writer.Close()
 		return nil, err
 	}
-	return &Store{
+	migrateLegacyDirs(dataDir, blobsDir)
+	st := &Store{
 		path:     dbPath,
 		blobsDir: blobsDir,
 		writer:   writer,
 		reader:   reader,
 		ckpt:     ckpt,
-	}, nil
+	}
+	st.importLegacyV1Sessions(filepath.Join(dataDir, "hermeshd.db"))
+	return st, nil
+}
+
+func migrateLegacyDirs(dataDir, blobsDir string) {
+	oldBlobs := filepath.Join(dataDir, "blobs_v2")
+	if entries, err := os.ReadDir(oldBlobs); err == nil {
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			src := filepath.Join(oldBlobs, e.Name())
+			dst := filepath.Join(blobsDir, e.Name())
+			if _, sErr := os.Stat(dst); errors.Is(sErr, os.ErrNotExist) {
+				_ = os.Rename(src, dst)
+			}
+		}
+		_ = os.Remove(oldBlobs)
+	}
+	oldWT := filepath.Join(dataDir, "worktrees_v2")
+	newWT := filepath.Join(dataDir, "worktrees")
+	if entries, err := os.ReadDir(oldWT); err == nil {
+		_ = os.MkdirAll(newWT, 0o755)
+		for _, e := range entries {
+			src := filepath.Join(oldWT, e.Name())
+			dst := filepath.Join(newWT, e.Name())
+			if _, sErr := os.Stat(dst); errors.Is(sErr, os.ErrNotExist) {
+				_ = os.Rename(src, dst)
+			}
+		}
+		_ = os.Remove(oldWT)
+	}
+}
+
+func (s *Store) importLegacyV1Sessions(legacyDBPath string) {
+	if _, err := os.Stat(legacyDBPath); err != nil {
+		return
+	}
+	leg, err := sqlitedb.OpenReader(legacyDBPath)
+	if err != nil {
+		return
+	}
+	defer leg.Close()
+	var tableExists int
+	if err := leg.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions'`).Scan(&tableExists); err != nil {
+		return
+	}
+	rows, err := leg.Query(`SELECT id, machine_id, project_id, agent, status, created_by, created_as, title, branch, workspace, model, effort, provider_ref, result, error, turn_count, created_at, updated_at FROM sessions`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	var toImport []*sessionv1.Session
+	for rows.Next() {
+		var id, machineID, projectID, agent, createdBy, createdAs, title, branch, model, effort, provRef, result, errStr string
+		var status, workspace, turnCount int32
+		var createdAt, updatedAt int64
+		if rows.Scan(&id, &machineID, &projectID, &agent, &status, &createdBy, &createdAs, &title, &branch, &workspace, &model, &effort, &provRef, &result, &errStr, &turnCount, &createdAt, &updatedAt) != nil {
+			continue
+		}
+		if _, existsErr := s.Session(id); existsErr == nil {
+			continue
+		}
+		st := sessionv1.SessionStatus(status)
+		switch st {
+		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_PREPARING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
+			st = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+		case 6, 7: // historical COMPLETED/FAILED values
+			if status == 7 {
+				st = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+			} else {
+				st = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			}
+		}
+		sess := &sessionv1.Session{
+			SessionId:          id,
+			MachineId:          machineID,
+			ProjectId:          projectID,
+			Agent:              agent,
+			Status:             st,
+			CreatedBy:          createdBy,
+			CreatedAs:          createdAs,
+			Title:              title,
+			Branch:             branch,
+			Workspace:          identityv1.Workspace(workspace),
+			Model:              model,
+			Effort:             effort,
+			ProviderSessionRef: provRef,
+			Result:             result,
+			Error:              errStr,
+			ModelSelection:     &sessionv1.ModelSelection{InstanceId: agent, Model: model},
+			WorkspaceStrategy:  &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace(workspace), Branch: branch},
+			Progress: &sessionv1.SessionProgress{
+				TurnCount:          uint32(max(0, turnCount)),
+				LastMessageExcerpt: result,
+			},
+			CreatedAt: timestamppb.New(time.UnixMilli(createdAt)),
+			UpdatedAt: timestamppb.New(time.UnixMilli(updatedAt)),
+		}
+		toImport = append(toImport, sess)
+	}
+	if len(toImport) == 0 {
+		return
+	}
+	_, _ = s.Mutate(func(tx *Tx) error {
+		for _, sess := range toImport {
+			_ = tx.PutSessionPreserveUpdatedAt(sess)
+		}
+		return nil
+	})
 }
 
 func (s *Store) Close() error {
@@ -233,15 +349,13 @@ func (s *Store) Close() error {
 	return s.writer.Close()
 }
 
-// Tx wraps an atomic SQLite write transaction plus staged ThreadEvents.
+// Tx wraps an atomic SQLite write transaction plus staged SessionEvents.
 type Tx struct {
 	tx     *sql.Tx
-	events []*threadv2.ThreadEvent
+	events []*sessionv1.SessionEvent
 }
 
-// Mutate runs fn in a serialized SQLite transaction and returns all staged
-// ThreadEvents once committed so callers can fan them out to live subscribers.
-func (s *Store) Mutate(fn func(tx *Tx) error) ([]*threadv2.ThreadEvent, error) {
+func (s *Store) Mutate(fn func(tx *Tx) error) ([]*sessionv1.SessionEvent, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
@@ -317,7 +431,7 @@ func (s *Store) Workspaces() ([]WorkspaceRow, error) {
 	return out, rows.Err()
 }
 
-func (tx *Tx) PutProviderInstance(cfg *threadv2.ProviderInstanceConfig) error {
+func (tx *Tx) PutProviderInstance(cfg *sessionv1.ProviderInstanceConfig) error {
 	b, err := proto.Marshal(cfg)
 	if err != nil {
 		return err
@@ -340,19 +454,19 @@ func (tx *Tx) DeleteProviderInstance(instanceID string) error {
 	return err
 }
 
-func (s *Store) ProviderInstances() ([]*threadv2.ProviderInstanceConfig, error) {
+func (s *Store) ProviderInstances() ([]*sessionv1.ProviderInstanceConfig, error) {
 	rows, err := s.reader.Query(`SELECT payload FROM provider_instances ORDER BY instance_id ASC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.ProviderInstanceConfig
+	var out []*sessionv1.ProviderInstanceConfig
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		cfg := &threadv2.ProviderInstanceConfig{}
+		cfg := &sessionv1.ProviderInstanceConfig{}
 		if err := proto.Unmarshal(b, cfg); err != nil {
 			return nil, err
 		}
@@ -361,218 +475,318 @@ func (s *Store) ProviderInstances() ([]*threadv2.ProviderInstanceConfig, error) 
 	return out, rows.Err()
 }
 
-// NextSeq increments and returns the thread's monotonic sequence counter inside tx.
-func (tx *Tx) NextSeq(threadID string) (uint64, error) {
+func ensureProgressSeq(s *sessionv1.Session, seq uint64) {
+	if s == nil {
+		return
+	}
+	if s.Progress == nil {
+		s.Progress = &sessionv1.SessionProgress{}
+	}
+	if seq > s.Progress.LastEventSeq {
+		s.Progress.LastEventSeq = seq
+	}
+}
+
+func (tx *Tx) NextSeq(sessionID string) (uint64, error) {
 	var seq uint64
-	err := tx.tx.QueryRow(`SELECT last_seq FROM threads WHERE thread_id = ?`, threadID).Scan(&seq)
+	err := tx.tx.QueryRow(`SELECT last_seq FROM sessions WHERE session_id = ?`, sessionID).Scan(&seq)
 	if err != nil {
 		return 0, err
 	}
 	seq++
-	if _, err := tx.tx.Exec(`UPDATE threads SET last_seq = ? WHERE thread_id = ?`, seq, threadID); err != nil {
+	if _, err := tx.tx.Exec(`UPDATE sessions SET last_seq = ? WHERE session_id = ?`, seq, sessionID); err != nil {
 		return 0, err
 	}
 	return seq, nil
 }
 
-func (tx *Tx) AppendEvent(ev *threadv2.ThreadEvent) error {
+func (tx *Tx) AppendEvent(ev *sessionv1.SessionEvent) error {
 	if ev.OccurredAt == nil {
 		ev.OccurredAt = timestamppb.Now()
 	}
 	if ev.Seq == 0 {
-		seq, err := tx.NextSeq(ev.ThreadId)
+		seq, err := tx.NextSeq(ev.SessionId)
 		if err != nil {
 			return err
 		}
 		ev.Seq = seq
 	}
-	if ev.Thread != nil && ev.Thread.LastSeq < ev.Seq {
-		ev.Thread.LastSeq = ev.Seq
+	if ev.Session != nil {
+		ensureProgressSeq(ev.Session, ev.Seq)
 	}
 	b, err := proto.Marshal(ev)
 	if err != nil {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO thread_events(thread_id, seq, occurred_at, payload) VALUES(?, ?, ?, ?)`,
-		ev.ThreadId, ev.Seq, ev.OccurredAt.AsTime().UnixMilli(), b,
+		`INSERT INTO session_events(session_id, seq, occurred_at, payload) VALUES(?, ?, ?, ?)`,
+		ev.SessionId, ev.Seq, ev.OccurredAt.AsTime().UnixMilli(), b,
 	)
 	if err != nil {
 		return err
 	}
-	tx.events = append(tx.events, proto.Clone(ev).(*threadv2.ThreadEvent))
+	tx.events = append(tx.events, proto.Clone(ev).(*sessionv1.SessionEvent))
 	return nil
 }
 
-func (tx *Tx) PutThread(t *threadv2.Thread) error {
-	if t.CreatedAt == nil {
-		t.CreatedAt = timestamppb.Now()
+func (tx *Tx) PutSession(s *sessionv1.Session) error {
+	if s.CreatedAt == nil {
+		s.CreatedAt = timestamppb.Now()
 	}
-	t.UpdatedAt = timestamppb.Now()
+	s.UpdatedAt = timestamppb.Now()
+	return tx.putSessionInternal(s)
+}
+
+func (tx *Tx) PutSessionPreserveUpdatedAt(s *sessionv1.Session) error {
+	if s.CreatedAt == nil {
+		s.CreatedAt = timestamppb.Now()
+	}
+	if s.UpdatedAt == nil {
+		s.UpdatedAt = s.CreatedAt
+	}
+	return tx.putSessionInternal(s)
+}
+
+func (tx *Tx) putSessionInternal(s *sessionv1.Session) error {
 	var currentSeq uint64
-	_ = tx.tx.QueryRow(`SELECT last_seq FROM threads WHERE thread_id = ?`, t.ThreadId).Scan(&currentSeq)
-	if currentSeq > t.LastSeq {
-		t.LastSeq = currentSeq
-	}
-	b, err := proto.Marshal(t)
+	_ = tx.tx.QueryRow(`SELECT last_seq FROM sessions WHERE session_id = ?`, s.SessionId).Scan(&currentSeq)
+	ensureProgressSeq(s, currentSeq)
+
+	b, err := proto.Marshal(s)
 	if err != nil {
 		return err
 	}
 	archived := 0
-	if t.Status == threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED || t.ArchivedAt != nil {
+	if s.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED || s.ArchivedAt != nil {
 		archived = 1
 	}
 	pinned := 0
-	if t.Pinned {
+	if s.Pinned {
 		pinned = 1
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO threads(thread_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload)
+		`INSERT INTO sessions(session_id, project_id, status, archived, pinned, last_seq, created_at, updated_at, payload)
 		 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(thread_id) DO UPDATE SET
+		 ON CONFLICT(session_id) DO UPDATE SET
 		   project_id=excluded.project_id, status=excluded.status, archived=excluded.archived,
-		   pinned=excluded.pinned, last_seq=MAX(threads.last_seq, excluded.last_seq),
+		   pinned=excluded.pinned, last_seq=MAX(sessions.last_seq, excluded.last_seq),
 		   updated_at=excluded.updated_at, payload=excluded.payload`,
-		t.ThreadId, t.ProjectId, int32(t.Status), archived, pinned, t.LastSeq,
-		t.CreatedAt.AsTime().UnixMilli(), t.UpdatedAt.AsTime().UnixMilli(), b,
+		s.SessionId, s.ProjectId, int32(s.Status), archived, pinned, s.Progress.LastEventSeq,
+		s.CreatedAt.AsTime().UnixMilli(), s.UpdatedAt.AsTime().UnixMilli(), b,
 	)
 	return err
 }
 
-func (tx *Tx) GetThread(threadID string) (*threadv2.Thread, error) {
+func (tx *Tx) GetSession(sessionID string) (*sessionv1.Session, error) {
 	var b []byte
 	var lastSeq uint64
-	err := tx.tx.QueryRow(`SELECT payload, last_seq FROM threads WHERE thread_id = ?`, threadID).Scan(&b, &lastSeq)
+	err := tx.tx.QueryRow(`SELECT payload, last_seq FROM sessions WHERE session_id = ?`, sessionID).Scan(&b, &lastSeq)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	t := &threadv2.Thread{}
-	if err := proto.Unmarshal(b, t); err != nil {
+	s := &sessionv1.Session{}
+	if err := proto.Unmarshal(b, s); err != nil {
 		return nil, err
 	}
-	t.LastSeq = lastSeq
-	return t, nil
+	ensureProgressSeq(s, lastSeq)
+	return s, nil
 }
 
-func (tx *Tx) DeleteThread(threadID string) error {
-	for _, tbl := range []string{"thread_events", "thread_allow_rules", "checkpoints", "background_tasks", "runtime_requests", "turn_items", "runs", "provider_threads", "threads"} {
-		if _, err := tx.tx.Exec(`DELETE FROM `+tbl+` WHERE thread_id = ?`, threadID); err != nil {
+func (tx *Tx) DeleteSession(sessionID string) error {
+	var projectID, createdBy string
+	var b []byte
+	if err := tx.tx.QueryRow(`SELECT project_id, payload FROM sessions WHERE session_id = ?`, sessionID).Scan(&projectID, &b); err == nil && len(b) > 0 {
+		s := &sessionv1.Session{}
+		if proto.Unmarshal(b, s) == nil {
+			createdBy = s.CreatedBy
+			if createdBy == "" {
+				createdBy = s.GetActor().GetId()
+			}
+		}
+	}
+	for _, tbl := range []string{"session_events", "session_allow_rules", "checkpoints", "background_tasks", "runtime_requests", "turn_items", "runs", "provider_sessions", "sessions"} {
+		if _, err := tx.tx.Exec(`DELETE FROM `+tbl+` WHERE session_id = ?`, sessionID); err != nil {
 			return err
 		}
 	}
-	return nil
+	_, err := tx.tx.Exec(
+		`INSERT OR REPLACE INTO deleted_sessions(session_id, project_id, created_by, deleted_at) VALUES(?, ?, ?, ?)`,
+		sessionID, projectID, createdBy, time.Now().UnixMilli(),
+	)
+	return err
 }
 
-func (s *Store) Thread(threadID string) (*threadv2.Thread, error) {
+func (s *Store) DeletedSessionsSince(since time.Time) ([]string, error) {
+	recs, err := s.DeletedSessionRecordsSince(since)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(recs))
+	for i, r := range recs {
+		out[i] = r.SessionID
+	}
+	return out, nil
+}
+
+func (s *Store) DeletedSessionRecordsSince(since time.Time) ([]DeletedSessionRecord, error) {
+	rows, err := s.reader.Query(`SELECT session_id, project_id, created_by FROM deleted_sessions WHERE deleted_at >= ? ORDER BY deleted_at ASC`, since.UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []DeletedSessionRecord
+	for rows.Next() {
+		var r DeletedSessionRecord
+		if err := rows.Scan(&r.SessionID, &r.ProjectID, &r.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) DeletedSession(sessionID string) (*DeletedSessionRecord, error) {
+	var r DeletedSessionRecord
+	err := s.reader.QueryRow(`SELECT session_id, project_id, created_by FROM deleted_sessions WHERE session_id = ?`, sessionID).Scan(&r.SessionID, &r.ProjectID, &r.CreatedBy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &r, nil
+}
+
+func (s *Store) Session(sessionID string) (*sessionv1.Session, error) {
 	var b []byte
 	var lastSeq uint64
-	err := s.reader.QueryRow(`SELECT payload, last_seq FROM threads WHERE thread_id = ?`, threadID).Scan(&b, &lastSeq)
+	err := s.reader.QueryRow(`SELECT payload, last_seq FROM sessions WHERE session_id = ?`, sessionID).Scan(&b, &lastSeq)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	t := &threadv2.Thread{}
-	if err := proto.Unmarshal(b, t); err != nil {
+	sess := &sessionv1.Session{}
+	if err := proto.Unmarshal(b, sess); err != nil {
 		return nil, err
 	}
-	t.LastSeq = lastSeq
-	return t, nil
+	ensureProgressSeq(sess, lastSeq)
+	return sess, nil
 }
 
-func (s *Store) ListThreads(projectID string, includeArchived bool, limit uint32) ([]*threadv2.Thread, error) {
-	q := `SELECT payload, last_seq FROM threads WHERE 1=1`
+func (s *Store) ListSessions(projectID string, includeArchived bool, limit uint32) ([]*sessionv1.Session, error) {
+	return s.QuerySessions(SessionFilter{
+		ProjectID:       projectID,
+		IncludeArchived: includeArchived,
+		Limit:           limit,
+	})
+}
+
+func (s *Store) QuerySessions(f SessionFilter) ([]*sessionv1.Session, error) {
+	q := `SELECT payload, last_seq FROM sessions WHERE 1=1`
 	var args []any
-	if projectID != "" {
+	if f.ProjectID != "" {
 		q += ` AND project_id = ?`
-		args = append(args, projectID)
+		args = append(args, f.ProjectID)
 	}
-	if !includeArchived {
+	if f.Status != sessionv1.SessionStatus_SESSION_STATUS_UNSPECIFIED {
+		q += ` AND status = ?`
+		args = append(args, int32(f.Status))
+	} else if !f.IncludeArchived {
 		q += ` AND archived = 0`
 	}
-	q += ` ORDER BY pinned DESC, updated_at DESC`
-	if limit > 0 {
-		q += fmt.Sprintf(` LIMIT %d`, limit)
+	if !f.Since.IsZero() {
+		q += ` AND updated_at > ?`
+		args = append(args, f.Since.UnixMilli())
+	}
+	if f.Before != nil && f.Before.UpdatedAt != nil {
+		bm := f.Before.UpdatedAt.AsTime().UnixMilli()
+		q += ` AND (updated_at < ? OR (updated_at = ? AND session_id < ?))`
+		args = append(args, bm, bm, f.Before.SessionId)
+	}
+	q += ` ORDER BY pinned DESC, updated_at DESC, session_id DESC`
+	if f.Limit > 0 {
+		q += fmt.Sprintf(` LIMIT %d`, f.Limit)
 	}
 	rows, err := s.reader.Query(q, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.Thread
+	var out []*sessionv1.Session
 	for rows.Next() {
 		var b []byte
 		var seq uint64
 		if err := rows.Scan(&b, &seq); err != nil {
 			return nil, err
 		}
-		t := &threadv2.Thread{}
-		if err := proto.Unmarshal(b, t); err != nil {
+		sess := &sessionv1.Session{}
+		if err := proto.Unmarshal(b, sess); err != nil {
 			return nil, err
 		}
-		t.LastSeq = seq
-		out = append(out, t)
+		ensureProgressSeq(sess, seq)
+		out = append(out, sess)
 	}
 	return out, rows.Err()
 }
 
-func (tx *Tx) PutProviderThread(pt *threadv2.ProviderThread) error {
-	if pt.CreatedAt == nil {
-		pt.CreatedAt = timestamppb.Now()
+func (tx *Tx) PutProviderSession(ps *sessionv1.ProviderSession) error {
+	if ps.CreatedAt == nil {
+		ps.CreatedAt = timestamppb.Now()
 	}
-	pt.UpdatedAt = timestamppb.Now()
-	b, err := proto.Marshal(pt)
+	ps.UpdatedAt = timestamppb.Now()
+	b, err := proto.Marshal(ps)
 	if err != nil {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO provider_threads(provider_thread_id, thread_id, instance_id, created_at, updated_at, payload)
+		`INSERT INTO provider_sessions(provider_session_id, session_id, instance_id, created_at, updated_at, payload)
 		 VALUES(?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(provider_thread_id) DO UPDATE SET instance_id=excluded.instance_id, updated_at=excluded.updated_at, payload=excluded.payload`,
-		pt.ProviderThreadId, pt.ThreadId, pt.InstanceId, pt.CreatedAt.AsTime().UnixMilli(), pt.UpdatedAt.AsTime().UnixMilli(), b,
+		 ON CONFLICT(provider_session_id) DO UPDATE SET instance_id=excluded.instance_id, updated_at=excluded.updated_at, payload=excluded.payload`,
+		ps.ProviderSessionId, ps.SessionId, ps.InstanceId, ps.CreatedAt.AsTime().UnixMilli(), ps.UpdatedAt.AsTime().UnixMilli(), b,
 	)
 	return err
 }
 
-func (tx *Tx) GetProviderThread(ptID string) (*threadv2.ProviderThread, error) {
+func (tx *Tx) GetProviderSession(psID string) (*sessionv1.ProviderSession, error) {
 	var b []byte
-	err := tx.tx.QueryRow(`SELECT payload FROM provider_threads WHERE provider_thread_id = ?`, ptID).Scan(&b)
+	err := tx.tx.QueryRow(`SELECT payload FROM provider_sessions WHERE provider_session_id = ?`, psID).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	pt := &threadv2.ProviderThread{}
-	return pt, proto.Unmarshal(b, pt)
+	ps := &sessionv1.ProviderSession{}
+	return ps, proto.Unmarshal(b, ps)
 }
 
-func (s *Store) ProviderThreads(threadID string) ([]*threadv2.ProviderThread, error) {
-	rows, err := s.reader.Query(`SELECT payload FROM provider_threads WHERE thread_id = ? ORDER BY created_at ASC`, threadID)
+func (s *Store) ProviderSessions(sessionID string) ([]*sessionv1.ProviderSession, error) {
+	rows, err := s.reader.Query(`SELECT payload FROM provider_sessions WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.ProviderThread
+	var out []*sessionv1.ProviderSession
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		pt := &threadv2.ProviderThread{}
-		if err := proto.Unmarshal(b, pt); err != nil {
+		ps := &sessionv1.ProviderSession{}
+		if err := proto.Unmarshal(b, ps); err != nil {
 			return nil, err
 		}
-		out = append(out, pt)
+		out = append(out, ps)
 	}
 	return out, rows.Err()
 }
 
-func (tx *Tx) PutRun(r *threadv2.Run) error {
+func (tx *Tx) PutRun(r *sessionv1.Run) error {
 	if r.CreatedAt == nil {
 		r.CreatedAt = timestamppb.Now()
 	}
@@ -581,26 +795,23 @@ func (tx *Tx) PutRun(r *threadv2.Run) error {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO runs(run_id, thread_id, ordinal, status, queue_order, created_at, updated_at, payload)
+		`INSERT INTO runs(run_id, session_id, ordinal, status, queue_order, created_at, updated_at, payload)
 		 VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(run_id) DO UPDATE SET
 		   ordinal=excluded.ordinal, status=excluded.status, queue_order=excluded.queue_order,
 		   updated_at=excluded.updated_at, payload=excluded.payload`,
-		r.RunId, r.ThreadId, r.Ordinal, int32(r.Status), r.QueueOrder,
+		r.RunId, r.SessionId, r.Ordinal, int32(r.Status), r.QueueOrder,
 		r.CreatedAt.AsTime().UnixMilli(), time.Now().UnixMilli(), b,
 	)
 	return err
 }
 
-// SetRunGrantCeiling records the cryptographic Grant ceiling of the principal
-// that authored runID; the policy gate enforces it for that run only.
 func (tx *Tx) SetRunGrantCeiling(runID string, ceiling identityv1.RuntimeMode) error {
 	_, err := tx.tx.Exec(`UPDATE runs SET grant_ceiling = ? WHERE run_id = ?`, int32(ceiling), runID)
 	return err
 }
 
-// Run loads one run by id.
-func (s *Store) Run(runID string) (*threadv2.Run, error) {
+func (s *Store) Run(runID string) (*sessionv1.Run, error) {
 	var b []byte
 	err := s.reader.QueryRow(`SELECT payload FROM runs WHERE run_id = ?`, runID).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -609,11 +820,10 @@ func (s *Store) Run(runID string) (*threadv2.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &threadv2.Run{}
+	r := &sessionv1.Run{}
 	return r, proto.Unmarshal(b, r)
 }
 
-// RunGrantCeiling returns the Grant ceiling recorded for runID (UNSPECIFIED for owner runs).
 func (s *Store) RunGrantCeiling(runID string) identityv1.RuntimeMode {
 	var v int32
 	if err := s.reader.QueryRow(`SELECT grant_ceiling FROM runs WHERE run_id = ?`, runID).Scan(&v); err != nil {
@@ -622,7 +832,7 @@ func (s *Store) RunGrantCeiling(runID string) identityv1.RuntimeMode {
 	return identityv1.RuntimeMode(v)
 }
 
-func (tx *Tx) GetRun(runID string) (*threadv2.Run, error) {
+func (tx *Tx) GetRun(runID string) (*sessionv1.Run, error) {
 	var b []byte
 	err := tx.tx.QueryRow(`SELECT payload FROM runs WHERE run_id = ?`, runID).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -631,26 +841,26 @@ func (tx *Tx) GetRun(runID string) (*threadv2.Run, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &threadv2.Run{}
+	r := &sessionv1.Run{}
 	return r, proto.Unmarshal(b, r)
 }
 
-func (tx *Tx) QueuedRuns(threadID string) ([]*threadv2.Run, error) {
+func (tx *Tx) QueuedRuns(sessionID string) ([]*sessionv1.Run, error) {
 	rows, err := tx.tx.Query(
-		`SELECT payload FROM runs WHERE thread_id = ? AND status = ? ORDER BY queue_order ASC, created_at ASC`,
-		threadID, int32(threadv2.RunStatus_RUN_STATUS_QUEUED),
+		`SELECT payload FROM runs WHERE session_id = ? AND status = ? ORDER BY queue_order ASC, created_at ASC`,
+		sessionID, int32(sessionv1.RunStatus_RUN_STATUS_QUEUED),
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.Run
+	var out []*sessionv1.Run
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		r := &threadv2.Run{}
+		r := &sessionv1.Run{}
 		if err := proto.Unmarshal(b, r); err != nil {
 			return nil, err
 		}
@@ -659,19 +869,19 @@ func (tx *Tx) QueuedRuns(threadID string) ([]*threadv2.Run, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) Runs(threadID string) ([]*threadv2.Run, error) {
-	rows, err := s.reader.Query(`SELECT payload FROM runs WHERE thread_id = ? ORDER BY ordinal ASC, queue_order ASC`, threadID)
+func (s *Store) Runs(sessionID string) ([]*sessionv1.Run, error) {
+	rows, err := s.reader.Query(`SELECT payload FROM runs WHERE session_id = ? ORDER BY ordinal ASC, queue_order ASC`, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.Run
+	var out []*sessionv1.Run
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		r := &threadv2.Run{}
+		r := &sessionv1.Run{}
 		if err := proto.Unmarshal(b, r); err != nil {
 			return nil, err
 		}
@@ -680,11 +890,11 @@ func (s *Store) Runs(threadID string) ([]*threadv2.Run, error) {
 	return out, rows.Err()
 }
 
-func (tx *Tx) GetTurnItem(threadID, itemID string) (*threadv2.TurnItem, error) {
+func (tx *Tx) GetTurnItem(sessionID, itemID string) (*sessionv1.TurnItem, error) {
 	var b []byte
 	err := tx.tx.QueryRow(
-		`SELECT payload FROM turn_items WHERE thread_id = ? AND item_id = ?`,
-		threadID, itemID,
+		`SELECT payload FROM turn_items WHERE session_id = ? AND item_id = ?`,
+		sessionID, itemID,
 	).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -692,22 +902,22 @@ func (tx *Tx) GetTurnItem(threadID, itemID string) (*threadv2.TurnItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	it := &threadv2.TurnItem{}
+	it := &sessionv1.TurnItem{}
 	return it, proto.Unmarshal(b, it)
 }
 
-func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
+func (tx *Tx) PutTurnItem(it *sessionv1.TurnItem) error {
 	var existingSeq uint64
 	var existingPayload []byte
 	if err := tx.tx.QueryRow(
-		`SELECT seq, payload FROM turn_items WHERE thread_id = ? AND item_id = ?`,
-		it.ThreadId, it.ItemId,
+		`SELECT seq, payload FROM turn_items WHERE session_id = ? AND item_id = ?`,
+		it.SessionId, it.ItemId,
 	).Scan(&existingSeq, &existingPayload); err == nil {
 		if it.Seq == 0 && existingSeq > 0 {
 			it.Seq = existingSeq
 		}
 		if it.CreatedAt == nil && len(existingPayload) > 0 {
-			prev := &threadv2.TurnItem{}
+			prev := &sessionv1.TurnItem{}
 			if proto.Unmarshal(existingPayload, prev) == nil && prev.CreatedAt != nil {
 				it.CreatedAt = prev.CreatedAt
 			}
@@ -718,7 +928,7 @@ func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
 	}
 	it.UpdatedAt = timestamppb.Now()
 	if it.Seq == 0 {
-		seq, err := tx.NextSeq(it.ThreadId)
+		seq, err := tx.NextSeq(it.SessionId)
 		if err != nil {
 			return err
 		}
@@ -729,14 +939,14 @@ func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO turn_items(thread_id, item_id, run_id, seq, kind, payload)
+		`INSERT INTO turn_items(session_id, item_id, run_id, seq, kind, payload)
 		 VALUES(?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(thread_id, item_id) DO UPDATE SET
+		 ON CONFLICT(session_id, item_id) DO UPDATE SET
 		   run_id=excluded.run_id,
 		   seq=excluded.seq,
 		   kind=excluded.kind,
 		   payload=excluded.payload`,
-		it.ThreadId, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
+		it.SessionId, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
 	)
 	return err
 }
@@ -746,17 +956,17 @@ func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
 // the updated items so callers can broadcast item.updated events. When a run
 // completes normally, items backed by a still-running BackgroundTask stay in
 // "running" status until that background task finishes.
-func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv2.TurnItem, error) {
+func (tx *Tx) SettleRunItems(sessionID, runID, terminalStatus string) ([]*sessionv1.TurnItem, error) {
 	activeBgItems := map[string]bool{}
 	if terminalStatus == "completed" {
 		if bRows, bErr := tx.tx.Query(
-			`SELECT payload FROM background_tasks WHERE thread_id = ? AND status = ?`,
-			threadID, int32(threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING),
+			`SELECT payload FROM background_tasks WHERE session_id = ? AND status = ?`,
+			sessionID, int32(sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING),
 		); bErr == nil {
 			for bRows.Next() {
 				var raw []byte
 				if bRows.Scan(&raw) == nil {
-					bt := &threadv2.BackgroundTask{}
+					bt := &sessionv1.BackgroundTask{}
 					if proto.Unmarshal(raw, bt) == nil && bt.ItemId != "" {
 						activeBgItems[bt.ItemId] = true
 					}
@@ -767,20 +977,20 @@ func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv
 	}
 
 	rows, err := tx.tx.Query(
-		`SELECT payload FROM turn_items WHERE thread_id = ? AND run_id = ? ORDER BY seq ASC`,
-		threadID, runID,
+		`SELECT payload FROM turn_items WHERE session_id = ? AND run_id = ? ORDER BY seq ASC`,
+		sessionID, runID,
 	)
 	if err != nil {
 		return nil, err
 	}
-	var pending []*threadv2.TurnItem
+	var pending []*sessionv1.TurnItem
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		it := &threadv2.TurnItem{}
+		it := &sessionv1.TurnItem{}
 		if err := proto.Unmarshal(b, it); err != nil {
 			rows.Close()
 			return nil, err
@@ -795,7 +1005,7 @@ func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv
 	}
 	rows.Close()
 
-	var settled []*threadv2.TurnItem
+	var settled []*sessionv1.TurnItem
 	for _, it := range pending {
 		if terminalStatus == "completed" && activeBgItems[it.ItemId] {
 			if !it.Streaming {
@@ -810,7 +1020,7 @@ func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv
 		}
 		it.Streaming = false
 		if it.Status == "running" {
-			if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && terminalStatus == "failed" {
+			if it.Kind == sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && terminalStatus == "failed" {
 				it.Status = "completed"
 			} else {
 				it.Status = terminalStatus
@@ -824,252 +1034,23 @@ func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv
 	return settled, nil
 }
 
-func isKernelUniqueItemID(id string) bool {
-	for _, p := range []string{"itm_", "ckpt_", "err_", "reqitm_", "rb_", "sw_"} {
-		if strings.HasPrefix(id, p) {
-			return true
-		}
-	}
-	return false
-}
-
-// repairLegacyTurnItems runs once when migrating from schema <= 3 (where
-// turn_items had a global PRIMARY KEY(item_id) that caused driver-local IDs
-// such as msg_1 / rsn_msg_1 to collide across threads and runs). It rebuilds
-// turn_items per thread from the intact thread_events log inside a single
-// transaction and drops turn_items_v3_legacy on commit.
-func repairLegacyTurnItems(db *sql.DB) error {
-	var exists int
-	err := db.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='turn_items_v3_legacy'`).Scan(&exists)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	threadSet := map[string]bool{}
-	for _, q := range []string{
-		`SELECT thread_id FROM threads`,
-		`SELECT DISTINCT thread_id FROM thread_events`,
-		`SELECT DISTINCT thread_id FROM turn_items_v3_legacy`,
-	} {
-		rows, qErr := tx.Query(q)
-		if qErr != nil {
-			return qErr
-		}
-		for rows.Next() {
-			var tid string
-			if rows.Scan(&tid) == nil && tid != "" {
-				threadSet[tid] = true
-			}
-		}
-		rows.Close()
-	}
-
-	for threadID := range threadSet {
-		runsByID := map[string]*threadv2.Run{}
-		if rRows, rErr := tx.Query(`SELECT payload FROM runs WHERE thread_id = ?`, threadID); rErr == nil {
-			for rRows.Next() {
-				var b []byte
-				if rRows.Scan(&b) == nil {
-					r := &threadv2.Run{}
-					if proto.Unmarshal(b, r) == nil && r.RunId != "" {
-						runsByID[r.RunId] = r
-					}
-				}
-			}
-			rRows.Close()
-		}
-
-		var legacyItems []*threadv2.TurnItem
-		if lRows, lErr := tx.Query(`SELECT payload FROM turn_items_v3_legacy WHERE thread_id = ? ORDER BY seq ASC`, threadID); lErr == nil {
-			for lRows.Next() {
-				var b []byte
-				if lRows.Scan(&b) == nil {
-					it := &threadv2.TurnItem{}
-					if proto.Unmarshal(b, it) == nil && it.ItemId != "" {
-						it.ThreadId = threadID
-						legacyItems = append(legacyItems, it)
-					}
-				}
-			}
-			lRows.Close()
-		}
-
-		type rawEv struct {
-			seq     uint64
-			payload []byte
-		}
-		var evRows []rawEv
-		if eRows, eErr := tx.Query(`SELECT seq, payload FROM thread_events WHERE thread_id = ? ORDER BY seq ASC`, threadID); eErr == nil {
-			for eRows.Next() {
-				var e rawEv
-				if eRows.Scan(&e.seq, &e.payload) == nil {
-					evRows = append(evRows, e)
-				}
-			}
-			eRows.Close()
-		}
-
-		itemsByID := map[string]*threadv2.TurnItem{}
-		if len(evRows) == 0 {
-			for _, it := range legacyItems {
-				itemsByID[it.ItemId] = it
-			}
-		} else {
-			scopedIDs := map[string]string{}
-			usedSeqs := map[uint64]bool{}
-			for _, it := range legacyItems {
-				if isKernelUniqueItemID(it.ItemId) {
-					itemsByID[it.ItemId] = it
-					if it.RunId != "" {
-						scopedIDs[it.RunId+"\x00"+it.ItemId] = it.ItemId
-					}
-					if it.Seq > 0 {
-						usedSeqs[it.Seq] = true
-					}
-				}
-			}
-			for _, raw := range evRows {
-				ev := &threadv2.ThreadEvent{}
-				if proto.Unmarshal(raw.payload, ev) != nil {
-					continue
-				}
-				if ev.Item != nil && ev.Item.ItemId != "" {
-					inc := proto.Clone(ev.Item).(*threadv2.TurnItem)
-					inc.ThreadId = threadID
-					rawID := inc.ItemId
-					key := inc.RunId + "\x00" + rawID
-					effID, seen := scopedIDs[key]
-					if !seen {
-						if prev, exists := itemsByID[rawID]; exists && prev.RunId != inc.RunId {
-							effID = inc.RunId + ":" + rawID
-						} else {
-							effID = rawID
-						}
-						scopedIDs[key] = effID
-					}
-					inc.ItemId = effID
-					if prev, exists := itemsByID[effID]; exists {
-						inc.Seq = prev.Seq
-						if prev.CreatedAt != nil {
-							inc.CreatedAt = prev.CreatedAt
-						}
-						if inc.ToolName == "" {
-							inc.ToolName = prev.ToolName
-						}
-						if inc.Command == "" {
-							inc.Command = prev.Command
-						}
-						if inc.FilePath == "" {
-							inc.FilePath = prev.FilePath
-						}
-						if prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION &&
-							inc.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL {
-							inc.Kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
-						}
-					} else {
-						if inc.Seq == 0 || inc.Seq >= raw.seq || usedSeqs[inc.Seq] {
-							inc.Seq = raw.seq
-						}
-						usedSeqs[inc.Seq] = true
-					}
-					itemsByID[effID] = inc
-				} else if ev.Type == "item.delta" && ev.TargetItemId != "" && ev.TextDelta != "" {
-					if cur := itemsByID[ev.TargetItemId]; cur != nil {
-						cur.Text += ev.TextDelta
-					}
-				}
-				if ev.Type == "request.resolved" && ev.Request != nil {
-					if reqIt := itemsByID["reqitm_"+ev.Request.RequestId]; reqIt != nil {
-						reqIt.Status = "completed"
-					}
-				}
-				if ev.Type == "thread.rolled_back" && ev.Checkpoint != nil {
-					maxOrd := ev.Checkpoint.RunOrdinal
-					for id, it := range itemsByID {
-						if r := runsByID[it.RunId]; r != nil && r.Ordinal > maxOrd && r.Status != threadv2.RunStatus_RUN_STATUS_QUEUED {
-							delete(itemsByID, id)
-						}
-					}
-				}
-			}
-		}
-
-		for id, it := range itemsByID {
-			if r := runsByID[it.RunId]; r != nil {
-				if r.Status == threadv2.RunStatus_RUN_STATUS_ROLLED_BACK {
-					delete(itemsByID, id)
-					continue
-				}
-				switch r.Status {
-				case threadv2.RunStatus_RUN_STATUS_COMPLETED:
-					if it.Streaming || it.Status == "running" {
-						it.Streaming = false
-						it.Status = "completed"
-					}
-				case threadv2.RunStatus_RUN_STATUS_INTERRUPTED, threadv2.RunStatus_RUN_STATUS_CANCELLED:
-					if it.Streaming || it.Status == "running" {
-						it.Streaming = false
-						it.Status = "interrupted"
-					}
-				case threadv2.RunStatus_RUN_STATUS_FAILED:
-					if it.Streaming {
-						it.Streaming = false
-						if it.Status == "running" {
-							it.Status = "completed"
-						}
-					} else if it.Status == "running" {
-						it.Status = "interrupted"
-					}
-				}
-			}
-			b, err := proto.Marshal(it)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec(
-				`INSERT INTO turn_items(thread_id, item_id, run_id, seq, kind, payload)
-				 VALUES(?, ?, ?, ?, ?, ?)
-				 ON CONFLICT(thread_id, item_id) DO UPDATE SET
-				   run_id=excluded.run_id, seq=excluded.seq, kind=excluded.kind, payload=excluded.payload`,
-				threadID, it.ItemId, it.RunId, it.Seq, int32(it.Kind), b,
-			); err != nil {
-				return err
-			}
-		}
-	}
-
-	if _, err := tx.Exec(`DROP TABLE turn_items_v3_legacy`); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-func (tx *Tx) DeleteTurnItemsAfterRunIds(threadID string, removedRunIDs map[string]bool) error {
+func (tx *Tx) DeleteTurnItemsAfterRunIds(sessionID string, removedRunIDs map[string]bool) error {
 	for runID := range removedRunIDs {
-		if _, err := tx.tx.Exec(`DELETE FROM turn_items WHERE thread_id = ? AND run_id = ?`, threadID, runID); err != nil {
+		if _, err := tx.tx.Exec(`DELETE FROM turn_items WHERE session_id = ? AND run_id = ?`, sessionID, runID); err != nil {
 			return err
 		}
-		if _, err := tx.tx.Exec(`DELETE FROM background_tasks WHERE thread_id = ? AND run_id = ?`, threadID, runID); err != nil {
+		if _, err := tx.tx.Exec(`DELETE FROM background_tasks WHERE session_id = ? AND run_id = ?`, sessionID, runID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (tx *Tx) GetBackgroundTask(threadID, taskID string) (*threadv2.BackgroundTask, error) {
+func (tx *Tx) GetBackgroundTask(sessionID, taskID string) (*sessionv1.BackgroundTask, error) {
 	var b []byte
 	err := tx.tx.QueryRow(
-		`SELECT payload FROM background_tasks WHERE thread_id = ? AND task_id = ?`,
-		threadID, taskID,
+		`SELECT payload FROM background_tasks WHERE session_id = ? AND task_id = ?`,
+		sessionID, taskID,
 	).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -1077,13 +1058,13 @@ func (tx *Tx) GetBackgroundTask(threadID, taskID string) (*threadv2.BackgroundTa
 	if err != nil {
 		return nil, err
 	}
-	bt := &threadv2.BackgroundTask{}
+	bt := &sessionv1.BackgroundTask{}
 	return bt, proto.Unmarshal(b, bt)
 }
 
-func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
+func (tx *Tx) PutBackgroundTask(bt *sessionv1.BackgroundTask) error {
 	now := timestamppb.Now()
-	if prev, err := tx.GetBackgroundTask(bt.ThreadId, bt.TaskId); err == nil {
+	if prev, err := tx.GetBackgroundTask(bt.SessionId, bt.TaskId); err == nil {
 		if bt.StartedAt == nil && prev.StartedAt != nil {
 			bt.StartedAt = prev.StartedAt
 		}
@@ -1093,7 +1074,7 @@ func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
 		if bt.ItemId == "" {
 			bt.ItemId = prev.ItemId
 		}
-		if bt.Kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED {
+		if bt.Kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED {
 			bt.Kind = prev.Kind
 		}
 		if bt.Title == "" {
@@ -1105,7 +1086,7 @@ func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
 		if bt.OutputTail == "" && prev.OutputTail != "" {
 			bt.OutputTail = prev.OutputTail
 		}
-		if bt.StopScope == threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED {
+		if bt.StopScope == sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED {
 			bt.StopScope = prev.StopScope
 		}
 	}
@@ -1113,8 +1094,8 @@ func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
 		bt.StartedAt = now
 	}
 	bt.UpdatedAt = now
-	if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING &&
-		bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED &&
+	if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING &&
+		bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED &&
 		bt.CompletedAt == nil {
 		bt.CompletedAt = now
 	}
@@ -1123,32 +1104,32 @@ func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO background_tasks(thread_id, task_id, run_id, status, started_at, updated_at, payload)
+		`INSERT INTO background_tasks(session_id, task_id, run_id, status, started_at, updated_at, payload)
 		 VALUES(?, ?, ?, ?, ?, ?, ?)
-		 ON CONFLICT(thread_id, task_id) DO UPDATE SET
+		 ON CONFLICT(session_id, task_id) DO UPDATE SET
 		   run_id=excluded.run_id, status=excluded.status, updated_at=excluded.updated_at, payload=excluded.payload`,
-		bt.ThreadId, bt.TaskId, bt.RunId, int32(bt.Status),
+		bt.SessionId, bt.TaskId, bt.RunId, int32(bt.Status),
 		bt.StartedAt.AsTime().UnixMilli(), bt.UpdatedAt.AsTime().UnixMilli(), b,
 	)
 	return err
 }
 
-func (tx *Tx) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, error) {
+func (tx *Tx) BackgroundTasks(sessionID string) ([]*sessionv1.BackgroundTask, error) {
 	rows, err := tx.tx.Query(
-		`SELECT payload FROM background_tasks WHERE thread_id = ? ORDER BY started_at ASC`,
-		threadID,
+		`SELECT payload FROM background_tasks WHERE session_id = ? ORDER BY started_at ASC`,
+		sessionID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.BackgroundTask
+	var out []*sessionv1.BackgroundTask
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		bt := &threadv2.BackgroundTask{}
+		bt := &sessionv1.BackgroundTask{}
 		if err := proto.Unmarshal(b, bt); err != nil {
 			return nil, err
 		}
@@ -1157,46 +1138,46 @@ func (tx *Tx) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, erro
 	return out, rows.Err()
 }
 
-// RefreshThreadBackgroundCounts recomputes Thread.ActiveBackgroundCount and
-// Thread.ActiveDaemonCount from currently RUNNING background_tasks rows.
-func (tx *Tx) RefreshThreadBackgroundCounts(th *threadv2.Thread) (awaited uint32, daemon uint32, err error) {
-	tasks, err := tx.BackgroundTasks(th.ThreadId)
+// RefreshSessionBackgroundCounts recomputes Session.ActiveBackgroundCount and
+// Session.ActiveDaemonCount from currently RUNNING background_tasks rows.
+func (tx *Tx) RefreshSessionBackgroundCounts(sess *sessionv1.Session) (awaited uint32, daemon uint32, err error) {
+	tasks, err := tx.BackgroundTasks(sess.SessionId)
 	if err != nil {
 		return 0, 0, err
 	}
 	for _, bt := range tasks {
-		if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 			continue
 		}
-		if bt.Kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON || !bt.Awaited {
+		if bt.Kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON || !bt.Awaited {
 			daemon++
 		} else {
 			awaited++
 		}
 	}
-	th.ActiveBackgroundCount = awaited
-	th.ActiveDaemonCount = daemon
+	sess.ActiveBackgroundCount = awaited
+	sess.ActiveDaemonCount = daemon
 	return awaited, daemon, nil
 }
 
 // StopRunningBackgroundTasks transitions matching RUNNING background tasks on
-// threadID (or all when taskID == "") to STOPPED and settles their linked TurnItems.
-func (tx *Tx) StopRunningBackgroundTasks(threadID, taskID, summary string) ([]*threadv2.BackgroundTask, []*threadv2.TurnItem, error) {
-	tasks, err := tx.BackgroundTasks(threadID)
+// sessionID (or all when taskID == "") to STOPPED and settles their linked TurnItems.
+func (tx *Tx) StopRunningBackgroundTasks(sessionID, taskID, summary string) ([]*sessionv1.BackgroundTask, []*sessionv1.TurnItem, error) {
+	tasks, err := tx.BackgroundTasks(sessionID)
 	if err != nil {
 		return nil, nil, err
 	}
-	var stopped []*threadv2.BackgroundTask
-	var items []*threadv2.TurnItem
+	var stopped []*sessionv1.BackgroundTask
+	var items []*sessionv1.TurnItem
 	now := timestamppb.Now()
 	for _, bt := range tasks {
-		if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+		if bt.Status != sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 			continue
 		}
 		if taskID != "" && bt.TaskId != taskID {
 			continue
 		}
-		bt.Status = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+		bt.Status = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
 		if summary != "" {
 			bt.Summary = summary
 		}
@@ -1206,7 +1187,7 @@ func (tx *Tx) StopRunningBackgroundTasks(threadID, taskID, summary string) ([]*t
 		}
 		stopped = append(stopped, bt)
 		if bt.ItemId != "" {
-			if it, iErr := tx.GetTurnItem(threadID, bt.ItemId); iErr == nil && it.Status == "running" {
+			if it, iErr := tx.GetTurnItem(sessionID, bt.ItemId); iErr == nil && it.Status == "running" {
 				it.Streaming = false
 				it.Status = "interrupted"
 				if err := tx.PutTurnItem(it); err != nil {
@@ -1219,22 +1200,22 @@ func (tx *Tx) StopRunningBackgroundTasks(threadID, taskID, summary string) ([]*t
 	return stopped, items, nil
 }
 
-func (s *Store) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, error) {
+func (s *Store) BackgroundTasks(sessionID string) ([]*sessionv1.BackgroundTask, error) {
 	rows, err := s.reader.Query(
-		`SELECT payload FROM background_tasks WHERE thread_id = ? ORDER BY started_at ASC`,
-		threadID,
+		`SELECT payload FROM background_tasks WHERE session_id = ? ORDER BY started_at ASC`,
+		sessionID,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.BackgroundTask
+	var out []*sessionv1.BackgroundTask
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		bt := &threadv2.BackgroundTask{}
+		bt := &sessionv1.BackgroundTask{}
 		if err := proto.Unmarshal(b, bt); err != nil {
 			return nil, err
 		}
@@ -1243,19 +1224,19 @@ func (s *Store) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, er
 	return out, rows.Err()
 }
 
-func (s *Store) TurnItems(threadID string) ([]*threadv2.TurnItem, error) {
-	rows, err := s.reader.Query(`SELECT payload FROM turn_items WHERE thread_id = ? ORDER BY seq ASC`, threadID)
+func (s *Store) TurnItems(sessionID string) ([]*sessionv1.TurnItem, error) {
+	rows, err := s.reader.Query(`SELECT payload FROM turn_items WHERE session_id = ? ORDER BY seq ASC`, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.TurnItem
+	var out []*sessionv1.TurnItem
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		it := &threadv2.TurnItem{}
+		it := &sessionv1.TurnItem{}
 		if err := proto.Unmarshal(b, it); err != nil {
 			return nil, err
 		}
@@ -1264,7 +1245,7 @@ func (s *Store) TurnItems(threadID string) ([]*threadv2.TurnItem, error) {
 	return out, rows.Err()
 }
 
-func (tx *Tx) PutRuntimeRequest(req *threadv2.RuntimeRequest) error {
+func (tx *Tx) PutRuntimeRequest(req *sessionv1.RuntimeRequest) error {
 	if req.CreatedAt == nil {
 		req.CreatedAt = timestamppb.Now()
 	}
@@ -1273,15 +1254,15 @@ func (tx *Tx) PutRuntimeRequest(req *threadv2.RuntimeRequest) error {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO runtime_requests(request_id, thread_id, run_id, status, created_at, payload)
+		`INSERT INTO runtime_requests(request_id, session_id, run_id, status, created_at, payload)
 		 VALUES(?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(request_id) DO UPDATE SET status=excluded.status, payload=excluded.payload`,
-		req.RequestId, req.ThreadId, req.RunId, int32(req.Status), req.CreatedAt.AsTime().UnixMilli(), b,
+		req.RequestId, req.SessionId, req.RunId, int32(req.Status), req.CreatedAt.AsTime().UnixMilli(), b,
 	)
 	return err
 }
 
-func (tx *Tx) GetRuntimeRequest(requestID string) (*threadv2.RuntimeRequest, error) {
+func (tx *Tx) GetRuntimeRequest(requestID string) (*sessionv1.RuntimeRequest, error) {
 	var b []byte
 	err := tx.tx.QueryRow(`SELECT payload FROM runtime_requests WHERE request_id = ?`, requestID).Scan(&b)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1290,23 +1271,23 @@ func (tx *Tx) GetRuntimeRequest(requestID string) (*threadv2.RuntimeRequest, err
 	if err != nil {
 		return nil, err
 	}
-	r := &threadv2.RuntimeRequest{}
+	r := &sessionv1.RuntimeRequest{}
 	return r, proto.Unmarshal(b, r)
 }
 
-func (s *Store) RuntimeRequests(threadID string) ([]*threadv2.RuntimeRequest, error) {
-	rows, err := s.reader.Query(`SELECT payload FROM runtime_requests WHERE thread_id = ? ORDER BY created_at ASC`, threadID)
+func (s *Store) RuntimeRequests(sessionID string) ([]*sessionv1.RuntimeRequest, error) {
+	rows, err := s.reader.Query(`SELECT payload FROM runtime_requests WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.RuntimeRequest
+	var out []*sessionv1.RuntimeRequest
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		r := &threadv2.RuntimeRequest{}
+		r := &sessionv1.RuntimeRequest{}
 		if err := proto.Unmarshal(b, r); err != nil {
 			return nil, err
 		}
@@ -1315,7 +1296,7 @@ func (s *Store) RuntimeRequests(threadID string) ([]*threadv2.RuntimeRequest, er
 	return out, rows.Err()
 }
 
-func (tx *Tx) PutCheckpoint(cp *threadv2.Checkpoint) error {
+func (tx *Tx) PutCheckpoint(cp *sessionv1.Checkpoint) error {
 	if cp.CreatedAt == nil {
 		cp.CreatedAt = timestamppb.Now()
 	}
@@ -1324,27 +1305,27 @@ func (tx *Tx) PutCheckpoint(cp *threadv2.Checkpoint) error {
 		return err
 	}
 	_, err = tx.tx.Exec(
-		`INSERT INTO checkpoints(checkpoint_id, thread_id, run_ordinal, created_at, payload)
+		`INSERT INTO checkpoints(checkpoint_id, session_id, run_ordinal, created_at, payload)
 		 VALUES(?, ?, ?, ?, ?)
 		 ON CONFLICT(checkpoint_id) DO UPDATE SET payload=excluded.payload`,
-		cp.CheckpointId, cp.ThreadId, cp.RunOrdinal, cp.CreatedAt.AsTime().UnixMilli(), b,
+		cp.CheckpointId, cp.SessionId, cp.RunOrdinal, cp.CreatedAt.AsTime().UnixMilli(), b,
 	)
 	return err
 }
 
-func (s *Store) Checkpoints(threadID string) ([]*threadv2.Checkpoint, error) {
-	rows, err := s.reader.Query(`SELECT payload FROM checkpoints WHERE thread_id = ? ORDER BY run_ordinal ASC, created_at ASC`, threadID)
+func (s *Store) Checkpoints(sessionID string) ([]*sessionv1.Checkpoint, error) {
+	rows, err := s.reader.Query(`SELECT payload FROM checkpoints WHERE session_id = ? ORDER BY run_ordinal ASC, created_at ASC`, sessionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.Checkpoint
+	var out []*sessionv1.Checkpoint
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		cp := &threadv2.Checkpoint{}
+		cp := &sessionv1.Checkpoint{}
 		if err := proto.Unmarshal(b, cp); err != nil {
 			return nil, err
 		}
@@ -1353,19 +1334,19 @@ func (s *Store) Checkpoints(threadID string) ([]*threadv2.Checkpoint, error) {
 	return out, rows.Err()
 }
 
-func (tx *Tx) AddAllowRule(threadID, ruleKey string) error {
+func (tx *Tx) AddAllowRule(sessionID, ruleKey string) error {
 	if ruleKey == "" {
 		return nil
 	}
 	_, err := tx.tx.Exec(
-		`INSERT OR IGNORE INTO thread_allow_rules(thread_id, rule_key, created_at) VALUES(?, ?, ?)`,
-		threadID, ruleKey, time.Now().UnixMilli(),
+		`INSERT OR IGNORE INTO session_allow_rules(session_id, rule_key, created_at) VALUES(?, ?, ?)`,
+		sessionID, ruleKey, time.Now().UnixMilli(),
 	)
 	return err
 }
 
-func (s *Store) AllowRules(threadID string) (map[string]bool, error) {
-	rows, err := s.reader.Query(`SELECT rule_key FROM thread_allow_rules WHERE thread_id = ?`, threadID)
+func (s *Store) AllowRules(sessionID string) (map[string]bool, error) {
+	rows, err := s.reader.Query(`SELECT rule_key FROM session_allow_rules WHERE session_id = ?`, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -1381,22 +1362,22 @@ func (s *Store) AllowRules(threadID string) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) EventsAfter(threadID string, afterSeq uint64) ([]*threadv2.ThreadEvent, error) {
+func (s *Store) EventsAfter(sessionID string, afterSeq uint64) ([]*sessionv1.SessionEvent, error) {
 	rows, err := s.reader.Query(
-		`SELECT payload FROM thread_events WHERE thread_id = ? AND seq > ? ORDER BY seq ASC`,
-		threadID, afterSeq,
+		`SELECT payload FROM session_events WHERE session_id = ? AND seq > ? ORDER BY seq ASC`,
+		sessionID, afterSeq,
 	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []*threadv2.ThreadEvent
+	var out []*sessionv1.SessionEvent
 	for rows.Next() {
 		var b []byte
 		if err := rows.Scan(&b); err != nil {
 			return nil, err
 		}
-		ev := &threadv2.ThreadEvent{}
+		ev := &sessionv1.SessionEvent{}
 		if err := proto.Unmarshal(b, ev); err != nil {
 			return nil, err
 		}
@@ -1405,47 +1386,46 @@ func (s *Store) EventsAfter(threadID string, afterSeq uint64) ([]*threadv2.Threa
 	return out, rows.Err()
 }
 
-func (s *Store) Projection(threadID string) (*threadv2.ThreadProjection, error) {
-	t, err := s.Thread(threadID)
+func (s *Store) Projection(sessionID string) (*sessionv1.SessionProjection, error) {
+	sess, err := s.Session(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	runs, err := s.Runs(threadID)
+	runs, err := s.Runs(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := s.TurnItems(threadID)
+	items, err := s.TurnItems(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	reqs, err := s.RuntimeRequests(threadID)
+	reqs, err := s.RuntimeRequests(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	ckpts, err := s.Checkpoints(threadID)
+	ckpts, err := s.Checkpoints(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	pts, err := s.ProviderThreads(threadID)
+	ps, err := s.ProviderSessions(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	bts, err := s.BackgroundTasks(threadID)
+	bts, err := s.BackgroundTasks(sessionID)
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.ThreadProjection{
-		Thread:          t,
-		Runs:            runs,
-		Items:           items,
-		Requests:        reqs,
-		Checkpoints:     ckpts,
-		ProviderThreads: pts,
-		BackgroundTasks: bts,
+	return &sessionv1.SessionProjection{
+		Session:          sess,
+		Runs:             runs,
+		Items:            items,
+		Requests:         reqs,
+		Checkpoints:      ckpts,
+		ProviderSessions: ps,
+		BackgroundTasks:  bts,
 	}, nil
 }
 
-// GetReceipt checks whether an idempotent command_id already executed.
 func (s *Store) GetReceipt(commandID, method string, dst proto.Message) (bool, error) {
 	if commandID == "" {
 		return false, nil
@@ -1480,8 +1460,7 @@ func (tx *Tx) PutReceipt(commandID, method string, res proto.Message) error {
 	return err
 }
 
-// PutBlob stores content-addressed attachment bytes on disk and metadata in SQLite.
-func (s *Store) PutBlob(name, mimeType string, data []byte) (*threadv2.AttachmentRef, error) {
+func (s *Store) PutBlob(name, mimeType string, data []byte) (*sessionv1.AttachmentRef, error) {
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
 	blobFile := filepath.Join(s.blobsDir, digest)
@@ -1511,7 +1490,7 @@ func (s *Store) PutBlob(name, mimeType string, data []byte) (*threadv2.Attachmen
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.AttachmentRef{
+	return &sessionv1.AttachmentRef{
 		BlobSha256: digest,
 		Name:       name,
 		MimeType:   mimeType,
@@ -1520,7 +1499,6 @@ func (s *Store) PutBlob(name, mimeType string, data []byte) (*threadv2.Attachmen
 }
 
 func (s *Store) GetBlob(digest string) (data []byte, name, mimeType string, err error) {
-	// Reject path traversal in digest.
 	if len(digest) != 64 || slices.ContainsFunc([]rune(digest), func(r rune) bool {
 		return !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f'))
 	}) {
@@ -1542,4 +1520,47 @@ func (s *Store) GetBlob(digest string) (data []byte, name, mimeType string, err 
 
 func (s *Store) BlobPath(digest string) string {
 	return filepath.Join(s.blobsDir, digest)
+}
+
+// PruneBlobs deletes candidate blob digests that are no longer referenced by
+// any remaining turn_items, runs, or runtime_requests.
+func (s *Store) PruneBlobs(candidates []string) {
+	if len(candidates) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	var unique []string
+	for _, d := range candidates {
+		if len(d) == 64 && !seen[d] {
+			seen[d] = true
+			unique = append(unique, d)
+		}
+	}
+	if len(unique) == 0 {
+		return
+	}
+	var removed []string
+	_, _ = s.Mutate(func(tx *Tx) error {
+		for _, d := range unique {
+			raw := []byte(d)
+			var inUse int
+			err := tx.tx.QueryRow(`
+				SELECT EXISTS(
+					SELECT 1 FROM turn_items WHERE instr(payload, ?) > 0
+					UNION ALL
+					SELECT 1 FROM runs WHERE instr(payload, ?) > 0
+					UNION ALL
+					SELECT 1 FROM runtime_requests WHERE instr(payload, ?) > 0
+				)`, raw, raw, raw).Scan(&inUse)
+			if err == nil && inUse == 0 {
+				if _, dErr := tx.tx.Exec(`DELETE FROM blobs WHERE sha256 = ?`, d); dErr == nil {
+					removed = append(removed, d)
+				}
+			}
+		}
+		return nil
+	})
+	for _, d := range removed {
+		_ = os.Remove(filepath.Join(s.blobsDir, d))
+	}
 }

@@ -17,13 +17,11 @@ import (
 	"github.com/hermeshai/hermesh/internal/workstats"
 )
 
-// totals adds up a CountWork answer's whole-range rows (bucket -1), and its
-// per-bucket session counts.
 type totals struct {
 	sessions, done, turns, failed uint32
 	tokens, busy                  uint64
 	byBucket                      map[int]uint32
-	byClient                      map[string]uint32 // turns, by who asked
+	byClient                      map[string]uint32
 }
 
 func countWork(t *testing.T, st *Store, tz, first string, days int, hourly bool) totals {
@@ -67,47 +65,84 @@ func openTestStore(t *testing.T) *Store {
 	return st
 }
 
-func ev(at time.Time, kind any) *sessionv1.SessionEvent {
-	e := &sessionv1.SessionEvent{Ts: timestamppb.New(at)}
-	switch k := kind.(type) {
-	case *sessionv1.TurnStarted:
-		e.Kind = &sessionv1.SessionEvent_TurnStarted{TurnStarted: k}
-	case *sessionv1.TurnCompleted:
-		e.Kind = &sessionv1.SessionEvent_TurnCompleted{TurnCompleted: k}
-	case *sessionv1.StatusChanged:
-		e.Kind = &sessionv1.SessionEvent_Status{Status: k}
-	}
-	return e
-}
-
-// Counted from events as they are stored: a turn over midnight in Shanghai
-// is at work in each quarter it touched and counts its busy seconds there,
-// its turn and tokens where it ended, under the agent that asked for it
-// (another than the one that started the session); a replayed completion
-// counts nothing again; a turn cut off by a crash is at work in the
-// quarters marked as they began, and adds no turn.
+// Counted from unified kernel events as they are stored: a turn over midnight
+// in Shanghai is at work in each quarter it touched and counts its busy
+// seconds there, its turn and tokens where it ended, under the agent that
+// asked for it; a replayed completion counts nothing again; a turn cut off by
+// a crash is at work in the quarters marked as they began, and adds no turn.
 func TestWorkFromEvents(t *testing.T) {
 	st := openTestStore(t)
 	sh, _ := time.LoadLocation("Asia/Shanghai")
 	at := func(day, hour, min int) time.Time { return time.Date(2026, 3, day, hour, min, 0, 0, sh) }
-	who := &workWho{"c_creator", "fake", "demo"}
-	write := func(ops ...writeOp) {
-		t.Helper()
-		if err := st.WriteBatch(ops); err != nil {
-			t.Fatal(err)
-		}
-	}
-	a, b := &live{id: "s_a"}, &live{id: "s_b"}
-	write(writeOp{l: a, who: who, ev: ev(at(3, 23, 30), &sessionv1.TurnStarted{Turn: 1, Asker: "c_asker"})})
-	done := ev(at(4, 2, 10), &sessionv1.TurnCompleted{Turn: 1, Usage: &sessionv1.Usage{InputTokens: 1000, OutputTokens: 200}})
-	write(writeOp{l: a, who: who, ev: done})
-	write(writeOp{l: a, who: who, ev: done}) // replayed
-	write(writeOp{l: a, row: &sessionRow{ID: "s_a", Status: sessionv1.SessionStatus_SESSION_STATUS_IDLE, Progress: &sessionv1.SessionProgress{}}})
 
-	write(writeOp{l: b, who: who, ev: ev(at(4, 10, 0), &sessionv1.TurnStarted{Turn: 1})})
-	write(writeOp{workTick: workstats.Quarter(at(4, 10, 15))})
-	write(writeOp{l: b, ev: ev(at(4, 12, 0), &sessionv1.StatusChanged{Status: sessionv1.SessionStatus_SESSION_STATUS_CRASHED})})
-	write(writeOp{workTick: workstats.Quarter(at(4, 10, 30))}) // nothing in progress any more
+	sessA := &sessionv1.Session{
+		SessionId: "s_a",
+		ProjectId: "demo",
+		Agent:     "fake",
+		CreatedBy: "c_creator",
+		Status:    sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+		Progress:  &sessionv1.SessionProgress{TurnCount: 1},
+	}
+	runA := &sessionv1.Run{
+		RunId:     "run_a1",
+		SessionId: "s_a",
+		Ordinal:   1,
+		Status:    sessionv1.RunStatus_RUN_STATUS_RUNNING,
+		Author:    &sessionv1.Actor{Id: "c_asker"},
+		StartedAt: timestamppb.New(at(3, 23, 30)),
+	}
+	st.recordKernelWork(sessA, runA, &sessionv1.SessionEvent{
+		SessionId:  "s_a",
+		Type:       "run.started",
+		OccurredAt: timestamppb.New(at(3, 23, 30)),
+	})
+
+	sessA.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+	runA.Status = sessionv1.RunStatus_RUN_STATUS_COMPLETED
+	runA.CompletedAt = timestamppb.New(at(4, 2, 10))
+	runA.Usage = &sessionv1.ContextWindowUsage{InputTokens: 1000, OutputTokens: 200}
+	doneEv := &sessionv1.SessionEvent{
+		SessionId:  "s_a",
+		Type:       "run.completed",
+		OccurredAt: timestamppb.New(at(4, 2, 10)),
+	}
+	st.recordKernelWork(sessA, runA, doneEv)
+	st.recordKernelWork(sessA, runA, doneEv) // replayed
+
+	sessB := &sessionv1.Session{
+		SessionId: "s_b",
+		ProjectId: "demo",
+		Agent:     "fake",
+		CreatedBy: "c_creator",
+		Status:    sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+		Progress:  &sessionv1.SessionProgress{TurnCount: 1},
+	}
+	runB := &sessionv1.Run{
+		RunId:     "run_b1",
+		SessionId: "s_b",
+		Ordinal:   1,
+		Status:    sessionv1.RunStatus_RUN_STATUS_RUNNING,
+		Author:    &sessionv1.Actor{Id: "c_creator"},
+		StartedAt: timestamppb.New(at(4, 10, 0)),
+	}
+	st.recordKernelWork(sessB, runB, &sessionv1.SessionEvent{
+		SessionId:  "s_b",
+		Type:       "run.started",
+		OccurredAt: timestamppb.New(at(4, 10, 0)),
+	})
+	if err := st.recordWorkTick(workstats.Quarter(at(4, 10, 15))); err != nil {
+		t.Fatal(err)
+	}
+	sessB.Status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
+	sessB.Progress.LastFailure = &sessionv1.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED}
+	st.recordKernelWork(sessB, runB, &sessionv1.SessionEvent{
+		SessionId:  "s_b",
+		Type:       "session.recovered",
+		OccurredAt: timestamppb.New(at(4, 12, 0)),
+	})
+	if err := st.recordWorkTick(workstats.Quarter(at(4, 10, 30))); err != nil {
+		t.Fatal(err)
+	}
 
 	day3 := countWork(t, st, "Asia/Shanghai", "2026-03-03", 1, true)
 	if day3.sessions != 1 || day3.byBucket[23] != 1 || day3.turns != 0 || day3.busy != 1800 {
@@ -129,8 +164,6 @@ func TestWorkFromEvents(t *testing.T) {
 	if both.sessions != 2 || both.byBucket[0] != 1 || both.byBucket[1] != 2 || both.busy != 9600 {
 		t.Fatalf("two days: %+v", both)
 	}
-	// In UTC the turn over Shanghai's midnight is all on the 3rd, and the
-	// one that crashed (10:00 in Shanghai) on the 4th.
 	if utc := countWork(t, st, "UTC", "2026-03-03", 1, false); utc.sessions != 1 || utc.turns != 1 {
 		t.Fatalf("UTC: %+v", utc)
 	}
@@ -188,21 +221,61 @@ func TestPullWork(t *testing.T) {
 	all := func(string, string) bool { return true }
 	base := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	who := &workWho{"c_a", "fake", "demo"}
-	turn := func(l *live, n uint32, start time.Time, mins int) []writeOp {
-		return []writeOp{
-			{l: l, who: who, ev: ev(start, &sessionv1.TurnStarted{Turn: n})},
-			{l: l, who: who, ev: ev(start.Add(time.Duration(mins)*time.Minute), &sessionv1.TurnCompleted{Turn: n, Usage: &sessionv1.Usage{InputTokens: 10}})},
+
+	recordMany := func(id string, n int, singleTx bool) {
+		t.Helper()
+		if singleTx {
+			st.workMu.Lock()
+			tx, err := st.db.Begin()
+			if err != nil {
+				st.workMu.Unlock()
+				t.Fatal(err)
+			}
+			_ = st.ensureWorkStoreLocked(tx)
+			w := st.workTx(tx)
+			for i := range n {
+				start := base.Add(time.Duration(i) * time.Hour)
+				end := start.Add(5 * time.Minute)
+				if err := w.turnStart(id, who, who.client, start); err != nil {
+					tx.Rollback()
+					st.workMu.Unlock()
+					t.Fatal(err)
+				}
+				if err := w.turnComplete(id, who, uint32(i+1), end, false, 10, 0); err != nil {
+					tx.Rollback()
+					st.workMu.Unlock()
+					t.Fatal(err)
+				}
+			}
+			if err := w.finish(); err != nil {
+				tx.Rollback()
+				st.workMu.Unlock()
+				t.Fatal(err)
+			}
+			if err := tx.Commit(); err != nil {
+				st.workMu.Unlock()
+				t.Fatal(err)
+			}
+			w.done()
+			st.workMu.Unlock()
+			return
+		}
+		for i := range n {
+			start := base.Add(time.Duration(i) * time.Hour)
+			end := start.Add(5 * time.Minute)
+			sess := &sessionv1.Session{SessionId: id, ProjectId: "demo", Agent: "fake", CreatedBy: "c_a", Status: sessionv1.SessionStatus_SESSION_STATUS_RUNNING}
+			run := &sessionv1.Run{RunId: "r", SessionId: id, Ordinal: uint32(i + 1), Status: sessionv1.RunStatus_RUN_STATUS_RUNNING, Author: &sessionv1.Actor{Id: "c_a"}, StartedAt: timestamppb.New(start)}
+			st.recordKernelWork(sess, run, &sessionv1.SessionEvent{SessionId: id, Type: "run.started", OccurredAt: timestamppb.New(start)})
+			sess.Status = sessionv1.SessionStatus_SESSION_STATUS_IDLE
+			run.Status = sessionv1.RunStatus_RUN_STATUS_COMPLETED
+			run.CompletedAt = timestamppb.New(end)
+			run.Usage = &sessionv1.ContextWindowUsage{InputTokens: 10}
+			st.recordKernelWork(sess, run, &sessionv1.SessionEvent{SessionId: id, Type: "run.completed", OccurredAt: timestamppb.New(end)})
 		}
 	}
-	// One transaction touching 800 hours: one session's turns, an hour apart.
-	var ops []writeOp
-	l := &live{id: "s_one"}
-	for i := range 800 {
-		ops = append(ops, turn(l, uint32(i+1), base.Add(time.Duration(i)*time.Hour), 5)...)
-	}
-	if err := st.WriteBatch(ops); err != nil {
-		t.Fatal(err)
-	}
+
+	// One transaction touching 800 hours: never split across pages.
+	recordMany("s_one", 800, true)
 	first, err := st.PullWork(ctx, &machinev1.PullWorkRequest{Store: []byte("another")}, all)
 	if err != nil {
 		t.Fatal(err)
@@ -219,12 +292,7 @@ func TestPullWork(t *testing.T) {
 	}
 
 	// 800 more hours, each its own transaction: pages of workPageHours.
-	l2 := &live{id: "s_two"}
-	for i := range 800 {
-		if err := st.WriteBatch(turn(l2, uint32(i+1), base.Add(time.Duration(i)*time.Hour), 5)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	recordMany("s_two", 800, false)
 	page, err := st.PullWork(ctx, &machinev1.PullWorkRequest{Store: first.Store, After: first.Seq}, all)
 	if err != nil || !page.More || len(page.Hours) != workPageHours {
 		t.Fatalf("a page: more %v, %d hours, %v", page.More, len(page.Hours), err)
@@ -233,12 +301,10 @@ func TestPullWork(t *testing.T) {
 	if err != nil || rest.More || len(rest.Hours) != 800-workPageHours || int64(rest.Seq) != st.WorkSeq() {
 		t.Fatalf("the rest: more %v, %d hours, %v", rest.More, len(rest.Hours), err)
 	}
-	// A first pull from an hour on takes only those.
 	since, err := st.PullWork(ctx, &machinev1.PullWorkRequest{FromHour: base.Add(700*time.Hour).Unix() / 3600}, all)
 	if err != nil || len(since.Hours) != 100 {
 		t.Fatalf("from an hour: %d hours, %v", len(since.Hours), err)
 	}
-	// A client that may read nothing of c_a's gets nothing.
 	none, err := st.PullWork(ctx, &machinev1.PullWorkRequest{}, func(client, _ string) bool { return client == "c_other" })
 	if err != nil || len(none.Keys)+len(none.Sessions) != 0 || len(none.Hours) == 0 || len(none.Hours[0].Presence)+len(none.Hours[0].Measures) != 0 {
 		t.Fatalf("another client: %d keys, %d sessions, %v", len(none.Keys), len(none.Sessions), err)
@@ -270,18 +336,18 @@ func TestWorkCounted(t *testing.T) {
 	if w := h.firstWatch(&machinev1.WatchRequest{}); w.WorkSeq == 0 || int64(w.WorkSeq) != h.n.st.WorkSeq() {
 		t.Fatalf("watch's work seq %d, counts at %d", w.WorkSeq, h.n.st.WorkSeq())
 	}
-	owner, err := h.s.PullWork(context.Background(), &Principal{Kind: PrincipalOwner}, &machinev1.PullWorkRequest{})
+	owner, err := h.n.PullWork(context.Background(), &Principal{Kind: PrincipalOwner}, &machinev1.PullWorkRequest{})
 	if err != nil || len(owner.Sessions) != 2 || len(owner.Keys) != 1 || owner.Keys[0].Client != "c_test" || owner.Keys[0].Agent != "fake" {
 		t.Fatalf("the owner pulls: %v %v", owner, err)
 	}
 	other := &Principal{Kind: PrincipalClient, ClientID: "c_other", Grant: &identityv1.Grant{GrantId: "g_other", ProjectIds: []string{"*"}}}
-	if res, err := h.s.PullWork(context.Background(), other, &machinev1.PullWorkRequest{}); err != nil || len(res.Sessions)+len(res.Keys) != 0 {
+	if res, err := h.n.PullWork(context.Background(), other, &machinev1.PullWorkRequest{}); err != nil || len(res.Sessions)+len(res.Keys) != 0 {
 		t.Fatalf("another agent pulls: %v %v", res, err)
 	}
 }
 
-// Counting again from the stored events gives what was counted live, under
-// a new store.
+// Counting again from the unified kernel's stored runs gives what was counted
+// live, under a new store.
 func TestRebuildWork(t *testing.T) {
 	h := newHarness(t, DefaultLimits())
 	for _, p := range []string{"say one", "say two\nsay three"} {
@@ -290,7 +356,7 @@ func TestRebuildWork(t *testing.T) {
 	today := time.Now().UTC().Format(time.DateOnly)
 	live := countWork(t, h.n.st, "UTC", today, 1, true)
 	store := h.n.st.workStore
-	if err := h.n.st.rebuildWork(); err != nil {
+	if err := h.n.st.RebuildWork(h.e); err != nil {
 		t.Fatal(err)
 	}
 	rebuilt := countWork(t, h.n.st, "UTC", today, 1, true)

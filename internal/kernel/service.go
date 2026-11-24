@@ -6,116 +6,116 @@ import (
 
 	"connectrpc.com/connect"
 
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/kernel/store"
 )
 
-// Service adapts Engine to threadv2connect.ThreadServiceHandler.
+// Service adapts Engine to sessionv1connect.SessionServiceHandler.
 type Service struct {
 	engine    *Engine
 	principal func(context.Context) *Principal
 }
 
-var _ threadv2connect.ThreadServiceHandler = (*Service)(nil)
+var _ sessionv1connect.SessionServiceHandler = (*Service)(nil)
 
 func NewService(engine *Engine, principal func(context.Context) *Principal) *Service {
 	return &Service{engine: engine, principal: principal}
 }
 
-func (s *Service) ListProviders(ctx context.Context, req *threadv2.ListProvidersRequest) (*threadv2.ListProvidersResponse, error) {
+func (s *Service) ListProviders(ctx context.Context, req *sessionv1.ListProvidersRequest) (*sessionv1.ListProvidersResponse, error) {
 	return s.engine.ListProviders(ctx, s.principal(ctx), req.ProjectId, req.Refresh)
 }
 
-func (s *Service) UpsertProviderInstance(ctx context.Context, req *threadv2.UpsertProviderInstanceRequest) (*threadv2.UpsertProviderInstanceResponse, error) {
+func (s *Service) UpsertProviderInstance(ctx context.Context, req *sessionv1.UpsertProviderInstanceRequest) (*sessionv1.UpsertProviderInstanceResponse, error) {
 	inst, err := s.engine.UpsertProviderInstance(ctx, s.principal(ctx), req.Config)
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.UpsertProviderInstanceResponse{Provider: inst}, nil
+	return &sessionv1.UpsertProviderInstanceResponse{Provider: inst}, nil
 }
 
-func (s *Service) RemoveProviderInstance(ctx context.Context, req *threadv2.RemoveProviderInstanceRequest) (*threadv2.RemoveProviderInstanceResponse, error) {
-	return &threadv2.RemoveProviderInstanceResponse{}, s.engine.RemoveProviderInstance(ctx, s.principal(ctx), req.InstanceId)
+func (s *Service) RemoveProviderInstance(ctx context.Context, req *sessionv1.RemoveProviderInstanceRequest) (*sessionv1.RemoveProviderInstanceResponse, error) {
+	return &sessionv1.RemoveProviderInstanceResponse{}, s.engine.RemoveProviderInstance(ctx, s.principal(ctx), req.InstanceId)
 }
 
-func (s *Service) LaunchThread(ctx context.Context, req *threadv2.LaunchThreadRequest) (*threadv2.LaunchThreadResponse, error) {
-	return s.engine.LaunchThread(ctx, s.principal(ctx), req)
+func (s *Service) StartSession(ctx context.Context, req *sessionv1.StartSessionRequest) (*sessionv1.StartSessionResponse, error) {
+	return s.engine.StartSession(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) GetThread(ctx context.Context, req *threadv2.GetThreadRequest) (*threadv2.GetThreadResponse, error) {
-	proj, err := s.engine.GetThread(ctx, s.principal(ctx), req.ThreadId)
+func (s *Service) GetSession(ctx context.Context, req *sessionv1.GetSessionRequest) (*sessionv1.GetSessionResponse, error) {
+	proj, err := s.engine.GetSession(ctx, s.principal(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.GetThreadResponse{Projection: proj}, nil
+	return &sessionv1.GetSessionResponse{Projection: proj}, nil
 }
 
-func (s *Service) ListThreads(ctx context.Context, req *threadv2.ListThreadsRequest) (*threadv2.ListThreadsResponse, error) {
-	list, err := s.engine.ListThreads(ctx, s.principal(ctx), req.ProjectId, req.IncludeArchived, req.Limit)
-	if err != nil {
-		return nil, err
-	}
-	return &threadv2.ListThreadsResponse{Threads: list}, nil
+func (s *Service) ListSessions(ctx context.Context, req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
+	return s.engine.ListSessions(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) SubscribeThreads(ctx context.Context, req *threadv2.SubscribeThreadsRequest, stream *connect.ServerStream[threadv2.SubscribeThreadsResponse]) error {
-	return s.engine.SubscribeThreads(ctx, s.principal(ctx), req.IncludeArchived, stream.Send)
+func (s *Service) WatchSessions(ctx context.Context, req *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
+	return s.engine.WatchSessions(ctx, s.principal(ctx), req.IncludeArchived, stream.Send)
 }
 
-func (s *Service) SubscribeThread(ctx context.Context, req *threadv2.SubscribeThreadRequest, stream *connect.ServerStream[threadv2.ThreadEvent]) error {
-	return s.engine.SubscribeThread(ctx, s.principal(ctx), req.ThreadId, req.AfterSeq, stream.Send)
+func (s *Service) SubscribeSession(ctx context.Context, req *sessionv1.SubscribeSessionRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
+	return s.engine.SubscribeSession(ctx, s.principal(ctx), req.SessionId, req.AfterSeq, stream.Send)
 }
 
-func (s *Service) DispatchMessage(ctx context.Context, req *threadv2.DispatchMessageRequest) (*threadv2.DispatchMessageResponse, error) {
+func (s *Service) DispatchMessage(ctx context.Context, req *sessionv1.DispatchMessageRequest) (*sessionv1.DispatchMessageResponse, error) {
 	return s.engine.DispatchMessage(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) InterruptRun(ctx context.Context, req *threadv2.InterruptRunRequest) (*threadv2.InterruptRunResponse, error) {
-	return s.engine.InterruptRun(ctx, s.principal(ctx), req)
+func (s *Service) DeliverMessage(ctx context.Context, req *sessionv1.DeliverMessageRequest) (*sessionv1.DeliverMessageResponse, error) {
+	return s.engine.DeliverMessage(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) StopBackgroundTask(ctx context.Context, req *threadv2.StopBackgroundTaskRequest) (*threadv2.StopBackgroundTaskResponse, error) {
+func (s *Service) InterruptSession(ctx context.Context, req *sessionv1.InterruptSessionRequest) (*sessionv1.InterruptSessionResponse, error) {
+	return s.engine.InterruptSession(ctx, s.principal(ctx), req)
+}
+
+func (s *Service) StopBackgroundTask(ctx context.Context, req *sessionv1.StopBackgroundTaskRequest) (*sessionv1.StopBackgroundTaskResponse, error) {
 	return s.engine.StopBackgroundTask(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) ManageQueue(ctx context.Context, req *threadv2.ManageQueueRequest) (*threadv2.ManageQueueResponse, error) {
+func (s *Service) ManageQueue(ctx context.Context, req *sessionv1.ManageQueueRequest) (*sessionv1.ManageQueueResponse, error) {
 	return s.engine.ManageQueue(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) UpdateThreadConfig(ctx context.Context, req *threadv2.UpdateThreadConfigRequest) (*threadv2.UpdateThreadConfigResponse, error) {
-	return s.engine.UpdateThreadConfig(ctx, s.principal(ctx), req)
+func (s *Service) UpdateSession(ctx context.Context, req *sessionv1.UpdateSessionRequest) (*sessionv1.UpdateSessionResponse, error) {
+	return s.engine.UpdateSession(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) RespondRuntimeRequest(ctx context.Context, req *threadv2.RespondRuntimeRequestRequest) (*threadv2.RespondRuntimeRequestResponse, error) {
+func (s *Service) RespondRuntimeRequest(ctx context.Context, req *sessionv1.RespondRuntimeRequestRequest) (*sessionv1.RespondRuntimeRequestResponse, error) {
 	return s.engine.RespondRuntimeRequest(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) ListCheckpoints(ctx context.Context, req *threadv2.ListCheckpointsRequest) (*threadv2.ListCheckpointsResponse, error) {
-	list, err := s.engine.ListCheckpoints(ctx, s.principal(ctx), req.ThreadId)
+func (s *Service) ListCheckpoints(ctx context.Context, req *sessionv1.ListCheckpointsRequest) (*sessionv1.ListCheckpointsResponse, error) {
+	list, err := s.engine.ListCheckpoints(ctx, s.principal(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.ListCheckpointsResponse{Checkpoints: list}, nil
+	return &sessionv1.ListCheckpointsResponse{Checkpoints: list}, nil
 }
 
-func (s *Service) RollbackCheckpoint(ctx context.Context, req *threadv2.RollbackCheckpointRequest) (*threadv2.RollbackCheckpointResponse, error) {
+func (s *Service) RollbackCheckpoint(ctx context.Context, req *sessionv1.RollbackCheckpointRequest) (*sessionv1.RollbackCheckpointResponse, error) {
 	return s.engine.RollbackCheckpoint(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) GetThreadDiff(ctx context.Context, req *threadv2.GetThreadDiffRequest) (*threadv2.GetThreadDiffResponse, error) {
-	return s.engine.GetThreadDiff(ctx, s.principal(ctx), req.ThreadId, req.CheckpointId)
+func (s *Service) GetDiff(ctx context.Context, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
+	return s.engine.GetDiff(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) ForkThread(ctx context.Context, req *threadv2.ForkThreadRequest) (*threadv2.ForkThreadResponse, error) {
-	return s.engine.ForkThread(ctx, s.principal(ctx), req)
+func (s *Service) ForkSession(ctx context.Context, req *sessionv1.ForkSessionRequest) (*sessionv1.ForkSessionResponse, error) {
+	return s.engine.ForkSession(ctx, s.principal(ctx), req)
 }
 
-func (s *Service) DeleteThread(ctx context.Context, req *threadv2.DeleteThreadRequest) (*threadv2.DeleteThreadResponse, error) {
-	return &threadv2.DeleteThreadResponse{}, s.engine.DeleteThread(ctx, s.principal(ctx), req.ThreadId)
+func (s *Service) DeleteSession(ctx context.Context, req *sessionv1.DeleteSessionRequest) (*sessionv1.DeleteSessionResponse, error) {
+	return &sessionv1.DeleteSessionResponse{}, s.engine.DeleteSession(ctx, s.principal(ctx), req.SessionId)
 }
 
-func (s *Service) UploadBlob(ctx context.Context, req *threadv2.UploadBlobRequest) (*threadv2.UploadBlobResponse, error) {
+func (s *Service) UploadBlob(ctx context.Context, req *sessionv1.UploadBlobRequest) (*sessionv1.UploadBlobResponse, error) {
 	if s.principal != nil && s.principal(ctx) == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
@@ -126,10 +126,10 @@ func (s *Service) UploadBlob(ctx context.Context, req *threadv2.UploadBlobReques
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.UploadBlobResponse{Attachment: ref}, nil
+	return &sessionv1.UploadBlobResponse{Attachment: ref}, nil
 }
 
-func (s *Service) DownloadBlob(ctx context.Context, req *threadv2.DownloadBlobRequest) (*threadv2.DownloadBlobResponse, error) {
+func (s *Service) DownloadBlob(ctx context.Context, req *sessionv1.DownloadBlobRequest) (*sessionv1.DownloadBlobResponse, error) {
 	if s.principal != nil && s.principal(ctx) == nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
 	}
@@ -140,10 +140,9 @@ func (s *Service) DownloadBlob(ctx context.Context, req *threadv2.DownloadBlobRe
 	if err != nil {
 		return nil, err
 	}
-	return &threadv2.DownloadBlobResponse{Data: data, Name: name, MimeType: mime}, nil
+	return &sessionv1.DownloadBlobResponse{Data: data, Name: name, MimeType: mime, SizeBytes: uint64(len(data))}, nil
 }
 
-func (s *Service) ListOutbox(context.Context, *threadv2.ListOutboxRequest) (*threadv2.ListOutboxResponse, error) {
-	// Machine itself executes directly; Owner overrides ListOutbox with its local Outbox entries.
-	return &threadv2.ListOutboxResponse{}, nil
+func (s *Service) ListOutbox(context.Context, *sessionv1.ListOutboxRequest) (*sessionv1.ListOutboxResponse, error) {
+	return &sessionv1.ListOutboxResponse{}, nil
 }

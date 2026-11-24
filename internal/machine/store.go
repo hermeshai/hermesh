@@ -1,14 +1,9 @@
 package machine
 
 import (
-	"bytes"
-	"compress/flate"
 	"database/sql"
 	"errors"
-	"io"
-	"math"
 	"os"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,7 +11,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/sqlitedb"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 )
@@ -168,19 +162,16 @@ CREATE TABLE work_hours (
 );
 CREATE INDEX work_hours_by_seq ON work_hours(seq);
 `, `
--- Projects are no longer for some coding agents only: an agent's access
--- limits which it may use (docs/settings-environments.md §5.6).
 UPDATE projects SET agents = '';
 `}
 
-// Store uses one writer connection (db) and a pool of readers (rdb), so
-// lookups on the request path don't wait behind batched event writes.
+// Store manages machine-level KV, projects, grant replay protection, and work
+// counts. Session runtime state and events live in internal/kernel/store.
 type Store struct {
 	db, rdb *sql.DB
 	ckpt    *sqlitedb.Checkpointer
 
-	// The work counts (work.go): their store and where they are. workSeq and
-	// workKeys belong to the writer; workSeqNow is read by watchers.
+	workMu     sync.Mutex
 	workStore  []byte
 	workSeq    int64
 	workSeqNow atomic.Int64
@@ -268,7 +259,6 @@ type Project struct {
 	Description    string
 }
 
-// InPlace: sessions work directly in the project directory.
 func (p *Project) InPlace() bool { return p.Workspace == identityv1.Workspace_WORKSPACE_IN_PLACE }
 
 func (s *Store) Projects() ([]Project, error) {
@@ -309,368 +299,6 @@ func (s *Store) DeleteProject(id string) error {
 	return err
 }
 
-// sessionRow is the persisted part of a session.
-type sessionRow struct {
-	ID, ProjectID, Agent string
-	Status               sessionv1.SessionStatus
-	CreatedBy, GrantID   string
-	Model, ProviderRef   string
-	// Effort and Speed are fixed when the session starts, like Model.
-	Effort             string
-	Speed              identityv1.AgentSpeed
-	BaseCommit, Branch string
-	// Worktree is the directory the agent works in: its own worktree, or
-	// the project directory itself for an in-place session.
-	Worktree  string
-	Workspace identityv1.Workspace
-	// QuestionTimeout is in seconds; -1: the default, 0: nobody answers.
-	QuestionTimeout int
-	Pgid            int
-	Progress        *sessionv1.SessionProgress
-	Error           string
-	// Result is the agent's full reply in the last turn that finished.
-	Result string
-	// Title is the first line of the starting prompt, for lists.
-	Title                string
-	CreatedAt, UpdatedAt time.Time
-
-	// Conversation is the creator's own conversation, where its news and
-	// the session's messages to it go (docs/agent-messages.md §7.3).
-	Conversation string
-
-	// AgentModel and AgentEffort are what the agent said it runs with when
-	// it last started, as far as it says.
-	AgentModel, AgentEffort string
-}
-
-const sessionCols = `session_id, project_id, agent, status, created_by, grant_id, model, provider_ref, base_commit, branch, worktree, workspace, question_timeout, pgid, progress, error, result, title, created_at, updated_at, effort, speed, conversation, agent_model, agent_effort`
-
-type execer interface {
-	Exec(query string, args ...any) (sql.Result, error)
-}
-
-func putSession(db execer, r *sessionRow) error {
-	prog, _ := proto.Marshal(r.Progress)
-	r.UpdatedAt = time.Now()
-	_, err := db.Exec(`INSERT INTO sessions(`+sessionCols+`) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-		ON CONFLICT(session_id) DO UPDATE SET status=excluded.status, model=excluded.model, provider_ref=excluded.provider_ref,
-		base_commit=excluded.base_commit, branch=excluded.branch, worktree=excluded.worktree, pgid=excluded.pgid,
-		progress=excluded.progress, error=excluded.error, result=excluded.result, title=excluded.title, updated_at=excluded.updated_at,
-		agent_model=excluded.agent_model, agent_effort=excluded.agent_effort`,
-		r.ID, r.ProjectID, r.Agent, int(r.Status), r.CreatedBy, r.GrantID, r.Model, r.ProviderRef,
-		r.BaseCommit, r.Branch, r.Worktree, int(r.Workspace), r.QuestionTimeout, r.Pgid, prog, r.Error, r.Result, r.Title, r.CreatedAt.Unix(), r.UpdatedAt.Unix(), r.Effort, int(r.Speed), r.Conversation, r.AgentModel, r.AgentEffort)
-	return err
-}
-
-func scanSession(sc interface{ Scan(...any) error }) (*sessionRow, error) {
-	r := &sessionRow{Progress: &sessionv1.SessionProgress{}}
-	var status, workspace, speed int
-	var prog []byte
-	var c, u int64
-	if err := sc.Scan(&r.ID, &r.ProjectID, &r.Agent, &status, &r.CreatedBy, &r.GrantID, &r.Model, &r.ProviderRef,
-		&r.BaseCommit, &r.Branch, &r.Worktree, &workspace, &r.QuestionTimeout, &r.Pgid, &prog, &r.Error, &r.Result, &r.Title, &c, &u, &r.Effort, &speed, &r.Conversation, &r.AgentModel, &r.AgentEffort); err != nil {
-		return nil, err
-	}
-	r.Status, r.Workspace, r.Speed = sessionv1.SessionStatus(status), identityv1.Workspace(workspace), identityv1.AgentSpeed(speed)
-	r.CreatedAt, r.UpdatedAt = time.Unix(c, 0), time.Unix(u, 0)
-	proto.Unmarshal(prog, r.Progress)
-	return r, nil
-}
-
-func (s *Store) Session(id string) (*sessionRow, error) {
-	r, err := scanSession(s.rdb.QueryRow(`SELECT `+sessionCols+` FROM sessions WHERE session_id=?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	return r, err
-}
-
-func (s *Store) Sessions(where string, args ...any) ([]*sessionRow, error) {
-	q := `SELECT ` + sessionCols + ` FROM sessions`
-	if where != "" {
-		q += ` WHERE ` + where
-	}
-	rows, err := s.rdb.Query(q+` ORDER BY created_at DESC`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*sessionRow
-	for rows.Next() {
-		r, err := scanSession(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
-
-// DeleteSession removes a session's record, events, turns and idempotency
-// keys, and keeps who started it, where and with which agent in
-// deleted_sessions (for the watchers that held it). Its work stays counted.
-func (s *Store) DeleteSession(r *sessionRow) error {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.Exec(`INSERT OR REPLACE INTO deleted_sessions(session_id, project_id, agent, created_by, grant_id, deleted_at) VALUES(?,?,?,?,?,?)`,
-		r.ID, r.ProjectID, r.Agent, r.CreatedBy, r.GrantID, time.Now().Unix()); err != nil {
-		return err
-	}
-	for _, table := range []string{"sessions", "session_events", "turns", "idempotency", "tool_outputs"} {
-		if _, err := tx.Exec(`DELETE FROM `+table+` WHERE session_id=?`, r.ID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
-// DeletedSessionsSince is what is kept of the sessions deleted at or after t
-// (to the second).
-func (s *Store) DeletedSessionsSince(t time.Time) ([]*sessionRow, error) {
-	rows, err := s.rdb.Query(`SELECT session_id, project_id, agent, created_by, grant_id FROM deleted_sessions WHERE deleted_at >= ?`, t.Unix())
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*sessionRow
-	for rows.Next() {
-		r := &sessionRow{}
-		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Agent, &r.CreatedBy, &r.GrantID); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
-
-// DeletedSessions returns what is kept of the deleted sessions (see DeleteSession).
-func (s *Store) DeletedSessions() ([]*sessionRow, error) {
-	rows, err := s.rdb.Query(`SELECT session_id, project_id, agent, created_by, grant_id FROM deleted_sessions`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*sessionRow
-	for rows.Next() {
-		r := &sessionRow{}
-		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Agent, &r.CreatedBy, &r.GrantID); err != nil {
-			return nil, err
-		}
-		out = append(out, r)
-	}
-	return out, rows.Err()
-}
-
-// EachSession calls f with each stored session that matches where (which
-// may end with ORDER BY), until f returns false.
-func (s *Store) EachSession(where string, args []any, f func(*sessionRow) bool) error {
-	rows, err := s.rdb.Query(`SELECT `+sessionCols+` FROM sessions WHERE `+where, args...)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		r, err := scanSession(rows)
-		if err != nil {
-			return err
-		}
-		if !f(r) {
-			break
-		}
-	}
-	return rows.Err()
-}
-
-// WriteBatch persists events and the latest version of each session row in
-// one transaction.
-func (s *Store) WriteBatch(ops []writeOp) error {
-	t0 := time.Now()
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	mBatchBegin.Since(t0)
-	defer tx.Rollback()
-	ins, err := tx.Prepare(`INSERT OR REPLACE INTO session_events(session_id, seq, payload) VALUES(?,?,?)`)
-	if err != nil {
-		return err
-	}
-	defer ins.Close()
-	rows := map[string]*sessionRow{}
-	now := time.Now().Unix()
-	work := s.workTx(tx)
-	for _, op := range ops {
-		if op.workTick != 0 {
-			if err := work.tick(op.workTick); err != nil {
-				return err
-			}
-		}
-		if op.turn != nil {
-			if _, err := tx.Exec(`INSERT OR REPLACE INTO turns(session_id, turn, commit_sha) VALUES(?,?,?)`,
-				op.turn.sessionID, op.turn.turn, op.turn.commit); err != nil {
-				return err
-			}
-		}
-		if op.idem != nil {
-			if _, err := tx.Exec(`INSERT OR REPLACE INTO idempotency(client_id,key,session_id,created_at) VALUES(?,?,?,?)`,
-				op.idem.clientID, op.idem.key, op.idem.sessionID, now); err != nil {
-				return err
-			}
-		}
-		if op.ev != nil {
-			b, err := proto.Marshal(op.ev)
-			if err != nil {
-				return err
-			}
-			if _, err := ins.Exec(op.l.id, op.ev.Seq, b); err != nil {
-				return err
-			}
-			if err := work.event(op.l.id, op.who, op.ev); err != nil {
-				return err
-			}
-			if op.output != "" {
-				if err := putToolOutput(tx, op.l.id, op.ev.GetToolResult().GetCallId(), op.output); err != nil {
-					return err
-				}
-			}
-		}
-		if op.row != nil {
-			rows[op.row.ID] = op.row
-			if err := work.state(op.row); err != nil {
-				return err
-			}
-		}
-	}
-	for _, r := range rows {
-		if err := putSession(tx, r); err != nil {
-			return err
-		}
-	}
-	if err := work.finish(); err != nil {
-		return err
-	}
-	t1 := time.Now()
-	err = tx.Commit()
-	mBatchCommit.Since(t1)
-	if err == nil {
-		work.done()
-	}
-	return err
-}
-
-func (s *Store) AppendEvent(sessionID string, e *sessionv1.SessionEvent) error {
-	b, err := proto.Marshal(e)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.Exec(`INSERT INTO session_events(session_id, seq, payload) VALUES(?,?,?)`, sessionID, e.Seq, b)
-	return err
-}
-
-func (s *Store) Events(sessionID string, afterSeq uint64, limit int) ([]*sessionv1.SessionEvent, error) {
-	rows, err := s.rdb.Query(`SELECT payload FROM session_events WHERE session_id=? AND seq>? ORDER BY seq LIMIT ?`, sessionID, afterSeq, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*sessionv1.SessionEvent
-	for rows.Next() {
-		var b []byte
-		if err := rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		e := &sessionv1.SessionEvent{}
-		if err := proto.Unmarshal(b, e); err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-
-// EventPage returns up to limit events, oldest first: those right after
-// afterSeq when it is set, else those right before beforeSeq (0: the
-// latest). It also says whether there are more on either side.
-func (s *Store) EventPage(sessionID string, afterSeq, beforeSeq uint64, limit int) (evs []*sessionv1.SessionEvent, moreBefore, moreAfter bool, err error) {
-	exists := func(cond string, seq uint64) (bool, error) {
-		var one int
-		err := s.rdb.QueryRow(`SELECT 1 FROM session_events WHERE session_id=? AND `+cond+` LIMIT 1`, sessionID, seq).Scan(&one)
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return err == nil, err
-	}
-	if afterSeq > 0 {
-		if evs, err = s.Events(sessionID, afterSeq, limit+1); err != nil {
-			return nil, false, false, err
-		}
-		if moreAfter = len(evs) > limit; moreAfter {
-			evs = evs[:limit]
-		}
-		moreBefore, err = exists("seq<=?", afterSeq)
-		return evs, moreBefore, moreAfter, err
-	}
-	upper := beforeSeq
-	if upper == 0 {
-		upper = math.MaxInt64
-	}
-	rows, err := s.rdb.Query(`SELECT payload FROM session_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT ?`, sessionID, upper, limit+1)
-	if err != nil {
-		return nil, false, false, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var b []byte
-		if err := rows.Scan(&b); err != nil {
-			return nil, false, false, err
-		}
-		e := &sessionv1.SessionEvent{}
-		if err := proto.Unmarshal(b, e); err != nil {
-			return nil, false, false, err
-		}
-		evs = append(evs, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, false, false, err
-	}
-	if moreBefore = len(evs) > limit; moreBefore {
-		evs = evs[:limit]
-	}
-	slices.Reverse(evs)
-	if beforeSeq > 0 {
-		moreAfter, err = exists("seq>=?", beforeSeq)
-	}
-	return evs, moreBefore, moreAfter, err
-}
-
-func (s *Store) MaxSeq(sessionID string) (uint64, error) {
-	var n sql.NullInt64
-	err := s.rdb.QueryRow(`SELECT max(seq) FROM session_events WHERE session_id=?`, sessionID).Scan(&n)
-	return uint64(n.Int64), err
-}
-
-func (s *Store) TurnCommit(sessionID string, turn uint32) (string, error) {
-	var c string
-	err := s.rdb.QueryRow(`SELECT commit_sha FROM turns WHERE session_id=? AND turn=?`, sessionID, turn).Scan(&c)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return c, err
-}
-
-func (s *Store) Idempotent(clientID, key string) (string, error) {
-	var id string
-	err := s.rdb.QueryRow(`SELECT session_id FROM idempotency WHERE client_id=? AND key=? AND created_at>?`,
-		clientID, key, time.Now().Add(-24*time.Hour).Unix()).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
-	}
-	return id, err
-}
-
 // SeeGrantVersion records v and returns the highest version seen.
 func (s *Store) SeeGrantVersion(grantID string, v uint64) (uint64, error) {
 	if _, err := s.db.Exec(`INSERT INTO grants_seen(grant_id,version) VALUES(?,?)
@@ -680,29 +308,4 @@ func (s *Store) SeeGrantVersion(grantID string, v uint64) (uint64, error) {
 	var max uint64
 	err := s.db.QueryRow(`SELECT version FROM grants_seen WHERE grant_id=?`, grantID).Scan(&max)
 	return max, err
-}
-
-// putToolOutput keeps a tool's whole output, compressed, beside its event
-// (docs/state-sync.md §3.5).
-func putToolOutput(tx *sql.Tx, sessionID, callID, output string) error {
-	var b bytes.Buffer
-	z, _ := flate.NewWriter(&b, flate.DefaultCompression)
-	z.Write([]byte(output))
-	z.Close()
-	_, err := tx.Exec(`INSERT OR REPLACE INTO tool_outputs(session_id, call_id, size, data) VALUES(?,?,?,?)`, sessionID, callID, len(output), b.Bytes())
-	return err
-}
-
-// ToolOutput is a tool's whole output as kept beside its event, and its
-// size, decompressed as it is read; ok is false when none is (its event
-// holds it whole).
-func (s *Store) ToolOutput(sessionID, callID string) (size uint64, output io.Reader, ok bool, err error) {
-	var data []byte
-	switch err := s.rdb.QueryRow(`SELECT size, data FROM tool_outputs WHERE session_id=? AND call_id=?`, sessionID, callID).Scan(&size, &data); {
-	case errors.Is(err, sql.ErrNoRows):
-		return 0, nil, false, nil
-	case err != nil:
-		return 0, nil, false, err
-	}
-	return size, flate.NewReader(bytes.NewReader(data)), true, nil
 }

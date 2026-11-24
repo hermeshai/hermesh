@@ -5,7 +5,7 @@ import (
 	"time"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // What an agent says of its rate limits is in the machine's status, for its
@@ -16,12 +16,12 @@ func TestAgentLimits(t *testing.T) {
 	dir := t.TempDir()
 	open := func() *Machine {
 		t.Helper()
-		n, err := Open(Config{DataDir: dir, Providers: map[string]provider.Provider{}})
+		n, err := Open(Config{DataDir: dir, Discoverers: map[string]AgentDiscoverer{}})
 		if err != nil {
 			t.Fatal(err)
 		}
 		n.mu.Lock()
-		n.infos = map[string]provider.Info{"codex": {Available: true}, "claude": {Available: true}}
+		n.infos = map[string]rt.Info{"codex": {Available: true}, "claude": {Available: true}}
 		n.mu.Unlock()
 		return n
 	}
@@ -39,8 +39,8 @@ func TestAgentLimits(t *testing.T) {
 		t.Fatalf("limits before any were said: %v", l)
 	}
 	resets := time.Now().Add(3 * time.Hour).Truncate(time.Second)
-	week := provider.LimitWindow{Minutes: 10080, UsedPercent: 61, ResetsAt: resets.Add(72 * time.Hour)}
-	n.noteLimits("codex", provider.Limits{Plan: "pro", Windows: []provider.LimitWindow{{Minutes: 300, UsedPercent: 82, ResetsAt: resets}, week}})
+	week := rt.LimitWindow{Minutes: 10080, UsedPercent: 61, ResetsAt: resets.Add(72 * time.Hour)}
+	n.noteLimits("codex", rt.Limits{Plan: "pro", Windows: []rt.LimitWindow{{Minutes: 300, UsedPercent: 82, ResetsAt: resets}, week}})
 	got := limitsOf(n.statusFor(&Principal{Kind: PrincipalOwner}), "codex")
 	if got == nil || got.Plan != "pro" || len(got.Windows) != 2 || got.Windows[0].Minutes != 300 || got.Windows[0].UsedPercent != 82 ||
 		!got.Windows[0].ResetsAt.AsTime().Equal(resets) || got.Windows[1].UsedPercent != 61 || time.Since(got.ObservedAt.AsTime()) > time.Minute {
@@ -55,11 +55,11 @@ func TestAgentLimits(t *testing.T) {
 
 	// Unchanged within the minute: kept as it was. Changed: at once.
 	first := got.ObservedAt.AsTime()
-	n.noteLimits("codex", provider.Limits{Plan: "pro", Windows: []provider.LimitWindow{{Minutes: 300, UsedPercent: 82, ResetsAt: resets}, week}})
+	n.noteLimits("codex", rt.Limits{Plan: "pro", Windows: []rt.LimitWindow{{Minutes: 300, UsedPercent: 82, ResetsAt: resets}, week}})
 	if at := limitsOf(n.Status(), "codex").ObservedAt.AsTime(); !at.Equal(first) {
 		t.Fatalf("said again unchanged: kept at %v, was %v", at, first)
 	}
-	n.noteLimits("codex", provider.Limits{Plan: "pro", Windows: []provider.LimitWindow{{Minutes: 300, UsedPercent: 84, ResetsAt: resets}, week}})
+	n.noteLimits("codex", rt.Limits{Plan: "pro", Windows: []rt.LimitWindow{{Minutes: 300, UsedPercent: 84, ResetsAt: resets}, week}})
 	if l := limitsOf(n.Status(), "codex"); l.Windows[0].UsedPercent != 84 {
 		t.Fatalf("a window moved: %v", l)
 	}
@@ -68,7 +68,7 @@ func TestAgentLimits(t *testing.T) {
 	n.limits["codex"].ObservedAt.Seconds -= 61
 	old := n.limits["codex"].ObservedAt.AsTime()
 	n.mu.Unlock()
-	n.noteLimits("codex", provider.Limits{Plan: "pro", Windows: []provider.LimitWindow{{Minutes: 300, UsedPercent: 84, ResetsAt: resets}, week}})
+	n.noteLimits("codex", rt.Limits{Plan: "pro", Windows: []rt.LimitWindow{{Minutes: 300, UsedPercent: 84, ResetsAt: resets}, week}})
 	if at := limitsOf(n.Status(), "codex").ObservedAt.AsTime(); !at.After(old) {
 		t.Fatalf("a minute on: kept at %v", at)
 	}

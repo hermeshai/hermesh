@@ -15,9 +15,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/internal/provider"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
+	"github.com/hermeshai/hermesh/internal/runtime/acp"
 )
 
 //go:embed manifest.json
@@ -79,19 +79,18 @@ const cacheTTL = 5 * time.Minute
 
 type cachedSnapshot struct {
 	at   time.Time
-	inst *threadv2.ProviderInstance
+	inst *sessionv1.ProviderInstance
 }
 
 // AgentModels gives the models a coding agent offers on this machine as the
-// agent itself lists them (the list the machine's settings show) and what its
-// sessions run with when none is named; ok is false when it could not tell.
-type AgentModels func(agent string) (models []provider.Model, def provider.Settings, ok bool)
+// agent itself lists them and what its sessions run with when none is named.
+type AgentModels func(agent string) (models []runtime.Model, def runtime.Settings, ok bool)
 
 type Service struct {
 	mu      sync.Mutex
 	drivers map[string]runtime.Driver
-	models  AgentModels               // nil: the manifest's models only
-	cache   map[string]cachedSnapshot // instanceID + "\x00" + workdir
+	models  AgentModels
+	cache   map[string]cachedSnapshot
 }
 
 func NewService(drivers map[string]runtime.Driver, models AgentModels) *Service {
@@ -107,44 +106,73 @@ func (s *Service) Driver(kind string) runtime.Driver {
 }
 
 // DefaultInstances returns standard built-in provider instance configs for a machine.
-func DefaultInstances(includeScripted bool) []*threadv2.ProviderInstanceConfig {
-	out := []*threadv2.ProviderInstanceConfig{
+func DefaultInstances(includeScripted bool) []*sessionv1.ProviderInstanceConfig {
+	out := []*sessionv1.ProviderInstanceConfig{
 		{InstanceId: "claude", Driver: "claude", DisplayName: "Claude Code", Enabled: true},
 		{InstanceId: "codex", Driver: "codex", DisplayName: "Codex", Enabled: true},
-		{InstanceId: "gemini", Driver: "acp", AcpFlavor: "gemini", DisplayName: "Gemini CLI", Enabled: true},
-		{InstanceId: "antigravity", Driver: "acp", AcpFlavor: "antigravity", DisplayName: "Antigravity", Enabled: true},
-		{InstanceId: "cursor", Driver: "acp", AcpFlavor: "cursor", DisplayName: "Cursor", Enabled: true},
-		{InstanceId: "opencode", Driver: "acp", AcpFlavor: "opencode", DisplayName: "OpenCode", Enabled: true},
+	}
+	displayNames := map[string]string{
+		"gemini":      "Gemini CLI",
+		"antigravity": "Antigravity",
+		"cursor":      "Cursor",
+		"copilot":     "GitHub Copilot",
+		"opencode":    "OpenCode",
+		"qwen":        "Qwen Code",
+		"goose":       "Goose",
+		"auggie":      "Auggie",
+		"kimi":        "Kimi",
+		"kiro":        "Kiro",
+		"qoder":       "Qoder",
+		"deepseek":    "DeepSeek",
+		"codebuddy":   "CodeBuddy",
+		"grok":        "Grok",
+	}
+	for _, a := range acp.Agents {
+		dn := displayNames[a.Name]
+		if dn == "" {
+			dn = a.Name
+		}
+		out = append(out, &sessionv1.ProviderInstanceConfig{
+			InstanceId:  a.Name,
+			Driver:      "acp",
+			AcpFlavor:   a.Name,
+			DisplayName: dn,
+			Enabled:     true,
+		})
 	}
 	if includeScripted {
-		out = append([]*threadv2.ProviderInstanceConfig{
+		out = append([]*sessionv1.ProviderInstanceConfig{
 			{InstanceId: "scripted", Driver: "scripted", DisplayName: "Scripted Agent", Enabled: true},
+			{InstanceId: "fake", Driver: "fake", DisplayName: "Fake Agent", Enabled: true},
 		}, out...)
 	}
 	return out
 }
 
-func manifestKey(cfg *threadv2.ProviderInstanceConfig) string {
+func manifestKey(cfg *sessionv1.ProviderInstanceConfig) string {
 	if cfg.Driver == "acp" && cfg.AcpFlavor != "" {
 		return cfg.AcpFlavor
+	}
+	if cfg.Driver == "fake" {
+		return "scripted"
 	}
 	return cfg.Driver
 }
 
-func buildDescriptor(tpl manifestOption) *threadv2.OptionDescriptor {
+func buildDescriptor(tpl manifestOption) *sessionv1.OptionDescriptor {
 	if tpl.Type == "boolean" {
-		return &threadv2.OptionDescriptor{
+		return &sessionv1.OptionDescriptor{
 			Id:           tpl.ID,
 			Label:        tpl.Label,
 			Description:  tpl.Description,
-			Type:         threadv2.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_BOOLEAN,
+			Type:         sessionv1.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_BOOLEAN,
 			Role:         tpl.Role,
-			CurrentValue: &threadv2.OptionValue{Kind: &threadv2.OptionValue_BoolValue{BoolValue: tpl.DefaultBool}},
+			CurrentValue: &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_BoolValue{BoolValue: tpl.DefaultBool}},
 		}
 	}
-	choices := make([]*threadv2.OptionChoice, 0, len(tpl.Choices))
+	choices := make([]*sessionv1.OptionChoice, 0, len(tpl.Choices))
 	for _, c := range tpl.Choices {
-		choices = append(choices, &threadv2.OptionChoice{
+		choices = append(choices, &sessionv1.OptionChoice{
 			Id:          c.ID,
 			Label:       c.Label,
 			Description: c.Description,
@@ -155,31 +183,31 @@ func buildDescriptor(tpl manifestOption) *threadv2.OptionDescriptor {
 	if cur == "" && len(choices) > 0 {
 		cur = choices[0].Id
 	}
-	return &threadv2.OptionDescriptor{
+	return &sessionv1.OptionDescriptor{
 		Id:           tpl.ID,
 		Label:        tpl.Label,
 		Description:  tpl.Description,
-		Type:         threadv2.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_SELECT,
+		Type:         sessionv1.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_SELECT,
 		Role:         tpl.Role,
 		Choices:      choices,
-		CurrentValue: &threadv2.OptionValue{Kind: &threadv2.OptionValue_StringValue{StringValue: cur}},
+		CurrentValue: &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_StringValue{StringValue: cur}},
 	}
 }
 
-func bundledModelsFor(key string) (displayName string, models []*threadv2.ModelCatalogEntry) {
+func bundledModelsFor(key string) (displayName string, models []*sessionv1.ModelCatalogEntry) {
 	doc := bundled()
 	p, ok := doc.Providers[key]
 	if !ok {
 		return key, nil
 	}
 	for _, m := range p.Models {
-		var opts []*threadv2.OptionDescriptor
+		var opts []*sessionv1.OptionDescriptor
 		for _, optKey := range m.Options {
 			if tpl, ok := doc.OptionTemplates[optKey]; ok {
 				opts = append(opts, buildDescriptor(tpl))
 			}
 		}
-		models = append(models, &threadv2.ModelCatalogEntry{
+		models = append(models, &sessionv1.ModelCatalogEntry{
 			Slug:              m.Slug,
 			Name:              m.Name,
 			ShortName:         m.ShortName,
@@ -193,14 +221,12 @@ func bundledModelsFor(key string) (displayName string, models []*threadv2.ModelC
 	return p.DisplayName, models
 }
 
-// ResolveInstance merges static manifest metadata, live CLI probe results,
-// custom models, redacted env vars, and workspace commands/skills.
-func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderInstanceConfig, workdir string, refresh bool) *threadv2.ProviderInstance {
+func (s *Service) ResolveInstance(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, workdir string, refresh bool) *sessionv1.ProviderInstance {
 	cacheKey := cfg.InstanceId + "\x00" + workdir
 	if !refresh {
 		s.mu.Lock()
 		if hit, ok := s.cache[cacheKey]; ok && time.Since(hit.at) < cacheTTL {
-			cloned := proto.Clone(hit.inst).(*threadv2.ProviderInstance)
+			cloned := proto.Clone(hit.inst).(*sessionv1.ProviderInstance)
 			s.mu.Unlock()
 			return cloned
 		}
@@ -214,7 +240,7 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 		displayName = fallbackName
 	}
 
-	inst := &threadv2.ProviderInstance{
+	inst := &sessionv1.ProviderInstance{
 		InstanceId:  cfg.InstanceId,
 		Driver:      cfg.Driver,
 		AcpFlavor:   cfg.AcpFlavor,
@@ -234,6 +260,9 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 		inst.Authenticated = probe.Authenticated
 		inst.AuthLabel = probe.AuthLabel
 		inst.Version = probe.Version
+		if inst.BinaryPath == "" && probe.Binary != "" {
+			inst.BinaryPath = probe.Binary
+		}
 		inst.Compatibility = probe.Compatibility
 		inst.CompatibilityMessage = probe.CompatibilityMessage
 		inst.Models = mergeModels(manifestModels, probe.Models, cfg.CustomModels)
@@ -241,8 +270,6 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 		inst.SlashCommands = probe.SlashCommands
 		inst.Skills = probe.Skills
 	}
-	// The agent's own list, where it gave one, is what it offers here; the
-	// manifest's is only for an agent that could not tell.
 	if s.models != nil {
 		if ms, def, ok := s.models(mKey); ok && len(ms) > 0 {
 			inst.Models = mergeModels(liveModels(cfg.Driver, ms, def), nil, cfg.CustomModels)
@@ -256,26 +283,23 @@ func (s *Service) ResolveInstance(ctx context.Context, cfg *threadv2.ProviderIns
 	}
 
 	s.mu.Lock()
-	s.cache[cacheKey] = cachedSnapshot{at: time.Now(), inst: proto.Clone(inst).(*threadv2.ProviderInstance)}
+	s.cache[cacheKey] = cachedSnapshot{at: time.Now(), inst: proto.Clone(inst).(*sessionv1.ProviderInstance)}
 	s.mu.Unlock()
 	return inst
 }
 
-// liveModels are an agent's own models as catalog entries: def's model is
-// the default, and a model's reasoning efforts its reasoning option, under
-// the id the driver reads (the effort def names, else medium, chosen).
-func liveModels(driver string, ms []provider.Model, def provider.Settings) []*threadv2.ModelCatalogEntry {
+func liveModels(driver string, ms []runtime.Model, def runtime.Settings) []*sessionv1.ModelCatalogEntry {
 	effortID := "reasoningEffort"
 	if driver == "acp" {
 		effortID = "thought_level"
 	}
-	out := make([]*threadv2.ModelCatalogEntry, 0, len(ms))
+	out := make([]*sessionv1.ModelCatalogEntry, 0, len(ms))
 	for _, m := range ms {
 		name := m.Name
 		if name == "" {
 			name = m.ID
 		}
-		e := &threadv2.ModelCatalogEntry{Slug: m.ID, Name: name, ShortName: name, IsDefault: m.ID == def.Model}
+		e := &sessionv1.ModelCatalogEntry{Slug: m.ID, Name: name, ShortName: name, IsDefault: m.ID == def.Model}
 		if len(m.Efforts) > 0 {
 			cur := m.Efforts[0]
 			if slices.Contains(m.Efforts, def.Effort) {
@@ -283,17 +307,17 @@ func liveModels(driver string, ms []provider.Model, def provider.Settings) []*th
 			} else if slices.Contains(m.Efforts, "medium") {
 				cur = "medium"
 			}
-			choices := make([]*threadv2.OptionChoice, 0, len(m.Efforts))
+			choices := make([]*sessionv1.OptionChoice, 0, len(m.Efforts))
 			for _, id := range m.Efforts {
-				choices = append(choices, &threadv2.OptionChoice{Id: id, Label: id, IsDefault: id == cur})
+				choices = append(choices, &sessionv1.OptionChoice{Id: id, Label: id, IsDefault: id == cur})
 			}
-			e.OptionDescriptors = []*threadv2.OptionDescriptor{{
+			e.OptionDescriptors = []*sessionv1.OptionDescriptor{{
 				Id:           effortID,
 				Label:        "Reasoning",
-				Type:         threadv2.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_SELECT,
+				Type:         sessionv1.OptionDescriptorType_OPTION_DESCRIPTOR_TYPE_SELECT,
 				Role:         "reasoning",
 				Choices:      choices,
-				CurrentValue: &threadv2.OptionValue{Kind: &threadv2.OptionValue_StringValue{StringValue: cur}},
+				CurrentValue: &sessionv1.OptionValue{Kind: &sessionv1.OptionValue_StringValue{StringValue: cur}},
 			}}
 		}
 		out = append(out, e)
@@ -301,11 +325,11 @@ func liveModels(driver string, ms []provider.Model, def provider.Settings) []*th
 	return out
 }
 
-func mergeModels(base []*threadv2.ModelCatalogEntry, discovered []*threadv2.ModelCatalogEntry, custom []string) []*threadv2.ModelCatalogEntry {
-	bySlug := map[string]*threadv2.ModelCatalogEntry{}
+func mergeModels(base []*sessionv1.ModelCatalogEntry, discovered []*sessionv1.ModelCatalogEntry, custom []string) []*sessionv1.ModelCatalogEntry {
+	bySlug := map[string]*sessionv1.ModelCatalogEntry{}
 	var order []string
 	for _, m := range base {
-		cp := proto.Clone(m).(*threadv2.ModelCatalogEntry)
+		cp := proto.Clone(m).(*sessionv1.ModelCatalogEntry)
 		bySlug[cp.Slug] = cp
 		order = append(order, cp.Slug)
 	}
@@ -318,7 +342,7 @@ func mergeModels(base []*threadv2.ModelCatalogEntry, discovered []*threadv2.Mode
 				existing.Name = d.Name
 			}
 		} else {
-			cp := proto.Clone(d).(*threadv2.ModelCatalogEntry)
+			cp := proto.Clone(d).(*sessionv1.ModelCatalogEntry)
 			bySlug[cp.Slug] = cp
 			order = append(order, cp.Slug)
 		}
@@ -329,7 +353,7 @@ func mergeModels(base []*threadv2.ModelCatalogEntry, discovered []*threadv2.Mode
 			continue
 		}
 		if _, ok := bySlug[slug]; !ok {
-			bySlug[slug] = &threadv2.ModelCatalogEntry{
+			bySlug[slug] = &sessionv1.ModelCatalogEntry{
 				Slug:      slug,
 				Name:      slug,
 				ShortName: slug,
@@ -338,7 +362,7 @@ func mergeModels(base []*threadv2.ModelCatalogEntry, discovered []*threadv2.Mode
 			order = append(order, slug)
 		}
 	}
-	out := make([]*threadv2.ModelCatalogEntry, 0, len(order))
+	out := make([]*sessionv1.ModelCatalogEntry, 0, len(order))
 	for _, slug := range order {
 		out = append(out, bySlug[slug])
 	}
@@ -367,16 +391,16 @@ func redactEnv(env map[string]string) map[string]string {
 	return out
 }
 
-func scanWorkspaceCustomizations(workdir string) ([]*threadv2.SlashCommand, []*threadv2.SkillEntry) {
-	var cmds []*threadv2.SlashCommand
-	var skills []*threadv2.SkillEntry
+func scanWorkspaceCustomizations(workdir string) ([]*sessionv1.SlashCommand, []*sessionv1.SkillEntry) {
+	var cmds []*sessionv1.SlashCommand
+	var skills []*sessionv1.SkillEntry
 
 	cmdDir := filepath.Join(workdir, ".claude", "commands")
 	if entries, err := os.ReadDir(cmdDir); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".md") {
 				name := strings.TrimSuffix(e.Name(), ".md")
-				cmds = append(cmds, &threadv2.SlashCommand{
+				cmds = append(cmds, &sessionv1.SlashCommand{
 					Name:        "/" + name,
 					Description: "Workspace command (" + e.Name() + ")",
 				})
@@ -395,7 +419,7 @@ func scanWorkspaceCustomizations(workdir string) ([]*threadv2.SlashCommand, []*t
 			}
 			skillFile := filepath.Join(dir, e.Name(), "SKILL.md")
 			if st, sErr := os.Stat(skillFile); sErr == nil && !st.IsDir() {
-				skills = append(skills, &threadv2.SkillEntry{
+				skills = append(skills, &sessionv1.SkillEntry{
 					Name:          e.Name(),
 					Path:          skillFile,
 					UserInvocable: true,
@@ -407,9 +431,9 @@ func scanWorkspaceCustomizations(workdir string) ([]*threadv2.SlashCommand, []*t
 }
 
 // DefaultSelection picks a valid default ModelSelection for an instance.
-func DefaultSelection(inst *threadv2.ProviderInstance) *threadv2.ModelSelection {
+func DefaultSelection(inst *sessionv1.ProviderInstance) *sessionv1.ModelSelection {
 	model := "default"
-	var chosen *threadv2.ModelCatalogEntry
+	var chosen *sessionv1.ModelCatalogEntry
 	for _, m := range inst.Models {
 		if m.IsDefault {
 			chosen = m
@@ -419,16 +443,16 @@ func DefaultSelection(inst *threadv2.ProviderInstance) *threadv2.ModelSelection 
 	if chosen == nil && len(inst.Models) > 0 {
 		chosen = inst.Models[0]
 	}
-	opts := map[string]*threadv2.OptionValue{}
+	opts := map[string]*sessionv1.OptionValue{}
 	if chosen != nil {
 		model = chosen.Slug
 		for _, d := range chosen.OptionDescriptors {
 			if d.CurrentValue != nil {
-				opts[d.Id] = proto.Clone(d.CurrentValue).(*threadv2.OptionValue)
+				opts[d.Id] = proto.Clone(d.CurrentValue).(*sessionv1.OptionValue)
 			}
 		}
 	}
-	return &threadv2.ModelSelection{
+	return &sessionv1.ModelSelection{
 		InstanceId: inst.InstanceId,
 		Model:      model,
 		Options:    opts,

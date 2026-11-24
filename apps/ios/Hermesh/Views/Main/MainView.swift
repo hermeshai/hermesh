@@ -59,9 +59,8 @@ private struct PageView: View {
         case .statistics: StatisticsView()
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
-        case .session(let id): SessionView(id: id).id(id) // a page of its own: the one left keeps its conversation as it goes
-        case .newThread(let machine, let project): ThreadPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")
-        case .thread(let id): ThreadPage(threadID: id).id(id)
+        case .newSession(let machine, let project): SessionPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")
+        case .session(let id): SessionPage(sessionID: id).id(id)
         }
     }
 }
@@ -71,7 +70,7 @@ private struct PageView: View {
     case .machines: EnvironmentsView(isRoot: false)
     case .tasks: TasksView()
     case .grants: GrantsView(isRoot: false)
-    case .session(let id): SessionView(id: id).id(id) // the sync line in its title's second line
+    case .session(let id): SessionPage(sessionID: id).id(id)
     case .grant(let id): GrantView(id: id).syncSubtitle()
     case .machine(let id): EnvironmentView(id: id).syncSubtitle()
     case .machineAgent(let machine, let agent): MachineAgentView(machineID: machine, agent: agent).syncSubtitle()

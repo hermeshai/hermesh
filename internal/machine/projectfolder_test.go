@@ -9,9 +9,8 @@ import (
 	"connectrpc.com/connect"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/kernel"
-	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 // A folder made for a project: under the home folder only, one plain name,
@@ -60,18 +59,18 @@ func TestCreateFolder(t *testing.T) {
 	}
 }
 
-// The machine's own permission-mode limit: in its status, on its threads at
-// once (launches clamp to it), and kept across a restart. Its status says it
-// serves threads, and each project whether its folder is a git repository.
+// The machine's own permission-mode limit: in its status, on its sessions at
+// once (launches clamp to it), and kept across a restart; and each project
+// reports whether its folder is a git repository.
 func TestMachineLimitAndStatus(t *testing.T) {
 	dir := t.TempDir()
-	n, err := Open(Config{DataDir: dir, Providers: map[string]provider.Provider{}})
+	n, err := Open(Config{DataDir: dir, Discoverers: map[string]AgentDiscoverer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if st := n.Status(); !st.Threads || st.MaxRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
-		t.Fatalf("status before: threads %v, limit %v", st.Threads, st.MaxRuntimeMode)
+	if st := n.Status(); st.MaxRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
+		t.Fatalf("status before: limit %v", st.MaxRuntimeMode)
 	}
 	set := func(m identityv1.RuntimeMode) error {
 		_, err := n.execAdmin(ctx, &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetMaxRuntimeMode{SetMaxRuntimeMode: &identityv1.SetMaxRuntimeMode{Mode: m}}})
@@ -87,9 +86,9 @@ func TestMachineLimitAndStatus(t *testing.T) {
 		t.Fatalf("status after: %v", st.MaxRuntimeMode)
 	}
 	owner := kernel.OwnerPrincipal("o", "O")
-	l, err := n.threads.LaunchThread(ctx, owner, &threadv2.LaunchThreadRequest{Title: "x", RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS})
-	if err != nil || l.Thread.EffectiveRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS || l.Thread.MaxRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS {
-		t.Fatalf("a launch under the limit: %+v %v", l.GetThread(), err)
+	l, err := n.sessions.StartSession(ctx, owner, &sessionv1.StartSessionRequest{Title: "x", RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS})
+	if err != nil || l.Session.EffectiveRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS || l.Session.MaxRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS {
+		t.Fatalf("a launch under the limit: %+v %v", l.GetSession(), err)
 	}
 
 	repo, plain := testRepo(t), t.TempDir()
@@ -112,13 +111,13 @@ func TestMachineLimitAndStatus(t *testing.T) {
 	}
 	n.Close()
 
-	n, err = Open(Config{DataDir: dir, Providers: map[string]provider.Provider{}})
+	n, err = Open(Config{DataDir: dir, Discoverers: map[string]AgentDiscoverer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer n.Close()
-	l, err = n.threads.LaunchThread(ctx, owner, &threadv2.LaunchThreadRequest{Title: "y", RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS})
-	if err != nil || l.Thread.EffectiveRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS {
-		t.Fatalf("after a restart: %v %v", l.GetThread().GetEffectiveRuntimeMode(), err)
+	l, err = n.sessions.StartSession(ctx, owner, &sessionv1.StartSessionRequest{Title: "y", RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS})
+	if err != nil || l.Session.EffectiveRuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS {
+		t.Fatalf("after a restart: %v %v", l.GetSession().GetEffectiveRuntimeMode(), err)
 	}
 }

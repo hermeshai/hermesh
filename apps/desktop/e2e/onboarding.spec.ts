@@ -659,7 +659,7 @@ test("a work Mac joins as a machine only: no Touch ID, the code, the two digits;
   await expect(page.getByRole("heading", { name: "修账单导出" })).toBeVisible();
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800", { timeout: 30_000 });
   await snap(page, "machine-04-session");
-  await page.getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(page.getByRole("status")).toContainText("已打断「修账单导出」");
 
   // The trusted device removes it: it says so, and can start over.

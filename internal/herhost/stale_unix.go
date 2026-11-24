@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // end stops her and what it started: SIGTERM, on which her closes its
 // sessions and saves their logs, then SIGKILL.
-func (h *Host) end(p *provider.Proc) { provider.KillGroup(p.Pgid()) }
+func (h *Host) end(p *rt.Proc) { rt.KillGroup(p.Pgid()) }
 
 // stopStale stops a her still holding lock, the lock file her keeps beside
 // its socket while it runs ({"pid": …}): one an earlier hermeshd left

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Question, QuestionItem, Session } from "@hermesh/proto/session";
+import { create } from "@bufbuild/protobuf";
+import { ApprovalDecision, QuestionAnswerSchema, type Question, type QuestionItem, type Session } from "@hermesh/proto/session";
 import { codingAgentTitle, dateOf, minutesLeft } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
-import { local } from "../api";
+import { sessions } from "../api";
 import { Icon } from "../icons";
 import { useNow, useStore } from "../store";
 
@@ -55,7 +56,18 @@ export function QuestionPanel({ s, q, answer }: { s: Session; q: Question; answe
           text: (texts[it.id] ?? "").trim(),
         }));
     const ok = await st.run(
-      () => (answer ? answer(answers, decline) : local.answerQuestion({ sessionId: s.sessionId, questionId: q.questionId, answers, decline })),
+      () =>
+        answer
+          ? answer(answers, decline)
+          : sessions.respondRuntimeRequest({
+              sessionId: s.sessionId,
+              requestId: q.questionId,
+              decline,
+              decision: decline ? ApprovalDecision.DECLINE : ApprovalDecision.ACCEPT_ONCE,
+              answers: decline
+                ? {}
+                : Object.fromEntries(answers.map((a) => [a.itemId, create(QuestionAnswerSchema, { selectedOptions: a.selected, customText: a.text })])),
+            }),
       decline ? t("question.declined") : t("question.answered", { agent: codingAgentTitle(s.agent) }),
     );
     if (ok) {

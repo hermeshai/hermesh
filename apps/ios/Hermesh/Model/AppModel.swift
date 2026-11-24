@@ -16,16 +16,14 @@ enum Root: Hashable {
     case her, overview, grants, machines
     /// The counts of work (docs/overview-usage.md): a place of the menu's, under the overview.
     case statistics
+    /// A new session: on a machine and in a project when its entry named them ("" else).
+    case newSession(String, String)
     case session(String)
-    /// A new v2 session (docs/thread-composer.md): on a machine and in a project when its entry named them ("" else).
-    case newThread(String, String)
-    /// A v2 session (a thread), by id.
-    case thread(String)
 
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
     var titleLarge: Bool {
         switch self {
-        case .her, .overview, .statistics, .session, .newThread, .thread: false
+        case .her, .overview, .statistics, .session, .newSession: false
         default: true
         }
     }
@@ -148,15 +146,12 @@ final class AppModel {
     var status = StatusResponse()
     let signer = Signer()
 
-    /// As screens show them, wherever they started (the v2 threads are sessions too, docs/thread-composer.md §14):
-    /// those of a machine that cannot be read now with their state unknown (withKnownState).
+    /// As screens show them, wherever they started: those of a machine that cannot be read now with their state unknown (withKnownState).
     var sessions: [Session] {
-        withKnownState(threads.isEmpty ? heldSessions : heldSessions + threads.map(threadAsSession), unreachable: Set(unreachable.map(\.machineID)))
+        withKnownState(heldSessions, unreachable: Set(unreachable.map(\.machineID)))
     }
     /// As hermeshd last told of them.
     private var heldSessions: [Session] = []
-    /// Every machine's v2 threads, archived ones too, as they change (docs/thread-composer.md §4.7).
-    var threads: [Hermesh_Thread_V2_Thread] = []
     /// Set by Add a Project once it added one; the new-session page takes it.
     var addedProject: AddedProject?
     var loadingOlder = false
@@ -250,7 +245,6 @@ final class AppModel {
     var chosenSession: String? {
         guard path.isEmpty else { return nil }
         if case .session(let id) = root { return id }
-        if case .thread(let id) = root { return id }
         return nil
     }
     var accountPresented = false { didSet { if !accountPresented { accountPath = [] } } }
@@ -295,7 +289,6 @@ final class AppModel {
     @ObservationIgnored private(set) var api: AppAPI?
     @ObservationIgnored private var cursor: SessionCursor?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
-    @ObservationIgnored private var threadsTask: Task<Void, Never>?
     @ObservationIgnored private var clockTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var workTask: Task<Void, Never>?
@@ -380,8 +373,6 @@ final class AppModel {
     func background() {
         active = false
         watchTask?.cancel()
-        threadsTask?.cancel()
-        threadsTask = nil
         clockTask?.cancel()
         workTask?.cancel()
         watchTask = nil
@@ -645,7 +636,6 @@ final class AppModel {
         flushNetworkChange()
         guard api != nil, watchTask == nil else { return }
         watchTask = Task { await watch() }
-        threadsTask = Task { await followThreads() }
         clockTask = Task { await clock() }
     }
 
@@ -677,26 +667,6 @@ final class AppModel {
     private func listFirstPage() async {
         guard let api, let page = try? await api.listSessions() else { return }
         heldSessions = mergeSessions(heldSessions, page.sessions)
-    }
-
-    /// The threads, as hermeshd pushes them (a snapshot, then each change); opened again after it ends.
-    private func followThreads() async {
-        while !Task.isCancelled {
-            guard let live = api?.live else { return }
-            do {
-                for try await m in live.subscribeThreads(includeArchived: true) {
-                    if m.snapshot {
-                        threads = m.threads
-                    } else {
-                        let gone = Set(m.deletedThreadIds)
-                        var byID = Dictionary(threads.filter { !gone.contains($0.threadID) }.map { ($0.threadID, $0) }, uniquingKeysWith: { a, _ in a })
-                        for t in m.threads { byID[t.threadID] = t }
-                        threads = Array(byID.values)
-                    }
-                }
-            } catch {}
-            try? await Task.sleep(for: .seconds(2))
-        }
     }
 
     private func watch() async {
@@ -872,14 +842,12 @@ final class AppModel {
 
     func open(_ r: Root) {
         accountPresented = false
-        // A thread's row opens its own page (the rows of both kinds share the list).
-        if case .session(let id) = r, isThreadID(id) { root = .thread(id) } else { root = r }
+        root = r
         path = []
         drawerOpen = false
     }
 
     func openSession(_ id: String) {
-        if isThreadID(id) { return open(.thread(id)) }
         accountPresented = false
         if case .session(let cur) = root, cur == id, path.isEmpty { return }
         if path.last == .session(id) { return }
@@ -934,15 +902,7 @@ final class AppModel {
     func setArchived(_ s: Session, _ archived: Bool, undoable: Bool = true) async {
         guard let api else { return }
         do {
-            if isThreadID(s.sessionID) {
-                var r = Hermesh_Thread_V2_UpdateThreadConfigRequest()
-                r.threadID = s.sessionID
-                r.hasArchived_p = true
-                r.archived = archived
-                _ = try await api.live?.updateThreadConfig(r)
-            } else {
-                replace(try await api.archive(s.sessionID, archived))
-            }
+            replace(try await api.archive(s.sessionID, archived))
             let text = archived ? String(localized: "Archived “\(s.displayTitle)”") : String(localized: "Unarchived “\(s.displayTitle)”")
             var undo: (@MainActor () -> Void)?
             if undoable {
@@ -958,15 +918,7 @@ final class AppModel {
     func delete(_ s: Session) async -> Bool {
         guard let api else { return false }
         do {
-            if isThreadID(s.sessionID) {
-                var r = Hermesh_Thread_V2_DeleteThreadRequest()
-                r.threadID = s.sessionID
-                let _: Hermesh_Thread_V2_DeleteThreadResponse? = try await api.live?.callThread("DeleteThread", r)
-                threads.removeAll { $0.threadID == s.sessionID }
-                if case .thread(let id) = root, id == s.sessionID { root = .overview }
-            } else {
-                try await api.delete(s.sessionID)
-            }
+            try await api.delete(s.sessionID)
             heldSessions = mergeSessions(heldSessions, [], deleted: [s.sessionID])
             conversations.forget(s.sessionID)
             path.removeAll { $0 == .session(s.sessionID) }
@@ -983,13 +935,6 @@ final class AppModel {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let api, !title.isEmpty, title != s.displayTitle else { return }
         do {
-            if isThreadID(s.sessionID) {
-                var r = Hermesh_Thread_V2_UpdateThreadConfigRequest()
-                r.threadID = s.sessionID
-                r.title = title
-                _ = try await api.live?.updateThreadConfig(r)
-                return
-            }
             replace(try await api.rename(s.sessionID, to: title))
         } catch { report(error) }
     }

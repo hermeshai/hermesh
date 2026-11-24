@@ -8,6 +8,7 @@ import (
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 )
 
 // firstWatch is the first message of a Watch with req.
@@ -60,7 +61,7 @@ func TestWatchResumes(t *testing.T) {
 
 	second := h.start("say two")
 	h.wait(second, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
-	if err := h.s.Delete(context.Background(), &Principal{Kind: PrincipalOwner}, first); err != nil {
+	if err := h.e.DeleteSession(context.Background(), kernel.OwnerPrincipal("owner", "Owner"), first); err != nil {
 		t.Fatal(err)
 	}
 	resumed := h.firstWatch(&machinev1.WatchRequest{ResumeToken: fresh.ResumeToken, HeldAt: fresh.SentAt})
@@ -72,7 +73,7 @@ func TestWatchResumes(t *testing.T) {
 		t.Fatalf("resumed with nothing changed: %v", again)
 	}
 
-	h.s.changeLog = newChangeLog() // as after hermeshd started again
+	h.n.changeLog = newChangeLog() // as after hermeshd started again
 	restarted := h.firstWatch(&machinev1.WatchRequest{ResumeToken: again.ResumeToken, HeldAt: fresh.SentAt})
 	if !restarted.Reset_ || !slices.Equal(ids(restarted.Sessions), []string{second}) || !slices.Equal(restarted.DeletedSessionIds, []string{first}) {
 		t.Fatalf("after a restart: reset %v, sessions %v, deleted %v", restarted.Reset_, ids(restarted.Sessions), restarted.DeletedSessionIds)

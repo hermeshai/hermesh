@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hermeshai/hermesh/internal/provider/codex/codextest"
+	"github.com/hermeshai/hermesh/internal/runtime/codex/codextest"
 )
 
 // Real Codex runs (HERMESH_REAL_CLI, HERMESH_CHAOS) must not write threads

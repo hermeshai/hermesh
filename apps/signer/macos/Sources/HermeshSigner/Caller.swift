@@ -5,7 +5,7 @@ import HermeshProto
 /// Who started a signing request (CallerInfo, in HermeshKit), as the Mac
 /// signer tells it: by where the calling program lives.
 extension CallerInfo {
-    static let warning = String(localized: "Hermesh didn’t start this. It may come from the command line or another program on this Mac. If you didn’t start it, deny it.", bundle: .module)
+    static let warning = String(localized: "Hermesh didn’t start this. It may come from the command line or another program on this Mac. If you didn’t start it, deny it.", bundle: .signer)
 
     /// The signer lives at <X>.app/Contents/Helpers/Hermesh Signer.app; a
     /// caller is Hermesh when its executable is one of <X>.app/Contents/MacOS.

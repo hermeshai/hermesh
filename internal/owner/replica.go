@@ -844,8 +844,6 @@ func (r *replica) followWatch(ctx context.Context, s *sources, f *feed, n *peer.
 	r.pullWorkLocked(s, f, n.MachineID)
 	r.mu.Unlock()
 	ready()
-	// Its v2 threads follow alongside, for as long as this watch lasts.
-	go r.o.followThreads(ctx, n)
 	for stream.Receive() {
 		r.machineChanged(s, f, n.MachineID, stream.Msg())
 	}
@@ -1114,7 +1112,7 @@ func trimSessions(sessions map[string]*sessionv1.Session, n int) bool {
 // ownsSession says whether a session's id names the machine (by its id's prefix).
 func ownsSession(machineID, sessionID string) bool {
 	parts := strings.SplitN(sessionID, "_", 3)
-	return len(parts) == 3 && parts[0] == "s" && strings.HasPrefix(strings.TrimPrefix(machineID, "m_"), parts[1])
+	return len(parts) == 3 && (parts[0] == "s" || parts[0] == "th") && strings.HasPrefix(strings.TrimPrefix(machineID, "m_"), parts[1])
 }
 
 // feeds runs fn with the followed machines (none while the sources are

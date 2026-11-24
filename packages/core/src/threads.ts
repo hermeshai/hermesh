@@ -8,8 +8,8 @@ import {
   OptionValueSchema,
   RunStatus,
   RuntimeRequestStatus,
-  ThreadProjectionSchema,
-  ThreadStatus,
+  SessionProjectionSchema,
+  SessionStatus,
   type BackgroundTask,
   type ModelCatalogEntry,
   type ModelSelection,
@@ -17,11 +17,11 @@ import {
   type ProviderInstance,
   type Run,
   type RuntimeRequest,
-  type Thread,
-  type ThreadEvent,
-  type ThreadProjection,
+  type Session,
+  type SessionEvent,
+  type SessionProjection,
   type TurnItem,
-} from "@hermesh/proto/thread";
+} from "@hermesh/proto/session";
 
 /** Ordered permission modes from narrowest to broadest. */
 export const ORDERED_RUNTIME_MODES: readonly RuntimeMode[] = [
@@ -65,16 +65,16 @@ export function clampRuntimeMode(requested: RuntimeMode, maxCeiling: RuntimeMode
   return norm;
 }
 
-export function isThreadActive(t?: Thread): boolean {
-  if (!t) return false;
+export function isSessionRunningOrWaiting(s?: Session): boolean {
+  if (!s) return false;
   return (
-    t.status === ThreadStatus.PREPARING ||
-    t.status === ThreadStatus.RUNNING ||
-    t.status === ThreadStatus.WAITING_REQUEST
+    s.status === SessionStatus.PREPARING ||
+    s.status === SessionStatus.RUNNING ||
+    s.status === SessionStatus.WAITING_INPUT
   );
 }
 
-export function queuedRunsOf(proj?: ThreadProjection | null): Run[] {
+export function queuedRunsOf(proj?: SessionProjection | null): Run[] {
   if (!proj) return [];
   return proj.runs
     .filter((r) => r.status === RunStatus.QUEUED)
@@ -82,15 +82,15 @@ export function queuedRunsOf(proj?: ThreadProjection | null): Run[] {
 }
 
 /** Background tasks still running, awaited tasks before long-lived daemons. */
-export function activeBackgroundTasksOf(proj?: ThreadProjection | null): BackgroundTask[] {
+export function activeBackgroundTasksOf(proj?: SessionProjection | null): BackgroundTask[] {
   if (!proj) return [];
   return proj.backgroundTasks
     .filter((t) => t.status === BackgroundTaskStatus.RUNNING)
     .sort((a, b) => Number(b.awaited) - Number(a.awaited) || Number((a.startedAt?.seconds ?? 0n) - (b.startedAt?.seconds ?? 0n)));
 }
 
-/** All recorded background tasks of a thread: running ones first, then newest finished ones. */
-export function backgroundTasksOf(proj?: ThreadProjection | null): BackgroundTask[] {
+/** All recorded background tasks of a session: running ones first, then newest finished ones. */
+export function backgroundTasksOf(proj?: SessionProjection | null): BackgroundTask[] {
   if (!proj) return [];
   return [...proj.backgroundTasks].sort((a, b) => {
     const ar = a.status === BackgroundTaskStatus.RUNNING ? 0 : 1;
@@ -102,7 +102,7 @@ export function backgroundTasksOf(proj?: ThreadProjection | null): BackgroundTas
 }
 
 /** TurnItem IDs backed by a background task that is still running. */
-export function activeBackgroundItemIdsOf(proj?: ThreadProjection | null): Set<string> {
+export function activeBackgroundItemIdsOf(proj?: SessionProjection | null): Set<string> {
   const out = new Set<string>();
   for (const bt of proj?.backgroundTasks ?? []) {
     if (bt.status === BackgroundTaskStatus.RUNNING && bt.itemId !== "") out.add(bt.itemId);
@@ -110,11 +110,11 @@ export function activeBackgroundItemIdsOf(proj?: ThreadProjection | null): Set<s
   return out;
 }
 
-export function pendingRequestOf(proj?: ThreadProjection | null): RuntimeRequest | undefined {
+export function pendingRequestOf(proj?: SessionProjection | null): RuntimeRequest | undefined {
   if (!proj) return undefined;
-  if (proj.thread?.pendingRequestId) {
+  if (proj.session?.pendingRequestId) {
     const exact = proj.requests.find(
-      (r) => r.requestId === proj.thread?.pendingRequestId && r.status === RuntimeRequestStatus.PENDING,
+      (r) => r.requestId === proj.session?.pendingRequestId && r.status === RuntimeRequestStatus.PENDING,
     );
     if (exact) return exact;
   }
@@ -130,19 +130,19 @@ export type ComposerPrimaryAction =
   | "queue_offline";
 
 export function composerPrimaryAction(
-  thread: Thread | undefined,
+  session: Session | undefined,
   machineOnline: boolean,
   hasInput: boolean,
   supportsLiveSteer: boolean,
 ): ComposerPrimaryAction {
   if (!machineOnline) return "queue_offline";
-  if (!thread) return "start";
-  const running = thread.status === ThreadStatus.RUNNING || thread.status === ThreadStatus.PREPARING;
+  if (!session) return "start";
+  const running = session.status === SessionStatus.RUNNING || session.status === SessionStatus.PREPARING;
   if (running) {
     if (!hasInput) return "stop";
     return supportsLiveSteer ? "steer" : "queue";
   }
-  if (thread.status === ThreadStatus.WAITING_REQUEST) {
+  if (session.status === SessionStatus.WAITING_INPUT) {
     return hasInput ? "queue" : "stop";
   }
   return "send";
@@ -239,29 +239,35 @@ function upsertBy<T>(list: readonly T[], item: T, key: (x: T) => string): T[] {
   return next;
 }
 
-/** Pure immutable reducer folding a live ThreadEvent onto a ThreadProjection. */
-export function applyThreadEvent(
-  prev: ThreadProjection | null | undefined,
-  ev: ThreadEvent,
-): ThreadProjection {
+/** Pure immutable reducer folding a live SessionEvent onto a SessionProjection. */
+export function applySessionEvent(
+  prev: SessionProjection | null | undefined,
+  ev: SessionEvent,
+): SessionProjection {
   const base =
     prev ??
-    create(ThreadProjectionSchema, {
-      thread: ev.thread,
+    create(SessionProjectionSchema, {
+      session: ev.session,
       runs: [],
       items: [],
       requests: [],
       checkpoints: [],
-      providerThreads: [],
+      providerSessions: [],
       backgroundTasks: [],
     });
 
-  const prevLastSeq = base.thread?.lastSeq ?? 0n;
-  let thread = ev.thread ?? base.thread;
-  if (thread) {
-    const maxSeq = [prevLastSeq, thread.lastSeq, ev.seq].reduce((a, b) => (a > b ? a : b), 0n);
-    if (maxSeq !== thread.lastSeq) {
-      thread = { ...thread, lastSeq: maxSeq };
+  const prevLastSeq = base.session?.progress?.lastEventSeq ?? 0n;
+  let session = ev.session ?? base.session;
+  if (session) {
+    const curSeq = session.progress?.lastEventSeq ?? 0n;
+    const maxSeq = [prevLastSeq, curSeq, ev.seq].reduce((a, b) => (a > b ? a : b), 0n);
+    if (maxSeq !== curSeq) {
+      session = {
+        ...session,
+        progress: session.progress
+          ? { ...session.progress, lastEventSeq: maxSeq }
+          : ({ $typeName: "hermesh.session.v1.SessionProgress", turnCount: 0, lastEventSeq: maxSeq, phase: "", currentTool: "", lastMessageExcerpt: "" } as NonNullable<Session["progress"]>),
+      };
     }
   }
   let runs = base.runs;
@@ -284,7 +290,7 @@ export function applyThreadEvent(
   if (ev.backgroundTask) {
     backgroundTasks = upsertBy(backgroundTasks, ev.backgroundTask, (t) => t.taskId);
   }
-  if (ev.type === "thread.rolled_back" && ev.checkpoint) {
+  if (ev.type === "session.rolled_back" && ev.checkpoint) {
     const maxOrd = ev.checkpoint.runOrdinal;
     const removedRunIds = new Set(
       runs.filter((r) => r.ordinal > maxOrd && r.status !== RunStatus.QUEUED).map((r) => r.runId),
@@ -302,13 +308,13 @@ export function applyThreadEvent(
     checkpoints = upsertBy(checkpoints, ev.checkpoint, (c) => c.checkpointId);
   }
 
-  return create(ThreadProjectionSchema, {
-    thread,
+  return create(SessionProjectionSchema, {
+    session,
     runs,
     items,
     requests,
     checkpoints,
-    providerThreads: base.providerThreads,
+    providerSessions: base.providerSessions,
     backgroundTasks,
   });
 }
