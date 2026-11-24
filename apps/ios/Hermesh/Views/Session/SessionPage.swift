@@ -190,7 +190,7 @@ struct SessionPage: View {
                         if cur.isFailed { Haptic.error.play() } else if !cur.progress.hasLastFailure { Haptic.success.play() }
                     }
             } else {
-                PageLoader(text: "Reading the session…", bare: true)
+                PageLoader(text: "Reading the session…", bare: true).sessionBar(nil, renaming: $renaming, deleting: $deleting)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -362,8 +362,6 @@ struct SessionPage: View {
             .padding(.top, 13).padding(.bottom, 21)
             .background(ConversationScrollFinder(box: scrollBox))
         }
-        // No band of blur under the bar: the title's glass capsule and the buttons float on the conversation itself.
-        .scrollEdgeEffectHidden(true, for: .top)
         .keyboardAwayOnTap()
         .followsEnd(id: sessionID, ready: historyReady(s), atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {
@@ -385,10 +383,8 @@ struct SessionPage: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            SessionToolbar(session: s, renaming: $renaming, deleting: $deleting,
-                           backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
-        }
+        .sessionBar(s, renaming: $renaming, deleting: $deleting,
+                    backgroundTasks: allBgTasks.isEmpty ? nil : .init(running: !activeBgTasks.isEmpty) { showingBackgroundTasks = true })
         .sessionDialogs(s, renaming: $renaming, deleting: $deleting)
     }
 

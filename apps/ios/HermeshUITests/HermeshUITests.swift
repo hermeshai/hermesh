@@ -1203,7 +1203,8 @@ final class HermeshUITests: XCTestCase {
         if app.descendants(matching: .any)["drawer-dim"].isHittable { return }
         // Unwind the account's navigation stack and dismiss its sheet before opening the menu.
         for _ in 0..<10 where !app.buttons["menu"].isHittable && !app.descendants(matching: .any)["drawer-dim"].isHittable {
-            let back = app.navigationBars.buttons.element(boundBy: 0)
+            let own = app.buttons["BackButton"] // a session's page draws its bar
+            let back = own.exists && own.isHittable ? own : app.navigationBars.buttons.element(boundBy: 0)
             guard back.exists else { break }
             back.tap()
         }

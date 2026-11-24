@@ -185,8 +185,8 @@ final class ToolStepsUITests: ToolStepsCase {
         let capsule = app.buttons["session-info"]
         let more = app.buttons["session-more"]
         XCTAssertTrue(more.waitForExistence(timeout: 10))
-        let others = app.navigationBars.buttons.allElementsBoundByIndex.filter { $0.identifier != "session-info" && $0.identifier != "session-more" }
-        let back = try XCTUnwrap(others.min { $0.frame.minX < $1.frame.minX }, "the button back")
+        let back = app.buttons["BackButton"]
+        XCTAssertTrue(back.exists, "the button back")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "long-title"; shot.lifetime = .keepAlways; add(shot)
         XCTAssertTrue(capsule.label.contains("Mac mini/hello-world"), capsule.label)
@@ -199,6 +199,31 @@ final class ToolStepsUITests: ToolStepsCase {
         let whole = element("session-info-title")
         XCTAssertTrue(whole.waitForExistence(timeout: 10), "the whole title in Session Info")
         XCTAssertEqual(whole.label, smallTitle)
+    }
+
+    /// The page draws its own bar: it stays where it is, whole, as the conversation scrolls under it either way; the
+    /// system's swipe from the left edge still goes back.
+    func testTheBarStaysAsTheConversationScrolls() throws {
+        open(smallTitle)
+        let capsule = app.buttons["session-info"], more = app.buttons["session-more"], back = app.buttons["BackButton"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        XCTAssertTrue(back.exists, "the button back")
+        sleep(1)
+        let at = capsule.frame
+        for (n, down) in [true, true, false, true].enumerated() {
+            if down { app.swipeDown() } else { app.swipeUp() }
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "bar-while-scrolling-\(n)"; shot.lifetime = .keepAlways; add(shot)
+            sleep(1)
+            for (name, e) in [("title", capsule), ("⋯", more), ("back", back)] {
+                XCTAssertTrue(e.exists && e.isHittable, "scroll \(n): \(name) is there")
+            }
+            XCTAssertEqual(capsule.frame, at, "scroll \(n): the title where it was")
+        }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)), withVelocity: 600, thenHoldForDuration: 0.1)
+        XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 5), "a swipe from the left edge goes back")
+        XCTAssertFalse(capsule.exists, "the session's page is gone")
     }
 
     /// Whether the step under way (its verb, "…ing") is in the card's sight.

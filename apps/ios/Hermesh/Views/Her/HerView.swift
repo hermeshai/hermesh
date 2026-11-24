@@ -111,7 +111,7 @@ private struct HerPage: View {
     private func header(_ chat: HerChat, state: HerEnvState) -> some View {
         ZStack(alignment: .top) {
             HStack(spacing: 8) {
-                if !sideBars && !model.menuBeside { HerMenuButton() }
+                if !sideBars && !model.menuBeside { GlassMenuButton() }
                 Spacer()
                 // Progress, looked at often: a button of its own, not a card of her page (docs/her-team.md §15).
                 if chat.bot != nil, !sideBars { HerProgressButton(marks: herProgressMarks(chat)) }
@@ -402,8 +402,8 @@ private struct HerProgressButton: View {
     private var dot: Color? { marks.waiting > 0 ? .orange : marks.running > 0 ? .accentColor : nil }
 }
 
-/// The menu button, as root pages have it in their bar: Her's page draws its own top.
-private struct HerMenuButton: View {
+/// The menu button, as root pages have it in their bar, on a page that draws its own top (Her's, a session's).
+struct GlassMenuButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
