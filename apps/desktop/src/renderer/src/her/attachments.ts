@@ -44,9 +44,21 @@ export function pickFiles(): Promise<Attachment[]> {
   });
 }
 
+/**
+ * The files a paste carries: a screenshot or a picture copied, or files copied in Finder. None when it pastes as
+ * text: an app that copies words (a spreadsheet's cells, a slide's text) adds a picture of them too, which has no
+ * file of its own on this Mac.
+ */
+export function pastedFiles(data: DataTransfer): File[] {
+  const files = [...data.files];
+  if (data.getData("text/plain").trim() && !files.some((f) => window.hermesh?.pathForFile(f))) return [];
+  return files;
+}
+
 /** What a paste attaches, or null when it is only text (and pastes as text). */
 export function pastedAttachments(data: DataTransfer): Promise<Attachment[]> | null {
-  return data.files.length > 0 ? fromFiles([...data.files]) : null;
+  const files = pastedFiles(data);
+  return files.length > 0 ? fromFiles(files) : null;
 }
 
 /** The list with more added; one already there (the same path) is not added twice. */

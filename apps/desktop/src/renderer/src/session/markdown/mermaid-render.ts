@@ -1,5 +1,5 @@
 import mermaid from "mermaid";
-import { MAX_DIAGRAM_LENGTH, validDiagram } from "./diagram-source";
+import { MAX_DIAGRAM_LENGTH, prepareDiagram, validDiagram } from "./diagram-source";
 
 const cache = new Map<string, string>();
 let queue: Promise<unknown> = Promise.resolve();
@@ -25,7 +25,7 @@ export function renderDiagram(source: string, dark: boolean): Promise<string> {
       flowchart: { htmlLabels: false, useMaxWidth: false, padding: 16 },
       sequence: { useMaxWidth: false },
     });
-    const { svg } = await mermaid.render(`hermesh-diagram-${++serial}`, source);
+    const { svg } = await mermaid.render(`hermesh-diagram-${++serial}`, prepareDiagram(source));
     cache.set(key, svg);
     while (cache.size > 30) cache.delete(cache.keys().next().value!);
     return svg;
