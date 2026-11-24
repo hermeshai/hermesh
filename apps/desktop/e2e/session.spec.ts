@@ -634,7 +634,7 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
     "",
     "```mermaid",
     "flowchart LR",
-    " A[读取] --> B{检查}",
+    ' A["读取 profiles/<id><br/>本机"] <--> B{检查}',
     " B --> C[报告]",
     "```",
     "",
@@ -663,11 +663,13 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
   // A footnote's mark goes to its note.
   await md.locator("[data-footnote-ref]").click();
   expect(await page.evaluate(() => document.activeElement?.closest(".footnotes") !== null)).toBe(true);
-  // A diagram draws as a picture, its source a click away.
+  // A diagram draws as a picture (preserving <id> placeholders and <br/> breaks), its unescaped source a click away.
   const diagram = md.locator(".md-diagram");
   await expect.poll(() => diagram.locator(".md-diagram-svg").evaluate((el) => !!el.shadowRoot?.querySelector("svg")), { timeout: 20_000 }).toBe(true);
+  expect(await diagram.locator(".md-diagram-svg").evaluate((el) => el.shadowRoot?.textContent ?? "")).toContain("profiles/<id>");
   await diagram.getByRole("button", { name: "源码" }).click();
-  await expect(diagram.locator(".cblock code")).toContainText("flowchart LR");
+  await expect(diagram.locator(".cblock code")).toContainText("profiles/<id>");
+  await expect(diagram.locator(".cblock code")).not.toContainText("#lt;");
   await diagram.getByRole("button", { name: "图形" }).click();
   await expect(diagram.locator(".md-diagram-svg")).toBeVisible();
   // A table's tools show under the pointer: Copy gives a sheet tabs, Expand shows it large until Escape.
