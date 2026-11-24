@@ -291,6 +291,11 @@ func resolveMachine(machines []machineRef, flag, sessionID string) (machineRef, 
 				return m, nil
 			}
 		}
+		// In standalone mode (single local machine, no relay entry), sessions
+		// kept across a previous machine-key retirement still live on this machine.
+		if len(machines) == 1 && machines[0].Entry == nil && (parts[0] == "s" || parts[0] == "th") {
+			return machines[0], nil
+		}
 	}
 	return machineRef{}, &exitError{code: exitUsage, kind: "not_found", err: fmt.Errorf("no session %q on the machines this client can reach", sessionID),
 		hint: "see `hermesh session list`"}

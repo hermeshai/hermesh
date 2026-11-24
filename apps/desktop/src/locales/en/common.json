@@ -13,8 +13,8 @@
     "stopping": "Stopping the background service…"
   },
   "window": {
-    "showSidebar": "Expand Sidebar",
-    "hideSidebar": "Collapse Sidebar",
+    "showSidebar": "Show Sidebar",
+    "hideSidebar": "Hide Sidebar",
     "undo": "Undo",
     "menu": "Menu"
   },
@@ -232,15 +232,6 @@
     "openWork": "Open Overview",
     "herOff": "Her isn't on",
     "turnHerOn": "Choose where she runs…"
-  },
-  "rail": {
-    "label": "Sidebar Rail",
-    "expand": "Expand Sidebar",
-    "herOff": "Her · Not on",
-    "waiting_one": "{{count}} waiting for you",
-    "waiting_other": "{{count}} waiting for you",
-    "failed_one": "{{count}} failed",
-    "failed_other": "{{count}} failed"
   },
   "needsUpdate": {
     "mark": "Needs update",

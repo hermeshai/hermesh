@@ -58,7 +58,30 @@
   --code:#18181b;--add-bg:rgba(63,207,134,.12);--del-bg:rgba(255,102,112,.11);--add-fg:#5fe0a0;--del-fg:#ff8c94;
   --scrim:rgba(0,0,0,.4);--lg-bg:rgba(52,52,58,.58);--lg-hi:rgba(255,255,255,.14);--lg-edge:rgba(255,255,255,.12);
   color-scheme:dark;
-}}
+}
+/* Onyx deep black ("暗黑模式", from finxwork): cool near-black grounds, raised neutral surfaces and crisp contrast. */
+:root[data-dark-style="black"]{
+  --page:#050507;--page-fg:#f5f5f7;--page-fg2:#87888f;--page-btn:rgba(255,255,255,.075);
+  --accent:#2f71e3;--accent-fg:#8ab4f8;--accent-t:var(--accent-fg);--accent-bg:rgba(47,113,227,.14);
+  --ok:#7aae66;--green:var(--ok);--green-bg:rgba(122,174,102,.12);
+  --warn:#f3c949;--orange:var(--warn);--orange-bg:rgba(243,201,73,.12);
+  --danger:#de5555;--red:var(--danger);--red-bg:rgba(222,85,85,.12);
+  --win:#070709;--win2:#131317;--win3:#1f1f24;
+  --side:#111114;--side-head:#111114;--side-tint:#111114;
+  --l1:#f5f5f7;--l2:#bcbdc6;--l3:#87888f;--l4:rgba(255,255,255,.16);
+  --sep:rgba(255,255,255,.06);--fill:rgba(255,255,255,.042);--fill2:rgba(255,255,255,.075);--fill3:rgba(255,255,255,.12);
+  --sel:rgba(47,113,227,.26);--sel-fg:#a8c8ff;
+  --side-sel:linear-gradient(180deg,#202025,#1c1c21);--side-fg:#bcbdc6;--side-sel-fg:#f5f5f7;--side-sel-sh:inset 0 0 0 .5px rgba(255,255,255,.045);
+  --btn:#24252a;--btn-sh:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 .5px rgba(255,255,255,.08);
+  --seg-on:#24252a;--field:#111115;--field-bd:rgba(255,255,255,.13);
+  --menu:rgba(19,19,23,.94);--menu-solid:#131317;--menu-bd:rgba(255,255,255,.085);
+  --bub:#1f1f24;--bub-fg:var(--l1);--bot-reply:var(--win2);--bot-user:#1f1f24;--msg:#fafafa;
+  --glass:rgba(19,19,23,.92);--glass-sh:inset 0 1px 0 rgba(255,255,255,.085),0 0 0 .5px rgba(255,255,255,.085),0 20px 44px -12px rgba(0,0,0,.375);
+  --cmp-hi:rgba(255,255,255,.035);--cmp-lift:0 0 0 1px rgba(255,255,255,.09),0 8px 24px -8px rgba(0,0,0,.32);--cmp-lift-f:0 0 0 1px rgba(255,255,255,.16),0 8px 24px -8px rgba(0,0,0,.36);
+  --code:#0d0d11;--add-bg:rgba(122,174,102,.12);--del-bg:rgba(222,85,85,.11);--add-fg:#98ca84;--del-fg:#f28b8b;
+  --scrim:rgba(0,0,0,.64);--lg-bg:rgba(19,19,23,.78);--lg-hi:rgba(255,255,255,.10);--lg-edge:rgba(255,255,255,.085);
+}
+html[data-dark-style="black"] .side :is(.nav-i,.srow).sel{box-shadow:var(--side-sel-sh)}}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--win);color:var(--l1);font-family:var(--font);font-size:var(--fs-text);font-weight:var(--font-weight-normal);font-variation-settings:var(--font-axes);font-optical-sizing:auto;font-variant-ligatures:no-contextual;line-height:1.38;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none;cursor:default;overflow:hidden}
@@ -83,6 +106,8 @@ html[data-platform=win] .tl-room,html[data-platform=linux] .tl-room{display:none
 html[data-platform=win] .side-top,html[data-platform=linux] .side-top{padding-left:8px;justify-content:flex-start;gap:2px}
 html[data-platform=win] .side-top>:last-child,html[data-platform=linux] .side-top>:last-child{margin-left:auto}
 html[data-platform=win] .ctool{padding-right:calc(var(--caption) + 8px)}
+html[data-platform=win] .side-float,html[data-platform=linux] .side-float{padding-left:8px}
+html[data-platform=win] .noside .ctool,html[data-platform=linux] .noside .ctool{padding-left:76px}
 input,textarea,.sel-text{user-select:text;-webkit-user-select:text}
 /* Text that can be selected shows the text cursor, as in a text field; its buttons stay arrows. */
 .sel-text{cursor:text}
@@ -173,45 +198,13 @@ button{font:inherit;color:inherit}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* main window */
 .mainwrap{position:relative;display:grid;grid-template-columns:272px minmax(0,1fr);height:100%;transition:grid-template-columns .3s cubic-bezier(.2,0,0,1)}
-.mainwrap.railed{grid-template-columns:74px minmax(0,1fr)}
+.mainwrap.noside{grid-template-columns:0 minmax(0,1fr)}
+/* Hidden, the sidebar leaves its toggle where it was, over the page's toolbar, which makes room for it. */
+.side-float{position:absolute;top:0;left:0;z-index:3;height:44px;display:flex;align-items:center;gap:2px;padding-left:79px}
+.noside .ctool{padding-left:117px}
 /* Edge to edge: the sidebar fills the window from top to bottom and left to its edge, one hairline from the content. */
 .side{background:var(--side);border-right:.5px solid var(--sep);display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .mainwrap>.content{grid-column:2}
-/* The sidebar's rail (docs/her-team.md §16): Her, the overview and the agents at work as icons, 74 px wide; the traffic lights in its top band. */
-.rail{grid-column:1;position:relative;z-index:3;display:flex;flex-direction:column;align-items:center;min-height:0;background:var(--side);border-right:.5px solid var(--sep)}
-html.vibrant .rail{background:var(--side-tint)}
-.rail-top{height:44px;width:100%;flex:none;display:flex;align-items:center;justify-content:center}
-.rail-nav{flex:1;min-height:0;width:100%;overflow-y:auto;scrollbar-width:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0 8px}
-.rail-nav>div{display:flex;flex-direction:column;align-items:center;gap:2px}
-.rail-sep{width:28px;height:.5px;background:var(--l4);margin:6px 0;flex:none}
-.rb{position:relative;width:44px;height:40px;flex:none;border:0;border-radius:10px;background:none;display:flex;align-items:center;justify-content:center;color:var(--l1)}
-.rb:hover{background:var(--fill)}
-.rb.sel{background:var(--side-sel)}
-.rb.sel::before{content:"";position:absolute;left:-14px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--accent)}
-.rb.small{height:34px}
-.rb.open{background:var(--fill2)}
-.rb>.ic{width:19px;height:19px}
-.rb-cat{width:26px;height:26px;display:flex}
-.rb-cat>svg{width:100%;height:100%}
-.rb-off{position:absolute;right:7px;bottom:7px;width:8px;height:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--l3);background:var(--side)}
-.rb-dot{position:absolute;top:5px;right:6px;width:8px;height:8px;border-radius:50%;background:var(--orange);box-shadow:0 0 0 2px var(--side)}
-.rb-dot.u{background:var(--accent)}
-.rb-dot.r{background:var(--red)}
-.rb-busy{position:absolute;bottom:2px;right:2px;display:inline-flex;align-items:center;gap:2px;height:14px;padding:0 3px;border-radius:7px;background:var(--side);font-size:10px;color:var(--l2);font-variant-numeric:tabular-nums}
-.rb-busy>i{width:8px;height:8px;border-radius:50%;border:1.2px solid var(--l4);border-top-color:var(--l2);animation:busy-turn 1s linear infinite}
-@media (prefers-reduced-motion:reduce){.rb-busy>i{animation:none}}
-.rail-foot{flex:none;width:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0 10px;border-top:.5px solid var(--sep)}
-/* An agent's sessions at hand, beside its logo in the rail. */
-.rmenu{left:80px;width:264px}
-.rmenu-h{font-size:11.5px;color:var(--l2);padding:5px 9px 4px}
-.rmenu .mi{gap:8px}
-.rmenu-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-.rail-tip{position:fixed;left:80px;z-index:40;transform:translateY(-50%);max-width:320px;padding:5px 9px;border-radius:7px;background:var(--menu-solid);color:var(--l1);box-shadow:0 0 0 .5px var(--menu-bd),0 6px 18px rgba(0,0,0,.18);font-size:12px;line-height:1.3;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* The account, at the rail's foot: the avatar alone; its menu opens beside the rail. */
-.acct.compact{border-top:0;padding-top:0}
-.acct.compact .side-foot{width:44px;height:44px;margin:0;padding:0;justify-content:center;position:relative}
-.acct.compact .side-foot>.dotc{position:absolute;right:6px;bottom:6px}
-.acct.compact .acct-menu{left:calc(100% + 4px);right:auto;bottom:0;width:240px;transform-origin:0 100%}
 /* No room for the sidebar beside the conversation, but asked for: over it, opaque, until a click beside it (layout.ts). */
 .mainwrap.peek .side{position:absolute;top:0;left:0;bottom:0;z-index:20;width:272px;opacity:1;pointer-events:auto;background:var(--side);
   box-shadow:10px 0 30px rgba(0,0,0,.14);animation:peek-in .22s cubic-bezier(.2,0,0,1)}
@@ -286,6 +279,20 @@ html.vibrant .grp-hrow{position:static;background:transparent}
 .smain{min-width:0;flex:1}
 .sl1{display:flex;gap:8px;align-items:center;line-height:20px}
 .stitle{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Running: a fainter band crosses the title left to right in 3s, then rests 0.2s, as the iPhone's shimmer does. The
+   title itself is transparent (it keeps the row's layout and its words); two copies draw it, one in its colour seen
+   through a mask with a soft hole, one in --l3 seen only through that hole. The masks (three titles wide) slide across
+   while the copies slide back by as much, so the copies stay on the title: transforms only, which the compositor
+   runs, and translucent colours, so the band fades into any background. */
+.stitle.run{position:relative;color:transparent}
+.stitle .shine{position:absolute;top:0;bottom:0;left:-100%;width:300%;pointer-events:none;-webkit-mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,transparent 50%,#000 62%);animation:stitle-run 3.2s ease-in-out infinite}
+.stitle .shine.band{-webkit-mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%);mask-image:linear-gradient(90deg,transparent 38%,#000 50%,transparent 62%)}
+.stitle .shine::before{content:attr(data-t);position:absolute;top:0;bottom:0;left:calc(100% / 3);width:calc(100% / 3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--side-fg);animation:stitle-run-back 3.2s ease-in-out infinite}
+.srow.sel .stitle .shine::before{color:var(--side-sel-fg)}
+.stitle .shine.band::before{color:var(--l3)}
+@keyframes stitle-run{0%{transform:translateX(-33.3333%)}93.75%,100%{transform:translateX(33.3333%)}}
+@keyframes stitle-run-back{0%{transform:translateX(100%)}93.75%,100%{transform:translateX(-100%)}}
+@media (prefers-reduced-motion:reduce){.stitle.run{color:inherit}.stitle .shine{display:none}}
 .smeta{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--l2);flex:none;font-variant-numeric:tabular-nums}
 .sl2{display:flex;align-items:baseline;gap:8px;font-size:11px;color:color-mix(in srgb,var(--l2) 78%,transparent);margin-top:2px}
 .sl2t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -472,7 +479,7 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .insp-facts .insp-gear{margin:0 -4px 0 auto;height:24px;min-width:24px;padding:0 4px}
 .insp-facts .insp-gear:hover .ic{color:var(--l1)}
 .ilinks{display:flex;flex-direction:column;gap:5px;align-items:flex-start;font-size:12px}
-/* A centered 768px conversation with 16px gutters; reply text is inset 8px. */
+/* A centered 768px conversation with 16px gutters; what is in it and the box under it share its two edges. */
 .dbody{max-width:calc(var(--conversation-width) + 32px);margin:0 auto;padding:24px 16px 40px}
 .mainwrap.narrow .dbody{padding-left:16px;padding-right:16px}
 .tr{display:flex;flex-direction:column;gap:var(--sp-2)}
@@ -491,11 +498,12 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .um.from .bub{background:var(--fill2);color:var(--msg)}
 .um-badge{position:absolute;left:-11px;top:-11px;z-index:1;padding:2px;border-radius:50%;background:var(--win);display:flex}
 .am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
-/* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left. */
+/* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left
+   (Copy's plate hangs out of the column, so that its glyph starts where the text does). */
 .um,.am.end{margin-bottom:var(--sp-3)}
 .msg-act{position:absolute;top:100%;padding-top:3px;display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .15s}
 .um .msg-act{right:2px}
-.am .msg-act{left:-2px;flex-direction:row-reverse}
+.am .msg-act{left:-6px;flex-direction:row-reverse}
 .um:hover .msg-act,.am:hover .msg-act,.msg-act:focus-within{opacity:1}
 .msg-act .tb{height:26px;min-width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);color:var(--l3)}
 .msg-act .tb:hover{color:var(--l1);background:var(--fill)}

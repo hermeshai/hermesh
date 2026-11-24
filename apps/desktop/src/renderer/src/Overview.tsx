@@ -100,7 +100,7 @@ function Unreachable({ now }: { now: Date }) {
 
 /**
  * The three sessions that finished last (docs/her-team.md §14.4). Every session is the sidebar's list: See All
- * shows it where only its rail does.
+ * shows it while the sidebar is hidden.
  */
 function RecentlyFinished() {
   const { t } = useTranslation("common");
@@ -111,7 +111,7 @@ function RecentlyFinished() {
     <section aria-label={t("team.recentlyFinished")}>
       <div className="sec-h">
         {t("team.recentlyFinished")}
-        {layoutOf(st).sidebar === "rail" && <button className="link" onClick={() => setSidebar(st, true)}>{t("team.seeAll")}</button>}
+        {layoutOf(st).sidebar === "hidden" && <button className="link" onClick={() => setSidebar(st, true)}>{t("team.seeAll")}</button>}
       </div>
       <div className="card wk-list">
         {team.finished.slice(0, 3).map((s) => <FinishedRow key={s.sessionId} s={s} />)}

@@ -562,7 +562,7 @@ struct LimitsPage: View {
         let cards = agentLimits(model.machines.map { (machineID: $0.machineID, agents: $0.status.agents) }, now: model.now)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(cards) { c in LimitsCard(card: c) }
-            Text("Each provider reports its limits as it runs; Hermesh only passes them on and doesn’t read your accounts. For a provider that hasn’t run in a while, these are the numbers from its last run.")
+            Text("Each provider gives its own limits: each computer asks Claude Code, Codex and Antigravity when it checks its agents, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts.")
                 .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 4)
         }
     }
@@ -573,7 +573,7 @@ struct LimitsCard: View {
     let card: AgentLimitsCard
 
     /// The agents that report their limits (the others never will).
-    static let reporting: Set<String> = ["claude", "codex"]
+    static let reporting: Set<String> = ["claude", "codex", "antigravity"]
 
     var body: some View {
         let c = card
@@ -595,10 +595,14 @@ struct LimitsCard: View {
                 }
             }
             if c.windows.isEmpty {
-                Text(c.stale ? "Its windows have reset; updates after it next runs" : Self.reporting.contains(c.agent) ? "Not reported yet; shows after it runs a session" : "It doesn’t report its limits")
+                Text(c.stale ? "Its windows have reset; updates after the next check or run" : Self.reporting.contains(c.agent) ? "Not read yet; shows once it’s signed in with a subscription" : "It doesn’t report its limits")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
-            ForEach(c.windows, id: \.minutes) { w in
+            ForEach(c.windows) { w in
+                // An agent that counts groups of models apart: each group's name over its windows.
+                if !w.group.isEmpty && w.id == c.windows.first(where: { $0.group == w.group })?.id {
+                    Text(verbatim: w.group).font(.subheadline.weight(.semibold)).padding(.top, w.id == c.windows.first?.id ? 0 : 4)
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline) {
                         Text(verbatim: windowName(w.minutes)).font(.subheadline.weight(.medium))
@@ -616,7 +620,7 @@ struct LimitsCard: View {
                     Text(verbatim: resetText(w, now: model.now)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityIdentifier("limit-\(c.agent)-\(w.minutes)")
+                .accessibilityIdentifier(w.group.isEmpty ? "limit-\(c.agent)-\(w.minutes)" : "limit-\(c.agent)-\(w.group)-\(w.minutes)")
             }
         }
         .padding(16)

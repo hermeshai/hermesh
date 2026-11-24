@@ -63,11 +63,6 @@ func (o *Owner) requestMachineJoin(ctx context.Context, req *localv1.RequestJoin
 		return nil, connect.NewError(connect.CodeAlreadyExists, errors.New("this computer is already a machine of an owner"))
 	}
 	relayURL := normalizeRelayURL(req.RelayUrl)
-	n, err := o.openLocalMachine()
-	if err != nil {
-		return nil, err
-	}
-	defer n.Close()
 	label := req.RootLabel
 	if label == "" {
 		label = machine.HostLabel("")
@@ -77,11 +72,42 @@ func (o *Owner) requestMachineJoin(ctx context.Context, req *localv1.RequestJoin
 		label = label[:len(label)-size]
 	}
 	host, _ := os.Hostname()
-	spki := n.PublicKeySPKI()
-	signed, err := n.SignPairingRequest(&identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_MACHINE, SubjectPublicKey: spki,
-		Label: label, Hostname: host, Platform: runtime.GOOS + "/" + runtime.GOARCH, OwnerId: req.OwnerId, CreatedAt: timestamppb.Now(),
-		ConfirmMatch: !req.OwnerTyped})
-	if err != nil {
+	var spki []byte
+	var signed *identityv1.Signed
+	if err := func() error {
+		o.localStartMu.Lock()
+		defer o.localStartMu.Unlock()
+		o.mu.Lock()
+		running := o.localMachine
+		o.mu.Unlock()
+		buildPR := func(pub []byte) *identityv1.PairingRequest {
+			return &identityv1.PairingRequest{
+				Kind:             identityv1.PairingKind_PAIRING_KIND_MACHINE,
+				SubjectPublicKey: pub,
+				Label:            label,
+				Hostname:         host,
+				Platform:         runtime.GOOS + "/" + runtime.GOARCH,
+				OwnerId:          req.OwnerId,
+				CreatedAt:        timestamppb.Now(),
+				ConfirmMatch:     !req.OwnerTyped,
+			}
+		}
+		if running != nil {
+			spki = running.PublicKeySPKI()
+			var sErr error
+			signed, sErr = running.SignPairingRequest(buildPR(spki))
+			return sErr
+		}
+		n, err := o.openLocalMachine()
+		if err != nil {
+			return err
+		}
+		defer n.Close()
+		spki = n.PublicKeySPKI()
+		var sErr error
+		signed, sErr = n.SignPairingRequest(buildPR(spki))
+		return sErr
+	}(); err != nil {
 		return nil, err
 	}
 	res, err := o.publicClient(relayURL).SubmitPairing(ctx, &relayv1.SubmitPairingRequest{Request: signed})
@@ -127,30 +153,45 @@ func (o *Owner) waitMachineJoin(j *pendingJoin, creds *identityv1.Credentials) (
 
 // confirmMachineJoin installs the machine cert and starts the machine.
 func (o *Owner) confirmMachineJoin(ctx context.Context, j *pendingJoin) (*localv1.ConfirmJoinResponse, error) {
-	n, err := o.openLocalMachine()
-	if err != nil {
-		return nil, err
-	}
-	err = n.Install(j.ownerID, j.relayURL, j.chain, j.machineCert)
-	if err == nil {
-		err = n.SetName(j.machineName)
-	}
-	n.Close()
-	if err != nil {
-		return nil, err
-	}
 	if err := o.st.set(kMachineOnly, []byte("1")); err != nil {
 		return nil, err
 	}
 	if err := o.st.set(kAccount, []byte(j.account)); err != nil {
 		return nil, err
 	}
+	if err := func() error {
+		o.localStartMu.Lock()
+		defer o.localStartMu.Unlock()
+		o.mu.Lock()
+		running := o.localMachine
+		o.mu.Unlock()
+		if running != nil {
+			running.SetSelfErase(true)
+			if err := running.Install(j.ownerID, j.relayURL, j.chain, j.machineCert); err != nil {
+				return err
+			}
+			return running.SetName(j.machineName)
+		}
+		n, err := o.openLocalMachine()
+		if err != nil {
+			return err
+		}
+		err = n.Install(j.ownerID, j.relayURL, j.chain, j.machineCert)
+		if err == nil {
+			err = n.SetName(j.machineName)
+		}
+		n.Close()
+		if err != nil {
+			return err
+		}
+		return o.startLocalMachineLocked()
+	}(); err != nil {
+		return nil, err
+	}
 	o.mu.Lock()
 	o.join, o.account = nil, j.account
 	o.mu.Unlock()
-	if err := o.startLocalMachine(); err != nil {
-		return nil, err
-	}
+	o.rep.kick()
 	return &localv1.ConfirmJoinResponse{OwnerId: j.ownerID, ConnectAddress: connaddr.Format(j.relayURL, j.ownerID)}, nil
 }
 
@@ -191,23 +232,49 @@ func (o *Owner) machineOnlyStatus(st *localv1.GetStatusResponse) {
 // machine from its owner (when it can be reached; otherwise the owner's
 // devices list it offline until they remove it), and retires it: it keeps
 // its projects and sessions, and joins again, to any owner, under a new id.
-func (o *Owner) leaveAsMachine(ctx context.Context) error {
+func (o *Owner) leaveAsMachine(ctx context.Context, forceLocal bool) error {
+	o.setLeavingPhase("leaving_relay")
+	defer o.setLeavingPhase("")
 	o.mu.Lock()
 	n := o.localMachine
+	hasRunCtx := o.runCtx != nil && o.runCtx.Err() == nil
 	o.mu.Unlock()
-	if n != nil {
+	if n != nil && !forceLocal {
 		n.Local().InterruptActive(ctx)
-		lctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		if err := n.LeaveOwner(lctx); err != nil {
 			o.log.Warn("leaving: the relay did not remove this machine; the owner's devices list it until they do", "err", err)
 		}
 		cancel()
 	}
-	o.stopLocalMachine()
+	o.setLeavingPhase("leaving_cleanup")
+	if err := o.st.set(kMachineOnly, []byte{}); err != nil {
+		return err
+	}
+	if err := o.st.set(kAccount, []byte{}); err != nil {
+		return err
+	}
+	o.mu.Lock()
+	o.account = ""
+	o.mu.Unlock()
+	o.localStartMu.Lock()
+	defer o.localStartMu.Unlock()
+	o.mu.Lock()
+	n = o.localMachine
+	hasRunCtx = o.runCtx != nil && o.runCtx.Err() == nil
+	o.mu.Unlock()
+	if n != nil && !o.cfg.NoLocalMachine {
+		_, err := n.DemoteToLocal()
+		return err
+	}
+	o.stopLocalMachineLocked()
 	if err := machine.Retire(o.localMachineConfig()); err != nil {
 		return err
 	}
-	return o.st.set(kMachineOnly, []byte{})
+	if hasRunCtx && o.wantsLocalMachine() {
+		_ = o.startLocalMachineLocked()
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

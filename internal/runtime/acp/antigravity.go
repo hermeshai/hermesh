@@ -2,12 +2,15 @@ package acp
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -65,8 +68,71 @@ func antigravityReady(info runtime.Info) bool {
 
 func (p *Provider) discoverAntigravity(ctx context.Context) runtime.Info {
 	candidates := p.antigravityCandidates(ctx)
-	info, _ := p.selectAntigravity(ctx, candidates, runtime.ProbeEnv(p.PathEnv))
+	env := runtime.ProbeEnv(p.PathEnv)
+	info, chosen := p.selectAntigravity(ctx, candidates, env)
+	if chosen.mode == antigravityCLI && antigravityReady(info) {
+		info.Limits = agyUsage(ctx, append(env[:len(env):len(env)], chosen.env...), chosen.bin)
+	}
 	return info
+}
+
+// agyUsage asks agy its account's quota, as its own /usage says it without
+// a turn (`agy -p /usage --output-format json`); nil when it says none (an
+// API key: it exits 2) or fails.
+func agyUsage(ctx context.Context, env []string, bin string) *runtime.Limits {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, problem, _ := runtime.Probe(ctx, env, bin, "-p", "/usage", "--output-format", "json")
+	if problem != runtime.ProblemNone {
+		return nil
+	}
+	return usageFrom(out)
+}
+
+// usageWindows are the windows /usage names, by their length; one it names
+// otherwise is left out.
+var usageWindows = map[string]uint32{"5h": 5 * 60, "weekly": 7 * 24 * 60}
+
+// usageFrom reads /usage's answer (agy 1.5.16,
+// testdata/agy-1.5.16-usage.json): groups of models, each counted apart,
+// with a window a bucket: what is left of it (0 to 1) and when it is whole
+// again (RFC 3339).
+func usageFrom(out []byte) *runtime.Limits {
+	var a struct {
+		Command struct {
+			Name string
+			Data struct {
+				Groups []struct {
+					Name    string
+					Buckets []struct {
+						Window            string
+						RemainingFraction *float64 `json:"remaining_fraction"`
+						ResetTime         string   `json:"reset_time"`
+					}
+				}
+			}
+		}
+	}
+	if json.Unmarshal(out, &a) != nil || a.Command.Name != "usage" {
+		return nil
+	}
+	var lim runtime.Limits
+	for _, g := range a.Command.Data.Groups {
+		var ws []runtime.LimitWindow
+		for _, b := range g.Buckets {
+			m, ok := usageWindows[b.Window]
+			at, err := time.Parse(time.RFC3339, b.ResetTime)
+			if ok && err == nil && b.RemainingFraction != nil {
+				ws = append(ws, runtime.LimitWindow{Minutes: m, UsedPercent: uint32(min(100, max(0, math.Round((1-*b.RemainingFraction)*100)))), ResetsAt: at, Group: g.Name})
+			}
+		}
+		slices.SortFunc(ws, func(a, b runtime.LimitWindow) int { return cmp.Compare(a.Minutes, b.Minutes) })
+		lim.Windows = append(lim.Windows, ws...)
+	}
+	if len(lim.Windows) == 0 {
+		return nil
+	}
+	return &lim
 }
 
 func (p *Provider) selectAntigravity(ctx context.Context, candidates []launch, env []string) (runtime.Info, launch) {

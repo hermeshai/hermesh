@@ -60,7 +60,7 @@ func (n *Machine) checkLetter(m *inboxv1.Message, from, session string) error {
 		return cerr(connect.CodeInvalidArgument, "a message has an id: msg_ and a ULID")
 	case m.GetFrom().GetInbox() != from:
 		return cerr(connect.CodeInvalidArgument, "the message says it is from someone else")
-	case m.GetTo().GetInbox() != n.machineID || m.GetTo().GetSession() == "" || (session != "" && m.To.Session != session):
+	case m.GetTo().GetInbox() != n.MachineID() || m.GetTo().GetSession() == "" || (session != "" && m.To.Session != session):
 		return cerr(connect.CodeInvalidArgument, "the message is not addressed to this session")
 	case strings.TrimSpace(m.Text) == "":
 		return cerr(connect.CodeInvalidArgument, "the message is empty")
@@ -249,11 +249,15 @@ func (n *Machine) takeSealed(ctx context.Context, sm *relayv1.SealedMessage) str
 		return "refused"
 	}
 	signed := &inboxv1.SignedMessage{}
-	if err := identity.OpenMessage(priv, n.machineID, sm.MessageId, sm.Sealed, signed); err != nil {
+	if err := identity.OpenMessage(priv, n.MachineID(), sm.MessageId, sm.Sealed, signed); err != nil {
 		n.log.Warn("a message that doesn't open", "message", sm.MessageId, "err", err)
 		return "refused"
 	}
-	info, err := n.trust.VerifyContact(signed.Sender)
+	trust := n.currentTrust()
+	if trust == nil {
+		return "refused"
+	}
+	info, err := trust.VerifyContact(signed.Sender)
 	if err != nil {
 		n.log.Warn("a message from someone unknown", "message", sm.MessageId, "err", err)
 		return "refused"
@@ -300,7 +304,7 @@ func (n *Machine) bounce(m *inboxv1.Message, why string) {
 	if !strings.HasPrefix(from.GetInbox(), "c_") {
 		return
 	}
-	reply := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: m.GetTo().GetSession()},
+	reply := &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.MachineID(), Session: m.GetTo().GetSession()},
 		To: from, SentAt: timestamppb.Now(), InReplyTo: m.MessageId, Subject: "Not delivered",
 		Text: fmt.Sprintf("Your message %s to %s could not be delivered: %s", m.MessageId, inboxAddress(m.To), why)}
 	go func() {

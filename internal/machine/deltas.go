@@ -152,8 +152,9 @@ func (n *Machine) flushPendingDeltaOn(ctx context.Context, conn *transport.Relay
 	if err != nil {
 		return err
 	}
-	streamID := "her:" + n.machineID
-	sealed, err := identity.SealDelta(n.key, ownerID, n.machineID, streamID, seq, payload, targets)
+	myID := n.MachineID()
+	streamID := "her:" + myID
+	sealed, err := identity.SealDelta(n.currentKey(), ownerID, myID, streamID, seq, payload, targets)
 	if err != nil {
 		return err
 	}

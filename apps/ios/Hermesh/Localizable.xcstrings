@@ -133,16 +133,6 @@
         }
       }
     },
-    "Background wake · %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "后台唤醒 · %@"
-          }
-        }
-      }
-    },
     "Can’t reach Hermesh · Retrying" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18330,6 +18320,16 @@
         }
       }
     },
+    "%@’s %@ %@ limit is at %lld%%" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 的 %2$@ %3$@额度剩 %4$lld%%"
+          }
+        }
+      }
+    },
     "%@’s %@ limit is at %lld%%" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18500,12 +18500,12 @@
         }
       }
     },
-    "Each provider reports its limits as it runs; Hermesh only passes them on and doesn’t read your accounts. For a provider that hasn’t run in a while, these are the numbers from its last run." : {
+    "Each provider gives its own limits: each computer asks Claude Code, Codex and Antigravity when it checks its agents, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "额度由各提供方在运行时上报，Hermesh 只转述，不读取账号。很久没运行的提供方，这里是它上次运行时的数。"
+            "value" : "额度由各提供方给出：每台电脑检查 agent 时会向 Claude Code、Codex 和 Antigravity 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。"
           }
         }
       }
@@ -18560,12 +18560,12 @@
         }
       }
     },
-    "Its windows have reset; updates after it next runs" : {
+    "Its windows have reset; updates after the next check or run" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "窗口已重置，下次运行后更新"
+            "value" : "窗口已重置，下次查询或运行后更新"
           }
         }
       }
@@ -18620,12 +18620,12 @@
         }
       }
     },
-    "Not reported yet; shows after it runs a session" : {
+    "Not read yet; shows once it’s signed in with a subscription" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "还没有上报，运行一次任务后显示"
+            "value" : "还没有读到，用订阅账号登录后显示"
           }
         }
       }

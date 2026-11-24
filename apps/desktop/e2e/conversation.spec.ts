@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { startDaemon, type Daemon } from "../perf/daemon";
-import { ids, titles } from "../perf/world";
+import { conversation, ids, rng, titles } from "../perf/world";
 import { launch, sessionList } from "./app";
 
 // A long conversation in the real app (docs/desktop-performance.md §7): the benchmark's stand-in
@@ -293,5 +293,84 @@ test("a growing conversation follows its end; scrolled up it stays put until the
     await expect(page.locator(".tobottom.on")).toHaveCount(0);
   } finally {
     daemon.live(false);
+  }
+});
+
+test("a conversation whose replies hold tall diagrams: rows that grow at its end, and going back to it, leave nothing in sight blank", async () => {
+  test.setTimeout(90_000);
+  // Five turns, the replies of the second and third ending in a diagram taller than the view: a diagram is drawn at
+  // the height of its "rendering" note first and at its own a moment later, while the view follows the end. Those
+  // two rows (8 and 12) sit before the last step of the window (16), which they must not fall out of.
+  await (await sessionList(page)).locator(".srow").first().waitFor();
+  const shown = (await page.locator(".srow .stitle").allTextContents()).filter((t) => t !== titles.bigIdle && t !== titles.bigLive);
+  const [other, title] = [shown[0], shown.at(-1)!];
+  const s = [...daemon.world.sessions.values()].find((x) => x.title === title)!;
+  // Each time with diagrams not drawn before, which take a moment to draw.
+  const diagrams = (round: number) => {
+    const proj = conversation(s, rng(5), 5, 4, Date.now() - 3_600_000, true);
+    const chain = ["flowchart TD", ...Array.from({ length: 28 }, (_, i) => `  n${i}[步骤 ${round}.${i}] --> n${i + 1}[步骤 ${round}.${i + 1}]`)].join("\n");
+    for (const it of proj.items.filter((x) => /^第 [23] 轮：我先看了一下/.test(x.text))) it.text += `\n\n\`\`\`mermaid\n${chain}\n\`\`\`\n`;
+    s.progress!.lastEventSeq = proj.items.at(-1)!.seq;
+    daemon.world.projections.set(s.sessionId, proj);
+  };
+  diagrams(0);
+  await open(title);
+  await expect(page.locator(".md-diagram-svg").first()).toBeAttached({ timeout: 30_000 });
+  // At its end, the third turn's reply (row 12) grows by more than two views and the view goes to the new end at
+  // once, as following the end does. The scroll comes before the row's new size is reported (a frame runs its
+  // scrolls before its size observers): the window is placed by the sizes on the page, not those reported last.
+  await settle();
+  await expect(page.locator(".tr > .vrow", { hasText: "第 3 轮：我先看了一下" })).toHaveCount(1);
+  const grown = await page.evaluate(async (sel) => {
+    const el = document.querySelector(sel)!;
+    const row = [...document.querySelectorAll<HTMLElement>(".tr > .vrow")].find((r) => r.textContent!.includes("第 3 轮：我先看了一下"))!;
+    row.style.paddingBottom = `${3 * el.clientHeight}px`;
+    el.scrollTop = el.scrollHeight;
+    const out: { blank: boolean; drawn: boolean }[] = [];
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const r = el.getBoundingClientRect();
+      out.push({
+        blank: [0.1, 0.5].some((at) => document.elementFromPoint(r.left + r.width / 2, r.top + r.height * at)?.closest(".vspace")),
+        drawn: row.isConnected,
+      });
+    }
+    row.style.paddingBottom = "";
+    return out;
+  }, scroller);
+  expect(grown.filter((f) => f.blank).length, "frames with a space in sight as a row grew").toBe(0);
+  expect(grown.every((f) => f.drawn), "the reply that grew stopped being drawn").toBe(true);
+  expect(await below()).toBeLessThan(80);
+
+  // Each time back, every frame from the click on: whether the top or the middle of the view shows a space for rows
+  // not drawn, and the first row drawn. How the rows' sizes and the scrolls meet varies, so it goes back a few times.
+  for (let round = 1; round <= 3; round++) {
+    await open(other);
+    diagrams(round);
+    await page.evaluate((sel) => {
+      const w = window as unknown as { __frames: [string, string][] };
+      w.__frames = [];
+      const t0 = performance.now();
+      const tick = () => {
+        const el = document.querySelector(sel);
+        const first = document.querySelector<HTMLElement>(".tr > .vrow")?.dataset.stepKey;
+        if (el && first) {
+          const r = el.getBoundingClientRect();
+          const blank = [0.1, 0.5].some((at) => document.elementFromPoint(r.left + r.width / 2, r.top + r.height * at)?.closest(".vspace"));
+          w.__frames.push([blank ? "blank" : "row", first]);
+        }
+        if (performance.now() - t0 < 3000) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }, scroller);
+    await open(title);
+    await page.waitForTimeout(3500);
+    const frames = await page.evaluate(() => (window as unknown as { __frames: [string, string][] }).__frames);
+    const blank = frames.filter(([what]) => what === "blank").length;
+    const moves = frames.filter((f, i) => i > 0 && f[1] !== frames[i - 1][1]).length;
+    expect(frames.length).toBeGreaterThan(60);
+    expect(blank, `back ${round}: ${blank} of ${frames.length} frames with a space in sight`).toBe(0);
+    expect(moves, `back ${round}: the window moved ${moves} times`).toBeLessThan(6);
+    expect(await below()).toBeLessThan(80);
   }
 });

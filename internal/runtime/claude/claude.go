@@ -147,18 +147,22 @@ func (d *Driver) Discover(ctx context.Context) runtime.Info {
 		info.LoggedIn = true
 	}
 	info.Models, info.ModelsState, info.ModelsAt = Models, runtime.ModelsKnown, time.Now()
-	if ms, err := listModels(ctx, env, bin); err == nil && len(ms) > 0 {
+	ms, lim, err := ask(ctx, env, bin, info.LoggedIn)
+	if err == nil && len(ms) > 0 {
 		info.Models = ms
 	}
+	info.Limits = lim
 	return info
 }
 
-func listModels(ctx context.Context, env []string, bin string) ([]runtime.Model, error) {
+// ask asks Claude Code for its models and, when withLimits, then its
+// account's rate limits (get_usage), in one process without a turn.
+func ask(ctx context.Context, env []string, bin string, withLimits bool) ([]runtime.Model, *runtime.Limits, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	dir, err := os.MkdirTemp("", "hermesh-models-")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer os.RemoveAll(dir)
 	proc, err := runtime.StartProc(ctx, bin, []string{
@@ -166,33 +170,95 @@ func listModels(ctx context.Context, env []string, bin string) ([]runtime.Model,
 		"--settings", `{"crossSessionInbound":"refuse"}`,
 	}, dir, env)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer proc.Stop(time.Second)
-	answer := make(chan []byte, 1)
+	models, usage := make(chan []byte, 1), make(chan []byte, 1)
 	read := make(chan struct{})
 	go func() {
 		defer close(read)
 		proc.Lines(func(b []byte) {
-			if bytes.Contains(b, []byte(`"hermesh-models"`)) {
-				select {
-				case answer <- bytes.Clone(b):
-				default:
+			for id, ch := range map[string]chan []byte{`"hermesh-models"`: models, `"hermesh-usage"`: usage} {
+				if bytes.Contains(b, []byte(id)) {
+					select {
+					case ch <- bytes.Clone(b):
+					default:
+					}
 				}
 			}
 		})
 	}()
 	if err := proc.WriteLine([]byte(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}`)); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	var ms []runtime.Model
+	select {
+	case b := <-models:
+		if ms, err = modelsFrom(b); err != nil || !withLimits {
+			return ms, nil, err
+		}
+	case <-read:
+		return nil, nil, errors.New("claude gave no models")
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	}
+	// skip_behaviors: only the limits, not the scan of every transcript.
+	if proc.WriteLine([]byte(`{"type":"control_request","request_id":"hermesh-usage","request":{"subtype":"get_usage","skip_behaviors":true}}`)) != nil {
+		return ms, nil, nil
 	}
 	select {
-	case b := <-answer:
-		return modelsFrom(b)
+	case b := <-usage:
+		return ms, limitsFrom(b), nil
 	case <-read:
-		return nil, errors.New("claude gave no models")
 	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
+	return ms, nil, nil
+}
+
+// usageAnswer is get_usage's (Claude Code 2.1.330,
+// testdata/claude-2.1.330-get-usage.json): the plan, and in rate_limits each
+// window by name (as rate_limit_event names them), how much of it is used,
+// 0 to 100 here, and when it starts again (RFC 3339). rate_limits holds much
+// else, of other shapes, which is left alone.
+type usageAnswer struct {
+	Type     string
+	Response struct {
+		Subtype   string
+		RequestID string `json:"request_id"`
+		Response  struct {
+			SubscriptionType    string                     `json:"subscription_type"`
+			RateLimitsAvailable bool                       `json:"rate_limits_available"`
+			RateLimits          map[string]json.RawMessage `json:"rate_limits"`
+		}
+	}
+}
+
+// limitsFrom reads get_usage's answer; nil when it has no window (an API
+// key, or an answer that failed).
+func limitsFrom(line []byte) *runtime.Limits {
+	var a usageAnswer
+	if json.Unmarshal(line, &a) != nil || a.Type != "control_response" || a.Response.RequestID != "hermesh-usage" || a.Response.Subtype != "success" || !a.Response.Response.RateLimitsAvailable {
+		return nil
+	}
+	out := runtime.Limits{Plan: a.Response.Response.SubscriptionType}
+	for name, m := range limitMinutes {
+		var w struct {
+			Utilization *float64 `json:"utilization"`
+			ResetsAt    string   `json:"resets_at"`
+		}
+		at, err := time.Time{}, json.Unmarshal(a.Response.Response.RateLimits[name], &w)
+		if err == nil {
+			at, err = time.Parse(time.RFC3339, w.ResetsAt)
+		}
+		if err == nil && w.Utilization != nil {
+			out.Windows = append(out.Windows, runtime.LimitWindow{Minutes: m, UsedPercent: uint32(min(100, max(0, math.Round(*w.Utilization)))), ResetsAt: at.Truncate(time.Second)})
+		}
+	}
+	if len(out.Windows) == 0 {
+		return nil
+	}
+	slices.SortFunc(out.Windows, func(a, b runtime.LimitWindow) int { return cmp.Compare(a.Minutes, b.Minutes) })
+	return &out
 }
 
 func modelsFrom(line []byte) ([]runtime.Model, error) {

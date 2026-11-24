@@ -202,43 +202,70 @@ test("tracks post-turn background tasks without premature completion, streams au
       .fill("bg-shell 3s|pytest -q|12 passed in 3s|All 12 background tests passed!\nsay Foreground reply done, running pytest in background");
     await page.getByTestId("composer-submit-btn").click();
 
-    // 1. Foreground reply finishes, while background task pill + toolbar badge + Inspector card appear,
-    //    and the conversation's end says it waits on the background task.
+    // 1. Foreground reply finishes with no floating strip above the composer: instead, the toolbar layers
+    //    button shows the running badge and the conversation's end shows a link that opens the independent
+    //    right-side background panel in place of the info cards.
     await expect(replies(page)).toContainText("Foreground reply done, running pytest in background", { timeout: 10_000 });
-    const bgStrip = page.getByTestId("background-tasks-strip");
-    await expect(bgStrip).toBeVisible();
-    await expect(bgStrip).toContainText("pytest -q");
-    await expect(page.getByTestId("toolbar-background-badge")).toBeVisible();
+    await expect(page.getByTestId("background-tasks-strip")).toHaveCount(0);
+    await expect(page.getByTestId("toolbar-background-badge")).toHaveText("1");
     await expect(page.locator(".dbody .livebar")).toHaveCount(0);
-    await expect(page.getByTestId("thread-working")).toContainText("正在等待 1 个后台任务完成后继续汇报");
-    await expect(page.getByTestId("inspector-background-tasks")).toContainText("pytest -q");
+    const bgLine = page.getByTestId("chat-background-line");
+    await expect(bgLine).toContainText("有 1 条后台任务正在执行");
+    await expect(page.getByRole("complementary", { name: "任务信息" })).toBeVisible();
+    await expect(page.getByTestId("background-panel")).toHaveCount(0);
+
+    await bgLine.click();
+    const bgPanel = page.getByTestId("background-panel");
+    await expect(bgPanel).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "任务信息" })).toHaveCount(0);
+    await expect(bgPanel).toContainText("1 个执行中");
+    await expect(bgPanel).toContainText("pytest -q");
 
     // 2. When the 3s background task finishes, the system Continuation Run streams the final report
-    //    under a quiet wake divider, clears the active background strip, and the waiting line goes: a turn that
-    //    went well ends without a line of its own.
+    //    seamlessly without any special wake divider, clears the active badge and end-of-conversation line,
+    //    and updates the panel to "全部完成" while keeping the toolbar button so finished tasks can still be inspected.
     await expect(replies(page).last()).toContainText("All 12 background tests passed!", { timeout: 15_000 });
-    await expect(page.getByTestId("turn-wake-line")).toContainText("后台唤醒 · pytest -q");
-    await expect(bgStrip).toHaveCount(0);
-    await expect(page.getByTestId("thread-working")).toHaveCount(0);
+    await expect(page.getByText("后台唤醒", { exact: false })).toHaveCount(0);
+    await expect(bgLine).toHaveCount(0);
+    await expect(page.getByTestId("toolbar-background-badge")).toHaveCount(0);
+    await expect(page.getByTestId("toolbar-background-btn")).toBeVisible();
     await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
+    await expect(bgPanel).toContainText("全部完成");
 
-    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT keep the conversation's end waiting,
-    //    shows live output in Inspector when clicking "查看", and stops cleanly when clicking "停止"!
+    // Clicking the finished task row opens its execution detail in-place; back returns to the list;
+    // clicking the info toolbar button switches back to the session's info cards.
+    await bgPanel.locator(".srow", { hasText: "pytest -q" }).click();
+    await expect(bgPanel).toContainText("12 passed in 3s");
+    await expect(bgPanel).toContainText("完成");
+    await page.getByTestId("background-back").click();
+    await expect(bgPanel).toContainText("全部完成");
+    await page.getByRole("button", { name: "信息面板" }).click();
+    await expect(bgPanel).toHaveCount(0);
+    await expect(page.getByRole("complementary", { name: "任务信息" })).toBeVisible();
+
+    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): opens in the independent right panel,
+    //    shows live output in its detail view, and stops cleanly from its stop button!
     await page
       .getByTestId("thread-composer-input")
       .fill("bg-daemon npm run dev|ready on http://localhost:3000\nsay Dev server started");
     await page.getByTestId("composer-submit-btn").click();
 
     await expect(replies(page).last()).toContainText("Dev server started", { timeout: 10_000 });
-    await expect(page.getByTestId("thread-working")).toHaveCount(0);
-    await expect(bgStrip).toContainText("常驻进程运行中");
+    await expect(page.getByTestId("toolbar-background-badge")).toHaveText("1");
+    await expect(bgLine).toContainText("有 1 条后台任务正在执行");
 
-    await page.getByTestId("background-strip-view").click();
-    await expect(page.getByTestId("inspector-background-tasks")).toContainText("ready on http://localhost:3000");
+    await page.getByTestId("toolbar-background-btn").click();
+    await expect(bgPanel).toContainText("1 个执行中 · 1 个已完成");
+    await bgPanel.locator(".srow", { hasText: "npm run dev" }).click();
+    await expect(bgPanel).toContainText("常驻服务");
+    await expect(bgPanel).toContainText("ready on http://localhost:3000");
 
-    await page.getByTestId("background-strip-stop").click();
-    await expect(bgStrip).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.getByTestId("inspector-background-tasks")).toContainText("已停止");
+    await bgPanel.getByRole("button", { name: "停止" }).click();
+    await expect(page.getByTestId("toolbar-background-badge")).toHaveCount(0, { timeout: 10_000 });
+    await expect(bgLine).toHaveCount(0);
+    await expect(bgPanel).toContainText("已停止");
+    await page.getByTestId("background-back").click();
+    await expect(bgPanel).toContainText("1 个已完成 · 1 个已停止");
   } finally {
     await app.close();
   }

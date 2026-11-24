@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { launch, snap, sessionList, navTo } from "./app";
+import { launch, snap, sessionList } from "./app";
 
 // Her and her team on the Mac (docs/her-team.md §14), on the fixture's world: this Mac with sessions in every
 // state, all sent by the agent "bot", and Her on nowhere.
@@ -29,15 +29,15 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
   await app.close();
 });
 
-test("the sidebar is Her, the overview and every session; collapsed, its rail shows the agents at work, each a menu of its sessions", async () => {
+test("the sidebar is Her, the overview and every session; hidden, it is gone and its toggle stays", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1240, height: 800 });
   const sidebar = page.getByRole("complementary", { name: "边栏" });
   await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新会话/, /^Her/, /^概览/]);
-  // The overview's row: a dot while something waits on the owner, and a ring while anything runs; no numbers.
+  // The overview's row: a dot while something waits on the owner, nothing while sessions run; no numbers.
   const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
   await expect(overview.getByRole("img", { name: /项需要处理/ })).toBeVisible();
-  await expect(overview.getByRole("img", { name: /个在忙/ })).toBeVisible();
+  await expect(overview.getByRole("img", { name: /个在忙/ })).toHaveCount(0);
   await expect(overview).not.toContainText(/\d/);
   // No map of machines and agents: their settings are in Settings.
   await expect(page.getByRole("group", { name: "团队" })).toHaveCount(0);
@@ -53,37 +53,24 @@ test("the sidebar is Her, the overview and every session; collapsed, its rail sh
   await expect(page.locator(".slist")).toHaveCount(0);
   await snap(page, "sidebar-session");
 
-  // Collapsed, the sidebar is its rail, and stays so from page to page: Her, the overview, then one logo for each
-  // coding agent with sessions at hand, saying on hover how they stand.
-  await page.getByRole("button", { name: "收成窄栏" }).click();
-  const rail = page.getByRole("complementary", { name: "窄栏" });
-  await expect(rail.getByRole("button", { name: /^Her/ })).toBeVisible();
-  await expect(rail.getByRole("button", { name: /^概览/ })).toBeVisible();
-  const gemini = rail.getByRole("button", { name: /^Gemini CLI · \d+ 个在等你 · \d+ 个出错 · \d+ 个在忙$/ });
-  await gemini.hover();
-  await expect(page.getByRole("tooltip")).toHaveText(/^Gemini CLI · \d+ 个在等你 · \d+ 个出错 · \d+ 个在忙$/);
-  // Its sessions at hand are a menu beside it, what waits first; a click opens one, the rail staying.
-  await gemini.click();
-  const menu = page.getByRole("menu", { name: "Gemini CLI" });
-  await expect(menu.getByRole("menuitem").first()).toContainText("选颜色");
-  await expect(menu).toContainText("跑很久");
-  await expect(menu).not.toContainText("写 hello");
-  await snap(page, "rail-agent-menu");
-  await menu.getByRole("menuitem", { name: /跑很久/ }).click();
-  await expect(menu).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "跑很久" })).toBeVisible();
-  await expect(gemini).toHaveAttribute("aria-current", "true");
-  // From the keyboard: the first is chosen at once; Esc closes back to the logo.
-  await gemini.focus();
-  await page.keyboard.press("Enter");
-  await expect(menu.getByRole("menuitem").first()).toBeFocused();
-  await page.keyboard.press("Escape");
-  await expect(menu).toHaveCount(0);
-  await expect(gemini).toBeFocused();
-  await navTo(page, /^概览/);
+  // Hidden, the sidebar is gone altogether and stays so from page to page; its toggle keeps its place after the
+  // traffic lights, over the page's top band, and shows it again.
+  const hide = page.getByRole("button", { name: "隐藏边栏" });
+  const at = (await hide.boundingBox())!;
+  await hide.click();
+  await expect(sidebar).toHaveCount(0);
+  const show = page.getByRole("button", { name: "显示边栏" });
+  const back = (await show.boundingBox())!;
+  expect(Math.abs(back.x - at.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(back.y - at.y)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => Math.round((await page.locator(".content").boundingBox())!.x)).toBe(0);
+  // The page's title starts after the toggle.
+  expect((await page.getByTestId("thread-title").boundingBox())!.x).toBeGreaterThan(back.x + back.width);
+  await snap(page, "sidebar-hidden");
+  await app.evaluate(({ Menu }) => Menu.getApplicationMenu()?.getMenuItemById("overview")?.click());
   await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
-  await expect(rail).toBeVisible();
-  await rail.getByRole("button", { name: "展开边栏" }).click();
+  await expect(sidebar).toHaveCount(0);
+  await show.click();
   await expect(sidebar).toBeVisible();
   await app.close();
 });

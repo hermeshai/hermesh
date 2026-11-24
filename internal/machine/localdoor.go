@@ -25,7 +25,7 @@ import (
 // reached. Only this user can connect; what an agent may do is still what
 // its grant says, as the machine knows it.
 func (n *Machine) serveLocal(ctx context.Context) {
-	path := paths.Local(n.machineID)
+	path := paths.Local(n.MachineID())
 	if path == "" {
 		return
 	}
@@ -34,10 +34,17 @@ func (n *Machine) serveLocal(ctx context.Context) {
 		n.log.Warn("local endpoint", "err", err)
 		return
 	}
+	closed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		ln.Close()
 		os.Remove(path)
+		close(closed)
+	}()
+	defer func() {
+		if ctx.Err() != nil {
+			<-closed
+		}
 	}()
 	for {
 		conn, err := ln.Accept()
@@ -62,10 +69,17 @@ func (n *Machine) serveDirect(ctx context.Context) {
 		n.directPort.Store(int32(ta.Port))
 		n.log.Info("direct endpoint listening", "port", ta.Port)
 	}
+	closed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		n.directPort.Store(0)
 		ln.Close()
+		close(closed)
+	}()
+	defer func() {
+		if ctx.Err() != nil {
+			<-closed
+		}
 	}()
 	for {
 		conn, err := ln.Accept()
@@ -82,15 +96,19 @@ func (n *Machine) serveDirect(ctx context.Context) {
 // addresses are bound explicitly so outbound/return IPv6 packets route over
 // the physical interface even when a TUN VPN scopes the default IPv6 route.
 func (n *Machine) serveDirectQUIC(ctx context.Context) {
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
 	accept := func(s *identity.Subject) error {
 		if s.Kind != identity.SubjectOwnerDevice {
 			return errors.New("direct QUIC tunnel requires owner device")
 		}
 		return nil
 	}
-	ep, err := transport.ListenQUICEndpoint("udp4", ":0", n.key.CryptoSigner(), n.credentials, n.trust, accept)
+	ep, err := transport.ListenQUICEndpoint("udp4", ":0", n.currentKey().CryptoSigner(), n.credentials, trust, accept)
 	if err != nil {
-		ep, err = transport.ListenQUICEndpoint("udp", ":0", n.key.CryptoSigner(), n.credentials, n.trust, accept)
+		ep, err = transport.ListenQUICEndpoint("udp", ":0", n.currentKey().CryptoSigner(), n.credentials, trust, accept)
 		if err != nil {
 			n.log.Warn("direct QUIC endpoint", "err", err)
 			return
@@ -108,6 +126,7 @@ func (n *Machine) serveDirectQUIC(ctx context.Context) {
 
 	n.syncDirectQUICV6()
 
+	closed := make(chan struct{})
 	go func() {
 		<-ctx.Done()
 		n.directQUICPort.Store(0)
@@ -123,6 +142,12 @@ func (n *Machine) serveDirectQUIC(ctx context.Context) {
 		}
 		for _, v6ep := range v6s {
 			_ = v6ep.Close()
+		}
+		close(closed)
+	}()
+	defer func() {
+		if ctx.Err() != nil {
+			<-closed
 		}
 	}()
 	n.acceptQUICEndpoint(ctx, ep)
@@ -190,11 +215,15 @@ func (n *Machine) syncDirectQUICV6With(want []string) {
 		}
 		return nil
 	}
+	trust := n.currentTrust()
+	if trust == nil {
+		return
+	}
 	for _, ip := range want {
 		if existing[ip] {
 			continue
 		}
-		ep, err := transport.ListenQUICEndpoint("udp6", net.JoinHostPort(ip, "0"), n.key.CryptoSigner(), n.credentials, n.trust, accept)
+		ep, err := transport.ListenQUICEndpoint("udp6", net.JoinHostPort(ip, "0"), n.currentKey().CryptoSigner(), n.credentials, trust, accept)
 		if err != nil {
 			continue
 		}

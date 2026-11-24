@@ -76,7 +76,7 @@ func (s *machineService) GetInfo(ctx context.Context, req *machinev1.GetInfoRequ
 	default:
 		s.n.CheckAgents(false, AgentsOnce)
 	}
-	return &machinev1.GetInfoResponse{MachineId: s.n.machineID, MachineName: s.n.Name(), Status: s.n.statusFor(principalFrom(ctx))}, nil
+	return &machinev1.GetInfoResponse{MachineId: s.n.MachineID(), MachineName: s.n.Name(), Status: s.n.statusFor(principalFrom(ctx))}, nil
 }
 
 func (s *machineService) Watch(ctx context.Context, req *machinev1.WatchRequest, stream *connect.ServerStream[machinev1.WatchResponse]) error {
@@ -219,7 +219,11 @@ func (s *adminService) TestAgent(ctx context.Context, req *machinev1.TestAgentRe
 
 // ApplyAdminCommand verifies a root-signed command and executes it.
 func (n *Machine) ApplyAdminCommand(ctx context.Context, signed *identityv1.Signed) (string, error) {
-	cmd, err := n.trust.VerifyAdminCommand(signed, n.machineID, time.Now())
+	trust := n.currentTrust()
+	if trust == nil {
+		return "", connect.NewError(connect.CodePermissionDenied, errors.New("this machine has no owner"))
+	}
+	cmd, err := trust.VerifyAdminCommand(signed, n.MachineID(), time.Now())
 	if err != nil {
 		n.audit.Log(AuditRecord{Kind: "admin", Decision: "deny", Reason: err.Error()})
 		return "", connect.NewError(connect.CodePermissionDenied, err)
@@ -239,7 +243,7 @@ func (n *Machine) ApplySettings(ctx context.Context, cmd *identityv1.AdminComman
 		n.audit.Log(AuditRecord{Kind: "admin", Decision: "deny", Reason: "unsigned command that is not a setting"})
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("only settings (projects, pausing, the name, agent defaults, storage) may be sent without a signature"))
 	}
-	if cmd.OwnerId != n.OwnerID() || cmd.TargetMachineId != n.machineID {
+	if cmd.OwnerId != n.OwnerID() || cmd.TargetMachineId != n.MachineID() {
 		return "", connect.NewError(connect.CodePermissionDenied, errors.New("settings for another owner or machine"))
 	}
 	if cmd.ExpiresAt == nil || time.Now().After(cmd.ExpiresAt.AsTime()) {

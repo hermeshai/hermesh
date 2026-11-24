@@ -92,6 +92,7 @@ func (n *Machine) setHer(on, erase bool) (string, error) {
 	if why := n.herUnsupported(); why != "" {
 		return "Her is on, but this machine can't run her (" + why + ")", nil
 	}
+	n.ensureLocalHerGrant()
 	n.her.Start()
 	n.startHerLink()
 	return "Her is on", nil

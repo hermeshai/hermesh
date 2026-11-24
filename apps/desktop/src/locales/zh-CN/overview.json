@@ -186,10 +186,11 @@
     "untilWholeHours_other": "还有 {{count}} 小时",
     "untilMinutes_other": "还有 {{count}} 分",
     "none": "它没有提供额度信息",
-    "notYet": "还没有上报，运行一次任务后显示",
-    "stale": "窗口已重置，下次运行后更新",
-    "foot": "额度由各提供方在运行时上报，Hermesh 只转述，不读取账号。很久没运行的提供方，这里是它上次运行时的数。",
+    "notYet": "还没有读到，用订阅账号登录后显示",
+    "stale": "窗口已重置，下次查询或运行后更新",
+    "foot": "额度由各提供方给出：打开此页时向这台 Mac 上的 Claude Code、Codex 和 Antigravity 查询，运行任务时也会更新。Hermesh 只转述，不读取账号。其他电脑上的，是它们上次给出的数。",
     "needTitle": "{{agent}} 的 {{window}}额度剩 {{left}}%",
+    "needTitleGroup": "{{agent}} 的 {{group}} {{window}}额度剩 {{left}}%",
     "see": "查看"
   }
 }

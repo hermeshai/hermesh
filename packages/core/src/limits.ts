@@ -5,8 +5,11 @@ import type { Machine } from "@hermesh/proto/local";
 // of its account's limits, from whichever machine said it last. The agents
 // do not name the account, so it is one card an agent.
 
-/** A window as the page shows it: how long, how much is left and of its time, and when it starts again. */
-export type LimitShown = { minutes: number; left: number; timeLeft: number; resetsAt: Date };
+/**
+ * A window as the page shows it: how long, how much is left and of its time, and when it starts again; and the models
+ * it counts, when the agent counts groups of them apart ("" for the account's).
+ */
+export type LimitShown = { minutes: number; left: number; timeLeft: number; resetsAt: Date; group: string };
 
 export type AgentLimitsCard = {
   agent: string;
@@ -14,7 +17,7 @@ export type AgentLimitsCard = {
   machineId: string;
   observedAt: Date | null;
   plan: string;
-  /** Not yet reset, the shortest first; empty when none was said or all have reset since. */
+  /** Not yet reset, by group as the agent gave them, the shortest first in each; empty when none was said or all have reset since. */
   windows: LimitShown[];
   /** It said some, and every one of them has reset since: what is left now is not known. */
   stale: boolean;
@@ -36,16 +39,18 @@ export function agentLimits(machines: Pick<Machine, "machineId" | "status">[], n
       const had = cards.get(a.name);
       if (had && (!at || (had.observedAt && had.observedAt >= at))) continue;
       const said = a.limits?.windows ?? [];
+      const groups = [...new Set(said.map((w) => w.group))];
       const windows = said
-        .map((w) => ({ minutes: w.minutes, used: w.usedPercent, resetsAt: w.resetsAt ? timestampDate(w.resetsAt) : new Date(0) }))
+        .map((w) => ({ minutes: w.minutes, used: w.usedPercent, resetsAt: w.resetsAt ? timestampDate(w.resetsAt) : new Date(0), group: w.group }))
         .filter((w) => w.resetsAt > now)
         .map((w) => ({
           minutes: w.minutes,
           left: Math.max(0, 100 - w.used),
           timeLeft: Math.min(100, Math.max(0, Math.round(((w.resetsAt.getTime() - now.getTime()) / (w.minutes * 60_000)) * 100))),
           resetsAt: w.resetsAt,
+          group: w.group,
         }))
-        .sort((x, y) => x.minutes - y.minutes);
+        .sort((x, y) => groups.indexOf(x.group) - groups.indexOf(y.group) || x.minutes - y.minutes);
       cards.set(a.name, { agent: a.name, machineId: at ? m.machineId : "", observedAt: at, plan: a.limits?.plan ?? "", windows, stale: said.length > 0 && windows.length === 0 });
     }
   }

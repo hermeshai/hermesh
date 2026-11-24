@@ -284,7 +284,7 @@ export function rowsOf(items: Step[], ends: Set<bigint>, current: Failure | unde
 function draws(it: Step, previous: Date | undefined, current: Failure | undefined): boolean {
   switch (it.kind) {
     case "turn":
-      return !!it.wakeReason || (!!it.at && turnTimeLine(it.at, previous, new Date()) !== null);
+      return !!it.at && turnTimeLine(it.at, previous, new Date()) !== null;
     case "question":
       return !!it.resolution;
     case "turnEnd":
@@ -315,7 +315,7 @@ function sameStep(a: Step, b: Step): boolean {
   if (a.kind !== b.kind || a.seq !== b.seq) return false;
   switch (a.kind) {
     case "turn":
-      return a.at?.getTime() === (b as typeof a).at?.getTime() && a.wakeReason === (b as typeof a).wakeReason;
+      return a.at?.getTime() === (b as typeof a).at?.getTime();
     case "agent":
       return a.text === (b as typeof a).text;
     case "tools": {
@@ -333,7 +333,7 @@ function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous 
   const { t } = useTranslation("session");
   switch (it.kind) {
     case "turn":
-      return <TimeLine at={it.at} previous={previous} wakeReason={it.wakeReason} />;
+      return <TimeLine at={it.at} previous={previous} />;
     case "user": {
       // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing on it; another of the
       // owner's agents (Her, a granted one) in a quiet bubble with its face on the corner. Each turn says its own: a
@@ -432,14 +432,11 @@ function InterruptNote({ failure, clients }: { failure: Failure | undefined; cli
   return <div className="tnote">{label ? t("chat.interruptedBy", { name: agentName(label) }) : t("chat.interrupted")}</div>;
 }
 
-/** A time line before a turn, for the first one, after a pause, or when woken by a background task. */
-export function TimeLine({ at, previous, wakeReason }: { at: Date | undefined; previous: Date | undefined; wakeReason?: string }) {
-  const { t } = useTranslation("session");
+/** A time line before a turn, only for the first one and after a pause. */
+export function TimeLine({ at, previous }: { at: Date | undefined; previous: Date | undefined }) {
   const now = useNow(60_000);
-  const timeText = at ? turnTimeLine(at, previous, now) : null;
-  const wakeText = wakeReason ? t("chat.wakeLine", { reason: wakeReason }) : null;
-  const text = timeText && wakeText ? `${timeText} · ${wakeText}` : wakeText ?? timeText;
-  return text ? <div className="tdiv" data-testid={wakeReason ? "turn-wake-line" : undefined}>{text}</div> : null;
+  const text = at ? turnTimeLine(at, previous, now) : null;
+  return text ? <div className="tdiv">{text}</div> : null;
 }
 
 /** Under a message on hover: when it was sent, and Copy. */

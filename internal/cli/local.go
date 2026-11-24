@@ -36,14 +36,28 @@ func localDial(ctx context.Context, machineID string) (net.Conn, error) {
 func (a *app) withoutRelay() (*peer.Client, []machineRef) {
 	var machines []machineRef
 	here := false
+	localID := ""
+	if a.mem != nil && a.mem.LocalMachine != nil {
+		localID = a.mem.LocalMachine.ID()
+	}
+	seenLocal := false
 	for _, m := range a.st.Machines {
 		ref := machineRef{ID: m.ID, Name: m.Name}
-		if path := paths.Local(m.ID); path != "" {
+		if localID != "" && m.ID == localID {
+			if name := a.mem.LocalMachine.Name(); name != "" {
+				ref.Name = name
+			}
+			ref.Online, here, seenLocal = true, true, true
+		} else if path := paths.Local(m.ID); path != "" {
 			if _, err := os.Stat(path); err == nil {
 				ref.Online, here = true, true
 			}
 		}
 		machines = append(machines, ref)
+	}
+	if localID != "" && !seenLocal {
+		machines = append(machines, machineRef{ID: localID, Name: a.mem.LocalMachine.Name(), Online: true})
+		here = true
 	}
 	if !here {
 		return nil, nil

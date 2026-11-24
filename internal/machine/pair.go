@@ -51,12 +51,12 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 	if label == "" {
 		label = HostLabel("")
 	}
-	spki := identity.MarshalPublicKey(n.key.Public())
+	spki := identity.MarshalPublicKey(n.currentKey().Public())
 	pr := &identityv1.PairingRequest{Kind: identityv1.PairingKind_PAIRING_KIND_MACHINE, SubjectPublicKey: spki, Label: label,
 		Hostname: host, Platform: runtime.GOOS + "/" + runtime.GOARCH, OwnerId: ownerID, CreatedAt: timestamppb.Now(),
 		// The two digits, when there is someone to type them.
 		ConfirmMatch: ownerID == "" && opts.Digits != nil && !opts.TrustClaim}
-	creds, ownerID, err := PairWithRelay(ctx, n.cfg.HTTPClient, relayURL, pr, n.key, out, opts)
+	creds, ownerID, err := PairWithRelay(ctx, n.cfg.HTTPClient, relayURL, pr, n.currentKey(), out, opts)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (n *Machine) Pair(ctx context.Context, address, label string, out io.Writer
 	if err := n.SetName(label); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "✓ Paired as “%s” (%s)\n", n.Name(), n.machineID)
+	fmt.Fprintf(out, "✓ Paired as “%s” (%s)\n", n.Name(), n.MachineID())
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (n *Machine) Install(ownerID, relayURL string, rootChain *identityv1.RootCh
 	if err != nil {
 		return err
 	}
-	if !pub.Equal(n.key.Public()) {
+	if !pub.Equal(n.currentKey().Public()) {
 		return errors.New("received a certificate for a different key")
 	}
 	for k, v := range map[string]string{kOwnerID: ownerID, kRelayURL: relayURL} {
@@ -130,13 +130,24 @@ func (n *Machine) Install(ownerID, relayURL string, rootChain *identityv1.RootCh
 	n.mu.Lock()
 	n.ownerID, n.relayURL, n.trust = ownerID, relayURL, trust
 	n.machineCert = machineCert
+	n.refused, n.erased, n.goneSaid = false, false, false
+	hadLocalHer := n.mesh.local
+	if hadLocalHer {
+		n.mesh.grant, n.mesh.signed, n.mesh.local = nil, nil, false
+	}
 	n.mu.Unlock()
+	if hadLocalHer {
+		n.stopHerLink()
+		n.her.MeshChanged()
+	}
 	n.audit.Log(AuditRecord{Kind: "paired", Subject: ownerID})
+	n.wakeMesh()
+	n.kickStatus()
 	return nil
 }
 
 // PublicKeySPKI returns this machine's public key (PKIX DER).
-func (n *Machine) PublicKeySPKI() []byte { return identity.MarshalPublicKey(n.key.Public()) }
+func (n *Machine) PublicKeySPKI() []byte { return identity.MarshalPublicKey(n.currentKey().Public()) }
 
 // PairOptions decides how a machine accepts credentials from an owner it
 // learned from a hosted center's claim (an owner pinned from a connection

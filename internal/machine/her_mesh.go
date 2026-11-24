@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	"github.com/hermeshai/hermesh/internal/herhost"
 	"github.com/hermeshai/hermesh/pkg/identity"
+	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
 // Her on the mesh (docs/her-mesh.md): Her is one of the owner's agents.
@@ -48,7 +50,10 @@ type HerCredentials struct {
 	RootChain         *identityv1.RootChain
 	Grant             *identityv1.Signed
 	// InboxKey is her inbox private key (X25519).
-	InboxKey []byte
+	InboxKey         []byte
+	LocalMachineID   func() string
+	LocalMachineName func() string
+	LocalMachineDial func(ctx context.Context, machineID string) (net.Conn, string, bool)
 }
 
 // HerLinkConfig is what a HerLink is made with.
@@ -95,8 +100,10 @@ type herMesh struct {
 	inbox []byte
 	link  HerLink
 	// grant is her verified grant with its signed form; nil: none.
+	// local is true when grant is a synthetic standalone grant for this machine alone.
 	grant  *identityv1.Grant
 	signed *identityv1.Signed
+	local  bool
 	stop   context.CancelFunc // the link's Run, while it runs
 	kick   chan struct{}      // news waits
 }
@@ -187,18 +194,18 @@ func (n *Machine) keepHerGrant(signed *identityv1.Signed, store bool) error {
 		return connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	switch {
-	case g.HerMachineId != n.machineID:
+	case g.HerMachineId != n.MachineID():
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("the grant is not for Her on this machine"))
 	case !bytes.Equal(g.ClientPublicKey, n.herClientKey()):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("the grant is not for this machine's Her key"))
 	}
 	n.mu.Lock()
 	problem := n.grantProblemLocked(g)
-	if cur := n.mesh.grant; problem == nil && cur != nil && cur.GrantId == g.GrantId && g.Version < cur.Version {
+	if cur := n.mesh.grant; problem == nil && cur != nil && !n.mesh.local && cur.GrantId == g.GrantId && g.Version < cur.Version {
 		problem = errors.New("grant superseded by a newer version")
 	}
 	if problem == nil {
-		n.mesh.grant, n.mesh.signed = g, signed
+		n.mesh.grant, n.mesh.signed, n.mesh.local = g, signed, false
 	}
 	n.mu.Unlock()
 	if problem != nil {
@@ -217,6 +224,7 @@ func (n *Machine) SetHerGrant(signed *identityv1.Signed, chain *identityv1.RootC
 	if chain != nil {
 		n.acceptRootChain(chain)
 	}
+	n.stopHerLink()
 	if err := n.keepHerGrant(signed, true); err != nil {
 		return err
 	}
@@ -226,12 +234,86 @@ func (n *Machine) SetHerGrant(signed *identityv1.Signed, chain *identityv1.RootC
 	return nil
 }
 
+// ensureLocalHerGrant equips Her with a standalone in-process grant for this
+// machine when unpaired and AllowUnpaired is enabled, so Her can orchestrate
+// local coding agents without a relay or owner root key.
+func (n *Machine) ensureLocalHerGrant() {
+	if !n.cfg.AllowUnpaired || n.mesh.key == nil || n.herUnsupported() != "" {
+		return
+	}
+	pub := n.herClientKey()
+	if len(pub) == 0 {
+		return
+	}
+	n.mu.Lock()
+	if n.machineCert != nil || !n.herOn || (n.mesh.grant != nil && !n.mesh.local) {
+		n.mu.Unlock()
+		return
+	}
+	myID := n.MachineID()
+	if n.mesh.local && n.mesh.grant != nil && n.mesh.grant.HerMachineId == myID {
+		n.mu.Unlock()
+		return
+	}
+	g := &identityv1.Grant{
+		GrantId:         "g_local_her",
+		Version:         1,
+		ClientId:        identity.ClientID(pub),
+		ClientPublicKey: pub,
+		ClientLabel:     "Her",
+		MachineIds:      []string{"*"},
+		ProjectIds:      []string{"*"},
+		Agents:          []string{"*"},
+		TaskVisibility:  identityv1.TaskVisibility_TASK_VISIBILITY_ALL,
+		HerMachineId:    myID,
+	}
+	signed, err := identity.Sign(g, n.mesh.key)
+	if err != nil {
+		n.mu.Unlock()
+		return
+	}
+	n.mesh.grant, n.mesh.signed, n.mesh.local = g, signed, true
+	n.mu.Unlock()
+}
+
+func (n *Machine) dialHerInProcess(_ context.Context, machineID string) (net.Conn, string, bool) {
+	myID := n.MachineID()
+	if machineID != myID {
+		return nil, "", false
+	}
+	n.mu.Lock()
+	myName := n.machineName
+	g := n.mesh.grant
+	local := n.mesh.local
+	n.mu.Unlock()
+	if g == nil {
+		return nil, "", false
+	}
+	if !local {
+		if err := n.checkGrant(g); err != nil {
+			return nil, "", false
+		}
+	}
+	n.rememberClient(g.ClientId, g)
+	c1, c2 := net.Pipe()
+	p := &Principal{Kind: PrincipalClient, ClientID: g.ClientId, Grant: g}
+	base := n.handler()
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		base.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+	})
+	go func() {
+		defer c2.Close()
+		transport.ServeH2(context.Background(), c2, h)
+	}()
+	return c1, myName, true
+}
+
 // dropHerGrant takes Her off the mesh: her grant is gone here, and her is
 // no longer offered the tools.
 func (n *Machine) dropHerGrant(why string) {
 	n.mu.Lock()
 	had := n.mesh.grant != nil
-	n.mesh.grant, n.mesh.signed = nil, nil
+	n.mesh.grant, n.mesh.signed, n.mesh.local = nil, nil, false
 	stop := n.mesh.stop
 	n.mesh.stop = nil
 	n.mu.Unlock()
@@ -280,10 +362,33 @@ func (n *Machine) herAdopted(chain *identityv1.RootChain, signed *identityv1.Sig
 func (n *Machine) herCredentials() *HerCredentials {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.mesh.signed == nil || n.trust == nil {
+	if n.mesh.signed == nil {
 		return nil
 	}
-	return &HerCredentials{RelayURL: n.relayURL, OwnerID: n.ownerID, Key: n.mesh.key, RootChain: n.trust.RootChain(), Grant: n.mesh.signed, InboxKey: n.mesh.inbox}
+	if n.mesh.local {
+		return &HerCredentials{
+			Key:              n.mesh.key,
+			Grant:            n.mesh.signed,
+			InboxKey:         n.mesh.inbox,
+			LocalMachineID:   n.MachineID,
+			LocalMachineName: n.Name,
+			LocalMachineDial: n.dialHerInProcess,
+		}
+	}
+	if n.trust == nil {
+		return nil
+	}
+	return &HerCredentials{
+		RelayURL:         n.relayURL,
+		OwnerID:          n.ownerID,
+		Key:              n.mesh.key,
+		RootChain:        n.trust.RootChain(),
+		Grant:            n.mesh.signed,
+		InboxKey:         n.mesh.inbox,
+		LocalMachineID:   n.MachineID,
+		LocalMachineName: n.Name,
+		LocalMachineDial: n.dialHerInProcess,
+	}
 }
 
 // herMeshNow is what serves her's mesh tools: her link, while Her is on

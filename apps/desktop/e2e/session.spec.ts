@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { cli, dragFiles, fixture, launch, onMac, onWindows, paste, pickFrom, snap, thisComputer, sessionList } from "./app";
 
 // The session page: the conversation, the changes, the info panel, and the
@@ -144,6 +144,43 @@ test("the page is the conversation alone: no tabs, and no line or link after a f
   await expect(log).toContainText("改好了");
   await expect(log).not.toContainText("轮完成");
   await expect(log.getByRole("button", { name: "查看改动" })).toHaveCount(0);
+  await app.close();
+});
+
+test("the conversation and the box under it are one column: a reply's words, its code, steps and the work line start where the box starts, and a message ends where it ends", async () => {
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "对齐", "--prompt", "say 一句话\\n\\n```\\necho hi\\n```", "--wait");
+  const { app, page } = await launch();
+  await page.setViewportSize({ width: 1440, height: 800 });
+  const log = page.getByRole("log", { name: "对话" });
+  const box = async () => (await page.locator(".th-cmp").boundingBox())!;
+  /** How far a thing starts from where the box starts, and ends from where the box ends. */
+  const edges = async (l: Locator) => {
+    const [b, c] = [(await l.boundingBox())!, await box()];
+    return { left: b.x - c.x, right: b.x + b.width - (c.x + c.width) };
+  };
+
+  await open(page, "对齐");
+  const reply = log.locator(".am");
+  expect(Math.abs((await edges(reply.locator(".md p"))).left)).toBeLessThan(0.5);
+  for (const edge of Object.values(await edges(reply.locator(".cblock")))) expect(Math.abs(edge)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.locator(".um .bub"))).right)).toBeLessThan(0.5);
+  // Copy, on hover under the reply: its glyph, not its plate, starts on that line.
+  await reply.hover();
+  expect(Math.abs((await edges(reply.locator(".msg-act").getByRole("button", { name: "拷贝" }).locator(".ic"))).left)).toBeLessThan(1);
+
+  await open(page, "写 hello");
+  expect(Math.abs((await edges(log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" }))).left)).toBeLessThan(0.5);
+  expect(Math.abs((await edges(log.getByRole("button", { name: /^已编辑/ }))).left)).toBeLessThan(0.5);
+
+  // A session at work: its line is one more row, as far under the step as steps are from each other.
+  await open(page, "跑很久");
+  const working = page.getByTestId("thread-working");
+  expect(Math.abs((await edges(working.locator(":scope > *").first())).left)).toBeLessThan(0.5);
+  const step = (await log.getByRole("button", { name: /sleep 1800/ }).boundingBox())!;
+  const mark = (await working.locator(":scope > *").first().boundingBox())!;
+  const rowGap = await log.evaluate((el) => parseFloat(getComputedStyle(el).rowGap));
+  expect(mark.y - (step.y + step.height)).toBeGreaterThanOrEqual(rowGap);
+  expect(mark.y - (step.y + step.height)).toBeLessThan(rowGap + 6);
   await app.close();
 });
 
