@@ -576,8 +576,8 @@ export function ToolFold<T>({ id, summary, running, items, keyOf, row }: {
   );
 }
 
-/** A step's height in the card until it is measured: a line of 13px text with its padding. */
-const stepHeights: Record<string, number> = { step: 29 };
+/** A step's height in the card until it is measured: a line of 13px text with its padding and hairline (.tg-s is ten and a half of them high). */
+const stepHeights: Record<string, number> = { step: 35 };
 
 /**
  * An opened group's card: a row per step. Past about ten rows it stops growing (CSS, .tg-s) and scrolls inside,
@@ -595,10 +595,16 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
   const card = useRef<HTMLDivElement>(null);
   const virtual = useVirtualRows({ scroller, list, rows, initial: stepHeights });
   // Whether it stays at the newest step, and when the person last acted in it (a scroll they made, not one rows made).
+  // A held pointer (the scroll bar, a selection dragged past an edge) counts until it lets go, as in the conversation.
   const follow = useRef(true);
   const touched = useRef(-Infinity);
   const touch = () => {
     touched.current = performance.now();
+  };
+  const hold = () => {
+    touched.current = Infinity;
+    window.addEventListener("pointerup", touch, { once: true });
+    window.addEventListener("pointercancel", touch, { once: true });
   };
   // The edges and the arrow, on the element itself: scrolling draws no rows unless the window moves.
   const mark = () => {
@@ -649,7 +655,7 @@ function StepsCard<T>({ items, keyOf, row, running }: { items: readonly T[]; key
   };
   return (
     <div className="tg-b" ref={card}>
-      <div className="tg-s" ref={setScroller} onScroll={onScroll} onWheel={touch} onPointerDown={touch} onKeyDown={touch} onClick={onClick}>
+      <div className="tg-s" ref={setScroller} onScroll={onScroll} onWheel={touch} onTouchMove={touch} onKeyDown={touch} onPointerDown={hold} onClick={onClick}>
         <div className="tg-l" ref={setList}>
           {virtual.parts.flatMap((part) =>
             "space" in part

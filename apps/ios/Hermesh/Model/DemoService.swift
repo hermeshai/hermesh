@@ -466,10 +466,18 @@ final class DemoService {
             world.sessions.removeAll { $0.sessionID == id }
             var s = session(id, title: "Her sample task", machine: "demo-linux", status: .running)
             s.createdBy = "her"
+            // Her's own grant, as a workspace with Her has it: the task she sends says it is hers, by her face.
+            if !world.clients.contains(where: { $0.clientID == "her" }) {
+                world.clients.append(.with {
+                    $0.clientID = "her"; $0.grantID = "demo-her-grant"; $0.label = "Her"; $0.online = true
+                    $0.herMachineID = "demo-mac"; $0.grantVersion = 1
+                    $0.spec = .with { $0.label = "Her"; $0.machineIds = ["*"]; $0.projectIds = ["*"]; $0.agents = ["*"] }
+                })
+            }
             world.sessions.append(s)
             events[id] = []
             greetings[id] = nil
-            append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "Her" } })
+            append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "her" } })
             append(id, .with { $0.userMessage.text = String(localized: "Update the sample welcome page. This task was delegated by Her; no code is executed.") })
         case .done:
             finish(id, greeting: "Welcome from Her!")
@@ -576,6 +584,22 @@ final class DemoService {
         for i in 0 ..< 600 { call("demo-many-steps", i, result: true) }
         append("demo-many-steps", .with { $0.agentMessage.text = "Done: after 600 steps every call uses slog, and the tests pass." })
         append("demo-many-steps", .with { $0.turnCompleted = .with { $0.turn = 1 } })
+
+        // A long conversation of small groups (three calls a turn) under a long title: for scrolling the page from on a
+        // small card, and for the bar's capsule.
+        let small = "demo-small-steps"
+        var s = session(small, title: "Small steps: keep every log call structured across the whole repository and its tests", machine: "demo-mac", status: .idle)
+        s.agent = "codex"
+        s.updatedAt = .init(date: .now.addingTimeInterval(40))
+        s.progress.turnCount = 12
+        world.sessions.append(s)
+        for t in 1 ... 12 {
+            append(small, .with { $0.turnStarted = .with { $0.turn = UInt32(t); $0.asker = "owner" } })
+            append(small, .with { $0.userMessage.text = "Small prompt #\(t): look at package \(t) and tell me what its logging does." })
+            for k in 0 ..< 3 { call(small, t * 10 + k, result: true) }
+            append(small, .with { $0.agentMessage.text = "Small reply #\(t): package \(t) logs through the shared logger; nothing to change there. Its tests cover the three call sites I read." })
+            append(small, .with { $0.turnCompleted = .with { $0.turn = UInt32(t) } })
+        }
 
         start("demo-many-steps-running", title: "Many steps, running", status: .running)
         for i in 0 ..< 80 { call("demo-many-steps-running", i, result: true) }

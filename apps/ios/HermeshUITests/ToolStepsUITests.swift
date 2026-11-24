@@ -31,8 +31,10 @@ final class ToolStepsUITests: XCTestCase {
         summary.tap()
         XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
         // It stops growing at seven and a half rows, and lays out only the rows near what is in sight.
-        XCTAssertLessThanOrEqual(card.frame.height, 262, "capped")
-        XCTAssertGreaterThan(card.frame.height, 200, "not shrunk")
+        XCTAssertLessThanOrEqual(card.frame.height, 240, "capped")
+        XCTAssertGreaterThan(card.frame.height, 190, "not shrunk")
+        let rowHeight = try XCTUnwrap(card.buttons.allElementsBoundByIndex.map(\.frame.height).filter { $0 > 20 }.min(), "a row")
+        XCTAssertEqual(card.frame.height / rowHeight, 7.5, accuracy: 0.5, "seven and a half rows: \(card.frame.height) / \(rowHeight)")
         let drawn = card.buttons.count
         XCTAssertLessThan(drawn, 80, "rows laid out: \(drawn) of 600")
         XCTAssertGreaterThan(drawn, 6, "the rows in sight")
@@ -152,7 +154,7 @@ final class ToolStepsUITests: XCTestCase {
         summary.tap()
         let card = element("tool-steps")
         XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
-        XCTAssertLessThanOrEqual(card.frame.height, 262, "capped")
+        XCTAssertLessThanOrEqual(card.frame.height, 240, "capped")
         // Steps come every second; the card stays at the newest, with no arrow back.
         sleep(3)
         XCTAssertFalse(element("steps-to-end").exists, "following")
@@ -169,6 +171,44 @@ final class ToolStepsUITests: XCTestCase {
         sleep(3)
         XCTAssertFalse(element("steps-to-end").exists, "following again")
         XCTAssertTrue(newestInSight(card), "the newest step in sight again")
+    }
+
+    private let smallTitle = "Small steps: keep every log call structured across the whole repository and its tests"
+
+    /// A small group's card has nothing to scroll: a drag that starts on it scrolls the page, as one anywhere else does.
+    func testADragOnASmallCardScrollsThePage() throws {
+        open(smallTitle)
+        let summaries = app.descendants(matching: .any).matching(identifier: "tool-steps-summary")
+        XCTAssertTrue(summaries.firstMatch.waitForExistence(timeout: 10), "the steps, folded")
+        let summary = try XCTUnwrap(summaries.allElementsBoundByIndex.last { $0.isHittable }, "a group in sight")
+        summary.tap()
+        let card = element("tool-steps")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
+        XCTAssertLessThan(card.frame.height, 200, "a small card: \(card.frame.height)")
+        sleep(1)
+        let before = summary.frame.minY
+        let from = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 220)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        sleep(1)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "small-card-dragged"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertGreaterThan(summary.frame.minY, before + 120, "the page scrolled with the drag: from \(before) to \(summary.frame.minY)")
+    }
+
+    /// A long title keeps to its capsule, between the buttons beside it, with where it runs under it.
+    func testALongTitleKeepsToItsCapsule() throws {
+        open(smallTitle)
+        let capsule = app.buttons["session-info"]
+        let more = app.buttons["session-more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        let others = app.navigationBars.buttons.allElementsBoundByIndex.filter { $0.identifier != "session-info" && $0.identifier != "session-more" }
+        let back = try XCTUnwrap(others.min { $0.frame.minX < $1.frame.minX }, "the button back")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "long-title"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertTrue(capsule.label.contains("Mac mini/hello-world"), capsule.label)
+        XCTAssertGreaterThanOrEqual(capsule.frame.minX, back.frame.maxX, "clear of the button back: \(capsule.frame) \(back.frame)")
+        XCTAssertLessThanOrEqual(capsule.frame.maxX, more.frame.minX, "clear of ⋯: \(capsule.frame) \(more.frame)")
+        XCTAssertGreaterThan(capsule.frame.width, 120, "still a capsule to tap")
     }
 
     // MARK: Helpers

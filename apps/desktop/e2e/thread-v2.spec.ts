@@ -202,7 +202,7 @@ test("tracks post-turn background tasks without premature completion, streams au
     await page.getByTestId("composer-submit-btn").click();
 
     // 1. Foreground reply finishes, while background task pill + toolbar badge + Inspector card appear,
-    //    and "这一轮做完了" is suppressed while awaiting the background task!
+    //    and the conversation's end says it waits on the background task.
     await expect(replies(page)).toContainText("Foreground reply done, running pytest in background", { timeout: 10_000 });
     const bgStrip = page.getByTestId("background-tasks-strip");
     await expect(bgStrip).toBeVisible();
@@ -213,13 +213,15 @@ test("tracks post-turn background tasks without premature completion, streams au
     await expect(page.getByTestId("inspector-background-tasks")).toContainText("pytest -q");
 
     // 2. When the 3s background task finishes, the system Continuation Run streams the final report
-    //    under a quiet wake divider, clears the active background strip, and shows "这一轮做完了"!
+    //    under a quiet wake divider, clears the active background strip, and the waiting line goes: a turn that
+    //    went well ends without a line of its own.
     await expect(replies(page).last()).toContainText("All 12 background tests passed!", { timeout: 15_000 });
     await expect(page.getByTestId("turn-wake-line")).toContainText("后台唤醒 · pytest -q");
     await expect(bgStrip).toHaveCount(0);
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    await expect(page.getByTestId("thread-working")).toHaveCount(0);
+    await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
 
-    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT block "这一轮做完了",
+    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT keep the conversation's end waiting,
     //    shows live output in Inspector when clicking "查看", and stops cleanly when clicking "停止"!
     await page
       .getByTestId("thread-composer-input")
@@ -227,7 +229,7 @@ test("tracks post-turn background tasks without premature completion, streams au
     await page.getByTestId("composer-submit-btn").click();
 
     await expect(replies(page).last()).toContainText("Dev server started", { timeout: 10_000 });
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    await expect(page.getByTestId("thread-working")).toHaveCount(0);
     await expect(bgStrip).toContainText("常驻进程运行中");
 
     await page.getByTestId("background-strip-view").click();

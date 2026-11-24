@@ -11,6 +11,66 @@
         }
       }
     },
+    "%lld background services running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个常驻进程运行中"
+          }
+        }
+      }
+    },
+    "%lld background tasks running": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 个后台任务进行中"
+          }
+        }
+      }
+    },
+    "Background Tasks": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台任务"
+          }
+        }
+      }
+    },
+    "Background service · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "常驻进程运行中 · %@"
+          }
+        }
+      }
+    },
+    "Background task · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台任务进行中 · %@"
+          }
+        }
+      }
+    },
+    "Background wake · %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台唤醒 · %@"
+          }
+        }
+      }
+    },
     "Can’t reach Hermesh · Retrying" : {
       "localizations" : {
         "zh-Hans" : {
@@ -37,6 +97,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "**%@** 暂时没有回应 · 正在重试"
+          }
+        }
+      }
+    },
+    "Completed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成"
+          }
+        }
+      }
+    },
+    "Completed (%d)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成（%d）"
+          }
+        }
+      }
+    },
+    "Failed (%d)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "出错（%d）"
           }
         }
       }
@@ -81,6 +171,16 @@
         }
       }
     },
+    "Stop All": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部停下"
+          }
+        }
+      }
+    },
     "The project folder switches to this branch before the session starts; it can’t while there are uncommitted changes." : {
       "localizations" : {
         "zh-Hans" : {
@@ -97,6 +197,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前"
+          }
+        }
+      }
+    },
+    "This reply finished; waiting for %lld background task(s) to report back…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这一轮前台回复已结束，正在等待 %lld 个后台任务完成后继续汇报。"
           }
         }
       }

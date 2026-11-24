@@ -59,8 +59,9 @@ private struct StepsCard<ID: Hashable & Sendable, Row: View>: View {
     let ids: [ID]
     let running: Bool
     @ViewBuilder let row: (ID) -> Row
-    /// How high it grows: seven and a half rows of a step's line.
-    static var cap: CGFloat { 260 }
+    /// How high it grows: seven and a half rows of a step's line (31⅔ points each at the default text size), growing
+    /// with the text.
+    @ScaledMetric(relativeTo: .footnote) private var cap: CGFloat = 238
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var shape = CardShape()
     @State private var follow = true
@@ -96,7 +97,7 @@ private struct StepsCard<ID: Hashable & Sendable, Row: View>: View {
         .scrollPosition($position)
         .scrollBounceBehavior(.basedOnSize)
         // As high as its rows until the cap: a guess of a row a step until the rows say.
-        .frame(height: min(shape.content > 0 ? shape.content : CGFloat(ids.count) * 34, Self.cap))
+        .frame(height: min(shape.content > 0 ? shape.content : CGFloat(ids.count) * 32, cap))
         .onScrollGeometryChange(for: CardShape.self) { g in
             let above = g.contentOffset.y + g.contentInsets.top
             let below = g.contentSize.height - g.containerSize.height - above

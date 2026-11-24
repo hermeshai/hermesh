@@ -397,7 +397,8 @@ test("a running session shows what it does, and 打断 stops the turn", async ()
 test("a turn of many steps opens them in a card that stops growing and scrolls inside, at the newest, following it while the turn runs", async () => {
   const title = "很多步";
   const steps = Array.from({ length: 60 }, (_, i) => `shell echo step-${i}`);
-  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", [...steps, "shell sleep 20", "say 都做完了"].join("\n"), "-o", "json");
+  const late = ["shell echo late-0", "shell echo late-1", "shell echo late-2"];
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", [...steps, "shell sleep 10", ...late, "shell sleep 12", "say 都做完了"].join("\n"), "-o", "json");
   const { app, page } = await launch();
   try {
     await (await sessionList(page)).getByText(title, { exact: true }).click();
@@ -409,11 +410,12 @@ test("a turn of many steps opens them in a card that stops growing and scrolls i
     const scroller = card.locator(".tg-s");
     const back = card.getByRole("button", { name: "回到底部" });
     // Ten and a half rows high at most, scrolling inside, and only the rows near what is in sight drawn.
-    expect((await card.boundingBox())!.height).toBeLessThanOrEqual(304);
+    const rowHeight = await card.locator(".tg-l > .vrow").last().evaluate((el) => el.getBoundingClientRect().height);
+    expect(((await card.boundingBox())!.height - 2) / rowHeight).toBeCloseTo(10.5, 0);
     expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
     expect(await card.locator(".tool").count()).toBeLessThan(61);
     // At the newest step, the one at work, with more above it fading; following it, so no arrow.
-    const working = card.locator(".tool", { hasText: "sleep 20" });
+    const working = card.locator(".tool", { hasText: "sleep 10" });
     await expect(working).toBeInViewport();
     await expect(card).toHaveClass(/\bmore-up\b/);
     await expect(card).not.toHaveClass(/\bmore-down\b/);
@@ -426,8 +428,14 @@ test("a turn of many steps opens them in a card that stops growing and scrolls i
     await expect(back).toBeVisible();
     await expect(working).not.toBeInViewport();
     await expect(card).toHaveClass(/\bmore-down\b/);
+    // Steps come while it is scrolled up: it stays where the owner left it, and still offers the way back.
+    const at = await scroller.evaluate((el) => el.scrollTop);
+    await expect(head).toContainText("运行了 65 条命令", { timeout: 60_000 });
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(at);
+    await expect(back).toBeVisible();
     await back.click();
-    await expect(working).toBeInViewport();
+    const newest = card.locator(".tool", { hasText: "sleep 12" });
+    await expect(newest).toBeInViewport();
     await expect(back).toBeHidden();
     // The turn ends: no arrow while nothing runs.
     await expect(log).toContainText("都做完了", { timeout: 60_000 });
@@ -443,6 +451,31 @@ test("a turn of many steps opens them in a card that stops growing and scrolls i
     await expect(card).toHaveClass(/\bmore-down\b/);
     await expect(card.locator(".tool").first()).toContainText("echo step-0");
     await snap(page, "session-many-steps");
+    // The scroll bar held a moment, then dragged to the top: the card goes where it is dragged and stays there (where
+    // scroll bars only show while scrolling there is nothing to hold, and nothing to check).
+    await card.locator(".tool.open .th").click();
+    await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect(card).not.toHaveClass(/\bmore-down\b/);
+    const box = (await scroller.boundingBox())!;
+    await scroller.evaluate((el) => {
+      (window as unknown as { __scrolls: number }).__scrolls = 0;
+      el.addEventListener("scroll", () => (window as unknown as { __scrolls: number }).__scrolls++);
+    });
+    await page.mouse.move(box.x + box.width - 5, box.y + box.height - 14);
+    await page.mouse.down();
+    await page.waitForTimeout(1300);
+    await page.mouse.move(box.x + box.width - 5, box.y + 4, { steps: 12 });
+    await page.waitForTimeout(600);
+    const dragged = await page.evaluate(() => (window as unknown as { __scrolls: number }).__scrolls);
+    if (dragged > 0) {
+      // Well up from the end (rows measured as they are drawn can move it a little), and still there a moment later.
+      const [top, max] = await scroller.evaluate((el) => [el.scrollTop, el.scrollHeight - el.clientHeight]);
+      expect(top).toBeLessThan(max / 3);
+      await page.waitForTimeout(600);
+      expect(await scroller.evaluate((el) => el.scrollTop)).toBe(top);
+    }
+    await page.mouse.up();
+    test.info().annotations.push({ type: "scroll bar dragged", description: String(dragged > 0) });
   } finally {
     await app.close();
   }

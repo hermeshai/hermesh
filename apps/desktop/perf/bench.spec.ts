@@ -415,8 +415,6 @@ test("benchmark", async () => {
     const c = await launch(main, socket, profile);
     const { page } = c;
     await ready(c, overviewReady);
-
-    await toolsBench(c);
     await sleep(2000);
     await memory(c, "fresh");
 
@@ -526,6 +524,9 @@ test("benchmark", async () => {
     await memory(c, "visited");
     record("leak.heap.MB", results["visited.heap.MB"] - results["loaded.heap.MB"]);
     record("leak.domNodes", results["visited.domNodes"] - results["loaded.domNodes"]);
+
+    // Last, so the measures before it stay what they were before it was added.
+    await toolsBench(c);
 
     await c.app.close();
   } finally {
