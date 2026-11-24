@@ -421,8 +421,8 @@ work-stats.md owns and is not part of this step.
 A filter says whose work is counted; **分组** (Group) says what the bars are
 in parts of. It is a segmented control at the trailing end of the filter row,
 not a fourth pop-up beside them, so the two are not read as one kind of thing:
-**Agent 提供方 | 环境 / 项目 | 合计** (Agent Provider | Environment / Project |
-Total). The page opens on Agent Provider; the choice is kept with the range
+**合计 | Agent 提供方 | 环境 / 项目** (Total | Agent Provider | Environment /
+Project): the whole first, then the ways to split it. The page opens on Agent Provider; the choice is kept with the range
 and filters while the overview shows its other views. The screens are in
 [overview-usage-breakdown-mac-demo.html](overview-usage-breakdown-mac-demo.html).
 
@@ -458,10 +458,12 @@ for its width. The screens are in
 [overview-usage-breakdown-iphone-demo.html](overview-usage-breakdown-iphone-demo.html).
 
 - **Two rows of controls, not three.** Under Live | Usage | Limits, one row
-  holds how the page is looked at: the range (a menu), the grouping (a
-  segmented control: By Agent | By Environment | Total, and By Project in
-  place of By Environment once one environment is all there is to split), and
-  one button the three filters are behind. Its menu holds a menu a filter,
+  holds how the page is looked at: first the grouping, the row's widest and
+  most used control (a segmented control: Total | By Agent | By Environment,
+  the whole before its parts, and By Project in place of By Environment once
+  one environment is chosen or only one worked); then what is counted, side
+  by side at the trailing end: the range (a menu) and one button the three
+  filters are behind. Its menu holds a menu a filter,
   each saying under its name what is chosen. A filter in force tints the
   button, which counts them, and is named in a row under it that scrolls
   sideways; its cross lets it go. So the row is there only when something is

@@ -879,7 +879,7 @@ final class HermeshUITests: XCTestCase {
         let big = app.descendants(matching: .any)["usage-sessions-big"].firstMatch
         try waitFor("today's work counted") { big.label.contains("个任务运行过") && !big.label.hasPrefix("0") ? true : nil }
         let worked = big.label
-        XCTAssertTrue(text("已完成").exists && text("工作时长").exists && text("输入").exists, "each measure's figures")
+        XCTAssertTrue(text("完成").exists && text("工作时长").exists && text("输入").exists, "each measure's figures")
         XCTAssertTrue(app.descendants(matching: .any)["usage-tokens-big"].firstMatch.label.contains("token"))
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "usage, today"
@@ -914,17 +914,17 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(part.waitForExistence(timeout: 10))
         // The filters are behind one button. The agent's menu: each coding agent that worked today, with its work
         // under it; Gemini CLI did all of it. One in force is said under the row.
-        tap("filters")
-        tap("filter-agent")
-        let gemini = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Gemini CLI,")).firstMatch
-        XCTAssertTrue(gemini.waitForExistence(timeout: 5) && gemini.label.contains("个任务 ·") && gemini.label.contains("token"), gemini.label)
+        openFilter("filter-agent")
+        // The menu's line, not the legend's cell (whose label goes on with its work). A menu inside the Filters
+        // button's draws no second line: the work of each is the legends' when the bars are split by it.
+        let gemini = app.buttons.matching(NSPredicate(format: "label == %@", "Gemini CLI")).firstMatch
+        XCTAssertTrue(gemini.waitForExistence(timeout: 5), "Gemini CLI worked today")
         gemini.tap()
         let agentInForce = app.buttons["filter-in-force-agent"]
         XCTAssertTrue(agentInForce.waitForExistence(timeout: 5) && agentInForce.label.contains("Gemini CLI"), agentInForce.label)
         try waitFor("the same work, Gemini CLI's alone") { big.label == worked ? true : nil }
         // The sender's: bot sent it.
-        tap("filters")
-        tap("filter-client")
+        openFilter("filter-client")
         let bot = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "bot")).firstMatch
         XCTAssertTrue(bot.waitForExistence(timeout: 5), "bot sent work today")
         bot.tap()
@@ -1211,6 +1211,19 @@ final class HermeshUITests: XCTestCase {
             if e.waitForNonExistence(timeout: 3) { return }
         }
         XCTFail("the alert stays up")
+    }
+
+    /// Opens one of the filters' menus, inside the Filters button's: its line leaves when the menu opens, and is
+    /// tapped again if the first tap came while the outer menu still moved.
+    func openFilter(_ id: String) {
+        tap("filters")
+        let line = app.buttons[id]
+        XCTAssertTrue(line.waitForExistence(timeout: 5), "no \(id)")
+        for _ in 0..<3 {
+            line.tap()
+            if line.waitForNonExistence(timeout: 2) { return }
+        }
+        XCTFail("\(id)'s menu did not open")
     }
 
     func tap(_ id: String, timeout: TimeInterval = 15) {

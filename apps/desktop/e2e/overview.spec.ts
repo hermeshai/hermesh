@@ -226,7 +226,7 @@ test("用量 counts a range under its filters: a measure a row beside its chart,
     // The bars are in parts of the agents to start with (分组): a part an agent, in its own colour, named over the chart
     // with its number and share; the left side's figures stay. Here one agent did it all.
     const group = usage.getByRole("radiogroup", { name: "分组" });
-    await expect(group.getByRole("radio")).toHaveText(["Agent 提供方", "环境 / 项目", "合计"]);
+    await expect(group.getByRole("radio")).toHaveText(["合计", "Agent 提供方", "环境 / 项目"]);
     await expect(group.getByRole("radio", { name: "Agent 提供方" })).toHaveAttribute("aria-checked", "true");
     const legend = tasks.locator(".us-legend").getByRole("button");
     await expect(legend).toHaveText([`Gemini CLI${ran}100%`]);
