@@ -40,7 +40,7 @@ type GrantNode = Spot & { kind: "g"; client: Client };
 type MachineNode = Spot & { kind: "m"; machine: Machine };
 type ProjectNode = Spot & { kind: "p"; machineId: string; projectId: string; online: boolean };
 type Extra = Spot & ExtraItem;
-type ExtraItem = { key: string; label: string; action?: () => void };
+type ExtraItem = { key: string; label: string };
 type Path = { s: Session; keys: string[]; d: string };
 
 /** A session the map shows: a turn in progress, a question open, or a failure. */
@@ -83,18 +83,19 @@ function layout(st: Store, live: Session[]) {
   );
 
   const extras: Extra[] = [];
-  const column = <T,>(items: T[], kind: Kind, ghost: ExtraItem | null, more: "moreGrants" | "moreMachines" | "moreProjects", max = MAX - 1) => {
+  // A side's nodes, and a line for those it has no room for. Adding a grant or an environment is rare, so the map draws
+  // no place for one: the sidebar's account menu and the File menu have them.
+  const column = <T,>(items: T[], kind: Kind, more: "moreGrants" | "moreMachines" | "moreProjects", max = MAX - 1) => {
     const shown = items.length > max + 1 ? items.slice(0, max) : items;
     const rest = items.length - shown.length;
     const tail: ExtraItem[] = [];
     if (rest > 0) tail.push({ key: `more:${kind}`, label: i18n.t(`overview:map.${more}`, { count: rest }) });
-    else if (ghost) tail.push(ghost);
     return { shown, tail };
   };
-  const g = column(clients, "g", !only && clients.length < 3 ? { key: "ghost:g", label: i18n.t("overview:map.connectMore"), action: () => st.set({ sheet: { kind: "newGrant" } }) } : null, "moreGrants");
-  const m = column(machines, "m", !only && machines.length < 3 ? { key: "ghost:m", label: i18n.t("overview:map.addMachine"), action: () => st.set({ sheet: { kind: "addMachine" } }) } : null, "moreMachines");
+  const g = column(clients, "g", "moreGrants");
+  const m = column(machines, "m", "moreMachines");
   const busy = projectList.filter(([key]) => (byProject.get(key) ?? 0) > 0).length;
-  const p = column(projectList, "p", null, "moreProjects", Math.min(MAX - 1, Math.max(PROJECTS, busy)));
+  const p = column(projectList, "p", "moreProjects", Math.min(MAX - 1, Math.max(PROJECTS, busy)));
 
   const rows = Math.max(g.shown.length + g.tail.length, m.shown.length + m.tail.length, p.shown.length, 1);
   const H = Math.max(190, rows * GAP + TOP + 44);
@@ -398,15 +399,7 @@ export function LinkMap({ pick, onPick, now }: { pick: string; onPick: (key: str
               {!n.online && <small className="lm-meta">{t("map.offline")}</small>}
             </Node>
           ))}
-          {L.extras.map((n) =>
-            n.action ? (
-              <button key={n.key} className="lm-node ghost" style={pos(n)} onClick={n.action}>
-                + {n.label}
-              </button>
-            ) : (
-              <div key={n.key} className="lm-node more" style={pos(n)}>{n.label}</div>
-            ),
-          )}
+          {L.extras.map((n) => <div key={n.key} className="lm-node more" style={pos(n)}>{n.label}</div>)}
 
         </div>
       </div>

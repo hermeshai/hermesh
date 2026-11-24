@@ -33,14 +33,15 @@ private func failed(_ id: String, by: String = "c1", machine: String = "m1") -> 
     #expect(arrived(all, before: all.map(\.id)) == nil)
 }
 
-@Test func theMapOfOneSenderAndOneEnvironmentDrawsWhatCanBeAdded() {
+@Test func theMapOfOneSenderAndOneEnvironmentDrawsThemAlone() {
     let map = linkMap(senders: [MapSender(clientID: "her", title: "Her")], environments: [MapEnvironment(machineID: "m1", title: "MacBook Pro", agents: ["claude"])],
                       team: teamState([], requests: 0), owner: "You")
-    #expect(map.senders.map(\.id) == ["s:her", "s:+"] && map.senders[1].kind == .addSender)
-    #expect(map.environments.map(\.id) == ["e:m1", "e:+"] && map.environments[1].kind == .addEnvironment)
+    // Adding one is rare: the map draws no place for it.
+    #expect(map.senders.map(\.id) == ["s:her"])
+    #expect(map.environments.map(\.id) == ["e:m1"])
     #expect(map.lines.isEmpty)
     let layout = LinkMapLayout(map, width: 329)
-    #expect(layout.size.height == 104 && layout.frames.count == 4 && layout.links.count == 4)
+    #expect(layout.frames.count == 2 && layout.links.count == 2)
 }
 
 @Test func theMapDrawsALineForEachSessionNotFinished() {
@@ -75,7 +76,7 @@ private func failed(_ id: String, by: String = "c1", machine: String = "m1") -> 
     let map = linkMap(senders: senders, environments: (1...3).map { MapEnvironment(machineID: "m\($0)", title: "m\($0)") },
                       team: teamState([session("r", .running, by: "c8")], requests: 0), owner: "You")
     #expect(map.senders.count == 6 && map.senders.first?.id == "s:c8" && map.senders.last?.kind == .more(3))
-    #expect(map.environments.count == 3, "three is not few: nothing to add is drawn")
+    #expect(map.environments.count == 3, "no place to add one is drawn")
 }
 
 @Test func theOverviewIsMadeFast() {

@@ -47,8 +47,6 @@
     "moreGrants_other": "还有 {{count}} 个 Agent",
     "moreMachines_other": "还有 {{count}} 个环境",
     "moreProjects_other": "还有 {{count}} 个项目",
-    "connectMore": "连接更多",
-    "addMachine": "添加环境",
     "backToAll": "回到全部任务",
     "encrypted": "端到端加密",
     "notSignedIn": "未登录",

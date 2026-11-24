@@ -77,7 +77,9 @@ test("pointers are macOS's: the hand on text links only, the arrow on the map's 
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
   const cursor = (l: ReturnType<typeof page.locator>) => l.evaluate((el) => getComputedStyle(el).cursor);
-  for (const name of ["bot", thisComputer, "demo", "+ 连接更多", "+ 添加环境"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
+  // Adding a grant or an environment is rare: the map draws no place for one.
+  for (const name of ["+ 连接更多", "+ 添加环境"]) await expect(map.getByRole("button", { name })).toHaveCount(0);
+  for (const name of ["bot", thisComputer, "demo"]) expect(await cursor(map.getByRole("button", { name, exact: true }))).toBe("default");
   expect(await cursor(page.getByRole("button", { name: "管理授权…" }))).toBe("pointer");
   // The session list: a heading the arrow, a text link the hand; then back to the overview.
   expect(await cursor((await sessionList(page)).getByRole("button", { name: /^已结束/ }))).toBe("default");

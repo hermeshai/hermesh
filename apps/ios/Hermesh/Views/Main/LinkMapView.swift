@@ -126,10 +126,6 @@ struct LinkMapView: View {
                 .opacity(n.offline ? 0.45 : 1)
             }
             .accessibilityLabel(Text(verbatim: ([n.title] + n.agents.map(agentTitle)).joined(separator: ", ")))
-        case .addSender:
-            add("Connect an Agent", id: n.id) { model.sheet = .connectAgent }
-        case .addEnvironment:
-            add("Add an Environment", id: n.id) { model.sheet = .addMachine }
         case .more(let count):
             Text("\(count) more").font(.caption).foregroundStyle(.secondary)
         }
@@ -152,22 +148,6 @@ struct LinkMapView: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(picked == n.id ? .isSelected : [])
         .accessibilityIdentifier("map-\(n.title)")
-    }
-
-    /// Where one more can be added: dashed, in the tint, as the Mac draws it.
-    private func add(_ title: LocalizedStringKey, id: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: "plus")
-                Text(title).lineLimit(1).minimumScaleFactor(0.7)
-            }
-            .font(.caption).foregroundStyle(.tint).padding(.horizontal, 6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay { RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Color(.tertiaryLabel), style: StrokeStyle(lineWidth: 1, dash: [3, 3])) }
-                .contentShape(.rect)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(id == LinkMap.addSender ? "map-add-agent" : "map-add-environment")
     }
 
     @ViewBuilder private func senderPicture(_ n: LinkMap.Node) -> some View {

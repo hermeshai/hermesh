@@ -135,9 +135,11 @@ public struct LinkMap: Equatable {
   in place of the tiles and Recently Finished. It does not move the deck.
 - **The card in front** dims the rest of the map for a moment when it
   changes, leaving its line or node; at rest the map is whole.
-- **Few connections.** Fewer than three on a side: what can be added is
-  drawn dashed under them (the Mac's rule). The map's height follows its
-  rows (about 104 pt for one sender and one environment, 160 pt for four).
+- **Few connections.** A side draws what it has and nothing more: adding a
+  grant or an environment is rare, so the map has no dashed place for one
+  (it had, while a side had fewer than three; taken off on the Mac and the
+  iPhone 2026-11-25). They are added from the menu, New and the Mac's File
+  menu. The map's height follows its rows.
 - More than six on a side: the first five and "N more" (the Mac's rule).
 
 Layout is a pure function from `LinkMap` and a width to points and paths,
@@ -675,7 +677,7 @@ Unit:
   percent moves and no more than once a minute.
 - `HermeshSessions`: the needs of each kind and their order;
   ids stable across a change; `LinkMap` for one sender and one environment
-  (the dashed nodes), for many, for more than six; a node picked.
+  (no place to add one), for many, for more than six; a node picked.
 
 End to end (as the owner uses it):
 
@@ -686,8 +688,8 @@ End to end (as the owner uses it):
 - iPhone UI test (on the simulator the e2e uses): a question answered on the
   deck and the next card comes; the deck dragged; a node picked and the
   sessions through it listed; See All opens Tasks; Statistics filtered by an
-  agent, then by one environment's project, changes the totals; with one environment and Her alone, the dashed
-  nodes and the New Session card.
+  agent, then by one environment's project, changes the totals; with one environment and Her alone, the
+  New Session card and no place on the map to add one.
 
 ## 11. Success criteria
 
