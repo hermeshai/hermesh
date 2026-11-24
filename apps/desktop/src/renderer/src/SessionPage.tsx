@@ -449,9 +449,8 @@ export function SessionPage() {
     }
   };
 
-  const handleAttachFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    for (const f of Array.from(files)) {
+  const handleAttachFiles = async (files: File[]) => {
+    for (const f of files) {
       try {
         const buf = new Uint8Array(await f.arrayBuffer());
         const up = await sessionApi.uploadBlob({
@@ -460,7 +459,9 @@ export function SessionPage() {
           mimeType: f.type || "application/octet-stream",
           data: buf,
         });
-        if (up.attachment) setAttachments((prev) => [...prev, up.attachment!]);
+        // The same file twice (pasted again, say) is attached once.
+        const att = up.attachment;
+        if (att) setAttachments((prev) => (prev.some((a) => a.blobSha256 === att.blobSha256) ? prev : [...prev, att]));
       } catch (e) {
         st.show(errorText(e));
       }

@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fixture, launch, snap, navTo, sessionList, sys, thisComputer } from "./app";
+import { fixture, launch, paste, snap, navTo, sessionList, sys, thisComputer } from "./app";
 
 // The Her entry (docs/her-server.md §9), as the owner uses it, against her
 // itself with her-mock as its models. Run by TestDesktopHer, not TestDesktop:
@@ -364,6 +364,21 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await notes.getByRole("button", { name: "关闭预览" }).click();
   await expect(notes).toBeHidden();
   expect(errors.filter((e) => /Content Security Policy|pdf/i.test(e))).toEqual([]);
+
+  // Pasted into the composer: cells copied from a spreadsheet (their words and a picture of them) go in as the
+  // words; a screenshot is attached as a picture and goes in the message.
+  const attached = page.locator(".cmp-att .tile");
+  await composer.focus();
+  await paste(app, page, { text: "收入\t123\n成本\t45", picture: true });
+  await expect(composer).toHaveValue("收入\t123\n成本\t45");
+  await expect(attached).toHaveCount(0);
+  await composer.fill("");
+  await paste(app, page, { picture: true });
+  await expect(attached.locator("img")).toHaveCount(1);
+  await send(mockSend("收到截图"));
+  await expect(attached).toHaveCount(0);
+  await expect(log.locator(".um").last().locator(".um-att .tile.img img")).toBeVisible({ timeout: 30_000 });
+  await expect(log.locator(".bm").last()).toContainText("收到截图", { timeout: 60_000 });
 
   // A connector Her asks for on a secure card (docs/her-secure-cards.md §4): the fixture's service, which signs in
   // with OAuth. Under Her's words, the card says it is an MCP connection, what Her wants to connect to, its address

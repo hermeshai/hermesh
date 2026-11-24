@@ -20,7 +20,8 @@ import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
 import { MenuButton } from "../her/menus";
-import { Tile } from "../her/Composer";
+import { Tile, useFileDrop } from "../her/Composer";
+import { pastedFiles } from "../her/attachments";
 import "../her/her.css";
 
 // The composer (docs/thread-composer.md §16, §17), a new session's and a
@@ -41,7 +42,8 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   sending: boolean;
   placeholder: string;
   attachments: AttachmentRef[];
-  onAttach: (files: FileList) => void;
+  /** Files picked from ＋, pasted into the box or dropped on the window. */
+  onAttach: (files: File[]) => void;
   onRemove: (sha: string) => void;
   /** The machine is offline: Send queues it. */
   offline: boolean;
@@ -58,6 +60,8 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   const area = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const ready = !sending && !blocked && (value.trim() !== "" || attachments.length > 0);
+  // Files dragged anywhere over the window come here, as to Her's box.
+  const dropping = useFileDrop((files) => (onAttach(files), area.current?.focus()));
   // The text grows with what is written, up to ten lines, then scrolls (as Her's).
   useLayoutEffect(() => {
     const el = area.current;
@@ -109,11 +113,25 @@ export function ThreadComposer({ value, onChange, onSend, onStop, running, sendi
   );
   return (
     <div
-      className="cmp th-cmp"
+      className={`cmp th-cmp ${dropping ? "dropping" : ""}`}
       data-testid="thread-composer"
       onMouseDown={(e) => e.target instanceof HTMLElement && e.target.matches(".cmp,.cmp-row,.cmp-att,.th-bar") && (e.preventDefault(), area.current?.focus())}
+      // A screenshot, a picture or files copied in Finder are attached, as from ＋; words paste as words (as Her's).
+      onPasteCapture={(e) => {
+        const files = pastedFiles(e.clipboardData);
+        if (!files.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onAttach(files);
+      }}
     >
-      <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach(e.target.files), (e.target.value = ""))} />
+      {dropping && (
+        <div className="cmp-drop" aria-hidden="true">
+          <b>{t("composer.dropTitle")}</b>
+          <span className="cmp-drop-hint">{t("composer.dropHint")}</span>
+        </div>
+      )}
+      <input ref={file} type="file" multiple hidden onChange={(e) => (e.target.files && onAttach([...e.target.files]), (e.target.value = ""))} />
       {attachments.length > 0 && (
         <div className="cmp-att">
           {attachments.map((a) => (
