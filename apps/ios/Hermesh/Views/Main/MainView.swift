@@ -316,7 +316,8 @@ final class SideMenuController: UIViewController, UIGestureRecognizerDelegate {
         }
         dim.frame = pageBounds
         let hairline = 1 / max(traitCollection.displayScale, 1)
-        divider.frame = CGRect(x: pageX - hairline, y: 0, width: hairline, height: b.height)
+        // On the page's edge, not the menu's: the expanded menu lies over what is under its own width.
+        divider.frame = CGRect(x: pageX, y: 0, width: hairline, height: b.height)
         divider.isHidden = wide == nil
         // Mostly over the menu: the page's edge is where its swipe back starts.
         grip.frame = CGRect(x: pageX - 16, y: 0, width: 22, height: b.height)
