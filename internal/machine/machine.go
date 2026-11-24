@@ -105,6 +105,7 @@ type Machine struct {
 	pending     map[string]bool    // the agents the check under way has not finished yet
 	defaults    map[string]*identityv1.AgentDefaults
 	limits      map[string]*machinev1.AgentLimits
+	moveFailed  []string // the moves of earlier data that failed at this start (sessions.go); read only after Open
 	tunnels     map[*tunnel]struct{}
 	connected   bool
 	refused     bool       // the relay refused admission when last connecting

@@ -195,7 +195,15 @@ type Store struct {
 	reader   *sql.DB
 	ckpt     *sqlitedb.Checkpointer
 	writeMu  sync.Mutex
+	// steps: what the moves into this store did when it opened (legacy.go).
+	steps []sqlitedb.StepResult
 }
+
+// Steps is what the moves into this store did when it opened: those done
+// before, those that ran now and what they moved, and those that failed
+// (which are tried again at the next start). The machine says the failed
+// ones to its owner.
+func (s *Store) Steps() []sqlitedb.StepResult { return s.steps }
 
 func Open(dbPath string) (*Store, error) {
 	writer, err := sqlitedb.Open(dbPath, migrations)
@@ -229,7 +237,12 @@ func Open(dbPath string) (*Store, error) {
 		reader:   reader,
 		ckpt:     ckpt,
 	}
-	st.importLegacyV1Sessions(filepath.Join(dataDir, "hermeshd.db"))
+	// What came before this store moves in (legacy.go), each move once. One that fails is kept in the ledger, said
+	// by Steps, and tried again at the next start: the store opens with what did move.
+	if st.steps, err = sqlitedb.RunSteps(writer, st.legacySteps(dataDir)); err != nil {
+		st.Close()
+		return nil, err
+	}
 	return st, nil
 }
 
@@ -261,84 +274,6 @@ func migrateLegacyDirs(dataDir, blobsDir string) {
 		}
 		_ = os.Remove(oldWT)
 	}
-}
-
-func (s *Store) importLegacyV1Sessions(legacyDBPath string) {
-	if _, err := os.Stat(legacyDBPath); err != nil {
-		return
-	}
-	leg, err := sqlitedb.OpenReader(legacyDBPath)
-	if err != nil {
-		return
-	}
-	defer leg.Close()
-	var tableExists int
-	if err := leg.QueryRow(`SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions'`).Scan(&tableExists); err != nil {
-		return
-	}
-	rows, err := leg.Query(`SELECT id, machine_id, project_id, agent, status, created_by, created_as, title, branch, workspace, model, effort, provider_ref, result, error, turn_count, created_at, updated_at FROM sessions`)
-	if err != nil {
-		return
-	}
-	defer rows.Close()
-	var toImport []*sessionv1.Session
-	for rows.Next() {
-		var id, machineID, projectID, agent, createdBy, createdAs, title, branch, model, effort, provRef, result, errStr string
-		var status, workspace, turnCount int32
-		var createdAt, updatedAt int64
-		if rows.Scan(&id, &machineID, &projectID, &agent, &status, &createdBy, &createdAs, &title, &branch, &workspace, &model, &effort, &provRef, &result, &errStr, &turnCount, &createdAt, &updatedAt) != nil {
-			continue
-		}
-		if _, existsErr := s.Session(id); existsErr == nil {
-			continue
-		}
-		st := sessionv1.SessionStatus(status)
-		switch st {
-		case sessionv1.SessionStatus_SESSION_STATUS_RUNNING, sessionv1.SessionStatus_SESSION_STATUS_PREPARING, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT:
-			st = sessionv1.SessionStatus_SESSION_STATUS_IDLE
-		case 6, 7: // historical COMPLETED/FAILED values
-			if status == 7 {
-				st = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
-			} else {
-				st = sessionv1.SessionStatus_SESSION_STATUS_IDLE
-			}
-		}
-		sess := &sessionv1.Session{
-			SessionId:          id,
-			MachineId:          machineID,
-			ProjectId:          projectID,
-			Agent:              agent,
-			Status:             st,
-			CreatedBy:          createdBy,
-			CreatedAs:          createdAs,
-			Title:              title,
-			Branch:             branch,
-			Workspace:          identityv1.Workspace(workspace),
-			Model:              model,
-			Effort:             effort,
-			ProviderSessionRef: provRef,
-			Result:             result,
-			Error:              errStr,
-			ModelSelection:     &sessionv1.ModelSelection{InstanceId: agent, Model: model},
-			WorkspaceStrategy:  &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace(workspace), Branch: branch},
-			Progress: &sessionv1.SessionProgress{
-				TurnCount:          uint32(max(0, turnCount)),
-				LastMessageExcerpt: result,
-			},
-			CreatedAt: timestamppb.New(time.UnixMilli(createdAt)),
-			UpdatedAt: timestamppb.New(time.UnixMilli(updatedAt)),
-		}
-		toImport = append(toImport, sess)
-	}
-	if len(toImport) == 0 {
-		return
-	}
-	_, _ = s.Mutate(func(tx *Tx) error {
-		for _, sess := range toImport {
-			_ = tx.PutSessionPreserveUpdatedAt(sess)
-		}
-		return nil
-	})
 }
 
 func (s *Store) Close() error {
