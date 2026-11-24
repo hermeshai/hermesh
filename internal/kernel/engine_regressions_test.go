@@ -553,6 +553,50 @@ func TestCrossSessionAndMultiRunItemIsolation(t *testing.T) {
 	}
 }
 
+// Reasoning is live while the model thinks, and ends at its next step, a reply here, with no end word from the agent.
+func TestReasoningIsLiveUntilTheNextStep(t *testing.T) {
+	ctx := context.Background()
+	eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+	defer eng.Close()
+	owner := OwnerPrincipal("dev_owner", "Owner")
+
+	l, err := eng.StartSession(ctx, owner, &sessionv1.StartSessionRequest{
+		InitialPrompt: "think pondering\nsleep 1500ms\nsay replying_now\nsleep 1500ms",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := l.Session.SessionId
+	item := func(p *sessionv1.SessionProjection, kind sessionv1.TurnItemKind) *sessionv1.TurnItem {
+		for _, it := range p.GetItems() {
+			if it.Kind == kind {
+				return it
+			}
+		}
+		return nil
+	}
+	waitFor := func(what string, ok func(rsn, msg *sessionv1.TurnItem) bool) {
+		t.Helper()
+		for deadline := time.Now().Add(8 * time.Second); time.Now().Before(deadline); time.Sleep(15 * time.Millisecond) {
+			p, err := eng.GetSession(ctx, owner, sid)
+			if err == nil && ok(item(p, sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING), item(p, sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE)) {
+				return
+			}
+		}
+		t.Fatalf("timed out waiting until %s", what)
+	}
+	waitFor("it thinks", func(rsn, msg *sessionv1.TurnItem) bool {
+		return rsn != nil && rsn.Streaming && rsn.Text == "pondering" && msg == nil
+	})
+	waitFor("it replies, done thinking", func(rsn, msg *sessionv1.TurnItem) bool {
+		return msg != nil && msg.Streaming && !rsn.Streaming && rsn.Text == "pondering"
+	})
+	p := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
+	if rsn := item(p, sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING); rsn.Streaming {
+		t.Fatalf("reasoning still live after the turn: %v", rsn)
+	}
+}
+
 func TestStoreImportsLegacyV1Sessions(t *testing.T) {
 	dataDir := t.TempDir()
 	legDB, err := sqlitedb.Open(filepath.Join(dataDir, "hermeshd.db"), []string{`

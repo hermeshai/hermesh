@@ -216,12 +216,16 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
     return out
 }
 
-/// Whether a tool or command of the session's active run is currently running.
-public func sessionToolRunning(_ proj: Hermesh_Session_V1_SessionProjection?) -> Bool {
-    guard let proj, !proj.session.activeRunID.isEmpty else { return false }
-    return proj.items.contains {
-        $0.runID == proj.session.activeRunID && $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind)
-    }
+/// What the session's active run does now: runs a tool, thinks, writes its reply, or anything else (working).
+public enum SessionWork: Equatable, Sendable { case tool, thinking, replying, working }
+
+public func sessionWork(_ proj: Hermesh_Session_V1_SessionProjection?) -> SessionWork {
+    guard let proj, !proj.session.activeRunID.isEmpty else { return .working }
+    let now = proj.items.filter { $0.runID == proj.session.activeRunID }
+    if now.contains(where: { $0.status == "running" && [.toolCall, .commandExecution, .fileChange].contains($0.kind) }) { return .tool }
+    if now.contains(where: { $0.kind == .reasoning && $0.streaming }) { return .thinking }
+    if now.contains(where: { $0.kind == .assistantMessage && $0.streaming }) { return .replying }
+    return .working
 }
 
 /// Why the session stopped, or why the machine rejected what was sent, until the next run starts.

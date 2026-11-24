@@ -67,6 +67,9 @@ const (
 	EventAssistantDelta
 	EventAssistantMessage
 	EventReasoningDelta
+	// EventReasoningCompleted: the model stopped thinking (ItemID is the reasoning's). Drivers that cannot tell
+	// leave it out; the kernel then ends the reasoning at the model's next step.
+	EventReasoningCompleted
 	EventToolStarted
 	EventToolCompleted
 	EventFileChanged

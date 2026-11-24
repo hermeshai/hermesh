@@ -260,11 +260,18 @@ export function sessionFailure(s: Session | undefined): Failure | undefined {
   return undefined;
 }
 
-export function sessionToolRunning(proj: SessionProjection | null | undefined): boolean {
+/** What the session's active run does now: runs a tool, thinks, writes its reply, or anything else (working). */
+export type SessionWork = "tool" | "thinking" | "replying" | "working";
+
+export function sessionWork(proj: SessionProjection | null | undefined): SessionWork {
   const run = proj?.session?.activeRunId;
-  if (!proj || !run) return false;
+  if (!proj || !run) return "working";
+  const now = proj.items.filter((it) => it.runId === run);
   const tools = [TurnItemKind.TOOL_CALL, TurnItemKind.COMMAND_EXECUTION, TurnItemKind.FILE_CHANGE];
-  return proj.items.some((it) => it.runId === run && it.status === "running" && tools.includes(it.kind));
+  if (now.some((it) => it.status === "running" && tools.includes(it.kind))) return "tool";
+  if (now.some((it) => it.kind === TurnItemKind.REASONING && it.streaming)) return "thinking";
+  if (now.some((it) => it.kind === TurnItemKind.ASSISTANT_MESSAGE && it.streaming)) return "replying";
+  return "working";
 }
 
 export function sessionLiveReplies(proj: SessionProjection | null | undefined): Set<bigint> {
