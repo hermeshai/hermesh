@@ -180,27 +180,10 @@ service LocalService {
   rpc ClearWake(ClearWakeRequest) returns (ClearWakeResponse);
   rpc OpenWakeLink(OpenWakeLinkRequest) returns (OpenWakeLinkResponse);
 
-  // Sessions (read across all reachable machines over E2E).
+  // Sessions (paged across all reachable machines; interactive actions go via
+  // hermesh.session.v1.SessionService on the same local endpoint).
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
-  // WatchSessions pushes session changes from every reachable machine as
-  // they happen (hermeshd keeps one SessionService.WatchSessions stream per
-  // online machine while anyone watches). A watcher that falls behind is
-  // ended (RESOURCE_EXHAUSTED) and should watch again.
   rpc WatchSessions(WatchSessionsRequest) returns (stream WatchSessionsResponse);
-  rpc StreamSessionEvents(StreamSessionEventsRequest) returns (stream hermesh.session.v1.SessionEvent);
-  // A session's events by seq, as hermesh.session.v1.SessionService.ListEvents.
-  rpc ListSessionEvents(ListSessionEventsRequest) returns (ListSessionEventsResponse);
-  // A tool's whole output (hermesh.session.v1.SessionService.ReadToolOutput).
-  rpc ReadToolOutput(ReadToolOutputRequest) returns (stream hermesh.session.v1.ToolOutputChunk);
-  rpc InterruptSession(InterruptSessionRequest) returns (SessionResponse);
-  rpc ArchiveSession(ArchiveSessionRequest) returns (SessionResponse);
-  rpc UnarchiveSession(UnarchiveSessionRequest) returns (SessionResponse);
-  // DeleteSession and RenameSession: hermesh.session.v1.SessionService's.
-  rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
-  rpc RenameSession(RenameSessionRequest) returns (SessionResponse);
-  rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
-  rpc CodingConsent(CodingConsentRequest) returns (hermesh.session.v1.CodingConsentResponse);
-  rpc GetDiff(GetDiffRequest) returns (hermesh.session.v1.GetDiffResponse);
   // QueryWork counts the work done over a range, by hour or day, from what
   // this device holds of every machine's counts: no machine is asked
   // (docs/work-stats.md §7).
@@ -240,29 +223,6 @@ message WatchResponse {
   hermesh.session.v1.SessionCursor next = 15;
   // Moves when this device's counts of work changed: ask QueryWork again.
   uint64 work_version = 16;
-}
-
-message ListSessionEventsRequest {
-  string session_id = 1;
-  uint64 after_seq = 2;
-  uint64 before_seq = 3;
-  uint32 limit = 4;
-  hermesh.session.v1.EventView view = 5;
-}
-
-message ListSessionEventsResponse {
-  // Oldest first.
-  repeated hermesh.session.v1.SessionEvent events = 1;
-  bool has_more_before = 2;
-  bool has_more_after = 3;
-}
-
-message ReadToolOutputRequest {
-  string session_id = 1;
-  string call_id = 2;
-  // The seq of its ToolResult event: a machine too old for ReadToolOutput
-  // gives the output as that event recorded it.
-  uint64 seq = 3;
 }
 
 message ProjectRef {
@@ -1100,59 +1060,6 @@ message WatchSessionsResponse {
   repeated string deleted_session_ids = 4;
 }
 
-message StreamSessionEventsRequest {
-  string session_id = 1;
-  uint64 after_seq = 2;
-  bool follow = 3;
-  hermesh.session.v1.EventView view = 4;
-  // Also send AgentDraft events while the agent writes.
-  bool partial = 5;
-}
-
-message AnswerQuestionRequest {
-  string session_id = 1;
-  string question_id = 2;
-  repeated hermesh.session.v1.Answer answers = 3;
-  bool decline = 4;
-  string coding_consent_version = 5;
-}
-
-message CodingConsentRequest {
-  string machine_id = 1;
-  hermesh.session.v1.CodingConsentRequest consent = 2;
-}
-
-message AnswerQuestionResponse {
-  hermesh.session.v1.Session session = 1;
-}
-
-message InterruptSessionRequest {
-  string session_id = 1;
-}
-
-message ArchiveSessionRequest {
-  string session_id = 1;
-}
-
-message UnarchiveSessionRequest {
-  string session_id = 1;
-}
-
-message DeleteSessionRequest {
-  string session_id = 1;
-}
-
-message DeleteSessionResponse {}
-
-message RenameSessionRequest {
-  string session_id = 1;
-  string title = 2;
-}
-
-message SessionResponse {
-  hermesh.session.v1.Session session = 1;
-}
-
 message QueryWorkRequest {
   // An IANA time zone name: the days and hours counted are its.
   string time_zone = 1;
@@ -1228,11 +1135,6 @@ message QueryWorkResponse {
   repeated TurnCount turns = 3;
   repeated TurnCount range_turns = 4;
   repeated WorkSource sources = 5;
-}
-
-message GetDiffRequest {
-  string session_id = 1;
-  uint32 turn = 2;
 }
 
 // Her (docs/her-server.md).

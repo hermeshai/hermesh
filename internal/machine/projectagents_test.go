@@ -20,7 +20,7 @@ import (
 func TestProjectsAreForEveryProvider(t *testing.T) {
 	h := newHarness(t, Limits{})
 	ctx := context.Background()
-	proj, _ := h.s.st.Project("demo")
+	proj, _ := h.n.st.Project("demo")
 	if _, err := h.n.ApplySettings(ctx, &identityv1.AdminCommand{OwnerId: h.n.OwnerID(), CommandId: "p1", TargetMachineId: h.n.machineID,
 		ExpiresAt: timestamppb.New(time.Now().Add(time.Minute)),
 		Command:   &identityv1.AdminCommand_AddProject{AddProject: &identityv1.AddProject{ProjectId: "demo", Path: proj.Path, Agents: []string{"claude"}}}}); err != nil {
@@ -30,11 +30,15 @@ func TestProjectsAreForEveryProvider(t *testing.T) {
 	if err != nil || len(res.Projects) != 1 || len(res.Projects[0].Agents) != 0 {
 		t.Fatalf("listed: %v %v", res, err)
 	}
-	sess, err := h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "fake", Prompt: "hi"})
+	started, err := h.e.StartSession(ctx, h.kp(), &sessionv1.StartSessionRequest{
+		ProjectId:      "demo",
+		ModelSelection: &sessionv1.ModelSelection{InstanceId: "fake"},
+		InitialPrompt:  "hi",
+	})
 	if err != nil {
 		t.Fatalf("a session of a provider the old device left out: %v", err)
 	}
-	h.wait(sess.SessionId, idle)
+	h.wait(started.Session.SessionId, idle)
 }
 
 // Updating clears the coding agents projects were limited to.

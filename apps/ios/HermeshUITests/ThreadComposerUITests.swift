@@ -216,21 +216,6 @@ extension HermeshUITests {
         XCTAssertEqual(kept.value as? String, "高", "how hard it thinks, kept")
         tap("model-done")
 
-        // old-mac runs a Hermesh from before threads: said so, and nothing can be sent there; marked in the menu.
-        pickMachine("old-mac")
-        XCTAssertTrue(text("old-mac 上的 Hermesh 需要更新才能新建会话").waitForExistence(timeout: 10))
-        tap("thread-machine")
-        XCTAssertTrue(app.buttons["machine-old-mac"].waitForExistence(timeout: 10))
-        // A menu item's subtitle is a text of its own, not in the item's label.
-        XCTAssertTrue(text("需要更新").waitForExistence(timeout: 5), "marked as needing an update")
-        shot("composer-needs-update-menu")
-        tap("machine-old-mac")
-        let box = app.descendants(matching: .any)["thread-composer"].firstMatch
-        box.tap()
-        box.typeText("say hi")
-        XCTAssertFalse(app.buttons["thread-send"].isEnabled, "can't be sent")
-        shot("composer-needs-update")
-
         // Aimed at owner-mac while it answers: nothing over the box. Gone offline, the line over the box says so and
         // what sending does; a tap opens the diagnostics, about owner-mac first. Back, the line goes.
         pickMachine("owner-mac")

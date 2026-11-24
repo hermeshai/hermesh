@@ -1,4 +1,4 @@
-// Package kernel implements the Hermesh v2 Machine Thread Orchestration Engine.
+// Package kernel implements the unified Hermesh Machine Session Orchestration Engine.
 package kernel
 
 import (
@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -22,13 +22,13 @@ const (
 )
 
 type TransitionInput struct {
-	CurrentBinding      *threadv2.ProviderThread
+	CurrentBinding      *sessionv1.ProviderSession
 	LiveLease           *runtime.LeaseEntry
-	NextSelection       *threadv2.ModelSelection
+	NextSelection       *sessionv1.ModelSelection
 	NextEffectiveMode   identityv1.RuntimeMode
-	NextInteractionMode threadv2.InteractionMode
+	NextInteractionMode sessionv1.InteractionMode
 	FreshContext        bool
-	Capabilities        *threadv2.ProviderCapabilities
+	Capabilities        *sessionv1.ProviderCapabilities
 }
 
 type TransitionPlan struct {
@@ -40,7 +40,7 @@ type TransitionPlan struct {
 }
 
 // SelectionsEqual compares two ModelSelections canonically.
-func SelectionsEqual(a, b *threadv2.ModelSelection) bool {
+func SelectionsEqual(a, b *sessionv1.ModelSelection) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -50,7 +50,7 @@ func SelectionsEqual(a, b *threadv2.ModelSelection) bool {
 	return OptionsEqual(a.Options, b.Options)
 }
 
-func OptionsEqual(a, b map[string]*threadv2.OptionValue) bool {
+func OptionsEqual(a, b map[string]*sessionv1.OptionValue) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -63,16 +63,16 @@ func OptionsEqual(a, b map[string]*threadv2.OptionValue) bool {
 	return true
 }
 
-func optionValueEqual(a, b *threadv2.OptionValue) bool {
+func optionValueEqual(a, b *sessionv1.OptionValue) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
 	switch xa := a.Kind.(type) {
-	case *threadv2.OptionValue_StringValue:
-		xb, ok := b.Kind.(*threadv2.OptionValue_StringValue)
+	case *sessionv1.OptionValue_StringValue:
+		xb, ok := b.Kind.(*sessionv1.OptionValue_StringValue)
 		return ok && xa.StringValue == xb.StringValue
-	case *threadv2.OptionValue_BoolValue:
-		xb, ok := b.Kind.(*threadv2.OptionValue_BoolValue)
+	case *sessionv1.OptionValue_BoolValue:
+		xb, ok := b.Kind.(*sessionv1.OptionValue_BoolValue)
 		return ok && xa.BoolValue == xb.BoolValue
 	default:
 		return false
@@ -80,24 +80,21 @@ func optionValueEqual(a, b *threadv2.OptionValue) bool {
 }
 
 // DecideTransition is a pure deterministic policy function governing how a
-// Thread transitions between models, options, modes, and provider instances.
+// Session transitions between models, options, modes, and provider instances.
 func DecideTransition(in TransitionInput) TransitionPlan {
 	caps := in.Capabilities
 	if caps == nil {
-		caps = &threadv2.ProviderCapabilities{}
+		caps = &sessionv1.ProviderCapabilities{}
 	}
 
-	// 1. Fresh context explicitly requested -> brand new provider thread (no handoff).
 	if in.FreshContext {
 		return TransitionPlan{Action: TransitionSwitchWithHandoff, HandoffStrategy: "fresh_context"}
 	}
 
-	// 2. First turn on a brand new thread -> spawn initial provider thread.
 	if in.CurrentBinding == nil {
 		return TransitionPlan{Action: TransitionSpawnAndResume}
 	}
 
-	// 3. Switching to a different provider instance -> cross-provider handoff.
 	if in.CurrentBinding.InstanceId != in.NextSelection.GetInstanceId() {
 		return TransitionPlan{
 			Action:          TransitionSwitchWithHandoff,
@@ -106,7 +103,6 @@ func DecideTransition(in TransitionInput) TransitionPlan {
 		}
 	}
 
-	// 4. Same provider instance, check if live OS session is alive.
 	if in.LiveLease != nil && in.LiveLease.Session != nil && in.LiveLease.Session.Alive() {
 		prevSel := in.LiveLease.Selection
 		modelChanged := prevSel != nil && prevSel.Model != in.NextSelection.GetModel()
@@ -128,7 +124,6 @@ func DecideTransition(in TransitionInput) TransitionPlan {
 				ModeChanged:    modeChanged,
 			}
 		}
-		// Must cycle the live process; resume natively if supported, else handoff.
 		if caps.NativeResume && in.CurrentBinding.ResumeCursor != "" {
 			return TransitionPlan{
 				Action:         TransitionSpawnAndResume,
@@ -146,7 +141,6 @@ func DecideTransition(in TransitionInput) TransitionPlan {
 		}
 	}
 
-	// 5. Process is not currently running (reaped by IdleTTL or after daemon restart).
 	if caps.NativeResume && in.CurrentBinding.ResumeCursor != "" {
 		return TransitionPlan{Action: TransitionSpawnAndResume}
 	}
@@ -158,10 +152,10 @@ func DecideTransition(in TransitionInput) TransitionPlan {
 
 const defaultHandoffBudgetChars = 24000
 
-// BuildContextHandoff compiles prior thread items and file changes into a
+// BuildContextHandoff compiles prior session items and file changes into a
 // token-budgeted structured briefing when switching providers or recovering
 // a non-resumable session.
-func BuildContextHandoff(items []*threadv2.TurnItem, checkpoints []*threadv2.Checkpoint, maxChars int) string {
+func BuildContextHandoff(items []*sessionv1.TurnItem, checkpoints []*sessionv1.Checkpoint, maxChars int) string {
 	if len(items) == 0 {
 		return ""
 	}
@@ -173,21 +167,25 @@ func BuildContextHandoff(items []*threadv2.TurnItem, checkpoints []*threadv2.Che
 	var entries []string
 	for _, it := range items {
 		switch it.Kind {
-		case threadv2.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE:
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE:
 			if strings.TrimSpace(it.Text) != "" {
 				entries = append(entries, fmt.Sprintf("[User]: %s", truncateMiddle(strings.TrimSpace(it.Text), 2500)))
 			}
-		case threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE:
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_MESSAGE_RECEIVED:
+			if strings.TrimSpace(it.Text) != "" {
+				entries = append(entries, fmt.Sprintf("[Message from %s]: %s", it.MailAddress, truncateMiddle(strings.TrimSpace(it.Text), 2000)))
+			}
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE:
 			if strings.TrimSpace(it.Text) != "" {
 				entries = append(entries, fmt.Sprintf("[Assistant]: %s", truncateMiddle(strings.TrimSpace(it.Text), 3000)))
 			}
-		case threadv2.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN:
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN:
 			latestPlan = it.Text
-		case threadv2.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE:
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE:
 			if it.FilePath != "" {
 				entries = append(entries, fmt.Sprintf("[Edited File]: %s (+%d -%d)", it.FilePath, it.Additions, it.Deletions))
 			}
-		case threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION:
+		case sessionv1.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION:
 			if it.Command != "" {
 				entries = append(entries, fmt.Sprintf("[Ran Command]: %s (exit %d)", it.Command, it.ExitCode))
 			}
@@ -197,7 +195,6 @@ func BuildContextHandoff(items []*threadv2.TurnItem, checkpoints []*threadv2.Che
 		return ""
 	}
 
-	// Keep the newest entries within budget.
 	var kept []string
 	used := 0
 	for i := len(entries) - 1; i >= 0; i-- {
@@ -220,7 +217,7 @@ func BuildContextHandoff(items []*threadv2.TurnItem, checkpoints []*threadv2.Che
 
 	var b strings.Builder
 	b.WriteString("<context_handoff>\n")
-	b.WriteString("This thread is continuing from a previous agent session. Use the context below seamlessly without repeating work already completed.\n\n")
+	b.WriteString("[Hermesh] The earlier conversation is summarized below. Continue seamlessly without repeating work already completed.\n\n")
 	if len(changedFiles) > 0 {
 		b.WriteString("Modified files in workspace:\n- ")
 		b.WriteString(strings.Join(changedFiles, "\n- "))

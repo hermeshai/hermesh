@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 // never forwarded.
 const services = new Set([
   "hermesh.local.v1.LocalService",
-  "hermesh.thread.v2.ThreadService",
+  "hermesh.session.v1.SessionService",
 ]);
 const blocked = new Set(["WatchSigningRequests", "CompleteSigningRequest"]);
 const forwardedHeaders = ["content-type", "connect-protocol-version", "connect-timeout-ms", "connect-content-encoding", "connect-accept-encoding"];

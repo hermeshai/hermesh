@@ -3,12 +3,15 @@ import HermeshProto
 import Testing
 @testable import HermeshSessions
 
-func event(_ seq: UInt64, _ kind: SessionEvent.OneOf_Kind, at: Double = 0) -> SessionEvent {
-    var e = SessionEvent()
-    e.seq = seq
-    e.kind = kind
-    e.ts = ts(at)
-    return e
+private func item(_ seq: UInt64, _ run: String, _ kind: Hermesh_Session_V1_TurnItemKind, _ more: (inout Hermesh_Session_V1_TurnItem) -> Void = { _ in }) -> Hermesh_Session_V1_TurnItem {
+    var it = Hermesh_Session_V1_TurnItem()
+    it.itemID = "i\(seq)"
+    it.runID = run
+    it.seq = seq
+    it.kind = kind
+    it.status = "completed"
+    more(&it)
+    return it
 }
 
 func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "", decision: String = "") -> ToolCall {
@@ -21,39 +24,128 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     return c
 }
 
-@Test func transcriptPairsCallsWithResultsAndQuestionsWithAnswers() {
-    var started = Hermesh_Session_V1_TurnStarted()
-    started.turn = 1
-    var user = Hermesh_Session_V1_UserMessage()
-    user.text = "do it"
-    var result = ToolResult()
-    result.callID = "a"
-    var asked = Hermesh_Session_V1_QuestionAsked()
-    asked.question.questionID = "q"
-    var resolved = QuestionResolved()
-    resolved.questionID = "q"
-    resolved.resolution = .answered
-    resolved.by = "owner"
-    var answer = Hermesh_Session_V1_Answer()
-    answer.selected = ["yes"]
-    resolved.answers = [answer]
-    var done = TurnCompleted()
-    done.turn = 1
-    let events = [event(1, .turnStarted(started), at: -100), event(2, .userMessage(user)), event(3, .toolCall(call("read", "a.ts", id: "a"))),
-                  event(4, .toolResult(result)), event(5, .questionAsked(asked)), event(6, .questionResolved(resolved)),
-                  event(7, .toolCall(call("shell", "go test", id: "b"))), event(8, .turnCompleted(done), at: -40)]
-    let items = transcript(events, running: false)
-    #expect(items.map(\.seq) == [1, 2, 3, 5, 7, 8])
-    guard case .tool(let t) = items[2], case .question(_, _, let r?) = items[3], case .tool(let running) = items[4], case .turnEnd(_, _, let took?) = items[5] else {
-        Issue.record("unexpected items \(items)")
+private let projection: Hermesh_Session_V1_SessionProjection = .with {
+    $0.session = .with { $0.sessionID = "s_1"; $0.status = .idle }
+    $0.runs = [
+        .with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed; $0.startedAt = .init(date: Date(timeIntervalSince1970: 1_800_000_000)) },
+        .with { $0.runID = "r2"; $0.ordinal = 2; $0.status = .interrupted },
+    ]
+    $0.items = [
+        item(1, "r1", .userMessage) { $0.text = "hi" },
+        item(2, "r1", .reasoning) { $0.text = "thinking" },
+        item(3, "r1", .commandExecution) { $0.toolName = "Bash"; $0.command = "ls"; $0.output = "a\nb" },
+        item(4, "r1", .commandExecution) { $0.command = "false"; $0.exitCode = 1; $0.status = "failed" },
+        item(5, "r1", .toolCall) { $0.toolName = "Read"; $0.filePath = "README.md"; $0.status = "running" },
+        item(6, "r1", .fileChange) { $0.filePath = "a.txt"; $0.diff = "+x" },
+        item(7, "r1", .checkpoint) { $0.checkpointID = "c1" },
+        item(8, "r1", .assistantMessage) { $0.text = "done" },
+        item(9, "r2", .userMessage) { $0.text = "again" },
+        item(10, "r2", .assistantMessage) { $0.text = "par" },
+    ]
+}
+
+private func kind(_ it: TranscriptItem) -> String {
+    switch it {
+    case .turn: "turn"
+    case .user: "user"
+    case .agent: "agent"
+    case .tool: "tool"
+    case .question: "question"
+    case .turnEnd: "turnEnd"
+    case .error: "error"
+    case .message: "message"
+    }
+}
+
+@Test func sessionRowsAndStepsFromProjection() {
+    let rows = sessionTranscript(projection)
+    #expect(rows.map(kind) == ["turn", "user", "tool", "tool", "tool", "tool", "agent", "turn", "user", "agent", "turnEnd"])
+    #expect(Set(rows.map(\.seq)).count == rows.count)
+    #expect(rows.map(\.seq) == rows.map(\.seq).sorted())
+    if case .turn(_, let n, let at, let wake) = rows[0] {
+        #expect(n == 1)
+        #expect(at == Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(wake.isEmpty)
+    } else { Issue.record("no time line first") }
+    if case .turnEnd(_, let end, _) = rows.last! { #expect(end.failure.kind == .interrupted) } else { Issue.record("no end") }
+
+    guard case .tools(_, let calls)? = groupSteps(rows).first(where: { if case .tools = $0 { true } else { false } }) else {
+        Issue.record("no tools"); return
+    }
+    #expect(calls.map(\.call.kind) == ["shell", "shell", "read", "edit"])
+    #expect(calls[0].call.summary == "ls")
+    #expect(calls[0].result?.summary == "a\nb")
+    #expect(calls[1].result?.isError == true)
+    #expect(calls[2].call.summary == "README.md")
+    #expect(calls[2].running == false)
+    #expect(calls[3].call.summary == "a.txt")
+    #expect(calls[3].result?.summary == "+x")
+}
+
+@Test func sessionFailureAndQuestion() {
+    #expect(sessionFailure(.with { $0.status = .crashed; $0.error = "boom" })?.message == "boom")
+    #expect(sessionFailure(.with { $0.status = .idle; $0.error = "rejected" })?.message == "rejected")
+    #expect(sessionFailure(.with { $0.status = .running }) == nil)
+    let q = sessionQuestion(.with {
+        $0.requestID = "req1"
+        $0.kind = .userInput
+        $0.userInput.questions = [.with { $0.id = "q1"; $0.text = "Color?"; $0.options = [.with { $0.label = "Red" }]; $0.allowOther = true; $0.optional = false }]
+    })
+    #expect(q.questionID == "req1")
+    #expect(q.items[0].text == "Color?")
+    #expect(q.items[0].allowOther && !q.items[0].optional)
+    #expect(q.items[0].options[0].label == "Red")
+
+    // Settled USER_INPUT runtime request renders as a resolved question row.
+    let settledProj: Hermesh_Session_V1_SessionProjection = .with {
+        $0.runs = [.with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed }]
+        $0.requests = [.with {
+            $0.requestID = "req1"
+            $0.kind = .userInput
+            $0.status = .resolved
+            $0.resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
+            $0.userInput.questions = [.with { $0.id = "q1"; $0.text = "Proceed?" }]
+            $0.resolvedAnswers = ["q1": .with { $0.selectedOptions = ["yes"] }]
+        }]
+        $0.items = [item(1, "r1", .runtimeRequest) { $0.requestID = "req1" }]
+    }
+    let qRows = sessionTranscript(settledProj)
+    guard case .question(_, _, let res?) = qRows[1] else {
+        Issue.record("expected resolved question row in \(qRows)")
         return
     }
-    #expect(t.result != nil && !t.running && t.resultSeq == 4)
-    #expect(resolutionTitle(r) == "You answered: yes")
-    #expect(!running.running) // the turn ended
-    #expect(took == 60)
-    guard case .tool(let live) = transcript(Array(events.prefix(7)), running: true)[4] else { return }
-    #expect(live.running)
+    #expect(resolutionTitle(res) == "You answered: yes")
+}
+
+@Test func proposedPlanFormattingAvoidsDuplicateHeadings() {
+    let rows = sessionTranscript(.with {
+        $0.items = [
+            item(1, "r1", .proposedPlan) { $0.planTitle = "Unified Refactor"; $0.text = "1. Build\n2. Test" },
+            item(2, "r1", .proposedPlan) { $0.planTitle = "Unified Refactor"; $0.text = "# Unified Refactor\n\n1. Build\n2. Test" },
+        ]
+    })
+    let texts = rows.compactMap { row -> String? in
+        if case .agent(_, let text) = row { return text }
+        return nil
+    }
+    #expect(texts == [
+        "### Unified Refactor\n\n1. Build\n2. Test",
+        "# Unified Refactor\n\n1. Build\n2. Test",
+    ])
+}
+
+@Test func aToolRunningInTheRunUnderWayIsWorking() {
+    var p = projection
+    p.session.activeRunID = "r2"
+    #expect(!sessionToolRunning(p), "only r1's tool runs: r2 thinks")
+    p.items.append(item(11, "r2", .reasoning) { $0.status = "running" })
+    #expect(!sessionToolRunning(p), "reasoning is thinking")
+    p.items.append(item(12, "r2", .commandExecution) { $0.command = "go test ./..."; $0.status = "running" })
+    #expect(sessionToolRunning(p))
+    p.items[p.items.count - 1].status = "completed"
+    #expect(!sessionToolRunning(p), "done: back to thinking")
+    p.session.activeRunID = ""
+    #expect(!sessionToolRunning(p), "no run under way")
 }
 
 @Test func consecutiveToolCallsAreOneStep() {
@@ -113,22 +205,29 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     #expect(failureAdvice(f) == "check the logs")
 }
 
-@Test func transcriptShowsMessagesWithTheOwnersAgents() {
-    var received = Hermesh_Session_V1_MessageReceived()
-    received.messageID = "msg_1"
-    received.from = "c_helper"
-    received.fromName = "helper"
-    received.text = "check staging"
-    received.delivered = "queued"
-    var sent = Hermesh_Session_V1_MessageSent()
-    sent.messageID = "msg_2"
-    sent.to = "c_bot"
-    sent.text = "halfway"
-    let items = transcript([event(1, .messageReceived(received)), event(2, .messageSent(sent))], running: false)
-    #expect(items == [
-        .message(seq: 1, incoming: true, name: "helper", text: "check staging", queued: true),
-        .message(seq: 2, incoming: false, name: "c_bot", text: "halfway", queued: false),
+@Test func transcriptShowsMessagesWithTheOwnersAgentsAndAskers() {
+    let p: Hermesh_Session_V1_SessionProjection = .with {
+        $0.runs = [
+            .with { $0.runID = "r1"; $0.ordinal = 1; $0.status = .completed; $0.author = .with { $0.kind = .externalAgent; $0.id = "c_grok" } },
+            .with { $0.runID = "r2"; $0.ordinal = 2; $0.status = .completed; $0.author = .with { $0.kind = .her; $0.id = "c_her" } },
+        ]
+        $0.items = [
+            item(1, "r1", .userMessage) { $0.text = "do it" },
+            item(2, "r1", .messageReceived) { $0.mailAddress = "c_helper"; $0.mailName = "helper"; $0.text = "check staging"; $0.mailDelivered = "queued" },
+            item(3, "r1", .messageSent) { $0.mailAddress = "c_bot"; $0.text = "halfway" },
+            item(4, "r2", .userMessage) { $0.text = "next" },
+        ]
+    }
+    let rows = sessionTranscript(p)
+    let msgs = rows.filter { if case .message = $0 { true } else { false } }
+    #expect(msgs == [
+        .message(seq: 8, incoming: true, name: "helper", text: "check staging", queued: true),
+        .message(seq: 12, incoming: false, name: "c_bot", text: "halfway", queued: false),
     ])
+    let askers = rows.compactMap { row -> String? in
+        if case .user(_, _, _, let asker) = row { return asker } else { return nil }
+    }
+    #expect(askers == ["c_grok", "c_her"])
 }
 
 @Test func partialOutputIsAPreviewOrLongerThanTheSummary() {
@@ -156,20 +255,4 @@ func call(_ kind: String, _ summary: String, id: String? = nil, name: String = "
     f.message = "interrupted by owner"
     #expect(interrupter(f) == nil)
     #expect(interrupter(nil) == nil)
-}
-
-@Test func eachPromptNamesWhoAskedForItsTurn() {
-    func started(_ turn: UInt32, _ asker: String) -> Hermesh_Session_V1_TurnStarted {
-        var t = Hermesh_Session_V1_TurnStarted()
-        t.turn = turn
-        t.asker = asker
-        return t
-    }
-    var user = Hermesh_Session_V1_UserMessage()
-    user.text = "do it"
-    let events = [event(1, .turnStarted(started(1, "c_grok"))), event(2, .userMessage(user)), event(3, .turnStarted(started(2, "c_her"))), event(4, .userMessage(user))]
-    let askers = transcript(events, running: false).compactMap { item -> String? in
-        if case .user(_, _, _, let asker) = item { return asker } else { return nil }
-    }
-    #expect(askers == ["c_grok", "c_her"])
 }

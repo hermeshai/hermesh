@@ -1,4 +1,4 @@
-// Package her adapts Hermesh's personal assistant ("her") to the v2 runtime.Driver
+// Package her adapts Hermesh's personal assistant ("her") to the unified runtime.Driver
 // contract when Her is configured on a machine.
 package her
 
@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -26,8 +26,8 @@ func NewDriver(available func() bool, send PromptFunc) *Driver {
 
 func (d *Driver) Kind() string { return "her" }
 
-func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
-	return &threadv2.ProviderCapabilities{
+func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{
 		NativeResume: true,
 		SupportedRuntimeModes: []identityv1.RuntimeMode{
 			identityv1.RuntimeMode_RUNTIME_MODE_AUTO,
@@ -36,12 +36,12 @@ func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
 	}
 }
 
-func (d *Driver) Probe(_ context.Context, _ *threadv2.ProviderInstanceConfig, _ string) runtime.ProbeResult {
+func (d *Driver) Probe(_ context.Context, _ *sessionv1.ProviderInstanceConfig, _ string) runtime.ProbeResult {
 	ok := d.Available != nil && d.Available()
 	if !ok {
 		return runtime.ProbeResult{
 			Installed:            false,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
 			CompatibilityMessage: "Her is not enabled on this machine",
 		}
 	}
@@ -50,7 +50,7 @@ func (d *Driver) Probe(_ context.Context, _ *threadv2.ProviderInstanceConfig, _ 
 		Authenticated: true,
 		AuthLabel:     "Her Assistant",
 		Version:       "2.0",
-		Compatibility: threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
+		Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
 	}
 }
 
@@ -91,8 +91,8 @@ func (s *herSession) Alive() bool                  { return s.alive.Load() }
 func (s *herSession) Steer(context.Context, string, []runtime.TurnAttachment) error {
 	return runtime.ErrSteerUnsupported
 }
-func (s *herSession) SetSelection(context.Context, *threadv2.ModelSelection) error { return nil }
-func (s *herSession) SetModes(context.Context, identityv1.RuntimeMode, threadv2.InteractionMode) error {
+func (s *herSession) SetSelection(context.Context, *sessionv1.ModelSelection) error { return nil }
+func (s *herSession) SetModes(context.Context, identityv1.RuntimeMode, sessionv1.InteractionMode) error {
 	return nil
 }
 

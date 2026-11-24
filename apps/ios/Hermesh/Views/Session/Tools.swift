@@ -189,15 +189,11 @@ struct ToolRow: View {
         return note.isEmpty ? text : "\(text)\n\(note)"
     }
 
-    /// The whole output (ReadToolOutput, docs/state-sync.md §3.5), shown as it arrives.
+    /// The whole output (DownloadBlob), shown once fetched.
     private func readWhole() async {
-        guard partial, let r = item.result, done?.done != true, done?.failed != true, let api = model.api else { return }
-        var data = Data()
+        guard partial, let r = item.result, !r.blobSha256.isEmpty, done?.done != true, done?.failed != true, let api = model.api else { return }
         do {
-            for try await c in api.toolOutput(sessionID, callID: r.callID, seq: item.resultSeq ?? 0) {
-                data.append(c.data)
-                whole = ToolOutput(text: String(decoding: data, as: UTF8.self), done: false, failed: false)
-            }
+            let data = try await api.downloadBlob(sessionID, sha256: r.blobSha256)
             let text = String(decoding: data, as: UTF8.self)
             ToolOutputs.keep(key, text)
             whole = ToolOutput(text: text, done: true, failed: false)

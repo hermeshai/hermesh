@@ -311,10 +311,9 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
 test("a question waits in the control area; the owner picks an option by key and answers", async () => {
   const { app, page } = await launch();
   await open(page, "选颜色");
-  const ctl = page.getByRole("region", { name: "这一轮" });
+  const ctl = page.getByTestId("pending-question-banner");
   await expect(ctl).toContainText("Gemini CLI 问你");
   await expect(ctl).toContainText("选哪个颜色");
-  await expect(ctl).toContainText("等你回答");
   await expect(ctl).toContainText("还剩");
   const answer = ctl.getByRole("button", { name: /^回答/ });
   await expect(answer).toBeDisabled();
@@ -359,32 +358,29 @@ test("a session worked on in place shows the branch its folder is on, or that it
   await app.close();
 });
 
-test("a running session shows what it does, and 打断 stops the turn", async () => {
+test("a running session shows what it does, and 停止 stops the turn", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
   await open(page, "跑很久");
   await expect(titleLine(page, "跑很久")).toHaveText("跑很久" + where);
-  const ctl = page.getByRole("region", { name: "这一轮" });
-  await expect(ctl).toContainText("Gemini CLI 正在工作");
-  // A live one: the card is its environment alone; the bar below says what runs.
+  const working = page.getByTestId("thread-working");
+  await expect(working).toContainText("处理中");
+  // A live one: the card is its environment alone; the work line below says what runs.
   const card = page.getByRole("complementary", { name: "任务信息" });
   await expect(card).toContainText("Gemini CLI");
   await expect(card).not.toContainText("运行中");
   // Neither its model nor its effort known (the agent tells neither): no context card.
   await expect(page.getByRole("complementary", { name: "上下文" })).toHaveCount(0);
-  // The agent that works is shown by its own logo, not the Hermesh mark.
-  await expect(ctl.locator(".live-logo img")).toBeVisible();
-  await expect(ctl.locator(".hm-mark")).toHaveCount(0);
-  // What it is doing is the running tool call in the conversation, not repeated in the bar.
-  await expect(ctl).not.toContainText("sleep 1800");
-  await expect(ctl).toContainText(/\d+:\d\d/);
+  // What it is doing is the running tool call in the conversation, not repeated in the work line.
+  await expect(working).not.toContainText("sleep 1800");
+  await expect(working).toContainText(/\d+:\d\d/);
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800");
   await expect(page.getByRole("log", { name: "对话" }).getByRole("img", { name: "进行中" })).toBeVisible();
   await snap(page, "session-running");
 
-  await ctl.getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(page.getByRole("status")).toContainText("已打断「跑很久」");
-  await expect(ctl).toHaveCount(0);
+  await expect(working).toHaveCount(0);
   await expect.poll(() => status("跑很久")).not.toBe("running");
   // Who stopped it, and no more: the box under it shows it goes on.
   await expect(page.getByRole("log", { name: "对话" }).locator(".tnote")).toHaveText("你打断了这一轮");
@@ -516,7 +512,7 @@ test("tool details stay folded until opened, a failed one and a running one too"
   await failed.click();
   await expect(failed).toHaveAttribute("aria-expanded", "true");
   await expect(log.getByText("No such file or directory")).toBeVisible();
-  await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(page.getByRole("status")).toContainText("已打断「命令失败」");
   await app.close();
 });
@@ -717,19 +713,19 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await open(page, "流式");
   const log = page.getByRole("log", { name: "对话" });
   const agent = log.locator(".am");
-  const ctl = page.getByRole("region", { name: "这一轮" });
+  const stop = page.getByTestId("composer-stop-btn");
   await expect(agent.locator(".md")).toHaveText("准备好了");
   await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
   // Part of the reply shows while the turn runs, then all of it, still running.
   await expect(agent.last()).toContainText("最后一段说明");
   expect(await page.evaluate(() => (window as unknown as { __part: boolean }).__part)).toBe(true);
-  await expect(ctl).toBeVisible();
+  await expect(stop).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await log.locator(".cblock").evaluate((el) => ((el as unknown as { __kept: boolean }).__kept = true));
   await snap(page, "session-streaming");
   // The stored message replaces it when the turn ends: the same, not a second one, and its code block not drawn anew.
-  await expect(ctl).toHaveCount(0);
+  await expect(stop).toHaveCount(0);
   await expect(agent).toHaveCount(2);
   expect(await log.locator(".cblock").evaluate((el) => (el as unknown as { __kept?: boolean }).__kept === true)).toBe(true);
   await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
@@ -738,7 +734,7 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   // Interrupted mid-reply: what was shown stays, as a message like any other.
   await open(page, "流式打断");
   await expect(agent).toHaveText("被打断的回复写到一半");
-  await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(log).toContainText("你打断了这一轮");
   // A stored message (only those have a copy button), after the turn's end.
   await expect(agent.locator(".md")).toHaveText("被打断的回复写到一半");

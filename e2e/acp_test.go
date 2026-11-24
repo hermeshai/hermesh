@@ -10,7 +10,7 @@ import (
 	"time"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
-	"github.com/hermeshai/hermesh/internal/provider/acp"
+	"github.com/hermeshai/hermesh/internal/runtime/acp"
 )
 
 // TestACPAgents drives ACP agents (Gemini and Cursor, played by a scripted

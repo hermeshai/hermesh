@@ -9,7 +9,7 @@ import (
 
 	inboxv1 "github.com/hermeshai/hermesh/gen/go/hermesh/inbox/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // A session whose agent could not start is news of that failure, with what
@@ -17,19 +17,18 @@ import (
 // again for the crashed status that follows it.
 func TestCrashNews(t *testing.T) {
 	refused := errors.New("codex thread/resume: thread 01a1 already has an active writer (code -32600)")
-	p := &startTrouble{}
+	p := &startTrouble{recorder: *newRecorder("flaky")}
 	p.set(1, refused, false)
-	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"flaky": p})
+	h := newHarnessWith(t, DefaultLimits(), map[string]rt.Driver{"flaky": p})
 	var mu sync.Mutex
 	var news []*inboxv1.SessionNews
-	h.s.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
+	h.n.testNotice = func(s *sessionv1.Session, e *sessionv1.SessionEvent) {
 		if m := h.n.newsMessage(&inboxv1.Address{Inbox: "c_asker"}, s, e); m != nil {
 			mu.Lock()
 			news = append(news, m.SessionNews)
 			mu.Unlock()
 		}
 	}
-	// told waits for the n-th news, and for none to follow it.
 	told := func(n int) *inboxv1.SessionNews {
 		t.Helper()
 		deadline := time.Now().Add(5 * time.Second)
@@ -68,7 +67,7 @@ func TestCrashNews(t *testing.T) {
 
 	h.send(id, "crash")
 	h.wait(id, crashed)
-	if n := told(3); n.Kind != "failure" || n.Failure != sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED || n.FailureMessage == "" || n.Turn != 1 {
+	if n := told(3); n.Kind != "failure" || n.Failure != sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED || n.FailureMessage == "" || n.Turn != 3 {
 		t.Fatalf("news of the crashed turn: %v", n)
 	}
 }

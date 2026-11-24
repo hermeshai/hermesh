@@ -31,7 +31,7 @@ class RouteTests(unittest.TestCase):
             (["apps/desktop/scripts/package-win.mjs", ".github/workflows/release.yml"], "packaging"),
             (["her/crates/her-core/src/a.rs"], ""),
             (["her/apps/console/src/a.ts"], "app her_integration"),
-            (["internal/provider/acp/acp.go"], "go"),
+            (["internal/runtime/acp/acp.go"], "go"),
             (["cmd/hermesh-mobile/main.go"], "go ios"),
             (["cmd/hermesh-signer/panel_windows.go"], "windows windows_arm"),
             (["packages/her-client/testdata/deliveries.json"], "go app her_integration ios hermeshkit mac_native windows"),

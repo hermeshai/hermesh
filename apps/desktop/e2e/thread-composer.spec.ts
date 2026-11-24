@@ -147,7 +147,7 @@ test("a session on another machine: its folder added as a project, the model pic
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
     // Where it runs, fixed, beside the title; nothing under the box.
-    await expect(page.getByTestId("thread-where")).toHaveText(`work-mac · ${name}`);
+    await expect(page.getByTestId("session-where")).toHaveText(`work-mac · ${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute("aria-current", "true");
@@ -276,7 +276,7 @@ async function addProject(page: Page, dir: string, name: string) {
   await expect(page.getByTestId("launch-project-chip")).toHaveText(name);
 }
 
-test("Add a Project on another machine from its own folders: a recent repository's place, a repository's top for a folder inside it, a new folder made there; an older machine says it needs an update", async () => {
+test("Add a Project on another machine from its own folders: a recent repository's place, a repository's top for a folder inside it, and a new folder made there", async () => {
   const { app, page } = await launch();
   try {
     await page.getByTestId("nav-new-thread").click();
@@ -329,14 +329,6 @@ test("Add a Project on another machine from its own folders: a recent repository
     await make.getByRole("button", { name: "新建" }).click();
     await expect(browser).toContainText("fresh-app is already there");
     await page.keyboard.press("Escape");
-
-    // old-mac runs a Hermesh from before threads: listed, marked, and a session can't be sent there.
-    await page.getByRole("button", { name: "环境" }).click();
-    await expect(page.getByTestId("machine-item-old-mac")).toContainText("需要更新");
-    await page.getByTestId("machine-item-old-mac").click();
-    await expect(page.getByTestId("launch-needs-update")).toContainText("old-mac 上的 Hermesh 需要更新才能新建会话");
-    await page.getByTestId("thread-composer-input").fill("say hi");
-    await expect(page.getByTestId("composer-submit-btn")).toBeDisabled();
   } finally {
     await app.close();
   }

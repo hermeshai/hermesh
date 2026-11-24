@@ -21,6 +21,7 @@ import (
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/flock"
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
@@ -47,7 +48,7 @@ func binaries(t *testing.T) string {
 		if buildErr != nil {
 			return
 		}
-		for _, pkg := range []string{"./cmd/hermesh-relay", "./cmd/hermeshd", "./cmd/hermesh", "./internal/provider/acp/fakeacp", "./bench/fakecodex"} {
+		for _, pkg := range []string{"./cmd/hermesh-relay", "./cmd/hermeshd", "./cmd/hermesh", "./internal/runtime/acp/fakeacp", "./bench/fakecodex"} {
 			cmd := filepath.Base(pkg)
 			args := []string{"build", "-o", filepath.Join(binDir, cmd+exe)}
 			if os.Getenv("HERMESH_E2E_RACE") != "" {
@@ -228,10 +229,11 @@ func run(t *testing.T, env []string, timeout time.Duration, bin string, args ...
 // root keys (in place of the Secure Enclave), one per profile: root first,
 // handed over when hermeshd asks for a new root key, then new ones.
 type testApp struct {
-	t      *testing.T
-	client localv1connect.LocalServiceClient
-	root   *identity.SoftwareKey
-	cancel context.CancelFunc
+	t        *testing.T
+	client   localv1connect.LocalServiceClient
+	sessions sessionv1connect.SessionServiceClient
+	root     *identity.SoftwareKey
+	cancel   context.CancelFunc
 
 	mu      sync.Mutex
 	keys    map[string]*identity.SoftwareKey // by key id, root's included
@@ -246,12 +248,19 @@ type testApp struct {
 }
 
 func newTestApp(t *testing.T, sock string, root *identity.SoftwareKey) *testApp {
-	a := &testApp{t: t, client: localClient(t, sock), root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}
+	a := &testApp{t: t, client: localClient(t, sock), sessions: sessionClient(sock), root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}
 	ctx, cancel := context.WithCancel(context.Background())
 	a.cancel = cancel
 	t.Cleanup(cancel)
 	go a.signLoop(ctx)
 	return a
+}
+
+func sessionClient(sock string) sessionv1connect.SessionServiceClient {
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return localipc.Dial(ctx, sock)
+	}}}
+	return sessionv1connect.NewSessionServiceClient(hc, "http://local")
 }
 
 // localClient is a client of hermeshd's local API on sock, once it answers.

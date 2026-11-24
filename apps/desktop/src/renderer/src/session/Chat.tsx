@@ -1,84 +1,23 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Client, Machine } from "@hermesh/proto/local";
-import { FailureKind, SessionStatus, type Failure, type Session, type SessionEvent, type ToolCall, type ToolResult } from "@hermesh/proto/session";
+import { FailureKind, type Failure, type Session, type ToolCall, type ToolResult } from "@hermesh/proto/session";
 import {
-  agoText, clockText, dateOf, elapsedSeconds, codingAgentTitle, createdDate, currentTurn, failureAdvice, failureHeadline, failureTitle, groupSteps, isActive, isArchivable, isFailed,
-  interrupter, isInterruption, isInterruptible, pendingQuestion, phaseText, replyEnds, resolutionTitle, statusTitle, stepSummary, toolObject, toolSummary, toolVerb, transcript,
-  turnStartedAt, turnTimeLine, type Step,
+  agoText, codingAgentTitle, dateOf, failureAdvice, failureHeadline, failureTitle, isArchivable,
+  interrupter, isInterruption, resolutionTitle, stepSummary, toolObject, toolSummary, toolVerb,
+  turnTimeLine, type Step,
 } from "@hermesh/core";
-import { AgentLogo, Mark, agentName } from "@hermesh/ui";
-import { GrantAvatar, StatusDot } from "../components";
+import { Mark, agentName } from "@hermesh/ui";
+import { GrantAvatar } from "../components";
 import { Icon } from "../icons";
 import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
-import { keys } from "../platform";
-import { archive, grantLabel, machineName, senderName, unarchive } from "../Sidebar";
+import { archive, machineName, senderName } from "../Sidebar";
 import { useNow, useStore } from "../store";
-import { interrupt } from "./actions";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
 import { partialOutput, useToolOutput } from "./output";
-import { QuestionPanel } from "./Question";
-import { ContentScope } from "./scope";
 import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
-
-/**
- * The conversation, newest at the bottom, ending with the reply the agent is
- * still writing (draft); while a turn is live, the control area sits over
- * its bottom edge.
- */
-export function Chat({ s, events, draft }: { s: Session; events: SessionEvent[]; draft: string }) {
-  const { t } = useTranslation("session");
-  const st = useStore();
-  const grant = grantLabel(st, s);
-  const running = isActive(s);
-  const items = useMemo(() => groupSteps(transcript(events, running)), [events, running]);
-  const ends = useMemo(() => replyEnds(items, running), [items, running]);
-  const live = isInterruptible(s);
-
-  // The session's current failure is told once, at the end; the rows leave it out.
-  const failure = s.progress?.lastFailure;
-  const current = isFailed(s) ? failure : undefined;
-  // Each row with what it shows worked out from all the items; rows that would draw nothing are left out, as an
-  // empty row in the list would still take a gap. The reply being written is the row its stored message will be
-  // (the next event's), so finishing it keeps its code, tables and diagrams as they are.
-  const settled = useMemo(() => rowsOf(items, ends, current), [items, ends, current?.kind, current?.message]);
-  const next = (events.at(-1)?.seq ?? 0n) + 1n;
-  const rows = useMemo(() => (draft === "" ? settled : [...settled, draftRow(next, draft)]), [settled, draft, next]);
-  // Nothing of a conversation that has events yet: they are still on their way, or can't come.
-  const unread = items.length === 0 && draft === "" && (s.progress?.lastEventSeq ?? 0n) > 0n;
-
-  return (
-    <ContentScope value={s.sessionId}>
-      <ChatFrame
-        rows={rows}
-        initial={rowHeights}
-        label={t("chat.log")}
-        follow={s.status}
-        unread={unread ? <Unread s={s} /> : undefined}
-        head={
-          s.status === SessionStatus.ARCHIVED && (
-            <div className="anote">
-              <Icon name="archive" className="sm" />
-              {t("chat.archived")}
-              <button className="link" onClick={() => unarchive(st, s)}>{t("chat.unarchive")}</button>
-            </div>
-          )
-        }
-        row={(r) => <Row it={r.it} rowKey={r.key} end={r.end} live={r.live} sessionId={s.sessionId} clients={st.clients} starter={s.createdBy} previous={r.previous} />}
-        foot={
-          <>
-            <Stale s={s} behind={(events.at(-1)?.seq ?? 0n) < (s.progress?.lastEventSeq ?? 0n)} />
-            {/* A turn that went well needs no line: the box under it shows it can go on. */}
-            {isFailed(s) && (failure || s.error !== "") && <Failed s={s} failure={failure} grant={grant} />}
-          </>
-        }
-        control={live ? (onHeight) => <ControlArea s={s} grant={grant} events={events} onHeight={onHeight} /> : undefined}
-      />
-    </ContentScope>
-  );
-}
 
 /**
  * A conversation's frame, as a session's page and a sub-agent's record (her/Progress.tsx) have it: its rows, newest
@@ -269,7 +208,7 @@ function useUnreadable(s: Session, behind: boolean): Unreadable | undefined {
 }
 
 /** In place of a conversation not read yet: why, or the wait. */
-function Unread({ s }: { s: Session }) {
+export function Unread({ s }: { s: Session }) {
   const { t } = useTranslation("session");
   const st = useStore();
   const why = useUnreadable(s, true);
@@ -339,11 +278,6 @@ export function rowsOf(items: Step[], ends: Set<bigint>, current: Failure | unde
     out.push({ key: String(it.seq), kind: it.kind, it, end: ends.has(it.seq), live: false, previous });
   });
   return out;
-}
-
-/** The row of the reply the agent is still writing: keyed as its stored message will be, the event after the last. */
-function draftRow(seq: bigint, text: string): ChatRow {
-  return { key: String(seq), kind: "agent", it: { kind: "agent", seq, text, at: undefined }, end: false, live: true, previous: undefined };
 }
 
 /** Whether an item draws anything (RowView returns null for those that don't). */
@@ -837,24 +771,6 @@ export function FailLine({ id, title, message }: { id: string; title: string; me
   );
 }
 
-/** The bottom of a live turn: a pending question above, what runs now and Interrupt below. */
-function ControlArea({ s, grant, events, onHeight }: { s: Session; grant: string; events: SessionEvent[]; onHeight: (h: number) => void }) {
-  const { t } = useTranslation("session");
-  const st = useStore();
-  const q = pendingQuestion(s);
-  return (
-    <ControlBar panel={q && <QuestionPanel key={q.questionId} s={s} q={q} />} onHeight={onHeight}>
-      <LiveStatus s={s} grant={grant} events={events} />
-      <span className="ctl-sep" />
-      <button className="ctl-btn" title={t("control.interruptTitle", { keys: keys("CmdOrCtrl+.") })} onClick={() => interrupt(st, s)}>
-        <Icon name="stop" />
-        {t("control.interrupt")}
-        <span className="kbd">{keys("CmdOrCtrl+.")}</span>
-      </button>
-    </ControlBar>
-  );
-}
-
 /** The bottom of a live turn, over the conversation: what is asked (`panel`) above, the row of what runs now and how to stop it below. */
 export function ControlBar({ panel, onHeight, children }: { panel?: ReactNode; onHeight: (h: number) => void; children: ReactNode }) {
   const { t } = useTranslation("session");
@@ -875,41 +791,5 @@ export function ControlBar({ panel, onHeight, children }: { panel?: ReactNode; o
       <div className="cbar-row">{children}</div>
     </div>
   );
-}
-
-function LiveStatus({ s, grant, events }: { s: Session; grant: string; events: SessionEvent[] }) {
-  const { t } = useTranslation("session");
-  const now = useNow(1000);
-  switch (s.status) {
-    case SessionStatus.WAITING_INPUT:
-      return (
-        <>
-          <StatusDot s={s} />
-          <b>{t("waiting")}</b>
-          <span className="ph">{t("control.waitingDetail", { grant, turn: currentTurn(s) })}</span>
-        </>
-      );
-    case SessionStatus.RUNNING:
-      return (
-        <>
-          <span className="live-logo"><AgentLogo agent={s.agent} size={18} /></span>
-          <b>{t("control.working", { agent: codingAgentTitle(s.agent) })}</b>
-          <span className="el">{clockText(elapsedSeconds(turnStart(s, events), now))}</span>
-        </>
-      );
-    default:
-      return (
-        <>
-          <span className="live-logo"><AgentLogo agent={s.agent} size={18} /></span>
-          <b>{statusTitle(s.status)}</b>
-          {phaseText(s) !== statusTitle(s.status) && <span className="ph">{phaseText(s)}</span>}
-        </>
-      );
-  }
-}
-
-/** When the turn in progress started: from its events, else when the session was created. */
-export function turnStart(s: Session, events: SessionEvent[]): Date {
-  return turnStartedAt(events) ?? createdDate(s);
 }
 
