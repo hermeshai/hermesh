@@ -627,10 +627,12 @@ function WorkLine({ item }: { item: WorkItem }) {
   const [open, setOpen] = useRowState(`tool:${item.key}`, false);
   if (item.kind === "thinking") {
     const text = item.redacted ? "" : item.text.trim();
-    const gist = item.redacted ? t("steps.thinkingHidden") : (text.split("\n").find((l) => l.trim() !== "") ?? "");
+    const lines = text.split("\n").filter((l) => l.trim() !== "");
+    const gist = item.redacted ? t("steps.thinkingHidden") : ((item.live ? lines.at(-1) : lines[0]) ?? "");
     return <ToolLine verb={t("steps.thought")} object={gist} title="" shell={false} running={item.live} failed={false} output={text} open={open} onToggle={() => setOpen(!open)} prose />;
   }
   const tool = item.tool;
+  const denied = tool.state === "denied" || tool.state === "awaiting_approval";
   return (
     <ToolLine
       verb={toolVerb(tool)}
@@ -638,7 +640,8 @@ function WorkLine({ item }: { item: WorkItem }) {
       title={tool.title}
       shell={tool.category === "execute"}
       running={atWorkNow(item)}
-      failed={tool.state === "failed" || tool.state === "denied"}
+      failed={tool.state === "failed" || denied}
+      denied={denied}
       output={toolOutput(tool)}
       open={open}
       onToggle={() => setOpen(!open)}

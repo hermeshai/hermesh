@@ -5,7 +5,8 @@
   --md-fg:var(--msg); --md-muted:var(--l2); --md-link:var(--accent-fg);
   --md-prose-width:752px; --md-rich-width:752px;
 }
-.md{font:var(--font-weight-normal) var(--md-size)/var(--md-leading) var(--font);font-variation-settings:var(--font-axes);color:var(--md-fg);min-width:0;overflow-wrap:anywhere}
+.md{--md-fg:var(--msg);--md-muted:var(--l2);--md-link:var(--accent-fg);font:var(--font-weight-normal) var(--md-size)/var(--md-leading) var(--font);font-variation-settings:var(--font-axes);color:var(--md-fg);min-width:0;overflow-wrap:anywhere}
+.md[data-mode=compact]{--md-size:14px}
 .md>*{margin:0}
 .md>*+*{margin-top:8px}
 .md :is(h1,h2,h3,h4,h5,h6){font-weight:var(--font-weight-medium);line-height:1.5;scroll-margin-top:32px;text-wrap:pretty}
@@ -37,7 +38,7 @@
 .md .cblock pre{max-height:520px;overscroll-behavior-x:contain}
 .md-color{display:inline-block;width:.75em;height:.75em;margin-inline-end:.35em;border-radius:2px;box-shadow:0 0 0 1px var(--field-bd)}
 .md-details{border:1px solid var(--sep);border-radius:var(--r-md);padding:10px 14px}
-.md-details>summary{font-weight:600;color:var(--md-link)}
+.md-details>summary{cursor:pointer;font-weight:600;color:var(--md-link)}
 .md-details[open]>summary{margin-bottom:.75em}
 .md-details>*+*{margin-top:.65em}
 .md .footnotes{font-size:.875em;color:var(--md-muted);border-top:1px solid var(--sep);padding-top:1em}
@@ -54,7 +55,7 @@
 /* A number's width is its own; only text that wraps needs a floor. */
 .md :is(th,td):is([align=right],[style*="right"]){min-width:64px}
 .md-tools{display:flex;align-items:center;flex-wrap:wrap;gap:4px;padding:5px 0;color:var(--md-muted);font:12px/1.5 var(--font)}
-.md-tools button,.md-table-return{font:inherit;color:var(--md-link);border:0;border-radius:var(--r-xs);background:none;padding:4px 7px}
+.md-tools button,.md-table-return{font:inherit;color:var(--md-link);border:0;border-radius:var(--r-xs);background:none;padding:4px 7px;cursor:pointer}
 .md-tools button:hover{background:var(--fill)}
 .md-tools>span[role=status]{margin-inline-start:auto}
 /* Shown when wanted: the table itself stays a plain table. Over the header's far end

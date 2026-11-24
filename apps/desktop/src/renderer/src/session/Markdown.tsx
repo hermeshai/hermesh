@@ -23,17 +23,21 @@ const SourceContext = createContext("");
  * memoized, and the block still being written is closed (remend) so nothing shows as raw Markdown
  * on its way (docs/reply-streaming.md); document-scoped references take the whole-document path.
  */
-export function Markdown({ text, streaming = false, mode = "chat" }: { text: string; streaming?: boolean; mode?: "chat" | "document" }) {
+export function Markdown({ text, streaming = false, mode = "chat" }: { text: string; streaming?: boolean; mode?: "chat" | "document" | "compact" }) {
   const prefix = useId();
   const split = useRef(createMarkdownSlices());
   const blocks = useMemo(() => split.current(text, streaming), [text, streaming]);
   return (
-    <div className="md sel-text">
+    <div className="md sel-text" data-mode={mode}>
       {blocks.map((block) => (
         <Block key={block.id} text={block.text} pending={block.pending} prefix={prefix} offset={block.id} mode={mode} />
       ))}
     </div>
   );
+}
+
+export function DraftMarkdown({ text }: { text: string }) {
+  return <Markdown text={text} streaming />;
 }
 
 const Block = memo(function Block({ text, pending, prefix, offset, mode }: { text: string; pending: boolean; prefix: string; offset: number; mode: string }) {
@@ -62,6 +66,7 @@ const Block = memo(function Block({ text, pending, prefix, offset, mode }: { tex
             remarkPlugins={mode === "document" ? documentPlugins : plugins}
             rehypePlugins={rehypePlugins}
             components={components}
+            urlTransform={asWritten}
             remarkRehypeOptions={{ footnoteLabel: t("markdown.footnotes"), footnoteBackLabel: t("markdown.backToReference") }}
           >
             {shown}
@@ -87,6 +92,9 @@ class RenderBoundary extends Component<{ source: string; children: ReactNode }, 
 }
 
 const web = /^https?:\/\//i;
+
+/** Targets as written: non-http targets stay intact for Link to inspect; only http and https ever become real links. */
+const asWritten = (url: string) => url;
 
 type HNode = { type: string; tagName?: string; value?: string; properties?: Record<string, unknown>; children?: HNode[] };
 const textOf = (n: HNode): string => (n.type === "text" ? (n.value ?? "") : (n.children ?? []).map(textOf).join(""));

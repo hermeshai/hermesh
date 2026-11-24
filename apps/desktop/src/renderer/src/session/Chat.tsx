@@ -496,7 +496,6 @@ export function ToolFold<T>({ id, summary, running, items, keyOf, row }: {
   keyOf: (item: T) => string;
   row: (item: T) => ReactNode;
 }) {
-  const { t } = useTranslation("session");
   const [open, setOpen] = useRowState(`group:${id}`, false);
   // Where its card is scrolled to, kept while its row is not drawn; opened anew, it is at its newest step.
   const kept = useRowKept(`card:${id}`, () => ({ follow: true, top: 0 }));
@@ -506,8 +505,7 @@ export function ToolFold<T>({ id, summary, running, items, keyOf, row }: {
   };
   return (
     <div className={`tgroup ${open ? "open" : ""}`}>
-      <button className="tg-h" aria-expanded={open} onClick={toggle}>
-        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
+      <button className={`tg-h ${running ? "shimmer" : ""}`} aria-expanded={open} aria-busy={running || undefined} onClick={toggle}>
         <span>{summary}</span>
         <Icon name="caret" className="chev" />
       </button>
@@ -632,7 +630,7 @@ function StepsCard<T>({ kept, items, keyOf, row, running }: {
 /**
  * One tool call: what it did, and its output when opened, read whole then
  * when the conversation holds only its start. Folded until opened, failed
- * ones too; the one running spins.
+ * ones too; the one running shimmers.
  */
 function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: string; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean; sessionId: string }) {
   const { t } = useTranslation("session");
@@ -651,6 +649,7 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
       shell={call.kind === "shell"}
       running={running || whole.reading}
       failed={failed}
+      denied={denied}
       output={output}
       open={open}
       onToggle={() => setOpen(!open)}
@@ -660,26 +659,25 @@ function ToolRow({ id, call, result, resultSeq, running, sessionId }: { id: stri
 
 /**
  * A step on its line: its verb, what it acted on (a command as code; `title`, all of it), and what it gave when
- * opened (`output`; nothing to open without one). The one at work spins; a failed one is red. prose: its output is
+ * opened (`output`; nothing to open without one). The one at work shimmers; a failed one is red. prose: its output is
  * words, not a program's (a thought).
  */
-export function ToolLine({ verb, object, title, shell, running, failed, output, open, onToggle, prose = false }: {
+export function ToolLine({ verb, object, title, shell, running, failed, denied = false, output, open, onToggle, prose = false }: {
   verb: string;
   object: string;
   title: string;
   shell: boolean;
   running: boolean;
   failed: boolean;
+  denied?: boolean;
   output: string;
   open: boolean;
   onToggle: () => void;
   prose?: boolean;
 }) {
-  const { t } = useTranslation("session");
   return (
-    <div className={`tool ${failed ? "err" : ""} ${prose ? "thought" : ""} ${open && output ? "open" : ""}`}>
-      <button className="th" onClick={() => output && onToggle()} aria-expanded={output ? open : undefined}>
-        {running && <span className="mini-spin" role="img" aria-label={t("chat.inProgress")} />}
+    <div className={`tool ${denied ? "denied" : failed ? "err" : ""} ${prose ? "thought" : ""} ${open && output ? "open" : ""}`}>
+      <button className={`th ${running ? "shimmer" : ""}`} onClick={() => output && onToggle()} aria-expanded={output ? open : undefined} aria-busy={running || undefined}>
         <span className="vb">{verb}</span>
         {shell ? (
           <code className="sm2 cmd" title={title}>
