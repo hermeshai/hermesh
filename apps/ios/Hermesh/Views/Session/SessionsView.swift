@@ -152,10 +152,21 @@ private struct SessionDialogs: ViewModifier {
 /// The list's view menu: Group, Sort and Show, each a submenu saying what it is set to.
 struct ViewMenu: View {
     @Environment(AppModel.self) private var model
+    /// In the system's bar: its symbol alone, the bar drawing the glass as for its other buttons.
+    var inBar = false
 
     var body: some View {
+        // The bar draws its buttons' glass and colour: the plain style only for the menu's own glass.
+        Group {
+            if inBar { menu } else { menu.buttonStyle(.plain) }
+        }
+        .accessibilityLabel("View Options")
+        .accessibilityIdentifier("view-options")
+    }
+
+    private var menu: some View {
         @Bindable var model = model
-        Menu {
+        return Menu {
             Menu {
                 Picker("Group", selection: $model.listView.group) {
                     ForEach(SessionGrouping.allCases, id: \.self) { g in Text(groupName(g)).tag(g) }
@@ -181,15 +192,16 @@ struct ViewMenu: View {
                 Text(model.listView.metadata ? "Metadata" : "Title Only")
             }
         } label: {
-            // The menu's own glass, as its Search and Close beside it, a size smaller: in the text's colour, not the tint.
-            Image(systemName: "arrow.up.arrow.down").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
+            if inBar {
+                Image(systemName: "arrow.up.arrow.down")
+            } else {
+                // The menu's own glass, as its Search beside it, a size smaller: in the text's colour, not the tint.
+                Image(systemName: "arrow.up.arrow.down").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("View Options")
-        .accessibilityIdentifier("view-options")
     }
 
     private func groupName(_ g: SessionGrouping) -> LocalizedStringKey {
