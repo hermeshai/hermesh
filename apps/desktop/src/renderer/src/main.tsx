@@ -9,6 +9,20 @@ import "./styles.css";
 
 document.documentElement.dataset.platform = platform;
 
+const applyDarkStyle = (appearance?: string) => {
+  const want = appearance === "black" ? "black" : "dark";
+  if (document.documentElement.dataset.darkStyle !== want) document.documentElement.dataset.darkStyle = want;
+};
+applyDarkStyle(window.hermesh?.appearance);
+let appearanceUpdated = false;
+window.hermesh?.onPreferences((p) => {
+  appearanceUpdated = true;
+  applyDarkStyle(p.appearance);
+});
+window.hermesh?.getPreferences().then((p) => {
+  if (p && !appearanceUpdated) applyDarkStyle(p.appearance);
+}).catch(() => {});
+
 // Titles go grey while another window has the focus (the .blurred rules).
 window.hermesh?.onWindowFocus((focused) => document.documentElement.classList.toggle("blurred", !focused));
 

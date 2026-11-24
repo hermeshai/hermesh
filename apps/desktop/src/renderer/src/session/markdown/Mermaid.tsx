@@ -17,31 +17,41 @@ function Svg({ svg }: { svg: string }) {
   return <div ref={ref} className="md-diagram-svg" />;
 }
 
+function currentDiagramTheme(): "light" | "dark" | "black" {
+  if (!matchMedia("(prefers-color-scheme: dark)").matches) return "light";
+  return document.documentElement.dataset.darkStyle === "black" ? "black" : "dark";
+}
+
 export default function MermaidBlock({ text }: { text: string }) {
   const { t } = useTranslation("session");
   const draft = useContext(DraftContext);
   // In a conversation, whether it shows its source outlives its row not being drawn (useRowState).
   const scoped = useContentSession() !== "";
-  const [dark, setDark] = useState(() => matchMedia("(prefers-color-scheme: dark)").matches);
-  const [result, setResult] = useState<{ text: string; dark: boolean; svg?: string; error?: boolean }>();
+  const [theme, setTheme] = useState(currentDiagramTheme);
+  const [result, setResult] = useState<{ text: string; theme: string; svg?: string; error?: boolean }>();
   const [source, setSource] = useRowState(scoped ? `mermaid:${hashText(text)}` : undefined, false);
   const [expanded, setExpanded] = useState(false);
   const [copyStatus, setCopyStatus] = useState("");
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
-    const update = () => setDark(media.matches);
+    const update = () => setTheme(currentDiagramTheme());
     media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-dark-style"] });
+    return () => {
+      media.removeEventListener("change", update);
+      mo.disconnect();
+    };
   }, []);
   useEffect(() => {
     if (draft) return;
     let live = true;
-    import("./mermaid-render").then(({ renderDiagram }) => renderDiagram(text, dark))
-      .then((svg) => { if (live) setResult({ text, dark, svg }); })
-      .catch(() => { if (live) setResult({ text, dark, error: true }); });
+    import("./mermaid-render").then(({ renderDiagram }) => renderDiagram(text, theme))
+      .then((svg) => { if (live) setResult({ text, theme, svg }); })
+      .catch(() => { if (live) setResult({ text, theme, error: true }); });
     return () => { live = false; };
-  }, [text, dark, draft]);
-  const current = result?.text === text && result.dark === dark ? result : undefined;
+  }, [text, theme, draft]);
+  const current = result?.text === text && result.theme === theme ? result : undefined;
   const copy = () => navigator.clipboard.writeText(text).then(() => setCopyStatus(t("markdown.copied"))).catch(() => setCopyStatus(t("markdown.copyFailed")));
   const save = () => {
     if (!current?.svg) return;

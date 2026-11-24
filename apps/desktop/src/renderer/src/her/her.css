@@ -2,7 +2,10 @@
    Corners come from --r-*, colours from the design variables, except an avatar's own. */
 
 .her{--pill:var(--win);--pill-bd:var(--menu-bd);position:relative;display:flex;flex:1;min-width:0;min-height:0}
-@media (prefers-color-scheme:dark){.her{--pill:var(--win2)}}
+@media (prefers-color-scheme:dark){
+  .her{--pill:var(--win2)}
+  :root[data-dark-style="black"] .her{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
+}
 
 /* Edge to edge: the conversation with Her takes the page, its top the window's 44 px band; Her's settings and
    routines open beside it, one hairline apart. */

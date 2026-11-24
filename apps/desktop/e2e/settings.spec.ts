@@ -569,14 +569,15 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   await app.close();
 });
 
-test("通用's 外观 follows the system, or keeps every window light or dark, also next time", async () => {
+test("通用's 外观 follows the system, or keeps every window light, dark or deep black (暗黑模式), also next time", async () => {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   let { app, page } = await launch(undefined, { profile, systemColors: true });
   const dark = (p: Page) => p.evaluate(() => matchMedia("(prefers-color-scheme: dark)").matches);
+  const darkStyle = (p: Page) => p.evaluate(() => document.documentElement.dataset.darkStyle);
   const source = () => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource);
   let settings = await openSettings(app, page, "general");
   const appearance = () => page_(settings, "通用").getByRole("group", { name: "外观" });
-  await expect(appearance().getByRole("button")).toHaveText(["跟随系统", "浅色", "深色"]);
+  await expect(appearance().getByRole("button")).toHaveText(["跟随系统", "浅色", "深色", "暗黑模式"]);
   await expect(appearance().getByRole("button", { name: "跟随系统" })).toHaveAttribute("aria-pressed", "true");
   expect(await source()).toBe("system");
 
@@ -584,12 +585,33 @@ test("通用's 外观 follows the system, or keeps every window light or dark, a
   await expect(appearance().getByRole("button", { name: "深色" })).toHaveAttribute("aria-pressed", "true");
   await expect.poll(() => dark(page)).toBe(true);
   await expect.poll(() => dark(settings)).toBe(true);
+  await expect.poll(() => darkStyle(page)).toBe("dark");
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(30, 30, 33)");
   await snap(settings, "settings-appearance-dark");
+
+  await appearance().getByRole("button", { name: "暗黑模式" }).click();
+  await expect(appearance().getByRole("button", { name: "暗黑模式" })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => dark(page)).toBe(true);
+  await expect.poll(() => darkStyle(page)).toBe("black");
+  await expect.poll(() => darkStyle(settings)).toBe("black");
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(7, 7, 9)");
+  await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
+
+  // Kept for next time, from the very first frame (including 暗黑模式).
+  await app.close();
+  ({ app, page } = await launch(undefined, { profile, systemColors: true }));
+  expect(await source()).toBe("dark");
+  expect(await dark(page)).toBe(true);
+  expect(await darkStyle(page)).toBe("black");
+  await expect(page.locator(".side")).toHaveCSS("background-color", "rgb(17, 17, 20)");
+  settings = await openSettings(app, page, "general");
+  await expect(appearance().getByRole("button", { name: "暗黑模式" })).toHaveAttribute("aria-pressed", "true");
+  await expect(settings.locator(".set-main")).toHaveCSS("background-color", "rgb(7, 7, 9)");
+
   await appearance().getByRole("button", { name: "浅色" }).click();
   await expect.poll(() => dark(page)).toBe(false);
   await expect.poll(() => dark(settings)).toBe(false);
 
-  // Kept for next time, from the start.
   await app.close();
   ({ app, page } = await launch(undefined, { profile, systemColors: true }));
   expect(await source()).toBe("light");
