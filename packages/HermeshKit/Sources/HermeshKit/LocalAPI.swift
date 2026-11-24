@@ -16,7 +16,7 @@ public struct APIError: LocalizedError {
 
     /// The text for something a machine's Hermesh doesn't have yet: its own version is older than
     /// this app's (docs/version-skew.md §6.3).
-    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .module)
+    public static let needsUpdateText = String(localized: "Hermesh on that computer is older and doesn’t have this yet. Update Hermesh there, then try again.", bundle: .hermeshKit)
 
     /// An error as the core sent it. `unimplemented` only ever means a machine older than this app,
     /// so it says that, in place of the transport's words.

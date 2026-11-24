@@ -52,7 +52,7 @@ final class Panel {
             hv.safeAreaRegions = []
             let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 300), styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
             p.contentView = hv
-            p.title = String(localized: "Hermesh Approval", bundle: .module)
+            p.title = String(localized: "Hermesh Approval", bundle: .signer)
             p.titlebarAppearsTransparent = true
             p.titleVisibility = .hidden
             for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { p.standardWindowButton(b)?.isHidden = true }
@@ -125,7 +125,7 @@ struct ConfirmView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "lock.shield").font(.largeTitle).foregroundStyle(.tint)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Needs your confirmation", bundle: .module).font(.title3.bold())
+                        Text("Needs your confirmation", bundle: .signer).font(.title3.bold())
                         Text(confirmation.caller.label).font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -134,7 +134,7 @@ struct ConfirmView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         if let summary = confirmation.summary {
                             Text(summary).font(.body).fixedSize(horizontal: false, vertical: true)
-                            Button(model.details ? String(localized: "Hide Details", bundle: .module) : String(localized: "Details", bundle: .module)) { model.onToggleDetails() }
+                            Button(model.details ? String(localized: "Hide Details", bundle: .signer) : String(localized: "Details", bundle: .signer)) { model.onToggleDetails() }
                                 .buttonStyle(.link)
                                 .font(.callout)
                         }
@@ -166,19 +166,19 @@ struct ApproveBar: View {
                 Image(systemName: model.biometry ? "touchid" : "lock").font(.title).foregroundStyle(.secondary).frame(width: TouchIDView.side, height: TouchIDView.side)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.working ? String(localized: "Signing…", bundle: .module)
-                     : model.biometry ? String(localized: "Approve with Touch ID", bundle: .module)
-                     : String(localized: "Enter your login password to approve", bundle: .module)).font(.callout)
+                Text(model.working ? String(localized: "Signing…", bundle: .signer)
+                     : model.biometry ? String(localized: "Approve with Touch ID", bundle: .signer)
+                     : String(localized: "Enter your login password to approve", bundle: .signer)).font(.callout)
                 if let e = model.authError {
                     Text(e).font(.caption).foregroundStyle(.red)
-                    Button(String(localized: "Try Again", bundle: .module)) { model.onRetry() }.controlSize(.small)
+                    Button(String(localized: "Try Again", bundle: .signer)) { model.onRetry() }.controlSize(.small)
                 }
             }
             Spacer()
             if let approve = model.onTestApprove {
-                Button(String(localized: "Approve (Test)", bundle: .module), action: approve).disabled(model.working)
+                Button(String(localized: "Approve (Test)", bundle: .signer), action: approve).disabled(model.working)
             }
-            Button(String(localized: "Deny", bundle: .module)) { model.onReject() }
+            Button(String(localized: "Deny", bundle: .signer)) { model.onReject() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(model.working)
         }
@@ -194,7 +194,7 @@ struct CallerWarning: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(CallerInfo.warning)
                 if !caller.path.isEmpty {
-                    Text(String(localized: "Location: \(caller.path)", bundle: .module, comment: "Where the program that made the request is")).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(String(localized: "Location: \(caller.path)", bundle: .signer, comment: "Where the program that made the request is")).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
         } icon: {
@@ -310,12 +310,12 @@ struct CardView: View {
                 if !card.ids.isEmpty || !card.rows.isEmpty { IDsButton(ids: (card.rows.isEmpty ? [] : card.lines) + card.ids) }
             }
             if let code = card.code { CodeChips(code: code) }
-            if !card.who.isEmpty { Text(String(localized: "Who: \(card.who)", bundle: .module)).font(.callout) }
+            if !card.who.isEmpty { Text(String(localized: "Who: \(card.who)", bundle: .signer)).font(.callout) }
             if card.rows.isEmpty {
                 ForEach(card.lines, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary).textSelection(.enabled) }
             } else {
                 ForEach(Array(card.rows.enumerated()), id: \.offset) { _, row in
-                    Text(String(localized: "\(row.label): \(row.value)", bundle: .module, comment: "A card row: its label and its value")).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(String(localized: "\(row.label): \(row.value)", bundle: .signer, comment: "A card row: its label and its value")).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
             Text(card.why).font(.callout)
@@ -335,8 +335,8 @@ struct CardView: View {
 /// do under the last one's right edge.
 struct CodeChips: View {
     let code: String
-    var label = String(localized: "Verification code", bundle: .module)
-    var hint = String(localized: "Must match the other side", bundle: .module)
+    var label = String(localized: "Verification code", bundle: .signer)
+    var hint = String(localized: "Must match the other side", bundle: .signer)
 
     var body: some View {
         let groups = code.split(separator: "-").map(String.init)
@@ -390,8 +390,8 @@ struct IDsButton: View {
     var body: some View {
         Button { shown.toggle() } label: { Image(systemName: "info.circle") }
             .buttonStyle(.borderless)
-            .help(Text("Technical Details", bundle: .module))
-            .accessibilityLabel(Text("Technical Details", bundle: .module))
+            .help(Text("Technical Details", bundle: .signer))
+            .accessibilityLabel(Text("Technical Details", bundle: .signer))
             .popover(isPresented: $shown, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(ids, id: \.self) { Text($0).font(.callout).fixedSize(horizontal: false, vertical: true) }
@@ -426,7 +426,7 @@ struct NoticeView: View {
             ForEach(lines, id: \.self) { Text($0).font(.callout).textSelection(.enabled) }
             HStack {
                 Spacer()
-                Button(String(localized: "OK", bundle: .module)) { model.onDismiss() }.keyboardShortcut(.defaultAction)
+                Button(String(localized: "OK", bundle: .signer)) { model.onDismiss() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -445,16 +445,16 @@ struct MatchView: View {
         VStack(spacing: 16) {
             VStack(spacing: 6) {
                 Image(systemName: "lock.shield.fill").font(.system(size: 30)).foregroundStyle(.tint).padding(.bottom, 2)
-                Text(match.label.map { String(localized: "Enter these two digits on “\($0)”", bundle: .module) }
-                     ?? (match.machine ? String(localized: "Enter these two digits on the new machine", bundle: .module)
-                         : String(localized: "Enter these two digits on the new device", bundle: .module))).font(.title3.weight(.semibold))
-                Text(match.machine ? String(localized: "Once you do, it joins as a machine: it runs tasks and approves nothing.", bundle: .module)
-                     : String(localized: "Once you do, it becomes a trusted device, just like this Mac.", bundle: .module)).font(.callout).foregroundStyle(.secondary)
+                Text(match.label.map { String(localized: "Enter these two digits on “\($0)”", bundle: .signer) }
+                     ?? (match.machine ? String(localized: "Enter these two digits on the new machine", bundle: .signer)
+                         : String(localized: "Enter these two digits on the new device", bundle: .signer))).font(.title3.weight(.semibold))
+                Text(match.machine ? String(localized: "Once you do, it joins as a machine: it runs tasks and approves nothing.", bundle: .signer)
+                     : String(localized: "Once you do, it becomes a trusted device, just like this Mac.", bundle: .signer)).font(.callout).foregroundStyle(.secondary)
             }
-            CodeChips(code: match.digits.map(String.init).joined(separator: "-"), label: String(localized: "Two digits", bundle: .module),
-                      hint: match.label.map { String(localized: "Enter on “\($0)”", bundle: .module) }
-                          ?? (match.machine ? String(localized: "Enter on the new machine", bundle: .module) : String(localized: "Enter on the new device", bundle: .module)))
-            Button(String(localized: "Done", bundle: .module)) { model.onDismiss() }.keyboardShortcut(.defaultAction)
+            CodeChips(code: match.digits.map(String.init).joined(separator: "-"), label: String(localized: "Two digits", bundle: .signer),
+                      hint: match.label.map { String(localized: "Enter on “\($0)”", bundle: .signer) }
+                          ?? (match.machine ? String(localized: "Enter on the new machine", bundle: .signer) : String(localized: "Enter on the new device", bundle: .signer)))
+            Button(String(localized: "Done", bundle: .signer)) { model.onDismiss() }.keyboardShortcut(.defaultAction)
         }
         .padding(20)
         .frame(width: 440)
