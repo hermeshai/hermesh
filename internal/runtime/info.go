@@ -23,6 +23,9 @@ type Info struct {
 	// ModelsState: ModelsKnown, ModelsUnsupported, ModelsAuthRequired, ModelsError, or "".
 	ModelsState string
 	ModelsAt    time.Time
+	// Limits is what the agent said of its account's rate limits when asked
+	// (limits.go); nil when it said none.
+	Limits *Limits
 }
 
 const (

@@ -329,14 +329,15 @@ message AgentStatus {
   // could not tell); empty when it was not asked (or a machine from before).
   string models_state = 14;
   int64 models_observed_at_unix_ms = 15;
-  // What it last said of its account's limits, from a session here
-  // (docs/overview-usage.md §7); unset: it never said. The owner's only.
+  // What it last said of its account's limits, from a session here or asked
+  // when the agents are checked (docs/overview-usage.md §7); unset: it never
+  // said. The owner's only.
   AgentLimits limits = 16;
 }
 
 // An agent's rate limits as it said them.
 message AgentLimits {
-  // The shortest first.
+  // By group in the order the agent gives them, the shortest first in each.
   repeated LimitWindow windows = 1;
   // Its plan, when it says (Codex: "pro").
   string plan = 2;
@@ -348,6 +349,9 @@ message LimitWindow {
   // 0 to 100.
   uint32 used_percent = 2;
   google.protobuf.Timestamp resets_at = 3;
+  // The models it counts, as the agent names them, when it counts groups of
+  // models apart (Antigravity: "Gemini Models"); empty for the account's.
+  string group = 4;
 }
 
 // AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).
