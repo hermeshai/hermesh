@@ -139,11 +139,21 @@ extension HermeshUITests {
         XCTAssertTrue(app.keyboards.firstMatch.exists, "taps in the box: the keyboard stays")
         reply("second_turn_done").tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10), "a tap on the conversation: the keyboard goes")
-        // Drawn as a session's page: its toolbar (info, more) and its ending.
-        XCTAssertTrue(app.buttons["session-info"].exists, "a session's info")
+        // Drawn as a session's page: its bar (the title over where it runs, in a capsule that opens its info; more), the
+        // owner's words with nothing over them, and no line at the end of a turn that went well.
+        let title = app.buttons["session-info"]
+        XCTAssertTrue(title.exists, "a session's title")
+        XCTAssertTrue(title.label.contains("work-mac/fresh-app"), title.label)
         XCTAssertTrue(app.buttons["session-more"].exists, "a session's actions")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '这一轮做完了'")).firstMatch.waitForExistence(timeout: 10), "a session's ending")
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label == '任务信息'")).firstMatch.exists, "no info button beside it")
+        XCTAssertFalse(app.descendants(matching: .any)["prompt-sender"].exists, "the owner's words: no one named over them")
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH '这一轮做完了'")).firstMatch.exists, "no ending line")
         shot("composer-session")
+        title.tap()
+        XCTAssertTrue(app.navigationBars["任务信息"].waitForExistence(timeout: 10), "the title opens the session's info")
+        XCTAssertTrue(text("发起").exists, "who started it")
+        tap("close")
+        XCTAssertTrue(app.navigationBars["任务信息"].waitForNonExistence(timeout: 10), "closed")
 
         // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
         send("sleep 20s")

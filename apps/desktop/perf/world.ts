@@ -20,8 +20,10 @@ export type UsageDay = { date: string; agent: string; inputTokens: bigint; outpu
 export const sizes = { sessions: 400, running: 10, waiting: 2, failed: 3, archived: 40, bigTurns: 40, callsPerTurn: 30 };
 
 /** Ids of the sessions the benchmark opens. */
-export const ids = { bigIdle: "s-big-idle", bigLive: "s-big-live", smallA: "s-0100", smallB: "s-0101" };
-export const titles = { bigIdle: "重构会话同步层（长）", bigLive: "迁移构建系统（进行中）", smallA: "会话 100", smallB: "会话 101" };
+export const ids = { bigIdle: "s-big-idle", bigLive: "s-big-live", smallA: "s-0100", smallB: "s-0101", manyTools: "s-many-tools" };
+export const titles = { bigIdle: "重构会话同步层（长）", bigLive: "迁移构建系统（进行中）", smallA: "会话 100", smallB: "会话 101", manyTools: "一轮几百步工具" };
+/** How many tool calls the one turn of the many-tools session makes in a row, with nothing said between them. */
+export const manyToolCalls = 600;
 
 /** Deterministic random numbers (mulberry32). */
 export function rng(seed: number) {
@@ -184,6 +186,26 @@ export function world(now = Date.now()): World {
   }
   big(ids.bigIdle, titles.bigIdle, false);
   big(ids.bigLive, titles.bigLive, true);
+  {
+    // One turn of hundreds of tool calls in a row (one folded group), each with output of a line or a page.
+    const evs = manyTools(rng(7), manyToolCalls, now - 30 * minute);
+    sessions.set(
+      ids.manyTools,
+      create(SessionSchema, {
+        sessionId: ids.manyTools,
+        machineId: "m-local",
+        projectId: "hermesh",
+        agent: "codex",
+        status: SessionStatus.IDLE,
+        createdBy: "owner",
+        title: titles.manyTools,
+        createdAt: ts(now - 30 * minute),
+        updatedAt: ts(now),
+        progress: { turnCount: 1, lastEventSeq: evs.at(-1)!.seq },
+      }),
+    );
+    events.set(ids.manyTools, evs);
+  }
 
   const usage: UsageDay[] = [];
   for (let d = 0; d < 371; d++) {
@@ -254,6 +276,36 @@ export function conversation(r: () => number, turns: number, calls: number, star
       value: { turn, isError: false, usage: { inputTokens: 400_000n, outputTokens: 30_000n }, diffStat: { filesChanged: 3, insertions: 40, deletions: 12 } },
     });
   }
+  return out;
+}
+
+/** One turn of `calls` tool calls in a row, nothing said between them: reads, searches, edits and commands, outputs of 1 to 60 lines. */
+export function manyTools(r: () => number, calls: number, start: number): SessionEvent[] {
+  const out: SessionEvent[] = [];
+  let seq = 0n;
+  let t = start;
+  const add = (kind: MessageInitShape<typeof SessionEventSchema>["kind"]) => {
+    t += 200 + r() * 1500;
+    out.push(create(SessionEventSchema, { seq: ++seq, ts: ts(t), turnId: "t", kind }));
+  };
+  add({ case: "turnStarted", value: { turn: 1, asker: "owner" } });
+  add({ case: "userMessage", value: { text: "把整个仓库的日志调用都换成结构化日志，测试全部跑通。" } });
+  add({ case: "agentMessage", value: { text: "好的，我先把所有调用点找出来，再一处一处改。" } });
+  const kinds = [
+    { kind: "read", name: "Read", summary: () => `Read internal/pkg${Math.floor(r() * 40)}/file${Math.floor(r() * 90)}.go` },
+    { kind: "search", name: "Grep", summary: () => `Grep "log.Printf" in internal/pkg${Math.floor(r() * 40)}` },
+    { kind: "edit", name: "Edit", summary: () => `Edit internal/pkg${Math.floor(r() * 40)}/file${Math.floor(r() * 90)}.go` },
+    { kind: "shell", name: "Bash", summary: () => `Bash go test ./internal/pkg${Math.floor(r() * 40)}/... -run Test${Math.floor(r() * 300)} -count=1` },
+  ];
+  for (let c = 0; c < calls; c++) {
+    const k = kinds[Math.floor(r() * kinds.length)];
+    const callId = `many-${c}`;
+    add({ case: "toolCall", value: { callId, kind: k.kind, name: k.name, summary: k.summary() } });
+    const lines = 1 + Math.floor(r() * r() * 60);
+    add({ case: "toolResult", value: { callId, summary: Array.from({ length: lines }, (_, i) => `${i + 1}\tlog.Printf("handled %d of %s", n, ${Math.floor(r() * 1e6)})`).join("\n"), isError: r() < 0.03 } });
+  }
+  add({ case: "agentMessage", value: { text: `改完了：${calls} 步之后，所有调用点都换成了 slog，测试全部通过。` } });
+  add({ case: "turnCompleted", value: { turn: 1, isError: false } });
   return out;
 }
 

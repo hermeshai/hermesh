@@ -13,6 +13,12 @@ public let scratchProject = "scratch"
 /// A v2 thread's id ("th_…"), as against a v1 session's.
 public func isThreadID(_ id: String) -> Bool { id.hasPrefix("th_") }
 
+/// Who an actor is, as a session's created_by and a turn's asker say it: "owner" for the owner (or none told), else its client id.
+public func actorClientID(_ a: Hermesh_Thread_V2_Actor?) -> String {
+    guard let a, a.kind != .owner else { return "owner" }
+    return a.id
+}
+
 /// A thread as a row of the session list, so both kinds group, sort and filter alike.
 public func threadAsSession(_ th: Hermesh_Thread_V2_Thread) -> Session {
     var s = Session()
@@ -26,7 +32,7 @@ public func threadAsSession(_ th: Hermesh_Thread_V2_Thread) -> Session {
     s.error = th.lastError
     s.progress.turnCount = th.runCount
     if let f = threadFailure(th) { s.progress.lastFailure = f }
-    s.createdBy = th.createdBy.kind == .owner || !th.hasCreatedBy ? "owner" : th.createdBy.id
+    s.createdBy = actorClientID(th.hasCreatedBy ? th.createdBy : nil)
     if th.hasCreatedAt { s.createdAt = th.createdAt }
     if th.hasUpdatedAt { s.updatedAt = th.updatedAt }
     s.status = switch th.status {

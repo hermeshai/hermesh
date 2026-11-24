@@ -19,7 +19,7 @@ struct ToolGroup: View {
 
 /// Steps in a row as one grey line (`summary`), opened to a hairline card with a row for each (`row`, in the card's
 /// size); folded until the owner opens it. A session's tool calls, and a sub-agent's thoughts and calls, are shown so.
-struct ToolFold<ID: Hashable, Row: View>: View {
+struct ToolFold<ID: Hashable & Sendable, Row: View>: View {
     let summary: String
     let running: Bool
     let ids: [ID]
@@ -40,17 +40,112 @@ struct ToolFold<ID: Hashable, Row: View>: View {
             }
             .buttonStyle(.plain)
             .accessibilityValue(open ? Text("Expanded") : Text("Collapsed"))
-            if open {
-                VStack(spacing: 0) {
-                    ForEach(Array(ids.enumerated()), id: \.element) { i, id in
-                        if i > 0 { Rectangle().fill(Palette.separator).frame(height: 0.5) }
-                        row(id)
-                    }
+            .accessibilityIdentifier("tool-steps-summary")
+            if open { StepsCard(ids: ids, running: running, row: row) }
+        }
+    }
+}
+
+/// What a step in an opened card calls to bring itself (its output, just opened) into view in the card.
+extension EnvironmentValues {
+    @Entry var revealStep: (() -> Void)?
+}
+
+/// An opened group's card: a row per step. Past seven and a half rows it stops growing and scrolls inside (the half row
+/// says there is more), laying out only the rows near what is in sight, so a turn of hundreds of steps opens at once.
+/// It opens at the newest step and, while the turn runs, stays there as steps come, until the owner scrolls up or opens
+/// a step; then a small arrow takes them back. Where there is more above or below, that edge fades into the page.
+private struct StepsCard<ID: Hashable & Sendable, Row: View>: View {
+    let ids: [ID]
+    let running: Bool
+    @ViewBuilder let row: (ID) -> Row
+    /// How high it grows: seven and a half rows of a step's line.
+    static var cap: CGFloat { 260 }
+    @State private var position = ScrollPosition(edge: .bottom)
+    @State private var shape = CardShape()
+    @State private var follow = true
+    @State private var dragging = false
+
+    /// What of the card's scroll the card shows: its content's height (to the point), whether there is more above or
+    /// below what shows, and whether it is at the newest step. Only a change of these draws the card again, not every
+    /// point it scrolls (each draw goes over all its steps).
+    struct CardShape: Equatable {
+        var content: CGFloat = 0
+        var moreAbove = false
+        var moreBelow = false
+        var atEnd = true
+    }
+
+    var body: some View {
+        let first = ids.first
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // One view a step, its hairline over it (an optional view of its own would have the stack count the
+                // views of every step, all of them, to lay out the few in sight).
+                ForEach(ids, id: \.self) { id in
+                    row(id)
+                        .overlay(alignment: .top) { if id != first { Rectangle().fill(Palette.separator).frame(height: 0.5) } }
+                        .environment(\.revealStep) {
+                            follow = false
+                            withAnimation(.snappy(duration: 0.25)) { position.scrollTo(id: id) }
+                        }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 1))
+            }
+            .scrollTargetLayout()
+        }
+        .scrollPosition($position)
+        .scrollBounceBehavior(.basedOnSize)
+        // As high as its rows until the cap: a guess of a row a step until the rows say.
+        .frame(height: min(shape.content > 0 ? shape.content : CGFloat(ids.count) * 34, Self.cap))
+        .onScrollGeometryChange(for: CardShape.self) { g in
+            let above = g.contentOffset.y + g.contentInsets.top
+            let below = g.contentSize.height - g.containerSize.height - above
+            return CardShape(content: g.contentSize.height.rounded(), moreAbove: above > 1, moreBelow: below > 1, atEnd: below < 8)
+        } action: { _, now in
+            shape = now
+            // At the newest step it follows again; scrolled up from it by the owner, it stays where they leave it.
+            if now.atEnd { follow = true } else if dragging { follow = false }
+        }
+        .onScrollPhaseChange { _, phase in
+            dragging = phase == .interacting || phase == .decelerating
+            // Left above the newest step by the owner's own scroll: it stays there.
+            if dragging, !shape.atEnd { follow = false }
+        }
+        .onChange(of: ids.count) { if running && follow { position.scrollTo(edge: .bottom) } }
+        .overlay(alignment: .top) { edge(.top, shown: shape.moreAbove, height: 22) }
+        .overlay(alignment: .bottom) { edge(.bottom, shown: shape.moreBelow, height: 28) }
+        .overlay(alignment: .bottomTrailing) {
+            if running && !follow && shape.moreBelow {
+                Button {
+                    follow = true
+                    withAnimation(.snappy(duration: 0.3)) { position.scrollTo(edge: .bottom) }
+                } label: {
+                    Image(systemName: "arrow.down").font(.footnote.weight(.semibold)).frame(width: 30, height: 30)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(.plain)
+                .padding(8)
+                .transition(.opacity.combined(with: .offset(y: 4)))
+                .accessibilityLabel(Text("Back to the Bottom"))
+                .accessibilityIdentifier("steps-to-end")
             }
         }
+        .animation(.easeOut(duration: 0.18), value: running && !follow && shape.moreBelow)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Palette.separator, lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tool-steps")
+    }
+
+    /// An edge fading into the page where there is more past it.
+    private func edge(_ at: VerticalEdge, shown: Bool, height: CGFloat) -> some View {
+        LinearGradient(colors: [Color(UIColor.systemBackground), Color(UIColor.systemBackground).opacity(0)], startPoint: at == .top ? .top : .bottom, endPoint: at == .top ? .bottom : .top)
+            .frame(height: height)
+            .opacity(shown ? 1 : 0)
+            .animation(.easeOut(duration: 0.15), value: shown)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -115,6 +210,7 @@ struct ToolRow: View {
 /// nothing to open without one). The one at work shimmers; a failed one is red. In an opened group's card (`inCard`): a
 /// size down, its output on the card's ground.
 struct ToolLine: View {
+    @Environment(\.revealStep) private var reveal
     let verb: String
     let object: String
     let shell: Bool
@@ -127,7 +223,10 @@ struct ToolLine: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                if !output.isEmpty { withAnimation(.snappy(duration: 0.25)) { open.toggle() } }
+                guard !output.isEmpty else { return }
+                withAnimation(.snappy(duration: 0.25)) { open.toggle() }
+                // In a card that scrolls: the output just opened comes into view once it has opened.
+                if open, let reveal { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { reveal() } }
             } label: {
                 HStack(spacing: 5) {
                     Text(verb).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
@@ -150,7 +249,8 @@ struct ToolLine: View {
             .buttonStyle(.plain)
             .accessibilityValue(output.isEmpty ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
             if open, !output.isEmpty {
-                OutputText(text: output)
+                // In a card, less high: one output does not fill the card.
+                OutputText(text: output, maxHeight: inCard ? 160 : 320)
                     .padding(.horizontal, inCard ? 13 : 10).padding(.top, inCard ? 0 : 8).padding(.bottom, inCard ? 10 : 8)
                     .background(inCard ? Palette.fill : Palette.code, in: RoundedRectangle(cornerRadius: inCard ? 0 : 8, style: .continuous))
                     .padding(.top, inCard ? 0 : 4).padding(.bottom, inCard ? 0 : 6)

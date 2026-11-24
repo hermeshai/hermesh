@@ -3,7 +3,6 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import type { Client, Project } from "@hermesh/proto/local";
 import { SessionSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import {
-  ActorKind,
   ModelSelectionSchema,
   OptionDescriptorType,
   OptionValueSchema,
@@ -15,7 +14,7 @@ import {
   type Thread,
 } from "@hermesh/proto/thread";
 import { activeOptionDescriptors, findModelEntry, findProviderInstance } from "./threads";
-import { threadFailure } from "./threadtranscript";
+import { actorClientId, threadFailure } from "./threadtranscript";
 
 // The new-session composer (docs/thread-composer.md): where a session runs
 // (machine, project), with what (provider, model, how hard it thinks) and
@@ -58,7 +57,7 @@ export function threadAsSession(th: Thread): Session {
       th.status === ThreadStatus.IDLE && th.activeBackgroundCount > 0
         ? SessionStatus.RUNNING
         : (threadStatusAsSession[th.status] ?? SessionStatus.IDLE),
-    createdBy: !by || by.kind === ActorKind.OWNER ? "owner" : by.id,
+    createdBy: actorClientId(by),
     title: th.title,
     error: th.lastError,
     progress: { turnCount: th.runCount, lastFailure: threadFailure(th) },

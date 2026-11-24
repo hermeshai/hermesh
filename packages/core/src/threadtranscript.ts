@@ -12,7 +12,7 @@ import {
   type Failure,
   type Question,
 } from "@hermesh/proto/session";
-import { ActorKind, RunStatus, TurnItemKind, type Run, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
+import { ActorKind, RunStatus, TurnItemKind, type Actor, type Run, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
 import { dateOf } from "./sessions";
 import { activeBackgroundItemIdsOf } from "./threads";
 import type { TranscriptItem } from "./transcript";
@@ -26,6 +26,11 @@ import type { TranscriptItem } from "./transcript";
  * line before its run's first item 2 less, the end of its run's last 1 more.
  */
 const itemSeq = (it: TurnItem) => it.seq * 4n;
+
+/** Who an actor is, as a session's created_by and a turn's asker say it: "owner" for the owner (or none told), else its client id. */
+export function actorClientId(a: Actor | undefined): string {
+  return !a || a.kind === ActorKind.OWNER ? "owner" : a.id;
+}
 
 /** The kind of step a tool is, by its name (as a session's machine tells it). */
 function toolKind(name: string): string {
@@ -123,7 +128,9 @@ export function threadTranscript(proj: ThreadProjection | null | undefined): Tra
     const at = dateOf(it.createdAt);
     switch (it.kind) {
       case TurnItemKind.USER_MESSAGE:
-        out.push({ kind: "user", seq, text: it.text, at });
+        // Who wrote it: the owner, Her or another of the owner's agents. The item says (a message steered into a run
+        // someone else started, a background wake-up's, is its writer's); else its run's author.
+        out.push({ kind: "user", seq, text: it.text, at, asker: it.actor ? actorClientId(it.actor) : run ? actorClientId(run.author) : "" });
         break;
       case TurnItemKind.ASSISTANT_MESSAGE:
         out.push({ kind: "agent", seq, text: it.text, at });
