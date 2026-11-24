@@ -204,32 +204,17 @@ struct CopyMenu: View {
     }
 }
 
-/// The glass of a session's title in its bar: the conversation under it blurred away (the page draws no band of blur
-/// there, so this is all that stands between them), a lit rim, and a shadow that lifts it off the page.
-struct TitleCapsule: ViewModifier {
-    /// Its width on every session, in points.
-    static let width: CGFloat = 220
-    @Environment(\.colorScheme) private var scheme
-
-    func body(content: Content) -> some View {
-        content
-            .background(.ultraThinMaterial, in: .capsule)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .overlay {
-                Capsule().strokeBorder(
-                    LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.34 : 0.9), .white.opacity(scheme == .dark ? 0.06 : 0.3)], startPoint: .top, endPoint: .bottom),
-                    lineWidth: 0.8)
-                    .allowsHitTesting(false)
-            }
-            .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.12), radius: 14, y: 6)
-    }
-}
-
-/// A session page's bar, on either kind of session (SessionView, ThreadPage): the menu button on a root page; in the
-/// middle its title over where it runs, in a glass capsule that opens Session Info; ⋯ with its actions.
-struct SessionToolbar: ToolbarContent {
+/// A session page's top, drawn by the page in place of the system's navigation bar (which the page hides): the menu
+/// button on a root page, or the way back on a pushed one; in the middle the session's title over where it runs, in a
+/// capsule of one width that opens Session Info; ⋯ with its actions. Each is the system's glass and nothing more. The
+/// page gives it to its conversation as its top bar (`sessionBar`), so the system blurs what scrolls under it, and
+/// nothing of the system's bar (what it shows or hides as a page scrolls, on one iOS or another) is in it. With the
+/// system's bars on the side (iPhone Duo), the buttons are in the system's bar and only the title is here.
+struct SessionBar: View {
     @Environment(AppModel.self) private var model
-    let session: Session
+    @Environment(\.barsOnTheSide) private var sideBars
+    /// None while the session is read: the way out of the page only.
+    let session: Session?
     /// The sync line in place of where it runs while what shows is not current (a page with no box to say it over).
     var sync = false
     @Binding var renaming: Bool
@@ -242,52 +227,218 @@ struct SessionToolbar: ToolbarContent {
         let open: () -> Void
     }
 
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            Button { model.sheet = .sessionInfo(session.sessionID) } label: {
-                VStack(spacing: 1) {
-                    Text(session.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
-                    if sync && model.shownSync != nil {
-                        SyncLine(small: true)
-                    } else {
-                        Text(verbatim: "\(model.machineName(session.machineID))/\(session.projectID)").font(.caption2).foregroundStyle(.secondary)
+    /// The title capsule's width on every session, in points: a long title ends in …, and Session Info says it whole.
+    static let titleWidth: CGFloat = 220
+
+    var body: some View {
+        let running = backgroundTasks.flatMap { $0.running ? $0 : nil }
+        // As wide on the left as on the right, so the title is in the middle.
+        let side: CGFloat = sideBars ? 0 : running == nil ? 44 : 96
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                if sideBars {
+                } else if !model.path.isEmpty {
+                    Button { model.path.removeLast() } label: { BarIcon(systemImage: "chevron.backward") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back")
+                        .accessibilityIdentifier("BackButton")
+                } else if !model.menuBeside {
+                    GlassMenuButton()
+                }
+            }
+            .frame(width: side, alignment: .leading)
+            Spacer(minLength: 0)
+            if let session { title(session).layoutPriority(1) }
+            Spacer(minLength: 0)
+            HStack(spacing: 8) {
+                if let session, !sideBars {
+                    if let running {
+                        Button(action: running.open) { BarIcon(systemImage: "terminal") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Background Tasks")
+                            .accessibilityIdentifier("thread-background-tasks")
                     }
+                    Menu {
+                        SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                    } label: {
+                        BarIcon(systemImage: "ellipsis")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("More")
+                    .accessibilityIdentifier("session-more")
                 }
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 16)
-                // One width whatever the title: a long one ends in …, and Session Info says it whole.
-                .frame(width: TitleCapsule.width, height: 48)
-                .contentShape(.capsule)
-                .modifier(TitleCapsule())
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(Text("Session Info"))
-            .accessibilityIdentifier("session-info")
+            .frame(width: side, alignment: .trailing)
         }
-        .sharedBackgroundVisibility(.hidden)
+        .padding(.horizontal, 16).padding(.bottom, 4)
+    }
+
+    private func title(_ s: Session) -> some View {
+        Button { model.sheet = .sessionInfo(s.sessionID) } label: {
+            VStack(spacing: 1) {
+                Text(s.displayTitle).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                if sync && model.shownSync != nil {
+                    SyncLine(small: true)
+                } else {
+                    Text(verbatim: "\(model.machineName(s.machineID))/\(s.projectID)").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: Self.titleWidth)
+            .frame(height: 44)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text("Session Info"))
+        .accessibilityIdentifier("session-info")
+    }
+}
+
+/// A button of the page's own bar: its symbol in a circle of the system's glass, the size of the system's bar buttons.
+private struct BarIcon: View {
+    let systemImage: String
+
+    var body: some View {
+        Image(systemName: systemImage).font(.body.weight(.medium)).foregroundStyle(.primary).frame(width: 44, height: 44)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .contentShape(.circle)
+    }
+}
+
+/// What a session's ⋯ opens.
+private struct SessionMore: View {
+    @Environment(AppModel.self) private var model
+    let session: Session
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    let backgroundTasks: SessionBar.BackgroundTasks?
+
+    var body: some View {
+        if let tasks = backgroundTasks {
+            Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+        }
+        Button("Copy Session ID", systemImage: "doc.on.doc") {
+            UIPasteboard.general.string = session.sessionID
+            model.show(String(localized: "Copied the session ID"))
+        }
+        SessionActions(session: session, renaming: $renaming, deleting: $deleting)
+    }
+}
+
+/// With the system's bars on the side (iPhone Duo): a session's buttons there, as every page's are.
+private struct SessionSideItems: ToolbarContent {
+    @Environment(AppModel.self) private var model
+    let session: Session?
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    let backgroundTasks: SessionBar.BackgroundTasks?
+
+    var body: some ToolbarContent {
         if model.path.isEmpty { MenuToolbarItem() }
-        if let tasks = backgroundTasks, tasks.running {
+        if let session {
+            if let tasks = backgroundTasks, tasks.running {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Background Tasks", systemImage: "terminal", action: tasks.open)
+                        .accessibilityIdentifier("thread-background-tasks")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Background Tasks", systemImage: "terminal", action: tasks.open)
-                    .accessibilityIdentifier("thread-background-tasks")
+                Menu {
+                    SessionMore(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More")
+                .accessibilityIdentifier("session-more")
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            Menu {
-                if let tasks = backgroundTasks {
-                    Button("Background Tasks", systemImage: "terminal", action: tasks.open)
-                }
-                Button("Copy Session ID", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = session.sessionID
-                    model.show(String(localized: "Copied the session ID"))
-                }
-                SessionActions(session: session, renaming: $renaming, deleting: $deleting)
-            } label: {
-                Image(systemName: "ellipsis")
+    }
+}
+
+extension View {
+    /// A session page's top: its own bar (SessionBar) over what scrolls in this view, the system's bar hidden.
+    func sessionBar(_ session: Session?, renaming: Binding<Bool>, deleting: Binding<Bool>, backgroundTasks: SessionBar.BackgroundTasks? = nil) -> some View {
+        modifier(SessionBarTop(session: session, renaming: renaming, deleting: deleting, backgroundTasks: backgroundTasks))
+    }
+}
+
+private struct SessionBarTop: ViewModifier {
+    @Environment(\.barsOnTheSide) private var sideBars
+    let session: Session?
+    @Binding var renaming: Bool
+    @Binding var deleting: Bool
+    let backgroundTasks: SessionBar.BackgroundTasks?
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaBar(edge: .top) {
+                SessionBar(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
             }
-            .accessibilityLabel("More")
-            .accessibilityIdentifier("session-more")
+            .toolbar(sideBars ? .visible : .hidden, for: .navigationBar)
+            .background { if !sideBars { SwipesBack() } }
+            .toolbar {
+                if sideBars { SessionSideItems(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks) }
+            }
+    }
+}
+
+/// The system's swipe back from the left edge, on a page that hides the system's bar: UIKit stops that swipe with the
+/// bar hidden. While the page shows, the stack's edge swipe asks this whether to begin (on a pushed page, with no
+/// transition under way) and its own delegate everything else; when the page goes, the swipe is the system's again.
+private struct SwipesBack: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        private var gate: Gate?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard gate == nil, let stack = navigationController, let swipe = stack.interactivePopGestureRecognizer else { return }
+            // Another such page's gate may still be there (it goes as this one comes): the system's delegate is under it.
+            let gate = Gate(stack: stack, system: (swipe.delegate as? Gate)?.system ?? swipe.delegate)
+            self.gate = gate
+            swipe.delegate = gate
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            if let gate, let swipe = navigationController?.interactivePopGestureRecognizer, swipe.delegate === gate { swipe.delegate = gate.system }
+            gate = nil
+        }
+    }
+
+    final class Gate: NSObject, UIGestureRecognizerDelegate {
+        private weak var stack: UINavigationController?
+        private(set) weak var system: UIGestureRecognizerDelegate?
+
+        init(stack: UINavigationController, system: UIGestureRecognizerDelegate?) {
+            self.stack = stack
+            self.system = system
+        }
+
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let stack else { return false }
+            return stack.viewControllers.count > 1 && stack.transitionCoordinator == nil
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            system?.gestureRecognizer?(g, shouldReceive: touch) ?? true
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            system?.gestureRecognizer?(g, shouldRecognizeSimultaneouslyWith: other) ?? false
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRequireFailureOf other: UIGestureRecognizer) -> Bool {
+            system?.gestureRecognizer?(g, shouldRequireFailureOf: other) ?? false
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            system?.gestureRecognizer?(g, shouldBeRequiredToFailBy: other) ?? false
         }
     }
 }

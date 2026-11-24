@@ -742,11 +742,17 @@ final class DemoUITests: XCTestCase {
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: old.count) + value)
     }
 
-    private func back() { app.navigationBars.buttons.element(boundBy: 0).tap() }
+    /// Back: a session's page has its own button (it draws its bar), the others the system's.
+    private func back() {
+        let own = app.buttons["BackButton"]
+        (own.exists && own.isHittable ? own : app.navigationBars.buttons.element(boundBy: 0)).tap()
+    }
 
     /// The system's swipe back, from the screen's left edge across the bar: on a place of the menu's, the menu.
     private func swipeMenuOut() {
-        let y = app.navigationBars.firstMatch.frame.midY / app.frame.height
+        // A session's page draws its bar: its title is in it.
+        let bar = app.navigationBars.firstMatch.exists ? app.navigationBars.firstMatch : app.buttons["session-info"]
+        let y = bar.frame.midY / app.frame.height
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: y))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: y)), withVelocity: 600, thenHoldForDuration: 0.1)
         sleep(1)
@@ -793,11 +799,10 @@ final class DemoUITests: XCTestCase {
 
     private func backToOverview() {
         // A page may still be going (after a delete): until the menu's button or a Back shows.
-        _ = app.buttons["menu"].waitForExistence(timeout: 5) || app.navigationBars.buttons.element(boundBy: 0).waitForExistence(timeout: 5)
+        _ = app.buttons["menu"].waitForExistence(timeout: 5) || app.buttons["BackButton"].waitForExistence(timeout: 5)
         while !app.buttons["menu"].isHittable && !app.descendants(matching: .any)["drawer-dim"].isHittable {
-            let back = app.navigationBars.buttons.element(boundBy: 0)
-            XCTAssertTrue(back.exists)
-            back.tap()
+            XCTAssertTrue(app.buttons["BackButton"].exists || app.navigationBars.buttons.element(boundBy: 0).exists)
+            back()
         }
     }
 

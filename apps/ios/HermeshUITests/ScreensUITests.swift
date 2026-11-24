@@ -55,7 +55,7 @@ final class ScreensUITests: XCTestCase {
         shot("iphone-session")
 
         // An agent asking to connect, as the overview shows it.
-        while app.navigationBars.buttons["BackButton"].exists { app.navigationBars.buttons["BackButton"].tap() }
+        while app.buttons["BackButton"].exists { app.buttons["BackButton"].tap() }
         if !app.buttons["menu"].exists { app.navigationBars.buttons.element(boundBy: 0).tap() }
         tap("menu")
         sleep(1)

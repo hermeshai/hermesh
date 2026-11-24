@@ -260,7 +260,8 @@ extension HermeshUITests {
     }
 
     private func back() {
-        let b = app.navigationBars.buttons.element(boundBy: 0)
+        let own = app.buttons["BackButton"] // a session's page draws its bar
+        let b = own.exists && own.isHittable ? own : app.navigationBars.buttons.element(boundBy: 0)
         if b.exists { b.tap(); sleep(1) }
     }
 

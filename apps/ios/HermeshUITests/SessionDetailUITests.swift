@@ -161,7 +161,7 @@ final class SessionDetailUITests: XCTestCase {
     }
 
     private func navigateBack() {
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["BackButton"].tap()
         XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 10), "back to Overview")
     }
 
