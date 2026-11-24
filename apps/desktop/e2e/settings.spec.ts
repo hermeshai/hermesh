@@ -65,7 +65,9 @@ test("settings opens on 通用; 授权 lists the grants, one opens its scope, an
   await expect(turnDone).toHaveAttribute("aria-checked", "true");
   // Kept by the main process, which posts the notifications.
   expect((await page.evaluate(() => window.hermesh?.getPreferences()))?.notifyTurnDone).toBe(true);
-  await expect(notify.getByRole("switch", { name: "菜单栏图标显示圆点" })).toHaveAttribute("aria-checked", "true");
+  // Named after where the icon is on this platform: the menu bar, the notification area, the system tray.
+  const badge = process.platform === "win32" ? "通知区域图标显示圆点" : process.platform === "linux" ? "系统托盘图标显示圆点" : "菜单栏图标显示圆点";
+  await expect(notify.getByRole("switch", { name: badge })).toHaveAttribute("aria-checked", "true");
   await snap(settings, "settings-notifications");
 
   await nav(settings, "授权").click();

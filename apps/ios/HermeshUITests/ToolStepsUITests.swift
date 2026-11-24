@@ -1,12 +1,13 @@
 import XCTest
 
 /// A turn of hundreds of tool calls in a row (the demo's -DemoManyTools, DemoService.swift): its steps open into a card
-/// that stops growing and scrolls inside, lays out only the rows near what is in sight, follows the newest step while
-/// the turn runs, and scrolls without hitches. The measures print as the test runs (XCTest's own report).
+/// that stops growing and scrolls inside, lays out only the rows near what is in sight, and follows the newest step
+/// while the turn runs (ToolStepsUITests, which CI runs); what opening and scrolling them cost (ToolStepsPerfUITests,
+/// run by hand: its measures print as "PERF …" lines).
 ///
 ///     xcodebuild test -project apps/ios/Hermesh.xcodeproj -scheme Hermesh \
 ///         -destination 'platform=iOS Simulator,name=…' -only-testing:HermeshUITests/ToolStepsUITests
-final class ToolStepsUITests: XCTestCase {
+class ToolStepsCase: XCTestCase {
     let app = XCUIApplication()
 
     override func setUp() {
@@ -21,6 +22,24 @@ final class ToolStepsUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Overview"].waitForExistence(timeout: 15), "Overview page")
     }
 
+    func open(_ title: String) {
+        let row = app.descendants(matching: .any)["session-\(title)"].firstMatch
+        for _ in 0..<6 where !row.exists || !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "overview row \(title)")
+        row.tap()
+        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page for \(title)")
+    }
+
+    func element(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id].firstMatch }
+
+    func tap(_ id: String) {
+        let e = element(id)
+        XCTAssertTrue(e.waitForExistence(timeout: 15), id)
+        e.tap()
+    }
+}
+
+final class ToolStepsUITests: ToolStepsCase {
     func testHundredsOfStepsOpenInACardThatScrolls() throws {
         open("Many steps")
         let summary = element("tool-steps-summary")
@@ -56,6 +75,78 @@ final class ToolStepsUITests: XCTestCase {
         XCTAssertTrue(card.frame.intersects(output.frame), "in view in the card")
     }
 
+    func testARunningTurnsStepsFollowTheNewest() throws {
+        open("Many steps, running")
+        let summary = element("tool-steps-summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        summary.tap()
+        let card = element("tool-steps")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
+        XCTAssertLessThanOrEqual(card.frame.height, 240, "capped")
+        // Steps come every second; the card stays at the newest, with no arrow back.
+        sleep(3)
+        XCTAssertFalse(element("steps-to-end").exists, "following")
+        XCTAssertTrue(newestInSight(card), "the newest step in sight")
+
+        // Scrolled up, it stays where the owner left it as steps come, and offers the way back.
+        card.swipeDown(velocity: .slow)
+        let back = element("steps-to-end")
+        XCTAssertTrue(back.waitForExistence(timeout: 5), "the arrow back")
+        sleep(3)
+        XCTAssertFalse(newestInSight(card), "not dragged to the newest")
+        back.tap()
+        XCTAssertTrue(back.waitForNonExistence(timeout: 5), "back at the newest")
+        sleep(3)
+        XCTAssertFalse(element("steps-to-end").exists, "following again")
+        XCTAssertTrue(newestInSight(card), "the newest step in sight again")
+    }
+
+    private let smallTitle = "Small steps: keep every log call structured across the whole repository and its tests"
+
+    /// A small group's card has nothing to scroll: a drag that starts on it scrolls the page, as one anywhere else does.
+    func testADragOnASmallCardScrollsThePage() throws {
+        open(smallTitle)
+        let summaries = app.descendants(matching: .any).matching(identifier: "tool-steps-summary")
+        XCTAssertTrue(summaries.firstMatch.waitForExistence(timeout: 10), "the steps, folded")
+        let summary = try XCTUnwrap(summaries.allElementsBoundByIndex.last { $0.isHittable }, "a group in sight")
+        summary.tap()
+        let card = element("tool-steps")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
+        XCTAssertLessThan(card.frame.height, 200, "a small card: \(card.frame.height)")
+        sleep(1)
+        let before = summary.frame.minY
+        let from = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 220)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        sleep(1)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "small-card-dragged"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertGreaterThan(summary.frame.minY, before + 120, "the page scrolled with the drag: from \(before) to \(summary.frame.minY)")
+    }
+
+    /// A long title keeps to its capsule, between the buttons beside it, with where it runs under it.
+    func testALongTitleKeepsToItsCapsule() throws {
+        open(smallTitle)
+        let capsule = app.buttons["session-info"]
+        let more = app.buttons["session-more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 10))
+        let others = app.navigationBars.buttons.allElementsBoundByIndex.filter { $0.identifier != "session-info" && $0.identifier != "session-more" }
+        let back = try XCTUnwrap(others.min { $0.frame.minX < $1.frame.minX }, "the button back")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "long-title"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertTrue(capsule.label.contains("Mac mini/hello-world"), capsule.label)
+        XCTAssertGreaterThanOrEqual(capsule.frame.minX, back.frame.maxX, "clear of the button back: \(capsule.frame) \(back.frame)")
+        XCTAssertLessThanOrEqual(capsule.frame.maxX, more.frame.minX, "clear of ⋯: \(capsule.frame) \(more.frame)")
+        XCTAssertGreaterThan(capsule.frame.width, 120, "still a capsule to tap")
+    }
+
+    /// Whether the step under way (its verb, "…ing") is in the card's sight.
+    private func newestInSight(_ card: XCUIElement) -> Bool {
+        let doing = card.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reading' OR label BEGINSWITH 'Searching' OR label BEGINSWITH 'Editing' OR label BEGINSWITH 'Running'"))
+        return doing.allElementsBoundByIndex.contains { card.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
+    }
+}
+
+final class ToolStepsPerfUITests: ToolStepsCase {
     // What opening and scrolling 600 steps cost, as the app's frame meter counts it (FrameMeter.swift, this fixture
     // only): frames drawn, the late ones, the longest gap. XCTest's hitch metrics need a device; these work in the
     // Simulator. They assert nothing of the card, so they measure the page before the card was capped too.
@@ -145,93 +236,5 @@ final class ToolStepsUITests: XCTestCase {
         let summary = element("tool-steps-summary")
         XCTAssertTrue(summary.waitForExistence(timeout: 10), "the steps, folded")
         return (summary, app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Ran'")))
-    }
-
-    func testARunningTurnsStepsFollowTheNewest() throws {
-        open("Many steps, running")
-        let summary = element("tool-steps-summary")
-        XCTAssertTrue(summary.waitForExistence(timeout: 10))
-        summary.tap()
-        let card = element("tool-steps")
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
-        XCTAssertLessThanOrEqual(card.frame.height, 240, "capped")
-        // Steps come every second; the card stays at the newest, with no arrow back.
-        sleep(3)
-        XCTAssertFalse(element("steps-to-end").exists, "following")
-        XCTAssertTrue(newestInSight(card), "the newest step in sight")
-
-        // Scrolled up, it stays where the owner left it as steps come, and offers the way back.
-        card.swipeDown(velocity: .slow)
-        let back = element("steps-to-end")
-        XCTAssertTrue(back.waitForExistence(timeout: 5), "the arrow back")
-        sleep(3)
-        XCTAssertFalse(newestInSight(card), "not dragged to the newest")
-        back.tap()
-        XCTAssertTrue(back.waitForNonExistence(timeout: 5), "back at the newest")
-        sleep(3)
-        XCTAssertFalse(element("steps-to-end").exists, "following again")
-        XCTAssertTrue(newestInSight(card), "the newest step in sight again")
-    }
-
-    private let smallTitle = "Small steps: keep every log call structured across the whole repository and its tests"
-
-    /// A small group's card has nothing to scroll: a drag that starts on it scrolls the page, as one anywhere else does.
-    func testADragOnASmallCardScrollsThePage() throws {
-        open(smallTitle)
-        let summaries = app.descendants(matching: .any).matching(identifier: "tool-steps-summary")
-        XCTAssertTrue(summaries.firstMatch.waitForExistence(timeout: 10), "the steps, folded")
-        let summary = try XCTUnwrap(summaries.allElementsBoundByIndex.last { $0.isHittable }, "a group in sight")
-        summary.tap()
-        let card = element("tool-steps")
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
-        XCTAssertLessThan(card.frame.height, 200, "a small card: \(card.frame.height)")
-        sleep(1)
-        let before = summary.frame.minY
-        let from = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 220)), withVelocity: .slow, thenHoldForDuration: 0.3)
-        sleep(1)
-        let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "small-card-dragged"; shot.lifetime = .keepAlways; add(shot)
-        XCTAssertGreaterThan(summary.frame.minY, before + 120, "the page scrolled with the drag: from \(before) to \(summary.frame.minY)")
-    }
-
-    /// A long title keeps to its capsule, between the buttons beside it, with where it runs under it.
-    func testALongTitleKeepsToItsCapsule() throws {
-        open(smallTitle)
-        let capsule = app.buttons["session-info"]
-        let more = app.buttons["session-more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 10))
-        let others = app.navigationBars.buttons.allElementsBoundByIndex.filter { $0.identifier != "session-info" && $0.identifier != "session-more" }
-        let back = try XCTUnwrap(others.min { $0.frame.minX < $1.frame.minX }, "the button back")
-        let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "long-title"; shot.lifetime = .keepAlways; add(shot)
-        XCTAssertTrue(capsule.label.contains("Mac mini/hello-world"), capsule.label)
-        XCTAssertGreaterThanOrEqual(capsule.frame.minX, back.frame.maxX, "clear of the button back: \(capsule.frame) \(back.frame)")
-        XCTAssertLessThanOrEqual(capsule.frame.maxX, more.frame.minX, "clear of ⋯: \(capsule.frame) \(more.frame)")
-        XCTAssertGreaterThan(capsule.frame.width, 120, "still a capsule to tap")
-    }
-
-    // MARK: Helpers
-
-    /// Whether the step under way (its verb, "…ing") is in the card's sight.
-    private func newestInSight(_ card: XCUIElement) -> Bool {
-        let doing = card.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reading' OR label BEGINSWITH 'Searching' OR label BEGINSWITH 'Editing' OR label BEGINSWITH 'Running'"))
-        return doing.allElementsBoundByIndex.contains { card.frame.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }
-    }
-
-    private func open(_ title: String) {
-        let row = app.descendants(matching: .any)["session-\(title)"].firstMatch
-        for _ in 0..<6 where !row.exists || !row.isHittable { app.swipeUp() }
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "overview row \(title)")
-        row.tap()
-        XCTAssertTrue(app.buttons["session-info"].waitForExistence(timeout: 10), "session page for \(title)")
-    }
-
-    private func element(_ id: String) -> XCUIElement { app.descendants(matching: .any)[id].firstMatch }
-
-    private func tap(_ id: String) {
-        let e = element(id)
-        XCTAssertTrue(e.waitForExistence(timeout: 15), id)
-        e.tap()
     }
 }

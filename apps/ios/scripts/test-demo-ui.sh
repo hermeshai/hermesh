@@ -40,7 +40,7 @@ if [[ "$SUITE" != full ]]; then
   for suite in $SUITE; do
     case "$suite" in
       smoke) ;;
-      ScreenViewportUITests|SessionDetailUITests|HerReviewUITests) tests+=("-only-testing:HermeshUITests/$suite") ;;
+      ScreenViewportUITests|SessionDetailUITests|ToolStepsUITests|HerReviewUITests) tests+=("-only-testing:HermeshUITests/$suite") ;;
       *) echo "Unknown demo suite: $suite" >&2; exit 2 ;;
     esac
   done
@@ -99,7 +99,8 @@ xcodebuild test-without-building "${BUILD[@]}" -parallel-testing-enabled NO -res
   -only-testing:HermeshUITests/DemoUITests/testReviewFreeAnswerAndInterrupt \
   -only-testing:HermeshUITests/DemoUITests/testReviewGrantLifecycle \
   -only-testing:HermeshUITests/DemoUITests/testReviewHerAndHerTeam \
-  -only-testing:HermeshUITests/SessionDetailUITests > "$OUT/ui.log" 2>&1
+  -only-testing:HermeshUITests/SessionDetailUITests \
+  -only-testing:HermeshUITests/ToolStepsUITests > "$OUT/ui.log" 2>&1
 xcrun simctl terminate "$DEVICE" io.hermesh.ios >/dev/null 2>&1 || true
 # Xcode can migrate the data-container UUID during installation; inspect the current one.
 CONTAINER="$(xcrun simctl get_app_container "$DEVICE" io.hermesh.ios data)"

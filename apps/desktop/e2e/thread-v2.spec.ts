@@ -1,16 +1,14 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import type { TrayView } from "../src/shared/bridge";
-import { launch, snap } from "./app";
+import { launch, pickFrom, snap } from "./app";
 
 // The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
 async function pickDemoAndScripted(page: Page) {
-  await page.getByRole("button", { name: "项目" }).click();
-  await page.getByTestId("project-item-demo").click();
+  await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
   // The model is in the box, once it is open; choosing one closes the panel.
   await page.getByTestId("thread-composer-input").click();
-  await page.getByRole("button", { name: "模型" }).click();
-  await page.getByTestId("picker-model-scripted-pro").click();
+  await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-model-scripted-pro"));
   await expect(page.getByTestId("model-traits-popover")).toBeHidden();
 }
 // What the menu bar counts (main/tray.ts): a session started here counts as any session does.
@@ -48,6 +46,8 @@ async function pickMode(page: Page, testId: string) {
 test("launches a supervised v2 thread, handles live tool approval, and shows it as a session's page", async () => {
   const { app, page } = await launch();
   try {
+    // Wide enough for the info cards beside the conversation (a CI screen can be narrower than they need).
+    await page.setViewportSize({ width: 1440, height: 800 });
     const openStreams = () =>
       app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
     // Watch, and the thread list the window keeps for its sidebar (store.tsx useThreads).
@@ -191,6 +191,8 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
 test("tracks post-turn background tasks without premature completion, streams automatic continuation wakeup, and stops daemons from the UI", async () => {
   const { app, page } = await launch();
   try {
+    // Wide enough for the info cards beside the conversation (a CI screen can be narrower than they need).
+    await page.setViewportSize({ width: 1440, height: 800 });
     await page.getByTestId("nav-new-thread").click();
     await pickDemoAndScripted(page);
     // RuntimeMode.FULL_ACCESS == 4 so shell commands run without approval pause.

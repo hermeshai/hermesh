@@ -130,7 +130,8 @@ final class DemoUITests: XCTestCase {
         played("")
         tap("Welcome aboard!")
         tap("answer")
-        played("success success")
+        // The answer at once; the turn it lets finish, when the demo's task does (8 seconds on).
+        played("success success", within: 15)
         backToOverview()
         tap("verify-pairing")
         tap("scope-projects")
@@ -145,10 +146,10 @@ final class DemoUITests: XCTestCase {
     }
 
     /// The haptics played so far, by name, in order.
-    private func played(_ names: String, file: StaticString = #filePath, line: UInt = #line) {
+    private func played(_ names: String, within seconds: TimeInterval = 5, file: StaticString = #filePath, line: UInt = #line) {
         let log = app.descendants(matching: .any).matching(identifier: "haptics").firstMatch
         let heard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", names), object: log)
-        if XCTWaiter().wait(for: [heard], timeout: 5) != .completed {
+        if XCTWaiter().wait(for: [heard], timeout: seconds) != .completed {
             XCTFail("haptics: \(String(describing: log.value)), not \(names)", file: file, line: line)
         }
     }
@@ -395,12 +396,12 @@ final class DemoUITests: XCTestCase {
 
     func testReviewAllNewEntries() {
         enterWorkDemo()
-        tap("new"); tap("Connect an Agent…"); tap("Deny")
-        tap("new"); tap("Add Environment…"); tap("close")
-        tap("new"); tap("Scan a Code…"); tap("approve")
+        new("Connect an Agent…"); tap("Deny")
+        new("Add Environment…"); tap("close")
+        new("Scan a Code…"); tap("approve")
         XCTAssertTrue(app.descendants(matching: .any)["machine-joined"].waitForExistence(timeout: 10))
         tap("close")
-        tap("new"); tap("Enter a Pairing Code…")
+        new("Enter a Pairing Code…")
         let code = app.textFields["pairing-code"]
         let sample = code.value as? String ?? ""
         XCTAssertFalse(sample.isEmpty)
@@ -708,6 +709,19 @@ final class DemoUITests: XCTestCase {
             XCTAssertTrue(back.exists)
             back.tap()
         }
+    }
+
+    /// An item of the New menu. A tap while the menu is still coming up is dropped, and the menu stays: tapped again
+    /// until the menu has gone.
+    private func new(_ item: String) {
+        tap("new")
+        let entry = app.buttons[item]
+        XCTAssertTrue(entry.waitForExistence(timeout: 20), item)
+        for _ in 0..<4 where entry.exists {
+            if entry.isHittable { entry.tap() }
+            _ = entry.waitForNonExistence(timeout: 1.5)
+        }
+        XCTAssertFalse(entry.exists, "the menu closed on \(item)")
     }
 
     private func enterWorkDemo() {

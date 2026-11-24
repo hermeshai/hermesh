@@ -149,6 +149,37 @@ test("a group of calls opened stays open after its row was not drawn", async () 
   await expect(page.locator(`.vrow[data-step-key="${key}"] .tgroup.open`)).toBeVisible();
 });
 
+test("a card of calls scrolled inside is where it was left after its row was not drawn", async () => {
+  // The group the test before left open, in the middle of the view; two of its calls opened, so the card has more
+  // than it shows and scrolls inside.
+  const key = await page.evaluate(() => {
+    const group = document.querySelector<HTMLElement>(".vrow .tgroup.open");
+    group?.scrollIntoView({ block: "center" });
+    return group?.closest<HTMLElement>(".vrow")!.dataset.stepKey ?? null;
+  });
+  expect(key, "no open group of calls drawn").not.toBeNull();
+  await settle();
+  const card = page.locator(`.vrow[data-step-key="${key}"] .tg-s`);
+  for (const i of [0, 1]) await page.locator(`.vrow[data-step-key="${key}"] .tool .th[aria-expanded]`).nth(i).click();
+  await expect.poll(() => card.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeGreaterThan(40);
+  // Scrolled by the person to its top (it opened at its newest call).
+  await card.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await card.hover();
+  await page.mouse.wheel(0, -2000);
+  await expect.poll(() => card.evaluate((el) => el.scrollTop)).toBe(0);
+  // The focused row stays drawn wherever the view goes: the call clicked last lets go of the focus first.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.mouse.move(5, 5);
+  const there = await scrollTop();
+  await page.evaluate(([sel, top]) => { const el = document.querySelector(sel as string)!; el.scrollTop = (top as number) + el.clientHeight * 6; }, [scroller, there] as const);
+  await settle();
+  expect(await drawn(key!), "the group's row is still drawn six screens away").toBe(false);
+  await page.evaluate(([sel, top]) => { document.querySelector(sel as string)!.scrollTop = top as number; }, [scroller, there] as const);
+  await settle();
+  await expect(card).toBeVisible();
+  expect(await card.evaluate((el) => el.scrollTop), "the card is back at its newest call, not where it was left").toBe(0);
+});
+
 test("a selection over several screens stays whole as the view moves on", async () => {
   const picked = await page.evaluate((sel) => {
     const r = document.querySelector(sel)!.getBoundingClientRect();
