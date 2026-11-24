@@ -87,7 +87,6 @@ export function Rail() {
           marks: (
             <>
               {marks.waits > 0 && <i className="rb-dot" aria-hidden="true" />}
-              {marks.running > 0 && <span className="rb-busy" aria-hidden="true"><i /></span>}
             </>
           ),
         })}

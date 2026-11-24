@@ -115,8 +115,16 @@ test("long titles are cut, each row is the agent's logo, its title and one mark,
   await expect(mark("崩溃")).toHaveAccessibleName("已崩溃");
   await expect(running.locator(".smeta .busy")).toHaveAccessibleName("运行中");
   await expect(mark("写 hello")).toHaveCount(0);
-  // No shimmer: the title reads as written.
+  // The running title shimmers, as on the iPhone: two moving copies over it, which screen readers skip; the title still reads as written.
+  await expect(running.locator(".stitle")).toHaveClass(/\brun\b/);
+  await expect(running.locator(".stitle .shine[aria-hidden=true]")).toHaveCount(2);
+  expect(await running.locator(".stitle .shine").first().evaluate((e) => getComputedStyle(e).animationName)).toBe("stitle-run");
   await expect(running.locator(".stitle")).toHaveText((await running.locator(".stitle").getAttribute("title"))!);
+  await expect(list.getByRole("listitem").filter({ hasText: "写 hello" }).locator(".stitle .shine")).toHaveCount(0);
+  // The overview does not turn while sessions run (each row shows its own work); its one mark is the waiting dot.
+  const overview = page.getByRole("button", { name: /^概览/ });
+  await expect(overview.locator(".dot-w")).toBeVisible();
+  await expect(overview.locator(".busy")).toHaveCount(0);
   // Flush left: a row's logo starts where its group's heading does.
   const heading = await box(list.getByRole("group", { name: "进行中" }).locator(".grp-h"));
   expect(Math.abs((await box(running.locator(".slogo"))).x - (heading.x + 9))).toBeLessThanOrEqual(1);
