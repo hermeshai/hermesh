@@ -127,6 +127,7 @@ type Machine struct {
 	checking    chan struct{}            // closed when the check under way ends; nil when none is
 	pending     map[string]bool          // the agents the check under way has not finished yet
 	defaults    map[string]*identityv1.AgentDefaults
+	limits      map[string]*machinev1.AgentLimits
 	tunnels     map[*tunnel]struct{}
 	connected   bool
 	refused     bool       // the relay refused admission when last connecting
@@ -238,6 +239,7 @@ func Open(cfg Config) (*Machine, error) {
 		paused: n.isPaused, defaults: n.agentDefaults, outOfProcesses: n.outOfProcesses, autoReleaseOn: n.AutoRelease, live: map[string]*live{}}
 	n.sessions.w = newWriter(st, n.log, n.sessions.deliver, n.sessions.changed)
 	n.sessions.mcp = n.mcpServers
+	n.sessions.limitsSaid = n.noteLimits
 	n.sessions.notice = func(s noticeSession, e *sessionv1.SessionEvent) {
 		n.sessionNotice(s, e)
 		n.sessionNews(s, e)
@@ -253,6 +255,7 @@ func Open(cfg Config) (*Machine, error) {
 
 func (n *Machine) loadState() error {
 	n.loadDefaults()
+	n.loadLimits()
 	on, _ := n.st.Get(kHer)
 	n.herOn = string(on) == "1"
 	n.herData = len(on) > 0 && n.herHomeExists()
@@ -535,7 +538,7 @@ func (n *Machine) Status() *machinev1.MachineStatus {
 		i, ok := n.infos[name]
 		if (ok && (i.Available || i.Problem != provider.ProblemNotFound || name == "claude" || name == "codex")) || (!ok && n.pending[name]) {
 			a := &machinev1.AgentStatus{Name: name, Available: i.Available, Version: i.Version,
-				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name], Problem: machinev1.AgentProblem(i.Problem), Binary: i.Binary}
+				LoggedIn: i.LoggedIn, Detail: i.Detail, Checking: n.pending[name], Problem: machinev1.AgentProblem(i.Problem), Binary: i.Binary, Limits: n.limits[name]}
 			n.agentModels(a, i)
 			st.Agents = append(st.Agents, a)
 		}

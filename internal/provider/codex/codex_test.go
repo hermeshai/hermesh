@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -76,5 +78,40 @@ func TestCallDropsPendingRequestWhenWriteFails(t *testing.T) {
 	}
 	if len(s.pending) != 0 {
 		t.Fatalf("failed write left %d pending requests", len(s.pending))
+	}
+}
+
+// Codex says the account's limits in account/rateLimits/updated during a
+// turn (0.171, recorded): here one window of a week, the other null, and
+// the plan. The driver tells StartSpec.Limits; a notification with no
+// window tells nothing.
+func TestRateLimitsUpdatedTellsLimits(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "codex-0.171-rate-limits-updated.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said []provider.Limits
+	s := &session{events: make(chan provider.Event, 8), limits: func(l provider.Limits) { said = append(said, l) }}
+	var m message
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	s.handleNotification(m.Method, m.Params)
+	s.handleNotification("account/rateLimits/updated", json.RawMessage(`{"rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":1795534800},"secondary":{"usedPercent":40.6,"windowDurationMins":10080,"resetsAt":1795678770}}}`))
+	s.handleNotification("account/rateLimits/updated", json.RawMessage(`{"rateLimits":{"primary":null,"secondary":null,"planType":"pro"}}`))
+	want := []provider.Limits{
+		{Plan: "pro", Windows: []provider.LimitWindow{{Minutes: 10080, UsedPercent: 61, ResetsAt: time.Unix(1795678770, 0)}}},
+		{Windows: []provider.LimitWindow{{Minutes: 300, UsedPercent: 12, ResetsAt: time.Unix(1795534800, 0)}, {Minutes: 10080, UsedPercent: 41, ResetsAt: time.Unix(1795678770, 0)}}},
+	}
+	if len(said) != len(want) {
+		t.Fatalf("told %d times: %+v", len(said), said)
+	}
+	for i := range want {
+		if said[i].Plan != want[i].Plan || !slices.Equal(said[i].Windows, want[i].Windows) {
+			t.Fatalf("limits %d: %+v, want %+v", i, said[i], want[i])
+		}
+	}
+	if len(s.events) != 0 {
+		t.Fatalf("an event of the session's: %d", len(s.events))
 	}
 }

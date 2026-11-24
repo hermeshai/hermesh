@@ -197,6 +197,10 @@ func (n *Machine) statusFor(p *Principal) *machinev1.MachineStatus {
 	st := n.Status()
 	if p == nil || p.Kind != PrincipalOwner {
 		st.Her, st.Screen, st.DirectAddrs, st.DirectQuicAddrs = nil, nil, nil, nil
+		// The owner's accounts: how much of them is used, and on what plan.
+		for _, a := range st.Agents {
+			a.Limits = nil
+		}
 	}
 	return st
 }

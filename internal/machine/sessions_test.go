@@ -830,7 +830,7 @@ func TestDeleteSession(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ss, ts, _, err := h.s.st.CountWork(ctx, buckets, whole)
+		ss, ts, _, err := h.s.st.CountWork(ctx, workstats.Ask{Buckets: buckets, Whole: whole})
 		if err != nil {
 			t.Fatal(err)
 		}

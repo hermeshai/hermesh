@@ -326,6 +326,25 @@ message AgentStatus {
   // could not tell); empty when it was not asked (or a machine from before).
   string models_state = 14;
   int64 models_observed_at_unix_ms = 15;
+  // What it last said of its account's limits, from a session here
+  // (docs/overview-usage.md §7); unset: it never said. The owner's only.
+  AgentLimits limits = 16;
+}
+
+// An agent's rate limits as it said them.
+message AgentLimits {
+  // The shortest first.
+  repeated LimitWindow windows = 1;
+  // Its plan, when it says (Codex: "pro").
+  string plan = 2;
+  google.protobuf.Timestamp observed_at = 3;
+}
+
+message LimitWindow {
+  uint32 minutes = 1;
+  // 0 to 100.
+  uint32 used_percent = 2;
+  google.protobuf.Timestamp resets_at = 3;
 }
 
 // AgentModelCatalog is no longer sent (AgentStatus.model_catalogs).

@@ -58,7 +58,7 @@ async function ready(c: Ctx & { launched: number }, selectors: string[]) {
   return { total: r.origin + r.at - c.launched, renderer: r.at };
 }
 
-const overviewReady = [".srow", ".lmap .lm-node.m", ".wcard", ".u-cells .l1"];
+const overviewReady = [".srow", ".lmap .lm-node.m", ".wk-list .tm-row"];
 
 type Probe = { app: ElectronApplication; cdp: CDPSession };
 async function cpu(c: Probe) {
@@ -394,7 +394,7 @@ test("benchmark", async () => {
     const sw: number[] = [];
     for (let i = 0; i < reps; i++) {
       await toOverview(page);
-      await page.locator(".wcard").first().waitFor();
+      await page.locator(".wk-list .tm-row").first().waitFor();
       await sleep(500);
       open.push(await timed(page, () => row(page, titles.bigIdle).click(), { sel: ".tr > :last-child", text: `第 40 轮：` }));
       await sleep(500);

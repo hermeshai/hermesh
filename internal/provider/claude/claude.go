@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -247,7 +248,7 @@ func (p *Provider) Start(ctx context.Context, spec provider.StartSpec) (provider
 	if err != nil {
 		return nil, err
 	}
-	s := &session{proc: proc, events: make(chan provider.Event, 256), gate: spec.Gate, ctx: ctx}
+	s := &session{proc: proc, events: make(chan provider.Event, 256), gate: spec.Gate, ctx: ctx, limits: spec.Limits}
 	// Read before writing: Claude may fill stdout before it reads stdin.
 	go s.read()
 	init := map[string]any{"type": "control_request", "request_id": "hermesh-init",
@@ -283,6 +284,8 @@ type session struct {
 	// question is the event).
 	asks     map[string]askRequest
 	askCalls map[string]bool
+	// limits is told the account's rate limits (StartSpec.Limits).
+	limits func(provider.Limits)
 }
 
 type askRequest struct {
@@ -402,6 +405,31 @@ func (s *session) Interrupt(ctx context.Context) error {
 	return s.write(map[string]any{"type": "control_request", "request_id": id, "request": map[string]any{"subtype": "interrupt"}})
 }
 
+// rateLimitInfo is a rate_limit_event's (Claude Code 2.1.330,
+// testdata/claude-2.1.330-rate-limit-event.json): each window by name, how
+// much of it is used (0 to 1) and when it starts again (Unix seconds).
+type rateLimitInfo struct {
+	UnifiedWindows map[string]struct {
+		Utilization float64 `json:"utilization"`
+		ResetsAt    int64   `json:"resetsAt"`
+	} `json:"unifiedWindows"`
+}
+
+// limitMinutes are the windows Claude Code names, by their length; one it
+// names otherwise is left out.
+var limitMinutes = map[string]uint32{"five_hour": 5 * 60, "seven_day": 7 * 24 * 60}
+
+func (r *rateLimitInfo) limits() (provider.Limits, bool) {
+	var out provider.Limits
+	for name, w := range r.UnifiedWindows {
+		if m, ok := limitMinutes[name]; ok && w.ResetsAt > 0 {
+			out.Windows = append(out.Windows, provider.LimitWindow{Minutes: m, UsedPercent: uint32(min(100, max(0, math.Round(w.Utilization*100)))), ResetsAt: time.Unix(w.ResetsAt, 0)})
+		}
+	}
+	slices.SortFunc(out.Windows, func(a, b provider.LimitWindow) int { return cmp.Compare(a.Minutes, b.Minutes) })
+	return out, len(out.Windows) > 0
+}
+
 type line struct {
 	Type      string          `json:"type"`
 	Subtype   string          `json:"subtype"`
@@ -423,8 +451,10 @@ type line struct {
 	Errors         []string `json:"errors"`
 	APIErrorStatus int      `json:"api_error_status"`
 	TerminalReason string   `json:"terminal_reason"`
-	CostUSD        float64  `json:"total_cost_usd"`
-	Usage          struct {
+	// rate_limit_event lines: the account's windows (once a turn).
+	RateLimitInfo *rateLimitInfo `json:"rate_limit_info"`
+	CostUSD       float64        `json:"total_cost_usd"`
+	Usage         struct {
 		InputTokens  uint64 `json:"input_tokens"`
 		CacheCreate  uint64 `json:"cache_creation_input_tokens"`
 		CacheRead    uint64 `json:"cache_read_input_tokens"`
@@ -472,6 +502,12 @@ func (s *session) read() {
 			return
 		}
 		switch l.Type {
+		case "rate_limit_event":
+			if s.limits != nil && l.RateLimitInfo != nil {
+				if lim, ok := l.RateLimitInfo.limits(); ok {
+					s.limits(lim)
+				}
+			}
 		case "system":
 			if l.Subtype == "init" && l.SessionID != "" {
 				s.emit(provider.Event{Kind: provider.EventRef, Ref: l.SessionID, Model: l.Model})

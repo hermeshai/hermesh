@@ -95,3 +95,129 @@ export function usageYear(res: Pick<QueryWorkResponse, "turns" | "sessions"> | n
       .map(([agent, n]) => ({ agent, share: n / total })),
   };
 }
+
+// The statistics' Usage view (docs/overview-usage.md §6): a range and a
+// filter make three questions of QueryWork (the page, the menus' choices and
+// the weeks of tokens), and what the screen shows is made here from the
+// answers.
+
+export type UsageRange = "today" | "week" | "month";
+export const usageRanges: UsageRange[] = ["today", "week", "month"];
+const rangeDays: Record<UsageRange, number> = { today: 1, week: 7, month: 30 };
+
+/** Only this agent's, this machine's (or one of its projects') or this sender's work; an empty field: any. projectId needs machineId. */
+export type UsageFilter = { agent: string; machineId: string; projectId: string; client: string };
+export const noUsageFilter: UsageFilter = { agent: "", machineId: "", projectId: "", client: "" };
+
+type WorkRequest = MessageInitShape<typeof QueryWorkRequestSchema>;
+const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+const firstDayOf = (today: Date, days: number) => dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days + 1));
+
+/** The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it. */
+export function usagePageRequest(range: UsageRange, filter: UsageFilter, today: Date, timeZone = zone()): WorkRequest {
+  const days = rangeDays[range];
+  return { timeZone, firstDay: firstDayOf(today, days), days, bucket: range === "today" ? WorkBucket.HOUR : WorkBucket.DAY, filter, previous: true };
+}
+
+/** The menus' question: the range's totals by all four dimensions, not filtered (each menu's lines are added up from it under the other filters). */
+export function usageMenusRequest(range: UsageRange, today: Date, timeZone = zone()): WorkRequest {
+  const days = rangeDays[range];
+  return { timeZone, firstDay: firstDayOf(today, days), days, bucket: WorkBucket.NONE, groupBy: [WorkDimension.CLIENT, WorkDimension.AGENT, WorkDimension.MACHINE, WorkDimension.PROJECT] };
+}
+
+/** The weeks' question: usageRequest's days of turns alone, under the filter (usageYear reads the answer). */
+export function usageWeeksRequest(filter: UsageFilter, today: Date, weeks = 53, timeZone = zone()): WorkRequest {
+  const { firstDay, days, bucket } = usageRequest(today, weeks, timeZone);
+  return { timeZone, firstDay, days, bucket, filter, turnsOnly: true };
+}
+
+export type UsagePage = {
+  /** Each hour of today or day of the range: sessions at work in it and the tokens of the turns that ended in it. */
+  buckets: { sessions: number; tokens: number }[];
+  /** The bucket now is in: the hour, or the last day. Those after it have not come. */
+  now: number;
+  /** Sessions at work in the range (each once), and of them those done now. */
+  sessions: number;
+  done: number;
+  failedTurns: number;
+  busySeconds: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Against the span before, in percent; null when nothing was counted in it. */
+  sessionsDelta: number | null;
+  tokensDelta: number | null;
+};
+
+/** What the page shows from the answer to usagePageRequest. */
+export function usagePage(res: QueryWorkResponse | null | undefined, range: UsageRange, now: Date): UsagePage {
+  const hourly = range === "today";
+  const buckets = Array.from({ length: hourly ? 24 : rangeDays[range] }, () => ({ sessions: 0, tokens: 0 }));
+  for (const x of res?.sessions ?? []) if (buckets[x.bucket]) buckets[x.bucket].sessions += x.sessions;
+  for (const x of res?.turns ?? []) if (buckets[x.bucket]) buckets[x.bucket].tokens += Number(x.inputTokens) + Number(x.outputTokens);
+  const sum = <T,>(list: T[] | undefined, f: (x: T) => number | bigint) => (list ?? []).reduce((n, x) => n + Number(f(x)), 0);
+  const sessions = sum(res?.rangeSessions, (x) => x.sessions);
+  const inputTokens = sum(res?.rangeTurns, (x) => x.inputTokens);
+  const outputTokens = sum(res?.rangeTurns, (x) => x.outputTokens);
+  const delta = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
+  return {
+    buckets,
+    now: hourly ? now.getHours() : buckets.length - 1,
+    sessions,
+    done: sum(res?.rangeSessions, (x) => x.done),
+    failedTurns: sum(res?.rangeTurns, (x) => x.failedTurns),
+    busySeconds: sum(res?.rangeTurns, (x) => x.busySeconds),
+    inputTokens,
+    outputTokens,
+    sessionsDelta: delta(sessions, sum(res?.previousSessions, (x) => x.sessions)),
+    tokensDelta: delta(inputTokens + outputTokens, sum(res?.previousTurns, (x) => Number(x.inputTokens) + Number(x.outputTokens))),
+  };
+}
+
+/** A choice of a filter's menu: what it is, and its sessions and tokens in the range under the other filters. */
+export type UsageChoice = { id: string; sessions: number; tokens: number };
+export type UsageChoices = {
+  agents: UsageChoice[];
+  /** Each machine with its projects (a project's id is its machine's own). */
+  machines: (UsageChoice & { projects: UsageChoice[] })[];
+  clients: UsageChoice[];
+};
+
+/**
+ * Each menu's choices from the answer to usageMenusRequest: what worked in the range under the other filters (so
+ * a choice never leads to nothing), the busiest first; the one chosen stays listed when it has no work.
+ */
+export function usageChoices(res: Pick<QueryWorkResponse, "rangeSessions" | "rangeTurns"> | null | undefined, filter: UsageFilter): UsageChoices {
+  type Group = { client: string; agent: string; machineId: string; projectId: string };
+  const agent = (g: Group) => !filter.agent || g.agent === filter.agent;
+  const place = (g: Group) => (!filter.machineId || g.machineId === filter.machineId) && (!filter.projectId || g.projectId === filter.projectId);
+  const client = (g: Group) => !filter.client || g.client === filter.client;
+  const add = (to: Map<string, UsageChoice>, id: string, sessions: number, tokens: number) => {
+    const c = to.get(id) ?? { id, sessions: 0, tokens: 0 };
+    to.set(id, { id, sessions: c.sessions + sessions, tokens: c.tokens + tokens });
+  };
+  const agents = new Map<string, UsageChoice>();
+  const machines = new Map<string, UsageChoice>();
+  const projects = new Map<string, Map<string, UsageChoice>>();
+  const clients = new Map<string, UsageChoice>();
+  const each = (g: Group | undefined, sessions: number, tokens: number) => {
+    if (!g) return;
+    if (place(g) && client(g)) add(agents, g.agent, sessions, tokens);
+    if (agent(g) && place(g)) add(clients, g.client, sessions, tokens);
+    if (agent(g) && client(g)) {
+      add(machines, g.machineId, sessions, tokens);
+      if (!projects.has(g.machineId)) projects.set(g.machineId, new Map());
+      add(projects.get(g.machineId)!, g.projectId, sessions, tokens);
+    }
+  };
+  for (const x of res?.rangeSessions ?? []) each(x.group, x.sessions, 0);
+  for (const x of res?.rangeTurns ?? []) each(x.group, 0, Number(x.inputTokens) + Number(x.outputTokens));
+  const list = (m: Map<string, UsageChoice> | undefined, chosen: string) => {
+    const out = [...(m?.values() ?? [])].sort((a, b) => b.sessions - a.sessions || b.tokens - a.tokens || a.id.localeCompare(b.id));
+    return chosen && !out.some((c) => c.id === chosen) ? [...out, { id: chosen, sessions: 0, tokens: 0 }] : out;
+  };
+  return {
+    agents: list(agents, filter.agent),
+    machines: list(machines, filter.machineId).map((m) => ({ ...m, projects: list(projects.get(m.id), m.id === filter.machineId ? filter.projectId : "") })),
+    clients: list(clients, filter.client),
+  };
+}

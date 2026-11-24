@@ -43,6 +43,7 @@ struct DrawerView: View {
                     newSessionPlace.plainRow()
                     herPlace.plainRow()
                     overviewPlace.plainRow()
+                    statisticsPlace.plainRow()
                     sessionsHeading.plainRow()
                     MenuSessions()
                     Color.clear.frame(height: 90).plainRow() // room under the account's button
@@ -163,6 +164,24 @@ struct DrawerView: View {
         .padding(.horizontal, 10)
         .accessibilityLabel(Text([String(localized: "Overview"), waits ? String(localized: "\(team.waiting.count + team.requests) need you") : "", team.running.isEmpty ? "" : String(localized: "\(team.running.count) working")].filter { !$0.isEmpty }.joined(separator: ", ")))
         .accessibilityIdentifier("overview-place")
+    }
+
+    /// Statistics: the counts of work, which the overview does not show.
+    private var statisticsPlace: some View {
+        Button {
+            model.open(.statistics)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "chart.bar").frame(width: 28)
+                Text("Statistics")
+                Spacer(minLength: 0)
+            }
+            .font(.body).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16).frame(height: 48)
+        }
+        .buttonStyle(RowStyle(selected: model.root == .statistics && model.path.isEmpty))
+        .padding(.horizontal, 10)
+        .accessibilityIdentifier("statistics-place")
     }
 
     /// "Sessions", and the view menu at its end.

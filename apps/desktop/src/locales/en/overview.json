@@ -1,12 +1,16 @@
 {
   "title": "Overview",
+  "views": {
+    "label": "View",
+    "live": "Live",
+    "usage": "Usage",
+    "limits": "Limits"
+  },
   "day": "{{weekday}}, {{date}}",
   "listSeparator": ", ",
   "thisMac": "This Mac",
   "thisMac_win": "This PC",
   "thisMac_linux": "This Computer",
-  "runningCount_one": "{{count}} running",
-  "runningCount_other": "{{count}} running",
   "add": {
     "newGrant": "Connect Agent…",
     "addMachine": "Add Environment…",
@@ -54,14 +58,6 @@
     "notSignedIn": "Not signed in",
     "paused": "Paused",
     "offline": "Offline",
-    "running": "Running",
-    "waiting": "Waiting for you",
-    "failed": "Failed",
-    "hintPicked": "Click again, or click the center icon, to show all",
-    "hintPick": "Click any node to filter tasks through it",
-    "today": "Today",
-    "todayStats_one": "Today <b>{{count}}</b> task · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
-    "todayStats_other": "Today <b>{{count}}</b> tasks · <b>{{done}}</b> done · <bad>{{failed}}</bad> failed",
     "personalAgent": "Personal agent",
     "expiresToday": "Expires today",
     "expiresIn_one": "Expires in {{count}} day",
@@ -71,7 +67,6 @@
     "accepting": "Taking new tasks"
   },
   "working": {
-    "title": "Active Now",
     "manageAccess": "Manage Access…",
     "noneThrough": "No tasks pass through here.",
     "matches": "· {{count}}",
@@ -80,34 +75,76 @@
     "byGrant": "Tasks started by {{label}}",
     "onMachine": "Tasks on {{machine}}",
     "inProject": "Tasks in project {{project}}",
-    "running": "Running",
     "waiting": "Waiting for you",
     "crashed": "Crashed",
     "failed": "Failed",
-    "preparing": "Preparing",
-    "queued": "Queued",
     "nothingRuns": "No active tasks",
     "nothingRunsHint": "When an agent starts working, its tasks appear here and the connection map lights up."
   },
   "usage": {
     "title": "Usage",
-    "year": "Past year · tokens",
-    "last30": "past 30 days",
-    "today": "Today",
-    "activeDays": "Active days",
-    "streak": "Streak",
-    "days_one": "{{count}} day",
-    "days_other": "{{count}} days",
     "cells": "{{tokens}} tokens in the past year, used on {{active}} days",
-    "byAgent": "By agent provider",
-    "empty": "Once you start, the days light up here one by one.",
     "less": "Less",
     "more": "More",
     "noUsage": "No usage",
-    "sessions_one": " · {{count}} task",
-    "sessions_other": " · {{count}} tasks",
     "syncing": "Syncing {{machines}}’s work…",
-    "behind": "{{machines}} counted up to {{time}}"
+    "behind": "{{machines}} counted up to {{time}}",
+    "range": {
+      "today": "Today",
+      "week": "7 Days",
+      "month": "30 Days"
+    },
+    "filter": {
+      "range": "Range",
+      "agent": "Agent Provider",
+      "place": "Environment / Project",
+      "client": "Sender",
+      "all": "All",
+      "allProjects": "All Projects",
+      "counts_one": "{{count}} task · {{tokens}} tokens",
+      "counts_other": "{{count}} tasks · {{tokens}} tokens",
+      "none": "No tasks"
+    },
+    "sessions": {
+      "title": "Tasks",
+      "unit_one": "task ran",
+      "unit_other": "tasks ran",
+      "done": "Done",
+      "failed": "Failed",
+      "failedTurns_one": "{{count}} turn",
+      "failedTurns_other": "{{count}} turns",
+      "busy": "Time at work"
+    },
+    "tokens": {
+      "title": "Tokens",
+      "unit": "tokens",
+      "input": "Input",
+      "output": "Output"
+    },
+    "delta": {
+      "today": "vs. yesterday at this time",
+      "week": "vs. the 7 days before",
+      "month": "vs. the 30 days before"
+    },
+    "duration": {
+      "under": "Under 1 min",
+      "minutes": "{{m}} min",
+      "hours": "{{h}} hr",
+      "hoursMinutes": "{{h}} hr {{m}} min"
+    },
+    "year": {
+      "title": "Past Year",
+      "summary": "{{active}} active days · {{streak}}-day streak"
+    },
+    "now": "Now",
+    "today": "Today",
+    "hour": "{{h}}:00",
+    "tip": {
+      "sessions_one": "{{count}} task ran",
+      "sessions_other": "{{count}} tasks ran",
+      "tokens": "{{tokens}} tokens"
+    },
+    "cache": "Input includes what each provider read from and wrote to its cache."
   },
   "card": {
     "ownKey": "Personal agent · holds its own key",
@@ -127,5 +164,42 @@
     "seen_one": "{{count}} task today · last active {{ago}}",
     "seen_other": "{{count}} tasks today · last active {{ago}}",
     "revokeElsewhere": "To revoke its access, use one of your trusted devices."
+  },
+  "limits": {
+    "title": "Limits",
+    "low": "Running Low",
+    "left": "left",
+    "allowance": "Allowance",
+    "time": "Time",
+    "reported": "Reported by {{machine}} · {{ago}}",
+    "window": {
+      "m300": "5-Hour Window",
+      "m10080": "Weekly Window",
+      "hours_one": "{{count}}-Hour Window",
+      "hours_other": "{{count}}-Hour Window",
+      "days_one": "{{count}}-Day Window",
+      "days_other": "{{count}}-Day Window"
+    },
+    "short": {
+      "m300": "5-hour",
+      "m10080": "weekly",
+      "hours_one": "{{count}}-hour",
+      "hours_other": "{{count}}-hour",
+      "days_one": "{{count}}-day",
+      "days_other": "{{count}}-day"
+    },
+    "resets": "Resets at {{time}}",
+    "resetsOn": "Resets {{day}} {{time}}",
+    "untilHours": "{{h}} hr {{m}} min left",
+    "untilWholeHours_one": "{{count}} hr left",
+    "untilWholeHours_other": "{{count}} hr left",
+    "untilMinutes_one": "{{count}} min left",
+    "untilMinutes_other": "{{count}} min left",
+    "none": "It doesn’t report its limits",
+    "notYet": "Not reported yet; shows after it runs a task",
+    "stale": "Its windows have reset; updates after it next runs",
+    "foot": "Each provider reports its limits as it runs; Hermesh only passes them on and doesn’t read your accounts. For a provider that hasn’t run in a while, these are the numbers from its last run.",
+    "needTitle": "{{agent}}’s {{window}} limit is at {{left}}%",
+    "see": "View"
   }
 }

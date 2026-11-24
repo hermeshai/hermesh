@@ -68,6 +68,13 @@ struct RailView: View {
         } mark: {
             if waits > 0 { Circle().fill(.orange).frame(width: 9, height: 9) }
         }
+        button(Text("Statistics"), id: "rail-statistics", current: model.root == .statistics && model.path.isEmpty) {
+            model.open(.statistics)
+        } icon: {
+            Image(systemName: "chart.bar")
+        } mark: {
+            EmptyView()
+        }
         button("Search", id: "rail-search") { model.sheet = .search } icon: { Image(systemName: "magnifyingglass") }
     }
 

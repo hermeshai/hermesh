@@ -28,13 +28,15 @@ async function changes(page: Page, ms: number): Promise<string[][]> {
   );
 }
 
-test("the overview's motion is all the compositor's: comets ride the running session's link, and a question pings", async () => {
+test("the overview's motion is all the compositor's: comets ride the running session's link, and every session's line is alike", async () => {
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
   // One running session: two comets of a head and five tail dots each.
   await expect(map.locator(".lm-comet")).toHaveCount(2);
   await expect(map.locator(".lm-comet i")).toHaveCount(12);
-  await expect(map.locator(".lmap-pings .ping")).toHaveCount(1); // 选颜色 waits on its question
+  // A question or a failure is under 需要你处理: its line is the others', with no dot along it.
+  await expect(map.locator(".lm-flow")).toHaveCount(4);
+  await expect(map.locator(".lm-flow.wait, .lm-flow.fail, .lm-mark, .ping")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.getAnimations().length)).toBeGreaterThan(12);
 
   const animated = await page.evaluate(() =>
@@ -45,7 +47,7 @@ test("the overview's motion is all the compositor's: comets ride the running ses
   );
   for (const a of animated) expect(a.props.every((p) => p === "transform" || p === "opacity"), `${a.name}: ${a.props}`).toBe(true);
   const names = new Set(animated.map((a) => a.name));
-  for (const n of ["wc-sweep", "lm-beat", "lm-ring", "lm-breathe", "ping"]) expect(names, n).toContain(n);
+  expect(names).toContain("lm-breathe");
 
   // Each dot where the link puts it: u of the way along (the document's time over the comet's
   // duration, plus its phase), less its place in the tail; faded in and out at the ends.
@@ -76,12 +78,12 @@ test("the overview's motion is all the compositor's: comets ride the running ses
 
 test("while nothing happens, the page changes only its clocks, all in the same frame", async () => {
   const { app, page } = await launch();
-  const running = page.getByRole("region", { name: "正在运行" }).getByRole("listitem").filter({ hasText: "跑很久" });
-  await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
+  const running = page.getByRole("region", { name: "进行中" }).getByRole("listitem").filter({ hasText: "跑很久" });
+  await expect(running.locator(".tm-when")).toHaveText(/^\d+:\d\d$/);
   await page.waitForTimeout(1500); // the first lists and the usage are in
   let batches = await changes(page, 3200);
   expect(batches.flat().length).toBeGreaterThan(0);
-  for (const c of batches.flat()) expect(c).toMatch(/^wc-time characterData$/);
+  for (const c of batches.flat()) expect(c).toMatch(/^tm-when characterData$/);
   // The sidebar beside it has no clock while its rows are titles alone (docs/her-team.md §16). With their
   // metadata, a running row's clock ticks with the card's.
   await page.getByRole("button", { name: "视图选项" }).click();

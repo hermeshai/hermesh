@@ -37,6 +37,9 @@
 //	message <to>|<text> call the session's message_send tool (Hermesh's MCP
 //	                    server) to write text to agent to ("" for the
 //	                    session's creator); its result is the turn's
+//	limits <m>:<u>,...  say the account's rate limits (StartSpec.Limits): a
+//	                    window of m minutes, u percent used, that resets m
+//	                    minutes from now; with plan=<p> among them, the plan
 //
 // Steer appends a script to the running turn, run before it completes.
 //
@@ -303,6 +306,21 @@ func (s *session) script(ctx context.Context, prompt string) (last string, ended
 			}
 		case "warn":
 			s.emit(provider.Event{Kind: provider.EventError, Text: arg})
+		case "limits":
+			var l provider.Limits
+			for _, w := range strings.Split(arg, ",") {
+				if plan, ok := strings.CutPrefix(w, "plan="); ok {
+					l.Plan = plan
+					continue
+				}
+				m, u, _ := strings.Cut(w, ":")
+				mins, _ := strconv.Atoi(m)
+				used, _ := strconv.Atoi(u)
+				l.Windows = append(l.Windows, provider.LimitWindow{Minutes: uint32(mins), UsedPercent: uint32(used), ResetsAt: time.Now().Add(time.Duration(mins) * time.Minute).Truncate(time.Second)})
+			}
+			if s.spec.Limits != nil {
+				s.spec.Limits(l)
+			}
 		case "message": // message <to>|<text>: through the session's message_send tool
 			to, text, _ := strings.Cut(arg, "|")
 			s.emit(provider.Event{Kind: provider.EventToolCall, CallID: id, ToolKind: provider.ToolOther, ToolName: "message_send", Summary: to})

@@ -6,7 +6,8 @@ import type { UpdateInfo } from "./update";
 // What the preload script gives the page (window.hermesh). Everything else
 // the page needs comes from hermeshd through app://hermesh/api.
 
-export type MenuItem = { id: string; label: string; enabled?: boolean; checked?: boolean } | { separator: true };
+/** detail: a second line under the label (macOS; elsewhere it follows the label). submenu: the item opens it and is not itself a choice. */
+export type MenuItem = { id: string; label: string; enabled?: boolean; checked?: boolean; detail?: string; submenu?: MenuItem[] } | { separator: true };
 
 /** Commands from the app menu and the menu bar, handled by the page. */
 export type Command =
@@ -70,8 +71,8 @@ export type Bridge = {
   showUpgrade(): void;
   /** Windows: shows the app menu at x, y (the window's menu bar stays hidden). */
   showAppMenu(x: number, y: number): void;
-  /** Shows a native menu at the pointer; resolves to the chosen item's id. */
-  popupMenu(items: MenuItem[]): Promise<string | null>;
+  /** Shows a native menu at the pointer, or at `at` in the window (under a pop-up button); resolves to the chosen item's id. */
+  popupMenu(items: MenuItem[], at?: { x: number; y: number }): Promise<string | null>;
   /** Tells the renderer memory is short (webFrame.clearCache): it drops caches and gives back what its allocators keep (renderer/src/memory.ts). */
   releaseMemory(): void;
   onCommand(cb: (c: Command) => void): () => void;

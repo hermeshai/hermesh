@@ -14,6 +14,8 @@ private let appConnLog = Logger(subsystem: "ai.hermesh.app", category: "connecti
 /// Where the side menu leads.
 enum Root: Hashable {
     case her, overview, grants, machines
+    /// The counts of work (docs/overview-usage.md): a place of the menu's, under the overview.
+    case statistics
     case session(String)
     /// A new v2 session (docs/thread-composer.md): on a machine and in a project when its entry named them ("" else).
     case newThread(String, String)
@@ -23,7 +25,7 @@ enum Root: Hashable {
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
     var titleLarge: Bool {
         switch self {
-        case .her, .overview, .session, .newThread, .thread: false
+        case .her, .overview, .statistics, .session, .newThread, .thread: false
         default: true
         }
     }
@@ -39,6 +41,7 @@ struct AddedProject: Equatable {
 /// Pages pushed onto the main or account navigation stack.
 enum Route: Hashable {
     case machines, grants
+    case tasks // every session by day, from the overview's See All
     case session(String)
     case grant(String) // grant id
     case machine(String) // machine id: its environment page (docs/settings-environments.md §5.9)
@@ -166,15 +169,10 @@ final class AppModel {
     var devices: [Device] = []
     var projects: [Project] = []
     var pairings: [PairingDetails] = []
-    var usage: UsageYear?
-    /// The overview's range, and the work counted over each range asked,
-    /// kept so switching shows the last count at once.
-    var workPeriod: WorkPeriod = .today {
-        didSet {
-            if !isDemo { UserDefaults.standard.set(workPeriod.rawValue, forKey: "workPeriod") }
-        }
-    }
+    /// Today's work counted, for the team panel's head.
     var work: [WorkPeriod: RangeWork] = [:]
+    /// What Statistics shows, and its answers.
+    let stats: StatsModel
     var now = Date()
     /// There is a world to show: kept from before, or watched.
     var hasWorld = false
@@ -272,10 +270,10 @@ final class AppModel {
 
     init(demo: DemoService? = nil) {
         isDemo = demo != nil
+        stats = StatsModel(isDemo: demo != nil)
         conversations = Conversations(persistent: demo == nil)
         her = HerPlace(persistent: demo == nil)
         if let demo { api = AppAPI(demo: demo); root = .her; return }
-        workPeriod = WorkPeriod(rawValue: UserDefaults.standard.string(forKey: "workPeriod") ?? "") ?? .today
         listView = Self.saved("listView") ?? SessionListLayout()
         showArchived = Self.saved("showArchived") ?? false
         collapsed = Self.saved("collapsed") ?? []
@@ -302,8 +300,6 @@ final class AppModel {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var workTask: Task<Void, Never>?
     @ObservationIgnored private var workVersion: UInt64 = 0
-    /// The overview is on screen: its work is counted again only then.
-    @ObservationIgnored var overviewShown = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var active = false
     @ObservationIgnored private var network: NWPathMonitor?
@@ -651,7 +647,6 @@ final class AppModel {
         watchTask = Task { await watch() }
         threadsTask = Task { await followThreads() }
         clockTask = Task { await clock() }
-        Task { await loadUsage() }
     }
 
     // MARK: Keeping current
@@ -801,42 +796,32 @@ final class AppModel {
         olderKey += 1
     }
 
-    /// A range's work counted, Work's own or the one named (today's, for the
-    /// team panel), from what the core holds (nothing is asked of the
-    /// machines, so it answers at once).
-    func loadWork(_ range: WorkPeriod? = nil) async {
+    /// A range's work counted (today's, for the team panel), from what the
+    /// core holds (nothing is asked of the machines, so it answers at once).
+    func loadWork(_ period: WorkPeriod) async {
         guard let api else { return }
-        let period = range ?? workPeriod, now = Date()
+        let now = Date()
         let r = period.request(now)
         if let res = try? await api.queryWork(r) {
             work[period] = RangeWork(period: period, firstDay: r.firstDay, res)
         }
     }
 
-    /// The core's counts moved: the overview's range again while it shows
-    /// it, and the weeks of usage (both read locally, in milliseconds).
+    /// The core's counts moved: Statistics asks again while it shows (read
+    /// locally, in milliseconds); the overview shows no counts.
     private func workChanged() {
         guard workTask == nil else { return }
         workTask = Task {
             try? await Task.sleep(for: .seconds(1)) // a burst of changes is one count
             guard !Task.isCancelled else { return }
             workTask = nil
-            if overviewShown { await loadWork() }
-            await loadUsage()
+            if stats.shown { await stats.load(api, now: Date()) }
         }
     }
     /// Changes after each page asked for: the list's last row asks again
     /// while it still shows (the page may have added nothing it shows: all
     /// archived, or in a folded group), or after a page failed.
     var olderKey = 0
-
-    func loadUsage() async {
-        guard let api else { return }
-        let now = Date()
-        if let r = try? await api.queryWork(usageRequest(now, weeks: 18)) {
-            usage = usageYear(r.turns, today: now, weeks: 18)
-        }
-    }
 
     // MARK: Looking things up
 

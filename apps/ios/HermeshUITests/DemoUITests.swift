@@ -143,7 +143,8 @@ final class DemoUITests: XCTestCase {
     private func played(_ names: String, file: StaticString = #filePath, line: UInt = #line) {
         let log = app.descendants(matching: .any).matching(identifier: "haptics").firstMatch
         let heard = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", names), object: log)
-        if XCTWaiter().wait(for: [heard], timeout: 5) != .completed {
+        // The demo's turn ends 8 seconds after its answer (DemoService), and its end plays one.
+        if XCTWaiter().wait(for: [heard], timeout: 12) != .completed {
             XCTFail("haptics: \(String(describing: log.value)), not \(names)", file: file, line: line)
         }
     }
@@ -238,6 +239,10 @@ final class DemoUITests: XCTestCase {
         welcome.name = "welcome-three-choices-zh"; welcome.lifetime = .keepAlways; add(welcome)
         enterWorkDemo()
         XCTAssertTrue(app.staticTexts["演示模式"].waitForExistence(timeout: 15))
+        // The overview in Chinese: what needs the owner, the link map, what finished.
+        XCTAssertTrue(app.staticTexts["需要你处理"].waitForExistence(timeout: 10) && app.staticTexts["端到端加密"].exists && app.staticTexts["最近完成"].exists)
+        let overview = XCTAttachment(screenshot: app.screenshot())
+        overview.name = "overview-zh"; overview.lifetime = .keepAlways; add(overview)
         tap("run-demo-task")
         XCTAssertTrue(app.staticTexts["示例应用应该显示哪句问候语？"].waitForExistence(timeout: 10))
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -415,23 +420,89 @@ final class DemoUITests: XCTestCase {
         tap("close"); tap("exit-demo")
     }
 
+    /// The overview is only now (docs/overview-usage.md §4): what needs the owner as a deck, the link map,
+    /// what runs and what finished, with every session one tap away; the counts are on a page of their own.
+    func testOverviewNow() {
+        enterWorkDemo()
+        let any = app.descendants(matching: .any)
+        let map = any["link-map"].firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 15), "the link map")
+        XCTAssertFalse(any["filter-range"].exists, "no counts on the overview")
+        checkpoint("overview-now")
+
+        // The deck: one card in front; its edge, or a swipe, brings the next.
+        let front = any["needs-place"].firstMatch
+        XCTAssertTrue(front.waitForExistence(timeout: 5), "the deck says which card is in front")
+        XCTAssertTrue(front.label.hasPrefix("1 / "), front.label)
+        tap("needs-next")
+        XCTAssertTrue(wait { front.label.hasPrefix("2 / ") }, front.label)
+        checkpoint("overview-deck-second")
+        any["needs"].firstMatch.swipeRight()
+        XCTAssertTrue(wait { front.label.hasPrefix("1 / ") }, front.label)
+
+        // A limit nearly used up is a card: View opens Limits.
+        for _ in 0 ..< 8 where !any["limit-claude"].firstMatch.isHittable {
+            tap("needs-next")
+            _ = wait(1) { any["limit-claude"].firstMatch.isHittable }
+        }
+        XCTAssertTrue(any["limit-claude"].firstMatch.isHittable, "the limit card")
+        checkpoint("overview-limit-card")
+        tap("limit-view")
+        XCTAssertTrue(any["limit-claude-300"].firstMatch.waitForExistence(timeout: 5), "Limits, from the card")
+        place("Overview")
+        XCTAssertTrue(map.waitForExistence(timeout: 10))
+        for _ in 0 ..< 8 where !front.label.hasPrefix("1 / ") { any["needs"].firstMatch.swipeRight() }
+
+        // A node picked: every session through it, in place of what runs and what finished.
+        tap("map-Mac mini")
+        XCTAssertTrue(any["through"].firstMatch.waitForExistence(timeout: 5), "the sessions through the node")
+        checkpoint("overview-picked")
+        tap("show-all")
+        XCTAssertFalse(any["show-all"].firstMatch.waitForExistence(timeout: 1))
+
+        // Answered on the card: it goes, the next comes up, and the session runs as a tile.
+        let before = Int(front.label.split(separator: " ").last ?? "") ?? 0
+        tap("quick-answer-Hello, world!")
+        XCTAssertTrue(wait { !front.exists || (Int(front.label.split(separator: " ").last ?? "") ?? 0) == before - 1 }, "the answered card left the deck")
+        checkpoint("overview-answered")
+
+        // Every session, one tap from what finished.
+        reach("see-all"); tap("see-all")
+        XCTAssertTrue(any["tasks"].firstMatch.waitForExistence(timeout: 5), "every session")
+        checkpoint("overview-tasks")
+        back()
+
+        // The counts are a place of the menu's (Limits, as the card left it; then Usage).
+        place("Statistics")
+        app.segmentedControls["stats-segment"].buttons.element(boundBy: 0).tap()
+        reach("filter-range")
+        place("Overview")
+        XCTAssertTrue(map.waitForExistence(timeout: 10))
+    }
+
+    private func wait(_ timeout: TimeInterval = 5, _ done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(timeout)
+        while !done() && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.2)) }
+        return done()
+    }
+
     func testReviewOverviewAndSettings() {
         enterWorkDemo()
-        reach("work-period")
-        for range in ["7 Days", "30 Days", "Today"] { tap(range) }
-        reach("flow-client-ChatGPT"); tap("flow-client-ChatGPT"); tap("flow-client-ChatGPT")
-        tap("flow-agent-codex"); tap("flow-agent-codex")
-        let bands = app.descendants(matching: .any)["flow-bands"].firstMatch
-        bands.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        XCTAssertTrue(app.descendants(matching: .any)["flow-tip"].waitForExistence(timeout: 5))
-        checkpoint("overview-flow")
-        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
-        reach("coding-agent-codex")
-        let row = app.descendants(matching: .any)["coding-agent-codex"].firstMatch
-        let hour = CGFloat(Calendar.current.component(.hour, from: Date()))
-        row.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 50 + (row.frame.width - 64) * (hour + 0.5) / 24, dy: row.frame.height - 14)).tap()
-        XCTAssertTrue(app.descendants(matching: .any)["heat-tip"].waitForExistence(timeout: 5))
-        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
+        place("Statistics")
+        reach("filter-range")
+        for range in ["30 Days", "Today", "7 Days"] { pick("filter-range", range) }
+        pick("filter-agent", "Codex")
+        XCTAssertTrue(app.descendants(matching: .any)["usage-sessions"].firstMatch.waitForExistence(timeout: 5))
+        checkpoint("overview-usage")
+        pick("filter-agent", "All", shows: "Agent Provider")
+        app.segmentedControls["stats-segment"].buttons.element(boundBy: 1).tap()
+        // The least left first: Claude Code's five hours, 18% left.
+        let five = app.descendants(matching: .any)["limit-claude-300"].firstMatch
+        XCTAssertTrue(five.waitForExistence(timeout: 5))
+        XCTAssertTrue(five.label.contains("18%"), five.label)
+        XCTAssertTrue(app.descendants(matching: .any)["limits-codex"].firstMatch.exists)
+        checkpoint("overview-limits")
+        app.segmentedControls["stats-segment"].buttons.element(boundBy: 0).tap()
         // The environments, in settings; an environment's page from them.
         place("Machines"); tap("machine-Mac mini"); back()
         reachInSheet("account-appearance"); tap("account-appearance")
@@ -579,7 +650,8 @@ final class DemoUITests: XCTestCase {
     /// before/after this UI-only flow. No production test hooks are used.
     func testReviewPersistentSettingsIsolation() {
         enterWorkDemo()
-        reach("work-period"); tap("30 Days")
+        place("Statistics")
+        reach("filter-range"); pick("filter-range", "30 Days")
         place("All Sessions")
         tap("view-options"); menuItem("Group"); tap("By Machine")
         tap("view-options"); menuItem("Show"); tap("Metadata")
@@ -609,6 +681,16 @@ final class DemoUITests: XCTestCase {
         let cancel = app.buttons.allElementsBoundByIndex.first { $0.frame.minX >= frame.maxX - 2 && abs($0.frame.midY - frame.midY) < 12 }
         XCTAssertNotNil(cancel); cancel?.tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+    }
+
+    /// Opens a filter's menu, chooses item in it, and waits for the button to say it (or shows).
+    private func pick(_ button: String, _ item: String, shows: String? = nil) {
+        tap(button)
+        let line = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", item, item + ",")).firstMatch
+        XCTAssertTrue(line.waitForExistence(timeout: 5), item)
+        line.tap()
+        let b = app.buttons[button]
+        XCTAssertTrue(wait { b.isHittable && b.label == (shows ?? item) }, "\(button): \(b.label)")
     }
 
     private func menuItem(_ prefix: String) {
@@ -665,6 +747,7 @@ final class DemoUITests: XCTestCase {
         if !app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 3) { tap("menu") }
         switch title {
         case "Overview": tap("overview-place")
+        case "Statistics": tap("statistics-place")
         case "Grants": tap("account"); reachInSheet("account-grants"); tap("account-grants")
         case "Machines": tap("account"); reachInSheet("account-machines")
         case "All Sessions": break

@@ -148,8 +148,8 @@ func (l *Local) WorkSeq() int64 { return l.n.st.WorkSeq() }
 
 // CountWork adds up this machine's work counts over a range (work.go), in
 // process: the owner device it runs on reads them here, never copies them.
-func (l *Local) CountWork(ctx context.Context, buckets []workstats.Bound, whole workstats.Bound) (sessions, turns []workstats.Row, keys map[int64]WorkKey, err error) {
-	return l.n.st.CountWork(ctx, buckets, whole)
+func (l *Local) CountWork(ctx context.Context, a workstats.Ask) (sessions, turns []workstats.Row, keys map[int64]WorkKey, err error) {
+	return l.n.st.CountWork(ctx, a)
 }
 
 // kClients: the agents that reached this machine, by client id, with the

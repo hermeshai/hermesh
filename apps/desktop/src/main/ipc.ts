@@ -123,18 +123,23 @@ export function registerIPC() {
     if (!trusted(e) || typeof x !== "number" || typeof y !== "number") return;
     Menu.getApplicationMenu()?.popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined, x: Math.round(x), y: Math.round(y) });
   });
-  ipcMain.handle("popup-menu", (e, items: MenuItem[]) => {
+  // at: where the menu opens in the window (under a pop-up button); the pointer otherwise.
+  ipcMain.handle("popup-menu", (e, items: MenuItem[], at?: { x: number; y: number }) => {
     if (!trusted(e) || !Array.isArray(items)) return null;
     return new Promise<string | null>((resolve) => {
       let chosen: string | null = null;
-      const menu = Menu.buildFromTemplate(
-        items.map((it) =>
-          "separator" in it
-            ? { type: "separator" as const }
-            : { label: String(it.label), enabled: it.enabled !== false, type: it.checked === undefined ? ("normal" as const) : ("checkbox" as const), checked: it.checked, click: () => (chosen = it.id) },
-        ),
-      );
-      menu.popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined, callback: () => setTimeout(() => resolve(chosen)) });
+      const build = (items: MenuItem[]): Electron.MenuItemConstructorOptions[] =>
+        items.map((it) => {
+          if ("separator" in it) return { type: "separator" as const };
+          const detail = it.detail ? String(it.detail) : "";
+          const label = detail && process.platform !== "darwin" ? `${it.label}    ${detail}` : String(it.label);
+          const sublabel = detail && process.platform === "darwin" ? detail : undefined;
+          // An item that opens a menu cannot carry a check: its own first line inside says what is chosen.
+          if (Array.isArray(it.submenu)) return { label, sublabel, submenu: build(it.submenu) };
+          return { label, sublabel, enabled: it.enabled !== false, type: it.checked === undefined ? ("normal" as const) : ("checkbox" as const), checked: it.checked, click: () => (chosen = it.id) };
+        });
+      const where = at && typeof at.x === "number" && typeof at.y === "number" ? { x: Math.round(at.x), y: Math.round(at.y) } : {};
+      Menu.buildFromTemplate(build(items)).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined, ...where, callback: () => setTimeout(() => resolve(chosen)) });
     });
   });
   ipcMain.on("run-in-terminal", (e, c: TerminalCommand) => {

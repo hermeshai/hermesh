@@ -1,11 +1,17 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { QueryWorkResponse } from "@hermesh/proto/local";
-import { codingAgentShort, dayKey, language, tokensText, usageRequest, usageYear, type UsageCell } from "@hermesh/core";
-import { AgentLogo } from "@hermesh/ui";
+import type { MessageInitShape } from "@bufbuild/protobuf";
+import type { QueryWorkRequestSchema, QueryWorkResponse } from "@hermesh/proto/local";
+import {
+  codingAgentTitle, dayKey, language, noUsageFilter, tokensText, usageChoices, usageMenusRequest, usagePage, usagePageRequest, usageRanges, usageWeeksRequest, usageYear,
+  type UsageChoice, type UsageFilter, type UsageRange,
+} from "@hermesh/core";
+import type { MenuItem } from "../../../shared/bridge";
 import { i18n } from "../../../shared/i18n";
 import { local } from "../api";
-import { useStore } from "../store";
+import { Icon } from "../icons";
+import { machineName, senderName } from "../Sidebar";
+import { useStore, type Store } from "../store";
 
 /** A day as the overview's header and the usage tip show it: "Mon, Sep 29". */
 export function dayText(d: Date): string {
@@ -14,40 +20,232 @@ export function dayText(d: Date): string {
   return i18n.t("overview:day", { date, weekday });
 }
 
-/** A year of work by day and agent (QueryWork, answered from what hermeshd holds), asked again when its counts move; null until the first answer. */
-export function useUsage(now: Date): QueryWorkResponse | null {
-  const st = useStore();
+/** What the Usage view shows: kept by the overview, so it is there again when the view is. */
+export type UsageState = { range: UsageRange; filter: UsageFilter };
+export const usageStart: UsageState = { range: "week", filter: noUsageFilter };
+
+type WorkRequest = MessageInitShape<typeof QueryWorkRequestSchema>;
+
+/**
+ * QueryWork's answer to a question (from what hermeshd holds), asked again when the question changes and as the
+ * counts move; the last answer stays until the next replaces it, and null until the first.
+ */
+function useWork(req: WorkRequest, version: number | bigint | undefined): QueryWorkResponse | null {
   const [res, setRes] = useState<QueryWorkResponse | null>(null);
-  const today = dayKey(now);
+  const key = JSON.stringify(req);
   useEffect(() => {
     let stop = false;
     local
-      .queryWork(usageRequest(now))
+      .queryWork(req)
       .then((r) => !stop && setRes(r))
       .catch(() => {}); // kept as it was
     return () => {
       stop = true;
     };
-    // Asked again each day, and as the counts move.
-  }, [today, st.workVersion]);
+  }, [key, version]);
   return res;
 }
 
-/** "Usage": a year of tokens by day, as GitHub's contributions. */
-export const Usage = memo(function Usage({ now, res }: { now: Date; res: QueryWorkResponse | null }) {
+/** "20 hr 8 min" of work. */
+function durationText(seconds: number): string {
+  const m = Math.round(seconds / 60);
+  if (m < 1) return i18n.t("overview:usage.duration.under");
+  if (m < 60) return i18n.t("overview:usage.duration.minutes", { m });
+  return i18n.t(m % 60 ? "overview:usage.duration.hoursMinutes" : "overview:usage.duration.hours", { h: Math.floor(m / 60), m: m % 60 });
+}
+
+const placeName = (st: Store, id: string) => (st.machines.find((m) => m.machineId === id)?.local ? i18n.t("overview:thisMac") : machineName(st, id));
+
+/**
+ * "Usage" (docs/overview-usage.md §6): what was used over a range, under the filters of the row at its top: a
+ * measure a row, its number beside its chart, and a year of tokens by day. Asked only while it shows.
+ */
+export function Usage({ now, state, onChange }: { now: Date; state: UsageState; onChange: (s: UsageState) => void }) {
   const { t } = useTranslation("overview");
-  const y = useMemo(() => usageYear(res, now), [res, now]);
+  const st = useStore();
+  const { range, filter } = state;
+  const today = dayKey(now);
+  // Asked again each day, and as the counts move.
+  const res = useWork(useMemo(() => usagePageRequest(range, filter, now), [range, filter, today]), st.workVersion);
+  const menus = useWork(useMemo(() => usageMenusRequest(range, now), [range, today]), st.workVersion);
+  const weeks = useWork(useMemo(() => usageWeeksRequest(filter, now), [filter, today]), st.workVersion);
+  const page = useMemo(() => usagePage(res, range, now), [res, range, today]);
+  const choices = useMemo(() => usageChoices(menus, filter), [menus, filter]);
+
+  const said = (c: UsageChoice) => (c.sessions || c.tokens ? t("usage.filter.counts", { count: c.sessions, tokens: tokensText(c.tokens) }) : t("usage.filter.none"));
+  // A filter's menu is the system's, under its button; a choice's second line is its work in the range.
+  const pop = async (e: MouseEvent<HTMLButtonElement>, items: MenuItem[], choose: (id: string) => UsageState) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const id = await window.hermesh?.popupMenu(items, { x: r.left, y: r.bottom + 4 });
+    if (id != null) onChange(choose(id));
+  };
+  const set = (f: Partial<UsageFilter>): UsageState => ({ range, filter: { ...filter, ...f } });
+  const all = (chosen: boolean): MenuItem[] => [{ id: "", label: t("usage.filter.all"), checked: !chosen }, { separator: true }];
+  const rangeMenu = (e: MouseEvent<HTMLButtonElement>) =>
+    pop(e, usageRanges.map((r) => ({ id: r, label: t(`usage.range.${r}`), checked: r === range })), (id) => ({ range: id as UsageRange, filter }));
+  const agentMenu = (e: MouseEvent<HTMLButtonElement>) =>
+    pop(e, [...all(!!filter.agent), ...choices.agents.map((c) => ({ id: c.id, label: codingAgentTitle(c.id), detail: said(c), checked: c.id === filter.agent }))], (agent) => set({ agent }));
+  const clientMenu = (e: MouseEvent<HTMLButtonElement>) =>
+    pop(e, [...all(!!filter.client), ...choices.clients.map((c) => ({ id: c.id, label: senderName(st, c.id), detail: said(c), checked: c.id === filter.client }))], (client) => set({ client }));
+  // Where: an environment opens its projects; its whole is the first line inside (a line that opens a menu is not a choice).
+  const placeMenu = (e: MouseEvent<HTMLButtonElement>) =>
+    pop(
+      e,
+      [
+        ...all(!!filter.machineId),
+        ...choices.machines.map((m) => ({
+          id: m.id,
+          label: placeName(st, m.id),
+          detail: said(m),
+          submenu: [
+            { id: JSON.stringify([m.id, ""]), label: t("usage.filter.allProjects"), detail: said(m), checked: m.id === filter.machineId && !filter.projectId },
+            { separator: true as const },
+            ...m.projects.map((p) => ({ id: JSON.stringify([m.id, p.id]), label: p.id, detail: said(p), checked: m.id === filter.machineId && p.id === filter.projectId })),
+          ],
+        })),
+      ],
+      (id) => {
+        const [machineId, projectId] = id ? (JSON.parse(id) as [string, string]) : ["", ""];
+        return set({ machineId, projectId });
+      },
+    );
+
+  const delta = (d: number | null) => (d === null ? "" : `${t(`usage.delta.${range}`)} ${d >= 0 ? "↑" : "↓"} ${Math.abs(d)}%`);
+  const day = (i: number) => new Date(now.getFullYear(), now.getMonth(), now.getDate() - (page.buckets.length - 1 - i));
+  const weekday = new Intl.DateTimeFormat(language(), { weekday: "short" });
+  // Under the chart: the hours by six and now; a week's days; a month's by week back from today.
+  const label = (i: number) =>
+    range === "today"
+      ? i === page.now ? t("usage.now") : i % 6 === 0 && Math.abs(i - page.now) > 1 ? t("usage.hour", { h: i }) : ""
+      : i === page.now ? t("usage.today") : range === "week" ? weekday.format(day(i)) : (page.now - i) % 7 === 0 ? `${day(i).getMonth() + 1}/${day(i).getDate()}` : "";
+  const when = (i: number) => (range === "today" ? t("usage.hour", { h: i }) : dayText(day(i)));
+
+  // Machines counted only up to their last sync, or still taking their history.
+  const syncing = (res?.sources ?? []).filter((s) => s.syncing).map((s) => placeName(st, s.machineId));
+  const behind = (res?.sources ?? []).filter((s) => !s.live && !s.syncing && s.syncedAt);
+  const oldest = behind.length ? new Date(Math.min(...behind.map((s) => Number(s.syncedAt!.seconds) * 1000))) : null;
+  return (
+    <section aria-label={t("usage.title")} className="us">
+      <div className="us-filters">
+        <Pop label={t("usage.filter.range")} onClick={rangeMenu}>{t(`usage.range.${range}`)}</Pop>
+        <i aria-hidden="true" />
+        <Pop label={t("usage.filter.agent")} on={!!filter.agent} onClick={agentMenu}>{filter.agent ? codingAgentTitle(filter.agent) : t("usage.filter.agent")}</Pop>
+        <Pop label={t("usage.filter.place")} on={!!filter.machineId} onClick={placeMenu}>
+          {filter.machineId ? placeName(st, filter.machineId) + (filter.projectId ? `/${filter.projectId}` : "") : t("usage.filter.place")}
+        </Pop>
+        <Pop label={t("usage.filter.client")} on={!!filter.client} onClick={clientMenu}>{filter.client ? senderName(st, filter.client) : t("usage.filter.client")}</Pop>
+      </div>
+      <div className="us-stack">
+        <Measure
+          title={t("usage.sessions.title")}
+          big={String(page.sessions)}
+          unit={t("usage.sessions.unit", { count: page.sessions })}
+          delta={delta(page.sessionsDelta)}
+          facts={[[t("usage.sessions.done"), String(page.done)], [t("usage.sessions.failed"), t("usage.sessions.failedTurns", { count: page.failedTurns })], [t("usage.sessions.busy"), durationText(page.busySeconds)]]}
+        >
+          <Chart values={page.buckets.map((b) => b.sessions)} now={page.now} whole label={label} scale={String} tip={(i) => [when(i), t("usage.tip.sessions", { count: page.buckets[i].sessions })]} />
+        </Measure>
+        <Measure
+          title={t("usage.tokens.title")}
+          big={tokensText(page.inputTokens + page.outputTokens)}
+          unit={t("usage.tokens.unit")}
+          delta={delta(page.tokensDelta)}
+          facts={[[t("usage.tokens.input"), tokensText(page.inputTokens)], [t("usage.tokens.output"), tokensText(page.outputTokens)]]}
+        >
+          <Chart values={page.buckets.map((b) => b.tokens)} now={page.now} label={label} scale={(v) => tokensText(v).replace(".0", "")} tip={(i) => [when(i), t("usage.tip.tokens", { tokens: tokensText(page.buckets[i].tokens) })]} />
+        </Measure>
+        <Year res={weeks} now={now} />
+      </div>
+      <div className="us-foot">
+        {t("usage.cache")}
+        {syncing.length > 0
+          ? ` ${t("usage.syncing", { machines: syncing.join(t("listSeparator")) })}`
+          : oldest && ` ${t("usage.behind", { machines: behind.map((s) => placeName(st, s.machineId)).join(t("listSeparator")), time: new Intl.DateTimeFormat(language(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(oldest) })}`}
+      </div>
+    </section>
+  );
+}
+
+/** A filter's pop-up button: what is chosen, tinted when it narrows the page. */
+function Pop({ label, on, onClick, children }: { label: string; on?: boolean; onClick: (e: MouseEvent<HTMLButtonElement>) => void; children: ReactNode }) {
+  return (
+    <button className={`us-pop ${on ? "on" : ""}`} aria-haspopup="menu" aria-label={label} onClick={onClick}>
+      <span>{children}</span>
+      <Icon name="chevUD" />
+    </button>
+  );
+}
+
+/** A measure's row: its number, how it stands against the span before and its other figures; beside them its chart. */
+function Measure({ title, big, unit, delta, facts, children }: { title: string; big: string; unit: string; delta: string; facts: [string, string][]; children: ReactNode }) {
+  return (
+    <div className="card tint us-m" role="group" aria-label={title}>
+      <div className="us-lead">
+        <div className="us-ttl">{title}</div>
+        <div className="us-big"><b>{big}</b><span>{unit}</span></div>
+        <div className="us-delta">{delta || " "}</div>
+        <dl className="us-facts">
+          {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+        </dl>
+      </div>
+      <div className="us-plot">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * A measure over time: a thin bar a bucket in the map's own ink, the one now is in in colour, with a ruled scale
+ * at the trailing edge and a name under the buckets there is room for. whole: the measure is counted in ones, so
+ * the scale's middle is one too.
+ */
+function Chart({ values, now, whole, label, scale, tip }: { values: number[]; now: number; whole?: boolean; label: (i: number) => string; scale: (v: number) => string; tip: (i: number) => [string, string] }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ i: number; x: number } | null>(null);
+  const raw = Math.max(1, ...values);
+  const p = 10 ** Math.floor(Math.log10(raw));
+  const top = whole && raw < 10 ? [2, 4, 6, 8, 10].find((v) => v >= raw)! : [1, 2, 5, 10].find((m) => m * p >= raw)! * p;
+  const hover = (i: number, el: HTMLElement) => {
+    const b = box.current?.getBoundingClientRect();
+    if (b) setAt({ i, x: el.getBoundingClientRect().left - b.left + el.offsetWidth / 2 });
+  };
+  return (
+    <div className="us-chart" ref={box} onMouseLeave={() => setAt(null)}>
+      <div className="us-plot-in">
+        {[1, 0.5, 0].map((f) => <div key={f} className="us-rule" style={{ bottom: `${f * 100}%` }}><span>{scale(top * f)}</span></div>)}
+        <div className="us-slots" role="img" aria-label={values.slice(0, now + 1).map((_, i) => tip(i).join(" ")).join("; ")}>
+          {values.map((v, i) =>
+            i > now ? <i key={i} /> : (
+              <i key={i} className={`in ${i === now ? "now" : ""}`} onMouseEnter={(e) => hover(i, e.currentTarget)}>
+                {v > 0 && <u style={{ height: `${(v / top) * 100}%` }} />}
+              </i>
+            ),
+          )}
+        </div>
+      </div>
+      <div className="us-x" aria-hidden="true">{values.map((_, i) => <span key={i} className={i === now ? "now" : ""}>{label(i)}</span>)}</div>
+      {at && (
+        <div className="u-tip" style={{ left: at.x, top: 0 }}>
+          <b>{tip(at.i)[1]}</b>
+          <br />
+          {tip(at.i)[0]}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A year of tokens by day, as GitHub's contributions: under the filters, not the range. */
+function Year({ res, now }: { res: QueryWorkResponse | null; now: Date }) {
+  const { t } = useTranslation("overview");
+  const y = useMemo(() => usageYear(res, now), [res, dayKey(now)]);
   const card = useRef<HTMLDivElement>(null);
-  const [tip, setTip] = useState<{ c: UsageCell; x: number; y: number } | null>(null);
-  const hover = (c: UsageCell, el: HTMLElement) => {
+  const [tip, setTip] = useState<{ i: number; x: number; y: number } | null>(null);
+  const hover = (i: number, el: HTMLElement) => {
     const r = el.getBoundingClientRect();
     const b = card.current?.getBoundingClientRect();
-    if (!b) return;
-    setTip({ c, x: Math.min(Math.max(r.left - b.left + r.width / 2, 70), b.width - 70), y: r.top - b.top });
+    if (b) setTip({ i, x: Math.min(Math.max(r.left - b.left + r.width / 2, 70), b.width - 70), y: r.top - b.top });
   };
   const month = new Intl.DateTimeFormat(language(), { month: "short" });
-  // A weekday's initial, 0 for Sunday (4 January 2026 was one).
-  const weekday = (day: number) => new Intl.DateTimeFormat(language(), { weekday: "narrow" }).format(new Date(2026, 0, 4 + day));
   let lastMonth = -1;
   const months = Array.from({ length: y.weeks }, (_, w) => {
     const c = y.cells[w * 7];
@@ -56,78 +254,27 @@ export const Usage = memo(function Usage({ now, res }: { now: Date; res: QueryWo
     lastMonth = m;
     return label;
   });
-  // Machines counted only up to their last sync, or still taking their history.
-  const st = useStore();
-  const name = (id: string) => st.machines.find((m) => m.machineId === id)?.machineName ?? id;
-  const syncing = (res?.sources ?? []).filter((s) => s.syncing).map((s) => name(s.machineId));
-  const behind = (res?.sources ?? []).filter((s) => !s.live && !s.syncing && s.syncedAt);
-  const oldest = behind.length ? new Date(Math.min(...behind.map((s) => Number(s.syncedAt!.seconds) * 1000))) : null;
-  const todayCell = y.cells.findLastIndex((c) => c !== null);
+  const at = tip && y.cells[tip.i];
   return (
-    <section aria-label={t("usage.title")}>
-      <div className="sec-h">{t("usage.title")}</div>
-      <div className="card usage" ref={card}>
-        <div className="u-top">
-          <div className="u-big">
-            <small>{t("usage.year")}</small>
-            <b>{tokensText(y.total)}</b>
-          </div>
-          {y.delta !== null && <span className="u-delta">{y.delta >= 0 ? "↑" : "↓"} {Math.abs(y.delta)}%<span>{t("usage.last30")}</span></span>}
-          <div className="u-kpis">
-            <div className="u-kpi"><small>{t("usage.today")}</small><b>{tokensText(y.today)}</b></div>
-            <div className="u-kpi"><small>{t("usage.activeDays")}</small><b>{y.active}</b></div>
-            <div className="u-kpi"><small>{t("usage.streak")}</small><b>{t("usage.days", { count: y.streak })}</b></div>
-          </div>
-        </div>
-        <div className="u-heat">
-          <div className="u-in" style={{ "--weeks": y.weeks } as React.CSSProperties}>
-            <div className="u-months" aria-hidden="true">
-              {months.map((m, i) => <span key={i}>{m}</span>)}
-            </div>
-            <div className="u-wd" aria-hidden="true">
-              <span /><span>{weekday(1)}</span><span /><span>{weekday(3)}</span><span /><span>{weekday(5)}</span><span />
-            </div>
-            <div className="u-cells" role="img" aria-label={t("usage.cells", { tokens: tokensText(y.total), active: y.active })} onMouseLeave={() => setTip(null)}>
-              {y.cells.map((c, i) =>
-                c ? (
-                  <div key={i} className={`l${c.level} ${i === todayCell ? "today" : ""}`} onMouseEnter={(e) => hover(c, e.currentTarget)} />
-                ) : (
-                  <div key={i} className="none" />
-                ),
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="u-foot">
-          {y.total > 0 ? (
-            <div className="u-mix">
-              <span className="faint">{t("usage.byAgent")}</span>
-              {y.byAgent.slice(0, 4).map((a) => (
-                <span key={a.agent}>
-                  <AgentLogo agent={a.agent} size={14} />
-                  {codingAgentShort(a.agent)} {Math.round(a.share * 100)}%
-                </span>
-              ))}
-            </div>
-          ) : (
-            <span className="u-empty">{res ? t("usage.empty") : ""}</span>
-          )}
-          {syncing.length > 0 ? (
-            <span className="u-empty">{t("usage.syncing", { machines: syncing.join(t("listSeparator")) })}</span>
-          ) : (
-            oldest && <span className="u-empty">{t("usage.behind", { machines: behind.map((s) => name(s.machineId)).join(t("listSeparator")), time: new Intl.DateTimeFormat(language(), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(oldest) })}</span>
-          )}
-          <div className="u-scale" aria-hidden="true">{t("usage.less")}{[0, 1, 2, 3, 4].map((l) => <div key={l} className={`l${l}`} />)}{t("usage.more")}</div>
-        </div>
-        {tip && (
-          <div className="u-tip" style={{ left: tip.x, top: tip.y }}>
-            <b>{tip.c.tokens ? `${tokensText(tip.c.tokens)} tokens` : t("usage.noUsage")}</b>
-            {tip.c.sessions > 0 && t("usage.sessions", { count: tip.c.sessions })}
-            <br />
-            {dayText(tip.c.date)}
-          </div>
-        )}
+    <div className="card tint us-year" ref={card} role="group" aria-label={t("usage.year.title")}>
+      <div className="us-year-h">
+        <b>{t("usage.year.title")}</b>
+        <span>{t("usage.year.summary", { active: y.active, streak: y.streak })}</span>
       </div>
-    </section>
+      <div className="us-heat" style={{ "--weeks": y.weeks } as CSSProperties}>
+        <div className="us-cells" role="img" aria-label={t("usage.cells", { tokens: tokensText(y.total), active: y.active })} onMouseLeave={() => setTip(null)}>
+          {y.cells.map((c, i) => (c ? <div key={i} className={`l${c.level}`} onMouseEnter={(e) => hover(i, e.currentTarget)} /> : <div key={i} className="none" />))}
+        </div>
+        <div className="us-months" aria-hidden="true">{months.map((m, i) => <span key={i}>{m}</span>)}</div>
+      </div>
+      <div className="us-scale" aria-hidden="true">{t("usage.less")}{[0, 1, 2, 3, 4].map((l) => <div key={l} className={`l${l}`} />)}{t("usage.more")}</div>
+      {tip && at && (
+        <div className="u-tip" style={{ left: tip.x, top: tip.y }}>
+          <b>{at.tokens ? t("usage.tip.tokens", { tokens: tokensText(at.tokens) }) : t("usage.noUsage")}</b>
+          <br />
+          {dayText(at.date)}
+        </div>
+      )}
+    </div>
   );
-});
+}

@@ -3,23 +3,31 @@ import { Trans, useTranslation } from "react-i18next";
 import { agoText, dateOf } from "@hermesh/core";
 import { Icon } from "./icons";
 import { Attention } from "./overview/Attention";
+import { Limits } from "./overview/Limits";
 import { LinkMap } from "./overview/Map";
-import { dayText, Usage, useUsage } from "./overview/Usage";
+import { dayText, Usage, usageStart } from "./overview/Usage";
 import { Working } from "./overview/Working";
+import { layoutOf, setSidebar } from "./layout";
 import { useNow, useStore } from "./store";
 import { notNow } from "./start";
 import { FinishedRow, useTeam } from "./team";
 import "./overview/overview.css";
 
-// The overview: what needs the owner beyond the session list, the link map of grants, machines and projects, what runs now, and a year of usage.
+const views = ["live", "usage", "limits"] as const;
+
+// The overview (docs/overview-usage.md): Live is what goes on now, which asks for no counts: what needs the owner
+// beyond the session list, the link map of grants, machines and projects, what runs and what finished last. What
+// was used and what is left are the page's other views, by the control in its head, so they take no place of the
+// sidebar's.
 // On a machine only, the same for this Mac: nothing waits on it, and the map is its own.
 export function Overview() {
   const { t } = useTranslation("overview");
   const st = useStore();
   const now = useNow(30_000);
-  // A node picked on the map (a grant, machine or project) narrows Working Now to the sessions through it.
+  const [view, setView] = useState<(typeof views)[number]>("live");
+  const [usage, setUsage] = useState(usageStart);
+  // A node picked on the map (a grant, machine or project) turns In Progress into the sessions through it.
   const [pick, setPick] = useState("");
-  const usage = useUsage(now);
   return (
     <>
       <div className="ctool drag">
@@ -32,16 +40,28 @@ export function Overview() {
               <h1>{t("title")}</h1>
               <span>{dayText(now)}</span>
             </div>
+            <div className="seg" role="tablist" aria-label={t("views.label")}>
+              {views.map((v) => (
+                <button key={v} role="tab" aria-selected={view === v} className={view === v ? "on" : ""} onClick={() => setView(v)}>{t(`views.${v}`)}</button>
+              ))}
+            </div>
           </div>
-          <HerNotOn />
-          {st.sessionsUnreachable.length > 0 && <Unreachable now={now} />}
-          <Attention now={now} />
-          <section aria-label={t("map.title")}>
-            <LinkMap pick={pick} onPick={setPick} now={now} usage={usage} />
-          </section>
-          <Working pick={pick} onClear={() => setPick("")} />
-          <RecentlyFinished />
-          <Usage now={now} res={usage} />
+          {view === "live" ? (
+            <>
+              <HerNotOn />
+              {st.sessionsUnreachable.length > 0 && <Unreachable now={now} />}
+              <Attention now={now} onLimits={() => setView("limits")} />
+              <section aria-label={t("map.title")}>
+                <LinkMap pick={pick} onPick={setPick} now={now} />
+              </section>
+              <Working pick={pick} onClear={() => setPick("")} />
+              {!pick && <RecentlyFinished />}
+            </>
+          ) : view === "usage" ? (
+            <Usage now={now} state={usage} onChange={setUsage} />
+          ) : (
+            <Limits now={now} />
+          )}
         </div>
       </div>
     </>
@@ -78,14 +98,21 @@ function Unreachable({ now }: { now: Date }) {
   );
 }
 
-/** The three sessions that finished last (docs/her-team.md §14.4). */
+/**
+ * The three sessions that finished last (docs/her-team.md §14.4). Every session is the sidebar's list: See All
+ * shows it where only its rail does.
+ */
 function RecentlyFinished() {
   const { t } = useTranslation("common");
+  const st = useStore();
   const team = useTeam();
   if (team.finished.length === 0) return null;
   return (
     <section aria-label={t("team.recentlyFinished")}>
-      <div className="sec-h">{t("team.recentlyFinished")}</div>
+      <div className="sec-h">
+        {t("team.recentlyFinished")}
+        {layoutOf(st).sidebar === "rail" && <button className="link" onClick={() => setSidebar(st, true)}>{t("team.seeAll")}</button>}
+      </div>
       <div className="card wk-list">
         {team.finished.slice(0, 3).map((s) => <FinishedRow key={s.sessionId} s={s} />)}
       </div>

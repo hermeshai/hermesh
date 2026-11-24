@@ -1,11 +1,16 @@
 {
   "title": "概览",
+  "views": {
+    "label": "视图",
+    "live": "实时",
+    "usage": "用量",
+    "limits": "额度"
+  },
   "day": "{{date}} {{weekday}}",
   "listSeparator": "、",
   "thisMac": "这台 Mac",
   "thisMac_win": "这台电脑",
   "thisMac_linux": "这台电脑",
-  "runningCount_other": "{{count}} 个运行中",
   "add": {
     "newGrant": "连接 agent…",
     "addMachine": "添加环境…",
@@ -49,13 +54,6 @@
     "notSignedIn": "未登录",
     "paused": "已暂停",
     "offline": "离线",
-    "running": "运行中",
-    "waiting": "等你回答",
-    "failed": "出错",
-    "hintPicked": "再次点击，或点击中间图标返回全部",
-    "hintPick": "点击任意节点，仅查看经过该节点的任务",
-    "today": "今天",
-    "todayStats_other": "今天 <b>{{count}}</b> 个任务 · 完成 <b>{{done}}</b> · 出错 <bad>{{failed}}</bad>",
     "personalAgent": "个人 agent",
     "expiresToday": "今天到期",
     "expiresIn_other": "{{count}} 天后到期",
@@ -64,7 +62,6 @@
     "accepting": "接新任务"
   },
   "working": {
-    "title": "正在运行",
     "manageAccess": "管理授权…",
     "noneThrough": "当前没有任务经过此节点。",
     "matches": "· {{count}} 个",
@@ -73,32 +70,72 @@
     "byGrant": "{{label}} 发起的任务",
     "onMachine": "{{machine}} 上的任务",
     "inProject": "{{project}} 项目的任务",
-    "running": "运行中",
     "waiting": "等你回答",
     "crashed": "已崩溃",
     "failed": "出错",
-    "preparing": "准备中",
-    "queued": "排队中",
     "nothingRuns": "当前没有运行中的任务",
     "nothingRunsHint": "Agent 开始工作后，任务会显示在这里，链路图也会同步点亮。"
   },
   "usage": {
     "title": "用量",
-    "year": "近一年 · tokens",
-    "last30": "近 30 天",
-    "today": "今天",
-    "activeDays": "活跃天数",
-    "streak": "连续使用",
-    "days_other": "{{count}} 天",
     "cells": "近一年 {{tokens}} tokens，{{active}} 天有用量",
-    "byAgent": "按 Agent 提供方",
-    "empty": "开始用之后，这里会一天天点亮。",
     "less": "少",
     "more": "多",
     "noUsage": "没有用量",
-    "sessions_other": " · {{count}} 个任务",
     "syncing": "正在同步 {{machines}} 的统计…",
-    "behind": "{{machines}} 的统计截至 {{time}}"
+    "behind": "{{machines}} 的统计截至 {{time}}",
+    "range": {
+      "today": "今天",
+      "week": "7 天",
+      "month": "30 天"
+    },
+    "filter": {
+      "range": "时间范围",
+      "agent": "Agent 提供方",
+      "place": "环境 / 项目",
+      "client": "发起方",
+      "all": "全部",
+      "allProjects": "全部项目",
+      "counts_other": "{{count}} 个任务 · {{tokens}} token",
+      "none": "没有任务"
+    },
+    "sessions": {
+      "title": "任务",
+      "unit_other": "个任务运行过",
+      "done": "已完成",
+      "failed": "出错",
+      "failedTurns_other": "{{count}} 轮",
+      "busy": "工作时长"
+    },
+    "tokens": {
+      "title": "Token",
+      "unit": "token",
+      "input": "输入",
+      "output": "输出"
+    },
+    "delta": {
+      "today": "较昨天此时",
+      "week": "较前 7 天",
+      "month": "较前 30 天"
+    },
+    "duration": {
+      "under": "不到 1 分",
+      "minutes": "{{m}} 分",
+      "hours": "{{h}} 小时",
+      "hoursMinutes": "{{h}} 小时 {{m}} 分"
+    },
+    "year": {
+      "title": "近一年",
+      "summary": "活跃天数 {{active}} · 连续使用 {{streak}} 天"
+    },
+    "now": "现在",
+    "today": "今天",
+    "hour": "{{h}} 时",
+    "tip": {
+      "sessions_other": "{{count}} 个任务运行过",
+      "tokens": "{{tokens}} token"
+    },
+    "cache": "输入含各提供方的缓存读写。"
   },
   "card": {
     "ownKey": "个人 agent · 自己保管密钥",
@@ -116,5 +153,36 @@
     "here_linux": "在这台电脑",
     "seen_other": "今天 {{count}} 个任务 · 最近一次 {{ago}}",
     "revokeElsewhere": "撤销它的授权，要到你的可信设备上。"
+  },
+  "limits": {
+    "title": "额度",
+    "low": "快用完了",
+    "left": "剩余",
+    "allowance": "额度",
+    "time": "时间",
+    "reported": "{{machine}} 上报 · {{ago}}",
+    "window": {
+      "m300": "5 小时窗口",
+      "m10080": "每周窗口",
+      "hours_other": "{{count}} 小时窗口",
+      "days_other": "{{count}} 天窗口"
+    },
+    "short": {
+      "m300": "5 小时",
+      "m10080": "每周",
+      "hours_other": "{{count}} 小时",
+      "days_other": "{{count}} 天"
+    },
+    "resets": "{{time}} 重置",
+    "resetsOn": "{{day}} {{time}} 重置",
+    "untilHours": "还有 {{h}} 小时 {{m}} 分",
+    "untilWholeHours_other": "还有 {{count}} 小时",
+    "untilMinutes_other": "还有 {{count}} 分",
+    "none": "它没有提供额度信息",
+    "notYet": "还没有上报，运行一次任务后显示",
+    "stale": "窗口已重置，下次运行后更新",
+    "foot": "额度由各提供方在运行时上报，Hermesh 只转述，不读取账号。很久没运行的提供方，这里是它上次运行时的数。",
+    "needTitle": "{{agent}} 的 {{window}}额度剩 {{left}}%",
+    "see": "查看"
   }
 }

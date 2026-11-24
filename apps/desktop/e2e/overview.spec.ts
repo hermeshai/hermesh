@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import { launch, mapHeight, snap, thisComputer, sessionList, navTo } from "./app";
 
 test("map height waits for the first resize delivery after navigation", async () => {
@@ -39,32 +39,36 @@ test("map height waits for the first resize delivery after navigation", async ()
   }
 });
 
-// Work (the overview): what needs the owner, the link map of grants,
-// machines and projects, what runs now (questions and failures first), what
-// finished last and a year of usage, from the fixture's sessions.
-test("正在运行 is a card per live session: status, time worked, who started it and where, questions and failures first", async () => {
+// The overview's Live view: what needs the owner, the link map of grants,
+// machines and projects, what runs now and what finished last, from the
+// fixture's sessions. The numbers are its other views (docs/overview-usage.md).
+test("进行中 is a row per session at work: who sent it to whom, the tool in use and the time worked; what waits or failed is under 需要你处理", async () => {
   const { app, page } = await launch();
-  const work = page.getByRole("region", { name: "正在运行" });
-  const cards = work.getByRole("listitem");
-  await expect(cards).toHaveCount(4);
-  await expect(cards.first()).toContainText("选颜色");
-  await expect(cards.first()).toContainText("等你回答");
-  await expect(cards.filter({ hasText: "限流" })).toContainText("出错");
-  await expect(cards.filter({ hasText: "崩溃" })).toContainText("已崩溃");
-  const running = cards.filter({ hasText: "跑很久" });
-  await expect(running).toContainText("运行中");
-  await expect(running.locator(".wc-time")).toHaveText(/^\d+:\d\d$/);
-  await expect(running.locator(".wc-foot")).toHaveText(new RegExp(`bot→${thisComputer}/demo$`)); // after the grant's avatar
-  // What is not asked for is not there: no coding-agent counts, no tool phase.
-  await expect(work).not.toContainText("Gemini CLI");
-  await expect(work).not.toContainText("sleep 1800");
-  // The question and the failures wait under 需要你处理 too (docs/her-team.md §14.4), and the overview's row says so with a dot.
+  await expect(page.getByRole("tab", { name: "实时" })).toHaveAttribute("aria-selected", "true");
+  const work = page.getByRole("region", { name: "进行中" });
+  const rows = work.getByRole("listitem");
+  await expect(rows).toHaveCount(1);
+  await expect(work.locator(".sec-h .n")).toHaveText("1");
+  const running = rows.filter({ hasText: "跑很久" });
+  await expect(running).toContainText("bot → Gemini · demo");
+  await expect(running.locator(".tm-when")).toHaveText(/^\d+:\d\d$/);
+  // The question and the failures are under 需要你处理 only (docs/her-team.md §14.4), who waits before what failed,
+  // and the overview's row says so with a dot.
+  for (const title of ["选颜色", "限流", "崩溃"]) await expect(work).not.toContainText(title);
   const needs = page.getByRole("region", { name: "需要你处理" });
-  for (const title of ["选颜色", "限流", "崩溃"]) await expect(needs).toContainText(title);
+  await expect(needs.getByRole("listitem")).toHaveText([/选颜色/, /限流|崩溃/, /限流|崩溃/]);
   await expect(page.getByRole("button", { name: /^概览/ }).getByRole("img", { name: /项需要处理/ })).toBeVisible();
+  // What finished last, under it; every session is the sidebar's list, so 查看全部 is there only while its rail shows.
+  const finished = page.getByRole("region", { name: "最近完成" });
+  await expect(finished.locator(".tm-row")).toHaveText(/写 hello.*2 个文件/);
+  await expect(finished.getByRole("button", { name: "查看全部" })).toHaveCount(0);
+  await page.getByRole("button", { name: "收成窄栏" }).click();
+  await finished.getByRole("button", { name: "查看全部" }).click();
+  await expect(await sessionList(page)).toBeVisible();
+  await expect(finished.getByRole("button", { name: "查看全部" })).toHaveCount(0);
   await snap(page, "overview");
-  await cards.first().click();
-  await expect(page.getByRole("heading", { name: "选颜色" })).toBeVisible();
+  await running.getByRole("button").click();
+  await expect(page.getByRole("heading", { name: "跑很久" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "概览" })).toHaveCount(0);
   await app.close();
 });
@@ -95,45 +99,45 @@ test("pointers are macOS's: the hand on text links only, the arrow on the map's 
   await app.close();
 });
 
-test("a node clicked on the link map narrows 正在干活, names the condition and marks it on each card", async () => {
+test("a node clicked on the link map turns 进行中 into the sessions through it, whatever their state, and names the node", async () => {
   const { app, page } = await launch();
   const map = page.getByRole("region", { name: "链路" });
-  // The headline: today's sessions, how they ended, and today's tokens (the same as 用量's 今天).
-  const today = map.getByRole("status", { name: "今天" });
-  await expect(today).toHaveText(/^今天 6 个任务 · 完成 2 · 出错 2 · \d+ tokens$/);
-  const tokens = (await today.textContent())!.match(/(\d+) tokens/)![1];
-  await expect(page.getByRole("region", { name: "用量" }).locator(".u-kpi").first()).toContainText(tokens);
+  // The map says who may use what and what goes between them now: no counts, and no line or legend by state.
+  await expect(map.getByRole("status")).toHaveCount(0);
+  for (const word of ["今天", "tokens", "运行中", "等你回答", "出错", "点击任意节点"]) await expect(map).not.toContainText(word);
   const bot = map.getByRole("button", { name: "bot", exact: true });
-  await expect(bot).toContainText("个人 agent"); // its grant is not about to expire
+  await expect(bot).toHaveText(/bot个人 agent$/); // its grant is not about to expire; no count of what runs
   // Hovering a grant shows where it may work: here, every machine and project.
   await bot.hover();
   await expect(map.locator(".lm-edge.scope")).toHaveCount(2); // hub → this Mac, this Mac → demo
   await snap(page, "overview-scope");
   await page.mouse.move(0, 0);
   await expect(map.locator(".lm-edge.scope")).toHaveCount(0);
-  for (const legend of ["运行中", "等你回答", "出错"]) await expect(map).toContainText(legend);
-  const work = page.getByRole("region", { name: "正在运行" });
+  const work = page.getByRole("region", { name: "进行中" });
   const condition = work.getByRole("status");
-  const cards = work.getByRole("listitem");
+  const rows = work.getByRole("listitem");
+  await expect(rows).toHaveCount(1);
 
-  for (const [name, text, mark] of [
-    ["bot", "bot 发起的任务", "bot"],
-    [thisComputer, `${thisComputer} 上的任务`, thisComputer],
-    ["demo", "demo 项目的任务", "demo"],
+  for (const [name, text] of [
+    ["bot", "bot 发起的任务"],
+    [thisComputer, `${thisComputer} 上的任务`],
+    ["demo", "demo 项目的任务"],
   ]) {
     const node = map.getByRole("button", { name, exact: true });
     await node.click();
     await expect(node).toHaveAttribute("aria-pressed", "true");
     await expect(condition).toContainText(text);
-    await expect(condition).toContainText("4 个");
-    await expect(cards).toHaveCount(4);
-    await expect(cards.first().locator(".hit")).toHaveText(new RegExp(`${mark}$`));
+    await expect(condition).toContainText("5 个");
+    // Who waits, what failed, what runs, then what finished: each says how it stands.
+    await expect(rows).toHaveText([/选颜色.*等你回答/, /出错|已崩溃/, /出错|已崩溃/, /跑很久.*\d+:\d\d/, /写 hello/]);
+    await expect(page.getByRole("region", { name: "最近完成" })).toHaveCount(0);
   }
   await page.mouse.move(0, 0);
   await snap(page, "overview-pick");
   // Clicking it again, the hub or 显示全部 goes back to all.
   await map.getByRole("button", { name: "demo", exact: true }).click();
   await expect(condition).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "最近完成" })).toBeVisible();
   await bot.click();
   await map.locator(".lmap-hub").click();
   await expect(condition).toHaveCount(0);
@@ -152,18 +156,151 @@ test("a node clicked on the link map narrows 正在干活, names the condition a
   await app.close();
 });
 
-// 用量: the fixture's turns, counted by the machine and read by hermeshd (QueryWork), on today's cell.
-test("用量 shows a year of tokens with today's turns", async () => {
+type Shown = { label: string; detail?: string; checked?: boolean; submenu?: Shown[] };
+
+/**
+ * Stands in for the system's pop-up menus: the next one shown is kept (labels, second lines, checks and submenus,
+ * and where it opened), and the item at `want` (a label, or a label and one in its submenu) is chosen; null: none.
+ */
+async function menus(app: ElectronApplication) {
+  await app.evaluate(({ ipcMain }) => {
+    type Item = { id?: string; label?: string; detail?: string; checked?: boolean; submenu?: Item[]; separator?: boolean };
+    const g = globalThis as unknown as { shown?: unknown; at?: unknown; want?: string[] | null };
+    ipcMain.removeHandler("popup-menu");
+    ipcMain.handle("popup-menu", (_e, items: Item[], at: unknown) => {
+      const strip = (list: Item[]): unknown[] => list.filter((i) => !i.separator).map((i) => ({ label: i.label, detail: i.detail, checked: i.checked, submenu: i.submenu && strip(i.submenu) }));
+      g.shown = strip(items);
+      g.at = at;
+      let list = items;
+      let id: string | null = null;
+      for (const label of g.want ?? []) {
+        const it = list.find((i) => i.label === label);
+        id = it?.id ?? null;
+        list = it?.submenu ?? [];
+      }
+      return id;
+    });
+  });
+  return {
+    /** Opens the menu of the pop-up button and chooses want in it; what the menu showed. */
+    async open(button: Locator, want: string[] | null): Promise<Shown[]> {
+      await app.evaluate((_, want) => {
+        const g = globalThis as unknown as { shown?: unknown; want?: string[] | null };
+        g.shown = undefined;
+        g.want = want;
+      }, want);
+      await button.click();
+      await expect.poll(() => app.evaluate(() => (globalThis as unknown as { shown?: unknown }).shown !== undefined)).toBe(true);
+      return app.evaluate(() => (globalThis as unknown as { shown: Shown[] }).shown);
+    },
+    at: () => app.evaluate(() => (globalThis as unknown as { at: { x: number; y: number } }).at),
+  };
+}
+
+// 用量, the overview's other view (docs/overview-usage.md §6): the fixture's turns, counted by the machine and read
+// by hermeshd (QueryWork) under the filters of the row at its top.
+test("用量 counts a range under its filters: a measure a row beside its chart, the menus' choices with their work, and a year of days", async () => {
   const { app, page } = await launch();
-  const usage = page.getByRole("region", { name: "用量" });
-  await expect(usage).toContainText("近一年 · tokens");
-  await expect(usage.getByRole("img", { name: /^近一年 \d+(\.\d)?[KM]? tokens，1 天有用量$/ })).toBeVisible();
-  await expect(usage).toContainText("Gemini 100%");
-  await expect(usage).toContainText("连续使用1 天");
-  await usage.locator(".u-cells .today").hover();
-  await expect(usage).toContainText(/\d+ tokens · \d+ 个任务/);
-  await snap(page, "overview-usage");
-  await app.close();
+  try {
+    const usage = page.getByRole("region", { name: "用量" });
+    await expect(usage).toHaveCount(0); // Live asks for no counts
+    await page.getByRole("tab", { name: "用量" }).click();
+    await expect(page.getByRole("region", { name: "链路" })).toHaveCount(0);
+    const menu = await menus(app);
+
+    // Seven days ending today, everything: the tasks that worked and their tokens, each beside its chart.
+    const range = usage.getByRole("button", { name: "时间范围" });
+    await expect(range).toHaveText("7 天");
+    const tasks = usage.getByRole("group", { name: "任务" });
+    const tokens = usage.getByRole("group", { name: "Token" });
+    await expect(tasks.locator(".us-big")).toHaveText(/^[1-9]\d*个任务运行过$/);
+    const ran = Number((await tasks.locator(".us-big b").textContent())!);
+    await expect(tasks.locator(".us-facts")).toHaveText(/^已完成\d+出错\d+ 轮工作时长.+$/);
+    await expect(tokens.locator(".us-big")).toHaveText(/^\d+(\.\d)?[KM]?token$/);
+    await expect(tokens.locator(".us-facts")).toHaveText(/^输入\d+(\.\d)?[KM]?输出\d+(\.\d)?[KM]?$/);
+    // Nothing ran before today: no change to say, and today's is the only bar, in colour, named under the chart.
+    await expect(tasks.locator(".us-delta")).toHaveText(" ");
+    await expect(tasks.locator(".us-slots i")).toHaveCount(7);
+    await expect(tasks.locator(".us-slots u")).toHaveCount(1);
+    await expect(tasks.locator(".us-slots i.now u")).toHaveCount(1);
+    await expect(tasks.locator(".us-x span.now")).toHaveText("今天");
+    await tasks.locator(".us-slots i.now").hover();
+    await expect(tasks.locator(".u-tip")).toHaveText(new RegExp(`^${ran} 个任务运行过.*周`));
+    await tokens.locator(".us-slots i.now").hover();
+    await expect(tokens.locator(".u-tip")).toHaveText(/^\d+(\.\d)?[KM]? token/);
+    await snap(page, "overview-usage");
+
+    // A filter's menu is the system's, under its button: each choice with its work in the range, the chosen checked.
+    const agent = usage.getByRole("button", { name: "Agent 提供方" });
+    const counts = new RegExp(`^${ran} 个任务 · \\d+(\\.\\d)?[KM]? token$`);
+    let shown = await menu.open(agent, null);
+    expect(shown.map((i) => i.label)).toEqual(["全部", "Gemini CLI"]);
+    expect(shown[0].checked).toBe(true);
+    expect(shown[1].detail).toMatch(counts);
+    const box = (await agent.boundingBox())!;
+    const at = await menu.at();
+    expect(Math.abs(at.x - box.x)).toBeLessThanOrEqual(1);
+    expect(at.y).toBeGreaterThanOrEqual(box.y + box.height);
+    await expect(agent).toHaveText("Agent 提供方"); // nothing chosen: nothing changed
+    await menu.open(agent, ["Gemini CLI"]);
+    await expect(agent).toHaveText("Gemini CLI");
+    await expect(agent).toHaveClass(/\bon\b/);
+    await expect(tasks.locator(".us-big b")).toHaveText(String(ran)); // the only agent that worked
+    shown = await menu.open(agent, null);
+    expect(shown.map((i) => i.checked)).toEqual([false, true]);
+
+    // Where is one choice of two levels: an environment opens its projects, its whole the first line inside.
+    const place = usage.getByRole("button", { name: "环境 / 项目" });
+    shown = await menu.open(place, [thisComputer, "demo"]);
+    expect(shown.map((i) => i.label)).toEqual(["全部", thisComputer]);
+    expect(shown[1].detail).toMatch(counts);
+    expect(shown[1].submenu!.map((i) => i.label)).toEqual(["全部项目", "demo"]);
+    expect(shown[1].submenu![1].detail).toMatch(counts);
+    await expect(place).toHaveText(`${thisComputer}/demo`);
+    await expect(tasks.locator(".us-big b")).toHaveText(String(ran));
+    shown = await menu.open(place, [thisComputer, "全部项目"]);
+    expect(shown[1].submenu!.map((i) => i.checked)).toEqual([false, true]);
+    await expect(place).toHaveText(thisComputer);
+    const sender = usage.getByRole("button", { name: "发起方" });
+    shown = await menu.open(sender, ["bot"]);
+    expect(shown.map((i) => i.label)).toEqual(["全部", "bot"]);
+    await expect(sender).toHaveText("bot");
+    // All back to everything.
+    await menu.open(agent, ["全部"]);
+    await menu.open(place, ["全部"]);
+    await menu.open(sender, ["全部"]);
+    for (const [b, text] of [[agent, "Agent 提供方"], [place, "环境 / 项目"], [sender, "发起方"]] as const) {
+      await expect(b).toHaveText(text);
+      await expect(b).not.toHaveClass(/\bon\b/);
+    }
+
+    // Today is by hour, up to now; the choice is kept while the overview shows its other view.
+    shown = await menu.open(range, ["今天"]);
+    expect(shown.map((i) => [i.label, i.checked])).toEqual([["今天", false], ["7 天", true], ["30 天", false]]);
+    await expect(range).toHaveText("今天");
+    await expect(tasks.locator(".us-slots i")).toHaveCount(24);
+    await expect(tasks.locator(".us-x span.now")).toHaveText("现在");
+    await expect(tasks.locator(".us-big b")).toHaveText(String(ran));
+    await page.getByRole("tab", { name: "实时" }).click();
+    await page.getByRole("tab", { name: "用量" }).click();
+    await expect(range).toHaveText("今天");
+
+    // A year of tokens by day, under the filters: today's is the one day with any.
+    const year = usage.getByRole("group", { name: "近一年" });
+    await expect(year).toContainText("活跃天数 1 · 连续使用 1 天");
+    await expect(year.getByRole("img", { name: /^近一年 \d+(\.\d)?[KM]? tokens，1 天有用量$/ })).toBeVisible();
+    await year.locator(".us-cells div:not(.none):not(.l0)").hover();
+    await expect(year.locator(".u-tip")).toHaveText(/^\d+(\.\d)?[KM]? token.*周/);
+    await expect(usage).toContainText("输入含各提供方的缓存读写。");
+
+    // In a narrow window a chart goes under its number, and nothing runs off the side.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(900, 900));
+    await expect.poll(async () => (await tasks.locator(".us-plot").boundingBox())!.y - (await tasks.locator(".us-lead").boundingBox())!.y).toBeGreaterThan(100);
+    expect(await page.locator(".ov").evaluate((el) => el.parentElement!.scrollWidth - el.parentElement!.clientWidth)).toBeLessThanOrEqual(1);
+    await snap(page, "overview-usage-narrow");
+  } finally {
+    await app.close();
+  }
 });
 
 // One line across the top, as in Apple Music: the title and the sidebar's

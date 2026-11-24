@@ -125,6 +125,8 @@ type Sessions struct {
 	// mcp are the tools a session's coding agent gets (sessiontools.go);
 	// nil in tests.
 	mcp func(sessionID string) []provider.MCPServer
+	// limitsSaid is told what an agent said of its account's rate limits.
+	limitsSaid func(agent string, l provider.Limits)
 }
 
 // record adds an event to a live session's conversation (a message its
@@ -1537,6 +1539,9 @@ func (s *Sessions) prepare(l *live) {
 	}
 	agent := l.row.Agent
 	l.mu.Unlock()
+	if s.limitsSaid != nil {
+		spec.Limits = func(x provider.Limits) { s.limitsSaid(agent, x) }
+	}
 	startAt := time.Now()
 	ps, err := s.providers[agent].Start(ctx, spec)
 	mProviderStart.Since(startAt)

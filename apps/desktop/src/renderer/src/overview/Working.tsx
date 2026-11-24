@@ -2,58 +2,67 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { Machine } from "@hermesh/proto/local";
 import { SessionStatus, type Session } from "@hermesh/proto/session";
-import { clockText, elapsedSeconds, createdDate, dateOf, displayTitle, failureTitle, isActive, isFailed } from "@hermesh/core";
+import { displayTitle, isActive, needsAttention } from "@hermesh/core";
 import { grantColor, Mark, type GrantLook } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
-import { grantFace, StatusDot } from "../components";
+import { grantFace } from "../components";
 import { Icon } from "../icons";
-import { grantLabel, machineName } from "../Sidebar";
-import { useNow, useStore, type Store } from "../store";
-import { liveOnMap, sessionKeys } from "./Map";
-
-/** Questions first, then failures, then the turns in progress; oldest first within each. */
-function order(s: Session): number {
-  return s.status === SessionStatus.WAITING_INPUT ? 0 : isFailed(s) ? 1 : 2;
-}
+import { machineName, senderLine } from "../Sidebar";
+import { useStore, type Store } from "../store";
+import { FinishedRow, RunningRow, useTeam } from "../team";
+import { sessionKeys } from "./Map";
 
 /**
- * "Working Now": a card per live session with what matters about it: which
- * session, its status, how long its turn has worked, who started it, and
- * where (machine / project). pick, a node clicked on the map, narrows the
- * cards to the sessions through it; the heading names it and each card marks
- * the part that matches.
+ * "In Progress": a row per session at work (those that wait for the owner or
+ * failed are under Needs You). pick, a node clicked on the map, turns it
+ * into the sessions through that node, whatever their state: those that need
+ * the owner, those at work, then the last three that finished; the heading
+ * names the node.
  */
 export function Working({ pick, onClear }: { pick: string; onClear: () => void }) {
   const { t } = useTranslation("overview");
   const st = useStore();
-  const live = st.sessions.filter(liveOnMap);
-  const running = live.filter(isActive).length;
-  const cards = live
-    .filter((s) => !pick || sessionKeys(s).includes(pick))
-    .sort((a, b) => order(a) - order(b) || createdDate(a).getTime() - createdDate(b).getTime());
+  const team = useTeam();
+  const through = (list: Session[]) => list.filter((s) => sessionKeys(s).includes(pick));
+  const rows = pick ? [...through(team.waiting), ...through(team.failed), ...through(team.running), ...through(team.finished).slice(0, 3)] : team.running;
   return (
-    <section aria-label={t("working.title")}>
+    <section aria-label={i18n.t("common:team.inProgress")}>
       <div className="sec-h">
-        {t("working.title")}
-        {running > 0 && !pick && <span className="n">{t("runningCount", { count: running })}</span>}
-        {pick && <Condition pick={pick} count={cards.length} onClear={onClear} />}
+        {pick ? <Condition pick={pick} count={rows.length} onClear={onClear} /> : <>{i18n.t("common:team.inProgress")}{rows.length > 0 && <span className="n">{rows.length}</span>}</>}
         {/* A machine only has no grants to manage. */}
         {!st.status?.machineOnly && <button className="link" onClick={() => window.hermesh?.openSettings("grants")}>{t("working.manageAccess")}</button>}
       </div>
-      {live.length === 0 ? (
-        <div className="card"><Idle /></div>
-      ) : cards.length === 0 ? (
+      {rows.length > 0 ? (
+        <div className="card wk-list" role="list">
+          {rows.map((s) => <div key={s.sessionId} role="listitem">{isActive(s) ? <RunningRow s={s} /> : needsAttention(s) ? <NeedRow s={s} /> : <FinishedRow s={s} />}</div>)}
+        </div>
+      ) : pick ? (
         <div className="card wnone">{t("working.noneThrough")}</div>
       ) : (
-        <div className="wcards" role="list">
-          {cards.map((s) => <Card key={s.sessionId} s={s} pick={pick} />)}
-        </div>
+        <div className="card"><Idle /></div>
       )}
     </section>
   );
 }
 
-/** What the cards are narrowed to, in words, with the way back. */
+/** A session that waits for the owner or failed, among those through a node: which, from whom, and how it stands. */
+function NeedRow({ s }: { s: Session }) {
+  const { t } = useTranslation("overview");
+  const st = useStore();
+  const waits = s.status === SessionStatus.WAITING_INPUT;
+  return (
+    <button className="tm-row" onClick={() => st.select(s.sessionId)}>
+      <i className={waits ? "dot-w" : "dot-f"} aria-hidden="true" />
+      <span className="tm-main">
+        <b>{displayTitle(s)}</b>
+        <span>{senderLine(st, s)}</span>
+      </span>
+      <span className="tm-when">{waits ? t("working.waiting") : s.status === SessionStatus.CRASHED ? t("working.crashed") : t("working.failed")}</span>
+    </button>
+  );
+}
+
+/** What the rows are narrowed to, in words, with the way back. */
 function Condition({ pick, count, onClear }: { pick: string; count: number; onClear: () => void }) {
   const { t } = useTranslation("overview");
   const st = useStore();
@@ -80,59 +89,6 @@ function describe(st: Store, pick: string): { icon: ReactNode; text: string } {
     return { icon: <Icon name={m ? machineIcon(m) : "server"} className="sm" />, text: i18n.t("overview:working.onMachine", { machine: m?.local ? i18n.t("overview:thisMac") : machineName(st, id) }) };
   }
   return { icon: <Icon name="folder" className="sm" />, text: i18n.t("overview:working.inProject", { project: id.split("/").slice(1).join("/") }) };
-}
-
-function Card({ s, pick }: { s: Session; pick: string }) {
-  const { t } = useTranslation("overview");
-  const st = useStore();
-  const [g, m, p] = sessionKeys(s);
-  const grant = grantLabel(st, s);
-  const local = st.machines.find((x) => x.machineId === s.machineId)?.local;
-  const tone = s.status === SessionStatus.WAITING_INPUT ? "w" : isFailed(s) ? "r" : isActive(s) ? "run" : "";
-  return (
-    <button className={`wcard ${tone}`} role="listitem" onClick={() => st.select(s.sessionId)}>
-      <span className="wc-top">
-        <Status s={s} />
-        <Worked s={s} />
-      </span>
-      <b className="wc-title" title={displayTitle(s)}>{displayTitle(s)}</b>
-      <span className="wc-foot">
-        <span className={`wc-by ${pick === g ? "hit" : ""}`}>
-          <GrantIcon c={st.clients.find((c) => c.clientId === s.createdBy) ?? { label: grant }} size={16} />
-          {grant}
-        </span>
-        <span className="arrow">→</span>
-        <span className={`wc-at ${pick === m ? "hit" : ""}`}>{local ? t("thisMac") : machineName(st, s.machineId)}</span>
-        <i>/</i>
-        <b className={pick === p ? "hit" : ""}>{s.projectId}</b>
-      </span>
-    </button>
-  );
-}
-
-/** The status in a word beside its dot. */
-function Status({ s }: { s: Session }) {
-  const { t } = useTranslation("overview");
-  let word = t("working.running");
-  let tone = "";
-  if (s.status === SessionStatus.WAITING_INPUT) [word, tone] = [t("working.waiting"), "w"];
-  else if (isFailed(s)) [word, tone] = [s.status === SessionStatus.CRASHED ? t("working.crashed") : t("working.failed"), "r"];
-  else if (s.status === SessionStatus.PREPARING) word = t("working.preparing");
-  else if (s.status === SessionStatus.QUEUED) word = t("working.queued");
-  return (
-    <span className={`wst ${tone}`}>
-      <StatusDot s={s} />
-      {word}
-    </span>
-  );
-}
-
-/** How long the turn in progress has worked (a ticking clock); for a failure, why. */
-function Worked({ s }: { s: Session }) {
-  const now = useNow(1000);
-  if (isFailed(s)) return <span className="wc-why">{failureTitle(s.progress?.lastFailure?.kind ?? 0)}</span>;
-  const from = dateOf(s.progress?.turnStartedAt) ?? createdDate(s);
-  return <span className="wc-time">{clockText(elapsedSeconds(from, now))}</span>;
 }
 
 function GrantIcon({ c, size }: { c: GrantLook; size: number }) {

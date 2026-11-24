@@ -523,10 +523,10 @@ func txGet(tx *sql.Tx, key string) ([]byte, error) {
 // WorkKey names a key of this machine's counts.
 type WorkKey struct{ Client, Agent, Project string }
 
-// CountWork adds up this machine's counts over buckets and the whole range
+// CountWork adds up this machine's counts over what a asks
 // (workstats.Count), with the keys they name.
-func (s *Store) CountWork(ctx context.Context, buckets []workstats.Bound, whole workstats.Bound) (sessions, turns []workstats.Row, keys map[int64]WorkKey, err error) {
-	if sessions, turns, err = workstats.Count(ctx, s.rdb, false, buckets, whole); err != nil {
+func (s *Store) CountWork(ctx context.Context, a workstats.Ask) (sessions, turns []workstats.Row, keys map[int64]WorkKey, err error) {
+	if sessions, turns, err = workstats.Count(ctx, s.rdb, false, a); err != nil {
 		return nil, nil, nil, err
 	}
 	rows, err := s.rdb.QueryContext(ctx, `SELECT k, client, agent, project_id FROM work_keys`)
