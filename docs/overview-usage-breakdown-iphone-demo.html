@@ -173,9 +173,9 @@ h1,h2,p,ul{margin:0;padding:0}
   <aside class="side">
     <h2>顶部两行</h2>
     <ul>
-      <li>第一行：实时｜用量｜额度。第二行：时间范围、分法、一个筛选按钮。<b>平时只有这两行</b>。</li>
-      <li><b>时间范围和分法在一行</b>，都是「怎么看」；筛选是「只看谁」，收在按钮里。</li>
-      <li>分法是「按 Agent｜按环境｜合计」，默认按 Agent。选了某个环境（或只有一个环境有数据）时，「按环境」变成「按项目」。</li>
+      <li>第一行：实时｜用量｜额度。第二行：分法，然后是时间范围和一个筛选按钮。<b>平时只有这两行</b>。</li>
+      <li><b>分法放最左</b>：这一行里最常点、面积最大的控件。<b>时间和筛选挨着放在右边</b>：两个都是「看哪些数据」，是一组。</li>
+      <li>分法是「合计｜按 Agent｜按环境」，先整体再拆分，默认按 Agent。选了某个环境（或只有一个环境有数据）时，「按环境」变成「按项目」。</li>
       <li>筛选按钮点开是系统菜单：Agent 提供方、环境 / 项目、发起方，各自再点进去选，和现在环境 / 项目的两级菜单是同一种。</li>
       <li><b>有筛选时才多出一行</b>：按钮变成强调色并带上个数，下面列出生效的筛选，点叉去掉；这一行可以横滑。</li>
       <li>「实时｜用量｜额度」不挪进导航栏：导航栏中间留给连接状态那一行。</li>
@@ -232,7 +232,7 @@ function world(many){
 world('');
 const st={range:'week',group:'agent',machine:'',agent:'',solo:null,sel:-1,more:false,legend:'grid'};
 const RANGE={today:'今天',week:'7 天',month:'30 天'},PREV={today:'较昨天此时',week:'较前 7 天',month:'较前 30 天'};
-const GROUP={agent:'按 Agent',place:'按环境',total:'合计'};
+const GROUP={total:'合计',agent:'按 Agent',place:'按环境'};
 const tokens=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1).replace('.0','')+'K':String(n);
 const md=d=>`${d.getMonth()+1}月${d.getDate()}日`,wd=d=>'周'+'日一二三四五六'[d.getDay()];
 const span=()=>st.range==='today'?[T,T]:st.range==='week'?[T-6,T]:[0,T];
@@ -321,7 +321,7 @@ function render(){
   const seg=`<div class="sg">${Object.entries(GROUP).map(([k,v])=>`<button class="${st.group===k?'on':''}" data-group="${k}">${k==='place'&&byProject?'按项目':v}</button>`).join('')}</div>`;
   const range=`<button class="chip" data-range>${RANGE[st.range]}${chev}</button>`;
   const place=st.machine?PLACE[st.machine]||st.machine:'',on=[st.agent&&['agent',AGENT[st.agent]],place&&['machine',place]].filter(Boolean);
-  const look=`<div class="look">${range}${seg}<button class="fb ${on.length?'on':''}" data-filter><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h12M5.5 9h7M8 12.5h2"/></svg>${on.length||''}</button></div>${
+  const look=`<div class="look">${seg}${range}<button class="fb ${on.length?'on':''}" data-filter><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h12M5.5 9h7M8 12.5h2"/></svg>${on.length||''}</button></div>${
     on.length?`<div class="chips">${on.map(([k,v])=>`<button class="chip tk" data-clear="${k}">${v}${cross}</button>`).join('')}</div>`:''}`;
   $('#scroll').innerHTML=`<div class="sg"><button>实时</button><button class="on">用量</button><button>额度</button></div>
   ${look}

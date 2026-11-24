@@ -738,6 +738,7 @@ final class DemoUITests: XCTestCase {
         tap("filters"); tap(menu)
         let line = app.buttons.matching(NSPredicate(format: "label == %@ OR label BEGINSWITH %@", item, item + ",")).firstMatch
         XCTAssertTrue(line.waitForExistence(timeout: 5), item)
+        checkpoint("filter-menu-\(menu)")
         line.tap()
     }
 

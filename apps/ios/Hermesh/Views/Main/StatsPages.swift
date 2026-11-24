@@ -24,7 +24,9 @@ struct UsagePage: View {
         // The last answer shows while a new state's is asked: one of another grouping has no parts to draw.
         let split = usageParts(res, period: period, group: stats.group, filter: stats.filter, agents: codingAgentIDs, machines: model.machines.map(\.machineID))
             .flatMap { $0.all.isEmpty ? nil : $0 }
-        let byProject = !stats.filter.machineID.isEmpty || split?.by == .project
+        // Where splits into projects once one environment is chosen, or only one worked in the range: the control
+        // says so whatever the bars are split by now.
+        let byProject = !stats.filter.machineID.isEmpty || choices.machines.count == 1
         VStack(alignment: .leading, spacing: 10) {
             controls(choices, byProject: byProject)
             heading(Text("Sessions"), delta: page.sessionsDelta)
@@ -87,8 +89,8 @@ struct UsagePage: View {
         }
     }
 
-    /// How the page is looked at, in one row: the range, what the bars are in parts of (its three ways at once,
-    /// each saying "by" what), and the one button the filters are behind. A filter in force is said under the row
+    /// How the page is looked at, in one row: what the bars are in parts of (its three ways at once, the whole first,
+    /// each other saying "by" what), then the range and the one button the filters are behind. A filter in force is said under the row
     /// and let go by its cross, so the row is there only when something is filtered.
     private func controls(_ c: UsageChoices, byProject: Bool) -> some View {
         @Bindable var stats = model.stats
@@ -100,7 +102,18 @@ struct UsagePage: View {
             f.client.isEmpty ? nil : ("client", model.senderName(f.client), { stats.filter.client = "" }),
         ].compactMap { $0 }
         return VStack(alignment: .leading, spacing: 10) {
+            // How the bars are split first, the whole before its parts; then what is counted, the range and the
+            // filters, side by side at the trailing end.
             HStack(spacing: 8) {
+                Picker("Group", selection: $stats.group.animation(.smooth)) {
+                    Text("Total").tag(UsageGroup.total)
+                    // Their own words (short in English, so the three fit the row), not the session list's.
+                    Text("Agents · bars").tag(UsageGroup.agent)
+                    // By where is by project once one environment is all there is to split.
+                    (byProject ? Text("Projects · bars") : Text("Machines · bars")).tag(UsageGroup.place)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("usage-group")
                 Menu {
                     ForEach(WorkPeriod.allCases, id: \.self) { p in
                         choice(Text(periodTitle(p)), counts: nil, on: stats.period == p) { stats.period = p }
@@ -109,15 +122,6 @@ struct UsagePage: View {
                     chip(Text(periodTitle(stats.period)), on: false)
                 }
                 .accessibilityIdentifier("filter-range")
-                Picker("Group", selection: $stats.group.animation(.smooth)) {
-                    // Their own words (short in English, so the three fit the row), not the session list's.
-                    Text("Agents · bars").tag(UsageGroup.agent)
-                    // By where is by project once one environment is all there is to split.
-                    (byProject ? Text("Projects · bars") : Text("Machines · bars")).tag(UsageGroup.place)
-                    Text("Total").tag(UsageGroup.total)
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("usage-group")
                 Menu {
                     filterMenus(c)
                 } label: {
@@ -332,6 +336,7 @@ struct MeasureCard: View {
     var said: (Double) -> String = { "\(Int($0))" }
     @Binding var picked: Int?
     @Binding var opened: Bool
+    @State private var calloutSize = CGSize.zero
     var onSolo: (String) -> Void = { _ in }
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.calendar) private var calendar
@@ -370,10 +375,11 @@ struct MeasureCard: View {
                 .overlay(alignment: .topLeading) {
                     if let i = picked, i <= now, i < values.count, !loading {
                         let x = width * (CGFloat(i) + 0.5) / CGFloat(values.count)
+                        // Over its bar, kept within the chart's width; its size is measured as it is drawn.
                         callout(i)
                             .fixedSize()
-                            .alignmentGuide(.leading) { d in -min(max(x - d.width / 2, 0), max(width - d.width, 0)) }
-                            .alignmentGuide(.top) { d in d.height + 8 }
+                            .onGeometryChange(for: CGSize.self) { $0.size } action: { calloutSize = $0 }
+                            .offset(x: min(max(x - calloutSize.width / 2, 0), max(width - calloutSize.width, 0)), y: -calloutSize.height - 8)
                             .allowsHitTesting(false)
                             .transition(.opacity)
                             .accessibilityElement(children: .combine)

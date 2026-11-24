@@ -113,9 +113,9 @@ type WorkRequest = MessageInitShape<typeof QueryWorkRequestSchema>;
 const zone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const firstDayOf = (today: Date, days: number) => dayKey(new Date(today.getFullYear(), today.getMonth(), today.getDate() - days + 1));
 
-/** What the page's bars are grouped by: the agents, where (environments, or one environment's projects), or nothing (the total). */
+/** What the page's bars are grouped by: nothing (the total), the agents, or where (environments, or one environment's projects). In the order the control shows them. */
 export type UsageGroup = "agent" | "place" | "total";
-export const usageGroups: UsageGroup[] = ["agent", "place", "total"];
+export const usageGroups: UsageGroup[] = ["total", "agent", "place"];
 
 /**
  * The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it;

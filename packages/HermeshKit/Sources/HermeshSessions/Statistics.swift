@@ -28,10 +28,10 @@ public struct UsageFilter: Hashable, Sendable {
     }
 }
 
-/// What the page's bars are in parts of: the agents, where (the environments, or one environment's projects), or
-/// nothing (the total).
+/// What the page's bars are in parts of: nothing (the total), the agents, or where (the environments, or one
+/// environment's projects). In the order the control shows them.
 public enum UsageGroup: String, CaseIterable, Sendable {
-    case agent, place, total
+    case total, agent, place
 }
 
 /// The page's question: the range ending today by hour (Today) or day, under the filter, with the span before it;
