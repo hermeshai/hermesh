@@ -21,7 +21,6 @@
     "sentBy": "{{name}} 派的活",
     "sentByAt": "{{name}} 派的活 ·",
     "turnFailed": "第 {{turn}} 轮出错：{{title}}",
-    "wakeLine": "后台唤醒 · {{reason}}",
     "copy": "拷贝",
     "inProgress": "进行中",
     "truncated": "…（已截断）",

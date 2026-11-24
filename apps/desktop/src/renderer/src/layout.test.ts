@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cardRoom, conversationMin, layoutOf, sidebarWidth, type Peek } from "./layout.ts";
+import { cardRoom, conversationMin, layoutOf, setCard, sidebarWidth, type Peek } from "./layout.ts";
+import type { Store } from "./store.tsx";
 
 const at = (width: number, peek: Peek = null, sidebar = true, inspector = true) => layoutOf({ width, peek, sidebar, inspector });
 const both = sidebarWidth + conversationMin + cardRoom; // 1102
@@ -37,4 +38,15 @@ test("layoutOf: what gave way, asked for, shows over the conversation", () => {
 test("layoutOf: a peek of what fits beside the conversation changes nothing", () => {
   assert.deepEqual(at(1240, "sidebar", false), { sidebar: "hidden", card: "docked" });
   assert.deepEqual(at(1240, "card", true, false), { sidebar: "docked", card: "hidden" });
+});
+
+test("setCard: showing or hiding the info card puts the background panel away", () => {
+  const patches: Record<string, unknown>[] = [];
+  const wide = { width: 1240, sidebar: true, inspector: true, peek: null, background: true, set: (p: Record<string, unknown>) => patches.push(p) } as unknown as Store;
+  setCard(wide, true);
+  assert.deepEqual(patches.at(-1), { inspector: true, peek: null, background: false });
+
+  const narrow = { width: 900, sidebar: true, inspector: true, peek: null, background: true, set: (p: Record<string, unknown>) => patches.push(p) } as unknown as Store;
+  setCard(narrow, true);
+  assert.deepEqual(patches.at(-1), { peek: "card", background: false });
 });

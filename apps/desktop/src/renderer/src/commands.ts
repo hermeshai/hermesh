@@ -28,7 +28,7 @@ export function useCommands() {
           answerable: pendingQuestion(s) !== undefined,
           archivable: isArchivable(s),
           archived: s.status === SessionStatus.ARCHIVED,
-          inspector: layoutOf(st).card !== "hidden",
+          inspector: layoutOf(st).card !== "hidden" && !st.background,
           grant: s.createdBy,
           grantLabel: grantLabel(st, s),
           project: s.projectId,
@@ -61,7 +61,7 @@ function run(st: Store, c: Command) {
     case "nextActive":
       return next(st, isActive);
     case "toggleInspector":
-      return s && setCard(st, layoutOf(st).card === "hidden");
+      return s && setCard(st, layoutOf(st).card === "hidden" || st.background);
     case "toggleSidebar":
       return setSidebar(st, layoutOf(st).sidebar === "hidden");
     case "newGrant":

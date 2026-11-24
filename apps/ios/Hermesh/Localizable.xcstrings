@@ -61,16 +61,6 @@
         }
       }
     },
-    "Background wake · %@": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "后台唤醒 · %@"
-          }
-        }
-      }
-    },
     "Can’t reach Hermesh · Retrying" : {
       "localizations" : {
         "zh-Hans" : {
