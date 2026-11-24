@@ -11,6 +11,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { TerminalCommand } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
+import { preferences } from "../notify";
 import { socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -236,7 +237,7 @@ export const linux: Platform = {
 
   frame(_kind: WindowKind) {
     // The desktop draws the frame and its buttons; the page's own background from the first frame.
-    return { backgroundColor: nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff", autoHideMenuBar: true };
+    return { backgroundColor: preferences().appearance === "black" ? "#070709" : nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff", autoHideMenuBar: true };
   },
 
   // The desktop places the window's buttons.

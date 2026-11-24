@@ -149,6 +149,6 @@ html[data-platform=win] .set-top{padding-right:calc(var(--caption) + 8px)}
 .set-look button{display:flex;flex-direction:column;align-items:center;gap:5px;border:0;background:none;padding:0;font:inherit;font-size:11.5px;color:var(--l2)}
 .set-look i{width:58px;height:38px;border-radius:7px;box-shadow:0 0 0 .5px var(--l4);display:block}
 .set-look .on{color:var(--l1)}.set-look .on i{outline:2.5px solid var(--accent);outline-offset:1px}
-.look-system{background:linear-gradient(135deg,#f2f2f5 50%,#2a2a2e 50%)}.look-light{background:#f2f2f5}.look-dark{background:#2a2a2e}
+.look-system{background:linear-gradient(135deg,#f2f2f5 50%,#2a2a2e 50%)}.look-light{background:#f2f2f5}.look-dark{background:#2a2a2e}.look-black{background:#070709;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16),0 0 0 .5px var(--l4)}
 .settings .ag-prjs{background:var(--win2);box-shadow:none;border-radius:var(--r-card)}
 .settings .ag-group{margin:0 0 6px 4px;font-size:12px;color:var(--l2)}

@@ -12,7 +12,10 @@
 
 /* ---------- The composer (docs/thread-composer.md §4): Her's box (her.css .cmp), the line under it ---------- */
 .th{--pill:var(--win);--pill-bd:var(--menu-bd)}
-@media (prefers-color-scheme:dark){.th{--pill:var(--win2)}}
+@media (prefers-color-scheme:dark){
+  .th{--pill:var(--win2)}
+  :root[data-dark-style="black"] .th{--pill:#15151a;--pill-bd:rgba(255,255,255,.08)}
+}
 /* A new session: its question in the middle of what the box at the bottom leaves (the project a menu in it), the
    environment under it; the box where a session's is (her.css .cmp-zone). */
 .th-ask{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:0 32px 150px;text-align:center}
