@@ -59,8 +59,6 @@ import { Inspector } from "./session/Inspector";
 import { SessionRequest } from "./session/Request";
 import { keepProjects, keepProviders, lastProjects, lastProviders, remembered, remember } from "./session/choices";
 import { ContentScope } from "./session/scope";
-import "./session/markdown/markdown.css";
-import "./session/session.css";
 import "./session/composer.css";
 
 /**
@@ -860,9 +858,9 @@ function WorkLine({ text, since }: { text: string; since?: Date }) {
   const now = useNow(1000);
   return (
     <div className="th-work" data-testid="thread-working">
-      <Mark size={16} variant="seq" />
-      <span>{text}</span>
-      {since && <span className="el">{clockText(elapsedSeconds(since, now))}</span>}
+      <Mark size={18} variant="seq" />
+      <span className="shimmer">{text}</span>
+      {since && <span className="el">· {clockText(elapsedSeconds(since, now))}</span>}
     </div>
   );
 }

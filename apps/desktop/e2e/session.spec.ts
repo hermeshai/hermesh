@@ -260,13 +260,15 @@ test("the session card floats over the conversation with what a glance needs, an
   await page.mouse.move(0, 0);
   await expect.poll(fill).toBe("rgba(0, 0, 0, 0)");
   await snap(page, "session-chat");
-  // bot sent the work in: its messages are a quiet bubble with the page's words, in the light and in the dark (the
-  // owner's brand blue is thread-v2.spec.ts's).
+  // bot sent the work in: its messages are a quiet bubble with the reading surface's words (#202127 / #dededb) and a text cursor (the owner's soft cool-grey bubble is thread-v2.spec.ts's).
   const bubble = page.getByRole("log", { name: "对话" }).locator(".um .bub").first();
-  const colors = () => bubble.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
-  expect(await colors()).toEqual(["rgba(0, 0, 0, 0.075)", "rgba(0, 0, 0, 0.86)"]);
+  const prose = page.getByRole("log", { name: "对话" }).locator(".am .md").first();
+  const colors = () => bubble.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color, getComputedStyle(el).cursor]);
+  expect(await colors()).toEqual(["rgba(32, 33, 39, 0.07)", "rgb(32, 33, 39)", "text"]);
+  expect(await prose.evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el).cursor])).toEqual(["rgb(32, 33, 39)", "text"]);
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect.poll(colors).toEqual(["rgba(255, 255, 255, 0.086)", "rgba(255, 255, 255, 0.95)"]);
+  await expect.poll(colors).toEqual(["rgba(255, 255, 255, 0.075)", "rgb(222, 222, 219)", "text"]);
+  await expect.poll(() => prose.evaluate((el) => getComputedStyle(el).color)).toBe("rgb(222, 222, 219)");
   await snap(page, "session-chat-dark");
   await page.emulateMedia({ colorScheme: "light" });
   await toggle.click();
@@ -282,8 +284,8 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
   const failed = page.getByRole("alert");
   await expect(failed).toContainText("Gemini CLI 意外退出了");
   await expect(failed).not.toContainText("已崩溃"); // the sidebar says so
-  await expect(failed.locator(".qf-ic")).toHaveCSS("color", /^rgb\((215, 51, 63|255, 102, 112)\)$/); // red only in its mark
-  await expect(failed.locator(".qf-title")).not.toHaveCSS("color", /^rgb\((215, 51, 63|255, 102, 112)\)$/);
+  await expect(failed.locator(".qf-ic")).toHaveCSS("color", /^rgb\((215, 51, 63|222, 85, 85|255, 102, 112)\)$/); // red only in its mark
+  await expect(failed.locator(".qf-title")).not.toHaveCSS("color", /^rgb\((215, 51, 63|222, 85, 85|255, 102, 112)\)$/);
   await expect(failed).toContainText("bot 再发消息就会从这里接着做，之前的改动都还在。");
   await expect(failed).not.toContainText("exit status");
   await failed.getByRole("button", { name: /详情/ }).click();
@@ -451,7 +453,9 @@ test("a running session shows what it does, and 停止 stops the turn", async ()
   await expect(working).not.toContainText("sleep 1800");
   await expect(working).toContainText(/\d+:\d\d/);
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800");
-  await expect(page.getByRole("log", { name: "对话" }).getByRole("img", { name: "进行中" })).toBeVisible();
+  const runningStep = page.getByRole("log", { name: "对话" }).getByRole("button", { name: /sleep 1800/ });
+  await expect(runningStep).toHaveAttribute("aria-busy", "true");
+  await expect(runningStep).toHaveClass(/\bshimmer\b/);
   await snap(page, "session-running");
 
   await page.getByTestId("composer-stop-btn").click();
@@ -576,7 +580,8 @@ test("tool details stay folded until opened, a failed one and a running one too"
   await open(page, "命令失败");
   const log = page.getByRole("log", { name: "对话" });
   const step = log.getByRole("button", { name: /运行了 2 条命令/ });
-  await expect(step.getByRole("img", { name: "进行中" })).toBeVisible();
+  await expect(step).toHaveAttribute("aria-busy", "true");
+  await expect(step).toHaveClass(/\bshimmer\b/);
   await expect(step).toHaveAttribute("aria-expanded", "false");
   const failed = log.getByRole("button", { name: /^已运行\s*no-such-file/ });
   await expect(failed).toBeHidden();
@@ -677,9 +682,12 @@ test("an agent's Markdown shows as GitHub shows it, without HTML, images or unsa
   await expect(md.locator("img")).toHaveCount(0);
   await expect(md).toContainText("图");
   await expect(md).toContainText("<b>原样</b>");
-  // The agent's words are 14.5 on 1.625, in Google Sans Flex.
+  // The agent's words are 14.5 on 1.625, in Google Sans Flex, with finxwork's heading scale, link colour and code surface.
   expect(await md.evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["14.5px", "23.5625px"]);
   expect(await md.evaluate((el) => getComputedStyle(el).fontFamily)).toMatch(/^"Google Sans Flex"/);
+  expect(await md.getByRole("heading", { name: "结论" }).evaluate((el) => [getComputedStyle(el).fontSize, getComputedStyle(el).lineHeight])).toEqual(["18px", "28px"]);
+  await expect(md.getByRole("link")).toHaveCSS("color", "rgb(40, 95, 184)");
+  await expect(md.locator(".cblock").first()).toHaveCSS("background-color", "rgb(235, 237, 242)");
   expect(await page.evaluate(() => document.fonts.check('14px "Google Sans Flex"') && document.fonts.check('13px "Google Sans Code"'))).toBe(true);
   await snap(page, "session-markdown");
   await app.close();

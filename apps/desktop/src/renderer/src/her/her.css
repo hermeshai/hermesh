@@ -1,7 +1,7 @@
 /* The Her entry (docs/her-server.md §9), in the app's own tokens.
    Corners come from --r-*, colours from the design variables, except an avatar's own. */
 
-.her{--pill:var(--win);--pill-bd:var(--menu-bd);--bot-reply:var(--win2);--bot-user:var(--bub);position:relative;display:flex;flex:1;min-width:0;min-height:0}
+.her{--pill:var(--win);--pill-bd:var(--menu-bd);position:relative;display:flex;flex:1;min-width:0;min-height:0}
 @media (prefers-color-scheme:dark){.her{--pill:var(--win2)}}
 
 /* Edge to edge: the conversation with Her takes the page, its top the window's 44 px band; Her's settings and
@@ -141,7 +141,7 @@ html.blurred .her-id-n{color:var(--l2)}
 .tr.bots .vrow.join-prev>.um{margin-top:-7px}
 .tr.bots .um .msg-act{top:auto;bottom:0;right:100%;padding:0 6px 0 0}
 .tr.bots .um.queued .bub,.tr.bots .um.waiting .bub{opacity:.72}
-.um-att{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-bottom:6px}
+.um-att{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-bottom:8px}
 /* Waiting on this Mac until its machine is back: a quiet line under the bubble, with a way to drop it. */
 .um-wait{display:flex;align-items:center;justify-content:flex-end;gap:5px;margin-top:5px;font-size:12px;color:var(--l3);min-width:0}
 .um-wait>span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -156,8 +156,10 @@ html.blurred .her-id-n{color:var(--l2)}
 .bbub{min-width:0;max-width:min(640px,100%);padding:9px 15px;border-radius:var(--r-xl);background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--msg);font-size:var(--chat-size);line-height:1.625;overflow-wrap:anywhere;cursor:text}
 :where(.bbub,.tr.bots .um .bub) :is(button,summary){cursor:default}
 .bbub .md>*+*{margin-top:8px}
-.bbub .md pre{background:var(--win)}
 .bbub .md :is(pre,table,.md-table){max-width:100%;overflow-x:auto}
+.md-img{display:block;max-width:min(480px,100%);padding:0;border:0;background:none;border-radius:var(--r-md);overflow:hidden;box-shadow:0 0 0 .5px var(--sep);cursor:zoom-in}
+.md-img img{display:block;max-width:100%;height:auto;max-height:420px;object-fit:contain}
+.md-img:hover img{opacity:.88}
 .bline .msg-act{position:absolute;position-anchor:--bline;top:auto;left:anchor(right);bottom:anchor(bottom);margin-left:6px;position-try-fallbacks:--bline-inside;padding:2px 4px;background:var(--win);border-radius:var(--r-md);z-index:1;pointer-events:none}
 @position-try --bline-inside{left:auto;right:anchor(right);margin-left:0}
 .bm:hover .bline .msg-act,.bline .msg-act:focus-within{pointer-events:auto}
@@ -248,12 +250,6 @@ html.blurred .her-id-n{color:var(--l2)}
 .scl-trust{display:flex;align-items:center;gap:6px;padding:8px 15px;border-top:.5px solid var(--sep);background:var(--fill);font-size:11.5px;line-height:15px;color:var(--l3)}
 .scl-trust .ic{width:12px;height:12px;flex:none;color:var(--green)}
 
-/* Words at work elsewhere (a routine's run): a band of the page's colour sweeping across them. */
-.shimmer{position:relative;overflow:clip}
-span.shimmer{display:inline-block;max-width:100%;vertical-align:bottom}
-.shimmer::after{content:"";position:absolute;top:0;bottom:0;left:-100%;width:300%;pointer-events:none;background:linear-gradient(90deg,transparent 38%,color-mix(in srgb,var(--shimmer-on,var(--win)) 64%,transparent) 50%,transparent 62%);animation:shimmer 2.4s linear infinite}
-@keyframes shimmer{from{transform:translateX(-28.6667%)}to{transform:translateX(28.6667%)}}
-@media (prefers-reduced-motion:reduce){.shimmer::after{display:none;animation:none}}
 /* Busy: the last bubble (docs/her-team.md §15.6), one line: the dots and who is at work, swept left to right by one
    light at the shimmer's pace. A mask, so only they fade where it passes, whatever is under the bubble. Several
    sub-agents take turns in one cell as wide as the widest name; their number and a chevron pointing where their
@@ -497,13 +493,13 @@ button.wb-h:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 @keyframes rtn-flash{0%,40%{box-shadow:inset 0 0 0 1.5px var(--accent)}100%{box-shadow:inset 0 0 0 .5px var(--sep)}}
 /* A reply (docs/her-reply.md): what a message replies to at the top of its bubble, a button that brings that message
    into view; what the next one replies to above the composer's text; Reply over words selected in a message. */
-.rq{display:flex;gap:8px;width:calc(100% + 12px);margin:-2px -6px 7px;padding:6px 9px 6px 8px;border:0;border-radius:var(--r-md);background:rgba(255,255,255,.17);color:inherit;font:inherit;font-size:13px;line-height:1.45;text-align:left;white-space:normal;user-select:none;-webkit-user-select:none;outline-offset:-2px}
-.rq:hover{background:rgba(255,255,255,.25)}
+.rq{display:flex;gap:8px;width:calc(100% + 12px);margin:-2px -6px 7px;padding:6px 9px 6px 8px;border:0;border-radius:var(--r-md);background:var(--fill2);color:var(--l1);font:inherit;font-size:13px;line-height:1.45;text-align:left;white-space:normal;user-select:none;-webkit-user-select:none;outline-offset:-2px}
+.rq:hover{background:var(--fill3)}
 .rq:last-child{margin-bottom:-2px}
-.rq::before{content:"";flex:none;width:2.5px;border-radius:2px;background:rgba(255,255,255,.8)}
+.rq::before{content:"";flex:none;width:2.5px;border-radius:2px;background:var(--accent)}
 .rq-t{min-width:0;display:flex;flex-direction:column}
-.rq-t b{font-size:12px;font-weight:600}
-.rq-t span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;opacity:.86;white-space:pre-wrap;overflow-wrap:anywhere}
+.rq-t b{font-size:12px;font-weight:600;color:var(--accent-t)}
+.rq-t span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--l2);white-space:pre-wrap;overflow-wrap:anywhere}
 .rtn-flash .um .bub{animation:rq-flash 1.4s var(--ease-out)}
 @keyframes rq-flash{0%,40%{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 38%,transparent)}100%{box-shadow:0 0 0 0 transparent}}
 .cmp-q{display:flex;align-items:flex-start;gap:9px;padding:7px 6px 7px 9px;border-radius:var(--r-md);background:var(--fill);animation:her-up .22s cubic-bezier(.2,0,0,1)}
