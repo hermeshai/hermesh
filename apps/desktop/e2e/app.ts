@@ -124,6 +124,41 @@ export async function pickFrom(open: Locator, item: Locator): Promise<void> {
   }
 }
 
+/**
+ * Puts on the system's clipboard what an app copies, then pastes it into the page's focused field as ⌘V (Edit ›
+ * Paste) does: a picture, as a screenshot copies one; words; or both, as a spreadsheet copies its cells. Specs that
+ * use it are among e2e/desktop_test.go's clipboardSpecs (or run alone), as the clipboard is the whole Mac's.
+ */
+export async function paste(app: ElectronApplication, page: Page, what: { picture?: boolean; text?: string }): Promise<void> {
+  await app.evaluate(async ({ clipboard, ClipboardItem, nativeImage }, what) => {
+    const items: Record<string, string | Blob> = {};
+    if (what.text) items["text/plain"] = what.text;
+    if (what.picture) {
+      const png = nativeImage.createFromBitmap(Buffer.alloc(16 * 16 * 4, 0x80), { width: 16, height: 16 }).toPNG();
+      items["image/png"] = new Blob([new Uint8Array(png)], { type: "image/png" });
+    }
+    await clipboard.write([new ClipboardItem(items)]);
+  }, what);
+  await (await app.browserWindow(page)).evaluate((w) => w.webContents.paste());
+}
+
+/**
+ * Drags files over the page's window as from Finder (by name, type and bytes in base64): they are over it once this
+ * returns, and `drop` lets go of them there.
+ */
+export async function dragFiles(page: Page, files: { name: string; type: string; base64: string }[]): Promise<{ drop: () => Promise<void> }> {
+  const transfer = await page.evaluateHandle((files) => {
+    const dt = new DataTransfer();
+    for (const f of files) dt.items.add(new File([Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0))], f.name, { type: f.type }));
+    return dt;
+  }, files);
+  const fire = (type: string) =>
+    page.evaluate(([dt, type]) => void document.body.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true })), [transfer, type] as const);
+  await fire("dragenter");
+  await fire("dragover");
+  return { drop: () => fire("drop") };
+}
+
 export async function snap(page: Page, name: string): Promise<void> {
   const dir = process.env.HERMESH_SCREENS;
   if (!dir) return;

@@ -88,6 +88,8 @@
   "composer": {
     "placeholder": "继续追问、中途引导（Steer）或加入排队队列…",
     "attach": "添加附件",
+    "dropTitle": "松手添加附件",
+    "dropHint": "文件或图片",
     "start": "开始会话",
     "send": "发送",
     "steer": "中途引导",
