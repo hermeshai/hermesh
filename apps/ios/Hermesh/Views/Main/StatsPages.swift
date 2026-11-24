@@ -583,7 +583,6 @@ struct LimitsCard: View {
 
     var body: some View {
         let c = card
-        let low = (c.least?.left ?? 101) <= limitLow
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
                 AgentLogo(id: c.agent, size: 30)
@@ -592,10 +591,8 @@ struct LimitsCard: View {
                     if c.observedAt != nil { Text(verbatim: reportedText(model, c)).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 }
                 Spacer(minLength: 4)
-                if low {
-                    Label("Running Low", systemImage: "exclamationmark.triangle.fill").font(.caption.weight(.semibold)).foregroundStyle(.orange)
-                        .padding(.horizontal, 8).frame(height: 24).background(Color.orange.opacity(0.15), in: .capsule)
-                } else if !c.plan.isEmpty {
+                // What the account is, always: a window running low is said by its own row, as it may be one of several.
+                if !c.plan.isEmpty {
                     Text(verbatim: c.plan.prefix(1).uppercased() + c.plan.dropFirst()).font(.caption.weight(.medium)).foregroundStyle(.secondary)
                         .padding(.horizontal, 8).frame(height: 24).background(Color(.tertiarySystemFill), in: .capsule)
                 }
@@ -615,6 +612,7 @@ struct LimitsCard: View {
                         Spacer()
                         Text("Left").font(.footnote).foregroundStyle(.secondary)
                         Text(verbatim: "\(w.left)%").font(.title3.weight(.bold)).monospacedDigit()
+                            .foregroundStyle(w.left <= limitLow ? Color.orange : .primary)
                     }
                     GeometryReader { g in
                         ZStack(alignment: .leading) {

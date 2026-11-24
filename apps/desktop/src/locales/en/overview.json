@@ -174,7 +174,6 @@
   },
   "limits": {
     "title": "Limits",
-    "low": "Running Low",
     "left": "left",
     "allowance": "Allowance",
     "time": "Time",

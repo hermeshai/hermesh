@@ -163,7 +163,6 @@
   },
   "limits": {
     "title": "额度",
-    "low": "快用完了",
     "left": "剩余",
     "allowance": "额度",
     "time": "时间",

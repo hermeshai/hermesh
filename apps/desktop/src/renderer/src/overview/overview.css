@@ -180,8 +180,6 @@
 .lim-tx b{font-size:16px;font-weight:700;white-space:nowrap}
 .lim-tx small{font-size:11.5px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:1px}
 .lim-badge{margin-top:9px;height:20px;padding:0 7px;border-radius:10px;font-size:11.5px;font-weight:500;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--l2);background:var(--fill2)}
-.lim-badge.warn{color:var(--orange);background:var(--orange-bg);font-weight:600}
-.lim-badge .ic{width:12px;height:12px}
 .lim-none{font-size:12px;color:var(--l2)}
 .lim-ws{flex:1 1 420px;min-width:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:22px 40px}
 /* An agent that counts groups of models apart: a group a row, its name over its windows. */
@@ -197,6 +195,7 @@
 .lim-ticks{height:16px;background:var(--fill2);-webkit-mask:repeating-linear-gradient(90deg,#000 0 3px,transparent 3px 6px);mask:repeating-linear-gradient(90deg,#000 0 3px,transparent 3px 6px)}
 .lim-ticks u{display:block;height:100%;width:calc(var(--n) * 1%);background:linear-gradient(90deg,var(--us-a1),var(--us-a2))}
 .lim-w.warn .lim-ticks u{background:var(--orange)}
+.lim-w.warn .lim-left b,.lim-w.warn .lim-left i{color:var(--orange)}
 .lim-time{height:3px;border-radius:2px;background:var(--fill2)}
 .lim-time u{display:block;height:100%;border-radius:2px;background:var(--l3)}
 .lim-reset{font-size:11.5px;color:var(--l2);margin-top:9px;font-variant-numeric:tabular-nums;white-space:nowrap}

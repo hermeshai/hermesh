@@ -23,11 +23,13 @@ test("额度 shows what each agent last said, the least left first; a window run
     await expect(cards.first()).toHaveAttribute("aria-label", "Gemini CLI");
     const gemini = cards.first();
     await expect(gemini.locator(".lim-tx")).toContainText(/limits-mac 上报 · (刚刚|\d+ 分钟前)/);
-    await expect(gemini.locator(".lim-badge")).toHaveText("快用完了"); // over its plan, which is Pro
+    // Its plan, though a window runs low: that is said by the window, as it may be one of several.
+    await expect(gemini.locator(".lim-badge")).toHaveText("Pro");
     const five = gemini.getByRole("group", { name: "5 小时窗口" });
     const week = gemini.getByRole("group", { name: "每周窗口" });
     await expect(five.locator(".lim-left")).toHaveText("14%剩余");
     await expect(five).toHaveClass(/\bwarn\b/);
+    expect(await five.locator(".lim-left b").evaluate((el) => getComputedStyle(el).color)).not.toBe(await week.locator(".lim-left b").evaluate((el) => getComputedStyle(el).color));
     await expect(five.locator(".lim-reset")).toHaveText(/^(周. )?\d\d:\d\d 重置 · 还有 (5 小时|4 小时 \d+ 分)$/);
     await expect(week.locator(".lim-left")).toHaveText("48%剩余");
     await expect(week).not.toHaveClass(/\bwarn\b/);
@@ -45,7 +47,7 @@ test("额度 shows what each agent last said, the least left first; a window run
     const third = agy.getByRole("group", { name: "Claude and GPT models" });
     await expect(third.getByRole("group", { name: "5 小时窗口" }).locator(".lim-left")).toHaveText("100%剩余");
     await expect(third.getByRole("group", { name: "每周窗口" }).locator(".lim-left")).toHaveText("35%剩余");
-    await expect(agy.locator(".lim-badge")).toHaveCount(0); // none low, and agy says no plan
+    await expect(agy.locator(".lim-badge")).toHaveCount(0); // agy says no plan
     // An agent that reports its limits and has not yet: it says so.
     await expect(limits.getByRole("group", { name: "Codex" })).toContainText("还没有读到，用订阅账号登录后显示");
     await expect(limits).toContainText("Hermesh 只转述，不读取账号");

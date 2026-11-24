@@ -606,6 +606,11 @@ screen: they are the owner's accounts.
   its windows; one that does not, its windows alone.
 - A window with 20% or less left, not yet reset, is a `Need` (§4.1); the
   least left of the card's, named with its group when it has one.
+- On the card, such a window says so itself: its number and its bar in the
+  warning colour. The card's corner always shows the account's plan (when
+  the agent says one), not a "running low" badge: a card holds several
+  windows, often of several groups of models, and one running low is not
+  the whole account running low.
 - Limits move while that agent runs, and when the agents are checked: the
   machine's first check after it starts, and on the Mac each time the page
   opens (it asks for a check, as the Providers page does). Nothing polls; a
