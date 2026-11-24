@@ -416,6 +416,7 @@ type session struct {
 	seen            int
 	msgItemID       string
 	msgUsed         bool
+	thinking        bool // a thinking block is open; only readLoop touches it
 	skipToolResult  map[string]bool
 	asyncToolInputs map[string]claudeAsyncInput // tool_use_id -> async launch metadata
 	bgTasks         map[string]*claudeBgTask    // task_id -> background task state
@@ -751,8 +752,28 @@ func (s *session) readLoop() {
 					Text     string `json:"text"`
 					Thinking string `json:"thinking"`
 				} `json:"delta"`
+				ContentBlock struct {
+					Type string `json:"type"`
+				} `json:"content_block"`
 			}
-			if json.Unmarshal(l.Event, &ev) == nil && ev.Type == "content_block_delta" {
+			if json.Unmarshal(l.Event, &ev) != nil {
+				return
+			}
+			// A thinking block's start and stop say when the model thinks, even when its text is withheld.
+			if ev.Type == "content_block_start" && (ev.ContentBlock.Type == "thinking" || ev.ContentBlock.Type == "redacted_thinking") {
+				s.thinking = true
+				s.mu.Lock()
+				msgID := s.msgItemID
+				s.mu.Unlock()
+				s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID})
+			} else if ev.Type == "content_block_stop" && s.thinking {
+				s.thinking = false
+				s.mu.Lock()
+				msgID := s.msgItemID
+				s.mu.Unlock()
+				s.emit(runtime.Event{Kind: runtime.EventReasoningCompleted, ItemID: "rsn_" + msgID})
+			}
+			if ev.Type == "content_block_delta" {
 				if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
 					s.settleScheduledWakeups()
 					s.mu.Lock()

@@ -38,7 +38,9 @@
   "work": {
     "starting": "正在启动…",
     "thinking": "思考中",
-    "working": "处理中"
+    "replying": "回复中",
+    "tool": "处理中",
+    "working": "工作中"
   },
   "mode": {
     "code": "编码",

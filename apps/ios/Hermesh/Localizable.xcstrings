@@ -8124,6 +8124,26 @@
         }
       }
     },
+    "Replying…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回复中"
+          }
+        }
+      }
+    },
+    "Running tools…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "处理中"
+          }
+        }
+      }
+    },
     "Thinking…": {
       "localizations": {
         "zh-Hans": {
@@ -8139,7 +8159,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "处理中"
+            "value": "工作中"
           }
         }
       }
@@ -13562,6 +13582,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "模拟数据 · 不会执行真实任务"
+          }
+        }
+      }
+    },
+    "Simulated follow-up reply in Demo Mode.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式下的模拟后续回复。"
+          }
+        }
+      }
+    },
+    "Simulated session response in Demo Mode.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式下的模拟会话回复。"
           }
         }
       }
