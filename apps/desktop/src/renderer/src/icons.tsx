@@ -28,6 +28,7 @@ const paths: Record<string, string> = {
   unarchive: "<rect x=\"2\" y=\"2.8\" width=\"12\" height=\"3.4\" rx=\"1\"/><path d=\"M3.2 6.2v6c0 .7.5 1.2 1.2 1.2h7.2c.7 0 1.2-.5 1.2-1.2v-6M8 11.6V8.2M6.5 9.6L8 8.1l1.5 1.5\"/>",
   // A window with a card floating at its right: the session's info card.
   infoCard: "<rect x=\"1.8\" y=\"2.8\" width=\"12.4\" height=\"10.4\" rx=\"2.4\"/><rect x=\"8.3\" y=\"5.1\" width=\"3.8\" height=\"5.8\" rx=\"1\" fill=\"currentColor\" stroke=\"none\"/>",
+  layers: "<path d=\"M8 2.2L1.8 5.2 8 8.2l6.2-3L8 2.2z\"/><path d=\"M1.8 8.4L8 11.4l6.2-3\"/><path d=\"M1.8 11.6L8 14.6l6.2-3\"/>",
   info: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 7.3v3.9M8 5v.1\"/>",
   alert: "<circle cx=\"8\" cy=\"8\" r=\"6\"/><path d=\"M8 4.9v3.9M8 11v.1\"/>",
   laptop: "<rect x=\"3\" y=\"3.3\" width=\"10\" height=\"7\" rx=\"1.2\"/><path d=\"M1.4 12.7h13.2\"/>",

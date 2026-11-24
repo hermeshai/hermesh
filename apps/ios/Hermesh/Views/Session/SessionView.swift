@@ -63,14 +63,12 @@ struct StepView: View {
 
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
         switch item {
-        case .turn(_, _, let at, let wakeReason):
-            // A time line before a turn, for the first one, after a pause, or when woken by a background task.
-            let timeText = at.flatMap { turnTimeLine($0, previous: previousTurn, now: model.now) }
-            let wakeText = wakeReason.isEmpty ? nil : String(localized: "Background wake · \(wakeReason)")
-            if let line = (timeText != nil && wakeText != nil) ? "\(timeText!) · \(wakeText!)" : (wakeText ?? timeText) {
+        case .turn(_, _, let at, _):
+            // A time line before a turn, only for the first one and after a pause.
+            if let line = at.flatMap({ turnTimeLine($0, previous: previousTurn, now: model.now) }) {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
                     .padding(.top, 8)
-                    .accessibilityIdentifier(wakeReason.isEmpty ? "turn-time-line" : "turn-wake-line")
+                    .accessibilityIdentifier("turn-time-line")
             }
         case .user(_, let text, let at, let asker):
             // Who asked for the turn speaks on the right: the owner in the blue bubble, with nothing over it; another

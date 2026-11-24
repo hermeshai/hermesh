@@ -13,7 +13,6 @@ import {
   SessionStatus,
   WorkspaceStrategySchema,
   type AttachmentRef,
-  type BackgroundTask,
   type ModelSelection,
   type ProviderInstance,
   type SessionProjection,
@@ -32,7 +31,6 @@ import {
   elapsedSeconds,
   findProviderInstance,
   groupSteps,
-  isInterruption,
   isSessionRunningOrWaiting,
   pendingRequestOf,
   projectOnMachine,
@@ -53,6 +51,7 @@ import { layoutOf, setCard } from "./layout";
 import { keys, ownKeys } from "./platform";
 import { grantLabel, unarchive } from "./Sidebar";
 import { errorText, useNow, useStore } from "./store";
+import { Background, BackgroundLine } from "./session/Background";
 import { ChatFrame, Failed, Row, Stale, Unread, rowHeights, rowsOf } from "./session/Chat";
 import { ComposerPlace, LaunchAsk, ModelButtons, ThreadComposer, type Branches, type Place } from "./session/Composer";
 import { Inspector } from "./session/Inspector";
@@ -143,7 +142,6 @@ export function SessionPage() {
   // Queue edit state
   const [editingRunId, setEditingRunId] = useState<string>("");
   const [editingText, setEditingText] = useState<string>("");
-  const [selectedBgTaskId, setSelectedBgTaskId] = useState<string>("");
 
   // Each time a new session opens (and once the machines are known): the machine and project its entry
   // named, else those used last; a machine that is gone falls back to this Mac.
@@ -322,7 +320,6 @@ export function SessionPage() {
   const pendingReq = useMemo(() => pendingRequestOf(activeProjection), [activeProjection]);
   const allBgTasks = useMemo(() => backgroundTasksOf(activeProjection), [activeProjection]);
   const activeBgTasks = useMemo(() => activeBackgroundTasksOf(activeProjection), [activeProjection]);
-  const activeAwaitedBgTasks = useMemo(() => activeBgTasks.filter((bt) => bt.awaited), [activeBgTasks]);
   const running =
     isSessionRunningOrWaiting(currentSession) &&
     (currentSession?.status !== SessionStatus.WAITING_INPUT || currentSession.activeRunId !== "");
@@ -545,22 +542,13 @@ export function SessionPage() {
     s.branch = currentSession.branch || currentSession.workspaceStrategy?.branch || "";
     return s;
   }, [currentSession]);
+  const background = st.background && allBgTasks.length > 0;
   const { card } = layoutOf(st);
-  const info = card !== "hidden";
+  const info = card !== "hidden" && !background;
+  // The background card keeps the conversation clear of it as the info card does, when there is room for one.
+  const dock = (info && card === "docked") || (background && layoutOf({ ...st, inspector: true, peek: null }).card === "docked");
 
   const requestCard = activeSessionId && session && pendingReq && <SessionRequest key={pendingReq.requestId} s={session} req={pendingReq} />;
-  const openBackgroundDetails = (taskId?: string) => {
-    if (!info) setCard(st, true);
-    if (taskId) setSelectedBgTaskId(taskId);
-    else if (activeBgTasks[0]) setSelectedBgTaskId(activeBgTasks[0].taskId);
-  };
-  const backgroundCard = activeSessionId && activeBgTasks.length > 0 && (
-    <BackgroundTasksStrip
-      tasks={activeBgTasks}
-      onView={() => openBackgroundDetails(activeBgTasks[0]?.taskId)}
-      onStop={() => handleStopBackgroundTask(activeBgTasks.length === 1 ? activeBgTasks[0]!.taskId : "")}
-    />
-  );
   const queueCard = activeSessionId && (queuedRuns.length > 0 || currentSession?.queueHeld) && (
     <div className="knote" data-testid="queued-runs-strip">
       <div className="knote-h">
@@ -642,7 +630,6 @@ export function SessionPage() {
   const archived = currentSession?.status === SessionStatus.ARCHIVED;
   const unread = steps.length === 0 && (currentSession?.progress?.lastEventSeq ?? 0n) > 0n && !currentSession?.offlineQueued;
   const behind = (activeProjection?.session?.progress?.lastEventSeq ?? 0n) < (listedSession?.progress?.lastEventSeq ?? 0n);
-  const interrupted = isInterruption(currentSession?.progress?.lastFailure) || rows.at(-1)?.it.kind === "turnEnd" || rows.at(-1)?.it.kind === "error";
 
   return (
     <>
@@ -675,15 +662,18 @@ export function SessionPage() {
             </>
           )}
         </div>
-        {activeSessionId && activeBgTasks.length > 0 && (
+        {activeSessionId && allBgTasks.length > 0 && (
           <button
             type="button"
-            className="th-bgbadge"
-            data-testid="toolbar-background-badge"
-            onClick={() => openBackgroundDetails(activeBgTasks[0]?.taskId)}
+            className={`tb ${background ? "on" : ""}`}
+            title={t("background.title")}
+            aria-label={t("background.title")}
+            aria-pressed={background}
+            data-testid="toolbar-background-btn"
+            onClick={() => st.set({ background: !background })}
           >
-            <span className="mini-spin" />
-            <span>{t("background.badge", { count: activeBgTasks.length })}</span>
+            <Icon name="layers" />
+            {activeBgTasks.length > 0 && <span className="tb-badge" data-testid="toolbar-background-badge">{activeBgTasks.length}</span>}
           </button>
         )}
         {activeSessionId && (
@@ -728,7 +718,7 @@ export function SessionPage() {
           </div>
         </div>
       ) : (
-        <div className={`dwrap th ${card === "docked" ? "dock" : ""}`} data-testid="thread-page">
+        <div className={`dwrap th ${dock ? "dock" : ""}`} data-testid="thread-page">
           <div className="dmain">
             <ContentScope value={activeSessionId}>
               <ChatFrame
@@ -752,18 +742,9 @@ export function SessionPage() {
                   session && (
                     <>
                       {workLine}
+                      <BackgroundLine tasks={activeBgTasks} />
                       <Stale s={session} behind={behind} />
                       {failure && <Failed s={session} failure={failure} grant={grant} />}
-                      {/* A turn that went well needs no line; one whose background tasks still run says it waits on them. */}
-                      {currentSession?.status === SessionStatus.IDLE && !failure && !interrupted && rows.length > 0 &&
-                        (currentSession.activeBackgroundCount > 0 || activeAwaitedBgTasks.length > 0) && (
-                          <WorkLine
-                            text={t("background.waitingDone", {
-                              count: Math.max(currentSession.activeBackgroundCount, activeAwaitedBgTasks.length),
-                            })}
-                            since={dateOf(activeAwaitedBgTasks[0]?.startedAt)}
-                          />
-                        )}
                     </>
                   )
                 }
@@ -771,7 +752,6 @@ export function SessionPage() {
                   <ComposerZone onHeight={onHeight}>
                     <ConnectionCapsule machine={targetMachine} linkUp={following && reachable} />
                     {requestCard}
-                    {backgroundCard}
                     {queueCard}
                     {slashRow}
                     <ThreadComposer
@@ -796,60 +776,11 @@ export function SessionPage() {
               />
             </ContentScope>
           </div>
-          {info && session && (
-            <Inspector
-              s={session}
-              providers={providers}
-              backgroundTasks={allBgTasks}
-              selectedTaskId={selectedBgTaskId}
-              onSelectTask={setSelectedBgTaskId}
-              onStopBackgroundTask={handleStopBackgroundTask}
-            />
-          )}
+          {info && session && <Inspector s={session} providers={providers} />}
+          {background && <Background tasks={allBgTasks} onStop={handleStopBackgroundTask} />}
         </div>
       )}
     </>
-  );
-}
-
-function BackgroundTasksStrip({
-  tasks,
-  onView,
-  onStop,
-}: {
-  tasks: readonly BackgroundTask[];
-  onView: () => void;
-  onStop: () => void;
-}) {
-  const { t } = useTranslation("thread");
-  const now = useNow(1000);
-  const awaited = tasks.filter((x) => x.awaited);
-  const primary = awaited[0] ?? tasks[0]!;
-  const primaryLabel = primary.title || primary.command || primary.taskId;
-  const since = dateOf(primary.startedAt);
-  const summary =
-    awaited.length === 1
-      ? t("background.runningOne", { title: primaryLabel })
-      : awaited.length > 1
-        ? t("background.runningMany", { count: awaited.length })
-        : tasks.length === 1
-          ? t("background.daemonOne", { title: primaryLabel })
-          : t("background.daemonMany", { count: tasks.length });
-
-  return (
-    <div className="knote th-bgstrip" data-testid="background-tasks-strip">
-      <div className="knote-h">
-        {awaited.length > 0 ? <Mark size={15} variant="seq" /> : <Icon name="bolt" className="knote-i" />}
-        <span className="th-qtext" title={primary.command || primaryLabel}>{summary}</span>
-        {since && <span className="th-bgdur">{clockText(elapsedSeconds(since, now))}</span>}
-        <button type="button" className="btn th-qbtn" data-testid="background-strip-view" onClick={onView}>
-          {t("background.view")}
-        </button>
-        <button type="button" className="btn th-qbtn" data-testid="background-strip-stop" onClick={onStop}>
-          {tasks.length > 1 ? t("background.stopAll") : t("background.stop")}
-        </button>
-      </div>
-    </div>
   );
 }
 

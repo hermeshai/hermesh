@@ -54,6 +54,10 @@ export const defaultView = () => sessionView({ metadata: false });
 type UI = {
   selection: Selection;
   inspector: boolean;
+  /** The background panel is shown, in the info card's place. */
+  background: boolean;
+  /** The background task open in the background panel. */
+  bgTask: string | null;
   sidebar: boolean;
   peek: Peek;
   view: SessionView;
@@ -170,6 +174,8 @@ export function HermeshProvider({ children }: { children: ReactNode }) {
   const [ui, setUI] = useState<UI>(() => ({
     selection: { kind: "overview" },
     inspector: saved("inspector", true),
+    background: false,
+    bgTask: null,
     sidebar: true,
     peek: null,
     view: defaultView(),

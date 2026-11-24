@@ -53,8 +53,8 @@ export function setSidebar(st: Store, show: boolean) {
   st.set(fits ? { sidebar: show, peek: null } : { peek: show ? "sidebar" : null });
 }
 
-/** Shows or hides the info card: kept beside the conversation when there is room, else over it for now. */
+/** Shows or hides the info card, in the background card's place: kept beside the conversation when there is room, else over it for now. */
 export function setCard(st: Store, show: boolean) {
   const fits = layoutOf({ ...st, inspector: true, peek: null }).card === "docked";
-  st.set(fits ? { inspector: show, peek: null } : { peek: show ? "card" : null });
+  st.set(fits ? { inspector: show, peek: null, background: false } : { peek: show ? "card" : null, background: false });
 }

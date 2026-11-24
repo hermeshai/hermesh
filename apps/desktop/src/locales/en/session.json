@@ -21,7 +21,6 @@
     "sentBy": "Sent by {{name}}",
     "sentByAt": "Sent by {{name}} ·",
     "turnFailed": "Turn {{turn}} failed: {{title}}",
-    "wakeLine": "Background wake · {{reason}}",
     "copy": "Copy",
     "inProgress": "In progress",
     "truncated": "… (truncated)",

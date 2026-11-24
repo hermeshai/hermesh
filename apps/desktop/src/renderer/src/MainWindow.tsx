@@ -53,15 +53,16 @@ export function MainWindow() {
   );
   usePeekEnd(st);
   useEffect(() => {
-    set({ peek: null });
+    set({ peek: null, bgTask: null });
   }, [st.selection, set]);
-  const peeking = st.peek !== null;
+  const cardFits = layoutOf({ ...st, inspector: true, peek: null }).card === "docked";
+  const peeking = st.peek !== null || (st.background && !cardFits);
   useEffect(() => {
     if (!peeking) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && set({ peek: null });
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && set({ peek: null, ...(cardFits ? {} : { background: false }) });
     document.addEventListener("keydown", esc);
     return () => document.removeEventListener("keydown", esc);
-  }, [peeking, set]);
+  }, [peeking, cardFits, set]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
