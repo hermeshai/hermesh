@@ -96,11 +96,17 @@
    lilac and sky) over them; the field stands still behind the window and each card shows the part it covers. */
 :root{--us-a1:#7682e6;--us-a2:#5fb0de;--us-field:.17}
 @media (prefers-color-scheme:dark){:root{--us-a1:#8f9bf0;--us-a2:#7fc4ea;--us-field:.085}}
+/* The colours of a page's parts, the data-viz palette's first six, told apart in colour blindness on both cards; Other is grey. */
+:root{--us-s1:#2a78d6;--us-s2:#eb6834;--us-s3:#1baf7a;--us-s4:#eda100;--us-s5:#e87ba4;--us-s6:#008300;--us-other:#a1a1a8}
+@media (prefers-color-scheme:dark){:root{--us-s1:#3987e5;--us-s2:#d95926;--us-s3:#199e70;--us-s4:#c98500;--us-s5:#d55181;--us-s6:#0ca30c;--us-other:#6e6e75}}
 .card.tint{position:relative;isolation:isolate}
 .card.tint::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;background-attachment:fixed;
   background-image:radial-gradient(34% 40% at 30% 16%,rgb(143 155 240/var(--us-field)),transparent 78%),radial-gradient(36% 40% at 62% 62%,rgb(127 196 234/var(--us-field)),transparent 78%)}
 .us-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-2)}
 .us-filters>i{width:1px;height:16px;background:var(--sep)}
+/* what the bars are in parts of: at the row's trailing end, its name before its three ways */
+.us-group{margin-left:auto;display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--l2)}
+.us-group .seg button{color:var(--l1)}
 .us-pop{height:26px;max-width:100%;padding:0 6px 0 10px;border:0;border-radius:var(--r-ctl);background:var(--fill2);color:var(--l1);font-size:var(--fs-text);display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
 .us-pop:hover{background:var(--fill3)}
 .us-pop.on{background:var(--accent-bg);color:var(--accent-t)}
@@ -127,9 +133,22 @@
 .us-slots{position:absolute;inset:0;display:flex}
 .us-slots i{flex:1;min-width:0;display:flex;align-items:flex-end;justify-content:center;border-radius:6px 6px 0 0}
 .us-slots i.in:hover{background:var(--fill)}
-.us-slots u{width:min(42%,20px);min-height:4px;border-radius:99px 99px 3px 3px;background:color-mix(in srgb,var(--live) 46%,transparent)}
+.us-slots u{width:min(42%,20px);min-height:4px;border-radius:3px 3px 1px 1px;background:color-mix(in srgb,var(--live) 46%,transparent)}
 .us-slots i:hover u{background:color-mix(in srgb,var(--live) 78%,transparent)}
 .us-slots i.now u{background:linear-gradient(180deg,var(--us-a2),var(--us-a1))}
+/* a bar in parts: one on another with a hairline of the card between, the busiest at the foot */
+.us-bar{width:min(42%,20px);min-height:4px;display:flex;flex-direction:column-reverse;gap:1.5px;border-radius:3px 3px 1px 1px;overflow:hidden}
+.us-slots .us-bar u{width:auto;min-height:0;flex-basis:0;border-radius:0;transition:opacity .15s}
+.us-slots .us-bar u.dim{opacity:.2}
+/* the parts by name over the chart: each its colour, its number and its share */
+.us-legend{display:flex;flex-wrap:wrap;gap:2px;margin:-4px 40px 2px -8px}
+.us-legend button{border:0;background:none;color:var(--l1);display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 8px;border-radius:7px;font-size:12.5px;white-space:nowrap;transition:opacity .15s}
+.us-legend button:hover{background:var(--fill)}
+.us-legend button[aria-pressed=true]{background:var(--fill2)}
+.us-legend.alone button[aria-pressed=false]{opacity:.45}
+.us-legend i{width:9px;height:9px;border-radius:2.5px;flex:none}
+.us-legend em{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums;margin-left:2px}
+.us-legend small{font-size:11.5px;color:var(--l2);font-variant-numeric:tabular-nums}
 .us-x{display:flex;margin:6px 40px 0 0;height:15px;font-size:11px;color:var(--l3);font-variant-numeric:tabular-nums}
 .us-x span{flex:1;min-width:0;text-align:center;white-space:nowrap}
 .us-x span.now{color:var(--l1);font-weight:500}
@@ -177,3 +196,8 @@
 .lim-reset{font-size:11.5px;color:var(--l2);margin-top:9px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .u-tip{position:absolute;pointer-events:none;background:var(--l1);color:var(--win);border-radius:8px;padding:6px 9px;font-size:11.5px;line-height:1.4;white-space:nowrap;transform:translate(-50%,calc(-100% - 10px));z-index:5}
 .u-tip b{font-weight:600}
+.u-tip .u-parts{display:grid;grid-template-columns:auto auto;gap:1px 14px;margin-top:4px;padding-top:4px;border-top:.5px solid color-mix(in srgb,var(--win) 25%,transparent)}
+.u-tip .u-parts>span{display:contents}
+.u-tip .u-parts span span{display:flex;align-items:center;gap:6px}
+.u-tip .u-parts i{width:7px;height:7px;border-radius:2px;flex:none}
+.u-tip .u-parts em{font-style:normal;font-weight:600;text-align:right}

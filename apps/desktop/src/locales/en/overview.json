@@ -105,6 +105,13 @@
       "counts_other": "{{count}} tasks · {{tokens}} tokens",
       "none": "No tasks"
     },
+    "group": {
+      "label": "Group",
+      "agent": "Agent Provider",
+      "place": "Environment / Project",
+      "total": "Total",
+      "other": "Other"
+    },
     "sessions": {
       "title": "Tasks",
       "unit_one": "task ran",

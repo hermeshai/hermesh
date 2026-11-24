@@ -68,7 +68,7 @@ struct OverviewView: View {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
         // Usage asks only while it shows, again for each state, and when the counts move (AppModel.workChanged).
-        .task(id: "\(dayKey(model.now)) \(stats.segment) \(stats.period) \(stats.filter)") {
+        .task(id: "\(dayKey(model.now)) \(stats.segment) \(stats.period) \(stats.filter) \(stats.group)") {
             stats.shown = stats.segment == .usage
             if stats.shown { await stats.load(model.api, now: Date()) }
         }

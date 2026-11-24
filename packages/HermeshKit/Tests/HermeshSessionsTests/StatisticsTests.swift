@@ -112,3 +112,77 @@ private func agent(_ name: String, available: Bool = true, said: Date? = nil, pl
     #expect(claude?.windows.isEmpty == true && claude?.stale == true)
     #expect(lowLimits(cards).isEmpty)
 }
+
+// The page's bars in parts (docs/overview-usage.md §6.9): the Mac's cases, and the phone's four parts.
+
+private let agentOrder = ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "opencode", "qwen"]
+private let machineOrder = ["mac", "vps", "mini"]
+
+/// An answer whose rows are each their own sessions: by bucket and over the range.
+private func grouped(_ rows: [(agent: String, machine: String, project: String, bucket: Int, sessions: Int, tokens: Int)]) -> Hermesh_Local_V1_QueryWorkResponse {
+    .with { r in
+        for x in rows {
+            let g = Hermesh_Local_V1_WorkGroup.with { $0.agent = x.agent; $0.machineID = x.machine; $0.projectID = x.project }
+            r.sessions.append(.with { $0.bucket = UInt32(x.bucket); $0.group = g; $0.sessions = UInt32(x.sessions) })
+            r.turns.append(.with { $0.bucket = UInt32(x.bucket); $0.group = g; $0.inputTokens = UInt64(x.tokens) })
+            r.rangeSessions.append(.with { $0.group = g; $0.sessions = UInt32(x.sessions) })
+            r.rangeTurns.append(.with { $0.group = g; $0.inputTokens = UInt64(x.tokens) })
+        }
+    }
+}
+
+private func parts(_ res: Hermesh_Local_V1_QueryWorkResponse?, _ group: UsageGroup, _ filter: UsageFilter = UsageFilter(), period: WorkPeriod = .week, drawn: Int = 4) -> UsageParts? {
+    usageParts(res, period: period, group: group, filter: filter, agents: agentOrder, machines: machineOrder, drawn: drawn)
+}
+
+@Test func thePageIsAskedGroupedAsItsBarsAre() {
+    let f = UsageFilter(agent: "claude")
+    #expect(usagePageRequest(.week, filter: f, group: .agent, now: today, calendar: cal).groupBy == [.agent])
+    #expect(usagePageRequest(.week, filter: f, group: .place, now: today, calendar: cal).groupBy == [.machine, .project])
+    let total = usagePageRequest(.week, filter: f, group: .total, now: today, calendar: cal)
+    #expect(total.groupBy.isEmpty && total.previous && total.filter.agent == "claude")
+}
+
+@Test func groupedByAgentEachAgentsWorkByDayAddsUpToThePages() {
+    let res = grouped([("codex", "", "", 0, 1, 100), ("gemini", "", "", 6, 3, 50), ("codex", "", "", 6, 1, 400)])
+    let p = parts(res, .agent)!
+    #expect(p.by == .agent)
+    #expect(p.all.map { "\($0.id) \($0.sessions) \($0.tokens) \($0.color)" } == ["gemini 3 50 2", "codex 2 500 1"], "the busiest first, each in its own colour")
+    #expect(p.drawn == p.all && p.folded == 0)
+    #expect(p.all[1].buckets[0] == .init(sessions: 1, tokens: 100) && p.all[1].buckets[6] == .init(sessions: 1, tokens: 400))
+    let page = usagePage(res, period: .week, now: today, calendar: cal)
+    for i in page.buckets.indices { #expect(p.all.reduce(0) { $0 + $1.buckets[i].sessions } == page.buckets[i].sessions, "a bucket's parts are the bucket") }
+    #expect(parts(res, .total) == nil)
+    #expect(parts(nil, .agent) == UsageParts(by: .agent))
+    #expect(parts(grouped([("claude", "", "", 15, 1, 9)]), .agent, period: .today)!.all[0].buckets[15].sessions == 1, "today by hour")
+}
+
+@Test func groupedByPlaceTheEnvironmentsOrOneEnvironmentsProjects() {
+    let res = grouped([("", "vps", "app", 6, 2, 20), ("", "mac", "app", 6, 1, 10), ("", "mac", "blog", 5, 3, 30)])
+    let machines = parts(res, .place)!
+    #expect(machines.by == .machine && machines.all.map { "\($0.id) \($0.sessions) \($0.color)" } == ["mac 4 0", "vps 2 1"])
+    // The filter on mac answers only mac's rows; its projects are the parts.
+    let mac = grouped([("", "mac", "app", 6, 1, 10), ("", "mac", "blog", 5, 3, 30)])
+    let projects = parts(mac, .place, UsageFilter(machineID: "mac"))!
+    #expect(projects.by == .project && projects.machineID == "mac")
+    #expect(projects.all.map { "\($0.id) \($0.sessions) \($0.color)" } == ["blog 3 1", "app 1 0"], "projects coloured by name")
+    let only = parts(mac, .place)!
+    #expect(only.by == .project && only.machineID == "mac", "only one environment worked: its projects, unasked")
+}
+
+@Test func aColourFollowsItsPartAndPastWhatCanBeDrawnTheLeastBusyAreOther() {
+    let both = parts(grouped([("claude", "", "", 0, 1, 1), ("codex", "", "", 0, 5, 1)]), .agent)!
+    let alone = parts(grouped([("codex", "", "", 0, 5, 1)]), .agent)!
+    #expect(both.all.first { $0.id == "codex" }!.color == alone.all[0].color, "codex's colour is the same with and without claude")
+    // An agent past the colours, or not on the list, among those drawn: each takes its place among them.
+    let late = parts(grouped([("qwen", "", "", 0, 1, 1), ("codex", "", "", 0, 2, 1), ("hermit", "", "", 0, 3, 1)]), .agent)!
+    #expect(late.all.map { "\($0.id) \($0.color)" } == ["hermit 2", "codex 0", "qwen 1"])
+    // Eight agents on the phone: the three busiest in colour, the rest as Other; every one still listed.
+    let eight = parts(grouped(agentOrder.enumerated().map { ($0.element, "", "", 0, 10 - $0.offset, 1) }), .agent)!
+    #expect(eight.drawn.map(\.id) == ["claude", "codex", "gemini", UsagePart.other] && eight.drawn.map(\.color) == [0, 1, 2, -1])
+    #expect(eight.drawn[3].sessions == 7 + 6 + 5 + 4 + 3 && eight.drawn[3].tokens == 5 && eight.drawn[3].buckets[0].sessions == 25)
+    #expect(eight.all.count == 8 && eight.folded == 5 && eight.all[3...].allSatisfy { $0.color == -1 }, "those among Other have no colour of their own")
+    // Four are drawn each in its colour; the Mac draws six.
+    #expect(parts(grouped(agentOrder.prefix(4).map { ($0, "", "", 0, 1, 1) }), .agent)!.drawn.map { "\($0.id) \($0.color)" } == ["antigravity 3", "claude 0", "codex 1", "gemini 2"])
+    #expect(parts(grouped(agentOrder.enumerated().map { ($0.element, "", "", 0, 10 - $0.offset, 1) }), .agent, drawn: 6)!.drawn.map(\.id) == ["claude", "codex", "gemini", "antigravity", "cursor", UsagePart.other])
+}

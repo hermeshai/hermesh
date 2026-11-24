@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>用量分组 · iPhone</title>
+<style>
+:root{--font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif}
+/* The iPhone's own colours (systemGroupedBackground, secondarySystemGroupedBackground, labels, the accent). */
+[data-theme=light]{
+  --page:#e8eaf0;--page-fg:#1b1c22;--page-fg2:#62646f;--bezel:#16171b;
+  --bg:#f2f2f7;--card:#fff;--l1:#000;--l2:rgba(60,60,67,.6);--l3:rgba(60,60,67,.3);--l4:rgba(60,60,67,.18);--sep:rgba(60,60,67,.18);
+  --fill:rgba(118,118,128,.12);--fill2:rgba(118,118,128,.2);--seg-on:#fff;--tint:#3d5bff;--green:#20a35a;
+  --glass:rgba(255,255,255,.78);--glass-bd:rgba(0,0,0,.07);--pop:#fff;
+  --v:#2d4ae6;--v-bg:rgba(61,91,255,.10);
+  /* the parts' colours: the Mac's six, and Other's grey */
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--so:#a1a1a8;
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--bezel:#2a2b31;
+  --bg:#000;--card:#1c1c1e;--l1:#fff;--l2:rgba(235,235,245,.6);--l3:rgba(235,235,245,.3);--l4:rgba(235,235,245,.16);--sep:rgba(84,84,88,.55);
+  --fill:rgba(118,118,128,.24);--fill2:rgba(118,118,128,.32);--seg-on:#636366;--tint:#6f86ff;--green:#3fcf86;
+  --glass:rgba(58,58,64,.78);--glass-bd:rgba(255,255,255,.1);--pop:#2c2c2e;
+  --v:#9fb0ff;--v-bg:rgba(91,121,255,.2);
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#0ca30c;--so:#6e6e75;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.45 var(--font);-webkit-font-smoothing:antialiased;padding-bottom:60px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+svg{display:block}
+h1,h2,p,ul{margin:0;padding:0}
+.top{max-width:1100px;margin:0 auto;padding:24px 24px 0;display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap}
+.top h1{font-size:20px;font-weight:650}
+.top p{color:var(--page-fg2);font-size:13px;margin-top:4px;max-width:640px}
+.ctl{margin-left:auto;display:flex;gap:12px;align-items:center}
+.pseg{display:inline-flex;background:var(--fill2);border-radius:999px;padding:2px;gap:1px}
+.pseg button{height:24px;padding:0 12px;border-radius:999px;font-size:12.5px}
+.pseg button.on{background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.tg{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;color:var(--page-fg2);cursor:pointer}
+.tg i{width:30px;height:18px;border-radius:9px;background:var(--fill2);position:relative;transition:background .2s}
+.tg i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .2s}
+.tg.on i{background:var(--green)}.tg.on i::after{transform:translateX(12px)}
+.new{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:8px;font:600 10.5px/1 var(--font);margin-left:6px;vertical-align:1px;white-space:nowrap;color:var(--v);background:var(--v-bg)}
+.marks-off .phone .new{display:none}
+.stage{display:flex;justify-content:center;gap:48px;padding:26px 24px 10px;flex-wrap:wrap;align-items:flex-start}
+.side{width:360px;font-size:13px;color:var(--page-fg2);line-height:1.7;padding-top:12px}
+.side h2{font-size:14px;font-weight:650;color:var(--page-fg);margin:0 0 6px}
+.side ul+h2{margin-top:18px}
+.side ul{padding-left:18px}
+.side b{color:var(--page-fg);font-weight:600}
+
+/* the phone: a 393 x 852 screen */
+.phone{width:417px;height:876px;border-radius:60px;padding:12px;background:var(--bezel);box-shadow:0 30px 80px rgba(0,0,0,.35);flex:none}
+.screen{width:100%;height:100%;border-radius:48px;overflow:hidden;position:relative;background:var(--bg);color:var(--l1);font-size:17px;line-height:1.3}
+.status{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:8px 36px 0;font-size:16px;font-weight:600;z-index:3}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:4}
+.bar{position:absolute;top:54px;left:0;right:0;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;z-index:3}
+.bar b{position:absolute;left:0;right:0;text-align:center;font-size:17px;font-weight:600;pointer-events:none}
+.gb{width:44px;height:44px;border-radius:50%;background:var(--glass);border:.5px solid var(--glass-bd);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.gb svg{width:20px;height:20px}
+.hdr{position:absolute;top:0;left:0;right:0;height:112px;background:linear-gradient(var(--bg) 0,var(--bg) 100px,transparent);z-index:2;pointer-events:none}
+.scroll{position:absolute;inset:0;overflow-y:auto;padding:114px 16px 60px}
+.scroll::-webkit-scrollbar{display:none}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:var(--l1);opacity:.85;z-index:5}
+
+/* the system's segmented control */
+.sg{display:flex;background:var(--fill);border-radius:9px;padding:2px;height:32px}
+.sg button{flex:1;border-radius:7px;font-size:13px;font-weight:500;text-align:center;white-space:nowrap}
+.sg button.on{background:var(--seg-on);box-shadow:0 3px 8px rgba(0,0,0,.12),0 0 0 .5px rgba(0,0,0,.04);font-weight:600}
+.sg.sm{height:28px}
+.sg.sm button{font-size:12.5px;padding:0 8px}
+/* the filters: the system's menus in a row that scrolls sideways, edge to edge, so each says its whole name and the one cut off says there are more */
+.chips{display:flex;gap:6px;align-items:center;margin:10px -16px 0;padding:0 16px;font-size:15px;overflow-x:auto;scroll-padding:0 16px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;height:32px;padding:0 10px;border-radius:16px;background:var(--card);display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.chip svg{width:9px;height:9px;flex:none}
+.chip.on{background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint)}
+.chips i{flex:none;width:1px;height:18px;background:var(--sep)}
+/* how the page is looked at, in one row: the range, what the bars are in parts of (its three ways at once, each
+   saying "by" what), and the one button the filters are behind */
+.look{display:flex;gap:8px;align-items:center;margin-top:16px;font-size:15px}
+.look .sg{flex:1;min-width:0}
+.fb{flex:none;height:32px;min-width:32px;padding:0 9px;border-radius:16px;background:var(--card);display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.fb svg{width:16px;height:16px}
+.fb.on{background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint)}
+/* a filter in force, said under the row and let go by its cross */
+.chip.tk{background:color-mix(in srgb,var(--tint) 14%,transparent);color:var(--tint);gap:6px;padding-right:9px}
+.chip.tk svg{width:8px;height:8px}
+/* a measure: its heading over its card */
+.hd{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:0 4px;margin:16px 0 10px}
+.hd b{font-weight:600;color:var(--l2)}
+.hd span{color:var(--l1);font-variant-numeric:tabular-nums}
+.card{background:var(--card);border-radius:26px;padding:16px 18px 14px}
+.big{display:flex;align-items:baseline;gap:8px}
+.big b{font-size:48px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.big span{color:var(--l2)}
+/* the legend is the card's own list of its parts, with the measure's number and share of each: three and Other when
+   there are many, and Other opened in place lists the rest. Two shapes to choose between. */
+/* in two columns over the bars */
+.lgg{display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;margin:10px -8px 0}
+.lgg button{display:flex;align-items:center;gap:6px;height:34px;padding:0 8px;border-radius:10px;min-width:0;font-size:14px;white-space:nowrap;transition:opacity .15s,background .15s}
+.lgg i,.lgl i{width:9px;height:9px;border-radius:2.5px;flex:none}
+.lgg span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lgg em,.lgl em{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+.lgg small,.lgl small{font-size:12px;color:var(--l2);font-variant-numeric:tabular-nums}
+.lgg small{flex:none;width:30px;text-align:right}
+.lgg svg,.lgl svg{width:9px;height:9px;flex:none;color:var(--l3)}
+.lgg .less,.lgl .less{color:var(--tint);justify-content:center;gap:4px}
+.lgg .less svg,.lgl .less svg{color:var(--tint)}
+/* or a row a part under the bars, with a line of its share */
+.lgl{margin:10px -8px 0}
+.lgl button{display:grid;grid-template-columns:9px minmax(0,1fr) 64px 48px 34px 9px;align-items:center;gap:0 8px;width:100%;height:32px;padding:0 8px;border-radius:10px;font-size:15px;white-space:nowrap;transition:opacity .15s,background .15s}
+.lgl span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.lgl u{display:block;height:5px;border-radius:3px;background:var(--fill)}
+.lgl u s{display:block;height:100%;border-radius:3px}
+.lgl em,.lgl small{text-align:right}
+.lgl .less{display:flex}
+.lgg button.on,.lgl button.on{background:var(--fill)}
+.lgg.alone button:not(.on):not(.less),.lgl.alone button:not(.on):not(.less){opacity:.4}
+/* a bar picked: over it, what it stands for: the whole, when, and each part that has any */
+.card{position:relative}
+.pop{position:absolute;z-index:1;min-width:128px;background:var(--pop);border-radius:13px;padding:8px 11px 9px;font-size:13px;line-height:1.35;box-shadow:0 6px 24px rgba(0,0,0,.22),0 0 0 .5px var(--sep);white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
+.pop b{display:block;font-weight:600;font-size:14px}
+.pop>span{color:var(--l2);font-size:12px}
+.pop div{display:grid;grid-template-columns:auto auto;gap:2px 16px;margin-top:6px;padding-top:6px;border-top:.5px solid var(--sep)}
+.pop div span{display:flex;align-items:center;gap:6px}
+.pop div i{width:8px;height:8px;border-radius:2.5px}
+.pop div em{font-style:normal;font-weight:600;text-align:right}
+/* the bars: an hour or a day each; past in ink grey, now in the accent, to come faint; in parts, each part's colour */
+.bars{display:flex;align-items:flex-end;height:72px;margin-top:14px}
+.bars>button{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;justify-content:center;position:relative}
+.bars>button>i{width:100%;display:flex;flex-direction:column-reverse;gap:1.5px;overflow:hidden;transition:opacity .15s}
+.bars>button>i u{display:block;flex-basis:0;transition:opacity .15s}
+.bars.sel>button:not(.sel)>i{opacity:.35}
+.ax{display:flex;justify-content:space-between;font-size:11px;color:var(--l3);margin-top:14px;height:12px;line-height:12px;font-variant-numeric:tabular-nums;position:relative}
+.ax .n{color:var(--tint)}
+.ax.h span{position:absolute;transform:translateX(-50%)}
+.dv{border-top:.5px solid var(--sep);margin:14px 0}
+.facts{display:flex}
+.facts div{flex:1}
+.facts small{display:block;font-size:12px;color:var(--l2)}
+.facts b{display:block;font-size:16px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.weeks{background:var(--card);border-radius:26px;padding:14px;display:grid;grid-template-rows:repeat(7,auto);grid-template-columns:repeat(18,minmax(0,1fr));grid-auto-flow:column;gap:3px}
+.weeks u{aspect-ratio:1;border-radius:2.5px}
+.foot{font-size:12px;color:var(--l2);padding:0 4px;margin-top:10px;line-height:1.45}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>用量分组 · iPhone</h1>
+    <p>iPhone 用量视图加分组后的样子，和 Mac 已实现的分组一致，按手机重新摆过。屏幕里都能点：时间范围、分法、筛选按钮（点了会轮换几个状态）、图例、柱子。右上角可以切「项少 / 项多」的数据。</p>
+  </div>
+  <div class="ctl">
+    <div class="pseg" id="many"><button data-n="" class="on">项少</button><button data-n="1">项多</button></div>
+    <div class="pseg" id="theme"><button data-t="light">浅色</button><button data-t="dark" class="on">深色</button></div>
+  </div>
+</header>
+<div class="stage">
+  <div class="phone"><div class="screen">
+    <div class="status"><span>9:41</span><span style="display:flex;gap:6px;align-items:center"><svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="8" width="3" height="4" rx="1"/><rect x="5" y="5.5" width="3" height="6.5" rx="1"/><rect x="10" y="3" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="12" rx="1"/></svg><svg width="26" height="12" viewBox="0 0 26 12"><rect x=".5" y=".5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="2" fill="currentColor"/><rect x="24" y="4" width="1.5" height="4" rx=".75" fill="currentColor" opacity=".4"/></svg></span></div>
+    <div class="island"></div>
+    <div class="hdr"></div>
+    <div class="bar">
+      <span class="gb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h12M4 10h12M4 14h12"/></svg></span>
+      <b>概览</b>
+      <span class="gb"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M10 4v12M4 10h12"/></svg></span>
+    </div>
+    <div class="scroll" id="scroll"></div>
+    <div class="home"></div>
+  </div></div>
+  <aside class="side">
+    <h2>顶部两行</h2>
+    <ul>
+      <li>第一行：实时｜用量｜额度。第二行：时间范围、分法、一个筛选按钮。<b>平时只有这两行</b>。</li>
+      <li><b>时间范围和分法在一行</b>，都是「怎么看」；筛选是「只看谁」，收在按钮里。</li>
+      <li>分法是「按 Agent｜按环境｜合计」，默认按 Agent。选了某个环境（或只有一个环境有数据）时，「按环境」变成「按项目」。</li>
+      <li>筛选按钮点开是系统菜单：Agent 提供方、环境 / 项目、发起方，各自再点进去选，和现在环境 / 项目的两级菜单是同一种。</li>
+      <li><b>有筛选时才多出一行</b>：按钮变成强调色并带上个数，下面列出生效的筛选，点叉去掉；这一行可以横滑。</li>
+      <li>「实时｜用量｜额度」不挪进导航栏：导航栏中间留给连接状态那一行。</li>
+    </ul>
+    <h2>图表和明细</h2>
+    <ul>
+      <li>明细在指标卡里排两列：最多 3 项各一色，其余合成灰色的「其他 N 项」，点开就地列出；两张卡一起展开、收起。</li>
+      <li>点某一项，两张图里只留它，再点一次恢复；不改筛选。</li>
+      <li>柱子高 72pt（现在是 56pt），一根里要分四段；三种分法一样高。</li>
+      <li>点按柱子，上方弹出那一天的总数和各项的数。这是 iPhone 现在没有的交互。</li>
+      <li>环境 / 项目两级：先按环境分；筛选里选了某个环境就按它的项目分。</li>
+    </ul>
+    <h2>实现时要处理、demo 里看不出的</h2>
+    <ul>
+      <li><b>按住横扫选柱子</b>：30 天时一根柱子只有 8pt 宽，点不准；按住左右滑动选中手指下的那一根，和系统的图表一样。</li>
+      <li><b>大字号</b>：系统字号调到辅助功能档时，两列放不下，图例改成一列。</li>
+      <li><b>旁白</b>：每张图读出总数和各项；图例每格读「Claude，23 个任务，37%」。</li>
+    </ul>
+  </aside>
+  </aside>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const AGENTS=['claude','codex','gemini','antigravity','cursor','copilot','opencode','qwen','goose'];
+const AGENT={claude:'Claude Code',codex:'Codex',gemini:'Gemini CLI',antigravity:'Antigravity',cursor:'Cursor',copilot:'Copilot CLI',opencode:'OpenCode',qwen:'Qwen Code',goose:'Goose'};
+const SHORT={claude:'Claude',gemini:'Gemini',copilot:'Copilot'};
+const PLACE={'MacBook Pro':'这台 Mac'};
+// Two worlds to draw: a few of each, or many agents, environments and projects.
+const WORLD={
+  '':{agents:[['claude',.5],['codex',.4],['gemini',.1]],
+      machines:[['MacBook Pro',.5],['Mac mini',.3],['vps-1',.2]],
+      projects:{'MacBook Pro':['blog','her','hermesh'],'Mac mini':['blog','her','hermesh'],'vps-1':['hermesh','infra']},rate:5.5},
+  '1':{agents:[['claude',.3],['codex',.22],['gemini',.12],['cursor',.1],['opencode',.08],['copilot',.07],['qwen',.05],['antigravity',.04],['goose',.02]],
+      machines:[['MacBook Pro',.34],['Mac mini',.22],['vps-1',.16],['Mac Studio',.12],['vps-2',.09],['build-01',.07]],
+      projects:{'MacBook Pro':['blog','docs','her','hermesh','landing','notes','playground','scripts'],'Mac mini':['blog','her','hermesh','renderer'],'vps-1':['hermesh','infra','relay'],'Mac Studio':['her','models','video'],'vps-2':['infra','mirror'],'build-01':['ci','hermesh']},rate:11},
+};
+let seed,rnd=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296;
+const pick=w=>{let r=rnd();for(const[k,p]of w){if((r-=p)<0)return k}return w[0][0]};
+const NOW_H=14,T=29,dateOf=d=>new Date(2026,10,25-(T-d));
+let S=[],MACHINES=[];
+// The work: 30 days of sessions, today's by hour up to now.
+function world(many){
+  const w=WORLD[many];seed=20261125;S=[];MACHINES=w.machines.map(m=>m[0]);
+  for(let d=0;d<=T;d++){
+    const we=dateOf(d).getDay()%6===0,n=Math.round((we?.3:1)*w.rate*(.5+rnd())*(d===T?.8:1));
+    for(let j=0;j<n;j++){
+      const agent=pick(w.agents),machine=pick(w.machines),ps=w.projects[machine];
+      const project=ps[Math.min(ps.length-1,Math.floor(rnd()*rnd()*ps.length*1.6))];
+      const h=d===T?Math.min(NOW_H,8+Math.floor(rnd()*8)):9+Math.floor(rnd()*10);
+      S.push({d,h,agent,machine,project,tok:Math.round((agent==='claude'?900e3:agent==='codex'?500e3:250e3)*(.2+rnd()*rnd()*3))});
+    }
+  }
+}
+world('');
+const st={range:'week',group:'agent',machine:'',agent:'',solo:null,sel:-1,more:false,legend:'grid'};
+const RANGE={today:'今天',week:'7 天',month:'30 天'},PREV={today:'较昨天此时',week:'较前 7 天',month:'较前 30 天'};
+const GROUP={agent:'按 Agent',place:'按环境',total:'合计'};
+const tokens=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?(n/1e3).toFixed(1).replace('.0','')+'K':String(n);
+const md=d=>`${d.getMonth()+1}月${d.getDate()}日`,wd=d=>'周'+'日一二三四五六'[d.getDay()];
+const span=()=>st.range==='today'?[T,T]:st.range==='week'?[T-6,T]:[0,T];
+const nb=()=>st.range==='today'?24:span()[1]-span()[0]+1;
+const nowAt=()=>st.range==='today'?NOW_H:nb()-1;
+const inRange=s=>{const[a,b]=span();return s.d>=a&&s.d<=b&&(!st.machine||s.machine===st.machine)&&(!st.agent||s.agent===st.agent)};
+const bucket=s=>st.range==='today'?s.h:s.d-span()[0];
+/**
+ * The parts, as usageParts makes them, the busiest first; and of them those the bars are coloured by: all of four
+ * or fewer, else the three busiest and the rest as one, Other. A colour is a part's place in a fixed order.
+ */
+function parts(){
+  if(st.group==='total')return null;
+  const ss=S.filter(inRange),ms=[...new Set(ss.map(s=>s.machine))];
+  const by=st.group==='agent'?'agent':(st.machine||ms.length===1)?'project':'machine';
+  const key=s=>by==='agent'?s.agent:by==='machine'?s.machine:s.project;
+  const zero=()=>Array.from({length:nb()},()=>({sess:0,tok:0})),out={};
+  for(const s of ss){const p=out[key(s)]??={id:key(s),c:-1,sess:0,tok:0,b:zero()};p.sess++;p.tok+=s.tok;p.b[bucket(s)].sess++;p.b[bucket(s)].tok+=s.tok}
+  const all=Object.values(out).sort((a,b)=>b.sess-a.sess||b.tok-a.tok);
+  const order=by==='agent'?AGENTS:by==='machine'?MACHINES:all.map(p=>p.id).sort();
+  for(const p of all){p.name=by==='agent'?AGENT[p.id]:by==='machine'?(PLACE[p.id]||p.id):p.id;p.short=by==='agent'?(SHORT[p.id]||p.name):p.name}
+  const top=all.length>4?all.slice(0,3):all,at=p=>order.indexOf(p.id),fits=top.every(p=>at(p)<6),inOrder=[...top].sort((a,b)=>at(a)-at(b));
+  for(const p of top)p.c=fits?at(p):inOrder.indexOf(p);
+  const shown=[...top];
+  if(top.length<all.length){
+    const o={id:'~',c:-1,name:'其他',short:'其他',sess:0,tok:0,b:zero()};
+    for(const p of all.slice(3)){o.sess+=p.sess;o.tok+=p.tok;p.b.forEach((x,i)=>{o.b[i].sess+=x.sess;o.b[i].tok+=x.tok})}
+    shown.push(o);
+  }
+  return{by,machine:st.machine||ms[0],all,shown};
+}
+function totals(){
+  const b=Array.from({length:nb()},()=>({sess:0,tok:0}));let sess=0,tok=0;
+  for(const s of S.filter(inRange)){if(st.range==='today'&&s.h>NOW_H)continue;b[bucket(s)].sess++;b[bucket(s)].tok+=s.tok;sess++;tok+=s.tok}
+  return{b,sess,tok};
+}
+const col=p=>p.c<0?'var(--so)':`var(--s${p.c+1})`;
+// One of those among Other, seen alone, is drawn in the accent: grey would say nothing of it.
+const soloCol=p=>p.c<0&&p.id!=='~'?'var(--tint)':col(p);
+const aloneOf=P=>P&&[...P.shown,...P.all].find(p=>p.id===st.solo);
+function measure(key,title,unitName,facts,P,tot){
+  const now=nowAt(),alone=aloneOf(P),sel=st.sel;
+  const vals=tot.b.map(x=>x[key]),top=Math.max(1,...vals);
+  const val=v=>key==='tok'?tokens(v):String(v);
+  const when=i=>st.range==='today'?`${i}:00–${i+1}:00`:`${md(dateOf(span()[0]+i))} ${wd(dateOf(span()[0]+i))}`;
+  // The legend: the parts with this measure's number and share. Many: three and Other, which opens in place to the rest.
+  const pct=v=>tot[key]?Math.round(v/tot[key]*100)+'%':'',most=P?Math.max(1,...P.all.map(p=>p[key])):1;
+  const lead=P?P.shown.filter(p=>p.id!=='~'):[],other=P&&P.shown.find(p=>p.id==='~'),rows=other&&st.more?P.all:lead;
+  const sw=p=>`<i style="background:${st.solo===p.id?soloCol(p):col(p)}"></i>`;
+  const cell=p=>st.legend==='grid'
+    ?`<button class="${st.solo===p.id?'on':''}" data-solo="${p.id}">${sw(p)}<span>${p.short}</span><em>${val(p[key])}</em><small>${pct(p[key])}</small></button>`
+    :`<button class="${st.solo===p.id?'on':''}" data-solo="${p.id}">${sw(p)}<span>${p.name}</span><u><s style="width:${p[key]/most*100}%;background:${st.solo===p.id?soloCol(p):col(p)}"></s></u><em>${val(p[key])}</em><small>${pct(p[key])}</small><b></b></button>`;
+  const arrow=d=>`<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${d}"/></svg>`,chev=arrow('M2 3.5l3 3 3-3');
+  const rest=!other?'':st.more?`<button class="less" data-more>收起${arrow('M2 6.5l3-3 3 3')}</button>`
+    :st.legend==='grid'?`<button data-more>${sw(other)}<span>其他 ${P.all.length-lead.length} 项</span><em>${val(other[key])}</em><small>${pct(other[key])}</small>${chev}</button>`
+    :`<button data-more>${sw(other)}<span>其他 ${P.all.length-lead.length} 项</span><u><s style="width:${Math.min(100,other[key]/most*100)}%;background:var(--so)"></s></u><em>${val(other[key])}</em><small>${pct(other[key])}</small>${chev}</button>`;
+  const legend=P?`<div class="${st.legend==='grid'?'lgg':'lgl'} ${alone?'alone':''}">${rows.map(cell).join('')}${rest}</div>`:'';
+  // A bar picked: its whole, when, and its parts; with one part seen alone, that part's.
+  const unit=v=>key==='tok'?tokens(v)+' token':v+' 个任务';
+  const pop=sel<0?'':`<div class="pop" data-at="${sel}"><b>${unit((alone?alone.b:tot.b)[sel][key])}</b><span>${alone?alone.name+' · ':''}${when(sel)}</span>${
+    P&&!alone&&P.shown.some(p=>p.b[sel][key])?`<div>${P.shown.filter(p=>p.b[sel][key]).map(p=>`<span><i style="background:${col(p)}"></i>${p.name}</span><em>${val(p.b[sel][key])}</em>`).join('')}</div>`:''}</div>`;
+  const gap=st.range==='month'?2:st.range==='week'?8:3,rad=st.range==='week'?5:3;
+  const bars=vals.map((v,i)=>{
+    if(i>now)return `<button disabled><i style="height:3px;border-radius:${rad}px;background:var(--fill)"></i></button>`;
+    const h=alone?alone.b[i][key]:v,hp=Math.max(3,h/top*72);
+    const fill=!P?`<u style="flex-grow:1;background:${i===now?'var(--tint)':'color-mix(in srgb,var(--l1) 32%,transparent)'}"></u>`
+      :h?(alone?[alone]:P.shown).filter(p=>p.b[i][key]).map(p=>`<u style="flex-grow:${p.b[i][key]};background:${alone?soloCol(p):col(p)}"></u>`).join(''):'<u style="flex-grow:1;background:var(--fill2)"></u>';
+    return `<button class="${sel===i?'sel':''}" data-bar="${i}"><i style="height:${hp}px;border-radius:${rad}px ${rad}px ${Math.min(rad,2)}px ${Math.min(rad,2)}px">${fill}</i></button>`;
+  }).join('');
+  const axis=st.range==='today'
+    ?`<div class="ax h">${[0,6,12,18].filter(h=>Math.abs(h-NOW_H)>2).map(h=>`<span style="left:${(h+.5)/24*100}%">${h}:00</span>`).join('')}<span class="n" style="left:${(NOW_H+.5)/24*100}%">现在</span></div>`
+    :`<div class="ax"><span>${md(dateOf(span()[0]))}</span><span>${md(dateOf(span()[0]+Math.floor(nb()/2)))}</span><span class="n">今天</span></div>`;
+  return `<div class="hd"><b>${title}</b><span>${PREV[st.range]} ↑ ${key==='sess'?12:9}%</span></div>
+  <div class="card"><div class="big"><b>${val(tot[key])}</b><span>${unitName}</span></div>${st.legend==='grid'?legend:''}${pop}
+    <div class="bars ${sel>=0?'sel':''}" style="gap:${gap}px">${bars}</div>${axis}${st.legend==='list'?legend:''}<div class="dv"></div>
+    <div class="facts">${facts.map(([k,v])=>`<div><small>${k}</small><b>${v}</b></div>`).join('')}</div></div>`;
+}
+function render(){
+  const P=parts(),tot=totals();
+  if(st.solo!==null&&!aloneOf(P))st.solo=null;
+  const chev='<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>';
+  const weeks=Array.from({length:126},(_,i)=>{const lv=i>122?-1:(i*7919+13)%5;return `<u style="background:${lv<0?'transparent':lv?`color-mix(in srgb,var(--tint) ${[0,30,50,75,100][lv]}%,transparent)`:'color-mix(in srgb,var(--tint) 10%,transparent)'}"></u>`}).join('');
+  // By where is by project once one environment is all there is to split.
+  const byProject=!!st.machine||new Set(S.filter(inRange).map(x=>x.machine)).size===1;
+  const cross='<svg viewBox="0 0 8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 1.5l5 5M6.5 1.5l-5 5"/></svg>';
+  const seg=`<div class="sg">${Object.entries(GROUP).map(([k,v])=>`<button class="${st.group===k?'on':''}" data-group="${k}">${k==='place'&&byProject?'按项目':v}</button>`).join('')}</div>`;
+  const range=`<button class="chip" data-range>${RANGE[st.range]}${chev}</button>`;
+  const place=st.machine?PLACE[st.machine]||st.machine:'',on=[st.agent&&['agent',AGENT[st.agent]],place&&['machine',place]].filter(Boolean);
+  const look=`<div class="look">${range}${seg}<button class="fb ${on.length?'on':''}" data-filter><svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 5.5h12M5.5 9h7M8 12.5h2"/></svg>${on.length||''}</button></div>${
+    on.length?`<div class="chips">${on.map(([k,v])=>`<button class="chip tk" data-clear="${k}">${v}${cross}</button>`).join('')}</div>`:''}`;
+  $('#scroll').innerHTML=`<div class="sg"><button>实时</button><button class="on">用量</button><button>额度</button></div>
+  ${look}
+  ${measure('sess','任务','个任务运行过',[['完成',Math.round(tot.sess*.94)],['出错',Math.round(tot.sess*.08)+' 轮'],['工作时长',Math.round(tot.sess*.45)+' 小时 12 分']],P,tot)}
+  ${measure('tok','Token','token',[['输入',tokens(Math.round(tot.tok*.985))],['输出',tokens(Math.round(tot.tok*.015))]],P,tot)}
+  <div class="hd"><b>近 18 周</b><span style="color:var(--l2)">活跃天数 96 · 连续使用 10 天</span></div><div class="weeks">${weeks}</div>
+  <p class="foot">输入含各提供方的缓存读写。</p>`;
+  for(const b of document.querySelectorAll('.pop')){
+    const card=b.parentElement,bar=card.querySelector(`[data-bar="${b.dataset.at}"]>i`),c=card.getBoundingClientRect(),r=bar.getBoundingClientRect();
+    b.style.left=Math.min(Math.max(r.left-c.left+r.width/2-b.offsetWidth/2,10),c.width-b.offsetWidth-10)+'px';
+    b.style.top=(r.top-c.top-b.offsetHeight-8)+'px';
+  }
+}
+$('#scroll').addEventListener('click',e=>{
+  const t=e.target.closest('[data-group],[data-solo],[data-bar],[data-range],[data-more],[data-filter],[data-clear]');
+  if(!t){if(st.sel>=0){st.sel=-1;render()}return}
+  const d=t.dataset;
+  if(d.group){st.group=d.group;st.solo=null;st.sel=-1;st.more=false}
+  else if('more' in d){st.more=!st.more;if(!st.more&&st.solo!==null){const P=parts();if(P&&!P.shown.some(p=>p.id===st.solo))st.solo=null}}
+  else if('solo' in d)st.solo=st.solo===d.solo?null:d.solo;
+  else if(d.bar)st.sel=st.sel===+d.bar?-1:+d.bar;
+  // The demo's menus cycle through their choices, so the states can be seen.
+  else if('range' in d){st.range={today:'week',week:'month',month:'today'}[st.range];st.sel=-1}
+  // The one filter button: nothing, an environment, an environment and an agent, nothing.
+  else if('filter' in d){[st.machine,st.agent]=!st.machine?['MacBook Pro','']:!st.agent?['MacBook Pro','claude']:['',''];st.sel=-1}
+  else if(d.clear){st[d.clear]='';st.sel=-1}
+  render();
+});
+$('#theme').onclick=e=>{const b=e.target.closest('button');if(!b)return;document.documentElement.dataset.theme=b.dataset.t;$('#theme').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))};
+$('#many').onclick=e=>{const b=e.target.closest('button');if(!b)return;world(b.dataset.n);Object.assign(st,{machine:'',agent:'',solo:null,sel:-1,more:false});$('#many').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));render()};
+render();
+</script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { QueryWorkResponseSchema, WorkBucket, WorkDimension, type QueryWorkResponse } from "@hermesh/proto/local";
 import { describe, expect, test } from "vitest";
-import { noUsageFilter, usageChoices, usageMenusRequest, usagePage, usagePageRequest, usageRequest, usageSince, usageWeeksRequest, usageYear } from "./usage";
+import { noUsageFilter, usageChoices, usageMenusRequest, usagePage, usagePageRequest, usageParts, usageRequest, usageSince, usageWeeksRequest, usageYear } from "./usage";
 
 type Day = { date: string; agent: string; tokens: number; sessions: number };
 const day = (date: string, agent: string, tokens: number, sessions = 1): Day => ({ date, agent, tokens, sessions });
@@ -77,9 +77,13 @@ describe("usage", () => {
   // The statistics' Usage view (docs/overview-usage.md §6).
   test("the page, the menus and the weeks are three questions of one range and filter", () => {
     const filter = { ...noUsageFilter, agent: "claude", machineId: "m1", projectId: "app" };
-    expect(usagePageRequest("today", filter, today, "Asia/Shanghai")).toEqual({ timeZone: "Asia/Shanghai", firstDay: "2026-10-20", days: 1, bucket: WorkBucket.HOUR, filter, previous: true });
-    expect(usagePageRequest("week", noUsageFilter, today, "UTC")).toMatchObject({ firstDay: "2026-10-14", days: 7, bucket: WorkBucket.DAY, previous: true });
-    expect(usagePageRequest("month", noUsageFilter, today, "UTC")).toMatchObject({ firstDay: "2026-09-21", days: 30, bucket: WorkBucket.DAY });
+    expect(usagePageRequest("today", filter, "total", today, "Asia/Shanghai")).toEqual({ timeZone: "Asia/Shanghai", firstDay: "2026-10-20", days: 1, bucket: WorkBucket.HOUR, filter, previous: true });
+    expect(usagePageRequest("week", noUsageFilter, "total", today, "UTC")).toMatchObject({ firstDay: "2026-10-14", days: 7, bucket: WorkBucket.DAY, previous: true });
+    expect(usagePageRequest("month", noUsageFilter, "total", today, "UTC")).toMatchObject({ firstDay: "2026-09-21", days: 30, bucket: WorkBucket.DAY });
+    // Grouped, the same question by agent, or by machine and project (so either can be drawn).
+    expect(usagePageRequest("week", filter, "agent", today, "UTC")).toMatchObject({ days: 7, filter, previous: true, groupBy: [WorkDimension.AGENT] });
+    expect(usagePageRequest("week", filter, "place", today, "UTC").groupBy).toEqual([WorkDimension.MACHINE, WorkDimension.PROJECT]);
+    expect(usagePageRequest("week", filter, "total", today, "UTC").groupBy).toBeUndefined();
     // The menus' choices are not filtered: each menu adds its lines up under the other filters.
     const menus = usageMenusRequest("week", today, "UTC");
     expect(menus).toMatchObject({ firstDay: "2026-10-14", days: 7, bucket: WorkBucket.NONE });
@@ -111,6 +115,76 @@ describe("usage", () => {
     expect(t.sessionsDelta).toBeNull();
     expect(t.tokensDelta).toBeNull();
     expect(usagePage(null, "month", today)).toMatchObject({ sessions: 0, now: 29 });
+  });
+
+  // The page's bars in parts (the 分组 control): a part a choice, the busiest first, its colour its own.
+  const order = { agents: ["claude", "codex", "gemini", "antigravity", "cursor", "copilot", "opencode", "qwen"], machines: ["mac", "vps", "mini"] };
+  const grouped = (rows: { agent?: string; machineId?: string; projectId?: string; bucket: number; sessions: number; tokens: number }[]) =>
+    create(QueryWorkResponseSchema, {
+      sessions: rows.map((r) => ({ bucket: r.bucket, group: r, sessions: r.sessions })),
+      turns: rows.map((r) => ({ bucket: r.bucket, group: r, inputTokens: BigInt(r.tokens) })),
+      // Each session once over the range: here each row is its own sessions.
+      rangeSessions: rows.map((r) => ({ group: r, sessions: r.sessions })),
+      rangeTurns: rows.map((r) => ({ group: r, inputTokens: BigInt(r.tokens) })),
+    });
+
+  test("grouped by agent, each agent's work by day adds up to the page's, the busiest first, in its own colour", () => {
+    const res = grouped([
+      { agent: "codex", bucket: 0, sessions: 1, tokens: 100 },
+      { agent: "gemini", bucket: 6, sessions: 3, tokens: 50 },
+      { agent: "codex", bucket: 6, sessions: 1, tokens: 400 },
+    ]);
+    const p = usageParts(res, "week", "agent", noUsageFilter, order)!;
+    expect(p.by).toBe("agent");
+    expect(p.parts.map((x) => [x.id, x.sessions, x.tokens, x.color])).toEqual([["gemini", 3, 50, 2], ["codex", 2, 500, 1]]);
+    expect(p.parts[1].buckets[0]).toEqual({ sessions: 1, tokens: 100 });
+    expect(p.parts[1].buckets[6]).toEqual({ sessions: 1, tokens: 400 });
+    // The parts of a bucket are the bucket.
+    const page = usagePage(res, "week", today);
+    page.buckets.forEach((b, i) => expect(p.parts.reduce((n, x) => n + x.buckets[i].sessions, 0)).toBe(b.sessions));
+    expect(p.parts.length).toBe(2);
+    // Total is not in parts; nothing asked yet, no parts.
+    expect(usageParts(res, "week", "total", noUsageFilter, order)).toBeNull();
+    expect(usageParts(null, "week", "agent", noUsageFilter, order)).toEqual({ by: "agent", machineId: "", parts: [] });
+    // Today by hour.
+    expect(usageParts(grouped([{ agent: "claude", bucket: 15, sessions: 1, tokens: 9 }]), "today", "agent", noUsageFilter, order)!.parts[0].buckets[15].sessions).toBe(1);
+  });
+
+  test("grouped by place: the machines; one machine chosen, or only one that worked, its projects (a project is its machine's own)", () => {
+    const res = grouped([
+      { machineId: "vps", projectId: "app", bucket: 6, sessions: 2, tokens: 20 },
+      { machineId: "mac", projectId: "app", bucket: 6, sessions: 1, tokens: 10 },
+      { machineId: "mac", projectId: "blog", bucket: 5, sessions: 3, tokens: 30 },
+    ]);
+    const machines = usageParts(res, "week", "place", noUsageFilter, order)!;
+    expect(machines.by).toBe("machine");
+    expect(machines.parts.map((x) => [x.id, x.sessions, x.color])).toEqual([["mac", 4, 0], ["vps", 2, 1]]);
+    // The filter on mac answers only mac's rows; its projects are the parts, each "app" only mac's.
+    const mac = grouped([
+      { machineId: "mac", projectId: "app", bucket: 6, sessions: 1, tokens: 10 },
+      { machineId: "mac", projectId: "blog", bucket: 5, sessions: 3, tokens: 30 },
+    ]);
+    const projects = usageParts(mac, "week", "place", { ...noUsageFilter, machineId: "mac" }, order)!;
+    expect(projects).toMatchObject({ by: "project", machineId: "mac" });
+    expect(projects.parts.map((x) => [x.id, x.sessions, x.color])).toEqual([["blog", 3, 1], ["app", 1, 0]]);
+    // Only one machine worked: its projects, unasked.
+    expect(usageParts(mac, "week", "place", noUsageFilter, order)).toMatchObject({ by: "project", machineId: "mac" });
+  });
+
+  test("a colour follows its part whatever the others; past six parts the least busy are Other", () => {
+    // Codex's colour is the same with and without claude.
+    const both = usageParts(grouped([{ agent: "claude", bucket: 0, sessions: 1, tokens: 1 }, { agent: "codex", bucket: 0, sessions: 5, tokens: 1 }]), "week", "agent", noUsageFilter, order)!;
+    const alone = usageParts(grouped([{ agent: "codex", bucket: 0, sessions: 5, tokens: 1 }]), "week", "agent", noUsageFilter, order)!;
+    expect(both.parts.find((x) => x.id === "codex")!.color).toBe(alone.parts[0].color);
+    // An agent past the colours (or not on the list) among those drawn: each takes its place among them, still distinct.
+    const late = usageParts(grouped([{ agent: "qwen", bucket: 0, sessions: 1, tokens: 1 }, { agent: "codex", bucket: 0, sessions: 2, tokens: 1 }, { agent: "hermit", bucket: 0, sessions: 3, tokens: 1 }]), "week", "agent", noUsageFilter, order)!;
+    expect(late.parts.map((x) => [x.id, x.color])).toEqual([["hermit", 2], ["codex", 0], ["qwen", 1]]);
+    // Eight agents: the five busiest, then Other with the rest.
+    const eight = usageParts(grouped(order.agents.map((agent, i) => ({ agent, bucket: 0, sessions: 10 - i, tokens: 1 }))), "week", "agent", noUsageFilter, order)!;
+    expect(eight.parts.map((x) => x.id)).toEqual(["claude", "codex", "gemini", "antigravity", "cursor", ""]);
+    expect(eight.parts.map((x) => x.color)).toEqual([0, 1, 2, 3, 4, -1]);
+    expect(eight.parts[5]).toMatchObject({ sessions: 5 + 4 + 3, tokens: 3 });
+    expect(eight.parts[5].buckets[0].sessions).toBe(12);
   });
 
   test("a menu's choices are what worked under the other filters, the busiest first; a project is its machine's own", () => {
