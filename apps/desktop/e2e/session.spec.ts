@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cli, fixture, launch, onMac, onWindows, snap, thisComputer, sessionList } from "./app";
+import { cli, dragFiles, fixture, launch, onMac, onWindows, paste, pickFrom, snap, thisComputer, sessionList } from "./app";
 
 // The session page: the conversation, the changes, the info panel, and the
 // control area where the owner answers the agent or stops it.
@@ -340,6 +340,82 @@ test("a question waits in the control area; the owner picks an option by key and
   await app.close();
 });
 
+test("a screenshot pasted into the box is attached and goes with the message; cells copied from a spreadsheet paste as their words", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
+    const input = page.getByTestId("thread-composer-input");
+    await input.click();
+    await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
+    const tiles = page.getByTestId("thread-composer").locator(".cmp-att .tile");
+    // A spreadsheet copies its cells' words and a picture of them: the words go in the box, nothing is attached.
+    await input.focus();
+    await paste(app, page, { text: "收入\t123\n成本\t45", picture: true });
+    await expect(input).toHaveValue("收入\t123\n成本\t45");
+    await expect(tiles).toHaveCount(0);
+    // A screenshot: uploaded to the machine and attached, as a file from ＋ is; the words stay as they are.
+    await input.fill("images");
+    let uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await paste(app, page, { picture: true });
+    await (await uploaded).finished();
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles.first()).toHaveAttribute("title", "image.png");
+    await expect(input).toHaveValue("images");
+    // The same picture pasted again is attached once.
+    uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await paste(app, page, { picture: true });
+    await (await uploaded).finished();
+    await expect(tiles).toHaveCount(1);
+    await snap(page, "session-pasted-picture");
+    // Sent, the agent has it: the scripted agent's `images` names the pictures its turn got.
+    await input.press("Enter");
+    await expect(page.getByRole("log").locator(".am").first()).toContainText("images: image.png", { timeout: 30_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("files dragged over a session's window are attached to its box when let go, and go with the next message", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
+    const input = page.getByTestId("thread-composer-input");
+    await input.click();
+    await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
+    await input.fill("say started");
+    await input.press("Enter");
+    const replies = page.getByRole("log").locator(".am");
+    await expect(replies.first()).toContainText("started", { timeout: 30_000 });
+
+    // Over the window, the box says it takes them; let go, they are uploaded and attached.
+    const shot = await app.evaluate(({ nativeImage }) => nativeImage.createFromBitmap(Buffer.alloc(16 * 16 * 4, 0x80), { width: 16, height: 16 }).toPNG().toString("base64"));
+    const box = page.getByTestId("thread-composer");
+    const drag = await dragFiles(page, [
+      { name: "shot.png", type: "image/png", base64: shot },
+      { name: "notes.md", type: "text/markdown", base64: Buffer.from("# Notes\n").toString("base64") },
+    ]);
+    await expect(box).toHaveClass(/\bdropping\b/);
+    await expect(box.locator(".cmp-drop")).toContainText("松手添加附件");
+    await snap(page, "session-dropping");
+    await drag.drop();
+    await expect(box).not.toHaveClass(/\bdropping\b/);
+    const tiles = box.locator(".cmp-att .tile");
+    await expect(tiles).toHaveCount(2);
+    await expect(tiles.nth(0)).toHaveAttribute("title", "shot.png");
+    await expect(tiles.nth(1)).toHaveAttribute("title", "notes.md");
+    await expect(input).toBeFocused();
+    // The next message takes them to the agent (the scripted agent's `inspect` names its turn's attachments).
+    await input.fill("inspect");
+    await input.press("Enter");
+    await expect(replies.last()).toContainText("attachments=[shot.png,notes.md]", { timeout: 30_000 });
+    await expect(tiles).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
@@ -634,7 +710,7 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
     "",
     "```mermaid",
     "flowchart LR",
-    " A[读取] --> B{检查}",
+    ' A["读取 profiles/<id><br/>本机"] <--> B{检查}',
     " B --> C[报告]",
     "```",
     "",
@@ -663,11 +739,13 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
   // A footnote's mark goes to its note.
   await md.locator("[data-footnote-ref]").click();
   expect(await page.evaluate(() => document.activeElement?.closest(".footnotes") !== null)).toBe(true);
-  // A diagram draws as a picture, its source a click away.
+  // A diagram draws as a picture (preserving <id> placeholders and <br/> breaks), its unescaped source a click away.
   const diagram = md.locator(".md-diagram");
   await expect.poll(() => diagram.locator(".md-diagram-svg").evaluate((el) => !!el.shadowRoot?.querySelector("svg")), { timeout: 20_000 }).toBe(true);
+  expect(await diagram.locator(".md-diagram-svg").evaluate((el) => el.shadowRoot?.textContent ?? "")).toContain("profiles/<id>");
   await diagram.getByRole("button", { name: "源码" }).click();
-  await expect(diagram.locator(".cblock code")).toContainText("flowchart LR");
+  await expect(diagram.locator(".cblock code")).toContainText("profiles/<id>");
+  await expect(diagram.locator(".cblock code")).not.toContainText("#lt;");
   await diagram.getByRole("button", { name: "图形" }).click();
   await expect(diagram.locator(".md-diagram-svg")).toBeVisible();
   // A table's tools show under the pointer: Copy gives a sheet tabs, Expand shows it large until Escape.

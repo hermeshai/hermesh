@@ -21,10 +21,10 @@ final class DiagramRenderer: NSObject, WKNavigationDelegate {
     static let maxLength = 20000
 
     /// Whether a diagram may be drawn (the Mac's rule): its look comes from the app, never from
-    /// the source, and it holds no link, HTML label or click.
+    /// the source, and it holds no link or click.
     static func valid(_ source: String) -> Bool {
         source.count <= maxLength
-            && source.firstMatch(of: #/%%\s*\{|^\s*---|\bclick\s|https?:|data:|javascript:|url\s*\(|\bimg\s*:|\bicon\s*:|@import|<\/?[a-z]/#.ignoresCase().anchorsMatchLineEndings()) == nil
+            && source.firstMatch(of: #/%%\s*\{|^\s*---|\bclick\s|https?:|data:|javascript:|url\s*\(|\bimg\s*:|\bicon\s*:|@import/#.ignoresCase().anchorsMatchLineEndings()) == nil
     }
 
     private var page: WKWebView?
