@@ -115,19 +115,14 @@ func TestOwnMacWithoutRelay(t *testing.T) {
 		return nil
 	})
 	call("read the session", func(ctx context.Context) error {
-		stream, err := app.StreamSessionEvents(ctx, &localv1.StreamSessionEventsRequest{SessionId: s.SessionID})
+		res, err := w.app.sessions.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: s.SessionID})
 		if err != nil {
 			return err
 		}
-		defer stream.Close()
-		n := 0
-		for stream.Receive() {
-			n++
+		if len(res.GetProjection().GetItems()) == 0 {
+			t.Fatal("no items")
 		}
-		if n == 0 {
-			t.Fatal("no events")
-		}
-		return stream.Err()
+		return nil
 	})
 
 	// Its changes are followed: answering the question shows as the turn goes on.
@@ -156,8 +151,11 @@ func TestOwnMacWithoutRelay(t *testing.T) {
 		t.Fatal("the question is gone")
 	}
 	call("answer", func(ctx context.Context) error {
-		_, err := app.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: s.SessionID, QuestionId: q.QuestionId,
-			Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"红"}}}})
+		_, err := w.app.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+			SessionId: s.SessionID, RequestId: q.QuestionId,
+			Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+			Answers:  map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"红"}}},
+		})
 		return err
 	})
 	timeout := time.After(time.Minute)

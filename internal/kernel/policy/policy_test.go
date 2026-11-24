@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 func TestAuthorityLattice(t *testing.T) {
@@ -174,7 +174,7 @@ func TestEvaluateToolMatrix(t *testing.T) {
 		ToolName:        "Write",
 		TargetPath:      filepath.Join(ws, "a.go"),
 		EffectiveMode:   identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS,
-		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_PLAN,
+		InteractionMode: sessionv1.InteractionMode_INTERACTION_MODE_PLAN,
 		Sandbox:         sandbox,
 	})
 	if !dec.DenyImmediately || dec.Allow {
@@ -185,7 +185,7 @@ func TestEvaluateToolMatrix(t *testing.T) {
 		ToolName:        "Bash",
 		Command:         "git status",
 		EffectiveMode:   identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
-		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_PLAN,
+		InteractionMode: sessionv1.InteractionMode_INTERACTION_MODE_PLAN,
 		Sandbox:         sandbox,
 	})
 	if !dec.Allow {
@@ -198,7 +198,7 @@ func TestEvaluateToolMatrix(t *testing.T) {
 		ToolName:        "Write",
 		TargetPath:      filepath.Join(ws, "pkg", "x.go"),
 		EffectiveMode:   identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
-		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_CODE,
+		InteractionMode: sessionv1.InteractionMode_INTERACTION_MODE_CODE,
 		Sandbox:         sandbox,
 	})
 	if !dec.NeedsApproval || dec.RuleKey == "" {
@@ -209,7 +209,7 @@ func TestEvaluateToolMatrix(t *testing.T) {
 		ToolName:        "Write",
 		TargetPath:      filepath.Join(ws, "pkg", "y.go"),
 		EffectiveMode:   identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED,
-		InteractionMode: threadv2.InteractionMode_INTERACTION_MODE_CODE,
+		InteractionMode: sessionv1.InteractionMode_INTERACTION_MODE_CODE,
 		Sandbox:         sandbox,
 		AllowedRuleKeys: map[string]bool{dec.RuleKey: true},
 	})

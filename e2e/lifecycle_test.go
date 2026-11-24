@@ -56,7 +56,7 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Fatalf("send: %+v", r)
 	}
 	eventually(t, 30*time.Second, "turn running", func() bool { return status(id) == "running" })
-	if _, err := w.app.client.InterruptSession(ctx, &localv1.InterruptSessionRequest{SessionId: id}); err != nil {
+	if _, err := w.app.sessions.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: id}); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, 30*time.Second, "idle after the owner's interrupt", func() bool { return status(id) == "idle" })
@@ -93,8 +93,8 @@ func TestSessionLifecycle(t *testing.T) {
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
 		t.Fatalf("temporary directory after archive: %v", err)
 	}
-	if out, err := exec.Command("git", "-C", w.repo, "show", "hermesh/"+id+":one.txt").Output(); err != nil || string(out) != "first\n" {
-		t.Fatalf("the session branch keeps its work: %q %v", out, err)
+	if out, err := exec.Command("git", "-C", w.repo, "show", "refs/hermesh/checkpoints/"+id+"/1:one.txt").Output(); err != nil || string(out) != "first\n" {
+		t.Fatalf("the session checkpoint ref keeps its work: %q %v", out, err)
 	}
 	if d := cli("session", "diff", id); d.code != 0 || !strings.Contains(d.stdout, "+first") {
 		t.Fatalf("diff of an archived session: %+v", d)

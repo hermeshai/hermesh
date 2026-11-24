@@ -42,10 +42,10 @@ export function useCommands() {
   useEffect(() => () => window.hermesh?.setMenuState({ main: false, her: false, session: null, sidebar: true, undo: false }), []);
 }
 
-/** The session the window shows, wherever it started (a v2 thread too). */
+/** The session the window shows. */
 function selected(st: Store): Session | undefined {
   const sel = st.selection;
-  return sel.kind === "session" || sel.kind === "thread" ? st.sessions.find((s) => s.sessionId === sel.id) : undefined;
+  return sel.kind === "session" ? st.sessions.find((s) => s.sessionId === sel.id) : undefined;
 }
 
 function run(st: Store, c: Command) {

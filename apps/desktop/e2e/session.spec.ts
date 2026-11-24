@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { cli, fixture, launch, onMac, onWindows, snap, thisComputer, sessionList } from "./app";
+import { cli, dragFiles, fixture, launch, onMac, onWindows, paste, pickFrom, snap, thisComputer, sessionList } from "./app";
 
 // The session page: the conversation, the changes, the info panel, and the
 // control area where the owner answers the agent or stops it.
@@ -9,10 +9,12 @@ async function open(page: Page, title: string) {
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
 }
 
-/** The session's title line: just its name (the status is in the list and the bottom bar). */
+/** The session's title line: its name and where it runs, no status (that is in the list and the bottom bar). */
 function titleLine(page: Page, title: string) {
   return page.getByRole("heading", { name: title }).locator("..");
 }
+/** What the title line says besides the name: where the fixture's sessions run. */
+const where = "owner-mac · demo";
 
 async function status(title: string): Promise<string> {
   return JSON.parse(await cli("session", "get", fixture.sessions[title], "-o", "json")).session.status;
@@ -50,6 +52,25 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(log.locator(".tdiv")).toHaveText(/^今天 \d\d:\d\d$/);
   await expect(log).not.toContainText("Gemini CLI");
   await expect(log).toContainText("先写文件");
+  // bot sent the work in, not the owner: its prompts are quiet bubbles with bot's face on the corner, no name over
+  // them; who sent it shows on hover, before when.
+  const prompts = log.locator(".um");
+  await expect(prompts.first()).toHaveClass(/\bfrom\b/);
+  await expect(prompts.first().getByTestId("prompt-sender")).toHaveAttribute("aria-label", "bot 派的活");
+  const accent = await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("div"));
+    probe.style.background = "var(--accent)";
+    const c = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return c;
+  });
+  expect(await prompts.first().locator(".bub").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(accent);
+  await expect(prompts.first().locator(".msg-act")).toHaveCSS("opacity", "0");
+  await prompts.first().hover();
+  await expect(prompts.first().locator(".msg-act")).toBeVisible();
+  await expect(prompts.first().locator(".msg-act")).toContainText(/^bot 派的活 ·/);
+  // Where it runs, in the bar beside its title, as a v2 session's.
+  await expect(page.getByTestId("session-where")).toHaveText(/ · demo$/);
   // The edit and the command right after it are one step; opened, each in Chinese, without the agent's tool name.
   const step = log.getByRole("button", { name: "编辑了 1 个文件、运行了 1 条命令" });
   await expect(step).toHaveAttribute("aria-expanded", "false");
@@ -72,7 +93,8 @@ test("a finished session shows both turns, what the agent did, and that it is do
   await expect(log).toContainText("改好了");
   // A turn that went well ends without a line of its own.
   await expect(log).not.toContainText("轮完成");
-  await expect(page.getByText("这一轮做完了。bot 再发消息时，会在这个任务里接着做。")).toBeVisible();
+  // Nor does the session: the box under it shows it goes on.
+  await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "这一轮" })).toHaveCount(0);
   await snap(page, "session-chat");
 
@@ -103,10 +125,11 @@ test("a finished session shows both turns, what the agent did, and that it is do
     expect(c.y).toBeGreaterThanOrEqual(m.y + m.height);
     expect(Math.abs(edge === "right" ? c.x + c.width - (m.x + m.width) : c.x - m.x)).toBeLessThan(8);
   }
-  // Both say when they were sent there too, as time ago: after Copy under the reply.
-  for (const msg of [log.locator(".um").first(), reply]) {
+  // Both say when they were sent there too, as time ago (the prompt, who sent it first): after Copy under the reply.
+  const ago = "(刚刚|\\d+ 分钟前)";
+  for (const [msg, said] of [[log.locator(".um").first(), new RegExp(`^bot 派的活 ·${ago}$`)], [reply, new RegExp(`^${ago}$`)]] as const) {
     await msg.hover();
-    await expect(msg.locator(".msg-act")).toHaveText(/^(刚刚|\d+ 分钟前)$/);
+    await expect(msg.locator(".msg-act")).toHaveText(said);
   }
   const copyBox = (await reply.getByRole("button", { name: "拷贝" }).boundingBox())!;
   expect((await reply.locator(".msg-time").boundingBox())!.x).toBeGreaterThan(copyBox.x);
@@ -237,12 +260,13 @@ test("the session card floats over the conversation with what a glance needs, an
   await page.mouse.move(0, 0);
   await expect.poll(fill).toBe("rgba(0, 0, 0, 0)");
   await snap(page, "session-chat");
-  // The owner's messages are in the brand blue with white words, as on the iPhone; a brighter blue in the dark.
+  // bot sent the work in: its messages are a quiet bubble with the page's words, in the light and in the dark (the
+  // owner's brand blue is thread-v2.spec.ts's).
   const bubble = page.getByRole("log", { name: "对话" }).locator(".um .bub").first();
   const colors = () => bubble.evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color]);
-  expect(await colors()).toEqual(["rgb(61, 91, 255)", "rgb(255, 255, 255)"]);
+  expect(await colors()).toEqual(["rgba(0, 0, 0, 0.075)", "rgba(0, 0, 0, 0.86)"]);
   await page.emulateMedia({ colorScheme: "dark" });
-  await expect.poll(colors).toEqual(["rgb(74, 102, 255)", "rgb(255, 255, 255)"]);
+  await expect.poll(colors).toEqual(["rgba(255, 255, 255, 0.086)", "rgba(255, 255, 255, 0.95)"]);
   await snap(page, "session-chat-dark");
   await page.emulateMedia({ colorScheme: "light" });
   await toggle.click();
@@ -253,7 +277,7 @@ test("the session card floats over the conversation with what a glance needs, an
 test("failed sessions tell what went wrong and what to do; an archived one says it is read-only", async () => {
   const { app, page } = await launch();
   await open(page, "崩溃");
-  await expect(titleLine(page, "崩溃")).toHaveText("崩溃");
+  await expect(titleLine(page, "崩溃")).toHaveText("崩溃" + where);
   // Said once, in a quiet card where the reply would be: what happened to the coding agent, who goes on, the agent's words folded under 详情, and 归档.
   const failed = page.getByRole("alert");
   await expect(failed).toContainText("Gemini CLI 意外退出了");
@@ -268,7 +292,7 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
   await snap(page, "session-crashed");
 
   await open(page, "限流");
-  await expect(titleLine(page, "限流")).toHaveText("限流");
+  await expect(titleLine(page, "限流")).toHaveText("限流" + where);
   const log = page.getByRole("log", { name: "对话" });
   await expect(log).not.toContainText("第 1 轮失败"); // not said twice
   await expect(page.getByRole("alert")).toContainText("Gemini CLI 触发了限流");
@@ -287,10 +311,9 @@ test("failed sessions tell what went wrong and what to do; an archived one says 
 test("a question waits in the control area; the owner picks an option by key and answers", async () => {
   const { app, page } = await launch();
   await open(page, "选颜色");
-  const ctl = page.getByRole("region", { name: "这一轮" });
+  const ctl = page.getByTestId("pending-question-banner");
   await expect(ctl).toContainText("Gemini CLI 问你");
   await expect(ctl).toContainText("选哪个颜色");
-  await expect(ctl).toContainText("等你回答");
   await expect(ctl).toContainText("还剩");
   const answer = ctl.getByRole("button", { name: /^回答/ });
   await expect(answer).toBeDisabled();
@@ -317,6 +340,82 @@ test("a question waits in the control area; the owner picks an option by key and
   await app.close();
 });
 
+test("a screenshot pasted into the box is attached and goes with the message; cells copied from a spreadsheet paste as their words", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
+    const input = page.getByTestId("thread-composer-input");
+    await input.click();
+    await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
+    const tiles = page.getByTestId("thread-composer").locator(".cmp-att .tile");
+    // A spreadsheet copies its cells' words and a picture of them: the words go in the box, nothing is attached.
+    await input.focus();
+    await paste(app, page, { text: "收入\t123\n成本\t45", picture: true });
+    await expect(input).toHaveValue("收入\t123\n成本\t45");
+    await expect(tiles).toHaveCount(0);
+    // A screenshot: uploaded to the machine and attached, as a file from ＋ is; the words stay as they are.
+    await input.fill("images");
+    let uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await paste(app, page, { picture: true });
+    await (await uploaded).finished();
+    await expect(tiles).toHaveCount(1);
+    await expect(tiles.first()).toHaveAttribute("title", "image.png");
+    await expect(input).toHaveValue("images");
+    // The same picture pasted again is attached once.
+    uploaded = page.waitForResponse((r) => r.url().endsWith("/UploadBlob"));
+    await paste(app, page, { picture: true });
+    await (await uploaded).finished();
+    await expect(tiles).toHaveCount(1);
+    await snap(page, "session-pasted-picture");
+    // Sent, the agent has it: the scripted agent's `images` names the pictures its turn got.
+    await input.press("Enter");
+    await expect(page.getByRole("log").locator(".am").first()).toContainText("images: image.png", { timeout: 30_000 });
+  } finally {
+    await app.close();
+  }
+});
+
+test("files dragged over a session's window are attached to its box when let go, and go with the next message", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
+    const input = page.getByTestId("thread-composer-input");
+    await input.click();
+    await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
+    await input.fill("say started");
+    await input.press("Enter");
+    const replies = page.getByRole("log").locator(".am");
+    await expect(replies.first()).toContainText("started", { timeout: 30_000 });
+
+    // Over the window, the box says it takes them; let go, they are uploaded and attached.
+    const shot = await app.evaluate(({ nativeImage }) => nativeImage.createFromBitmap(Buffer.alloc(16 * 16 * 4, 0x80), { width: 16, height: 16 }).toPNG().toString("base64"));
+    const box = page.getByTestId("thread-composer");
+    const drag = await dragFiles(page, [
+      { name: "shot.png", type: "image/png", base64: shot },
+      { name: "notes.md", type: "text/markdown", base64: Buffer.from("# Notes\n").toString("base64") },
+    ]);
+    await expect(box).toHaveClass(/\bdropping\b/);
+    await expect(box.locator(".cmp-drop")).toContainText("松手添加附件");
+    await snap(page, "session-dropping");
+    await drag.drop();
+    await expect(box).not.toHaveClass(/\bdropping\b/);
+    const tiles = box.locator(".cmp-att .tile");
+    await expect(tiles).toHaveCount(2);
+    await expect(tiles.nth(0)).toHaveAttribute("title", "shot.png");
+    await expect(tiles.nth(1)).toHaveAttribute("title", "notes.md");
+    await expect(input).toBeFocused();
+    // The next message takes them to the agent (the scripted agent's `inspect` names its turn's attachments).
+    await input.fill("inspect");
+    await input.press("Enter");
+    await expect(replies.last()).toContainText("attachments=[shot.png,notes.md]", { timeout: 30_000 });
+    await expect(tiles).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test("a session worked on in place shows the branch its folder is on, or that it is no git repository; another machine's can only be copied", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
@@ -335,38 +434,123 @@ test("a session worked on in place shows the branch its folder is on, or that it
   await app.close();
 });
 
-test("a running session shows what it does, and 打断 stops the turn", async () => {
+test("a running session shows what it does, and 停止 stops the turn", async () => {
   const { app, page } = await launch();
   await page.setViewportSize({ width: 1440, height: 800 });
   await open(page, "跑很久");
-  await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
-  const ctl = page.getByRole("region", { name: "这一轮" });
-  await expect(ctl).toContainText("Gemini CLI 正在工作");
-  // A live one: the card is its environment alone; the bar below says what runs.
+  await expect(titleLine(page, "跑很久")).toHaveText("跑很久" + where);
+  const working = page.getByTestId("thread-working");
+  await expect(working).toContainText("处理中");
+  // A live one: the card is its environment alone; the work line below says what runs.
   const card = page.getByRole("complementary", { name: "任务信息" });
   await expect(card).toContainText("Gemini CLI");
   await expect(card).not.toContainText("运行中");
   // Neither its model nor its effort known (the agent tells neither): no context card.
   await expect(page.getByRole("complementary", { name: "上下文" })).toHaveCount(0);
-  // The agent that works is shown by its own logo, not the Hermesh mark.
-  await expect(ctl.locator(".live-logo img")).toBeVisible();
-  await expect(ctl.locator(".hm-mark")).toHaveCount(0);
-  // What it is doing is the running tool call in the conversation, not repeated in the bar.
-  await expect(ctl).not.toContainText("sleep 1800");
-  await expect(ctl).toContainText(/\d+:\d\d/);
+  // What it is doing is the running tool call in the conversation, not repeated in the work line.
+  await expect(working).not.toContainText("sleep 1800");
+  await expect(working).toContainText(/\d+:\d\d/);
   await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800");
   await expect(page.getByRole("log", { name: "对话" }).getByRole("img", { name: "进行中" })).toBeVisible();
   await snap(page, "session-running");
 
-  await ctl.getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(page.getByRole("status")).toContainText("已打断「跑很久」");
-  await expect(ctl).toHaveCount(0);
+  await expect(working).toHaveCount(0);
   await expect.poll(() => status("跑很久")).not.toBe("running");
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("你打断了这一轮。任务还在，bot 再发消息就会接着做。");
-  await expect(titleLine(page, "跑很久")).toHaveText("跑很久");
+  // Who stopped it, and no more: the box under it shows it goes on.
+  await expect(page.getByRole("log", { name: "对话" }).locator(".tnote")).toHaveText("你打断了这一轮");
+  await expect(titleLine(page, "跑很久")).toHaveText("跑很久" + where);
   await expect(page.getByText("这一轮做完了。", { exact: false })).toHaveCount(0);
   await snap(page, "session-interrupted");
   await app.close();
+});
+
+test("a turn of many steps opens them in a card that stops growing and scrolls inside, at the newest, following it while the turn runs", async () => {
+  const title = "很多步";
+  const steps = Array.from({ length: 60 }, (_, i) => `shell echo step-${i}`);
+  const late = ["shell echo late-0", "shell echo late-1", "shell echo late-2"];
+  await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", title, "--prompt", [...steps, "shell sleep 10", ...late, "shell sleep 12", "say 都做完了"].join("\n"), "-o", "json");
+  const { app, page } = await launch();
+  try {
+    await (await sessionList(page)).getByText(title, { exact: true }).click();
+    const log = page.getByRole("log", { name: "对话" });
+    const head = log.locator(".tg-h").first();
+    await expect(head).toContainText("运行了 61 条命令", { timeout: 60_000 });
+    await head.click();
+    const card = log.locator(".tg-b");
+    const scroller = card.locator(".tg-s");
+    const back = card.getByRole("button", { name: "回到底部" });
+    // Ten and a half rows high at most, scrolling inside, and only the rows near what is in sight drawn.
+    const rowHeight = await card.locator(".tg-l > .vrow").last().evaluate((el) => el.getBoundingClientRect().height);
+    expect(((await card.boundingBox())!.height - 2) / rowHeight).toBeCloseTo(10.5, 0);
+    expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    expect(await card.locator(".tool").count()).toBeLessThan(61);
+    // At the newest step, the one at work, with more above it fading; following it, so no arrow.
+    const working = card.locator(".tool", { hasText: "sleep 10" });
+    await expect(working).toBeInViewport();
+    await expect(card).toHaveClass(/\bmore-up\b/);
+    await expect(card).not.toHaveClass(/\bmore-down\b/);
+    await expect(back).toBeHidden();
+    await snap(page, "session-many-steps-running");
+    // Scrolled up by the owner: it stays there, fading below, and offers the way back.
+    await scroller.hover();
+    await page.mouse.wheel(0, -500);
+    await expect(card).toHaveClass(/\baway\b/);
+    await expect(back).toBeVisible();
+    await expect(working).not.toBeInViewport();
+    await expect(card).toHaveClass(/\bmore-down\b/);
+    // Steps come while it is scrolled up: it stays where the owner left it, and still offers the way back.
+    const at = await scroller.evaluate((el) => el.scrollTop);
+    await expect(head).toContainText("运行了 65 条命令", { timeout: 60_000 });
+    expect(await scroller.evaluate((el) => el.scrollTop)).toBe(at);
+    await expect(back).toBeVisible();
+    await back.click();
+    const newest = card.locator(".tool", { hasText: "sleep 12" });
+    await expect(newest).toBeInViewport();
+    await expect(back).toBeHidden();
+    // The turn ends: no arrow while nothing runs.
+    await expect(log).toContainText("都做完了", { timeout: 60_000 });
+    await expect(back).toHaveCount(0);
+    // A step opened in the card shows its output there, in view and a size down (180 at most).
+    await card.locator(".tool .th[aria-expanded]").last().click();
+    const out = card.locator(".tool.open .out");
+    await expect(out).toBeInViewport();
+    expect((await out.boundingBox())!.height).toBeLessThanOrEqual(180);
+    // At the top: nothing above fades, more below does.
+    await scroller.evaluate((el) => el.scrollTo({ top: 0 }));
+    await expect(card).not.toHaveClass(/\bmore-up\b/);
+    await expect(card).toHaveClass(/\bmore-down\b/);
+    await expect(card.locator(".tool").first()).toContainText("echo step-0");
+    await snap(page, "session-many-steps");
+    // The scroll bar held a moment, then dragged to the top: the card goes where it is dragged and stays there (where
+    // scroll bars only show while scrolling there is nothing to hold, and nothing to check).
+    await card.locator(".tool.open .th").click();
+    await scroller.evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    await expect(card).not.toHaveClass(/\bmore-down\b/);
+    const box = (await scroller.boundingBox())!;
+    await scroller.evaluate((el) => {
+      (window as unknown as { __scrolls: number }).__scrolls = 0;
+      el.addEventListener("scroll", () => (window as unknown as { __scrolls: number }).__scrolls++);
+    });
+    await page.mouse.move(box.x + box.width - 5, box.y + box.height - 14);
+    await page.mouse.down();
+    await page.waitForTimeout(1300);
+    await page.mouse.move(box.x + box.width - 5, box.y + 4, { steps: 12 });
+    await page.waitForTimeout(600);
+    const dragged = await page.evaluate(() => (window as unknown as { __scrolls: number }).__scrolls);
+    if (dragged > 0) {
+      // Well up from the end (rows measured as they are drawn can move it a little), and still there a moment later.
+      const [top, max] = await scroller.evaluate((el) => [el.scrollTop, el.scrollHeight - el.clientHeight]);
+      expect(top).toBeLessThan(max / 3);
+      await page.waitForTimeout(600);
+      expect(await scroller.evaluate((el) => el.scrollTop)).toBe(top);
+    }
+    await page.mouse.up();
+    test.info().annotations.push({ type: "scroll bar dragged", description: String(dragged > 0) });
+  } finally {
+    await app.close();
+  }
 });
 
 test("a session its agent stops as it starts says the agent interrupted it, not that it failed", async () => {
@@ -378,7 +562,7 @@ test("a session its agent stops as it starts says the agent interrupted it, not 
   try {
     await (await sessionList(page)).getByText(title, { exact: true }).click();
     const log = page.getByRole("log", { name: "对话" });
-    await expect(log).toContainText("bot 打断了这一轮。任务还在，bot 再发消息就会接着做。");
+    await expect(log.locator(".tnote")).toHaveText("bot 打断了这一轮");
     await expect(log).not.toContainText("出错了");
     await expect(page.getByRole("alert")).toHaveCount(0);
   } finally {
@@ -404,7 +588,7 @@ test("tool details stay folded until opened, a failed one and a running one too"
   await failed.click();
   await expect(failed).toHaveAttribute("aria-expanded", "true");
   await expect(log.getByText("No such file or directory")).toBeVisible();
-  await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(page.getByRole("status")).toContainText("已打断「命令失败」");
   await app.close();
 });
@@ -526,7 +710,7 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
     "",
     "```mermaid",
     "flowchart LR",
-    " A[读取] --> B{检查}",
+    ' A["读取 profiles/<id><br/>本机"] <--> B{检查}',
     " B --> C[报告]",
     "```",
     "",
@@ -555,11 +739,13 @@ test("formulas, diagrams, callouts, folds, footnotes and tables show as the repl
   // A footnote's mark goes to its note.
   await md.locator("[data-footnote-ref]").click();
   expect(await page.evaluate(() => document.activeElement?.closest(".footnotes") !== null)).toBe(true);
-  // A diagram draws as a picture, its source a click away.
+  // A diagram draws as a picture (preserving <id> placeholders and <br/> breaks), its unescaped source a click away.
   const diagram = md.locator(".md-diagram");
   await expect.poll(() => diagram.locator(".md-diagram-svg").evaluate((el) => !!el.shadowRoot?.querySelector("svg")), { timeout: 20_000 }).toBe(true);
+  expect(await diagram.locator(".md-diagram-svg").evaluate((el) => el.shadowRoot?.textContent ?? "")).toContain("profiles/<id>");
   await diagram.getByRole("button", { name: "源码" }).click();
-  await expect(diagram.locator(".cblock code")).toContainText("flowchart LR");
+  await expect(diagram.locator(".cblock code")).toContainText("profiles/<id>");
+  await expect(diagram.locator(".cblock code")).not.toContainText("#lt;");
   await diagram.getByRole("button", { name: "图形" }).click();
   await expect(diagram.locator(".md-diagram-svg")).toBeVisible();
   // A table's tools show under the pointer: Copy gives a sheet tabs, Expand shows it large until Escape.
@@ -605,19 +791,19 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   await open(page, "流式");
   const log = page.getByRole("log", { name: "对话" });
   const agent = log.locator(".am");
-  const ctl = page.getByRole("region", { name: "这一轮" });
+  const stop = page.getByTestId("composer-stop-btn");
   await expect(agent.locator(".md")).toHaveText("准备好了");
   await cli("session", "send", streaming.session.session_id, "--message", `stream ${reply}\nsleep 4s`);
   // Part of the reply shows while the turn runs, then all of it, still running.
   await expect(agent.last()).toContainText("最后一段说明");
   expect(await page.evaluate(() => (window as unknown as { __part: boolean }).__part)).toBe(true);
-  await expect(ctl).toBeVisible();
+  await expect(stop).toBeVisible();
   await expect(log.getByRole("table")).toBeVisible();
   await expect(log.locator("pre code")).toHaveText("func main() {}");
   await log.locator(".cblock").evaluate((el) => ((el as unknown as { __kept: boolean }).__kept = true));
   await snap(page, "session-streaming");
   // The stored message replaces it when the turn ends: the same, not a second one, and its code block not drawn anew.
-  await expect(ctl).toHaveCount(0);
+  await expect(stop).toHaveCount(0);
   await expect(agent).toHaveCount(2);
   expect(await log.locator(".cblock").evaluate((el) => (el as unknown as { __kept?: boolean }).__kept === true)).toBe(true);
   await expect(agent.last().locator("strong")).toHaveText("这一段很长很长的加粗文字会跨过好几次刷新");
@@ -626,7 +812,7 @@ test("a reply shows as the agent writes it, never as raw Markdown, and stays whe
   // Interrupted mid-reply: what was shown stays, as a message like any other.
   await open(page, "流式打断");
   await expect(agent).toHaveText("被打断的回复写到一半");
-  await page.getByRole("region", { name: "这一轮" }).getByRole("button", { name: /打断/ }).click();
+  await page.getByTestId("composer-stop-btn").click();
   await expect(log).toContainText("你打断了这一轮");
   // A stored message (only those have a copy button), after the turn's end.
   await expect(agent.locator(".md")).toHaveText("被打断的回复写到一半");

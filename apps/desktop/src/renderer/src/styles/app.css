@@ -27,6 +27,8 @@
   /* The owner's messages: the brand blue, white words, as on the iPhone. */
   --bub:var(--accent);--bub-fg:#fff;--msg:var(--l1);
   --glass:rgba(255,255,255,.72);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 2px 8px rgba(0,0,0,.08);
+  /* The box one writes in (her.css .cmp): the light along its top, its shadows at rest and while written in. */
+  --cmp-hi:transparent;--cmp-lift:0 .5px 1px rgba(0,0,0,.05),0 2px 6px rgba(10,20,50,.05);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.06),0 3px 10px rgba(10,20,50,.08);
   --shadow-win:0 0 0 .5px rgba(0,0,0,.20),0 24px 70px rgba(10,20,50,.30),0 8px 22px rgba(10,20,50,.14);
   --code:#f6f7fa;--add-bg:rgba(23,146,79,.10);--del-bg:rgba(215,51,63,.08);--add-fg:#127443;--del-fg:#b0232f;
   --touch:#ff375f;--scrim:rgba(0,0,0,.22);--scrim-blur:blur(12px) saturate(1.2);--lg-bg:rgba(255,255,255,.62);--lg-hi:rgba(255,255,255,.95);--lg-edge:rgba(0,0,0,.08);
@@ -51,6 +53,7 @@
   /* The agent's words: near white, a step brighter than other text. */
   --msg:rgba(255,255,255,.95);
   --glass:rgba(60,60,66,.62);--glass-sh:0 0 0 .5px rgba(255,255,255,.10),0 2px 10px rgba(0,0,0,.3);
+  --cmp-hi:rgba(255,255,255,.08);--cmp-lift:0 .5px 1px rgba(0,0,0,.3),0 2px 6px rgba(0,0,0,.14);--cmp-lift-f:0 .5px 1px rgba(0,0,0,.34),0 3px 10px rgba(0,0,0,.2);
   --shadow-win:0 0 0 .5px rgba(255,255,255,.14),0 24px 70px rgba(0,0,0,.6),0 8px 22px rgba(0,0,0,.35);
   --code:#18181b;--add-bg:rgba(63,207,134,.12);--del-bg:rgba(255,102,112,.11);--add-fg:#5fe0a0;--del-fg:#ff8c94;
   --scrim:rgba(0,0,0,.4);--lg-bg:rgba(52,52,58,.58);--lg-hi:rgba(255,255,255,.14);--lg-edge:rgba(255,255,255,.12);
@@ -417,6 +420,11 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .um{position:relative;align-self:flex-end;max-width:80%;margin-top:var(--sp-1)}
 .um .bub{background:var(--bub);color:var(--bub-fg);border-radius:var(--r-xl);padding:9px 15px;font-size:var(--chat-size);line-height:1.625;white-space:pre-wrap;overflow-wrap:anywhere}
 .um .bub::selection{background:rgba(255,255,255,.32)}
+/* Work another of the owner's agents sent in (Her, a granted one): a quiet bubble, its sender's face on the corner, ringed by the page. */
+.um.from{margin-top:calc(var(--sp-1) + 8px)}
+.um.from .bub{background:var(--fill2);color:var(--msg)}
+.um.from .bub::selection{background:var(--sel)}
+.um-badge{position:absolute;left:-11px;top:-11px;z-index:1;padding:2px;border-radius:50%;background:var(--win);display:flex}
 .am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
 /* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left. */
 .um,.am.end{margin-bottom:var(--sp-3)}
@@ -481,13 +489,27 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .tgroup.open .tg-h .chev,.tool.open .th .chev{transform:none}
 .tool .out{display:none;margin:4px 0 6px;background:var(--code);border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;color:var(--l2);line-height:1.5}
 .tool.open .out{display:block}
-/* Opened, a group is a hairline card a size down: one row per call, its output opening inside the card. */
-.tg-b{display:flex;flex-direction:column;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:var(--r-box);overflow:hidden}
+/* Opened, a group is a hairline card a size down: one row per call, its output opening inside the card. Past ten
+   and a half rows it stops growing and scrolls inside (the half row says there is more); where there is more above or
+   below, that edge fades into the page. */
+.tg-b{position:relative;margin:var(--sp-1) 0 2px;border:1px solid var(--sep);border-radius:var(--r-box);overflow:hidden}
+.tg-s{max-height:367px;overflow-y:auto;overscroll-behavior-y:auto}
+.tg-l{display:flex;flex-direction:column}
+.tg-l>.vrow+.vrow{border-top:1px solid var(--sep)}
+.tg-b::before,.tg-b::after{content:"";position:absolute;left:0;right:0;z-index:1;pointer-events:none;opacity:0;transition:opacity .15s}
+.tg-b::before{top:0;height:22px;background:linear-gradient(var(--win),transparent)}
+.tg-b::after{bottom:0;height:28px;background:linear-gradient(transparent,var(--win))}
+.tg-b.more-up::before,.tg-b.more-down::after{opacity:1}
+/* Back to the newest step, while the turn runs and the person scrolled up: the conversation's arrow, a size down. */
+.tg-end{position:absolute;right:8px;bottom:8px;z-index:2;width:26px;height:26px;border:0;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--l1);
+  background:var(--glass);box-shadow:var(--glass-sh);-webkit-backdrop-filter:blur(20px) saturate(1.6);backdrop-filter:blur(20px) saturate(1.6);
+  opacity:0;transform:translateY(4px);pointer-events:none;transition:opacity .18s,transform .18s}
+.tg-b.away .tg-end{opacity:1;transform:none;pointer-events:auto}
+.tg-end .ic{width:14px;height:14px}
 .tg-b .tool{border-radius:0;font-size:var(--fs-text)}
-.tg-b .tool+.tool{border-top:1px solid var(--sep)}
 .tg-b .tool .th{width:100%;gap:5px;padding:var(--sp-1) var(--sp-2);border-radius:0}
 .tg-b .tool .th[aria-expanded]:hover,.tg-b .tool.open .th{background:var(--fill)}
-.tg-b .tool .out{margin:0;border-radius:0;padding:var(--sp-1) var(--sp-2) 10px;background:var(--fill);color:var(--l2);max-height:320px;overflow:auto}
+.tg-b .tool .out{margin:0;border-radius:0;padding:var(--sp-1) var(--sp-2) 10px;background:var(--fill);color:var(--l2);max-height:180px;overflow:auto}
 .tool.err .th .vb{color:var(--red)}
 .tnote{align-self:center;font-size:12px;color:var(--l2);background:var(--fill);padding:5px 12px;border-radius:999px}
 .tq{border-radius:var(--r-card);background:var(--fill);padding:10px 12px;font-size:12.5px}

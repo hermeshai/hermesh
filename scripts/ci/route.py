@@ -129,6 +129,7 @@ def main():
         suites = []
         for prefix, name in (("apps/ios/Hermesh/Views/Screen/", "ScreenViewportUITests"),
                              ("apps/ios/Hermesh/Views/Session/", "SessionDetailUITests"),
+                             ("apps/ios/Hermesh/Views/Session/", "ToolStepsUITests"),
                              ("apps/ios/Hermesh/Views/Her/", "HerReviewUITests")):
             if any(path.startswith(prefix) or path == f"apps/ios/HermeshUITests/{name}.swift"
                    for path in paths):

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useContentSession } from "./scope";
 
 // What a row keeps while it is not drawn (docs/desktop-performance.md §7): a long conversation
@@ -39,4 +39,18 @@ export function useRowState<T>(id: string | undefined, initial: T): [T, (next: T
     [id, session],
   );
   return [value, set];
+}
+
+/**
+ * What a row keeps as a ref keeps it, under `id` in its session: changed without drawing the row again, and still
+ * there when the row is drawn again (where a card of calls was scrolled to).
+ */
+export function useRowKept<T extends object>(id: string, initial: () => T): T {
+  const session = useContentSession();
+  return useMemo(() => {
+    const rows = stateOf(session);
+    let kept = rows.get(id) as T | undefined;
+    if (!kept) rows.set(id, (kept = initial()));
+    return kept;
+  }, [id, session]);
 }

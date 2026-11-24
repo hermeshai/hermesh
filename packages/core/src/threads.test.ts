@@ -18,16 +18,17 @@ import {
   RuntimeRequestKind,
   RuntimeRequestSchema,
   RuntimeRequestStatus,
-  ThreadEventSchema,
-  ThreadProjectionSchema,
-  ThreadSchema,
-  ThreadStatus,
+  SessionEventSchema,
+  SessionProgressSchema,
+  SessionProjectionSchema,
+  SessionSchema,
+  SessionStatus,
   TurnItemKind,
   TurnItemSchema,
-} from "@hermesh/proto/thread";
+} from "@hermesh/proto/session";
 import {
   activeBackgroundTasksOf,
-  applyThreadEvent,
+  applySessionEvent,
   backgroundTasksOf,
   clampRuntimeMode,
   composerPrimaryAction,
@@ -39,7 +40,7 @@ import {
   toggleInteractionMode,
 } from "./threads";
 
-describe("v2 threads domain helpers & event reducer", () => {
+describe("unified session domain helpers & event reducer", () => {
   it("clamps runtime modes monotonically against cryptographic grant ceiling", () => {
     expect(clampRuntimeMode(RuntimeMode.UNSPECIFIED, RuntimeMode.UNSPECIFIED)).toBe(RuntimeMode.AUTO);
     expect(clampRuntimeMode(RuntimeMode.FULL_ACCESS, RuntimeMode.AUTO_EDITS)).toBe(RuntimeMode.AUTO_EDITS);
@@ -49,9 +50,9 @@ describe("v2 threads domain helpers & event reducer", () => {
   });
 
   it("derives adaptive composer primary actions across online, offline, steer, and stop states", () => {
-    const idle = create(ThreadSchema, { threadId: "t1", status: ThreadStatus.IDLE });
-    const running = create(ThreadSchema, { threadId: "t1", status: ThreadStatus.RUNNING });
-    const waiting = create(ThreadSchema, { threadId: "t1", status: ThreadStatus.WAITING_REQUEST });
+    const idle = create(SessionSchema, { sessionId: "s1", status: SessionStatus.IDLE });
+    const running = create(SessionSchema, { sessionId: "s1", status: SessionStatus.RUNNING });
+    const waiting = create(SessionSchema, { sessionId: "s1", status: SessionStatus.WAITING_INPUT });
 
     expect(composerPrimaryAction(undefined, false, true, true)).toBe("queue_offline");
     expect(composerPrimaryAction(undefined, true, true, true)).toBe("start");
@@ -101,8 +102,8 @@ describe("v2 threads domain helpers & event reducer", () => {
   });
 
   it("reduces streaming item updates, pending requests, queued runs, and checkpoint rollbacks", () => {
-    let proj = create(ThreadProjectionSchema, {
-      thread: create(ThreadSchema, { threadId: "th_1", status: ThreadStatus.RUNNING }),
+    let proj = create(SessionProjectionSchema, {
+      session: create(SessionSchema, { sessionId: "s_1", status: SessionStatus.RUNNING }),
       runs: [
         create(RunSchema, { runId: "r1", ordinal: 1, status: RunStatus.COMPLETED }),
         create(RunSchema, { runId: "r2", ordinal: 2, status: RunStatus.COMPLETED }),
@@ -117,63 +118,63 @@ describe("v2 threads domain helpers & event reducer", () => {
 
     expect(queuedRunsOf(proj).map((r) => r.runId)).toEqual(["q1", "q2"]);
 
-    // Request created event
     const req = create(RuntimeRequestSchema, {
       requestId: "req_1",
-      threadId: "th_1",
+      sessionId: "s_1",
       runId: "r2",
       kind: RuntimeRequestKind.TOOL_APPROVAL,
       status: RuntimeRequestStatus.PENDING,
     });
-    proj = applyThreadEvent(
+    proj = applySessionEvent(
       proj,
-      create(ThreadEventSchema, {
-        threadId: "th_1",
+      create(SessionEventSchema, {
+        sessionId: "s_1",
         seq: 5n,
         type: "request.created",
-        thread: create(ThreadSchema, { threadId: "th_1", status: ThreadStatus.WAITING_REQUEST, pendingRequestId: "req_1" }),
+        session: create(SessionSchema, { sessionId: "s_1", status: SessionStatus.WAITING_INPUT, pendingRequestId: "req_1" }),
         request: req,
       }),
     );
     expect(pendingRequestOf(proj)?.requestId).toBe("req_1");
 
-    // Rollback to checkpoint #1 prunes r2's items while keeping queued runs intact!
-    proj = applyThreadEvent(
+    proj = applySessionEvent(
       proj,
-      create(ThreadEventSchema, {
-        threadId: "th_1",
+      create(SessionEventSchema, {
+        sessionId: "s_1",
         seq: 6n,
-        type: "thread.rolled_back",
-        thread: create(ThreadSchema, { threadId: "th_1", status: ThreadStatus.IDLE }),
+        type: "session.rolled_back",
+        session: create(SessionSchema, { sessionId: "s_1", status: SessionStatus.IDLE }),
         checkpoint: create(CheckpointSchema, { checkpointId: "cp_1", runOrdinal: 1 }),
       }),
     );
     expect(proj.items.map((i) => i.itemId)).toEqual(["i1"]);
     expect(queuedRunsOf(proj).map((r) => r.runId)).toEqual(["q1", "q2"]);
 
-    // Even if an out-of-band unary RPC bumped thread.lastSeq to 20, earlier stream item events are still applied!
-    const bumped = create(ThreadProjectionSchema, {
-      thread: create(ThreadSchema, { threadId: "th_1", lastSeq: 20n }),
+    const bumped = create(SessionProjectionSchema, {
+      session: create(SessionSchema, {
+        sessionId: "s_1",
+        progress: create(SessionProgressSchema, { lastEventSeq: 20n }),
+      }),
       runs: [],
       items: [],
     });
-    const caughtUp = applyThreadEvent(
+    const caughtUp = applySessionEvent(
       bumped,
-      create(ThreadEventSchema, {
-        threadId: "th_1",
+      create(SessionEventSchema, {
+        sessionId: "s_1",
         seq: 12n,
         type: "item.updated",
         item: create(TurnItemSchema, { itemId: "i_late", runId: "r1", seq: 11n, kind: TurnItemKind.ASSISTANT_MESSAGE, text: "Recovered" }),
       }),
     );
-    expect(caughtUp.thread?.lastSeq).toBe(20n);
+    expect(caughtUp.session?.progress?.lastEventSeq).toBe(20n);
     expect(caughtUp.items.map((i) => i.text)).toEqual(["Recovered"]);
 
     // Background task updates fold cleanly, sort awaited before daemons, and prune on rollback.
-    let withBg = applyThreadEvent(
+    let withBg = applySessionEvent(
       caughtUp,
-      create(ThreadEventSchema, {
-        threadId: "th_1",
+      create(SessionEventSchema, {
+        sessionId: "s_1",
         seq: 21n,
         type: "background_task.updated",
         backgroundTask: create(BackgroundTaskSchema, {
@@ -185,10 +186,10 @@ describe("v2 threads domain helpers & event reducer", () => {
         }),
       }),
     );
-    withBg = applyThreadEvent(
+    withBg = applySessionEvent(
       withBg,
-      create(ThreadEventSchema, {
-        threadId: "th_1",
+      create(SessionEventSchema, {
+        sessionId: "s_1",
         seq: 22n,
         type: "background_task.updated",
         backgroundTask: create(BackgroundTaskSchema, {

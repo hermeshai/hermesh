@@ -1,16 +1,14 @@
 import { expect, test } from "@playwright/test";
 import type { ElectronApplication, Page } from "@playwright/test";
 import type { TrayView } from "../src/shared/bridge";
-import { launch, snap } from "./app";
+import { launch, pickFrom, snap } from "./app";
 
 // The composer's line (docs/thread-composer.md): the project and model menus, and the permission mode menu.
 async function pickDemoAndScripted(page: Page) {
-  await page.getByRole("button", { name: "项目" }).click();
-  await page.getByTestId("project-item-demo").click();
+  await pickFrom(page.getByRole("button", { name: "项目" }), page.getByTestId("project-item-demo"));
   // The model is in the box, once it is open; choosing one closes the panel.
   await page.getByTestId("thread-composer-input").click();
-  await page.getByRole("button", { name: "模型" }).click();
-  await page.getByTestId("picker-model-scripted-pro").click();
+  await pickFrom(page.getByRole("button", { name: "模型" }), page.getByTestId("picker-provider-scripted").getByTestId("picker-model-scripted-pro"));
   await expect(page.getByTestId("model-traits-popover")).toBeHidden();
 }
 // What the menu bar counts (main/tray.ts): a session started here counts as any session does.
@@ -48,10 +46,12 @@ async function pickMode(page: Page, testId: string) {
 test("launches a supervised v2 thread, handles live tool approval, and shows it as a session's page", async () => {
   const { app, page } = await launch();
   try {
+    // Wide enough for the info cards beside the conversation (a CI screen can be narrower than they need).
+    await page.setViewportSize({ width: 1440, height: 800 });
     const openStreams = () =>
       app.evaluate(() => (globalThis as unknown as { hermeshTest: { openUpstream(): number } }).hermeshTest.openUpstream());
-    // Watch, and the thread list the window keeps for its sidebar (store.tsx useThreads).
-    await expect.poll(openStreams).toBe(2);
+    // Unified Watch stream keeps the window's session list and status live.
+    await expect.poll(openStreams).toBe(1);
 
     await page.getByTestId("nav-new-thread").click();
     await expect(page.getByTestId("thread-page")).toBeVisible();
@@ -86,7 +86,15 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await steps.locator("button").first().click();
     await expect(conversation(page)).toContainText("ui_v2.txt");
     await expect(conversation(page)).toContainText("+hello_from_v2_ui");
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    // The owner sent it: a blue bubble with nothing on it. A turn that went well ends without a line of its own.
+    await expect(conversation(page).locator(".um").first()).not.toHaveClass(/\bfrom\b/);
+    // In the brand blue with white words, as on the iPhone.
+    expect(await conversation(page).locator(".um .bub").first().evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color])).toEqual([
+      "rgb(61, 91, 255)",
+      "rgb(255, 255, 255)",
+    ]);
+    await expect(conversation(page).getByTestId("prompt-sender")).toHaveCount(0);
+    await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
 
     // Its info cards, as a session's: who started it, the agent, this Mac, the project; then the model.
     const env = page.getByRole("complementary", { name: "任务信息" });
@@ -120,9 +128,9 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await expect(note).toHaveCount(0);
     await expect(page.getByTestId("thread-composer-input")).toBeVisible();
 
-    // Navigating back to Overview closes the thread's own subscription: Watch and the thread list stay.
+    // Navigating back to Overview closes the session's own subscription: Watch stays.
     await page.locator(".side-nav").getByRole("button", { name: /^概览/ }).click();
-    await expect.poll(openStreams).toBe(2);
+    await expect.poll(openStreams).toBe(1);
   } finally {
     await app.close();
   }
@@ -183,6 +191,8 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
 test("tracks post-turn background tasks without premature completion, streams automatic continuation wakeup, and stops daemons from the UI", async () => {
   const { app, page } = await launch();
   try {
+    // Wide enough for the info cards beside the conversation (a CI screen can be narrower than they need).
+    await page.setViewportSize({ width: 1440, height: 800 });
     await page.getByTestId("nav-new-thread").click();
     await pickDemoAndScripted(page);
     // RuntimeMode.FULL_ACCESS == 4 so shell commands run without approval pause.
@@ -194,7 +204,7 @@ test("tracks post-turn background tasks without premature completion, streams au
     await page.getByTestId("composer-submit-btn").click();
 
     // 1. Foreground reply finishes, while background task pill + toolbar badge + Inspector card appear,
-    //    and "这一轮做完了" is suppressed while awaiting the background task!
+    //    and the conversation's end says it waits on the background task.
     await expect(replies(page)).toContainText("Foreground reply done, running pytest in background", { timeout: 10_000 });
     const bgStrip = page.getByTestId("background-tasks-strip");
     await expect(bgStrip).toBeVisible();
@@ -205,13 +215,15 @@ test("tracks post-turn background tasks without premature completion, streams au
     await expect(page.getByTestId("inspector-background-tasks")).toContainText("pytest -q");
 
     // 2. When the 3s background task finishes, the system Continuation Run streams the final report
-    //    under a quiet wake divider, clears the active background strip, and shows "这一轮做完了"!
+    //    under a quiet wake divider, clears the active background strip, and the waiting line goes: a turn that
+    //    went well ends without a line of its own.
     await expect(replies(page).last()).toContainText("All 12 background tests passed!", { timeout: 15_000 });
     await expect(page.getByTestId("turn-wake-line")).toContainText("后台唤醒 · pytest -q");
     await expect(bgStrip).toHaveCount(0);
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    await expect(page.getByTestId("thread-working")).toHaveCount(0);
+    await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
 
-    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT block "这一轮做完了",
+    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT keep the conversation's end waiting,
     //    shows live output in Inspector when clicking "查看", and stops cleanly when clicking "停止"!
     await page
       .getByTestId("thread-composer-input")
@@ -219,7 +231,7 @@ test("tracks post-turn background tasks without premature completion, streams au
     await page.getByTestId("composer-submit-btn").click();
 
     await expect(replies(page).last()).toContainText("Dev server started", { timeout: 10_000 });
-    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    await expect(page.getByTestId("thread-working")).toHaveCount(0);
     await expect(bgStrip).toContainText("常驻进程运行中");
 
     await page.getByTestId("background-strip-view").click();

@@ -16,115 +16,43 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
-type sessionService struct{ n *Machine }
+type machineSessionService struct {
+	sessionv1connect.SessionServiceHandler
+	n *Machine
+}
 
-func (s *sessionService) StartSession(ctx context.Context, req *sessionv1.StartSessionRequest) (*sessionv1.StartSessionResponse, error) {
-	sess, err := s.n.sessions.Start(ctx, principalFrom(ctx), req)
-	if err != nil {
-		return nil, err
+func newMachineSessionService(n *Machine) sessionv1connect.SessionServiceHandler {
+	return &machineSessionService{
+		SessionServiceHandler: kernel.NewService(n.sessions, n.sessionPrincipal),
+		n:                     n,
 	}
-	return &sessionv1.StartSessionResponse{Session: sess}, nil
 }
 
-func (s *sessionService) GetSession(ctx context.Context, req *sessionv1.GetSessionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.Get(principalFrom(ctx), req.SessionId)
-}
-
-func (s *sessionService) ListSessions(ctx context.Context, req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
-	list, next, err := s.n.sessions.List(principalFrom(ctx), req)
+func (s *machineSessionService) ListSessions(ctx context.Context, req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
+	list, next, err := s.n.ListSessionsPage(ctx, principalFrom(ctx), req)
 	if err != nil {
 		return nil, err
 	}
 	return &sessionv1.ListSessionsResponse{Sessions: list, Next: next}, nil
 }
 
-func (s *sessionService) WatchSessions(ctx context.Context, req *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
+func (s *machineSessionService) WatchSessions(ctx context.Context, req *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
 	send := stream.Send
 	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
 		send = func(m *sessionv1.WatchSessionsResponse) error {
-			return stream.Send(&sessionv1.WatchSessionsResponse{Sessions: BasicSessions(m.Sessions), DeletedSessionIds: m.DeletedSessionIds})
+			return stream.Send(&sessionv1.WatchSessionsResponse{
+				Snapshot:          m.Snapshot,
+				Sessions:          BasicSessions(m.Sessions),
+				DeletedSessionIds: m.DeletedSessionIds,
+			})
 		}
 	}
-	return s.n.sessions.Watch(ctx, principalFrom(ctx), send)
-}
-
-func (s *sessionService) ReadToolOutput(ctx context.Context, req *sessionv1.ReadToolOutputRequest, stream *connect.ServerStream[sessionv1.ToolOutputChunk]) error {
-	return s.n.sessions.ReadToolOutput(principalFrom(ctx), req, stream.Send)
-}
-
-func (s *sessionService) StreamEvents(ctx context.Context, req *sessionv1.StreamEventsRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
-	return s.n.sessions.Stream(ctx, principalFrom(ctx), req, stream.Send)
-}
-
-func (s *sessionService) SendMessage(ctx context.Context, req *sessionv1.SendMessageRequest) (*sessionv1.SendMessageResponse, error) {
-	sess, err := s.n.sessions.Send(ctx, principalFrom(ctx), req.SessionId, req.Text, req.Attachments)
-	if err != nil {
-		return nil, err
-	}
-	return &sessionv1.SendMessageResponse{Session: sess}, nil
-}
-
-func (s *sessionService) ListEvents(ctx context.Context, req *sessionv1.ListEventsRequest) (*sessionv1.ListEventsResponse, error) {
-	return s.n.sessions.ListEvents(principalFrom(ctx), req)
-}
-
-func (s *sessionService) InterruptSession(ctx context.Context, req *sessionv1.InterruptSessionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.Interrupt(ctx, principalFrom(ctx), req.SessionId)
-}
-
-func (s *sessionService) ArchiveSession(ctx context.Context, req *sessionv1.ArchiveSessionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.Archive(ctx, principalFrom(ctx), req.SessionId)
-}
-
-func (s *sessionService) UnarchiveSession(ctx context.Context, req *sessionv1.UnarchiveSessionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.Unarchive(ctx, principalFrom(ctx), req.SessionId)
-}
-
-func (s *sessionService) DeleteSession(ctx context.Context, req *sessionv1.DeleteSessionRequest) (*sessionv1.DeleteSessionResponse, error) {
-	if err := s.n.sessions.Delete(ctx, principalFrom(ctx), req.SessionId); err != nil {
-		return nil, err
-	}
-	return &sessionv1.DeleteSessionResponse{}, nil
-}
-
-func (s *sessionService) RenameSession(ctx context.Context, req *sessionv1.RenameSessionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.Rename(ctx, principalFrom(ctx), req.SessionId, req.Title)
-}
-
-func (s *sessionService) GetDiff(ctx context.Context, req *sessionv1.GetDiffRequest) (*sessionv1.GetDiffResponse, error) {
-	return s.n.sessions.Diff(ctx, principalFrom(ctx), req)
-}
-
-func (s *sessionService) AnswerQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
-}
-
-// AnswerLocalQuestion is kept for wire compatibility with v0.1.7 clients and
-// applies the same authorization and validation rules as AnswerQuestion.
-func (s *sessionService) AnswerLocalQuestion(ctx context.Context, req *sessionv1.AnswerQuestionRequest) (*sessionv1.Session, error) {
-	return s.n.sessions.AnswerQuestion(ctx, principalFrom(ctx), req)
-}
-
-// CheckLocalCodingRecipient is kept for wire compatibility with v0.1.7 Her
-// clients after coding-specific consent was removed.
-func (s *sessionService) CheckLocalCodingRecipient(ctx context.Context, req *sessionv1.CheckLocalCodingRecipientRequest) (*sessionv1.CheckLocalCodingRecipientResponse, error) {
-	p := principalFrom(ctx)
-	if req.GetSessionId() != "" {
-		if _, _, err := s.n.sessions.find(p, req.GetSessionId(), false); err != nil {
-			return nil, err
-		}
-	}
-	return &sessionv1.CheckLocalCodingRecipientResponse{}, nil
-}
-
-// CodingConsent is kept for wire compatibility with v0.1.7 owner clients after
-// coding-specific consent was removed.
-func (s *sessionService) CodingConsent(ctx context.Context, req *sessionv1.CodingConsentRequest) (*sessionv1.CodingConsentResponse, error) {
-	return s.n.sessions.codingConsentCompat(principalFrom(ctx), req)
+	return s.n.sessions.WatchSessions(ctx, s.n.sessionPrincipal(ctx), req.IncludeArchived, send)
 }
 
 type machineService struct{ n *Machine }
@@ -156,7 +84,7 @@ func (s *machineService) Watch(ctx context.Context, req *machinev1.WatchRequest,
 }
 
 func (s *machineService) PullWork(ctx context.Context, req *machinev1.PullWorkRequest) (*machinev1.PullWorkResponse, error) {
-	return s.n.sessions.PullWork(ctx, principalFrom(ctx), req)
+	return s.n.PullWork(ctx, principalFrom(ctx), req)
 }
 
 func (s *machineService) PunchDirect(ctx context.Context, req *machinev1.PunchDirectRequest) (*machinev1.PunchDirectResponse, error) {
@@ -178,7 +106,7 @@ func (s *machineService) projects(ctx context.Context, p *Principal, base bool) 
 	if err != nil {
 		return nil, err
 	}
-	active := s.n.sessions.ActiveByProject()
+	active := s.n.ActiveByProject()
 	out := &machinev1.ListProjectsResponse{}
 	for _, pr := range projects {
 		if p.Kind == PrincipalClient && !identity.Allows(p.Grant.ProjectIds, pr.ID) {
@@ -384,21 +312,21 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		} else if old != nil && !samePath(old.Path, path) {
 			return "", connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("project %q is already the folder %s; remove it first to use another folder", p.ProjectId, old.Path))
 		}
-		defer n.sessions.changes().project(p.ProjectId)
+		defer n.changes().project(p.ProjectId)
 		if err := n.st.PutProject(Project{ID: p.ProjectId, Path: path, DefaultBaseRef: base, Workspace: mode, Description: strings.TrimSpace(p.Description)}); err != nil {
 			return "", err
 		}
-		if n.threads != nil {
-			_ = n.threads.SyncWorkspace(p.ProjectId, path, base, mode, strings.TrimSpace(p.Description), nil) // for every provider (docs/settings-environments.md D5)
+		if n.sessions != nil {
+			_ = n.sessions.SyncWorkspace(p.ProjectId, path, base, mode, strings.TrimSpace(p.Description), nil)
 		}
 		if mode == identityv1.Workspace_WORKSPACE_IN_PLACE {
 			return "project " + p.ProjectId + " added (sessions work in place)", nil
 		}
 		return "project " + p.ProjectId + " added (a worktree per session)", nil
 	case *identityv1.AdminCommand_RemoveProject:
-		defer n.sessions.changes().project(c.RemoveProject.ProjectId)
-		if n.threads != nil && c.RemoveProject.ProjectId != kernel.ScratchProjectID {
-			_ = n.threads.RemoveWorkspace(c.RemoveProject.ProjectId)
+		defer n.changes().project(c.RemoveProject.ProjectId)
+		if n.sessions != nil && c.RemoveProject.ProjectId != kernel.ScratchProjectID {
+			_ = n.sessions.RemoveWorkspace(c.RemoveProject.ProjectId)
 		}
 		return "project removed", n.st.DeleteProject(c.RemoveProject.ProjectId)
 	case *identityv1.AdminCommand_SetName:

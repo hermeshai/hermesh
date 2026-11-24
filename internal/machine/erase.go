@@ -26,10 +26,6 @@ import (
 // machine is then to erase its data (Erase) and stop.
 var ErrErased = errors.New("the owner erased everything")
 
-// FetchEraseOrder asks the relay whether ownerID erased everything, and
-// verifies its order against trust (which takes the chain the order was
-// signed under, if it extends the held one). nil without an order, or with
-// one that does not verify.
 func FetchEraseOrder(ctx context.Context, hc connect.HTTPClient, relayURL, ownerID string, trust *identity.Trust) *identityv1.EraseOrder {
 	if trust == nil {
 		return nil
@@ -48,9 +44,6 @@ func FetchEraseOrder(ctx context.Context, hc connect.HTTPClient, relayURL, owner
 	return order
 }
 
-// AckErase tells the relay, with key, that subject (the id the owner knows
-// it by) is erasing for order eraseID; a trusted device passes its device
-// cert. Callers go on erasing when it fails.
 func AckErase(ctx context.Context, hc connect.HTTPClient, relayURL, eraseID, subject string, deviceCert *identityv1.Signed, key identity.Signer) error {
 	ack, err := identity.SignEraseAck(eraseID, subject, deviceCert, key)
 	if err != nil {
@@ -62,9 +55,6 @@ func AckErase(ctx context.Context, hc connect.HTTPClient, relayURL, eraseID, sub
 	return err
 }
 
-// checkErase is a refused machine asking whether its owner erased
-// everything: if so it acks, and Run stops with ErrErased. Once that order
-// is gone (or for an owner gone otherwise), the log says how to pair again.
 func (n *Machine) checkErase(ctx context.Context) bool {
 	n.mu.Lock()
 	relayURL, ownerID, trust, said := n.relayURL, n.ownerID, n.trust, n.goneSaid
@@ -90,30 +80,33 @@ func (n *Machine) checkErase(ctx context.Context) bool {
 // Erase erases what Hermesh keeps for the machine in cfg.DataDir (which
 // must not be running): its key, owner, projects list and sessions, and
 // the worktrees it made, whose branches stay in their repositories. A
-// worktree with uncommitted changes is kept, moved into keepDir when it
-// can be; Erase returns where each is.
+// worktree with uncommitted changes or local files beyond its checkpoint is
+// kept, moved into keepDir when it can be; Erase returns where each is.
 func Erase(cfg Config, keepDir string) ([]string, error) {
 	n, err := Open(cfg)
 	if err != nil {
 		return nil, err
 	}
 	var kept []string
-	rows, err := n.st.Sessions("")
+	sessions, err := n.sessions.ListAllSessions(true)
 	if err != nil {
 		n.Close()
 		return nil, err
 	}
 	ctx := context.Background()
-	for _, r := range rows {
-		if !n.sessions.ws.Exists(r.ID) {
+	for _, s := range sessions {
+		wt, ok := sessionUsesWorktree(s)
+		if !ok {
+			wt = n.expectedWorktreePath(s.SessionId)
+		}
+		if st, sErr := os.Stat(wt); sErr != nil || !st.IsDir() {
 			continue
 		}
-		wt := n.sessions.ws.Path(r.ID)
-		p, _ := n.st.Project(r.ProjectID)
-		if out, err := git(ctx, wt, "status", "--porcelain"); err != nil || strings.TrimSpace(out) != "" {
-			dst := filepath.Join(keepDir, r.ID)
-			if p != nil && os.MkdirAll(keepDir, 0o700) == nil {
-				if err := moveWorktree(ctx, p.Path, wt, dst); err == nil {
+		repo := n.repoPathForProject(s.ProjectId)
+		if repo == "" || checkSessionCheckout(ctx, n.sessions, s, repo, wt) != nil {
+			dst := filepath.Join(keepDir, s.SessionId)
+			if repo != "" && os.MkdirAll(keepDir, 0o700) == nil {
+				if err := moveWorktree(ctx, repo, wt, dst); err == nil {
 					wt = dst
 				} else {
 					n.log.Warn("keeping a worktree where it is", "path", wt, "err", err)
@@ -122,17 +115,13 @@ func Erase(cfg Config, keepDir string) ([]string, error) {
 			kept = append(kept, wt)
 			continue
 		}
-		if p != nil {
-			n.sessions.ws.Remove(ctx, p.Path, r.ID)
-		}
+		_, _ = gitUnlimited(ctx, repo, "worktree", "remove", "--force", "--", filepath.ToSlash(wt))
+		_ = os.RemoveAll(wt)
 	}
 	n.Close()
 	return kept, RemoveExcept(cfg.DataDir, append(slices.Clone(kept), keepDir))
 }
 
-// moveWorktree moves a worktree of repo, named as git keeps it (its gitdir
-// file): on Windows git knows a worktree by that form only (forward
-// slashes, a long name or a short one).
 func moveWorktree(ctx context.Context, repo, from, to string) error {
 	name := filepath.ToSlash(from)
 	if b, err := os.ReadFile(filepath.Join(from, ".git")); err == nil {
@@ -147,7 +136,6 @@ func moveWorktree(ctx context.Context, repo, from, to string) error {
 	return err
 }
 
-// RemoveExcept removes everything in dir but the paths in keep.
 func RemoveExcept(dir string, keep []string) error {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {

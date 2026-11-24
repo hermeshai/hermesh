@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,21 +29,35 @@ var (
 	signerErr  error
 )
 
-// signerBinary builds the signer (apps/signer/macos) once per test run.
+// signerBinary packages Hermesh Signer.app (apps/signer/macos) once per
+// test run and removes the SwiftPM scratch directory, so resource bundles
+// must load from Hermesh Signer.app/Contents/Resources as on a user's Mac.
 func signerBinary(t *testing.T) string {
 	t.Helper()
 	signerOnce.Do(func() {
-		dir, _ := filepath.Abs(filepath.Join("apps", "signer", "macos")) // the tests run from the repository root
-		if out, err := exec.Command("swift", "build", "--package-path", dir).CombinedOutput(); err != nil {
-			signerErr = fmt.Errorf("swift build: %v\n%s", err, out)
-			return
-		}
-		out, err := exec.Command("swift", "build", "--package-path", dir, "--show-bin-path").Output()
+		appDir, err := os.MkdirTemp("", "hermesh-signer-app")
 		if err != nil {
-			signerErr = fmt.Errorf("swift build --show-bin-path: %v", err)
+			signerErr = err
 			return
 		}
-		signerBin = filepath.Join(strings.TrimSpace(string(out)), "HermeshSigner")
+		scratch, err := os.MkdirTemp("", "hermesh-signer-build")
+		if err != nil {
+			signerErr = err
+			return
+		}
+		defer os.RemoveAll(scratch)
+		arch := "arm64"
+		if runtime.GOARCH == "amd64" {
+			arch = "x64"
+		}
+		script, _ := filepath.Abs(filepath.Join("apps", "signer", "macos", "scripts", "build-signer.sh")) // the tests run from the repository root
+		cmd := exec.Command(script, appDir)
+		cmd.Env = append(os.Environ(), "HERMESH_ARCH="+arch, "HERMESH_SIGNING_IDENTITY=-", "HERMESH_SIGNER_SCRATCH="+scratch)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			signerErr = fmt.Errorf("build-signer.sh: %v\n%s", err, out)
+			return
+		}
+		signerBin = filepath.Join(appDir, "Hermesh Signer.app", "Contents", "MacOS", "HermeshSigner")
 	})
 	if signerErr != nil {
 		t.Fatal(signerErr)
@@ -222,7 +237,8 @@ func TestSignerApp(t *testing.T) {
 		t.Fatalf("removal shown as %+v", r)
 	}
 
-	// Rejected in the panel (a restarted signer, same key): the call fails.
+	// Rejected in the panel (a restarted signer, same key, in Simplified
+	// Chinese from the app's resource bundles): the call fails.
 	signer.kill()
 	parent := exec.Command("sleep", "60")
 	if err := parent.Start(); err != nil {
@@ -230,14 +246,15 @@ func TestSignerApp(t *testing.T) {
 	}
 	t.Cleanup(func() { parent.Process.Kill() })
 	rejecting := start(t, "signer rejecting", nil, bin, "--socket", w.sock, "--parent-pid", strconv.Itoa(parent.Process.Pid),
-		"--test-key", keyFile, "--test-decision", "reject", "--test-report", report, "-AppleLanguages", "(en)")
+		"--test-key", keyFile, "--test-decision", "reject", "--test-report", report, "-AppleLanguages", "(zh-Hans)")
 	w.logs = append(w.logs, rejecting)
 	login3 := start(t, "login bot3", []string{"HERMESH_HOME=" + filepath.Join(w.tmp, "bot3")}, hermesh, "auth", "login", w.addr, "--name", "bot3")
 	_, err = w.app.client.ApproveClientPairing(ctx, &localv1.ApproveClientPairingRequest{Code: login3.pairingCode(t), Spec: &localv1.GrantSpec{Label: "bot3"}})
 	if err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Fatalf("approval the signer rejected: %v", err)
 	}
-	if r := lastSignerReport(t, report); r.Decision != "reject" || r.titles()[0] != "Approve “bot3” to connect to your computer" || r.Caller != caller {
+	zhCaller := "由 " + filepath.Base(exe) + " 发起"
+	if r := lastSignerReport(t, report); r.Decision != "reject" || r.titles()[0] != "批准「bot3」连接你的电脑" || r.Caller != zhCaller {
 		t.Fatalf("rejection reported as %+v", r)
 	}
 

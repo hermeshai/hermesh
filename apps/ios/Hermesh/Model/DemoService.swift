@@ -10,6 +10,7 @@ import SwiftProtobuf
 final class DemoService {
     let herReview = HerReviewDemo()
     private var world = Hermesh_Local_V1_WatchResponse()
+    private var projections: [String: Hermesh_Session_V1_SessionProjection] = [:]
     private var events: [String: [SessionEvent]] = [:]
     private var watchers: [UUID: AsyncThrowingStream<Data, Error>.Continuation] = [:]
     private var followers: [UUID: (String, AsyncThrowingStream<Data, Error>.Continuation)] = [:]
@@ -66,16 +67,30 @@ final class DemoService {
             }]
         }
         sampleQuestion = question
-        world.sessions = [session("demo-question-session", title: String(localized: "Choose a greeting"), machine: "demo-mac", status: .waitingInput),
-                          session("demo-finished-session", title: String(localized: "Add a welcome page"), machine: "demo-linux", status: .idle)]
-        world.sessions[0].progress.pendingQuestion = question
-        append("demo-question-session", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
-        append("demo-question-session", .with { $0.userMessage.text = String(localized: "Build a welcome page for our sample project. Ask me which greeting to use.") })
-        append("demo-question-session", .with { $0.agentMessage.text = String(localized: "I’ve checked the sample project. Choose a greeting below, and I’ll update the page and run its tests.") })
-        append("demo-question-session", .with { $0.questionAsked.question = question })
-        append("demo-finished-session", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
-        append("demo-finished-session", .with { $0.userMessage.text = String(localized: "Add a welcome page and test it.") })
+        var qSession = session("demo-question-session", title: String(localized: "Choose a greeting"), machine: "demo-mac", status: .waitingInput)
+        qSession.pendingRequestID = "demo-question"
+        qSession.activeRunID = "r1"
+        qSession.progress.pendingQuestion = question
+        let doneSession = session("demo-finished-session", title: String(localized: "Add a welcome page"), machine: "demo-linux", status: .idle)
+        world.sessions = [qSession, doneSession]
+
+        beginRun("demo-question-session", runID: "r1", ordinal: 1, asker: "demo-client", status: .waitingRequest)
+        appendItem("demo-question-session", runID: "r1", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .externalAgent; $0.id = "demo-client" }
+            $0.text = String(localized: "Build a welcome page for our sample project. Ask me which greeting to use.")
+        }
+        appendItem("demo-question-session", runID: "r1", kind: .assistantMessage) {
+            $0.text = String(localized: "I’ve checked the sample project. Choose a greeting below, and I’ll update the page and run its tests.")
+        }
+        openQuestionRequest("demo-question-session", runID: "r1", question: question)
+
+        beginRun("demo-finished-session", runID: "r1", ordinal: 1, asker: "demo-client", status: .running)
+        appendItem("demo-finished-session", runID: "r1", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .externalAgent; $0.id = "demo-client" }
+            $0.text = String(localized: "Add a welcome page and test it.")
+        }
         finish("demo-finished-session", greeting: "Hello, world!")
+
         #if DEBUG
         let extra = UserDefaults.standard.integer(forKey: "DemoSessions")
         for i in 0 ..< max(0, extra) {
@@ -83,21 +98,25 @@ final class DemoService {
             s.agent = i.isMultiple(of: 2) ? "codex" : "claude"
             s.updatedAt = .init(date: .now.addingTimeInterval(Double(-600 - i * 120)))
             world.sessions.append(s)
+            syncSession(s.sessionID)
         }
         if UserDefaults.standard.bool(forKey: "DemoSidebarActivity") {
-            world.sessions.append(session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running))
+            var s = session("demo-running", title: "Running sidebar task", machine: "demo-mac", status: .running)
+            s.activeRunID = "r1"
+            world.sessions.append(s)
             world.status.relayConnected = false
-            // A step still at work, for its line in the session.
-            append("demo-running", .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "demo-client" } })
-            append("demo-running", .with { $0.userMessage.text = "Run the tests." })
-            append("demo-running", .with { $0.toolCall = .with { $0.callID = "read"; $0.kind = "read"; $0.name = "read"; $0.summary = "package.json"; $0.decision = "allow" } })
-            append("demo-running", .with { $0.toolResult = .with { $0.callID = "read"; $0.summary = "{}" } })
-            append("demo-running", .with { $0.toolCall = .with { $0.callID = "test"; $0.kind = "shell"; $0.name = "npm test"; $0.summary = "npm test"; $0.decision = "allow" } })
+            beginRun("demo-running", runID: "r1", ordinal: 1, asker: "demo-client", status: .running)
+            appendItem("demo-running", runID: "r1", kind: .userMessage) { $0.text = "Run the tests." }
+            appendItem("demo-running", runID: "r1", kind: .toolCall) { $0.toolName = "Read"; $0.filePath = "package.json"; $0.output = "{}" }
+            appendItem("demo-running", runID: "r1", kind: .commandExecution) { $0.command = "npm test"; $0.status = "running" }
         }
         #endif
         #if targetEnvironment(simulator)
         if Self.sessionDetailRegression {
             seedSessionDetailRegression()
+        }
+        if Self.manyTools {
+            seedManyTools()
         }
         #endif
         _ = pairing(.client)
@@ -120,9 +139,81 @@ final class DemoService {
         .with {
             $0.sessionID = id; $0.title = title; $0.machineID = machine; $0.projectID = "hello-world"
             $0.agent = "codex"; $0.createdBy = "demo-client"; $0.status = status
+            $0.modelSelection = .with { $0.instanceID = "codex"; $0.model = "demo-model" }
+            $0.runtimeMode = .auto; $0.maxRuntimeMode = .fullAccess
             $0.createdAt = .init(date: .now.addingTimeInterval(-300)); $0.updatedAt = .init(date: .now)
             $0.branch = "hermesh/welcome"; $0.workspace = .worktree; $0.progress.turnCount = status == .idle ? 1 : 0
         }
+    }
+
+    private func syncSession(_ id: String) {
+        guard let s = world.sessions.first(where: { $0.sessionID == id }) else { return }
+        projections[id, default: .init()].session = s
+    }
+
+    private func emitEvent(_ id: String, _ build: (inout SessionEvent) -> Void) {
+        let seq = UInt64(events[id, default: []].count + 1)
+        if let i = world.sessions.firstIndex(where: { $0.sessionID == id }) {
+            world.sessions[i].progress.lastEventSeq = seq
+            projections[id, default: .init()].session = world.sessions[i]
+        }
+        var ev = SessionEvent()
+        ev.seq = seq
+        ev.sessionID = id
+        ev.occurredAt = .init(date: .now)
+        if let s = world.sessions.first(where: { $0.sessionID == id }) { ev.session = s }
+        build(&ev)
+        events[id, default: []].append(ev)
+        if let data = try? ev.jsonUTF8Data() {
+            for (_, (session, c)) in followers where session == id { c.yield(data) }
+        }
+    }
+
+    private func beginRun(_ id: String, runID: String, ordinal: UInt32, asker: String, status: Hermesh_Session_V1_RunStatus, startedAt: Date = .now) {
+        let actor: Hermesh_Session_V1_Actor = .with {
+            $0.kind = asker == "owner" ? .owner : (asker.lowercased() == "her" ? .her : .externalAgent)
+            $0.id = asker
+        }
+        let run: Hermesh_Session_V1_Run = .with {
+            $0.runID = runID; $0.sessionID = id; $0.ordinal = ordinal; $0.status = status
+            $0.author = actor; $0.createdAt = .init(date: startedAt); $0.startedAt = .init(date: startedAt)
+        }
+        var p = projections[id, default: .init()]
+        if let idx = p.runs.firstIndex(where: { $0.runID == runID }) { p.runs[idx] = run } else { p.runs.append(run) }
+        projections[id] = p
+        emitEvent(id) { $0.type = "run.started"; $0.run = run }
+    }
+
+    @discardableResult
+    private func appendItem(_ id: String, runID: String, kind: Hermesh_Session_V1_TurnItemKind, _ more: (inout Hermesh_Session_V1_TurnItem) -> Void) -> Hermesh_Session_V1_TurnItem {
+        var p = projections[id, default: .init()]
+        let itemSeq = UInt64((p.items.last?.seq ?? 0) + 1)
+        var it = Hermesh_Session_V1_TurnItem()
+        it.itemID = "it-\(id)-\(itemSeq)"
+        it.sessionID = id
+        it.runID = runID
+        it.seq = itemSeq
+        it.kind = kind
+        it.status = "completed"
+        it.createdAt = .init(date: .now)
+        it.updatedAt = .init(date: .now)
+        more(&it)
+        p.items.append(it)
+        projections[id] = p
+        emitEvent(id) { $0.type = "item.updated"; $0.item = it }
+        return it
+    }
+
+    private func openQuestionRequest(_ id: String, runID: String, question: Question) {
+        let req: Hermesh_Session_V1_RuntimeRequest = .with {
+            $0.requestID = question.questionID; $0.sessionID = id; $0.runID = runID
+            $0.kind = .userInput; $0.status = .pending
+            $0.createdAt = question.askedAt
+            $0.userInput.questions = question.items
+        }
+        projections[id, default: .init()].requests.append(req)
+        appendItem(id, runID: runID, kind: .runtimeRequest) { $0.requestID = req.requestID; $0.status = "waiting" }
+        emitEvent(id) { $0.type = "request.opened"; $0.request = req }
     }
 
     /// The normal Add screens lead to a simulated request instead of an install command or camera.
@@ -144,52 +235,59 @@ final class DemoService {
         if let data = try? world.jsonUTF8Data() { watchers.values.forEach { $0.yield(data) } }
     }
 
-    private func append(_ id: String, _ value: SessionEvent) {
-        var event = value
-        event.seq = UInt64(events[id, default: []].count + 1)
-        event.ts = .init(date: .now); event.turnID = "1"
-        events[id, default: []].append(event)
-        if let i = world.sessions.firstIndex(where: { $0.sessionID == id }) { world.sessions[i].progress.lastEventSeq = event.seq }
-        if let data = try? event.jsonUTF8Data() {
-            for (_, (session, c)) in followers where session == id { c.yield(data) }
-        }
-    }
-
     private func finish(_ id: String, greeting: String) {
         guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
-        append(id, .with { $0.toolCall = .with { $0.callID = "edit"; $0.kind = "edit"; $0.name = "apply_patch"; $0.summary = "src/welcome.ts"; $0.decision = "allow" } })
-        append(id, .with { $0.toolResult = .with { $0.callID = "edit"; $0.summary = String(localized: "Updated the sample welcome page.") } })
-        append(id, .with { $0.toolCall = .with { $0.callID = "test"; $0.kind = "shell"; $0.name = "npm test"; $0.summary = "npm test"; $0.decision = "allow" } })
-        append(id, .with { $0.toolResult = .with { $0.callID = "test"; $0.summary = "PASS  welcome.test.ts\n2 tests passed (simulated)" } })
+        let runID = world.sessions[i].activeRunID.isEmpty ? "r1" : world.sessions[i].activeRunID
+        appendItem(id, runID: runID, kind: .fileChange) {
+            $0.filePath = "src/welcome.ts"
+            $0.diff = String(localized: "Updated the sample welcome page.")
+        }
+        appendItem(id, runID: runID, kind: .commandExecution) {
+            $0.command = "npm test"
+            $0.output = "PASS  welcome.test.ts\n2 tests passed (simulated)"
+        }
         let reply = String(localized: "The sample page now says “\(greeting)”. Both example tests passed. Open Session Info to inspect the changes. This is a simulated result; no code was run.")
-        append(id, .with { $0.agentMessage.text = reply })
-        append(id, .with { $0.turnCompleted = .with { $0.turn = 1; $0.result = reply; $0.diffStat = .with { $0.filesChanged = 1; $0.insertions = 1; $0.deletions = 1 } } })
+        appendItem(id, runID: runID, kind: .assistantMessage) { $0.text = reply }
         world.sessions[i].status = .idle; world.sessions[i].result = reply
-        world.sessions[i].progress.turnCount = 1
+        world.sessions[i].activeRunID = ""
+        world.sessions[i].pendingRequestID = ""
+        world.sessions[i].progress.turnCount = max(1, world.sessions[i].progress.turnCount)
         world.sessions[i].progress.clearPendingQuestion()
         world.sessions[i].progress.diffStat = .with { $0.filesChanged = 1; $0.insertions = 1; $0.deletions = 1 }
         world.sessions[i].progress.lastMessageExcerpt = reply
         world.sessions[i].updatedAt = .init(date: .now)
+        if let rIdx = projections[id]?.runs.firstIndex(where: { $0.runID == runID }) {
+            projections[id]?.runs[rIdx].status = .completed
+            projections[id]?.runs[rIdx].completedAt = .init(date: .now)
+            let doneRun = projections[id]!.runs[rIdx]
+            emitEvent(id) { $0.type = "run.completed"; $0.run = doneRun }
+        } else {
+            syncSession(id)
+        }
         greetings[id] = greeting
         publish()
     }
 
     private func stopTask(_ id: String) {
-        // The stopped callback falls through to update Work's session; completed work is left intact.
         if id == HerReviewDemo.codingID, herReview.codingState != .stopped {
             if herReview.codingState == .running { herReview.interrupt() }
             return
         }
         guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
         tasks.removeValue(forKey: id)?.cancel()
-        if world.sessions[i].progress.hasPendingQuestion {
-            let questionID = world.sessions[i].progress.pendingQuestion.questionID
-            append(id, .with { $0.questionResolved = .with { $0.questionID = questionID; $0.resolution = .cancelled } })
+        if let reqIdx = projections[id]?.requests.firstIndex(where: { $0.status == .pending }) {
+            projections[id]?.requests[reqIdx].status = .dismissed
+            projections[id]?.requests[reqIdx].questionResolution = .cancelled
+            let req = projections[id]!.requests[reqIdx]
+            emitEvent(id) { $0.type = "request.resolved"; $0.request = req }
         }
+        let runID = world.sessions[i].activeRunID.isEmpty ? "r1" : world.sessions[i].activeRunID
         world.sessions[i].status = .idle
+        world.sessions[i].activeRunID = ""
+        world.sessions[i].pendingRequestID = ""
         world.sessions[i].progress.clearPendingQuestion()
         world.sessions[i].updatedAt = .init(date: .now)
-        append(id, .with { $0.agentMessage.text = String(localized: "The simulated task was stopped.") })
+        appendItem(id, runID: runID, kind: .assistantMessage) { $0.text = String(localized: "The simulated task was stopped.") }
     }
 
     func runTask(client: String) throws -> String {
@@ -208,19 +306,32 @@ final class DemoService {
         s.projectID = project.projectID; s.agent = agent
         s.createdBy = client
         s.createdAt = .init(date: .now)
+        s.activeRunID = "r1"
+        s.pendingRequestID = sampleQuestion.questionID
         s.progress.pendingQuestion = sampleQuestion
         world.sessions.append(s)
-        append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = client } })
-        append(id, .with { $0.userMessage.text = String(localized: "Build a welcome page for our sample project. Ask me which greeting to use.") })
-        append(id, .with { $0.questionAsked.question = sampleQuestion })
+        beginRun(id, runID: "r1", ordinal: 1, asker: client, status: .waitingRequest)
+        appendItem(id, runID: "r1", kind: .userMessage) {
+            $0.actor = .with { $0.kind = .externalAgent; $0.id = client }
+            $0.text = String(localized: "Build a welcome page for our sample project. Ask me which greeting to use.")
+        }
+        openQuestionRequest(id, runID: "r1", question: sampleQuestion)
         publish()
         return id
     }
 
-    // UI automation must be able to interrupt even if finding the button takes longer than the demo task.
     private static let holdWorkTaskForUITest: Bool = {
         #if targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("-HermeshHoldDemoWorkTask")
+        #else
+        false
+        #endif
+    }()
+
+    // Simulator-only fixture for ToolStepsUITests: turns of hundreds of tool calls in a row.
+    static let manyTools: Bool = {
+        #if targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("-DemoManyTools")
         #else
         false
         #endif
@@ -238,11 +349,9 @@ final class DemoService {
     private var sampleQuestion = Question()
     private var greetings: [String: String] = [:]
     private var wakes: [Wake] = []
-    /// Storage (docs/settings-environments.md §5.7): the worktrees released, and auto-release, by machine.
     private var released: Set<String> = []
     private var autoRelease: [String: Bool] = [:]
 
-    /// A machine's tasks as worktrees: sizes made up from their ids, the running ones busy, one with changes.
     private func demoWorkspaces(_ machine: String) -> [Hermesh_Machine_V1_Workspace] {
         let sessions = world.sessions.filter { $0.machineID == machine && !released.contains($0.sessionID) && $0.status != .archived }
         return sessions.enumerated().map { i, s in
@@ -257,16 +366,17 @@ final class DemoService {
     }
 
     func call(_ method: String, _ data: Data) throws -> Data {
-        // Protobuf JSON keeps this dispatcher independent of the callers' generic response types.
+        let rpc = method.split(separator: "/").last.map(String.init) ?? method
         let r = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         func string(_ key: String) -> String { r[key] as? String ?? "" }
         func encoded(_ message: some SwiftProtobuf.Message) throws -> Data { try message.jsonUTF8Data() }
         func object(_ value: [String: Any] = [:]) throws -> Data { try JSONSerialization.data(withJSONObject: value) }
+        var dec = JSONDecodingOptions(); dec.ignoreUnknownFields = true
         let id = string("sessionId")
         #if DEBUG
-        if Self.herDemoOn, let answer = try herDemo(method, r) { return answer }
+        if Self.herDemoOn, let answer = try herDemo(rpc, r) { return answer }
         #endif
-        switch method {
+        switch rpc {
         case "GetStatus": return try encoded(world.status)
         case "ListMachines": return try encoded(Hermesh_Local_V1_ListMachinesResponse.with { $0.machines = world.machines })
         case "ListClients": return try encoded(Hermesh_Local_V1_ListClientsResponse.with { $0.clients = world.clients })
@@ -276,42 +386,143 @@ final class DemoService {
         })
         case "ListPairingRequests": return try encoded(Hermesh_Local_V1_ListPairingRequestsResponse.with { $0.pairings = world.pairings })
         case "ListSessions": return try encoded(Hermesh_Local_V1_ListSessionsResponse.with { $0.sessions = world.sessions })
+        case "ListProviders":
+            return try encoded(Hermesh_Session_V1_ListProvidersResponse.with {
+                $0.maxRuntimeMode = .fullAccess
+                $0.providers = ["claude", "codex"].map { pid in
+                    .with {
+                        $0.instanceID = pid; $0.driver = pid; $0.displayName = pid == "claude" ? "Claude Code" : "Codex"
+                        $0.enabled = true; $0.installed = true; $0.authenticated = true
+                        $0.models = [.with { $0.slug = "demo-model"; $0.name = "Demo Model"; $0.shortName = "Demo Model"; $0.isDefault = true }]
+                    }
+                }
+            })
+        case "GetSession":
+            let req = (try? Hermesh_Session_V1_GetSessionRequest(jsonUTF8Data: data, options: dec)) ?? .init()
+            if req.cachedOnly {
+                return try encoded(Hermesh_Session_V1_GetSessionResponse())
+            }
+            guard let s = world.sessions.first(where: { $0.sessionID == id }) else {
+                throw APIError(code: "not_found", message: "session not found")
+            }
+            #if targetEnvironment(simulator)
+            if Self.sessionDetailRegression, id == "demo-delayed-history" {
+                var empty = Hermesh_Session_V1_SessionProjection()
+                empty.session = s
+                empty.session.progress.lastEventSeq = 0
+                return try encoded(Hermesh_Session_V1_GetSessionResponse.with { $0.projection = empty })
+            }
+            #endif
+            var p = projections[id] ?? .init()
+            p.session = s
+            return try encoded(Hermesh_Session_V1_GetSessionResponse.with { $0.projection = p })
+        case "StartSession":
+            let req = try Hermesh_Session_V1_StartSessionRequest(jsonUTF8Data: data, options: dec)
+            let newID = "demo-started-" + UUID().uuidString.prefix(8)
+            var s = session(String(newID), title: req.title.isEmpty ? String(req.initialPrompt.prefix(40)) : req.title, machine: req.machineID.isEmpty ? "demo-mac" : req.machineID, status: .idle)
+            s.projectID = req.projectID.isEmpty ? "hello-world" : req.projectID
+            s.createdBy = "owner"
+            if req.hasModelSelection { s.modelSelection = req.modelSelection; s.agent = req.modelSelection.instanceID }
+            world.sessions.insert(s, at: 0)
+            beginRun(s.sessionID, runID: "r1", ordinal: 1, asker: "owner", status: .completed)
+            appendItem(s.sessionID, runID: "r1", kind: .userMessage) { $0.actor = .with { $0.kind = .owner; $0.id = "owner" }; $0.text = req.initialPrompt }
+            appendItem(s.sessionID, runID: "r1", kind: .assistantMessage) { $0.text = String(localized: "Simulated session response in Demo Mode.") }
+            publish()
+            return try encoded(Hermesh_Session_V1_StartSessionResponse.with { $0.session = world.sessions[0] })
+        case "DispatchMessage":
+            let req = try Hermesh_Session_V1_DispatchMessageRequest(jsonUTF8Data: data, options: dec)
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
+            let ord = UInt32((projections[req.sessionID]?.runs.count ?? 0) + 1)
+            let rid = "r\(ord)"
+            beginRun(req.sessionID, runID: rid, ordinal: ord, asker: "owner", status: .completed)
+            appendItem(req.sessionID, runID: rid, kind: .userMessage) { $0.actor = .with { $0.kind = .owner; $0.id = "owner" }; $0.text = req.text }
+            appendItem(req.sessionID, runID: rid, kind: .assistantMessage) { $0.text = String(localized: "Simulated follow-up reply in Demo Mode.") }
+            world.sessions[i].progress.turnCount = ord
+            world.sessions[i].updatedAt = .init(date: .now)
+            syncSession(req.sessionID)
+            publish()
+            return try encoded(Hermesh_Session_V1_DispatchMessageResponse.with { $0.session = world.sessions[i] })
         case "LookupPairing":
             guard let p = world.pairings.first(where: { $0.code == string("code") }) else { throw APIError(code: "not_found", message: String(localized: "Use Add Machine or Connect Agent to create a demo request.")) }
             return try encoded(Hermesh_Local_V1_LookupPairingResponse.with { $0.details = p })
-        case "AnswerQuestion", "InterruptSession", "ArchiveSession", "UnarchiveSession", "RenameSession":
-            guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { throw CancellationError() }
-            if method == "AnswerQuestion" {
-                let request = try Hermesh_Local_V1_AnswerQuestionRequest(jsonUTF8Data: data)
-                guard world.sessions[i].status == .waitingInput else { throw CancellationError() }
-                append(id, .with { $0.questionResolved = .with {
-                    $0.questionID = "demo-question"; $0.resolution = request.decline ? .declined : .answered
-                    $0.by = "owner"; $0.answers = request.answers
-                } })
-                world.sessions[i].progress.clearPendingQuestion(); world.sessions[i].status = .running
-                let answer = request.answers.first
-                let text = answer?.text ?? ""
-                let greeting = answer?.selected.first ?? (text.isEmpty ? "Hello, world!" : text)
-                if !Self.holdWorkTaskForUITest {
-                    tasks[id] = Task { [weak self] in
-                        // Leave enough time to inspect and interrupt the simulated Work task.
-                        try? await Task.sleep(for: .seconds(8))
-                        guard !Task.isCancelled else { return }
-                        self?.finish(id, greeting: greeting)
-                        self?.tasks[id] = nil
-                    }
+        case "RespondRuntimeRequest":
+            let req = try Hermesh_Session_V1_RespondRuntimeRequestRequest(jsonUTF8Data: data, options: dec)
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }),
+                  world.sessions[i].status == .waitingInput else { throw CancellationError() }
+            let declined = req.decline || req.decision == .decline
+            var greeting = "Hello, world!"
+            if let rIdx = projections[req.sessionID]?.requests.firstIndex(where: { $0.requestID == req.requestID || $0.status == .pending }) {
+                projections[req.sessionID]?.requests[rIdx].status = .resolved
+                projections[req.sessionID]?.requests[rIdx].resolvedDecision = declined ? .decline : .acceptOnce
+                projections[req.sessionID]?.requests[rIdx].questionResolution = declined ? .declined : .answered
+                projections[req.sessionID]?.requests[rIdx].resolvedBy = .with { $0.kind = .owner; $0.id = "owner" }
+                projections[req.sessionID]?.requests[rIdx].resolvedAnswers = req.answers
+                if let firstAns = req.answers.values.first {
+                    let custom = firstAns.customText
+                    greeting = firstAns.selectedOptions.first ?? (custom.isEmpty ? "Hello, world!" : custom)
                 }
-            } else if method == "InterruptSession" {
-                stopTask(id)
-            } else if method == "RenameSession" { world.sessions[i].title = string("title") }
-            else { world.sessions[i].status = method == "ArchiveSession" ? .archived : .idle }
+                let updatedReq = projections[req.sessionID]!.requests[rIdx]
+                emitEvent(req.sessionID) { $0.type = "request.resolved"; $0.request = updatedReq }
+            }
+            world.sessions[i].progress.clearPendingQuestion()
+            world.sessions[i].pendingRequestID = ""
+            world.sessions[i].status = .running
             world.sessions[i].updatedAt = .init(date: .now)
+            syncSession(req.sessionID)
             publish()
-            return try encoded(Hermesh_Local_V1_SessionResponse.with { $0.session = world.sessions[i] })
+            if !Self.holdWorkTaskForUITest {
+                let sid = req.sessionID
+                tasks[sid] = Task { [weak self] in
+                    try? await Task.sleep(for: .seconds(8))
+                    guard !Task.isCancelled else { return }
+                    self?.finish(sid, greeting: greeting)
+                    self?.tasks[sid] = nil
+                }
+            }
+            return try encoded(Hermesh_Session_V1_RespondRuntimeRequestResponse.with { $0.session = world.sessions[i] })
+        case "InterruptSession":
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { throw CancellationError() }
+            stopTask(id)
+            publish()
+            return try encoded(Hermesh_Session_V1_InterruptSessionResponse.with { $0.session = world.sessions[i] })
+        case "StopBackgroundTask":
+            let req = try Hermesh_Session_V1_StopBackgroundTaskRequest(jsonUTF8Data: data, options: dec)
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
+            var stopped: [Hermesh_Session_V1_BackgroundTask] = []
+            if var p = projections[req.sessionID] {
+                for idx in p.backgroundTasks.indices where p.backgroundTasks[idx].status == .running && (req.taskID.isEmpty || p.backgroundTasks[idx].taskID == req.taskID) {
+                    p.backgroundTasks[idx].status = .stopped
+                    p.backgroundTasks[idx].completedAt = .init(date: .now)
+                    stopped.append(p.backgroundTasks[idx])
+                }
+                world.sessions[i].activeBackgroundCount = UInt32(p.backgroundTasks.filter { $0.status == .running && $0.awaited }.count)
+                world.sessions[i].activeDaemonCount = UInt32(p.backgroundTasks.filter { $0.status == .running && !$0.awaited }.count)
+                p.session = world.sessions[i]
+                projections[req.sessionID] = p
+            }
+            publish()
+            return try encoded(Hermesh_Session_V1_StopBackgroundTaskResponse.with { $0.session = world.sessions[i]; $0.stoppedTasks = stopped })
+        case "UpdateSession":
+            let req = try Hermesh_Session_V1_UpdateSessionRequest(jsonUTF8Data: data, options: dec)
+            guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
+            if !req.title.isEmpty { world.sessions[i].title = req.title }
+            if req.hasArchived_p { world.sessions[i].status = req.archived ? .archived : .idle }
+            if req.hasModelSelection { world.sessions[i].modelSelection = req.modelSelection }
+            if req.runtimeMode != .unspecified { world.sessions[i].runtimeMode = req.runtimeMode }
+            if req.interactionMode != .unspecified { world.sessions[i].interactionMode = req.interactionMode }
+            world.sessions[i].updatedAt = .init(date: .now)
+            syncSession(req.sessionID)
+            emitEvent(req.sessionID) { $0.type = "session.updated" }
+            publish()
+            return try encoded(Hermesh_Session_V1_UpdateSessionResponse.with { $0.session = world.sessions[i] })
         case "DeleteSession":
             if id == HerReviewDemo.codingID { herReview.interrupt() }
-            tasks.removeValue(forKey: id)?.cancel(); world.sessions.removeAll { $0.sessionID == id }; events[id] = nil
+            tasks.removeValue(forKey: id)?.cancel()
+            world.sessions.removeAll { $0.sessionID == id }
+            projections[id] = nil
+            events[id] = nil
             world.deletedSessionIds = [id]; publish(); world.deletedSessionIds = []
+            return try encoded(Hermesh_Session_V1_DeleteSessionResponse())
         case "GetDiff":
             guard let greeting = greetings[id] else { return try object() }
             let literal = String(decoding: try JSONEncoder().encode(greeting), as: UTF8.self)
@@ -321,8 +532,8 @@ final class DemoService {
         case "ApproveClientPairing", "ApproveMachinePairing", "ApproveDevicePairing":
             guard let p = world.pairings.first(where: { $0.code == string("code") }) else { throw CancellationError() }
             world.pairings.removeAll { $0.code == p.code }
-            if method == "ApproveClientPairing" {
-                let request = try Hermesh_Local_V1_ApproveClientPairingRequest(jsonUTF8Data: data)
+            if rpc == "ApproveClientPairing" {
+                let request = try Hermesh_Local_V1_ApproveClientPairingRequest(jsonUTF8Data: data, options: dec)
                 world.clients.removeAll { $0.clientID == p.subjectID }
                 world.clients.append(.with {
                     $0.clientID = p.subjectID; $0.grantID = p.code; $0.label = request.spec.label; $0.spec = request.spec
@@ -330,7 +541,7 @@ final class DemoService {
                 })
                 publish()
                 return try object(["clientId": p.subjectID, "grantId": p.code])
-            } else if method == "ApproveMachinePairing" {
+            } else if rpc == "ApproveMachinePairing" {
                 world.machines.removeAll { $0.machineID == p.subjectID }
                 world.machines.append(machine(p.subjectID, string("machineName"), "darwin/arm64"))
                 publish(); return try object(["machineId": p.subjectID])
@@ -341,13 +552,13 @@ final class DemoService {
             }
         case "UpdateClient", "RenameClient", "RevokeClient":
             if let i = world.clients.firstIndex(where: { $0.grantID == string("grantId") }) {
-                if method == "UpdateClient" {
-                    let request = try Hermesh_Local_V1_UpdateClientRequest(jsonUTF8Data: data)
+                if rpc == "UpdateClient" {
+                    let request = try Hermesh_Local_V1_UpdateClientRequest(jsonUTF8Data: data, options: dec)
                     world.clients[i].spec = request.spec
                     if request.spec.ttlDays > 0 {
                         world.clients[i].expiresAt = .init(date: .now.addingTimeInterval(Double(request.spec.ttlDays) * 86400))
                     }
-                } else if method == "RenameClient" { world.clients[i].label = string("label") }
+                } else if rpc == "RenameClient" { world.clients[i].label = string("label") }
                 else {
                     world.clients[i].revoked = true; world.clients[i].online = false
                     let client = world.clients[i].clientID
@@ -361,11 +572,11 @@ final class DemoService {
         case "RenameMachine", "SetMachinePaused", "SetAgentDefaults", "RemoveMachine", "CheckAgents":
             let mid = string("machineId")
             if let i = world.machines.firstIndex(where: { $0.machineID == mid }) {
-                switch method {
+                switch rpc {
                 case "RenameMachine": world.machines[i].machineName = string("machineName")
                 case "SetMachinePaused": world.machines[i].status.paused = r["paused"] as? Bool ?? false
                 case "SetAgentDefaults":
-                    let d = try Hermesh_Local_V1_SetAgentDefaultsRequest(jsonUTF8Data: data).defaults
+                    let d = try Hermesh_Local_V1_SetAgentDefaultsRequest(jsonUTF8Data: data, options: dec).defaults
                     if let a = world.machines[i].status.agents.firstIndex(where: { $0.name == d.agent }) { world.machines[i].status.agents[a].defaults = d }
                 case "RemoveMachine":
                     for session in world.sessions where session.machineID == mid && session.isInterruptible { stopTask(session.sessionID) }
@@ -376,7 +587,7 @@ final class DemoService {
             publish()
         case "RemoveDevice": world.devices.removeAll { $0.keyID == string("keyId") }; publish()
         case "AddProject":
-            let request = try Hermesh_Local_V1_AddProjectRequest(jsonUTF8Data: data)
+            let request = try Hermesh_Local_V1_AddProjectRequest(jsonUTF8Data: data, options: dec)
             world.projects.removeAll { $0.machineID == request.machineID && $0.projectID == request.projectID }
             world.projects.append(.with {
                 $0.machineID = request.machineID; $0.projectID = request.projectID; $0.path = request.path
@@ -391,7 +602,7 @@ final class DemoService {
                 $0.autoRelease = autoRelease[mid] ?? false
             })
         case "ReleaseWorkspaces":
-            let request = try Hermesh_Local_V1_ReleaseWorkspacesRequest(jsonUTF8Data: data)
+            let request = try Hermesh_Local_V1_ReleaseWorkspacesRequest(jsonUTF8Data: data, options: dec)
             let rows = demoWorkspaces(request.machineID)
             return try encoded(Hermesh_Machine_V1_ReleaseWorkspacesResponse.with {
                 $0.results = request.sessionIds.map { id in
@@ -416,17 +627,16 @@ final class DemoService {
             return try object(["path": path, "fullPath": path.replacingOccurrences(of: "~", with: "/Demo"), "repo": repo, "branch": repo ? "main" : "", "branches": repo ? ["main"] : [], "folders": folders])
         case "TestMachineAgent": return try object(["ok": true, "reply": String(localized: "Hello from the demo agent! This response is simulated."), "millis": 120])
         case "QueryWork":
-            return try encoded(queryWork(try Hermesh_Local_V1_QueryWorkRequest(jsonUTF8Data: data)))
+            return try encoded(queryWork(try Hermesh_Local_V1_QueryWorkRequest(jsonUTF8Data: data, options: dec)))
         case "ListWakes": return try encoded(Hermesh_Local_V1_ListWakesResponse.with { $0.wakes = wakes.filter { $0.clientID == string("clientId") } })
         case "SetWake", "CheckWake":
             let client = string("clientId"), name = string("name")
             var wake = wakes.first { $0.clientID == client && $0.name == name } ?? Wake()
             wake.clientID = client; wake.name = name
-            if method == "SetWake" { wake.url = string("url") }
+            if rpc == "SetWake" { wake.url = string("url") }
             wake.state = "on"; wake.lastStatus = 200; wake.lastRingAt = .init(date: .now)
             wake.recent.insert(.with { $0.at = .init(date: .now); $0.check = true; $0.status = 200 }, at: 0)
             wakes.removeAll { $0.clientID == client && $0.name == name }; wakes.append(wake)
-            // A simulated check only: never open the URL or store its authorization.
             return try encoded(Hermesh_Local_V1_SetWakeResponse.with { $0.wake = wake; $0.check = .with { $0.ok = true; $0.status = 200 } })
         case "ClearWake": wakes.removeAll { $0.clientID == string("clientId") && $0.name == string("name") }
         case "GetHerConversation":
@@ -434,7 +644,7 @@ final class DemoService {
                 $0.bot = herReview.keptBot; $0.snapshot = herReview.keptSnapshot
             })
         case "HerSend":
-            let request = try Hermesh_Local_V1_HerSendRequest(jsonUTF8Data: data)
+            let request = try Hermesh_Local_V1_HerSendRequest(jsonUTF8Data: data, options: dec)
             guard request.machineID == "demo-mac", request.localPaths.isEmpty, request.pictures.isEmpty else {
                 throw APIError(code: "demo_only", message: String(localized: "The demo uses sample text only. No personal files or photos are read."))
             }
@@ -446,7 +656,6 @@ final class DemoService {
         return try object()
     }
 
-    /// The Her protocol and the normal session screens share the same disposable coding task.
     private func updateHerTask() {
         let id = HerReviewDemo.codingID
         switch herReview.codingState {
@@ -454,11 +663,24 @@ final class DemoService {
             world.sessions.removeAll { $0.sessionID == id }
             var s = session(id, title: "Her sample task", machine: "demo-linux", status: .running)
             s.createdBy = "her"
+            s.activeRunID = "r1"
+            // Her's own grant, as a workspace with Her has it: the task she sends says it is hers, by her face.
+            if !world.clients.contains(where: { $0.clientID == "her" }) {
+                world.clients.append(.with {
+                    $0.clientID = "her"; $0.grantID = "demo-her-grant"; $0.label = "Her"; $0.online = true
+                    $0.herMachineID = "demo-mac"; $0.grantVersion = 1
+                    $0.spec = .with { $0.label = "Her"; $0.machineIds = ["*"]; $0.projectIds = ["*"]; $0.agents = ["*"] }
+                })
+            }
             world.sessions.append(s)
+            projections[id] = .init()
             events[id] = []
             greetings[id] = nil
-            append(id, .with { $0.turnStarted = .with { $0.turn = 1; $0.asker = "Her" } })
-            append(id, .with { $0.userMessage.text = String(localized: "Update the sample welcome page. This task was delegated by Her; no code is executed.") })
+            beginRun(id, runID: "r1", ordinal: 1, asker: "her", status: .running)
+            appendItem(id, runID: "r1", kind: .userMessage) {
+                $0.actor = .with { $0.kind = .her; $0.id = "her" }
+                $0.text = String(localized: "Update the sample welcome page. This task was delegated by Her; no code is executed.")
+            }
         case .done:
             finish(id, greeting: "Welcome from Her!")
             return
@@ -466,10 +688,11 @@ final class DemoService {
             guard let i = world.sessions.firstIndex(where: { $0.sessionID == id }) else { return }
             let message = String(localized: "The sample check failed. No code ran. Return to Her and retry the sample task.")
             world.sessions[i].status = .crashed
+            world.sessions[i].activeRunID = ""
             world.sessions[i].error = message
             world.sessions[i].progress.lastFailure = .with { $0.message = message; $0.retryable = true }
             world.sessions[i].result = message
-            append(id, .with { $0.agentMessage.text = message })
+            appendItem(id, runID: "r1", kind: .assistantMessage) { $0.text = message }
         case .stopped:
             stopTask(id)
         case nil: return
@@ -508,16 +731,18 @@ final class DemoService {
     }
 
     func stream(_ method: String, _ data: Data) throws -> AsyncThrowingStream<Data, Error> {
+        let rpc = method.split(separator: "/").last.map(String.init) ?? method
+        var dec = JSONDecodingOptions(); dec.ignoreUnknownFields = true
         let token = UUID()
-        if method == "Watch" {
+        if rpc == "Watch" {
             return AsyncThrowingStream { c in
                 watchers[token] = c
                 do { c.yield(try world.jsonUTF8Data()) } catch { c.finish(throwing: error) }
                 c.onTermination = { [weak self] _ in Task { @MainActor in self?.watchers[token] = nil } }
             }
         }
-        if method == "StreamSessionEvents" {
-            let request = try Hermesh_Local_V1_StreamSessionEventsRequest(jsonUTF8Data: data)
+        if rpc == "SubscribeSession" {
+            let request = try Hermesh_Session_V1_SubscribeSessionRequest(jsonUTF8Data: data, options: dec)
             return AsyncThrowingStream { c in
                 followers[token] = (request.sessionID, c)
                 #if targetEnvironment(simulator)
@@ -536,6 +761,106 @@ final class DemoService {
     }
 
     #if targetEnvironment(simulator)
+    /// Two sessions of one turn of many tool calls in a row, nothing said between them (one folded group): "Many steps",
+    /// done, of 600 calls with outputs of a line to a page; "Many steps, running", which adds a call a second.
+    private func seedManyTools() {
+        @discardableResult
+        func call(_ id: String, runID: String = "r1", _ i: Int, result: Bool) -> Hermesh_Session_V1_TurnItem {
+            let kinds = [("read", "Read", "internal/pkg\(i % 40)/file\(i % 90).go"), ("search", "Grep", "log.Printf"),
+                         ("edit", "Edit", "internal/pkg\(i % 40)/file\((i * 7) % 90).go"), ("shell", "Bash", "go test ./internal/pkg\(i % 40)/... -run Test\(i) -count=1")]
+            let (kind, name, summary) = kinds[(i * 7919) % 4]
+            let isError = result && (i % 37 == 11)
+            let lines = 1 + (i * 37) % 60
+            let output = result ? (1 ... lines).map { "\($0)\tlog.Printf(\"handled %d of %s\", n, \(i * 1000 + $0))" }.joined(separator: "\n") : ""
+            return appendItem(id, runID: runID, kind: kind == "shell" ? .commandExecution : .toolCall) {
+                $0.itemID = "\(id)-\(i)"
+                $0.toolName = name
+                if kind == "shell" {
+                    $0.command = summary
+                    $0.exitCode = isError ? 1 : 0
+                } else if kind == "search" {
+                    $0.text = summary
+                } else {
+                    $0.filePath = summary
+                }
+                $0.status = result ? (isError ? "failed" : "completed") : "running"
+                $0.output = output
+            }
+        }
+        func start(_ id: String, title: String, status: SessionStatus) {
+            var s = session(id, title: title, machine: "demo-mac", status: status)
+            s.agent = "codex"
+            s.createdBy = "owner"
+            s.updatedAt = .init(date: .now.addingTimeInterval(40))
+            s.progress.turnCount = status == .running ? 0 : 1
+            if status == .running {
+                s.activeRunID = "r1"
+                s.progress.turnStartedAt = .init(date: .now)
+            }
+            world.sessions.append(s)
+            beginRun(id, runID: "r1", ordinal: 1, asker: "owner", status: status == .running ? .running : .completed)
+            appendItem(id, runID: "r1", kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Switch every log call in the repository to structured logging, and keep the tests green."
+            }
+            appendItem(id, runID: "r1", kind: .assistantMessage) {
+                $0.text = "Sure. First I'll find every call, then change them one by one."
+            }
+        }
+        start("demo-many-steps", title: "Many steps", status: .idle)
+        for i in 0 ..< 600 { call("demo-many-steps", i, result: true) }
+        appendItem("demo-many-steps", runID: "r1", kind: .assistantMessage) {
+            $0.text = "Done: after 600 steps every call uses slog, and the tests pass."
+        }
+        syncSession("demo-many-steps")
+
+        // A long conversation of small groups (three calls a turn) under a long title: for scrolling the page from on a
+        // small card, and for the bar's capsule.
+        let small = "demo-small-steps"
+        var s = session(small, title: "Small steps: keep every log call structured across the whole repository and its tests", machine: "demo-mac", status: .idle)
+        s.agent = "codex"
+        s.createdBy = "owner"
+        s.updatedAt = .init(date: .now.addingTimeInterval(40))
+        s.progress.turnCount = 12
+        world.sessions.append(s)
+        for t in 1 ... 12 {
+            let rid = "r\(t)"
+            beginRun(small, runID: rid, ordinal: UInt32(t), asker: "owner", status: .completed)
+            appendItem(small, runID: rid, kind: .userMessage) {
+                $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
+                $0.text = "Small prompt #\(t): look at package \(t) and tell me what its logging does."
+            }
+            for k in 0 ..< 3 { call(small, runID: rid, t * 10 + k, result: true) }
+            appendItem(small, runID: rid, kind: .assistantMessage) {
+                $0.text = "Small reply #\(t): package \(t) logs through the shared logger; nothing to change there. Its tests cover the three call sites I read."
+            }
+        }
+        syncSession(small)
+
+        start("demo-many-steps-running", title: "Many steps, running", status: .running)
+        for i in 0 ..< 80 { call("demo-many-steps-running", i, result: true) }
+        call("demo-many-steps-running", 80, result: false)
+        tasks["demo-many-steps-running"] = Task { @MainActor [weak self] in
+            var i = 80
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled else { return }
+                // The call under way finishes and the next starts.
+                let itemID = "demo-many-steps-running-\(i)"
+                if let idx = self.projections["demo-many-steps-running"]?.items.firstIndex(where: { $0.itemID == itemID }) {
+                    var doneItem = self.projections["demo-many-steps-running"]!.items[idx]
+                    doneItem.status = "completed"
+                    doneItem.output = "ok"
+                    doneItem.updatedAt = .init(date: .now)
+                    self.projections["demo-many-steps-running"]?.items[idx] = doneItem
+                    self.emitEvent("demo-many-steps-running") { $0.type = "item.updated"; $0.item = doneItem }
+                }
+                i += 1
+                call("demo-many-steps-running", i, result: false)
+            }
+        }
+    }
+
     private func seedSessionDetailRegression() {
         let now = Date.now
 
@@ -544,22 +869,27 @@ final class DemoService {
             s.agent = "codex"
             s.updatedAt = .init(date: now.addingTimeInterval(updatedOffset))
             s.progress.turnCount = UInt32(status == .running ? max(0, turns - 1) : turns)
-            if status == .running { s.progress.turnStartedAt = .init(date: now) }
+            if status == .running {
+                s.activeRunID = "r\(turns)"
+                s.progress.turnStartedAt = .init(date: now)
+            }
             world.sessions.append(s)
 
             for t in 1 ... turns {
-                append(id, .with { $0.turnStarted = .with { $0.turn = UInt32(t); $0.asker = "demo-client" } })
-                append(id, .with { $0.userMessage.text = "\(prefix) prompt #\(t): inspect module \(t) and report the current status." })
+                let runID = "r\(t)"
+                let runningTurn = status == .running && t == turns
+                beginRun(id, runID: runID, ordinal: UInt32(t), asker: "demo-client", status: runningTurn ? .running : .completed, startedAt: now.addingTimeInterval(Double(-turns + t)))
+                appendItem(id, runID: runID, kind: .userMessage) {
+                    $0.actor = .with { $0.kind = .externalAgent; $0.id = "demo-client" }
+                    $0.text = "\(prefix) prompt #\(t): inspect module \(t) and report the current status."
+                }
                 let marker = t == 1 ? "\(prefix) start #1" : (t == turns ? "\(prefix) latest #\(turns)" : "\(prefix) item #\(t)")
-                append(id, .with {
-                    $0.agentMessage.text = """
+                appendItem(id, runID: runID, kind: .assistantMessage) {
+                    $0.text = """
                     \(marker): completed check for step \(t).
 
                     Reviewed the implementation details and verified layout spacing, event ordering, and scrolling behavior across paragraphs for entry \(t).
                     """
-                })
-                if status != .running || t < turns {
-                    append(id, .with { $0.turnCompleted = .with { $0.turn = UInt32(t) } })
                 }
             }
         }
@@ -570,7 +900,7 @@ final class DemoService {
     }
 
     private func streamSessionDetailRegression(
-        request: Hermesh_Local_V1_StreamSessionEventsRequest,
+        request: Hermesh_Session_V1_SubscribeSessionRequest,
         token: UUID,
         continuation c: AsyncThrowingStream<Data, Error>.Continuation
     ) -> Bool {
@@ -603,27 +933,28 @@ final class DemoService {
             if tasks[request.sessionID] == nil {
                 let id = request.sessionID
                 tasks[id] = Task { @MainActor [weak self] in
-                    // Keep the simulator fixture streaming until the test leaves the demo.
                     for n in 1... {
                         try? await Task.sleep(for: .milliseconds(350))
                         guard !Task.isCancelled, let self else { return }
-                        var draft = SessionEvent()
-                        draft.agentDraft = .with {
-                            $0.whole = true
+                        let draftItem = self.appendItem(id, runID: "r20", kind: .assistantMessage) {
+                            $0.streaming = true
+                            $0.status = "running"
                             $0.text = "Live draft #\(n): streaming incremental analysis line 1.\n\nContinuing with additional context for chunk \(n)."
-                        }
-                        if let data = try? draft.jsonUTF8Data() {
-                            for (_, (session, stream)) in self.followers where session == id { stream.yield(data) }
                         }
                         try? await Task.sleep(for: .milliseconds(250))
                         guard !Task.isCancelled else { return }
-                        self.append(id, .with {
-                            $0.agentMessage.text = """
-                            Live update #\(n): committed streamed message body for step \(n).
+                        var committed = draftItem
+                        committed.streaming = false
+                        committed.status = "completed"
+                        committed.text = """
+                        Live update #\(n): committed streamed message body for step \(n).
 
-                            This paragraph grows the bottom of the session while verifying auto-follow and scroll-up stability.
-                            """
-                        })
+                        This paragraph grows the bottom of the session while verifying auto-follow and scroll-up stability.
+                        """
+                        if let idx = self.projections[id]?.items.firstIndex(where: { $0.itemID == committed.itemID }) {
+                            self.projections[id]?.items[idx] = committed
+                        }
+                        self.emitEvent(id) { $0.type = "item.updated"; $0.item = committed }
                     }
                 }
             }

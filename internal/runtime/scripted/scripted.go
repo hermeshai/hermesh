@@ -1,15 +1,18 @@
 // Package scripted implements a deterministic in-process runtime.Driver for
-// unit, chaos, and E2E testing of every Hermesh v2 capability: streaming
+// unit, chaos, and E2E testing of every Hermesh session capability: streaming
 // deltas, reasoning, tool approvals, file edits, shell commands, structured
 // questions, plan proposals, secret requests, mid-turn steering, hot model/mode
-// switching, resume cursors, crashes, hangs, and context-window reporting.
+// switching, resume cursors, MCP tool invocation (`message <to>|<text>`),
+// crashes, hangs, retries, and context-window reporting.
 package scripted
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -18,14 +21,18 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
+var lastScripts, failTimes sync.Map
+
 type Driver struct {
+	DriverName       string
 	DisableHotSwitch bool
 	DisableSteer     bool
 	DisableResume    bool
@@ -35,12 +42,32 @@ type Driver struct {
 	sessionSeq atomic.Uint64
 }
 
-func NewDriver() *Driver { return &Driver{} }
+func NewDriver() *Driver { return &Driver{DriverName: "scripted"} }
 
-func (d *Driver) Kind() string { return "scripted" }
+func NewNamed(name string) *Driver { return &Driver{DriverName: name} }
 
-func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
-	return &threadv2.ProviderCapabilities{
+func (d *Driver) Kind() string {
+	if d.DriverName != "" {
+		return d.DriverName
+	}
+	return "scripted"
+}
+
+func (d *Driver) Name() string { return d.Kind() }
+
+func (d *Driver) Discover(context.Context) runtime.Info {
+	return runtime.Info{
+		Name:        d.Kind(),
+		Available:   true,
+		Version:     "2.0.0",
+		LoggedIn:    true,
+		ModelsState: runtime.ModelsKnown,
+		ModelsAt:    time.Now(),
+	}
+}
+
+func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{
 		InSessionModelSwitch:  !d.DisableHotSwitch,
 		InSessionOptionSwitch: !d.DisableHotSwitch,
 		InSessionModeSwitch:   !d.DisableHotSwitch,
@@ -62,13 +89,13 @@ func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
 	}
 }
 
-func (d *Driver) Probe(_ context.Context, _ *threadv2.ProviderInstanceConfig, _ string) runtime.ProbeResult {
+func (d *Driver) Probe(_ context.Context, _ *sessionv1.ProviderInstanceConfig, _ string) runtime.ProbeResult {
 	return runtime.ProbeResult{
 		Installed:     true,
 		Authenticated: true,
 		AuthLabel:     "scripted@local",
 		Version:       "2.0.0",
-		Compatibility: threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
+		Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
 	}
 }
 
@@ -86,13 +113,13 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	id := d.sessionSeq.Add(1)
 	nativeID := spec.ResumeCursor
 	if nativeID == "" {
-		nativeID = fmt.Sprintf("scr_%s_%d", spec.ThreadID, id)
+		nativeID = fmt.Sprintf("scr_%s_%d", spec.SessionID, id)
 	}
 	s := &session{
 		drv:             d,
 		spec:            spec,
 		nativeID:        nativeID,
-		selection:       proto.Clone(spec.Selection).(*threadv2.ModelSelection),
+		selection:       proto.Clone(spec.Selection).(*sessionv1.ModelSelection),
 		effectiveMode:   spec.EffectiveMode,
 		interactionMode: spec.InteractionMode,
 		events:          make(chan runtime.Event, 128),
@@ -128,9 +155,9 @@ type session struct {
 
 	mu              sync.Mutex
 	inTurn          bool
-	selection       *threadv2.ModelSelection
+	selection       *sessionv1.ModelSelection
 	effectiveMode   identityv1.RuntimeMode
-	interactionMode threadv2.InteractionMode
+	interactionMode sessionv1.InteractionMode
 	steered         []string
 	attachments     []runtime.TurnAttachment
 	historyCount    int
@@ -140,17 +167,17 @@ type session struct {
 func (s *session) Events() <-chan runtime.Event { return s.events }
 func (s *session) Alive() bool                  { return s.alive.Load() }
 
-func (s *session) SetSelection(_ context.Context, sel *threadv2.ModelSelection) error {
+func (s *session) SetSelection(_ context.Context, sel *sessionv1.ModelSelection) error {
 	if s.drv.DisableHotSwitch {
 		return runtime.ErrHotSwitchUnsupported
 	}
 	s.mu.Lock()
-	s.selection = proto.Clone(sel).(*threadv2.ModelSelection)
+	s.selection = proto.Clone(sel).(*sessionv1.ModelSelection)
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *session) SetModes(_ context.Context, rm identityv1.RuntimeMode, im threadv2.InteractionMode) error {
+func (s *session) SetModes(_ context.Context, rm identityv1.RuntimeMode, im sessionv1.InteractionMode) error {
 	if s.drv.DisableHotSwitch {
 		return runtime.ErrHotSwitchUnsupported
 	}
@@ -252,7 +279,6 @@ func (s *session) loop(ctx context.Context) {
 }
 
 func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
-	// Drain any stale interrupt signal from before the turn started.
 	select {
 	case <-s.interruptCh:
 	default:
@@ -263,15 +289,16 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 	s.steered = nil
 	s.attachments = slices.Clone(in.Attachments)
 	if in.Selection != nil {
-		s.selection = proto.Clone(in.Selection).(*threadv2.ModelSelection)
+		s.selection = proto.Clone(in.Selection).(*sessionv1.ModelSelection)
 	}
 	if in.EffectiveMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED {
 		s.effectiveMode = in.EffectiveMode
 	}
-	if in.InteractionMode != threadv2.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
+	if in.InteractionMode != sessionv1.InteractionMode_INTERACTION_MODE_UNSPECIFIED {
 		s.interactionMode = in.InteractionMode
 	}
 	s.historyCount++
+	turnNum := s.historyCount
 	s.mu.Unlock()
 
 	defer func() {
@@ -283,17 +310,38 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 	turnCtx, cancelTurn := context.WithCancel(ctx)
 	defer cancelTurn()
 
-	usage := &threadv2.ContextWindowUsage{
+	prompt := in.Prompt
+	if b, err := os.ReadFile(os.Getenv("HERMESH_FAKE_SCRIPTS")); err == nil {
+		var scripts map[string]string
+		_ = json.Unmarshal(b, &scripts)
+		for p, script := range scripts {
+			if strings.HasSuffix(strings.TrimSpace(prompt), p) {
+				prompt = script
+			}
+		}
+	}
+	if strings.Contains(prompt, "automatic retry") {
+		if last, ok := lastScripts.Load(s.nativeID); ok {
+			prompt = last.(string) + "\n" + prompt
+		}
+	} else {
+		lastScripts.Store(s.nativeID, prompt)
+	}
+
+	usage := &sessionv1.ContextWindowUsage{
 		InputTokens:        120,
 		OutputTokens:       45,
 		ContextUsedTokens:  165,
 		ContextLimitTokens: 200000,
 	}
 
-	lines := strings.Split(strings.TrimSpace(in.Prompt), "\n")
-	// Plain natural language prompts (not starting with a scripted verb) reply naturally.
+	lines := strings.Split(strings.TrimSpace(prompt), "\n")
 	if len(lines) == 1 && !isDirective(lines[0]) {
-		lines = []string{"say Acknowledged: " + lines[0]}
+		if strings.Contains(strings.ToLower(lines[0]), "single word: ready") {
+			lines = []string{"say ready"}
+		} else {
+			lines = []string{"say Acknowledged: " + lines[0]}
+		}
 	}
 
 	var replyParts []string
@@ -321,19 +369,29 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 			rest = strings.TrimSpace(rest)
 
 			switch verb {
+			case "Reply":
+				replyParts = append(replyParts, "ready")
+				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: "ready"})
+
 			case "say":
 				text := strings.ReplaceAll(rest, `\n`, "\n")
 				replyParts = append(replyParts, text)
 				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: text})
 
-			case "stream":
+			case "stream", "draft":
 				chunks := strings.Split(rest, "|")
 				for _, ch := range chunks {
 					part := strings.ReplaceAll(ch, `\n`, "\n")
-					replyParts = append(replyParts, part)
+					if verb == "stream" {
+						replyParts = append(replyParts, part)
+					}
 					s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: part})
 					select {
 					case <-time.After(20 * time.Millisecond):
+					case <-turnCtx.Done():
+						return true
+					case <-s.closedCh:
+						return true
 					case <-s.interruptCh:
 						s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 						return true
@@ -343,6 +401,9 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					}
 				}
 
+			case "warn":
+				s.emit(runtime.Event{Kind: runtime.EventNotice, Text: rest})
+
 			case "think":
 				s.emit(runtime.Event{
 					Kind:   runtime.EventReasoningDelta,
@@ -350,13 +411,61 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					Text:   strings.ReplaceAll(rest, `\n`, "\n"),
 				})
 
-			case "sleep":
+			case "sleep", "chatter":
 				dur, err := time.ParseDuration(rest)
 				if err != nil {
 					dur = 200 * time.Millisecond
 				}
 				select {
 				case <-time.After(dur):
+				case <-turnCtx.Done():
+					return true
+				case <-s.closedCh:
+					return true
+				case <-s.interruptCh:
+					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+					return true
+				case <-s.forceCh:
+					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+					return true
+				}
+			case "tool-sleep":
+				dur, _ := time.ParseDuration(rest)
+				callID := fmt.Sprintf("cmd_%d", s.itemSeq.Add(1))
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest})
+				select {
+				case <-time.After(dur):
+				case <-turnCtx.Done():
+					return true
+				case <-s.closedCh:
+					return true
+				case <-s.interruptCh:
+					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+					return true
+				case <-s.forceCh:
+					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+					return true
+				}
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "sleep " + rest, Output: "slept"})
+
+			case "output":
+				n, _ := strconv.Atoi(rest)
+				var b strings.Builder
+				for i := 1; b.Len() < n-4; i++ {
+					fmt.Fprintf(&b, "line %07d of the output\n", i)
+				}
+				out := b.String()[:max(n-4, 0)] + "END\n"
+				callID := fmt.Sprintf("cmd_%d", s.itemSeq.Add(1))
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: "print " + rest})
+				kept, _ := runtime.KeepOutput(out)
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: "print " + rest, Output: kept})
+
+			case "hang":
+				select {
+				case <-turnCtx.Done():
+					return true
+				case <-s.closedCh:
+					return true
 				case <-s.interruptCh:
 					s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 					return true
@@ -365,28 +474,104 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					return true
 				}
 
-			case "hang":
-				// Ignores polite Interrupt! Only ForceStop terminates it.
-				<-s.forceCh
-				s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
-				return true
-
 			case "crash":
 				s.alive.Store(false)
-				s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "process_crashed", ErrorMessage: "scripted agent process exited unexpectedly"})
+				msg := "scripted agent process exited unexpectedly"
+				s.emit(runtime.Event{
+					Kind:         runtime.EventTurnFailed,
+					ErrorCode:    "process_crashed",
+					ErrorMessage: msg,
+					Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED, Message: msg},
+				})
 				_ = s.Close()
 				return true
+
+			case "overflow":
+				msg := "Prompt is too long"
+				s.emit(runtime.Event{
+					Kind:         runtime.EventTurnFailed,
+					ErrorCode:    "context_overflow",
+					ErrorMessage: msg,
+					Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW, Message: msg},
+				})
+				return true
+
+			case "refuse-resume", "resume-start-reject":
+				if s.spec.ResumeCursor != "" && turnNum == 1 {
+					msg := "No conversation found with session ID: " + s.spec.ResumeCursor
+					s.alive.Store(false)
+					s.emit(runtime.Event{
+						Kind:         runtime.EventTurnFailed,
+						ErrorCode:    "resume_rejected",
+						ErrorMessage: msg,
+						Failure:      &runtime.Failure{Kind: sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED, Message: msg},
+					})
+					_ = s.Close()
+					return true
+				}
+
+			case "retry-forever":
+				for {
+					s.emit(runtime.Event{
+						Kind:    runtime.EventNotice,
+						Text:    rest,
+						Failure: &runtime.Failure{Kind: runtime.Classify(rest), Message: rest},
+					})
+					select {
+					case <-time.After(50 * time.Millisecond):
+					case <-s.interruptCh:
+						s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+						return true
+					case <-s.forceCh:
+						s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
+						return true
+					case <-s.closedCh:
+						return true
+					}
+				}
+
+			case "fail-times":
+				nStr, text, _ := strings.Cut(rest, " ")
+				times, _ := strconv.Atoi(nStr)
+				key := s.nativeID + "\x00" + line
+				v, _ := failTimes.LoadOrStore(key, 0)
+				if v.(int) < times {
+					failTimes.Store(key, v.(int)+1)
+					f := runtime.FailureOf(errors.New(text), sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR)
+					s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: "provider_error", ErrorMessage: text, Failure: f})
+					return true
+				}
 
 			case "fail":
 				code, msg, ok := strings.Cut(rest, "|")
 				if !ok {
 					code, msg = "provider_error", rest
 				}
-				s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: strings.TrimSpace(code), ErrorMessage: strings.TrimSpace(msg)})
+				msg = strings.TrimSpace(msg)
+				f := runtime.FailureOf(errors.New(msg), sessionv1.FailureKind_FAILURE_KIND_PROVIDER_ERROR)
+				s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: strings.TrimSpace(code), ErrorMessage: msg, Failure: f})
 				return true
 
+			case "message":
+				to, text, _ := strings.Cut(rest, "|")
+				callID := fmt.Sprintf("mcp_%d", s.itemSeq.Add(1))
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "message_send", FilePath: to})
+				res, isErr := s.callTool(turnCtx, "message_send", map[string]any{"to": to, "message": text})
+				exit := int32(0)
+				if isErr {
+					exit = 1
+				}
+				replyParts = append(replyParts, res)
+				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "message_send", FilePath: to, ExitCode: exit, Output: res})
+
 			case "write":
-				relPath, content, _ := strings.Cut(rest, "|")
+				var relPath, content string
+				if strings.Contains(rest, "|") {
+					relPath, content, _ = strings.Cut(rest, "|")
+				} else {
+					relPath, content, _ = strings.Cut(rest, " ")
+					content += "\n"
+				}
 				relPath = strings.TrimSpace(relPath)
 				content = strings.ReplaceAll(content, `\n`, "\n")
 				target := relPath
@@ -396,8 +581,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				callID := fmt.Sprintf("edit_%d", s.itemSeq.Add(1))
 				if s.spec.Gate != nil {
 					res, err := s.spec.Gate(turnCtx, runtime.ToolGateRequest{
-						Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-						Approval: &threadv2.ToolApprovalPayload{
+						Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+						Approval: &sessionv1.ToolApprovalPayload{
 							ToolCategory: "file_write",
 							ToolName:     "WriteFile",
 							TargetPath:   target,
@@ -431,15 +616,18 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					Additions: uint32(max(1, strings.Count(content, "\n"))),
 				})
 
-			case "shell":
-				cmdStr, outStr, _ := strings.Cut(rest, "|")
+			case "shell", "run":
+				cmdStr, outStr, hasPipe := strings.Cut(rest, "|")
 				cmdStr = strings.TrimSpace(cmdStr)
 				outStr = strings.ReplaceAll(outStr, `\n`, "\n")
+				if !hasPipe && verb == "shell" {
+					outStr = "simulated"
+				}
 				callID := fmt.Sprintf("cmd_%d", s.itemSeq.Add(1))
-				if s.spec.Gate != nil {
+				if verb == "shell" && s.spec.Gate != nil {
 					res, err := s.spec.Gate(turnCtx, runtime.ToolGateRequest{
-						Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-						Approval: &threadv2.ToolApprovalPayload{
+						Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+						Approval: &sessionv1.ToolApprovalPayload{
 							ToolCategory: "command",
 							ToolName:     "Bash",
 							Command:      cmdStr,
@@ -495,9 +683,9 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					}
 				}
 				callID := fmt.Sprintf("bg_%d", s.itemSeq.Add(1))
-				bgKind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+				bgKind := sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
 				if isDaemon {
-					bgKind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON
+					bgKind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON
 				}
 				stopCh := make(chan struct{})
 				s.mu.Lock()
@@ -517,8 +705,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					Command:             cmdStr,
 					Output:              initOut,
 					BackgroundKind:      bgKind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 					BackgroundAwaited:   !isDaemon,
 				})
 				go func(id, cmd, finalOut, reply string, wait time.Duration, daemon bool, cancelCh chan struct{}) {
@@ -540,8 +728,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 							ExitCode:            130,
 							HasExitCode:         true,
 							BackgroundKind:      bgKind,
-							BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
-							BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+							BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+							BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 							BackgroundAwaited:   !daemon,
 						})
 						s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: id, ToolName: "Bash", Command: cmd, ExitCode: 130, HasExitCode: true, Output: "stopped"})
@@ -562,8 +750,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 						ExitCode:            0,
 						HasExitCode:         true,
 						BackgroundKind:      bgKind,
-						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
-						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 						BackgroundAwaited:   !daemon,
 					})
 					s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: id, ToolName: "Bash", Command: cmd, ExitCode: 0, HasExitCode: true, Output: finalOut})
@@ -576,29 +764,36 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				}(callID, cmdStr, outStr, wakeReply, dur, isDaemon, stopCh)
 
 			case "ask":
-				// ask <id>|<header>|<question>|<opt1,opt2>
-				parts := strings.Split(rest, "|")
-				for len(parts) < 4 {
-					parts = append(parts, "")
+				rawParts := strings.Split(rest, "|")
+				threePart := len(rawParts) <= 3
+				var qid, header, qText, optCSV string
+				if threePart {
+					for len(rawParts) < 3 {
+						rawParts = append(rawParts, "")
+					}
+					qid, header, qText, optCSV = "q1", rawParts[0], rawParts[1], rawParts[2]
+				} else {
+					qid, header, qText, optCSV = rawParts[0], rawParts[1], rawParts[2], rawParts[3]
 				}
-				var opts []*threadv2.QuestionOption
-				for _, o := range strings.Split(parts[3], ",") {
+				qid = strings.TrimSpace(qid)
+				var opts []*sessionv1.QuestionOption
+				for _, o := range strings.Split(optCSV, ",") {
 					o = strings.TrimSpace(o)
 					if o != "" {
-						opts = append(opts, &threadv2.QuestionOption{Id: o, Label: o})
+						opts = append(opts, &sessionv1.QuestionOption{Id: o, Label: o})
 					}
 				}
 				if s.spec.Gate != nil {
 					res, err := s.spec.Gate(turnCtx, runtime.ToolGateRequest{
-						Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
-						UserInput: &threadv2.UserInputPayload{
-							Questions: []*threadv2.QuestionItem{{
-								Id:          strings.TrimSpace(parts[0]),
-								Header:      strings.TrimSpace(parts[1]),
-								Question:    strings.TrimSpace(parts[2]),
-								Options:     opts,
-								AllowCustom: true,
-								Required:    true,
+						Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+						UserInput: &sessionv1.UserInputPayload{
+							Questions: []*sessionv1.QuestionItem{{
+								Id:         qid,
+								Header:     strings.TrimSpace(header),
+								Text:       strings.TrimSpace(qText),
+								Options:    opts,
+								AllowOther: true,
+								Optional:   false,
 							}},
 						},
 					})
@@ -606,19 +801,32 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 						s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 						return true
 					}
-					ans := res.Answers[strings.TrimSpace(parts[0])]
-					summary := "none"
-					if ans != nil {
-						vals := slices.Clone(ans.SelectedOptions)
-						if ans.CustomText != "" {
-							vals = append(vals, ans.CustomText)
+					var txt string
+					if !res.Allowed {
+						txt = "declined: " + res.Feedback
+					} else {
+						ans := res.Answers[qid]
+						summary := "none"
+						if ans != nil {
+							vals := slices.Clone(ans.SelectedOptions)
+							if ans.CustomText != "" {
+								vals = append(vals, ans.CustomText)
+							}
+							if len(ans.Attachments) > 0 {
+								vals = append(vals, fmt.Sprintf("files=%d", len(ans.Attachments)))
+							}
+							sep := ","
+							if threePart {
+								sep = ", "
+							}
+							summary = strings.Join(vals, sep)
 						}
-						if len(ans.Attachments) > 0 {
-							vals = append(vals, fmt.Sprintf("files=%d", len(ans.Attachments)))
+						if threePart {
+							txt = "answer: " + summary
+						} else {
+							txt = "answer=" + summary
 						}
-						summary = strings.Join(vals, ",")
 					}
-					txt := "answer=" + summary
 					replyParts = append(replyParts, txt)
 					s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
 				}
@@ -631,8 +839,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				s.emit(runtime.Event{Kind: runtime.EventPlanProposed, ItemID: planID, PlanTitle: title, Text: md})
 				if s.spec.Gate != nil {
 					res, err := s.spec.Gate(turnCtx, runtime.ToolGateRequest{
-						Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
-						Plan: &threadv2.PlanReviewPayload{
+						Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+						Plan: &sessionv1.PlanReviewPayload{
 							PlanId:   planID,
 							Title:    title,
 							Markdown: md,
@@ -654,8 +862,6 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				}
 
 			case "propose-artifact":
-				// Post-turn proposal/deliverable (models Antigravity ArtifactMetadata & Codex plan items):
-				// format: propose-artifact <title>|<request_feedback:true/false>|<markdown>
 				parts := strings.SplitN(rest, "|", 3)
 				if len(parts) == 3 {
 					title := strings.TrimSpace(parts[0])
@@ -675,8 +881,8 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				label, reason, _ := strings.Cut(rest, "|")
 				if s.spec.Gate != nil {
 					res, err := s.spec.Gate(turnCtx, runtime.ToolGateRequest{
-						Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT,
-						Secret: &threadv2.SecretInputPayload{
+						Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_SECRET_INPUT,
+						Secret: &sessionv1.SecretInputPayload{
 							Label:    strings.TrimSpace(label),
 							Reason:   strings.TrimSpace(reason),
 							Delivery: "memory",
@@ -686,14 +892,23 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 						s.emit(runtime.Event{Kind: runtime.EventTurnInterrupted})
 						return true
 					}
-					// Never echo the secret value itself! Only confirm its byte length.
-					txt := fmt.Sprintf("secret_received_len=%d", len(res.SecretValue))
+					var txt string
+					if !res.Allowed {
+						txt = "declined: " + res.Feedback
+					} else {
+						txt = fmt.Sprintf("secret_received_len=%d", len(res.SecretValue))
+					}
 					replyParts = append(replyParts, txt)
 					s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
 				}
 
 			case "tokens":
-				parts := strings.Split(rest, "|")
+				var parts []string
+				if strings.Contains(rest, "|") {
+					parts = strings.Split(rest, "|")
+				} else {
+					parts = strings.Fields(rest)
+				}
 				if len(parts) >= 2 {
 					inTok, _ := strconv.ParseUint(strings.TrimSpace(parts[0]), 10, 64)
 					outTok, _ := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
@@ -708,13 +923,64 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 					usage.ContextLimitTokens = limit
 				}
 
+			case "notice":
+				txt := "notice: no"
+				if in.HandoffPrefix != "" || strings.Contains(prompt, "[Hermesh] The earlier conversation") {
+					txt = "notice: yes"
+				}
+				replyParts = append(replyParts, txt)
+				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
+
+			case "resumed":
+				cur := s.spec.ResumeCursor
+				if cur == "" && turnNum > 1 {
+					cur = s.nativeID
+				}
+				txt := "resumed: " + cur
+				replyParts = append(replyParts, txt)
+				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
+
+			case "images":
+				s.mu.Lock()
+				var names []string
+				for _, a := range s.attachments {
+					if strings.HasPrefix(a.MimeType, "image/") {
+						if a.Name != "" {
+							names = append(names, a.Name)
+						} else if a.Path != "" {
+							names = append(names, filepath.Base(a.Path))
+						}
+					}
+				}
+				s.mu.Unlock()
+				txt := "images: " + strings.Join(names, ",")
+				replyParts = append(replyParts, txt)
+				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
+
+			case "env":
+				v := ""
+				if s.spec.Instance != nil && s.spec.Instance.Env != nil {
+					v = s.spec.Instance.Env[rest]
+				}
+				if s.spec.ExtraEnv != nil {
+					if ev, ok := s.spec.ExtraEnv[rest]; ok {
+						v = ev
+					}
+				}
+				if v == "" {
+					v = os.Getenv(rest)
+				}
+				txt := rest + "=" + v
+				replyParts = append(replyParts, txt)
+				s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: msgItemID, Text: txt})
+
 			case "inspect":
 				s.mu.Lock()
 				var optPairs []string
 				for k, v := range s.selection.GetOptions() {
-					if sv, ok := v.Kind.(*threadv2.OptionValue_StringValue); ok {
+					if sv, ok := v.Kind.(*sessionv1.OptionValue_StringValue); ok {
 						optPairs = append(optPairs, k+"="+sv.StringValue)
-					} else if bv, ok := v.Kind.(*threadv2.OptionValue_BoolValue); ok {
+					} else if bv, ok := v.Kind.(*sessionv1.OptionValue_BoolValue); ok {
 						optPairs = append(optPairs, fmt.Sprintf("%s=%v", k, bv.BoolValue))
 					}
 				}
@@ -746,7 +1012,6 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 		return
 	}
 
-	// Process any mid-turn steered inputs that arrived while running!
 	for {
 		s.mu.Lock()
 		steered := s.steered
@@ -766,7 +1031,9 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 		}
 	}
 
+	var lastReply string
 	if len(replyParts) > 0 {
+		lastReply = replyParts[len(replyParts)-1]
 		s.emit(runtime.Event{
 			Kind:   runtime.EventAssistantMessage,
 			ItemID: msgItemID,
@@ -774,13 +1041,44 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 		})
 	}
 	s.emit(runtime.Event{Kind: runtime.EventUsage, Usage: usage})
-	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
+	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted, Text: lastReply})
+}
+
+func (s *session) callTool(ctx context.Context, name string, args map[string]any) (string, bool) {
+	if len(s.spec.MCPServers) == 0 {
+		return "no Hermesh tools in this session", true
+	}
+	m := s.spec.MCPServers[0]
+	cmd := exec.CommandContext(ctx, m.Command, m.Args...)
+	cmd.Env = os.Environ()
+	for k, v := range m.Env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "scripted", Version: "2"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		return "starting the tools: " + err.Error(), true
+	}
+	defer cs.Close()
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		return err.Error(), true
+	}
+	var out []string
+	for _, c := range res.Content {
+		if t, ok := c.(*mcp.TextContent); ok {
+			out = append(out, t.Text)
+		}
+	}
+	return strings.Join(out, "\n"), res.IsError
 }
 
 func isDirective(line string) bool {
 	verb, _, _ := strings.Cut(strings.TrimSpace(line), " ")
 	switch verb {
-	case "say", "stream", "think", "sleep", "hang", "crash", "fail", "write", "shell", "bg-shell", "bg-daemon", "ask", "propose-plan", "propose-artifact", "ask-secret", "tokens", "inspect":
+	case "Reply", "say", "stream", "draft", "warn", "think", "sleep", "chatter", "tool-sleep", "output",
+		"hang", "crash", "overflow", "refuse-resume", "resume-start-reject", "retry-forever", "fail-times",
+		"fail", "message", "write", "shell", "run", "bg-shell", "bg-daemon", "ask", "propose-plan", "propose-artifact", "ask-secret",
+		"tokens", "notice", "resumed", "images", "env", "inspect":
 		return true
 	}
 	return false

@@ -140,7 +140,7 @@ final class Signer {
             log("refused batch \(c.batchID): \(c.refusals.map(\.text).joined(separator: " "))")
             report(c, "reject")
             answer(c.requests)
-            done(then: .notice(title: String(localized: "Denied: Hermesh can’t show this request in full", bundle: .module), lines: c.refusals.map(\.text)))
+            done(then: .notice(title: String(localized: "Denied: Hermesh can’t show this request in full", bundle: .signer), lines: c.refusals.map(\.text)))
             return
         }
         shown = c
@@ -183,7 +183,7 @@ final class Signer {
             } catch {
                 guard g == self.generation else { return }
                 log("authentication: \(error.localizedDescription)")
-                self.panel.model.authError = String(localized: "Verification wasn’t completed.", bundle: .module)
+                self.panel.model.authError = String(localized: "Verification wasn’t completed.", bundle: .signer)
                 self.panel.show()
             }
         }
@@ -223,8 +223,8 @@ final class Signer {
         } catch {
             log("signing batch \(c.batchID): \(error.localizedDescription)")
             answer(c.requests.filter { !answered.contains($0.requestID) })
-            done(then: .notice(title: String(localized: "Nothing Was Signed", bundle: .module),
-                                lines: [String(localized: "Signing didn’t finish: \(error.localizedDescription)", bundle: .module)]))
+            done(then: .notice(title: String(localized: "Nothing Was Signed", bundle: .signer),
+                                lines: [String(localized: "Signing didn’t finish: \(error.localizedDescription)", bundle: .signer)]))
         }
     }
 

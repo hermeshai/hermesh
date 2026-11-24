@@ -10,7 +10,7 @@ import (
 	"connectrpc.com/connect"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 // TestThreadProjectsAndGrants: what adding a project on another machine does
@@ -42,7 +42,7 @@ func TestThreadProjectsAndGrants(t *testing.T) {
 			return false
 		}
 		for _, m := range ms.Machines {
-			if m.MachineId == workID && m.Online && m.Status.GetThreads() {
+			if m.MachineId == workID && m.Online && m.Status != nil {
 				return true
 			}
 		}
@@ -92,10 +92,11 @@ func TestThreadProjectsAndGrants(t *testing.T) {
 	}
 
 	launch := func(env []string, project, provider string) result {
-		args := []string{"thread", "start", "--machine", "work-mac", "--provider", provider, "--prompt", "say from " + provider, "--wait", "-o", "json"}
+		target := "work-mac"
 		if project != "" {
-			args = append(args, "--project", project)
+			target = "work-mac/" + project
 		}
+		args := []string{"session", "start", "--project", target, "--agent", provider, "--prompt", "say from " + provider, "--wait", "-o", "json"}
 		return run(t, env, time.Minute, filepath.Join(w.bin, "hermesh"), args...)
 	}
 	// Both grants reach the new project at once: bot by "every project", relay-bot by its name.
@@ -109,10 +110,9 @@ func TestThreadProjectsAndGrants(t *testing.T) {
 	if r := launch(relayEnv, "relay", "codex"); r.code != 0 {
 		t.Fatalf("relay-bot with Codex in relay: %+v", r)
 	}
-	tc := ownerThreadClient(w.sock)
-	var sel threadv2.ModelSelection
+	var sel sessionv1.ModelSelection
 	sel.InstanceId = "codex"
-	_, err = tc.LaunchThread(ctx, &threadv2.LaunchThreadRequest{MachineId: workID, ProjectId: "relay", InitialPrompt: "say from the owner", ModelSelection: &sel})
+	_, err = w.app.sessions.StartSession(ctx, &sessionv1.StartSessionRequest{MachineId: workID, ProjectId: "relay", InitialPrompt: "say from the owner", ModelSelection: &sel})
 	if err != nil {
 		t.Fatalf("the owner with Codex in relay: %v", err)
 	}

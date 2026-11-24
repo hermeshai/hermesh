@@ -29,8 +29,8 @@ import (
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/owner"
 	"github.com/hermeshai/hermesh/internal/peer"
-	"github.com/hermeshai/hermesh/internal/provider"
-	"github.com/hermeshai/hermesh/internal/provider/fake"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
+	"github.com/hermeshai/hermesh/internal/runtime/scripted"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/relay"
 	"github.com/hermeshai/hermesh/pkg/transport"
@@ -89,7 +89,7 @@ func newWorld(t *testing.T, opts ...func(*machine.Config)) *world {
 
 	for i, name := range []string{"alpha", "beta"} {
 		cfg := machine.Config{DataDir: filepath.Join(tmp, name), Logger: quiet,
-			Providers: map[string]provider.Provider{"claude": fake.Provider{}, "codex": fake.Provider{}}}
+			Drivers: map[string]rt.Driver{"claude": scripted.NewNamed("claude"), "codex": scripted.NewNamed("codex")}}
 		for _, o := range opts {
 			o(&cfg)
 		}
@@ -213,7 +213,7 @@ func (w *world) evilTunnel(t *testing.T, machineID string, key *identity.Softwar
 
 func startSession(ctx context.Context, h *transport.H2Client, prompt string) error {
 	_, err := sessionv1connect.NewSessionServiceClient(h, "https://machine").StartSession(ctx,
-		&sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "claude", Prompt: prompt})
+		&sessionv1.StartSessionRequest{ProjectId: "demo", ModelSelection: &sessionv1.ModelSelection{InstanceId: "claude"}, InitialPrompt: prompt})
 	return err
 }
 

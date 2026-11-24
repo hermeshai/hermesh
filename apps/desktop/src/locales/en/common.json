@@ -246,6 +246,7 @@
   },
   "signing": {
     "declined": "Nothing was signed: the request was declined, or not confirmed, in the signer.",
+    "unavailable": "Nothing was signed: the signer stopped unexpectedly before the request could be confirmed.",
     "title": "Update Hermesh Signer",
     "body": "Nothing was signed: this PC’s signer ({{version}}) is older than Hermesh and can’t show this request. Update it, then try again. Windows will ask for permission once.",
     "button": "Update Signer",

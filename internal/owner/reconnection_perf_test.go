@@ -29,8 +29,9 @@ import (
 	"github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1/machinev1connect"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2/threadv2connect"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/machine"
 	"github.com/hermeshai/hermesh/internal/peer"
 	"github.com/hermeshai/hermesh/pkg/identity"
@@ -298,12 +299,12 @@ func TestReconnectionOptimization_UnreachableDirectZeroDoubleWait(t *testing.T) 
 
 type upgradeTestServer struct {
 	herv1connect.UnimplementedHerServiceHandler
-	threadv2connect.UnimplementedThreadServiceHandler
+	sessionv1connect.UnimplementedSessionServiceHandler
 	machinev1connect.UnimplementedMachineServiceHandler
 
 	callDelay time.Duration
 	openCount atomic.Int32
-	threadCh  chan *threadv2.ThreadEvent
+	sessionCh chan *sessionv1.SessionEvent
 }
 
 func (s *upgradeTestServer) GetInfo(context.Context, *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {
@@ -336,12 +337,13 @@ func (s *upgradeTestServer) Call(ctx context.Context, _ *herv1.CallRequest) (*he
 	return &herv1.CallResponse{Response: &herv1.Response{Result: []byte(`{"ok":true}`)}}, nil
 }
 
-func (s *upgradeTestServer) SubscribeThread(ctx context.Context, req *threadv2.SubscribeThreadRequest, stream *connect.ServerStream[threadv2.ThreadEvent]) error {
-	if err := stream.Send(&threadv2.ThreadEvent{
-		Seq:      max(1, req.AfterSeq),
-		ThreadId: req.ThreadId,
-		Type:     "thread.subscribed",
-		Thread:   &threadv2.Thread{ThreadId: req.ThreadId, LastSeq: max(1, req.AfterSeq)},
+func (s *upgradeTestServer) SubscribeSession(ctx context.Context, req *sessionv1.SubscribeSessionRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
+	seq := max(uint64(1), req.AfterSeq)
+	if err := stream.Send(&sessionv1.SessionEvent{
+		Seq:       seq,
+		SessionId: req.SessionId,
+		Type:      "session.subscribed",
+		Session:   &sessionv1.Session{SessionId: req.SessionId, Progress: &sessionv1.SessionProgress{LastEventSeq: seq}},
 	}); err != nil {
 		return err
 	}
@@ -349,7 +351,7 @@ func (s *upgradeTestServer) SubscribeThread(ctx context.Context, req *threadv2.S
 		select {
 		case <-ctx.Done():
 			return nil
-		case ev := <-s.threadCh:
+		case ev := <-s.sessionCh:
 			if ev.Seq <= req.AfterSeq {
 				continue
 			}
@@ -363,7 +365,7 @@ func (s *upgradeTestServer) SubscribeThread(ctx context.Context, req *threadv2.S
 // TestReconnectionOptimization_LosslessTunnelUpgrade verifies that upgrading a
 // live relayed tunnel onto Direct QUIC:
 //  1. Never aborts an in-flight unary HerCall (drained cleanly by Retire),
-//  2. Seamlessly continues SubscribeThread across the tunnel swap with 0 lost events and 0 client stream breaks, and
+//  2. Seamlessly continues SubscribeSession across the tunnel swap with 0 lost events and 0 client stream breaks, and
 //  3. Ends HerOpen with clean nil (not an error) so Swift re-opens on QUIC with 0 ms backoff.
 func TestReconnectionOptimization_LosslessTunnelUpgrade(t *testing.T) {
 	oldGrace := peer.RetireGrace
@@ -376,12 +378,12 @@ func TestReconnectionOptimization_LosslessTunnelUpgrade(t *testing.T) {
 
 	svc := &upgradeTestServer{
 		callDelay: 120 * time.Millisecond,
-		threadCh:  make(chan *threadv2.ThreadEvent, 8),
+		sessionCh: make(chan *sessionv1.SessionEvent, 8),
 	}
 	mux := http.NewServeMux()
 	mux.Handle(machinev1connect.NewMachineServiceHandler(svc))
 	mux.Handle(herv1connect.NewHerServiceHandler(svc))
-	mux.Handle(threadv2connect.NewThreadServiceHandler(svc))
+	mux.Handle(sessionv1connect.NewSessionServiceHandler(svc))
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{"hermesh.v1"}})
@@ -443,13 +445,13 @@ func TestReconnectionOptimization_LosslessTunnelUpgrade(t *testing.T) {
 	if err := o.saveIdentity(ids.ownerID, srv.URL, ids.rootPub, ids.chain, ids.device, ids.deviceCert, ""); err != nil {
 		t.Fatal(err)
 	}
-	threadID := "th_" + strings.TrimPrefix(ids.machineID, "m_")[:10] + "_01"
-	o.cacheThread(&threadv2.Thread{ThreadId: threadID, MachineId: ids.machineID, LastSeq: 1}, nil)
+	sessionID := "s_" + kernel.SessionPrefix(ids.machineID) + "_01"
+	o.cacheSession(&sessionv1.Session{SessionId: sessionID, MachineId: ids.machineID, Progress: &sessionv1.SessionProgress{LastEventSeq: 1}}, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	// 1. Open active HerOpen stream and SubscribeThread stream on the RELAY tunnel.
+	// 1. Open active HerOpen stream and SubscribeSession stream on the RELAY tunnel.
 	herOpened := make(chan struct{})
 	herEnded := make(chan error, 1)
 	go func() {
@@ -468,21 +470,21 @@ func TestReconnectionOptimization_LosslessTunnelUpgrade(t *testing.T) {
 	}()
 	<-herOpened
 
-	// Connect in-memory client to ownerThreadService to exercise SubscribeThread end-to-end.
-	threadMux := http.NewServeMux()
-	threadMux.Handle(threadv2connect.NewThreadServiceHandler(&ownerThreadService{d: dev}))
-	threadSrv := httptest.NewServer(threadMux)
-	defer threadSrv.Close()
-	tCli := threadv2connect.NewThreadServiceClient(threadSrv.Client(), threadSrv.URL)
+	// Connect in-memory client to ownerSessionService to exercise SubscribeSession end-to-end.
+	sessMux := http.NewServeMux()
+	sessMux.Handle(sessionv1connect.NewSessionServiceHandler(&ownerSessionService{d: dev}))
+	sessSrv := httptest.NewServer(sessMux)
+	defer sessSrv.Close()
+	sCli := sessionv1connect.NewSessionServiceClient(sessSrv.Client(), sessSrv.URL)
 
 	subCtx, subCancel := context.WithCancel(ctx)
 	defer subCancel()
-	tStream, err := tCli.SubscribeThread(subCtx, &threadv2.SubscribeThreadRequest{ThreadId: threadID, AfterSeq: 1})
+	sStream, err := sCli.SubscribeSession(subCtx, &sessionv1.SubscribeSessionRequest{SessionId: sessionID, AfterSeq: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !tStream.Receive() || tStream.Msg().GetType() != "thread.subscribed" {
-		t.Fatalf("expected immediate thread.subscribed event on relay tunnel, err=%v", tStream.Err())
+	if !sStream.Receive() || sStream.Msg().GetType() != "session.subscribed" {
+		t.Fatalf("expected immediate session.subscribed event on relay tunnel, err=%v", sStream.Err())
 	}
 
 	// 2. Launch an in-flight unary HerCall (120 ms) on the relay tunnel, and
@@ -531,41 +533,45 @@ func TestReconnectionOptimization_LosslessTunnelUpgrade(t *testing.T) {
 	<-reopened
 	reopenMs := time.Since(reopenStart).Milliseconds()
 
-	// Assert 3: SubscribeThread seamlessly hopped onto Direct QUIC without
-	// ending tStream, and delivers seq=2 published after the old relay tunnel closed!
+	// Assert 3: SubscribeSession seamlessly hopped onto Direct QUIC without
+	// ending sStream, and delivers seq=2 published after the old relay tunnel closed!
 	time.Sleep(100 * time.Millisecond) // ensure old relay tunnel fully closed
-	svc.threadCh <- &threadv2.ThreadEvent{
-		Seq:      2,
-		ThreadId: threadID,
-		Type:     "item.completed",
-		Thread:   &threadv2.Thread{ThreadId: threadID, LastSeq: 2},
-		Item:     &threadv2.TurnItem{ItemId: "it_2", ThreadId: threadID, Seq: 2, Text: "streamed over upgraded QUIC"},
+	svc.sessionCh <- &sessionv1.SessionEvent{
+		Seq:       2,
+		SessionId: sessionID,
+		Type:      "item.completed",
+		Session:   &sessionv1.Session{SessionId: sessionID, MachineId: ids.machineID, Progress: &sessionv1.SessionProgress{LastEventSeq: 2}},
+		Item:      &sessionv1.TurnItem{ItemId: "it_2", SessionId: sessionID, Seq: 2, Text: "streamed over upgraded QUIC"},
 	}
-	if !tStream.Receive() {
-		t.Fatalf("SubscribeThread broke across tunnel upgrade: %v", tStream.Err())
+	if !sStream.Receive() {
+		t.Fatalf("SubscribeSession broke across tunnel upgrade: %v", sStream.Err())
 	}
-	if got := tStream.Msg().GetItem().GetText(); got != "streamed over upgraded QUIC" {
-		t.Fatalf("unexpected post-upgrade ThreadEvent item: %q", got)
+	if got := sStream.Msg().GetItem().GetText(); got != "streamed over upgraded QUIC" {
+		t.Fatalf("unexpected post-upgrade SessionEvent item: %q", got)
 	}
 	// Verify local SQLite projection_payload also folded seq=2!
-	if cached := o.cachedProjection(threadID); cached == nil || len(cached.Items) != 1 || cached.Items[0].Text != "streamed over upgraded QUIC" {
-		t.Fatalf("cachedProjection was not incrementally updated by SubscribeThread: %+v", cached)
+	if cached := o.cachedProjection(sessionID); cached == nil || len(cached.Items) != 1 || cached.Items[0].Text != "streamed over upgraded QUIC" {
+		t.Fatalf("cachedProjection was not incrementally updated by SubscribeSession: %+v", cached)
 	}
-	t.Logf("BENCH [Lossless Tunnel Upgrade]: in-flight HerCall=0 errors, SubscribeThread=0 drops, HerOpen QUIC rebind=%d ms (legacy: error + 1000ms sleep)", reopenMs)
+	t.Logf("BENCH [Lossless Tunnel Upgrade]: in-flight HerCall=0 errors, SubscribeSession=0 drops, HerOpen QUIC rebind=%d ms (legacy: error + 1000ms sleep)", reopenMs)
 }
 
-type legacySilentThreadServer struct {
-	threadv2connect.UnimplementedThreadServiceHandler
+type legacySilentSessionServer struct {
+	sessionv1connect.UnimplementedSessionServiceHandler
 	machinev1connect.UnimplementedMachineServiceHandler
 	slow time.Duration
-	proj *threadv2.ThreadProjection
+	proj *sessionv1.SessionProjection
 }
 
-func (s *legacySilentThreadServer) GetInfo(context.Context, *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {
-	return &machinev1.GetInfoResponse{Status: &machinev1.MachineStatus{Name: "thread-mac"}}, nil
+func (s *legacySilentSessionServer) GetInfo(context.Context, *machinev1.GetInfoRequest) (*machinev1.GetInfoResponse, error) {
+	return &machinev1.GetInfoResponse{Status: &machinev1.MachineStatus{Name: "session-mac"}}, nil
 }
 
-func (s *legacySilentThreadServer) GetThread(ctx context.Context, _ *threadv2.GetThreadRequest) (*threadv2.GetThreadResponse, error) {
+func (s *legacySilentSessionServer) ListProjects(context.Context, *machinev1.ListProjectsRequest) (*machinev1.ListProjectsResponse, error) {
+	return &machinev1.ListProjectsResponse{}, nil
+}
+
+func (s *legacySilentSessionServer) GetSession(ctx context.Context, _ *sessionv1.GetSessionRequest) (*sessionv1.GetSessionResponse, error) {
 	if s.slow > 0 {
 		select {
 		case <-time.After(s.slow):
@@ -573,10 +579,10 @@ func (s *legacySilentThreadServer) GetThread(ctx context.Context, _ *threadv2.Ge
 			return nil, ctx.Err()
 		}
 	}
-	return &threadv2.GetThreadResponse{Projection: s.proj}, nil
+	return &sessionv1.GetSessionResponse{Projection: s.proj}, nil
 }
 
-func (s *legacySilentThreadServer) ListThreads(ctx context.Context, _ *threadv2.ListThreadsRequest) (*threadv2.ListThreadsResponse, error) {
+func (s *legacySilentSessionServer) ListSessions(ctx context.Context, _ *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
 	if s.slow > 0 {
 		select {
 		case <-time.After(s.slow):
@@ -584,39 +590,53 @@ func (s *legacySilentThreadServer) ListThreads(ctx context.Context, _ *threadv2.
 			return nil, ctx.Err()
 		}
 	}
-	return &threadv2.ListThreadsResponse{Threads: []*threadv2.Thread{s.proj.GetThread()}}, nil
+	return &sessionv1.ListSessionsResponse{Sessions: []*sessionv1.Session{s.proj.GetSession()}}, nil
 }
 
-// Simulates an un-upgraded older hermeshd that emits NO initial event when afterSeq == lastSeq.
-func (s *legacySilentThreadServer) SubscribeThread(ctx context.Context, _ *threadv2.SubscribeThreadRequest, _ *connect.ServerStream[threadv2.ThreadEvent]) error {
+func (s *legacySilentSessionServer) WatchSessions(ctx context.Context, _ *sessionv1.WatchSessionsRequest, stream *connect.ServerStream[sessionv1.WatchSessionsResponse]) error {
+	if err := stream.Send(&sessionv1.WatchSessionsResponse{Snapshot: true}); err != nil {
+		return err
+	}
+	<-ctx.Done()
+	return nil
+}
+
+// Simulates an un-upgraded older hermeshd that emits NO initial event when afterSeq == lastEventSeq.
+func (s *legacySilentSessionServer) SubscribeSession(ctx context.Context, _ *sessionv1.SubscribeSessionRequest, _ *connect.ServerStream[sessionv1.SessionEvent]) error {
 	<-ctx.Done()
 	return nil
 }
 
 // TestReconnectionOptimization_ThreadInstantCacheAndFastSubscribe verifies:
-//  1. GetThread(CachedOnly: true) returns local SQLite projection in < 10 ms even when remote stalls 3 s.
-//  2. SubscribeThreads emits Snapshot: true from cache in < 20 ms even when remote machine stalls 3 s.
-//  3. SubscribeThread against an un-upgraded legacy hermeshd confirms readiness in ~130 ms (vs legacy 1000 ms sleep).
+//  1. GetSession(CachedOnly: true) returns local SQLite projection in < 10 ms even when remote stalls 3 s.
+//  2. WatchSessions emits Snapshot: true from cache in < 20 ms even when remote machine stalls 3 s.
+//  3. SubscribeSession against an un-upgraded legacy hermeshd confirms readiness in ~130 ms (vs legacy 1000 ms sleep).
 func TestReconnectionOptimization_ThreadInstantCacheAndFastSubscribe(t *testing.T) {
 	ids := makeTestIdentities(t)
 	trust := identity.NewTrust(ids.ownerID)
 	_, _ = trust.AcceptRootChain(ids.chain)
 
-	threadID := "th_" + strings.TrimPrefix(ids.machineID, "m_")[:10] + "_cached"
-	proj := &threadv2.ThreadProjection{
-		Thread: &threadv2.Thread{ThreadId: threadID, MachineId: ids.machineID, Title: "Cached Session", LastSeq: 42, UpdatedAt: timestamppb.Now()},
-		Items:  []*threadv2.TurnItem{{ItemId: "m1", ThreadId: threadID, Seq: 42, Text: "instant local render"}},
+	sessionID := "s_" + kernel.SessionPrefix(ids.machineID) + "_cached"
+	proj := &sessionv1.SessionProjection{
+		Session: &sessionv1.Session{
+			SessionId: sessionID,
+			MachineId: ids.machineID,
+			Title:     "Cached Session",
+			Progress:  &sessionv1.SessionProgress{LastEventSeq: 42},
+			UpdatedAt: timestamppb.Now(),
+		},
+		Items: []*sessionv1.TurnItem{{ItemId: "m1", SessionId: sessionID, Seq: 42, Text: "instant local render"}},
 	}
-	remoteSvc := &legacySilentThreadServer{slow: 2500 * time.Millisecond, proj: proj}
+	remoteSvc := &legacySilentSessionServer{slow: 2500 * time.Millisecond, proj: proj}
 	mux := http.NewServeMux()
 	mux.Handle(machinev1connect.NewMachineServiceHandler(remoteSvc))
-	mux.Handle(threadv2connect.NewThreadServiceHandler(remoteSvc))
+	mux.Handle(sessionv1connect.NewSessionServiceHandler(remoteSvc))
 
 	controlMux := http.NewServeMux()
 	creds := ids.machineCreds()
 	controlMux.Handle(relayv1connect.NewOwnerControlServiceHandler(recoveryRelayControl{
 		machines: &relayv1.ListMachinesResponse{Machines: []*relayv1.MachineEntry{{
-			MachineCert: creds.GetMachineCert(), Name: "thread-mac", Online: true, LastSeen: timestamppb.Now(),
+			MachineCert: creds.GetMachineCert(), Name: "session-mac", Online: true, LastSeen: timestamppb.Now(),
 		}}},
 	}))
 
@@ -674,64 +694,64 @@ func TestReconnectionOptimization_ThreadInstantCacheAndFastSubscribe(t *testing.
 	if err := o.saveIdentity(ids.ownerID, srv.URL, ids.rootPub, ids.chain, ids.device, ids.deviceCert, ""); err != nil {
 		t.Fatal(err)
 	}
-	o.cacheThread(proj.Thread, proj)
+	o.cacheSession(proj.Session, proj)
 
 	localMux := http.NewServeMux()
-	localMux.Handle(threadv2connect.NewThreadServiceHandler(&ownerThreadService{d: dev}))
+	localMux.Handle(sessionv1connect.NewSessionServiceHandler(&ownerSessionService{d: dev}))
 	localSrv := httptest.NewServer(localMux)
 	defer localSrv.Close()
-	cli := threadv2connect.NewThreadServiceClient(localSrv.Client(), localSrv.URL)
+	cli := sessionv1connect.NewSessionServiceClient(localSrv.Client(), localSrv.URL)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	// 1. GetThread(CachedOnly: true) while remote stalls 2.5s!
+	// 1. GetSession(CachedOnly: true) while remote stalls 2.5s!
 	t0 := time.Now()
-	cRes, err := cli.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: threadID, CachedOnly: true})
+	cRes, err := cli.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: sessionID, CachedOnly: true})
 	if err != nil {
-		t.Fatalf("GetThread(CachedOnly) failed: %v", err)
+		t.Fatalf("GetSession(CachedOnly) failed: %v", err)
 	}
 	cachedOpenMs := time.Since(t0).Milliseconds()
 	if !cRes.FromCache || len(cRes.GetProjection().GetItems()) != 1 {
-		t.Fatalf("unexpected cached GetThread response: %+v", cRes)
+		t.Fatalf("unexpected cached GetSession response: %+v", cRes)
 	}
 	if cachedOpenMs > 50 {
-		t.Fatalf("GetThread(CachedOnly) took %d ms, want < 50 ms", cachedOpenMs)
+		t.Fatalf("GetSession(CachedOnly) took %d ms, want < 50 ms", cachedOpenMs)
 	}
 
-	// 2. SubscribeThreads first snapshot while remote stalls 2.5s!
+	// 2. WatchSessions first snapshot while remote stalls 2.5s!
 	subListCtx, subListCancel := context.WithCancel(ctx)
 	defer subListCancel()
 	t1 := time.Now()
-	listStream, err := cli.SubscribeThreads(subListCtx, &threadv2.SubscribeThreadsRequest{IncludeArchived: true})
+	listStream, err := cli.WatchSessions(subListCtx, &sessionv1.WatchSessionsRequest{IncludeArchived: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !listStream.Receive() || !listStream.Msg().GetSnapshot() || len(listStream.Msg().GetThreads()) != 1 {
-		t.Fatalf("expected immediate cached SubscribeThreads snapshot, err=%v", listStream.Err())
+	if !listStream.Receive() || !listStream.Msg().GetSnapshot() || len(listStream.Msg().GetSessions()) != 1 {
+		t.Fatalf("expected immediate cached WatchSessions snapshot, err=%v", listStream.Err())
 	}
 	firstSnapMs := time.Since(t1).Milliseconds()
 	if firstSnapMs > 50 {
-		t.Fatalf("SubscribeThreads first snapshot took %d ms, expected < 50 ms despite 2.5s slow remote", firstSnapMs)
+		t.Fatalf("WatchSessions first snapshot took %d ms, expected < 50 ms despite 2.5s slow remote", firstSnapMs)
 	}
 	subListCancel()
 
-	// 3. SubscribeThread against legacy silent daemon (remote fast now: 0 ms):
+	// 3. SubscribeSession against legacy silent daemon (remote fast now: 0 ms):
 	//    confirms liveness in ~130ms instead of 1000ms sleep!
 	remoteSvc.slow = 0
 	subCtx, subCancel := context.WithCancel(ctx)
 	defer subCancel()
 	t2 := time.Now()
-	evStream, err := cli.SubscribeThread(subCtx, &threadv2.SubscribeThreadRequest{ThreadId: threadID, AfterSeq: 42})
+	evStream, err := cli.SubscribeSession(subCtx, &sessionv1.SubscribeSessionRequest{SessionId: sessionID, AfterSeq: 42})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !evStream.Receive() || evStream.Msg().GetType() != "thread.subscribed" {
-		t.Fatalf("expected synthetic thread.subscribed from legacy fallback, err=%v", evStream.Err())
+	if !evStream.Receive() || evStream.Msg().GetType() != "session.subscribed" {
+		t.Fatalf("expected synthetic session.subscribed from legacy fallback, err=%v", evStream.Err())
 	}
 	legacyReadyMs := time.Since(t2).Milliseconds()
 	if legacyReadyMs > 400 {
-		t.Fatalf("legacy SubscribeThread ready took %d ms, expected ~130ms (<400ms vs old 1000ms sleep)", legacyReadyMs)
+		t.Fatalf("legacy SubscribeSession ready took %d ms, expected ~130ms (<400ms vs old 1000ms sleep)", legacyReadyMs)
 	}
 	t.Logf("BENCH [v2 Thread Open & Resume]: CachedOpen=%d ms (legacy 2500-5000ms), SubscribeThreadsFirstSnap=%d ms (legacy 2500ms+), LegacySubscribeReady=%d ms (legacy 1000ms+)",
 		cachedOpenMs, firstSnapMs, legacyReadyMs)

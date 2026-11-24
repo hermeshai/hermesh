@@ -8,11 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/runtime/claude"
@@ -106,7 +107,20 @@ func runMockClaude() {
 			write(map[string]any{"type": "user", "isReplay": true})
 			msgObj, _ := m["message"].(map[string]any)
 			prompt, _ := msgObj["content"].(string)
-			if strings.Contains(prompt, "multistep_tools") {
+			if strings.Contains(prompt, "think_then_reply") {
+				for _, e := range []map[string]any{
+					{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "thinking", "thinking": ""}},
+					{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "thinking_delta", "thinking": "weigh it"}},
+					{"type": "content_block_stop", "index": 0},
+					{"type": "content_block_start", "index": 1, "content_block": map[string]any{"type": "text", "text": ""}},
+					{"type": "content_block_delta", "index": 1, "delta": map[string]any{"type": "text_delta", "text": "done thinking"}},
+					{"type": "content_block_stop", "index": 1},
+				} {
+					write(map[string]any{"type": "stream_event", "event": e})
+				}
+				write(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "done thinking"}}}})
+				write(map[string]any{"type": "result", "usage": map[string]any{"input_tokens": 10, "output_tokens": 5}})
+			} else if strings.Contains(prompt, "multistep_tools") {
 				write(map[string]any{
 					"type":  "stream_event",
 					"event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": "let me read first"}},
@@ -348,7 +362,7 @@ func runMockCodex() {
 			write(map[string]any{"id": *m.ID, "result": map[string]any{}})
 		case "thread/fork":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"thread": map[string]any{"id": "cx_th_forked"}}})
-		case "thread/unarchive":
+		case "thread/unarchive", "thread/name/set":
 			write(map[string]any{"id": *m.ID, "result": map[string]any{}})
 		case "turn/start":
 			var p struct {
@@ -362,6 +376,15 @@ func runMockCodex() {
 			curTurnModel, curEffort = p.Model, p.Effort
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "think_then_reply") {
+				write(map[string]any{"method": "item/started", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
+				write(map[string]any{"method": "item/reasoning/summaryTextDelta", "params": map[string]any{"itemId": "it_rsn", "delta": "weigh it"}})
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
+				write(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{"itemId": "it_msg", "delta": "done thinking"}})
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_msg", "type": "agentMessage", "text": "done thinking"}}})
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
 			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "propose_codex_plan") {
 				write(map[string]any{
 					"method": "item/completed",
@@ -475,7 +498,6 @@ func runMockACP() {
 			continue
 		}
 		if m.ID != nil && m.Method == "" && *m.ID == 777 {
-			// Response to session/request_permission!
 			var res struct {
 				Outcome struct {
 					Outcome  string `json:"outcome"`
@@ -497,7 +519,6 @@ func runMockACP() {
 					},
 				},
 			})
-			// tool_call_update with array Content (previously failed json.Unmarshal in handleSessionUpdate!):
 			write(map[string]any{
 				"jsonrpc": "2.0",
 				"method":  "session/update",
@@ -530,7 +551,6 @@ func runMockACP() {
 					},
 				},
 			})
-			// Stash chosen permission option in curModel for assertion.
 			curModel = res.Outcome.OptionID
 			continue
 		}
@@ -584,7 +604,6 @@ func runMockACP() {
 			continue
 		}
 		if m.ID != nil && m.Method == "" && *m.ID == 888 {
-			// Response to fs/write_text_file!
 			status := "wrote_ok"
 			if m.Error != nil {
 				status = "write_err:" + m.Error.Message
@@ -671,8 +690,6 @@ func runMockACP() {
 						},
 					},
 				})
-				// Subsequent edit_file omits ArtifactMetadata in rawInput and only sends partial Target/Replacement;
-				// driver must read full updated markdown + .metadata.json sidecar from disk!
 				_ = os.WriteFile(planPath, []byte("# Final Unified Plan\n\n1. Adapter\n2. Kernel\n3. UI\n"), 0o644)
 				write(map[string]any{
 					"jsonrpc": "2.0",
@@ -693,7 +710,6 @@ func runMockACP() {
 						},
 					},
 				})
-				// Deliverable artifact (UserFacing=true, RequestFeedback=false) -> inline PROPOSED_PLAN without review gate.
 				walkPath := filepath.Join(brainDir, "walkthrough.md")
 				_ = os.WriteFile(walkPath, []byte("# Walkthrough\n\nVerified end-to-end.\n"), 0o644)
 				write(map[string]any{
@@ -718,7 +734,6 @@ func runMockACP() {
 						},
 					},
 				})
-				// Non-markdown widget (UserFacing=true, RequestFeedback=false, .html) -> must NOT emit EventPlanProposed.
 				write(map[string]any{
 					"jsonrpc": "2.0",
 					"method":  "session/update",
@@ -1009,7 +1024,6 @@ func runMockACP() {
 						},
 					},
 				})
-				// Options[0] is allow_once! When Gate denies, driver MUST pick opt_reject (never Options[0]).
 				write(map[string]any{
 					"jsonrpc": "2.0",
 					"id":      777,
@@ -1068,16 +1082,16 @@ func TestClaudeDriverSubprocessProtocol(t *testing.T) {
 	drv := claude.NewDriver("")
 	var gateCalls int
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cl",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_cl",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "claude",
 			Driver:     "claude",
 			BinaryPath: exe,
 			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--"},
 			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "claude"},
 		},
-		Selection: &threadv2.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
+		Selection: &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-sonnet-4-6"},
 		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
 			gateCalls++
 			if gateCalls == 1 {
@@ -1091,7 +1105,6 @@ func TestClaudeDriverSubprocessProtocol(t *testing.T) {
 	}
 	defer sess.Close()
 
-	// Turn 1: triggers can_use_tool -> Gate declines with feedback!
 	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r1", Prompt: "run_bash"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1103,8 +1116,7 @@ func TestClaudeDriverSubprocessProtocol(t *testing.T) {
 		t.Fatalf("unexpected Turn 1 output: %v", msgs)
 	}
 
-	// Turn 2: hot in-session model switch (`set_model`) -> Gate approves!
-	if err := sess.SetSelection(ctx, &threadv2.ModelSelection{InstanceId: "claude", Model: "claude-opus-4-6"}); err != nil {
+	if err := sess.SetSelection(ctx, &sessionv1.ModelSelection{InstanceId: "claude", Model: "claude-opus-4-6"}); err != nil {
 		t.Fatalf("SetSelection hot switch: %v", err)
 	}
 	if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r2", Prompt: "run_bash"}); err != nil {
@@ -1116,26 +1128,89 @@ func TestClaudeDriverSubprocessProtocol(t *testing.T) {
 	}
 }
 
+// Claude and Codex say when the model starts and stops thinking, before it replies.
+func TestClaudeAndCodexMarkWhereThinkingEnds(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	for _, c := range []struct {
+		drv  runtime.Driver
+		name string
+		args []string
+	}{
+		{claude.NewDriver(""), "claude", []string{"-test.run=TestHelperMockCLI", "--"}},
+		{codex.NewDriver(""), "codex", []string{"-test.run=TestHelperMockCLI", "--", "app-server"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sess, err := c.drv.StartSession(ctx, runtime.StartSpec{
+				SessionID: "s_" + c.name,
+				Workdir:   t.TempDir(),
+				Instance: &sessionv1.ProviderInstanceConfig{
+					InstanceId: c.name,
+					Driver:     c.name,
+					BinaryPath: exe,
+					LaunchArgs: c.args,
+					Env:        map[string]string{"HERMESH_MOCK_DRIVER": c.name},
+				},
+				Selection: &sessionv1.ModelSelection{InstanceId: c.name, Model: "m"},
+			})
+			if err != nil {
+				t.Fatalf("StartSession: %v", err)
+			}
+			defer sess.Close()
+			if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r1", Prompt: "think_then_reply"}); err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			timeout := time.After(8 * time.Second)
+			for done := false; !done; {
+				select {
+				case <-timeout:
+					t.Fatalf("timed out; saw %v", got)
+				case ev, ok := <-sess.Events():
+					if !ok {
+						t.Fatalf("session closed; saw %v", got)
+					}
+					switch ev.Kind {
+					case runtime.EventReasoningDelta:
+						got = append(got, "think "+ev.ItemID+" "+ev.Text)
+					case runtime.EventReasoningCompleted:
+						got = append(got, "thought "+ev.ItemID)
+					case runtime.EventAssistantDelta:
+						got = append(got, "reply "+ev.Text)
+					case runtime.EventTurnCompleted, runtime.EventTurnFailed:
+						done = true
+					}
+				}
+			}
+			rsn := strings.Fields(got[0])[1]
+			want := []string{"think " + rsn + " ", "think " + rsn + " weigh it", "thought " + rsn, "reply done thinking"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("events = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestCodexDriverSubprocessProtocol(t *testing.T) {
 	ctx := context.Background()
 	exe, _ := os.Executable()
 	drv := codex.NewDriver("")
 
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cx",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_cx",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "codex",
 			Driver:     "codex",
 			BinaryPath: exe,
 			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "app-server"},
 			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "codex"},
 		},
-		Selection: &threadv2.ModelSelection{
+		Selection: &sessionv1.ModelSelection{
 			InstanceId: "codex",
 			Model:      "gpt-5.4",
-			Options: map[string]*threadv2.OptionValue{
-				"reasoningEffort": {Kind: &threadv2.OptionValue_StringValue{StringValue: "xhigh"}},
+			Options: map[string]*sessionv1.OptionValue{
+				"reasoningEffort": {Kind: &sessionv1.OptionValue_StringValue{StringValue: "xhigh"}},
 			},
 		},
 		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
@@ -1153,11 +1228,11 @@ func TestCodexDriverSubprocessProtocol(t *testing.T) {
 	if err := sess.StartTurn(ctx, runtime.TurnInput{
 		RunID:  "r1",
 		Prompt: "ship it",
-		Selection: &threadv2.ModelSelection{
+		Selection: &sessionv1.ModelSelection{
 			InstanceId: "codex",
 			Model:      "gpt-5.4",
-			Options: map[string]*threadv2.OptionValue{
-				"reasoningEffort": {Kind: &threadv2.OptionValue_StringValue{StringValue: "xhigh"}},
+			Options: map[string]*sessionv1.OptionValue{
+				"reasoningEffort": {Kind: &sessionv1.OptionValue_StringValue{StringValue: "xhigh"}},
 			},
 		},
 	}); err != nil {
@@ -1179,9 +1254,9 @@ func TestACPDriverSubprocessProtocolAndFilesystemGate(t *testing.T) {
 	drv := acp.NewDriver("")
 
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_acp",
-		Workdir:  workdir,
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_acp",
+		Workdir:   workdir,
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "gemini",
 			Driver:     "acp",
 			AcpFlavor:  "gemini",
@@ -1189,7 +1264,7 @@ func TestACPDriverSubprocessProtocolAndFilesystemGate(t *testing.T) {
 			LaunchArgs: []string{"-test.run=TestHelperMockCLI", "--", "--acp"},
 			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
 		},
-		Selection: &threadv2.ModelSelection{InstanceId: "gemini", Model: "gemini-3.1-pro"},
+		Selection: &sessionv1.ModelSelection{InstanceId: "gemini", Model: "gemini-3.1-pro"},
 		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
 			return runtime.ToolGateResult{Allowed: true}, nil
 		},
@@ -1221,9 +1296,9 @@ func TestACPMultiStepToolArrayContentPermissionDenialAndElicitation(t *testing.T
 	drv := acp.NewDriver("")
 
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_acp_2",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_acp_2",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "antigravity",
 			Driver:     "acp",
 			AcpFlavor:  "antigravity",
@@ -1232,13 +1307,13 @@ func TestACPMultiStepToolArrayContentPermissionDenialAndElicitation(t *testing.T
 			Env:        map[string]string{"HERMESH_MOCK_DRIVER": "acp"},
 		},
 		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
-			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL {
+			if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL {
 				return runtime.ToolGateResult{Allowed: false}, nil
 			}
-			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
 				return runtime.ToolGateResult{
 					Allowed: true,
-					Answers: map[string]*threadv2.QuestionAnswer{
+					Answers: map[string]*sessionv1.QuestionAnswer{
 						"env": {SelectedOptions: []string{"staging"}},
 					},
 				}, nil
@@ -1296,9 +1371,9 @@ func TestClaudeMultiStepToolResultArrayAndSkipInteractiveTools(t *testing.T) {
 	drv := claude.NewDriver("")
 
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cl_multi",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_cl_multi",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "claude",
 			Driver:     "claude",
 			BinaryPath: exe,
@@ -1355,10 +1430,10 @@ func TestCodexActiveWriterForkFallbackAndHerCloseSafety(t *testing.T) {
 	drv := codex.NewDriver("")
 
 	sess, err := drv.StartSession(ctx, runtime.StartSpec{
-		ThreadID:     "th_cx_fork",
+		SessionID:    "s_cx_fork",
 		Workdir:      t.TempDir(),
 		ResumeCursor: "locked_cursor",
-		Instance: &threadv2.ProviderInstanceConfig{
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "codex",
 			Driver:     "codex",
 			BinaryPath: exe,
@@ -1375,7 +1450,6 @@ func TestCodexActiveWriterForkFallbackAndHerCloseSafety(t *testing.T) {
 	}
 	_ = sess.Close()
 
-	// Her driver: closing while Send is blocked or returning must never panic on closed channel.
 	started := make(chan struct{})
 	release := make(chan struct{})
 	herDrv := her.NewDriver(func() bool { return true }, func(ctx context.Context, _, _ string) (string, string, error) {
@@ -1410,11 +1484,11 @@ func TestACPArtifactProposalsStandardPlanExitAndCodexPlanReview(t *testing.T) {
 	workdir := t.TempDir()
 	acpDrv := acp.NewDriver("")
 
-	var gatedPlan *threadv2.PlanReviewPayload
+	var gatedPlan *sessionv1.PlanReviewPayload
 	acpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_acp_plan",
-		Workdir:  workdir,
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_acp_plan",
+		Workdir:   workdir,
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "antigravity",
 			Driver:     "acp",
 			AcpFlavor:  "antigravity",
@@ -1426,7 +1500,7 @@ func TestACPArtifactProposalsStandardPlanExitAndCodexPlanReview(t *testing.T) {
 			},
 		},
 		Gate: func(_ context.Context, req runtime.ToolGateRequest) (runtime.ToolGateResult, error) {
-			if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
+			if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW {
 				gatedPlan = req.Plan
 				return runtime.ToolGateResult{Allowed: true, PlanApproved: true}, nil
 			}
@@ -1438,7 +1512,6 @@ func TestACPArtifactProposalsStandardPlanExitAndCodexPlanReview(t *testing.T) {
 	}
 	defer acpSess.Close()
 
-	// 1. Antigravity non-blocking write_file + edit_file (sidecar fallback + out-of-workspace brainDir) + walkthrough.md + widget.html filter.
 	if err := acpSess.StartTurn(ctx, runtime.TurnInput{RunID: "r_agy", Prompt: "antigravity_artifacts"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1468,7 +1541,6 @@ agyLoop:
 		t.Fatalf("expected walkthrough.md to emit RequestReview=false inline deliverable, got %+v", agyPlans[2])
 	}
 
-	// 2. Standard ACP blocking exit_plan_mode via session/request_permission -> Gate(PLAN_REVIEW).
 	if err := acpSess.StartTurn(ctx, runtime.TurnInput{RunID: "r_exit", Prompt: "acp_exit_plan_mode"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1480,12 +1552,11 @@ agyLoop:
 		t.Fatalf("expected allow_plan selected on plan approval, got %v", msgs)
 	}
 
-	// 3. Codex item/completed type="plan" -> emits EventPlanProposed with RequestReview=true.
 	cxDrv := codex.NewDriver("")
 	cxSess, err := cxDrv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cx_plan",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "s_cx_plan",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "codex",
 			Driver:     "codex",
 			BinaryPath: exe,
@@ -1534,9 +1605,9 @@ func TestACPAndClaudeBackgroundTasksAndOutOfTurnWakeups(t *testing.T) {
 	acpDrv.PostPromptMergeWindow = 80 * time.Millisecond
 	acpDrv.OutOfTurnDebounce = 80 * time.Millisecond
 	acpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_acp_bg",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "th_acp_bg",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "antigravity",
 			Driver:     "acp",
 			AcpFlavor:  "antigravity",
@@ -1577,10 +1648,10 @@ turn1Loop:
 
 	var sawDaemon, sawAwaitedCmd bool
 	for _, b := range turn1Bg {
-		if b.TaskID == "tc_daemon" && b.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !b.BackgroundAwaited {
+		if b.TaskID == "tc_daemon" && b.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !b.BackgroundAwaited {
 			sawDaemon = true
 		}
-		if b.TaskID == "tc_e2e" && b.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND && b.BackgroundAwaited && b.Command == "make e2e" {
+		if b.TaskID == "tc_e2e" && b.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND && b.BackgroundAwaited && b.Command == "make e2e" {
 			sawAwaitedCmd = true
 		}
 	}
@@ -1597,7 +1668,7 @@ wakeLoop:
 		case <-timeout:
 			t.Fatal("timed out waiting for ACP out-of-turn wakeup settlement")
 		case ev := <-acpSess.Events():
-			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "tc_e2e" && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "tc_e2e" && ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
 				e2eSettled = true
 			}
 			if ev.Kind == runtime.EventAssistantMessage || ev.Kind == runtime.EventAssistantDelta {
@@ -1616,9 +1687,9 @@ wakeLoop:
 	bgOutPath := filepath.Join(t.TempDir(), "claude_bg.out")
 	clDrv := claude.NewDriver("")
 	clSess, err := clDrv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cl_bg",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "th_cl_bg",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "claude",
 			Driver:     "claude",
 			BinaryPath: exe,
@@ -1647,7 +1718,7 @@ wakeLoop:
 		case <-timeoutCl:
 			t.Fatalf("timed out waiting for Claude background continuation (turns=%d)", claudeTurns)
 		case ev := <-clSess.Events():
-			if ev.Kind == runtime.EventBackgroundTask && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+			if ev.Kind == runtime.EventBackgroundTask && ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
 				cp := ev
 				claudeBgCompleted = &cp
 			}
@@ -1678,9 +1749,9 @@ func TestCrossProviderDeepBackgroundAdaptations(t *testing.T) {
 	clOutFile := filepath.Join(t.TempDir(), "cl_live.out")
 	clStopRec := filepath.Join(t.TempDir(), "cl_stop.rec")
 	clSess, err := claude.NewDriver("").StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_cl_deep",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "th_cl_deep",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "claude",
 			Driver:     "claude",
 			BinaryPath: exe,
@@ -1716,11 +1787,11 @@ func TestCrossProviderDeepBackgroundAdaptations(t *testing.T) {
 				if ev.TaskID == "ctask_stop" && strings.Contains(ev.Output, "collecting 42 items...") {
 					sawLiveTail = true
 				}
-				if ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+				if ev.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 						sawSchedRunning = true
 					}
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
 						sawSchedSettled = true
 					}
 				}
@@ -1750,7 +1821,7 @@ clStopLoop:
 		case <-stopWait:
 			t.Fatal("timed out waiting for Claude STOPPED event")
 		case ev := <-clSess.Events():
-			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "ctask_stop" && ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
+			if ev.Kind == runtime.EventBackgroundTask && ev.TaskID == "ctask_stop" && ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED {
 				sawClaudeStopped = true
 				break clStopLoop
 			}
@@ -1773,10 +1844,10 @@ clStopLoop:
 	// 2. Codex app-server: resume backgroundTerminals/list + DAEMON promotion + real processId terminate + collab subagents:
 	cxTermRec := filepath.Join(t.TempDir(), "cx_term.rec")
 	cxSess, err := codex.NewDriver("").StartSession(ctx, runtime.StartSpec{
-		ThreadID:     "th_cx_deep",
+		SessionID:    "th_cx_deep",
 		Workdir:      t.TempDir(),
 		ResumeCursor: "cx_existing_thread",
-		Instance: &threadv2.ProviderInstanceConfig{
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "codex",
 			Driver:     "codex",
 			BinaryPath: exe,
@@ -1805,17 +1876,17 @@ cxDeepLoop:
 			t.Fatal("timed out waiting for Codex deep background turn")
 		case ev := <-cxSess.Events():
 			if ev.Kind == runtime.EventBackgroundTask {
-				if ev.TaskID == "pty_resumed_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
+				if ev.TaskID == "pty_resumed_1" && ev.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON {
 					sawResumedPty = true
 				}
-				if ev.TaskID == "cmd_dev_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !ev.BackgroundAwaited && strings.Contains(ev.Output, ":5173") {
+				if ev.TaskID == "cmd_dev_1" && ev.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON && !ev.BackgroundAwaited && strings.Contains(ev.Output, ":5173") {
 					sawPromotedDaemon = true
 				}
-				if ev.TaskID == "sub_cx_1" && ev.BackgroundKind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT {
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+				if ev.TaskID == "sub_cx_1" && ev.BackgroundKind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 						sawSubRunning = true
 					}
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
 						sawSubCompleted = true
 					}
 				}
@@ -1844,9 +1915,9 @@ cxDeepLoop:
 	acpDrv.OutOfTurnDebounce = 80 * time.Millisecond
 	acpDrv.OutOfTurnToolWait = 150 * time.Millisecond
 	cpSess, err := acpDrv.StartSession(ctx, runtime.StartSpec{
-		ThreadID: "th_acp_deep",
-		Workdir:  t.TempDir(),
-		Instance: &threadv2.ProviderInstanceConfig{
+		SessionID: "th_acp_deep",
+		Workdir:   t.TempDir(),
+		Instance: &sessionv1.ProviderInstanceConfig{
 			InstanceId: "copilot",
 			Driver:     "acp",
 			AcpFlavor:  "copilot",
@@ -1892,18 +1963,18 @@ cxDeepLoop:
 			}
 			if ev.Kind == runtime.EventBackgroundTask {
 				if ev.TaskID == "tc_async_launch" {
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 						sawAsyncRunning = true
 					}
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED {
 						sawAsyncSettled = true
 					}
 				}
 				if ev.TaskID == "cp_agent_9" {
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
 						sawCopilotSubRunning = true
 					}
-					if ev.BackgroundStatus == threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED && strings.Contains(ev.Text, "0 vulnerabilities") {
+					if ev.BackgroundStatus == sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED && strings.Contains(ev.Text, "0 vulnerabilities") {
 						sawCopilotSubDone = true
 					}
 				}

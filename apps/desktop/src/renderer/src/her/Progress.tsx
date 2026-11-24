@@ -603,9 +603,7 @@ function AgentStep({ step: s, end }: { step: Step; end: boolean }): ReactNode {
       return s.items.length === 1 ? (
         <WorkLine item={s.items[0]} />
       ) : (
-        <ToolFold id={s.key} summary={workText(s.items)} running={s.items.some(atWorkNow)}>
-          {s.items.map((it) => <WorkLine key={it.key} item={it} />)}
-        </ToolFold>
+        <ToolFold id={s.key} summary={workText(s.items)} running={s.items.some(atWorkNow)} items={s.items} keyOf={workKey} row={(it) => <WorkLine item={it} />} />
       );
     case "text":
       return <AgentText text={s.text} end={end} at={new Date(s.ts)} live={s.live} />;
@@ -620,6 +618,7 @@ function AgentStep({ step: s, end }: { step: Step; end: boolean }): ReactNode {
   }
 }
 
+const workKey = (it: WorkItem) => it.key;
 const atWorkNow = (it: WorkItem) => (it.kind === "thinking" ? it.live : it.tool.state === "running" || it.tool.state === "pending" || it.tool.state === "streaming");
 
 /** A thought or a call on its line (ToolLine): a thought opens to its words, a call to its output. */

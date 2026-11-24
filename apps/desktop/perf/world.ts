@@ -6,8 +6,9 @@ import {
 } from "@hermesh/proto/local";
 import { AgentStatusSchema, MachineStatusSchema } from "@hermesh/proto/machine";
 import {
-  FailureKind, SessionEventSchema, SessionSchema, SessionStatus,
-  type Session, type SessionEvent,
+  ActorKind, ActorSchema, FailureKind, RunSchema, RunStatus,
+  SessionProjectionSchema, SessionSchema, SessionStatus, TurnItemKind, TurnItemSchema,
+  type Run, type Session, type SessionProjection, type TurnItem,
 } from "@hermesh/proto/session";
 
 // A heavy owner's world, the same on every run: a few machines and grants,
@@ -20,8 +21,10 @@ export type UsageDay = { date: string; agent: string; inputTokens: bigint; outpu
 export const sizes = { sessions: 400, running: 10, waiting: 2, failed: 3, archived: 40, bigTurns: 40, callsPerTurn: 30 };
 
 /** Ids of the sessions the benchmark opens. */
-export const ids = { bigIdle: "s-big-idle", bigLive: "s-big-live", smallA: "s-0100", smallB: "s-0101" };
-export const titles = { bigIdle: "重构会话同步层（长）", bigLive: "迁移构建系统（进行中）", smallA: "会话 100", smallB: "会话 101" };
+export const ids = { bigIdle: "s-big-idle", bigLive: "s-big-live", smallA: "s-0100", smallB: "s-0101", manyTools: "s-many-tools" };
+export const titles = { bigIdle: "重构会话同步层（长）", bigLive: "迁移构建系统（进行中）", smallA: "会话 100", smallB: "会话 101", manyTools: "一轮几百步工具" };
+/** How many tool calls the one turn of the many-tools session makes in a row, with nothing said between them. */
+export const manyToolCalls = 600;
 
 /** Deterministic random numbers (mulberry32). */
 export function rng(seed: number) {
@@ -45,7 +48,7 @@ export type World = {
   projects: Project[];
   devices: Device[];
   sessions: Map<string, Session>;
-  events: Map<string, SessionEvent[]>;
+  projections: Map<string, SessionProjection>;
   usage: UsageDay[];
 };
 
@@ -99,18 +102,18 @@ export function world(now = Date.now()): World {
   });
 
   const sessions = new Map<string, Session>();
-  const events = new Map<string, SessionEvent[]>();
+  const projections = new Map<string, SessionProjection>();
   const verbs = ["修复", "重构", "补测试：", "调查", "优化", "实现", "迁移", "清理"];
   const things = ["登录流程", "会话列表分页", "构建缓存", "WebSocket 重连", "用量统计", "配对码校验", "日志轮转", "通知去重", "暗色模式", "导出 CSV"];
   for (let i = 0; i < sizes.sessions; i++) {
     const id = `s-${String(i).padStart(4, "0")}`;
     const project = projects[i % projects.length];
-    let status = SessionStatus.IDLE;
+    let st = SessionStatus.IDLE;
     let updated = now - (i / sizes.sessions) * 60 * day - r() * 3 * 3600_000;
-    if (i < sizes.running) status = i % 5 === 4 ? SessionStatus.PREPARING : SessionStatus.RUNNING;
-    else if (i < sizes.running + sizes.waiting) status = SessionStatus.WAITING_INPUT;
-    else if (i < sizes.running + sizes.waiting + sizes.failed) status = i % 2 ? SessionStatus.CRASHED : SessionStatus.IDLE;
-    else if (i >= sizes.sessions - sizes.archived) status = SessionStatus.ARCHIVED;
+    if (i < sizes.running) st = i % 5 === 4 ? SessionStatus.PREPARING : SessionStatus.RUNNING;
+    else if (i < sizes.running + sizes.waiting) st = SessionStatus.WAITING_INPUT;
+    else if (i < sizes.running + sizes.waiting + sizes.failed) st = i % 2 ? SessionStatus.CRASHED : SessionStatus.IDLE;
+    else if (i >= sizes.sessions - sizes.archived) st = SessionStatus.ARCHIVED;
     const live = i < sizes.running + sizes.waiting;
     if (live) updated = now - r() * 5 * minute;
     const created = updated - (1 + r() * 30) * minute;
@@ -123,7 +126,7 @@ export function world(now = Date.now()): World {
         machineId: project.machineId,
         projectId: project.projectId,
         agent: pick(agents),
-        status,
+        status: st,
         createdBy: clients[i % clients.length].clientId,
         title: i === 100 ? titles.smallA : i === 101 ? titles.smallB : `${pick(verbs)}${pick(things)} #${i}`,
         branch: `hermesh/${id}`,
@@ -138,7 +141,7 @@ export function world(now = Date.now()): World {
           turnStartedAt: live ? ts(now - r() * 20 * minute) : undefined,
           lastFailure: failed ? { kind: i % 2 ? FailureKind.AGENT_CRASHED : FailureKind.RATE_LIMIT, message: "agent process exited unexpectedly: exit status 1" } : undefined,
           pendingQuestion:
-            status === SessionStatus.WAITING_INPUT
+            st === SessionStatus.WAITING_INPUT
               ? {
                   questionId: `q-${id}`,
                   turn: turns + 1,
@@ -152,38 +155,56 @@ export function world(now = Date.now()): World {
     );
   }
   const big = (id: string, title: string, running: boolean) => {
-    const evs = conversation(rng(id.length * 7), sizes.bigTurns, sizes.callsPerTurn, now - 2 * day, running);
-    const last = evs.at(-1)!;
-    sessions.set(
-      id,
-      create(SessionSchema, {
-        sessionId: id,
-        machineId: "m-local",
-        projectId: "hermesh",
-        agent: "claude",
-        status: running ? SessionStatus.RUNNING : SessionStatus.IDLE,
-        createdBy: "c-0",
-        title,
-        createdAt: ts(now - 2 * day),
-        updatedAt: ts(running ? now : now - 3 * minute),
-        progress: {
-          turnCount: running ? sizes.bigTurns - 1 : sizes.bigTurns,
-          lastEventSeq: last.seq,
-          diffStat: { filesChanged: 42, insertions: 1830, deletions: 911 },
-          usage: { inputTokens: 18_000_000n, outputTokens: 1_200_000n, costUsd: 31.5 },
-          turnStartedAt: running ? ts(now - 4 * minute) : undefined,
-        },
-      }),
-    );
-    events.set(id, evs);
+    const s = create(SessionSchema, {
+      sessionId: id,
+      machineId: "m-local",
+      projectId: "hermesh",
+      agent: "claude",
+      status: running ? SessionStatus.RUNNING : SessionStatus.IDLE,
+      activeRunId: running ? `r-${sizes.bigTurns}` : "",
+      createdBy: "c-0",
+      title,
+      createdAt: ts(now - 2 * day),
+      updatedAt: ts(running ? now : now - 3 * minute),
+      progress: {
+        turnCount: running ? sizes.bigTurns - 1 : sizes.bigTurns,
+        lastEventSeq: 0n,
+        diffStat: { filesChanged: 42, insertions: 1830, deletions: 911 },
+        usage: { inputTokens: 18_000_000n, outputTokens: 1_200_000n, costUsd: 31.5 },
+        turnStartedAt: running ? ts(now - 4 * minute) : undefined,
+      },
+    });
+    const proj = conversation(s, rng(id.length * 7), sizes.bigTurns, sizes.callsPerTurn, now - 2 * day, running);
+    s.progress!.lastEventSeq = proj.items.at(-1)?.seq ?? 0n;
+    sessions.set(id, s);
+    projections.set(id, proj);
   };
   for (const s of sessions.values()) {
-    const evs = smallConversation(s);
-    events.set(s.sessionId, evs);
-    s.progress!.lastEventSeq = evs.at(-1)!.seq;
+    const proj = smallConversation(s);
+    projections.set(s.sessionId, proj);
+    s.progress!.lastEventSeq = proj.items.at(-1)?.seq ?? 0n;
   }
   big(ids.bigIdle, titles.bigIdle, false);
   big(ids.bigLive, titles.bigLive, true);
+  {
+    // One turn of hundreds of tool calls in a row (one folded group), each with output of a line or a page.
+    const s = create(SessionSchema, {
+      sessionId: ids.manyTools,
+      machineId: "m-local",
+      projectId: "hermesh",
+      agent: "codex",
+      status: SessionStatus.IDLE,
+      createdBy: "owner",
+      title: titles.manyTools,
+      createdAt: ts(now - 30 * minute),
+      updatedAt: ts(now),
+      progress: { turnCount: 1, lastEventSeq: 0n },
+    });
+    const proj = manyTools(s, rng(7), manyToolCalls, now - 30 * minute);
+    s.progress!.lastEventSeq = proj.items.at(-1)!.seq;
+    sessions.set(ids.manyTools, s);
+    projections.set(ids.manyTools, proj);
+  }
 
   const usage: UsageDay[] = [];
   for (let d = 0; d < 371; d++) {
@@ -194,7 +215,7 @@ export function world(now = Date.now()): World {
       usage.push({ date: key, agent, inputTokens: BigInt(Math.floor(r() * 5e6)), outputTokens: BigInt(Math.floor(r() * 4e5)), sessions: 1 + Math.floor(r() * 9) });
     }
   }
-  return { status, machines, clients, projects, devices, sessions, events, usage };
+  return { status, machines, clients, projects, devices, sessions, projections, usage };
 }
 
 const reply = (r: () => number, turn: number) =>
@@ -220,45 +241,146 @@ const reply = (r: () => number, turn: number) =>
   ].join("\n");
 
 /** A long conversation: turns of a message, many tool calls with output, a reply; the last turn still going when running. */
-export function conversation(r: () => number, turns: number, calls: number, start: number, running: boolean): SessionEvent[] {
-  const out: SessionEvent[] = [];
+export function conversation(session: Session, r: () => number, turns: number, calls: number, start: number, running: boolean): SessionProjection {
+  const runs: Run[] = [];
+  const items: TurnItem[] = [];
   let seq = 0n;
   let t = start;
-  const add = (kind: MessageInitShape<typeof SessionEventSchema>["kind"]) => {
+  const author = create(ActorSchema, { kind: ActorKind.EXTERNAL_AGENT, id: session.createdBy });
+  const add = (runId: string, partial: MessageInitShape<typeof TurnItemSchema>) => {
     t += 2000 + r() * 8000;
-    out.push(create(SessionEventSchema, { seq: ++seq, ts: ts(t), turnId: "t", kind }));
+    const itemSeq = ++seq;
+    items.push(
+      create(TurnItemSchema, {
+        itemId: `i-${session.sessionId}-${itemSeq}`,
+        sessionId: session.sessionId,
+        runId,
+        seq: itemSeq,
+        createdAt: ts(t),
+        updatedAt: ts(t),
+        ...partial,
+      }),
+    );
   };
   const kinds = [
-    { kind: "read", name: "Read", summary: () => `Read packages/core/src/file${Math.floor(r() * 90)}.ts` },
-    { kind: "search", name: "Grep", summary: () => `Grep "mergeSessions" in packages/` },
-    { kind: "edit", name: "Edit", summary: () => `Edit packages/core/src/sessions.ts` },
-    { kind: "shell", name: "Bash", summary: () => `Bash pnpm --filter @hermesh/core test -- --run sessions` },
+    { name: "Read", summary: () => `Read packages/core/src/file${Math.floor(r() * 90)}.ts` },
+    { name: "Grep", summary: () => `Grep "mergeSessions" in packages/` },
+    { name: "Edit", summary: () => `Edit packages/core/src/sessions.ts` },
+    { name: "Bash", summary: () => `pnpm --filter @hermesh/core test -- --run sessions` },
   ];
   for (let turn = 1; turn <= turns; turn++) {
-    add({ case: "turnStarted", value: { turn } });
-    add({ case: "userMessage", value: { text: `第 ${turn} 轮：继续把会话同步层的边界情况处理完，顺便把测试补齐。` } });
-    add({ case: "agentMessage", value: { text: "好的，我先读一下相关代码。" } });
+    const runId = `r-${turn}`;
     const last = running && turn === turns;
+    const prompt = `第 ${turn} 轮：继续把会话同步层的边界情况处理完，顺便把测试补齐。`;
+    const runStart = t + 1000;
+    add(runId, { kind: TurnItemKind.USER_MESSAGE, actor: author, text: prompt, status: "completed" });
+    add(runId, { kind: TurnItemKind.ASSISTANT_MESSAGE, text: "好的，我先读一下相关代码。", status: "completed" });
     for (let c = 0; c < calls; c++) {
       const k = kinds[Math.floor(r() * kinds.length)];
-      const callId = `call-${turn}-${c}`;
-      add({ case: "toolCall", value: { callId, kind: k.kind, name: k.name, summary: k.summary() } });
-      if (last && c === calls - 1) break;
-      add({ case: "toolResult", value: { callId, summary: `ok ${Math.floor(r() * 1e6)}\n`.repeat(1 + Math.floor(r() * 8)), isError: r() < 0.03 } });
-      if (c % 10 === 9) add({ case: "agentMessage", value: { text: `已经处理了 ${c + 1} 处，继续。` } });
+      const stillRunning = last && c === calls - 1;
+      const out = stillRunning ? "" : `ok ${Math.floor(r() * 1e6)}\n`.repeat(1 + Math.floor(r() * 8));
+      if (k.name === "Bash") {
+        add(runId, {
+          kind: TurnItemKind.COMMAND_EXECUTION,
+          command: k.summary(),
+          output: out,
+          exitCode: !stillRunning && r() < 0.03 ? 1 : 0,
+          status: stillRunning ? "running" : r() < 0.03 ? "failed" : "completed",
+        });
+      } else {
+        add(runId, {
+          kind: TurnItemKind.TOOL_CALL,
+          toolName: k.name,
+          text: k.summary(),
+          output: out,
+          status: stillRunning ? "running" : r() < 0.03 ? "failed" : "completed",
+        });
+      }
+      if (!stillRunning && c % 10 === 9) {
+        add(runId, { kind: TurnItemKind.ASSISTANT_MESSAGE, text: `已经处理了 ${c + 1} 处，继续。`, status: "completed" });
+      }
     }
-    if (last) break;
-    add({ case: "agentMessage", value: { text: reply(r, turn) } });
-    add({
-      case: "turnCompleted",
-      value: { turn, isError: false, usage: { inputTokens: 400_000n, outputTokens: 30_000n }, diffStat: { filesChanged: 3, insertions: 40, deletions: 12 } },
-    });
+    if (!last) {
+      add(runId, { kind: TurnItemKind.ASSISTANT_MESSAGE, text: reply(r, turn), status: "completed" });
+    }
+    runs.push(
+      create(RunSchema, {
+        runId,
+        sessionId: session.sessionId,
+        ordinal: turn,
+        status: last ? RunStatus.RUNNING : RunStatus.COMPLETED,
+        author,
+        prompt,
+        createdAt: ts(runStart),
+        startedAt: ts(runStart),
+        completedAt: last ? undefined : ts(t),
+      }),
+    );
   }
-  return out;
+  return create(SessionProjectionSchema, { session, runs, items });
 }
 
-/** Events of a session not built in: a short conversation made from its id. */
-export function smallConversation(s: Session): SessionEvent[] {
+/** One turn of `calls` tool calls in a row, nothing said between them: reads, searches, edits and commands, outputs of 1 to 60 lines. */
+export function manyTools(session: Session, r: () => number, calls: number, start: number): SessionProjection {
+  const items: TurnItem[] = [];
+  let seq = 0n;
+  let t = start;
+  const runId = "r-1";
+  const author = create(ActorSchema, { kind: ActorKind.OWNER, id: "owner" });
+  const add = (partial: MessageInitShape<typeof TurnItemSchema>) => {
+    t += 200 + r() * 1500;
+    const itemSeq = ++seq;
+    items.push(
+      create(TurnItemSchema, {
+        itemId: `many-${itemSeq}`,
+        sessionId: session.sessionId,
+        runId,
+        seq: itemSeq,
+        createdAt: ts(t),
+        updatedAt: ts(t),
+        ...partial,
+      }),
+    );
+  };
+  const prompt = "把整个仓库的日志调用都换成结构化日志，测试全部跑通。";
+  add({ kind: TurnItemKind.USER_MESSAGE, actor: author, text: prompt, status: "completed" });
+  add({ kind: TurnItemKind.ASSISTANT_MESSAGE, text: "好的，我先把所有调用点找出来，再一处一处改。", status: "completed" });
+  const kinds = [
+    { kind: "read", name: "Read", summary: () => `internal/pkg${Math.floor(r() * 40)}/file${Math.floor(r() * 90)}.go` },
+    { kind: "search", name: "Grep", summary: () => `"log.Printf" in internal/pkg${Math.floor(r() * 40)}` },
+    { kind: "edit", name: "Edit", summary: () => `internal/pkg${Math.floor(r() * 40)}/file${Math.floor(r() * 90)}.go` },
+    { kind: "shell", name: "Bash", summary: () => `go test ./internal/pkg${Math.floor(r() * 40)}/... -run Test${Math.floor(r() * 300)} -count=1` },
+  ];
+  for (let c = 0; c < calls; c++) {
+    const k = kinds[Math.floor(r() * kinds.length)];
+    const lines = 1 + Math.floor(r() * r() * 60);
+    const out = Array.from({ length: lines }, (_, i) => `${i + 1}\tlog.Printf("handled %d of %s", n, ${Math.floor(r() * 1e6)})`).join("\n");
+    const isErr = r() < 0.03;
+    if (k.kind === "shell") {
+      add({ kind: TurnItemKind.COMMAND_EXECUTION, toolName: "Bash", command: k.summary(), output: out, exitCode: isErr ? 1 : 0, status: isErr ? "failed" : "completed" });
+    } else {
+      add({ kind: TurnItemKind.TOOL_CALL, toolName: k.name, filePath: k.summary(), output: out, exitCode: isErr ? 1 : 0, status: isErr ? "failed" : "completed" });
+    }
+  }
+  add({ kind: TurnItemKind.ASSISTANT_MESSAGE, text: `改完了：${calls} 步之后，所有调用点都换成了 slog，测试全部通过。`, status: "completed" });
+  const runs: Run[] = [
+    create(RunSchema, {
+      runId,
+      sessionId: session.sessionId,
+      ordinal: 1,
+      status: RunStatus.COMPLETED,
+      author,
+      prompt,
+      createdAt: ts(start),
+      startedAt: ts(start),
+      completedAt: ts(t),
+    }),
+  ];
+  return create(SessionProjectionSchema, { session, runs, items });
+}
+
+/** Projection of a session not built in: a short conversation made from its id. */
+export function smallConversation(s: Session): SessionProjection {
   const n = Number(s.sessionId.slice(2)) || 1;
-  return conversation(rng(n), Math.max(1, s.progress?.turnCount ?? 1), 6, Number(s.createdAt?.seconds ?? 0n) * 1000, false);
+  return conversation(s, rng(n), Math.max(1, s.progress?.turnCount ?? 1), 6, Number(s.createdAt?.seconds ?? 0n) * 1000, false);
 }

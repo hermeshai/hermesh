@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 func TestInProcessBinaryProtobufFFIUnaryAndStreamAcrossPause(t *testing.T) {
@@ -63,26 +63,26 @@ func TestInProcessBinaryProtobufFFIUnaryAndStreamAcrossPause(t *testing.T) {
 	}
 	c.CloseStream(sid)
 
-	// Verify ThreadService v2 unary & streaming procedures work over FFI too!
-	ltReq, _ := proto.Marshal(&threadv2.ListThreadsRequest{})
-	ltResBytes, errCode, errMsg := c.InvokeUnary("/hermesh.thread.v2.ThreadService/ListThreads", ltReq, 5*time.Second)
+	// Verify SessionService unary & streaming procedures work over FFI too!
+	lsReq, _ := proto.Marshal(&sessionv1.ListSessionsRequest{})
+	lsResBytes, errCode, errMsg := c.InvokeUnary("/hermesh.session.v1.SessionService/ListSessions", lsReq, 5*time.Second)
 	if errCode != "" {
-		t.Fatalf("ThreadService/ListThreads FFI failed: %s %s", errCode, errMsg)
+		t.Fatalf("SessionService/ListSessions FFI failed: %s %s", errCode, errMsg)
 	}
-	var ltRes threadv2.ListThreadsResponse
-	if err := proto.Unmarshal(ltResBytes, &ltRes); err != nil {
-		t.Fatalf("unmarshal ListThreadsResponse: %v", err)
+	var lsRes sessionv1.ListSessionsResponse
+	if err := proto.Unmarshal(lsResBytes, &lsRes); err != nil {
+		t.Fatalf("unmarshal ListSessionsResponse: %v", err)
 	}
 
-	subReq, _ := proto.Marshal(&threadv2.SubscribeThreadsRequest{})
-	tsid := c.OpenStream("/hermesh.thread.v2.ThreadService/SubscribeThreads", subReq)
-	tframe, tdone, errCode, errMsg := c.NextStreamFrame(tsid)
-	if tdone || errCode != "" {
-		t.Fatalf("SubscribeThreads first frame: done=%v code=%q msg=%q", tdone, errCode, errMsg)
+	subReq, _ := proto.Marshal(&sessionv1.WatchSessionsRequest{})
+	ssid := c.OpenStream("/hermesh.session.v1.SessionService/WatchSessions", subReq)
+	sframe, sdone, errCode, errMsg := c.NextStreamFrame(ssid)
+	if sdone || errCode != "" {
+		t.Fatalf("WatchSessions first frame: done=%v code=%q msg=%q", sdone, errCode, errMsg)
 	}
-	var subSnap threadv2.SubscribeThreadsResponse
-	if err := proto.Unmarshal(tframe, &subSnap); err != nil || !subSnap.Snapshot {
-		t.Fatalf("expected SubscribeThreads initial snapshot, got %+v (err=%v)", &subSnap, err)
+	var subSnap sessionv1.WatchSessionsResponse
+	if err := proto.Unmarshal(sframe, &subSnap); err != nil || !subSnap.Snapshot {
+		t.Fatalf("expected WatchSessions initial snapshot, got %+v (err=%v)", &subSnap, err)
 	}
-	c.CloseStream(tsid)
+	c.CloseStream(ssid)
 }

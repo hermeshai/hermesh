@@ -375,8 +375,8 @@ func observeEvent(ev *sessionv1.SessionEvent, hist string) {
 	eventBytes.Add(int64(proto.Size(ev)))
 	sec := min(int(time.Since(benchStart).Seconds()), len(secEvents)-1)
 	secEvents[sec].Add(1)
-	if ev.Ts != nil {
-		lag := time.Since(ev.Ts.AsTime())
+	if ev.OccurredAt != nil {
+		lag := time.Since(ev.OccurredAt.AsTime())
 		client.Histogram(hist).Observe(lag)
 		for us := lag.Microseconds(); ; {
 			cur := secMaxLagUS[sec].Load()
@@ -390,7 +390,7 @@ func observeEvent(ev *sessionv1.SessionEvent, hist string) {
 // watch follows a session's events until its turn completes, like a
 // second viewer of its progress.
 func watch(ctx context.Context, a *agent, id string) {
-	stream, err := a.machine.Session.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: id, Follow: true})
+	stream, err := a.machine.Session.SubscribeSession(ctx, &sessionv1.SubscribeSessionRequest{SessionId: id})
 	if err != nil {
 		return
 	}
@@ -398,15 +398,15 @@ func watch(ctx context.Context, a *agent, id string) {
 	for stream.Receive() {
 		ev := stream.Msg()
 		observeEvent(ev, "watcher_event_lag")
-		if st := ev.GetStatus(); st != nil && st.Status != sessionv1.SessionStatus_SESSION_STATUS_QUEUED &&
-			st.Status != sessionv1.SessionStatus_SESSION_STATUS_PREPARING && st.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
+		if s := ev.GetSession(); s != nil && s.Status != sessionv1.SessionStatus_SESSION_STATUS_QUEUED &&
+			s.Status != sessionv1.SessionStatus_SESSION_STATUS_PREPARING && s.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
 			return
 		}
 	}
 }
 
 func awaitIdle(ctx context.Context, a *agent, id string, after uint64, t0 time.Time, phase string) (uint64, error) {
-	stream, err := a.machine.Session.StreamEvents(ctx, &sessionv1.StreamEventsRequest{SessionId: id, AfterSeq: after, Follow: true})
+	stream, err := a.machine.Session.SubscribeSession(ctx, &sessionv1.SubscribeSessionRequest{SessionId: id, AfterSeq: after})
 	if err != nil {
 		return after, err
 	}
@@ -416,8 +416,8 @@ func awaitIdle(ctx context.Context, a *agent, id string, after uint64, t0 time.T
 		ev := stream.Msg()
 		after = ev.Seq
 		observeEvent(ev, "event_lag")
-		if st := ev.GetStatus(); st != nil {
-			switch st.Status {
+		if s := ev.GetSession(); s != nil {
+			switch s.Status {
 			case sessionv1.SessionStatus_SESSION_STATUS_RUNNING:
 				if !sawRunning {
 					sawRunning = true
@@ -427,10 +427,10 @@ func awaitIdle(ctx context.Context, a *agent, id string, after uint64, t0 time.T
 				client.Histogram(phase + "_turn_total").Since(t0)
 				return after, nil
 			case sessionv1.SessionStatus_SESSION_STATUS_CRASHED, sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED:
-				return after, fmt.Errorf("session %s: %s", st.Status, st.Reason)
+				return after, fmt.Errorf("session %s: %s", s.Status, s.Error)
 			}
 		}
-		if !sawFirst && (ev.GetToolCall() != nil || ev.GetAgentMessage() != nil) {
+		if !sawFirst && (ev.Type == "item.delta" || ev.Type == "item.started" || ev.Type == "item.completed") {
 			sawFirst = true
 			client.Histogram(phase + "_first_event").Since(t0)
 		}
@@ -453,8 +453,12 @@ func load(ctx context.Context, agents []*agent, r *result, onHalf func()) time.D
 			for i := range jobs {
 				a := agents[i%len(agents)]
 				t0 := time.Now()
-				res, err := a.machine.Session.StartSession(ctx, &sessionv1.StartSessionRequest{ProjectId: "bench", Agent: "codex",
-					Prompt: fmt.Sprintf("bench task %d", i), IdempotencyKey: fmt.Sprintf("bench-%d", i)})
+				res, err := a.machine.Session.StartSession(ctx, &sessionv1.StartSessionRequest{
+					ProjectId:      "bench",
+					ModelSelection: &sessionv1.ModelSelection{InstanceId: "codex"},
+					InitialPrompt:  fmt.Sprintf("bench task %d", i),
+					CommandId:      fmt.Sprintf("bench-%d", i),
+				})
 				client.Histogram("start_rpc").Since(t0)
 				if err != nil {
 					r.fail(err)
@@ -476,7 +480,10 @@ func load(ctx context.Context, agents []*agent, r *result, onHalf func()) time.D
 				ok := true
 				for t := 2; t <= *flagTurns; t++ {
 					t1 := time.Now()
-					if _, err := a.machine.Session.SendMessage(ctx, &sessionv1.SendMessageRequest{SessionId: id, Text: fmt.Sprintf("follow-up %d", t)}); err != nil {
+					if _, err := a.machine.Session.DispatchMessage(ctx, &sessionv1.DispatchMessageRequest{
+						SessionId: id,
+						Text:      fmt.Sprintf("follow-up %d", t),
+					}); err != nil {
 						r.fail(err)
 						ok = false
 						break
@@ -496,7 +503,7 @@ func load(ctx context.Context, agents []*agent, r *result, onHalf func()) time.D
 				}
 				if *flagHold == 0 {
 					t2 := time.Now()
-					a.machine.Session.ArchiveSession(ctx, &sessionv1.ArchiveSessionRequest{SessionId: id})
+					a.machine.Session.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{SessionId: id, HasArchived: true, Archived: true})
 					client.Histogram("archive_rpc").Since(t2)
 				}
 			}
@@ -773,7 +780,7 @@ func run() error {
 				defer cwg.Done()
 				defer func() { <-sem }()
 				t := time.Now()
-				if _, err := bs.a.machine.Session.ArchiveSession(ctx, &sessionv1.ArchiveSessionRequest{SessionId: bs.id}); err != nil {
+				if _, err := bs.a.machine.Session.UpdateSession(ctx, &sessionv1.UpdateSessionRequest{SessionId: bs.id, HasArchived: true, Archived: true}); err != nil {
 					r.fail(fmt.Errorf("archive: %w", err))
 					return
 				}

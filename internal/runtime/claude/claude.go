@@ -1,9 +1,10 @@
-// Package claude implements the long-lived Hermesh v2 runtime.Driver for Claude
+// Package claude implements the long-lived Hermesh runtime.Driver for Claude
 // Code over its bidirectional stream-json stdio control protocol.
 package claude
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -22,8 +23,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
-	"github.com/hermeshai/hermesh/internal/provider"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 	"github.com/hermeshai/hermesh/internal/runtime"
 )
 
@@ -35,9 +35,10 @@ type Driver struct {
 func NewDriver(pathEnv string) *Driver { return &Driver{PathEnv: pathEnv} }
 
 func (d *Driver) Kind() string { return "claude" }
+func (d *Driver) Name() string { return "claude" }
 
-func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
-	return &threadv2.ProviderCapabilities{
+func (d *Driver) Capabilities(_ string) *sessionv1.ProviderCapabilities {
+	return &sessionv1.ProviderCapabilities{
 		InSessionModelSwitch:  true,
 		InSessionOptionSwitch: false, // effort flag requires fast --resume cycle
 		InSessionModeSwitch:   true,
@@ -58,9 +59,21 @@ func (d *Driver) Capabilities(_ string) *threadv2.ProviderCapabilities {
 	}
 }
 
-var versionRE = regexp.MustCompile(`\d+\.\d+\.\d+`)
+var (
+	versionRE = regexp.MustCompile(`\d+\.\d+\.\d+`)
+	efforts   = []string{"low", "medium", "high", "xhigh", "max"}
+)
 
-func (d *Driver) resolveBinary(cfg *threadv2.ProviderInstanceConfig) string {
+// Models are the aliases Claude Code takes for its latest models, listed
+// when it does not report which it offers.
+var Models = []runtime.Model{
+	{ID: "fable", Name: "Fable", Efforts: efforts},
+	{ID: "opus", Name: "Opus", Efforts: efforts},
+	{ID: "sonnet", Name: "Sonnet", Efforts: efforts},
+	{ID: "haiku", Name: "Haiku", Efforts: efforts},
+}
+
+func (d *Driver) resolveBinary(cfg *sessionv1.ProviderInstanceConfig) string {
 	if cfg != nil && cfg.BinaryPath != "" {
 		return cfg.BinaryPath
 	}
@@ -68,7 +81,7 @@ func (d *Driver) resolveBinary(cfg *threadv2.ProviderInstanceConfig) string {
 		return d.Binary
 	}
 	home, _ := os.UserHomeDir()
-	return provider.LookPath("claude", provider.SearchPath(d.PathEnv),
+	return runtime.LookPath("claude", runtime.SearchPath(d.PathEnv),
 		filepath.Join(home, ".local/bin/claude"),
 		filepath.Join(home, ".claude/local/claude"),
 		"/opt/homebrew/bin/claude",
@@ -84,7 +97,7 @@ func desktopCLI(home string) string {
 	})
 	for _, dir := range dirs {
 		bins, _ := filepath.Glob(filepath.Join(dir, "*/claude.app/Contents/MacOS/claude"))
-		if p := provider.LookPath("claude", "", bins...); p != "" {
+		if p := runtime.LookPath("claude", "", bins...); p != "" {
 			return p
 		}
 	}
@@ -100,12 +113,123 @@ func versionKey(v string) []int {
 	return k
 }
 
-func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig, _ string) runtime.ProbeResult {
+func (d *Driver) Discover(ctx context.Context) runtime.Info {
+	info := runtime.Info{Name: "claude"}
+	bin := d.resolveBinary(nil)
+	if !runtime.Exists(bin) {
+		info.Problem, info.Detail = runtime.ProblemNotFound, "claude not found"
+		if app := runtime.AppWithoutCLI("Claude.app"); app != "" && d.Binary == "" {
+			info.Problem, info.Detail = runtime.ProblemAppWithoutCLI, app
+		}
+		return info
+	}
+	info.Binary = bin
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	env := runtime.ProbeEnv(d.PathEnv)
+	out, problem, detail := runtime.Probe(ctx, env, bin, "--version")
+	if problem != runtime.ProblemNone {
+		info.Problem, info.Detail = problem, detail
+		return info
+	}
+	info.Available = true
+	info.Version = versionRE.FindString(string(out))
+	if out, problem, _ := runtime.Probe(ctx, env, bin, "auth", "status"); problem == runtime.ProblemNone {
+		var st struct {
+			LoggedIn bool `json:"loggedIn"`
+		}
+		if json.Unmarshal(out, &st) == nil {
+			info.LoggedIn = st.LoggedIn
+		}
+	}
+	if !info.LoggedIn && os.Getenv("ANTHROPIC_API_KEY") != "" {
+		info.LoggedIn = true
+	}
+	info.Models, info.ModelsState, info.ModelsAt = Models, runtime.ModelsKnown, time.Now()
+	if ms, err := listModels(ctx, env, bin); err == nil && len(ms) > 0 {
+		info.Models = ms
+	}
+	return info
+}
+
+func listModels(ctx context.Context, env []string, bin string) ([]runtime.Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	dir, err := os.MkdirTemp("", "hermesh-models-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	proc, err := runtime.StartProc(ctx, bin, []string{
+		"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+		"--settings", `{"crossSessionInbound":"refuse"}`,
+	}, dir, env)
+	if err != nil {
+		return nil, err
+	}
+	defer proc.Stop(time.Second)
+	answer := make(chan []byte, 1)
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		proc.Lines(func(b []byte) {
+			if bytes.Contains(b, []byte(`"hermesh-models"`)) {
+				select {
+				case answer <- bytes.Clone(b):
+				default:
+				}
+			}
+		})
+	}()
+	if err := proc.WriteLine([]byte(`{"type":"control_request","request_id":"hermesh-models","request":{"subtype":"initialize"}}`)); err != nil {
+		return nil, err
+	}
+	select {
+	case b := <-answer:
+		return modelsFrom(b)
+	case <-read:
+		return nil, errors.New("claude gave no models")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func modelsFrom(line []byte) ([]runtime.Model, error) {
+	var m struct {
+		Type     string
+		Response struct {
+			Subtype   string
+			RequestID string `json:"request_id"`
+			Error     string
+			Response  struct {
+				Models []struct {
+					Value, DisplayName    string
+					SupportedEffortLevels []string
+				}
+			}
+		}
+	}
+	if err := json.Unmarshal(line, &m); err != nil {
+		return nil, err
+	}
+	if m.Type != "control_response" || m.Response.RequestID != "hermesh-models" || m.Response.Subtype != "success" {
+		return nil, fmt.Errorf("claude: %s", cmp.Or(m.Response.Error, "no models"))
+	}
+	var ms []runtime.Model
+	for _, x := range m.Response.Response.Models {
+		if x.Value != "" && x.Value != "default" {
+			ms = append(ms, runtime.Model{ID: x.Value, Name: x.DisplayName, Efforts: x.SupportedEffortLevels})
+		}
+	}
+	return ms, nil
+}
+
+func (d *Driver) Probe(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, _ string) runtime.ProbeResult {
 	bin := d.resolveBinary(cfg)
-	if !provider.Exists(bin) {
+	if !runtime.Exists(bin) {
 		return runtime.ProbeResult{
 			Installed:            false,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_UNSUPPORTED,
 			CompatibilityMessage: "claude CLI not found on PATH",
 		}
 	}
@@ -116,20 +240,22 @@ func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig
 		instEnv = cfg.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv)
-	out, prob, detail := provider.Probe(pctx, env, bin, "--version")
-	if prob != provider.ProblemNone {
+	out, prob, detail := runtime.Probe(pctx, env, bin, "--version")
+	if prob != runtime.ProblemNone {
 		return runtime.ProbeResult{
 			Installed:            true,
-			Compatibility:        threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
+			Binary:               bin,
+			Compatibility:        sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_BROKEN,
 			CompatibilityMessage: detail,
 		}
 	}
 	res := runtime.ProbeResult{
 		Installed:     true,
+		Binary:        bin,
 		Version:       versionRE.FindString(string(out)),
-		Compatibility: threadv2.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
+		Compatibility: sessionv1.CompatibilityStatus_COMPATIBILITY_STATUS_SUPPORTED,
 	}
-	if authOut, authProb, _ := provider.Probe(pctx, env, bin, "auth", "status"); authProb == provider.ProblemNone {
+	if authOut, authProb, _ := runtime.Probe(pctx, env, bin, "auth", "status"); authProb == runtime.ProblemNone {
 		var st struct {
 			LoggedIn bool   `json:"loggedIn"`
 			Email    string `json:"email"`
@@ -146,9 +272,9 @@ func (d *Driver) Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig
 	return res
 }
 
-func buildArgs(spec runtime.StartSpec) []string {
+func BuildArgs(spec runtime.StartSpec) []string {
 	permMode := "default"
-	if spec.InteractionMode == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+	if spec.InteractionMode == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 		permMode = "plan"
 	}
 	var args []string
@@ -166,6 +292,11 @@ func buildArgs(spec runtime.StartSpec) []string {
 		"--permission-mode", permMode,
 		"--settings", `{"crossSessionInbound":"refuse"}`,
 	)
+	for _, dir := range spec.ReadDirs {
+		if dir != "" {
+			args = append(args, "--add-dir", dir)
+		}
+	}
 	if spec.ResumeCursor != "" {
 		args = append(args, "--resume", spec.ResumeCursor)
 	}
@@ -182,20 +313,28 @@ func buildArgs(spec runtime.StartSpec) []string {
 			args = append(args, "--settings", `{"fastMode":true}`)
 		}
 	}
+	if len(spec.MCPServers) > 0 {
+		servers := map[string]any{}
+		for _, m := range spec.MCPServers {
+			servers[m.Name] = map[string]any{"type": "stdio", "command": m.Command, "args": m.Args, "env": m.Env}
+		}
+		b, _ := json.Marshal(map[string]any{"mcpServers": servers})
+		args = append(args, "--mcp-config", string(b))
+	}
 	return args
 }
 
 func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runtime.Session, error) {
 	bin := d.resolveBinary(spec.Instance)
-	if !provider.Exists(bin) {
-		return nil, errors.New("claude CLI not found")
+	if !runtime.Exists(bin) {
+		return nil, runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_START_FAILED, "claude CLI not found")
 	}
 	var instEnv map[string]string
 	if spec.Instance != nil {
 		instEnv = spec.Instance.Env
 	}
 	env := runtime.BuildEnv(d.PathEnv, instEnv, spec.ExtraEnv)
-	proc, err := provider.StartProc(ctx, bin, buildArgs(spec), spec.Workdir, env)
+	proc, err := runtime.StartProc(ctx, bin, BuildArgs(spec), spec.Workdir, env)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +342,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 	s := &session{
 		proc:            proc,
 		spec:            spec,
-		selection:       proto.Clone(spec.Selection).(*threadv2.ModelSelection),
+		selection:       proto.Clone(spec.Selection).(*sessionv1.ModelSelection),
 		events:          make(chan runtime.Event, 256),
 		skipToolResult:  map[string]bool{},
 		asyncToolInputs: map[string]claudeAsyncInput{},
@@ -230,7 +369,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 }
 
 type claudeAsyncInput struct {
-	kind    threadv2.BackgroundTaskKind
+	kind    sessionv1.BackgroundTaskKind
 	title   string
 	command string
 }
@@ -238,7 +377,7 @@ type claudeAsyncInput struct {
 type claudeBgTask struct {
 	taskID     string
 	itemID     string
-	kind       threadv2.BackgroundTaskKind
+	kind       sessionv1.BackgroundTaskKind
 	title      string
 	command    string
 	outputFile string
@@ -256,7 +395,7 @@ func (b *claudeBgTask) stopTail() {
 }
 
 type session struct {
-	proc      *provider.Proc
+	proc      *runtime.Proc
 	spec      runtime.StartSpec
 	events    chan runtime.Event
 	alive     atomic.Bool
@@ -268,7 +407,7 @@ type session struct {
 	eventsClosed bool
 
 	mu              sync.Mutex
-	selection       *threadv2.ModelSelection
+	selection       *sessionv1.ModelSelection
 	sessionCtx      context.Context
 	sessionCancel   context.CancelFunc
 	turnCtx         context.Context
@@ -277,6 +416,7 @@ type session struct {
 	seen            int
 	msgItemID       string
 	msgUsed         bool
+	thinking        bool // a thinking block is open; only readLoop touches it
 	skipToolResult  map[string]bool
 	asyncToolInputs map[string]claudeAsyncInput // tool_use_id -> async launch metadata
 	bgTasks         map[string]*claudeBgTask    // task_id -> background task state
@@ -367,14 +507,13 @@ func (s *session) writeUserMessage(text string, atts []runtime.TurnAttachment) e
 	return err
 }
 
-func (s *session) SetSelection(_ context.Context, sel *threadv2.ModelSelection) error {
+func (s *session) SetSelection(_ context.Context, sel *sessionv1.ModelSelection) error {
 	if sel == nil {
 		return nil
 	}
 	s.mu.Lock()
 	prev := s.selection
 	s.mu.Unlock()
-	// Effort/fastMode changes require CLI restart with --resume.
 	if prev != nil {
 		if prev.Options["reasoningEffort"].GetStringValue() != sel.Options["reasoningEffort"].GetStringValue() ||
 			prev.Options["fastMode"].GetBoolValue() != sel.Options["fastMode"].GetBoolValue() {
@@ -393,14 +532,14 @@ func (s *session) SetSelection(_ context.Context, sel *threadv2.ModelSelection) 
 		return err
 	}
 	s.mu.Lock()
-	s.selection = proto.Clone(sel).(*threadv2.ModelSelection)
+	s.selection = proto.Clone(sel).(*sessionv1.ModelSelection)
 	s.mu.Unlock()
 	return nil
 }
 
-func (s *session) SetModes(_ context.Context, _ identityv1.RuntimeMode, im threadv2.InteractionMode) error {
+func (s *session) SetModes(_ context.Context, _ identityv1.RuntimeMode, im sessionv1.InteractionMode) error {
 	mode := "default"
-	if im == threadv2.InteractionMode_INTERACTION_MODE_PLAN {
+	if im == sessionv1.InteractionMode_INTERACTION_MODE_PLAN {
 		mode = "plan"
 	}
 	id := fmt.Sprintf("hermesh-mode-%d", s.reqSeq.Add(1))
@@ -471,8 +610,8 @@ func (s *session) StopBackgroundTask(ctx context.Context, taskID string) error {
 			ExitCode:            130,
 			HasExitCode:         true,
 			BackgroundKind:      bg.kind,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   true,
 		})
 		if bg.itemID != "" {
@@ -538,6 +677,7 @@ type wireLine struct {
 	Type        string `json:"type"`
 	Subtype     string `json:"subtype"`
 	SessionID   string `json:"session_id"`
+	Model       string `json:"model"`
 	TaskID      string `json:"task_id"`
 	ToolUseID   string `json:"tool_use_id"`
 	Description string `json:"description"`
@@ -592,6 +732,7 @@ func (s *session) readLoop() {
 						Kind:         runtime.EventNativeSession,
 						NativeID:     l.SessionID,
 						ResumeCursor: l.SessionID,
+						Model:        l.Model,
 					})
 				}
 			case "task_started", "task_progress", "task_notification":
@@ -611,8 +752,28 @@ func (s *session) readLoop() {
 					Text     string `json:"text"`
 					Thinking string `json:"thinking"`
 				} `json:"delta"`
+				ContentBlock struct {
+					Type string `json:"type"`
+				} `json:"content_block"`
 			}
-			if json.Unmarshal(l.Event, &ev) == nil && ev.Type == "content_block_delta" {
+			if json.Unmarshal(l.Event, &ev) != nil {
+				return
+			}
+			// A thinking block's start and stop say when the model thinks, even when its text is withheld.
+			if ev.Type == "content_block_start" && (ev.ContentBlock.Type == "thinking" || ev.ContentBlock.Type == "redacted_thinking") {
+				s.thinking = true
+				s.mu.Lock()
+				msgID := s.msgItemID
+				s.mu.Unlock()
+				s.emit(runtime.Event{Kind: runtime.EventReasoningDelta, ItemID: "rsn_" + msgID})
+			} else if ev.Type == "content_block_stop" && s.thinking {
+				s.thinking = false
+				s.mu.Lock()
+				msgID := s.msgItemID
+				s.mu.Unlock()
+				s.emit(runtime.Event{Kind: runtime.EventReasoningCompleted, ItemID: "rsn_" + msgID})
+			}
+			if ev.Type == "content_block_delta" {
 				if ev.Delta.Type == "text_delta" && ev.Delta.Text != "" {
 					s.settleScheduledWakeups()
 					s.mu.Lock()
@@ -688,18 +849,18 @@ func (s *session) readLoop() {
 							Command:  cmd,
 							FilePath: summaryPath,
 						})
-						if isAsyncLaunch && asyncMeta.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
+						if isAsyncLaunch && asyncMeta.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE && c.ID != "" {
 							schedID := "claude-schedule-" + c.ID
 							s.mu.Lock()
 							for _, prev := range s.bgTasks {
-								if prev.running && prev.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+								if prev.running && prev.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
 									prev.running = false
 								}
 							}
 							s.bgTasks[schedID] = &claudeBgTask{
 								taskID:  schedID,
 								itemID:  c.ID,
-								kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+								kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
 								title:   asyncMeta.title,
 								running: true,
 							}
@@ -709,9 +870,9 @@ func (s *session) readLoop() {
 								TaskID:              schedID,
 								ItemID:              c.ID,
 								ToolName:            asyncMeta.title,
-								BackgroundKind:      threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
-								BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-								BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+								BackgroundKind:      sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+								BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+								BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 								BackgroundAwaited:   true,
 							})
 						}
@@ -783,8 +944,8 @@ func (s *session) readLoop() {
 										ToolName:            asyncMeta.title,
 										Command:             asyncMeta.command,
 										BackgroundKind:      asyncMeta.kind,
-										BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-										BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+										BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+										BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 										BackgroundAwaited:   true,
 									})
 								} else {
@@ -793,7 +954,7 @@ func (s *session) readLoop() {
 							}
 							continue
 						}
-						kept, _ := provider.KeepOutput(text)
+						kept, _ := runtime.KeepOutput(text)
 						exit := int32(0)
 						if c.IsError {
 							exit = 1
@@ -812,7 +973,7 @@ func (s *session) readLoop() {
 			inTok := l.Usage.InputTokens + l.Usage.CacheCreate + l.Usage.CacheRead
 			s.emit(runtime.Event{
 				Kind: runtime.EventUsage,
-				Usage: &threadv2.ContextWindowUsage{
+				Usage: &sessionv1.ContextWindowUsage{
 					InputTokens:        inTok,
 					OutputTokens:       l.Usage.OutputTokens,
 					CacheReadTokens:    l.Usage.CacheRead,
@@ -830,7 +991,6 @@ func (s *session) readLoop() {
 			}
 			heldResult = nil
 			s.inTurn = false
-			// Advance msgItemID for future turns.
 			s.msgItemID = fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
 			s.msgUsed = false
 			s.mu.Unlock()
@@ -863,7 +1023,18 @@ func (s *session) emitResultLine(l wireLine) {
 		if code == "" {
 			code = l.TerminalReason
 		}
-		s.emit(runtime.Event{Kind: runtime.EventTurnFailed, ErrorCode: code, ErrorMessage: msg})
+		kind := runtime.Classify(msg)
+		if l.TerminalReason == "prompt_too_long" {
+			kind = sessionv1.FailureKind_FAILURE_KIND_CONTEXT_OVERFLOW
+		} else if s.spec.ResumeCursor != "" && runtime.IsResumeRejected(msg) {
+			kind = sessionv1.FailureKind_FAILURE_KIND_RESUME_REJECTED
+		}
+		s.emit(runtime.Event{
+			Kind:         runtime.EventTurnFailed,
+			ErrorCode:    code,
+			ErrorMessage: msg,
+			Failure:      &runtime.Failure{Kind: kind, Message: msg},
+		})
 		return
 	}
 	s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
@@ -960,8 +1131,8 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 		planID := fmt.Sprintf("plan_%d", s.itemSeq.Add(1))
 		s.emit(runtime.Event{Kind: runtime.EventPlanProposed, ItemID: planID, PlanTitle: "Implementation Plan", Text: planMD})
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
-			Plan: &threadv2.PlanReviewPayload{
+			Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_PLAN_REVIEW,
+			Plan: &sessionv1.PlanReviewPayload{
 				PlanId:   planID,
 				Title:    "Implementation Plan",
 				Markdown: planMD,
@@ -993,29 +1164,33 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 			reply(map[string]any{"behavior": "deny", "message": "Malformed AskUserQuestion payload"})
 			return
 		}
-		var qItems []*threadv2.QuestionItem
+		var qItems []*sessionv1.QuestionItem
 		for i, q := range qPayload.Questions {
 			qid := fmt.Sprintf("q_%d", i+1)
-			var opts []*threadv2.QuestionOption
+			var opts []*sessionv1.QuestionOption
 			for _, o := range q.Options {
-				opts = append(opts, &threadv2.QuestionOption{Id: o.Label, Label: o.Label, Description: o.Description})
+				opts = append(opts, &sessionv1.QuestionOption{Id: o.Label, Label: o.Label, Description: o.Description})
 			}
-			qItems = append(qItems, &threadv2.QuestionItem{
+			qItems = append(qItems, &sessionv1.QuestionItem{
 				Id:          qid,
 				Header:      q.Header,
-				Question:    q.Question,
+				Text:        q.Question,
 				Options:     opts,
 				MultiSelect: q.MultiSelect,
-				AllowCustom: true,
-				Required:    true,
+				AllowOther:  true,
+				Optional:    false,
 			})
 		}
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind:      threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
-			UserInput: &threadv2.UserInputPayload{Questions: qItems},
+			Kind:      sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT,
+			UserInput: &sessionv1.UserInputPayload{Questions: qItems},
 		})
 		if err != nil || !res.Allowed {
-			reply(map[string]any{"behavior": "deny", "message": "User declined question"})
+			msg := res.Feedback
+			if msg == "" {
+				msg = "User declined question"
+			}
+			reply(map[string]any{"behavior": "deny", "message": msg})
 			return
 		}
 		answersOut := map[string]string{}
@@ -1035,8 +1210,8 @@ func (s *session) handleControlRequest(reqID string, raw json.RawMessage) {
 	default:
 		cat, cmd, targetPath := classifyTool(cr.ToolName, cr.Input)
 		res, err := s.spec.Gate(tctx, runtime.ToolGateRequest{
-			Kind: threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
-			Approval: &threadv2.ToolApprovalPayload{
+			Kind: sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL,
+			Approval: &sessionv1.ToolApprovalPayload{
 				ToolCategory: cat,
 				ToolName:     cr.ToolName,
 				Command:      cmd,
@@ -1095,7 +1270,7 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			title = "Monitor"
 		}
 		return claudeAsyncInput{
-			kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 			title:   title,
 			command: strings.TrimSpace(in.Command),
 		}, true
@@ -1113,7 +1288,7 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			}
 		}
 		return claudeAsyncInput{
-			kind:  threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
+			kind:  sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE,
 			title: title,
 		}, true
 	case "Bash":
@@ -1125,7 +1300,7 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			title = strings.TrimSpace(in.Command)
 		}
 		return claudeAsyncInput{
-			kind:    threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
+			kind:    sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND,
 			title:   title,
 			command: strings.TrimSpace(in.Command),
 		}, true
@@ -1141,7 +1316,7 @@ func detectClaudeAsyncTool(name string, raw json.RawMessage) (claudeAsyncInput, 
 			title = name
 		}
 		return claudeAsyncInput{
-			kind:  threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
+			kind:  sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT,
 			title: title,
 		}, true
 	default:
@@ -1157,7 +1332,7 @@ func (s *session) settleScheduledWakeups() {
 	}
 	var settled []*claudeBgTask
 	for _, bg := range s.bgTasks {
-		if bg.running && bg.kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
+		if bg.running && bg.kind == sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SCHEDULE {
 			bg.running = false
 			settled = append(settled, bg)
 		}
@@ -1170,8 +1345,8 @@ func (s *session) settleScheduledWakeups() {
 			ItemID:              bg.itemID,
 			ToolName:            bg.title,
 			BackgroundKind:      bg.kind,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   true,
 			HasExitCode:         true,
 			ExitCode:            0,
@@ -1196,9 +1371,9 @@ func (s *session) handleBackgroundTasksChanged(l wireLine) {
 		if tid == "" || s.bgTasks[tid] != nil {
 			continue
 		}
-		kind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+		kind := sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
 		if strings.Contains(t.TaskType, "agent") {
-			kind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
+			kind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
 		}
 		desc := strings.TrimSpace(t.Description)
 		bg := &claudeBgTask{
@@ -1215,8 +1390,8 @@ func (s *session) handleBackgroundTasksChanged(l wireLine) {
 			ToolName:            desc,
 			Command:             desc,
 			BackgroundKind:      kind,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   true,
 		})
 	}
@@ -1263,8 +1438,8 @@ func (s *session) startClaudeOutputTailer(bg *claudeBgTask) {
 					Command:             bg.command,
 					Output:              tail,
 					BackgroundKind:      bg.kind,
-					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 					BackgroundAwaited:   true,
 				}
 				s.mu.Unlock()
@@ -1279,9 +1454,9 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 	if taskID == "" {
 		return
 	}
-	kind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+	kind := sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
 	if strings.Contains(l.TaskType, "agent") {
-		kind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
+		kind = sessionv1.BackgroundTaskKind_BACKGROUND_TASK_KIND_SUBAGENT
 	}
 	outFile := strings.TrimSpace(l.OutputFile)
 	outTail := readOutputFileTail(outFile, 16384)
@@ -1358,19 +1533,19 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			Output:              curTail,
 			Text:                strings.TrimSpace(l.Summary),
 			BackgroundKind:      kind,
-			BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundStatus:    sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   true,
 		})
 	case "task_notification":
-		bgStatus := threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
+		bgStatus := sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED
 		exitCode := int32(0)
 		switch l.Status {
 		case "failed":
-			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
+			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_FAILED
 			exitCode = 1
 		case "stopped", "cancelled":
-			bgStatus = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+			bgStatus = sessionv1.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
 			exitCode = 130
 		}
 		if curTail == "" {
@@ -1388,7 +1563,7 @@ func (s *session) handleTaskSystemLine(l wireLine) {
 			HasExitCode:         true,
 			BackgroundKind:      kind,
 			BackgroundStatus:    bgStatus,
-			BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+			BackgroundStopScope: sessionv1.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
 			BackgroundAwaited:   true,
 		})
 		if itemID != "" {

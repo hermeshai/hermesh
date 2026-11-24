@@ -31,12 +31,12 @@ public extension Session {
         status == .crashed || (status == .idle && progress.hasLastFailure && progress.lastFailure.kind != .interrupted)
     }
 
-    var isActive: Bool { status == .queued || status == .preparing || status == .running }
+    var isActive: Bool { status == .queued || status == .preparing || status == .running || (status == .idle && activeBackgroundCount > 0) }
 
     /// A turn that the owner can interrupt.
     var isInterruptible: Bool { isActive || status == .waitingInput }
 
-    var isArchivable: Bool { status == .idle || status == .crashed }
+    var isArchivable: Bool { (status == .idle && activeBackgroundCount == 0) || status == .crashed }
 
     var updatedDate: Date { dateOf(updatedAt, set: hasUpdatedAt) ?? distantPast }
 

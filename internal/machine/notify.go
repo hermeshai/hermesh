@@ -2,6 +2,7 @@ package machine
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"maps"
 	"slices"
@@ -15,7 +16,7 @@ import (
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -25,25 +26,14 @@ import (
 // trusted device that asked for that kind (its push registration, signed by
 // its device key, which a root key certifies) and hands the ciphertext to
 // the relay for the push service. The relay never sees what it says. A
-// new session is announced too (only agents start sessions), and so is
-// what Her has for the owner while she runs here.
+// new session is announced too, and so is what Her has for the owner while
+// she runs here.
 
 // pushTarget is a verified push registration.
 type pushTarget struct {
 	keyID string
 	key   []byte
 	kinds map[string]bool
-}
-
-// noticeSession is what a notice says about its session, copied while the
-// session is locked.
-type noticeSession struct {
-	id, title, createdBy, project, agent string
-	// asker asked for the turn the notice is about; askerConv and
-	// creatorConv are where news goes for the asker and the creator.
-	asker, askerConv, creatorConv string
-	// failure is why the session crashed, for the status that says so.
-	failure *sessionv1.Failure
 }
 
 // notices keeps the push targets and the notices the relay has not taken.
@@ -100,47 +90,71 @@ func (n *Machine) acceptPushTargets(pts *relayv1.PushTargets) {
 	n.notices.mu.Unlock()
 }
 
-// sessionNotice tells the owner's devices of event e, if it is one they
-// asked for.
-func (n *Machine) sessionNotice(s noticeSession, e *sessionv1.SessionEvent) {
-	nt := &sessionv1.Notice{At: timestamppb.Now(), SessionId: s.id, Title: s.title, Project: s.project, Agent: s.agent}
-	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_QuestionAsked:
-		nt.Kind = "question"
-		nt.Question = trimQuestion(k.QuestionAsked.Question)
-	case *sessionv1.SessionEvent_TurnCompleted:
-		tc := k.TurnCompleted
-		nt.Turn = tc.Turn
-		if f := tc.Failure; f != nil {
-			if f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
-				return
-			}
-			nt.Kind = "failure"
-			nt.Failure = f.Kind
-			nt.FailureMessage, _ = provider.Truncate(f.Message, 300)
-		} else {
-			nt.Kind = "turn_done"
-			nt.DiffStat = tc.DiffStat
-		}
-	case *sessionv1.SessionEvent_Status:
-		switch k.Status.Status {
-		case sessionv1.SessionStatus_SESSION_STATUS_QUEUED: // only from Start
-			nt.Kind = "session_started"
-		case sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-			nt.Kind = "failure"
-			nt.Failure = s.failure.GetKind()
-			nt.FailureMessage, _ = provider.Truncate(s.failure.GetMessage(), 300)
-		default:
+// sessionNotice tells the owner's devices of event ev, if it is one they asked for.
+func (n *Machine) sessionNotice(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
+	if sess == nil || ev == nil {
+		return
+	}
+	agent := cmp.Or(sess.Agent, sess.GetModelSelection().GetInstanceId())
+	createdBy := cmp.Or(sess.CreatedBy, sess.GetActor().GetId())
+	nt := &sessionv1.Notice{
+		At:        timestamppb.Now(),
+		SessionId: sess.SessionId,
+		Title:     sess.Title,
+		Project:   sess.ProjectId,
+		Agent:     agent,
+	}
+	switch ev.Type {
+	case "session.created":
+		if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_QUEUED &&
+			sess.Status != sessionv1.SessionStatus_SESSION_STATUS_PREPARING &&
+			sess.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING {
 			return
 		}
-	case *sessionv1.SessionEvent_QuestionResolved:
-		n.dropWaitingNotice(s.id, "question") // answered meanwhile: nothing to ask
+		nt.Kind = "session_started"
+	case "request.created":
+		if ev.GetRequest().GetKind() != sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			return
+		}
+		q := sess.GetProgress().GetPendingQuestion()
+		if q == nil {
+			return
+		}
+		nt.Kind = "question"
+		nt.Turn = q.GetTurn()
+		nt.Question = trimQuestion(q)
+	case "request.resolved":
+		if ev.GetRequest().GetKind() == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			n.dropWaitingNotice(sess.SessionId, "question")
+		}
 		return
+	case "run.completed":
+		nt.Kind = "turn_done"
+		nt.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
+		nt.DiffStat = sess.GetProgress().GetDiffStat()
+	case "run.failed":
+		f := sess.GetProgress().GetLastFailure()
+		if f != nil && f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
+			return
+		}
+		nt.Kind = "failure"
+		nt.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
+		nt.Failure = f.GetKind()
+		nt.FailureMessage, _ = rt.Truncate(cmp.Or(f.GetMessage(), sess.GetError()), 300)
+	case "session.recovered":
+		if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+			return
+		}
+		f := sess.GetProgress().GetLastFailure()
+		nt.Kind = "failure"
+		nt.Turn = sess.GetProgress().GetTurnCount()
+		nt.Failure = f.GetKind()
+		nt.FailureMessage, _ = rt.Truncate(cmp.Or(f.GetMessage(), sess.GetError()), 300)
 	default:
 		return
 	}
-	n.notify(nt, s.id, func() {
-		nt.Grant = n.knownClients()[s.createdBy].Label
+	n.notify(nt, sess.SessionId, func() {
+		nt.Grant = n.knownClients()[createdBy].Label
 		nt.Machine = n.Name()
 	})
 }
@@ -280,13 +294,13 @@ func trimQuestion(q *sessionv1.Question) *sessionv1.Question {
 		q.Items = q.Items[:3]
 	}
 	for _, it := range q.Items {
-		it.Text, _ = provider.Truncate(it.Text, 500)
-		it.Header, _ = provider.Truncate(it.Header, 60)
+		it.Text, _ = rt.Truncate(it.Text, 500)
+		it.Header, _ = rt.Truncate(it.Header, 60)
 		if len(it.Options) > 6 {
 			it.Options = it.Options[:6]
 		}
 		for _, o := range it.Options {
-			o.Label, _ = provider.Truncate(o.Label, 60)
+			o.Label, _ = rt.Truncate(o.Label, 60)
 		}
 	}
 	return q

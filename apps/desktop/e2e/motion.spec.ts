@@ -99,7 +99,7 @@ test("while nothing happens, the page changes only its clocks, all in the same f
 
   // The running session's page: its clocks only (the bar's, the card's, the list's).
   await (await sessionList(page)).getByText("跑很久", { exact: true }).click();
-  await expect(page.getByRole("region", { name: "这一轮" })).toContainText("正在工作");
+  await expect(page.getByTestId("thread-working")).toContainText("处理中");
   // The command's colours come from a worker, a moment after its text
   // (Code.tsx): they are in, or the worker has given up (2.5 s), before the
   // page is watched.
