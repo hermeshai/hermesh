@@ -8,13 +8,12 @@ import { RequestCards } from "./RequestCards";
 import { SearchPalette } from "./Search";
 import { SessionPage } from "./SessionPage";
 import { SheetHost } from "./Sheets";
-import { Rail } from "./Rail";
 import { Sidebar } from "./Sidebar";
 import { useCommands } from "./commands";
 import { useLeaving } from "./components";
 import { Icon } from "./icons";
 import { layoutOf, setSidebar, usePeekEnd } from "./layout";
-import { platform } from "./platform";
+import { keys, ownKeys, platform } from "./platform";
 import { errorText, useStore } from "./store";
 
 // Her's page and its client load when it is first shown.
@@ -76,9 +75,8 @@ export function MainWindow() {
   const { sidebar } = layoutOf(st);
   const search = useLeaving(st.searching ? JSON.stringify(st.searchFor) : null);
   return (
-    <div className={`mainwrap ${sidebar === "docked" ? "" : "railed"} ${sidebar === "over" ? "peek" : ""}`}>
-      {sidebar === "docked" ? <Sidebar /> : <Rail />}
-      {sidebar === "over" && <Sidebar />}
+    <div className={`mainwrap ${sidebar === "docked" ? "" : "noside"} ${sidebar === "over" ? "peek" : ""}`}>
+      {sidebar === "hidden" ? <SidebarToggle /> : <Sidebar />}
       {sidebar === "over" && <div className="peek-scrim" onClick={() => setSidebar(st, false)} />}
       <section className="content">
         {st.selection.kind === "newSession" || st.selection.kind === "session" ? (
@@ -95,6 +93,20 @@ export function MainWindow() {
       {search.shown !== null && <SearchPalette key={search.shown} leaving={search.leaving} />}
       <SheetHost />
       <ToastView />
+    </div>
+  );
+}
+
+/** The sidebar hidden: its toggle stays where the sidebar had it, after the traffic lights (or the app menu). */
+function SidebarToggle() {
+  const st = useStore();
+  const { t } = useTranslation("common");
+  return (
+    <div className="side-float drag">
+      <AppMenuButton />
+      <button className="tb" onClick={() => setSidebar(st, true)} title={`${t("window.showSidebar")} ${keys(ownKeys.toggleSidebar)}`} aria-label={t("window.showSidebar")}>
+        <Icon name="sidebar" />
+      </button>
     </div>
   );
 }

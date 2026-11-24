@@ -927,8 +927,10 @@ Not done: walking every control by hand in light and dark.
 
 ### 14.9 The rail
 
-What it holds and the narrow-window order are superseded by §16
-(2026-11-17); its two states, kept as the owner left them, stand.
+Superseded on the Mac by §16.3 (2026-11-26): the sidebar is shown or
+hidden, no longer a rail. What it holds and the narrow-window order were
+superseded by §16 (2026-11-17); the choice kept as the owner left it,
+from page to page, stands.
 
 Decided by the owner on 2026-11-15, on the demo's board A2.
 
@@ -1218,21 +1220,21 @@ Grants, from the account menu; on the iPhone, Account and Devices has
 Machines and Connected Agents, which open those pages. Their pages show a
 machine's or an agent's session count as a value, no longer a link.
 
-### 16.3 The rail
+### 16.3 Hiding the sidebar
 
-Two states, as §14.9: expanded or the rail, the owner's choice. The rail
-holds Her and the overview, then one logo for each coding agent with
-sessions at hand (waiting, failed, at work; `liveByAgent`), what waits
-first: the rail says who is at work, the sidebar on what. One session:
-the logo opens it. More: a menu beside it names the agent and lists each
-session's title and mark; one click opens it (the keyboard as in a native
-menu). The logo's tooltip says how its sessions stand ("Codex · 1 waiting
-for you · 1 working"). Search and Expand are at its foot (the iPhone's
-rail keeps Expand at its top and Search among the places).
+Mac (decided by the owner on 2026-11-26): the sidebar is shown or hidden,
+the owner's choice, kept from page to page; there is no rail. The rail of
+icons was there for the many places the sidebar once held; with Her, the
+overview and the sessions alone it said nothing the sidebar does not.
+Hidden, the page has the whole window, and the toggle (View › Show
+Sidebar / Hide Sidebar, ⌃⌘S) stays where the sidebar had it, after the
+traffic lights, over the page's top band, which makes room for it. The
+overview's Recently Finished offers See All while the sidebar is hidden.
+The iPhone keeps its rail.
 
 ### 16.4 The narrow window (Mac)
 
-The card gives way first, then the sidebar shrinks to its rail; asked for
+The card gives way first, then the sidebar is hidden; asked for
 there, the sidebar shows over the conversation until it is put away, a
 page or a session is chosen, or the selection changes. With the card:
 1102 px (the expanded sidebar, the conversation's 560 and the card's 270);
@@ -1240,11 +1242,10 @@ the expanded sidebar alone 832 px.
 
 ### 16.5 Tests
 
-- Units: `liveByAgent` and `alwaysActive` in `@hermesh/core` and
-  HermeshSessions; the layouts (`layout.test.ts`, `LayoutTests`).
+- Units: `alwaysActive` in `@hermesh/core` and HermeshSessions; the layouts (`layout.test.ts`, `LayoutTests`).
 - Mac (`apps/desktop/e2e`): `frame.spec.ts` (groups, rhythm, rows and
-  marks, view menu, collapse, row menu, narrow window), `team.spec.ts`
-  (places, marks, no map, the rail and its agent menu),
+  marks, view menu, hiding, row menu, narrow window), `team.spec.ts`
+  (places, marks, no map, the sidebar hidden from page to page),
   `sessionlist.spec.ts`, `onboarding.spec.ts` (both empty states).
 - iPhone (`HermeshUITests`): `menu()` and `viewMenu()` in
   `testTheIPhoneApp`, `DemoUITests.testReviewHerAndHerTeam`,
