@@ -184,7 +184,7 @@ struct OverviewView: View {
 
     /// No session yet, from anyone: the way to start one, where the first tile will be.
     private var first: some View {
-        Button { model.open(.newThread("", "")) } label: {
+        Button { model.open(.newSession("", "")) } label: {
             VStack(alignment: .leading, spacing: 3) {
                 Label("New Session", systemImage: "plus").font(.callout.weight(.semibold)).foregroundStyle(.tint)
                 Text("Sessions from Her, a connected agent or you all show here.").font(.footnote).foregroundStyle(.secondary)
