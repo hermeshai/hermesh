@@ -121,10 +121,7 @@ struct NeedCard: View {
                      detail: Text(verbatim: reportedText(model, c))) {
                     AgentLogo(id: agent, size: 30)
                 } actions: {
-                    act(Text("View"), id: "limit-view") {
-                        model.stats.segment = .limits
-                        model.open(.statistics)
-                    }
+                    act(Text("View"), id: "limit-view") { withAnimation(.smooth) { model.stats.segment = .limits } }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("limit-\(agent)")

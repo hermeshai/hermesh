@@ -362,6 +362,8 @@ struct SessionPage: View {
             .padding(.top, 13).padding(.bottom, 21)
             .background(ConversationScrollFinder(box: scrollBox))
         }
+        // No band of blur under the bar: the title's glass capsule and the buttons float on the conversation itself.
+        .scrollEdgeEffectHidden(true, for: .top)
         .keyboardAwayOnTap()
         .followsEnd(id: sessionID, ready: historyReady(s), atEnd: $atEnd, position: $position, scrollBox: scrollBox) {
             if s.status != .archived {

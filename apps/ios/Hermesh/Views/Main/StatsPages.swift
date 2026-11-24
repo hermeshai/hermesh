@@ -2,46 +2,6 @@ import HermeshProto
 import HermeshSessions
 import SwiftUI
 
-/// Statistics (docs/overview-usage.md §1), a place of the menu's under the
-/// overview: Usage, what was used over a range under the filters of the row
-/// at its top; and Limits, what is left of each coding agent's account. A
-/// segmented control in its bar picks one; only this page asks for counts.
-struct StatisticsView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        @Bindable var stats = model.stats
-        ScrollView {
-            Group {
-                switch stats.segment {
-                case .usage: UsagePage()
-                case .limits: LimitsPage()
-                }
-            }
-            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
-        }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Statistics")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Statistics", selection: $stats.segment) {
-                    Text("Usage").tag(StatsModel.Segment.usage)
-                    Text("Limits").tag(StatsModel.Segment.limits)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 170)
-                .accessibilityIdentifier("stats-segment")
-            }
-        }
-        .rootToolbar()
-        .task(id: "\(dayKey(model.now)) \(stats.period) \(stats.filter)") { await stats.load(model.api, now: Date()) }
-        .onAppear { stats.shown = true }
-        .onDisappear { stats.shown = false }
-        .refreshable { await stats.load(model.api, now: Date()) }
-    }
-}
-
 // MARK: Usage
 
 /// The filter row (the system's menus: range, coding agent, where, sender), then a card a measure (sessions,

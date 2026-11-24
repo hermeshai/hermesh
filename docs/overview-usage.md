@@ -12,7 +12,7 @@ counted differently.
 | Screen | Today | After |
 |---|---|---|
 | iPhone overview | To Do, a range picker, the work card (bars), the flow, Needs You / In Progress / Recently Finished, the agents' cells | **Only now.** A deck of what needs the owner, the link map, what runs as live tiles, the last three that finished with See All. No counts, no range. |
-| Statistics (new, a place of the menu's under the overview) | — | Two segments. **Usage**: one row of filter menus (range, coding agent, where, sender), then one card per measure (sessions, tokens, 18 weeks). **Limits**: per coding agent, how much of each rate-limit window is left and when it resets. |
+| iPhone statistics (new: two more views of the overview, by a segmented control at its top under its title, Live \| Usage \| Limits, as the Mac's; the menu gains no place) | — | **Usage**: one row of filter menus (range, coding agent, where, sender), then one card per measure (sessions, tokens, 18 weeks). **Limits**: per coding agent, how much of each rate-limit window is left and when it resets. |
 | Tasks (new, from See All) | the drawer's Sessions list | The same sessions as a page, by day. |
 | Mac overview | Needs You (a list), the link map with today's counts and lines by state, Working Now (cards, those waiting and failed among them), Usage (a year) | **Only now**, as the iPhone's. Needs You stays the list it is, in the deck's order (§4.1), with the limit row; the map loses its counts and its lines by state; what runs is a list, as is Recently Finished. No cards: a row a thing, its buttons at its end. Usage leaves. |
 | Mac statistics (new: two more views of the overview page, by a control in its head, Live \| Usage \| Limits; the sidebar gains no place) | — | The iPhone's numbers, kept the same: the four filters with the same choices and the same counts under them, the same measures, the same limits. Drawn for the Mac as two views, as the iPhone has two: what was used and what is left are not one question, and the limits are a snapshot no filter changes. Usage: its filters in a row at its top (pop-up buttons, an environment's projects a submenu), a measure a row, its number at the leading side and its chart beside it (thin bars in the map's own grey-blue, the last in colour), and 53 weeks (the Mac keeps 400 days). Limits: a row an agent, the one with the least left first; a window says what is left twice, of its allowance (ticks) and of its time until it resets (a line under them, drawn from the reset time the status already carries), so one is read against the other; an agent that reports none says so. Both views' cards are the overview's ordinary cards with a faint tint of the Her panel's field (its lilac and sky only) over them: no glass, as these cards hold data and the Her panel's are buttons. Nothing is side by side that a narrow window must break: what is beside goes under. |
@@ -600,8 +600,11 @@ Each is one change that can ship alone.
    button of the overview's bar: the bar has room for one button beside the
    line that says how the connection stands, which must stay in its middle
    (the end-to-end test measures it).
-3. **iPhone: Usage.** `StatsModel`, the filter row and its menus, the three
-   cards; the account sheet's usage goes.
+3. **iPhone: Usage** (built 2026-11-24). `StatsModel`, the filter row and
+   its menus, the three cards; the account sheet's usage goes. Usage and
+   Limits are views of the overview, picked at its top under its title (the
+   bar's middle stays the connection's line), as the Mac's are: the
+   Statistics place of step 2 is gone from the menu and the rail.
 4. **Machines: limits** (built 2026-11-24). The callback, both drivers
    (tested on the recorded lines), the machine's store, the status, the
    owner's only; the e2e `TestLimitsReachDevices` (the Mac, and an iPhone

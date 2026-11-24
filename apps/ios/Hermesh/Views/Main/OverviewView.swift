@@ -4,14 +4,16 @@ import HermeshSessions
 import SwiftUI
 import UserNotifications
 
-/// The overview (docs/overview-usage.md §4): only now. What needs the owner,
-/// as a deck with the most pressing in front; the link map of who may use
-/// which environment, with a line for each session that has not finished;
-/// then what runs, as live tiles, and the sessions that ended last. A node
-/// of the map picked shows the sessions through it instead. All of it is
-/// what the device already holds: the page asks for no counts (those are on
-/// Statistics, the menu's next place: the bar has room for one button beside
-/// the line that says how the connection stands).
+/// The overview (docs/overview-usage.md §4), in three views picked at its
+/// top, under its title (the bar's middle is the line that says how the
+/// connection stands). Live is only now: what needs the owner, as a deck
+/// with the most pressing in front; the link map of who may use which
+/// environment, with a line for each session that has not finished; then
+/// what runs, as live tiles, and the sessions that ended last. A node of the
+/// map picked shows the sessions through it instead. All of it is what the
+/// device already holds: Live asks for no counts. Usage (what was used over
+/// a range, under its filters) and Limits (what is left of each coding
+/// agent's account) are the numbers.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var phase
@@ -39,24 +41,21 @@ struct OverviewView: View {
                           },
                           team: team, owner: String(localized: "You"))
         let about = about(list.first { $0.id == front } ?? list.first, team: team, step: step)
+        @Bindable var stats = model.stats
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                UnreachableNotice()
-                if model.hasWorld {
-                    if model.isDemo { demo }
-                    if !list.isEmpty { NeedsDeck(needs: list, team: team, step: step, front: $front) }
-                    LinkMapView(map: map, lit: picked.map { map.touched(by: $0, sessions: team.waiting + team.failed + team.running + team.finished) },
-                                mine: about.nodes, mineLine: about.line, spot: spot, awake: phase == .active, picked: $picked)
-                        .padding(.horizontal, 20)
-                    if let picked, let node = (map.senders + map.environments).first(where: { $0.id == picked }) {
-                        through(node, team: team)
-                    } else {
-                        RunningTiles(sessions: team.running)
-                        finished(team)
-                        if team.running.isEmpty && team.finished.isEmpty && team.waiting.isEmpty && team.failed.isEmpty && !model.machines.isEmpty { first }
-                    }
-                } else { // nothing kept yet: the first launch, or after joining
-                    PageLoader(text: "Reading your machines…")
+                Picker("Overview", selection: $stats.segment.animation(.smooth)) {
+                    Text("Live").tag(StatsModel.Segment.live)
+                    Text("Usage").tag(StatsModel.Segment.usage)
+                    Text("Limits").tag(StatsModel.Segment.limits)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .accessibilityIdentifier("overview-views")
+                switch stats.segment {
+                case .usage: UsagePage().padding(.horizontal, 16)
+                case .limits: LimitsPage().padding(.horizontal, 16)
+                case .live: live(list: list, team: team, step: step, map: map, about: about)
                 }
             }
             .padding(.top, 8).padding(.bottom, 40)
@@ -68,6 +67,13 @@ struct OverviewView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { NewMenu() }
         }
+        // Usage asks only while it shows, again for each state, and when the counts move (AppModel.workChanged).
+        .task(id: "\(dayKey(model.now)) \(stats.segment) \(stats.period) \(stats.filter)") {
+            stats.shown = stats.segment == .usage
+            if stats.shown { await stats.load(model.api, now: Date()) }
+        }
+        .onDisappear { stats.shown = false }
+        .refreshable { if stats.segment == .usage { await stats.load(model.api, now: Date()) } }
         .task(id: phase) {
             guard phase == .active, !model.isDemo else { return }
             notificationsOff = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus == .denied
@@ -95,6 +101,27 @@ struct OverviewView: View {
         // The guide's steps were done elsewhere (the Mac, the menus): it is gone for good.
         .onChange(of: guide == Guide.later && step == nil, initial: true) { _, over in
             if over { guide = Guide.done }
+        }
+    }
+
+    /// Live: what needs the owner, the map, what runs and what finished (or, a node picked, what goes through it).
+    @ViewBuilder private func live(list: [Need], team: TeamState, step: GuideStep?, map: LinkMap, about: (nodes: Set<String>, line: String?)) -> some View {
+        UnreachableNotice()
+        if model.hasWorld {
+            if model.isDemo { demo }
+            if !list.isEmpty { NeedsDeck(needs: list, team: team, step: step, front: $front) }
+            LinkMapView(map: map, lit: picked.map { map.touched(by: $0, sessions: team.waiting + team.failed + team.running + team.finished) },
+                        mine: about.nodes, mineLine: about.line, spot: spot, awake: phase == .active, picked: $picked)
+                .padding(.horizontal, 20)
+            if let picked, let node = (map.senders + map.environments).first(where: { $0.id == picked }) {
+                through(node, team: team)
+            } else {
+                RunningTiles(sessions: team.running)
+                finished(team)
+                if team.running.isEmpty && team.finished.isEmpty && team.waiting.isEmpty && team.failed.isEmpty && !model.machines.isEmpty { first }
+            }
+        } else { // nothing kept yet: the first launch, or after joining
+            PageLoader(text: "Reading your machines…")
         }
     }
 

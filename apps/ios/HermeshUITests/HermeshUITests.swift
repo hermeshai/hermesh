@@ -36,7 +36,7 @@ final class HermeshUITests: XCTestCase {
         try XCTContext.runActivity(named: "marks the trusted devices among the machines") { _ in try devices() }
         try XCTContext.runActivity(named: "approves a computer asking to be a trusted device, and shows the digits to type on it") { _ in try approveDevice() }
         try XCTContext.runActivity(named: "chooses light or dark in the account") { _ in try appearance() }
-        try XCTContext.runActivity(named: "shows the work in Statistics: usage under its filters, and limits") { _ in try usage() }
+        try XCTContext.runActivity(named: "shows the work in the overview's views: usage under its filters, and limits") { _ in try usage() }
         try XCTContext.runActivity(named: "a swipe that starts on a row opens the menu, not the row") { _ in try swipeOnRow() }
         try XCTContext.runActivity(named: "offers New from the overview's top right") { _ in try newMenu() }
         try XCTContext.runActivity(named: "adds a machine: the app on a Mac or a PC, or a command; Linux has only the command") { _ in try addMachine() }
@@ -864,10 +864,14 @@ final class HermeshUITests: XCTestCase {
     }
 
     func usage() throws {
-        // The counts are a place of the menu's, under Work: Usage, then Limits.
+        // The numbers are the overview's other views, at its top: Usage, then Limits. The menu has no place for them.
         openMenu()
-        tap("statistics-place")
+        XCTAssertFalse(app.descendants(matching: .any)["statistics-place"].exists)
+        tap("overview-place")
         XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].waitForNonExistence(timeout: 5), "the menu closed")
+        let views = app.segmentedControls["overview-views"]
+        XCTAssertTrue(views.waitForExistence(timeout: 20), "the overview's views")
+        views.buttons["用量"].tap()
         // Today, as the machine counts it: the sessions that worked, of them those done, and their tokens.
         tap("filter-range"); tap("今天")
         let sessions = app.descendants(matching: .any)["usage-sessions"].firstMatch
@@ -903,11 +907,11 @@ final class HermeshUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["usage-weeks"].firstMatch.exists && text("活跃天数").exists, "the weeks")
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "输入含各提供方的缓存读写")).firstMatch.exists)
         // Limits: a card an agent; Gemini CLI says none.
-        app.segmentedControls["stats-segment"].buttons["额度"].tap()
+        views.buttons["额度"].tap()
         let limits = app.descendants(matching: .any)["limits-gemini"].firstMatch
         XCTAssertTrue(limits.waitForExistence(timeout: 10), "Gemini CLI's card")
         XCTAssertTrue(text("它没有提供额度信息").exists)
-        app.segmentedControls["stats-segment"].buttons["用量"].tap()
+        views.buttons["实时"].tap()
         // The account sheet no longer has usage: it is Usage's last card.
         openMenu()
         tap("account")

@@ -14,8 +14,6 @@ private let appConnLog = Logger(subsystem: "ai.hermesh.app", category: "connecti
 /// Where the side menu leads.
 enum Root: Hashable {
     case her, overview, grants, machines
-    /// The counts of work (docs/overview-usage.md): a place of the menu's, under the overview.
-    case statistics
     /// A new session: on a machine and in a project when its entry named them ("" else).
     case newSession(String, String)
     case session(String)
@@ -23,7 +21,7 @@ enum Root: Hashable {
     /// A page with a large title (Her's, the overview's and a session's are in the bar).
     var titleLarge: Bool {
         switch self {
-        case .her, .overview, .statistics, .session, .newSession: false
+        case .her, .overview, .session, .newSession: false
         default: true
         }
     }
@@ -166,7 +164,7 @@ final class AppModel {
     var pairings: [PairingDetails] = []
     /// Today's work counted, for the team panel's head.
     var work: [WorkPeriod: RangeWork] = [:]
-    /// What Statistics shows, and its answers.
+    /// Which of the overview's views shows, and the answers its numbers asked for.
     let stats: StatsModel
     var now = Date()
     /// There is a world to show: kept from before, or watched.
@@ -777,8 +775,8 @@ final class AppModel {
         }
     }
 
-    /// The core's counts moved: Statistics asks again while it shows (read
-    /// locally, in milliseconds); the overview shows no counts.
+    /// The core's counts moved: the overview's Usage asks again while it
+    /// shows (read locally, in milliseconds); Live shows no counts.
     private func workChanged() {
         guard workTask == nil else { return }
         workTask = Task {

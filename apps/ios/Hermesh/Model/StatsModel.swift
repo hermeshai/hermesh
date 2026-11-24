@@ -3,17 +3,17 @@ import HermeshProto
 import HermeshSessions
 import Observation
 
-/// What Statistics shows and the answers it asks for (docs/overview-usage.md
-/// §6.7): which segment, the range and the filter, and the answers to their
-/// three questions (the page, the menus' choices, the weeks of tokens) by
-/// question, so going back to a state shows its last answer at once and the
-/// new one replaces it. Asked only while Statistics shows, and again when
-/// the counts move.
+/// Which of the overview's views shows (Live, Usage, Limits), and what Usage
+/// asks for (docs/overview-usage.md §6.7): the range and the filter, and the
+/// answers to their three questions (the page, the menus' choices, the weeks
+/// of tokens) by question, so going back to a state shows its last answer at
+/// once and the new one replaces it. Asked only while Usage shows, and again
+/// when the counts move.
 @MainActor @Observable
 final class StatsModel {
-    enum Segment: String { case usage, limits }
+    enum Segment: String { case live, usage, limits }
 
-    var segment: Segment = .usage
+    var segment: Segment = .live
     var period: WorkPeriod = .week {
         didSet { if !isDemo { UserDefaults.standard.set(period.rawValue, forKey: "workPeriod") } }
     }
