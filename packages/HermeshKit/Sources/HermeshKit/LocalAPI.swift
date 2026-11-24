@@ -252,6 +252,14 @@ public final class LocalAPI: @unchecked Sendable {
         return try await callThread("InterruptRun", r)
     }
 
+    public func stopThreadBackgroundTask(threadID: String, taskID: String = "", machineID: String = "") async throws -> Hermesh_Thread_V2_StopBackgroundTaskResponse {
+        var r = Hermesh_Thread_V2_StopBackgroundTaskRequest()
+        r.machineID = machineID
+        r.threadID = threadID
+        r.taskID = taskID
+        return try await callThread("StopBackgroundTask", r)
+    }
+
     public func manageThreadQueue(_ req: Hermesh_Thread_V2_ManageQueueRequest) async throws -> Hermesh_Thread_V2_ManageQueueResponse {
         try await callThread("ManageQueue", req)
     }

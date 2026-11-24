@@ -75,6 +75,10 @@ func (s *Service) InterruptRun(ctx context.Context, req *threadv2.InterruptRunRe
 	return s.engine.InterruptRun(ctx, s.principal(ctx), req)
 }
 
+func (s *Service) StopBackgroundTask(ctx context.Context, req *threadv2.StopBackgroundTaskRequest) (*threadv2.StopBackgroundTaskResponse, error) {
+	return s.engine.StopBackgroundTask(ctx, s.principal(ctx), req)
+}
+
 func (s *Service) ManageQueue(ctx context.Context, req *threadv2.ManageQueueRequest) (*threadv2.ManageQueueResponse, error) {
 	return s.engine.ManageQueue(ctx, s.principal(ctx), req)
 }

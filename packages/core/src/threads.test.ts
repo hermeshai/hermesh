@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { RuntimeMode } from "@hermesh/proto/identity";
 import {
+  BackgroundTaskKind,
+  BackgroundTaskSchema,
+  BackgroundTaskStatus,
   CheckpointSchema,
   InteractionMode,
   ModelCatalogEntrySchema,
@@ -23,7 +26,9 @@ import {
   TurnItemSchema,
 } from "@hermesh/proto/thread";
 import {
+  activeBackgroundTasksOf,
   applyThreadEvent,
+  backgroundTasksOf,
   clampRuntimeMode,
   composerPrimaryAction,
   cycleReasoningSelection,
@@ -163,5 +168,39 @@ describe("v2 threads domain helpers & event reducer", () => {
     );
     expect(caughtUp.thread?.lastSeq).toBe(20n);
     expect(caughtUp.items.map((i) => i.text)).toEqual(["Recovered"]);
+
+    // Background task updates fold cleanly, sort awaited before daemons, and prune on rollback.
+    let withBg = applyThreadEvent(
+      caughtUp,
+      create(ThreadEventSchema, {
+        threadId: "th_1",
+        seq: 21n,
+        type: "background_task.updated",
+        backgroundTask: create(BackgroundTaskSchema, {
+          taskId: "bg_daemon",
+          runId: "r2",
+          kind: BackgroundTaskKind.DAEMON,
+          status: BackgroundTaskStatus.RUNNING,
+          awaited: false,
+        }),
+      }),
+    );
+    withBg = applyThreadEvent(
+      withBg,
+      create(ThreadEventSchema, {
+        threadId: "th_1",
+        seq: 22n,
+        type: "background_task.updated",
+        backgroundTask: create(BackgroundTaskSchema, {
+          taskId: "bg_cmd",
+          runId: "r1",
+          kind: BackgroundTaskKind.COMMAND,
+          status: BackgroundTaskStatus.RUNNING,
+          awaited: true,
+        }),
+      }),
+    );
+    expect(activeBackgroundTasksOf(withBg).map((t) => t.taskId)).toEqual(["bg_cmd", "bg_daemon"]);
+    expect(backgroundTasksOf(withBg).map((t) => t.taskId)).toEqual(["bg_cmd", "bg_daemon"]);
   });
 });

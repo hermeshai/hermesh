@@ -113,6 +113,7 @@ struct ThreadPage: View {
     @State private var scrollBox = ConversationScrollBox()
     @State private var renaming = false
     @State private var deleting = false
+    @State private var showingBackgroundTasks = false
     /// Messages to a session go out one after another, in the order sent.
     @State private var lastSend: Task<Void, Never>?
     @FocusState private var focused: Bool
@@ -130,6 +131,8 @@ struct ThreadPage: View {
     }
 
     private var thread: Hermesh_Thread_V2_Thread? { projection?.thread }
+    private var activeBgTasks: [Hermesh_Thread_V2_BackgroundTask] { activeBackgroundTasks(of: projection) }
+    private var allBgTasks: [Hermesh_Thread_V2_BackgroundTask] { backgroundTasks(of: projection) }
     private var isNew: Bool { threadID.isEmpty }
     private var machine: Machine? { model.machines.first { $0.machineID == machineID } }
     private var online: Bool { machine.map { $0.online || $0.local } ?? true }
@@ -194,6 +197,9 @@ struct ThreadPage: View {
         }
         .sheet(isPresented: $pickingBranch) {
             if let branches { BranchSheet(place: $place, branches: branches) }
+        }
+        .sheet(isPresented: $showingBackgroundTasks) {
+            BackgroundTasksSheet(tasks: allBgTasks, onStop: stopBackgroundTask)
         }
         // A new session's project's branches, read from its folder (only the owner's devices can): again as the page
         // opens or the project changes, since a branch switched on the machine isn't sent here.
@@ -320,7 +326,15 @@ struct ThreadPage: View {
                 if let f = threadFailure(thread) {
                     FailedView(session: s, failure: f, grant: grant)
                 } else if thread?.status == .idle, let last = steps.last {
-                    if case .item(.turnEnd) = last {} else {
+                    if case .item(.turnEnd) = last {} else if (thread?.activeBackgroundCount ?? 0) > 0 || activeBgTasks.contains(where: \.awaited) {
+                        let count = max(Int(thread?.activeBackgroundCount ?? 0), activeBgTasks.filter(\.awaited).count)
+                        let since = activeBgTasks.first(where: \.awaited).flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) }
+                        WorkLine(
+                            text: Text("This reply finished; waiting for \(count) background task(s) to report back…"),
+                            since: since
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
                         DoneLine(text: String(localized: "This turn is done. When \(grant) sends another message, it continues in this session."))
                     }
                 }
@@ -339,6 +353,7 @@ struct ThreadPage: View {
                     ConnectionCapsule(machine: machine, linkUp: following && reachable)
                     VStack(spacing: 6) {
                         if let req = pendingRequest(of: projection) { requestPanel(req, s) }
+                        backgroundBar
                         queue
                         offlineNote
                         box
@@ -357,9 +372,16 @@ struct ThreadPage: View {
             }
             if model.path.isEmpty { MenuToolbarItem() }
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if !activeBgTasks.isEmpty {
+                    Button("Background Tasks", systemImage: "terminal") { showingBackgroundTasks = true }
+                        .accessibilityIdentifier("thread-background-tasks")
+                }
                 Button("Session Info", systemImage: "info.circle") { model.sheet = .sessionInfo(s.sessionID) }
                     .accessibilityIdentifier("session-info")
                 Menu {
+                    if !allBgTasks.isEmpty {
+                        Button("Background Tasks", systemImage: "terminal") { showingBackgroundTasks = true }
+                    }
                     Button("Copy Session ID", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = s.sessionID
                         model.show(String(localized: "Copied the session ID"))
@@ -390,6 +412,55 @@ struct ThreadPage: View {
         } else {
             ThreadRequestPanel(session: s, request: req) { build in await respondNow(req, build) }
                 .id(req.requestID)
+        }
+    }
+
+    /// Active background tasks or long-lived daemons running after or alongside turns.
+    @ViewBuilder private var backgroundBar: some View {
+        let active = activeBgTasks
+        if !active.isEmpty {
+            let awaited = active.filter(\.awaited)
+            let primary = awaited.first ?? active[0]
+            let label = primary.title.isEmpty ? (primary.command.isEmpty ? primary.taskID : primary.command) : primary.title
+            let summary: String = if awaited.count == 1 {
+                String(localized: "Background task · \(label)")
+            } else if awaited.count > 1 {
+                String(localized: "\(awaited.count) background tasks running")
+            } else if active.count == 1 {
+                String(localized: "Background service · \(label)")
+            } else {
+                String(localized: "\(active.count) background services running")
+            }
+            HStack(spacing: 8) {
+                Button {
+                    showingBackgroundTasks = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if !awaited.isEmpty {
+                            MovingMark(size: 16, motion: .seq)
+                        } else {
+                            Image(systemName: "bolt.horizontal").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Text(verbatim: summary).font(.subheadline).lineLimit(1).foregroundStyle(.primary)
+                        if let since = dateOf(primary.startedAt, set: primary.hasStartedAt) {
+                            Text(since, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(.tertiary)
+                        }
+                        Spacer(minLength: 0)
+                        Text("Details").font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                Button(active.count > 1 ? String(localized: "Stop All") : String(localized: "Stop")) {
+                    stopBackgroundTask(active.count == 1 ? active[0].taskID : "")
+                }
+                .font(.footnote.weight(.medium))
+                .tint(.red)
+                .accessibilityIdentifier("thread-background-stop")
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 20)
+            .accessibilityIdentifier("thread-background-bar")
         }
     }
 
@@ -878,6 +949,13 @@ struct ThreadPage: View {
         Task { _ = try? await model.api?.live?.interruptThreadRun(threadID: threadID) }
     }
 
+    private func stopBackgroundTask(_ taskID: String = "") {
+        Task {
+            do { _ = try await model.api?.live?.stopThreadBackgroundTask(threadID: threadID, taskID: taskID) }
+            catch { model.report(error) }
+        }
+    }
+
     private func update(_ build: (inout Hermesh_Thread_V2_UpdateThreadConfigRequest) -> Void) {
         var r = Hermesh_Thread_V2_UpdateThreadConfigRequest()
         r.threadID = threadID
@@ -1244,5 +1322,112 @@ private struct ThinkingSlider: View {
             }
         }
         .accessibilityIdentifier("model-thinking")
+    }
+}
+
+/// Live sheet inspecting active and recent background tasks on a v2 Thread.
+private struct BackgroundTasksSheet: View {
+    let tasks: [Hermesh_Thread_V2_BackgroundTask]
+    let onStop: (String) -> Void
+
+    private var runningTasks: [Hermesh_Thread_V2_BackgroundTask] {
+        tasks.filter { $0.status == .running }
+    }
+
+    private var recentTasks: [Hermesh_Thread_V2_BackgroundTask] {
+        tasks.filter { $0.status != .running }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !runningTasks.isEmpty {
+                    Section("Running") {
+                        ForEach(runningTasks, id: \.taskID) { bt in
+                            taskRow(bt)
+                        }
+                    }
+                }
+                if !recentTasks.isEmpty {
+                    Section("Recent") {
+                        ForEach(recentTasks, id: \.taskID) { bt in
+                            taskRow(bt)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Background Tasks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                CloseButton()
+                if runningTasks.count > 1 {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Stop All", role: .destructive) { onStop("") }
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func taskRow(_ bt: Hermesh_Thread_V2_BackgroundTask) -> some View {
+        let title = bt.title.isEmpty ? (bt.command.isEmpty ? bt.taskID : bt.command) : bt.title
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: iconName(bt.kind))
+                    .foregroundStyle(bt.status == .running ? Color.accentColor : .secondary)
+                Text(verbatim: title).font(.subheadline.weight(.medium)).lineLimit(1)
+                Spacer()
+                if bt.status == .running, let since = dateOf(bt.startedAt, set: bt.hasStartedAt) {
+                    Text(since, style: .timer).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                if bt.status == .running {
+                    Button("Stop", role: .destructive) { onStop(bt.taskID) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } else {
+                    Text(statusText(bt)).font(.caption).foregroundStyle(bt.status == .failed ? .red : .secondary)
+                }
+            }
+            if !bt.command.isEmpty && bt.command != title {
+                Text(verbatim: bt.command)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if !bt.outputTail.isEmpty {
+                ScrollView(.vertical) {
+                    Text(verbatim: bt.outputTail)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .textSelection(.enabled)
+                }
+                .frame(maxHeight: 150)
+                .padding(8)
+                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if !bt.summary.isEmpty {
+                Text(verbatim: bt.summary).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityIdentifier("bg-task-\(bt.taskID)")
+    }
+
+    private func iconName(_ kind: Hermesh_Thread_V2_BackgroundTaskKind) -> String {
+        switch kind {
+        case .subagent: "person.2"
+        case .schedule: "clock"
+        case .daemon: "bolt.horizontal"
+        default: "terminal"
+        }
+    }
+
+    private func statusText(_ bt: Hermesh_Thread_V2_BackgroundTask) -> String {
+        switch bt.status {
+        case .running: String(localized: "Running")
+        case .completed: bt.hasExitCode ? String(localized: "Completed (\(bt.exitCode))") : String(localized: "Completed")
+        case .failed: bt.hasExitCode ? String(localized: "Failed (\(bt.exitCode))") : String(localized: "Failed")
+        default: String(localized: "Stopped")
+        }
     }
 }

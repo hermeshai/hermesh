@@ -72,31 +72,38 @@ const (
 	EventTodoUpdated
 	EventUsage
 	EventNotice
+	EventBackgroundTask
 	EventTurnCompleted
 	EventTurnInterrupted
 	EventTurnFailed
 )
 
 type Event struct {
-	Kind          EventKind
-	NativeID      string
-	ResumeCursor  string
-	ItemID        string
-	Text          string
-	ToolName      string
-	Command       string
-	ExitCode      int32
-	Output        string
-	FilePath      string
-	Diff          string
-	Additions     uint32
-	Deletions     uint32
-	PlanTitle     string
-	RequestReview bool
-	TodoSteps     []*threadv2.TodoStep
-	Usage         *threadv2.ContextWindowUsage
-	ErrorCode     string
-	ErrorMessage  string
+	Kind                EventKind
+	NativeID            string
+	ResumeCursor        string
+	TaskID              string
+	ItemID              string
+	Text                string
+	ToolName            string
+	Command             string
+	ExitCode            int32
+	HasExitCode         bool
+	Output              string
+	FilePath            string
+	Diff                string
+	Additions           uint32
+	Deletions           uint32
+	PlanTitle           string
+	RequestReview       bool
+	TodoSteps           []*threadv2.TodoStep
+	Usage               *threadv2.ContextWindowUsage
+	BackgroundKind      threadv2.BackgroundTaskKind
+	BackgroundStatus    threadv2.BackgroundTaskStatus
+	BackgroundStopScope threadv2.BackgroundTaskStopScope
+	BackgroundAwaited   bool
+	ErrorCode           string
+	ErrorMessage        string
 }
 
 type StartSpec struct {
@@ -151,6 +158,16 @@ type Session interface {
 	Close() error
 }
 
+// BackgroundController is optionally implemented by Sessions that can stop a
+// running background task (either individually or session-wide).
+type BackgroundController interface {
+	StopBackgroundTask(ctx context.Context, taskID string) error
+}
+
+// MaxBackgroundIdleTTL bounds how long awaited background work can keep an
+// otherwise silent provider process exempt from Supervisor idle reaping.
+const MaxBackgroundIdleTTL = 2 * time.Hour
+
 // Driver constructs and probes sessions for one provider family ("claude", "codex", "acp", "her", "scripted").
 type Driver interface {
 	Kind() string
@@ -173,6 +190,8 @@ type LeaseEntry struct {
 	mu         sync.Mutex
 	lastActive time.Time
 	inTurn     bool
+	awaitedBg  int
+	daemonBg   int
 }
 
 func (l *LeaseEntry) Touch() {
@@ -188,23 +207,48 @@ func (l *LeaseEntry) SetInTurn(v bool) {
 	l.mu.Unlock()
 }
 
+func (l *LeaseEntry) SetBackgroundCounts(awaited, daemon int) {
+	l.mu.Lock()
+	l.awaitedBg = awaited
+	l.daemonBg = daemon
+	l.lastActive = time.Now()
+	l.mu.Unlock()
+}
+
+func (l *LeaseEntry) BackgroundCounts() (awaited, daemon int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.awaitedBg, l.daemonBg
+}
+
 func (l *LeaseEntry) IdleFor(now time.Time) (idle bool, d time.Duration) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.inTurn {
 		return false, 0
 	}
-	return true, now.Sub(l.lastActive)
+	elapsed := now.Sub(l.lastActive)
+	if (l.awaitedBg > 0 || l.daemonBg > 0) && elapsed < MaxBackgroundIdleTTL {
+		return false, 0
+	}
+	return true, elapsed
 }
 
 // Supervisor manages live provider sessions across threads, reaping idle ones
 // past IdleTTL and force-killing unresponsive ones on shutdown or ForceStop.
 type Supervisor struct {
 	idleTTL  time.Duration
+	onReap   func(*LeaseEntry)
 	mu       sync.Mutex
 	sessions map[string]*LeaseEntry // providerThreadID -> LeaseEntry
 	stopCh   chan struct{}
 	once     sync.Once
+}
+
+func (s *Supervisor) SetOnReap(fn func(*LeaseEntry)) {
+	s.mu.Lock()
+	s.onReap = fn
+	s.mu.Unlock()
 }
 
 func NewSupervisor(idleTTL time.Duration) *Supervisor {
@@ -281,6 +325,7 @@ func (s *Supervisor) ActiveCount() int {
 func (s *Supervisor) ReapIdle(now time.Time) int {
 	var expired []*LeaseEntry
 	s.mu.Lock()
+	onReap := s.onReap
 	for id, e := range s.sessions {
 		if !e.Session.Alive() {
 			delete(s.sessions, id)
@@ -294,6 +339,9 @@ func (s *Supervisor) ReapIdle(now time.Time) int {
 	s.mu.Unlock()
 	for _, e := range expired {
 		_ = e.Session.Close()
+		if onReap != nil {
+			onReap(e)
+		}
 	}
 	return len(expired)
 }

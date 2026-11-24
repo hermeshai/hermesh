@@ -155,6 +155,18 @@ CREATE TABLE turn_items (
   PRIMARY KEY (thread_id, item_id)
 );
 CREATE INDEX idx_turn_items_thread_seq ON turn_items(thread_id, seq ASC);
+`, `
+CREATE TABLE background_tasks (
+  thread_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  status INTEGER NOT NULL,
+  started_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  payload BLOB NOT NULL,
+  PRIMARY KEY (thread_id, task_id)
+);
+CREATE INDEX idx_background_tasks_thread ON background_tasks(thread_id, started_at ASC);
 `}
 
 type WorkspaceRow struct {
@@ -446,7 +458,7 @@ func (tx *Tx) GetThread(threadID string) (*threadv2.Thread, error) {
 }
 
 func (tx *Tx) DeleteThread(threadID string) error {
-	for _, tbl := range []string{"thread_events", "thread_allow_rules", "checkpoints", "runtime_requests", "turn_items", "runs", "provider_threads", "threads"} {
+	for _, tbl := range []string{"thread_events", "thread_allow_rules", "checkpoints", "background_tasks", "runtime_requests", "turn_items", "runs", "provider_threads", "threads"} {
 		if _, err := tx.tx.Exec(`DELETE FROM `+tbl+` WHERE thread_id = ?`, threadID); err != nil {
 			return err
 		}
@@ -731,8 +743,29 @@ func (tx *Tx) PutTurnItem(it *threadv2.TurnItem) error {
 
 // SettleRunItems closes any streaming or running TurnItems left behind when a
 // run enters a terminal state (completed, interrupted, or failed), returning
-// the updated items so callers can broadcast item.updated events.
+// the updated items so callers can broadcast item.updated events. When a run
+// completes normally, items backed by a still-running BackgroundTask stay in
+// "running" status until that background task finishes.
 func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv2.TurnItem, error) {
+	activeBgItems := map[string]bool{}
+	if terminalStatus == "completed" {
+		if bRows, bErr := tx.tx.Query(
+			`SELECT payload FROM background_tasks WHERE thread_id = ? AND status = ?`,
+			threadID, int32(threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING),
+		); bErr == nil {
+			for bRows.Next() {
+				var raw []byte
+				if bRows.Scan(&raw) == nil {
+					bt := &threadv2.BackgroundTask{}
+					if proto.Unmarshal(raw, bt) == nil && bt.ItemId != "" {
+						activeBgItems[bt.ItemId] = true
+					}
+				}
+			}
+			bRows.Close()
+		}
+	}
+
 	rows, err := tx.tx.Query(
 		`SELECT payload FROM turn_items WHERE thread_id = ? AND run_id = ? ORDER BY seq ASC`,
 		threadID, runID,
@@ -764,6 +797,17 @@ func (tx *Tx) SettleRunItems(threadID, runID, terminalStatus string) ([]*threadv
 
 	var settled []*threadv2.TurnItem
 	for _, it := range pending {
+		if terminalStatus == "completed" && activeBgItems[it.ItemId] {
+			if !it.Streaming {
+				continue
+			}
+			it.Streaming = false
+			if err := tx.PutTurnItem(it); err != nil {
+				return nil, err
+			}
+			settled = append(settled, it)
+			continue
+		}
 		it.Streaming = false
 		if it.Status == "running" {
 			if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && terminalStatus == "failed" {
@@ -1014,8 +1058,189 @@ func (tx *Tx) DeleteTurnItemsAfterRunIds(threadID string, removedRunIDs map[stri
 		if _, err := tx.tx.Exec(`DELETE FROM turn_items WHERE thread_id = ? AND run_id = ?`, threadID, runID); err != nil {
 			return err
 		}
+		if _, err := tx.tx.Exec(`DELETE FROM background_tasks WHERE thread_id = ? AND run_id = ?`, threadID, runID); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func (tx *Tx) GetBackgroundTask(threadID, taskID string) (*threadv2.BackgroundTask, error) {
+	var b []byte
+	err := tx.tx.QueryRow(
+		`SELECT payload FROM background_tasks WHERE thread_id = ? AND task_id = ?`,
+		threadID, taskID,
+	).Scan(&b)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	bt := &threadv2.BackgroundTask{}
+	return bt, proto.Unmarshal(b, bt)
+}
+
+func (tx *Tx) PutBackgroundTask(bt *threadv2.BackgroundTask) error {
+	now := timestamppb.Now()
+	if prev, err := tx.GetBackgroundTask(bt.ThreadId, bt.TaskId); err == nil {
+		if bt.StartedAt == nil && prev.StartedAt != nil {
+			bt.StartedAt = prev.StartedAt
+		}
+		if bt.RunId == "" {
+			bt.RunId = prev.RunId
+		}
+		if bt.ItemId == "" {
+			bt.ItemId = prev.ItemId
+		}
+		if bt.Kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_UNSPECIFIED {
+			bt.Kind = prev.Kind
+		}
+		if bt.Title == "" {
+			bt.Title = prev.Title
+		}
+		if bt.Command == "" {
+			bt.Command = prev.Command
+		}
+		if bt.OutputTail == "" && prev.OutputTail != "" {
+			bt.OutputTail = prev.OutputTail
+		}
+		if bt.StopScope == threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_UNSPECIFIED {
+			bt.StopScope = prev.StopScope
+		}
+	}
+	if bt.StartedAt == nil {
+		bt.StartedAt = now
+	}
+	bt.UpdatedAt = now
+	if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING &&
+		bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_UNSPECIFIED &&
+		bt.CompletedAt == nil {
+		bt.CompletedAt = now
+	}
+	b, err := proto.Marshal(bt)
+	if err != nil {
+		return err
+	}
+	_, err = tx.tx.Exec(
+		`INSERT INTO background_tasks(thread_id, task_id, run_id, status, started_at, updated_at, payload)
+		 VALUES(?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(thread_id, task_id) DO UPDATE SET
+		   run_id=excluded.run_id, status=excluded.status, updated_at=excluded.updated_at, payload=excluded.payload`,
+		bt.ThreadId, bt.TaskId, bt.RunId, int32(bt.Status),
+		bt.StartedAt.AsTime().UnixMilli(), bt.UpdatedAt.AsTime().UnixMilli(), b,
+	)
+	return err
+}
+
+func (tx *Tx) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, error) {
+	rows, err := tx.tx.Query(
+		`SELECT payload FROM background_tasks WHERE thread_id = ? ORDER BY started_at ASC`,
+		threadID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*threadv2.BackgroundTask
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		bt := &threadv2.BackgroundTask{}
+		if err := proto.Unmarshal(b, bt); err != nil {
+			return nil, err
+		}
+		out = append(out, bt)
+	}
+	return out, rows.Err()
+}
+
+// RefreshThreadBackgroundCounts recomputes Thread.ActiveBackgroundCount and
+// Thread.ActiveDaemonCount from currently RUNNING background_tasks rows.
+func (tx *Tx) RefreshThreadBackgroundCounts(th *threadv2.Thread) (awaited uint32, daemon uint32, err error) {
+	tasks, err := tx.BackgroundTasks(th.ThreadId)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, bt := range tasks {
+		if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+			continue
+		}
+		if bt.Kind == threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON || !bt.Awaited {
+			daemon++
+		} else {
+			awaited++
+		}
+	}
+	th.ActiveBackgroundCount = awaited
+	th.ActiveDaemonCount = daemon
+	return awaited, daemon, nil
+}
+
+// StopRunningBackgroundTasks transitions matching RUNNING background tasks on
+// threadID (or all when taskID == "") to STOPPED and settles their linked TurnItems.
+func (tx *Tx) StopRunningBackgroundTasks(threadID, taskID, summary string) ([]*threadv2.BackgroundTask, []*threadv2.TurnItem, error) {
+	tasks, err := tx.BackgroundTasks(threadID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var stopped []*threadv2.BackgroundTask
+	var items []*threadv2.TurnItem
+	now := timestamppb.Now()
+	for _, bt := range tasks {
+		if bt.Status != threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING {
+			continue
+		}
+		if taskID != "" && bt.TaskId != taskID {
+			continue
+		}
+		bt.Status = threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED
+		if summary != "" {
+			bt.Summary = summary
+		}
+		bt.CompletedAt = now
+		if err := tx.PutBackgroundTask(bt); err != nil {
+			return nil, nil, err
+		}
+		stopped = append(stopped, bt)
+		if bt.ItemId != "" {
+			if it, iErr := tx.GetTurnItem(threadID, bt.ItemId); iErr == nil && it.Status == "running" {
+				it.Streaming = false
+				it.Status = "interrupted"
+				if err := tx.PutTurnItem(it); err != nil {
+					return nil, nil, err
+				}
+				items = append(items, it)
+			}
+		}
+	}
+	return stopped, items, nil
+}
+
+func (s *Store) BackgroundTasks(threadID string) ([]*threadv2.BackgroundTask, error) {
+	rows, err := s.reader.Query(
+		`SELECT payload FROM background_tasks WHERE thread_id = ? ORDER BY started_at ASC`,
+		threadID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*threadv2.BackgroundTask
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			return nil, err
+		}
+		bt := &threadv2.BackgroundTask{}
+		if err := proto.Unmarshal(b, bt); err != nil {
+			return nil, err
+		}
+		out = append(out, bt)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) TurnItems(threadID string) ([]*threadv2.TurnItem, error) {
@@ -1205,6 +1430,10 @@ func (s *Store) Projection(threadID string) (*threadv2.ThreadProjection, error) 
 	if err != nil {
 		return nil, err
 	}
+	bts, err := s.BackgroundTasks(threadID)
+	if err != nil {
+		return nil, err
+	}
 	return &threadv2.ThreadProjection{
 		Thread:          t,
 		Runs:            runs,
@@ -1212,6 +1441,7 @@ func (s *Store) Projection(threadID string) (*threadv2.ThreadProjection, error) 
 		Requests:        reqs,
 		Checkpoints:     ckpts,
 		ProviderThreads: pts,
+		BackgroundTasks: bts,
 	}, nil
 }
 

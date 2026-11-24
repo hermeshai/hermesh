@@ -166,6 +166,8 @@ type Engine struct {
 	cmdLocks    map[string]*refLock                    // command_id -> in-flight idempotent command
 	waiters     map[string]chan runtime.ToolGateResult // request_id -> waiter
 	runCancels  map[string]context.CancelFunc          // run_id -> cancel
+	runDoneChs  map[string]<-chan struct{}             // run_id -> runCtx.Done()
+	pumps       map[string]*leasePump                  // provider_thread_id -> pump
 	threadSubs  map[string]map[chan *threadv2.ThreadEvent]struct{}
 	shellSubs   map[*shellSub]struct{}
 }
@@ -196,9 +198,12 @@ func Open(cfg Config) (*Engine, error) {
 		cmdLocks:    map[string]*refLock{},
 		waiters:     map[string]chan runtime.ToolGateResult{},
 		runCancels:  map[string]context.CancelFunc{},
+		runDoneChs:  map[string]<-chan struct{}{},
+		pumps:       map[string]*leasePump{},
 		threadSubs:  map[string]map[chan *threadv2.ThreadEvent]struct{}{},
 		shellSubs:   map[*shellSub]struct{}{},
 	}
+	e.sup.SetOnReap(e.onLeaseReaped)
 	e.maxMode.Store(int32(cfg.MachineMaxMode))
 	if err := e.seedDefaults(); err != nil {
 		bgCancel()
@@ -222,6 +227,7 @@ func (e *Engine) spawnRun(threadID, runID string, freshContext bool) {
 	runCtx, cancelRun := context.WithCancel(e.bgCtx)
 	e.mu.Lock()
 	e.runCancels[runID] = cancelRun
+	e.runDoneChs[runID] = runCtx.Done()
 	e.mu.Unlock()
 
 	e.wg.Add(1)
@@ -231,10 +237,44 @@ func (e *Engine) spawnRun(threadID, runID string, freshContext bool) {
 			cancelRun()
 			e.mu.Lock()
 			delete(e.runCancels, runID)
+			delete(e.runDoneChs, runID)
 			e.mu.Unlock()
 		}()
 		e.driveRun(runCtx, threadID, runID, freshContext)
 	}()
+}
+
+func (e *Engine) onLeaseReaped(lease *runtime.LeaseEntry) {
+	if lease != nil {
+		e.stopLeasePump(lease.ProviderThreadID, lease)
+	}
+	if lease == nil || e.bgCtx.Err() != nil {
+		return
+	}
+	events, err := e.st.Mutate(func(tx *store.Tx) error {
+		th, err := tx.GetThread(lease.ThreadID)
+		if err != nil {
+			return nil
+		}
+		stopped, items, err := tx.StopRunningBackgroundTasks(lease.ThreadID, "", "session closed after inactivity")
+		if err != nil || len(stopped) == 0 {
+			return err
+		}
+		_, _, _ = tx.RefreshThreadBackgroundCounts(th)
+		if err := tx.PutThread(th); err != nil {
+			return err
+		}
+		for _, it := range items {
+			_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: th.ThreadId, Type: "item.updated", Thread: th, Item: it})
+		}
+		for _, bt := range stopped {
+			_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: th.ThreadId, Type: "background_task.updated", Thread: th, BackgroundTask: bt})
+		}
+		return nil
+	})
+	if err == nil {
+		e.publish(events, nil)
+	}
 }
 
 // machineMax is the machine's own permission-mode ceiling (UNSPECIFIED: none).
@@ -329,9 +369,11 @@ func (e *Engine) recoverOrphans() error {
 		return err
 	}
 	for _, t := range threads {
+		hasOrphanBg := t.ActiveBackgroundCount > 0 || t.ActiveDaemonCount > 0
 		if t.Status != threadv2.ThreadStatus_THREAD_STATUS_RUNNING &&
 			t.Status != threadv2.ThreadStatus_THREAD_STATUS_PREPARING &&
-			t.Status != threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST {
+			t.Status != threadv2.ThreadStatus_THREAD_STATUS_WAITING_REQUEST &&
+			!hasOrphanBg {
 			continue
 		}
 		runs, _ := e.st.Runs(t.ThreadId)
@@ -348,6 +390,22 @@ func (e *Engine) recoverOrphans() error {
 					_ = tx.PutProviderThread(pt)
 				}
 			}
+			stoppedBg, stoppedItems, _ := tx.StopRunningBackgroundTasks(th.ThreadId, "", "hermeshd restarted while background task was running")
+			for _, sit := range stoppedItems {
+				_ = tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: th.ThreadId,
+					Type:     "item.updated",
+					Item:     sit,
+				})
+			}
+			for _, bt := range stoppedBg {
+				_ = tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId:       th.ThreadId,
+					Type:           "background_task.updated",
+					BackgroundTask: bt,
+				})
+			}
+			_, _, _ = tx.RefreshThreadBackgroundCounts(th)
 			hasPendingResumeReq := false
 			for _, rq := range reqs {
 				if rq.Status == threadv2.RuntimeRequestStatus_RUNTIME_REQUEST_STATUS_PENDING {
@@ -1531,10 +1589,12 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 			Session:          sess,
 		}
 		e.sup.Register(activeLease)
+		e.startLeasePump(activeLease, workdir)
 	}
 
+	pump := e.ensureLeasePump(activeLease, workdir)
+	turn := pump.attachTurn(runID, curRun.Ordinal, workdir, prevTreeOID)
 	activeLease.SetInTurn(true)
-	defer activeLease.SetInTurn(false)
 
 	// Record provider_thread_id and handoff summary on the run.
 	_, _ = e.st.Mutate(func(tx *store.Tx) error {
@@ -1561,392 +1621,919 @@ func (e *Engine) driveRun(runCtx context.Context, threadID, runID string, freshC
 		EffectiveMode:   curRun.RuntimeMode,
 		InteractionMode: curRun.InteractionMode,
 	}); err != nil {
+		pump.clearActiveIf(runID)
+		activeLease.SetInTurn(false)
 		e.sup.DetachSession(activePT.ProviderThreadId, activeLease.Session, false)
 		e.finishRunFailed(threadID, runID, "turn_start_failed", err.Error())
 		return
 	}
 
-	// Consume events for this turn until terminal event or session exit!
+	select {
+	case <-turn.doneCh:
+		return
+	case <-runCtx.Done():
+		if e.bgCtx.Err() != nil {
+			return
+		}
+		if pump.clearActiveIf(runID) {
+			activeLease.SetInTurn(false)
+			e.finishRunInterrupted(threadID, runID, "interrupted")
+		}
+		return
+	}
+}
+
+type activeTurnHandle struct {
+	runID       string
+	ordinal     uint32
+	workdir     string
+	prevTreeOID string
+	doneCh      chan struct{}
+	doneOnce    sync.Once
+}
+
+func (h *activeTurnHandle) closeDone() {
+	if h != nil {
+		h.doneOnce.Do(func() { close(h.doneCh) })
+	}
+}
+
+type leasePump struct {
+	lease      *runtime.LeaseEntry
+	stopCh     chan struct{}
+	stopOnce   sync.Once
+	mu         sync.Mutex
+	workdir    string
+	active     *activeTurnHandle
+	itemScopes map[string]string
+	lastWake   string
+}
+
+func (p *leasePump) stop() {
+	if p != nil {
+		p.stopOnce.Do(func() { close(p.stopCh) })
+	}
+}
+
+func (p *leasePump) attachTurn(runID string, ordinal uint32, workdir, prevTreeOID string) *activeTurnHandle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if workdir != "" {
+		p.workdir = workdir
+	}
+	if p.active != nil && p.active.runID == runID {
+		p.active.ordinal = ordinal
+		p.active.prevTreeOID = prevTreeOID
+		if workdir != "" {
+			p.active.workdir = workdir
+		}
+		return p.active
+	}
+	h := &activeTurnHandle{
+		runID:       runID,
+		ordinal:     ordinal,
+		workdir:     p.workdir,
+		prevTreeOID: prevTreeOID,
+		doneCh:      make(chan struct{}),
+	}
+	p.active = h
+	return h
+}
+
+func (p *leasePump) getActive() *activeTurnHandle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.active
+}
+
+func (p *leasePump) takeActive() *activeTurnHandle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	cur := p.active
+	p.active = nil
+	return cur
+}
+
+func (p *leasePump) clearActiveIf(runID string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.active != nil && p.active.runID == runID {
+		cur := p.active
+		p.active = nil
+		cur.closeDone()
+		return true
+	}
+	return false
+}
+
+func (p *leasePump) rememberScopedItem(nativeID, scopedID string) {
+	if nativeID == "" || scopedID == "" {
+		return
+	}
+	p.mu.Lock()
+	p.itemScopes[nativeID] = scopedID
+	p.mu.Unlock()
+}
+
+func (p *leasePump) lookupScopedItem(nativeID string) string {
+	if nativeID == "" {
+		return ""
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.itemScopes[nativeID]
+}
+
+func (e *Engine) startLeasePump(lease *runtime.LeaseEntry, workdir string) *leasePump {
+	e.mu.Lock()
+	if existing := e.pumps[lease.ProviderThreadID]; existing != nil && existing.lease == lease {
+		e.mu.Unlock()
+		return existing
+	}
+	pump := &leasePump{
+		lease:      lease,
+		stopCh:     make(chan struct{}),
+		workdir:    workdir,
+		itemScopes: map[string]string{},
+	}
+	e.pumps[lease.ProviderThreadID] = pump
+	e.mu.Unlock()
+
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		e.runLeasePump(pump)
+	}()
+	return pump
+}
+
+func (e *Engine) stopLeasePump(ptID string, lease *runtime.LeaseEntry) {
+	if ptID == "" {
+		return
+	}
+	e.mu.Lock()
+	p := e.pumps[ptID]
+	if p != nil && (lease == nil || p.lease == lease) {
+		delete(e.pumps, ptID)
+	} else {
+		p = nil
+	}
+	e.mu.Unlock()
+	if p != nil {
+		p.stop()
+	}
+}
+
+func (e *Engine) ensureLeasePump(lease *runtime.LeaseEntry, workdir string) *leasePump {
+	return e.startLeasePump(lease, workdir)
+}
+
+func (e *Engine) getLeasePump(ptID string) *leasePump {
+	if ptID == "" {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.pumps[ptID]
+}
+
+// ensureContinuationTurn attaches to an already-active run on pump's thread or
+// spawns a system-authored Continuation Run when out-of-turn agent work arrives.
+func (e *Engine) ensureContinuationTurn(pump *leasePump) *activeTurnHandle {
+	if cur := pump.getActive(); cur != nil {
+		return cur
+	}
+	threadID := pump.lease.ThreadID
+	unlock := e.lockThread(threadID)
+
+	if cur := pump.getActive(); cur != nil {
+		unlock()
+		return cur
+	}
+	th, err := e.st.Thread(threadID)
+	if err != nil || th.Status == threadv2.ThreadStatus_THREAD_STATUS_ARCHIVED {
+		unlock()
+		return nil
+	}
+	existingCkpts, _ := e.st.Checkpoints(threadID)
+	prevTreeOID := ""
+	if len(existingCkpts) > 0 {
+		prevTreeOID = existingCkpts[len(existingCkpts)-1].GitTreeOid
+	}
+	pump.mu.Lock()
+	workdir := pump.workdir
+	wakeReason := pump.lastWake
+	pump.mu.Unlock()
+	if workdir == "" {
+		workdir, _ = e.resolveWorkdir(th)
+	}
+	if wakeReason == "" {
+		wakeReason = "background_task"
+	}
+
+	// If a foreground run was just dispatched and holds ActiveRunId, attach to it.
+	if th.ActiveRunId != "" {
+		r, rErr := e.st.Run(th.ActiveRunId)
+		ord := th.RunCount
+		if rErr == nil {
+			ord = r.Ordinal
+		}
+		h := pump.attachTurn(th.ActiveRunId, ord, workdir, prevTreeOID)
+		pump.lease.SetInTurn(true)
+		unlock()
+		return h
+	}
+
+	var contRun *threadv2.Run
+	events, mErr := e.st.Mutate(func(tx *store.Tx) error {
+		tNow, err := tx.GetThread(threadID)
+		if err != nil {
+			return err
+		}
+		supReq, supItem, err := dismissPendingRequestTx(tx, tNow, nil)
+		if err != nil {
+			return err
+		}
+		tNow.LastError = ""
+		tNow.RunCount++
+		contRun = &threadv2.Run{
+			RunId:            newID("run"),
+			ThreadId:         threadID,
+			Ordinal:          tNow.RunCount,
+			Status:           threadv2.RunStatus_RUN_STATUS_RUNNING,
+			Author:           &threadv2.Actor{Kind: threadv2.ActorKind_ACTOR_KIND_SYSTEM, Id: "background", Label: "Background"},
+			WakeReason:       wakeReason,
+			Intent:           threadv2.DispatchIntent_DISPATCH_INTENT_START,
+			ModelSelection:   proto.Clone(tNow.ModelSelection).(*threadv2.ModelSelection),
+			RuntimeMode:      tNow.EffectiveRuntimeMode,
+			InteractionMode:  tNow.InteractionMode,
+			ProviderThreadId: pump.lease.ProviderThreadID,
+			StartedAt:        timestamppb.Now(),
+		}
+		tNow.ActiveRunId = contRun.RunId
+		tNow.Status = threadv2.ThreadStatus_THREAD_STATUS_RUNNING
+		if err := tx.PutRun(contRun); err != nil {
+			return err
+		}
+		if err := tx.PutThread(tNow); err != nil {
+			return err
+		}
+		if supReq != nil {
+			_ = tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: threadID,
+				Type:     "request.resolved",
+				Thread:   tNow,
+				Item:     supItem,
+				Request:  supReq,
+			})
+		}
+		return tx.AppendEvent(&threadv2.ThreadEvent{
+			ThreadId: threadID,
+			Type:     "run.started",
+			Thread:   tNow,
+			Run:      contRun,
+		})
+	})
+	if mErr != nil || contRun == nil {
+		unlock()
+		return nil
+	}
+
+	contCtx, contCancel := context.WithCancel(e.bgCtx)
+	runID := contRun.RunId
+	e.mu.Lock()
+	e.runCancels[runID] = contCancel
+	e.runDoneChs[runID] = contCtx.Done()
+	e.mu.Unlock()
+
+	h := pump.attachTurn(runID, contRun.Ordinal, workdir, prevTreeOID)
+	pump.lease.SetInTurn(true)
+	unlock()
+
+	e.publish(events, nil)
+
+	// Watch for explicit InterruptRun cancelling contCtx!
+	e.wg.Add(1)
+	go func() {
+		defer e.wg.Done()
+		select {
+		case <-h.doneCh:
+		case <-contCtx.Done():
+			if e.bgCtx.Err() == nil && pump.clearActiveIf(runID) {
+				pump.lease.SetInTurn(false)
+				e.finishRunInterrupted(threadID, runID, "interrupted")
+			}
+		}
+		contCancel()
+		e.mu.Lock()
+		delete(e.runCancels, runID)
+		delete(e.runDoneChs, runID)
+		e.mu.Unlock()
+	}()
+	return h
+}
+
+func (e *Engine) runLeasePump(pump *leasePump) {
+	threadID := pump.lease.ThreadID
+	ptID := pump.lease.ProviderThreadID
+
 	msgBufs := map[string]*strings.Builder{}
 	rsnBufs := map[string]*strings.Builder{}
 	var pendingPlan *threadv2.PlanReviewPayload
+
+	resetTurnBuffers := func() {
+		clear(msgBufs)
+		clear(rsnBufs)
+		pendingPlan = nil
+	}
+
 	for {
+		var ev runtime.Event
+		var ok bool
 		select {
-		case <-runCtx.Done():
-			if e.bgCtx.Err() != nil {
-				// Daemon is shutting down: preserve durable in-flight state for recoverOrphans on next boot.
-				return
-			}
-			e.finishRunInterrupted(threadID, runID, "interrupted")
+		case <-e.bgCtx.Done():
+			e.stopLeasePump(ptID, pump.lease)
 			return
-		case ev, ok := <-activeLease.Session.Events():
-			if !ok {
-				if e.bgCtx.Err() != nil {
-					return
-				}
-				e.sup.DetachSession(activePT.ProviderThreadId, activeLease.Session, false)
-				if runCtx.Err() != nil {
-					e.finishRunInterrupted(threadID, runID, "interrupted")
-					return
-				}
-				e.finishRunFailed(threadID, runID, "session_closed", "provider session closed mid-turn")
+		case <-pump.stopCh:
+			return
+		case ev, ok = <-pump.lease.Session.Events():
+		}
+		if !ok {
+			e.mu.Lock()
+			if e.pumps[ptID] == pump {
+				delete(e.pumps, ptID)
+			}
+			e.mu.Unlock()
+			if e.bgCtx.Err() != nil {
 				return
 			}
-			activeLease.Touch()
-			switch ev.Kind {
-			case runtime.EventNativeSession:
+			e.sup.DetachSession(ptID, pump.lease.Session, false)
+
+			// Settle any background tasks tied to this closed process.
+			bgEvs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				th, err := tx.GetThread(threadID)
+				if err != nil {
+					return nil
+				}
+				stopped, items, err := tx.StopRunningBackgroundTasks(threadID, "", "provider session exited")
+				if err != nil || len(stopped) == 0 {
+					return err
+				}
+				_, _, _ = tx.RefreshThreadBackgroundCounts(th)
+				if err := tx.PutThread(th); err != nil {
+					return err
+				}
+				for _, it := range items {
+					_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: threadID, Type: "item.updated", Thread: th, Item: it})
+				}
+				for _, bt := range stopped {
+					_ = tx.AppendEvent(&threadv2.ThreadEvent{ThreadId: threadID, Type: "background_task.updated", Thread: th, BackgroundTask: bt})
+				}
+				return nil
+			})
+			e.publish(bgEvs, nil)
+
+			if cur := pump.takeActive(); cur != nil {
+				resetTurnBuffers()
+				pump.lease.SetInTurn(false)
+				e.mu.Lock()
+				doneCh := e.runDoneChs[cur.runID]
+				e.mu.Unlock()
+				cancelled := false
+				if doneCh != nil {
+					select {
+					case <-doneCh:
+						cancelled = true
+					default:
+					}
+				}
+				if cancelled {
+					e.finishRunInterrupted(threadID, cur.runID, "interrupted")
+				} else {
+					e.finishRunFailed(threadID, cur.runID, "session_closed", "provider session closed mid-turn")
+				}
+				cur.closeDone()
+			}
+			return
+		}
+
+		pump.lease.Touch()
+
+		switch ev.Kind {
+		case runtime.EventNativeSession:
+			_, _ = e.st.Mutate(func(tx *store.Tx) error {
+				pt, err := tx.GetProviderThread(ptID)
+				if err != nil {
+					return err
+				}
+				if ev.NativeID != "" {
+					pt.NativeSessionId = ev.NativeID
+				}
+				if ev.ResumeCursor != "" {
+					pt.ResumeCursor = ev.ResumeCursor
+				}
+				return tx.PutProviderThread(pt)
+			})
+
+		case runtime.EventBackgroundTask:
+			taskID := ev.TaskID
+			if taskID == "" {
+				taskID = ev.ItemID
+			}
+			if taskID == "" {
+				continue
+			}
+			scopedItemID := pump.lookupScopedItem(ev.ItemID)
+			cur := pump.getActive()
+			runID := ""
+			if cur != nil {
+				runID = cur.runID
+				if scopedItemID == "" && ev.ItemID != "" {
+					scopedItemID = scopeRunItemID(cur.runID, ev.ItemID, "tool")
+					pump.rememberScopedItem(ev.ItemID, scopedItemID)
+				}
+			}
+			label := strings.TrimSpace(ev.ToolName)
+			if label == "" {
+				label = strings.TrimSpace(ev.Command)
+			}
+			if label != "" {
+				pump.mu.Lock()
+				pump.lastWake = label
+				pump.mu.Unlock()
+			}
+			var awaitedCnt, daemonCnt uint32
+			evs, err := e.st.Mutate(func(tx *store.Tx) error {
+				th, err := tx.GetThread(threadID)
+				if err != nil {
+					return err
+				}
+				bt := &threadv2.BackgroundTask{
+					TaskId:     taskID,
+					ThreadId:   threadID,
+					RunId:      runID,
+					ItemId:     scopedItemID,
+					Kind:       ev.BackgroundKind,
+					Status:     ev.BackgroundStatus,
+					Title:      label,
+					Command:    ev.Command,
+					OutputTail: ev.Output,
+					Summary:    ev.Text,
+					Awaited:    ev.BackgroundAwaited,
+					StopScope:  ev.BackgroundStopScope,
+				}
+				if ev.HasExitCode {
+					code := ev.ExitCode
+					bt.ExitCode = &code
+				}
+				if err := tx.PutBackgroundTask(bt); err != nil {
+					return err
+				}
+				awaitedCnt, daemonCnt, _ = tx.RefreshThreadBackgroundCounts(th)
+				if err := tx.PutThread(th); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId:       threadID,
+					Type:           "background_task.updated",
+					Thread:         th,
+					BackgroundTask: bt,
+				})
+			})
+			if err == nil {
+				pump.lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
+				e.publish(evs, nil)
+			}
+
+		case runtime.EventUsage:
+			if ev.Usage != nil {
+				cur := pump.getActive()
 				_, _ = e.st.Mutate(func(tx *store.Tx) error {
-					pt, err := tx.GetProviderThread(activePT.ProviderThreadId)
+					tNow, err := tx.GetThread(threadID)
 					if err != nil {
 						return err
 					}
-					if ev.NativeID != "" {
-						pt.NativeSessionId = ev.NativeID
+					tNow.Usage = ev.Usage
+					if cur != nil {
+						if rNow, rErr := tx.GetRun(cur.runID); rErr == nil {
+							rNow.Usage = ev.Usage
+							_ = tx.PutRun(rNow)
+						}
 					}
-					if ev.ResumeCursor != "" {
-						pt.ResumeCursor = ev.ResumeCursor
-					}
-					return tx.PutProviderThread(pt)
+					return tx.PutThread(tNow)
 				})
+			}
 
-			case runtime.EventAssistantDelta:
-				itemID := scopeRunItemID(runID, ev.ItemID, "msg")
-				buf := msgBufs[itemID]
-				if buf == nil {
-					buf = &strings.Builder{}
-					msgBufs[itemID] = buf
+		case runtime.EventToolStarted, runtime.EventToolCompleted:
+			status := "running"
+			if ev.Kind == runtime.EventToolCompleted {
+				status = "completed"
+				if ev.ExitCode != 0 {
+					status = "failed"
 				}
-				buf.WriteString(ev.Text)
-				fullText := buf.String()
+			}
+			existingScoped := pump.lookupScopedItem(ev.ItemID)
+			cur := pump.getActive()
+			// A background task completing on its own updates its original TurnItem
+			// without spawning an empty Continuation Run.
+			if cur == nil && ev.Kind == runtime.EventToolCompleted && existingScoped != "" {
+				output, truncated := truncateTurnOutput(ev.Output)
 				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:    itemID,
-						ThreadId:  threadID,
-						RunId:     runID,
-						Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
-						Status:    "running",
-						Text:      fullText,
-						Streaming: true,
+					prev, err := tx.GetTurnItem(threadID, existingScoped)
+					if err != nil {
+						return nil
 					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
+					prev.Status = status
+					prev.ExitCode = ev.ExitCode
+					if output != "" {
+						prev.Output = output
+						prev.OutputTruncated = truncated
 					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId:     threadID,
-						Type:         "item.delta",
-						Item:         it,
-						TextDelta:    ev.Text,
-						TargetItemId: itemID,
-					})
-				})
-				e.publish(evs, nil)
-
-			case runtime.EventAssistantMessage:
-				itemID := scopeRunItemID(runID, ev.ItemID, "msg")
-				text := ev.Text
-				if text == "" && msgBufs[itemID] != nil {
-					text = msgBufs[itemID].String()
-				}
-				delete(msgBufs, itemID)
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:    itemID,
-						ThreadId:  threadID,
-						RunId:     runID,
-						Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
-						Status:    "completed",
-						Text:      text,
-						Streaming: false,
-					}
-					if err := tx.PutTurnItem(it); err != nil {
+					if err := tx.PutTurnItem(prev); err != nil {
 						return err
 					}
 					return tx.AppendEvent(&threadv2.ThreadEvent{
 						ThreadId: threadID,
 						Type:     "item.updated",
-						Item:     it,
+						Item:     prev,
 					})
 				})
 				e.publish(evs, nil)
-
-			case runtime.EventReasoningDelta:
-				itemID := scopeRunItemID(runID, ev.ItemID, "rsn")
-				buf := rsnBufs[itemID]
-				if buf == nil {
-					buf = &strings.Builder{}
-					rsnBufs[itemID] = buf
+				continue
+			}
+			if cur == nil {
+				cur = e.ensureContinuationTurn(pump)
+				if cur == nil {
+					continue
 				}
-				buf.WriteString(ev.Text)
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:   itemID,
-						ThreadId: threadID,
-						RunId:    runID,
-						Kind:     threadv2.TurnItemKind_TURN_ITEM_KIND_REASONING,
-						Status:   "completed",
-						Text:     buf.String(),
-					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
-					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     it,
-					})
-				})
-				e.publish(evs, nil)
-
-			case runtime.EventToolStarted, runtime.EventToolCompleted:
-				status := "running"
-				if ev.Kind == runtime.EventToolCompleted {
-					status = "completed"
-					if ev.ExitCode != 0 {
-						status = "failed"
-					}
-				}
-				var itemID string
+			}
+			itemID := existingScoped
+			if itemID == "" {
 				if ev.ItemID != "" {
-					itemID = scopeRunItemID(runID, ev.ItemID, "tool")
+					itemID = scopeRunItemID(cur.runID, ev.ItemID, "tool")
+					pump.rememberScopedItem(ev.ItemID, itemID)
 				} else {
 					itemID = newID("tool")
 				}
-				output := ev.Output
-				truncated := false
-				if len(output) > 32768 {
-					cut := 32768
-					for cut > 0 && !utf8.RuneStart(output[cut]) {
-						cut--
+			}
+			output, truncated := truncateTurnOutput(ev.Output)
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				prev, _ := tx.GetTurnItem(threadID, itemID)
+				ownerRunID := cur.runID
+				toolName := ev.ToolName
+				cmd := ev.Command
+				filePath := ev.FilePath
+				if prev != nil {
+					if prev.RunId != "" {
+						ownerRunID = prev.RunId
 					}
-					output = output[:cut] + "\n...[output truncated]..."
-					truncated = true
+					if toolName == "" {
+						toolName = prev.ToolName
+					}
+					if cmd == "" {
+						cmd = prev.Command
+					}
+					if filePath == "" {
+						filePath = prev.FilePath
+					}
+					if output == "" && prev.Output != "" {
+						output = prev.Output
+						truncated = prev.OutputTruncated
+					}
 				}
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					prev, _ := tx.GetTurnItem(threadID, itemID)
-					toolName := ev.ToolName
-					cmd := ev.Command
-					filePath := ev.FilePath
-					if prev != nil {
-						if toolName == "" {
-							toolName = prev.ToolName
-						}
-						if cmd == "" {
-							cmd = prev.Command
-						}
-						if filePath == "" {
-							filePath = prev.FilePath
-						}
-						if output == "" && prev.Output != "" {
-							output = prev.Output
-							truncated = prev.OutputTruncated
-						}
-					}
-					kind := threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
-					if cmd != "" || (prev != nil && prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION) {
-						kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
-					}
-					it := &threadv2.TurnItem{
-						ItemId:          itemID,
-						ThreadId:        threadID,
-						RunId:           runID,
-						Kind:            kind,
-						Status:          status,
-						ToolName:        toolName,
-						Command:         cmd,
-						FilePath:        filePath,
-						ExitCode:        ev.ExitCode,
-						Output:          output,
-						OutputTruncated: truncated,
-					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
-					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     it,
-					})
-				})
-				e.publish(evs, nil)
-
-			case runtime.EventFileChanged:
-				var itemID string
-				if ev.ItemID != "" {
-					itemID = scopeRunItemID(runID, ev.ItemID, "file")
-				} else {
-					itemID = newID("file")
+				kind := threadv2.TurnItemKind_TURN_ITEM_KIND_TOOL_CALL
+				if cmd != "" || (prev != nil && prev.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION) {
+					kind = threadv2.TurnItemKind_TURN_ITEM_KIND_COMMAND_EXECUTION
 				}
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:    itemID,
-						ThreadId:  threadID,
-						RunId:     runID,
-						Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE,
-						Status:    "completed",
-						FilePath:  ev.FilePath,
-						Diff:      ev.Diff,
-						Additions: ev.Additions,
-						Deletions: ev.Deletions,
-					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
-					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     it,
-					})
-				})
-				e.publish(evs, nil)
-
-			case runtime.EventPlanProposed:
-				var itemID string
-				if ev.ItemID != "" {
-					itemID = scopeRunItemID(runID, ev.ItemID, "plan")
-				} else {
-					itemID = newID("plan")
+				it := &threadv2.TurnItem{
+					ItemId:          itemID,
+					ThreadId:        threadID,
+					RunId:           ownerRunID,
+					Kind:            kind,
+					Status:          status,
+					ToolName:        toolName,
+					Command:         cmd,
+					FilePath:        filePath,
+					ExitCode:        ev.ExitCode,
+					Output:          output,
+					OutputTruncated: truncated,
 				}
-				if ev.RequestReview {
-					pendingPlan = &threadv2.PlanReviewPayload{
-						PlanId:   itemID,
-						Title:    ev.PlanTitle,
-						Markdown: ev.Text,
-					}
-				} else if pendingPlan != nil && pendingPlan.PlanId == itemID {
-					pendingPlan = nil
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
 				}
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:    itemID,
-						ThreadId:  threadID,
-						RunId:     runID,
-						Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN,
-						Status:    "completed",
-						PlanTitle: ev.PlanTitle,
-						Text:      ev.Text,
-					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
-					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     it,
-					})
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
 				})
-				e.publish(evs, nil)
+			})
+			e.publish(evs, nil)
 
-			case runtime.EventTodoUpdated:
-				itemID := scopeRunItemID(runID, ev.ItemID, "todo")
-				evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-					it := &threadv2.TurnItem{
-						ItemId:    itemID,
-						ThreadId:  threadID,
-						RunId:     runID,
-						Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
-						Status:    "completed",
-						TodoSteps: ev.TodoSteps,
-					}
-					if err := tx.PutTurnItem(it); err != nil {
-						return err
-					}
-					return tx.AppendEvent(&threadv2.ThreadEvent{
-						ThreadId: threadID,
-						Type:     "item.updated",
-						Item:     it,
-					})
+		case runtime.EventAssistantDelta:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			itemID := scopeRunItemID(cur.runID, ev.ItemID, "msg")
+			buf := msgBufs[itemID]
+			if buf == nil {
+				buf = &strings.Builder{}
+				msgBufs[itemID] = buf
+			}
+			buf.WriteString(ev.Text)
+			fullText := buf.String()
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:    itemID,
+					ThreadId:  threadID,
+					RunId:     cur.runID,
+					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+					Status:    "running",
+					Text:      fullText,
+					Streaming: true,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId:     threadID,
+					Type:         "item.delta",
+					Item:         it,
+					TextDelta:    ev.Text,
+					TargetItemId: itemID,
 				})
-				e.publish(evs, nil)
+			})
+			e.publish(evs, nil)
 
-			case runtime.EventUsage:
-				if ev.Usage != nil {
-					_, _ = e.st.Mutate(func(tx *store.Tx) error {
-						tNow, err := tx.GetThread(threadID)
-						if err != nil {
+		case runtime.EventAssistantMessage:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			itemID := scopeRunItemID(cur.runID, ev.ItemID, "msg")
+			text := ev.Text
+			if text == "" && msgBufs[itemID] != nil {
+				text = msgBufs[itemID].String()
+			}
+			delete(msgBufs, itemID)
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:    itemID,
+					ThreadId:  threadID,
+					RunId:     cur.runID,
+					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+					Status:    "completed",
+					Text:      text,
+					Streaming: false,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventReasoningDelta:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			itemID := scopeRunItemID(cur.runID, ev.ItemID, "rsn")
+			buf := rsnBufs[itemID]
+			if buf == nil {
+				buf = &strings.Builder{}
+				rsnBufs[itemID] = buf
+			}
+			buf.WriteString(ev.Text)
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:   itemID,
+					ThreadId: threadID,
+					RunId:    cur.runID,
+					Kind:     threadv2.TurnItemKind_TURN_ITEM_KIND_REASONING,
+					Status:   "completed",
+					Text:     buf.String(),
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventFileChanged:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			var itemID string
+			if ev.ItemID != "" {
+				itemID = scopeRunItemID(cur.runID, ev.ItemID, "file")
+			} else {
+				itemID = newID("file")
+			}
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:    itemID,
+					ThreadId:  threadID,
+					RunId:     cur.runID,
+					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_FILE_CHANGE,
+					Status:    "completed",
+					FilePath:  ev.FilePath,
+					Diff:      ev.Diff,
+					Additions: ev.Additions,
+					Deletions: ev.Deletions,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventPlanProposed:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			var itemID string
+			if ev.ItemID != "" {
+				itemID = scopeRunItemID(cur.runID, ev.ItemID, "plan")
+			} else {
+				itemID = newID("plan")
+			}
+			if ev.RequestReview {
+				pendingPlan = &threadv2.PlanReviewPayload{
+					PlanId:   itemID,
+					Title:    ev.PlanTitle,
+					Markdown: ev.Text,
+				}
+			} else if pendingPlan != nil && pendingPlan.PlanId == itemID {
+				pendingPlan = nil
+			}
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:    itemID,
+					ThreadId:  threadID,
+					RunId:     cur.runID,
+					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_PROPOSED_PLAN,
+					Status:    "completed",
+					PlanTitle: ev.PlanTitle,
+					Text:      ev.Text,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventTodoUpdated:
+			cur := e.ensureContinuationTurn(pump)
+			if cur == nil {
+				continue
+			}
+			itemID := scopeRunItemID(cur.runID, ev.ItemID, "todo")
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &threadv2.TurnItem{
+					ItemId:    itemID,
+					ThreadId:  threadID,
+					RunId:     cur.runID,
+					Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_TODO_LIST,
+					Status:    "completed",
+					TodoSteps: ev.TodoSteps,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&threadv2.ThreadEvent{
+					ThreadId: threadID,
+					Type:     "item.updated",
+					Item:     it,
+				})
+			})
+			e.publish(evs, nil)
+
+		case runtime.EventTurnCompleted:
+			cur := pump.takeActive()
+			if cur == nil {
+				resetTurnBuffers()
+				continue
+			}
+			for itemID, buf := range msgBufs {
+				if buf.Len() > 0 {
+					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+						it := &threadv2.TurnItem{
+							ItemId:    itemID,
+							ThreadId:  threadID,
+							RunId:     cur.runID,
+							Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+							Status:    "completed",
+							Text:      buf.String(),
+							Streaming: false,
+						}
+						if err := tx.PutTurnItem(it); err != nil {
 							return err
 						}
-						rNow, err := tx.GetRun(runID)
-						if err != nil {
-							return err
-						}
-						rNow.Usage = ev.Usage
-						tNow.Usage = ev.Usage
-						_ = tx.PutRun(rNow)
-						return tx.PutThread(tNow)
-					})
-				}
-
-			case runtime.EventTurnCompleted:
-				// Finalize any open streaming message buffer that did not emit EventAssistantMessage.
-				for itemID, buf := range msgBufs {
-					if buf.Len() > 0 {
-						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-							it := &threadv2.TurnItem{
-								ItemId:    itemID,
-								ThreadId:  threadID,
-								RunId:     runID,
-								Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
-								Status:    "completed",
-								Text:      buf.String(),
-								Streaming: false,
-							}
-							if err := tx.PutTurnItem(it); err != nil {
-								return err
-							}
-							return tx.AppendEvent(&threadv2.ThreadEvent{
-								ThreadId: threadID,
-								Type:     "item.updated",
-								Item:     it,
-							})
+						return tx.AppendEvent(&threadv2.ThreadEvent{
+							ThreadId: threadID,
+							Type:     "item.updated",
+							Item:     it,
 						})
-						e.publish(evs, nil)
-					}
+					})
+					e.publish(evs, nil)
 				}
-				// Capture post-run Git Checkpoint!
-				var capturedCp *threadv2.Checkpoint
-				if cp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), threadID, runID, curRun.Ordinal, prevTreeOID); cpErr == nil && cp != nil {
+			}
+			planToReview := pendingPlan
+			resetTurnBuffers()
+
+			var capturedCp *threadv2.Checkpoint
+			if cur.workdir != "" {
+				if cp, cpErr := e.vcs.CaptureCheckpoint(e.bgCtx, cur.workdir, newID("ckpt"), threadID, cur.runID, cur.ordinal, cur.prevTreeOID); cpErr == nil && cp != nil {
 					capturedCp = cp
 				}
-				e.finishRunCompleted(threadID, runID, activePT.ProviderThreadId, capturedCp, pendingPlan)
-				return
+			}
+			e.finishRunCompleted(threadID, cur.runID, ptID, capturedCp, planToReview)
+			pump.lease.SetInTurn(false)
+			cur.closeDone()
 
-			case runtime.EventTurnInterrupted:
-				if e.bgCtx.Err() != nil {
-					return
-				}
-				for itemID, buf := range msgBufs {
-					if buf.Len() > 0 {
-						evs, _ := e.st.Mutate(func(tx *store.Tx) error {
-							it := &threadv2.TurnItem{
-								ItemId:    itemID,
-								ThreadId:  threadID,
-								RunId:     runID,
-								Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
-								Status:    "interrupted",
-								Text:      buf.String(),
-								Streaming: false,
-							}
-							if err := tx.PutTurnItem(it); err != nil {
-								return err
-							}
-							return tx.AppendEvent(&threadv2.ThreadEvent{
-								ThreadId: threadID,
-								Type:     "item.updated",
-								Item:     it,
-							})
+		case runtime.EventTurnInterrupted:
+			if e.bgCtx.Err() != nil {
+				return
+			}
+			cur := pump.takeActive()
+			if cur == nil {
+				resetTurnBuffers()
+				continue
+			}
+			for itemID, buf := range msgBufs {
+				if buf.Len() > 0 {
+					evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+						it := &threadv2.TurnItem{
+							ItemId:    itemID,
+							ThreadId:  threadID,
+							RunId:     cur.runID,
+							Kind:      threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE,
+							Status:    "interrupted",
+							Text:      buf.String(),
+							Streaming: false,
+						}
+						if err := tx.PutTurnItem(it); err != nil {
+							return err
+						}
+						return tx.AppendEvent(&threadv2.ThreadEvent{
+							ThreadId: threadID,
+							Type:     "item.updated",
+							Item:     it,
 						})
-						e.publish(evs, nil)
-					}
+					})
+					e.publish(evs, nil)
 				}
-				e.finishRunInterrupted(threadID, runID, "interrupted")
-				return
+			}
+			resetTurnBuffers()
+			e.finishRunInterrupted(threadID, cur.runID, "interrupted")
+			pump.lease.SetInTurn(false)
+			cur.closeDone()
 
-			case runtime.EventTurnFailed:
-				e.finishRunFailed(threadID, runID, ev.ErrorCode, ev.ErrorMessage)
-				return
+		case runtime.EventTurnFailed:
+			cur := pump.takeActive()
+			resetTurnBuffers()
+			if cur != nil {
+				e.finishRunFailed(threadID, cur.runID, ev.ErrorCode, ev.ErrorMessage)
+				pump.lease.SetInTurn(false)
+				cur.closeDone()
+			} else {
+				pump.lease.SetInTurn(false)
 			}
 		}
 	}
+}
+
+func truncateTurnOutput(output string) (string, bool) {
+	if len(output) <= 32768 {
+		return output, false
+	}
+	cut := 32768
+	for cut > 0 && !utf8.RuneStart(output[cut]) {
+		cut--
+	}
+	return output[:cut] + "\n...[output truncated]...", true
 }
 
 func scopeRunItemID(runID, rawID, fallbackPrefix string) string {
@@ -2338,6 +2925,15 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 		if err != nil {
 			return runtime.ToolGateResult{}, err
 		}
+		if th.ActiveRunId == "" && th.ActiveProviderThreadId != "" {
+			if pump := e.getLeasePump(th.ActiveProviderThreadId); pump != nil {
+				if h := e.ensureContinuationTurn(pump); h != nil {
+					if refreshed, rErr := e.st.Thread(threadID); rErr == nil {
+						th = refreshed
+					}
+				}
+			}
+		}
 		runID := th.ActiveRunId
 
 		if req.Kind == threadv2.RuntimeRequestKind_RUNTIME_REQUEST_KIND_TOOL_APPROVAL && req.Approval != nil {
@@ -2442,10 +3038,11 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 		}
 		e.publish(events, nil)
 
-		select {
-		case res := <-waitCh:
-			return res, nil
-		case <-ctx.Done():
+		e.mu.Lock()
+		runDoneCh := e.runDoneChs[runID]
+		e.mu.Unlock()
+
+		expirePending := func() {
 			if e.bgCtx.Err() == nil {
 				_, _ = e.st.Mutate(func(tx *store.Tx) error {
 					cur, err := tx.GetRuntimeRequest(reqID)
@@ -2457,6 +3054,16 @@ func (e *Engine) makeGate(threadID, workdir string) runtime.GateFunc {
 					return nil
 				})
 			}
+		}
+
+		select {
+		case res := <-waitCh:
+			return res, nil
+		case <-runDoneCh:
+			expirePending()
+			return runtime.ToolGateResult{CancelTurn: true}, context.Canceled
+		case <-ctx.Done():
+			expirePending()
 			return runtime.ToolGateResult{CancelTurn: true}, ctx.Err()
 		}
 	}
@@ -2726,6 +3333,15 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 	ptID := th.ActiveProviderThreadId
 	var dismissEvents []*threadv2.ThreadEvent
 
+	if req.RunId == "" && activeRunID == "" && th.PendingRequestId == "" && !req.HoldQueue && (th.ActiveBackgroundCount > 0 || th.ActiveDaemonCount > 0) {
+		unlock()
+		stopRes, err := e.StopBackgroundTask(ctx, p, &threadv2.StopBackgroundTaskRequest{ThreadId: req.ThreadId})
+		if err != nil {
+			return nil, err
+		}
+		return &threadv2.InterruptRunResponse{Thread: stopRes.Thread}, nil
+	}
+
 	if req.HoldQueue || (activeRunID == "" && th.PendingRequestId != "") {
 		dismissEvents, _ = e.st.Mutate(func(tx *store.Tx) error {
 			tNow, err := tx.GetThread(req.ThreadId)
@@ -2779,6 +3395,7 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 	}
 	if lease := e.sup.Get(ptID); lease != nil {
 		if req.Force {
+			e.stopLeasePump(ptID, lease)
 			e.sup.DetachSession(ptID, lease.Session, true)
 		} else {
 			_ = lease.Session.Interrupt(ctx)
@@ -2793,6 +3410,104 @@ func (e *Engine) InterruptRun(ctx context.Context, p *Principal, req *threadv2.I
 		return nil, err
 	}
 	return &threadv2.InterruptRunResponse{Thread: updated}, nil
+}
+
+func (e *Engine) StopBackgroundTask(ctx context.Context, p *Principal, req *threadv2.StopBackgroundTaskRequest) (*threadv2.StopBackgroundTaskResponse, error) {
+	if p == nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("missing principal"))
+	}
+	var cached threadv2.StopBackgroundTaskResponse
+	defer e.lockCommand(req.CommandId)()
+	if ok, err := e.st.GetReceipt(req.CommandId, "StopBackgroundTask", &cached); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	} else if ok {
+		return &cached, nil
+	}
+
+	unlock := e.lockThread(req.ThreadId)
+	th, err := e.st.Thread(req.ThreadId)
+	if err != nil {
+		unlock()
+		return nil, connect.NewError(connect.CodeNotFound, errors.New("thread not found"))
+	}
+	if !p.canViewThread(th) {
+		unlock()
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
+	}
+
+	existingTasks, _ := e.st.BackgroundTasks(req.ThreadId)
+	effectiveTaskID := strings.TrimSpace(req.TaskId)
+	if effectiveTaskID != "" {
+		for _, bt := range existingTasks {
+			if bt.TaskId == effectiveTaskID && bt.StopScope == threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SESSION {
+				// Session-scoped background tasks share session/cancel, stopping all session tasks.
+				effectiveTaskID = ""
+				break
+			}
+		}
+	}
+	ptID := th.ActiveProviderThreadId
+	unlock()
+
+	if lease := e.sup.Get(ptID); lease != nil {
+		if bc, ok := lease.Session.(runtime.BackgroundController); ok {
+			_ = bc.StopBackgroundTask(ctx, req.TaskId)
+		} else {
+			_ = lease.Session.Interrupt(ctx)
+		}
+	}
+
+	unlock = e.lockThread(req.ThreadId)
+	var res *threadv2.StopBackgroundTaskResponse
+	var awaitedCnt, daemonCnt uint32
+	events, err := e.st.Mutate(func(tx *store.Tx) error {
+		tNow, err := tx.GetThread(req.ThreadId)
+		if err != nil {
+			return err
+		}
+		stopped, items, err := tx.StopRunningBackgroundTasks(req.ThreadId, effectiveTaskID, "stopped by user")
+		if err != nil {
+			return err
+		}
+		awaitedCnt, daemonCnt, _ = tx.RefreshThreadBackgroundCounts(tNow)
+		if err := tx.PutThread(tNow); err != nil {
+			return err
+		}
+		for _, it := range items {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId: req.ThreadId,
+				Type:     "item.updated",
+				Thread:   tNow,
+				Item:     it,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, bt := range stopped {
+			if err := tx.AppendEvent(&threadv2.ThreadEvent{
+				ThreadId:       req.ThreadId,
+				Type:           "background_task.updated",
+				Thread:         tNow,
+				BackgroundTask: bt,
+			}); err != nil {
+				return err
+			}
+		}
+		res = &threadv2.StopBackgroundTaskResponse{
+			Thread:       proto.Clone(tNow).(*threadv2.Thread),
+			StoppedTasks: stopped,
+		}
+		return tx.PutReceipt(req.CommandId, "StopBackgroundTask", res)
+	})
+	unlock()
+	if err != nil {
+		return nil, err
+	}
+	if lease := e.sup.Get(ptID); lease != nil {
+		lease.SetBackgroundCounts(int(awaitedCnt), int(daemonCnt))
+	}
+	e.publish(events, nil)
+	return res, nil
 }
 
 func (e *Engine) ManageQueue(ctx context.Context, p *Principal, req *threadv2.ManageQueueRequest) (*threadv2.ManageQueueResponse, error) {
@@ -3330,6 +4045,8 @@ func (e *Engine) RollbackCheckpoint(ctx context.Context, p *Principal, req *thre
 		if err := tx.DeleteTurnItemsAfterRunIds(req.ThreadId, removedRuns); err != nil {
 			return err
 		}
+		_, _, _ = tx.StopRunningBackgroundTasks(req.ThreadId, "", "rewound to earlier checkpoint")
+		_, _, _ = tx.RefreshThreadBackgroundCounts(tNow)
 		tNow.RunCount = target.RunOrdinal
 		tNow.ActiveProviderThreadId = ""
 		tNow.LastError = ""

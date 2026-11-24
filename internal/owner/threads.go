@@ -981,6 +981,29 @@ func (s *ownerThreadService) InterruptRun(ctx context.Context, req *threadv2.Int
 	return res, err
 }
 
+func (s *ownerThreadService) StopBackgroundTask(ctx context.Context, req *threadv2.StopBackgroundTaskRequest) (*threadv2.StopBackgroundTaskResponse, error) {
+	o := s.o()
+	if req.CommandId == "" {
+		req.CommandId = "cmd_" + strings.ToLower(ulid.Make().String())
+	}
+	eng, machineID, err := o.resolveMachineForThread(ctx, req.ThreadId)
+	if err != nil {
+		return nil, err
+	}
+	if eng != nil {
+		return eng.StopBackgroundTask(ctx, o.ownerPrincipal(), req)
+	}
+	pm, err := o.dialRemoteThreadMachine(ctx, machineID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := pm.Thread.StopBackgroundTask(ctx, req)
+	if err == nil {
+		o.cacheThread(res.GetThread(), nil)
+	}
+	return res, err
+}
+
 func (s *ownerThreadService) ManageQueue(ctx context.Context, req *threadv2.ManageQueueRequest) (*threadv2.ManageQueueResponse, error) {
 	o := s.o()
 	if req.CommandId == "" {

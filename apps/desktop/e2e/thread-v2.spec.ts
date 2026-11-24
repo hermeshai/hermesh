@@ -179,3 +179,56 @@ test("while a turn runs, messages queue; one can steer the turn now, be edited o
     await app.close();
   }
 });
+
+test("tracks post-turn background tasks without premature completion, streams automatic continuation wakeup, and stops daemons from the UI", async () => {
+  const { app, page } = await launch();
+  try {
+    await page.getByTestId("nav-new-thread").click();
+    await pickDemoAndScripted(page);
+    // RuntimeMode.FULL_ACCESS == 4 so shell commands run without approval pause.
+    await pickMode(page, "runtime-mode-4");
+
+    await page
+      .getByTestId("thread-composer-input")
+      .fill("bg-shell 3s|pytest -q|12 passed in 3s|All 12 background tests passed!\nsay Foreground reply done, running pytest in background");
+    await page.getByTestId("composer-submit-btn").click();
+
+    // 1. Foreground reply finishes, while background task pill + toolbar badge + Inspector card appear,
+    //    and "这一轮做完了" is suppressed while awaiting the background task!
+    await expect(replies(page)).toContainText("Foreground reply done, running pytest in background", { timeout: 10_000 });
+    const bgStrip = page.getByTestId("background-tasks-strip");
+    await expect(bgStrip).toBeVisible();
+    await expect(bgStrip).toContainText("pytest -q");
+    await expect(page.getByTestId("toolbar-background-badge")).toBeVisible();
+    await expect(page.locator(".dbody .livebar")).toHaveCount(0);
+    await expect(page.getByTestId("thread-working")).toContainText("正在等待 1 个后台任务完成后继续汇报");
+    await expect(page.getByTestId("inspector-background-tasks")).toContainText("pytest -q");
+
+    // 2. When the 3s background task finishes, the system Continuation Run streams the final report
+    //    under a quiet wake divider, clears the active background strip, and shows "这一轮做完了"!
+    await expect(replies(page).last()).toContainText("All 12 background tests passed!", { timeout: 15_000 });
+    await expect(page.getByTestId("turn-wake-line")).toContainText("后台唤醒 · pytest -q");
+    await expect(bgStrip).toHaveCount(0);
+    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+
+    // 3. Long-lived daemon (`IsDaemon=true` / `bg-daemon`): does NOT block "这一轮做完了",
+    //    shows live output in Inspector when clicking "查看", and stops cleanly when clicking "停止"!
+    await page
+      .getByTestId("thread-composer-input")
+      .fill("bg-daemon npm run dev|ready on http://localhost:3000\nsay Dev server started");
+    await page.getByTestId("composer-submit-btn").click();
+
+    await expect(replies(page).last()).toContainText("Dev server started", { timeout: 10_000 });
+    await expect(page.locator(".dbody .livebar")).toContainText("这一轮做完了");
+    await expect(bgStrip).toContainText("常驻进程运行中");
+
+    await page.getByTestId("background-strip-view").click();
+    await expect(page.getByTestId("inspector-background-tasks")).toContainText("ready on http://localhost:3000");
+
+    await page.getByTestId("background-strip-stop").click();
+    await expect(bgStrip).toHaveCount(0, { timeout: 10_000 });
+    await expect(page.getByTestId("inspector-background-tasks")).toContainText("已停止");
+  } finally {
+    await app.close();
+  }
+});

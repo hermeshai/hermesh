@@ -17,8 +17,8 @@ import { dateOf } from "./sessions";
 
 /** One row of the conversation. */
 export type TranscriptItem =
-  /** asker: who asked for the turn (a client id; "" from before messages). */
-  | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string }
+  /** asker: who asked for the turn (a client id; "" from before messages). wakeReason: when woken by a background task. */
+  | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string; wakeReason?: string }
   | { kind: "user"; seq: bigint; text: string; at: Date | undefined }
   | { kind: "agent"; seq: bigint; text: string; at: Date | undefined }
   /** A tool call with its result, once there is one; running: the agent is still in it. */

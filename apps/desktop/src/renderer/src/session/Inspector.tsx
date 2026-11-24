@@ -2,14 +2,20 @@ import { useEffect, useState, type MouseEvent } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import type { AgentModel } from "@hermesh/proto/machine";
 import type { Session } from "@hermesh/proto/session";
-import { codingAgentTitle, modelTitle } from "@hermesh/core";
+import {
+  BackgroundTaskKind,
+  BackgroundTaskStatus,
+  BackgroundTaskStopScope,
+  type BackgroundTask,
+} from "@hermesh/proto/thread";
+import { clockText, codingAgentTitle, dateOf, elapsedSeconds, modelTitle } from "@hermesh/core";
 import { AgentLogo } from "@hermesh/ui";
 import { local } from "../api";
 import { GrantAvatar, PopMenu, type MenuEntry } from "../components";
-import { Icon } from "../icons";
+import { Icon, type IconName } from "../icons";
 import { copy } from "../settings/common";
 import { grantLabel, machineName } from "../Sidebar";
-import { useStore } from "../store";
+import { useNow, useStore } from "../store";
 
 type Menu = { of: "project" | "branch"; anchor: HTMLElement; keyboard: boolean };
 
@@ -21,7 +27,19 @@ type Menu = { of: "project" | "branch"; anchor: HTMLElement; keyboard: boolean }
  * to copy them, and on this Mac the project's to open its folder. Under it,
  * its context: the model and reasoning effort it runs with, once known.
  */
-export function Inspector({ s }: { s: Session }) {
+export function Inspector({
+  s,
+  backgroundTasks,
+  selectedTaskId,
+  onSelectTask,
+  onStopBackgroundTask,
+}: {
+  s: Session;
+  backgroundTasks?: readonly BackgroundTask[];
+  selectedTaskId?: string;
+  onSelectTask?: (taskId: string) => void;
+  onStopBackgroundTask?: (taskId?: string) => void;
+}) {
   const { t } = useTranslation("session");
   const st = useStore();
   const grant = grantLabel(st, s);
@@ -100,7 +118,155 @@ export function Inspector({ s }: { s: Session }) {
         {menu && <PopMenu label={t(`inspector.${menu.of}Menu`)} items={items} anchor={menu.anchor} keyboard={menu.keyboard} onClose={() => setMenu(undefined)} />}
       </aside>
       {(s.model !== "" || s.effort !== "") && <Context s={s} models={m?.status?.agents.find((a) => a.name === s.agent)?.models} />}
+      {backgroundTasks && backgroundTasks.length > 0 && (
+        <BackgroundTasksCard
+          tasks={backgroundTasks}
+          selectedTaskId={selectedTaskId}
+          onSelectTask={onSelectTask}
+          onStop={onStopBackgroundTask}
+        />
+      )}
     </div>
+  );
+}
+
+function bgTaskIcon(kind: BackgroundTaskKind): IconName {
+  switch (kind) {
+    case BackgroundTaskKind.SUBAGENT:
+      return "persons";
+    case BackgroundTaskKind.SCHEDULE:
+      return "clock";
+    case BackgroundTaskKind.DAEMON:
+      return "bolt";
+    default:
+      return "terminal";
+  }
+}
+
+function BackgroundTasksCard({
+  tasks,
+  selectedTaskId,
+  onSelectTask,
+  onStop,
+}: {
+  tasks: readonly BackgroundTask[];
+  selectedTaskId?: string;
+  onSelectTask?: (taskId: string) => void;
+  onStop?: (taskId?: string) => void;
+}) {
+  const { t } = useTranslation("thread");
+  const hasRunning = tasks.some((x) => x.status === BackgroundTaskStatus.RUNNING);
+  const runningCount = tasks.filter((x) => x.status === BackgroundTaskStatus.RUNNING).length;
+  const now = useNow(hasRunning ? 1000 : 30_000);
+  const [openIds, setOpenIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (selectedTaskId) {
+      setOpenIds((prev) => ({ ...prev, [selectedTaskId]: true }));
+    }
+  }, [selectedTaskId]);
+
+  const kindLabel = (k: BackgroundTaskKind) => {
+    switch (k) {
+      case BackgroundTaskKind.SUBAGENT:
+        return t("background.kindSubagent");
+      case BackgroundTaskKind.SCHEDULE:
+        return t("background.kindSchedule");
+      case BackgroundTaskKind.DAEMON:
+        return t("background.kindDaemon");
+      default:
+        return t("background.kindCommand");
+    }
+  };
+
+  const statusLabel = (st: BackgroundTaskStatus) => {
+    switch (st) {
+      case BackgroundTaskStatus.RUNNING:
+        return t("background.statusRunning");
+      case BackgroundTaskStatus.COMPLETED:
+        return t("background.statusCompleted");
+      case BackgroundTaskStatus.FAILED:
+        return t("background.statusFailed");
+      default:
+        return t("background.statusStopped");
+    }
+  };
+
+  return (
+    <aside className="insp" aria-label={t("background.title")} data-testid="inspector-background-tasks">
+      <div className="th-bgh">
+        <h3 className="insp-h">{t("background.title")}</h3>
+        {runningCount > 1 && onStop && (
+          <button
+            type="button"
+            className="btn th-qbtn"
+            data-testid="inspector-stop-all-bg"
+            onClick={() => onStop("")}
+          >
+            {t("background.stopAll")}
+          </button>
+        )}
+      </div>
+      <div className="th-bglist">
+        {tasks.map((bt) => {
+          const isRunning = bt.status === BackgroundTaskStatus.RUNNING;
+          const label = bt.title || bt.command || bt.taskId;
+          const started = dateOf(bt.startedAt);
+          const ended = dateOf(bt.completedAt);
+          const dur = started ? clockText(elapsedSeconds(started, isRunning ? now : (ended ?? now))) : "";
+          const expanded = openIds[bt.taskId] ?? (bt.taskId === selectedTaskId || tasks.length === 1);
+          return (
+            <div key={bt.taskId} className={`th-bgitem ${isRunning ? "live" : ""}`} data-testid={`bg-task-${bt.taskId}`}>
+              <div className="th-bgrow">
+                <button
+                  type="button"
+                  className="th-bgtoggle"
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    const next = !expanded;
+                    setOpenIds((prev) => ({ ...prev, [bt.taskId]: next }));
+                    if (next) onSelectTask?.(bt.taskId);
+                  }}
+                >
+                  {isRunning ? <span className="mini-spin" /> : <Icon name={bgTaskIcon(bt.kind)} />}
+                  <span className="th-bgtitle" title={label}>{label}</span>
+                  {dur && <span className="th-bgdur">{dur}</span>}
+                </button>
+                {isRunning && onStop && (
+                  <button
+                    type="button"
+                    className="btn th-qbtn"
+                    title={bt.stopScope === BackgroundTaskStopScope.SESSION ? t("background.sessionStopHint") : t("background.stop")}
+                    data-testid={`bg-task-stop-${bt.taskId}`}
+                    onClick={() => onStop(bt.taskId)}
+                  >
+                    {t("background.stop")}
+                  </button>
+                )}
+              </div>
+              <div className="th-bgmeta">
+                <span>{kindLabel(bt.kind)}</span>
+                <span>·</span>
+                <span className={bt.status === BackgroundTaskStatus.FAILED ? "th-bgerr" : ""}>
+                  {statusLabel(bt.status)}
+                  {bt.exitCode !== undefined && bt.status !== BackgroundTaskStatus.RUNNING ? ` (${bt.exitCode})` : ""}
+                </span>
+              </div>
+              {expanded && (
+                <div className="th-bgdetail">
+                  {bt.command && bt.command !== bt.title && <code className="th-bgcmd sel-text">{bt.command}</code>}
+                  {bt.outputTail ? (
+                    <pre className="th-bgout sel-text" data-testid={`bg-task-output-${bt.taskId}`}>{bt.outputTail}</pre>
+                  ) : (
+                    <div className="th-bgempty">{bt.summary || t("background.noOutput")}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </aside>
   );
 }
 

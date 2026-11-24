@@ -100,6 +100,7 @@ func (d *Driver) StartSession(ctx context.Context, spec runtime.StartSpec) (runt
 		interruptCh:     make(chan struct{}, 1),
 		forceCh:         make(chan struct{}),
 		closedCh:        make(chan struct{}),
+		bgCancels:       map[string]chan struct{}{},
 	}
 	s.alive.Store(true)
 	s.events <- runtime.Event{
@@ -133,6 +134,7 @@ type session struct {
 	steered         []string
 	attachments     []runtime.TurnAttachment
 	historyCount    int
+	bgCancels       map[string]chan struct{}
 }
 
 func (s *session) Events() <-chan runtime.Event { return s.events }
@@ -182,6 +184,22 @@ func (s *session) Steer(_ context.Context, text string, atts []runtime.TurnAttac
 	}
 	s.steered = append(s.steered, text)
 	s.attachments = append(s.attachments, atts...)
+	return nil
+}
+
+func (s *session) StopBackgroundTask(_ context.Context, taskID string) error {
+	s.mu.Lock()
+	var targets []chan struct{}
+	for id, ch := range s.bgCancels {
+		if taskID == "" || id == taskID {
+			targets = append(targets, ch)
+			delete(s.bgCancels, id)
+		}
+	}
+	s.mu.Unlock()
+	for _, ch := range targets {
+		close(ch)
+	}
 	return nil
 }
 
@@ -444,6 +462,119 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr})
 				s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: callID, ToolName: "Bash", Command: cmdStr, ExitCode: 0, Output: outStr})
 
+			case "bg-shell", "bg-daemon":
+				// bg-shell <dur>|<cmd>|<output>|<wake_reply>
+				// bg-daemon <cmd>|<output>
+				isDaemon := verb == "bg-daemon"
+				parts := strings.SplitN(rest, "|", 4)
+				var dur time.Duration
+				var cmdStr, outStr, wakeReply string
+				if isDaemon {
+					p2 := strings.SplitN(rest, "|", 2)
+					cmdStr = strings.TrimSpace(p2[0])
+					if len(p2) > 1 {
+						outStr = strings.ReplaceAll(p2[1], `\n`, "\n")
+					}
+					dur = 10 * time.Minute
+				} else {
+					if len(parts) > 0 {
+						d, err := time.ParseDuration(strings.TrimSpace(parts[0]))
+						if err != nil {
+							d = 500 * time.Millisecond
+						}
+						dur = d
+					}
+					if len(parts) > 1 {
+						cmdStr = strings.TrimSpace(parts[1])
+					}
+					if len(parts) > 2 {
+						outStr = strings.ReplaceAll(parts[2], `\n`, "\n")
+					}
+					if len(parts) > 3 {
+						wakeReply = strings.ReplaceAll(parts[3], `\n`, "\n")
+					}
+				}
+				callID := fmt.Sprintf("bg_%d", s.itemSeq.Add(1))
+				bgKind := threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_COMMAND
+				if isDaemon {
+					bgKind = threadv2.BackgroundTaskKind_BACKGROUND_TASK_KIND_DAEMON
+				}
+				stopCh := make(chan struct{})
+				s.mu.Lock()
+				s.bgCancels[callID] = stopCh
+				s.mu.Unlock()
+
+				initOut := outStr
+				if !isDaemon {
+					initOut = "[running] " + cmdStr
+				}
+				s.emit(runtime.Event{Kind: runtime.EventToolStarted, ItemID: callID, ToolName: "Bash", Command: cmdStr})
+				s.emit(runtime.Event{
+					Kind:                runtime.EventBackgroundTask,
+					TaskID:              callID,
+					ItemID:              callID,
+					ToolName:            cmdStr,
+					Command:             cmdStr,
+					Output:              initOut,
+					BackgroundKind:      bgKind,
+					BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_RUNNING,
+					BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+					BackgroundAwaited:   !isDaemon,
+				})
+				go func(id, cmd, finalOut, reply string, wait time.Duration, daemon bool, cancelCh chan struct{}) {
+					defer func() {
+						s.mu.Lock()
+						delete(s.bgCancels, id)
+						s.mu.Unlock()
+					}()
+					select {
+					case <-cancelCh:
+						s.emit(runtime.Event{
+							Kind:                runtime.EventBackgroundTask,
+							TaskID:              id,
+							ItemID:              id,
+							ToolName:            cmd,
+							Command:             cmd,
+							Output:              finalOut,
+							Text:                "stopped by user",
+							ExitCode:            130,
+							HasExitCode:         true,
+							BackgroundKind:      bgKind,
+							BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_STOPPED,
+							BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+							BackgroundAwaited:   !daemon,
+						})
+						s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: id, ToolName: "Bash", Command: cmd, ExitCode: 130, HasExitCode: true, Output: "stopped"})
+						return
+					case <-s.closedCh:
+						return
+					case <-s.forceCh:
+						return
+					case <-time.After(wait):
+					}
+					s.emit(runtime.Event{
+						Kind:                runtime.EventBackgroundTask,
+						TaskID:              id,
+						ItemID:              id,
+						ToolName:            cmd,
+						Command:             cmd,
+						Output:              finalOut,
+						ExitCode:            0,
+						HasExitCode:         true,
+						BackgroundKind:      bgKind,
+						BackgroundStatus:    threadv2.BackgroundTaskStatus_BACKGROUND_TASK_STATUS_COMPLETED,
+						BackgroundStopScope: threadv2.BackgroundTaskStopScope_BACKGROUND_TASK_STOP_SCOPE_SINGLE,
+						BackgroundAwaited:   !daemon,
+					})
+					s.emit(runtime.Event{Kind: runtime.EventToolCompleted, ItemID: id, ToolName: "Bash", Command: cmd, ExitCode: 0, HasExitCode: true, Output: finalOut})
+					if !daemon && strings.TrimSpace(reply) != "" {
+						wakeMsgID := fmt.Sprintf("msg_%d", s.itemSeq.Add(1))
+						s.emit(runtime.Event{Kind: runtime.EventAssistantDelta, ItemID: wakeMsgID, Text: reply})
+						s.emit(runtime.Event{Kind: runtime.EventAssistantMessage, ItemID: wakeMsgID, Text: reply})
+						s.emit(runtime.Event{Kind: runtime.EventTurnCompleted})
+					}
+				}(callID, cmdStr, outStr, wakeReply, dur, isDaemon, stopCh)
+
 			case "ask":
 				// ask <id>|<header>|<question>|<opt1,opt2>
 				parts := strings.Split(rest, "|")
@@ -649,7 +780,7 @@ func (s *session) executeTurn(ctx context.Context, in runtime.TurnInput) {
 func isDirective(line string) bool {
 	verb, _, _ := strings.Cut(strings.TrimSpace(line), " ")
 	switch verb {
-	case "say", "stream", "think", "sleep", "hang", "crash", "fail", "write", "shell", "ask", "propose-plan", "propose-artifact", "ask-secret", "tokens", "inspect":
+	case "say", "stream", "think", "sleep", "hang", "crash", "fail", "write", "shell", "bg-shell", "bg-daemon", "ask", "propose-plan", "propose-artifact", "ask-secret", "tokens", "inspect":
 		return true
 	}
 	return false

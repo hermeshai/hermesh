@@ -36,6 +36,7 @@ public func threadAsSession(_ th: Hermesh_Thread_V2_Thread) -> Session {
     case .waitingRequest: .waitingInput
     case .failed: .crashed
     case .archived: .archived
+    case .idle where th.activeBackgroundCount > 0: .running
     default: .idle
     }
     return s

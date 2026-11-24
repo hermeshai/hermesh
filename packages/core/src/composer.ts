@@ -54,7 +54,10 @@ export function threadAsSession(th: Thread): Session {
     agent: th.modelSelection?.instanceId ?? "",
     model: th.modelSelection?.model ?? "",
     branch: th.workspace?.branch ?? "",
-    status: threadStatusAsSession[th.status] ?? SessionStatus.IDLE,
+    status:
+      th.status === ThreadStatus.IDLE && th.activeBackgroundCount > 0
+        ? SessionStatus.RUNNING
+        : (threadStatusAsSession[th.status] ?? SessionStatus.IDLE),
     createdBy: !by || by.kind === ActorKind.OWNER ? "owner" : by.id,
     title: th.title,
     error: th.lastError,

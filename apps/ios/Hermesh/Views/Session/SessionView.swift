@@ -312,7 +312,7 @@ struct ArchivedNote: View {
 /// When the turn before step i started, for the time lines.
 func previousTurn(_ steps: [Step], before i: Int) -> Date? {
     for s in steps[..<i].reversed() {
-        if case .item(.turn(_, _, let at)) = s { return at }
+        if case .item(.turn(_, _, let at, _)) = s { return at }
     }
     return nil
 }
@@ -353,11 +353,14 @@ struct StepView: View {
 
     @ViewBuilder private func row(_ item: TranscriptItem) -> some View {
         switch item {
-        case .turn(_, _, let at):
-            // A time line before a turn, for the first one and after a pause.
-            if let at, let line = turnTimeLine(at, previous: previousTurn, now: model.now) {
+        case .turn(_, _, let at, let wakeReason):
+            // A time line before a turn, for the first one, after a pause, or when woken by a background task.
+            let timeText = at.flatMap { turnTimeLine($0, previous: previousTurn, now: model.now) }
+            let wakeText = wakeReason.isEmpty ? nil : String(localized: "Background wake · \(wakeReason)")
+            if let line = (timeText != nil && wakeText != nil) ? "\(timeText!) · \(wakeText!)" : (wakeText ?? timeText) {
                 Text(line).font(.caption).foregroundStyle(.tertiary).frame(maxWidth: .infinity)
                     .padding(.top, 8)
+                    .accessibilityIdentifier(wakeReason.isEmpty ? "turn-time-line" : "turn-wake-line")
             }
         case .user(_, let text, let at, let asker):
             // Who asked for the turn speaks on the right, under their name: a session takes work from several

@@ -494,4 +494,55 @@ func TestThreadV2EndToEnd(t *testing.T) {
 	if !sawTurn1Reply {
 		t.Fatalf("vpsThreadID lost its turn_1_complete assistant message after subsequent threads ran: %+v", vpsProjAfter.Projection.GetItems())
 	}
+
+	// 6. Remote Background Tasks + Automatic Continuation Run + Remote StopBackgroundTask over Relay!
+	bgLaunch, err := tc.LaunchThread(ctx, &threadv2.LaunchThreadRequest{
+		MachineId:   vpsID,
+		ProjectId:   "demo",
+		RuntimeMode: identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS,
+		ModelSelection: &threadv2.ModelSelection{
+			InstanceId: "claude",
+			Model:      "claude-sonnet-4-6",
+		},
+		InitialPrompt: "bg-daemon npm run dev|ready on :3000\nbg-shell 800ms|make e2e|15 passed|Remote background suite passed!\nsay Started remote background suite",
+	})
+	if err != nil {
+		t.Fatalf("LaunchThread remote background: %v", err)
+	}
+	bgThreadID := bgLaunch.Thread.ThreadId
+
+	// Wait for automatic Continuation Run #2 to settle ActiveBackgroundCount -> 0 while ActiveDaemonCount stays 1.
+	var bgAfterCont *threadv2.ThreadProjection
+	eventually(t, 20*time.Second, "remote background continuation completed on vps-1", func() bool {
+		g, err := tc.GetThread(ctx, &threadv2.GetThreadRequest{ThreadId: bgThreadID})
+		if err != nil {
+			return false
+		}
+		th := g.Projection.GetThread()
+		if th.GetStatus() == threadv2.ThreadStatus_THREAD_STATUS_IDLE && th.GetRunCount() >= 2 && th.GetActiveBackgroundCount() == 0 && th.GetActiveDaemonCount() == 1 {
+			bgAfterCont = g.Projection
+			return true
+		}
+		return false
+	})
+	var sawRemoteBgReply bool
+	for _, it := range bgAfterCont.GetItems() {
+		if it.Kind == threadv2.TurnItemKind_TURN_ITEM_KIND_ASSISTANT_MESSAGE && strings.Contains(it.Text, "Remote background suite passed!") {
+			sawRemoteBgReply = true
+		}
+	}
+	if !sawRemoteBgReply {
+		t.Fatalf("missing remote continuation reply in items: %+v", bgAfterCont.GetItems())
+	}
+
+	// Stop the remote daemon over Relay via Owner ThreadService.StopBackgroundTask!
+	stopDaemonRes, err := tc.StopBackgroundTask(ctx, &threadv2.StopBackgroundTaskRequest{
+		ThreadId: bgThreadID,
+	})
+	if err != nil {
+		t.Fatalf("remote StopBackgroundTask failed: %v", err)
+	}
+	if stopDaemonRes.GetThread().GetActiveDaemonCount() != 0 || len(stopDaemonRes.GetStoppedTasks()) != 1 {
+		t.Fatalf("expected remote daemon stopped cleanly, got %+v", stopDaemonRes)
+	}
 }

@@ -12,8 +12,9 @@ import {
   type Failure,
   type Question,
 } from "@hermesh/proto/session";
-import { RunStatus, TurnItemKind, type Run, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
+import { ActorKind, RunStatus, TurnItemKind, type Run, type RuntimeRequest, type Thread, type ThreadProjection, type TurnItem } from "@hermesh/proto/thread";
 import { dateOf } from "./sessions";
+import { activeBackgroundItemIdsOf } from "./threads";
 import type { TranscriptItem } from "./transcript";
 
 // A v2 thread's conversation as a session's (transcript.ts), so both draw
@@ -68,7 +69,7 @@ function isRunActive(run: Run | undefined): boolean {
   );
 }
 
-function toolItem(it: TurnItem, run: Run | undefined): TranscriptItem {
+function toolItem(it: TurnItem, run: Run | undefined, activeBgItems: ReadonlySet<string>): TranscriptItem {
   const seq = itemSeq(it);
   const callId = it.itemId;
   if (it.kind === TurnItemKind.FILE_CHANGE) {
@@ -82,7 +83,7 @@ function toolItem(it: TurnItem, run: Run | undefined): TranscriptItem {
   }
   const shell = it.kind === TurnItemKind.COMMAND_EXECUTION;
   const name = it.toolName || (shell ? "Bash" : "");
-  const running = it.status === "running" && isRunActive(run);
+  const running = it.status === "running" && (isRunActive(run) || activeBgItems.has(it.itemId));
   return {
     kind: "tool",
     seq,
@@ -102,13 +103,22 @@ function toolItem(it: TurnItem, run: Run | undefined): TranscriptItem {
 export function threadTranscript(proj: ThreadProjection | null | undefined): TranscriptItem[] {
   if (!proj) return [];
   const runs = new Map(proj.runs.map((r) => [r.runId, r]));
+  const activeBgItems = activeBackgroundItemIdsOf(proj);
   const out: TranscriptItem[] = [];
   const items = proj.items;
   items.forEach((it, i) => {
     const run = runs.get(it.runId);
     const seq = itemSeq(it);
     if (run && items[i - 1]?.runId !== it.runId) {
-      out.push({ kind: "turn", seq: seq - 2n, turn: run.ordinal, at: dateOf(run.startedAt) ?? dateOf(run.createdAt) ?? dateOf(it.createdAt), asker: "" });
+      const wakeReason = run.author?.kind === ActorKind.SYSTEM && run.wakeReason ? run.wakeReason : undefined;
+      out.push({
+        kind: "turn",
+        seq: seq - 2n,
+        turn: run.ordinal,
+        at: dateOf(run.startedAt) ?? dateOf(run.createdAt) ?? dateOf(it.createdAt),
+        asker: "",
+        ...(wakeReason ? { wakeReason } : {}),
+      });
     }
     const at = dateOf(it.createdAt);
     switch (it.kind) {
@@ -124,7 +134,7 @@ export function threadTranscript(proj: ThreadProjection | null | undefined): Tra
       case TurnItemKind.TOOL_CALL:
       case TurnItemKind.COMMAND_EXECUTION:
       case TurnItemKind.FILE_CHANGE:
-        out.push(toolItem(it, run));
+        out.push(toolItem(it, run, activeBgItems));
         break;
       case TurnItemKind.ERROR:
         out.push({ kind: "error", seq, error: create(ErrorEventSchema, { message: it.text, failure: runFailure(it.text) }) });
