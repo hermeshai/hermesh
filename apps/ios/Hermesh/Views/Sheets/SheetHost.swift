@@ -65,6 +65,12 @@ struct SessionInfoSheet: View {
         NavigationStack {
             List {
                 if let s = model.session(id) {
+                    // The whole title: the bar's capsule ends a long one in ….
+                    Section {
+                        Text(s.displayTitle).font(.headline).fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .accessibilityIdentifier("session-info-title")
+                    }
                     Section("Environment") {
                         LabeledContent("Started by", value: model.grantLabel(s))
                         LabeledContent("Machine / project", value: "\(model.machineName(s.machineID)) / \(s.projectID)")

@@ -832,6 +832,10 @@ final class DemoService {
             }
             appendItem(id, runID: "r1", kind: .assistantMessage) {
                 $0.text = "Sure. First I'll find every call, then change them one by one."
+                // The running one's page is longer than the screen: for scrolling it while steps come.
+                if status == .running {
+                    $0.text += "\n\n" + (1 ... 24).map { "\($0). Package \($0): read its log calls, switch them to slog, run its tests." }.joined(separator: "\n")
+                }
             }
         }
         start("demo-many-steps", title: "Many steps", status: .idle)
@@ -841,8 +845,8 @@ final class DemoService {
         }
         syncSession("demo-many-steps")
 
-        // A long conversation of small groups (three calls a turn) under a long title: for scrolling the page from on a
-        // small card, and for the bar's capsule.
+        // A long conversation of small groups (three calls a turn, but 26 in the eleventh: a card that stops growing and
+        // scrolls inside) under a long title: for scrolling the page from on a card, and for the bar's capsule.
         let small = "demo-small-steps"
         var s = session(small, title: "Small steps: keep every log call structured across the whole repository and its tests", machine: "demo-mac", status: .idle)
         s.agent = "codex"
@@ -857,7 +861,11 @@ final class DemoService {
                 $0.actor = .with { $0.kind = .owner; $0.id = "owner" }
                 $0.text = "Small prompt #\(t): look at package \(t) and tell me what its logging does."
             }
-            for k in 0 ..< 3 { call(small, runID: rid, t * 10 + k, result: true) }
+            if t == 11 {
+                for i in 500 ..< 526 { call(small, runID: rid, i, result: true) }
+            } else {
+                for k in 0 ..< 3 { call(small, runID: rid, t * 10 + k, result: true) }
+            }
             appendItem(small, runID: rid, kind: .assistantMessage) {
                 $0.text = "Small reply #\(t): package \(t) logs through the shared logger; nothing to change there. Its tests cover the three call sites I read."
             }
