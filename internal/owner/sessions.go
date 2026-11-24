@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
@@ -137,6 +139,10 @@ func (o *Owner) localEngineFor(machineID string) (*kernel.Engine, string) {
 func (o *Owner) resolveMachineForSession(ctx context.Context, sessionID string) (localEng *kernel.Engine, machineID string, err error) {
 	o.mu.Lock()
 	lm := o.localMachine
+	var lastKnown []*localv1.Machine
+	if len(o.lastMachines) > 0 {
+		lastKnown = slices.Clone(o.lastMachines)
+	}
 	o.mu.Unlock()
 	if lm != nil && lm.Sessions() != nil {
 		if kernel.OwnsSession(lm.MachineID(), sessionID) {
@@ -153,6 +159,31 @@ func (o *Owner) resolveMachineForSession(ctx context.Context, sessionID string) 
 		}
 		return nil, cachedMachine, nil
 	}
+	for _, m := range lastKnown {
+		if kernel.OwnsSession(m.GetMachineId(), sessionID) {
+			if eng, mid := o.localEngineFor(m.GetMachineId()); eng != nil {
+				return eng, mid, nil
+			}
+			return nil, m.GetMachineId(), nil
+		}
+	}
+	if o.rep != nil {
+		var feedMatch string
+		o.rep.feeds(func(feeds map[string]*feed) {
+			for mid := range feeds {
+				if kernel.OwnsSession(mid, sessionID) {
+					feedMatch = mid
+					return
+				}
+			}
+		})
+		if feedMatch != "" {
+			if eng, mid := o.localEngineFor(feedMatch); eng != nil {
+				return eng, mid, nil
+			}
+			return nil, feedMatch, nil
+		}
+	}
 	machines, mErr := o.ListMachines(ctx)
 	if mErr == nil {
 		for _, m := range machines {
@@ -167,27 +198,19 @@ func (o *Owner) resolveMachineForSession(ctx context.Context, sessionID string) 
 	return nil, "", connect.NewError(connect.CodeNotFound, fmt.Errorf("session %s not found on any known machine", sessionID))
 }
 
-func (o *Owner) dialRemoteSessionMachine(ctx context.Context, machineID string) (*peer.Machine, error) {
+func (o *Owner) dialRemoteSessionMachineWithClient(ctx context.Context, machineID string) (*peer.Client, *peer.Machine, error) {
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	c, err := o.relay(cctx)
+	c, pm, err := o.machine(cctx, machineID)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeUnavailable, err)
+		return nil, nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	pm, err := c.Machine(cctx, machineID)
-	if err != nil {
-		if o.recoverTunnel(c, machineID, err) {
-			if c2, err2 := o.relay(cctx); err2 == nil {
-				if pm2, err2 := c2.Machine(cctx, machineID); err2 == nil {
-					o.noteTunnelOK(machineID)
-					return pm2, nil
-				}
-			}
-		}
-		return nil, connect.NewError(connect.CodeUnavailable, err)
-	}
-	o.noteTunnelOK(machineID)
-	return pm, nil
+	return c, pm, nil
+}
+
+func (o *Owner) dialRemoteSessionMachine(ctx context.Context, machineID string) (*peer.Machine, error) {
+	_, pm, err := o.dialRemoteSessionMachineWithClient(ctx, machineID)
+	return pm, err
 }
 
 func isOfflineErr(err error) bool {
@@ -284,6 +307,25 @@ func (o *Owner) cachedSessions(includeArchived bool) []*sessionv1.Session {
 		}
 	}
 	return out
+}
+
+func (o *Owner) cachedProjectionOnly(sessionID string) *sessionv1.SessionProjection {
+	var sb, pb []byte
+	err := o.st.db.QueryRow(`SELECT session_payload, projection_payload FROM sessions_cache WHERE session_id = ?`, sessionID).Scan(&sb, &pb)
+	if err != nil || len(pb) == 0 {
+		return nil
+	}
+	proj := &sessionv1.SessionProjection{}
+	if proto.Unmarshal(pb, proj) != nil {
+		return nil
+	}
+	if len(sb) > 0 {
+		sess := &sessionv1.Session{}
+		if proto.Unmarshal(sb, sess) == nil {
+			proj.Session = sess
+		}
+	}
+	return proj
 }
 
 func (o *Owner) cachedProjection(sessionID string) *sessionv1.SessionProjection {
@@ -773,8 +815,22 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 
 func (s *ownerSessionService) GetSession(ctx context.Context, req *sessionv1.GetSessionRequest) (*sessionv1.GetSessionResponse, error) {
 	o := s.o()
+	if req.CachedOnly {
+		if eng, localID := o.localEngineFor(""); eng != nil && kernel.OwnsSession(localID, req.SessionId) {
+			if proj, err := eng.GetSession(ctx, o.ownerPrincipal(), req.SessionId); err == nil {
+				return &sessionv1.GetSessionResponse{Projection: proj}, nil
+			}
+		}
+		if cached := o.cachedProjectionOnly(req.SessionId); cached != nil {
+			return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+		}
+		return &sessionv1.GetSessionResponse{}, nil
+	}
 	eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId)
 	if err != nil {
+		if cached := o.cachedProjection(req.SessionId); cached != nil {
+			return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
+		}
 		return nil, err
 	}
 	if eng != nil {
@@ -790,15 +846,65 @@ func (s *ownerSessionService) GetSession(ctx context.Context, req *sessionv1.Get
 			return res, nil
 		} else if !isOfflineErr(gErr) {
 			if cached := o.cachedProjection(req.SessionId); connect.CodeOf(gErr) == connect.CodeNotFound && cached.GetSession().GetOfflineQueued() {
-				return &sessionv1.GetSessionResponse{Projection: cached}, nil
+				return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
 			}
 			return nil, gErr
 		}
 	}
 	if cached := o.cachedProjection(req.SessionId); cached != nil {
-		return &sessionv1.GetSessionResponse{Projection: cached}, nil
+		return &sessionv1.GetSessionResponse{Projection: cached, FromCache: true}, nil
 	}
 	return nil, connect.NewError(connect.CodeUnavailable, errors.New("machine is offline and session is not cached locally"))
+}
+
+func sortSessionSlice(out []*sessionv1.Session) {
+	slices.SortFunc(out, func(a, b *sessionv1.Session) int {
+		if a.Pinned != b.Pinned {
+			if a.Pinned {
+				return -1
+			}
+			return 1
+		}
+		return machine.NewestFirst(a, b)
+	})
+}
+
+func (s *ownerSessionService) localAndCachedSessions(ctx context.Context, req *sessionv1.ListSessionsRequest) []*sessionv1.Session {
+	o := s.o()
+	incArch := req.IncludeArchived || req.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED
+	byID := map[string]*sessionv1.Session{}
+	for _, cs := range o.cachedSessions(incArch) {
+		if (req.MachineId == "" || cs.MachineId == req.MachineId) && (req.ProjectId == "" || cs.ProjectId == req.ProjectId) {
+			if req.Status != 0 && cs.Status != req.Status {
+				continue
+			}
+			byID[cs.SessionId] = cs
+		}
+	}
+	if eng, localID := o.localEngineFor(""); eng != nil && (req.MachineId == "" || req.MachineId == localID) {
+		if res, err := eng.ListSessions(ctx, o.ownerPrincipal(), &sessionv1.ListSessionsRequest{
+			ProjectId:       req.ProjectId,
+			Status:          req.Status,
+			Since:           req.Since,
+			IncludeArchived: incArch,
+		}); err == nil {
+			for _, sess := range res.Sessions {
+				byID[sess.SessionId] = sess
+			}
+		}
+	}
+	out := make([]*sessionv1.Session, 0, len(byID))
+	for _, sess := range byID {
+		if !incArch && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+			continue
+		}
+		out = append(out, sess)
+	}
+	sortSessionSlice(out)
+	if req.View == sessionv1.SessionView_SESSION_VIEW_BASIC {
+		out = machine.BasicSessions(out)
+	}
+	return out
 }
 
 func (s *ownerSessionService) ListSessions(ctx context.Context, req *sessionv1.ListSessionsRequest) (*sessionv1.ListSessionsResponse, error) {
@@ -826,6 +932,8 @@ func (s *ownerSessionService) ListSessions(ctx context.Context, req *sessionv1.L
 		}
 	}
 	machines, _ := o.ListMachines(ctx)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 	for _, m := range machines {
 		if _, isLocal := o.localEngineFor(m.MachineId); isLocal != "" || !m.Online {
 			continue
@@ -833,15 +941,23 @@ func (s *ownerSessionService) ListSessions(ctx context.Context, req *sessionv1.L
 		if req.MachineId != "" && req.MachineId != m.MachineId {
 			continue
 		}
-		if pm, err := o.dialRemoteSessionMachine(ctx, m.MachineId); err == nil {
-			if rList, lErr := pm.Session.ListSessions(ctx, req); lErr == nil {
-				for _, sess := range rList.Sessions {
-					byID[sess.SessionId] = sess
-					o.cacheSession(sess, nil)
+		mid := m.MachineId
+		wg.Go(func() {
+			if pm, err := o.dialRemoteSessionMachine(ctx, mid); err == nil {
+				if rList, lErr := pm.Session.ListSessions(ctx, req); lErr == nil {
+					mu.Lock()
+					for _, sess := range rList.Sessions {
+						byID[sess.SessionId] = sess
+					}
+					mu.Unlock()
+					for _, sess := range rList.Sessions {
+						o.cacheSession(sess, nil)
+					}
 				}
 			}
-		}
+		})
 	}
+	wg.Wait()
 	out := make([]*sessionv1.Session, 0, len(byID))
 	for _, sess := range byID {
 		if !incArch && sess.Status == sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
@@ -849,15 +965,7 @@ func (s *ownerSessionService) ListSessions(ctx context.Context, req *sessionv1.L
 		}
 		out = append(out, sess)
 	}
-	slices.SortFunc(out, func(a, b *sessionv1.Session) int {
-		if a.Pinned != b.Pinned {
-			if a.Pinned {
-				return -1
-			}
-			return 1
-		}
-		return machine.NewestFirst(a, b)
-	})
+	sortSessionSlice(out)
 	var next *sessionv1.SessionCursor
 	if req.Limit > 0 {
 		out, next = onePage(out, int(req.Limit), req.Before, false)
@@ -918,13 +1026,20 @@ func (s *ownerSessionService) WatchSessions(ctx context.Context, req *sessionv1.
 		}()
 	}
 
-	initRes, err := s.ListSessions(ctx, &sessionv1.ListSessionsRequest{IncludeArchived: req.IncludeArchived, View: req.View})
-	if err != nil {
+	initial := s.localAndCachedSessions(ctx, &sessionv1.ListSessionsRequest{IncludeArchived: req.IncludeArchived, View: req.View})
+	if err := stream.Send(&sessionv1.WatchSessionsResponse{Snapshot: true, Sessions: initial}); err != nil {
 		return err
 	}
-	if err := stream.Send(&sessionv1.WatchSessionsResponse{Snapshot: true, Sessions: initRes.Sessions}); err != nil {
-		return err
-	}
+	go func() {
+		liveRes, err := s.ListSessions(ctx, &sessionv1.ListSessionsRequest{IncludeArchived: req.IncludeArchived, View: req.View})
+		if err != nil || ctx.Err() != nil {
+			return
+		}
+		select {
+		case ch <- &sessionv1.WatchSessionsResponse{Snapshot: true, Sessions: liveRes.Sessions}:
+		case <-ctx.Done():
+		}
+	}()
 
 	for {
 		select {
@@ -945,6 +1060,99 @@ func (s *ownerSessionService) WatchSessions(ctx context.Context, req *sessionv1.
 	}
 }
 
+func foldSessionEventIntoProjection(proj *sessionv1.SessionProjection, ev *sessionv1.SessionEvent) *sessionv1.SessionProjection {
+	if ev == nil {
+		return proj
+	}
+	if proj == nil {
+		proj = &sessionv1.SessionProjection{}
+	}
+	if ev.Session != nil {
+		proj.Session = ev.Session
+	}
+	if proj.Session != nil {
+		if proj.Session.Progress == nil {
+			proj.Session.Progress = &sessionv1.SessionProgress{}
+		}
+		if ev.Seq > proj.Session.Progress.LastEventSeq {
+			proj.Session.Progress.LastEventSeq = ev.Seq
+		}
+	}
+	if ev.Run != nil {
+		replaced := false
+		for i, r := range proj.Runs {
+			if r.RunId == ev.Run.RunId {
+				proj.Runs[i] = ev.Run
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			proj.Runs = append(proj.Runs, ev.Run)
+		}
+	}
+	if ev.Item != nil {
+		replaced := false
+		for i, it := range proj.Items {
+			if it.ItemId == ev.Item.ItemId {
+				proj.Items[i] = ev.Item
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			proj.Items = append(proj.Items, ev.Item)
+		}
+	} else if ev.TextDelta != "" && ev.TargetItemId != "" {
+		for _, it := range proj.Items {
+			if it.ItemId == ev.TargetItemId {
+				it.Text += ev.TextDelta
+				break
+			}
+		}
+	}
+	if ev.Request != nil {
+		replaced := false
+		for i, r := range proj.Requests {
+			if r.RequestId == ev.Request.RequestId {
+				proj.Requests[i] = ev.Request
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			proj.Requests = append(proj.Requests, ev.Request)
+		}
+	}
+	if ev.Checkpoint != nil {
+		replaced := false
+		for i, cp := range proj.Checkpoints {
+			if cp.CheckpointId == ev.Checkpoint.CheckpointId {
+				proj.Checkpoints[i] = ev.Checkpoint
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			proj.Checkpoints = append(proj.Checkpoints, ev.Checkpoint)
+		}
+	}
+	if ev.BackgroundTask != nil {
+		replaced := false
+		for i, bg := range proj.BackgroundTasks {
+			if bg.TaskId == ev.BackgroundTask.TaskId {
+				proj.BackgroundTasks[i] = ev.BackgroundTask
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			proj.BackgroundTasks = append(proj.BackgroundTasks, ev.BackgroundTask)
+		}
+	}
+	return proj
+}
+
 func (s *ownerSessionService) SubscribeSession(ctx context.Context, req *sessionv1.SubscribeSessionRequest, stream *connect.ServerStream[sessionv1.SessionEvent]) error {
 	o := s.o()
 	eng, machineID, err := o.resolveMachineForSession(ctx, req.SessionId)
@@ -954,25 +1162,103 @@ func (s *ownerSessionService) SubscribeSession(ctx context.Context, req *session
 	if eng != nil {
 		return eng.SubscribeSession(ctx, o.ownerPrincipal(), req.SessionId, req.AfterSeq, stream.Send)
 	}
-	pm, err := o.dialRemoteSessionMachine(ctx, machineID)
-	if err != nil {
-		return err
-	}
-	rStream, err := pm.Session.SubscribeSession(ctx, req)
-	if err != nil {
-		return err
-	}
-	defer rStream.Close()
-	for rStream.Receive() {
-		ev := rStream.Msg()
-		if ev.Session != nil {
-			o.cacheSession(ev.Session, nil)
+	var sendMu sync.Mutex
+	sentSubscribed := false
+	proj := o.cachedProjectionOnly(req.SessionId)
+	sendEvent := func(ev *sessionv1.SessionEvent) error {
+		sendMu.Lock()
+		defer sendMu.Unlock()
+		if ev.GetType() == "session.subscribed" {
+			if sentSubscribed {
+				return nil
+			}
+			sentSubscribed = true
 		}
-		if err := stream.Send(ev); err != nil {
+		if proj != nil || ev.GetSession() != nil {
+			proj = foldSessionEventIntoProjection(proj, ev)
+			if proj.GetSession() != nil {
+				o.cacheSession(proj.GetSession(), proj)
+			}
+		}
+		return stream.Send(ev)
+	}
+	curAfter := req.AfterSeq
+	for {
+		c, pm, err := o.dialRemoteSessionMachineWithClient(ctx, machineID)
+		if err != nil {
 			return err
 		}
+		subReq := proto.CloneOf(req)
+		subReq.AfterSeq = curAfter
+		hasReplacement := func() bool {
+			if c != nil && c.HasReplacement(machineID, pm) {
+				return true
+			}
+			return o.hasReplacementFor(machineID, pm)
+		}
+
+		// Legacy remote daemons block silently when already caught up at AfterSeq
+		// without flushing HTTP/2 response headers until the next live event.
+		// Start a short 120 ms GetSession check concurrently before SubscribeSession
+		// so caught-up callers confirm readiness immediately instead of hanging.
+		var sawFirst atomic.Bool
+		subCtx, cancelSub := context.WithCancel(ctx)
+		var bgWG sync.WaitGroup
+		bgWG.Go(func() {
+			t := time.NewTimer(120 * time.Millisecond)
+			defer t.Stop()
+			select {
+			case <-subCtx.Done():
+				return
+			case <-t.C:
+			}
+			if sawFirst.Load() || subCtx.Err() != nil {
+				return
+			}
+			gCtx, cancelG := context.WithTimeout(subCtx, 3*time.Second)
+			res, gErr := pm.Session.GetSession(gCtx, &sessionv1.GetSessionRequest{MachineId: machineID, SessionId: req.SessionId})
+			cancelG()
+			if gErr != nil || subCtx.Err() != nil || !sawFirst.CompareAndSwap(false, true) {
+				return
+			}
+			if p := res.GetProjection(); p != nil && p.GetSession() != nil {
+				o.cacheSession(p.GetSession(), p)
+				_ = sendEvent(&sessionv1.SessionEvent{
+					Seq:       p.GetSession().GetProgress().GetLastEventSeq(),
+					SessionId: req.SessionId,
+					Type:      "session.subscribed",
+					Session:   p.GetSession(),
+				})
+			}
+		})
+
+		err = func() error {
+			defer func() {
+				cancelSub()
+				bgWG.Wait()
+			}()
+			rStream, sErr := pm.Session.SubscribeSession(subCtx, subReq)
+			if sErr != nil {
+				return sErr
+			}
+			defer rStream.Close()
+			for rStream.Receive() {
+				sawFirst.Store(true)
+				ev := rStream.Msg()
+				if ev.GetSeq() > curAfter {
+					curAfter = ev.GetSeq()
+				}
+				if err := sendEvent(ev); err != nil {
+					return err
+				}
+			}
+			return rStream.Err()
+		}()
+		if ctx.Err() == nil && hasReplacement() {
+			continue
+		}
+		return err
 	}
-	return rStream.Err()
 }
 
 func (s *ownerSessionService) DispatchMessage(ctx context.Context, req *sessionv1.DispatchMessageRequest) (*sessionv1.DispatchMessageResponse, error) {

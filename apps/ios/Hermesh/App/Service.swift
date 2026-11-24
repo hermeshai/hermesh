@@ -92,10 +92,11 @@ extension AppAPI {
         try await call("\(sessionSvc)/StartSession", r, timeout: 30)
     }
 
-    func getSession(_ sessionID: String, machineID: String = "") async throws -> Hermesh_Session_V1_GetSessionResponse {
+    func getSession(_ sessionID: String, machineID: String = "", cachedOnly: Bool = false) async throws -> Hermesh_Session_V1_GetSessionResponse {
         var r = Hermesh_Session_V1_GetSessionRequest()
         r.machineID = machineID
         r.sessionID = sessionID
+        r.cachedOnly = cachedOnly
         return try await call("\(sessionSvc)/GetSession", r, timeout: 15)
     }
 

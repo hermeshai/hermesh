@@ -5871,6 +5871,24 @@ func (e *Engine) SubscribeSession(ctx context.Context, p *Principal, sessionID s
 		return err
 	}
 	highWater := afterSeq
+	if len(history) == 0 {
+		// Confirm subscription readiness immediately in 1 RTT when the client is
+		// already caught up at afterSeq so callers never need a synthetic timer.
+		if cur, sErr := e.st.Session(sessionID); sErr == nil && cur != nil {
+			curSeq := cur.GetProgress().GetLastEventSeq()
+			if curSeq > highWater {
+				highWater = curSeq
+			}
+			if err := send(&sessionv1.SessionEvent{
+				Seq:       curSeq,
+				SessionId: sessionID,
+				Type:      "session.subscribed",
+				Session:   cur,
+			}); err != nil {
+				return err
+			}
+		}
+	}
 	for _, ev := range history {
 		if ev.Seq > highWater {
 			highWater = ev.Seq

@@ -848,10 +848,14 @@ message StartSessionResponse {
 message GetSessionRequest {
   string machine_id = 1;
   string session_id = 2;
+  // Return immediately from local SQLite cache without dialing remote machines.
+  bool cached_only = 3;
 }
 
 message GetSessionResponse {
   SessionProjection projection = 1;
+  // True when projection was served from local SQLite cache rather than live machine state.
+  bool from_cache = 2;
 }
 
 message ListSessionsRequest {

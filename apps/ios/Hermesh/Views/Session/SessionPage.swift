@@ -195,7 +195,13 @@ struct SessionPage: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .task(id: sessionID) { await start() }
-        .task(id: "\(sessionID)/\(reachable)/\(scenePhase == .active)") { if !isNew { await followSession() } }
+        // Keep following while not background-paused; quick app switches (< 15 s) stay live with zero reconnect.
+        .task(id: "\(sessionID)/\(!model.isBackgroundPaused)") {
+            if !isNew && !model.isBackgroundPaused { await followSession() }
+        }
+        .onChange(of: reachable) {
+            if reachable && !following { wakeRetry() }
+        }
         .task(id: "\(effectiveMachineID)/\(effectiveProjectID)") { await loadProviders() }
         .onChange(of: model.projects) { SessionChoices.keepProjects(model.projects, machines: model.machines) }
         .onChange(of: model.addedProject) {
@@ -815,29 +821,60 @@ struct SessionPage: View {
         initialized = true
     }
 
+    @State private var retrySleep: Task<Void, Never>?
+
+    private func wakeRetry() {
+        retrySleep?.cancel()
+        retrySleep = nil
+    }
+
+    private func waitBeforeRetry(seconds: Int) async {
+        let sleep = Task<Void, Never> { try? await Task.sleep(for: .seconds(seconds)) }
+        retrySleep = sleep
+        defer { if retrySleep == sleep { retrySleep = nil } }
+        await withTaskCancellationHandler {
+            await sleep.value
+        } onCancel: {
+            sleep.cancel()
+        }
+    }
+
+    /// A session's projection, then its events as they come, until the page goes: renders local SQLite cache in 0 ms
+    /// when available, then subscribes incrementally from `lastEventSeq` (confirming `following` in 1 RTT with no
+    /// artificial 1 s sleep). Retries in 1..30 s on disconnect, waking immediately when `reachable` becomes true.
     private func followSession() async {
         guard let api = model.api else { return }
+        var applied = projection != nil
+        if projection == nil,
+           let cached = try? await api.getSession(sessionID, cachedOnly: true),
+           cached.hasProjection, cached.projection.hasSession {
+            applied = true
+            apply(cached.projection.session)
+            projection = cached.projection
+        }
         var failures = 0
-        var applied = false
         while !Task.isCancelled {
             do {
-                let first = try await api.getSession(sessionID)
-                if !applied && first.projection.hasSession {
-                    applied = true
-                    apply(first.projection.session)
+                if projection == nil || failures > 0 {
+                    let first = try await api.getSession(sessionID)
+                    if !applied && first.projection.hasSession {
+                        applied = true
+                        apply(first.projection.session)
+                    }
+                    projection = first.projection
+                    if !first.fromCache {
+                        following = true
+                        failures = 0
+                    }
                 }
-                projection = first.projection
-                let open = Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    if !Task.isCancelled { following = true }
-                }
-                defer { open.cancel() }
-                for try await ev in api.subscribeSession(sessionID, afterSeq: first.projection.session.progress.lastEventSeq) {
+                let afterSeq = projection?.session.progress.lastEventSeq ?? 0
+                for try await ev in api.subscribeSession(sessionID, afterSeq: afterSeq) {
+                    following = true
+                    failures = 0
                     projection = applySessionEvent(ev, to: projection)
                     if ev.hasSession && ev.session.interactionMode != .unspecified {
                         plan = ev.session.interactionMode == .plan
                     }
-                    failures = 0
                 }
             } catch let e as APIError where e.code == "not_found" {
                 if !Task.isCancelled {
@@ -855,7 +892,7 @@ struct SessionPage: View {
             following = false
             guard !Task.isCancelled else { return }
             failures += 1
-            try? await Task.sleep(for: .seconds(min(30, 1 << min(5, failures - 1))))
+            await waitBeforeRetry(seconds: min(30, 1 << min(5, failures - 1)))
         }
     }
 
