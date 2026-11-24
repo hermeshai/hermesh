@@ -49,12 +49,18 @@ type Dialer struct {
 	// as it does through a tunnel; a machine that is not here, or refuses
 	// it, is reached as without.
 	Local func(ctx context.Context, machineID string) (net.Conn, error)
-	// Direct, when set, returns direct E2E TCP addresses (LAN IPv4 / public
-	// IPv6) for machineID to race against the relay.
+	// Direct, when set, returns direct E2E TCP/QUIC addresses (LAN IPv4 /
+	// public IPv6) for machineID to race against the relay.
 	Direct func(machineID string) []string
+	// DirectHead, when set, overrides the direct dial head-start duration for
+	// machineID (e.g. returning 0 when direct recently failed on this network).
+	DirectHead func(machineID string, addrs []string) time.Duration
 	// OnDirectSuccess, when set, is called with the winning direct address so
 	// subsequent dials can try it first.
 	OnDirectSuccess func(machineID, addr string)
+	// OnDirectFailure, when set, is called when all direct addresses for
+	// machineID failed without parent context cancellation.
+	OnDirectFailure func(machineID string)
 	// OnUpgrade, when set, is called whenever an existing machine tunnel is
 	// upgraded onto a faster direct QUIC/TCP path.
 	OnUpgrade func(machineID, path string, rtt time.Duration)
@@ -71,6 +77,7 @@ type Client struct {
 	closed    bool
 	holds     int // Closes that only end a Hold
 	machines  map[string]*Machine
+	retired   []*Machine
 	warming   map[string]chan struct{} // closed when the attempt ends
 	lastPunch map[string]time.Time     // cooldown for automatic post-relay IPv6 punch upgrades
 	gen       int                      // counts Resets
@@ -87,6 +94,8 @@ type Client struct {
 type tunnelConn interface {
 	Do(*http.Request) (*http.Response, error)
 	Alive() bool
+	MarkRetired()
+	Retire(context.Context) error
 	Close() error
 	RTT() time.Duration
 }
@@ -242,6 +251,10 @@ func (c *Client) Close() error {
 	for _, n := range c.machines {
 		n.h2.Close()
 	}
+	for _, n := range c.retired {
+		n.h2.Close()
+	}
+	c.retired = nil
 	c.linkMu.Lock()
 	if c.linkControl != nil {
 		c.linkControl.Close()
@@ -628,9 +641,28 @@ const (
 	directStagger       = 25 * time.Millisecond
 	directQUICHeadStart = 80 * time.Millisecond
 	directHeadLAN       = 80 * time.Millisecond
-	directHeadWAN       = 280 * time.Millisecond
+	directHeadWAN       = 180 * time.Millisecond
 	directTimeout       = 2 * time.Second
 )
+
+// RetireGrace bounds how long an upgraded/replaced machine tunnel stays open to
+// let in-flight unary RPCs finish cleanly before closing remaining streams so
+// long-lived followers migrate onto the replacement direct tunnel.
+var RetireGrace = 600 * time.Millisecond
+
+func isLANHostPort(addr string) bool {
+	hp := strings.TrimPrefix(addr, "quic://")
+	host, _, err := net.SplitHostPort(hp)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	v4 := ip.To4()
+	return v4 != nil && (v4[0] == 10 || (v4[0] == 172 && v4[1] >= 16 && v4[1] <= 31) || (v4[0] == 192 && v4[1] == 168))
+}
 
 func directHeadFor(addrs []string) time.Duration {
 	for _, hp := range addrs {
@@ -639,11 +671,24 @@ func directHeadFor(addrs []string) time.Duration {
 		if err != nil {
 			continue
 		}
-		if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		if ip := net.ParseIP(host); ip != nil && (ip.To4() == nil || !isLANHostPort(hp)) {
 			return directHeadWAN
 		}
 	}
 	return directHeadLAN
+}
+
+// DirectHeadFor returns the default head-start given to direct addresses
+// before falling back to opening a relay tunnel.
+func DirectHeadFor(addrs []string) time.Duration {
+	return directHeadFor(addrs)
+}
+
+func (d *Dialer) directHead(machineID string, addrs []string) time.Duration {
+	if d != nil && d.DirectHead != nil {
+		return d.DirectHead(machineID, addrs)
+	}
+	return directHeadFor(addrs)
 }
 
 // DialDirect tries addrs in parallel (staggered slightly so preferred
@@ -759,6 +804,9 @@ func (d *Dialer) DialDirect(ctx context.Context, machineID string, addrs []strin
 		}
 		return winner, nil
 	}
+	if ctx.Err() == nil && d.OnDirectFailure != nil {
+		d.OnDirectFailure(machineID)
+	}
 	if firstErr == nil {
 		return nil, errors.New("direct dial failed")
 	}
@@ -797,27 +845,32 @@ func (d *Dialer) RaceDirect(ctx context.Context, machineID string, addrs []strin
 		}()
 	}
 
-	head := time.NewTimer(directHeadFor(addrs))
-	defer head.Stop()
 	var directErr error
 	directDone := false
-	select {
-	case a := <-directCh:
-		directDone = true
-		head.Stop()
-		if a.n != nil {
-			return a.n, nil, nil
-		}
-		directErr = a.err
+	headDur := d.directHead(machineID, addrs)
+	if headDur <= 0 {
 		startSlow()
-	case <-head.C:
-		startSlow()
-	case <-ctx.Done():
-		cancel()
-		if a := <-directCh; a.n != nil {
-			a.n.Close()
+	} else {
+		head := time.NewTimer(headDur)
+		defer head.Stop()
+		select {
+		case a := <-directCh:
+			directDone = true
+			head.Stop()
+			if a.n != nil {
+				return a.n, nil, nil
+			}
+			directErr = a.err
+			startSlow()
+		case <-head.C:
+			startSlow()
+		case <-ctx.Done():
+			cancel()
+			if a := <-directCh; a.n != nil {
+				a.n.Close()
+			}
+			return nil, nil, ctx.Err()
 		}
-		return nil, nil, ctx.Err()
 	}
 
 	var slowErr error
@@ -976,6 +1029,31 @@ func (c *Client) ResetPunchCooldown() {
 	c.mu.Unlock()
 }
 
+func (c *Client) retireMachineLocked(old *Machine) {
+	if old == nil {
+		return
+	}
+	old.h2.MarkRetired()
+	if c.closed || RetireGrace <= 0 {
+		go old.h2.Close()
+		return
+	}
+	c.retired = append(c.retired, old)
+	go func() {
+		rctx, cancel := context.WithTimeout(context.Background(), RetireGrace)
+		defer cancel()
+		_ = old.h2.Retire(rctx)
+		c.mu.Lock()
+		for i, r := range c.retired {
+			if r == old {
+				c.retired = append(c.retired[:i], c.retired[i+1:]...)
+				break
+			}
+		}
+		c.mu.Unlock()
+	}()
+}
+
 func (c *Client) replaceMachine(machineID string, expected, replacement *Machine) bool {
 	if replacement == nil {
 		return false
@@ -988,10 +1066,8 @@ func (c *Client) replaceMachine(machineID string, expected, replacement *Machine
 		return false
 	}
 	c.machines[machineID] = replacement
+	c.retireMachineLocked(expected)
 	c.mu.Unlock()
-	if expected != nil {
-		expected.h2.Close()
-	}
 	if c.d.OnUpgrade != nil {
 		c.d.OnUpgrade(machineID, replacement.Path(), replacement.RTT())
 	}
@@ -1238,26 +1314,38 @@ func (c *Client) dialPunchedQUIC(ctx context.Context, machineID string, cur *Mac
 }
 
 // AdoptDirect installs a pre-dialed direct tunnel n for machineID if c is still
-// active and has no live tunnel for that machine, closing n otherwise.
+// active and has no live direct tunnel for that machine (upgrading an existing
+// relayed tunnel if present), closing n otherwise.
 func (c *Client) AdoptDirect(machineID string, n *Machine) bool {
 	if n == nil {
 		return false
 	}
 	n.direct = true
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if c.closed || !n.h2.Alive() {
+		c.mu.Unlock()
 		n.h2.Close()
 		return false
 	}
+	upgraded := false
 	if existing := c.machines[machineID]; existing != nil {
 		if existing.h2.Alive() {
-			n.h2.Close()
-			return false
+			if existing.direct {
+				c.mu.Unlock()
+				n.h2.Close()
+				return false
+			}
+			c.retireMachineLocked(existing)
+			upgraded = true
+		} else {
+			existing.h2.Close()
 		}
-		existing.h2.Close()
 	}
 	c.machines[machineID] = n
+	c.mu.Unlock()
+	if upgraded && c.d != nil && c.d.OnUpgrade != nil {
+		c.d.OnUpgrade(machineID, n.Path(), n.RTT())
+	}
 	return true
 }
 

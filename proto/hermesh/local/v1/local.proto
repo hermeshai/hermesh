@@ -223,6 +223,8 @@ message WatchResponse {
   hermesh.session.v1.SessionCursor next = 15;
   // Moves when this device's counts of work changed: ask QueryWork again.
   uint64 work_version = 16;
+  // Moves when this device's kept Her state changed: ask GetHerConversation again.
+  uint64 her_kept_version = 17;
 }
 
 message ProjectRef {

@@ -6406,9 +6406,11 @@ func (x *StartSessionResponse) GetQueuedOffline() bool {
 }
 
 type GetSessionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MachineId     string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
-	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	MachineId string                 `protobuf:"bytes,1,opt,name=machine_id,json=machineId,proto3" json:"machine_id,omitempty"`
+	SessionId string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	// Return immediately from local SQLite cache without dialing remote machines.
+	CachedOnly    bool `protobuf:"varint,3,opt,name=cached_only,json=cachedOnly,proto3" json:"cached_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6457,9 +6459,18 @@ func (x *GetSessionRequest) GetSessionId() string {
 	return ""
 }
 
+func (x *GetSessionRequest) GetCachedOnly() bool {
+	if x != nil {
+		return x.CachedOnly
+	}
+	return false
+}
+
 type GetSessionResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Projection    *SessionProjection     `protobuf:"bytes,1,opt,name=projection,proto3" json:"projection,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Projection *SessionProjection     `protobuf:"bytes,1,opt,name=projection,proto3" json:"projection,omitempty"`
+	// True when projection was served from local SQLite cache rather than live machine state.
+	FromCache     bool `protobuf:"varint,2,opt,name=from_cache,json=fromCache,proto3" json:"from_cache,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -6499,6 +6510,13 @@ func (x *GetSessionResponse) GetProjection() *SessionProjection {
 		return x.Projection
 	}
 	return nil
+}
+
+func (x *GetSessionResponse) GetFromCache() bool {
+	if x != nil {
+		return x.FromCache
+	}
+	return false
 }
 
 type ListSessionsRequest struct {
@@ -9544,16 +9562,20 @@ const file_hermesh_session_v1_session_proto_rawDesc = "" +
 	"\asession\x18\x01 \x01(\v2\x1b.hermesh.session.v1.SessionR\asession\x128\n" +
 	"\vinitial_run\x18\x02 \x01(\v2\x17.hermesh.session.v1.RunR\n" +
 	"initialRun\x12%\n" +
-	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"Q\n" +
+	"\x0equeued_offline\x18\x03 \x01(\bR\rqueuedOffline\"r\n" +
 	"\x11GetSessionRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +
 	"\n" +
-	"session_id\x18\x02 \x01(\tR\tsessionId\"[\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\x12\x1f\n" +
+	"\vcached_only\x18\x03 \x01(\bR\n" +
+	"cachedOnly\"z\n" +
 	"\x12GetSessionResponse\x12E\n" +
 	"\n" +
 	"projection\x18\x01 \x01(\v2%.hermesh.session.v1.SessionProjectionR\n" +
-	"projection\"\xf1\x02\n" +
+	"projection\x12\x1d\n" +
+	"\n" +
+	"from_cache\x18\x02 \x01(\bR\tfromCache\"\xf1\x02\n" +
 	"\x13ListSessionsRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x1d\n" +

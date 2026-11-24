@@ -209,10 +209,11 @@ public final class LocalAPI: @unchecked Sendable {
         try await callSession("ListSessions", req)
     }
 
-    public func getSession(sessionID: String, machineID: String = "") async throws -> Hermesh_Session_V1_GetSessionResponse {
+    public func getSession(sessionID: String, machineID: String = "", cachedOnly: Bool = false) async throws -> Hermesh_Session_V1_GetSessionResponse {
         var r = Hermesh_Session_V1_GetSessionRequest()
         r.machineID = machineID
         r.sessionID = sessionID
+        r.cachedOnly = cachedOnly
         return try await callSession("GetSession", r)
     }
 

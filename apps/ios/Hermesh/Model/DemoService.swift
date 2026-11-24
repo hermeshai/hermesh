@@ -415,6 +415,10 @@ final class DemoService {
                 }
             })
         case "GetSession":
+            let req = (try? Hermesh_Session_V1_GetSessionRequest(jsonUTF8Data: data, options: dec)) ?? .init()
+            if req.cachedOnly {
+                return try encoded(Hermesh_Session_V1_GetSessionResponse())
+            }
             guard let s = world.sessions.first(where: { $0.sessionID == id }) else {
                 throw APIError(code: "not_found", message: "session not found")
             }

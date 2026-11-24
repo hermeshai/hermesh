@@ -78,6 +78,7 @@ func (f *herFollower) opened(op *herv1.Opened) {
 			}
 			var inc struct {
 				SessionID   string            `json:"session_id"`
+				ResumeEpoch string            `json:"resume_epoch"`
 				Incremental bool              `json:"incremental"`
 				LastSeq     int64             `json:"last_seq"`
 				Events      []json.RawMessage `json:"events"`
@@ -91,6 +92,10 @@ func (f *herFollower) opened(op *herv1.Opened) {
 				}
 				if f.conv != nil {
 					changed := false
+					if inc.ResumeEpoch != "" && inc.ResumeEpoch != f.conv.snap.ResumeEpoch {
+						f.conv.snap.ResumeEpoch = inc.ResumeEpoch
+						changed = true
+					}
 					for _, ev := range inc.Events {
 						if f.conv.apply(ev) {
 							changed = true
@@ -167,9 +172,10 @@ type herConversation struct {
 
 // herSnapshot is what is kept of her's SessionSnapshot.
 type herSnapshot struct {
-	Session    json.RawMessage `json:"session"`
-	LastSeq    int64           `json:"last_seq"`
-	Transcript struct {
+	Session     json.RawMessage `json:"session"`
+	ResumeEpoch string          `json:"resume_epoch,omitempty"`
+	LastSeq     int64           `json:"last_seq"`
+	Transcript  struct {
 		Items []json.RawMessage `json:"items"`
 	} `json:"transcript"`
 	Usage json.RawMessage `json:"usage"`
@@ -183,11 +189,15 @@ type herItem struct {
 // openedConversation is the conversation bots/open answered with, or nil.
 func openedConversation(result []byte) *herConversation {
 	var r struct {
-		SessionID string      `json:"session_id"`
-		Snapshot  herSnapshot `json:"snapshot"`
+		SessionID   string      `json:"session_id"`
+		ResumeEpoch string      `json:"resume_epoch"`
+		Snapshot    herSnapshot `json:"snapshot"`
 	}
 	if json.Unmarshal(result, &r) != nil || r.SessionID == "" {
 		return nil
+	}
+	if r.ResumeEpoch != "" {
+		r.Snapshot.ResumeEpoch = r.ResumeEpoch
 	}
 	c := &herConversation{session: r.SessionID, snap: r.Snapshot, calls: map[string]bool{}}
 	for _, item := range r.Snapshot.Transcript.Items {

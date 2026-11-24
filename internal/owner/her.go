@@ -91,53 +91,43 @@ func (o *Owner) herOn(ctx context.Context, machineID string) (herMachine, error)
 		return l, nil
 	}
 	started := time.Now()
-	if dn := o.directFastMachine(ctx, machineID); dn != nil {
-		o.noteTunnelOK(machineID)
-		if o.log != nil {
-			o.log.Info("owner: her direct fast-path", "machine", machineID, "path", dn.Path(), "after_ms", time.Since(started).Milliseconds(), "rtt_ms", durToMs(dn.RTT()))
-		}
-		return herRemote{her: dn.Her, http: dn.HTTP(), forget: func() { o.forgetDirectMachine(machineID, dn) }}, nil
-	}
-	c, err := o.relay(ctx)
+	c, n, err := o.machine(ctx, machineID)
 	if err != nil {
-		return nil, err
-	}
-	n, err := c.Machine(ctx, machineID)
-	if err != nil {
-		recovered := o.recoverTunnel(c, machineID, err)
 		if o.log != nil {
-			o.log.Warn("owner: her tunnel failed", "machine", machineID, "after_ms", time.Since(started).Milliseconds(), "recovered", recovered, "err", err)
+			o.log.Warn("owner: her tunnel failed", "machine", machineID, "after_ms", time.Since(started).Milliseconds(), "err", err)
 		}
-		if recovered {
-			if c2, err2 := o.relay(ctx); err2 == nil {
-				if n2, err2 := c2.Machine(ctx, machineID); err2 == nil {
-					o.noteTunnelOK(machineID)
-					if o.log != nil {
-						o.log.Info("owner: her tunnel recovered", "machine", machineID, "path", n2.Path(), "after_ms", time.Since(started).Milliseconds(), "rtt_ms", durToMs(n2.RTT()))
-					}
-					return herRemote{her: n2.Her, http: n2.HTTP(), forget: func() { c2.ForgetMachine(n2) }}, nil
-				} else {
-					err = err2
-				}
-			} else {
-				err = err2
-			}
+		var ce *connect.Error
+		if errors.As(err, &ce) {
+			return nil, ce
 		}
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	o.noteTunnelOK(machineID)
 	if o.log != nil {
 		o.log.Debug("owner: her tunnel ready", "machine", machineID, "path", n.Path(), "after_ms", time.Since(started).Milliseconds(), "rtt_ms", durToMs(n.RTT()))
 	}
-	return herRemote{her: n.Her, http: n.HTTP(), forget: func() { c.ForgetMachine(n) }}, nil
+	return herRemote{
+		her:    n.Her,
+		http:   n.HTTP(),
+		forget: func() { o.forgetMachineConn(c, machineID, n) },
+		replaced: func() bool {
+			if c != nil && c.HasReplacement(machineID, n) {
+				return true
+			}
+			if rc := o.liveClient(); rc != nil && rc.HasReplacement(machineID, n) {
+				return true
+			}
+			return false
+		},
+	}, nil
 }
 
 // herRemote is HerService on another machine, through its tunnel (its
-// HTTP/2 client); forget drops the tunnel.
+// HTTP/2 or HTTP/3 client); forget drops the tunnel.
 type herRemote struct {
-	her    herv1connect.HerServiceClient
-	http   *http.Client
-	forget func()
+	her      herv1connect.HerServiceClient
+	http     *http.Client
+	forget   func()
+	replaced func() bool
 }
 
 // tunnelError: a call that failed on the way, not at the machine.
@@ -479,35 +469,51 @@ func (o *Owner) SetHerAssistantMode(ctx context.Context, machineID, botID, mode 
 // Her's protocol, passed on.
 
 // HerOpen opens a her connection on a machine and passes on what it sends,
-// keeping what it says of Her here (her_conversation.go).
+// keeping what it says of Her here (her_conversation.go). If the underlying
+// tunnel upgrades from relay to direct QUIC before Opened is sent, it retries
+// transparently; if upgraded after Opened, it ends cleanly (nil) so the caller
+// rebinds immediately on the direct tunnel without error backoff.
 func (o *Owner) HerOpen(ctx context.Context, machineID string, req *herv1.OpenRequest, send func(*herv1.OpenEvent) error) error {
-	started := time.Now()
-	h, err := o.herOn(ctx, machineID)
-	if err != nil {
-		return err
-	}
 	if req == nil {
 		req = &herv1.OpenRequest{}
 	}
-	f := &herFollower{o: o, machine: machineID, setup: req.Setup}
-	loggedOpen := false
-	err = h.HerOpen(ctx, req, func(e *herv1.OpenEvent) error {
-		if !loggedOpen && e.GetOpened() != nil {
-			loggedOpen = true
-			if o.log != nil {
-				o.log.Info("owner: her open", "machine", machineID, "setup", len(req.Setup), "opened_ms", time.Since(started).Milliseconds())
-			}
-		}
-		if err := send(e); err != nil {
+	for {
+		started := time.Now()
+		h, err := o.herOn(ctx, machineID)
+		if err != nil {
 			return err
 		}
-		f.see(e)
-		return nil
-	})
-	if err != nil && ctx.Err() == nil && o.log != nil {
-		o.log.Warn("owner: her open ended", "machine", machineID, "setup", len(req.Setup), "opened", loggedOpen, "after_ms", time.Since(started).Milliseconds(), "err", err)
+		f := &herFollower{o: o, machine: machineID, setup: req.Setup}
+		loggedOpen := false
+		err = h.HerOpen(ctx, req, func(e *herv1.OpenEvent) error {
+			if !loggedOpen && e.GetOpened() != nil {
+				loggedOpen = true
+				if o.log != nil {
+					o.log.Info("owner: her open", "machine", machineID, "setup", len(req.Setup), "opened_ms", time.Since(started).Milliseconds())
+				}
+			}
+			if err := send(e); err != nil {
+				return err
+			}
+			f.see(e)
+			return nil
+		})
+		if ctx.Err() == nil {
+			if hr, ok := h.(herRemote); ok && hr.replaced != nil && hr.replaced() {
+				if !loggedOpen {
+					continue
+				}
+				if o.log != nil {
+					o.log.Debug("owner: her open migrating to upgraded tunnel", "machine", machineID, "after_ms", time.Since(started).Milliseconds())
+				}
+				return nil
+			}
+		}
+		if err != nil && ctx.Err() == nil && o.log != nil {
+			o.log.Warn("owner: her open ended", "machine", machineID, "setup", len(req.Setup), "opened", loggedOpen, "after_ms", time.Since(started).Milliseconds(), "err", err)
+		}
+		return err
 	}
-	return err
 }
 
 // HerCall sends one her request to a machine.

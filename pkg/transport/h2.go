@@ -65,6 +65,27 @@ func (c *H2Client) Close() error {
 	return c.conn.Close()
 }
 
+// MarkRetired stops new requests from being scheduled on c immediately while
+// leaving in-flight streams open until Retire or Close finishes.
+func (c *H2Client) MarkRetired() {
+	if c != nil {
+		c.closed.Store(true)
+	}
+}
+
+// Retire drains active HTTP/2 streams up to ctx's deadline and then closes c.
+// If no streams are active, it closes c immediately.
+func (c *H2Client) Retire(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	c.closed.Store(true)
+	if c.cc.State().StreamsActive > 0 {
+		_ = c.cc.Shutdown(ctx)
+	}
+	return c.Close()
+}
+
 // Alive reports whether the connection can take new requests.
 func (c *H2Client) Alive() bool { return !c.closed.Load() && c.cc.CanTakeNewRequest() }
 

@@ -173,6 +173,7 @@ type shown struct {
 	projects kept[*localv1.Project]
 	pairings kept[*localv1.PairingDetails]
 	work     uint64
+	herKept  uint64
 }
 
 // diff is what changed since the screen was last sent (everything, the
@@ -188,9 +189,33 @@ func (w *shown) diff(ctx context.Context, l *localService, o *Owner, mode string
 	if v := o.screenWorkVersion(mode); v != w.work {
 		w.work, out.WorkVersion = v, v
 	}
+	if v := o.herKeptVersion.Load(); v != w.herKept {
+		w.herKept, out.HerKeptVersion = v, v
+	}
 	if r, err := l.ListMachines(ctx, &localv1.ListMachinesRequest{}); err == nil {
 		if mode == "owner" {
 			o.rep.unreachable(r.Machines)
+		}
+		// Suppress minor QUIC keepalive SRTT micro-jitter on unchanged ready tunnels
+		// so idle screens receive zero spurious Watch wakeups.
+		for _, m := range r.Machines {
+			old := w.machines.by[m.GetMachineId()]
+			ot, nt := old.GetTunnel(), m.GetTunnel()
+			if ot == nil || nt == nil || ot.GetPhase() != nt.GetPhase() || ot.GetPath() != nt.GetPath() {
+				continue
+			}
+			oldMs, newMs := ot.GetRttMs(), nt.GetRttMs()
+			if oldMs > 0 && newMs > 0 {
+				var delta uint32
+				if newMs > oldMs {
+					delta = newMs - oldMs
+				} else {
+					delta = oldMs - newMs
+				}
+				if delta < max(uint32(20), oldMs/4) {
+					nt.RttMs = oldMs
+				}
+			}
 		}
 		out.Machines, out.RemovedMachineIds = w.machines.diff(r.Machines, func(m *localv1.Machine) string { return m.MachineId })
 	}

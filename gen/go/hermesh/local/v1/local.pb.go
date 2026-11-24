@@ -198,9 +198,11 @@ type WatchResponse struct {
 	// With reset: where older sessions start (ListSessions before).
 	Next *v1.SessionCursor `protobuf:"bytes,15,opt,name=next,proto3" json:"next,omitempty"`
 	// Moves when this device's counts of work changed: ask QueryWork again.
-	WorkVersion   uint64 `protobuf:"varint,16,opt,name=work_version,json=workVersion,proto3" json:"work_version,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	WorkVersion uint64 `protobuf:"varint,16,opt,name=work_version,json=workVersion,proto3" json:"work_version,omitempty"`
+	// Moves when this device's kept Her state changed: ask GetHerConversation again.
+	HerKeptVersion uint64 `protobuf:"varint,17,opt,name=her_kept_version,json=herKeptVersion,proto3" json:"her_kept_version,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *WatchResponse) Reset() {
@@ -341,6 +343,13 @@ func (x *WatchResponse) GetNext() *v1.SessionCursor {
 func (x *WatchResponse) GetWorkVersion() uint64 {
 	if x != nil {
 		return x.WorkVersion
+	}
+	return 0
+}
+
+func (x *WatchResponse) GetHerKeptVersion() uint64 {
+	if x != nil {
+		return x.HerKeptVersion
 	}
 	return 0
 }
@@ -9519,7 +9528,7 @@ var File_hermesh_local_v1_local_proto protoreflect.FileDescriptor
 const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"\x1chermesh/local/v1/local.proto\x12\x10hermesh.local.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x18hermesh/her/v1/her.proto\x1a\"hermesh/identity/v1/identity.proto\x1a hermesh/machine/v1/machine.proto\x1a hermesh/session/v1/session.proto\"\x0e\n" +
-	"\fWatchRequest\"\xc7\x06\n" +
+	"\fWatchRequest\"\xf1\x06\n" +
 	"\rWatchResponse\x12\x14\n" +
 	"\x05reset\x18\x01 \x01(\bR\x05reset\x12;\n" +
 	"\x06status\x18\x02 \x01(\v2#.hermesh.local.v1.GetStatusResponseR\x06status\x125\n" +
@@ -9537,7 +9546,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\bsessions\x18\r \x03(\v2\x1b.hermesh.session.v1.SessionR\bsessions\x12.\n" +
 	"\x13deleted_session_ids\x18\x0e \x03(\tR\x11deletedSessionIds\x125\n" +
 	"\x04next\x18\x0f \x01(\v2!.hermesh.session.v1.SessionCursorR\x04next\x12!\n" +
-	"\fwork_version\x18\x10 \x01(\x04R\vworkVersion\"J\n" +
+	"\fwork_version\x18\x10 \x01(\x04R\vworkVersion\x12(\n" +
+	"\x10her_kept_version\x18\x11 \x01(\x04R\x0eherKeptVersion\"J\n" +
 	"\n" +
 	"ProjectRef\x12\x1d\n" +
 	"\n" +
