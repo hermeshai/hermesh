@@ -1,5 +1,6 @@
 // Package runtime defines the unified long-lived provider driver contract,
-// session lease supervisor (Idle TTL + Force Stop), and driver adapters.
+// session lease supervisor (Idle TTL + Force Stop), process/probe/failure
+// utilities, and driver adapters.
 package runtime
 
 import (
@@ -9,7 +10,7 @@ import (
 	"time"
 
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
-	threadv2 "github.com/hermeshai/hermesh/gen/go/hermesh/thread/v2"
+	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
 )
 
 var (
@@ -24,31 +25,32 @@ type ProbeResult struct {
 	Authenticated        bool
 	AuthLabel            string
 	Version              string
-	Compatibility        threadv2.CompatibilityStatus
+	Binary               string
+	Compatibility        sessionv1.CompatibilityStatus
 	CompatibilityMessage string
-	Models               []*threadv2.ModelCatalogEntry
-	WorkspaceOptions     []*threadv2.OptionDescriptor
-	SlashCommands        []*threadv2.SlashCommand
-	Skills               []*threadv2.SkillEntry
+	Models               []*sessionv1.ModelCatalogEntry
+	WorkspaceOptions     []*sessionv1.OptionDescriptor
+	SlashCommands        []*sessionv1.SlashCommand
+	Skills               []*sessionv1.SkillEntry
 }
 
 // ToolGateRequest is raised synchronously by a live session when the agent
 // wants to execute a tool, ask questions, propose a plan, or request a secret.
 type ToolGateRequest struct {
-	Kind      threadv2.RuntimeRequestKind
-	Approval  *threadv2.ToolApprovalPayload
-	UserInput *threadv2.UserInputPayload
-	Plan      *threadv2.PlanReviewPayload
-	Secret    *threadv2.SecretInputPayload
+	Kind      sessionv1.RuntimeRequestKind
+	Approval  *sessionv1.ToolApprovalPayload
+	UserInput *sessionv1.UserInputPayload
+	Plan      *sessionv1.PlanReviewPayload
+	Secret    *sessionv1.SecretInputPayload
 }
 
 // ToolGateResult is returned to the blocked provider session once policy or the
-// human operator resolves the request.
+// operator/agent resolves the request.
 type ToolGateResult struct {
 	Allowed      bool
 	CancelTurn   bool
 	Feedback     string
-	Answers      map[string]*threadv2.QuestionAnswer
+	Answers      map[string]*sessionv1.QuestionAnswer
 	SecretValue  string
 	PlanApproved bool
 }
@@ -82,6 +84,8 @@ type Event struct {
 	Kind                EventKind
 	NativeID            string
 	ResumeCursor        string
+	Model               string
+	Effort              string
 	TaskID              string
 	ItemID              string
 	Text                string
@@ -96,26 +100,34 @@ type Event struct {
 	Deletions           uint32
 	PlanTitle           string
 	RequestReview       bool
-	TodoSteps           []*threadv2.TodoStep
-	Usage               *threadv2.ContextWindowUsage
-	BackgroundKind      threadv2.BackgroundTaskKind
-	BackgroundStatus    threadv2.BackgroundTaskStatus
-	BackgroundStopScope threadv2.BackgroundTaskStopScope
+	TodoSteps           []*sessionv1.TodoStep
+	Usage               *sessionv1.ContextWindowUsage
+	Notice              *sessionv1.Notice
+	Failure             *Failure
+	BackgroundKind      sessionv1.BackgroundTaskKind
+	BackgroundStatus    sessionv1.BackgroundTaskStatus
+	BackgroundStopScope sessionv1.BackgroundTaskStopScope
 	BackgroundAwaited   bool
 	ErrorCode           string
 	ErrorMessage        string
 }
 
 type StartSpec struct {
-	ThreadID        string
+	SessionID       string
 	Workdir         string
-	Instance        *threadv2.ProviderInstanceConfig
-	Selection       *threadv2.ModelSelection
+	ReadDirs        []string
+	MCPServers      []MCPServer
+	Title           string
+	Instance        *sessionv1.ProviderInstanceConfig
+	Selection       *sessionv1.ModelSelection
 	EffectiveMode   identityv1.RuntimeMode
-	InteractionMode threadv2.InteractionMode
+	InteractionMode sessionv1.InteractionMode
 	ResumeCursor    string
 	ExtraEnv        map[string]string
 	Gate            GateFunc
+	// Limits is told what the agent says of its account's rate limits, when
+	// it does (limits.go).
+	Limits func(Limits)
 }
 
 type TurnAttachment struct {
@@ -130,13 +142,13 @@ type TurnInput struct {
 	Prompt          string
 	HandoffPrefix   string
 	Attachments     []TurnAttachment
-	Selection       *threadv2.ModelSelection
+	Selection       *sessionv1.ModelSelection
 	EffectiveMode   identityv1.RuntimeMode
-	InteractionMode threadv2.InteractionMode
+	InteractionMode sessionv1.InteractionMode
 }
 
 // Session represents a live long-running provider process/connection attached
-// to a single ProviderThread.
+// to a single ProviderSession.
 type Session interface {
 	// Events streams normalized events for the lifetime of the session.
 	Events() <-chan Event
@@ -145,9 +157,9 @@ type Session interface {
 	// Steer injects mid-turn user guidance into the active turn if supported.
 	Steer(ctx context.Context, text string, attachments []TurnAttachment) error
 	// SetSelection updates model/options in-place without restarting if supported.
-	SetSelection(ctx context.Context, sel *threadv2.ModelSelection) error
+	SetSelection(ctx context.Context, sel *sessionv1.ModelSelection) error
 	// SetModes updates runtime/interaction modes in-place if supported.
-	SetModes(ctx context.Context, runtimeMode identityv1.RuntimeMode, interactionMode threadv2.InteractionMode) error
+	SetModes(ctx context.Context, runtimeMode identityv1.RuntimeMode, interactionMode sessionv1.InteractionMode) error
 	// Interrupt requests graceful cancellation of the active turn.
 	Interrupt(ctx context.Context) error
 	// ForceStop immediately kills the underlying OS process group/tree.
@@ -156,6 +168,18 @@ type Session interface {
 	Alive() bool
 	// Close gracefully terminates the session and releases OS resources.
 	Close() error
+}
+
+// Titler is implemented by a live Session that can update its conversation
+// title in the provider's native app while running (e.g. Codex).
+type Titler interface {
+	SetTitle(ctx context.Context, title string) error
+}
+
+// Archiver is implemented by a Driver that mirrors archive/unarchive state into
+// the provider's native thread list (e.g. Codex app-server thread/archive).
+type Archiver interface {
+	Archive(ctx context.Context, ref string, archived bool) error
 }
 
 // BackgroundController is optionally implemented by Sessions that can stop a
@@ -171,21 +195,21 @@ const MaxBackgroundIdleTTL = 2 * time.Hour
 // Driver constructs and probes sessions for one provider family ("claude", "codex", "acp", "her", "scripted").
 type Driver interface {
 	Kind() string
-	Capabilities(acpFlavor string) *threadv2.ProviderCapabilities
-	Probe(ctx context.Context, cfg *threadv2.ProviderInstanceConfig, workdir string) ProbeResult
+	Capabilities(acpFlavor string) *sessionv1.ProviderCapabilities
+	Probe(ctx context.Context, cfg *sessionv1.ProviderInstanceConfig, workdir string) ProbeResult
 	StartSession(ctx context.Context, spec StartSpec) (Session, error)
 }
 
 // LeaseEntry tracks an active or idle Session managed by Supervisor.
 type LeaseEntry struct {
-	ProviderThreadID string
-	ThreadID         string
-	InstanceID       string
-	DriverKind       string
-	Selection        *threadv2.ModelSelection
-	RuntimeMode      identityv1.RuntimeMode
-	InteractionMode  threadv2.InteractionMode
-	Session          Session
+	ProviderSessionID string
+	SessionID         string
+	InstanceID        string
+	DriverKind        string
+	Selection         *sessionv1.ModelSelection
+	RuntimeMode       identityv1.RuntimeMode
+	InteractionMode   sessionv1.InteractionMode
+	Session           Session
 
 	mu         sync.Mutex
 	lastActive time.Time
@@ -234,13 +258,13 @@ func (l *LeaseEntry) IdleFor(now time.Time) (idle bool, d time.Duration) {
 	return true, elapsed
 }
 
-// Supervisor manages live provider sessions across threads, reaping idle ones
+// Supervisor manages live provider sessions across sessions, reaping idle ones
 // past IdleTTL and force-killing unresponsive ones on shutdown or ForceStop.
 type Supervisor struct {
 	idleTTL  time.Duration
 	onReap   func(*LeaseEntry)
 	mu       sync.Mutex
-	sessions map[string]*LeaseEntry // providerThreadID -> LeaseEntry
+	sessions map[string]*LeaseEntry // providerSessionID -> LeaseEntry
 	stopCh   chan struct{}
 	once     sync.Once
 }
@@ -267,37 +291,37 @@ func NewSupervisor(idleTTL time.Duration) *Supervisor {
 func (s *Supervisor) Register(entry *LeaseEntry) {
 	entry.Touch()
 	s.mu.Lock()
-	old := s.sessions[entry.ProviderThreadID]
-	s.sessions[entry.ProviderThreadID] = entry
+	old := s.sessions[entry.ProviderSessionID]
+	s.sessions[entry.ProviderSessionID] = entry
 	s.mu.Unlock()
 	if old != nil && old.Session != entry.Session {
 		_ = old.Session.Close()
 	}
 }
 
-func (s *Supervisor) Get(providerThreadID string) *LeaseEntry {
+func (s *Supervisor) Get(providerSessionID string) *LeaseEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	e := s.sessions[providerThreadID]
+	e := s.sessions[providerSessionID]
 	if e != nil && !e.Session.Alive() {
-		delete(s.sessions, providerThreadID)
+		delete(s.sessions, providerSessionID)
 		return nil
 	}
 	return e
 }
 
-func (s *Supervisor) Detach(providerThreadID string, force bool) {
-	s.DetachSession(providerThreadID, nil, force)
+func (s *Supervisor) Detach(providerSessionID string, force bool) {
+	s.DetachSession(providerSessionID, nil, force)
 }
 
-func (s *Supervisor) DetachSession(providerThreadID string, match Session, force bool) {
+func (s *Supervisor) DetachSession(providerSessionID string, match Session, force bool) {
 	s.mu.Lock()
-	e := s.sessions[providerThreadID]
+	e := s.sessions[providerSessionID]
 	if e != nil && match != nil && e.Session != match {
 		s.mu.Unlock()
 		return
 	}
-	delete(s.sessions, providerThreadID)
+	delete(s.sessions, providerSessionID)
 	s.mu.Unlock()
 	if e != nil {
 		if force {

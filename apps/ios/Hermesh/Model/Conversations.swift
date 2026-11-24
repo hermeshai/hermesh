@@ -3,17 +3,16 @@ import HermeshProto
 import HermeshSessions
 import SwiftProtobuf
 
-/// The last conversations opened, kept in memory and on the phone: going
-/// back to one, or opening it again after a launch, shows it at once, and
-/// its page then reads only the events after the last one kept
-/// (docs/state-sync.md §6).
+/// The last session projections opened, kept in memory and on the phone: going
+/// back to one, or opening it again after a launch, shows it at once while
+/// GetSession / SubscribeSession brings it up to date.
 final class Conversations {
     /// How many are kept.
     private let keeps = 10
     private let persistent: Bool
 
     init(persistent: Bool = true) { self.persistent = persistent }
-    private var held: [String: [SessionEvent]] = [:]
+    private var held: [String: Hermesh_Session_V1_SessionProjection] = [:]
     /// Most recently opened last.
     private var order: [String] = []
 
@@ -21,28 +20,25 @@ final class Conversations {
 
     private func file(_ id: String) -> URL { directory.appendingPathComponent(id.replacingOccurrences(of: "/", with: "_") + ".pb") }
 
-    /// What is kept of a session's conversation, oldest first.
-    func events(_ id: String) -> [SessionEvent] {
-        if let e = held[id] {
+    /// What is kept of a session's projection.
+    func projection(_ id: String) -> Hermesh_Session_V1_SessionProjection? {
+        if let p = held[id] {
             touch(id)
-            return e
+            return p
         }
-        guard persistent, let data = try? Data(contentsOf: file(id)), let r = try? Hermesh_Local_V1_ListSessionEventsResponse(serializedBytes: data) else { return [] }
-        held[id] = r.events
+        guard persistent, let data = try? Data(contentsOf: file(id)), let p = try? Hermesh_Session_V1_SessionProjection(serializedBytes: data), p.hasSession else { return nil }
+        held[id] = p
         touch(id)
-        return r.events
+        return p
     }
 
-    /// Keeps a conversation as its page last showed it.
-    func keep(_ id: String, _ events: [SessionEvent]) {
-        guard !events.isEmpty else { return }
+    /// Keeps a session projection as its page last showed it.
+    func keep(_ id: String, _ proj: Hermesh_Session_V1_SessionProjection) {
+        guard !proj.items.isEmpty || proj.hasSession else { return }
         defer { touch(id) }
-        if let kept = held[id], kept.last?.seq == events.last?.seq, kept.count == events.count { return } // kept already
-        held[id] = events
-        guard persistent else { return }
-        var r = Hermesh_Local_V1_ListSessionEventsResponse()
-        r.events = events
-        guard let data = try? r.serializedData() else { return }
+        if let kept = held[id], kept.session.progress.lastEventSeq == proj.session.progress.lastEventSeq, kept.items.count == proj.items.count { return }
+        held[id] = proj
+        guard persistent, let data = try? proj.serializedData() else { return }
         let dir = directory, url = file(id)
         Task.detached(priority: .utility) {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

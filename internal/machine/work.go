@@ -1,17 +1,18 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"slices"
 	"strconv"
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/internal/workstats"
 )
 
@@ -123,82 +124,76 @@ func (w *workTx) measure(q, k int64, turns, failed int, in, out uint64, busy uin
 	return err
 }
 
-// event counts what a stored event says: a turn that started (with who
-// asked), one that completed, or a crash that ended a turn in progress.
-func (w *workTx) event(id string, who *workWho, ev *sessionv1.SessionEvent) error {
-	at := ev.GetTs().AsTime()
-	switch {
-	case ev.GetTurnStarted() != nil:
-		r, err := w.session(id, who)
-		if err != nil || r == nil {
-			return err
-		}
-		asker := ev.GetTurnStarted().GetAsker()
-		if asker == "" {
-			asker = who.client
-		}
-		tk, err := w.key(workWho{asker, who.agent, who.project})
-		if err != nil {
-			return err
-		}
-		if _, err := w.tx.Exec(`UPDATE work_sessions SET turn_start=?, turn_k=?, seq=? WHERE n=?`, at.Unix(), tk, w.seq, r.n); err != nil {
-			return err
-		}
-		w.used = true
-		return w.presence(workstats.Quarter(at), r.k, r.n)
-	case ev.GetTurnCompleted() != nil:
-		tc := ev.GetTurnCompleted()
-		r, err := w.session(id, who)
-		if err != nil || r == nil || r.turns >= int64(tc.Turn) { // counted already: a replayed event
-			return err
-		}
-		start, tk := at, r.k
-		if r.turnStart > 0 {
-			start = time.Unix(r.turnStart, 0)
-		}
-		if r.turnK > 0 {
-			tk = r.turnK
-		}
-		for q, secs := range workstats.Spread(start, at) {
-			if err := w.presence(q, r.k, r.n); err != nil {
-				return err
-			}
-			if err := w.measure(q, tk, 0, 0, 0, 0, secs); err != nil {
-				return err
-			}
-		}
-		failed := 0
-		if tc.IsError && tc.GetFailure().GetKind() != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
-			failed = 1
-		}
-		if err := w.measure(workstats.Quarter(at), tk, 1, failed, tc.GetUsage().GetInputTokens(), tc.GetUsage().GetOutputTokens(), 0); err != nil {
-			return err
-		}
-		_, err = w.tx.Exec(`UPDATE work_sessions SET turns=?, turn_start=0, turn_k=0, seq=? WHERE n=?`, tc.Turn, w.seq, r.n)
-		return err
-	case ev.GetStatus().GetStatus() == sessionv1.SessionStatus_SESSION_STATUS_CRASHED:
-		// Its turn ends here without a result: the quarters it was at work
-		// in were marked as they began; it adds no measures.
-		res, err := w.tx.Exec(`UPDATE work_sessions SET turn_start=0, turn_k=0, seq=? WHERE session_id=? AND turn_start != 0`, w.seq, id)
-		if err == nil {
-			if c, _ := res.RowsAffected(); c > 0 {
-				w.used = true
-			}
-		}
+func (w *workTx) turnStart(id string, who *workWho, asker string, startAt time.Time) error {
+	r, err := w.session(id, who)
+	if err != nil || r == nil {
 		return err
 	}
-	return nil
+	if asker == "" {
+		asker = who.client
+	}
+	tk, err := w.key(workWho{asker, who.agent, who.project})
+	if err != nil {
+		return err
+	}
+	if _, err := w.tx.Exec(`UPDATE work_sessions SET turn_start=?, turn_k=?, seq=? WHERE n=?`, startAt.Unix(), tk, w.seq, r.n); err != nil {
+		return err
+	}
+	w.used = true
+	return w.presence(workstats.Quarter(startAt), r.k, r.n)
 }
 
-// state keeps a session's status and whether its last turn failed, for
-// "done now": idle without a failure, or archived.
-func (w *workTx) state(r *sessionRow) error {
+func (w *workTx) turnComplete(id string, who *workWho, ordinal uint32, endAt time.Time, failedTurn bool, inTok, outTok uint64) error {
+	r, err := w.session(id, who)
+	if err != nil || r == nil || r.turns >= int64(ordinal) {
+		return err
+	}
+	start, tk := endAt, r.k
+	if r.turnStart > 0 {
+		start = time.Unix(r.turnStart, 0)
+	}
+	if r.turnK > 0 {
+		tk = r.turnK
+	}
+	for q, secs := range workstats.Spread(start, endAt) {
+		if err := w.presence(q, r.k, r.n); err != nil {
+			return err
+		}
+		if err := w.measure(q, tk, 0, 0, 0, 0, secs); err != nil {
+			return err
+		}
+	}
 	failed := 0
-	if f := r.Progress.GetLastFailure(); f != nil && f.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
+	if failedTurn {
+		failed = 1
+	}
+	if err := w.measure(workstats.Quarter(endAt), tk, 1, failed, inTok, outTok, 0); err != nil {
+		return err
+	}
+	_, err = w.tx.Exec(`UPDATE work_sessions SET turns=?, turn_start=0, turn_k=0, seq=? WHERE n=?`, ordinal, w.seq, r.n)
+	return err
+}
+
+func (w *workTx) crash(id string) error {
+	res, err := w.tx.Exec(`UPDATE work_sessions SET turn_start=0, turn_k=0, seq=? WHERE session_id=? AND turn_start != 0`, w.seq, id)
+	if err == nil {
+		if c, _ := res.RowsAffected(); c > 0 {
+			w.used = true
+		}
+	}
+	return err
+}
+
+func (w *workTx) stateSession(sess *sessionv1.Session) error {
+	if sess == nil {
+		return nil
+	}
+	failed := 0
+	if f := sess.GetProgress().GetLastFailure(); f != nil && f.Kind != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
 		failed = 1
 	}
 	res, err := w.tx.Exec(`UPDATE work_sessions SET status=?, failed=?, seq=? WHERE session_id=? AND (status != ? OR failed != ?)`,
-		int(r.Status), failed, w.seq, r.ID, int(r.Status), failed)
+		int(sess.Status), failed, w.seq, sess.SessionId, int(sess.Status), failed)
 	if err == nil {
 		if c, _ := res.RowsAffected(); c > 0 {
 			w.used = true
@@ -251,20 +246,22 @@ func decodeSeq(b []byte) int64 {
 	return n
 }
 
-// openWork loads the counts' store and seq, or counts this machine's stored
-// sessions afresh when there are none yet (the schema step that made them,
-// or a rebuild).
+func (s *Store) needsWorkRebuild() bool {
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
+	return len(s.workStore) == 0
+}
+
 func (s *Store) openWork() error {
 	s.workKeys = map[workWho]int64{}
 	store, err := s.Get(kWorkStore)
 	if err != nil {
 		return err
 	}
-	if store == nil {
-		return s.rebuildWork()
+	if len(store) == 0 {
+		return nil
 	}
 	s.workStore = store
-	// Kept apart from the rows, so it never goes back when old ones are forgotten.
 	b, err := s.Get(kWorkSeq)
 	if err != nil {
 		return err
@@ -275,10 +272,159 @@ func (s *Store) openWork() error {
 	return nil
 }
 
-// rebuildWork counts every stored session's turns again from its events,
-// into empty tables, under a new store: owner devices then take everything
-// again. The work of deleted sessions, whose events are gone, is not kept.
-func (s *Store) rebuildWork() error {
+func (s *Store) ensureWorkStoreLocked(tx *sql.Tx) error {
+	if len(s.workStore) > 0 {
+		return nil
+	}
+	store := make([]byte, 16)
+	rand.Read(store)
+	for k, v := range map[string][]byte{kWorkStore: store, kWorkSeq: encodeSeq(max(int64(1), s.workSeq))} {
+		if _, err := tx.Exec(`INSERT INTO kv(key, value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, k, v); err != nil {
+			return err
+		}
+	}
+	s.workStore = store
+	if s.workSeq == 0 {
+		s.workSeq = 1
+		s.workSeqNow.Store(1)
+	}
+	return nil
+}
+
+func sessionWorkWho(sess *sessionv1.Session) *workWho {
+	client := cmp.Or(sess.CreatedBy, sess.GetActor().GetId())
+	if client == "" {
+		client = "owner"
+	}
+	agent := cmp.Or(sess.Agent, sess.GetModelSelection().GetInstanceId())
+	return &workWho{client: client, agent: agent, project: sess.ProjectId}
+}
+
+func (s *Store) recordKernelWork(sess *sessionv1.Session, run *sessionv1.Run, ev *sessionv1.SessionEvent) {
+	if sess == nil || ev == nil {
+		return
+	}
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+	if err := s.ensureWorkStoreLocked(tx); err != nil {
+		return
+	}
+	w := s.workTx(tx)
+	who := sessionWorkWho(sess)
+	at := time.Now()
+	if ev.OccurredAt != nil {
+		at = ev.OccurredAt.AsTime()
+	}
+	switch ev.Type {
+	case "run.started":
+		startAt := at
+		if run.GetStartedAt() != nil {
+			startAt = run.GetStartedAt().AsTime()
+		}
+		if err := w.turnStart(sess.SessionId, who, run.GetAuthor().GetId(), startAt); err != nil {
+			return
+		}
+	case "item.updated", "queue.updated":
+		if run != nil && run.Status == sessionv1.RunStatus_RUN_STATUS_RUNNING && ev.GetItem().GetStatus() != "steered" {
+			if r, sErr := w.session(sess.SessionId, who); sErr == nil && (r == nil || r.turnStart == 0) {
+				startAt := at
+				if run.GetStartedAt() != nil {
+					startAt = run.GetStartedAt().AsTime()
+				}
+				if err := w.turnStart(sess.SessionId, who, run.GetAuthor().GetId(), startAt); err != nil {
+					return
+				}
+			}
+		}
+	case "run.completed", "run.interrupted":
+		endAt := at
+		if run.GetCompletedAt() != nil {
+			endAt = run.GetCompletedAt().AsTime()
+		}
+		ord := cmp.Or(run.GetOrdinal(), sess.GetProgress().GetTurnCount())
+		if ord == 0 {
+			ord = 1
+		}
+		inTok := run.GetUsage().GetInputTokens()
+		outTok := run.GetUsage().GetOutputTokens()
+		if err := w.turnComplete(sess.SessionId, who, ord, endAt, false, inTok, outTok); err != nil {
+			return
+		}
+	case "run.failed":
+		fk := sess.GetProgress().GetLastFailure().GetKind()
+		if fk == sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED || fk == sessionv1.FailureKind_FAILURE_KIND_START_FAILED {
+			if err := w.crash(sess.SessionId); err != nil {
+				return
+			}
+		} else {
+			endAt := at
+			if run.GetCompletedAt() != nil {
+				endAt = run.GetCompletedAt().AsTime()
+			}
+			ord := cmp.Or(run.GetOrdinal(), sess.GetProgress().GetTurnCount())
+			if ord == 0 {
+				ord = 1
+			}
+			failed := fk != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED
+			inTok := run.GetUsage().GetInputTokens()
+			outTok := run.GetUsage().GetOutputTokens()
+			if err := w.turnComplete(sess.SessionId, who, ord, endAt, failed, inTok, outTok); err != nil {
+				return
+			}
+		}
+	case "session.recovered":
+		if sess.Status == sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+			if err := w.crash(sess.SessionId); err != nil {
+				return
+			}
+		}
+	}
+	if err := w.stateSession(sess); err != nil {
+		return
+	}
+	if err := w.finish(); err != nil {
+		return
+	}
+	if tx.Commit() == nil {
+		w.done()
+	}
+}
+
+func (s *Store) recordWorkTick(q int64) error {
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := s.ensureWorkStoreLocked(tx); err != nil {
+		return err
+	}
+	w := s.workTx(tx)
+	if err := w.tick(q); err != nil {
+		return err
+	}
+	if err := w.finish(); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	w.done()
+	return nil
+}
+
+// RebuildWork counts every stored session's runs again from the unified kernel
+// store into empty tables, under a new store id so owner devices re-sync cleanly.
+func (s *Store) RebuildWork(eng *kernel.Engine) error {
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
@@ -291,56 +437,60 @@ func (s *Store) rebuildWork() error {
 	}
 	s.workKeys, s.workSeq = map[workWho]int64{}, 0
 	w := s.workTx(tx)
-	rows, err := tx.Query(`SELECT ` + sessionCols + ` FROM sessions ORDER BY created_at`)
-	if err != nil {
-		return err
-	}
-	var sessions []*sessionRow
-	for rows.Next() {
-		r, err := scanSession(rows)
-		if err != nil {
-			rows.Close()
-			return err
-		}
-		sessions = append(sessions, r)
-	}
-	rows.Close()
-	for _, r := range sessions {
-		who := &workWho{r.CreatedBy, r.Agent, r.ProjectID}
-		evs, err := tx.Query(`SELECT payload FROM session_events WHERE session_id=? ORDER BY seq`, r.ID)
+	if eng != nil {
+		sessions, err := eng.ListAllSessions(true)
 		if err != nil {
 			return err
 		}
-		var list []*sessionv1.SessionEvent
-		for evs.Next() {
-			var b []byte
-			if err := evs.Scan(&b); err != nil {
-				evs.Close()
+		slices.SortFunc(sessions, func(a, b *sessionv1.Session) int {
+			return a.GetCreatedAt().AsTime().Compare(b.GetCreatedAt().AsTime())
+		})
+		for _, sess := range sessions {
+			who := sessionWorkWho(sess)
+			runs, _ := eng.Store().Runs(sess.SessionId)
+			for _, run := range runs {
+				if run.StartedAt == nil {
+					continue
+				}
+				if err := w.turnStart(sess.SessionId, who, run.GetAuthor().GetId(), run.StartedAt.AsTime()); err != nil {
+					return err
+				}
+				switch run.Status {
+				case sessionv1.RunStatus_RUN_STATUS_COMPLETED, sessionv1.RunStatus_RUN_STATUS_FAILED, sessionv1.RunStatus_RUN_STATUS_CANCELLED, sessionv1.RunStatus_RUN_STATUS_INTERRUPTED:
+					fk := run.GetFailure().GetKind()
+					if run.Status == sessionv1.RunStatus_RUN_STATUS_FAILED && (fk == sessionv1.FailureKind_FAILURE_KIND_AGENT_CRASHED || fk == sessionv1.FailureKind_FAILURE_KIND_START_FAILED) {
+						if err := w.crash(sess.SessionId); err != nil {
+							return err
+						}
+						continue
+					}
+					endAt := run.StartedAt.AsTime()
+					if run.CompletedAt != nil {
+						endAt = run.CompletedAt.AsTime()
+					}
+					failed := run.Status == sessionv1.RunStatus_RUN_STATUS_FAILED && fk != sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED
+					inTok := run.GetUsage().GetInputTokens()
+					outTok := run.GetUsage().GetOutputTokens()
+					ord := run.Ordinal
+					if ord == 0 {
+						ord = 1
+					}
+					if err := w.turnComplete(sess.SessionId, who, ord, endAt, failed, inTok, outTok); err != nil {
+						return err
+					}
+				}
+			}
+			if err := w.stateSession(sess); err != nil {
 				return err
 			}
-			e := &sessionv1.SessionEvent{}
-			if proto.Unmarshal(b, e) == nil && (e.GetTurnStarted() != nil || e.GetTurnCompleted() != nil || e.GetStatus() != nil) {
-				list = append(list, e)
-			}
-		}
-		evs.Close()
-		for _, e := range list {
-			if err := w.event(r.ID, who, e); err != nil {
+			if _, err := tx.Exec(`UPDATE work_sessions SET turn_start=0, turn_k=0 WHERE session_id=?`, sess.SessionId); err != nil {
 				return err
 			}
-		}
-		if err := w.state(r); err != nil {
-			return err
-		}
-		// A turn still in progress was ended by the restart that follows.
-		if _, err := tx.Exec(`UPDATE work_sessions SET turn_start=0, turn_k=0 WHERE session_id=?`, r.ID); err != nil {
-			return err
 		}
 	}
 	if err := w.finish(); err != nil {
 		return err
 	}
-	// Each hour its own seq, in order, so a first pull can page through them.
 	if _, err := tx.Exec(`UPDATE work_hours SET seq = (SELECT count(*) FROM work_hours h2 WHERE h2.h <= work_hours.h)`); err != nil {
 		return err
 	}
@@ -448,7 +598,6 @@ func (s *Store) PullWork(ctx context.Context, req *machinev1.PullWorkRequest, ma
 	hours.Close()
 	out.Seq = uint64(now)
 	if len(marks) == workPageHours {
-		// The rest of the last transaction's hours come too; then there may be more.
 		last := marks[len(marks)-1]
 		rest, err := tx.QueryContext(ctx, `SELECT h, seq FROM work_hours WHERE seq = ? AND h > ? ORDER BY h`, last.seq, last.h)
 		if err != nil {
@@ -548,14 +697,16 @@ func (s *Store) CountWork(ctx context.Context, a workstats.Ask) (sessions, turns
 
 // PullWork is what changed in the work counts that p may read
 // (MachineService.PullWork): the keys of the sessions it may read.
-func (s *Sessions) PullWork(ctx context.Context, p *Principal, req *machinev1.PullWorkRequest) (*machinev1.PullWorkResponse, error) {
-	return s.st.PullWork(ctx, req, func(client, project string) bool {
-		return s.canRead(p, &sessionRow{CreatedBy: client, ProjectID: project})
+func (n *Machine) PullWork(ctx context.Context, p *Principal, req *machinev1.PullWorkRequest) (*machinev1.PullWorkResponse, error) {
+	return n.st.PullWork(ctx, req, func(client, project string) bool {
+		return n.canReadDeleted(p, project, client)
 	})
 }
 
 // pruneWork forgets counts from before workKeepDays.
 func (s *Store) pruneWork(now time.Time) error {
+	s.workMu.Lock()
+	defer s.workMu.Unlock()
 	q := workstats.Quarter(now.AddDate(0, 0, -workKeepDays))
 	for _, stmt := range []string{
 		`DELETE FROM work_quarters WHERE q < ?`,
@@ -566,7 +717,6 @@ func (s *Store) pruneWork(now time.Time) error {
 			return err
 		}
 	}
-	// Sessions with nothing left: not in progress, no quarter of theirs kept.
 	_, err := s.db.Exec(`DELETE FROM work_sessions WHERE turn_start = 0 AND NOT EXISTS (SELECT 1 FROM work_quarters p WHERE p.n = work_sessions.n)`)
 	return err
 }
@@ -574,7 +724,7 @@ func (s *Store) pruneWork(now time.Time) error {
 // CountWork keeps the counts current while hermeshd runs: at each quarter
 // hour it marks the sessions with a turn in progress at work in the new
 // quarter, and once a day forgets old counts.
-func (s *Sessions) CountWork(ctx context.Context) {
+func (n *Machine) CountWork(ctx context.Context) {
 	pruned := time.Time{}
 	for {
 		now := time.Now()
@@ -584,11 +734,11 @@ func (s *Sessions) CountWork(ctx context.Context) {
 			return
 		case <-time.After(next.Sub(now)):
 		}
-		s.w.put(writeOp{workTick: workstats.Quarter(next)})
+		_ = n.st.recordWorkTick(workstats.Quarter(next))
 		if time.Since(pruned) > 24*time.Hour {
 			pruned = time.Now()
-			if err := s.st.pruneWork(pruned); err != nil {
-				s.log.Warn("forgetting old work counts", "err", err)
+			if err := n.st.pruneWork(pruned); err != nil {
+				n.log.Warn("forgetting old work counts", "err", err)
 			}
 		}
 	}

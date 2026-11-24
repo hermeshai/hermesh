@@ -67,7 +67,8 @@ func TestMachineOnlyMac(t *testing.T) {
 
 	// The work Mac: the app's hermeshd, nobody's yet, with no signer (it
 	// never signs anything).
-	work, _ := w.otherMac("work-mac", env)
+	work, workSock := w.otherMac("work-mac", env)
+	workSessions := sessionClient(workSock)
 	join, err := work.RequestJoin(ctx, &localv1.RequestJoinRequest{RelayUrl: home.RelayUrl, OwnerId: home.OwnerId, RootLabel: "Work Mac", RootPlatform: "macos", MachineOnly: true})
 	if err != nil {
 		t.Fatalf("request join: %v", err)
@@ -152,18 +153,6 @@ func TestMachineOnlyMac(t *testing.T) {
 	if _, err := work.ListPairingRequests(ctx, &localv1.ListPairingRequestsRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("a machine only lists pairing requests: %v", err)
 	}
-	coding := &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: &sessionv1.CodingConsentRequest{
-		Agent: "gemini", ProjectId: "billing", Scope: sessionv1.CodingConsentScope_CODING_CONSENT_SCOPE_HER,
-	}}
-	for _, action := range []*sessionv1.CodingConsentRequest{coding.Consent, {Agent: "gemini", Scope: coding.Consent.Scope, Revoke: true}} {
-		if _, err := work.CodingConsent(ctx, &localv1.CodingConsentRequest{MachineId: st.LocalMachineId, Consent: action}); connect.CodeOf(err) != connect.CodePermissionDenied {
-			t.Fatalf("machine-only local API managed coding consent: %v", err)
-		}
-	}
-	compat, err := w.app.client.CodingConsent(ctx, coding)
-	if err != nil || !compat.Approved {
-		t.Fatalf("trusted owner legacy coding consent compat: %v %v", compat, err)
-	}
 	watch, err := work.WatchSessions(ctx, &localv1.WatchSessionsRequest{})
 	if err != nil || !watch.Receive() || !watch.Msg().MachinesChanged {
 		t.Fatalf("watch sessions: %v", err)
@@ -213,8 +202,11 @@ func TestMachineOnlyMac(t *testing.T) {
 		t.Fatalf("the agents the work Mac knows: %v %v", cs, err)
 	}
 	// Its own sessions are its to settle, as on a trusted device: it answers…
-	if _, err := work.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: s.SessionID, QuestionId: q.QuestionId,
-		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"红"}}}}); err != nil {
+	if _, err := workSessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: s.SessionID, RequestId: q.QuestionId,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"红"}}},
+	}); err != nil {
 		t.Fatalf("answer on the work Mac: %v", err)
 	}
 	eventually(t, time.Minute, "the turn finishes with the answer", func() bool {
@@ -224,7 +216,7 @@ func TestMachineOnlyMac(t *testing.T) {
 	// …and stops.
 	long := firstSession(w.cli(2*time.Minute, "session", "start", "--project", "work-mac/billing", "--agent", "gemini", "-o", "json", "--prompt", "shell sleep 1800").stdout)
 	eventually(t, time.Minute, "the long session runs", func() bool { return w.get(long.SessionID).Status == "running" })
-	if _, err := work.InterruptSession(ctx, &localv1.InterruptSessionRequest{SessionId: long.SessionID}); err != nil {
+	if _, err := workSessions.InterruptSession(ctx, &sessionv1.InterruptSessionRequest{SessionId: long.SessionID}); err != nil {
 		t.Fatalf("stop the session on the work Mac: %v", err)
 	}
 	eventually(t, time.Minute, "the session stopped", func() bool { return w.get(long.SessionID).Status == "idle" })

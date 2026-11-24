@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	machinev1 "github.com/hermeshai/hermesh/gen/go/hermesh/machine/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // Rate limits (docs/overview-usage.md §7): what each coding agent last said
@@ -40,7 +40,7 @@ func (n *Machine) loadLimits() {
 
 // noteLimits keeps what agent said of its limits now: at once when a window
 // changed, else when what is kept is limitsEvery old.
-func (n *Machine) noteLimits(agent string, said provider.Limits) {
+func (n *Machine) noteLimits(agent string, said rt.Limits) {
 	l := &machinev1.AgentLimits{Plan: said.Plan, ObservedAt: timestamppb.Now()}
 	for _, w := range said.Windows {
 		l.Windows = append(l.Windows, &machinev1.LimitWindow{Minutes: w.Minutes, UsedPercent: w.UsedPercent, ResetsAt: timestamppb.New(w.ResetsAt)})

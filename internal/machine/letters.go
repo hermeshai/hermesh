@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/internal/kernel"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -27,9 +29,9 @@ import (
 // grant covers the session, and the message joins its sender's own turn or
 // waits for one.
 
-func (s *sessionService) DeliverMessage(ctx context.Context, req *sessionv1.DeliverMessageRequest) (*sessionv1.DeliverMessageResponse, error) {
+func (n *Machine) deliverMessageRPC(ctx context.Context, _ *kernel.Principal, req *sessionv1.DeliverMessageRequest) (*sessionv1.DeliverMessageResponse, error) {
 	p := principalFrom(ctx)
-	if p.Kind != PrincipalClient {
+	if p == nil || p.Kind != PrincipalClient {
 		return nil, cerr(connect.CodePermissionDenied, "only an agent delivers messages")
 	}
 	pub, err := identity.ParsePublicKey(p.Grant.ClientPublicKey)
@@ -40,10 +42,10 @@ func (s *sessionService) DeliverMessage(ctx context.Context, req *sessionv1.Deli
 	if err := identity.VerifyWith(req.Message, pub, m); err != nil {
 		return nil, cerr(connect.CodeInvalidArgument, "the message is not signed by this agent: %v", err)
 	}
-	if err := s.n.checkLetter(m, p.ClientID, req.SessionId); err != nil {
+	if err := n.checkLetter(m, p.ClientID, req.SessionId); err != nil {
 		return nil, err
 	}
-	sess, delivered, err := s.n.deliverLetter(ctx, p, m, p.Grant.ClientLabel, req.Attachments)
+	sess, delivered, err := n.deliverLetter(ctx, p, m, p.Grant.ClientLabel, req.Attachments)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +69,7 @@ func (n *Machine) checkLetter(m *inboxv1.Message, from, session string) error {
 }
 
 // deliverLetter hands a checked message to its session.
-func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Message, name string, atts []*sessionv1.Attachment) (*sessionv1.Session, string, error) {
+func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Message, name string, atts []*sessionv1.AttachmentRef) (*sessionv1.Session, string, error) {
 	n.mu.Lock()
 	if _, seen := n.lettersSeen[m.MessageId]; seen {
 		n.mu.Unlock()
@@ -88,11 +90,24 @@ func (n *Machine) deliverLetter(ctx context.Context, p *Principal, m *inboxv1.Me
 	}
 	n.mu.Unlock()
 	creator := false
-	if r, err := n.st.Session(m.To.Session); err == nil && r != nil {
-		creator = r.CreatedBy == p.ClientID
+	if n.sessions != nil {
+		if s, err := n.sessions.Store().Session(m.To.Session); err == nil && s != nil {
+			creator = cmp.Or(s.CreatedBy, s.GetActor().GetId()) == p.ClientID
+		}
 	}
-	rec := &sessionv1.MessageReceived{MessageId: m.MessageId, From: inboxAddress(m.From), FromName: name, Text: m.Text, InReplyTo: m.InReplyTo}
-	sess, delivered, err := n.sessions.Deliver(ctx, p, m.To.Session, m.From.GetSession(), letterText(m, name, creator), rec, atts)
+	sess, delivered, err := n.sessions.DeliverInboundMail(
+		ctx,
+		toKernelPrincipal(p),
+		m.To.Session,
+		m.MessageId,
+		m.From.GetSession(),
+		inboxAddress(m.From),
+		name,
+		m.InReplyTo,
+		letterText(m, name, creator),
+		m.Text,
+		atts,
+	)
 	if err != nil {
 		n.mu.Lock()
 		delete(n.lettersSeen, m.MessageId) // it may come again

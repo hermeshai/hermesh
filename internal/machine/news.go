@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -19,7 +20,7 @@ import (
 	relayv1 "github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/relay/v1/relayv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
@@ -147,25 +148,57 @@ func (n *Machine) contact(ctx context.Context, ms relayv1connect.MessageServiceC
 // sessionNews writes the agent that asked for a turn how it went, and the
 // session's creator when that's someone else, for the events the owner's
 // iPhone hears of too.
-func (n *Machine) sessionNews(s noticeSession, e *sessionv1.SessionEvent) {
-	to := []*inboxv1.Address{{Inbox: s.asker, Session: s.askerConv}}
-	if s.createdBy != s.asker {
-		to = append(to, &inboxv1.Address{Inbox: s.createdBy, Session: s.creatorConv})
+func (n *Machine) sessionNews(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
+	if sess == nil || ev == nil {
+		return
+	}
+	switch ev.Type {
+	case "request.created":
+		if ev.GetRequest().GetKind() != sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			return
+		}
+	case "run.completed", "run.failed":
+	case "session.recovered":
+		if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+			return
+		}
+	default:
+		return
+	}
+
+	createdBy := cmp.Or(sess.CreatedBy, sess.GetActor().GetId())
+	creatorConv := sess.CreatedAs
+	asker := ev.GetRun().GetAuthor().GetId()
+	askerConv := ev.GetRun().GetAuthorConversation()
+	if asker == "" && n.sessions != nil {
+		runID := cmp.Or(ev.GetRequest().GetRunId(), sess.ActiveRunId)
+		if runID != "" {
+			if r, err := n.sessions.Store().Run(runID); err == nil && r != nil {
+				asker = r.GetAuthor().GetId()
+				askerConv = r.GetAuthorConversation()
+			}
+		}
+	}
+	if asker == "" {
+		asker, askerConv = createdBy, creatorConv
+	}
+
+	to := []*inboxv1.Address{{Inbox: asker, Session: askerConv}}
+	if createdBy != "" && createdBy != asker {
+		to = append(to, &inboxv1.Address{Inbox: createdBy, Session: creatorConv})
 	}
 	for _, a := range to {
-		if strings.HasPrefix(a.Inbox, "c_") && !n.sessions.following(s.id, a.Inbox) {
-			n.newsFor(a, s, e)
+		if strings.HasPrefix(a.Inbox, "c_") && (n.sessions == nil || !n.sessions.Following(sess.SessionId, a.Inbox)) {
+			m := n.newsMessage(a, sess, ev)
+			if m == nil {
+				continue
+			}
+			go n.deliverNews(a, sess.SessionId, m)
 		}
 	}
 }
 
-// newsFor writes one agent the news of event e. This machine's own Her
-// gets it without the post office (docs/her-mesh.md §6.1).
-func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.SessionEvent) {
-	m := n.newsMessage(to, s, e)
-	if m == nil {
-		return
-	}
+func (n *Machine) deliverNews(to *inboxv1.Address, sessionID string, m *inboxv1.Message) {
 	if n.herTakes(m) {
 		return
 	}
@@ -174,41 +207,65 @@ func (n *Machine) newsFor(to *inboxv1.Address, s noticeSession, e *sessionv1.Ses
 		if err == nil {
 			return
 		}
-		n.log.Debug("session news not sent", "session", s.id, "to", to.Inbox, "attempt", attempt, "err", err)
+		n.log.Debug("session news not sent", "session", sessionID, "to", to.Inbox, "attempt", attempt, "err", err)
 		time.Sleep(time.Duration(5*(attempt+1)) * time.Second)
 	}
 }
 
-// newsMessage is the news of event e for one agent; nil when e is none.
-func (n *Machine) newsMessage(to *inboxv1.Address, s noticeSession, e *sessionv1.SessionEvent) *inboxv1.Message {
-	news := &inboxv1.SessionNews{SessionId: s.id, Title: s.title, Project: s.project, Agent: s.agent, Machine: n.Name()}
-	switch k := e.Kind.(type) {
-	case *sessionv1.SessionEvent_QuestionAsked:
-		news.Kind, news.Question, news.Turn = "question", k.QuestionAsked.Question, k.QuestionAsked.Question.GetTurn()
-	case *sessionv1.SessionEvent_TurnCompleted:
-		tc := k.TurnCompleted
-		news.Turn = tc.Turn
-		if f := tc.Failure; f != nil {
-			if f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
-				return nil
-			}
-			news.Kind, news.Failure = "failure", f.Kind
-			news.FailureMessage, _ = provider.Truncate(f.Message, 1000)
-		} else {
-			news.Kind, news.DiffStat = "turn_done", tc.DiffStat
-			news.Result, news.ResultTruncated = provider.Truncate(tc.Result, newsResultChars)
-		}
-	case *sessionv1.SessionEvent_Status:
-		if k.Status.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+// newsMessage is the news of event ev for one agent; nil when ev is none.
+func (n *Machine) newsMessage(to *inboxv1.Address, sess *sessionv1.Session, ev *sessionv1.SessionEvent) *inboxv1.Message {
+	agent := cmp.Or(sess.Agent, sess.GetModelSelection().GetInstanceId())
+	news := &inboxv1.SessionNews{
+		SessionId: sess.SessionId,
+		Title:     sess.Title,
+		Project:   sess.ProjectId,
+		Agent:     agent,
+		Machine:   n.Name(),
+	}
+	switch ev.Type {
+	case "request.created":
+		if ev.GetRequest().GetKind() != sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
 			return nil
 		}
-		news.Kind, news.Failure = "failure", s.failure.GetKind()
-		news.FailureMessage, _ = provider.Truncate(s.failure.GetMessage(), 1000)
+		q := sess.GetProgress().GetPendingQuestion()
+		if q == nil {
+			return nil
+		}
+		news.Kind, news.Question, news.Turn = "question", q, q.GetTurn()
+	case "run.completed":
+		news.Kind = "turn_done"
+		news.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
+		news.DiffStat = sess.GetProgress().GetDiffStat()
+		news.Result, news.ResultTruncated = rt.Truncate(sess.GetResult(), newsResultChars)
+	case "run.failed":
+		f := sess.GetProgress().GetLastFailure()
+		if f != nil && f.Kind == sessionv1.FailureKind_FAILURE_KIND_INTERRUPTED {
+			return nil
+		}
+		news.Kind = "failure"
+		news.Turn = cmp.Or(ev.GetRun().GetOrdinal(), sess.GetProgress().GetTurnCount())
+		news.Failure = f.GetKind()
+		news.FailureMessage, _ = rt.Truncate(cmp.Or(f.GetMessage(), sess.GetError()), 1000)
+	case "session.recovered":
+		if sess.Status != sessionv1.SessionStatus_SESSION_STATUS_CRASHED {
+			return nil
+		}
+		f := sess.GetProgress().GetLastFailure()
+		news.Kind = "failure"
+		news.Turn = sess.GetProgress().GetTurnCount()
+		news.Failure = f.GetKind()
+		news.FailureMessage, _ = rt.Truncate(cmp.Or(f.GetMessage(), sess.GetError()), 1000)
 	default:
 		return nil
 	}
-	return &inboxv1.Message{MessageId: "msg_" + strings.ToLower(ulid.Make().String()), From: &inboxv1.Address{Inbox: n.machineID, Session: s.id},
-		To: to, SentAt: timestamppb.Now(), Text: newsText(news), SessionNews: news}
+	return &inboxv1.Message{
+		MessageId:   "msg_" + strings.ToLower(ulid.Make().String()),
+		From:        &inboxv1.Address{Inbox: n.machineID, Session: sess.SessionId},
+		To:          to,
+		SentAt:      timestamppb.Now(),
+		Text:        newsText(news),
+		SessionNews: news,
+	}
 }
 
 // sendMessage signs m with the machine key, seals it to its recipient and

@@ -441,8 +441,11 @@ private struct FirstAnswer: View {
             .task(id: sessionID) {
                 guard let api = model.api else { return }
                 do {
-                    for try await e in api.events(sessionID) {
-                        if case .agentMessage(let m) = e.kind { text = m.text }
+                    var proj = try await api.getSession(sessionID).projection
+                    if let m = proj.items.last(where: { $0.kind == .assistantMessage }) { text = m.text }
+                    for try await ev in api.subscribeSession(sessionID, afterSeq: proj.session.progress.lastEventSeq) {
+                        proj = applySessionEvent(ev, to: proj)
+                        if let m = proj.items.last(where: { $0.kind == .assistantMessage }) { text = m.text }
                     }
                 } catch {}
             }

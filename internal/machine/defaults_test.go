@@ -3,15 +3,15 @@ package machine
 import (
 	"cmp"
 	"context"
-	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
+
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 )
 
 // TestAgentDefaults: a Codex session started without a model runs with the
@@ -20,8 +20,8 @@ import (
 // started with, whatever the defaults are by then. Every coding agent takes
 // defaults (an unknown one none), and only Codex a speed.
 func TestAgentDefaults(t *testing.T) {
-	codex := &recorder{}
-	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": codex})
+	codex := newRecorder("codex")
+	h := newHarnessWith(t, DefaultLimits(), map[string]rt.Driver{"codex": codex})
 	ctx := context.Background()
 	set := func(d *identityv1.AgentDefaults) error {
 		_, err := h.n.execAdmin(ctx, &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetAgentDefaults{SetAgentDefaults: d}})
@@ -29,12 +29,16 @@ func TestAgentDefaults(t *testing.T) {
 	}
 	start := func(model string) string {
 		t.Helper()
-		s, err := h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: "codex", Prompt: "say one", Model: model})
+		res, err := h.e.StartSession(ctx, h.kp(), &sessionv1.StartSessionRequest{
+			ProjectId:      "demo",
+			ModelSelection: &sessionv1.ModelSelection{InstanceId: "codex", Model: model},
+			InitialPrompt:  "say one",
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		h.wait(s.SessionId, idle)
-		return s.SessionId
+		h.wait(res.Session.SessionId, idle)
+		return res.Session.SessionId
 	}
 	want := func(i int, model, effort string, speed identityv1.AgentSpeed) {
 		t.Helper()
@@ -44,7 +48,7 @@ func TestAgentDefaults(t *testing.T) {
 	}
 
 	start("")
-	want(0, "", "", identityv1.AgentSpeed_AGENT_SPEED_UNSPECIFIED) // the agent's own configuration
+	want(0, "", "", identityv1.AgentSpeed_AGENT_SPEED_UNSPECIFIED)
 
 	std := identityv1.AgentSpeed_AGENT_SPEED_STANDARD
 	if err := set(&identityv1.AgentDefaults{Agent: "codex", Model: "gpt-5.6-luna", Effort: "low", Speed: std}); err != nil {
@@ -88,62 +92,41 @@ func TestAgentDefaults(t *testing.T) {
 	}
 }
 
-// TestSessionModel: a session shows the model the agent reported over the
-// one Hermesh passed it (an alias), and the effort Hermesh passed over the
-// agent's own; both are kept across a restart.
-func TestSessionModel(t *testing.T) {
-	st, err := OpenStore(filepath.Join(t.TempDir(), "hermeshd.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	s := &Sessions{machineID: "m"}
-	for i, c := range []struct {
-		row                   sessionRow
-		wantModel, wantEffort string
-	}{
-		{sessionRow{Model: "opus", Effort: "high", AgentModel: "claude-opus-5-5"}, "claude-opus-5-5", "high"},
-		{sessionRow{AgentModel: "gpt-6-astra", AgentEffort: "xhigh"}, "gpt-6-astra", "xhigh"},
-		{sessionRow{Effort: "low", AgentModel: "gpt-6-astra", AgentEffort: "xhigh"}, "gpt-6-astra", "low"},
-		{sessionRow{Model: "sonnet"}, "sonnet", ""}, // not started yet
-		{sessionRow{}, "", ""},
-	} {
-		r := c.row
-		r.ID, r.Progress = fmt.Sprint("s", i), &sessionv1.SessionProgress{}
-		if err := putSession(st.db, &r); err != nil {
-			t.Fatal(err)
-		}
-		got, err := st.Session(r.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if p := s.toProto(got); p.Model != c.wantModel || p.Effort != c.wantEffort {
-			t.Errorf("%+v shows %q/%q, want %q/%q", c.row, p.Model, p.Effort, c.wantModel, c.wantEffort)
-		}
-	}
-}
-
 // catalog is an agent that lists every model it takes, as Codex does.
 type catalog struct{ recorder }
 
-func (c *catalog) Discover(ctx context.Context) provider.Info {
+func (c *catalog) Discover(ctx context.Context) rt.Info {
 	i := c.recorder.Discover(ctx)
-	i.Models = []provider.Model{{ID: "gpt-big", Efforts: []string{"low", "high", "xhigh"}}, {ID: "gpt-small", Efforts: []string{"low", "high"}}}
+	i.Models = []rt.Model{
+		{ID: "gpt-big", Efforts: []string{"low", "high", "xhigh"}},
+		{ID: "gpt-small", Efforts: []string{"low", "high"}},
+	}
 	i.AllModels = true
+	i.ModelsState = rt.ModelsKnown
+	i.ModelsAt = time.Now()
 	return i
 }
 
-// TestModelAndEffort: a session naming a model the agent does not list, or
-// an effort its model does not take, is refused before it starts, with the
-// ones there are; listed ones start. Without a model, any listed model's
-// effort is taken. An agent that lists only some of its models (Claude
-// Code's aliases) takes any model; one that lists none takes no effort.
 func TestModelAndEffort(t *testing.T) {
-	codex := &catalog{}
-	h := newHarnessWith(t, DefaultLimits(), map[string]provider.Provider{"codex": codex})
+	codex := &catalog{recorder: *newRecorder("codex")}
+	h := newHarnessWith(t, DefaultLimits(), map[string]rt.Driver{"codex": codex})
 	ctx := context.Background()
 	start := func(agent, model, effort string) (*sessionv1.Session, error) {
-		return h.s.Start(ctx, h.p, &sessionv1.StartSessionRequest{ProjectId: "demo", Agent: agent, Prompt: "say one", Model: model, Effort: effort})
+		var opts map[string]*sessionv1.OptionValue
+		if effort != "" {
+			opts = map[string]*sessionv1.OptionValue{
+				"effort": {Kind: &sessionv1.OptionValue_StringValue{StringValue: effort}},
+			}
+		}
+		res, err := h.e.StartSession(ctx, h.kp(), &sessionv1.StartSessionRequest{
+			ProjectId:      "demo",
+			ModelSelection: &sessionv1.ModelSelection{InstanceId: agent, Model: model, Options: opts},
+			InitialPrompt:  "say one",
+		})
+		if err != nil {
+			return nil, err
+		}
+		return res.Session, nil
 	}
 	for _, c := range []struct{ agent, model, effort, refusal string }{
 		{"codex", "aurora", "", `codex on this machine has no model "aurora" (one of: gpt-big, gpt-small)`},
@@ -155,10 +138,7 @@ func TestModelAndEffort(t *testing.T) {
 			t.Fatalf("%+v: %v", c, err)
 		}
 	}
-	h.s.mu.Lock()
-	made := len(h.s.live)
-	h.s.mu.Unlock()
-	if made != 0 {
+	if all, _ := h.e.ListAllSessions(true); len(all) != 0 {
 		t.Fatal("a session was made for a refused model or effort")
 	}
 	for _, c := range []struct{ agent, model, effort string }{{"codex", "gpt-small", "high"}, {"codex", "", "xhigh"}, {"fake", "aurora", ""}} {
@@ -174,8 +154,6 @@ func TestModelAndEffort(t *testing.T) {
 		}
 	}
 
-	// A default effort the model run does not take follows the agent's own;
-	// one it takes, or that of a model not listed, is passed.
 	if _, err := h.n.execAdmin(ctx, &identityv1.AdminCommand{Command: &identityv1.AdminCommand_SetAgentDefaults{
 		SetAgentDefaults: &identityv1.AgentDefaults{Agent: "codex", Model: "gpt-big", Effort: "xhigh"}}}); err != nil {
 		t.Fatal(err)

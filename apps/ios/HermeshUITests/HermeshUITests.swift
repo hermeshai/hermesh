@@ -247,7 +247,8 @@ final class HermeshUITests: XCTestCase {
         tap("interrupt")
         tap("interrupt-confirm")
         try waitFor("the turn stops") { try self.sessionStatus("跑很久") == "idle" ? true : nil }
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "你打断了这一轮")).firstMatch.waitForExistence(timeout: 20))
+        // Who stopped it, and no more: the box under it shows it goes on.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "你打断了这一轮")).firstMatch.waitForExistence(timeout: 20))
     }
 
     func streamedReply() throws {

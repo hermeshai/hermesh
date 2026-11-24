@@ -117,6 +117,13 @@ final class HerReviewUITests: XCTestCase {
         XCTAssertLessThan(luminanceRange(shot.image, corner), 0.08, "a spinner at the running card's corner")
         XCTAssertTrue(words("1 working").exists, "Her's header says what runs in words, not with a ring")
         tap("her-session-Her sample task")
+        // Her sent the task in: its prompt has her face on the corner, and no name over it.
+        let sender = app.descendants(matching: .any)["prompt-sender"].firstMatch
+        XCTAssertTrue(sender.waitForExistence(timeout: 10), "who sent it")
+        XCTAssertEqual(sender.label, "Sent by Her")
+        XCTAssertFalse(app.staticTexts["Sent by Her"].exists, "a face, not a line of text")
+        let prompt = XCTAttachment(screenshot: app.screenshot())
+        prompt.name = "Her demo: the task she sent"; prompt.lifetime = .keepAlways; add(prompt)
         tap("interrupt"); tap("interrupt-confirm")
         XCTAssertTrue(words("The simulated task was stopped.").waitForExistence(timeout: 10))
         XCTAssertFalse(words("Welcome from Her!").exists, "stopping never emits the preset completion")

@@ -10,7 +10,6 @@ import (
 
 	screenv1 "github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/screen/v1/screenv1connect"
-	"github.com/hermeshai/hermesh/internal/provider"
 )
 
 // Computer Control is the owner's devices' alone: agents are refused its
@@ -25,7 +24,7 @@ func TestScreenIsTheOwnersOnly(t *testing.T) {
 	if err := os.WriteFile(helper, []byte("#!/bin/sh\necho '{\"available\":true,\"way\":\"test\"}'\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	n, err := Open(Config{DataDir: t.TempDir(), ScreenBin: helper, Providers: map[string]provider.Provider{}})
+	n, err := Open(Config{DataDir: t.TempDir(), ScreenBin: helper, Discoverers: map[string]AgentDiscoverer{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +36,7 @@ func TestScreenIsTheOwnersOnly(t *testing.T) {
 		t.Fatalf("an agent's view: %v", st)
 	}
 
-	without, err := Open(Config{DataDir: t.TempDir(), Providers: map[string]provider.Provider{}})
+	without, err := Open(Config{DataDir: t.TempDir(), Discoverers: map[string]AgentDiscoverer{}})
 	if err != nil {
 		t.Fatal(err)
 	}

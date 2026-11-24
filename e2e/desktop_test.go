@@ -17,7 +17,7 @@ import (
 	identityv1 "github.com/hermeshai/hermesh/gen/go/hermesh/identity/v1"
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/internal/paths"
-	"github.com/hermeshai/hermesh/internal/provider/acp"
+	"github.com/hermeshai/hermesh/internal/runtime/acp"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
@@ -547,9 +547,6 @@ func otherMacThreads(t *testing.T, f desktopFixture) int {
 	work, _ := w.otherMac("work-mac", []string{"HERMESH_INCLUDE_SCRIPTED=1", "HOME=" + workHome})
 	daemon := w.logs[len(w.logs)-1] // the one otherMac started
 	w.joinTyped(work, home, "work-mac")
-	// old-mac: a hermeshd from before threads, for the composer to say it needs an update.
-	old, _ := w.otherMac("old-mac", []string{"HERMESH_TEST_BEFORE_THREADS=1"})
-	w.joinTyped(old, home, "old-mac")
 	return daemon.cmd.Process.Pid
 }
 

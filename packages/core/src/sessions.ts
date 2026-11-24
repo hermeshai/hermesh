@@ -39,7 +39,10 @@ export function isFailed(s: Session): boolean {
 
 export function isActive(s: Session): boolean {
   return (
-    s.status === SessionStatus.QUEUED || s.status === SessionStatus.PREPARING || s.status === SessionStatus.RUNNING
+    s.status === SessionStatus.QUEUED ||
+    s.status === SessionStatus.PREPARING ||
+    s.status === SessionStatus.RUNNING ||
+    (s.status === SessionStatus.IDLE && s.activeBackgroundCount > 0)
   );
 }
 
@@ -49,7 +52,7 @@ export function isInterruptible(s: Session): boolean {
 }
 
 export function isArchivable(s: Session): boolean {
-  return s.status === SessionStatus.IDLE || s.status === SessionStatus.CRASHED;
+  return (s.status === SessionStatus.IDLE && s.activeBackgroundCount === 0) || s.status === SessionStatus.CRASHED;
 }
 
 export function updatedDate(s: Session): Date {

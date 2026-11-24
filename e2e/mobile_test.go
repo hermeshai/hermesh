@@ -24,6 +24,7 @@ import (
 	localv1 "github.com/hermeshai/hermesh/gen/go/hermesh/local/v1"
 	"github.com/hermeshai/hermesh/gen/go/hermesh/local/v1/localv1connect"
 	sessionv1 "github.com/hermeshai/hermesh/gen/go/hermesh/session/v1"
+	"github.com/hermeshai/hermesh/gen/go/hermesh/session/v1/sessionv1connect"
 	"github.com/hermeshai/hermesh/internal/mobile"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
@@ -61,12 +62,13 @@ func TestMobileCoreProcess(t *testing.T) {
 // mobileCore is an iPhone app's owner role in a process of its own, and a
 // client of its LocalService on the loopback port, as the app's.
 type mobileCore struct {
-	t      *testing.T
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	lines  chan string
-	client localv1connect.LocalServiceClient
-	app    *testApp
+	t        *testing.T
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	lines    chan string
+	client   localv1connect.LocalServiceClient
+	sessions sessionv1connect.SessionServiceClient
+	app      *testApp
 	// started: when the core answered with its port (the app's Core.start returned).
 	started time.Time
 	// port and token: where the core serves the app, and what the app sends.
@@ -124,7 +126,8 @@ func startMobileCoreFrom(t *testing.T, bin, dir string, root *identity.SoftwareK
 	m.port, m.token = port, token
 	hc := &http.Client{Transport: &bearer{token: token, next: http.DefaultTransport}}
 	m.client = localv1connect.NewLocalServiceClient(hc, "http://127.0.0.1:"+port)
-	m.app = &testApp{t: t, client: m.client, root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}
+	m.sessions = sessionv1connect.NewSessionServiceClient(hc, "http://127.0.0.1:"+port)
+	m.app = &testApp{t: t, client: m.client, sessions: m.sessions, root: root, keys: map[string]*identity.SoftwareKey{identity.KeyID(root.Public()): root}}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.app.cancel = cancel
 	t.Cleanup(cancel)
@@ -290,20 +293,27 @@ func TestMobileAnswersVerifiedLocalCodingAgent(t *testing.T) {
 	front, leave := context.WithCancel(ctx)
 	defer leave()
 	scr := watchScreenOf(front, t, m.client)
-	var questionID string
+	var questionID, itemID string
 	eventually(t, 30*time.Second, "phone sees the verified pending question", scr.has(func(s *screen) bool {
 		q := s.sessions[session.SessionID].GetProgress().GetPendingQuestion()
 		questionID = q.GetQuestionId()
+		if len(q.GetItems()) > 0 {
+			itemID = q.GetItems()[0].GetId()
+		}
 		return q.GetLocalAnswerAvailable()
 	}))
-	answer := &localv1.AnswerQuestionRequest{SessionId: session.SessionID, QuestionId: questionID, Decline: true,
-		Answers: []*sessionv1.Answer{{Text: "fictional answer masquerading as a decline"}}}
-	if _, err := m.client.AnswerQuestion(ctx, answer); connect.CodeOf(err) != connect.CodeInvalidArgument {
+	badDecline := &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: session.SessionID, RequestId: questionID, Decline: true,
+		Answers: map[string]*sessionv1.QuestionAnswer{itemID: {CustomText: "fictional answer masquerading as a decline"}},
+	}
+	if _, err := m.sessions.RespondRuntimeRequest(ctx, badDecline); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("decline with content: %v", err)
 	}
-	answer.Decline = false
-	answer.Answers = []*sessionv1.Answer{{Selected: []string{"Dev"}}}
-	if _, err := m.client.AnswerQuestion(ctx, answer); err != nil {
+	if _, err := m.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: session.SessionID, RequestId: questionID,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{itemID: {SelectedOptions: []string{"Dev"}}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, 20*time.Second, "agent receives the selected answer", func() bool {
@@ -405,25 +415,15 @@ func TestMobileNetwork(t *testing.T) {
 	}
 	whole := time.Since(m.started)
 
-	// A long conversation opened: everything up to its last event.
-	var last uint64
-	scr.mu.Lock()
-	last = scr.sessions[long.SessionID].GetProgress().GetLastEventSeq()
-	scr.mu.Unlock()
+	// A long conversation opened: projection loaded up to its last event.
 	began := time.Now()
 	sctx, stop := context.WithCancel(ctx)
-	stream, err := m.client.StreamSessionEvents(sctx, &localv1.StreamSessionEventsRequest{SessionId: long.SessionID, Follow: true, Partial: true, View: sessionv1.EventView_EVENT_VIEW_BASIC})
+	res, err := m.sessions.GetSession(sctx, &sessionv1.GetSessionRequest{SessionId: long.SessionID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	var events, bytes int
-	for stream.Receive() {
-		events++
-		bytes += proto.Size(stream.Msg())
-		if stream.Msg().Seq >= last {
-			break
-		}
-	}
+	events := len(res.GetProjection().GetItems())
+	bytes := proto.Size(res)
 	opened := time.Since(began)
 	stop()
 
@@ -442,7 +442,7 @@ func TestMobileNetwork(t *testing.T) {
 	m.cmd.Process.Signal(syscall.SIGSTOP)
 	network.setCut(true)
 	gone := short[0]
-	if _, err := w.app.client.DeleteSession(ctx, &localv1.DeleteSessionRequest{SessionId: gone}); err != nil {
+	if _, err := w.app.sessions.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: gone}); err != nil {
 		t.Fatal(err)
 	}
 	sessions--
@@ -553,7 +553,7 @@ func TestMobileNetwork(t *testing.T) {
 	m.do("pause")
 	m.kill()
 	gone2 := short[1]
-	if _, err := w.app.client.DeleteSession(ctx, &localv1.DeleteSessionRequest{SessionId: gone2}); err != nil {
+	if _, err := w.app.sessions.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: gone2}); err != nil {
 		t.Fatal(err)
 	}
 	sessions--

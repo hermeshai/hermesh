@@ -97,7 +97,7 @@ func newOwnerMacAt(t *testing.T, signer func(w *ownerMac) string, oneWay time.Du
 		w.app = newTestApp(t, w.sock, w.root)
 	} else {
 		keyFile = signer(w)
-		w.app = &testApp{t: t, client: localClient(t, w.sock), cancel: func() {}}
+		w.app = &testApp{t: t, client: localClient(t, w.sock), sessions: sessionClient(w.sock), cancel: func() {}}
 	}
 	// No root key with the request: hermeshd asks the signer to create one,
 	// as it does for the desktop app.

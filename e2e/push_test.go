@@ -404,8 +404,11 @@ func TestPushNoticeWaitsForRelay(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, "both sessions ask", func() bool { return asked(kept.SessionID) != nil && asked(answered.SessionID) != nil })
 	q := asked(answered.SessionID)
-	if _, err := w.app.client.AnswerQuestion(ctx, &localv1.AnswerQuestionRequest{SessionId: answered.SessionID, QuestionId: q.QuestionId,
-		Answers: []*sessionv1.Answer{{ItemId: q.Items[0].Id, Selected: []string{"要"}}}}); err != nil {
+	if _, err := w.app.sessions.RespondRuntimeRequest(ctx, &sessionv1.RespondRuntimeRequestRequest{
+		SessionId: answered.SessionID, RequestId: q.QuestionId,
+		Decision: sessionv1.ApprovalDecision_APPROVAL_DECISION_ACCEPT_ONCE,
+		Answers:  map[string]*sessionv1.QuestionAnswer{q.Items[0].Id: {SelectedOptions: []string{"要"}}},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second)

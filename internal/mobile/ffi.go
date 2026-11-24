@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// In-process binary Protobuf FFI bridge for LocalService & ThreadService:
+// In-process binary Protobuf FFI bridge for LocalService & SessionService:
 // Calls owner.Device.LocalHandler() directly in memory using Connect's native
 // binary Protobuf codecs (application/proto and application/connect+proto),
 // eliminating 127.0.0.1 loopback sockets, iOS TN2277 listener reclaim races,

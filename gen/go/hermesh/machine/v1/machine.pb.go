@@ -1112,10 +1112,7 @@ type MachineStatus struct {
 	// offering 1-RTT handshakes, independent non-HoL streams, and connection
 	// migration. Sent to the owner's devices only.
 	DirectQuicAddrs []string `protobuf:"bytes,17,rep,name=direct_quic_addrs,json=directQuicAddrs,proto3" json:"direct_quic_addrs,omitempty"`
-	// It serves hermesh.thread.v2.ThreadService (docs/thread-composer.md §5.2);
-	// unset on a machine from before it, which the apps take as "update it".
-	Threads bool `protobuf:"varint,18,opt,name=threads,proto3" json:"threads,omitempty"`
-	// The broadest permission mode its threads may run in, whoever starts them
+	// The broadest permission mode its sessions may run in, whoever starts them
 	// (SetMaxRuntimeMode); UNSPECIFIED: no limit of its own.
 	MaxRuntimeMode v11.RuntimeMode `protobuf:"varint,19,opt,name=max_runtime_mode,json=maxRuntimeMode,proto3,enum=hermesh.identity.v1.RuntimeMode" json:"max_runtime_mode,omitempty"`
 	// The MachineAdminService methods this hermeshd answers ("ListWorkspaces"),
@@ -1252,13 +1249,6 @@ func (x *MachineStatus) GetDirectQuicAddrs() []string {
 		return x.DirectQuicAddrs
 	}
 	return nil
-}
-
-func (x *MachineStatus) GetThreads() bool {
-	if x != nil {
-		return x.Threads
-	}
-	return false
 }
 
 func (x *MachineStatus) GetMaxRuntimeMode() v11.RuntimeMode {
@@ -3679,7 +3669,7 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12!\n" +
 	"\fmachine_name\x18\x02 \x01(\tR\vmachineName\x129\n" +
-	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\xdc\x06\n" +
+	"\x06status\x18\x03 \x01(\v2!.hermesh.machine.v1.MachineStatusR\x06status\"\xd1\x06\n" +
 	"\rMachineStatus\x12\x12\n" +
 	"\x04name\x18\f \x01(\tR\x04name\x12)\n" +
 	"\x10protocol_version\x18\x01 \x01(\rR\x0fprotocolVersion\x12\x1a\n" +
@@ -3694,15 +3684,14 @@ const file_hermesh_machine_v1_machine_proto_rawDesc = "" +
 	"\x03her\x18\x0e \x01(\v2\x1d.hermesh.machine.v1.HerStatusR\x03her\x128\n" +
 	"\x06screen\x18\x0f \x01(\v2 .hermesh.machine.v1.ScreenStatusR\x06screen\x12!\n" +
 	"\fdirect_addrs\x18\x10 \x03(\tR\vdirectAddrs\x12*\n" +
-	"\x11direct_quic_addrs\x18\x11 \x03(\tR\x0fdirectQuicAddrs\x12\x18\n" +
-	"\athreads\x18\x12 \x01(\bR\athreads\x12J\n" +
+	"\x11direct_quic_addrs\x18\x11 \x03(\tR\x0fdirectQuicAddrs\x12J\n" +
 	"\x10max_runtime_mode\x18\x13 \x01(\x0e2 .hermesh.identity.v1.RuntimeModeR\x0emaxRuntimeMode\x12\x18\n" +
 	"\amethods\x18\x14 \x03(\tR\amethods\x1a;\n" +
 	"\rSessionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\rR\x05value:\x028\x01J\x04\b\b\x10\tJ\x04\b\n" +
-	"\x10\vJ\x04\b\v\x10\fR\x04hostR\x0fagent_processesR\n" +
-	"started_at\"o\n" +
+	"\x10\vJ\x04\b\v\x10\fJ\x04\b\x12\x10\x13R\x04hostR\x0fagent_processesR\n" +
+	"started_atR\athreads\"o\n" +
 	"\fScreenStatus\x12\x1c\n" +
 	"\tavailable\x18\x01 \x01(\bR\tavailable\x12\x16\n" +
 	"\x06viewer\x18\x02 \x01(\tR\x06viewer\x12)\n" +

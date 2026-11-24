@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/hermeshai/hermesh/internal/provider"
+	rt "github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/internal/shellenv"
 	"github.com/hermeshai/hermesh/pkg/metrics"
 	"io"
@@ -112,7 +112,7 @@ func runGit(ctx context.Context, dir string, env []string, args []string) (out, 
 	gitSem <- struct{}{}
 	mGitWait.Since(waitStart)
 	start := time.Now()
-	o, e, err := provider.RunCommand(ctx, gitBin(), full, dir, env)
+	o, e, err := rt.RunCommand(ctx, gitBin(), full, dir, env)
 	<-gitSem
 	gitHistogram(args).Since(start)
 	return string(o), strings.TrimSpace(string(e)), err
@@ -122,7 +122,7 @@ func runGit(ctx context.Context, dir string, env []string, args []string) (out, 
 // that execs the real one, which doubles the cost of every git command
 // (7.8 ms vs 3.8 ms here).
 var gitBin = sync.OnceValue(func() string {
-	out, _, err := provider.RunCommand(context.Background(), "git", []string{"--exec-path"}, "", os.Environ())
+	out, _, err := rt.RunCommand(context.Background(), "git", []string{"--exec-path"}, "", os.Environ())
 	if err != nil {
 		return "git"
 	}
