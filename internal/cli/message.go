@@ -329,6 +329,13 @@ func (a *app) messageListCmd() *cobra.Command {
 			}
 			defer c.Close()
 			a.inboxWaiting = 0 // this command is about the inbox
+			if a.st.RelayURL == "" {
+				if wait {
+					<-ctx.Done()
+					return a.waitErr(ctx, ctx.Err())
+				}
+				return a.showMessages(cmd, nil, false)
+			}
 			ms, err := a.messages(c)
 			if err != nil {
 				return err
@@ -623,6 +630,13 @@ func (a *app) messageContactsCmd() *cobra.Command {
 			}
 			defer c.Close()
 			a.inboxWaiting = 0 // this command is about the inbox
+			if a.st.RelayURL == "" {
+				list := []contactJSON{}
+				if a.output == "json" {
+					return a.report(cmd.OutOrStdout(), nil, field{"contacts", list})
+				}
+				return nil
+			}
 			ms, err := a.messages(c)
 			if err != nil {
 				return err
@@ -869,6 +883,24 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 				return err
 			}
 			defer c.Close()
+			// Sending directly to a session on an online machine needs neither
+			// the relay's message service nor the contact directory.
+			if isSessionTarget(to) {
+				if t, terr := a.resolveTarget(to, nil, machines); terr == nil && t.session != "" && t.machine != nil && t.machine.Online {
+					m := &inboxv1.Message{MessageId: "msg_" + newIdempotencyKey(), From: &inboxv1.Address{Inbox: a.g.ClientId, Session: a.as},
+						To: &inboxv1.Address{Inbox: t.inbox, Session: t.session}, SentAt: timestampOf(time.Now()), InReplyTo: replyTo, Subject: subject, Text: body}
+					signed, err := identity.Sign(m, a.key)
+					if err != nil {
+						return err
+					}
+					return a.deliverDirect(ctx, cmd, c, t, signed, m, raws, wait)
+				}
+			}
+			if a.st.RelayURL == "" {
+				return &exitError{code: exitUnavailable, kind: "unreachable",
+					err:  errors.New("messaging other agents or offline machines requires signing in or connecting a server"),
+					hint: "sign in or connect a server in Hermesh settings"}
+			}
 			ms, err := a.messages(c)
 			if err != nil {
 				return err
@@ -921,6 +953,14 @@ To an agent: the message waits in its inbox until it reads it. --wait waits for 
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, timeoutHelp)
 	cmd.MarkFlagRequired("to")
 	return cmd
+}
+
+func isSessionTarget(to string) bool {
+	inbox, session, ok := strings.Cut(to, "/")
+	if !ok {
+		return strings.HasPrefix(to, "s_") || strings.HasPrefix(to, "th_")
+	}
+	return strings.HasPrefix(inbox, "m_") && (strings.HasPrefix(session, "s_") || strings.HasPrefix(session, "th_"))
 }
 
 // post seals a message to its recipient's inbox key and hands it to the

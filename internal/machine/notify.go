@@ -163,7 +163,7 @@ func (n *Machine) sessionNotice(sess *sessionv1.Session, ev *sessionv1.SessionEv
 // (herhost.Config.Notice): her reply, a question, or what waits for the
 // owner.
 func (n *Machine) herNotice(l *machinev1.HerLatest) {
-	nt := &sessionv1.Notice{Kind: "her", At: l.At, HerKind: "message", MachineId: n.machineID, BotId: l.BotId, BotName: l.BotName, Text: l.Text}
+	nt := &sessionv1.Notice{Kind: "her", At: l.At, HerKind: "message", MachineId: n.MachineID(), BotId: l.BotId, BotName: l.BotName, Text: l.Text}
 	switch l.Kind {
 	case machinev1.HerLatestKind_HER_LATEST_KIND_QUESTION:
 		nt.HerKind = "question"

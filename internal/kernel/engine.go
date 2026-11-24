@@ -192,6 +192,7 @@ type sessionSub struct {
 
 type Engine struct {
 	cfg        Config
+	machineID  atomic.Value // string: Config.MachineID, updated on live Retire / DemoteToLocal
 	maxMode    atomic.Int32 // the machine's ceiling (Config.MachineMaxMode, then SetMachineMaxMode)
 	log        *slog.Logger
 	st         *store.Store
@@ -251,11 +252,15 @@ func Open(cfg Config) (*Engine, error) {
 		shellSubs:        map[*shellSub]struct{}{},
 	}
 	e.sup.SetOnReap(e.onLeaseReaped)
+	e.machineID.Store(cfg.MachineID)
 	e.maxMode.Store(int32(cfg.MachineMaxMode))
 	if err := e.seedDefaults(); err != nil {
 		bgCancel()
 		_ = st.Close()
 		return nil, err
+	}
+	if cfg.MachineID != "" {
+		_ = e.rebindSessionsMachineID(cfg.MachineID)
 	}
 	if err := e.recoverOrphans(); err != nil {
 		e.log.Warn("orphan recovery warning", "err", err)
@@ -694,8 +699,84 @@ func OwnsSession(machineID, sessionID string) bool {
 	return p != "" && p == parts[1]
 }
 
+func (e *Engine) currentMachineID() string {
+	if v, _ := e.machineID.Load().(string); v != "" {
+		return v
+	}
+	return e.cfg.MachineID
+}
+
+// SetMachineID updates the machine id stamped on new and existing local
+// sessions (e.g. when a machine retires its previous mesh key in place).
+func (e *Engine) SetMachineID(machineID string) {
+	if machineID == "" {
+		return
+	}
+	e.machineID.Store(machineID)
+	_ = e.rebindSessionsMachineID(machineID)
+}
+
+func (e *Engine) rebindSessionsMachineID(machineID string) error {
+	all, err := e.ListAllSessions(true)
+	if err != nil {
+		return err
+	}
+	var changed []*sessionv1.Session
+	for _, s := range all {
+		if s.MachineId != machineID {
+			changed = append(changed, s)
+		}
+	}
+	if len(changed) == 0 {
+		return nil
+	}
+	var updated []*sessionv1.Session
+	_, err = e.st.Mutate(func(tx *store.Tx) error {
+		for _, old := range changed {
+			cur, gErr := tx.GetSession(old.SessionId)
+			if gErr != nil {
+				continue
+			}
+			if cur.MachineId == machineID {
+				continue
+			}
+			cur.MachineId = machineID
+			if pErr := tx.PutSessionPreserveUpdatedAt(cur); pErr != nil {
+				return pErr
+			}
+			updated = append(updated, proto.Clone(cur).(*sessionv1.Session))
+		}
+		return nil
+	})
+	if err == nil && len(updated) > 0 {
+		if e.cfg.OnSessionChanged != nil {
+			for _, s := range updated {
+				e.cfg.OnSessionChanged(s)
+			}
+		}
+		e.mu.Lock()
+		for sub := range e.shellSubs {
+			var filtered []*sessionv1.Session
+			for _, s := range updated {
+				if sub.includeArchived || s.Status != sessionv1.SessionStatus_SESSION_STATUS_ARCHIVED {
+					filtered = append(filtered, s)
+				}
+			}
+			if len(filtered) == 0 {
+				continue
+			}
+			select {
+			case sub.ch <- &sessionv1.WatchSessionsResponse{Sessions: filtered}:
+			default:
+			}
+		}
+		e.mu.Unlock()
+	}
+	return err
+}
+
 func (e *Engine) newSessionID() string {
-	if p := SessionPrefix(e.cfg.MachineID); p != "" {
+	if p := SessionPrefix(e.currentMachineID()); p != "" {
 		return "s_" + p + "_" + strings.ToLower(ulid.Make().String())
 	}
 	return newID("s")
@@ -1162,7 +1243,7 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 
 	sess := &sessionv1.Session{
 		SessionId:            sessionID,
-		MachineId:            e.cfg.MachineID,
+		MachineId:            e.currentMachineID(),
 		ProjectId:            projectID,
 		Title:                title,
 		TitleRenamed:         titleRenamed,
@@ -5556,7 +5637,7 @@ func (e *Engine) ForkSession(ctx context.Context, p *Principal, req *sessionv1.F
 
 	forked := &sessionv1.Session{
 		SessionId:            newSessionID,
-		MachineId:            e.cfg.MachineID,
+		MachineId:            e.currentMachineID(),
 		ProjectId:            srcProj.Session.ProjectId,
 		Title:                title,
 		TitleRenamed:         true,

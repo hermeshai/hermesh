@@ -17,7 +17,7 @@ func (l *Local) Diagnostics() string {
 	n := l.n
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format+"\n", a...) }
-	w("Hermesh %s · %s/%s · machine %q (%s)", Version, runtime.GOOS, runtime.GOARCH, n.Name(), n.machineID)
+	w("Hermesh %s · %s/%s · machine %q (%s)", Version, runtime.GOOS, runtime.GOARCH, n.Name(), n.MachineID())
 	w("time         %s", time.Now().Format("2006-01-02 15:04:05 -0700"))
 	if n.Connected() {
 		w("relay        connected, %s", n.RelayURL())

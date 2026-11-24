@@ -69,7 +69,7 @@ func (n *Machine) checkErase(ctx context.Context) bool {
 		}
 		return false
 	}
-	if err := AckErase(ctx, n.cfg.HTTPClient, relayURL, order.EraseId, n.machineID, nil, n.key); err != nil {
+	if err := AckErase(ctx, n.cfg.HTTPClient, relayURL, order.EraseId, n.MachineID(), nil, n.currentKey()); err != nil {
 		n.log.Warn("telling the owner this machine is erasing", "err", err)
 	}
 	n.audit.Log(AuditRecord{Kind: "erased", Subject: order.EraseId, Detail: "the owner erased everything"})

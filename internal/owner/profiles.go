@@ -85,7 +85,7 @@ func Open(cfg Config) (*Device, error) {
 	cur, _ := os.ReadFile(d.currentFile())
 	d.current = strings.TrimSpace(string(cur))
 	if d.profiles[d.current] == nil {
-		id, err := d.emptyProfile()
+		id, err := d.emptyProfile(!cfg.NoLocalMachine)
 		if err != nil {
 			return nil, err
 		}
@@ -147,11 +147,12 @@ func (d *Device) openProfile(id string) (*Owner, error) {
 	return o, err
 }
 
-// emptyProfile returns a profile that is not set up, opening a new one when
-// there is none. Callers hold d.mu, or own d alone.
-func (d *Device) emptyProfile() (string, error) {
+// emptyProfile returns a profile that is not set up and not running a
+// standalone local machine, opening a new one when there is none. Callers hold
+// d.mu, or own d alone.
+func (d *Device) emptyProfile(standalone bool) (string, error) {
 	for _, id := range d.ids() {
-		if o := d.profiles[id]; !o.Initialized() && !o.machineOnly() {
+		if o := d.profiles[id]; !o.Initialized() && !o.machineOnly() && o.wantsLocalMachine() == standalone {
 			return id, nil
 		}
 	}
@@ -159,6 +160,13 @@ func (d *Device) emptyProfile() (string, error) {
 	o, err := d.openProfile(id)
 	if err != nil {
 		return "", err
+	}
+	if !standalone {
+		if err := o.st.set(kLocalMachine, []byte("0")); err != nil {
+			o.st.db.Close()
+			o.lock.Release()
+			return "", err
+		}
 	}
 	d.profiles[id] = o
 	return id, nil
@@ -386,7 +394,7 @@ func (d *Device) ListProfiles() []*localv1.Profile {
 	var out []*localv1.Profile
 	for i, o := range profiles {
 		st := o.Status()
-		if !st.Initialized && !st.MachineOnly && ids[i] != cur {
+		if !st.Initialized && !st.MachineOnly && !o.wantsLocalMachine() && ids[i] != cur {
 			continue
 		}
 		out = append(out, &localv1.Profile{Id: ids[i], OwnerId: st.OwnerId, RelayUrl: st.RelayUrl, Account: st.Account,
@@ -395,12 +403,12 @@ func (d *Device) ListProfiles() []*localv1.Profile {
 	return out
 }
 
-// SwitchProfile makes a profile that is set up current.
+// SwitchProfile makes a profile that is set up (or standalone) current.
 func (d *Device) SwitchProfile(id string) error {
 	d.mu.Lock()
 	o := d.profiles[id]
 	d.mu.Unlock()
-	if o == nil || (!o.Initialized() && !o.machineOnly()) {
+	if o == nil || (!o.Initialized() && !o.machineOnly() && !o.wantsLocalMachine()) {
 		return connect.NewError(connect.CodeNotFound, errors.New("no such account on this device"))
 	}
 	return d.switchTo(id)
@@ -409,7 +417,7 @@ func (d *Device) SwitchProfile(id string) error {
 // AddProfile makes an empty profile current, to set up or join an owner.
 func (d *Device) AddProfile() (string, error) {
 	d.mu.Lock()
-	id, err := d.emptyProfile()
+	id, err := d.emptyProfile(false)
 	d.mu.Unlock()
 	if err != nil {
 		return "", err
@@ -435,17 +443,11 @@ func (d *Device) SignIn(ctx context.Context, req *localv1.SignInRequest) error {
 	return nil
 }
 
-// Leave forgets the current profile's owner, with the profile stopped so
-// that its machine is not starting while it is retired. A machine only
-// leaves while it runs: its machine asks the relay to remove it.
-func (d *Device) Leave(ctx context.Context) error {
-	o := d.owner()
-	if !o.Initialized() {
-		return o.Leave(ctx)
-	}
-	d.stop()
-	defer d.restart()
-	return o.Leave(ctx)
+// Leave forgets the current profile's owner in place, transitioning its
+// running local machine back to standalone mode without interrupting active
+// sessions.
+func (d *Device) Leave(ctx context.Context, forceLocal bool) error {
+	return d.owner().Leave(ctx, forceLocal)
 }
 
 // checkNewOwner refuses joining an owner another profile already belongs to.

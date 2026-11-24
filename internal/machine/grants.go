@@ -28,7 +28,7 @@ func (n *Machine) acceptGrants(in *relayv1.MachineGrants) {
 	var gs []*identityv1.Grant
 	for _, sg := range in.GetGrants() {
 		g, _, err := trust.VerifyGrant(sg, time.Now())
-		if err != nil || !identity.Allows(g.MachineIds, n.machineID) {
+		if err != nil || !identity.Allows(g.MachineIds, n.MachineID()) {
 			continue
 		}
 		kept.Grants = append(kept.Grants, sg)

@@ -309,6 +309,18 @@ func (r *replica) pause() {
 	}
 }
 
+// clear stops the sources and discards any cached remote feeds when leaving an owner.
+func (r *replica) clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.src != nil {
+		r.src.cancel()
+		r.src = nil
+	}
+	r.stopped = nil
+	r.workVersion++
+}
+
 // restart starts the sources again from what they hold, for the screens
 // watching: after the network changed, the connections they had are gone.
 func (r *replica) restart() {
