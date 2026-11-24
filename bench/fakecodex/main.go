@@ -29,6 +29,7 @@
 //
 // model/list offers gpt-fake-big (the default) and gpt-fake-small;
 // config/read answers FAKE_CODEX_CONFIG, a JSON object (default {});
+// account/rateLimits/read answers FAKE_CODEX_RATE_LIMITS (default {});
 // thread/start answers the model and reasoning effort the thread runs with.
 package main
 
@@ -192,6 +193,8 @@ func main() {
 				cfg = json.RawMessage(c)
 			}
 			reply(m.ID, map[string]any{"config": cfg})
+		case "account/rateLimits/read":
+			reply(m.ID, json.RawMessage(cmp.Or(os.Getenv("FAKE_CODEX_RATE_LIMITS"), `{}`)))
 		case "thread/start", "thread/resume", "thread/fork":
 			if f := os.Getenv("FAKE_CODEX_FAIL_START"); f != "" && os.Remove(f) == nil {
 				fmt.Fprintln(os.Stderr, "fakecodex: failing this start")
