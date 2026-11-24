@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { FailureKind, FailureSchema, QuestionItemSchema, QuestionSchema, SessionStatus, type Session } from "@hermesh/proto/session";
 import { describe, expect, test } from "vitest";
 import { sessionSections, sessionView } from "./sessions";
-import { liveByAgent, quickChoice, teamState } from "./team";
+import { quickChoice, teamState } from "./team";
 import { ask, now, progressOf, session } from "./testing";
 
 const ids = (list: Session[]) => list.map((s) => s.sessionId);
@@ -35,19 +35,6 @@ describe("the team's state", () => {
     expect(t.requests).toBe(1);
   });
 
-  test("the sessions at hand by coding agent: what waits, then what failed, then what runs; finished and archived ones none of it", () => {
-    const t = teamState(
-      [
-        running("r1", -400, "claude"), running("r2", -100, "gemini"), waiting("w1", -50, "codex"), waiting("w2", -10, "claude"),
-        failed("f1", -30), session("d1", SessionStatus.IDLE, { updated: -20, agent: "cursor" }), session("gone", SessionStatus.ARCHIVED, { agent: "kimi" }),
-      ],
-      0,
-    );
-    // failed() makes a "claude" session (the fixture's default agent).
-    expect(liveByAgent(t).map((g) => [g.agent, ids(g.sessions)])).toEqual([["claude", ["w2", "f1", "r1"]], ["codex", ["w1"]], ["gemini", ["r2"]]]);
-    expect(liveByAgent(teamState([session("d", SessionStatus.IDLE)], 0))).toEqual([]);
-  });
-
   test("the name tag says the first that holds", () => {
     const tag = (sessions: Session[], requests = 0) => teamState(sessions, requests).tag;
     expect(tag([waiting("w", -10), running("r", -100), failed("f", -30)])).toEqual({ kind: "waiting", agent: "codex" });
@@ -71,7 +58,6 @@ describe("the team's state", () => {
     const t = teamState([resumed], 0);
     expect([ids(t.failed), ids(t.running)]).toEqual([[], ["r1"]]);
     expect(t.tag).toEqual({ kind: "working", count: 1 });
-    expect(liveByAgent(t).map((g) => [g.agent, ids(g.sessions)])).toEqual([["claude", ["r1"]]]);
   });
 });
 

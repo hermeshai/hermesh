@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import type { LoginItem } from "../../shared/bridge";
 import { i18n } from "../../shared/i18n";
 import { newer } from "../../shared/update";
+import { preferences } from "../notify";
 import { dataDir, socketPath, testDataDir } from "../paths";
 import type { Platform, WindowKind } from "./types";
 
@@ -394,7 +395,7 @@ export const win: Platform = {
 
   frame(kind: WindowKind) {
     // The page's own background from the first frame (--win), for no white flash in the dark.
-    const backgroundColor = nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff";
+    const backgroundColor = preferences().appearance === "black" ? "#070709" : nativeTheme.shouldUseDarkColors ? "#1e1e21" : "#ffffff";
     if (kind === "panel") return { backgroundColor };
     // Windows draws the caption buttons over the page's top band, whose toolbar rows are the drag area;
     // Mica shows where the page is clear (the sidebar), as on the Mac.

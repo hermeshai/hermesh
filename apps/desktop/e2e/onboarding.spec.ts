@@ -21,8 +21,8 @@ test.describe.configure({ timeout: 180_000 });
 
 /** The window grew into the main window. */
 async function expectMainWindow(app: ElectronApplication, page: Page) {
-  // A session on a small display keeps the navigation in its icon rail.
-  await expect(page.locator(".side-nav, .rail-nav")).toBeVisible();
+  // A session on a small display may hide the sidebar; its toggle then stays in the top band.
+  await expect(page.locator(".side-nav, .side-float")).toBeVisible();
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0)).toBeGreaterThan(900);
 }
 

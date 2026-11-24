@@ -16,6 +16,7 @@ export function General() {
   const [prefs, setPrefs] = useState<Preferences>();
   useEffect(() => {
     window.hermesh?.getPreferences().then(setPrefs);
+    return window.hermesh?.onPreferences(setPrefs);
   }, []);
   const look = (a: Appearance) => (
     <button key={a} type="button" className={prefs?.appearance === a ? "on" : ""} aria-pressed={prefs?.appearance === a} disabled={!prefs} onClick={() => window.hermesh?.setPreferences({ appearance: a }).then(setPrefs)}>
@@ -28,7 +29,7 @@ export function General() {
       <div className="fgroup">
         <SRow title={t("appearance.title")}>
           <div className="set-look" role="group" aria-label={t("appearance.title")}>
-            {(["system", "light", "dark"] as Appearance[]).map(look)}
+            {(["system", "light", "dark", "black"] as Appearance[]).map(look)}
           </div>
         </SRow>
         <Language prefs={prefs} setPrefs={setPrefs} />
