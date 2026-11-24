@@ -109,10 +109,14 @@ export function useVirtualRows({ scroller, list, rows, initial }: {
     // What is in sight, in the list's own terms.
     const top = scroller.getBoundingClientRect().top + scroller.clientTop - list.getBoundingClientRect().top;
     const bottom = top + view;
-    // Rows drawn since the observer last reported are on the page at their own size already. A scroll right
-    // after they were drawn (the browser keeping the place as they replace a space) comes before the observer
-    // does: guessed sizes for them would put what is in sight rows away, and the window would land off it.
-    for (const [key, el] of kept.elements) if (!kept.measured.has(key)) measured(key, el.getBoundingClientRect().height);
+    // Rows drawn are on the page at their own size already, as drawn since the observer last reported or grown
+    // since (a diagram drawn in place of its note). A scroll right after (the browser keeping the place as they
+    // replace a space, or the view following the end) comes before the observer does: the sizes it reported last
+    // would put what is in sight rows away, the window would land off it, and drawn again they would grow again.
+    for (const [key, el] of kept.elements) {
+      const height = el.getBoundingClientRect().height;
+      if (kept.measured.get(key) !== height) measured(key, height);
+    }
     const P = positions(rows.map(heightOf), g);
     const [df, de] = kept.drawn;
     if (de > df && de <= n) {
