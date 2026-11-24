@@ -196,10 +196,11 @@
     "untilMinutes_one": "{{count}} min left",
     "untilMinutes_other": "{{count}} min left",
     "none": "It doesn’t report its limits",
-    "notYet": "Not reported yet; shows after it runs a task",
-    "stale": "Its windows have reset; updates after it next runs",
-    "foot": "Each provider reports its limits as it runs; Hermesh only passes them on and doesn’t read your accounts. For a provider that hasn’t run in a while, these are the numbers from its last run.",
+    "notYet": "Not read yet; shows once it’s signed in with a subscription",
+    "stale": "Its windows have reset; updates after the next check or run",
+    "foot": "Each provider gives its own limits: opening this page asks Claude Code, Codex and Antigravity on this Mac, and running a task updates them too. Hermesh only passes them on and doesn’t read your accounts. For other computers, these are the numbers they last gave.",
     "needTitle": "{{agent}}’s {{window}} limit is at {{left}}%",
+    "needTitleGroup": "{{agent}}’s {{group}} {{window}} limit is at {{left}}%",
     "see": "View"
   }
 }

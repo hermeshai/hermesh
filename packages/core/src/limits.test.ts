@@ -8,14 +8,14 @@ describe("limits", () => {
   const now = new Date(2026, 10, 24, 14, 20);
   const min = (n: number) => new Date(now.getTime() + n * 60_000);
   const ts = (d: Date) => timestampFromDate(d);
-  const machine = (machineId: string, agents: { name: string; available?: boolean; said?: Date; plan?: string; windows?: [number, number, Date][] }[]) =>
+  const machine = (machineId: string, agents: { name: string; available?: boolean; said?: Date; plan?: string; windows?: [number, number, Date, string?][] }[]) =>
     create(MachineSchema, {
       machineId,
       status: {
         agents: agents.map((a) => ({
           name: a.name,
           available: a.available ?? true,
-          limits: a.said ? { plan: a.plan ?? "", observedAt: ts(a.said), windows: (a.windows ?? []).map(([minutes, usedPercent, resetsAt]) => ({ minutes, usedPercent, resetsAt: ts(resetsAt) })) } : undefined,
+          limits: a.said ? { plan: a.plan ?? "", observedAt: ts(a.said), windows: (a.windows ?? []).map(([minutes, usedPercent, resetsAt, group]) => ({ minutes, usedPercent, resetsAt: ts(resetsAt), group })) } : undefined,
         })),
       },
     });
@@ -35,8 +35,8 @@ describe("limits", () => {
     expect(cards.map((c) => c.agent)).toEqual(["claude", "codex", "gemini"]);
     expect(cards[0]).toMatchObject({ machineId: "mini", observedAt: min(-2), stale: false });
     expect(cards[0].windows).toEqual([
-      { minutes: 300, left: 14, timeLeft: 47, resetsAt: min(140) },
-      { minutes: 10080, left: 48, timeLeft: 50, resetsAt: min(5000) },
+      { minutes: 300, left: 14, timeLeft: 47, resetsAt: min(140), group: "" },
+      { minutes: 10080, left: 48, timeLeft: 50, resetsAt: min(5000), group: "" },
     ]);
     expect(cards[1]).toMatchObject({ plan: "pro", machineId: "mac", windows: [{ minutes: 10080, left: 39, timeLeft: 25 }] });
     // Available and never said: a card that says so; not available and never said: none.
@@ -49,5 +49,32 @@ describe("limits", () => {
     expect(cards.find((c) => c.agent === "codex")!.windows.map((w) => w.minutes)).toEqual([10080]);
     expect(cards.find((c) => c.agent === "claude")).toMatchObject({ windows: [], stale: true });
     expect(lowLimits(cards)).toEqual([]);
+  });
+
+  test("an agent that counts groups of models apart: its groups in the order it gave them, the shortest first in each; the least left of all needs the owner", () => {
+    const cards = agentLimits(
+      [
+        machine("mac", [
+          {
+            name: "antigravity",
+            said: min(-1),
+            windows: [
+              [300, 3, min(120), "Gemini Models"],
+              [10080, 17, min(9000), "Gemini Models"],
+              [10080, 88, min(1080), "Claude and GPT models"],
+              [300, 0, min(300), "Claude and GPT models"],
+            ],
+          },
+        ]),
+      ],
+      now,
+    );
+    expect(cards[0].windows.map((w) => [w.group, w.minutes, w.left])).toEqual([
+      ["Gemini Models", 300, 97],
+      ["Gemini Models", 10080, 83],
+      ["Claude and GPT models", 300, 100],
+      ["Claude and GPT models", 10080, 12],
+    ]);
+    expect(lowLimits(cards)).toEqual([{ card: cards[0], window: cards[0].windows[3] }]);
   });
 });

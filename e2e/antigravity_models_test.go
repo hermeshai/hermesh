@@ -180,3 +180,24 @@ func TestAntigravityModelDefaultsDesktop(t *testing.T) {
 		t.Fatalf("session after picking in the app: %+v", r)
 	}
 }
+
+// fakeAgy is agy as the Antigravity CLI: fakeacp, but `-p /usage` answers
+// usage, as agy 1.5.16 answers its /usage; with the environment a daemon
+// runs it in, signed in.
+func fakeAgy(t *testing.T, usage []byte) []string {
+	dir := t.TempDir()
+	answer := filepath.Join(dir, "usage.json")
+	os.WriteFile(answer, usage, 0o644)
+	agy := filepath.Join(dir, "agy")
+	os.WriteFile(agy, []byte(`#!/bin/sh
+if [ "$1" = "-p" ] && [ "$2" = "/usage" ]; then cat `+answer+`; exit 0; fi
+exec `+filepath.Join(binaries(t), "fakeacp")+` "$@"
+`), 0o755)
+	env, _ := antigravityEnv(t)
+	for i, e := range env {
+		if strings.HasPrefix(e, "HERMESH_ANTIGRAVITY_BIN=") {
+			env[i] = "HERMESH_ANTIGRAVITY_BIN=" + agy
+		}
+	}
+	return env
+}

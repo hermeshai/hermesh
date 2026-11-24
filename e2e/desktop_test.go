@@ -491,6 +491,10 @@ func desktopWorld(t *testing.T, fresh, limited, wake bool) desktopFixture {
 	os.WriteFile(codex, []byte(fmt.Sprintf("#!/bin/sh\ncase \"$1\" in --version) echo \"codex-cli 0.48.0\";; login) echo \"Not logged in\"; exit 1;; app-server) exec %q;; esac\n",
 		filepath.Join(binaries(t), "fakecodex"))), 0o755)
 	env := []string{"HERMESH_GEMINI_BIN=" + fake, "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp"), "FAKE_ACP_MODELS=gemini-3-pro", "HERMESH_INCLUDE_SCRIPTED=1"}
+	// Not this machine's Claude Code and Antigravity, which would tell its
+	// owner's limits: not installed, as on CI.
+	missing := filepath.Join(t.TempDir(), "not-installed")
+	env = append(env, "HERMESH_CLAUDE_BIN="+missing, "HERMESH_ANTIGRAVITY_BIN="+missing)
 	if runtime.GOOS != "windows" { // a shell script
 		env = append(env, "HERMESH_CODEX_BIN="+codex)
 	}
@@ -570,6 +574,44 @@ func otherMacLimits(t *testing.T, f desktopFixture) {
 		s := firstSession(w.cli(2*time.Minute, "session", "start", "--project", "limits-mac/quota", "-o", "json", "--agent", "gemini", "--title", "用掉一些额度",
 			"--prompt", "limits 300:86,10080:52,plan=pro\nsay 好了", "--wait").stdout)
 		return s.Status == "idle"
+	})
+
+	// agy-mac: Antigravity alone, as the agy CLI, asked its quota when its
+	// agents are checked (Check Again, from this Mac): two groups of models,
+	// none low.
+	at := func(hours float64) string {
+		return time.Now().Add(time.Duration(hours * float64(time.Hour))).UTC().Format(time.RFC3339)
+	}
+	usage := fmt.Sprintf(`{"command":{"name":"usage","data":{"groups":[`+
+		`{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":0.83,"reset_time":%q},{"window":"5h","remaining_fraction":0.97,"reset_time":%q}]},`+
+		`{"name":"Claude and GPT models","buckets":[{"window":"weekly","remaining_fraction":0.35,"reset_time":%q},{"window":"5h","remaining_fraction":1,"reset_time":%q}]}]}}}`,
+		at(146), at(4.5), at(18), at(5))
+	missing := filepath.Join(t.TempDir(), "not-installed")
+	env := append(fakeAgy(t, []byte(usage)), "HERMESH_CLAUDE_BIN="+missing, "HERMESH_CODEX_BIN="+missing)
+	for _, a := range acp.Agents {
+		if a.Name != "antigravity" {
+			env = append(env, "HERMESH_"+strings.ToUpper(a.Name)+"_BIN="+missing)
+		}
+	}
+	agy, _ := w.otherMac("agy-mac", env)
+	joined := w.joinTyped(agy, home, "agy-mac")
+	eventually(t, time.Minute, "agy-mac checked again", func() bool {
+		_, err := w.app.client.CheckAgents(ctx, &localv1.CheckAgentsRequest{MachineId: joined.LocalMachineId})
+		return err == nil
+	})
+	eventually(t, time.Minute, "Antigravity's quota from agy-mac", func() bool {
+		res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+		if err != nil {
+			return false
+		}
+		for _, m := range res.Machines {
+			for _, a := range m.Status.GetAgents() {
+				if a.Name == "antigravity" && len(a.Limits.GetWindows()) == 4 {
+					return true
+				}
+			}
+		}
+		return false
 	})
 }
 

@@ -615,3 +615,35 @@ func TestAntigravityAuthHint(t *testing.T) {
 		t.Fatalf("auth hint: %v", err)
 	}
 }
+
+// Asked (agy 1.5.16 `-p /usage`, recorded), Antigravity says its quota a
+// group of models at a time, what is left of each window: it reads as how
+// much is used, each group's windows the shortest first, in the order agy
+// gives the groups. An answer that is not /usage's, or has no window, says
+// nothing.
+func TestAgyUsage(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "agy-1.5.16-usage.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := func(s string) time.Time { v, _ := time.Parse(time.RFC3339, s); return v }
+	want := []runtime.LimitWindow{
+		{Minutes: 300, UsedPercent: 3, ResetsAt: at("2026-11-24T22:18:29Z"), Group: "Gemini Models"},
+		{Minutes: 10080, UsedPercent: 17, ResetsAt: at("2026-11-30T20:03:19Z"), Group: "Gemini Models"},
+		{Minutes: 300, UsedPercent: 0, ResetsAt: at("2026-11-24T22:37:18Z"), Group: "Claude and GPT models"},
+		{Minutes: 10080, UsedPercent: 88, ResetsAt: at("2026-11-25T12:22:09Z"), Group: "Claude and GPT models"},
+	}
+	if got := usageFrom(b); got == nil || got.Plan != "" || !slices.Equal(got.Windows, want) {
+		t.Fatalf("limits: %+v", got)
+	}
+	for _, out := range []string{
+		`{"status":"SUCCESS","response":"ok"}`,
+		`{"command":{"name":"credits","data":{"groups":[{"name":"x","buckets":[{"window":"5h","remaining_fraction":1,"reset_time":"2026-11-24T22:37:18Z"}]}]}}}`,
+		`{"command":{"name":"usage","data":{"groups":[{"name":"x","buckets":[{"window":"monthly","remaining_fraction":1,"reset_time":"2026-11-24T22:37:18Z"}]}]}}}`,
+		`not json`,
+	} {
+		if l := usageFrom([]byte(out)); l != nil {
+			t.Fatalf("%s: %+v", out, l)
+		}
+	}
+}
