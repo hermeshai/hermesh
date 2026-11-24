@@ -62,19 +62,6 @@ struct DrawerView: View {
 
     private var top: some View {
         HStack {
-            if model.menuBeside {
-                // Where the rail's button expands it again. Over the page, it puts the menu away.
-                Button {
-                    if model.drawerOpen { model.drawerOpen = false } else { model.menuRail = true }
-                } label: {
-                    Image(systemName: "sidebar.left").font(.body.weight(.medium)).frame(width: button, height: button)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .contentShape(.circle)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Collapse the menu")
-                .accessibilityIdentifier("menu-hide")
-            }
             Wordmark()
             Spacer()
             if !sideBars {
@@ -92,7 +79,7 @@ struct DrawerView: View {
             }
         }
         .frame(minHeight: button)
-        .padding(.leading, model.menuBeside ? 16 : 24).padding(.trailing, 16).padding(.top, 8).padding(.bottom, 14)
+        .padding(.leading, 24).padding(.trailing, 16).padding(.top, 8).padding(.bottom, 14)
     }
 
     /// New Session, over Her (docs/thread-composer.md §4.6): the composer, on the machine and project used last.
