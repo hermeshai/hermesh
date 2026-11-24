@@ -374,6 +374,9 @@ private struct SessionBarTop: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // The soft edge, asked for by name: what scrolls under the bar blurs and dims away with no line. Left to
+            // choose, iOS 27 draws a bar of its own the hard one (a band with a line under it); iOS 26 the soft.
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .safeAreaBar(edge: .top) {
                 SessionBar(session: session, renaming: $renaming, deleting: $deleting, backgroundTasks: backgroundTasks)
             }
