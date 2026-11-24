@@ -32,27 +32,21 @@
 .th-on:hover,.th-on[aria-expanded="true"]{background:var(--fill);color:var(--l1)}
 .th-on .ic{width:14px;height:14px;flex:none}
 .th-on .lbl{max-width:260px;overflow:hidden;text-overflow:ellipsis}
-/* The box: one line, growing with what is written (Composer.tsx); focus deepens its edge, no ring. */
-.th-cmp{flex:none}
-.th-cmp:focus-within:not(.dropping){box-shadow:0 0 0 .5px var(--l3),0 1px 2px rgba(0,0,0,.04),0 6px 20px rgba(0,0,0,.06)}
-.th-cmp .cmp-row{gap:6px}
-.th-cmp .cmp-in{padding:5.5px 2px}
-.th-cmp .cmp-in:focus-visible{outline:none}
+/* The box (Composer.tsx): Her's surface (her.css .cmp), always two parts: the text, at least two lines of it and
+   growing with what is written, over a row of ＋, the model (how hard it thinks after it), and Stop and Send at the
+   right. The text, ＋ and what sits over the box (.th-place) start on one line. */
+.th-cmp{flex:none;gap:0;padding-bottom:8px}
+.th-cmp .cmp-in{min-height:56px;padding:8px 9px 6px 8px}
 .th-cmp .cmp-in::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* Send and Stop are round, as on iPhone, inside the round-cornered box; they give a little as they are pressed. */
-.th-cmp .send,.th-stop{border-radius:50%;transition:background .15s,transform .12s ease}
-.th-cmp .send:not(:disabled):active,.th-stop:active{transform:scale(.92)}
-.th-stop{width:32px;height:32px;border:0;background:var(--fill3);color:var(--l1);display:flex;align-items:center;justify-content:center;flex:none}
-.th-stop:hover{background:var(--l4)}
-.th-stop .ic{width:12px;height:12px;fill:currentColor}
-/* Inside the box once it opens: ＋, the model (how hard it thinks after it); Stop and Send at the right, the row
-   fading in. (The text's height is set from what it holds, Composer.tsx: not animated.) */
-.th-cmp.open .cmp-in{min-height:52px;padding:6px 6px 2px}
-.th-bar{display:flex;align-items:center;gap:2px;min-width:0;animation:th-bar-in .18s ease}
-@keyframes th-bar-in{from{opacity:0;transform:translateY(3px)}}
-@media (prefers-reduced-motion:reduce){.th-bar{animation:none}}
-.mb.th-pickbtn{height:28px;padding:0 8px;gap:6px;color:var(--l1)}
-.mb.th-pickbtn .ic{color:var(--l2)}
+.th-cmp .cmp-att{padding:6px 5px 0}
+/* Stop: a ring round its square, no plate; it gives a little as it is pressed, as Send does. */
+.th-stop{width:30px;height:30px;margin:1px 3px 1px 1px;border:0;border-radius:50%;background:none;color:var(--l1);box-shadow:inset 0 0 0 1.5px var(--l4);display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .15s,transform .12s ease}
+.th-stop:hover{box-shadow:inset 0 0 0 1.5px var(--l3)}
+.th-stop:active{transform:scale(.92)}
+.th-stop .ic{width:13px;height:13px;fill:currentColor}
+.th-bar{display:flex;align-items:center;gap:1px;min-width:0}
+.mb.th-pickbtn{height:28px;padding:0 7px;gap:6px;border-radius:8px}
+.mb.th-pickbtn>.ic{width:11px;height:11px;stroke-width:1.7;color:var(--l3)}
 .mb.th-pickbtn .lbl{max-width:200px}
 .th-lvl{color:var(--l3)}
 .th-lvl::before{content:"·";margin-right:6px}
@@ -61,7 +55,7 @@
 .th-where{height:22px;margin-left:10px;display:inline-flex;align-items:center;gap:5px;color:var(--l3);font-size:12.5px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .th-where .ic{width:13px;height:13px;flex:none}
 /* Over a new session's box: where it works, and on which branch. */
-.th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 4px;margin-bottom:-4px}
+.th-place{display:flex;align-items:center;gap:2px;min-width:0;padding:0 10px;margin-bottom:-4px}
 .th-place .mb{height:26px;padding:0 7px;gap:5px}
 .th-place .mb .lbl{max-width:280px}
 .th-br b,.th-mono{font-family:var(--mono);font-weight:var(--font-weight-normal);font-size:12px}

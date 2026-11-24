@@ -35,29 +35,34 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByTestId("launch-project-chip")).toHaveText("临时工作区");
     await snap(page, "composer-new");
 
-    // The box is one line (＋, the text, Send) until it is clicked into: then it opens, with the model in a row
-    // along its bottom; it grows as what is written needs more, and a click away folds it back once it is empty.
+    // The box is always the text over a row along its bottom (＋ and the model at its left, Send at its right): it
+    // does not fold to one line while empty, and it grows as what is written needs more.
     const input = page.getByTestId("thread-composer-input");
     const bar = page.getByTestId("composer-bar");
+    const submit = bar.getByTestId("composer-submit-btn");
     const height = async () => (await input.boundingBox())!.height;
-    expect(await height()).toBeLessThan(40);
-    await expect(bar).toBeHidden();
-    await expect(page.getByTestId("thread-composer").getByRole("button", { name: "添加附件" })).toBeVisible();
-    await input.click();
+    const empty = await height();
+    expect(empty).toBeGreaterThan(50);
     await expect(bar).toBeVisible();
+    await expect(bar.getByRole("button", { name: "添加附件" })).toBeVisible();
     await expect(bar.getByRole("button", { name: "模型" })).toBeVisible();
+    expect((await bar.boundingBox())!.y).toBeGreaterThanOrEqual((await input.boundingBox())!.y + empty);
+    // Send is only an arrow, with no plate under it, until there is something to send.
+    await expect(submit).toBeDisabled();
+    await expect(submit).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await input.fill("第一行\n第二行\n第三行");
-    expect(await height()).toBeGreaterThan(60);
+    expect(await height()).toBeGreaterThan(empty);
+    await expect(submit).toBeEnabled();
+    await expect(submit).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
     await snap(page, "composer-lines");
     await input.fill("");
+    // A click away leaves it as it is: the row stays, the text as tall as it was.
     await card.getByRole("heading", { level: 1 }).click({ position: { x: 2, y: 2 } });
-    await expect(bar).toBeHidden();
-    // It folds back smoothly: one line once it has.
-    await expect.poll(height).toBeLessThan(40);
+    await expect(bar).toBeVisible();
+    expect(await height()).toBe(empty);
     // Typing on the page, away from any field, goes into the box.
     await page.keyboard.type("x");
     await expect(input).toHaveValue("x");
-    await expect(bar).toBeVisible();
     await input.fill("");
 
     // Add a Project from the project menu: work-mac's folders, browsed from here.
