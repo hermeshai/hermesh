@@ -41,7 +41,7 @@ import {
   replyEnds,
   sessionFailure,
   sessionLiveReplies,
-  sessionToolRunning,
+  sessionWork,
   sessionTranscript,
   statusTitle,
 } from "@hermesh/core";
@@ -632,7 +632,7 @@ export function SessionPage() {
   const workLine =
     currentSession?.status === SessionStatus.PREPARING ? <WorkLine text={t("work.starting")} />
     : currentSession?.status === SessionStatus.QUEUED ? <WorkLine text={statusTitle(SessionStatus.QUEUED)} />
-    : currentSession?.status === SessionStatus.RUNNING ? <WorkLine text={t(sessionToolRunning(activeProjection) ? "work.working" : "work.thinking")} since={dateOf(activeRun?.startedAt)} />
+    : currentSession?.status === SessionStatus.RUNNING ? <WorkLine text={t(`work.${sessionWork(activeProjection)}`)} since={dateOf(activeRun?.startedAt)} />
     : null;
   const writing = useMemo(() => sessionLiveReplies(activeProjection), [activeProjection]);
   const rows = useMemo(

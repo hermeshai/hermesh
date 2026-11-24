@@ -489,7 +489,13 @@ struct SessionPage: View {
         case .queued: WorkLine(text: Text(statusTitle(.queued)))
         case .running:
             let run = activeProj?.runs.first { $0.runID == currentSession?.activeRunID }
-            WorkLine(text: sessionToolRunning(activeProj) ? Text("Working…") : Text("Thinking…"), since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
+            let text = switch sessionWork(activeProj) {
+            case .tool: Text("Running tools…")
+            case .thinking: Text("Thinking…")
+            case .replying: Text("Replying…")
+            case .working: Text("Working…")
+            }
+            WorkLine(text: text, since: run.flatMap { dateOf($0.startedAt, set: $0.hasStartedAt) })
         default: EmptyView()
         }
     }

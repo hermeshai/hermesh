@@ -33,7 +33,7 @@ import {
   sessionFailure,
   sessionLiveReplies,
   sessionQuestion,
-  sessionToolRunning,
+  sessionWork,
   sessionTranscript,
 } from "./transcript";
 
@@ -159,13 +159,29 @@ describe("unified session transcript", () => {
       "# Unified Session\n\n1. Build\n2. Test",
     ]);
 
+    // Only the active run counts: r1's tool, reasoning and reply say nothing about r2.
     const workProj = create(SessionProjectionSchema, {
       session: create(SessionSchema, { sessionId: "s_1", status: SessionStatus.RUNNING, activeRunId: "r2" }),
-      items: [item(1, "r1", TurnItemKind.TOOL_CALL, { toolName: "Read", status: "running" })],
+      items: [
+        item(1, "r1", TurnItemKind.TOOL_CALL, { toolName: "Read", status: "running" }),
+        item(2, "r1", TurnItemKind.REASONING, { streaming: true }),
+        item(3, "r1", TurnItemKind.ASSISTANT_MESSAGE, { streaming: true }),
+      ],
     });
-    expect(sessionToolRunning(workProj)).toBe(false);
-    workProj.items.push(item(2, "r2", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running" }));
-    expect(sessionToolRunning(workProj)).toBe(true);
+    expect(sessionWork(workProj)).toBe("working");
+    workProj.items.push(item(4, "r2", TurnItemKind.REASONING, { text: "weigh it", streaming: true }));
+    expect(sessionWork(workProj)).toBe("thinking");
+    workProj.items[3].streaming = false;
+    expect(sessionWork(workProj)).toBe("working");
+    workProj.items.push(item(5, "r2", TurnItemKind.ASSISTANT_MESSAGE, { text: "On it", streaming: true }));
+    expect(sessionWork(workProj)).toBe("replying");
+    workProj.items.push(item(6, "r2", TurnItemKind.COMMAND_EXECUTION, { command: "go test ./...", status: "running" }));
+    expect(sessionWork(workProj)).toBe("tool");
+    workProj.items[5].status = "completed";
+    workProj.items[4].streaming = false;
+    expect(sessionWork(workProj)).toBe("working");
+    workProj.session!.activeRunId = "";
+    expect(sessionWork(workProj)).toBe("working");
   });
 
   test("prompts say who asked, background commands stay running, and continuation runs surface wakeReason", () => {

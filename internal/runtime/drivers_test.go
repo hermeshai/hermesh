@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -106,7 +107,20 @@ func runMockClaude() {
 			write(map[string]any{"type": "user", "isReplay": true})
 			msgObj, _ := m["message"].(map[string]any)
 			prompt, _ := msgObj["content"].(string)
-			if strings.Contains(prompt, "multistep_tools") {
+			if strings.Contains(prompt, "think_then_reply") {
+				for _, e := range []map[string]any{
+					{"type": "content_block_start", "index": 0, "content_block": map[string]any{"type": "thinking", "thinking": ""}},
+					{"type": "content_block_delta", "index": 0, "delta": map[string]any{"type": "thinking_delta", "thinking": "weigh it"}},
+					{"type": "content_block_stop", "index": 0},
+					{"type": "content_block_start", "index": 1, "content_block": map[string]any{"type": "text", "text": ""}},
+					{"type": "content_block_delta", "index": 1, "delta": map[string]any{"type": "text_delta", "text": "done thinking"}},
+					{"type": "content_block_stop", "index": 1},
+				} {
+					write(map[string]any{"type": "stream_event", "event": e})
+				}
+				write(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "text", "text": "done thinking"}}}})
+				write(map[string]any{"type": "result", "usage": map[string]any{"input_tokens": 10, "output_tokens": 5}})
+			} else if strings.Contains(prompt, "multistep_tools") {
 				write(map[string]any{
 					"type":  "stream_event",
 					"event": map[string]any{"type": "content_block_delta", "delta": map[string]any{"type": "text_delta", "text": "let me read first"}},
@@ -362,6 +376,15 @@ func runMockCodex() {
 			curTurnModel, curEffort = p.Model, p.Effort
 			write(map[string]any{"id": *m.ID, "result": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
 			write(map[string]any{"method": "turn/started", "params": map[string]any{"turn": map[string]any{"id": "turn_1"}}})
+			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "think_then_reply") {
+				write(map[string]any{"method": "item/started", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
+				write(map[string]any{"method": "item/reasoning/summaryTextDelta", "params": map[string]any{"itemId": "it_rsn", "delta": "weigh it"}})
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_rsn", "type": "reasoning"}}})
+				write(map[string]any{"method": "item/agentMessage/delta", "params": map[string]any{"itemId": "it_msg", "delta": "done thinking"}})
+				write(map[string]any{"method": "item/completed", "params": map[string]any{"item": map[string]any{"id": "it_msg", "type": "agentMessage", "text": "done thinking"}}})
+				write(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]any{"status": "completed"}}})
+				continue
+			}
 			if len(p.Input) > 0 && strings.Contains(p.Input[0].Text, "propose_codex_plan") {
 				write(map[string]any{
 					"method": "item/completed",
@@ -1102,6 +1125,69 @@ func TestClaudeDriverSubprocessProtocol(t *testing.T) {
 	msgs2, _ := collectTurn(t, sess)
 	if len(msgs2) == 0 || !strings.Contains(msgs2[0], "claude(claude-opus-4-6) bash=allow") {
 		t.Fatalf("unexpected Turn 2 output after hot model switch: %v", msgs2)
+	}
+}
+
+// Claude and Codex say when the model starts and stops thinking, before it replies.
+func TestClaudeAndCodexMarkWhereThinkingEnds(t *testing.T) {
+	ctx := context.Background()
+	exe, _ := os.Executable()
+	for _, c := range []struct {
+		drv  runtime.Driver
+		name string
+		args []string
+	}{
+		{claude.NewDriver(""), "claude", []string{"-test.run=TestHelperMockCLI", "--"}},
+		{codex.NewDriver(""), "codex", []string{"-test.run=TestHelperMockCLI", "--", "app-server"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sess, err := c.drv.StartSession(ctx, runtime.StartSpec{
+				SessionID: "s_" + c.name,
+				Workdir:   t.TempDir(),
+				Instance: &sessionv1.ProviderInstanceConfig{
+					InstanceId: c.name,
+					Driver:     c.name,
+					BinaryPath: exe,
+					LaunchArgs: c.args,
+					Env:        map[string]string{"HERMESH_MOCK_DRIVER": c.name},
+				},
+				Selection: &sessionv1.ModelSelection{InstanceId: c.name, Model: "m"},
+			})
+			if err != nil {
+				t.Fatalf("StartSession: %v", err)
+			}
+			defer sess.Close()
+			if err := sess.StartTurn(ctx, runtime.TurnInput{RunID: "r1", Prompt: "think_then_reply"}); err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			timeout := time.After(8 * time.Second)
+			for done := false; !done; {
+				select {
+				case <-timeout:
+					t.Fatalf("timed out; saw %v", got)
+				case ev, ok := <-sess.Events():
+					if !ok {
+						t.Fatalf("session closed; saw %v", got)
+					}
+					switch ev.Kind {
+					case runtime.EventReasoningDelta:
+						got = append(got, "think "+ev.ItemID+" "+ev.Text)
+					case runtime.EventReasoningCompleted:
+						got = append(got, "thought "+ev.ItemID)
+					case runtime.EventAssistantDelta:
+						got = append(got, "reply "+ev.Text)
+					case runtime.EventTurnCompleted, runtime.EventTurnFailed:
+						done = true
+					}
+				}
+			}
+			rsn := strings.Fields(got[0])[1]
+			want := []string{"think " + rsn + " ", "think " + rsn + " weigh it", "thought " + rsn, "reply done thinking"}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("events = %q, want %q", got, want)
+			}
+		})
 	}
 }
 
