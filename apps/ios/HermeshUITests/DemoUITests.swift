@@ -453,10 +453,11 @@ final class DemoUITests: XCTestCase {
         XCTAssertTrue(any["limit-claude"].firstMatch.isHittable, "the limit card")
         checkpoint("overview-limit-card")
         tap("limit-view")
-        XCTAssertTrue(any["limit-claude-300"].firstMatch.waitForExistence(timeout: 5), "Limits, from the card")
-        place("Overview")
+        XCTAssertTrue(any["limit-claude-300"].firstMatch.waitForExistence(timeout: 5), "Limits, from the card: the overview's view")
+        XCTAssertFalse(map.exists, "in place of Live")
+        view(0)
         XCTAssertTrue(map.waitForExistence(timeout: 10))
-        for _ in 0 ..< 8 where !front.label.hasPrefix("1 / ") { any["needs"].firstMatch.swipeRight() }
+        for _ in 0 ..< 8 where !front.label.hasPrefix("1 / ") { tap("needs-next") } // round to the first card
 
         // A node picked: every session through it, in place of what runs and what finished.
         tap("map-Mac mini")
@@ -477,11 +478,11 @@ final class DemoUITests: XCTestCase {
         checkpoint("overview-tasks")
         back()
 
-        // The counts are a place of the menu's (Limits, as the card left it; then Usage).
-        place("Statistics")
-        app.segmentedControls["stats-segment"].buttons.element(boundBy: 0).tap()
+        // The numbers are the overview's other views, picked at its top; the menu has no place of its own for them.
+        XCTAssertFalse(any["statistics-place"].exists)
+        view(1)
         reach("filter-range")
-        place("Overview")
+        view(0)
         XCTAssertTrue(map.waitForExistence(timeout: 10))
     }
 
@@ -493,21 +494,21 @@ final class DemoUITests: XCTestCase {
 
     func testReviewOverviewAndSettings() {
         enterWorkDemo()
-        place("Statistics")
+        view(1)
         reach("filter-range")
         for range in ["30 Days", "Today", "7 Days"] { pick("filter-range", range) }
         pick("filter-agent", "Codex")
         XCTAssertTrue(app.descendants(matching: .any)["usage-sessions"].firstMatch.waitForExistence(timeout: 5))
         checkpoint("overview-usage")
         pick("filter-agent", "All", shows: "Agent Provider")
-        app.segmentedControls["stats-segment"].buttons.element(boundBy: 1).tap()
+        view(2)
         // The least left first: Claude Code's five hours, 18% left.
         let five = app.descendants(matching: .any)["limit-claude-300"].firstMatch
         XCTAssertTrue(five.waitForExistence(timeout: 5))
         XCTAssertTrue(five.label.contains("18%"), five.label)
         XCTAssertTrue(app.descendants(matching: .any)["limits-codex"].firstMatch.exists)
         checkpoint("overview-limits")
-        app.segmentedControls["stats-segment"].buttons.element(boundBy: 0).tap()
+        view(0)
         // The environments, in settings; an environment's page from them.
         place("Machines"); tap("machine-Mac mini"); back()
         reachInSheet("account-appearance"); tap("account-appearance")
@@ -655,7 +656,7 @@ final class DemoUITests: XCTestCase {
     /// before/after this UI-only flow. No production test hooks are used.
     func testReviewPersistentSettingsIsolation() {
         enterWorkDemo()
-        place("Statistics")
+        view(1)
         reach("filter-range"); pick("filter-range", "30 Days")
         place("All Sessions")
         tap("view-options"); menuItem("Group"); tap("By Machine")
@@ -686,6 +687,14 @@ final class DemoUITests: XCTestCase {
         let cancel = app.buttons.allElementsBoundByIndex.first { $0.frame.minX >= frame.maxX - 2 && abs($0.frame.midY - frame.midY) < 12 }
         XCTAssertNotNil(cancel); cancel?.tap()
         XCTAssertTrue(field.waitForNonExistence(timeout: 5))
+    }
+
+    /// The overview's view at index (Live, Usage, Limits), from the control at its top.
+    private func view(_ index: Int) {
+        let views = app.segmentedControls["overview-views"]
+        if !views.isHittable { app.swipeDown(); app.swipeDown() }
+        XCTAssertTrue(views.waitForExistence(timeout: 10), "the overview's views")
+        views.buttons.element(boundBy: index).tap()
     }
 
     /// Opens a filter's menu, chooses item in it, and waits for the button to say it (or shows).
@@ -752,7 +761,6 @@ final class DemoUITests: XCTestCase {
         if !app.descendants(matching: .any)["drawer"].firstMatch.waitForExistence(timeout: 3) { tap("menu") }
         switch title {
         case "Overview": tap("overview-place")
-        case "Statistics": tap("statistics-place")
         case "Grants": tap("account"); reachInSheet("account-grants"); tap("account-grants")
         case "Machines": tap("account"); reachInSheet("account-machines")
         case "All Sessions": break

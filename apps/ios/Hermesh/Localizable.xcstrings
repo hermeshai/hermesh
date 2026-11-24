@@ -18635,6 +18635,16 @@
           }
         }
       }
+    },
+    "Live" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实时"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

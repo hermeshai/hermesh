@@ -56,7 +56,6 @@ private struct PageView: View {
         switch model.root {
         case .her: HerView()
         case .overview: OverviewView()
-        case .statistics: StatisticsView()
         case .grants: GrantsView()
         case .machines: EnvironmentsView()
         case .newSession(let machine, let project): SessionPage(machineID: machine, projectID: project).id("new/\(machine)/\(project)")

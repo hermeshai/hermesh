@@ -236,7 +236,9 @@ struct SessionToolbar: ToolbarContent {
                 .padding(.horizontal, 18)
                 .frame(minHeight: 44)
                 .contentShape(.capsule)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                // Tinted with the page's own colour: the title reads over the conversation that scrolls under it (the
+                // page draws no band of blur there), and the capsule looks the same whatever is under it.
+                .glassEffect(.regular.tint(Color(.systemBackground).opacity(0.72)).interactive(), in: .capsule)
             }
             .buttonStyle(.plain)
             .accessibilityHint(Text("Session Info"))
