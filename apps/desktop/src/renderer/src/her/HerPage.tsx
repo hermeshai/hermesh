@@ -19,8 +19,6 @@ import { BrowserPage, EnvironmentPage, ModelPage, ProviderPage, SearchPage, Skil
 import { FirstRun, Setup } from "./Setup";
 import { AccessSheet, HerDialog } from "./sheets";
 import { TopBar } from "./TopBar";
-import "../session/markdown/markdown.css";
-import "../session/session.css";
 import "./her.css";
 
 // The Her entry (docs/her-server.md §9): a conversation with Her, the

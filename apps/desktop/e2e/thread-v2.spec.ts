@@ -86,12 +86,11 @@ test("launches a supervised v2 thread, handles live tool approval, and shows it 
     await steps.locator("button").first().click();
     await expect(conversation(page)).toContainText("ui_v2.txt");
     await expect(conversation(page)).toContainText("+hello_from_v2_ui");
-    // The owner sent it: a blue bubble with nothing on it. A turn that went well ends without a line of its own.
+    // The owner sent it: a soft cool-grey bubble with graphite words, nothing on its corner. A turn that went well ends without a line of its own.
     await expect(conversation(page).locator(".um").first()).not.toHaveClass(/\bfrom\b/);
-    // In the brand blue with white words, as on the iPhone.
     expect(await conversation(page).locator(".um .bub").first().evaluate((el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el).color])).toEqual([
-      "rgb(61, 91, 255)",
-      "rgb(255, 255, 255)",
+      "rgb(231, 235, 242)",
+      "rgb(32, 33, 39)",
     ]);
     await expect(conversation(page).getByTestId("prompt-sender")).toHaveCount(0);
     await expect(page.getByText("这一轮做完了", { exact: false })).toHaveCount(0);
