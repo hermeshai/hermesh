@@ -34,10 +34,10 @@ test("the sidebar is Her, the overview and every session; hidden, it is gone and
   await page.setViewportSize({ width: 1240, height: 800 });
   const sidebar = page.getByRole("complementary", { name: "边栏" });
   await expect(page.locator(".side-nav .nav-i")).toHaveText([/^新会话/, /^Her/, /^概览/]);
-  // The overview's row: a dot while something waits on the owner, and a ring while anything runs; no numbers.
+  // The overview's row: a dot while something waits on the owner, nothing while sessions run; no numbers.
   const overview = page.locator(".side-nav").getByRole("button", { name: /^概览/ });
   await expect(overview.getByRole("img", { name: /项需要处理/ })).toBeVisible();
-  await expect(overview.getByRole("img", { name: /个在忙/ })).toBeVisible();
+  await expect(overview.getByRole("img", { name: /个在忙/ })).toHaveCount(0);
   await expect(overview).not.toContainText(/\d/);
   // No map of machines and agents: their settings are in Settings.
   await expect(page.getByRole("group", { name: "团队" })).toHaveCount(0);
