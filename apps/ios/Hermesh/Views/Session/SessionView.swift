@@ -204,6 +204,27 @@ struct CopyMenu: View {
     }
 }
 
+/// The glass of a session's title in its bar: the conversation under it blurred away (the page draws no band of blur
+/// there, so this is all that stands between them), a lit rim, and a shadow that lifts it off the page.
+struct TitleCapsule: ViewModifier {
+    /// Its width on every session, in points.
+    static let width: CGFloat = 220
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: .capsule)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .overlay {
+                Capsule().strokeBorder(
+                    LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.34 : 0.9), .white.opacity(scheme == .dark ? 0.06 : 0.3)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.8)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.12), radius: 14, y: 6)
+    }
+}
+
 /// A session page's bar, on either kind of session (SessionView, ThreadPage): the menu button on a root page; in the
 /// middle its title over where it runs, in a glass capsule that opens Session Info; ⋯ with its actions.
 struct SessionToolbar: ToolbarContent {
@@ -233,12 +254,12 @@ struct SessionToolbar: ToolbarContent {
                     }
                 }
                 .lineLimit(1)
-                .padding(.horizontal, 18)
-                .frame(minHeight: 44)
+                .truncationMode(.tail)
+                .padding(.horizontal, 16)
+                // One width whatever the title: a long one ends in …, and Session Info says it whole.
+                .frame(width: TitleCapsule.width, height: 48)
                 .contentShape(.capsule)
-                // Tinted with the page's own colour: the title reads over the conversation that scrolls under it (the
-                // page draws no band of blur there), and the capsule looks the same whatever is under it.
-                .glassEffect(.regular.tint(Color(.systemBackground).opacity(0.72)).interactive(), in: .capsule)
+                .modifier(TitleCapsule())
             }
             .buttonStyle(.plain)
             .accessibilityHint(Text("Session Info"))

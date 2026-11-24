@@ -83,6 +83,10 @@ final class ToolStepsUITests: ToolStepsCase {
         let card = element("tool-steps")
         XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
         XCTAssertLessThanOrEqual(card.frame.height, 240, "capped")
+        // The whole card in sight, clear of the box (the page is longer than the screen).
+        let page = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.4))
+        page.press(forDuration: 0.05, thenDragTo: page.withOffset(CGVector(dx: 0, dy: -300)), withVelocity: .fast, thenHoldForDuration: 0.1)
+        sleep(1)
         // Steps come every second; the card stays at the newest, with no arrow back.
         sleep(3)
         XCTAssertFalse(element("steps-to-end").exists, "following")
@@ -99,6 +103,58 @@ final class ToolStepsUITests: ToolStepsCase {
         sleep(3)
         XCTAssertFalse(element("steps-to-end").exists, "following again")
         XCTAssertTrue(newestInSight(card), "the newest step in sight again")
+    }
+
+    /// A card scrolled to its top lets go: a drag down that starts on it scrolls the page, not the card's bounce.
+    func testADragPastACardsTopScrollsThePage() throws {
+        open(smallTitle)
+        // The eleventh turn's 26 steps (from call 500: 7 reads, 7 commands, 6 edits, 6 searches).
+        let summary = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'tool-steps-summary' AND label BEGINSWITH 'Read 7 files'")).firstMatch
+        for _ in 0..<6 where !summary.exists || !summary.isHittable { app.swipeDown() }
+        XCTAssertTrue(summary.isHittable, "the big group")
+        summary.tap()
+        let card = element("tool-steps")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
+        XCTAssertGreaterThan(card.frame.height, 200, "a card that scrolls: \(card.frame.height)")
+        sleep(1)
+        func drag(_ dy: CGFloat) {
+            let from = card.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: dy > 0 ? 0.1 : 0.9))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: dy)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            sleep(1)
+        }
+        // It opens at its newest step; dragged down, it scrolls to its first, and the page stays.
+        let at = card.frame.minY
+        for _ in 0..<4 { drag(200) }
+        XCTAssertEqual(card.frame.minY, at, accuracy: 2, "the card scrolled, not the page")
+        let first = card.buttons.matching(NSPredicate(format: "label CONTAINS 'pkg20/file50.go'")).firstMatch
+        XCTAssertTrue(first.exists && card.frame.contains(CGPoint(x: first.frame.midX, y: first.frame.midY)), "at its first step")
+        // There, a drag down on it scrolls the page.
+        let before = card.frame.minY
+        drag(200)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "past-the-card's-top"; shot.lifetime = .keepAlways; add(shot)
+        XCTAssertGreaterThan(card.frame.minY, before + 100, "the page scrolled with the drag: from \(before) to \(card.frame.minY)")
+    }
+
+    /// While steps come into an open card, a drag on the page outside it scrolls the page, every time.
+    func testARunningTurnsPageScrollsAroundItsCard() throws {
+        open("Many steps, running")
+        let summary = element("tool-steps-summary")
+        XCTAssertTrue(summary.waitForExistence(timeout: 10))
+        summary.tap()
+        let card = element("tool-steps")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "the card")
+        sleep(2)
+        for n in 1 ... 3 {
+            // Above the card, on the turn's text (on the left: the arrow back to the bottom is in the middle).
+            let before = card.frame.minY
+            let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0)).withOffset(CGVector(dx: 0, dy: max(140, before - 260)))
+            from.press(forDuration: 0.05, thenDragTo: from.withOffset(CGVector(dx: 0, dy: 100)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            sleep(1)
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = "page-dragged-\(n)"; shot.lifetime = .keepAlways; add(shot)
+            XCTAssertGreaterThan(card.frame.minY, before + 50, "drag \(n): the page scrolled, from \(before) to \(card.frame.minY)")
+        }
     }
 
     private let smallTitle = "Small steps: keep every log call structured across the whole repository and its tests"
@@ -137,6 +193,12 @@ final class ToolStepsUITests: ToolStepsCase {
         XCTAssertGreaterThanOrEqual(capsule.frame.minX, back.frame.maxX, "clear of the button back: \(capsule.frame) \(back.frame)")
         XCTAssertLessThanOrEqual(capsule.frame.maxX, more.frame.minX, "clear of ⋯: \(capsule.frame) \(more.frame)")
         XCTAssertGreaterThan(capsule.frame.width, 120, "still a capsule to tap")
+        // One width whatever the title, the long one ending in …; Session Info says it whole.
+        XCTAssertEqual(capsule.frame.width, 220, accuracy: 1, "the capsule's width: \(capsule.frame)")
+        capsule.tap()
+        let whole = element("session-info-title")
+        XCTAssertTrue(whole.waitForExistence(timeout: 10), "the whole title in Session Info")
+        XCTAssertEqual(whole.label, smallTitle)
     }
 
     /// Whether the step under way (its verb, "…ing") is in the card's sight.

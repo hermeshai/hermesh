@@ -93,6 +93,7 @@ private struct StepsCard<ID: Hashable & Sendable, Row: View>: View {
                 }
             }
             .scrollTargetLayout()
+            .background { CardScrollsFirst() }
         }
         .scrollPosition($position)
         .scrollBounceBehavior(.basedOnSize)
@@ -147,6 +148,68 @@ private struct StepsCard<ID: Hashable & Sendable, Row: View>: View {
             .animation(.easeOut(duration: 0.15), value: shown)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
+    }
+}
+
+/// A drag that starts on a card scrolls the card while it can go that way; at its end that way (or when it has nothing
+/// to scroll) the drag scrolls the page. Said to UIKit outright: on an iPhone with iOS 27 the page took drags that began
+/// on the card. Two gates on the card, decided as the drag starts: one that begins when the card can go the drag's way,
+/// which the page's pan waits on; one that begins when it can't, which the card's pan waits on. A drag elsewhere on the
+/// page never reaches them. Placed in the card's content, it finds the card's scroll view, then the page's above it.
+private struct CardScrollsFirst: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView { Marker() }
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    private final class Marker: UIView {
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard window != nil, let card = Self.scrollView(above: self), let page = Self.scrollView(above: card),
+                  card.gestureRecognizers?.contains(where: { $0 is Gate }) != true else { return }
+            let goes = Gate(card: card) { $0 }
+            let stops = Gate(card: card) { !$0 }
+            page.panGestureRecognizer.require(toFail: goes)
+            card.panGestureRecognizer.require(toFail: stops)
+        }
+
+        private static func scrollView(above view: UIView) -> UIScrollView? {
+            var v = view.superview
+            while let cur = v, !(cur is UIScrollView) { v = cur.superview }
+            return v as? UIScrollView
+        }
+    }
+
+    /// Begins, alongside everything, only when `when` says so of whether the card can go the drag's way.
+    private final class Gate: UIPanGestureRecognizer, UIGestureRecognizerDelegate {
+        weak var card: UIScrollView?
+        let when: (Bool) -> Bool
+
+        init(card: UIScrollView, when: @escaping (Bool) -> Bool) {
+            self.card = card
+            self.when = when
+            super.init(target: nil, action: nil)
+            delegate = self
+            cancelsTouchesInView = false
+            delaysTouchesEnded = false
+            card.addGestureRecognizer(self)
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+            guard let card else { return false }
+            let v = velocity(in: card)
+            guard abs(v.y) > abs(v.x) else { return false }
+            let top = -card.adjustedContentInset.top, bottom = card.contentSize.height - card.bounds.height + card.adjustedContentInset.bottom
+            // A finger moving down shows what is above.
+            let can = bottom > top + 0.5 && (v.y > 0 ? card.contentOffset.y > top + 0.5 : card.contentOffset.y < bottom - 0.5)
+            return when(can)
+        }
     }
 }
 
