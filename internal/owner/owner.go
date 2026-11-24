@@ -131,10 +131,11 @@ type Owner struct {
 
 	// Her (her.go). herWake has the waiting messages tried now; herSeen
 	// is each machine's Her as last seen, kept in the store.
-	herWake chan struct{}
-	herBots sync.Map // each assistant's delivery lock, by machine/assistant (herBotLock)
-	herMu   sync.Mutex
-	herSeen map[string]*machinev1.HerStatus
+	herWake        chan struct{}
+	herBots        sync.Map // each assistant's delivery lock, by machine/assistant (herBotLock)
+	herMu          sync.Mutex
+	herSeen        map[string]*machinev1.HerStatus
+	herKeptVersion atomic.Uint64
 	// herReach, when set, is how tests reach a machine's HerService.
 	herReach func(ctx context.Context, machineID string) (herMachine, error)
 	// herInfo, when set, is how tests read a machine's status for Her.
@@ -145,8 +146,10 @@ type Owner struct {
 	directMu       sync.Mutex
 	direct         map[string][]string      // machineID -> normalized direct_addrs, persisted under kDirectAddrs
 	lastDirect     map[string]string        // machineID -> last winning direct address, tried first on reconnect
+	directFailed   map[string]directFailure // machineID -> last failed direct attempt on current netGen
 	directMachines map[string]*peer.Machine // direct tunnels opened while relay isn't ready
-	directDialing  map[string]*directDial   // per-machine singleflight for directFastMachine
+	directDialing  map[string]*directDial   // per-machine singleflight for direct dials
+	netGen         atomic.Uint64            // incremented on network switch / drop so direct failure cooldown resets
 	cellularOnly   atomic.Bool              // true when device has only cellular (no Wi-Fi/wired): skip RFC1918 LAN addrs
 
 	threadMu   sync.Mutex
@@ -154,9 +157,15 @@ type Owner struct {
 	threadSubs map[chan *threadv2.SubscribeThreadsResponse]struct{}
 }
 
+type directFailure struct {
+	gen uint64
+	at  time.Time
+}
+
 type directDial struct {
 	done chan struct{}
 	n    *peer.Machine
+	err  error
 }
 
 const (
@@ -400,10 +409,15 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 	for {
 		o.mu.Lock()
 		var kept *peer.Client
+		var dead *peer.Client
 		if c := o.client; c != nil {
 			select {
 			case <-c.Done():
 				o.client = nil
+				if o.kept == c {
+					o.kept = nil
+				}
+				dead = c
 			default:
 				if c != o.kept {
 					o.mu.Unlock()
@@ -411,6 +425,11 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 				}
 				kept = c
 			}
+		}
+		if dead != nil {
+			o.mu.Unlock()
+			_ = dead.Close()
+			continue
 		}
 		if w := o.dialing; w != nil {
 			o.mu.Unlock()
@@ -433,10 +452,9 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 		o.dialing = w
 		relayURL := o.relayURL
 		o.mu.Unlock()
-		var adoptPrewarm func(*peer.Client)
-		if kept == nil {
-			adoptPrewarm = prewarmDirect(ctx, d, o.seenOnline())
-		}
+		// Always prewarm direct tunnels on resume as well as cold dial because
+		// keepRelay() closes cached direct sockets across background pauses.
+		adoptPrewarm := o.prewarmDirect(ctx, o.seenOnline())
 		c, err := connectOrKeep(ctx, d, kept, o.log)
 		if adoptPrewarm != nil {
 			if err == nil {
@@ -444,6 +462,9 @@ func (o *Owner) relay(ctx context.Context) (*peer.Client, error) {
 			} else {
 				adoptPrewarm(nil)
 			}
+		}
+		if err == nil {
+			o.adoptDirectMachines(c)
 		}
 		o.mu.Lock()
 		o.dialing = nil
@@ -557,10 +578,21 @@ func (o *Owner) kickScreens() {
 	}
 }
 
+// keptHeadStart gives a kept relay connection a brief head-start to prove
+// liveness before opening a competing WebSocket connection, avoiding tearing
+// down healthy warm E2E tunnels when pipelined WS Challenge returns faster
+// than an E2E GetInfo probe (~2 RTTs on high-RTT cellular/WAN links).
+func keptHeadStart(srtt time.Duration, hasTunnel bool) time.Duration {
+	if hasTunnel {
+		return min(max(3*srtt, 200*time.Millisecond), 900*time.Millisecond)
+	}
+	return min(max(2*srtt, 150*time.Millisecond), 500*time.Millisecond)
+}
+
 // connectOrKeep dials the relay. With kept, the connection kept over a
 // pause, it verifies kept (outer Ping plus a lightweight tunnel RPC when kept
-// holds a cached relayed machine tunnel) in parallel with dialing a new
-// connection, keeping whichever proves usable first. The one not kept is closed.
+// holds a cached relayed machine tunnel) with a brief head-start before
+// racing a fresh connection, keeping whichever proves usable first.
 func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client, log *slog.Logger) (*peer.Client, error) {
 	if kept == nil {
 		started := time.Now()
@@ -589,11 +621,19 @@ func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client, log *
 		machine  string
 	}
 	dialed, pinged := make(chan dial, 1), make(chan probe, 1)
-	go func() {
-		started := time.Now()
-		c, err := d.Connect(dctx)
-		dialed <- dial{c: c, err: err, dialMs: time.Since(started).Milliseconds()}
-	}()
+	dialing := false
+	startDial := func() {
+		if dialing {
+			return
+		}
+		dialing = true
+		go func() {
+			started := time.Now()
+			c, err := d.Connect(dctx)
+			dialed <- dial{c: c, err: err, dialMs: time.Since(started).Milliseconds()}
+		}()
+	}
+	hasCachedTunnel := len(kept.CachedRelayedMachineIDs()) > 0
 	go func() {
 		pStart := time.Now()
 		ids := kept.CachedRelayedMachineIDs()
@@ -636,8 +676,32 @@ func connectOrKeep(ctx context.Context, d *peer.Dialer, kept *peer.Client, log *
 		res.err = p.err
 		pinged <- res
 	}()
+
 	var err error
-	for dialing, pinging := true, true; dialing || pinging; {
+	pinging := true
+	head := time.NewTimer(keptHeadStart(kept.RTT(), hasCachedTunnel))
+	defer head.Stop()
+	select {
+	case p := <-pinged:
+		pinging = false
+		head.Stop()
+		if p.err == nil {
+			if log != nil {
+				log.Info("owner: relay connectOrKeep", "winner", "kept", "relay_ping_ms", p.pingMs, "tunnel_probed", p.probed, "tunnel_probe_ms", p.tunnelMs, "probe_machine", p.machine)
+			}
+			return kept, nil
+		}
+		if log != nil {
+			log.Info("owner: kept relay failed verification", "relay_ping_ms", p.pingMs, "tunnel_probed", p.probed, "tunnel_probe_ms", p.tunnelMs, "probe_machine", p.machine, "err", p.err)
+		}
+		startDial()
+	case <-head.C:
+		startDial()
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	for dialing || pinging {
 		select {
 		case p := <-pinged:
 			pinging = false
@@ -680,16 +744,13 @@ type prewarmHit struct {
 	n  *peer.Machine
 }
 
-// prewarmDirect races direct E2E dials for seen online machines while a cold
-// relay connection is being established, and returns an adopt function that
-// cancels remaining attempts and installs any completed tunnels onto c.
-func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer.Client) {
-	if d == nil || d.Direct == nil || len(ids) == 0 {
+func (o *Owner) prewarmDirect(ctx context.Context, ids []string) func(*peer.Client) {
+	if len(ids) == 0 || o.dialer() == nil {
 		return nil
 	}
 	targets := make(map[string][]string, len(ids))
 	for _, id := range ids {
-		if addrs := d.Direct(id); len(addrs) > 0 {
+		if addrs := o.directAddrs(id); len(addrs) > 0 {
 			targets[id] = addrs
 		}
 	}
@@ -703,7 +764,7 @@ func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer
 		wg.Add(1)
 		go func(id string, addrs []string) {
 			defer wg.Done()
-			if n, err := d.DialDirect(preCtx, id, addrs); err == nil {
+			if n, err := o.dialDirectShared(preCtx, id, addrs); err == nil && n != nil {
 				hits <- prewarmHit{id: id, n: n}
 			}
 		}(id, addrs)
@@ -714,16 +775,20 @@ func prewarmDirect(ctx context.Context, d *peer.Dialer, ids []string) func(*peer
 			select {
 			case h := <-hits:
 				if c == nil {
-					h.n.Close()
+					o.forgetDirectMachine(h.id, h.n)
 				} else {
-					c.AdoptDirect(h.id, h.n)
+					o.adoptDirectMachine(c, h.id, h.n)
 				}
 			default:
 				go func() {
 					wg.Wait()
 					close(hits)
 					for h := range hits {
-						h.n.Close()
+						if c == nil {
+							o.forgetDirectMachine(h.id, h.n)
+						} else {
+							o.adoptDirectMachine(c, h.id, h.n)
+						}
 					}
 				}()
 				return
@@ -752,6 +817,7 @@ func (o *Owner) keepRelay() {
 // after the network changed, the old one may be dead without anything
 // having noticed yet.
 func (o *Owner) dropRelay() {
+	o.netGen.Add(1)
 	o.mu.Lock()
 	c := o.client
 	o.client = nil
@@ -768,6 +834,9 @@ func (o *Owner) dropRelay() {
 // relay answers, check cached tunnels, retry failed follows, and try to
 // upgrade relayed tunnels to direct QUIC/TCP.
 func (o *Owner) reconnect(interfaceSwitched bool) {
+	if interfaceSwitched {
+		o.netGen.Add(1)
+	}
 	o.mu.Lock()
 	c := o.client
 	rctx := o.runCtx
@@ -1170,7 +1239,9 @@ func (o *Owner) dialerLocked() *peer.Dialer {
 		Pipeline:        true,
 		Credentials:     o.credentials,
 		Direct:          o.directAddrs,
+		DirectHead:      o.directHeadDuration,
 		OnDirectSuccess: o.noteDirectSuccess,
+		OnDirectFailure: o.noteDirectFailure,
 		OnUpgrade: func(machineID, path string, rtt time.Duration) {
 			o.noteTunnelOK(machineID)
 			if o.log != nil {
@@ -1189,7 +1260,11 @@ func (o *Owner) dialer() *peer.Dialer {
 // SetCellularOnly records whether this device currently uses cellular only
 // (no Wi-Fi or wired interface). When true, RFC1918 LAN direct addresses are
 // skipped so dials do not waste the LAN head-start window on unreachable IPs.
-func (o *Owner) SetCellularOnly(v bool) { o.cellularOnly.Store(v) }
+func (o *Owner) SetCellularOnly(v bool) {
+	if o.cellularOnly.Swap(v) != v {
+		o.netGen.Add(1)
+	}
+}
 
 func isRFC1918Addr(addr string) bool {
 	addr = strings.TrimPrefix(addr, "quic://")
@@ -1258,6 +1333,8 @@ func (o *Owner) directAddrs(machineID string) []string {
 	return out
 }
 
+const directFailureTTL = 2 * time.Minute
+
 func (o *Owner) noteDirectSuccess(machineID, addr string) {
 	if addr == "" {
 		return
@@ -1267,7 +1344,35 @@ func (o *Owner) noteDirectSuccess(machineID, addr string) {
 		o.lastDirect = map[string]string{}
 	}
 	o.lastDirect[machineID] = addr
+	delete(o.directFailed, machineID)
 	o.directMu.Unlock()
+}
+
+func (o *Owner) noteDirectFailure(machineID string) {
+	if machineID == "" {
+		return
+	}
+	gen := o.netGen.Load()
+	o.directMu.Lock()
+	if o.directFailed == nil {
+		o.directFailed = map[string]directFailure{}
+	}
+	o.directFailed[machineID] = directFailure{gen: gen, at: time.Now()}
+	o.directMu.Unlock()
+}
+
+// directHeadDuration returns 0 when direct dialing to machineID already failed
+// on the current network generation within directFailureTTL so subsequent calls
+// start relay tunnels immediately without a wasted head-start delay.
+func (o *Owner) directHeadDuration(machineID string, addrs []string) time.Duration {
+	gen := o.netGen.Load()
+	o.directMu.Lock()
+	f, failed := o.directFailed[machineID]
+	o.directMu.Unlock()
+	if failed && f.gen == gen && time.Since(f.at) < directFailureTTL {
+		return 0
+	}
+	return peer.DirectHeadFor(addrs)
 }
 
 func (o *Owner) saveDirectAddrs(machineID string, addrs []string) {
@@ -1400,37 +1505,90 @@ func (o *Owner) probeOrCloseDirectMachines(ctx context.Context) {
 	wg.Wait()
 }
 
-func (o *Owner) relayPending() bool {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	return o.client == nil || o.client == o.kept
+func (o *Owner) adoptDirectMachine(c *peer.Client, machineID string, n *peer.Machine) {
+	if c == nil || n == nil {
+		return
+	}
+	o.directMu.Lock()
+	if o.directMachines[machineID] == n {
+		delete(o.directMachines, machineID)
+	}
+	o.directMu.Unlock()
+	c.AdoptDirect(machineID, n)
 }
 
-// directFastMachine returns a live cached direct tunnel to machineID, or dials
-// direct (QUIC/TCP) immediately while the outer relay is still dialing/probing
-// so LAN Her resumes do not block behind a transpacific relay probe.
-// Concurrent callers for the same machineID share a single dial (singleflight)
-// so simultaneous Her env + conv opens never tear down each other's tunnel.
-func (o *Owner) directFastMachine(ctx context.Context, machineID string) *peer.Machine {
+func (o *Owner) adoptDirectMachines(c *peer.Client) {
+	if c == nil {
+		return
+	}
+	o.directMu.Lock()
+	if len(o.directMachines) == 0 {
+		o.directMu.Unlock()
+		return
+	}
+	ms := o.directMachines
+	o.directMachines = nil
+	o.directMu.Unlock()
+	for id, n := range ms {
+		c.AdoptDirect(id, n)
+	}
+}
+
+func (o *Owner) forgetMachineConn(c *peer.Client, machineID string, n *peer.Machine) {
+	if n == nil {
+		return
+	}
+	o.forgetDirectMachine(machineID, n)
+	if c != nil {
+		c.ForgetMachine(n)
+		return
+	}
+	o.mu.Lock()
+	cur := o.client
+	o.mu.Unlock()
+	if cur != nil {
+		cur.ForgetMachine(n)
+	}
+}
+
+func (o *Owner) liveClient() *peer.Client {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	c := o.client
+	if c == nil || c == o.kept {
+		return nil
+	}
+	select {
+	case <-c.Done():
+		return nil
+	default:
+		return c
+	}
+}
+
+func (o *Owner) relayPending() bool {
+	return o.liveClient() == nil
+}
+
+// dialDirectShared coalesces concurrent direct dials for machineID onto one
+// shared attempt so simultaneous Her, Thread, Prewarm, and Screen callers never
+// open duplicate QUIC handshakes or tear down each other's direct tunnel.
+func (o *Owner) dialDirectShared(ctx context.Context, machineID string, addrs []string) (*peer.Machine, error) {
 	if n := o.cachedDirectMachine(machineID); n != nil {
-		return n
+		return n, nil
 	}
-	if !o.relayPending() {
-		return nil
-	}
-	addrs := o.directAddrs(machineID)
 	if len(addrs) == 0 {
-		return nil
+		return nil, errors.New("no direct addresses")
 	}
 	d := o.dialer()
 	if d == nil {
-		return nil
+		return nil, errors.New("no dialer configured")
 	}
 	o.directMu.Lock()
 	if n := o.directMachines[machineID]; n != nil {
 		if n.Alive() {
 			o.directMu.Unlock()
-			return n
+			return n, nil
 		}
 		delete(o.directMachines, machineID)
 		o.directMu.Unlock()
@@ -1442,11 +1600,14 @@ func (o *Owner) directFastMachine(ctx context.Context, machineID string) *peer.M
 		select {
 		case <-in.done:
 			if in.n != nil && in.n.Alive() {
-				return in.n
+				return in.n, nil
 			}
-			return nil
+			if in.err != nil {
+				return nil, in.err
+			}
+			return nil, errors.New("direct dial closed")
 		case <-ctx.Done():
-			return nil
+			return nil, ctx.Err()
 		}
 	}
 	if o.directDialing == nil {
@@ -1456,22 +1617,218 @@ func (o *Owner) directFastMachine(ctx context.Context, machineID string) *peer.M
 	o.directDialing[machineID] = in
 	o.directMu.Unlock()
 
+	go func() {
+		dctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		n, err := d.DialDirect(dctx, machineID, addrs)
+		cancel()
+		if err == nil && n != nil {
+			if c := o.liveClient(); c != nil {
+				if c.AdoptDirect(machineID, n) {
+					in.n = n
+				} else if cn, _, cerr := o.clientCachedMachine(c, machineID); cerr == nil && cn != nil {
+					in.n = cn
+				}
+			} else {
+				in.n = o.storeDirectMachine(machineID, n)
+			}
+		} else {
+			in.err = err
+		}
+		o.directMu.Lock()
+		if o.directDialing[machineID] == in {
+			delete(o.directDialing, machineID)
+		}
+		o.directMu.Unlock()
+		close(in.done)
+	}()
+
+	select {
+	case <-in.done:
+		if in.n != nil && in.n.Alive() {
+			return in.n, nil
+		}
+		if in.err != nil {
+			return nil, in.err
+		}
+		return nil, errors.New("direct dial failed")
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (o *Owner) clientCachedMachine(c *peer.Client, machineID string) (*peer.Machine, bool, error) {
+	if _, _, alive := c.MachineTunnel(machineID); !alive {
+		return nil, false, nil
+	}
+	n, err := c.Machine(context.Background(), machineID)
+	return n, err == nil, err
+}
+
+// directFastMachine returns a live cached direct tunnel to machineID, or dials
+// direct (QUIC/TCP) immediately while the outer relay is still dialing/probing.
+func (o *Owner) directFastMachine(ctx context.Context, machineID string) *peer.Machine {
+	if n := o.cachedDirectMachine(machineID); n != nil {
+		return n
+	}
+	if !o.relayPending() {
+		return nil
+	}
+	addrs := o.directAddrs(machineID)
+	if len(addrs) == 0 {
+		return nil
+	}
 	dctx, cancel := context.WithTimeout(ctx, 350*time.Millisecond)
-	n, err := d.DialDirect(dctx, machineID, addrs)
-	cancel()
-	if err == nil && n != nil {
-		n = o.storeDirectMachine(machineID, n)
-	} else {
-		n = nil
-	}
-	in.n = n
-	o.directMu.Lock()
-	if o.directDialing[machineID] == in {
-		delete(o.directDialing, machineID)
-	}
-	o.directMu.Unlock()
-	close(in.done)
+	defer cancel()
+	n, _ := o.dialDirectShared(dctx, machineID, addrs)
 	return n
+}
+
+func (o *Owner) machineViaRelay(ctx context.Context, c *peer.Client, machineID string, relayOnly bool) (*peer.Client, *peer.Machine, error) {
+	dial := func(rc *peer.Client) (*peer.Machine, error) {
+		if relayOnly {
+			return rc.RelayMachine(ctx, machineID)
+		}
+		return rc.Machine(ctx, machineID)
+	}
+	n, err := dial(c)
+	if err == nil {
+		o.noteTunnelOK(machineID)
+		return c, n, nil
+	}
+	if o.recoverTunnel(c, machineID, err) {
+		if c2, err2 := o.relay(ctx); err2 == nil {
+			if n2, err2 := dial(c2); err2 == nil {
+				o.noteTunnelOK(machineID)
+				return c2, n2, nil
+			} else {
+				err = err2
+			}
+		} else {
+			err = err2
+		}
+	}
+	return c, nil, err
+}
+
+// machine returns a tunnel to machineID across Her, Thread, Session, and Screen
+// callers. When the relay is already verified, c.Machine races direct vs relay
+// (with 0 ms head-start if direct recently failed on this network). While the
+// relay is still cold-dialing or probing kept, it races singleflight direct
+// dialing in parallel with relay setup + RelayMachine without double head-start
+// delays or duplicate QUIC handshakes.
+func (o *Owner) machine(ctx context.Context, machineID string) (*peer.Client, *peer.Machine, error) {
+	o.mu.Lock()
+	probe := o.recheck
+	o.mu.Unlock()
+	if probe != nil {
+		select {
+		case <-probe:
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
+	}
+	if c := o.liveClient(); c != nil {
+		o.adoptDirectMachines(c)
+		return o.machineViaRelay(ctx, c, machineID, false)
+	}
+	if cached := o.cachedDirectMachine(machineID); cached != nil {
+		o.noteTunnelOK(machineID)
+		return nil, cached, nil
+	}
+	addrs := o.directAddrs(machineID)
+	if len(addrs) == 0 || o.dialer() == nil {
+		c, err := o.relay(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		return o.machineViaRelay(ctx, c, machineID, false)
+	}
+
+	rctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type attempt struct {
+		c   *peer.Client
+		n   *peer.Machine
+		err error
+	}
+	directCh := make(chan attempt, 1)
+	go func() {
+		dn, err := o.dialDirectShared(rctx, machineID, addrs)
+		directCh <- attempt{n: dn, err: err}
+	}()
+
+	slowCh := make(chan attempt, 1)
+	slowRunning := false
+	startSlow := func() {
+		if slowRunning {
+			return
+		}
+		slowRunning = true
+		go func() {
+			rc, err := o.relay(rctx)
+			if err != nil {
+				slowCh <- attempt{err: err}
+				return
+			}
+			rc, rn, err := o.machineViaRelay(rctx, rc, machineID, true)
+			slowCh <- attempt{c: rc, n: rn, err: err}
+		}()
+	}
+
+	var directErr error
+	directDone := false
+	headDur := o.directHeadDuration(machineID, addrs)
+	if headDur <= 0 {
+		startSlow()
+	} else {
+		// Start o.relay warm-up immediately in background, only delaying
+		// openRelayTunnel by headDur so relay WS/probe overlaps with direct!
+		go func() { _, _ = o.relay(rctx) }()
+		head := time.NewTimer(headDur)
+		defer head.Stop()
+		select {
+		case a := <-directCh:
+			directDone = true
+			head.Stop()
+			if a.n != nil {
+				o.noteTunnelOK(machineID)
+				return o.liveClient(), a.n, nil
+			}
+			directErr = a.err
+			startSlow()
+		case <-head.C:
+			startSlow()
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		}
+	}
+
+	var slowErr error
+	var lastClient *peer.Client
+	for !directDone || slowRunning {
+		select {
+		case a := <-directCh:
+			directDone = true
+			if a.n != nil {
+				cancel()
+				o.noteTunnelOK(machineID)
+				return o.liveClient(), a.n, nil
+			}
+			directErr = a.err
+		case s := <-slowCh:
+			slowRunning = false
+			lastClient = s.c
+			if s.n != nil {
+				cancel()
+				return s.c, s.n, nil
+			}
+			slowErr = s.err
+		}
+	}
+	if slowErr != nil {
+		return lastClient, nil, slowErr
+	}
+	return lastClient, nil, directErr
 }
 
 func normalizeRelayURL(s string) string {
@@ -2894,10 +3251,64 @@ func (o *Owner) localSession(sessionID string) *machine.Local {
 	return l
 }
 
+func (o *Owner) hasReplacementFor(machineID string, old *peer.Machine) bool {
+	if old == nil {
+		return false
+	}
+	if c := o.liveClient(); c != nil && c.HasReplacement(machineID, old) {
+		return true
+	}
+	return false
+}
+
+func (o *Owner) knownSessionMachine(sessionID string) (id, name string) {
+	o.mu.Lock()
+	for _, m := range o.lastMachines {
+		if ownsSession(m.GetMachineId(), sessionID) {
+			id, name = m.GetMachineId(), m.GetMachineName()
+			break
+		}
+	}
+	o.mu.Unlock()
+	if id != "" {
+		return id, name
+	}
+	if o.rep != nil {
+		o.rep.feeds(func(feeds map[string]*feed) {
+			for mid, f := range feeds {
+				if ownsSession(mid, sessionID) {
+					id, name = mid, f.name
+					return
+				}
+			}
+		})
+	}
+	return id, name
+}
+
 // sessionMachine finds the machine that owns a session from its id prefix.
 func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Machine, error) {
 	if parts := strings.SplitN(sessionID, "_", 3); len(parts) != 3 || parts[0] != "s" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("bad session id"))
+	}
+	dialKnown := func(id, name string) (*peer.Machine, error) {
+		c, err := o.relay(ctx)
+		if err != nil {
+			return nil, err
+		}
+		o.adoptDirectMachines(c)
+		_, pn, err := o.machineViaRelay(ctx, c, id, false)
+		if err != nil {
+			label := name
+			if label == "" {
+				label = id
+			}
+			return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("%s is unreachable: %w", label, err))
+		}
+		return pn, nil
+	}
+	if id, name := o.knownSessionMachine(sessionID); id != "" {
+		return dialKnown(id, name)
 	}
 	machines, err := o.machines(ctx)
 	if err != nil {
@@ -2905,24 +3316,7 @@ func (o *Owner) sessionMachine(ctx context.Context, sessionID string) (*peer.Mac
 	}
 	for _, n := range machines {
 		if ownsSession(n.MachineId, sessionID) {
-			c, err := o.relay(ctx)
-			if err != nil {
-				return nil, err
-			}
-			pn, err := c.Machine(ctx, n.MachineId)
-			if err != nil {
-				if o.recoverTunnel(c, n.MachineId, err) {
-					if c2, err2 := o.relay(ctx); err2 == nil {
-						if pn2, err2 := c2.Machine(ctx, n.MachineId); err2 == nil {
-							o.noteTunnelOK(n.MachineId)
-							return pn2, nil
-						}
-					}
-				}
-				return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("%s is unreachable: %w", n.MachineName, err))
-			}
-			o.noteTunnelOK(n.MachineId)
-			return pn, nil
+			return dialKnown(n.MachineId, n.MachineName)
 		}
 	}
 	return nil, connect.NewError(connect.CodeNotFound, errors.New("no machine owns this session"))
@@ -2933,25 +3327,37 @@ func (o *Owner) StreamSessionEvents(ctx context.Context, req *localv1.StreamSess
 	if l := o.localSession(req.SessionId); l != nil {
 		return l.StreamEvents(ctx, ask, send)
 	}
-	n, err := o.sessionMachine(ctx, req.SessionId)
-	if err != nil {
-		return err
-	}
 	if req.View == sessionv1.EventView_EVENT_VIEW_BASIC { // a machine from before views sends events whole
 		full := send
 		send = func(e *sessionv1.SessionEvent) error { return full(machine.BasicEvent(e)) }
 	}
-	stream, err := n.Session.StreamEvents(ctx, ask)
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-	for stream.Receive() {
-		if err := send(stream.Msg()); err != nil {
+	for {
+		n, err := o.sessionMachine(ctx, req.SessionId)
+		if err != nil {
 			return err
 		}
+		err = func() error {
+			stream, sErr := n.Session.StreamEvents(ctx, ask)
+			if sErr != nil {
+				return sErr
+			}
+			defer stream.Close()
+			for stream.Receive() {
+				ev := stream.Msg()
+				if ev.GetSeq() > ask.AfterSeq {
+					ask.AfterSeq = ev.GetSeq()
+				}
+				if err := send(ev); err != nil {
+					return err
+				}
+			}
+			return stream.Err()
+		}()
+		if req.Follow && ctx.Err() == nil && o.hasReplacementFor(n.MachineID, n) {
+			continue
+		}
+		return err
 	}
-	return stream.Err()
 }
 
 // ListSessionEvents pages through a session's events on its machine.

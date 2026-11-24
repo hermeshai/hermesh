@@ -4425,6 +4425,23 @@ func (e *Engine) SubscribeThread(ctx context.Context, p *Principal, threadID str
 		return err
 	}
 	highWater := afterSeq
+	if len(history) == 0 {
+		// Confirm subscription readiness immediately in 1 RTT when the client is
+		// already caught up at afterSeq so callers never need a synthetic timer.
+		if cur, tErr := e.st.Thread(threadID); tErr == nil && cur != nil {
+			if cur.LastSeq > highWater {
+				highWater = cur.LastSeq
+			}
+			if err := send(&threadv2.ThreadEvent{
+				Seq:      cur.LastSeq,
+				ThreadId: threadID,
+				Type:     "thread.subscribed",
+				Thread:   cur,
+			}); err != nil {
+				return err
+			}
+		}
+	}
 	for _, ev := range history {
 		if ev.Seq > highWater {
 			highWater = ev.Seq

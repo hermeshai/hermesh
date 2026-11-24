@@ -350,7 +350,9 @@ func (r *replica) run(s *sources) {
 		}
 		r.mu.Unlock()
 	}
-	r.poll(s.ctx, s, true, true)
+	firstListed := make(chan struct{})
+	go r.followOwner(s, firstListed)
+	<-firstListed
 	close(s.listed)
 	r.mu.Lock()
 	var starting []chan struct{}
@@ -369,7 +371,6 @@ func (r *replica) run(s *sources) {
 	r.machinesChangedLocked(s)
 	r.mu.Unlock()
 
-	go r.followOwner(s)
 	idle := time.NewTicker(pollMachinesEvery)
 	defer idle.Stop()
 	for {
@@ -388,21 +389,37 @@ func (r *replica) run(s *sources) {
 
 // followOwner keeps what the relay lists current: as its WatchOwner stream
 // pushes it, or, from a relay without WatchOwner, by asking (pollOwner).
-// When the stream ends (the connection to the relay dropped), the lists are
-// asked for once, which tells whether the relay can be reached, and it is
-// watched again.
-func (r *replica) followOwner(s *sources) {
+// firstListed, when non-nil, is closed as soon as WatchOwner's initial snapshot
+// (or a fallback poll) has populated s.
+func (r *replica) followOwner(s *sources, firstListed chan struct{}) {
+	markListed := sync.OnceFunc(func() {
+		if firstListed != nil {
+			close(firstListed)
+		}
+	})
+	defer markListed()
 	var answer chan struct{} // a refresh waiting for the next first message
+	onFirst := markListed
 	for s.ctx.Err() == nil {
-		again, err := r.watchOwner(s, answer)
+		again, received, err := r.watchOwner(s, answer, onFirst)
+		onFirst = nil
 		if answer = again; again != nil {
+			if !received {
+				r.poll(s.ctx, s, true, true)
+			}
+			markListed()
 			continue // asked to watch again
 		}
 		if connect.CodeOf(err) == connect.CodeUnimplemented {
+			if !received {
+				r.poll(s.ctx, s, true, true)
+			}
+			markListed()
 			r.pollOwner(s)
 			return
 		}
 		r.poll(s.ctx, s, true, true)
+		markListed()
 		select {
 		case <-s.ctx.Done():
 			return
@@ -414,7 +431,7 @@ func (r *replica) followOwner(s *sources) {
 // watchOwner keeps what the relay's WatchOwner sends until it ends; answer
 // is closed once its first message is kept. again: a refresh asked to
 // watch again, and waits on it.
-func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struct{}, err error) {
+func (r *replica) watchOwner(s *sources, answer chan struct{}, onFirst func()) (again chan struct{}, received bool, err error) {
 	defer func() {
 		if answer != nil {
 			close(answer) // no first message came: the refresh waits no more
@@ -422,7 +439,7 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 	}()
 	ctl, _, err := r.o.control(s.ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
@@ -431,7 +448,7 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 	}()
 	stream, err := ctl.WatchOwner(ctx, &relayv1.WatchOwnerRequest{})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer stream.Close()
 	asked := make(chan chan struct{}, 1)
@@ -490,12 +507,19 @@ func (r *replica) watchOwner(s *sources, answer chan struct{}) (again chan struc
 		for _, id := range evict {
 			r.o.forgetMachine(id)
 		}
+		if !received {
+			received = true
+			if onFirst != nil {
+				onFirst()
+				onFirst = nil
+			}
+		}
 		if answer != nil {
 			close(answer)
 			answer = nil
 		}
 	}
-	return nil, cmp.Or(stream.Err(), errors.New("the relay ended the watch"))
+	return nil, received, cmp.Or(stream.Err(), errors.New("the relay ended the watch"))
 }
 
 // pollOwner asks a relay without WatchOwner for the machines and agents
@@ -691,6 +715,9 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	ready := func() {
 		r.mu.Lock()
 		f.ready, f.err, f.retry = true, "", 0
+		if r.src == s {
+			r.kickLocked()
+		}
 		r.machinesChangedLocked(s)
 		r.mu.Unlock()
 		done()
@@ -710,6 +737,9 @@ func (r *replica) follow(s *sources, id string, f *feed, started chan struct{}) 
 	}
 	f.retry = min(max(2*f.retry, retryFirst), retryMax)
 	retry := f.retry
+	if r.src == s {
+		r.kickLocked()
+	}
 	r.machinesChangedLocked(s)
 	r.mu.Unlock()
 	done()

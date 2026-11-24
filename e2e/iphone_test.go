@@ -532,7 +532,11 @@ func newIPhoneControl(t *testing.T, w *ownerMac, sessions map[string]string) str
 			// The Mac back on it too (it retries with a backoff): a notice
 			// it raises while away is not sent.
 			eventually(t, 60*time.Second, "the machine is back on the relay", func() bool {
-				r := w.cli(30*time.Second, "project", "list")
+				res, err := w.app.client.ListMachines(ctx, &localv1.ListMachinesRequest{})
+				if err != nil || len(res.Machines) == 0 || !res.Machines[0].Online {
+					return false
+				}
+				r := run(t, append(append([]string{}, w.cliEnv...), "HERMESH_LINK=off"), 30*time.Second, filepath.Join(w.bin, "hermesh"), "project", "list")
 				return r.code == 0 && strings.Contains(r.stdout, "owner-mac/demo")
 			})
 		} else {

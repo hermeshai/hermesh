@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -25,11 +26,12 @@ import (
 // H3Client is an http.Client bound to a single established E2E QUIC connection.
 type H3Client struct {
 	*http.Client
-	tr    *http3.Transport
-	cc    *http3.ClientConn
-	qconn *quic.Conn
-	qtr   *quic.Transport // optional owned packet transport (e.g. hole-punched dial)
-	pc    net.PacketConn  // optional owned UDP socket paired with qtr
+	tr      *http3.Transport
+	cc      *http3.ClientConn
+	qconn   *quic.Conn
+	qtr     *quic.Transport // optional owned packet transport (e.g. hole-punched dial)
+	pc      net.PacketConn  // optional owned UDP socket paired with qtr
+	retired atomic.Bool
 }
 
 type h3SchemeNormalizer struct {
@@ -255,9 +257,32 @@ func (c *H3Client) AttachPacketTransport(qtr *quic.Transport, pc net.PacketConn)
 	c.pc = pc
 }
 
-// Alive reports whether the underlying QUIC connection is still open.
+// Alive reports whether the underlying QUIC connection is still open and taking new requests.
 func (c *H3Client) Alive() bool {
-	return c != nil && c.qconn != nil && c.qconn.Context().Err() == nil
+	return c != nil && !c.retired.Load() && c.qconn != nil && c.qconn.Context().Err() == nil
+}
+
+// MarkRetired stops new requests from using c immediately while leaving active
+// streams open until Retire or Close completes.
+func (c *H3Client) MarkRetired() {
+	if c != nil {
+		c.retired.Store(true)
+	}
+}
+
+// Retire waits until ctx ends or the underlying QUIC connection closes, then closes c.
+func (c *H3Client) Retire(ctx context.Context) error {
+	if c == nil {
+		return nil
+	}
+	c.retired.Store(true)
+	if c.qconn != nil {
+		select {
+		case <-ctx.Done():
+		case <-c.qconn.Context().Done():
+		}
+	}
+	return c.Close()
 }
 
 // RTT returns the QUIC stack's live RFC 9002 smoothed RTT.

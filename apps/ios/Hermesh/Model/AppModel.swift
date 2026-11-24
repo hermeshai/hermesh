@@ -302,15 +302,22 @@ final class AppModel {
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private var workTask: Task<Void, Never>?
     @ObservationIgnored private var workVersion: UInt64 = 0
+    @ObservationIgnored private var herKeptVersion: UInt64 = 0
+    /// True only after the background grace window expires and active streams/core are paused.
+    var isBackgroundPaused = false
     /// The overview is on screen: its work is counted again only then.
     @ObservationIgnored var overviewShown = false
     @ObservationIgnored private var saveTask: Task<Void, Never>?
+    @ObservationIgnored private var pauseGraceTask: Task<Void, Never>?
+    @ObservationIgnored private var bgTaskID: UIBackgroundTaskIdentifier = .invalid
+    private static let backgroundGraceDuration: Duration = .seconds(15)
     @ObservationIgnored private var active = false
     @ObservationIgnored private var network: NWPathMonitor?
     @ObservationIgnored private var networkSeen: String?
     @ObservationIgnored private var networkPending = false
     @ObservationIgnored private var foregroundAt: Date?
     @ObservationIgnored private var loggedFirstReset = false
+    @ObservationIgnored private var knownMachineStatus: [String: Hermesh_Machine_V1_MachineStatus] = [:]
 
     // MARK: Lifecycle
 
@@ -359,13 +366,36 @@ final class AppModel {
         active = true
         foregroundAt = Date()
         loggedFirstReset = false
-        if isDemo { begin(); her.resume(); return }
-        // Back from the background, a new Watch begins: what shows is not
-        // current until its first message. Only inactive meanwhile (the
-        // Notification Center pulled part way, say), the Watch went on.
+        let hadPendingGrace = pauseGraceTask != nil
+        pauseGraceTask?.cancel()
+        pauseGraceTask = nil
+        endBackgroundAssertion()
+        if isDemo {
+            isBackgroundPaused = false
+            begin()
+            her.resume()
+            return
+        }
+        // Short app switch (< 15 s): streams and Go core stayed live during the grace window!
+        if hadPendingGrace && !isBackgroundPaused && watchTask != nil {
+            flushNetworkChange()
+            begin()
+            her.resume()
+            appConnLog.info("app.foreground instant_grace=true")
+            return
+        }
+        isBackgroundPaused = false
+        // Back from a full pause, a new Watch begins: what shows is not
+        // current until its first message.
         if watchTask == nil {
             watched = false
             relayDownSince = nil
+        }
+        // If the network switched while suspended, notify Go before Core.resume
+        // so stale old-interface kept sockets are dropped upfront.
+        if phase == .ready && networkPending {
+            networkPending = false
+            Core.networkChanged()
         }
         let fgAt = foregroundAt ?? Date()
         Core.resume { [self] in // the core listens again
@@ -379,10 +409,21 @@ final class AppModel {
         }
     }
 
-    /// The app went to the background: stop the work that keeps it current,
-    /// and keep what it shows for the next launch.
-    func background() {
-        active = false
+    private func endBackgroundAssertion() {
+        guard bgTaskID != .invalid else { return }
+        let id = bgTaskID
+        bgTaskID = .invalid
+        UIApplication.shared.endBackgroundTask(id)
+    }
+
+    private func performFullPause() {
+        pauseGraceTask?.cancel()
+        pauseGraceTask = nil
+        guard !active else {
+            endBackgroundAssertion()
+            return
+        }
+        isBackgroundPaused = true
         watchTask?.cancel()
         threadsTask?.cancel()
         threadsTask = nil
@@ -392,9 +433,39 @@ final class AppModel {
         clockTask = nil
         workTask = nil
         her.pause()
-        if isDemo { return }
-        if phase == .ready { saveWorld(now: true) }
-        Core.pause()
+        if !isDemo {
+            Core.pause()
+        }
+        endBackgroundAssertion()
+    }
+
+    /// The app went to the background: persist world asynchronously and hold a
+    /// brief 15 s grace window via beginBackgroundTask so quick app switches
+    /// (copying text / 2FA) return in 0 ms without tearing down active streams;
+    /// longer backgrounding or OS expiration executes a clean full pause.
+    func background() {
+        active = false
+        if isDemo {
+            performFullPause()
+            return
+        }
+        endBackgroundAssertion()
+        bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "hermesh.graceful-pause") { [weak self] in
+            Task { @MainActor in self?.performFullPause() }
+        }
+        if phase == .ready {
+            saveWorld(now: false)
+        }
+        if bgTaskID == .invalid {
+            performFullPause()
+            return
+        }
+        pauseGraceTask?.cancel()
+        pauseGraceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.backgroundGraceDuration)
+            guard !Task.isCancelled else { return }
+            self?.performFullPause()
+        }
     }
 
     /// Forces an immediate network and Her reconnect (used by the diagnostics sheet).
@@ -479,10 +550,15 @@ final class AppModel {
     @ObservationIgnored private var keptOwner = ""
 
     private var worldFile: URL { Core.dataDirectory.appendingPathComponent("world.pb") }
+    private var threadsFile: URL { Core.dataDirectory.appendingPathComponent("threads.pb") }
 
     /// The world as the app last showed it, from the phone, as a Watch's first message.
     private func restoreWorld() -> Hermesh_Local_V1_WatchResponse? {
         guard let data = try? Data(contentsOf: worldFile), var w = try? Hermesh_Local_V1_WatchResponse(serializedBytes: data) else { return nil }
+        if let tData = try? Data(contentsOf: threadsFile),
+           let savedThreads = try? Hermesh_Thread_V2_ListThreadsResponse(serializedBytes: tData) {
+            threads = savedThreads.threads
+        }
         w.pairings.removeAll { $0.hasExpiresAt && $0.expiresAt.date < Date() }
         w.status.relayConnected = false
         apply(w)
@@ -496,7 +572,7 @@ final class AppModel {
         return w
     }
 
-    /// Keeps what the app shows: the newest sessions, and all else it holds.
+    /// Keeps what the app shows: the newest sessions, threads, and all else it holds.
     /// now: written before this returns, as the app leaves the front (it may
     /// be suspended right after); else off the main thread.
     private func saveWorld(now: Bool = false) {
@@ -512,14 +588,22 @@ final class AppModel {
         w.pairings = pairings
         w.sessions = Array(heldSessions.sorted { $0.updatedDate > $1.updatedDate }.prefix(200))
         if let c = w.sessions.count < heldSessions.count ? w.sessions.last.map(cursorAt) : cursor { w.next = c }
+        var tList = Hermesh_Thread_V2_ListThreadsResponse()
+        tList.threads = Array(threads.prefix(200))
         keptOwner = status.ownerID
         guard let data = try? w.serializedData() else { return }
+        let tData = try? tList.serializedData()
         let url = worldFile
+        let tURL = threadsFile
         let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
         if now {
             try? data.write(to: url, options: options)
+            if let tData { try? tData.write(to: tURL, options: options) }
         } else {
-            Task.detached(priority: .utility) { try? data.write(to: url, options: options) }
+            Task.detached(priority: .utility) {
+                try? data.write(to: url, options: options)
+                if let tData { try? tData.write(to: tURL, options: options) }
+            }
         }
     }
 
@@ -539,7 +623,9 @@ final class AppModel {
         accountPresented = false
         saveTask?.cancel()
         heldSessions = []
+        threads = []
         machines = []
+        knownMachineStatus = [:]
         clients = []
         devices = []
         projects = []
@@ -548,7 +634,9 @@ final class AppModel {
         hasWorld = false
         startSettled = false
         keptOwner = ""
+        Push.shared.invalidate()
         try? FileManager.default.removeItem(at: worldFile)
+        try? FileManager.default.removeItem(at: threadsFile)
         UserDefaults.standard.removeObject(forKey: Guide.key) // the guide is the owner's
         UserDefaults.standard.removeObject(forKey: Guide.stepKey)
         conversations.forgetAll()
@@ -750,8 +838,24 @@ final class AppModel {
                 her.wakeRetries()
             }
         }
+        for m in known where m.hasStatus { knownMachineStatus[m.machineID] = m.status }
+        for m in r.machines where m.hasStatus { knownMachineStatus[m.machineID] = m.status }
+        let heldKnown: [Machine] = knownMachineStatus.map { id, st in
+            var m = Machine()
+            m.machineID = id
+            m.status = st
+            return m
+        }
         let prevReachable = Set(known.filter { $0.online && $0.unreachable.isEmpty }.map(\.machineID))
-        machines = upsert(machines, holdingState(r.machines, known: known), removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
+        let prevMachineIDs = Set(known.map(\.machineID))
+        machines = upsert(machines, holdingState(r.machines, known: heldKnown, relayConnected: status.relayConnected), removed: r.removedMachineIds, key: \.machineID).sorted { $0.machineName < $1.machineName }
+        let activeMachineIDs = Set(machines.map(\.machineID))
+        knownMachineStatus = knownMachineStatus.filter { activeMachineIDs.contains($0.key) }
+        NoticeKey.herEnvironments = machines.filter(\.her.enabled).count
+        if !known.isEmpty && Set(machines.map(\.machineID)) != prevMachineIDs {
+            Push.shared.invalidate()
+            Task { await Push.shared.register(api: api?.live, force: true) }
+        }
         for m in machines where m.online && m.unreachable.isEmpty && !prevReachable.contains(m.machineID) {
             her.wakeRetries(for: m.machineID)
         }
@@ -775,6 +879,10 @@ final class AppModel {
         if r.workVersion != 0 && r.workVersion != workVersion {
             workVersion = r.workVersion
             workChanged()
+        }
+        if r.herKeptVersion != 0 && r.herKeptVersion != herKeptVersion {
+            herKeptVersion = r.herKeptVersion
+            her.reloadKept()
         }
         r.deletedSessionIds.forEach(conversations.forget)
         if watched { saveSoon() }
@@ -918,7 +1026,7 @@ final class AppModel {
     /// The owner changed which notifications they want: tell the machines
     /// (they encrypt and send them; see Push).
     func notificationPrefsChanged() {
-        Task { await Push.shared.register(api: api?.live) }
+        Task { await Push.shared.register(api: api?.live, force: true) }
     }
 
     // MARK: Actions

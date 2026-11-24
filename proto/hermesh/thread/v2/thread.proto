@@ -605,10 +605,14 @@ message LaunchThreadResponse {
 message GetThreadRequest {
   string machine_id = 1;
   string thread_id = 2;
+  // Return only the locally cached projection on the owner device without dialing remote.
+  bool cached_only = 3;
 }
 
 message GetThreadResponse {
   ThreadProjection projection = 1;
+  // True when projection was served from local cache rather than a live machine.
+  bool from_cache = 2;
 }
 
 message ListThreadsRequest {

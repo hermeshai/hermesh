@@ -352,8 +352,12 @@ private struct HerConnections: ViewModifier {
         let running = herReachable(machine) && machine.her.running
         let following = HerChat.Following(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)
         content
-            .task(id: following) { await chat.hold(following) }
-            .task { await chat.loadKept() }
+            .task(id: following) {
+                if chat.kept == nil { await chat.loadKept() }
+                let current = HerChat.Following(bot: chat.bot?.id, session: chat.bot?.sessionID, running: running, modelReady: machine.her.modelReady)
+                await chat.hold(current)
+            }
+            .task { if chat.kept == nil { await chat.loadKept() } }
             .task(id: herReachable(machine)) { await chat.refreshWaiting() }
             // Delivered meanwhile: what waits is asked for again as the conversation grows.
             .onChange(of: chat.live?.entries.count) { if !chat.waiting.isEmpty { Task { await chat.refreshWaiting() } } }

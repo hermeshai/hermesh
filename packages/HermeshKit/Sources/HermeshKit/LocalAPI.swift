@@ -209,9 +209,10 @@ public final class LocalAPI: @unchecked Sendable {
         try await callThread("ListThreads", req)
     }
 
-    public func getThread(threadID: String) async throws -> Hermesh_Thread_V2_GetThreadResponse {
+    public func getThread(threadID: String, cachedOnly: Bool = false) async throws -> Hermesh_Thread_V2_GetThreadResponse {
         var r = Hermesh_Thread_V2_GetThreadRequest()
         r.threadID = threadID
+        r.cachedOnly = cachedOnly
         return try await callThread("GetThread", r)
     }
 
