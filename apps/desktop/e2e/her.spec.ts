@@ -161,6 +161,14 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // The owner's bubble is a session page's: the brand blue with white words, as on the iPhone.
   await expect(log.locator(".um .bub").first()).toHaveCSS("background-color", "rgb(61, 91, 255)");
   await expect(log.locator(".um .bub").first()).toHaveCSS("color", "rgb(255, 255, 255)");
+  // Her's box is one line; Send is only an arrow, with no plate under it, until there is something to send.
+  const sendButton = page.getByRole("button", { name: "发送 ↩" });
+  expect((await page.locator(".her .cmp").boundingBox())!.height).toBeLessThan(50);
+  await expect(sendButton).toBeDisabled();
+  await expect(sendButton).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await composer.fill("x");
+  await expect(sendButton).toHaveCSS("background-color", "rgb(61, 91, 255)");
+  await composer.fill("");
   // A message leaves the composer at once and shows once (docs/her-sending.md): it goes by its id through hermeshd,
   // on this conversation's connection, and stays where it is from being sent to her having it.
   await send(mockSend("只收到一次"));
