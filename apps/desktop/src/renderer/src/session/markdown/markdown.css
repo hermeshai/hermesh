@@ -85,14 +85,14 @@
 .md .katex-display{overflow:auto;max-width:100%;padding:6px 0;margin:.8em 0}
 .md .katex-error{color:inherit!important;font-family:var(--mono);font-size:.9em;white-space:pre-wrap}
 /* Replies and rich blocks share the centered conversation column, including with the info card shown.
-   No scrollbar lane: prose and the control area share the same center. */
+   No scrollbar lane: prose and the control area share the same center. A reply's words and its blocks take the whole
+   column: they start where the steps, the work line and the box under them start, and end where a message ends. */
 .cscroll.markdown-chat{scrollbar-width:none}
 .cscroll.markdown-chat::-webkit-scrollbar{display:none}
-.markdown-chat{container-type:inline-size}
+.markdown-chat{container-type:inline-size;--md-prose-width:var(--conversation-width);--md-rich-width:var(--conversation-width)}
 .markdown-chat>.dbody{max-width:calc(var(--conversation-width) + 32px)}
-.markdown-chat .vrow>.am{width:100%;padding-inline:8px;align-self:center}
+.markdown-chat .vrow>.am{width:100%;align-self:center}
 .markdown-chat .am>.md>*{max-width:var(--md-prose-width);margin-inline:auto}
-.markdown-chat .am>.msg-act{left:6px}
 /* Cards and steps take the column; time lines and notes stay centred, as small as their words. */
 .markdown-chat .tr>:not(.vrow,.vspace),.markdown-chat .vrow>:not(.am,.tdiv,.tnote){max-width:var(--conversation-width);width:100%;align-self:center}
 .markdown-chat .vrow>.um{width:auto;align-self:flex-end;max-width:min(80%,var(--conversation-width))}

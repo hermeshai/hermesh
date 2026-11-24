@@ -479,7 +479,7 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .insp-facts .insp-gear{margin:0 -4px 0 auto;height:24px;min-width:24px;padding:0 4px}
 .insp-facts .insp-gear:hover .ic{color:var(--l1)}
 .ilinks{display:flex;flex-direction:column;gap:5px;align-items:flex-start;font-size:12px}
-/* A centered 768px conversation with 16px gutters; reply text is inset 8px. */
+/* A centered 768px conversation with 16px gutters; what is in it and the box under it share its two edges. */
 .dbody{max-width:calc(var(--conversation-width) + 32px);margin:0 auto;padding:24px 16px 40px}
 .mainwrap.narrow .dbody{padding-left:16px;padding-right:16px}
 .tr{display:flex;flex-direction:column;gap:var(--sp-2)}
@@ -498,11 +498,12 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 .um.from .bub{background:var(--fill2);color:var(--msg)}
 .um-badge{position:absolute;left:-11px;top:-11px;z-index:1;padding:2px;border-radius:50%;background:var(--win);display:flex}
 .am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
-/* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left. */
+/* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left
+   (Copy's plate hangs out of the column, so that its glyph starts where the text does). */
 .um,.am.end{margin-bottom:var(--sp-3)}
 .msg-act{position:absolute;top:100%;padding-top:3px;display:flex;align-items:center;gap:4px;opacity:0;transition:opacity .15s}
 .um .msg-act{right:2px}
-.am .msg-act{left:-2px;flex-direction:row-reverse}
+.am .msg-act{left:-6px;flex-direction:row-reverse}
 .um:hover .msg-act,.am:hover .msg-act,.msg-act:focus-within{opacity:1}
 .msg-act .tb{height:26px;min-width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--r-sm);color:var(--l3)}
 .msg-act .tb:hover{color:var(--l1);background:var(--fill)}
