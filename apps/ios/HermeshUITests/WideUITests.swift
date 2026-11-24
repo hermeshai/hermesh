@@ -48,12 +48,16 @@ final class WideUITests: XCTestCase {
         sleep(1)
         XCTAssertEqual(app.buttons.matching(identifier: "session-info").count, 1, "in the first's place, not over it")
 
-        // Its rail: Her, the overview, search, and the agents at work.
+        // The page's own button widens it over the menu, which shrinks to its rail: Her, the overview, search, and
+        // the agents at work.
+        XCTAssertFalse(drawer.buttons["menu-hide"].exists, "not a button of the menu's")
+        XCTAssertLessThan(abs(element("menu-hide").frame.midY - app.buttons["session-info"].frame.midY), 4, "in the page's bar")
+        XCTAssertGreaterThan(element("menu-hide").frame.minX, drawer.frame.maxX, "at the page's leading edge")
         tap("menu-hide")
         XCTAssertTrue(rail.waitForExistence(timeout: 5), "the rail")
         XCTAssertTrue(drawer.waitForNonExistence(timeout: 5), "in the menu's place")
         XCTAssertLessThan(rail.frame.width, 160)
-        XCTAssertFalse(app.buttons["menu"].exists, "the rail expands it, not a menu button")
+        XCTAssertFalse(app.buttons["menu"].exists || element("menu-hide").exists, "the rail expands it, not a button of the page's")
         for id in ["rail-her", "rail-overview", "rail-search"] { XCTAssertTrue(element(id).exists, id) }
         XCTAssertFalse(element("rail-sessions").exists || element("rail-work").exists, "no places of the old map")
         shot("3-rail")
@@ -91,7 +95,7 @@ final class WideUITests: XCTestCase {
 
     /// A session row the list shows whole (it scrolls under the menu's top band, and keeps where it was left).
     private func visibleRow(_ rows: XCUIElementQuery) -> XCUIElement {
-        let band = element("menu-hide").frame.maxY + 16
+        let band = element("search").frame.maxY + 16
         let row = rows.allElementsBoundByIndex.first { $0.isHittable && $0.frame.minY >= band }
         XCTAssertNotNil(row, "a session row in view")
         return row ?? rows.firstMatch

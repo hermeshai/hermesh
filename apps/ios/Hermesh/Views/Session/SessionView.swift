@@ -242,7 +242,7 @@ struct SessionBar: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Back")
                         .accessibilityIdentifier("BackButton")
-                } else if !model.menuBeside {
+                } else {
                     GlassMenuButton()
                 }
             }

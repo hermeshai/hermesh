@@ -111,7 +111,7 @@ private struct HerPage: View {
     private func header(_ chat: HerChat, state: HerEnvState) -> some View {
         ZStack(alignment: .top) {
             HStack(spacing: 8) {
-                if !sideBars && !model.menuBeside { GlassMenuButton() }
+                if !sideBars { GlassMenuButton() }
                 Spacer()
                 // Progress, looked at often: a button of its own, not a card of her page (docs/her-team.md §15).
                 if chat.bot != nil, !sideBars { HerProgressButton(marks: herProgressMarks(chat)) }
@@ -402,26 +402,31 @@ private struct HerProgressButton: View {
     private var dot: Color? { marks.waiting > 0 ? .orange : marks.running > 0 ? .accentColor : nil }
 }
 
-/// The menu button, as root pages have it in their bar, on a page that draws its own top (Her's, a session's).
+/// The menu button, as root pages have it in their bar, on a page that draws its own top (Her's, a session's); beside
+/// the expanded menu, the button that widens the page over it; none beside the menu's rail.
 struct GlassMenuButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button {
-            model.drawerOpen = true
-        } label: {
-            Image(systemName: "line.3.horizontal").font(.body.weight(.medium)).frame(width: 44, height: 44)
-                .overlay(alignment: .topTrailing) {
-                    if model.attentionCount > 0 {
-                        Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11)
+        if model.menuBeside {
+            if model.menuInView { WidenPageButton(glass: true).buttonStyle(.plain) }
+        } else {
+            Button {
+                model.drawerOpen = true
+            } label: {
+                Image(systemName: "line.3.horizontal").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                    .overlay(alignment: .topTrailing) {
+                        if model.attentionCount > 0 {
+                            Circle().fill(.orange).frame(width: 8, height: 8).offset(x: -9, y: 11)
+                        }
                     }
-                }
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(.circle)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(model.attentionCount > 0 ? Text("Menu, \(model.attentionCount) need you") : Text("Menu"))
+            .accessibilityIdentifier("menu")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(model.attentionCount > 0 ? Text("Menu, \(model.attentionCount) need you") : Text("Menu"))
-        .accessibilityIdentifier("menu")
     }
 }
 

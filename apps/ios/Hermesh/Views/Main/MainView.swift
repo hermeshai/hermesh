@@ -655,12 +655,41 @@ extension EnvironmentValues {
     }
 }
 
-/// The menu button in a root page's bar; none while the menu or its rail stands beside the page.
+/// Beside the expanded menu, in the menu button's place on a root page: the page takes the menu's room, and the menu
+/// shrinks to its rail (whose own button expands it again).
+struct WidenPageButton: View {
+    @Environment(AppModel.self) private var model
+    /// In a page's own bar: a circle of the system's glass, as its other buttons.
+    var glass = false
+
+    var body: some View {
+        Button {
+            model.menuRail = true
+        } label: {
+            if glass {
+                Image(systemName: "arrow.up.left.and.arrow.down.right").font(.body.weight(.medium)).frame(width: 44, height: 44)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(.circle)
+            } else {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+        }
+        .accessibilityLabel("Collapse the menu")
+        .accessibilityIdentifier("menu-hide")
+    }
+}
+
+/// In a root page's bar: the menu button; beside the expanded menu, the button that widens the page over it; none
+/// beside the menu's rail.
 struct MenuToolbarItem: ToolbarContent {
     @Environment(AppModel.self) private var model
 
     var body: some ToolbarContent {
-        if !model.menuBeside { ToolbarItem(placement: .topBarLeading) { MenuButton() } }
+        if !model.menuBeside {
+            ToolbarItem(placement: .topBarLeading) { MenuButton() }
+        } else if model.menuInView {
+            ToolbarItem(placement: .topBarLeading) { WidenPageButton() }
+        }
     }
 }
 
