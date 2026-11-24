@@ -1211,6 +1211,15 @@ func (s *session) handleNotification(method string, params json.RawMessage) {
 		}
 		done := method == "item/completed"
 		switch p.Item.Type {
+		case "reasoning":
+			// When the model thinks, even when it gives no summary of it.
+			if p.Item.ID != "" {
+				kind := runtime.EventReasoningDelta
+				if done {
+					kind = runtime.EventReasoningCompleted
+				}
+				s.emit(runtime.Event{Kind: kind, ItemID: "rsn_" + p.Item.ID})
+			}
 		case "agentMessage":
 			if done && strings.TrimSpace(p.Item.Text) != "" {
 				msgID := p.Item.ID

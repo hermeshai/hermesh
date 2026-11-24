@@ -2754,6 +2754,40 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		pendingPlan = nil
 	}
 
+	// Reasoning still streaming (item -> run): shown as thinking until it ends, except for the one item given.
+	liveRsn := map[string]string{}
+	settleReasoning := func(keep string) {
+		for itemID, runID := range liveRsn {
+			if itemID == keep {
+				continue
+			}
+			delete(liveRsn, itemID)
+			var text string
+			if buf := rsnBufs[itemID]; buf != nil {
+				text = buf.String()
+			}
+			evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+				it := &sessionv1.TurnItem{
+					ItemId:    itemID,
+					SessionId: sessionID,
+					RunId:     runID,
+					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
+					Status:    "completed",
+					Text:      text,
+				}
+				if err := tx.PutTurnItem(it); err != nil {
+					return err
+				}
+				return tx.AppendEvent(&sessionv1.SessionEvent{
+					SessionId: sessionID,
+					Type:      "item.updated",
+					Item:      it,
+				})
+			})
+			e.publish(evs, nil)
+		}
+	}
+
 	for {
 		var ev runtime.Event
 		var ok bool
@@ -2766,6 +2800,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		case ev, ok = <-pump.lease.Session.Events():
 		}
 		if !ok {
+			settleReasoning("")
 			e.mu.Lock()
 			if e.pumps[psID] == pump {
 				delete(e.pumps, psID)
@@ -2829,6 +2864,13 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 		}
 
 		pump.lease.Touch()
+
+		// Any next step of the model ends its thinking; reasoning ends its own other reasoning.
+		switch ev.Kind {
+		case runtime.EventReasoningDelta, runtime.EventNativeSession, runtime.EventUsage, runtime.EventNotice, runtime.EventBackgroundTask:
+		default:
+			settleReasoning("")
+		}
 
 		switch ev.Kind {
 		case runtime.EventNativeSession:
@@ -3185,6 +3227,8 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 				continue
 			}
 			itemID := scopeRunItemID(cur.runID, ev.ItemID, "rsn")
+			settleReasoning(itemID)
+			liveRsn[itemID] = cur.runID
 			buf := rsnBufs[itemID]
 			if buf == nil {
 				buf = &strings.Builder{}
@@ -3199,6 +3243,7 @@ func (e *Engine) runLeasePump(pump *leasePump) {
 					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_REASONING,
 					Status:    "completed",
 					Text:      buf.String(),
+					Streaming: true,
 				}
 				if err := tx.PutTurnItem(it); err != nil {
 					return err

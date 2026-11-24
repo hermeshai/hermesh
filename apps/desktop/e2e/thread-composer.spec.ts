@@ -163,14 +163,17 @@ test("a session on another machine: its folder added as a project, the model pic
     await expect(page.getByRole("log").locator(".am").nth(1)).toContainText("second_turn_done", { timeout: 30_000 });
 
     // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
-    await input.fill("sleep 20s\nsay never");
+    await input.fill("think weighing it\nsleep 4s\ntool-sleep 4s\nsleep 4s\nsay on it\nsleep 20s\nsay never");
     await input.press("Enter");
     await expect(page.getByTestId("composer-stop-btn")).toBeVisible({ timeout: 15_000 });
-    // And a line at the end of the conversation, as the iPhone's: the mark at work, thinking (no tool runs while it
-    // sleeps) and how long; under the last message, over the box.
+    // And a line at the end of the conversation, as the iPhone's: the mark at work, what the agent does now and how
+    // long; under the last message, over the box.
     const working = page.getByTestId("thread-working");
-    await expect(working).toContainText("思考中", { timeout: 15_000 });
+    await expect(working).toContainText("思考中", { timeout: 15_000 }); // its reasoning streams
     await expect(working).toContainText(/\d+:\d\d/);
+    await expect(working).toContainText("处理中"); // a tool runs
+    await expect(working).toContainText("工作中"); // between steps: no reasoning, tool or reply under way
+    await expect(working).toContainText("回复中"); // its reply streams
     const under = (await page.getByRole("log").locator(".um").filter({ hasText: "sleep 20s" }).boundingBox())!;
     const line = (await working.boundingBox())!;
     expect(line.y).toBeGreaterThan(under.y + under.height);

@@ -38,6 +38,8 @@
   "work": {
     "starting": "Starting…",
     "thinking": "Thinking…",
+    "replying": "Replying…",
+    "tool": "Running tools…",
     "working": "Working…"
   },
   "mode": {

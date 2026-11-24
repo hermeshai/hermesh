@@ -156,13 +156,17 @@ extension HermeshUITests {
         XCTAssertTrue(app.navigationBars["任务信息"].waitForNonExistence(timeout: 10), "closed")
 
         // While a turn runs: Stop beside Send, and what is sent waits for the next turn.
-        send("sleep 20s")
+        send("think weighing it\nsleep 4s\ntool-sleep 4s\nsleep 4s\nsay on it\nsleep 20s")
         XCTAssertTrue(app.buttons["thread-stop"].waitForExistence(timeout: 30), "Stop while it runs")
-        // And a line at the end of the conversation, whatever its last row: the mark at work, thinking (no tool runs while it sleeps) and how long.
+        // And a line at the end of the conversation, whatever its last row: the mark at work, what the agent does now and how long.
         let working = app.descendants(matching: .any)["thread-working"].firstMatch
         XCTAssertTrue(working.waitForExistence(timeout: 30), "said while it runs")
-        XCTAssertTrue(waitUntil(timeout: 30) { working.label.contains("思考中") }, working.label)
-        XCTAssertGreaterThan(working.frame.minY, app.staticTexts["sleep 20s"].firstMatch.frame.maxY, "under the last message")
+        XCTAssertTrue(waitUntil(timeout: 30) { working.label.contains("思考中") }, "its reasoning streams: \(working.label)")
+        XCTAssertTrue(waitUntil(timeout: 15) { working.label.contains("处理中") }, "a tool runs: \(working.label)")
+        XCTAssertTrue(waitUntil(timeout: 15) { working.label.contains("工作中") }, "between steps: \(working.label)")
+        XCTAssertTrue(waitUntil(timeout: 15) { working.label.contains("回复中") }, "its reply streams: \(working.label)")
+        let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'sleep 20s'")).firstMatch
+        XCTAssertGreaterThan(working.frame.minY, sent.frame.maxY, "under the last message")
         XCTAssertLessThan(working.frame.maxY, app.descendants(matching: .any)["thread-composer"].firstMatch.frame.minY, "over the box")
         shot("composer-working")
         send("say after_the_stop")

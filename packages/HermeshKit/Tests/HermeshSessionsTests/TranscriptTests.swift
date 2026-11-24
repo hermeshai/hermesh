@@ -134,18 +134,23 @@ private func kind(_ it: TranscriptItem) -> String {
     ])
 }
 
-@Test func aToolRunningInTheRunUnderWayIsWorking() {
+@Test func theRunUnderWaySaysWhetherItRunsAToolThinksOrReplies() {
     var p = projection
     p.session.activeRunID = "r2"
-    #expect(!sessionToolRunning(p), "only r1's tool runs: r2 thinks")
-    p.items.append(item(11, "r2", .reasoning) { $0.status = "running" })
-    #expect(!sessionToolRunning(p), "reasoning is thinking")
-    p.items.append(item(12, "r2", .commandExecution) { $0.command = "go test ./..."; $0.status = "running" })
-    #expect(sessionToolRunning(p))
+    #expect(sessionWork(p) == .working, "only r1 has items: r2 works")
+    p.items.append(item(11, "r2", .reasoning) { $0.text = "weigh it"; $0.streaming = true })
+    #expect(sessionWork(p) == .thinking)
+    p.items[p.items.count - 1].streaming = false
+    #expect(sessionWork(p) == .working, "done thinking, no reply yet")
+    p.items.append(item(12, "r2", .assistantMessage) { $0.text = "On it"; $0.streaming = true })
+    #expect(sessionWork(p) == .replying)
+    p.items.append(item(13, "r2", .commandExecution) { $0.command = "go test ./..."; $0.status = "running" })
+    #expect(sessionWork(p) == .tool, "a tool running comes first")
     p.items[p.items.count - 1].status = "completed"
-    #expect(!sessionToolRunning(p), "done: back to thinking")
+    p.items[p.items.count - 2].streaming = false
+    #expect(sessionWork(p) == .working)
     p.session.activeRunID = ""
-    #expect(!sessionToolRunning(p), "no run under way")
+    #expect(sessionWork(p) == .working, "no run under way")
 }
 
 @Test func consecutiveToolCallsAreOneStep() {
