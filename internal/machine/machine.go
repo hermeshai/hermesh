@@ -394,6 +394,7 @@ func (n *Machine) providerInfo(name string) rt.Info {
 		return i
 	}
 	i = p.Discover(context.Background())
+	n.noteAsked(name, i)
 	n.mu.Lock()
 	n.infos[name] = i
 	n.mu.Unlock()
@@ -413,8 +414,9 @@ func (n *Machine) credentials() *identityv1.Credentials {
 	return &identityv1.Credentials{RootChain: n.trust.RootChain(), MachineName: n.machineName, Subject: &identityv1.Credentials_MachineCert{MachineCert: n.machineCert}}
 }
 
-// The coding agents are checked (installed, version, logged in: each CLI is
-// run) only when something needs to know: the app showing them, an agent
+// The coding agents are checked (installed, version, logged in, and the
+// account's rate limits where the agent answers them: each CLI is run) only
+// when something needs to know: the app showing them, an agent
 // asking where it can work, a session about to start. Nothing checks them
 // in the background.
 
@@ -453,6 +455,7 @@ func (n *Machine) CheckAgents(force bool, maxAge time.Duration) <-chan struct{} 
 			go func() {
 				defer wg.Done()
 				info := p.Discover(context.Background())
+				n.noteAsked(name, info)
 				n.mu.Lock()
 				n.infos[name] = info
 				delete(n.pending, name)

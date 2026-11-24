@@ -12,7 +12,8 @@ import (
 )
 
 // Rate limits (docs/overview-usage.md §7): what each coding agent last said
-// of its account's limits in a session here, kept in memory and in the
+// of its account's limits, in a session here or asked when the agents are
+// checked (CheckAgents), kept in memory and in the
 // store (one row an agent), and told with the machine's status, which a
 // watch sends when it changed. The agents do not name the account, so it is
 // one an agent: the latest.
@@ -43,7 +44,7 @@ func (n *Machine) loadLimits() {
 func (n *Machine) noteLimits(agent string, said rt.Limits) {
 	l := &machinev1.AgentLimits{Plan: said.Plan, ObservedAt: timestamppb.Now()}
 	for _, w := range said.Windows {
-		l.Windows = append(l.Windows, &machinev1.LimitWindow{Minutes: w.Minutes, UsedPercent: w.UsedPercent, ResetsAt: timestamppb.New(w.ResetsAt)})
+		l.Windows = append(l.Windows, &machinev1.LimitWindow{Minutes: w.Minutes, UsedPercent: w.UsedPercent, ResetsAt: timestamppb.New(w.ResetsAt), Group: w.Group})
 	}
 	n.mu.Lock()
 	old := n.limits[agent]
@@ -57,5 +58,12 @@ func (n *Machine) noteLimits(agent string, said rt.Limits) {
 	b, _ := proto.Marshal(l)
 	if err := n.st.Set(kLimits+agent, b); err != nil {
 		n.log.Warn("keeping an agent's limits", "agent", agent, "err", err)
+	}
+}
+
+// noteAsked keeps the limits an agent answered when checked, if it did.
+func (n *Machine) noteAsked(agent string, i rt.Info) {
+	if i.Limits != nil {
+		n.noteLimits(agent, *i.Limits)
 	}
 }

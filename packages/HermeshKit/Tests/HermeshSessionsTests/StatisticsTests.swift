@@ -72,7 +72,7 @@ private let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 20
     #expect(codex.agents.map { "\($0.id) \($0.sessions)" } == ["codex 0"])
 }
 
-private func agent(_ name: String, available: Bool = true, said: Date? = nil, plan: String = "", windows: [(Int, Int, Date)] = []) -> Hermesh_Machine_V1_AgentStatus {
+private func agent(_ name: String, available: Bool = true, said: Date? = nil, plan: String = "", windows: [(Int, Int, Date)] = [], groups: [String] = []) -> Hermesh_Machine_V1_AgentStatus {
     .with { a in
         a.name = name
         a.available = available
@@ -80,7 +80,9 @@ private func agent(_ name: String, available: Bool = true, said: Date? = nil, pl
             a.limits = .with { l in
                 l.plan = plan
                 l.observedAt = Google_Protobuf_Timestamp(date: said)
-                l.windows = windows.map { w in .with { $0.minutes = UInt32(w.0); $0.usedPercent = UInt32(w.1); $0.resetsAt = Google_Protobuf_Timestamp(date: w.2) } }
+                l.windows = windows.enumerated().map { i, w in
+                    .with { $0.minutes = UInt32(w.0); $0.usedPercent = UInt32(w.1); $0.resetsAt = Google_Protobuf_Timestamp(date: w.2); $0.group = i < groups.count ? groups[i] : "" }
+                }
             }
         }
     }
@@ -101,6 +103,16 @@ private func agent(_ name: String, available: Bool = true, said: Date? = nil, pl
     #expect(lowLimits(cards).map(\.agent) == ["claude"])
     #expect(needs(team: teamState([], requests: 0), pairings: [], limits: ["claude"], expiring: ["g"], guide: false, herOff: false, notificationsOff: false,
                   secondDevice: false).map(\.id) == ["l:claude", "g:g"], "after what failed, before grants about to end")
+}
+
+@Test func anAgentThatCountsGroupsOfModelsApartKeepsThemInItsOrder() {
+    let min = { (n: Double) in today.addingTimeInterval(n * 60) }
+    let cards = agentLimits([(machineID: "mac", agents: [agent("antigravity", said: min(-1),
+                                                               windows: [(300, 3, min(120)), (10080, 17, min(9000)), (10080, 88, min(1080)), (300, 0, min(300))],
+                                                               groups: ["Gemini Models", "Gemini Models", "Claude and GPT models", "Claude and GPT models"])])], now: today)
+    #expect(cards[0].windows.map { "\($0.group) \($0.minutes) \($0.left)" } ==
+            ["Gemini Models 300 97", "Gemini Models 10080 83", "Claude and GPT models 300 100", "Claude and GPT models 10080 12"])
+    #expect(cards[0].least?.id == "Claude and GPT models/10080" && lowLimits(cards).map(\.agent) == ["antigravity"])
 }
 
 @Test func aWindowThatHasResetSinceIsNotShown() {

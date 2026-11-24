@@ -110,7 +110,7 @@ func (d *Driver) Discover(ctx context.Context) runtime.Info {
 	} else if os.Getenv("OPENAI_API_KEY") != "" {
 		info.LoggedIn = true
 	}
-	info.Models, info.Own, _ = catalog(ctx, env, bin)
+	info.Models, info.Own, info.Limits, _ = catalog(ctx, env, bin, info.LoggedIn)
 	info.AllModels = len(info.Models) > 0
 	info.ModelsState, info.ModelsAt = runtime.ModelsKnown, time.Now()
 	if len(info.Models) == 0 {
@@ -190,12 +190,34 @@ func (d *Driver) Archive(ctx context.Context, ref string, archived bool) error {
 	})
 }
 
-func catalog(ctx context.Context, env []string, bin string) (models []runtime.Model, own runtime.Settings, err error) {
+// catalog asks Codex for its models and own settings and, when withLimits,
+// then its account's rate limits (account/rateLimits/read), in one
+// app-server without a turn.
+func catalog(ctx context.Context, env []string, bin string, withLimits bool) (models []runtime.Model, own runtime.Settings, lim *runtime.Limits, err error) {
 	err = appServer(ctx, env, bin, func(call func(string, any, any) error) error {
-		models, own, err = catalogFrom(call)
-		return err
+		if models, own, err = catalogFrom(call); err != nil || !withLimits {
+			return err
+		}
+		lim = limitsFrom(call)
+		return nil
 	})
-	return models, own, err
+	return models, own, lim, err
+}
+
+// limitsFrom asks account/rateLimits/read (Codex 0.171,
+// testdata/codex-0.171-rate-limits-read.json), which answers rateLimits as
+// account/rateLimits/updated tells them; nil when it says no window or fails.
+func limitsFrom(call func(method string, params, v any) error) *runtime.Limits {
+	var res struct {
+		RateLimits rateLimits `json:"rateLimits"`
+	}
+	if call("account/rateLimits/read", nil, &res) != nil {
+		return nil
+	}
+	if lim, ok := res.RateLimits.limits(); ok {
+		return &lim
+	}
+	return nil
 }
 
 func catalogFrom(call func(method string, params, v any) error) ([]runtime.Model, runtime.Settings, error) {
