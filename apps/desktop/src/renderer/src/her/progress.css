@@ -49,11 +49,11 @@ button.pf-well:hover{background:var(--fill2)}
 .pf-src-h>div{flex:1;min-width:0}
 .pf-src-h h2{margin:0;font-size:17px;font-weight:var(--font-weight-bold)}
 .pf-src-h span{font-size:12px;color:var(--l2)}
-.pf-me{align-self:flex-end;max-width:86%;margin:0;padding:9px 14px;border-radius:18px;background:var(--accent);color:#fff;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-me{align-self:flex-end;max-width:86%;margin:0;padding:9px 15px;border-radius:var(--r-xl);background:var(--bot-user);color:var(--bub-fg);font-size:var(--chat-size);line-height:1.625;white-space:pre-wrap;overflow-wrap:anywhere}
 .pf-her{display:flex;align-items:flex-end;gap:8px;max-width:90%}
 .pf-her-cat{width:24px;height:24px;flex:none;display:flex}
 .pf-her-cat>svg{width:100%;height:100%}
-.pf-her p{margin:0;padding:9px 14px;border-radius:18px;background:var(--win2);box-shadow:inset 0 0 0 .5px var(--sep);font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pf-her p{margin:0;padding:9px 15px;border-radius:var(--r-xl);background:var(--bot-reply);box-shadow:inset 0 0 0 .5px var(--sep);color:var(--msg);font-size:var(--chat-size);line-height:1.625;white-space:pre-wrap;overflow-wrap:anywhere}
 .pf-src h3{margin:0;padding:4px 4px;font-size:12px;font-weight:var(--font-weight-normal);color:var(--l2)}
 .pf-sib{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;padding:6px 10px;border:0;border-radius:10px;background:none;font:inherit;color:var(--l1);text-align:left}
 .pf-sib:hover:not(:disabled){background:var(--fill)}
@@ -77,7 +77,5 @@ button.pf-well:hover{background:var(--fill2)}
 .insp-cat>svg,.pt-cat>svg{width:100%;height:100%}
 .insp-mark{width:16px;flex:none;display:flex;align-items:center;justify-content:center}
 .pt-time{font-variant-numeric:tabular-nums}
-/* A thought opens to words, not a program's output. */
-.tr:not(.bots) .tool.thought .out{font-family:var(--font);font-size:13.5px;line-height:1.65;color:var(--l1)}
 /* What it asks the owner is the control bar's panel, as a session's question is. */
 .cbar.q .appr{background:none;box-shadow:none;border-radius:0;animation:none}

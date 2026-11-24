@@ -158,9 +158,11 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await expect(modelsPage).not.toContainText("查看第三方 AI 共享授权");
   await modelsPage.getByRole("button", { name: "关闭" }).click();
   await expect(modelsPage).toBeHidden();
-  // The owner's bubble is a session page's: the brand blue with white words, as on the iPhone.
-  await expect(log.locator(".um .bub").first()).toHaveCSS("background-color", "rgb(61, 91, 255)");
-  await expect(log.locator(".um .bub").first()).toHaveCSS("color", "rgb(255, 255, 255)");
+  // The owner's bubble is a soft blue-tinted grey with graphite text; Her's reply sits on a soft cool surface.
+  await expect(log.locator(".um .bub").first()).toHaveCSS("background-color", "rgb(231, 237, 247)");
+  await expect(log.locator(".um .bub").first()).toHaveCSS("color", "rgb(32, 33, 39)");
+  await expect(log.locator(".bbub").first()).toHaveCSS("background-color", "rgb(244, 245, 247)");
+  await expect(log.locator(".bbub").first()).toHaveCSS("color", "rgb(32, 33, 39)");
   // Her's box is one line; Send is only an arrow, with no plate under it, until there is something to send.
   const sendButton = page.getByRole("button", { name: "发送 ↩" });
   expect((await page.locator(".her .cmp").boundingBox())!.height).toBeLessThan(50);
