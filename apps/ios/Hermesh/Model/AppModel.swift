@@ -1041,6 +1041,13 @@ final class AppModel {
         } catch { report(error) }
     }
 
+    func regenerateTitle(_ s: Session) async {
+        guard let api else { return }
+        do {
+            replace(try await api.regenerateTitle(s.sessionID))
+        } catch { report(error) }
+    }
+
     func approveClient(_ p: PairingDetails, spec: GrantSpec) async -> Bool {
         guard let api else { return false }
         // Confirmed requests show no code: what the person chose here is the grant.

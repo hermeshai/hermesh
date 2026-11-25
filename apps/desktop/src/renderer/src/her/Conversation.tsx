@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { botChat, busyBubble, pendingApproval, replyOf, runningAgents, type BotItem, type ReplyQuote } from "@hermesh/her-client";
 import type { BotSummary } from "@hermesh/her-protocol";
 import type { HerWaiting } from "@hermesh/proto/local";
-import { agoText } from "@hermesh/core";
+import { agoText, language } from "@hermesh/core";
 import { local } from "../api";
 import { Icon } from "../icons";
 import { HEAVY_ROWS, releaseAfterLeaving } from "../memory";
@@ -835,6 +835,7 @@ function Dock({ bot, conv, op, state, onWaiting, onHeight }: {
           reply: m.draft.reply,
           connectionId: c.rpc && c.session ? (c.connectionId ?? "") : "",
           sessionId: c.rpc && c.connectionId ? (c.session ?? "") : "",
+          locale: language(),
         });
         if (!r.delivered) {
           await onWaiting();

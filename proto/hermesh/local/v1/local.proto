@@ -1222,6 +1222,8 @@ message HerSendRequest {
   string session_id = 8;
   // What the message replies to (docs/her-reply.md).
   HerReply reply = 9;
+  // The app's UI language (BCP 47, e.g. "zh-CN", "en") when the message was sent.
+  string locale = 10;
 }
 
 // What a message replies to: an earlier message of the conversation, or a
@@ -1281,6 +1283,7 @@ message HerWaiting {
   // Why the last try failed, when one did.
   string error = 7;
   HerReply reply = 8;
+  string locale = 9;
 }
 
 message GetHerConversationRequest {

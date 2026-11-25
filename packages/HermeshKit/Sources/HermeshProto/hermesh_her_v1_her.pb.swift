@@ -181,6 +181,9 @@ public nonisolated struct Hermesh_Her_V1_CallRequest: Sendable {
   /// Clears the value of `request`. Subsequent reads from it will return its default value.
   public mutating func clearRequest() {self._request = nil}
 
+  /// Optional BCP 47 UI locale of the client sending the request (e.g. "zh-CN", "en").
+  public var locale: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -628,7 +631,7 @@ nonisolated extension Hermesh_Her_V1_Notification: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hermesh_Her_V1_CallRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CallRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}connection_id\0\u{1}request\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}connection_id\0\u{1}request\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -638,6 +641,7 @@ nonisolated extension Hermesh_Her_V1_CallRequest: SwiftProtobuf.Message, SwiftPr
       switch fieldNumber {
       case 1: try { try decoder.decodeSingularStringField(value: &self.connectionID) }()
       case 2: try { try decoder.decodeSingularMessageField(value: &self._request) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -654,12 +658,16 @@ nonisolated extension Hermesh_Her_V1_CallRequest: SwiftProtobuf.Message, SwiftPr
     try { if let v = self._request {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 2)
     } }()
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 3)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
   public static func ==(lhs: Hermesh_Her_V1_CallRequest, rhs: Hermesh_Her_V1_CallRequest) -> Bool {
     if lhs.connectionID != rhs.connectionID {return false}
     if lhs._request != rhs._request {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

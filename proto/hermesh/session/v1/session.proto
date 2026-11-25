@@ -412,6 +412,14 @@ message SessionProgress {
   google.protobuf.Timestamp turn_started_at = 10;
 }
 
+enum TitleState {
+  TITLE_STATE_UNSPECIFIED = 0;
+  TITLE_STATE_SEED = 1;
+  TITLE_STATE_PROVISIONAL = 2;
+  TITLE_STATE_FINAL = 3;
+  TITLE_STATE_LOCKED = 4;
+}
+
 // Session is the unified coding-agent session record across all initiators
 // (owner UI, Her, MCP, CLI).
 message Session {
@@ -456,6 +464,10 @@ message Session {
   google.protobuf.Timestamp archived_at = 37;
   uint32 active_background_count = 38;
   uint32 active_daemon_count = 39;
+  string title_locale = 40;
+  bool title_generating = 41;
+  TitleState title_state = 42;
+  uint64 title_seq = 43;
 }
 
 enum SessionView {
@@ -882,6 +894,7 @@ message StartSessionRequest {
   string parent_session_id = 11;
   optional uint32 question_timeout_seconds = 12;
   string conversation = 13;
+  string locale = 14;
 }
 
 message StartSessionResponse {
@@ -949,6 +962,7 @@ message DispatchMessageRequest {
   InteractionMode interaction_mode = 9;
   string conversation = 10;
   optional uint32 question_timeout_seconds = 11;
+  string locale = 12;
 }
 
 message DispatchMessageResponse {
@@ -1033,6 +1047,8 @@ message UpdateSessionRequest {
   bool archived = 9;
   bool has_pinned = 10;
   bool pinned = 11;
+  bool regenerate_title = 12;
+  string locale = 13;
 }
 
 message UpdateSessionResponse {
@@ -1108,6 +1124,7 @@ message ForkSessionRequest {
   string title = 5;
   WorkspaceStrategy workspace = 6;
   ModelSelection model_selection = 7;
+  string locale = 8;
 }
 
 message ForkSessionResponse {

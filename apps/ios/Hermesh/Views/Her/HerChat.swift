@@ -772,6 +772,7 @@ final class HerChat {
         r.machineID = machineID
         r.botID = bot.id
         r.text = sent.text
+        r.locale = AppLocale.current
         r.localPaths = sent.files.map(\.path)
         r.pictures = sent.photos.map { p in .with { $0.name = p.name; $0.data = p.data } }
         if let reply = sent.reply { r.reply = reply.proto }

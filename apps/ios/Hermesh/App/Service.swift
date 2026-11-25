@@ -60,6 +60,23 @@ typealias WakeRing = Hermesh_Local_V1_WakeRing
 /// How long a call that waits for Face ID may take.
 let signingTimeout = 180
 
+/// The active UI locale normalized to a BCP 47 tag ("zh-CN", "zh-TW", "en", ...).
+enum AppLocale {
+    static var current: String {
+        let raw = (Bundle.main.preferredLocalizations.first ?? Locale.preferredLanguages.first ?? "en")
+            .replacingOccurrences(of: "_", with: "-")
+        let lower = raw.lowercased()
+        if lower.hasPrefix("zh") {
+            if lower.contains("hant") || lower.contains("-tw") || lower.contains("-hk") || lower.contains("-mo") {
+                return "zh-TW"
+            }
+            return "zh-CN"
+        }
+        if lower.hasPrefix("en") { return "en" }
+        return String(lower.split(separator: "-").first ?? "en")
+    }
+}
+
 private let sessionSvc = "/hermesh.session.v1.SessionService"
 
 extension AppAPI {
@@ -89,7 +106,9 @@ extension AppAPI {
     }
 
     func startSession(_ r: Hermesh_Session_V1_StartSessionRequest) async throws -> Hermesh_Session_V1_StartSessionResponse {
-        try await call("\(sessionSvc)/StartSession", r, timeout: 30)
+        var req = r
+        if req.locale.isEmpty { req.locale = AppLocale.current }
+        return try await call("\(sessionSvc)/StartSession", req, timeout: 30)
     }
 
     func getSession(_ sessionID: String, machineID: String = "", cachedOnly: Bool = false) async throws -> Hermesh_Session_V1_GetSessionResponse {
@@ -109,7 +128,9 @@ extension AppAPI {
     }
 
     func dispatchMessage(_ r: Hermesh_Session_V1_DispatchMessageRequest) async throws -> Hermesh_Session_V1_DispatchMessageResponse {
-        try await call("\(sessionSvc)/DispatchMessage", r, timeout: 20)
+        var req = r
+        if req.locale.isEmpty { req.locale = AppLocale.current }
+        return try await call("\(sessionSvc)/DispatchMessage", req, timeout: 20)
     }
 
     func uploadBlob(machineID: String = "", name: String, mimeType: String, data: Data) async throws -> Hermesh_Session_V1_UploadBlobResponse {
@@ -249,6 +270,15 @@ extension AppAPI {
         r.commandID = UUID().uuidString
         r.sessionID = sessionID
         r.title = title
+        return try await updateSession(r).session
+    }
+
+    func regenerateTitle(_ sessionID: String) async throws -> Hermesh_Session_V1_Session {
+        var r = Hermesh_Session_V1_UpdateSessionRequest()
+        r.commandID = UUID().uuidString
+        r.sessionID = sessionID
+        r.regenerateTitle = true
+        r.locale = AppLocale.current
         return try await updateSession(r).session
     }
 

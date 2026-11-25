@@ -75,6 +75,9 @@ type HerLinkConfig struct {
 // and her inbox.
 type HerLink interface {
 	herhost.Mesh
+	// SetLocale records the UI locale of the client talking to Her so sessions
+	// she starts generate titles in the user's selected UI language.
+	SetLocale(locale string)
 	// Render is news as her reads it: the assistant it is for, who it is
 	// from, and the text. ok is false for a message that is not the news of
 	// a session.
@@ -386,6 +389,15 @@ func (n *Machine) herCredentials() *HerCredentials {
 		LocalMachineID:   n.MachineID,
 		LocalMachineName: n.Name,
 		LocalMachineDial: n.dialHerInProcess,
+	}
+}
+
+func (n *Machine) setHerLocale(locale string) {
+	n.mu.Lock()
+	link := n.mesh.link
+	n.mu.Unlock()
+	if link != nil {
+		link.SetLocale(locale)
 	}
 }
 

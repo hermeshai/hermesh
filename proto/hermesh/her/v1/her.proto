@@ -89,6 +89,8 @@ message CallRequest {
   // A connection an Open stream holds; empty: a connection of its own.
   string connection_id = 1;
   Request request = 2;
+  // Optional BCP 47 UI locale of the client sending the request (e.g. "zh-CN", "en").
+  string locale = 3;
 }
 
 message CallResponse {
