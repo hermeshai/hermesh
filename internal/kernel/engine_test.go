@@ -503,11 +503,11 @@ func TestTransitionsIdleReapCrossProviderHandoffRollbackAndFork(t *testing.T) {
 		t.Fatal(err)
 	}
 	sid := launched.Session.SessionId
-	wtPath := launched.Session.WorkspaceStrategy.WorktreePath
+	// The worktree is made by the first turn.
+	wtPath := waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE).Session.WorkspaceStrategy.WorktreePath
 	if wtPath == "" || wtPath == repo {
 		t.Fatalf("expected isolated worktree path, got %q", wtPath)
 	}
-	waitForSessionStatus(t, eng, owner, sid, sessionv1.SessionStatus_SESSION_STATUS_IDLE)
 	if drv1.StartCount() != 1 {
 		t.Fatalf("expected 1 session spawn, got %d", drv1.StartCount())
 	}

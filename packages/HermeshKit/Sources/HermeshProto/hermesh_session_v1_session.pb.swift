@@ -759,6 +759,9 @@ public nonisolated enum Hermesh_Session_V1_TurnItemKind: SwiftProtobuf.Enum, Swi
   case error // = 14
   case messageReceived // = 15
   case messageSent // = 16
+
+  /// Where the session works, set up at its first turn (TurnItem.workspace).
+  case workspace // = 17
   case UNRECOGNIZED(Int)
 
   public init() {
@@ -784,6 +787,7 @@ public nonisolated enum Hermesh_Session_V1_TurnItemKind: SwiftProtobuf.Enum, Swi
     case 14: self = .error
     case 15: self = .messageReceived
     case 16: self = .messageSent
+    case 17: self = .workspace
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -807,6 +811,7 @@ public nonisolated enum Hermesh_Session_V1_TurnItemKind: SwiftProtobuf.Enum, Swi
     case .error: return 14
     case .messageReceived: return 15
     case .messageSent: return 16
+    case .workspace: return 17
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -830,6 +835,57 @@ public nonisolated enum Hermesh_Session_V1_TurnItemKind: SwiftProtobuf.Enum, Swi
     .error,
     .messageReceived,
     .messageSent,
+    .workspace,
+  ]
+
+}
+
+public nonisolated enum Hermesh_Session_V1_WorkspaceAction: SwiftProtobuf.Enum, Swift.CaseIterable {
+  public typealias RawValue = Int
+  case unspecified // = 0
+
+  /// Fetching a worktree's base from origin; followed by CREATE.
+  case fetch // = 1
+  case create // = 2
+  case `switch` // = 3
+
+  /// In place, on the branch the folder is on.
+  case keep // = 4
+  case UNRECOGNIZED(Int)
+
+  public init() {
+    self = .unspecified
+  }
+
+  public init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .unspecified
+    case 1: self = .fetch
+    case 2: self = .create
+    case 3: self = .switch
+    case 4: self = .keep
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  public var rawValue: Int {
+    switch self {
+    case .unspecified: return 0
+    case .fetch: return 1
+    case .create: return 2
+    case .switch: return 3
+    case .keep: return 4
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  public static let allCases: [Hermesh_Session_V1_WorkspaceAction] = [
+    .unspecified,
+    .fetch,
+    .create,
+    .switch,
+    .keep,
   ]
 
 }
@@ -2759,11 +2815,50 @@ public nonisolated struct Hermesh_Session_V1_TurnItem: @unchecked Sendable {
   /// Clears the value of `updatedAt`. Subsequent reads from it will return its default value.
   public mutating func clearUpdatedAt() {_uniqueStorage()._updatedAt = nil}
 
+  public var workspace: Hermesh_Session_V1_WorkspaceStep {
+    get {_storage._workspace ?? Hermesh_Session_V1_WorkspaceStep()}
+    set {_uniqueStorage()._workspace = newValue}
+  }
+  /// Returns true if `workspace` has been explicitly set.
+  public var hasWorkspace: Bool {_storage._workspace != nil}
+  /// Clears the value of `workspace`. Subsequent reads from it will return its default value.
+  public mutating func clearWorkspace() {_uniqueStorage()._workspace = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// What a session's first turn did to the project's folder before the agent started: a
+/// worktree made (after fetching its base, if asked), a branch switched to in the folder
+/// itself, or the folder kept as it is. The item's status is "running", "completed" or
+/// "failed"; a failure is its `failure` and `text`.
+public nonisolated struct Hermesh_Session_V1_WorkspaceStep: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var mode: Hermesh_Identity_V1_Workspace = .unspecified
+
+  public var action: Hermesh_Session_V1_WorkspaceAction = .unspecified
+
+  /// The branch the session works on: the worktree's own, or the folder's.
+  public var branch: String = String()
+
+  /// A worktree's base, as resolved ("origin/main" once fetched).
+  public var baseRef: String = String()
+
+  /// The folder's branch before a switch.
+  public var previousBranch: String = String()
+
+  /// The folder the agent works in.
+  public var path: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
 }
 
 /// Value types used by UI conversation step reducers.
@@ -4360,7 +4455,11 @@ nonisolated extension Hermesh_Session_V1_ApprovalDecision: SwiftProtobuf._ProtoN
 }
 
 nonisolated extension Hermesh_Session_V1_TurnItemKind: SwiftProtobuf._ProtoNameProviding {
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TURN_ITEM_KIND_UNSPECIFIED\0\u{1}TURN_ITEM_KIND_USER_MESSAGE\0\u{1}TURN_ITEM_KIND_ASSISTANT_MESSAGE\0\u{1}TURN_ITEM_KIND_REASONING\0\u{1}TURN_ITEM_KIND_TOOL_CALL\0\u{1}TURN_ITEM_KIND_COMMAND_EXECUTION\0\u{1}TURN_ITEM_KIND_FILE_CHANGE\0\u{1}TURN_ITEM_KIND_PROPOSED_PLAN\0\u{1}TURN_ITEM_KIND_TODO_LIST\0\u{1}TURN_ITEM_KIND_RUNTIME_REQUEST\0\u{1}TURN_ITEM_KIND_HANDOFF\0\u{1}TURN_ITEM_KIND_MODEL_SWITCH\0\u{1}TURN_ITEM_KIND_CHECKPOINT\0\u{1}TURN_ITEM_KIND_SYSTEM_NOTICE\0\u{1}TURN_ITEM_KIND_ERROR\0\u{1}TURN_ITEM_KIND_MESSAGE_RECEIVED\0\u{1}TURN_ITEM_KIND_MESSAGE_SENT\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0TURN_ITEM_KIND_UNSPECIFIED\0\u{1}TURN_ITEM_KIND_USER_MESSAGE\0\u{1}TURN_ITEM_KIND_ASSISTANT_MESSAGE\0\u{1}TURN_ITEM_KIND_REASONING\0\u{1}TURN_ITEM_KIND_TOOL_CALL\0\u{1}TURN_ITEM_KIND_COMMAND_EXECUTION\0\u{1}TURN_ITEM_KIND_FILE_CHANGE\0\u{1}TURN_ITEM_KIND_PROPOSED_PLAN\0\u{1}TURN_ITEM_KIND_TODO_LIST\0\u{1}TURN_ITEM_KIND_RUNTIME_REQUEST\0\u{1}TURN_ITEM_KIND_HANDOFF\0\u{1}TURN_ITEM_KIND_MODEL_SWITCH\0\u{1}TURN_ITEM_KIND_CHECKPOINT\0\u{1}TURN_ITEM_KIND_SYSTEM_NOTICE\0\u{1}TURN_ITEM_KIND_ERROR\0\u{1}TURN_ITEM_KIND_MESSAGE_RECEIVED\0\u{1}TURN_ITEM_KIND_MESSAGE_SENT\0\u{1}TURN_ITEM_KIND_WORKSPACE\0")
+}
+
+nonisolated extension Hermesh_Session_V1_WorkspaceAction: SwiftProtobuf._ProtoNameProviding {
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{2}\0WORKSPACE_ACTION_UNSPECIFIED\0\u{1}WORKSPACE_ACTION_FETCH\0\u{1}WORKSPACE_ACTION_CREATE\0\u{1}WORKSPACE_ACTION_SWITCH\0\u{1}WORKSPACE_ACTION_KEEP\0")
 }
 
 nonisolated extension Hermesh_Session_V1_BackgroundTaskKind: SwiftProtobuf._ProtoNameProviding {
@@ -7201,7 +7300,7 @@ nonisolated extension Hermesh_Session_V1_TodoStep: SwiftProtobuf.Message, SwiftP
 
 nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".TurnItem"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{3}session_id\0\u{3}run_id\0\u{1}seq\0\u{1}kind\0\u{1}status\0\u{1}actor\0\u{1}text\0\u{1}streaming\0\u{1}attachments\0\u{3}tool_name\0\u{1}command\0\u{3}exit_code\0\u{1}output\0\u{3}output_truncated\0\u{3}output_blob_sha256\0\u{3}output_size\0\u{3}file_path\0\u{1}diff\0\u{1}additions\0\u{1}deletions\0\u{3}plan_title\0\u{3}todo_steps\0\u{3}request_id\0\u{3}checkpoint_id\0\u{3}from_selection\0\u{3}to_selection\0\u{3}handoff_strategy\0\u{3}mail_message_id\0\u{3}mail_address\0\u{3}mail_name\0\u{3}mail_delivered\0\u{3}mail_in_reply_to\0\u{1}failure\0\u{3}created_at\0\u{3}updated_at\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}item_id\0\u{3}session_id\0\u{3}run_id\0\u{1}seq\0\u{1}kind\0\u{1}status\0\u{1}actor\0\u{1}text\0\u{1}streaming\0\u{1}attachments\0\u{3}tool_name\0\u{1}command\0\u{3}exit_code\0\u{1}output\0\u{3}output_truncated\0\u{3}output_blob_sha256\0\u{3}output_size\0\u{3}file_path\0\u{1}diff\0\u{1}additions\0\u{1}deletions\0\u{3}plan_title\0\u{3}todo_steps\0\u{3}request_id\0\u{3}checkpoint_id\0\u{3}from_selection\0\u{3}to_selection\0\u{3}handoff_strategy\0\u{3}mail_message_id\0\u{3}mail_address\0\u{3}mail_name\0\u{3}mail_delivered\0\u{3}mail_in_reply_to\0\u{1}failure\0\u{3}created_at\0\u{3}updated_at\0\u{1}workspace\0")
 
   fileprivate class _StorageClass {
     var _itemID: String = String()
@@ -7240,6 +7339,7 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
     var _failure: Hermesh_Session_V1_Failure? = nil
     var _createdAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
     var _updatedAt: SwiftProtobuf.Google_Protobuf_Timestamp? = nil
+    var _workspace: Hermesh_Session_V1_WorkspaceStep? = nil
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -7286,6 +7386,7 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
       _failure = source._failure
       _createdAt = source._createdAt
       _updatedAt = source._updatedAt
+      _workspace = source._workspace
     }
   }
 
@@ -7340,6 +7441,7 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
         case 34: try { try decoder.decodeSingularMessageField(value: &_storage._failure) }()
         case 35: try { try decoder.decodeSingularMessageField(value: &_storage._createdAt) }()
         case 36: try { try decoder.decodeSingularMessageField(value: &_storage._updatedAt) }()
+        case 37: try { try decoder.decodeSingularMessageField(value: &_storage._workspace) }()
         default: break
         }
       }
@@ -7460,6 +7562,9 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
       try { if let v = _storage._updatedAt {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 36)
       } }()
+      try { if let v = _storage._workspace {
+        try visitor.visitSingularMessageField(value: v, fieldNumber: 37)
+      } }()
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -7505,10 +7610,66 @@ nonisolated extension Hermesh_Session_V1_TurnItem: SwiftProtobuf.Message, SwiftP
         if _storage._failure != rhs_storage._failure {return false}
         if _storage._createdAt != rhs_storage._createdAt {return false}
         if _storage._updatedAt != rhs_storage._updatedAt {return false}
+        if _storage._workspace != rhs_storage._workspace {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Hermesh_Session_V1_WorkspaceStep: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".WorkspaceStep"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}mode\0\u{1}action\0\u{1}branch\0\u{3}base_ref\0\u{3}previous_branch\0\u{1}path\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.mode) }()
+      case 2: try { try decoder.decodeSingularEnumField(value: &self.action) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.branch) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.baseRef) }()
+      case 5: try { try decoder.decodeSingularStringField(value: &self.previousBranch) }()
+      case 6: try { try decoder.decodeSingularStringField(value: &self.path) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.mode != .unspecified {
+      try visitor.visitSingularEnumField(value: self.mode, fieldNumber: 1)
+    }
+    if self.action != .unspecified {
+      try visitor.visitSingularEnumField(value: self.action, fieldNumber: 2)
+    }
+    if !self.branch.isEmpty {
+      try visitor.visitSingularStringField(value: self.branch, fieldNumber: 3)
+    }
+    if !self.baseRef.isEmpty {
+      try visitor.visitSingularStringField(value: self.baseRef, fieldNumber: 4)
+    }
+    if !self.previousBranch.isEmpty {
+      try visitor.visitSingularStringField(value: self.previousBranch, fieldNumber: 5)
+    }
+    if !self.path.isEmpty {
+      try visitor.visitSingularStringField(value: self.path, fieldNumber: 6)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Hermesh_Session_V1_WorkspaceStep, rhs: Hermesh_Session_V1_WorkspaceStep) -> Bool {
+    if lhs.mode != rhs.mode {return false}
+    if lhs.action != rhs.action {return false}
+    if lhs.branch != rhs.branch {return false}
+    if lhs.baseRef != rhs.baseRef {return false}
+    if lhs.previousBranch != rhs.previousBranch {return false}
+    if lhs.path != rhs.path {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

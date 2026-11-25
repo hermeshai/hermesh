@@ -24,7 +24,10 @@ import {
   TurnItemKind,
   TurnItemSchema,
   UserInputPayloadSchema,
+  WorkspaceAction,
+  WorkspaceStepSchema,
 } from "@hermesh/proto/session";
+import { Workspace } from "@hermesh/proto/identity";
 import { groupSteps, replyEnds, stepSummary } from "./steps";
 import {
   interrupter,
@@ -35,6 +38,10 @@ import {
   sessionQuestion,
   sessionWork,
   sessionTranscript,
+  workspaceDetails,
+  workspaceFailedRun,
+  workspaceTitle,
+  type WorkspaceRow,
 } from "./transcript";
 
 const at = new Date("2026-11-23T10:00:00Z");
@@ -228,4 +235,45 @@ describe("unified session transcript", () => {
     expect(isInterruption({ kind: FailureKind.INTERRUPTED } as never)).toBe(true);
     expect(interrupter({ kind: FailureKind.INTERRUPTED, message: "interrupted by owner" } as never)).toBe("owner");
   });
+});
+
+// A first turn's WORKSPACE item is a row of its own, never in a group of tools; a failed one says why itself, so the
+// run's own error is not a row too.
+test("the workspace step is a row of its own", () => {
+  const step = create(WorkspaceStepSchema, { mode: Workspace.WORKTREE, action: WorkspaceAction.CREATE, branch: "hermesh/s", baseRef: "main", path: "/wt/s" });
+  const proj = (status: string, extra: MessageInitShape<typeof TurnItemSchema>[] = []) =>
+    create(SessionProjectionSchema, {
+      session: { sessionId: "s" },
+      runs: [{ runId: "r1", ordinal: 1 }],
+      items: [
+        { itemId: "u", runId: "r1", seq: 1n, kind: TurnItemKind.USER_MESSAGE, text: "hi" },
+        { itemId: "w", runId: "r1", seq: 2n, kind: TurnItemKind.WORKSPACE, status, workspace: step, failure: status === "failed" ? { message: "no main" } : undefined },
+        ...extra,
+      ],
+    });
+  const tool = { itemId: "t", runId: "r1", seq: 3n, kind: TurnItemKind.COMMAND_EXECUTION, status: "completed", command: "ls" };
+  let steps = groupSteps(sessionTranscript(proj("running", [tool])));
+  expect(steps.map((s) => s.kind)).toEqual(["turn", "user", "workspace", "tools"]);
+  const running = steps[2] as WorkspaceRow;
+  expect(running.state).toBe("running");
+  expect(workspaceTitle(running).code).toBe("main");
+
+  steps = groupSteps(sessionTranscript(proj("completed")));
+  const done = steps[2] as WorkspaceRow;
+  expect(workspaceTitle(done)).toEqual({ text: "从 main 新建了分支", code: "hermesh/s" });
+  expect(workspaceDetails(done).map((d) => d.value)).toEqual(["独立 worktree", "hermesh/s", "main", "/wt/s"]);
+
+  const failed = proj("failed", [{ itemId: "e", runId: "r1", seq: 3n, kind: TurnItemKind.ERROR, text: "no main" }]);
+  const rows = sessionTranscript(failed);
+  expect(rows.some((r) => r.kind === "error")).toBe(false);
+  const row = rows.at(-1) as WorkspaceRow;
+  expect(row.state).toBe("failed");
+  expect(workspaceDetails(row)).toEqual([{ label: "原因", value: "no main" }]);
+  expect(workspaceFailedRun(failed)).toBe("r1");
+
+  // A switch says where the folder was.
+  const sw = create(WorkspaceStepSchema, { mode: Workspace.IN_PLACE, action: WorkspaceAction.SWITCH, branch: "feat", previousBranch: "main", path: "/repo" });
+  const swRow: WorkspaceRow = { kind: "workspace", seq: 1n, state: "done", step: sw, failure: "" };
+  expect(workspaceTitle(swRow)).toEqual({ text: "切到了分支", code: "feat" });
+  expect(workspaceDetails(swRow).map((d) => d.value)).toEqual(["原地", "feat（原来在 main）", "/repo"]);
 });

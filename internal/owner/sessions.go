@@ -798,9 +798,22 @@ func (s *ownerSessionService) StartSession(ctx context.Context, req *sessionv1.S
 		Prompt:    req.InitialPrompt,
 		CreatedAt: now,
 	}
+	// The message too, so the session's page shows it while it waits, as it will once sent.
 	proj := &sessionv1.SessionProjection{
 		Session: optSession,
 		Runs:    []*sessionv1.Run{optRun},
+		Items: []*sessionv1.TurnItem{{
+			ItemId:      "itm_" + strings.ToLower(ulid.Make().String()),
+			SessionId:   tempID,
+			RunId:       optRun.RunId,
+			Seq:         1,
+			Kind:        sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE,
+			Status:      "completed",
+			Actor:       o.ownerPrincipal().Actor,
+			Text:        req.InitialPrompt,
+			Attachments: req.Attachments,
+			CreatedAt:   now,
+		}},
 	}
 	if err := o.enqueueOutbox(req.CommandId, targetMachine, tempID, "StartSession", title, req); err != nil {
 		return nil, err

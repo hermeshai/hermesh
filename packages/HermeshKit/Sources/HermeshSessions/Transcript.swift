@@ -49,14 +49,77 @@ public enum TranscriptItem: Equatable {
     /// (docs/agent-messages.md): incoming, written to the session (queued: it
     /// waits for a turn of its own), or written by its coding agent.
     case message(seq: UInt64, incoming: Bool, name: String, text: String, queued: Bool)
+    /// Where the session works, set up by its first turn: a worktree made, a branch switched to, or the folder kept.
+    case workspace(WorkspaceRow)
 
     public var seq: UInt64 {
         switch self {
         case .turn(let s, _, _, _), .user(let s, _, _, _), .agent(let s, _), .question(let s, _, _), .turnEnd(let s, _, _), .error(let s, _),
              .message(let s, _, _, _, _): s
         case .tool(let t): t.seq
+        case .workspace(let w): w.seq
         }
     }
+}
+
+/// A session's first turn setting its folder up (a WORKSPACE item), as its row shows it.
+public struct WorkspaceRow: Equatable, Sendable {
+    public enum State: Equatable, Sendable { case running, done, failed }
+    public var seq: UInt64
+    public var state: State
+    public var step: Hermesh_Session_V1_WorkspaceStep
+    /// Why it failed, as the machine said it.
+    public var failure: String
+    /// When the machine first said it, to show a step under 400 ms by its result alone.
+    public var since: Date?
+
+    public init(seq: UInt64, state: State, step: Hermesh_Session_V1_WorkspaceStep, failure: String = "", since: Date? = nil) {
+        self.seq = seq
+        self.state = state
+        self.step = step
+        self.failure = failure
+        self.since = since
+    }
+
+    /// Its words, then the part in code: "New branch from main" `hermesh/s_…`, "Switching to branch" `feature/login`.
+    public var title: (text: String, code: String) {
+        let base = step.baseRef, branch = step.branch
+        switch (step.action, state) {
+        case (.fetch, .running): return (String(localized: "Fetching from the remote", bundle: .module), base)
+        case (.fetch, _): return (String(localized: "Couldn’t fetch from the remote", bundle: .module), base)
+        case (.create, .running): return (String(localized: "Making a worktree from", bundle: .module), base)
+        case (.create, .done): return (String(localized: "New branch from \(base)", bundle: .module), branch)
+        case (.create, _): return (String(localized: "Couldn’t make the worktree", bundle: .module), "")
+        case (.switch, .running): return (String(localized: "Switching to branch", bundle: .module), branch)
+        case (.switch, .done): return (String(localized: "Switched to branch", bundle: .module), branch)
+        case (.switch, _): return (String(localized: "Couldn’t switch to branch", bundle: .module), branch)
+        default: return (String(localized: "Working in place, on branch", bundle: .module), branch)
+        }
+    }
+
+    /// Its details, opened: how, the branch, its base, the folder; or why it failed.
+    public var details: [(label: String, value: String)] {
+        if state == .failed {
+            // Stopped while it was under way: no failure of its own.
+            return [(String(localized: "Why", bundle: .module), failure.isEmpty ? String(localized: "Stopped before it was done", bundle: .module) : failure)]
+        }
+        var out: [(String, String)] = []
+        let worktree = step.mode == .worktree
+        out.append((String(localized: "Where", bundle: .module), worktree ? String(localized: "Separate worktree", bundle: .module) : String(localized: "In place", bundle: .module)))
+        if !step.branch.isEmpty {
+            let was = step.action == .switch && !step.previousBranch.isEmpty ? String(localized: "\(step.branch) (was \(step.previousBranch))", bundle: .module) : step.branch
+            out.append((String(localized: "Branch", bundle: .module), was))
+        }
+        if worktree && !step.baseRef.isEmpty { out.append((String(localized: "From", bundle: .module), step.baseRef)) }
+        if !step.path.isEmpty { out.append((String(localized: "Folder", bundle: .module), step.path)) }
+        return out
+    }
+}
+
+/// The run whose first turn could not set its folder up: its row says so, so the run's own error is not a row too (the
+/// session's failure card still says what to do).
+public func workspaceFailedRun(_ proj: Hermesh_Session_V1_SessionProjection?) -> String? {
+    proj?.items.last { $0.kind == .workspace && $0.status == "failed" }?.runID
 }
 
 /// Each row's seq, unique and in order: an item's is its own ×4, the time line
@@ -161,6 +224,7 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
     let requests = Dictionary(proj.requests.map { ($0.requestID, $0) }, uniquingKeysWith: { _, b in b })
     let activeBgItems = activeBackgroundItemIDs(of: proj)
     let items = proj.items
+    let setupFailed = workspaceFailedRun(proj)
     var out: [TranscriptItem] = []
     for (i, it) in items.enumerated() {
         let run = runs[it.runID]
@@ -188,6 +252,13 @@ public func sessionTranscript(_ proj: Hermesh_Session_V1_SessionProjection?) -> 
             out.append(.message(seq: seq, incoming: true, name: it.mailName.isEmpty ? it.mailAddress : it.mailName, text: it.text, queued: it.mailDelivered == "queued"))
         case .messageSent:
             out.append(.message(seq: seq, incoming: false, name: it.mailName.isEmpty ? it.mailAddress : it.mailName, text: it.text, queued: false))
+        case .workspace:
+            let state: WorkspaceRow.State = it.status == "completed" ? .done : it.status == "running" ? .running : .failed
+            out.append(.workspace(WorkspaceRow(seq: seq, state: state, step: it.workspace,
+                                               failure: it.hasFailure ? it.failure.message : it.text,
+                                               since: dateOf(it.createdAt, set: it.hasCreatedAt))))
+        case .error where it.runID == setupFailed:
+            break
         case .error:
             var e = ErrorEvent()
             e.message = it.text

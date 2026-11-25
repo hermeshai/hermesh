@@ -5,7 +5,7 @@ import { FailureKind, type Failure, type Session, type ToolCall, type ToolResult
 import {
   agoText, codingAgentTitle, dateOf, failureAdvice, failureHeadline, failureTitle, isArchivable,
   interrupter, isInterruption, resolutionTitle, stepSummary, toolObject, toolSummary, toolVerb,
-  turnTimeLine, type Step,
+  turnTimeLine, workspaceDetails, workspaceTitle, type Step, type WorkspaceRow,
 } from "@hermesh/core";
 import { Mark, agentName } from "@hermesh/ui";
 import { GrantAvatar } from "../components";
@@ -264,7 +264,7 @@ function previousTurn(items: Step[], i: number): Date | undefined {
 export type ChatRow = VirtualRow & { it: Step; end: boolean; live: boolean; previous: Date | undefined };
 
 /** Each kind's height until rows of it are measured: only how long the scrollbar is depends on it. */
-export const rowHeights: Record<string, number> = { turn: 30, user: 64, agent: 220, tools: 32, question: 80, turnEnd: 36, message: 100, error: 36 };
+export const rowHeights: Record<string, number> = { turn: 30, user: 64, agent: 220, tools: 32, question: 80, turnEnd: 36, message: 100, error: 36, workspace: 32 };
 
 /**
  * The rows the conversation draws, in order: the items but those that draw nothing (a time line within half an hour of
@@ -324,6 +324,8 @@ function sameStep(a: Step, b: Step): boolean {
     }
     case "question":
       return a.resolution === (b as typeof a).resolution;
+    case "workspace":
+      return a.state === (b as typeof a).state && a.step === (b as typeof a).step && a.failure === (b as typeof a).failure;
     default:
       return true;
   }
@@ -381,6 +383,8 @@ function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous 
           <div className="msg-body sel-text"><Markdown text={it.text} /></div>
         </div>
       );
+    case "workspace":
+      return <WorkspaceLine id={rowKey} row={it} />;
     case "error": {
       const e = it.error;
       // Stopped before its turn began (queued or starting): an interruption, not a failure.
@@ -398,17 +402,84 @@ export type PromptSender = { name: string; client: Client | undefined };
  * owner's agents sent (`from`) is a quiet one with that agent's face on its corner. On hover, who sent it (not the
  * owner), when, and Copy.
  */
-export function UserBubble({ text, at, from }: { text: string; at?: Date; from?: PromptSender }) {
+export function UserBubble({ text, at, from, waiting = false, note }: { text: string; at?: Date; from?: PromptSender; waiting?: boolean; note?: ReactNode }) {
   const { t } = useTranslation("session");
   return (
-    <div className={from ? "um from" : "um"}>
+    <div className={`um ${from ? "from" : ""} ${waiting ? "waiting" : ""}`}>
       {from && (
         <span className="um-badge" role="img" aria-label={t("chat.sentBy", { name: from.name })} title={t("chat.sentBy", { name: from.name })} data-testid="prompt-sender">
           <GrantAvatar c={from.client ?? { label: from.name }} />
         </span>
       )}
       <div className="bub sel-text">{text}</div>
-      <Copy text={text} at={at} from={from?.name} />
+      {note}
+      {!note && <Copy text={text} at={at} from={from?.name} />}
+    </div>
+  );
+}
+
+/**
+ * Under the owner's message while it is not in the conversation, in Her's words for hers: on its way (said once that
+ * takes 400 ms), waiting for its machine to come back (Discard), or not sent and why (Try Again, Edit).
+ */
+export function PromptNote({ kind, machine = "", why = "", onRetry, onEdit, onDiscard }: {
+  kind: "sending" | "waiting" | "refused";
+  machine?: string;
+  why?: string;
+  onRetry?: () => void;
+  onEdit?: () => void;
+  onDiscard?: () => void;
+}) {
+  const { t } = useTranslation("her");
+  const shown = useDelayed(kind === "sending");
+  if (kind === "sending") return <div className="um-wait" role="status" data-testid="prompt-note">{shown && <span>{t("waiting.sending")}</span>}</div>;
+  if (kind === "waiting") {
+    return (
+      <div className="um-wait" role="status" data-testid="prompt-note">
+        <Icon name="clock" className="sm" />
+        <span>{t("waiting.until", { name: machine })}</span>
+        <button className="link" data-testid="prompt-discard" onClick={onDiscard}>{t("waiting.discard")}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="um-wait warn" role="status" data-testid="prompt-note">
+      <Icon name="alert" className="sm" />
+      <span title={why}>{t("waiting.failed", { error: why })}</span>
+      <button className="link" data-testid="prompt-retry" onClick={onRetry}>{t("waiting.retry")}</button>
+      <button className="link" data-testid="prompt-edit" onClick={onEdit}>{t("waiting.edit")}</button>
+    </div>
+  );
+}
+
+/** True once `active` has held 400 ms: a wait shorter than that shows nothing. */
+function useDelayed(active: boolean): boolean {
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShown(false);
+      return;
+    }
+    const timer = setTimeout(() => setShown(true), 400);
+    return () => clearTimeout(timer);
+  }, [active]);
+  return shown;
+}
+
+/**
+ * Where the session works, set up by its first turn (core WorkspaceRow): a step's line, the branch as its object;
+ * opened, how, the branch, its base and the folder, or why it failed. A step under 400 ms shows by its result.
+ */
+function WorkspaceLine({ id, row }: { id: string; row: WorkspaceRow }) {
+  const [open, setOpen] = useRowState(`workspace:${id}`, false);
+  const shown = useDelayed(row.state === "running");
+  if (row.state === "running" && !shown) return null;
+  const { text, code } = workspaceTitle(row);
+  const details = row.state === "running" ? "" : workspaceDetails(row).map((d) => `${d.label}  ${d.value}`).join("\n");
+  return (
+    <div data-testid="thread-workspace" data-state={row.state}>
+      <ToolLine verb={text} object={code} title={code} shell={false} running={row.state === "running"} failed={row.state === "failed"}
+                output={details} open={open} onToggle={() => setOpen(!open)} />
     </div>
   );
 }

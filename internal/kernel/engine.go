@@ -1171,59 +1171,24 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 
 	hasInitial := strings.TrimSpace(req.InitialPrompt) != "" || len(req.Attachments) > 0
-	var initFailure *sessionv1.Failure
 
-	// Prepare workspace directory before first run (fast for in-place, isolated git worktree for WORKTREE).
+	// The folder is set up at the first turn, which says in the conversation how it went
+	// (prepareWorkspace): a worktree made, a branch switched to. Here only what needs no git
+	// work, so the answer comes at once: a worktree's branch is named, and a switch is
+	// refused while another session works in the folder.
+	wsStrategy.WorktreePath = ""
 	if wsStrategy.Mode == identityv1.Workspace_WORKSPACE_WORKTREE {
-		if wsStrategy.FromRemote {
-			base, err := vcs.FetchBase(ctx, ws.Path, wsStrategy.BaseRef)
-			if err != nil {
-				return nil, connect.NewError(connect.CodeFailedPrecondition, err)
-			}
-			wsStrategy.BaseRef = base
-		}
-		wtPath, branch, wtErr := e.vcs.PrepareWorktree(ctx, ws.Path, sessionID, wsStrategy.BaseRef, wsStrategy.Branch)
-		var baseErr *vcs.BaseRefError
-		if errors.As(wtErr, &baseErr) && !wsStrategy.FromRemote {
-			fetchStart := time.Now()
-			if localRef, remote, fErr := e.vcs.FetchRef(ctx, ws.Path, wsStrategy.BaseRef); fErr == nil {
-				e.log.Info("fetched the base ref", "session", sessionID, "ref", wsStrategy.BaseRef, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
-				wtPath, branch, wtErr = e.vcs.PrepareWorktree(ctx, ws.Path, sessionID, localRef, wsStrategy.Branch)
-			} else {
-				wtErr = fErr
-			}
-		}
-		if wtErr != nil {
-			if errors.As(wtErr, &baseErr) && hasInitial {
-				initFailure = (&runtime.Failure{
-					Kind:    sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
-					Message: fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", projectID, baseErr.Ref, ws.Path, baseErr.Upstream()),
-				}).Proto()
-			} else {
-				return nil, connect.NewError(connect.CodeFailedPrecondition, wtErr)
-			}
-		} else {
-			wsStrategy.WorktreePath = wtPath
-			wsStrategy.Branch = branch
-		}
-	} else {
-		wsStrategy.WorktreePath = ""
 		if wsStrategy.Branch == "" {
-			wsStrategy.Branch = vcs.CurrentBranch(ctx, ws.Path)
-		} else if wsStrategy.Branch != vcs.CurrentBranch(ctx, ws.Path) {
-			if e.busyInPlace(projectID) {
-				return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("a session is working in %s now; switch branches once it is done", ws.Path))
-			}
-			if err := e.vcs.SwitchBranch(ctx, ws.Path, wsStrategy.Branch); err != nil {
-				return nil, connect.NewError(connect.CodeFailedPrecondition, err)
-			}
+			wsStrategy.Branch = "hermesh/" + sessionID
 		}
+	} else if cur := vcs.CurrentBranch(ctx, ws.Path); wsStrategy.Branch == "" {
+		wsStrategy.Branch = cur
+	} else if wsStrategy.Branch != cur && e.busyInPlace(projectID, "") {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("a session is working in %s now; switch branches once it is done", ws.Path))
 	}
 
 	status := sessionv1.SessionStatus_SESSION_STATUS_IDLE
-	if initFailure != nil {
-		status = sessionv1.SessionStatus_SESSION_STATUS_CRASHED
-	} else if hasInitial {
+	if hasInitial {
 		status = sessionv1.SessionStatus_SESSION_STATUS_RUNNING
 	}
 
@@ -1294,18 +1259,7 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 			}
 			sess.Progress.TurnCount = 1
 			sess.Progress.TurnStartedAt = now
-			if initFailure != nil {
-				initRun.Status = sessionv1.RunStatus_RUN_STATUS_FAILED
-				initRun.Failure = initFailure
-				initRun.ErrorCode = "base_ref_unavailable"
-				initRun.ErrorMessage = initFailure.Message
-				initRun.CompletedAt = now
-				sess.ActiveRunId = ""
-				sess.Error = initFailure.Message
-				sess.Progress.LastFailure = initFailure
-			} else {
-				sess.ActiveRunId = initRun.RunId
-			}
+			sess.ActiveRunId = initRun.RunId
 			if err := tx.PutRun(initRun); err != nil {
 				return err
 			}
@@ -1337,30 +1291,6 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 			}); err != nil {
 				return err
 			}
-			if initFailure != nil {
-				errItem := &sessionv1.TurnItem{
-					ItemId:    newID("err"),
-					SessionId: sessionID,
-					RunId:     initRun.RunId,
-					Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_ERROR,
-					Status:    "failed",
-					Text:      initFailure.Message,
-					Failure:   initFailure,
-				}
-				_ = tx.PutTurnItem(errItem)
-				if err := putSessionSynced(tx, sess); err != nil {
-					return err
-				}
-				if err := tx.AppendEvent(&sessionv1.SessionEvent{
-					SessionId: sessionID,
-					Type:      "run.failed",
-					Session:   sess,
-					Run:       initRun,
-					Item:      errItem,
-				}); err != nil {
-					return err
-				}
-			}
 		}
 		res = &sessionv1.StartSessionResponse{
 			Session:    proto.Clone(sess).(*sessionv1.Session),
@@ -1373,7 +1303,7 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 	e.publish(events, nil)
 
-	if initRun != nil && initFailure == nil {
+	if initRun != nil {
 		e.spawnRun(sessionID, initRun.RunId, false)
 	}
 	return res, nil
@@ -2134,6 +2064,139 @@ func (e *Engine) resolveWorkdir(sess *sessionv1.Session) (string, error) {
 	return ws.Path, nil
 }
 
+// workspaceErrorCode is a run's error code when its folder could not be set up.
+const workspaceErrorCode = "workspace_error"
+
+// workdirForRun is the folder a run works in. A session's first turn sets it up and says so
+// in the conversation (prepareWorkspace), as does the turn after one whose setup failed; a
+// later turn finds it (resolveWorkdir), a released worktree restored.
+func (e *Engine) workdirForRun(ctx context.Context, sess *sessionv1.Session, run *sessionv1.Run, runs []*sessionv1.Run) (string, error) {
+	first := run.Ordinal == 1
+	for _, r := range runs {
+		if r.Ordinal+1 == run.Ordinal && r.ErrorCode == workspaceErrorCode {
+			first = true
+		}
+	}
+	if !first {
+		return e.resolveWorkdir(sess)
+	}
+	return e.prepareWorkspace(ctx, sess, run.RunId)
+}
+
+// prepareWorkspace sets a session's folder up as its owner chose: a worktree made (from its
+// base fetched from origin first, if asked), a branch switched to in the folder itself, or
+// the folder kept as it is. It is one WORKSPACE item of the run, running while a step takes,
+// then completed or failed; a run stopped meanwhile leaves it running, to be settled with
+// the run. A folder that is not a git repository is used as it is, with no item.
+func (e *Engine) prepareWorkspace(ctx context.Context, sess *sessionv1.Session, runID string) (string, error) {
+	ws, err := e.st.Workspace(sess.ProjectId)
+	if err != nil {
+		return "", err
+	}
+	strat := sess.GetWorkspaceStrategy()
+	worktree := strat.GetMode() == identityv1.Workspace_WORKSPACE_WORKTREE
+	if !worktree && !vcs.IsGitRepo(ctx, ws.Path) {
+		return ws.Path, nil
+	}
+	step := &sessionv1.WorkspaceStep{Mode: strat.GetMode(), Branch: strat.GetBranch(), BaseRef: strat.GetBaseRef(), Path: ws.Path}
+	item := &sessionv1.TurnItem{
+		ItemId:    newID("wsp"),
+		SessionId: sess.SessionId,
+		RunId:     runID,
+		Kind:      sessionv1.TurnItemKind_TURN_ITEM_KIND_WORKSPACE,
+		Workspace: step,
+	}
+	put := func(status string) {
+		item.Status = status
+		evs, _ := e.st.Mutate(func(tx *store.Tx) error {
+			if err := tx.PutTurnItem(item); err != nil {
+				return err
+			}
+			return tx.AppendEvent(&sessionv1.SessionEvent{SessionId: sess.SessionId, Type: "item.updated", Item: item})
+		})
+		e.publish(evs, nil)
+	}
+	fail := func(err error) (string, error) {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		f := runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED)
+		item.Failure = f.Proto()
+		item.Text = item.Failure.Message // redacted, as it goes to every device
+		put("failed")
+		return "", runtime.Fail(f.Kind, f.Message)
+	}
+
+	if !worktree {
+		cur := vcs.CurrentBranch(ctx, ws.Path)
+		if step.Branch == "" || step.Branch == cur {
+			step.Action = sessionv1.WorkspaceAction_WORKSPACE_ACTION_KEEP
+			step.Branch = cur
+			put("completed")
+			return ws.Path, nil
+		}
+		step.Action = sessionv1.WorkspaceAction_WORKSPACE_ACTION_SWITCH
+		step.PreviousBranch = cur
+		put("running")
+		if e.busyInPlace(sess.ProjectId, sess.SessionId) {
+			return fail(fmt.Errorf("a session is working in %s now; switch branches once it is done", ws.Path))
+		}
+		if err := e.vcs.SwitchBranch(ctx, ws.Path, step.Branch); err != nil {
+			return fail(err)
+		}
+		put("completed")
+		return ws.Path, nil
+	}
+
+	base := strat.GetBaseRef()
+	if strat.GetFromRemote() && !strings.HasPrefix(base, "origin/") {
+		step.Action = sessionv1.WorkspaceAction_WORKSPACE_ACTION_FETCH
+		put("running")
+		fetched, err := vcs.FetchBase(ctx, ws.Path, base)
+		if err != nil {
+			return fail(err)
+		}
+		base = fetched
+		step.BaseRef = base
+	}
+	step.Action = sessionv1.WorkspaceAction_WORKSPACE_ACTION_CREATE
+	put("running")
+	wtPath, branch, err := e.vcs.PrepareWorktree(ctx, ws.Path, sess.SessionId, base, strat.GetBranch())
+	var baseErr *vcs.BaseRefError
+	if errors.As(err, &baseErr) && !strat.GetFromRemote() {
+		fetchStart := time.Now()
+		if localRef, remote, fErr := e.vcs.FetchRef(ctx, ws.Path, base); fErr == nil {
+			e.log.Info("fetched the base ref", "session", sess.SessionId, "ref", base, "remote", remote, "took", time.Since(fetchStart).Round(time.Millisecond))
+			wtPath, branch, err = e.vcs.PrepareWorktree(ctx, ws.Path, sess.SessionId, localRef, strat.GetBranch())
+		} else {
+			err = fErr
+		}
+	}
+	if errors.As(err, &baseErr) {
+		return fail(runtime.Fail(sessionv1.FailureKind_FAILURE_KIND_BASE_REF_UNAVAILABLE,
+			fmt.Sprintf("Cannot create the worktree for project %q: base ref %q does not resolve to a commit in local repository %q%s.", sess.ProjectId, baseErr.Ref, ws.Path, baseErr.Upstream())))
+	}
+	if err != nil {
+		return fail(err)
+	}
+	step.Branch, step.Path = branch, wtPath
+	_, _ = e.st.Mutate(func(tx *store.Tx) error {
+		sNow, err := tx.GetSession(sess.SessionId)
+		if err != nil {
+			return err
+		}
+		if sNow.WorkspaceStrategy == nil {
+			sNow.WorkspaceStrategy = &sessionv1.WorkspaceStrategy{Mode: identityv1.Workspace_WORKSPACE_WORKTREE}
+		}
+		sNow.WorkspaceStrategy.WorktreePath = wtPath
+		sNow.WorkspaceStrategy.Branch = branch
+		sNow.WorkspaceStrategy.BaseRef = base
+		return putSessionSynced(tx, sNow)
+	})
+	put("completed")
+	return wtPath, nil
+}
+
 func (e *Engine) loadTurnAttachments(refs []*sessionv1.AttachmentRef) []runtime.TurnAttachment {
 	var out []runtime.TurnAttachment
 	for _, r := range refs {
@@ -2218,22 +2281,35 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 		return
 	}
 
-	workdir, err := e.resolveWorkdir(sess)
+	workdir, err := e.workdirForRun(runCtx, sess, curRun, runs)
 	if err != nil {
-		e.finishRunFailed(sessionID, runID, "workspace_error", err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
+		if runCtx.Err() != nil {
+			if e.bgCtx.Err() == nil {
+				e.finishRunInterrupted(sessionID, runID, "interrupted", nil, nil)
+			}
+			return
+		}
+		e.finishRunFailed(sessionID, runID, workspaceErrorCode, err.Error(), runtime.FailureOf(err, sessionv1.FailureKind_FAILURE_KIND_START_FAILED))
 		return
 	}
 
-	// Capture baseline checkpoint (ordinal 0) before the very first run so user can rewind even Run 1!
+	// The baseline checkpoint (ordinal 0) before the very first run, so even run 1 can be
+	// rewound: taken while the agent starts, and waited for before the turn is attached.
 	existingCkpts, _ := e.st.Checkpoints(sessionID)
 	prevTreeOID := ""
+	baseline := make(chan struct{})
 	if len(existingCkpts) == 0 {
-		if baseCp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), sessionID, "", 0, ""); cpErr == nil && baseCp != nil {
-			prevTreeOID = baseCp.GitTreeOid
-			_, _ = e.st.Mutate(func(tx *store.Tx) error { return tx.PutCheckpoint(baseCp) })
-		}
+		go func() {
+			defer close(baseline)
+			if baseCp, cpErr := e.vcs.CaptureCheckpoint(runCtx, workdir, newID("ckpt"), sessionID, "", 0, ""); cpErr == nil && baseCp != nil {
+				prevTreeOID = baseCp.GitTreeOid
+				_, _ = e.st.Mutate(func(tx *store.Tx) error { return tx.PutCheckpoint(baseCp) })
+			}
+		}()
+		defer func() { <-baseline }() // a run that ends early still waits for it, so nothing outlives the run
 	} else {
 		prevTreeOID = existingCkpts[len(existingCkpts)-1].GitTreeOid
+		close(baseline)
 	}
 
 	instCfg, drv, err := e.resolveInstanceConfig(nil, sess.ProjectId, curRun.ModelSelection.GetInstanceId())
@@ -2431,10 +2507,12 @@ func (e *Engine) driveRun(runCtx context.Context, sessionID, runID string, fresh
 			InteractionMode:   curRun.InteractionMode,
 			Session:           drvSess,
 		}
+		<-baseline // registered, an idle lease may be reaped: only once the turn can attach
 		e.sup.Register(activeLease)
 		e.startLeasePump(activeLease, workdir)
 	}
 
+	<-baseline
 	pump := e.ensureLeasePump(activeLease, workdir)
 	turn := pump.attachTurn(runID, curRun.Ordinal, workdir, prevTreeOID)
 	activeLease.SetInTurn(true)
@@ -5809,13 +5887,13 @@ func (e *Engine) GetSession(_ context.Context, p *Principal, sessionID string) (
 	return proj, nil
 }
 
-func (e *Engine) busyInPlace(projectID string) bool {
+func (e *Engine) busyInPlace(projectID, except string) bool {
 	sessions, err := e.st.ListSessions(projectID, false, 0)
 	if err != nil {
 		return true
 	}
 	for _, s := range sessions {
-		if s.GetWorkspaceStrategy().GetMode() != identityv1.Workspace_WORKSPACE_IN_PLACE {
+		if s.SessionId == except || s.GetWorkspaceStrategy().GetMode() != identityv1.Workspace_WORKSPACE_IN_PLACE {
 			continue
 		}
 		switch s.GetStatus() {

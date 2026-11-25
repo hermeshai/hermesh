@@ -148,7 +148,12 @@ func TestWorkspaceUsageAndResume(t *testing.T) {
 	}
 	busy := h.start("sleep 60s")
 	h.wait(busy, sessionv1.SessionStatus_SESSION_STATUS_RUNNING)
-	if w := h.listed(busy); w == nil || w.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY {
+	// Its first turn makes the worktree, a moment after the session starts running.
+	w := h.listed(busy)
+	for deadline := time.Now().Add(5 * time.Second); w == nil && time.Now().Before(deadline); w = h.listed(busy) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if w == nil || w.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY {
 		t.Fatalf("busy listed: %v", w)
 	}
 	if r := local.ReleaseWorkspaces(ctx, []string{busy}).Results[0]; r.Released || r.Block != machinev1.WorkspaceBlock_WORKSPACE_BLOCK_BUSY || !h.worktreeExists(busy) {

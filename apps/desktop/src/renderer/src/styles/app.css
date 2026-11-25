@@ -496,6 +496,8 @@ html.blurred .ctitle h2,html.blurred .set-top h1,html.blurred .update-title{colo
 /* Work another of the owner's agents sent in (Her, a granted one): a quiet bubble, its sender's face on the corner, ringed by the page. */
 .um.from{margin-top:calc(var(--sp-1) + 8px)}
 .um.from .bub{background:var(--fill2);color:var(--msg)}
+/* Not in the conversation yet (on its way, or waiting for its machine): faded, as Her's are (her.css). */
+.um.waiting .bub{opacity:.72}
 .um-badge{position:absolute;left:-11px;top:-11px;z-index:1;padding:2px;border-radius:50%;background:var(--win);display:flex}
 .am{position:relative;font-size:var(--chat-size);line-height:1.625;color:var(--msg)}
 /* A message, and a turn's reply at its end, keep room below (blocks apart); when and copy show there on hover, under the bubble's right edge or the text's left

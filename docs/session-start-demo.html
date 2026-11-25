@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新会话启动：发送状态 · 原型</title>
+<style>
+:root{
+  --font-ios:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+[data-theme=light]{
+  --page:#e9e9ee;--page-fg:#1b1c22;--page-fg2:#62646f;--card:#fff;--card-bd:rgba(0,0,0,.08);
+  --bg:#fbfbfc;--bg-rgb:251,251,252;--l1:rgba(0,0,0,.88);--l2:rgba(0,0,0,.55);--l3:rgba(0,0,0,.30);
+  --fill:rgba(0,0,0,.045);--fill2:rgba(0,0,0,.075);
+  --glass:rgba(250,250,252,.78);--glass-sh:0 0 0 .5px rgba(0,0,0,.10),0 10px 30px rgba(20,24,40,.10),0 2px 6px rgba(20,24,40,.06);
+  --accent:#3d5bff;
+  --net:#2a78d6;--mac:#1baf7a;--model:#eb6834;
+}
+[data-theme=dark]{
+  --page:#0d0e12;--page-fg:#ececf1;--page-fg2:#9a9ca8;--card:#1a1b20;--card-bd:rgba(255,255,255,.08);
+  --bg:#000;--bg-rgb:0,0,0;--l1:rgba(255,255,255,.92);--l2:rgba(255,255,255,.58);--l3:rgba(255,255,255,.32);
+  --fill:rgba(255,255,255,.06);--fill2:rgba(255,255,255,.10);
+  --glass:rgba(38,38,42,.74);--glass-sh:0 0 0 .5px rgba(255,255,255,.12),inset 0 .5px 0 rgba(255,255,255,.14),0 10px 30px rgba(0,0,0,.5);
+  --accent:#4a66ff;
+  --net:#3987e5;--mac:#199e70;--model:#d95926;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--page);color:var(--page-fg);font:14px/1.5 var(--font-ios);min-height:100vh;padding-bottom:120px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+svg{display:block}
+.top{max-width:1200px;margin:0 auto;padding:20px 24px 4px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.top h1{font-size:19px;margin:0;font-weight:650}
+.top span{color:var(--page-fg2);font-size:13px}
+.wrap{max-width:1200px;margin:0 auto;padding:16px 24px;display:flex;gap:40px;align-items:flex-start;justify-content:center;flex-wrap:wrap}
+.side{width:600px;max-width:100%;display:flex;flex-direction:column;gap:16px}
+.card{background:var(--card);border:1px solid var(--card-bd);border-radius:14px;padding:16px 18px;font-size:13px;line-height:1.65}
+.card h3{margin:0 0 10px;font-size:14px}
+.card .blk{margin-top:14px;padding-top:12px;border-top:1px solid var(--card-bd)}
+.card .blk>b{display:block;margin-bottom:2px}
+.card p{margin:0;color:var(--page-fg2)}
+.card ul{margin:4px 0 0;padding-left:19px;color:var(--page-fg2)}
+.card li{margin:3px 0}
+.card code{font:12px var(--mono);background:var(--fill);padding:1px 4px;border-radius:4px}
+.card em{font-style:normal;color:var(--page-fg)}
+.ctl{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--card-bd);padding:9px 16px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;justify-content:center;font-size:12.5px;z-index:90}
+.ctl .g{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.ctl .g b{color:var(--page-fg2);font-weight:500;margin-right:4px}
+.ctl button{padding:4px 11px;border-radius:7px;background:var(--fill2)}
+.ctl button.on{background:var(--accent);color:#fff}
+.ctl .g.off{opacity:.35;pointer-events:none}
+.ic{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ---------- the chain ---------- */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.stat{background:var(--fill);border-radius:10px;padding:10px 12px}
+.stat small{display:block;color:var(--page-fg2);font-size:12px}
+.stat b{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.stat b u{text-decoration:none;font-size:13px;font-weight:500;margin-left:2px}
+.stat span{display:block;font-size:12px;color:var(--page-fg2)}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--page-fg2);margin-bottom:6px}
+.legend i,.sw{display:inline-block;width:9px;height:9px;border-radius:2.5px;margin-right:5px;flex:none}
+.bar{position:relative;height:18px;display:flex;gap:2px;margin-bottom:4px}
+.bar .seg{height:100%;min-width:3px;border-radius:2px;opacity:.9}
+.bar .seg:first-child{border-radius:4px 2px 2px 4px}.bar .seg:last-child{border-radius:2px 4px 4px 2px}
+.bar .seg:hover{opacity:1}
+.bar .head{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--page-fg);border-radius:1px;pointer-events:none}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--page-fg2);font-variant-numeric:tabular-nums;margin-bottom:10px}
+.who-net{background:var(--net)}.who-mac{background:var(--mac)}.who-model{background:var(--model)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-weight:500;color:var(--page-fg2);font-size:12px;padding:4px 8px;border-bottom:1px solid var(--card-bd)}
+td{padding:6px 8px;border-bottom:1px solid var(--card-bd);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.n{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+th.n{text-align:right}
+td small{display:block;color:var(--page-fg2);font-size:11.5px;line-height:1.4}
+td s{color:var(--page-fg2);margin-right:5px}
+tr.on td{background:var(--fill)}
+tr.on td:first-child{border-radius:8px 0 0 8px}tr.on td:last-child{border-radius:0 8px 8px 0}
+td .scr{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--fill2);white-space:nowrap}
+.tip{position:fixed;z-index:99;pointer-events:none;background:var(--card);border:1px solid var(--card-bd);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 6px 20px rgba(0,0,0,.25);display:none;max-width:260px}
+.tip b{display:block}.tip span{color:var(--page-fg2)}
+
+/* ---------- iPhone (17 Pro, 402 × 874 pt) ---------- */
+.phone{width:402px;height:874px;border-radius:58px;background:var(--bg);position:relative;overflow:hidden;overflow:clip;flex:none;
+  box-shadow:0 0 0 11px #1a1a1c,0 0 0 12px #3a3a3e,0 30px 80px rgba(10,20,50,.30);color:var(--l1);font:17px/1.3 var(--font-ios)}
+.island{position:absolute;top:11px;left:50%;transform:translateX(-50%);width:124px;height:36px;border-radius:20px;background:#000;z-index:8}
+.status{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:6px 34px 0 46px;font-weight:600;font-size:17px;z-index:7}
+.home{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:140px;height:5px;border-radius:3px;background:var(--l1);z-index:20}
+.glass{background:var(--glass);box-shadow:var(--glass-sh);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);position:relative}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:.35;mix-blend-mode:soft-light;background-image:var(--grain)}
+.nav{position:absolute;top:56px;left:0;right:0;height:50px;display:flex;align-items:center;justify-content:center;z-index:5}
+.gb{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.nav .menu{position:absolute;left:16px}
+.nav .acts{position:absolute;right:16px}
+.tcap{height:44px;max-width:258px;border-radius:22px;padding:0 18px;display:flex;flex-direction:column;justify-content:center;text-align:center;line-height:1.18}
+.tcap b{display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tcap small{display:block;font-size:11px;color:var(--l2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.chat{position:absolute;inset:0;padding:116px 20px 112px;display:flex;flex-direction:column;justify-content:flex-end;gap:13px}
+.tl{font-size:12px;color:var(--l3);text-align:center}
+.pr{align-self:flex-end;padding:8px 0 8px 48px;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.bub{background:var(--accent);color:#fff;border-radius:18px;padding:9px 14px;line-height:1.42;transition:opacity .2s}
+.bub.faded{opacity:.62}
+/* under the bubble, as Her's messages say it (HerConversation.swift): caption, tertiary, its buttons secondary */
+.cap{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--l3);min-height:16px}
+.cap button{font-weight:600;color:var(--l2)}
+.cap .ic{width:13px;height:13px;stroke-width:2}
+/* where the agent works: a step of its own, as a tool line (StepView) */
+.ws{display:flex;align-items:center;gap:6px;font-size:15px;color:var(--l2);white-space:nowrap;overflow:hidden;cursor:pointer;min-height:20px}
+.ws>span{overflow:hidden;text-overflow:ellipsis}
+.ws code{font:14px var(--mono);color:var(--l2)}
+.ws .ic{width:15px;height:15px;stroke-width:1.9;color:var(--l3)}
+.ws .chev{width:12px;height:12px;stroke-width:2.2;transition:transform .2s}
+.ws.open .chev{transform:rotate(90deg)}
+.wsd{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px;color:var(--l2);background:var(--fill);border-radius:12px;padding:9px 12px;margin-top:-5px}
+.wsd b{font-weight:400;color:var(--l3)}
+.wsd span{font:12.5px/1.45 var(--mono);word-break:break-all}
+.wsd .full{grid-column:1/-1;font:13px/1.45 var(--font-ios);color:var(--l2)}
+/* today's error card for a run that failed (a failure's title and its words) */
+.errc{border-radius:14px;background:var(--fill);padding:10px 12px;font-size:14px;line-height:1.4;display:flex;gap:8px}
+.errc .ic{width:17px;height:17px;color:var(--l2);margin-top:1px}
+.errc b{display:block;font-weight:600}
+.errc span{color:var(--l2);font-size:13px}
+.md{line-height:1.5}
+.tool{display:flex;align-items:center;gap:6px;font-size:15px;color:var(--l2)}
+.tool code{font:14px var(--mono)}
+.sweep{-webkit-mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);mask-image:linear-gradient(90deg,#000 38%,rgba(0,0,0,.28) 50%,#000 62%);
+  -webkit-mask-size:300% 100%;mask-size:300% 100%;animation:sweep 2.4s linear infinite}
+@keyframes sweep{from{-webkit-mask-position:100% 0;mask-position:100% 0}to{-webkit-mask-position:0 0;mask-position:0 0}}
+.work{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--l2);height:18px}
+.work i{font-style:normal;color:var(--l3);font-variant-numeric:tabular-nums}
+.work span{transition:opacity .18s}
+/* the mark: three beams at 0°, 60° and 120° (Loading.swift), lit in turn */
+.mk{width:18px;height:18px;flex:none;isolation:isolate}
+.mk line{stroke-width:12;stroke-linecap:round;mix-blend-mode:plus-lighter;animation:seq 1.2s linear infinite}
+[data-theme=light] .mk line{mix-blend-mode:multiply}
+.mk line:nth-of-type(2){animation-delay:.4s}.mk line:nth-of-type(3){animation-delay:.8s}
+@keyframes seq{0%{opacity:.28}30%{opacity:1}60%,100%{opacity:.28}}
+@media (prefers-reduced-motion:reduce){.mk line,.sweep{animation:none}}
+.dock{position:absolute;left:0;right:0;bottom:30px;padding:0 12px;z-index:6}
+.box{border-radius:24px;padding:6px;display:flex;align-items:center;gap:8px;min-height:48px}
+.box span{flex:1;padding-left:2px;line-height:1.35;font-size:16px}
+.box span.ph{color:var(--l3);white-space:nowrap;overflow:hidden}
+.cbtn{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;background:var(--fill2);color:var(--l1);align-self:flex-end}
+.cbtn .sq{width:11px;height:11px;border-radius:2.5px;background:currentColor}
+.send{background:var(--accent);color:#fff;position:relative}
+.send.dim{opacity:.4}
+.send .ic{width:18px;height:18px;stroke-width:2.3}
+.send.tap::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:2px solid var(--l2);animation:tap .45s ease-out forwards}
+@keyframes tap{from{transform:scale(.6);opacity:1}to{transform:scale(1.15);opacity:0}}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="top"><h1>新会话启动：发送状态 · 原型</h1><span>iPhone · 发送状态写在气泡下方，在哪里工作单独一行，底部只说 agent 在做什么</span></div>
+<div class="wrap">
+  <div class="phone" id="phone">
+    <div class="island"></div>
+    <div class="status"><span>9:41</span><span></span></div>
+    <div class="nav">
+      <button class="gb glass menu" aria-label="菜单"><svg class="ic" viewBox="0 0 24 24"><path d="M5 8h14M5 12h14M5 16h14"/></svg></button>
+      <div class="tcap glass"><b id="ttl"></b><small>work-mac/hermesh</small></div>
+      <button class="gb glass acts" aria-label="更多"><svg class="ic" viewBox="0 0 24 24"><path d="M6 12h.01M12 12h.01M18 12h.01"/></svg></button>
+    </div>
+    <div class="chat">
+      <div class="tl" id="tl">今天 09:41</div>
+      <div class="pr" id="pr"><div class="bub" id="bub"></div><div class="cap" id="cap"></div></div>
+      <div class="ws hide" id="ws" onclick="S.wsOpen=!S.wsOpen;shown=''"></div>
+      <div class="wsd hide" id="wsd"></div>
+      <div class="errc hide" id="errc"></div>
+      <div class="tool hide" id="tool">运行 <code>git status</code></div>
+      <div class="md hide" id="md"></div>
+      <div class="work" id="work"><span id="mk"></span><span id="line"></span><i id="clock"></i></div>
+    </div>
+    <div class="dock"><div class="box glass">
+      <button class="cbtn" aria-label="添加"><svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      <span id="draft"></span>
+      <button class="cbtn" id="stop" aria-label="停止"><i class="sq"></i></button>
+      <button class="cbtn send" id="send" aria-label="发送"><svg class="ic" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+    </div></div>
+    <div class="home"></div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h3>链路：点发送之后</h3>
+      <div class="stats" id="stats"></div>
+      <div class="legend"><span><i class="who-net"></i>手机与网络</span><span><i class="who-mac"></i>Mac</span><span><i class="who-model"></i>模型</span></div>
+      <div class="bar" id="bar"></div>
+      <div class="axis"><span>0 秒</span><span id="axisEnd"></span></div>
+      <table><thead><tr><th>阶段</th><th class="n">耗时</th><th>屏幕上</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+    <div class="card">
+      <h3>交互细节</h3>
+      <p>发送状态跟着消息走，写在气泡下方；底部那一行只说 agent 在做什么。文案和样式全部沿用 Her 对话里已有的，不新增。</p>
+      <div class="blk"><b>1 · 点发送</b>
+        <ul>
+          <li>立刻进会话页，输入框清空，气泡出现在底部，透明度 62%。标题先用消息的第一行。</li>
+          <li>Mac 在 400 毫秒内应答：气泡变实，中间不出现任何文字。</li>
+          <li>超过 400 毫秒：气泡下方出现<em>正在发送…</em>，出现后至少停 500 毫秒。</li>
+        </ul></div>
+      <div class="blk"><b>2 · Mac 应答之后</b>
+        <ul>
+          <li>气泡变实，下方文字消失。不写「已送达」，底部出现<em>工作中</em>就是送达。</li>
+          <li>底部只有四个词：<em>工作中</em>、<em>思考中</em>、<em>处理中</em>、<em>回复中</em>。启动 agent、等模型开口都算工作中。</li>
+          <li>计时照旧从本轮开始算。</li>
+        </ul></div>
+      <div class="blk"><b>3 · 在哪里工作：单独一行</b>
+        <ul>
+          <li>气泡下面、agent 的第一步之前，单独一行，样子和工具步骤一样：分支图标、一句话、右侧箭头。只在第一轮出现。</li>
+          <li>按新会话页的选择说：<em>从 main 新建了分支 hermesh/s_…</em>；先取回远程时是<em>从 origin/main 新建了分支…</em>；原地切分支是<em>切到了分支 feature/login</em>；原地不切是<em>原地，在分支 main 上工作</em>。</li>
+          <li>超过 400 毫秒的步骤先显示进行中（文字扫光，和运行中的工具一样）：<em>取回远程的 main</em>、<em>从 main 新建 worktree</em>；更快的只显示结果。</li>
+          <li>点开看细节：方式、分支、基于哪个分支、目录；原地切分支时写明原来在哪个分支。</li>
+          <li>没建成：这一行变成 ⚠ 加原因，点开看完整原因，这一轮结束，底部那一行消失。直接再发一条就会重试。</li>
+          <li>不是 git 仓库的项目（临时项目）没有这一行。</li>
+        </ul></div>
+      <div class="blk"><b>4 · 没发出去</b>
+        <ul>
+          <li>Mac 离线：气泡保持变淡，下方<em>等 work-mac 在线后送达</em>和<em>丢弃</em>。底部不再另写「排队中」。</li>
+          <li>被拒绝：气泡变实，下方<em>没能送达：原因</em>、<em>再试一次</em>、<em>编辑</em>。再试一次用同一个指令编号，不会建出两个会话；编辑把文字放回输入框。</li>
+          <li>结果不明（超时、断线）：当作离线处理，继续用同一个编号重发。</li>
+        </ul></div>
+      <div class="blk"><b>5 · 会话里接着发</b>
+        <ul>
+          <li>会话空闲：和上面一样。</li>
+          <li>一轮正在进行：消息进输入框上方的队列卡片，发送期间那一行变淡，被拒绝时在那一行给出再试一次。</li>
+        </ul></div>
+      <div class="blk"><b>顺带的提速</b>
+        <ul>
+          <li>立刻进会话页：点发送后没有反馈的时间从 0.75 秒降到 0。</li>
+          <li>取回远程、建 worktree、切分支挪到本轮里做，发送请求先返回，正常网络下「正在发送…」就不会出现。这几步的结果写在上面那一行里。</li>
+          <li>不碰 git 的检查留在发送请求里（项目在不在、权限、原地目录是不是正被别的会话占用），没通过就是气泡下方的「没能送达」。</li>
+          <li>基线快照和启动 agent 并行：Codex 省 0.4 秒，Antigravity 省 0.5 秒。</li>
+        </ul></div>
+      <div class="blk"><b>数字从哪来</b>
+        <p>这台 Mac 的会话库（446 轮）和现场计时：本轮开始到出现第一段内容中位 10.9 秒，P90 23.3 秒。Codex「开始响应」和「思考」的分界没有记录，按 3 秒和 7 秒画。网络慢、离线和被拒绝三种情况的时长是示意。</p></div>
+    </div>
+  </div>
+</div>
+<div class="ctl" id="ctl"></div>
+<div class="tip" id="tip"></div>
+
+<script>
+document.documentElement.style.setProperty("--grain", `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E")`);
+
+const S = { scene: "codex", ver: "new", place: "wt", kase: "ok", speed: 1, theme: "dark", wsOpen: false };
+const PROMPT = "接下来还有哪些事要做，简要说明你的计划";
+const REPLY = "接下来还有三件事：先补齐端到端测试，再合并 main，最后装到手机上验证。";
+const MAC = "work-mac", REFUSED = "machine is paused"; // the engine's own words while the machine is paused
+const $ = (id) => document.getElementById(id);
+
+// Per agent: how long it takes to start, and what the model does first. `src` says where each number is from.
+const SC = {
+  codex: { agent: "Codex", spawn: 400, spawnSrc: "实测：握手 0.06–0.38 秒，另加建会话", wait: 3000, think: 7000, split: "示意：分界没有记录，两段合计与实测一致", last: "reply" },
+  anti: { agent: "Antigravity", spawn: 4500, spawnSrc: "实测：启动到可用中位 4.5 秒", wait: 4600, waitSrc: "实测：可用到第一个事件中位 4.6 秒", think: 2000, split: "示意", last: "tool" },
+};
+
+// Where the agent works, as chosen in the New Session box (SessionPlace in SessionPage.swift).
+const SID = "s_8f2k9c1a_01kfz8q3w2", BASE = "main", ON = "feature/login", PROJECT = "hermesh";
+const WTDIR = `~/Library/Application Support/Hermesh/machine/worktrees/${SID}`, DIR = "~/code/hermesh";
+const WT = { id: "wt", name: "新建 worktree", ms: 450, src: "实测：本仓库 0.42–0.59 秒", doing: `从 <code>${BASE}</code> 新建 worktree` };
+const PLACE = {
+  wt: { ops: [WT], done: `从 ${BASE} 新建了分支 <code>hermesh/${SID}</code>`,
+    fail: `没能新建 worktree：本地找不到分支 ${BASE}`, why: `本地仓库 ${DIR} 里找不到分支 ${BASE}，也没能从远程取回。`,
+    rows: [["方式", "独立 worktree"], ["分支", `hermesh/${SID}`], ["基于", BASE], ["目录", WTDIR]] },
+  fetch: { ops: [{ id: "fetch", name: `取回远程的 ${BASE}`, ms: 1800, src: "示意：看网络和仓库大小", doing: `取回远程的 <code>${BASE}</code>` }, { ...WT, doing: `从 <code>origin/${BASE}</code> 新建 worktree` }],
+    done: `从 origin/${BASE} 新建了分支 <code>hermesh/${SID}</code>`,
+    fail: `没能取回远程的 ${BASE}`, why: "git fetch 连不上远程仓库。",
+    rows: [["方式", "独立 worktree，先取回远程"], ["分支", `hermesh/${SID}`], ["基于", `origin/${BASE}`], ["目录", WTDIR]] },
+  sw: { ops: [{ id: "sw", name: `切换到分支 ${ON}`, ms: 150, src: "示意：git switch，通常很快", doing: `切换到分支 <code>${ON}</code>` }],
+    done: `切到了分支 <code>${ON}</code>`,
+    fail: `没能切到分支 ${ON}：有未提交的改动`, why: `${DIR} 有未提交的改动，先提交或暂存，再切到 ${ON}。`,
+    rows: [["方式", "原地"], ["分支", `${ON}（原来在 ${BASE}）`], ["目录", DIR]] },
+  here: { ops: [], done: `原地，在分支 <code>${BASE}</code> 上工作`, rows: [["方式", "原地"], ["分支", BASE], ["目录", DIR]] },
+};
+const isOp = (s) => PLACE[S.place].ops.some((o) => o.id === s.id);
+
+// The stages after the tap, for a version of the design and the case shown.
+function timeline(ver) {
+  const c = SC[S.scene], N = ver === "new", k = S.kase, P = PLACE[S.place], out = [];
+  const add = (id, who, name, ms, src, was) => out.push({ id, who, name, ms, src, was });
+  add("rpc", "net", "手机 → 中继 → Mac", k === "slow" ? 2500 : 300, k === "slow" ? "示意：网络差的时候" : "实测：经中继一次往返 250–300 毫秒");
+  if (k !== "fail") {
+    if (k === "off") add("off", "net", `等 ${MAC} 上线`, 3500, "示意");
+    for (const o of P.ops) add(o.id, "mac", o.name, o.ms, o.src);
+    if (k === "ws") {} else if (N) add("par", "mac", `基线快照，同时启动 ${c.agent}`, Math.max(500, c.spawn), "两步并行，取较慢的一步", 500 + c.spawn);
+    else {
+      add("ckpt", "mac", "基线快照", 500, "实测：0.2–1.0 秒，中位 0.5 秒");
+      add("spawn", "mac", `启动 ${c.agent} 并握手`, c.spawn, c.spawnSrc);
+    }
+    if (k !== "ws") {
+      add("wait", "model", "模型开始响应前", c.wait, c.waitSrc || c.split);
+      add("think", "model", "模型思考", c.think, c.split);
+      add(c.last, "model", c.last === "tool" ? "调用工具" : "输出回复", 2600, "示意");
+    }
+  }
+  let t = 0;
+  for (const s of out) { s.from = t; t += s.ms; s.to = t; }
+  const at = (id) => out.find((s) => s.id === id) || {};
+  const ops = out.filter(isOp), wsFrom = ops.length ? ops[0].from : (k === "off" ? at("off") : at("rpc")).to;
+  const T = { ver, segs: out, total: t, wsFrom, wsTo: ops.length ? ops[ops.length - 1].to : wsFrom, wsFail: k === "ws" };
+  // Today a failed fetch or switch refuses the call; a missing base branch opens the session on an error card.
+  T.failed = k === "fail" || (!N && T.wsFail && S.place !== "wt");
+  T.errCard = !N && T.wsFail && S.place === "wt";
+  T.refusedAt = k === "fail" ? at("rpc").to : T.wsTo;
+  T.delivered = T.failed || T.wsFail ? null : at("wait").from;
+  // Today the session is written after the git work, and the page opens then; new, right after the call.
+  // Offline, today's page opens on a session kept on the phone ("排队中").
+  T.runStart = N ? T.wsFrom : T.wsTo;
+  T.opened = N ? 0 : T.failed ? Infinity : k === "off" ? at("rpc").to : T.wsTo;
+  for (const s of out) { s.line = line(s, T); s.screen = screen(s, T); }
+  return T;
+}
+// The line at the bottom during a stage.
+function line(s, T) {
+  if (s.id === "off" || (isOp(s) && T.ver === "now" && S.kase === "off")) return T.ver === "now" ? "排队中" : "";
+  if (s.id === "rpc" || s.from < T.runStart) return "";
+  return { think: "思考中", tool: "处理中", reply: "回复中" }[s.id] || "工作中";
+}
+// What the table says the screen shows during a stage.
+function screen(s, T) {
+  if (T.ver === "new" && isOp(s)) {
+    if (T.wsFail && s.to === T.wsTo) return "对话里这一行变成失败";
+    return s.ms >= 400 ? `工作中；对话里一行：${s.name}…` : "工作中；对话里直接出现结果";
+  }
+  if (T.errCard && isOp(s)) return "停在新会话页，之后是错误卡片";
+  if (s.line) return s.line;
+  if (T.ver === "now") return T.failed ? "停在新会话页，报错" : "停在新会话页，发送键变灰";
+  if (s.id === "off") return `气泡下方：等 ${MAC} 在线后送达`;
+  if (T.failed) return "气泡下方：没能送达";
+  return s.ms >= 400 ? "气泡变淡，下方：正在发送…" : "气泡变淡，没有文字";
+}
+
+// The mark, as Loading.swift draws it.
+function mark() {
+  const stops = S.theme === "dark" ? ["22e1c9", "00d0de", "00b9f1", "009cfe", "3e7bff", "5175ff", "616eff", "6e68ff", "7b61ff"] : ["0891b2", "008cc2", "0084d3", "0079e3", "2f6bf0", "4361f2", "5356f3", "614af2", "6d3cf0"];
+  let defs = "", lines = "";
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI) / 3, dx = Math.cos(a), dy = Math.sin(a), nx = -dy * 10, ny = dx * 10;
+    const p = [nx - dx * 37, ny - dy * 37, nx + dx * 37, ny + dy * 37].map((v) => v.toFixed(2));
+    defs += `<linearGradient id="au${i}" gradientUnits="userSpaceOnUse" x1="${p[0]}" y1="${p[1]}" x2="${p[2]}" y2="${p[3]}">${stops.map((h, k) => `<stop offset="${k / 8}" stop-color="#${h}"/>`).join("")}</linearGradient>`;
+    lines += `<line x1="${p[0]}" y1="${p[1]}" x2="${p[2]}" y2="${p[3]}" stroke="url(#au${i})"/>`;
+  }
+  return `<svg class="mk" viewBox="-52 -52 104 104" aria-hidden="true"><defs>${defs}</defs>${lines}</svg>`;
+}
+
+const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(ms % 1000 ? 2 : 1).replace(/0$/, "").replace(/\.$/, "") + " 秒" : ms + " 毫秒");
+let T, t = -900, last = 0, shown = "";
+const WARN = `<svg class="ic" viewBox="0 0 24 24"><path d="M12 4l9 16H3zM12 10v4M12 17h.01"/></svg>`;
+
+function build() {
+  T = timeline(S.ver);
+  const base = timeline("now");
+  const stat = (title, now, was, note, none = "没有开始") => `<div class="stat"><small>${title}</small><b>${now == null ? "—" : (now / 1000).toFixed(2) + "<u>秒</u>"}</b><span>${now == null ? none : now < was ? `现在 ${(was / 1000).toFixed(2)} 秒，省 ${((was - now) / 1000).toFixed(2)} 秒` : note}</span></div>`;
+  const dead = (x) => (x.ver === "new" ? 0 : x.failed ? null : x.opened);
+  $("stats").innerHTML = stat("点发送后屏幕没有变化", dead(T), dead(base), T.ver === "new" ? "立刻进会话页" : "停在新会话页，发送键变灰", "一直停在新会话页，报错") + stat(`发送到 ${SC[S.scene].agent} 收到指令`, T.delivered, base.delivered, "之后是模型自己的时间");
+  $("bar").innerHTML = T.segs.map((s) => `<div class="seg who-${s.who}" style="flex:${s.ms}" data-tip="${s.name}|${secs(s.ms)} · ${s.src}"></div>`).join("") + `<div class="head" id="head"></div>`;
+  $("axisEnd").textContent = (T.total / 1000).toFixed(1) + " 秒";
+  $("rows").innerHTML = T.segs.map((s, i) => `<tr id="r${i}"><td><span class="sw who-${s.who}"></span>${s.name}<small>${s.src}</small></td><td class="n">${s.was ? `<s>${secs(s.was)}</s>` : ""}${secs(s.ms)}</td><td><span class="scr">${s.screen}</span></td></tr>`).join("");
+  $("mk").innerHTML = mark();
+  document.documentElement.dataset.theme = S.theme;
+  const G = (name, key, opts, off) => `<div class="g ${off ? "off" : ""}"><b>${name}</b>${opts.map(([v, l]) => `<button class="${S[key] === v ? "on" : ""}" onclick="set('${key}',${JSON.stringify(v).replace(/"/g, "'")})">${l}</button>`).join("")}</div>`;
+  $("ctl").innerHTML = G("版本", "ver", [["now", "现在"], ["new", "新方案"]]) + G("工作位置", "place", [["wt", "独立 worktree"], ["fetch", "先取回远程"], ["sw", "原地切分支"], ["here", "原地"]]) +
+    G("情况", "kase", [["ok", "正常"], ["slow", "网络慢"], ["off", "Mac 离线"], ["fail", "被拒绝"]].concat(S.place === "here" ? [] : [["ws", "分支没建成"]])) + "<br style='flex-basis:100%;height:0'>" +
+    G("Agent", "scene", [["codex", "Codex"], ["anti", "Antigravity"]]) + G("速度", "speed", [[1, "1×"], [3, "3×"]]) + G("外观", "theme", [["dark", "深色"], ["light", "浅色"]]) +
+    `<div class="g"><button onclick="replay()">重播</button></div>`;
+  shown = "";
+}
+function set(k, v) { S[k] = v; if (k === "place" && v === "here" && S.kase === "ws") S.kase = "ok"; if (k !== "theme" && k !== "speed") S.wsOpen = false; if (k !== "theme" && k !== "speed") t = -900; build(); }
+function replay() { t = -900; }
+
+// The phone at time t (ms after the tap).
+function draw() {
+  const N = S.ver === "new", sent = t >= 0, rpc = T.segs[0];
+  const seg = T.segs.find((s) => t >= s.from && t < s.to) || (t >= T.total ? T.segs[T.segs.length - 1] : null);
+  const refused = T.failed && t >= T.refusedAt;
+  // Today the page stays New Session until the call returns, then reads the session (one more round trip).
+  const compose = !sent || t < T.opened;
+  const reading = !N && !compose && S.kase !== "off" && t < T.opened + 300;
+  const stopped = (T.wsFail || T.errCard) && t >= T.wsTo;
+  const text = compose || reading || !seg || refused || stopped ? "" : seg.line;
+  // Where it works (new): a row of its own once the run starts; nothing for a step under 400 ms but its result.
+  const P = PLACE[S.place], BR = `<svg class="ic" viewBox="0 0 24 24"><path d="M6 3v12M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a9 9 0 0 1-9 9"/></svg>`;
+  const CHEV = `<svg class="ic chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>`;
+  let ws = "", wsRun = false, wsFailed = false;
+  if (N && sent && S.kase !== "fail" && t >= T.wsFrom) {
+    if (t >= T.wsTo) { wsFailed = T.wsFail; ws = wsFailed ? `${WARN}<span>${P.fail}</span>${CHEV}` : `${BR}<span>${P.done}</span>${CHEV}`; }
+    else if (t - T.wsFrom >= 400) { wsRun = true; ws = `${BR}<span>${P.ops.find((o) => o.id === seg.id).doing}</span>`; }
+  }
+  const wsd = ws && !wsRun && S.wsOpen ? (wsFailed ? `<span class="full">${P.why}</span>` : P.rows.map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join("")) : "";
+  const err = T.errCard && t >= T.wsTo ? `${WARN}<div><b>找不到基准引用</b><span>Cannot create the worktree for project "${PROJECT}": base ref "${BASE}" does not resolve to a commit in local repository "${DIR}".</span></div>` : "";
+  const clock = text && text !== "排队中" ? Math.max(0, Math.floor((t - T.runStart) / 1000)) : -1;
+  // Under the bubble (new): where the message is, while it is not in the conversation yet.
+  let cap = "", faded = false;
+  if (N && sent && !compose) {
+    if (refused) cap = `${WARN}<span>没能送达：${REFUSED}</span><button onclick="set('kase','ok')">再试一次</button><button>编辑</button>`;
+    else if (seg && seg.id === "off") { faded = true; cap = `<span>等 ${MAC} 在线后送达</span><button>丢弃</button>`; }
+    else if (seg && seg.id === "rpc") { faded = true; if (t >= 400) cap = `<span>正在发送…</span>`; }
+  }
+  const reply = seg && seg.id === "reply" ? REPLY.slice(0, Math.ceil(REPLY.length * Math.min(1, (t - seg.from) / (seg.ms * 0.8)))) : "";
+  const key = [compose, reading, text, clock, cap, faded, ws, wsd, err, reply.length, seg && seg.id, refused, t >= -160 && t < 300].join("|");
+  if (key !== shown) {
+    shown = key;
+    $("ttl").textContent = compose ? "新会话" : PROMPT;
+    for (const id of ["tl", "pr", "work"]) $(id).classList.toggle("hide", compose);
+    $("bub").textContent = PROMPT;
+    $("bub").classList.toggle("faded", faded);
+    $("cap").innerHTML = cap;
+    $("ws").innerHTML = ws;
+    $("ws").className = "ws" + (ws ? "" : " hide") + (wsRun ? " sweep" : "") + (wsd ? " open" : "");
+    $("wsd").innerHTML = wsd;
+    $("wsd").classList.toggle("hide", !wsd);
+    $("errc").innerHTML = err;
+    $("errc").classList.toggle("hide", !err);
+    $("work").style.visibility = text ? "visible" : "hidden";
+    $("line").textContent = text;
+    $("clock").textContent = clock < 0 ? "" : Math.floor(clock / 60) + ":" + String(clock % 60).padStart(2, "0");
+    $("tool").classList.toggle("hide", !(seg && seg.id === "tool") || compose);
+    $("tool").classList.toggle("sweep", true);
+    $("md").classList.toggle("hide", !reply);
+    $("md").textContent = reply;
+    const working = !!text && text !== "排队中";
+    // The box's own words: for a turn under way, else for a session that waits (SessionPage.swift).
+    $("draft").textContent = compose ? PROMPT : working ? "继续说，会排到下一轮…" : "继续聊…";
+    $("draft").className = compose ? "" : "ph";
+    $("stop").classList.toggle("hide", !working || stopped);
+    // Today Send stays grey until the call ends; refused, the words are still in the box.
+    $("send").className = "cbtn send" + (sent && !(compose && refused) ? " dim" : "") + (t >= -160 && t < 300 ? " tap" : "");
+    T.segs.forEach((s, i) => $("r" + i).classList.toggle("on", s === seg && sent && (t < T.total || T.failed)));
+  }
+  $("head").style.left = (100 * Math.min(1, Math.max(0, t) / T.total)) + "%";
+}
+function frame(now) {
+  const dt = Math.min(100, now - last); last = now;
+  if (t < T.total + 400) t += dt * (t < 0 ? 1 : S.speed);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+const tip = $("tip");
+document.addEventListener("mousemove", (e) => {
+  const d = e.target.dataset && e.target.dataset.tip;
+  if (!d) { tip.style.display = "none"; return; }
+  const [a, b] = d.split("|");
+  tip.innerHTML = `<b>${a}</b><span>${b}</span>`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(innerWidth - 270, e.clientX + 12) + "px";
+  tip.style.top = e.clientY + 14 + "px";
+});
+
+build();
+requestAnimationFrame((n) => { last = n; frame(n); });
+</script>
+</body>
+</html>

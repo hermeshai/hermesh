@@ -209,10 +209,14 @@ public func applySessionEvent(
     return next
 }
 
+/// Runs waiting for a turn, in their order. One whose message is in the conversation already (a session kept on this
+/// device for its offline machine shows its first message) is that bubble, not the queue's; a machine writes a queued
+/// run's message only once it starts.
 public func queuedRuns(of projection: Hermesh_Session_V1_SessionProjection?) -> [Hermesh_Session_V1_Run] {
     guard let projection else { return [] }
+    let shown = Set(projection.items.filter { $0.kind == .userMessage }.map(\.runID))
     return projection.runs
-        .filter { $0.status == .queued }
+        .filter { $0.status == .queued && !shown.contains($0.runID) }
         .sorted(by: { (a: Hermesh_Session_V1_Run, b: Hermesh_Session_V1_Run) -> Bool in
             a.queueOrder < b.queueOrder
         })

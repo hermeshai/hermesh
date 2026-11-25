@@ -150,7 +150,20 @@ test("a session on another machine: its folder added as a project, the model pic
     // Start it: the session opens, runs on work-mac in the project, and is in the list.
     await input.fill("say hello_from_work_mac");
     await input.press("Enter");
+    // At once, as the session will be: the message under its title, not the composer waiting for the machine.
+    await expect(page.getByRole("log").locator(".um").first()).toContainText("say hello_from_work_mac", { timeout: 5_000 });
+    await expect(page.getByTestId("thread-launch-card")).toHaveCount(0);
+    // Its first turn makes the worktree, on a line of its own under the message; opened, how and where.
+    const workspace = page.getByTestId("thread-workspace");
+    await expect(workspace).toHaveAttribute("data-state", "done", { timeout: 30_000 });
+    await expect(workspace).toContainText(/新建了分支\s*hermesh\//);
     await expect(page.getByRole("log").locator(".am").first()).toContainText("hello_from_work_mac", { timeout: 30_000 });
+    expect((await workspace.boundingBox())!.y).toBeGreaterThan((await page.getByRole("log").locator(".um").first().boundingBox())!.y);
+    expect((await workspace.boundingBox())!.y).toBeLessThan((await page.getByRole("log").locator(".am").first().boundingBox())!.y);
+    await workspace.getByRole("button").click();
+    await expect(workspace).toContainText("方式  独立 worktree");
+    await snap(page, "composer-workspace");
+    await workspace.getByRole("button").click();
     // Where it runs, fixed, beside the title; nothing under the box.
     await expect(page.getByTestId("session-where")).toHaveText(`work-mac · ${name}`);
     const row = page.locator(".side-sessions [role=listitem]").filter({ hasText: "say hello_from_work_mac" });
@@ -246,6 +259,8 @@ test("a new session's branch: a worktree from another branch, and the project's 
     await input.fill("say from_feat_base");
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("from_feat_base", { timeout: 30_000 });
+    // Said in the conversation, on a line of its own: the worktree's branch, from feat/x.
+    await expect(page.getByTestId("thread-workspace")).toContainText(/从 feat\/x 新建了分支\s*hermesh\//);
     const sessionBranch = git("branch", "--list", "hermesh/*", "--format=%(refname:short)");
     expect(sessionBranch).not.toBe("");
     expect(git("log", "-1", "--format=%s", sessionBranch)).toBe("on feat/x");
@@ -267,6 +282,11 @@ test("a new session's branch: a worktree from another branch, and the project's 
     await input.fill("say in_place_on_feat");
     await input.press("Enter");
     await expect(page.getByRole("log").locator(".am").first()).toContainText("in_place_on_feat", { timeout: 30_000 });
+    // Said in the conversation: the folder switched, and from where.
+    const switched = page.getByTestId("thread-workspace");
+    await expect(switched).toContainText(/切到了分支\s*feat\/x/);
+    await switched.getByRole("button").click();
+    await expect(switched).toContainText("feat/x（原来在 main）");
     expect(git("branch", "--show-current")).toBe("feat/x");
   } finally {
     await app.close();
@@ -383,7 +403,11 @@ test("a new session aimed at a machine gone offline: its projects and models as 
     // Sent anyway: the session opens, waiting for work-mac.
     await page.getByTestId("thread-composer-input").fill("say queued_while_offline");
     await page.getByTestId("thread-composer-input").press("Enter");
-    await expect(page.getByTestId("offline-badge")).toHaveText("离线排队中", { timeout: 15_000 });
+    // Said under the message, faded, with Discard; nothing at work at the end.
+    const waiting = page.getByRole("log").locator(".um.waiting").filter({ hasText: "say queued_while_offline" });
+    await expect(waiting.getByTestId("prompt-note")).toContainText("等 work-mac 在线后送达", { timeout: 15_000 });
+    await expect(waiting.getByTestId("prompt-discard")).toBeVisible();
+    await expect(page.getByTestId("thread-working")).toHaveCount(0);
     // The session it opened says the same above its box, not a wait for good.
     await expect(capsule).toHaveText("work-mac 离线 · 消息会排队到它上线", { timeout: 15_000 });
     await snap(page, "session-offline-capsule");

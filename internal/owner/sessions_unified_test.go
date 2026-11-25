@@ -49,6 +49,10 @@ func TestOfflineOutboxStartDispatchAndCancel(t *testing.T) {
 	if err != nil || len(got.Projection.GetRuns()) != 2 {
 		t.Fatalf("GetSession cached projection: %v %+v", err, got)
 	}
+	// The first message is in it, so its page shows it while it waits.
+	if items := got.Projection.GetItems(); len(items) == 0 || items[0].Kind != sessionv1.TurnItemKind_TURN_ITEM_KIND_USER_MESSAGE || items[0].Text != "implement auth" || items[0].RunId != started.InitialRun.RunId {
+		t.Fatalf("the waiting message: %+v", items)
+	}
 
 	// 3. DeleteSession cancels the offline-queued session and clears outbox + cache.
 	if _, err := svc.DeleteSession(ctx, &sessionv1.DeleteSessionRequest{SessionId: tempID}); err != nil {

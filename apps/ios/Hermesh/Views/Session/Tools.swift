@@ -320,6 +320,67 @@ struct ToolLine: View {
     }
 }
 
+/// Where the session works, set up by its first turn (WorkspaceRow): a line of its own, as a step's, with the branch
+/// as code; opened, how, the branch, its base and the folder, or why it failed. A step under 400 ms shows by its result.
+struct WorkspaceLine: View {
+    let row: WorkspaceRow
+    @State private var open = false
+
+    var body: some View {
+        if row.state == .running {
+            Delayed(active: true) { line }
+        } else {
+            line
+        }
+    }
+
+    private var line: some View {
+        let (text, code) = row.title
+        let failed = row.state == .failed
+        return VStack(alignment: .leading, spacing: 0) {
+            Button {
+                guard row.state != .running else { return }
+                withAnimation(.snappy(duration: 0.25)) { open.toggle() }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: failed ? "exclamationmark.triangle" : "arrow.triangle.branch")
+                        .font(.footnote).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.tertiary))
+                    Text(text).foregroundStyle(failed ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                        .shimmer(row.state == .running)
+                        .layoutPriority(1)
+                    if !code.isEmpty {
+                        Text(verbatim: code).font(.footnote.monospaced()).foregroundStyle(.secondary).truncationMode(.middle)
+                    }
+                    if row.state != .running { Caret(open: open) }
+                }
+                .lineLimit(1)
+                .font(.subheadline)
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(row.state == .running ? Text("") : open ? Text("Expanded") : Text("Collapsed"))
+            .accessibilityIdentifier("thread-workspace")
+            if open {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
+                    ForEach(Array(row.details.enumerated()), id: \.offset) { _, d in
+                        GridRow {
+                            Text(d.label).foregroundStyle(.tertiary)
+                            Text(verbatim: d.value).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                    }
+                }
+                .font(.caption)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Palette.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 4).padding(.bottom, 6)
+                .accessibilityIdentifier("thread-workspace-details")
+            }
+        }
+    }
+}
+
 struct ToolOutput {
     let text: String
     let done: Bool

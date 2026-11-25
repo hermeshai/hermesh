@@ -117,6 +117,12 @@ describe("unified session domain helpers & event reducer", () => {
     });
 
     expect(queuedRunsOf(proj).map((r) => r.runId)).toEqual(["q1", "q2"]);
+    // A queued run whose message is in the conversation (kept on this device for an offline machine) is its bubble.
+    const kept = create(SessionProjectionSchema, {
+      ...proj,
+      items: [...proj.items, create(TurnItemSchema, { itemId: "u", runId: "q1", seq: 3n, kind: TurnItemKind.USER_MESSAGE, text: "hi" })],
+    });
+    expect(queuedRunsOf(kept).map((r) => r.runId)).toEqual(["q2"]);
 
     const req = create(RuntimeRequestSchema, {
       requestId: "req_1",
