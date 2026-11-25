@@ -13,6 +13,7 @@ export * from "./mentions.ts";
 export * from "./models.ts";
 export * from "./progress.ts";
 export * from "./refs.ts";
+export * from "./fileView.ts";
 export * from "./routines.ts";
 export * from "./rpc.ts";
 export * from "./session.ts";

@@ -91,6 +91,8 @@ private struct PageView: View {
     case .progressAgent(let id): ProgressAgentPage(agentID: id).id(id)
     case .routines: RoutinesPage()
     case .herFiles: HerFilesPage()
+    case .sessionFile(let session, let run, let path, let line, let end): SessionFilePage(sessionID: session, run: run, path: path, line: line, endLine: end)
+    case .sessionFolder(let session, let dir): SessionFolderPage(sessionID: session, dir: dir).id("\(session)/\(dir)")
     case .routine(let id): RoutinePage(routineID: id)
     case .routineRun(let routine, let run): RoutineRunPage(routineID: routine, runID: run)
     case .herMemory: HerEnvironmentPage { chat, machine in HerMemoryRoute(chat: chat, machine: machine) }

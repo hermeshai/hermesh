@@ -45,7 +45,7 @@ function cached(machineId: string, sha: string | undefined, name: string): strin
 const exists = (p: string | null) => (p ? fs.access(p).then(() => true, () => false) : Promise.resolve(false));
 
 /** `name` in `dir`, or with a number added while that is taken ("pic 2.png"), as hermeshd names a download. */
-async function freeName(dir: string, name: string): Promise<string> {
+export async function freeName(dir: string, name: string): Promise<string> {
   const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
   for (let n = 1; ; n++) {
     const p = path.join(dir, n === 1 ? name : `${stem} ${n}${ext}`);

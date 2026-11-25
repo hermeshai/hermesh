@@ -4,7 +4,10 @@ import type { MenuItem } from "../../../shared/bridge";
 import { i18n } from "../../../shared/i18n";
 import { Icon } from "../icons";
 import { useStore, type Store } from "../store";
+import { fileOfCode, fileOfLink } from "@hermesh/her-client";
 import { Code } from "./Code";
+import { FileTag } from "./files/FileTag";
+import { FilesHomeContext } from "./files/files";
 import { DraftContext } from "./scope";
 
 // What a reply's links, inline code and code blocks show, and their native menus. Nothing here
@@ -67,9 +70,15 @@ function hiddenChars(text: string): boolean {
 
 const web = /^https?:\/\//i;
 
-/** A Markdown link: a web page (http and https only), else, or while it is still being written, its words alone. */
+/**
+ * A Markdown link: a web page (http and https only); in a session's reply, a file of the session as a
+ * tag (files/FileTag); else, or while it is still being written, its words alone.
+ */
 export function Link({ href, children }: { href?: string; children?: ReactNode }) {
   const draft = useContext(DraftContext);
+  const files = useContext(FilesHomeContext);
+  const file = !draft && files && href ? fileOfLink(href, window.hermesh?.platform === "win32") : null;
+  if (file) return <FileTag target={file}>{children}</FileTag>;
   if (!draft && href && web.test(href)) {
     return (
       <a href={href} target="_blank" rel="noreferrer">
@@ -80,8 +89,12 @@ export function Link({ href, children }: { href?: string; children?: ReactNode }
   return <span>{children}</span>;
 }
 
-/** Inline code, with a swatch before a colour written alone (`#1F6BFF`). */
+/** Inline code, with a swatch before a colour written alone (`#1F6BFF`); in a session's reply, a path that is there as a file tag. */
 export function InlineCode({ children }: { children?: ReactNode }) {
+  const draft = useContext(DraftContext);
+  const files = useContext(FilesHomeContext);
+  const file = !draft && files && typeof children === "string" ? fileOfCode(children, window.hermesh?.platform === "win32") : null;
+  if (file && typeof children === "string") return <FileTag target={file} code={children} />;
   const color = typeof children === "string" && /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(children.trim()) ? children.trim() : null;
   return (
     <code>

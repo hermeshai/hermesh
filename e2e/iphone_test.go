@@ -107,6 +107,11 @@ func TestIPhone(t *testing.T) {
 	if only == "testThreadComposer" {
 		otherMacThreads(t, desktopFixture{owner: w})
 	}
+	// testSessionFiles: files-mac, whose session links a page with its script, a file of 40 lines, and files
+	// that are not there, as the Mac's spec has it (otherMacFiles).
+	if only == "testSessionFiles" {
+		otherMacFiles(t, desktopFixture{owner: w, Sessions: sessions})
+	}
 	var deletionOrigin string
 	if only == "testHostedAccountDeletion" {
 		deletionOrigin = iphoneHostedDeletion(t, w, device)

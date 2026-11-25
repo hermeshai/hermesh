@@ -53,6 +53,14 @@ const bridge: Bridge = {
       return "";
     }
   },
+  openSessionPage: (file, rect, slot) => ask("session-page-open", file, rect, slot),
+  placeSessionPage: (rect, slot) => ipcRenderer.send("session-page-place", rect, slot),
+  closeSessionPage: (slot) => ipcRenderer.send("session-page-close", slot),
+  onSessionPage: (cb) => listen("session-page", cb),
+  openSessionPageInBrowser: (file) => ask("session-page-browser", file),
+  quickLookSessionFile: (file, name) => ask("session-file-quicklook", file, name),
+  saveSessionFile: (file, name) => ask("session-file-save", file, name),
+  revealSessionFile: (file) => ask("session-file-reveal", file),
   openHerConsole: (machineId: string, page?: string) => ask("her-console", machineId, page),
   saveHerFile: (machineId: string, botId: string, path: string, sha?: string) => ask("her-save-file", machineId, botId, path, sha),
   readHerFile: (machineId: string, botId: string, path: string, sha?: string) => ask("her-read-file", machineId, botId, path, sha),

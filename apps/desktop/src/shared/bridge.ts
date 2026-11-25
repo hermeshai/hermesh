@@ -47,6 +47,15 @@ export type TerminalCommand = "codexLogin" | "claudeLogin" | "antigravityLogin";
 /** A macOS permission Her's computer use needs on this Mac (docs/her-server.md §4.4). */
 export type ComputerPermission = "accessibility" | "screen";
 
+/** A file of a coding session at a turn ("" for as it is now), within the session's folder (docs/session-files.md). */
+export type SessionFileRef = { session: string; run: string; path: string };
+/** Where a page's view goes over the window, in the page's coordinates. */
+export type PageRect = { x: number; y: number; width: number; height: number };
+/** Where a session's page runs: over the window, or in the file panel. */
+export type PageSlot = "dialog" | "panel";
+/** What a page shown asks of the app: to close (Esc), or to open a web address; `slot` says which page. */
+export type SessionPageEvent = ({ kind: "close" } | { kind: "link"; url: string }) & { slot?: PageSlot };
+
 export type Bridge = {
   platform: string;
   /** The window's material shows through the sidebar (macOS's vibrancy, Windows 11's Mica). */
@@ -90,6 +99,19 @@ export type Bridge = {
   pathForFile(file: File): string;
   /** A machine's Her console, in a window of its own (docs/her-server.md §5.3); at `page`, its address's hash ("browser/connect"). */
   openHerConsole(machineId: string, page?: string): Promise<void>;
+  /** Shows a session's page (an HTML file) in a view of its own over `rect`, with no network, reading its folder from the session's machine. */
+  openSessionPage(file: SessionFileRef, rect: PageRect, slot: PageSlot): Promise<boolean>;
+  placeSessionPage(rect: PageRect, slot: PageSlot): void;
+  closeSessionPage(slot: PageSlot): void;
+  onSessionPage(cb: (e: SessionPageEvent) => void): () => void;
+  /** The page with the web files of its folder, in the default browser (the owner's click: it has the network there). */
+  openSessionPageInBrowser(file: SessionFileRef): Promise<void>;
+  /** A session's file in Quick Look, read from its machine. */
+  quickLookSessionFile(file: SessionFileRef, name: string): Promise<void>;
+  /** A session's file saved to Downloads (a number added when its name is taken), and shown there. */
+  saveSessionFile(file: SessionFileRef, name: string): Promise<void>;
+  /** A session's file in Finder, when the session works on this Mac and the file is there; false otherwise. */
+  revealSessionFile(file: SessionFileRef): Promise<boolean>;
   /** Saves a file from an assistant's folder on its machine to Downloads, and shows it there; `sha`: a file Her sent, from this computer's copy when it has one. */
   saveHerFile(machineId: string, botId: string, path: string, sha?: string): Promise<void>;
   /** A file from an assistant's folder on its machine, read whole to show in the window (a PDF); with `sha`, a file Her sent, kept on this computer by its hash once read (docs/her-deliverables.md §4.5). */

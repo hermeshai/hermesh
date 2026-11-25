@@ -69,10 +69,13 @@ struct HerCodeLines: View {
     let code: String
     let lines: [Substring]
     let lang: String
+    /// Lines a reply pointed at, marked (a session's file, docs/session-files.md §4); each row is `.id` by its index.
+    var target: ClosedRange<Int>?
     @Environment(\.colorScheme) private var scheme
     @State private var colored: Highlighter.Lines?
 
-    init(text: String, lang: String) {
+    init(text: String, lang: String, target: ClosedRange<Int>? = nil) {
+        self.target = target
         // Its lines as the highlighter splits them, without an empty one after the last newline.
         var code = text.replacingOccurrences(of: "\r\n", with: "\n")
         if code.hasSuffix("\n") { code.removeLast() }
@@ -98,6 +101,8 @@ struct HerCodeLines: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, 1.5)
+                .background(target?.contains(i + 1) == true ? Palette.target : .clear)
+                .id(i)
             }
         }
         .font(.footnote.monospaced())

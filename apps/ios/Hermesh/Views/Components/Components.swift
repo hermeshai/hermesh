@@ -400,6 +400,9 @@ enum Palette {
     /// Her's messages, on the left: a shade off the page (the Mac's --bot-reply), with a hairline.
     static let reply = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 1, alpha: 0.06)
         : UIColor(red: 0xf4 / 255, green: 0xf4 / 255, blue: 0xf7 / 255, alpha: 1) })
+    /// The lines a reply pointed at in a file (the Mac's --target).
+    static let target = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 1, green: 196 / 255, blue: 0, alpha: 0.16)
+        : UIColor(red: 1, green: 196 / 255, blue: 0, alpha: 0.22) })
 }
 
 /// Putting the keyboard away, as Messages does (docs/thread-composer.md §16): there is no button for it on iPhone.

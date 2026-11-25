@@ -30,6 +30,8 @@ if (platform.token !== "mac") useSystemWords(platform.token);
 protocol.registerSchemesAsPrivileged([
   // codeCache: V8 keeps the renderer's compiled script between launches.
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } },
+  // A coding session's page and its folder, read from the session's machine (main/sessionFiles.ts); video and audio by ranges.
+  { scheme: "hermesh-file", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
 ]);
 
 // Before the single-instance lock: an update's event comes while the app runs.

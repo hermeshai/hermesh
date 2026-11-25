@@ -15,6 +15,7 @@ import { archive, machineName, senderName } from "../Sidebar";
 import { useNow, useStore } from "../store";
 import { Code } from "./Code";
 import { Markdown } from "./Markdown";
+import { FilesRunContext } from "./files/files";
 import { partialOutput, useToolOutput } from "./output";
 import { useRowKept, useRowState } from "./useRowState";
 import { useVirtualRows, type VirtualRow } from "./useVirtualRows";
@@ -346,7 +347,7 @@ function RowView({ it, rowKey, end, live, sessionId, clients, starter, previous 
     }
     case "agent":
       // A turn's reply is one, however many times it writes: when it is over, its last words say when and Copy.
-      return <AgentText text={it.text} end={end} at={it.at} live={live} />;
+      return <AgentText text={it.text} end={end} at={it.at} live={live} runId={it.runId} />;
     case "tools":
       return it.calls.length === 1 ? (
         <ToolRow id={String(it.calls[0].seq)} call={it.calls[0].call} result={it.calls[0].result} resultSeq={it.calls[0].resultSeq} running={it.calls[0].running} sessionId={sessionId} />
@@ -485,10 +486,13 @@ function WorkspaceLine({ id, row }: { id: string; row: WorkspaceRow }) {
 }
 
 /** The agent's words across the page. end: the last of its reply, which says when on hover, and Copy. live: still being written. */
-export function AgentText({ text, end, at, live = false }: { text: string; end: boolean; at?: Date; live?: boolean }) {
+export function AgentText({ text, end, at, live = false, runId = "" }: { text: string; end: boolean; at?: Date; live?: boolean; runId?: string }) {
   return (
     <div className={end ? "am end" : "am"}>
-      <Markdown text={text} streaming={live} />
+      {/* Its links open the session's files as its turn left them (docs/session-files.md §6.2). */}
+      <FilesRunContext.Provider value={runId}>
+        <Markdown text={text} streaming={live} />
+      </FilesRunContext.Provider>
       {end && <Copy text={text} at={at} />}
     </div>
   );

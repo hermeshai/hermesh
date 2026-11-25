@@ -126,7 +126,7 @@ private func kind(_ it: TranscriptItem) -> String {
         ]
     })
     let texts = rows.compactMap { row -> String? in
-        if case .agent(_, let text) = row { return text }
+        if case .agent(_, let text, _) = row { return text }
         return nil
     }
     #expect(texts == [

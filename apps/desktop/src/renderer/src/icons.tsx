@@ -15,6 +15,9 @@ const paths: Record<string, string> = {
   more: "<circle cx=\"3.6\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"8\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12.4\" cy=\"8\" r=\"1.15\" fill=\"currentColor\" stroke=\"none\"/>",
   x: "<path d=\"M4.3 4.3l7.4 7.4M11.7 4.3l-7.4 7.4\"/>",
   // Two corners pulled apart: to show something larger, over the window.
+  // The file panel's tree (docs/session-files.md §3.4), and putting a panel that takes the window back.
+  tree: "<path d=\"M3 2.6v8.8c0 .6.4 1 1 1h3\"/><path d=\"M3 5.6h4\"/><rect x=\"7.4\" y=\"3.8\" width=\"6\" height=\"3.6\" rx=\"1\"/><rect x=\"7.4\" y=\"10.6\" width=\"6\" height=\"3.6\" rx=\"1\"/>",
+  shrink: "<path d=\"M13.4 2.6L9.2 6.8M9.2 3.2v3.6h3.6M2.6 13.4l4.2-4.2M6.8 12.8V9.2H3.2\"/>",
   expand: "<path d=\"M9.8 2.6h3.6v3.6M6.2 13.4H2.6V9.8M13.4 2.6L9.2 6.8M2.6 13.4l4.2-4.2\"/>",
   arrowDown: "<path d=\"M8 3v10M4.2 9.2L8 13l3.8-3.8\"/>",
   check: "<path d=\"M3.4 8.4l3 3 6.2-6.8\"/>",
