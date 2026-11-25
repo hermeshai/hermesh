@@ -578,14 +578,15 @@ func otherMacLimits(t *testing.T, f desktopFixture) {
 
 	// agy-mac: Antigravity alone, as the agy CLI, asked its quota when its
 	// agents are checked (Check Again, from this Mac): two groups of models,
-	// none low.
+	// none low; the second's five hours not started yet, which agy says as a
+	// reset in 1970.
 	at := func(hours float64) string {
 		return time.Now().Add(time.Duration(hours * float64(time.Hour))).UTC().Format(time.RFC3339)
 	}
 	usage := fmt.Sprintf(`{"command":{"name":"usage","data":{"groups":[`+
 		`{"name":"Gemini Models","buckets":[{"window":"weekly","remaining_fraction":0.83,"reset_time":%q},{"window":"5h","remaining_fraction":0.97,"reset_time":%q}]},`+
-		`{"name":"Claude and GPT models","buckets":[{"window":"weekly","remaining_fraction":0.35,"reset_time":%q},{"window":"5h","remaining_fraction":1,"reset_time":%q}]}]}}}`,
-		at(146), at(4.5), at(18), at(5))
+		`{"name":"Claude and GPT models","buckets":[{"window":"weekly","remaining_fraction":0.35,"reset_time":%q},{"window":"5h","remaining_fraction":1,"reset_time":"1970-01-01T00:00:00Z"}]}]}}}`,
+		at(146), at(4.5), at(18))
 	missing := filepath.Join(t.TempDir(), "not-installed")
 	env := append(fakeAgy(t, []byte(usage)), "HERMESH_CLAUDE_BIN="+missing, "HERMESH_CODEX_BIN="+missing)
 	for _, a := range acp.Agents {

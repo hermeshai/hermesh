@@ -908,7 +908,7 @@ final class HermeshUITests: XCTestCase {
         // By where: one environment worked, so its projects are the parts, and the control says so. The total has none.
         group.buttons["按项目"].tap()
         XCTAssertTrue(app.buttons["usage-sessions-part-demo"].waitForExistence(timeout: 10), "the project's part")
-        group.buttons["合计"].tap()
+        group.buttons["不分组"].tap()
         XCTAssertTrue(app.buttons["usage-sessions-part-demo"].waitForNonExistence(timeout: 10), "the total is not in parts")
         group.buttons["按 Agent"].tap()
         XCTAssertTrue(part.waitForExistence(timeout: 10))

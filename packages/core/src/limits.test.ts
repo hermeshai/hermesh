@@ -44,6 +44,19 @@ describe("limits", () => {
     expect(lowLimits(cards)).toEqual([{ card: cards[0], window: cards[0].windows[0] }]);
   });
 
+  test("a window not started (no reset time, or agy's 1970) is shown whole, its time too; one that has reset is not", () => {
+    const m = machine("mac", [{ name: "antigravity", said: min(-1), windows: [[10080, 0, new Date(0), "Claude and GPT models"], [300, 0, new Date(0), "Claude and GPT models"], [300, 3, min(-10), "Gemini Models"]] }]);
+    m.status!.agents[0].limits!.windows.push({ ...m.status!.agents[0].limits!.windows[0], resetsAt: undefined, minutes: 60, group: "Other" });
+    const card = agentLimits([m], now)[0];
+    expect(card.windows).toEqual([
+      { minutes: 300, left: 100, timeLeft: 100, resetsAt: null, group: "Claude and GPT models" },
+      { minutes: 10080, left: 100, timeLeft: 100, resetsAt: null, group: "Claude and GPT models" },
+      { minutes: 60, left: 100, timeLeft: 100, resetsAt: null, group: "Other" },
+    ]);
+    expect(card.stale).toBe(false);
+    expect(lowLimits([card])).toEqual([]);
+  });
+
   test("a window that has reset since is not shown: what is left now is not known", () => {
     const cards = agentLimits([machine("mac", [{ name: "codex", said: min(-400), windows: [[300, 95, min(-100)], [10080, 70, min(3000)]] }, { name: "claude", said: min(-600), windows: [[300, 99, min(-300)]] }])], now);
     expect(cards.find((c) => c.agent === "codex")!.windows.map((w) => w.minutes)).toEqual([10080]);

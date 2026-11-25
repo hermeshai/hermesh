@@ -106,7 +106,8 @@ struct UsagePage: View {
             // filters, side by side at the trailing end.
             HStack(spacing: 8) {
                 Picker("Group", selection: $stats.group.animation(.smooth)) {
-                    Text("Total").tag(UsageGroup.total)
+                    // Not split: every way shows the same totals, so the first is named for what it leaves out.
+                    Text("None · bars").tag(UsageGroup.total)
                     // Their own words (short in English, so the three fit the row), not the session list's.
                     Text("Agents · bars").tag(UsageGroup.agent)
                     // By where is by project once one environment is all there is to split.
@@ -682,13 +683,15 @@ func windowName(_ minutes: Int, short: Bool = false) -> String {
     }
 }
 
-/// "Resets at 16:40", or on another day "Resets Thu 09:00"; for a window of a day or less, with how long is left.
+/// "Resets at 16:40", or on another day "Resets Thu 09:00"; for a window of a day or less, with how long is left. One
+/// not started: that it counts from its first use.
 func resetText(_ w: LimitShown, now: Date) -> String {
-    let time = w.resetsAt.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
-    let at = Calendar.current.isDate(w.resetsAt, inSameDayAs: now) ? String(localized: "Resets at \(time)")
-        : String(localized: "Resets \(w.resetsAt.formatted(.dateTime.weekday(.abbreviated))) \(time)")
+    guard let resets = w.resetsAt else { return String(localized: "Starts counting when first used") }
+    let time = resets.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits))
+    let at = Calendar.current.isDate(resets, inSameDayAs: now) ? String(localized: "Resets at \(time)")
+        : String(localized: "Resets \(resets.formatted(.dateTime.weekday(.abbreviated))) \(time)")
     guard w.minutes <= 1440 else { return at }
-    let m = max(1, Int((w.resetsAt.timeIntervalSince(now) / 60).rounded(.up)))
+    let m = max(1, Int((resets.timeIntervalSince(now) / 60).rounded(.up)))
     let left = m < 60 ? String(localized: "\(m) min left") : m % 60 == 0 ? String(localized: "\(m / 60) hr left") : String(localized: "\(m / 60) hr \(m % 60) min left")
     return "\(at) · \(left)"
 }
