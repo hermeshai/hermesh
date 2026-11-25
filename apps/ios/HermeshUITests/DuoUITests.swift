@@ -100,6 +100,11 @@ final class DuoUITests: XCTestCase {
         hideAndResize(suffix)
         openMenu()
         shot("menu" + suffix)
+        tap("view-options")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "分组,")).firstMatch.waitForExistence(timeout: 5), "the view menu open")
+        shot("view-options" + suffix)
+        app.otherElements["PopoverDismissRegion"].firstMatch.tap()
+        sleep(1)
         closeMenu()
         openMenu()
         // The menu lists the sessions (docs/her-team.md §16).
@@ -226,6 +231,11 @@ final class DuoUITests: XCTestCase {
             XCTAssertEqual(close.frame.midX, button.midX, accuracy: 2, "where the menu button was")
             XCTAssertEqual(close.frame.midY, button.midY, accuracy: 2, "where the menu button was")
             XCTAssertFalse(menu.isHittable, "the page gone from view")
+            // The view menu too is the bar's, under Close and Search, not a glass button of the list beside it.
+            let options = app.buttons["view-options"]
+            XCTAssertTrue(options.isHittable, "the view menu, in the bar on the side")
+            XCTAssertEqual(options.frame.midX, close.frame.midX, accuracy: 2, "in the bar's column")
+            XCTAssertGreaterThan(options.frame.minY, app.buttons["search"].frame.maxY - 1, "under Search")
         } else {
             XCTAssertFalse(close.exists)
             XCTAssertTrue(app.descendants(matching: .any)["drawer-dim"].isHittable, "the page a card beside the menu")

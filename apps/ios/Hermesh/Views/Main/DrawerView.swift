@@ -12,7 +12,7 @@ struct DrawerView: View {
     private let button: CGFloat = 44
 
     /// Where the system stands the bars on the side (iPhone Duo closed), the menu takes the page's place and the
-    /// bar is the menu's: Close at its top, where the page has the menu button, then Search.
+    /// bar is the menu's: Close at its top, where the page has the menu button, then Search and the view menu.
     @Environment(\.barsOnTheSide) private var sideBars
 
     var body: some View {
@@ -27,6 +27,7 @@ struct DrawerView: View {
                         Button("Search", systemImage: "magnifyingglass") { model.sheet = .search }
                             .accessibilityIdentifier("search")
                     }
+                    ToolbarItem(placement: .topBarTrailing) { ViewMenu(inBar: true) }
                 }
             }
         } else {
@@ -152,13 +153,14 @@ struct DrawerView: View {
         .accessibilityIdentifier("overview-place")
     }
 
-    /// "Sessions", and the view menu at its end.
+    /// "Sessions", and the view menu at its end (in the bar, where the system stands it on the side).
     private var sessionsHeading: some View {
         HStack {
             Text("Sessions").font(.footnote).foregroundStyle(.secondary)
             Spacer()
-            ViewMenu().frame(width: button, height: button)
+            if !sideBars { ViewMenu().frame(width: button, height: button) }
         }
+        .frame(minHeight: button)
         .padding(.leading, 26).padding(.trailing, 14)
     }
 
