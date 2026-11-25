@@ -73,11 +73,7 @@ func (l *Local) SetHerGrant(signed *identityv1.Signed, chain *identityv1.RootCha
 // SetHerLocal turns Her on or off on this machine in standalone mode, without
 // a root key signature or relay.
 func (l *Local) SetHerLocal(_ context.Context, enabled, erase bool) (string, error) {
-	msg, err := l.n.setHer(enabled, erase)
-	if err == nil {
-		l.n.kickStatus()
-	}
-	return msg, err
+	return l.n.setHer(enabled, erase)
 }
 
 // SetHerCommandConnectorLocal adds, changes or removes a Her command connector

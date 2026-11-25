@@ -350,6 +350,11 @@ func (o *Owner) cachedProjection(sessionID string) *sessionv1.SessionProjection 
 	if len(sb) > 0 {
 		sess := &sessionv1.Session{}
 		if proto.Unmarshal(sb, sess) == nil {
+			// A session-only cache row has no items yet: do not report a non-zero
+			// LastEventSeq, or a subsequent SubscribeSession would skip seq 1..N.
+			if sess.Progress != nil {
+				sess.Progress.LastEventSeq = 0
+			}
 			return &sessionv1.SessionProjection{Session: sess}
 		}
 	}

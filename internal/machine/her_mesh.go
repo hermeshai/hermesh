@@ -230,7 +230,6 @@ func (n *Machine) SetHerGrant(signed *identityv1.Signed, chain *identityv1.RootC
 	}
 	n.log.Info("Her has her grant")
 	n.startHerLink()
-	n.kickStatus()
 	return nil
 }
 
@@ -330,7 +329,6 @@ func (n *Machine) dropHerGrant(why string) {
 		n.mesh.link.Close()
 	}
 	n.her.MeshChanged()
-	n.kickStatus()
 }
 
 // checkHerGrant drops Her's grant once a revocation covers it.

@@ -349,13 +349,11 @@ func (n *Machine) execAdmin(ctx context.Context, cmd *identityv1.AdminCommand) (
 		if err := n.setMaxRuntimeMode(c.SetMaxRuntimeMode.Mode); err != nil {
 			return "", err
 		}
-		n.kickStatus()
 		return "permission mode limited to " + c.SetMaxRuntimeMode.Mode.String(), nil
 	case *identityv1.AdminCommand_SetAgentDefaults:
 		if err := n.setAgentDefaults(c.SetAgentDefaults); err != nil {
 			return "", connect.NewError(connect.CodeInvalidArgument, err)
 		}
-		n.kickStatus()
 		return "defaults set for " + c.SetAgentDefaults.Agent, nil
 	case *identityv1.AdminCommand_SetPaused:
 		n.mu.Lock()

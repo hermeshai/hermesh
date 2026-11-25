@@ -67,3 +67,38 @@ func TestOfflineOutboxStartDispatchAndCancel(t *testing.T) {
 		t.Fatalf("expected outbox cleared after DeleteSession, got %d rows", outboxCount)
 	}
 }
+
+func TestSessionOnlyCacheFallbackZeroesLastEventSeq(t *testing.T) {
+	ctx := context.Background()
+	d, err := Open(Config{DataDir: filepath.Join(t.TempDir(), "owner"), NoLocalMachine: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+
+	// Simulates StartSession succeeding on a remote machine (last_event_seq=3) and
+	// caching only the Session row before GetSession fetches the full projection.
+	sid := "s_remote_01testseq"
+	d.owner().cacheSession(&sessionv1.Session{
+		SessionId: sid,
+		MachineId: "m_remote_unreachable",
+		ProjectId: "hermesh",
+		Status:    sessionv1.SessionStatus_SESSION_STATUS_RUNNING,
+		Progress:  &sessionv1.SessionProgress{LastEventSeq: 3},
+	}, nil)
+
+	svc := &ownerSessionService{d: d}
+	res, err := svc.GetSession(ctx, &sessionv1.GetSessionRequest{SessionId: sid})
+	if err != nil {
+		t.Fatalf("GetSession fallback: %v", err)
+	}
+	if !res.FromCache {
+		t.Fatalf("expected FromCache=true")
+	}
+	if len(res.Projection.GetItems()) != 0 {
+		t.Fatalf("expected empty items in session-only fallback, got %d", len(res.Projection.GetItems()))
+	}
+	if got := res.Projection.GetSession().GetProgress().GetLastEventSeq(); got != 0 {
+		t.Fatalf("session-only fallback must report LastEventSeq=0 (not %d) so SubscribeSession does not skip seq 1..3", got)
+	}
+}

@@ -878,6 +878,7 @@ struct SessionPage: View {
         var applied = projection != nil
         // Opened right after Send on what it knew: read the whole session once, not only what comes after it.
         var seeded = model.seededSessions.remove(sessionID) != nil
+            || (projection?.items.contains(where: { $0.itemID == "starting" }) == true)
         if projection == nil,
            let cached = try? await api.getSession(sessionID, cachedOnly: true),
            cached.hasProjection, cached.projection.hasSession {
@@ -890,18 +891,25 @@ struct SessionPage: View {
             do {
                 if projection == nil || failures > 0 || seeded {
                     let first = try await api.getSession(sessionID)
-                    seeded = false
                     if !applied && first.projection.hasSession {
                         applied = true
                         apply(first.projection.session)
                     }
-                    projection = first.projection
                     if !first.fromCache {
+                        seeded = false
+                        projection = first.projection
                         following = true
                         failures = 0
+                    } else if projection == nil || (projection?.items.isEmpty == true && !first.projection.items.isEmpty) {
+                        projection = first.projection
                     }
                 }
-                let afterSeq = projection?.session.progress.lastEventSeq ?? 0
+                if seeded {
+                    // GetSession fell back to local cache: keep the seeded message visible and retry
+                    // GetSession until the machine answers instead of subscribing from a stale seq.
+                    throw APIError(code: "unavailable", message: "waiting for session from machine")
+                }
+                let afterSeq = (projection?.items.isEmpty == true) ? 0 : (projection?.session.progress.lastEventSeq ?? 0)
                 for try await ev in api.subscribeSession(sessionID, afterSeq: afterSeq) {
                     following = true
                     failures = 0

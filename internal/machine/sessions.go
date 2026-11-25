@@ -166,7 +166,6 @@ func (n *Machine) openSessions() error {
 		CheckRelease:     n.checkReleaseSession,
 		OnDeliverMessage: n.deliverMessageRPC,
 		OnNotice: func(sess *sessionv1.Session, ev *sessionv1.SessionEvent) {
-			n.kickStatus()
 			n.sessionNotice(sess, ev)
 			n.sessionNews(sess, ev)
 			if n.testNotice != nil {

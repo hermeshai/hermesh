@@ -1506,7 +1506,7 @@ func (o *Owner) closeDirectMachines() {
 }
 
 // forgetMachine drops any cached tunnel (relayed or direct) for machineID
-// when the relay reports it offline or reconnected, so calls do not hang on
+// when the relay reports it offline or removed, so calls do not hang on
 // a dead UDP/QUIC socket whose peer exited without sending CONNECTION_CLOSE.
 func (o *Owner) forgetMachine(machineID string) {
 	o.mu.Lock()
@@ -1525,6 +1525,37 @@ func (o *Owner) forgetMachine(machineID string) {
 	o.directMu.Unlock()
 	if dn != nil {
 		dn.Close()
+	}
+}
+
+// probeOrForgetMachine verifies any cached tunnel for machineID when the relay
+// advances LastSeen while the machine stays online: a dead socket from a fast
+// restart is dropped promptly, while a healthy tunnel (e.g. after ReportStatus)
+// stays open without interrupting active watches or RPCs.
+func (o *Owner) probeOrForgetMachine(ctx context.Context, machineID string) {
+	o.mu.Lock()
+	c := o.client
+	kept := o.kept
+	o.mu.Unlock()
+	if c != nil {
+		c.ProbeOrForgetMachine(ctx, machineID)
+	}
+	if kept != nil && kept != c {
+		kept.ProbeOrForgetMachine(ctx, machineID)
+	}
+	o.directMu.Lock()
+	dn := o.directMachines[machineID]
+	o.directMu.Unlock()
+	if dn != nil {
+		pctx, cancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+		started := time.Now()
+		_, err := dn.Info.GetInfo(pctx, &machinev1.GetInfoRequest{})
+		cancel()
+		if err != nil {
+			o.forgetDirectMachine(machineID, dn)
+			return
+		}
+		dn.RecordRTT(time.Since(started))
 	}
 }
 
