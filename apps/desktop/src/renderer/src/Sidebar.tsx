@@ -380,11 +380,8 @@ export function AccountMenu() {
         </span>
         <span className="who">
           <b>{window.hermesh?.userName ?? "Hermesh"}</b>
-          <span>
-            {/* A dot only when it is worth noticing: not connected. */}
-            {!st.status?.relayConnected && <i className="dotc" />}
-            {st.status?.relayConnected ? t("sidebar.connected") : t("sidebar.notConnected")}
-          </span>
+          {/* Signed in or not (docs/cold-start-prd.md §6.1): the connection has its own line where it matters. */}
+          <span>{(st.status?.initialized || st.status?.machineOnly) && !st.status.signedOut ? t("sidebar.signedIn") : t("sidebar.signedOut")}</span>
         </span>
         <Icon name="chevD" className="sm chev" />
       </button>

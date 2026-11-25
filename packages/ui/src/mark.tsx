@@ -76,14 +76,15 @@ function Beams({ id, mono, pulse }: { id: string; mono?: boolean; pulse?: boolea
  * lights them up in turn (busy, small sizes); "pulse" runs a pulse along
  * each beam (loading); "wait" hovers them apart and breathes (waiting for
  * the other side), "lock" locks them back in (done), "fail" drifts them off
- * grey. mono draws it in the current colour. pad (viewBox units) leaves room
+ * grey; "draw" draws them in slower, from delay (ms), for the first run. mono draws it in the current colour. pad (viewBox units) leaves room
  * around the mark, for the waiting motion.
  */
-export function Mark({ size = 20, variant, mono, pad = 0, className }: { size?: number; variant?: "reveal" | "seq" | "pulse" | "wait" | "lock" | "fail"; mono?: boolean; pad?: number; className?: string }) {
+export function Mark({ size = 20, variant, mono, pad = 0, className, delay }: { size?: number; variant?: "reveal" | "draw" | "seq" | "pulse" | "wait" | "lock" | "fail"; mono?: boolean; pad?: number; className?: string; delay?: number }) {
   const id = useId();
   const cls = ["hm-mark", variant && `hm-${variant}`, mono && "hm-mono", className].filter(Boolean).join(" ");
+  const style = delay ? ({ "--hm-delay": `${delay}ms` } as CSSProperties) : undefined;
   return (
-    <svg viewBox={viewBox(pad)} width={size} height={size} aria-hidden="true" className={cls}>
+    <svg viewBox={viewBox(pad)} width={size} height={size} aria-hidden="true" className={cls} style={style}>
       {!mono && <Gradients id={id} />}
       <Beams id={id} mono={mono} pulse={variant === "pulse"} />
     </svg>

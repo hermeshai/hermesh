@@ -24,7 +24,7 @@ test("the window opens on Her's first run while she runs nowhere; Not Now makes 
   // The start page is picked once the owner's world is in: its sessions are counted, and it is still the overview.
   await expect(page.getByRole("region", { name: "需要你处理" })).toContainText("选颜色", { timeout: 30_000 });
   await expect(work()).toBeVisible();
-  await page.getByRole("button", { name: "选择她在哪里运行…" }).click();
+  await page.getByRole("button", { name: "选择 Her 在哪里运行…" }).click();
   await expect(firstRun()).toBeVisible();
   await app.close();
 });

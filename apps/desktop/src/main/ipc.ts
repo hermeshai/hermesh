@@ -8,7 +8,7 @@ import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, herFilesKept, reop
 import { preferences, setPreferences, world } from "./notify";
 import { closeSessionPage, openSessionPage, openSessionPageInBrowser, placeSessionPage, quickLookSessionFile, refOf, revealSessionFile, saveSessionFile } from "./sessionFiles";
 import { platform } from "./platform";
-import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
+import { cancelSignIn, completeResume, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
 import { mainWindow, ours, setMode, setVisibleHer, showHerConsole, showMain, showSettings, showWhatsNew, sizeUpdates } from "./windows";
 
@@ -159,7 +159,8 @@ export function registerIPC() {
         return { error: errorMessage(err) };
       }
     };
-  ipcMain.handle("sign-in", answer((center: unknown) => signIn(String(center))));
+  ipcMain.handle("sign-in", answer((center: unknown, owner: unknown) => signIn(String(center), typeof owner === "string" && owner ? owner : undefined)));
+  ipcMain.handle("complete-resume", answer(completeResume));
   ipcMain.handle("sign-in-pending", answer(signInPending));
   ipcMain.handle("cancel-sign-in", answer(cancelSignIn));
   ipcMain.handle("complete-sign-in", answer((o: { localMachine?: unknown }) => completeSignIn({ localMachine: o?.localMachine === true })));

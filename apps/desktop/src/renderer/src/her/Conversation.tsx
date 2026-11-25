@@ -20,6 +20,7 @@ import { ConnectionCapsule } from "../ConnectionCapsule";
 import { Composer, Tile } from "./Composer";
 import type { Conversation as Conv } from "./connection";
 import { useHer } from "./context";
+import { useMachineTitle } from "../computer";
 import { envState, type EnvState } from "./environments";
 import { FailureCard, PastFailure } from "./Failure";
 import { messageTime, momentText, timeLine } from "./format";
@@ -502,8 +503,8 @@ function BotChat({ bot, conv, op, state, waiting, onWaiting }: {
 function EmptyPage({ bot, state, loading }: { bot: BotSummary; state: EnvState; loading: boolean }) {
   const { t } = useTranslation("her");
   const her = useHer();
+  const name = useMachineTitle(her.machine);
   if (loading) return <div className="bempty"><span className="mini-spin" /></div>;
-  const name = her.machine.machineName;
   const line = state.kind === "offline" ? t("chat.unread", { name }) : t("chat.greeting", { name: bot.name, environment: name });
   return (
     <div className="bempty">

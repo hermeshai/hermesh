@@ -1,29 +1,54 @@
 import { createClient } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-node";
-import { PairingKind, Workspace } from "@hermesh/proto/identity";
+import { PairingKind } from "@hermesh/proto/identity";
 import { LocalService } from "@hermesh/proto/local";
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, fixture, gitRepo, launch, pickAnswers, snap, sessionList, navTo, mapHeight, sys } from "./app";
+import { fixture, gitRepo, launch, pickAnswers, snap, sys } from "./app";
 
-// The first run against owner daemons nobody has set up (the fixture's
-// fresh ones; each can be set up once): a relay of one's own, the browser
-// sign-in with a stand-in center through to the first task, and joining an
-// owner that another device already set up.
+// The first run against owner daemons nobody has set up (the fixture's fresh ones; each can be
+// set up once), as docs/cold-start-prd.md has it: no account needed, signing in on its fourth
+// step or later, with the official service in the browser, a server of one's own, or joining a
+// Hermesh one has; then the account in Settings, signing out and in again. These computers can't
+// run Her (their hermeshd has no her), so the first run goes past Her's step; coldstart.spec.ts
+// has a computer that can.
 
 test.describe.configure({ timeout: 180_000 });
 
 /** The window grew into the main window. */
 async function expectMainWindow(app: ElectronApplication, page: Page) {
   // A session on a small display may hide the sidebar; its toggle then stays in the top band.
-  await expect(page.locator(".side-nav, .side-float")).toBeVisible();
+  await expect(page.locator(".side-nav, .side-float")).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width ?? 0)).toBeGreaterThan(900);
+}
+
+/** From the welcome to the sign-in step: no project (later), Her's step passed by on these computers. */
+async function toSignIn(page: Page) {
+  await page.getByRole("button", { name: "开始设置" }).click();
+  await expect(page.getByRole("heading", { name: /^(已找到 \d+ 个 Agent 提供方|还没有可用的 Agent 提供方)$/ })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "稍后设置" }).click();
+  await expect(page.getByRole("heading", { name: "登录，接入 Hermesh 网络" })).toBeVisible();
+}
+
+/** From the signed-in sign-in step into the main window. */
+async function finish(app: ElectronApplication, page: Page) {
+  await expect(page.getByRole("heading", { name: "已接入 Hermesh 网络" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "继续" }).click();
+  await expect(page.getByRole("heading", { name: "设置完成" })).toBeVisible();
+  await page.getByRole("button", { name: "进入 Hermesh" }).click();
+  await expectMainWindow(app, page);
+}
+
+/** The settings window, on its account page. */
+async function accountPage(app: ElectronApplication, page: Page) {
+  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("account"))]);
+  await settings.waitForLoadState();
+  return { settings, main: settings.getByRole("main", { name: "账号与设备" }) };
 }
 
 test("the window opens at its last size, loading in the middle until hermeshd answers", async () => {
@@ -44,7 +69,7 @@ test("the window opens at its last size, loading in the middle until hermeshd an
 
   // The first run makes it compact, and it opens so next time.
   const first = await launch(fixture.fresh[0].socket, { profile });
-  await expect(first.page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
+  await expect(first.page.getByRole("heading", { name: "欢迎使用 Hermesh" })).toBeVisible();
   await expect.poll(() => width(first.app)).toBe(720);
   await first.app.close();
   const again = await launch(none(), { profile });
@@ -53,158 +78,72 @@ test("the window opens at its last size, loading in the middle until hermeshd an
   await again.app.close();
 });
 
-test("a relay of one's own: welcome, authorize, set up this Mac, add a project, connect later", async () => {
+test("without an account: the agents looked for, a project, the sign-in step left for later, the main window", async () => {
   const fresh = fixture.fresh[0];
   const { app, page } = await launch(fresh.socket);
-  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "立即开始" })).toBeVisible();
-  // The official service, and one's own server: nothing to change in between.
-  await expect(page.getByRole("button", { name: "hermesh.io", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "更改" })).toHaveCount(0);
-  // The promise of an untrusted center.
-  await expect(page.getByText("即使服务器被攻破，攻击者也访问不了你的电脑。任务内容端到端加密，服务器看不到内容。")).toBeVisible();
-  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.getBounds().width)).toBe(720);
+  await expect(page.getByRole("heading", { name: "欢迎使用 Hermesh" })).toBeVisible();
   await snap(page, "first-01-welcome");
+  await page.getByRole("button", { name: "开始设置" }).click();
 
-  await page.getByRole("button", { name: "使用自己的服务器…" }).click();
-  await expect(page.getByRole("heading", { name: "连接你自己的服务器" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
-
-  // A server reached by its IP address is plain HTTP: said before going on.
-  // Not for a domain name, or this Mac.
-  const plain = page.getByRole("note").filter({ hasText: "未加密（HTTP）" });
-  await page.getByLabel("服务器地址").fill("203.0.113.7:8080");
-  await expect(plain).toBeVisible();
-  await expect(plain).toContainText("抢在你前面认领这台服务器");
-  await page.getByLabel("服务器地址").fill("relay.example.com");
-  await expect(plain).toHaveCount(0);
-  await page.getByLabel("服务器地址").fill("http://127.0.0.1:8080");
-  await expect(plain).toHaveCount(0);
-
-  // A network that blocks the server (a company proxy answering 403):
-  // said with what to do, before any Touch ID, and the way back still works.
-  const proxy = http.createServer((_, res) => res.writeHead(403, { "content-type": "text/html" }).end("<html>Blocked by policy</html>"));
-  await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
-  const blocked = `127.0.0.1:${(proxy.address() as AddressInfo).port}`;
-  await page.getByLabel("服务器地址").fill(`http://${blocked}`);
-  await page.getByLabel("认领码").fill(fresh.claimCode);
-  await page.getByRole("button", { name: "继续" }).click();
-  await page.getByRole("button", { name: "继续" }).click();
-  const trouble = page.getByRole("alertdialog", { name: "连不上 Hermesh 服务器" });
-  await expect(trouble).toHaveAccessibleDescription(sys(`当前网络可能拦住了 ${blocked}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台 Mac 上还什么都没改。`));
-  await expect(trouble.getByText("403 Forbidden")).toHaveCount(0); // the raw cause, behind 详情
-  await trouble.getByRole("button", { name: "详情" }).click();
-  await expect(trouble.getByText("403 Forbidden")).toBeVisible();
-  await snap(page, "first-03b-unreachable");
-  await trouble.getByRole("button", { name: "好" }).click();
-  await expect(trouble).toHaveCount(0);
-  await expect(page.getByRole("alert")).toHaveCount(0); // nothing left in the footer
-  await expect(page.getByRole("button", { name: "继续" })).toBeEnabled();
-  proxy.close();
-  expect((await daemon(fresh.socket).getStatus({})).initialized).toBe(false);
-  await page.getByRole("button", { name: "取消" }).click();
-
-  await page.getByLabel("服务器地址").fill(fresh.relayURL);
-  await snap(page, "first-02-relay");
-  await page.getByRole("button", { name: "继续" }).click();
-
-  // Nothing is set up before 继续 here; both choices start on.
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 成为你的可信设备？") })).toBeVisible();
-  await expect(page.getByRole("list", { name: "设置步骤" })).toHaveCount(0);
-  await expect(page.getByRole("switch", { name: "安全可信地共享本机 agent" })).toBeChecked();
-  await expect(page.getByText("不读取 API Key 和 Token")).toBeVisible();
-  await expect(page.getByRole("switch", { name: "有事时提醒我" })).toBeChecked();
-  await snap(page, "first-03-authorize");
-  await page.getByRole("button", { name: "继续" }).click();
-
-  // The signer created the key and approved: this Mac, as its own machine.
-  // Opening the page checks the agents (the stand-ins wait for this test): until the first are in, it says it is looking for them.
+  // Looking for them (the stand-ins wait for this test): every agent provider lit in turn.
   const release = (agent: string) => fs.writeFileSync(path.join(fresh.gate!, agent), "");
-  const searching = page.getByRole("status").filter({ has: page.getByRole("heading", { name: "正在查找本机上的 Agent 提供方" }) });
-  await expect(searching).toBeVisible({ timeout: 30_000 });
-  await expect(searching.locator(".ag-sweep > span")).toHaveCount(16);
-  await expect(page.getByRole("button", { name: "稍后设置" })).toBeEnabled();
-  await snap(page, "first-04-searching");
-  release("codex");
-  release("gemini");
-  release("antigravity");
-  // Every coding agent Hermesh supports: the installed ones with their state, the rest greyed.
-  await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
-  await expect(searching).toHaveCount(0);
-  await expect(page.getByRole("list", { name: "设置步骤" })).toHaveCount(0); // no way back, so no steps
+  await expect(page.getByRole("heading", { name: "正在查找 Agent 提供方…" })).toBeVisible();
+  await expect(page.locator(".fr-sweep > span")).toHaveCount(16);
+  await snap(page, "first-02-searching");
+  for (const a of ["claude", "codex", "gemini", "antigravity"]) release(a);
+  // The installed ones, signed in or not; how many can work now.
+  await expect(page.getByRole("heading", { name: "已找到 3 个 Agent 提供方" })).toBeVisible({ timeout: 30_000 });
   const agents = page.getByRole("list", { name: "Agent 提供方" });
-  const claude = agents.getByRole("listitem", { name: "Claude Code" });
-  // Claude Code still being checked shows so while the others are in, not as missing.
-  await expect(claude).toContainText("正在检查…");
-  await expect(page.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem", { name: "Claude Code" })).toHaveCount(0);
-  await snap(page, "first-04-checking");
-  release("claude");
-  await expect(claude).toContainText("2.1.4", { timeout: 30_000 });
-  await expect(claude).toContainText("已登录");
-  const gemini = agents.getByRole("listitem", { name: "Gemini CLI" });
-  await expect(gemini).toContainText("已登录");
-  const codex = agents.getByRole("listitem", { name: "Codex" });
-  await expect(codex).toContainText("0.48.0");
-  await expect(codex).toContainText("还没登录");
-  await expect(page.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem", { name: "Cursor" })).toBeVisible();
-  await expect(agents.getByRole("listitem", { name: "Cursor" })).toHaveCount(0);
-  // Each opens its own page, as in settings; Codex's says how to log in. The steps' buttons stay below.
-  const agentPage = (name: string) => page.getByRole("region", { name });
-  const back = () => page.getByRole("button", { name: "所有 Agent" }).click();
-  const antigravity = agents.getByRole("listitem", { name: "Antigravity" });
-  await expect(antigravity).toContainText("还没登录");
-  await antigravity.getByRole("button", { name: /^Antigravity/ }).click();
-  await expect(agentPage("Antigravity").getByText("hermesh agent login antigravity")).toBeVisible();
-  await expect(agentPage("Antigravity").getByRole("button", { name: "在终端运行" })).toBeVisible();
-  await back();
-  await codex.getByRole("button", { name: /^Codex/ }).click();
-  await expect(agentPage("Codex").getByText("codex login")).toBeVisible();
-  await expect(agentPage("Codex").getByRole("button", { name: "在终端运行" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "下一步：连接你的 Agent" })).toBeDisabled();
-  await snap(page, "first-04-agent");
-  // Drawn as a text link, it takes the pointing hand, as links do.
-  expect(await page.getByRole("button", { name: "所有 Agent" }).evaluate((el) => getComputedStyle(el).cursor)).toBe("pointer");
-  await back();
-  await page.waitForTimeout(1500); // the agents around the mark have come in
+  await expect(agents.getByRole("listitem", { name: "Claude Code" })).toContainText("2.1.4");
+  await expect(agents.getByRole("listitem", { name: "Claude Code" })).toContainText("已登录");
+  await expect(agents.getByRole("listitem", { name: "Gemini CLI" })).toContainText("已登录");
+  await expect(agents.getByRole("listitem", { name: "Codex" })).toContainText("还没登录");
+  await expect(agents.getByRole("listitem", { name: "Cursor" })).toHaveCount(0); // not installed: not listed
   await expect(page.getByText("绝不获取 Agent 的任何令牌和密钥，只像你自己在命令行里一样使用它们。")).toBeVisible();
-  await snap(page, "first-04-prepare");
-
-  // The first project is this Mac's, for every provider (docs/settings-environments.md §5.6): a git
-  // repository works in its own worktree per task, unless in place.
+  // A project before 继续 (稍后设置 goes on without).
+  await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
   const repo = gitRepo("my-app");
   await pickAnswers(app, repo);
-  const projectList = page.getByRole("listbox", { name: "项目" });
   await page.getByRole("button", { name: "添加项目…" }).click();
-  const project = projectList.getByRole("option", { name: "my-app" });
+  const project = page.getByRole("list", { name: "项目" }).getByRole("listitem", { name: "my-app" });
   await expect(project).toContainText(repo);
-  await expect(project.getByRole("combobox")).toHaveValue("worktree");
-  await project.getByRole("combobox").selectOption("inPlace");
-  await expect.poll(async () => (await daemon(fresh.socket).listProjects({})).projects.map((p) => [p.projectId, p.agents, p.workspace])).toEqual([["my-app", [], Workspace.IN_PLACE]]);
-  await snap(page, "first-05-project");
+  await expect(project).toContainText("独立 worktree");
+  await snap(page, "first-03-team");
+  await page.getByRole("button", { name: "继续" }).click();
 
-  await page.getByRole("button", { name: "下一步：连接你的 Agent" }).click();
-  // One page: the agents as icons (Grok Bot chosen), the message right below; only the name in it differs.
-  await expect(page.getByRole("heading", { name: "连接你的 Agent" })).toBeVisible();
-  const kinds = page.getByRole("radiogroup", { name: "你的 Agent" });
-  await expect(kinds.getByRole("radio", { name: "Grok Bot" })).toBeChecked();
-  for (const name of ["Grok Bot", "Muse", "ChatGPT", "Claude", "OpenClaw", "其他 Agent"]) await expect(kinds.getByRole("radio", { name })).toBeEnabled();
-  await expect(page.locator(".msgbox")).toContainText('--name "Grok Bot"');
-  await kinds.getByRole("radio", { name: "ChatGPT" }).click();
-  await expect(page.locator(".msgbox")).toContainText('--name "ChatGPT"');
-  await kinds.getByRole("radio", { name: "Muse" }).click();
-  await expect(page.locator(".msgbox")).toContainText('--name "Muse"');
-  await kinds.getByRole("radio", { name: "其他 Agent" }).click();
-  await page.getByLabel("它叫什么").fill("Jarvis");
-  await expect(page.locator(".msgbox")).toContainText('--name "Jarvis"');
-  await kinds.getByRole("radio", { name: "Grok Bot" }).click();
-  await expect(page.getByText("批准后，它将获得你签名的授权，并使用自身密钥与你的电脑建立端到端加密直连，服务器看不到任何内容。")).toBeVisible();
-  await snap(page, "first-06-agent");
-  await page.getByRole("button", { name: "稍后再连" }).click();
+  // Her can't run here: on to signing in, which can wait.
+  await expect(page.getByRole("heading", { name: "登录，接入 Hermesh 网络" })).toBeVisible();
+  await expect(page.getByText("一张专为 AI Agent 搭的通信网：你的手机、电脑和各家 Agent 两两互通。")).toBeVisible();
+  await expect(page.locator(".fr-bubble.up")).toBeVisible({ timeout: 10_000 });
+  await snap(page, "first-04-network");
+  await page.getByRole("button", { name: "暂不登录" }).click();
+  await expect(page.getByRole("heading", { name: "设置完成" })).toBeVisible();
+  await expect(page.getByText("这台电脑已准备好。")).toBeVisible();
+  await page.getByRole("button", { name: "进入 Hermesh" }).click();
   await expectMainWindow(app, page);
+  await expect(page.locator(".side-foot")).toContainText("未登录");
+  // The main window opens on the overview: Her can't run here.
+  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
+  const status = await daemon(fresh.socket).getStatus({});
+  expect([status.initialized, status.localMachineEnabled, status.relayHealth?.phase]).toEqual([false, true, "local"]);
+
+  // What needs an account says so: from the menu, its shortcut, and Settings.
+  await page.locator(".side-foot").click();
+  await page.getByRole("menuitem", { name: "连接 agent…" }).click();
+  await expect(page.getByRole("dialog", { name: "连接 agent需要登录" })).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "取消" }).click();
+  const { settings, main } = await accountPage(app, page);
+  await expect(main).toContainText("未登录");
+  await expect(main).toContainText(sys("登录后，在任何地方都能连到这台 Mac，并接入云端助手和其他电脑。"));
+  await expect(main).toContainText("需要登录");
+  await expect(main.getByRole("list", { name: "设备" }).getByRole("listitem")).toHaveCount(1);
+  await snap(settings, "settings-account-signed-out");
+  await main.getByRole("button", { name: "添加环境…" }).click();
+  await expect(settings.getByRole("dialog", { name: "添加环境需要登录" })).toBeVisible();
   await app.close();
 });
 
-test("browser sign-in: the link brings the authorization page, the center's relay links this Mac, the first task opens", async () => {
+test("the official service in the browser: the link brings the authorization, this Mac signs in on the sign-in step", async () => {
   const fresh = fixture.fresh[1];
   // A stand-in center: it only says where devices connect.
   const center = http.createServer((req, res) => {
@@ -221,33 +160,25 @@ test("browser sign-in: the link brings the authorization page, the center's rela
     shell.openExternal = async (url: string) => void opened.push(url);
   });
   const link = (url: string) => app.evaluate(({ app }, u) => app.emit("open-url", { preventDefault() {} }, u), url);
-
   const browser = () => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened);
-
-  // The service's name opens its site.
-  await page.getByRole("button", { name: "hermesh.io", exact: true }).click();
-  await expect.poll(browser).toEqual(["https://hermesh.io"]);
-  await app.evaluate(() => void (globalThis as unknown as { opened: string[] }).opened.splice(0));
-
-  // A link code while no sign-in is under way is not ours.
-  await link(`hermesh://link?code=${fresh.claimCode}`);
-  await page.waitForTimeout(500);
-  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
-  // An account that already has an owner: join it (cancelled here).
-  await link("hermesh://join?owner=o_" + "a".repeat(24));
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 加入你的 Hermesh？") })).toBeVisible();
-  await expect(page.getByText(sys("继续后按一次 Touch ID，再到你已有的设备上批准。", "继续后用一次系统密码，再到你已有的设备上批准。"))).toBeVisible();
-  await page.getByRole("button", { name: "取消" }).click();
-
   // The stand-in center, as development builds take it.
   await page.evaluate((u) => localStorage.setItem("centerURL", u), centerURL);
-  await page.reload();
-  await expect(page.getByRole("button", { name: `127.0.0.1:${(center.address() as AddressInfo).port}` })).toBeVisible();
-  await page.getByRole("button", { name: "立即开始" }).click();
+  await toSignIn(page);
+
+  // An account that already has an owner: joining it (cancelled here).
+  await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "请在浏览器里完成登录" })).toBeVisible();
-  await snap(page, "first-07-browser");
+  await link("hermesh://join?owner=o_" + "a".repeat(24));
+  await expect(page.getByText(sys("让这台 Mac 加入你的 Hermesh？"))).toBeVisible();
+  await expect(page.getByText(sys("继续后按一次 Touch ID，再到你已有的设备上批准。", "继续后用一次系统密码，再到你已有的设备上批准。"))).toBeVisible();
+  await page.getByRole("button", { name: "取消" }).click();
+  await expect(page.getByRole("heading", { name: "登录，接入 Hermesh 网络" })).toBeVisible();
 
   // The browser gets only the challenge; the verifier stays in the main process's file (0600).
+  await app.evaluate(() => void (globalThis as unknown as { opened: string[] }).opened.splice(0));
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "请在浏览器里完成登录" })).toBeVisible();
+  await snap(page, "first-05-browser");
   await expect.poll(browser).toHaveLength(1);
   const opened = (await browser())[0];
   expect(opened.startsWith(`${centerURL}/app-login?challenge=`)).toBe(true);
@@ -258,237 +189,172 @@ test("browser sign-in: the link brings the authorization page, the center's rela
   expect(createHash("sha256").update(verifier).digest("base64url")).toBe(challenge);
   expect(await page.content()).not.toContain(verifier);
 
+  // The link: one question, one Touch ID (the test signer), this Mac's machine kept.
+  const before = (await daemon(fresh.socket).getStatus({})).localMachineId;
   await link(`hermesh://link?code=${fresh.claimCode}`);
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 成为你的可信设备？") })).toBeVisible();
+  await expect(page.getByText(sys("让这台 Mac 成为你的可信设备？"))).toBeVisible();
+  await expect(page.getByText(sys("以后有设备或 agent 要连接这台 Mac，都要你在这里按 Touch ID 批准。", "以后有设备或 agent 要连接这台电脑，都要你在这里用系统密码批准。"))).toBeVisible();
+  await expect(page.getByRole("switch")).toHaveCount(0);
+  await snap(page, "first-06-authorize");
   await page.getByRole("button", { name: "继续" }).click();
-  await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "已接入 Hermesh 网络" })).toBeVisible({ timeout: 30_000 });
   expect(fs.existsSync(file)).toBe(false);
-
-  // The first task runs on Gemini CLI (the scripted agent), in this Mac's project.
-  await pickAnswers(app, gitRepo("site"));
-  const gemini = page.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Gemini CLI" });
-  await expect(gemini).toContainText("已登录", { timeout: 30_000 });
-  await page.getByRole("button", { name: "添加项目…" }).click();
-  await expect(page.getByRole("listbox", { name: "项目" }).getByRole("option", { name: "site" })).toBeVisible();
-  await page.getByRole("button", { name: "下一步：连接你的 Agent" }).click();
-
-  // Muse's message sent, then Grok Bot picked: whichever agent's request arrives takes the page.
-  await expect(page.getByRole("heading", { name: "连接你的 Agent" })).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Grok Bot" })).toBeChecked();
-  await page.getByRole("radio", { name: "Muse" }).click();
-  const message = await page.locator(".msgbox").innerText();
-  const address = /auth login (\S+) --name "Muse"/.exec(message)?.[1] ?? "";
-  expect(address).toMatch(/\/o_\w+$/);
-  await snap(page, "first-08-connect");
-  await page.getByRole("radio", { name: "Grok Bot" }).click();
-  const agent = (name: string) => {
-    const env = { ...process.env, HERMESH_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "hmagent-")) };
-    const login = spawn(fixture.cli, ["auth", "login", address, "--name", name], { env });
-    return { env, exit: new Promise<number | null>((r) => login.on("exit", r)) };
-  };
-  const muse = agent("Muse");
-  await expect(page.getByText("「Muse」能用什么")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("radiogroup", { name: "你的 Agent" })).toBeHidden();
-
-  // Grok Bot asks too: it waits its turn, a click away.
-  const grok = agent("Grok Bot");
-  const queue = page.locator(".pa-queue");
-  await expect(queue).toContainText("还在等你批准：Grok Bot", { timeout: 30_000 });
-  await expect(page.getByText("「Muse」能用什么")).toBeVisible();
-  await snap(page, "first-09-queue");
-  // Connect Another: back to the message, the requests still a click away.
-  await queue.getByRole("button", { name: "再连一个" }).click();
-  await expect(page.getByRole("radiogroup", { name: "你的 Agent" })).toBeVisible();
-  await expect(queue.getByRole("button", { name: "Muse" })).toBeVisible();
-  await queue.getByRole("button", { name: "Grok Bot" }).click();
-  await expect(page.getByText("「Grok Bot」能用什么")).toBeVisible();
-  await queue.getByRole("button", { name: "Muse" }).click();
-  await expect(page.getByText("「Muse」能用什么")).toBeVisible();
-
-  // Grok Bot's notification, clicked: its request on this page.
-  type Hook = { hermeshTest: { notifications(): { id: string; title: string; click(): void }[] } };
-  await expect
-    .poll(() => app.evaluate(() => (globalThis as unknown as Hook).hermeshTest.notifications().map((n) => n.title)))
-    .toEqual(expect.arrayContaining([expect.stringContaining("Grok Bot")]));
-  await app.evaluate(() => (globalThis as unknown as Hook).hermeshTest.notifications().find((n) => n.title.includes("Grok Bot"))?.click());
-  await expect(page.getByText("「Grok Bot」能用什么")).toBeVisible();
-  const agentsRow = page.getByRole("group", { name: "Agent 提供方" });
-  await agentsRow.getByRole("button", { name: "修改" }).click();
-  await agentsRow.getByRole("checkbox", { name: "所有 Agent 提供方（包括以后安装的）" }).click();
-  await agentsRow.getByRole("checkbox", { name: "Gemini CLI" }).click();
-  await snap(page, "first-10-scope");
-  await page.getByRole("button", { name: "批准" }).click();
-
-  // Approved, the next one comes; once none waits, the first task, with the first agent approved.
-  await expect(page.getByRole("status").filter({ hasText: "「Grok Bot」已连接" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("「Muse」能用什么")).toBeVisible();
-  await expect(queue).toHaveCount(1); // "Connect Another" only
-  await expect(queue).not.toContainText("还在等你批准");
-  await page.getByRole("button", { name: "批准" }).click();
-
-  await expect(page.getByRole("heading", { name: "「Grok Bot」已连接" })).toBeVisible({ timeout: 30_000 });
-  // A hello that is sure to run: a coding agent it was given, in its project.
-  await expect(page.getByText(/^用 Hermesh 在 site 项目里，让 (Claude Code|Codex|Gemini CLI) 跟我打个招呼。$/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "进入 Hermesh" })).toBeVisible();
-  await snap(page, "first-11-first-task");
-  expect(await grok.exit).toBe(0);
-  expect(await muse.exit).toBe(0);
-  const env = grok.env;
-
-  // Its first session: the window opens on it.
-  execFileSync(fixture.cli, ["session", "start", "--project", "site", "--agent", "gemini", "--title", "检查 README", "--prompt", "say 好的"], { env });
-  await expectMainWindow(app, page);
-  await expect(page.getByText("检查 README").first()).toBeVisible();
-  await snap(page, "first-12-main");
-  // The overview has no setup checklist.
-  await page.getByRole("button", { name: /^概览/ }).click();
-  await expect(page.getByRole("heading", { name: "概览", level: 1 })).toBeVisible();
-  await expect(page.getByRole("region", { name: "完成设置" })).toHaveCount(0);
-  // Once the first session is done, 进行中 rests: the mark, what runs (nothing), and what will show there.
-  const working = page.getByRole("region", { name: "进行中" });
-  await expect(working.getByRole("status")).toContainText("当前没有运行中的任务", { timeout: 30_000 });
-  await expect(working.getByRole("status")).toContainText("Agent 开始工作后，任务会显示在这里，链路图也会同步点亮。");
-  await expect(working.locator(".hm-mark")).toBeVisible();
-  // The sidebar's 进行中 stays, saying it is empty for now; the session is under 已结束.
-  const sessions = page.getByRole("list", { name: "任务" });
-  await expect(sessions.getByRole("group", { name: "进行中" })).toHaveText(/^进行中\s*暂时没有$/);
-  await expect(sessions.getByRole("group", { name: "已结束" })).toContainText("检查 README");
-  // Its line starts where the sessions' logos do, not indented past them.
-  const none = await sessions.getByText("暂时没有", { exact: true }).evaluate((el) => { const r = document.createRange(); r.selectNodeContents(el); return r.getBoundingClientRect().x; });
-  const logo = (await sessions.getByRole("group", { name: "已结束" }).locator(".slogo").first().boundingBox())!;
-  expect(Math.abs(none - logo.x)).toBeLessThanOrEqual(1);
-  await snap(page, "first-13-resting");
-  // With nothing live, hovering an agent marks what it can reach on the map, which doesn't grow.
-  const map = page.getByRole("region", { name: "链路" });
-  await page.mouse.move(0, 0);
-  const before = (await map.boundingBox())!.height;
-  await map.getByRole("button", { name: "Grok Bot", exact: true }).hover();
-  await expect(map.locator(".lm-edge.scope").first()).toBeAttached();
-  expect((await map.boundingBox())!.height).toBe(before);
+  const status = await daemon(fresh.socket).getStatus({});
+  expect([status.initialized, status.localMachineId]).toEqual([true, before]);
+  await snap(page, "first-07-linked");
+  await finish(app, page);
+  await expect(page.locator(".side-foot")).toContainText("已登录");
   await app.close();
   center.close();
 });
 
-/** hermeshd's local API on socket, as another of the owner's devices uses it. */
-const daemon = (socket: string) =>
-  createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", nodeOptions: { socketPath: socket } }));
-
-test("a Mac with no coding agent: an agent's request may use every one, including ones installed later", async () => {
-  const fresh = fixture.fresh[8];
+test("a server of one's own: its warnings, signing in on the sign-in step, then out and in again in Settings", async () => {
+  const fresh = fixture.fresh[4];
   const { app, page } = await launch(fresh.socket);
+  await toSignIn(page);
+  await page.getByRole("button", { name: "使用自己的服务器…" }).click();
+  await expect(page.getByText("连接你自己的服务器")).toBeVisible();
+  await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
+
+  // A server reached by its IP address is plain HTTP: said before going on. Not for a domain name, or this Mac.
+  const plain = page.getByRole("note").filter({ hasText: "未加密（HTTP）" });
+  await page.getByLabel("服务器地址").fill("203.0.113.7:8080");
+  await expect(plain).toBeVisible();
+  await page.getByLabel("服务器地址").fill("relay.example.com");
+  await expect(plain).toHaveCount(0);
+
+  // A network that blocks the server (a company proxy answering 403): said, with the raw cause behind 详情.
+  const proxy = http.createServer((_, res) => res.writeHead(403, { "content-type": "text/html" }).end("<html>Blocked by policy</html>"));
+  await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", r));
+  const blocked = `127.0.0.1:${(proxy.address() as AddressInfo).port}`;
+  await page.getByLabel("服务器地址").fill(`http://${blocked}`);
+  await page.getByLabel("认领码").fill(fresh.claimCode);
+  await page.getByRole("button", { name: "继续" }).click();
+  await page.getByRole("button", { name: "继续" }).click();
+  const trouble = page.getByRole("alertdialog", { name: "连不上 Hermesh 服务器" });
+  await expect(trouble).toHaveAccessibleDescription(sys(`当前网络可能拦住了 ${blocked}，公司网络和代理常会这样。换个网络（比如手机热点）再试，这台 Mac 上还什么都没改。`));
+  await trouble.getByRole("button", { name: "详情" }).click();
+  await expect(trouble.getByText("403 Forbidden")).toBeVisible();
+  await trouble.getByRole("button", { name: "好" }).click();
+  proxy.close();
+  expect((await daemon(fresh.socket).getStatus({})).initialized).toBe(false);
+  await page.getByRole("button", { name: "取消" }).click();
+
   await page.getByRole("button", { name: "使用自己的服务器…" }).click();
   await page.getByLabel("服务器地址").fill(fresh.relayURL);
   await page.getByLabel("认领码").fill(fresh.claimCode);
   await page.getByRole("button", { name: "继续" }).click();
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 成为你的可信设备？") })).toBeVisible();
   await page.getByRole("button", { name: "继续" }).click();
+  await finish(app, page);
 
-  // None found: Claude Code is among the missing ones; set up later.
-  await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("list", { name: "没有安装的 Agent" }).getByRole("listitem", { name: "Claude Code" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem")).toHaveCount(0);
-  await page.getByRole("button", { name: "稍后设置" }).click();
+  // Settings: signed in, the devices, what the network adds.
+  const { settings, main } = await accountPage(app, page);
+  await expect(main).toContainText(`自己的服务器 · ${new URL(fresh.relayURL).host}`);
+  await expect(main).toContainText("已连接");
+  await expect(main).not.toContainText("需要登录");
+  await expect(main.getByRole("button", { name: "高级…" })).toBeVisible();
+  await snap(settings, "settings-account-signed-in");
 
-  await expect(page.getByRole("heading", { name: "连接你的 Agent" })).toBeVisible();
-  await page.getByRole("radio", { name: "Muse" }).click();
-  const address = /auth login (\S+) --name "Muse"/.exec(await page.locator(".msgbox").innerText())?.[1] ?? "";
-  const login = spawn(fixture.cli, ["auth", "login", address, "--name", "Muse"], { env: { ...process.env, HERMESH_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "hmagent-")) } });
-  const loggedIn = new Promise<number | null>((r) => login.on("exit", r));
-  await expect(page.getByText("「Muse」能用什么")).toBeVisible({ timeout: 30_000 });
+  // Signing out keeps this Mac: its projects, sessions and Her; the others reach it no more.
+  await main.getByRole("button", { name: "退出登录…" }).click();
+  const ask = settings.getByRole("dialog", { name: "要退出登录吗？" });
+  await expect(ask).toContainText(sys("这台 Mac 上的项目、任务和 Her 都会保留。其他设备和 agent 将无法连接这台 Mac。"));
+  await ask.getByRole("button", { name: "退出登录" }).click();
+  await expect(main).toContainText("未登录", { timeout: 30_000 });
+  let status = await daemon(fresh.socket).getStatus({});
+  expect([status.signedOut, status.localMachineEnabled, status.relayHealth?.phase]).toEqual([true, true, "local"]);
+  await expect(page.locator(".side-foot")).toContainText("未登录");
 
-  // Every coding agent, the default and the only choice there is: this Mac has none.
-  const agentsRow = page.getByRole("group", { name: "Agent 提供方" });
-  await expect(agentsRow).toContainText("所有 Agent 提供方（包括以后安装的）");
-  await agentsRow.getByRole("button", { name: "修改" }).click();
-  const all = agentsRow.getByRole("checkbox", { name: "所有 Agent 提供方（包括以后安装的）" });
-  await expect(all).toBeChecked();
-  await expect(agentsRow.getByRole("checkbox")).toHaveCount(1);
-  await snap(page, "first-13-no-agents");
-  // Without it nothing is picked: approving waits until it is back.
-  await all.click();
-  await expect(page.getByText("至少选一个 Agent 提供方，或选“所有 Agent 提供方”。")).toBeVisible();
-  await expect(page.getByRole("button", { name: "批准" })).toBeDisabled();
-  await all.click();
-  await page.getByRole("button", { name: "批准" }).click();
-
-  await expect(page.getByRole("heading", { name: "「Muse」已连接" })).toBeVisible({ timeout: 30_000 });
-  expect(await loggedIn).toBe(0);
-  const muse = (await daemon(fresh.socket).listClients({})).clients.find((c) => c.label === "Muse");
-  expect(muse?.spec?.agents).toEqual(["*"]);
+  // Signing in again: a server of one's own only checks it; no Touch ID, the same machine.
+  await main.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(main).toContainText("已连接", { timeout: 30_000 });
+  status = await daemon(fresh.socket).getStatus({});
+  expect([status.signedOut, status.initialized]).toEqual([false, true]);
+  await expect(page.locator(".side-foot")).toContainText("已登录");
   await app.close();
 });
 
-test("joining an owner: its connection address, the code compared there, the two digits typed here; removed later", async () => {
+test("a Mac with no coding agent: the agents not installed, and on without them", async () => {
+  const { app, page } = await launch(fixture.fresh[8].socket);
+  await page.getByRole("button", { name: "开始设置" }).click();
+  await expect(page.getByRole("heading", { name: "还没有可用的 Agent 提供方" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("安装并登录 Claude Code 或 Codex 后，Hermesh 会自己发现。")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Claude Code" })).toContainText("没有安装");
+  await expect(page.getByRole("button", { name: "继续" })).toBeDisabled();
+  // No agent provider to work: a project is not what it waits for.
+  await expect(page.getByText("添加一个项目后即可继续", { exact: false })).toHaveCount(0);
+  await snap(page, "first-08-no-agents");
+  await page.getByRole("button", { name: "稍后设置" }).click();
+  await expect(page.getByRole("heading", { name: "登录，接入 Hermesh 网络" })).toBeVisible();
+  await app.close();
+});
+
+test("joining an owner: its connection address, the code compared there, the two digits typed here; removed later, set up again from the start", async () => {
   // The owner's first device (its test signer approves), and this computer joining it.
   const first = daemon(fixture.fresh[2].socket);
   const { connectAddress } = await first.setup({ relayUrl: fixture.fresh[2].relayURL, claimCode: fixture.fresh[2].claimCode, rootLabel: "first-mac" });
   const { app, page } = await launch(fixture.fresh[3].socket);
+  await toSignIn(page);
   await page.getByRole("button", { name: "使用自己的服务器…" }).click();
-  await page.getByRole("button", { name: "加入它…" }).click();
-  await expect(page.getByRole("heading", { name: "加入你已有的 Hermesh" })).toBeVisible();
+  await page.getByRole("button", { name: "已在别的设备上用？加入它…" }).click();
+  await expect(page.getByText("加入你已有的 Hermesh")).toBeVisible();
   await page.getByLabel("连接地址").fill("relay.example.com");
   await page.getByRole("button", { name: "继续" }).click();
   await expect(page.getByText("连接地址不对：应该像 relay.example.com/o_xxxxxxxx")).toBeVisible();
   await page.getByLabel("连接地址").fill(connectAddress);
   await page.getByRole("button", { name: "继续" }).click();
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 加入你的 Hermesh？") })).toBeVisible();
+  await expect(page.getByText(sys("让这台 Mac 加入你的 Hermesh？"))).toBeVisible();
   await page.getByRole("button", { name: "继续" }).click();
 
   // The request shows the same verification code on the device that approves it.
   const code = page.getByLabel("核对码");
   await expect(code).toBeVisible({ timeout: 30_000 });
-  await snap(page, "first-12-join-waiting");
+  await snap(page, "first-09-join-waiting");
   const deviceRequest = async () => (await first.listPairingRequests({})).pairings.find((p) => p.kind === PairingKind.DEVICE);
   await expect.poll(deviceRequest).toBeTruthy();
   const request = (await deviceRequest())!;
   await expect(code).toHaveAttribute("data-code", request.verificationCode);
   const { matchCode } = await first.approveDevicePairing({ code: request.code });
 
-  await expect(page.getByText("「first-mac」已批准。请输入对方设备上显示的两位数字：")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("输入已有设备上的两位数字")).toBeVisible({ timeout: 30_000 });
   const wrong = String((Number(matchCode) + 1) % 100).padStart(2, "0");
   await page.getByLabel("两位数字").fill(wrong);
   await page.getByRole("button", { name: "加入" }).click();
   await expect(page.getByText("数字不匹配。请输入你另一台设备上显示的两位数字。")).toBeVisible();
   await page.getByLabel("两位数字").fill(matchCode);
-  await snap(page, "first-13-join-digits");
+  await snap(page, "first-10-join-digits");
   await page.getByRole("button", { name: "加入" }).click();
-
-  // A trusted device now, and (as allowed) a machine too: only this Mac is
-  // left to set up; connecting an agent and the first task are the account's.
-  await expect(page.getByRole("heading", { name: "检查和管理可用的 Agent" })).toBeVisible({ timeout: 30_000 });
+  await finish(app, page);
   expect((await first.listDevices({})).devices.map((d) => d.label)).toHaveLength(2);
-  await expect(page.getByRole("button", { name: "完成" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "下一步：连接你的 Agent" })).toHaveCount(0);
-  await page.getByRole("button", { name: "稍后设置" }).click();
-  await expectMainWindow(app, page);
 
-  // The first device removes it again: this one says so, and can start over.
+  // The first device removes it again: this one says so; set up again, from the welcome.
   const joined = (await first.listDevices({})).devices.find((d) => !d.thisDevice)!;
   await first.removeDevice({ keyId: joined.keyId });
   await expect(page.getByRole("heading", { name: sys("这台 Mac 已不在你的 Hermesh 账号里") })).toBeVisible({ timeout: 30_000 });
-  await snap(page, "first-14-removed");
+  await snap(page, "first-11-removed");
   await page.getByRole("button", { name: sys("重新设置这台 Mac") }).click();
-  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "欢迎使用 Hermesh" })).toBeVisible({ timeout: 30_000 });
   await app.close();
 });
 
-test("adding a trusted device in settings: its join request opens there, also from its notification", async () => {
+test("adding a device in settings: its join request opens there, also from its notification", async () => {
   const home = daemon(fixture.fresh[6].socket);
   const { ownerId } = await home.setup({ relayUrl: fixture.fresh[6].relayURL, claimCode: fixture.fresh[6].claimCode, rootLabel: "home-mac" });
   const { app, page } = await launch(fixture.fresh[6].socket);
   await expectMainWindow(app, page);
-  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("account"))]);
-  await settings.waitForLoadState();
-  await settings.getByRole("main", { name: "账号与设备" }).getByRole("button", { name: "添加设备…" }).click();
+  const { settings, main } = await accountPage(app, page);
+  await main.getByRole("button", { name: "添加设备…" }).click();
   const sheet = settings.getByRole("dialog");
-  await expect(sheet.getByRole("heading", { name: "添加可信设备" })).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "添加设备" })).toBeVisible();
+  await expect(sheet).toContainText("在那台设备上安装 Hermesh");
+  await expect(sheet).toContainText("点「使用自己的服务器…」，再点「加入它…」，填入这个连接地址：");
+  await snap(settings, "settings-add-device");
 
   // Another Mac asks to join: its request takes the sheet.
   const { verificationCode } = await daemon(fixture.fresh[7].socket).requestJoin({ relayUrl: fixture.fresh[6].relayURL, ownerId, rootLabel: "second-mac", rootPlatform: "macos" });
   const title = sheet.getByRole("heading", { name: "「second-mac」想成为你的可信设备" });
   await expect(title).toBeVisible({ timeout: 30_000 });
   await expect(sheet).toContainText(verificationCode);
-  await snap(settings, "settings-device-request");
 
   // Its notification, clicked: it stays in settings; the main window opens nothing.
   type Hook = { hermeshTest: { notifications(): { title: string; click(): void }[] } };
@@ -504,175 +370,7 @@ test("adding a trusted device in settings: its join request opens there, also fr
   await app.close();
 });
 
-test("a work Mac joins as a machine only: no Touch ID, the code, the two digits; its own projects and sessions; removed later", async () => {
-  // The owner's trusted device (its test signer approves), and a work Mac
-  // joining it from the account's link. The relay stands in for the center:
-  // it is where devices connect.
-  const home = daemon(fixture.fresh[4].socket);
-  const { ownerId, connectAddress } = await home.setup({ relayUrl: fixture.fresh[4].relayURL, claimCode: fixture.fresh[4].claimCode, rootLabel: "home-mac" });
-  const { app, page } = await launch(fixture.fresh[5].socket);
-  await page.evaluate((u) => localStorage.setItem("centerURL", u), fixture.fresh[4].relayURL);
-  await page.reload();
-  await app.evaluate(({ app }, u) => app.emit("open-url", { preventDefault() {} }, u), `hermesh://join?owner=${ownerId}`);
-  await expect(page.getByRole("heading", { name: sys("让这台 Mac 加入你的 Hermesh？") })).toBeVisible();
-
-  // Not a trusted device: then sharing its agents is what it is for, and no Touch ID.
-  await page.getByRole("switch", { name: "可信设备" }).click();
-  await expect(page.getByText(sys("关闭：不在这里生成管理密钥。这台 Mac 只运行任务，不能批准，也看不到你的其他环境。适合公司的 Mac。"))).toBeVisible();
-  await expect(page.getByRole("switch", { name: "安全可信地共享本机 agent" })).toHaveCount(0);
-  await expect(page.getByText(sys("不需要 Touch ID，到你已有的设备上批准即可。", "不需要输入密码，到你已有的设备上批准即可。"))).toBeVisible();
-  await snap(page, "machine-01-authorize");
-  await page.getByRole("button", { name: "继续" }).click();
-
-  // Its request shows the same code on the trusted device, which approves it as a machine.
-  const code = page.getByLabel("核对码");
-  await expect(code).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(sys("打开你已有设备上的 Hermesh，批准这台 Mac 作为执行环境加入。"))).toBeVisible();
-  await snap(page, "machine-02-waiting");
-  const machineRequest = async () => (await home.listPairingRequests({})).pairings.find((p) => p.kind === PairingKind.MACHINE);
-  await expect.poll(machineRequest).toBeTruthy();
-  const request = (await machineRequest())!;
-  await expect(code).toHaveAttribute("data-code", request.verificationCode);
-  const { matchCode } = await home.approveMachinePairing({ code: request.code, machineName: "work-mac" });
-  expect(matchCode).toMatch(/^\d\d$/);
-
-  // The owner id came from the center: the two digits that device shows.
-  await expect(page.getByText("「home-mac」已批准。请输入对方设备上显示的两位数字：")).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel("两位数字").fill(matchCode);
-  await page.getByRole("button", { name: "加入" }).click();
-
-  // The main window, as on a trusted device: its sessions in the sidebar, and
-  // the overview, its links this Mac's own; nothing to approve.
-  await expectMainWindow(app, page);
-  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
-  const map = page.getByRole("region", { name: "链路" });
-  await expect(map).toContainText(sys("这台 Mac"));
-  // Online: connected to the relay, which the agent's session needs.
-  await expect(map).toContainText("接新任务", { timeout: 30_000 });
-  await expect(map.getByRole("button", { name: "+ 连接更多" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "需要你处理" })).toHaveCount(0);
-
-  // Its settings, from the account menu, are this Mac's: its coding agents,
-  // their models and projects, and its account; no access to grant, no other
-  // machine, nothing to approve.
-  await page.getByRole("button", { name: "账号与设置" }).click();
-  await expect(page.getByRole("menu", { name: "账号与设置" }).getByRole("menuitem")).toHaveText([sys("设置…⌘,", "设置…Ctrl+,"), "账号…"]);
-  const [settings] = await Promise.all([app.waitForEvent("window"), page.getByRole("menuitem", { name: /^设置/ }).click()]);
-  await settings.waitForLoadState();
-  const nav = settings.getByRole("navigation", { name: "设置" });
-  // Its account, General, Notifications, and this Mac, its only environment (docs/settings-environments.md §4.1).
-  for (const name of ["账号", "通用", "通知", sys("这台 Mac")]) await expect(nav.getByRole("button", { name: new RegExp(`^${name}`) })).toBeVisible();
-  await expect(nav.getByRole("button", { name: /^授权/ })).toHaveCount(0);
-  await expect(nav.getByRole("button", { name: "添加环境…" })).toHaveCount(0);
-  await nav.getByRole("button", { name: new RegExp(`^${sys("这台 Mac")}`) }).click();
-  const panel = settings.getByRole("main", { name: sys("这台 Mac") });
-  await expect(panel.getByRole("button", { name: "移除…" })).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: sys("停用这台 Mac…", "停用这台电脑…") })).toHaveCount(0);
-  await expect(panel.getByRole("listitem", { name: "Her" })).toHaveCount(0);
-  await snap(settings, "machine-05-settings");
-  await panel.getByRole("list", { name: "work-mac" }).getByRole("listitem", { name: "Agent 提供方" }).click();
-  const codex = settings.getByRole("main", { name: "Agent 提供方" }).getByRole("list", { name: "Agent 提供方" }).getByRole("listitem", { name: "Codex" });
-  await codex.click({ timeout: 30_000 });
-  const model = settings.getByRole("main", { name: "Codex" }).getByRole("region", { name: "Codex" }).getByRole("group", { name: "模型" });
-  await expect(model).toContainText("跟随 Codex（GPT-Fake-Big）", { timeout: 30_000 });
-  await answerMenu(app, "gpt-fake-small");
-  await model.getByRole("button").click();
-  await expect(model).toHaveText("模型GPT-Fake-Small");
-  const workMac = daemon(fixture.fresh[5].socket);
-  const codexDefaults = async () => (await workMac.listMachines({})).machines[0]?.status?.agents.find((a) => a.name === "codex")?.defaults?.model;
-  await expect.poll(codexDefaults).toBe("gpt-fake-small");
-  await snap(settings, "machine-06-agent");
-  // ‹ goes back to the providers, then to this Mac; it gets a project, for every provider.
-  await settings.getByRole("button", { name: "返回Agent 提供方" }).click();
-  await settings.getByRole("button", { name: sys("返回这台 Mac") }).click();
-  await panel.getByRole("list", { name: "work-mac" }).getByRole("listitem", { name: "项目" }).click();
-  await pickAnswers(app, gitRepo("billing"));
-  await settings.getByRole("main", { name: "项目" }).getByRole("button", { name: "添加项目…" }).click();
-  await expect(settings.getByRole("main", { name: "项目" }).getByRole("option", { name: "billing" })).toBeVisible({ timeout: 30_000 });
-  await expect(map.getByRole("button", { name: "billing" })).toBeVisible({ timeout: 30_000 });
-  // Its account: whose it is and where it connects; from here it can leave,
-  // or become a trusted device (in the main window).
-  await nav.getByRole("button", { name: "账号" }).click();
-  const account = settings.getByRole("main", { name: "账号" });
-  await expect(account).toContainText("它不能批准请求，也看不到你的其他环境");
-  await expect(account.getByRole("list", { name: "可信设备" })).toHaveCount(0);
-  await expect(account.getByRole("button", { name: "离开你的 Hermesh…" })).toBeVisible();
-  await snap(settings, "machine-07-account");
-  await Promise.all([settings.waitForEvent("close"), account.getByRole("button", { name: sys("让这台 Mac 也能批准…") }).click()]);
-  await expect(page.getByRole("heading", { name: "在你已有的设备上批准" })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: "取消" }).click();
-  await expect(page.getByRole("heading", { name: "概览" })).toBeVisible({ timeout: 30_000 });
-
-  // An agent of the owner, granted all machines: before it comes, the map
-  // has it as one that may start sessions here, faint.
-  const env = { ...process.env, HERMESH_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "hmagent-")) };
-  const login = spawn(fixture.cli, ["auth", "login", connectAddress, "--name", "Grok Bot"], { env });
-  const loggedIn = new Promise<number | null>((r) => login.on("exit", r));
-  const clientRequest = async () => (await home.listPairingRequests({})).pairings.find((p) => p.kind === PairingKind.CLIENT);
-  await expect.poll(clientRequest, { timeout: 30_000 }).toBeTruthy();
-  await home.approveClientPairing({ code: (await clientRequest())!.code, spec: { agents: ["gemini"] } });
-  expect(await loggedIn).toBe(0);
-  const grok = map.getByRole("button", { name: "Grok Bot", exact: true });
-  await expect(grok).toContainText("尚无任务", { timeout: 30_000 });
-  await expect(map).toContainText("尚无任务");
-  // Nothing has run here yet: 进行中 rests, with no prompt to send.
-  const working = page.getByRole("region", { name: "进行中" });
-  await expect(working.getByRole("status")).toContainText("当前没有运行中的任务");
-  await expect(working).not.toContainText("发一句试试");
-  // No session at all: the sidebar says what will show there (a machine alone has no Her to ask).
-  await expect(page.getByRole("list", { name: "任务" })).toHaveText(/^还没有任务\s*Agent 连接后，发起的任务会显示在这里。$/);
-  await snap(page, "machine-03-window");
-
-  // It runs a session there: the work Mac lists it, the agent's name in its metadata,
-  // the map runs it from the agent to the project, and the agent's card says
-  // what it may do here.
-  execFileSync(fixture.cli, ["session", "start", "--project", "billing", "--agent", "gemini", "--title", "修账单导出", "--prompt", "shell sleep 1800"], { env });
-  const row = (await sessionList(page)).getByRole("listitem").filter({ hasText: "修账单导出" });
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await navTo(page, /^概览/);
-  await expect(grok).not.toContainText("尚无任务", { timeout: 30_000 });
-  await expect(page.getByRole("button", { name: "管理授权…" })).toHaveCount(0);
-  // Resting on it shows its card, over the map, which keeps its height.
-  const height = await mapHeight(map);
-  await grok.hover();
-  const card = page.getByRole("dialog", { name: "Grok Bot" });
-  await expect(card).toBeVisible();
-  expect((await map.boundingBox())!.height).toBe(height);
-  await page.mouse.move(0, 0);
-  await expect(card).toHaveCount(0);
-  // Clicked, it stays, and 正在干活 keeps only its sessions.
-  await grok.click();
-  await expect(card).toContainText("个人 agent · 自己保管密钥");
-  await expect(card).toContainText("授权给了它完全权限");
-  await expect(card).toContainText("在这里能用所有项目");
-  await expect(card).toContainText("Agent 提供方Gemini CLI");
-  await expect(card).toContainText(/有效期还剩 \d+ 天/);
-  await expect(card).toContainText(sys("在这台 Mac今天 1 个任务 · 最近一次"));
-  await expect(page.getByRole("status").filter({ hasText: "Grok Bot 发起的任务" })).toBeVisible();
-  await snap(page, "machine-08-card");
-  await page.mouse.move(0, 0);
-  await expect(card).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(card).toHaveCount(0);
-
-  await (await sessionList(page)).getByRole("listitem").filter({ hasText: "修账单导出" }).click();
-  await expect(page.getByRole("heading", { name: "修账单导出" })).toBeVisible();
-  await expect(page.getByRole("log", { name: "对话" })).toContainText("sleep 1800", { timeout: 30_000 });
-  await snap(page, "machine-04-session");
-  await page.getByTestId("composer-stop-btn").click();
-  await expect(page.getByRole("status")).toContainText("已打断「修账单导出」");
-
-  // The trusted device removes it: it says so, and can start over.
-  const work = (await home.listMachines({})).machines.find((m) => m.machineName === "work-mac")!;
-  await home.removeMachine({ machineId: work.machineId });
-  await expect(page.getByRole("heading", { name: sys("这台 Mac 已不在你的 Hermesh 账号里") })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("这台设备已从你的环境列表中移除，或账号已被重置，现已停止接收任务。重新设置即可再次加入账号。")).toBeVisible();
-  await page.getByRole("button", { name: sys("重新设置这台 Mac") }).click();
-  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
-  await app.close();
-});
-
-test("erasing everything: what it erases, the server's address typed, Touch ID, then this Mac's first run says what was done", async () => {
+test("erasing everything: what it erases, the server's address typed, Touch ID, then the first run says what was done", async () => {
   const fresh = fixture.fresh[9];
   const mac = daemon(fresh.socket);
   await mac.setup({ relayUrl: fresh.relayURL, claimCode: fresh.claimCode, rootLabel: "erase-mac", localMachineName: "erase-mac" });
@@ -680,44 +378,37 @@ test("erasing everything: what it erases, the server's address typed, Touch ID, 
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "hmdesk-"));
   const { app, page } = await launch(fresh.socket, { profile });
   await expectMainWindow(app, page);
-  const [settings] = await Promise.all([app.waitForEvent("window"), page.evaluate(() => window.hermesh?.openSettings("account"))]);
-  await settings.waitForLoadState();
-  await settings.getByRole("main", { name: "账号与设备" }).getByRole("button", { name: "高级…" }).click();
+  const { settings, main } = await accountPage(app, page);
+  await main.getByRole("button", { name: "高级…" }).click();
   await settings.getByRole("dialog", { name: "高级" }).getByRole("button", { name: "全部清空…" }).click();
 
   // What it erases, by name (this Mac's machine is this Mac), and what stays.
   const sheet = settings.getByRole("dialog", { name: "全部清空 Hermesh？" });
   await expect(sheet).toContainText(sys("erase-mac 这台 Mac"));
   await expect(sheet).toContainText(`自己的服务器 · ${host}`);
-  await expect(sheet).not.toContainText("解除配对");
   await expect(sheet).toContainText("有未提交改动的 worktree：挪到一边保留");
   // Escape doesn't close it; the button waits for the server's address.
   await settings.keyboard.press("Escape");
   await expect(sheet).toBeVisible();
   const erase = sheet.getByRole("button", { name: "全部清空", exact: true });
   await expect(erase).toBeDisabled();
-  await sheet.getByLabel(/清空后不能撤销/).fill(host.slice(0, -1));
-  await expect(erase).toBeDisabled();
   await sheet.getByLabel(/清空后不能撤销/).fill(` ${host.toUpperCase()} `);
-  await snap(settings, "settings-erase");
   // The test signer approves (Touch ID); this Mac is the only one, so it erases itself at once.
   await Promise.all([settings.waitForEvent("close"), erase.click()]);
 
   // The first run, saying once what was done.
-  await expect(page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "欢迎使用 Hermesh" })).toBeVisible({ timeout: 30_000 });
   const note = page.getByRole("status").filter({ hasText: "Hermesh 已全部清空" });
   await expect(note).toBeVisible();
   await snap(page, "first-erased");
-  const status = await mac.getStatus({});
-  expect(status.initialized).toBe(false);
-  expect(status.erased?.eraseId).toBeTruthy();
+  expect((await mac.getStatus({})).erased?.eraseId).toBeTruthy();
   await note.getByRole("button", { name: "关闭" }).click();
   await expect(note).toBeHidden();
   await app.close();
 
-  // Closed, it stays closed.
+  // Closed, it stays closed; the first run is still to be done.
   const again = await launch(fresh.socket, { profile });
-  await expect(again.page.getByRole("heading", { name: "让 Agent 安全地互相连接" })).toBeVisible();
+  await expect(again.page.getByRole("heading", { name: "欢迎使用 Hermesh" })).toBeVisible();
   await expect(again.page.getByText("Hermesh 已全部清空")).toHaveCount(0);
   await again.app.close();
 });
@@ -749,3 +440,7 @@ test("a trusted device's environment says so, and removing it removes the device
   await expect.poll(async () => (await pc.getStatus({})).removed, { timeout: 30_000 }).toBe(true);
   await app.close();
 });
+
+/** hermeshd's local API on socket, as another of the owner's devices uses it. */
+const daemon = (socket: string) =>
+  createClient(LocalService, createConnectTransport({ baseUrl: "http://hermeshd", httpVersion: "1.1", nodeOptions: { socketPath: socket } }));

@@ -287,8 +287,10 @@ func (o *Owner) Initialized() bool {
 	return o.ownerID != ""
 }
 
+// wantsLocalMachine: this device runs its own machine. A profile that is
+// signed out runs it too, with its mesh paused (docs/cold-start-tech.md §2.1).
 func (o *Owner) wantsLocalMachine() bool {
-	if o.cfg.NoLocalMachine || o.isSignedOut() {
+	if o.cfg.NoLocalMachine {
 		return false
 	}
 	if o.machineOnly() {
@@ -300,6 +302,12 @@ func (o *Owner) wantsLocalMachine() bool {
 	return !o.Initialized()
 }
 
+// localOnly: this device answers for its own machine alone, as before it
+// belonged to an owner: not set up, or signed out.
+func (o *Owner) localOnly() bool {
+	return o.local() != nil && (!o.Initialized() || o.isSignedOut())
+}
+
 func (o *Owner) wakeRelay() {
 	select {
 	case o.relayWake <- struct{}{}:
@@ -309,20 +317,18 @@ func (o *Owner) wakeRelay() {
 
 // Run keeps background work going: the local execution machine (if
 // enabled) and the owner relay connection. A profile that is signed out
-// does neither.
+// keeps its machine, with its mesh paused, and connects once signed in.
 func (o *Owner) Run(ctx context.Context) {
 	o.mu.Lock()
 	o.runCtx = ctx
-	signedOut := o.signedOut
 	o.mu.Unlock()
-	if signedOut {
-		<-ctx.Done()
-		return
-	}
 	if o.wantsLocalMachine() {
 		if err := o.startLocalMachine(); err != nil {
 			o.log.Warn("local machine did not start", "err", err)
 		}
+	}
+	if o.isSignedOut() { // signed out before the mesh could be paused (a profile from before)
+		o.pauseLocalMesh(true)
 	}
 	go o.namePending(ctx)
 	go o.deliverWaiting(ctx)
@@ -353,7 +359,7 @@ func (o *Owner) stayConnected(ctx context.Context) {
 	for ctx.Err() == nil {
 		var done <-chan struct{}
 		var c *peer.Client
-		if o.Initialized() && !o.isLeaving() {
+		if o.Initialized() && !o.isLeaving() && !o.isSignedOut() {
 			started := time.Now()
 			var err error
 			if c, err = o.relay(ctx); err == nil {
@@ -419,6 +425,10 @@ func (o *Owner) isSignedOut() bool {
 func (o *Owner) credentials() *identityv1.Credentials {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	// A dial that began before Leave or removal cleared the trust: no chain, so the relay refuses it.
+	if o.trust == nil {
+		return &identityv1.Credentials{}
+	}
 	return &identityv1.Credentials{RootChain: o.trust.RootChain(), Subject: &identityv1.Credentials_DeviceCert{DeviceCert: o.deviceCert}}
 }
 
@@ -1124,7 +1134,7 @@ func (o *Owner) ownerStatus() *localv1.GetStatusResponse {
 			rh.Phase = "connecting"
 		}
 		st.RelayHealth = rh
-	case !st.Initialized && !o.signedOut && o.localMachine != nil:
+	case o.localMachine != nil:
 		st.RelayHealth = &localv1.RelayHealth{Phase: "local"}
 	default:
 		st.RelayHealth = &localv1.RelayHealth{Phase: "idle"}
@@ -2184,6 +2194,20 @@ func (o *Owner) startLocalMachineLocked() error {
 	return nil
 }
 
+// pauseLocalMesh pauses (or resumes) the local machine's relay link and
+// listeners, if it runs.
+func (o *Owner) pauseLocalMesh(paused bool) {
+	o.mu.Lock()
+	n := o.localMachine
+	o.mu.Unlock()
+	if n == nil {
+		return
+	}
+	if err := n.SetMeshPaused(paused); err != nil {
+		o.log.Warn("local machine mesh not paused", "paused", paused, "err", err)
+	}
+}
+
 // stopLocalMachine stops the local machine and waits until it is closed.
 func (o *Owner) stopLocalMachine() {
 	o.localStartMu.Lock()
@@ -2642,10 +2666,7 @@ func (o *Owner) local() *machine.Local {
 // with its state (Online: whether the relay can reach it), and the others
 // as the replica last polled them from the relay (see listedMachines).
 func (o *Owner) machines(ctx context.Context) ([]*localv1.Machine, error) {
-	if !o.Initialized() {
-		if o.isSignedOut() {
-			return nil, errSignedOut
-		}
+	if o.localOnly() {
 		if l := o.local(); l != nil {
 			info := l.Info()
 			return []*localv1.Machine{{
@@ -3114,13 +3135,12 @@ func specFromGrant(g *identityv1.Grant) *localv1.GrantSpec {
 
 // ListClients lists the owner's agents, as the replica last polled them.
 func (o *Owner) ListClients(ctx context.Context) ([]*localv1.Client, error) {
-	if !o.Initialized() {
-		if o.isSignedOut() {
-			return nil, errSignedOut
-		}
+	if o.localOnly() {
 		if l := o.local(); l != nil {
 			return o.standaloneClients(l), nil
 		}
+	}
+	if !o.Initialized() {
 		return nil, o.requireInit()
 	}
 	s, err := o.rep.use(ctx)

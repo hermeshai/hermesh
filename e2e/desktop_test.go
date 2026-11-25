@@ -135,7 +135,7 @@ func TestDesktop(t *testing.T) {
 	specs, _ := filepath.Glob(filepath.Join(dir, "e2e", "*.spec.ts"))
 	for _, spec := range specs {
 		name := strings.TrimSuffix(filepath.Base(spec), ".spec.ts")
-		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-long" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong
+		if name == "packaged" || name == "update" || name == "her" || name == "her-notifications" || name == "her-chatgpt" || name == "her-older" || name == "her-before" || name == "her-reply" || name == "progress" || name == "her-deliveries" || name == "her-page" || name == "her-long" || name == "coldstart" { // TestDesktopPackaged, TestDesktopUpdate, TestDesktopHer, TestDesktopHerChatGPT, TestDesktopHerOlder, TestDesktopHerBeforeHer, TestDesktopHerReply, TestDesktopHerProgress, TestDesktopHerDeliveries, TestDesktopHerPage, TestDesktopHerLong, TestDesktopColdStart
 			continue
 		}
 		// Windows runs its own spec and those ported to it (docs/windows.md §11).
@@ -766,8 +766,9 @@ func desktopSessions(t *testing.T, w *ownerMac) map[string]string {
 // installed but not logged in, and Gemini CLI played by the scripted ACP
 // agent (the one that can run sessions). gated: its agents' checks wait
 // for the test (freshOwner.Gate). bare: a computer with no coding agent
-// at all (each one's check fails).
-func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool) freshOwner {
+// at all (each one's check fails). extra: more of the daemon's environment
+// (her's, for a computer that can run Her).
+func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool, extra ...string) freshOwner {
 	t.Helper()
 	tmp := t.TempDir()
 	relayBin := filepath.Join(w.bin, "hermesh-relay")
@@ -808,6 +809,7 @@ func newFreshOwner(t *testing.T, w *ownerMac, name string, gated, bare bool) fre
 			env = append(env, "HERMESH_"+strings.ToUpper(a.Name)+"_BIN="+missing)
 		}
 	}
+	env = append(env, extra...)
 	owner := start(t, name+" owner", env, filepath.Join(w.bin, "hermeshd"),
 		"run", "--owner", "--data-dir", filepath.Join(tmp, "owner"), "--socket", sock)
 	w.logs = append(w.logs, owner)

@@ -45,7 +45,7 @@ func screenMode(st *localv1.GetStatusResponse) string {
 		return "owner"
 	case !st.Initialized && st.MachineOnly:
 		return "machine"
-	case !st.Initialized && !st.SignedOut && st.LocalMachineEnabled:
+	case st.LocalMachineEnabled && (!st.Initialized || st.SignedOut):
 		return "standalone"
 	}
 	return "status"

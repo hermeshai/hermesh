@@ -38,3 +38,15 @@
 .sheet .erase-st{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--l2);white-space:nowrap}
 .sheet .erase-st.ok{color:var(--green)}
 .sheet .erase-spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--fill2);border-top-color:var(--l1);animation:wk-spin .8s linear infinite}
+/* What needs an account, without one (NeedSignIn.tsx): a small alert, centred. */
+.sheet .need-in{display:flex;flex-direction:column;align-items:center;text-align:center}
+.sheet .need-tile{width:44px;height:44px;border-radius:11px;background:var(--fill2);color:var(--l2);display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.sheet .need-tile .ic{width:24px;height:24px}
+.sheet .need-in h3{font-size:13px;font-weight:650}
+.sheet .need-in .sub{font-size:11.5px;margin:6px 0 0}
+.sheet .need-acts{display:flex;flex-direction:column;gap:6px;margin-top:14px;align-self:stretch}
+.sheet .need-acts .btn{justify-content:center;height:26px}
+/* Add a device: three numbered steps (docs/cold-start-prd.md §7.3). */
+.sheet .add-step{gap:10px}
+.sheet .add-num{width:22px;height:22px;border-radius:50%;background:var(--fill2);color:var(--l2);font-size:11.5px;font-weight:600;display:flex;align-items:center;justify-content:center;flex:none}
+.sheet .add-wait{font-size:12px;color:var(--l3)}

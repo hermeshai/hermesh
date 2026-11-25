@@ -240,6 +240,7 @@ type testApp struct {
 	handed  bool                             // root was handed over as a new key
 	deleted []string                         // key ids hermeshd had deleted
 	signed  []string
+	batches []string // the batch of each confirmation, in order
 	callers []*localv1.Caller
 	reject  bool
 	// check plays the owner reading the request before Touch ID (e.g.
@@ -320,6 +321,9 @@ func (a *testApp) signLoop(ctx context.Context) {
 			}
 			a.mu.Lock()
 			a.signed = append(a.signed, req.Type)
+			if len(a.batches) == 0 || a.batches[len(a.batches)-1] != req.BatchId || req.BatchId == "" {
+				a.batches = append(a.batches, req.BatchId)
+			}
 			reject, check := a.reject, a.check
 			a.mu.Unlock()
 			if check != nil {
@@ -358,6 +362,14 @@ func (a *testApp) deletedKeys() []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return slices.Clone(a.deleted)
+}
+
+// signedBatches: how many confirmations the person gave (requests of one
+// batch share one).
+func (a *testApp) signedBatches() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.batches)
 }
 
 func (a *testApp) signedTypes() []string {

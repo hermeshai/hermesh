@@ -6,7 +6,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { answerMenu, cli, fixture, gitRepo, launch, onMac, onWindows, pickAnswers, snap, sys, thisComputer } from "./app";
+import { answerMenu, cli, fixture, gitRepo, launch, onWindows, pickAnswers, snap, sys, thisComputer } from "./app";
 
 // The settings window: a window of its own (⌘,), laid out as System
 // Settings, for what is set up once and changed rarely.
@@ -514,22 +514,23 @@ test("settings 环境: Codex's page sets the model, effort and speed its session
   await app.close();
 });
 
-test("settings 账号与设备 shows the identity, the trusted devices and, folded, the addresses", async () => {
+test("settings 账号与设备 shows the account, the devices and, folded, the addresses", async () => {
   const { app, page } = await launch();
   const status = await page.evaluate(() =>
     fetch("app://hermesh/api/hermesh.local.v1.LocalService/GetStatus", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).then((r) => r.json()),
   );
   const settings = await openSettings(app, page, "account");
   const panel = page_(settings, "账号与设备");
-  const devices = panel.getByRole("list", { name: "可信设备" });
-  await expect(devices).toContainText("test-mac");
-  await expect(devices).toContainText(thisComputer);
+  const devices = panel.getByRole("list", { name: "设备" });
+  // This computer first, by its own name (docs/cold-start-prd.md §7.2).
+  await expect(devices.getByRole("listitem").first()).toContainText(thisComputer);
+  await expect(devices.getByRole("listitem").first()).not.toContainText("—");
   await expect(devices.getByRole("button", { name: "移除…" })).toHaveCount(0);
   await expect(panel).not.toContainText(status.ownerId);
   await snap(settings, "settings-account");
 
   await panel.getByRole("button", { name: "添加设备…" }).click();
-  await expect(settings.getByRole("dialog", { name: "添加可信设备" })).toBeVisible();
+  await expect(settings.getByRole("dialog", { name: "添加设备" })).toBeVisible();
   await settings.keyboard.press("Escape");
   await expect(settings.getByRole("dialog")).toHaveCount(0);
 
@@ -551,12 +552,13 @@ test("settings 账号与设备 shows the identity, the trusted devices and, fold
   await advanced.getByRole("button", { name: "完成" }).click();
   await expect(advanced).toBeHidden();
 
-  // Still a trusted device: signing out only explains how.
+  // Signing out asks first, and says what stays (signing out itself: onboarding.spec.ts); cancelled here.
   await panel.getByRole("button", { name: "退出登录…" }).click();
-  const dialog = settings.getByRole("dialog", { name: onMac ? "让这台 Mac 退出登录？" : "让这台电脑退出登录？" });
-  await expect(dialog).toContainText("先在你的另一台可信设备上");
-  await dialog.getByRole("button", { name: "好" }).click();
+  const dialog = settings.getByRole("dialog", { name: "要退出登录吗？" });
+  await expect(dialog).toContainText("项目、任务和 Her 都会保留");
+  await dialog.getByRole("button", { name: "取消" }).click();
   await expect(dialog).toBeHidden();
+  await expect(panel).toContainText("已连接");
 
   // Another page opens in the same window; the old 可信设备 link lands here too.
   await page.evaluate(() => window.hermesh?.openSettings("general"));

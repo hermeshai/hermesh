@@ -66,7 +66,9 @@ test("the sidebar keeps one rhythm, one heading per group and a quiet foot", asy
 
   const foot = page.getByRole("button", { name: "账号与设置" });
   await expect(foot).not.toContainText("在线");
-  await expect(foot.locator(".dotc")).toHaveCount((await foot.innerText()).includes("未连接") ? 1 : 0);
+  // Signed in or not, and nothing more (docs/cold-start-prd.md §6.1).
+  await expect(foot).toContainText("已登录");
+  await expect(foot.locator(".dotc")).toHaveCount(0);
   await page.emulateMedia({ colorScheme: "dark" });
   // Selected nav item reads brighter and heavier than an unselected row in the dark.
   const selStyle = await nav.locator(".nav-i.sel").evaluate((el) => [getComputedStyle(el).color, getComputedStyle(el).fontWeight]);

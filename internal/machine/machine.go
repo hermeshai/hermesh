@@ -124,6 +124,7 @@ type Machine struct {
 	grantSeen  map[string]uint64
 	statusKick chan struct{}
 	meshWake   chan struct{}
+	meshPaused bool // kMeshPaused; under mu
 	meshCancel context.CancelFunc
 	meshDone   chan struct{}
 	lock       *flock.Lock
@@ -175,6 +176,9 @@ const (
 	kPaused      = "paused"
 	kName        = "name"
 	kMaxMode     = "max_runtime_mode"
+	// kMeshPaused: "1" while the device this machine belongs to is signed
+	// out: no relay link and no listeners for others, all else runs.
+	kMeshPaused = "mesh_paused"
 )
 
 func KeyPath(dataDir string) string { return filepath.Join(dataDir, "keys", "machine.key") }
@@ -240,6 +244,8 @@ func (n *Machine) loadState() error {
 		_ = n.st.Set(kName, []byte(def))
 		n.machineName = def
 	}
+	paused, _ := n.st.Get(kMeshPaused)
+	n.meshPaused = string(paused) == "1"
 	owner, _ := n.st.Get(kOwnerID)
 	relay, _ := n.st.Get(kRelayURL)
 	n.ownerID, n.relayURL = string(owner), string(relay)
@@ -611,7 +617,7 @@ func (n *Machine) Run(ctx context.Context) error {
 
 func (n *Machine) startMeshIfNeeded(parent context.Context) {
 	n.mu.Lock()
-	if n.machineCert == nil || n.meshCancel != nil || parent.Err() != nil {
+	if n.machineCert == nil || n.meshPaused || n.meshCancel != nil || parent.Err() != nil {
 		n.mu.Unlock()
 		return
 	}
@@ -638,6 +644,37 @@ func (n *Machine) startMeshIfNeeded(parent context.Context) {
 		close(done)
 		n.wakeMesh()
 	}()
+}
+
+// SetMeshPaused stops (or starts again) the relay link and the listeners
+// for other devices and agents, keeping the machine's cert, its grants, its
+// sessions and Her running: its device signed out (docs/cold-start-tech.md
+// §2.1). It lasts across restarts.
+func (n *Machine) SetMeshPaused(paused bool) error {
+	v := []byte{}
+	if paused {
+		v = []byte("1")
+	}
+	if err := n.st.Set(kMeshPaused, v); err != nil {
+		return err
+	}
+	n.mu.Lock()
+	n.meshPaused = paused
+	n.mu.Unlock()
+	if paused {
+		n.stopMesh()
+	} else {
+		n.wakeMesh()
+	}
+	n.kickStatus()
+	return nil
+}
+
+// MeshPaused reports SetMeshPaused.
+func (n *Machine) MeshPaused() bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.meshPaused
 }
 
 // StopMesh disconnects the relay link and mesh listeners without stopping
