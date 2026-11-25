@@ -4,7 +4,6 @@ import { agentLimits, agoText, codingAgentTitle, hourMinute, limitLow, sameDay, 
 import { AgentLogo } from "@hermesh/ui";
 import { i18n } from "../../../shared/i18n";
 import { useCheckAgents } from "../agents";
-import { Icon } from "../icons";
 import { machineName } from "../Sidebar";
 import { useStore, type Store } from "../store";
 
@@ -60,7 +59,6 @@ export function Limits({ now }: { now: Date }) {
 function Card({ c, now }: { c: AgentLimitsCard; now: Date }) {
   const { t } = useTranslation("overview");
   const st = useStore();
-  const low = c.windows.some((w) => w.left <= limitLow);
   const empty = c.stale ? t("limits.stale") : reporting.has(c.agent) ? t("limits.notYet") : t("limits.none");
   return (
     <div className="card tint lim" role="group" aria-label={codingAgentTitle(c.agent)}>
@@ -69,11 +67,8 @@ function Card({ c, now }: { c: AgentLimitsCard; now: Date }) {
         <div className="lim-tx">
           <b>{codingAgentTitle(c.agent)}</b>
           {c.observedAt && <small>{reportedText(st, c, now)}</small>}
-          {low ? (
-            <span className="lim-badge warn"><Icon name="warn" />{t("limits.low")}</span>
-          ) : (
-            c.plan && <span className="lim-badge">{c.plan.charAt(0).toUpperCase() + c.plan.slice(1)}</span>
-          )}
+          {/* What the account is, always: a window running low is said by its own row, as it may be one of several. */}
+          {c.plan && <span className="lim-badge">{c.plan.charAt(0).toUpperCase() + c.plan.slice(1)}</span>}
         </div>
       </div>
       {c.windows.some((w) => w.group) ? (

@@ -18680,16 +18680,6 @@
         }
       }
     },
-    "Running Low" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快用完了"
-          }
-        }
-      }
-    },
     "Sender" : {
       "localizations" : {
         "zh-Hans" : {
