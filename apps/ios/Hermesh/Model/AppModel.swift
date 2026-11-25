@@ -60,6 +60,8 @@ enum Route: Hashable {
     case progressAgent(String) // a sub-agent of Her's: its record
     case routines // Her's scheduled tasks, from her page's top
     case herFiles // the files Her sent (docs/her-deliverables.md §3.3), from her page's top
+    case sessionFile(String, String, String, Int, Int) // a session's file (docs/session-files.md §4): session, turn, path, line, last line
+    case sessionFolder(String, String) // a folder of a session's, as it is now: session, folder ("" for its own)
     case routine(String) // one of them, by id
     case routineRun(String, String) // a run of one: routine id, run id
     case herMemory // what Her remembers (docs/her-memory.md)

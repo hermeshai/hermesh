@@ -153,6 +153,9 @@ func TestDesktop(t *testing.T) {
 			if name == "thread-composer" {
 				f.OtherMac = otherMacThreads(t, f)
 			}
+			if name == "session-files" {
+				f.OtherMac = otherMacFiles(t, f)
+			}
 			if name == "limits" {
 				otherMacLimits(t, f)
 			}
@@ -640,6 +643,43 @@ func otherMacSession(t *testing.T, f desktopFixture) int {
 		})
 		f.Sessions[title] = s.SessionID
 	}
+	return daemon.cmd.Process.Pid
+}
+
+// otherMacFiles joins a second Mac, files-mac, with a project whose session
+// (文件预览) writes a page with its script beside it and a file of 40 lines,
+// and links them in its reply; its second turn changes the page
+// (apps/desktop/e2e/session-files.spec.ts, docs/session-files.md). Returns
+// files-mac's hermeshd's process, for the spec to take the machine away.
+func otherMacFiles(t *testing.T, f desktopFixture) int {
+	w := f.owner
+	ctx := context.Background()
+	home, err := w.app.client.GetStatus(ctx, &localv1.GetStatusRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, _ := w.otherMac("files-mac", []string{"HERMESH_GEMINI_BIN=" + filepath.Join(binaries(t), "fakeacp"), "FAKE_ACP_STATE=" + filepath.Join(t.TempDir(), "fakeacp")})
+	daemon := w.logs[len(w.logs)-1]
+	st := w.joinTyped(work, home, "files-mac")
+	if _, err := work.AddProject(ctx, &localv1.AddProjectRequest{MachineId: st.LocalMachineId, ProjectId: "site", Path: gitRepo(t, map[string]string{"README.md": "# site\n"})}); err != nil {
+		t.Fatal(err)
+	}
+	page := `<html><body><p id=t>第一版</p><button id=b onclick="document.getElementById('t').textContent='点过了'">点我</button><script src="demo.js"></script></body></html>`
+	prompt := strings.Join([]string{
+		"write docs/demo.html " + page,
+		"write docs/demo.js document.title = 'demo.js 读到了';",
+		`shell mkdir -p src && seq 1 40 | sed 's/^/line /' > src/lines.txt`,
+		"say 原型：[demo.html](docs/demo.html)，代码在 `src/lines.txt:30`，旧的 [gone.md](gone.md)，还有 [外面](/etc/hosts)。",
+	}, "\n")
+	var s sessionJSON
+	eventually(t, time.Minute, "a session on files-mac", func() bool {
+		s = firstSession(w.cli(2*time.Minute, "session", "start", "--project", "files-mac/site", "-o", "json", "--agent", "gemini", "--title", "文件预览", "--prompt", prompt, "--wait").stdout)
+		return s.SessionID != ""
+	})
+	if s2, r := w.send(2*time.Minute, s.SessionID, "write docs/demo.html <html><body><p id=t>第二版</p></body></html>\nsay 改好了"); s2.Status != "idle" {
+		t.Fatalf("second turn: %+v", r)
+	}
+	f.Sessions["文件预览"] = s.SessionID
 	return daemon.cmd.Process.Pid
 }
 

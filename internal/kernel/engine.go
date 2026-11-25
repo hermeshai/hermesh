@@ -5828,6 +5828,10 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 			_ = e.vcs.RemoveWorktree(ctx, ws.Path, sess.GetWorkspaceStrategy().GetWorktreePath())
 		}
 	}
+	// Its turns' files (the checkpoints' refs in the project's repository) go with it.
+	if ws, wErr := e.st.Workspace(sess.ProjectId); wErr == nil && vcs.IsGitRepo(ctx, ws.Path) {
+		_ = e.vcs.RemoveCheckpoints(ctx, ws.Path, sessionID)
+	}
 	if e.cfg.DataDir != "" {
 		_ = os.RemoveAll(filepath.Join(e.cfg.DataDir, "sessions", sessionID))
 	}

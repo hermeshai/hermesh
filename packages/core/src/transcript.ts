@@ -48,7 +48,8 @@ export type TranscriptItem =
   | { kind: "turn"; seq: bigint; turn: number; at: Date | undefined; asker: string; wakeReason?: string }
   /** asker: who asked for its turn (a client id, or "owner"; "" when the machine didn't say). */
   | { kind: "user"; seq: bigint; text: string; at: Date | undefined; asker: string }
-  | { kind: "agent"; seq: bigint; text: string; at: Date | undefined }
+  /** runId: the turn it belongs to, whose files its links open as that turn left them (docs/session-files.md §6.2). */
+  | { kind: "agent"; seq: bigint; text: string; at: Date | undefined; runId?: string }
   | { kind: "tool"; seq: bigint; call: ToolCall; result: ToolResult | undefined; resultSeq?: bigint; running: boolean }
   | { kind: "question"; seq: bigint; question: Question; resolution: QuestionResolved | undefined }
   | { kind: "turnEnd"; seq: bigint; end: TurnCompleted }
@@ -216,10 +217,10 @@ export function sessionTranscript(proj: SessionProjection | null | undefined): T
         });
         break;
       case TurnItemKind.ASSISTANT_MESSAGE:
-        out.push({ kind: "agent", seq, text: it.text, at });
+        out.push({ kind: "agent", seq, text: it.text, at, runId: it.runId });
         break;
       case TurnItemKind.PROPOSED_PLAN:
-        out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at });
+        out.push({ kind: "agent", seq, text: formatProposedPlan(it.planTitle, it.text), at, runId: it.runId });
         break;
       case TurnItemKind.TOOL_CALL:
       case TurnItemKind.COMMAND_EXECUTION:

@@ -269,6 +269,7 @@ func (o *Owner) cacheSession(sess *sessionv1.Session, proj *sessionv1.SessionPro
 
 func (o *Owner) removeCachedSession(sessionID string) {
 	_, _ = o.st.db.Exec(`DELETE FROM sessions_cache WHERE session_id = ?`, sessionID)
+	o.forgetFiles(sessionID)
 	if o.rep != nil {
 		o.rep.sessionWritten(sessionID, nil, true)
 		o.rep.broadcastLocalSessionChange(nil, []string{sessionID})

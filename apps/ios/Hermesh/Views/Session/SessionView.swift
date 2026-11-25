@@ -81,8 +81,9 @@ struct StepView: View {
                          }) : nil) { EmptyView() }
         case .workspace(let row):
             WorkspaceLine(row: row)
-        case .agent(_, let text):
+        case .agent(_, let text, let runID):
             MarkdownText(text: text)
+                .environment(\.filesRun, runID)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .contextMenu { CopyMenu(text: text, sent: nil) }
@@ -378,6 +379,9 @@ private struct SessionMore: View {
         if let tasks = backgroundTasks {
             Button("Background Tasks", systemImage: "terminal", action: tasks.open)
         }
+        // The session's folder, a level at a time (docs/session-files.md §4), as the Mac's file panel's tree.
+        Button("Project Files", systemImage: "folder") { model.path.append(.sessionFolder(session.sessionID, "")) }
+            .accessibilityIdentifier("session-files")
         Button("Copy Session ID", systemImage: "doc.on.doc") {
             UIPasteboard.general.string = session.sessionID
             model.show(String(localized: "Copied the session ID"))

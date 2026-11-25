@@ -121,6 +121,57 @@ extension AppAPI {
         return try await call("\(sessionSvc)/UploadBlob", r, timeout: 60)
     }
 
+    // A session's files (docs/session-files.md §6): read when opened, as a turn left them or as they are now.
+
+    func resolveFiles(_ sessionID: String, run: String, paths: [String]) async throws -> Hermesh_Session_V1_ResolveFilesResponse {
+        var r = Hermesh_Session_V1_ResolveFilesRequest()
+        r.sessionID = sessionID
+        r.runID = run
+        r.paths = paths
+        return try await call("\(sessionSvc)/ResolveFiles", r, timeout: 20)
+    }
+
+    func listFiles(_ sessionID: String, run: String, dir: String) async throws -> Hermesh_Session_V1_ListFilesResponse {
+        var r = Hermesh_Session_V1_ListFilesRequest()
+        r.sessionID = sessionID
+        r.runID = run
+        r.dir = dir
+        return try await call("\(sessionSvc)/ListFiles", r, timeout: 20)
+    }
+
+    func readFile(_ sessionID: String, run: String, path: String) async throws -> Hermesh_Session_V1_ReadFileResponse {
+        var r = Hermesh_Session_V1_ReadFileRequest()
+        r.sessionID = sessionID
+        r.runID = run
+        r.path = path
+        return try await call("\(sessionSvc)/ReadFile", r, timeout: 30)
+    }
+
+    func readFileBytes(_ sessionID: String, run: String, path: String, offset: UInt64, length: UInt32 = 0) async throws -> Hermesh_Session_V1_ReadFileBytesResponse {
+        var r = Hermesh_Session_V1_ReadFileBytesRequest()
+        r.sessionID = sessionID
+        r.runID = run
+        r.path = path
+        r.offset = offset
+        r.length = length
+        return try await call("\(sessionSvc)/ReadFileBytes", r, timeout: 30)
+    }
+
+    /// A whole file, a part at a time.
+    func readWholeFile(_ sessionID: String, run: String, path: String) async throws -> (data: Data, mime: String) {
+        var data = Data()
+        var mime = ""
+        var size: UInt64 = .max
+        while UInt64(data.count) < size {
+            let r = try await readFileBytes(sessionID, run: run, path: path, offset: UInt64(data.count))
+            size = r.size
+            if mime.isEmpty { mime = r.mimeType }
+            if r.data.isEmpty { break }
+            data.append(r.data)
+        }
+        return (data, mime)
+    }
+
     func downloadBlob(_ sessionID: String, sha256: String, machineID: String = "") async throws -> Data {
         var r = Hermesh_Session_V1_DownloadBlobRequest()
         r.machineID = machineID

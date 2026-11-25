@@ -101,6 +101,17 @@ const (
 	// SessionServiceListOutboxProcedure is the fully-qualified name of the SessionService's ListOutbox
 	// RPC.
 	SessionServiceListOutboxProcedure = "/hermesh.session.v1.SessionService/ListOutbox"
+	// SessionServiceResolveFilesProcedure is the fully-qualified name of the SessionService's
+	// ResolveFiles RPC.
+	SessionServiceResolveFilesProcedure = "/hermesh.session.v1.SessionService/ResolveFiles"
+	// SessionServiceListFilesProcedure is the fully-qualified name of the SessionService's ListFiles
+	// RPC.
+	SessionServiceListFilesProcedure = "/hermesh.session.v1.SessionService/ListFiles"
+	// SessionServiceReadFileProcedure is the fully-qualified name of the SessionService's ReadFile RPC.
+	SessionServiceReadFileProcedure = "/hermesh.session.v1.SessionService/ReadFile"
+	// SessionServiceReadFileBytesProcedure is the fully-qualified name of the SessionService's
+	// ReadFileBytes RPC.
+	SessionServiceReadFileBytesProcedure = "/hermesh.session.v1.SessionService/ReadFileBytes"
 )
 
 // SessionServiceClient is a client for the hermesh.session.v1.SessionService service.
@@ -130,6 +141,12 @@ type SessionServiceClient interface {
 	UploadBlob(context.Context, *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error)
 	DownloadBlob(context.Context, *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error)
 	ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error)
+	// A session's files (docs/session-files.md §6), read when opened: as a turn
+	// left them (its checkpoint), or as they are now. Only the session's folder.
+	ResolveFiles(context.Context, *v1.ResolveFilesRequest) (*v1.ResolveFilesResponse, error)
+	ListFiles(context.Context, *v1.ListFilesRequest) (*v1.ListFilesResponse, error)
+	ReadFile(context.Context, *v1.ReadFileRequest) (*v1.ReadFileResponse, error)
+	ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error)
 }
 
 // NewSessionServiceClient constructs a client for the hermesh.session.v1.SessionService service. By
@@ -281,6 +298,30 @@ func NewSessionServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sessionServiceMethods.ByName("ListOutbox")),
 			connect.WithClientOptions(opts...),
 		),
+		resolveFiles: connect.NewClient[v1.ResolveFilesRequest, v1.ResolveFilesResponse](
+			httpClient,
+			baseURL+SessionServiceResolveFilesProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ResolveFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		listFiles: connect.NewClient[v1.ListFilesRequest, v1.ListFilesResponse](
+			httpClient,
+			baseURL+SessionServiceListFilesProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ListFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		readFile: connect.NewClient[v1.ReadFileRequest, v1.ReadFileResponse](
+			httpClient,
+			baseURL+SessionServiceReadFileProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ReadFile")),
+			connect.WithClientOptions(opts...),
+		),
+		readFileBytes: connect.NewClient[v1.ReadFileBytesRequest, v1.ReadFileBytesResponse](
+			httpClient,
+			baseURL+SessionServiceReadFileBytesProcedure,
+			connect.WithSchema(sessionServiceMethods.ByName("ReadFileBytes")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -309,6 +350,10 @@ type sessionServiceClient struct {
 	uploadBlob             *connect.Client[v1.UploadBlobRequest, v1.UploadBlobResponse]
 	downloadBlob           *connect.Client[v1.DownloadBlobRequest, v1.DownloadBlobResponse]
 	listOutbox             *connect.Client[v1.ListOutboxRequest, v1.ListOutboxResponse]
+	resolveFiles           *connect.Client[v1.ResolveFilesRequest, v1.ResolveFilesResponse]
+	listFiles              *connect.Client[v1.ListFilesRequest, v1.ListFilesResponse]
+	readFile               *connect.Client[v1.ReadFileRequest, v1.ReadFileResponse]
+	readFileBytes          *connect.Client[v1.ReadFileBytesRequest, v1.ReadFileBytesResponse]
 }
 
 // ListProviders calls hermesh.session.v1.SessionService.ListProviders.
@@ -510,6 +555,42 @@ func (c *sessionServiceClient) ListOutbox(ctx context.Context, req *v1.ListOutbo
 	return nil, err
 }
 
+// ResolveFiles calls hermesh.session.v1.SessionService.ResolveFiles.
+func (c *sessionServiceClient) ResolveFiles(ctx context.Context, req *v1.ResolveFilesRequest) (*v1.ResolveFilesResponse, error) {
+	response, err := c.resolveFiles.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ListFiles calls hermesh.session.v1.SessionService.ListFiles.
+func (c *sessionServiceClient) ListFiles(ctx context.Context, req *v1.ListFilesRequest) (*v1.ListFilesResponse, error) {
+	response, err := c.listFiles.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ReadFile calls hermesh.session.v1.SessionService.ReadFile.
+func (c *sessionServiceClient) ReadFile(ctx context.Context, req *v1.ReadFileRequest) (*v1.ReadFileResponse, error) {
+	response, err := c.readFile.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
+// ReadFileBytes calls hermesh.session.v1.SessionService.ReadFileBytes.
+func (c *sessionServiceClient) ReadFileBytes(ctx context.Context, req *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error) {
+	response, err := c.readFileBytes.CallUnary(ctx, connect.NewRequest(req))
+	if response != nil {
+		return response.Msg, err
+	}
+	return nil, err
+}
+
 // SessionServiceHandler is an implementation of the hermesh.session.v1.SessionService service.
 type SessionServiceHandler interface {
 	ListProviders(context.Context, *v1.ListProvidersRequest) (*v1.ListProvidersResponse, error)
@@ -537,6 +618,12 @@ type SessionServiceHandler interface {
 	UploadBlob(context.Context, *v1.UploadBlobRequest) (*v1.UploadBlobResponse, error)
 	DownloadBlob(context.Context, *v1.DownloadBlobRequest) (*v1.DownloadBlobResponse, error)
 	ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error)
+	// A session's files (docs/session-files.md §6), read when opened: as a turn
+	// left them (its checkpoint), or as they are now. Only the session's folder.
+	ResolveFiles(context.Context, *v1.ResolveFilesRequest) (*v1.ResolveFilesResponse, error)
+	ListFiles(context.Context, *v1.ListFilesRequest) (*v1.ListFilesResponse, error)
+	ReadFile(context.Context, *v1.ReadFileRequest) (*v1.ReadFileResponse, error)
+	ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error)
 }
 
 // NewSessionServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -684,6 +771,30 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sessionServiceMethods.ByName("ListOutbox")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sessionServiceResolveFilesHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceResolveFilesProcedure,
+		svc.ResolveFiles,
+		connect.WithSchema(sessionServiceMethods.ByName("ResolveFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceListFilesHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceListFilesProcedure,
+		svc.ListFiles,
+		connect.WithSchema(sessionServiceMethods.ByName("ListFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceReadFileHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceReadFileProcedure,
+		svc.ReadFile,
+		connect.WithSchema(sessionServiceMethods.ByName("ReadFile")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sessionServiceReadFileBytesHandler := connect.NewUnaryHandlerSimple(
+		SessionServiceReadFileBytesProcedure,
+		svc.ReadFileBytes,
+		connect.WithSchema(sessionServiceMethods.ByName("ReadFileBytes")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/hermesh.session.v1.SessionService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SessionServiceListProvidersProcedure:
@@ -732,6 +843,14 @@ func NewSessionServiceHandler(svc SessionServiceHandler, opts ...connect.Handler
 			sessionServiceDownloadBlobHandler.ServeHTTP(w, r)
 		case SessionServiceListOutboxProcedure:
 			sessionServiceListOutboxHandler.ServeHTTP(w, r)
+		case SessionServiceResolveFilesProcedure:
+			sessionServiceResolveFilesHandler.ServeHTTP(w, r)
+		case SessionServiceListFilesProcedure:
+			sessionServiceListFilesHandler.ServeHTTP(w, r)
+		case SessionServiceReadFileProcedure:
+			sessionServiceReadFileHandler.ServeHTTP(w, r)
+		case SessionServiceReadFileBytesProcedure:
+			sessionServiceReadFileBytesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -831,4 +950,20 @@ func (UnimplementedSessionServiceHandler) DownloadBlob(context.Context, *v1.Down
 
 func (UnimplementedSessionServiceHandler) ListOutbox(context.Context, *v1.ListOutboxRequest) (*v1.ListOutboxResponse, error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListOutbox is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ResolveFiles(context.Context, *v1.ResolveFilesRequest) (*v1.ResolveFilesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ResolveFiles is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ListFiles(context.Context, *v1.ListFilesRequest) (*v1.ListFilesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ListFiles is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ReadFile(context.Context, *v1.ReadFileRequest) (*v1.ReadFileResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ReadFile is not implemented"))
+}
+
+func (UnimplementedSessionServiceHandler) ReadFileBytes(context.Context, *v1.ReadFileBytesRequest) (*v1.ReadFileBytesResponse, error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("hermesh.session.v1.SessionService.ReadFileBytes is not implemented"))
 }

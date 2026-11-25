@@ -107,6 +107,22 @@ func (s *Service) GetDiff(ctx context.Context, req *sessionv1.GetDiffRequest) (*
 	return s.engine.GetDiff(ctx, s.principal(ctx), req)
 }
 
+func (s *Service) ResolveFiles(ctx context.Context, req *sessionv1.ResolveFilesRequest) (*sessionv1.ResolveFilesResponse, error) {
+	return s.engine.ResolveFiles(ctx, s.principal(ctx), req)
+}
+
+func (s *Service) ListFiles(ctx context.Context, req *sessionv1.ListFilesRequest) (*sessionv1.ListFilesResponse, error) {
+	return s.engine.ListFiles(ctx, s.principal(ctx), req)
+}
+
+func (s *Service) ReadFile(ctx context.Context, req *sessionv1.ReadFileRequest) (*sessionv1.ReadFileResponse, error) {
+	return s.engine.ReadFile(ctx, s.principal(ctx), req)
+}
+
+func (s *Service) ReadFileBytes(ctx context.Context, req *sessionv1.ReadFileBytesRequest) (*sessionv1.ReadFileBytesResponse, error) {
+	return s.engine.ReadFileBytes(ctx, s.principal(ctx), req)
+}
+
 func (s *Service) ForkSession(ctx context.Context, req *sessionv1.ForkSessionRequest) (*sessionv1.ForkSessionResponse, error) {
 	return s.engine.ForkSession(ctx, s.principal(ctx), req)
 }

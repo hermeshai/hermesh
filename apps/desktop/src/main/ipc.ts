@@ -1,11 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type IpcMainEvent, type IpcMainInvokeEvent, type WebContents } from "electron";
 import path from "node:path";
-import type { Command, MenuItem, MenuState, Preferences, TerminalCommand } from "../shared/bridge";
+import type { Command, MenuItem, MenuState, PageRect, PageSlot, Preferences, TerminalCommand } from "../shared/bridge";
 import { i18n } from "../shared/i18n";
 import { openComputerPermission } from "./computer";
 import { daemonInfo, quitForRelaunch, startBackgroundService, stopBackgroundService } from "./daemon";
 import { cancelHerChatGpt, cancelHerConnector, herConsoleURL, herFilesKept, reopenHerChatGpt, reopenHerConnector, readHerFile, saveHerFile, signInHerChatGpt, signInHerConnector } from "./her";
 import { preferences, setPreferences, world } from "./notify";
+import { closeSessionPage, openSessionPage, openSessionPageInBrowser, placeSessionPage, quickLookSessionFile, refOf, revealSessionFile, saveSessionFile } from "./sessionFiles";
 import { platform } from "./platform";
 import { cancelSignIn, completeSignIn, connectURL, errorMessage, signIn, signInPending, takeLinks } from "./signin";
 import { catchUp, check, download, install, openUpdates, returnToApproval, setAutoDownload, snooze, updateInfo } from "./updater";
@@ -170,6 +171,37 @@ export function registerIPC() {
   ipcMain.handle("elevates-silently", answer(platform.elevatesSilently));
   ipcMain.on("open-elevation-settings", (e) => trusted(e) && platform.openElevationSettings());
   ipcMain.handle("take-links", answer(takeLinks));
+
+  // A coding session's files (main/sessionFiles.ts): a page over the window, Quick Look, Downloads, Finder.
+  const pageRect = (v: unknown) => {
+    const r = v as Record<string, unknown> | null;
+    return r && ["x", "y", "width", "height"].every((k) => typeof r[k] === "number" && Number.isFinite(r[k])) ? (r as unknown as PageRect) : null;
+  };
+  const fileRef = (v: unknown) => {
+    const ref = refOf(v);
+    if (!ref) throw new Error("no file");
+    return ref;
+  };
+  const pageSlot = (v: unknown): PageSlot => (v === "panel" ? "panel" : "dialog");
+  ipcMain.handle("session-page-open", (e, file: unknown, rect: unknown, slot: unknown) => {
+    const ref = refOf(file);
+    const r = pageRect(rect);
+    if (!trusted(e) || !ref || !r) return { value: false };
+    return openSessionPage(e.sender, ref, r, pageSlot(slot)).then((value) => ({ value }), (err: unknown) => ({ error: errorMessage(err) }));
+  });
+  ipcMain.on("session-page-place", (e, rect: unknown, slot: unknown) => {
+    const r = pageRect(rect);
+    if (trusted(e) && r) placeSessionPage(e.sender, r, pageSlot(slot));
+  });
+  ipcMain.on("session-page-close", (e, slot: unknown) => trusted(e) && closeSessionPage(e.sender, pageSlot(slot)));
+  ipcMain.handle("session-page-browser", answer((file: unknown) => openSessionPageInBrowser(fileRef(file))));
+  ipcMain.handle("session-file-save", answer((file: unknown, name: unknown) => saveSessionFile(fileRef(file), typeof name === "string" ? name : "file")));
+  ipcMain.handle("session-file-reveal", answer((file: unknown) => revealSessionFile(fileRef(file))));
+  ipcMain.handle("session-file-quicklook", (e, file: unknown, name: unknown) => {
+    const ref = refOf(file);
+    if (!trusted(e) || !ref) return { error: "no file" };
+    return quickLookSessionFile(e.sender, ref, typeof name === "string" ? name : "file").then(() => ({ value: undefined }), (err: unknown) => ({ error: errorMessage(err) }));
+  });
 
   // Her (main/her.ts): a machine's console in its own window, an assistant's file saved to Downloads, and
   // signing in to ChatGPT, or to a connector a secure card connects, for a machine's Her.

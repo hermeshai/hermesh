@@ -559,7 +559,7 @@ private struct HerDeliveryPage: View {
 }
 
 /// Quick Look's page for a file brought here.
-private struct HerQuickLook: UIViewControllerRepresentable {
+struct HerQuickLook: UIViewControllerRepresentable {
     let url: URL
 
     func makeUIViewController(context: Context) -> QLPreviewController {
@@ -586,7 +586,7 @@ private struct HerQuickLook: UIViewControllerRepresentable {
 }
 
 /// The system's share sheet for a file brought here.
-private struct HerShareSheet: UIViewControllerRepresentable {
+struct HerShareSheet: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [url], applicationActivities: nil) }
     func updateUIViewController(_ c: UIActivityViewController, context: Context) {}

@@ -115,13 +115,18 @@ struct SessionPage: View {
         sessionID = ""
         askedMachine = machineID
         askedProject = projectID
+        _files = State(initialValue: SessionFilesModel(sessionID: ""))
     }
 
     init(sessionID: String) {
         self.sessionID = sessionID
         askedMachine = ""
         askedProject = ""
+        _files = State(initialValue: SessionFilesModel(sessionID: sessionID))
     }
+
+    /// Which of the paths its replies write are files, and opening them (SessionFiles.swift).
+    @State private var files: SessionFilesModel
 
     private var isNew: Bool { sessionID.isEmpty }
     private var listedSession: Session? { isNew ? nil : model.session(sessionID) }
@@ -383,6 +388,14 @@ struct SessionPage: View {
                 ForEach(Array(steps.enumerated()), id: \.element.id) { i, step in
                     StepView(step: step, session: s, previousTurn: previousTurn(steps, before: i))
                 }
+                .environment(\.sessionFiles, files)
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let route = FileRefLink.route(url, session: s.sessionID) else { return .systemAction }
+                    files.api = model.api
+                    model.path.append(route)
+                    return .handled
+                })
+                .onAppear { files.api = model.api; files.sessionID = s.sessionID }
                 workLine(activeProj).frame(maxWidth: .infinity, alignment: .leading)
                 if let f = sessionFailure(currentSession) {
                     FailedView(session: s, failure: f, grant: grant)

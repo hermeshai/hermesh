@@ -13,8 +13,16 @@ struct MarkdownText: View {
     /// Its blocks laid out as they scroll into view (a file's page), not all at once (a reply).
     var lazy = false
 
+    @Environment(\.sessionFiles) private var files
+    @Environment(\.filesRun) private var run
+
     var body: some View {
-        MarkdownBlocks(blocks: parsed(text), style: style, lazy: lazy)
+        let blocks = parsed(text)
+        MarkdownBlocks(blocks: blocks, style: style, lazy: lazy)
+            // In a session's reply, which of the paths it writes are files is asked of its machine once.
+            .task(id: files == nil ? "" : "\(run)\u{0}\(text)") {
+                if let files { files.want(run: run, paths: fileRefPaths(blocks)) }
+            }
     }
 }
 
@@ -213,6 +221,8 @@ private func inline(_ m: Markup) -> AttributedString {
     case let c as InlineCode:
         var s = AttributedString(c.code)
         s.inlinePresentationIntent = .code
+        // A path the session's machine may say is a file (SessionFiles.swift): a tag once it does.
+        if let r = fileOfCode(c.code) { s[FileRefAttribute.self] = FileRefMark(path: r.path, line: r.line, endLine: r.endLine, code: true) }
         return s
     case let h as InlineHTML: return AttributedString(h.rawHTML)
     case let i as Markdown.Image: return AttributedString(i.plainText)
@@ -224,6 +234,12 @@ private func inline(_ m: Markup) -> AttributedString {
             let shown = String(label[..<cut.range.lowerBound])
             return linked(AttributedString(shown), shown.firstMatch(of: web) != nil ? shown : "http://\(shown)")
                 + AttributedString(String(label[cut.range.lowerBound...]))
+        }
+        // A link to a session's file: a tag in a session's reply (SessionFiles.swift), its words elsewhere.
+        if let r = fileOfLink(l.destination ?? "") {
+            var s = inlines(l)
+            s[FileRefAttribute.self] = FileRefMark(path: r.path, line: r.line, endLine: r.endLine, code: false)
+            return s
         }
         return linked(inlines(l), l.destination ?? "")
     default:
@@ -299,6 +315,8 @@ private struct BlockView: View {
     var draft = false
     /// Math is drawn at the text's size, so it is drawn again when that changes.
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.sessionFiles) private var files
+    @Environment(\.filesRun) private var run
 
     var body: some View {
         switch block {
@@ -384,7 +402,11 @@ private struct BlockView: View {
     /// A line of text: inline code in its face, math drawn at the size of the text beside it.
     /// A picture in a line has no words of its own, so a line with math reads out with its TeX.
     @ViewBuilder private func text(_ s: AttributedString, _ size: UIFont.TextStyle) -> some View {
-        let line = mathText(styled(s), size: MathSetter.size(size), code: style.code)
+        let line = if let files, !draft, s.runs.contains(where: { $0[FileRefAttribute.self] != nil }) {
+            fileText(styled(s), files: files, run: run, size: MathSetter.size(size), code: style.code)
+        } else {
+            mathText(styled(s), size: MathSetter.size(size), code: style.code)
+        }
         if s.runs.contains(where: { $0[MathAttribute.self] != nil }) {
             line.accessibilityLabel(SwiftUI.Text(verbatim: String(s.characters)))
         } else {

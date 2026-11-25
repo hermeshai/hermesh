@@ -85,6 +85,21 @@ service SessionService {
   rpc ListOutbox(ListOutboxRequest) returns (ListOutboxResponse) {
     option (hermesh.options.v1.access) = ACCESS_READ;
   }
+
+  // A session's files (docs/session-files.md §6), read when opened: as a turn
+  // left them (its checkpoint), or as they are now. Only the session's folder.
+  rpc ResolveFiles(ResolveFilesRequest) returns (ResolveFilesResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc ReadFile(ReadFileRequest) returns (ReadFileResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
+  rpc ReadFileBytes(ReadFileBytesRequest) returns (ReadFileBytesResponse) {
+    option (hermesh.options.v1.access) = ACCESS_READ;
+  }
 }
 
 enum SessionStatus {
@@ -1147,4 +1162,147 @@ message ListOutboxRequest {
 
 message ListOutboxResponse {
   repeated OutboxEntry entries = 1;
+}
+
+// A session's files (docs/session-files.md §6). Every request names a turn
+// (`run_id`) or none: with a turn whose checkpoint holds the file, it is read
+// as that turn left it; else as it is in the session's folder now. Paths are
+// as a reply wrote them (absolute, `~/`, `file://`, or relative to the
+// session's folder), lines already taken off; nothing outside the folder is
+// read.
+
+// What a path a reply wrote is.
+enum FileRefKind {
+  // Not known: the machine could not be asked.
+  FILE_REF_KIND_UNSPECIFIED = 0;
+  FILE_REF_KIND_FILE = 1;
+  FILE_REF_KIND_FOLDER = 2;
+  // Nothing there, in the turn or now.
+  FILE_REF_KIND_MISSING = 3;
+  // Outside the session's folder: never read from here.
+  FILE_REF_KIND_OUTSIDE = 4;
+}
+
+message ResolveFilesRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  repeated string paths = 4;
+}
+
+message ResolvedFile {
+  // The path as asked.
+  string asked = 1;
+  FileRefKind kind = 2;
+  // Within the session's folder ("docs/demo.html"); absolute when OUTSIDE.
+  string path = 3;
+  uint64 size = 4;
+  // The turn (its ordinal) the file is read as; 0: as it is now.
+  uint32 turn = 5;
+}
+
+message ResolveFilesResponse {
+  repeated ResolvedFile files = 1;
+  // The session's folder, absolute, on its machine.
+  string folder = 2;
+  // The folder is not there any more (a worktree released).
+  bool folder_gone = 3;
+}
+
+message ListFilesRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  // A folder within the session's; empty for the session's folder itself.
+  string dir = 4;
+}
+
+message FileEntry {
+  string name = 1;
+  // A folder (or a link to one).
+  bool dir = 2;
+  bool link = 3;
+  // In bytes; 0 for a folder.
+  uint64 size = 4;
+}
+
+message ListFilesResponse {
+  // The folder listed, within the session's ("" for its root).
+  string dir = 1;
+  // Folders first, then files, each by name as people read it (case aside,
+  // numbers by value). `.git` and `.DS_Store` are left out.
+  repeated FileEntry entries = 2;
+  // More than 5,000 entries: the first 5,000.
+  bool truncated = 3;
+  // The turn listed; 0: as it is now. A folder that is gone lists its last turn.
+  uint32 turn = 4;
+  string folder = 5;
+  bool folder_gone = 6;
+}
+
+message ReadFileRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string path = 4;
+}
+
+// What a file is, as far as showing it goes.
+enum FileContentKind {
+  FILE_CONTENT_KIND_UNSPECIFIED = 0;
+  FILE_CONTENT_KIND_TEXT = 1;
+  // PNG, JPEG, GIF or WebP, by its signature.
+  FILE_CONTENT_KIND_IMAGE = 2;
+  FILE_CONTENT_KIND_BINARY = 3;
+  // Text over 5 MB or an image over 10 MB: only its size is given.
+  FILE_CONTENT_KIND_TOO_LARGE = 4;
+}
+
+// A file read as a turn left it, against the folder now.
+enum FileNow {
+  // Read as it is now.
+  FILE_NOW_UNSPECIFIED = 0;
+  FILE_NOW_SAME = 1;
+  FILE_NOW_CHANGED = 2;
+  FILE_NOW_GONE = 3;
+  // The folder is gone: nothing to compare with.
+  FILE_NOW_UNKNOWN = 4;
+}
+
+message ReadFileResponse {
+  // Within the session's folder.
+  string path = 1;
+  uint64 size = 2;
+  FileContentKind kind = 3;
+  // SHA-256 of the bytes, hex; not for a file too large.
+  string hash = 4;
+  // Text, decoded, without a byte-order mark; line ends as they are.
+  string text = 5;
+  // utf-8, utf-8-bom, utf-16le, utf-16be or gb18030.
+  string encoding = 6;
+  // An image's bytes and type.
+  bytes image = 7;
+  string mime_type = 8;
+  // The turn read as; 0: as it is now.
+  uint32 turn = 9;
+  FileNow now = 10;
+  string folder = 11;
+}
+
+message ReadFileBytesRequest {
+  string machine_id = 1;
+  string session_id = 2;
+  string run_id = 3;
+  string path = 4;
+  uint64 offset = 5;
+  // At most 4 MiB; 0 for that.
+  uint32 length = 6;
+}
+
+message ReadFileBytesResponse {
+  bytes data = 1;
+  // The whole file's.
+  uint64 size = 2;
+  string mime_type = 3;
+  uint32 turn = 4;
 }
