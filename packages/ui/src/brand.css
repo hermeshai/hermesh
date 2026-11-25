@@ -157,6 +157,18 @@
     opacity: var(--beam-opacity);
   }
 }
+/* Draw: the first run's slower draw, each beam 1s, .2s apart, from --hm-delay (docs/cold-start-prd.md §5.3). */
+.hm-draw .hm-beam {
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 100;
+  animation: hm-draw 1s cubic-bezier(0.6, 0, 0.2, 1) var(--hm-delay, 0s) both;
+}
+.hm-draw .hm-b1 {
+  animation-delay: calc(var(--hm-delay, 0s) + 0.2s);
+}
+.hm-draw .hm-b2 {
+  animation-delay: calc(var(--hm-delay, 0s) + 0.4s);
+}
 .hm-reveal .hm-word {
   opacity: 0;
   animation: hm-appear 0.5s var(--ease-out) 0.9s forwards;
@@ -197,7 +209,8 @@
     stroke-dasharray: none;
     animation: hm-fade 2s var(--ease-in-out) infinite alternate;
   }
-  .hm-reveal .hm-beam {
+  .hm-reveal .hm-beam,
+  .hm-draw .hm-beam {
     stroke-dasharray: none;
     animation: hm-appear 0.3s ease forwards;
   }

@@ -152,3 +152,13 @@ html[data-platform=win] .set-top{padding-right:calc(var(--caption) + 8px)}
 .look-system{background:linear-gradient(135deg,#f2f2f5 50%,#2a2a2e 50%)}.look-light{background:#f2f2f5}.look-dark{background:#2a2a2e}.look-black{background:#070709;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.16),0 0 0 .5px var(--l4)}
 .settings .ag-prjs{background:var(--win2);box-shadow:none;border-radius:var(--r-card)}
 .settings .ag-group{margin:0 0 6px 4px;font-size:12px;color:var(--l2)}
+/* Not signed in (docs/cold-start-prd.md §7): a figure instead of the initial; the account's own rows. */
+.set-me .av.me.out{background:var(--fill2);color:var(--l2)}
+.set-me .av.me.out .ic{width:18px;height:18px}
+.acct-row .av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;font-weight:600;font-size:14px;color:#fff;background:linear-gradient(135deg,var(--aurora-1),var(--aurora-2))}
+.acct-row .av.out{background:var(--fill2);color:var(--l2)}
+.acct-row .av.out .ic{width:18px;height:18px}
+.acct-row .ok{color:var(--green);font-size:12.5px;white-space:nowrap}
+.fhead small{font-weight:400;color:var(--l3);margin-left:6px}
+.acct-tile{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex:none;background:var(--fill2);color:var(--l2)}
+.acct-tile .ic{width:15px;height:15px}

@@ -1,19 +1,19 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Device } from "@hermesh/proto/local";
-import { platformTitle } from "@hermesh/core";
 import { local } from "../api";
+import { useComputerName } from "../computer";
 import { herDataKept } from "../her/environments";
 import { Icon } from "../icons";
 import { useStore } from "../store";
-import { copy, More, type Ask } from "./common";
+import { copy, More } from "./common";
 
 /**
  * Account & Devices: who this Mac belongs to and where it connects, the
  * trusted devices (each can approve), and signing out. Addresses and
  * commands are folded under Advanced.
  */
-export function Account({ ask }: { ask: (a: Ask) => void }) {
+export function Account() {
   const { t } = useTranslation("settings");
   const st = useStore();
   const s = st.status;
@@ -39,7 +39,9 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
       },
     });
   };
-  const leave = () =>
+  // Signing out keeps this Mac's machine, its sessions and Her (docs/cold-start-prd.md §7.4); a
+  // device the others removed leaves instead.
+  const signOut = () =>
     s?.removed
       ? st.set({
           sheet: {
@@ -53,40 +55,71 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
             },
           },
         })
-      : ask({
-          title: t("account.signOutTitle"),
-          message: t("account.signOutFirstMessage"),
+      : st.set({
+          sheet: {
+            kind: "confirm",
+            title: t("account.signOutAsk"),
+            message: t("account.signOutBody"),
+            button: t("account.signOutButton"),
+            safe: true,
+            run: () => local.signOut({}),
+            done: t("account.signedOutToast"),
+          },
         });
+  const signedIn = !!s?.initialized && !s.signedOut;
+  const name = useComputerName();
+  const others = signedIn ? st.devices.filter((d) => !d.thisDevice) : [];
   return (
     <div className="form">
-      <div className="dhero">
-        <span className="av xl me" aria-hidden="true">{user.slice(0, 1).toUpperCase()}</span>
-        <div>
-          <b>{user}</b>
-          <span>
-            {s?.hosted ? t("account.hosted", { host }) : t("account.ownServer", { host: host || "—" })}
-            {s && !s.relayConnected && <span className="warn"> · {t("account.notConnected")}</span>}
-          </span>
+      <div>
+        <div className="fhead">{t("account.sectionAccount")}</div>
+        <div className="fgroup">
+          {signedIn ? (
+            <div className="frow acct-row">
+              <span className="av" aria-hidden="true">{user.slice(0, 1).toUpperCase()}</span>
+              <div className="ft">
+                <div className="fn">{user}</div>
+                <div className="fdesc">{s?.hosted ? t("account.hostedLine", { host }) : t("account.ownLine", { host: host || "—" })}</div>
+              </div>
+              <span className="ok">{s?.hosted ? t("account.signedIn") : t("account.connected")}</span>
+              <button className="btn sm" onClick={signOut}>{t("account.signOut")}</button>
+            </div>
+          ) : (
+            <div className="frow acct-row">
+              <span className="av out" aria-hidden="true"><Icon name="user" /></span>
+              <div className="ft">
+                <div className="fn">{t("account.notSignedIn")}</div>
+                <div className="fdesc">{t("account.signedOutBody")}</div>
+              </div>
+              <button className="btn sm primary" onClick={() => st.set({ sheet: { kind: "signIn", way: "official" } })}>{t("account.signIn")}</button>
+            </div>
+          )}
         </div>
+        {!signedIn && (
+          <p className="set-note">
+            {t("account.localNote")}{" "}
+            <button className="link" onClick={() => st.set({ sheet: { kind: "signIn", way: "own" } })}>{t("account.useOwnServer")}</button>
+          </p>
+        )}
       </div>
       <div>
-        <div className="fhead">{t("account.trustedDevices")}</div>
-        <div className="fgroup" role="list" aria-label={t("account.trustedDevices")}>
-          {st.devices.map((d) => (
+        <div className="fhead">{t("account.sectionDevices")}</div>
+        <div className="fgroup" role="list" aria-label={t("account.sectionDevices")}>
+          <div className="frow" role="listitem">
+            <span className="acct-tile"><Icon name="laptop" /></span>
+            <div className="ft">
+              <div className="fn">{name}</div>
+              <div className="fdesc">{t("thisMac")}</div>
+            </div>
+          </div>
+          {others.map((d) => (
             <div className="frow" role="listitem" key={d.keyId}>
-              <Icon name="laptop" />
+              <span className="acct-tile"><Icon name={d.platform === "ios" ? "phone" : "laptop"} /></span>
               <div className="ft">
-                <div className="fn">
-                  {d.label}
-                  {d.thisDevice && <span className="faint"> {t("thisMac")}</span>}
-                </div>
-                <div className="fdesc">
-                  {[platformTitle(d.platform), d.machineId ? t("account.alsoMachine", { status: t(d.machineOnline ? "online" : "offline") }) : ""].filter(Boolean).join(" · ")}
-                </div>
+                <div className="fn">{d.label}</div>
+                <div className="fdesc">{t("account.viaAccount")}</div>
               </div>
-              {!d.thisDevice && (
-                <button className="btn sm danger" onClick={() => removeDevice(d)}>{t("remove")}</button>
-              )}
+              <button className="btn sm" onClick={() => removeDevice(d)}>{t("account.removeDevice")}</button>
             </div>
           ))}
         </div>
@@ -97,12 +130,39 @@ export function Account({ ask }: { ask: (a: Ask) => void }) {
             <button className="link" onClick={() => window.hermesh?.openElevationSettings()}>{t("account.elevationSettings")}</button>
           </p>
         )}
+        <div className="set-acts">
+          <button className="btn push" onClick={() => st.set({ sheet: { kind: "addDevice" } })}>{t("account.addDevice")}</button>
+        </div>
       </div>
-      <div className="set-acts">
-        <button className="btn" onClick={leave}>{t("account.signOut")}</button>
-        <button className="btn push" onClick={() => st.set({ sheet: { kind: "addDevice" } })}>{t("account.addDevice")}</button>
-        <button className="btn" onClick={() => setAdvanced(true)}>{t("account.advancedButton")}</button>
+      <div>
+        <div className="fhead">
+          {t("account.sectionNetwork")}
+          {!signedIn && <small>{t("account.needsSignIn")}</small>}
+        </div>
+        <div className="fgroup">
+          <div className="frow">
+            <span className="acct-tile"><Icon name="robot" /></span>
+            <div className="ft">
+              <div className="fn">{t("account.agents")}</div>
+              <div className="fdesc">{t("account.agentsBody")}</div>
+            </div>
+            <button className="btn sm" onClick={() => st.set({ sheet: { kind: "newGrant" } })}>{t("account.connectAgent")}</button>
+          </div>
+          <div className="frow">
+            <span className="acct-tile"><Icon name="laptop" /></span>
+            <div className="ft">
+              <div className="fn">{t("account.computers")}</div>
+              <div className="fdesc">{t("account.computersBody")}</div>
+            </div>
+            <button className="btn sm" onClick={() => st.set({ sheet: { kind: "addMachine" } })}>{t("account.addComputer")}</button>
+          </div>
+        </div>
       </div>
+      {signedIn && (
+        <div className="set-acts">
+          <button className="btn push" onClick={() => setAdvanced(true)}>{t("account.advancedButton")}</button>
+        </div>
+      )}
       {advanced && (
         <>
           <div className="sheet-scrim" />

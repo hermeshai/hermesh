@@ -21,13 +21,19 @@ const auxiliary = new Map<string, BrowserWindow>();
 let mode: "onboarding" | "main" | undefined;
 const modeFile = () => path.join(app.getPath("userData"), "window.json");
 
-function lastMode(): "onboarding" | "main" {
+function lastMode(): "onboarding" | "main" | undefined {
   try {
     return JSON.parse(fs.readFileSync(modeFile(), "utf8")).mode === "onboarding" ? "onboarding" : "main";
   } catch {
-    return "main";
+    return undefined;
   }
 }
+// A first start doesn't know its size: the window waits (hidden) for its page to say, so that
+// a new install's first run doesn't open large and then shrink; hermeshd not answering, it shows
+// anyway after a while, at the main window's size.
+let reveal: (() => void) | undefined;
+let reported = false;
+const FIRST_SHOW_WAIT = 1500;
 
 const sizes = {
   onboarding: { width: 720, height: 660, minWidth: 720, minHeight: 600 },
@@ -90,7 +96,8 @@ export function showMain(): BrowserWindow {
     main.focus();
     return main;
   }
-  mode ??= lastMode();
+  const known = mode ?? lastMode();
+  mode ??= known ?? "main";
   main = new BrowserWindow({
     ...sizes[mode],
     show: false,
@@ -99,7 +106,15 @@ export function showMain(): BrowserWindow {
     webPreferences: webPreferences(),
   });
   secure(main);
-  main.once("ready-to-show", () => main?.show());
+  main.once("ready-to-show", () => {
+    if (known || reported) return void main?.show();
+    const timer = setTimeout(() => reveal?.(), FIRST_SHOW_WAIT);
+    reveal = () => {
+      reveal = undefined;
+      clearTimeout(timer);
+      main?.show();
+    };
+  });
   const clearHer = () => (visibleHer = undefined);
   main.webContents.on("did-start-loading", clearHer);
   main.webContents.on("render-process-gone", clearHer);
@@ -113,7 +128,8 @@ export function showMain(): BrowserWindow {
 
 /** The compact first-run window, or the main window (grown in place, animated). */
 export function setMode(m: "onboarding" | "main") {
-  if (m === mode) return;
+  reported = true;
+  if (m === mode) return void reveal?.();
   mode = m;
   try {
     fs.writeFileSync(modeFile(), JSON.stringify({ mode }));
@@ -128,7 +144,11 @@ export function setMode(m: "onboarding" | "main") {
   const x = Math.round(Math.min(Math.max(area.x, b.x + (b.width - width) / 2), area.x + area.width - width));
   const y = Math.round(Math.min(Math.max(area.y, b.y + (b.height - height) / 2), area.y + area.height - height));
   main.setMinimumSize(Math.min(s.minWidth, width), Math.min(s.minHeight, height));
-  platform.grow(main, { x, y, width, height });
+  if (reveal) {
+    // Not shown yet (a first start): at its size at once, then shown.
+    main.setBounds({ x, y, width, height });
+    reveal();
+  } else platform.grow(main, { x, y, width, height });
 }
 
 /**

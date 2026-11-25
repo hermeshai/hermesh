@@ -66,9 +66,13 @@ export function rootPlatform(nodePlatform: string): string {
   return nodePlatform === "darwin" ? "macos" : nodePlatform === "win32" ? "windows" : "linux";
 }
 
-/** The page the browser sign-in starts on. */
-export function appLoginURL(center: string, challenge: string): string {
-  return `${centerBase(center)}/app-login?challenge=${encodeURIComponent(challenge)}`;
+/**
+ * The page the browser sign-in starts on. owners: the owners a device signed out of, to sign
+ * in to again (docs/trusted-devices.md §4.8): the center hands the link code straight back for one.
+ */
+export function appLoginURL(center: string, challenge: string, owners: string[] = []): string {
+  const more = owners.length ? `&owners=${encodeURIComponent(owners.join(","))}` : "";
+  return `${centerBase(center)}/app-login?challenge=${encodeURIComponent(challenge)}${more}`;
 }
 
 /** Where a center publishes its connect URL. */

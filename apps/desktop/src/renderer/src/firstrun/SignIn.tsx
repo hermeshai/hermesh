@@ -1,41 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import { Code, ConnectError } from "@connectrpc/connect";
-import { officialCenter, parseAppLink, parseConnectAddress, rootPlatform } from "@hermesh/core";
+import { officialCenter, rootPlatform } from "@hermesh/core";
 import { Mark } from "@hermesh/ui";
 import { local } from "../api";
 import { CodeTiles } from "../components";
 import { Icon } from "../icons";
-import { errorText, save, useStore } from "../store";
+import { errorText, useStore } from "../store";
 import { i18n } from "../../../shared/i18n";
-import { Frame, StepIcon } from "./Frame";
-import { setProgress } from "./progress";
+import { Frame } from "./Frame";
+import { setFirstRunDone, setProgress } from "./progress";
 
-// Before this computer belongs to an owner: the welcome, the browser
-// sign-in, a self-hosted relay or joining an owner, and the authorization
-// page before its first Touch ID (docs/trusted-devices.md 4.1–4.2).
-
-/**
- * What this computer is about to become, shown on the authorization page;
- * nothing happens before Continue. typed: the person typed the owner's
- * connection address (not handed over by the center).
- */
-type How = { kind: "signIn" } | { kind: "selfHosted"; relay: string; claim: string } | { kind: "join"; owner: string; center: string; typed: boolean };
-
-type Page =
-  | { kind: "welcome" }
-  | { kind: "browser" }
-  | { kind: "selfHosted" }
-  | { kind: "joinAddress" }
-  | { kind: "authorize"; how: How }
-  | { kind: "join"; owner: string; center: string; machine: boolean; trusted: boolean; typed: boolean };
+// What the first run (SignInFlow.tsx) and the main window share of signing in: the center, the
+// note after erasing everything, a machine only becoming a trusted device (Join), a computer
+// another device removed, and how a failure is said (docs/trusted-devices.md 4.1–4.2).
 
 const bridge = () => window.hermesh!;
 
 // The center to sign in to: the official one (development and tests may set
 // localStorage centerURL to another).
-function savedCenter(): string {
+export function savedCenter(): string {
   try {
     return localStorage.getItem("centerURL") || officialCenter;
   } catch {
@@ -43,127 +28,11 @@ function savedCenter(): string {
   }
 }
 
-function hostOf(center: string): string {
-  try {
-    return new URL(center).host;
-  } catch {
-    return center;
-  }
-}
-
-export function SignIn() {
-  const [page, setPage] = useState<Page>({ kind: "welcome" });
-  const [center] = useState(savedCenter);
-  const [relay, setRelay] = useState("");
-  const [claim, setClaim] = useState("");
-  const centerRef = useRef(center);
-  centerRef.current = center;
-
-  useEffect(() => {
-    let live = true;
-    // A sign-in started before the app was restarted (the browser may bring the link any moment).
-    bridge()
-      .signInPending()
-      .then((p) => live && p && setPage((x) => (x.kind === "welcome" ? { kind: "browser" } : x)));
-    const stop = bridge().onLink((url) => {
-      const l = parseAppLink(url);
-      if (l?.kind === "link") setPage({ kind: "authorize", how: { kind: "signIn" } });
-      if (l?.kind === "join") setPage({ kind: "authorize", how: { kind: "join", owner: l.owner, center: centerRef.current, typed: false } });
-    });
-    return () => {
-      live = false;
-      stop();
-    };
-  }, []);
-
-  const welcome = () => setPage({ kind: "welcome" });
-  switch (page.kind) {
-    case "welcome":
-      return <Welcome center={center} signedIn={() => setPage({ kind: "browser" })} selfHosted={() => setPage({ kind: "selfHosted" })} />;
-    case "browser":
-      return <Browser center={center} cancel={() => (bridge().cancelSignIn(), welcome())} />;
-    case "selfHosted":
-      return (
-        <SelfHosted
-          relay={relay}
-          claim={claim}
-          set={(r, c) => (setRelay(r), setClaim(c))}
-          back={welcome}
-          next={() => setPage({ kind: "authorize", how: { kind: "selfHosted", relay: relay.trim(), claim: claim.trim() } })}
-          join={() => setPage({ kind: "joinAddress" })}
-        />
-      );
-    case "joinAddress":
-      return <JoinAddress back={() => setPage({ kind: "selfHosted" })} next={(owner, at) => setPage({ kind: "authorize", how: { kind: "join", owner, center: at, typed: true } })} />;
-    case "authorize":
-      return (
-        <Authorize
-          how={page.how}
-          cancel={() => {
-            if (page.how.kind === "signIn") bridge().cancelSignIn();
-            setPage(page.how.kind === "selfHosted" ? { kind: "selfHosted" } : { kind: "welcome" });
-          }}
-          join={(machine, trusted) =>
-            page.how.kind === "join" && setPage({ kind: "join", owner: page.how.owner, center: page.how.center, machine, trusted, typed: page.how.typed })
-          }
-        />
-      );
-    case "join":
-      return <Join owner={page.owner} center={page.center} machine={page.machine} trusted={page.trusted} typed={page.typed} cancel={welcome} />;
-  }
-}
-
-function Welcome({ center, signedIn, selfHosted }: { center: string; signedIn: () => void; selfHosted: () => void }) {
-  const { t } = useTranslation("firstrun");
-  const [error, setError] = useState("");
-  const start = async () => {
-    setError("");
-    try {
-      await bridge().signIn(center);
-      signedIn();
-    } catch (e) {
-      setError(errorText(e));
-    }
-  };
-  return (
-    <Frame>
-      <ErasedNote />
-      <div className="hero">
-        <div className="mk">
-          <div className="glow" />
-          <Mark size={96} variant="reveal" />
-        </div>
-        <h1>{t("welcome.title")}</h1>
-        <p className="lede">
-          <Trans t={t} i18nKey="welcome.lede" components={{ br: <br /> }} />
-        </p>
-        <button className="btn primary lg cta" onClick={start}>
-          {t("welcome.start")}
-        </button>
-        {error && <Problem text={error} />}
-      </div>
-      <div className="center-line">
-        <button className="link" onClick={() => bridge().openExternal(center)}>
-          {hostOf(center)}
-        </button>
-        <span className="faint">·</span>
-        <button className="link" onClick={selfHosted}>
-          {t("welcome.selfHosted")}
-        </button>
-      </div>
-      <p className="promise">
-        <Icon name="shield" />
-        {t("welcome.promise")}
-      </p>
-    </Frame>
-  );
-}
-
 /**
  * Once, after this Mac erased everything (or was erased from another device):
  * what was done, who erases next time it connects, and the worktrees kept.
  */
-function ErasedNote() {
+export function ErasedNote() {
   const { t } = useTranslation("firstrun");
   const st = useStore();
   const e = st.status?.erased;
@@ -210,84 +79,12 @@ function ErasedNote() {
   );
 }
 
-function Browser({ center, cancel }: { center: string; cancel: () => void }) {
-  const { t } = useTranslation("firstrun");
-  const [error, setError] = useState("");
-  return (
-    <Frame>
-      <div className="status">
-        <Mark size={64} variant="wait" />
-        <h2 className="ob-h">{t("browser.title")}</h2>
-        <p className="ob-p">{t("browser.body")}</p>
-        {error && <Problem text={error} />}
-        <div className="status-actions">
-          <button className="btn" onClick={() => bridge().signIn(center).catch((e) => setError(errorText(e)))}>
-            {t("browser.reopen")}
-          </button>
-          <button className="btn" onClick={cancel}>
-            {t("cancel")}
-          </button>
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-/** A relay of one's own (hermesh-relay): its address and claim code. */
-function SelfHosted(p: { relay: string; claim: string; set: (relay: string, claim: string) => void; back: () => void; next: () => void; join: () => void }) {
-  const { t } = useTranslation("firstrun");
-  const ok = p.relay.trim() !== "" && p.claim.trim() !== "";
-  return (
-    <Frame
-      foot={
-        <>
-          <span className="note" />
-          <button className="btn" onClick={p.back}>
-            {t("back")}
-          </button>
-          <button className="btn primary" disabled={!ok} onClick={p.next}>
-            {t("continue")}
-          </button>
-        </>
-      }
-    >
-      <StepIcon name="server" />
-      <h2 className="ob-h">{t("selfHosted.title")}</h2>
-      <p className="ob-p">{t("selfHosted.body")}</p>
-      <form className="fgroup ob-form" onSubmit={(e) => (e.preventDefault(), ok && p.next())}>
-        <div className="frow">
-          <label htmlFor="relay">{t("selfHosted.address")}</label>
-          <span className="fv">
-            <input id="relay" className="field" placeholder="relay.example.com" value={p.relay} onChange={(e) => p.set(e.target.value, p.claim)} autoFocus />
-          </span>
-        </div>
-        <div className="frow">
-          <label htmlFor="claim">{t("selfHosted.claim")}</label>
-          <span className="fv">
-            <input id="claim" className="field mono" placeholder="XXXX-XXXX-XXXX-XXXX" value={p.claim} onChange={(e) => p.set(p.relay, e.target.value)} />
-          </span>
-        </div>
-        <button type="submit" hidden />
-      </form>
-      {plainHTTP(p.relay) && (
-        <p className="ob-warn" role="note">
-          <Icon name="warn" />
-          {t("selfHosted.plain")}
-        </p>
-      )}
-      <p className="ob-alt">
-        <Trans t={t} i18nKey="selfHosted.join" components={{ join: <button className="link" onClick={p.join} /> }} />
-      </p>
-    </Frame>
-  );
-}
-
 /**
  * Whether a server address is plain HTTP to another computer: "http://…", or
  * an IP address, which the app reaches by HTTP (the relay gets certificates
  * for domain names only; internal/owner's normalizeRelayURL).
  */
-function plainHTTP(address: string): boolean {
+export function plainHTTP(address: string): boolean {
   const s = address.trim();
   const http = /^http:\/\//i.test(s);
   if (!http && s.includes("://")) return false;
@@ -296,143 +93,6 @@ function plainHTTP(address: string): boolean {
   const h = v6 ? v6[1] : host.replace(/:\d*$/, "");
   if (!http && !v6 && !/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
   return !(h === "localhost" || h.startsWith("127.") || h === "::1");
-}
-
-/** Another device of an owner: the owner's connection address, then the same join as from the console. */
-function JoinAddress({ back, next }: { back: () => void; next: (owner: string, relay: string) => void }) {
-  const { t } = useTranslation("firstrun");
-  const [address, setAddress] = useState("");
-  const [error, setError] = useState("");
-  const go = () => {
-    const a = parseConnectAddress(address);
-    if (!a) return setError(t("joinAddress.invalid"));
-    next(a.owner, a.relay);
-  };
-  return (
-    <Frame
-      foot={
-        <>
-          {error ? <Problem text={error} /> : <span className="note" />}
-          <button className="btn" onClick={back}>
-            {t("back")}
-          </button>
-          <button className="btn primary" disabled={address.trim() === ""} onClick={go}>
-            {t("continue")}
-          </button>
-        </>
-      }
-    >
-      <StepIcon name="devices" />
-      <h2 className="ob-h">{t("joinAddress.title")}</h2>
-      <p className="ob-p">{t("joinAddress.body")}</p>
-      <form className="fgroup ob-form" onSubmit={(e) => (e.preventDefault(), address.trim() && go())}>
-        <div className="frow">
-          <label htmlFor="address">{t("joinAddress.address")}</label>
-          <span className="fv">
-            <input id="address" className="field mono" placeholder="relay.example.com/o_xxxxxxxx" value={address} onChange={(e) => (setAddress(e.target.value), setError(""))} autoFocus />
-          </span>
-        </div>
-      </form>
-    </Frame>
-  );
-}
-
-/**
- * Before this computer's first Touch ID: what it will do, row by row.
- * Working here and reminders are on unless the person turns them off.
- */
-function Authorize({ how, cancel, join }: { how: How; cancel: () => void; join: (machine: boolean, trusted: boolean) => void }) {
-  const { t } = useTranslation("firstrun");
-  const st = useStore();
-  // Joining, this Mac may be a machine only (a work Mac): then sharing its agents is what it is for.
-  const [trusted, setTrusted] = useState(true);
-  const [share, setShare] = useState(true);
-  const machine = share || !trusted;
-  const [remind, setRemind] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [trouble, setTrouble] = useState<Trouble | null>(null);
-  const joining = how.kind === "join";
-
-  const go = async () => {
-    // Reminders: start with the login session (in the menu bar) and notify.
-    for (const k of ["openAtLogin", "notifyQuestion", "notifyFailed"]) save(k, remind);
-    (window.hermesh as { setLoginItem?: (on: boolean) => void } | undefined)?.setLoginItem?.(remind);
-    if (how.kind === "join") return join(machine, trusted);
-    setBusy(true);
-    // The pages after this one, before hermeshd says it is set up (so the main window never flashes).
-    setProgress(machine ? { step: "prepare" } : { step: "agent" });
-    try {
-      if (how.kind === "signIn") {
-        await bridge().completeSignIn({ localMachine: machine });
-      } else {
-        const name = await bridge().computerName();
-        await bridge().readySigner();
-        await local.setup({ relayUrl: how.relay, claimCode: how.claim, rootLabel: name, rootPlatform: rootPlatform(bridge().platform), localMachineName: machine ? name : "" });
-      }
-      await st.refresh();
-    } catch (e) {
-      setProgress(null);
-      setTrouble(troubleOf(t, e, t("authorize.failed")));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Frame
-      sheet={trouble && <TroubleSheet trouble={trouble} close={() => setTrouble(null)} />}
-      foot={
-        <>
-          <span className="note">{joining ? t(trusted ? "authorize.joinNote" : "authorize.machineOnlyNote") : ""}</span>
-          <button className="btn" onClick={cancel} disabled={busy}>
-            {t("cancel")}
-          </button>
-          <button className="btn primary" onClick={go} disabled={busy}>
-            {busy ? t("authorize.settingUp") : t("continue")}
-          </button>
-        </>
-      }
-    >
-      <StepIcon name="key" />
-      <h2 className="ob-h">{joining ? t("authorize.titleJoin") : t("authorize.titleTrust")}</h2>
-      <p className="ob-p">{t("authorize.body")}</p>
-      <div className="perm">
-        <div className="prow">
-          <span className="pi">
-            <Icon name="key" />
-          </span>
-          <div className="pt">
-            <b>{t("authorize.trusted")}</b>
-            <span>{t(trusted ? "authorize.trustedBody" : "authorize.trustedOff")}</span>
-          </div>
-          {joining ? <Switch on={trusted} set={setTrusted} label={t("authorize.trusted")} disabled={busy} /> : <span className="req">{t("authorize.required")}</span>}
-        </div>
-        <div className="prow">
-          <span className="pi">
-            <Icon name="terminal" />
-          </span>
-          <div className="pt">
-            <b>{t("authorize.share")}</b>
-            <span>{t(trusted ? "authorize.shareBody" : "authorize.shareBodyMachine")}</span>
-          </div>
-          {trusted ? <Switch on={share} set={setShare} label={t("authorize.share")} disabled={busy} /> : <span className="req">{t("authorize.required")}</span>}
-        </div>
-        <div className="prow">
-          <span className="pi">
-            <Icon name="bell" />
-          </span>
-          <div className="pt">
-            <b>{t("authorize.remind")}</b>
-            <span>{t(trusted ? "authorize.remindBody" : "authorize.remindBodyMachine")}</span>
-          </div>
-          <Switch on={remind} set={setRemind} label={t("authorize.remind")} disabled={busy} />
-        </div>
-      </div>
-    </Frame>
-  );
-}
-
-function Switch({ on, set, label, disabled }: { on: boolean; set: (on: boolean) => void; label: string; disabled?: boolean }) {
-  return <button className={`sw ${on ? "on" : ""}`} role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => set(!on)} />;
 }
 
 type JoinState =
@@ -495,7 +155,7 @@ export function Join(p: { owner: string; center: string; relay?: string; machine
   // Keeps the owner: the digits typed (none when not asked for).
   const finish = async (code: string, matchCode: string) => {
     // A trusted device that is a machine too sets this Mac up next; a machine only is done.
-    setProgress(trusted && machine ? { step: "prepare", joined: true } : null);
+    setProgress(null);
     try {
       await local.confirmJoin({ code, accept: true, matchCode });
       await st.refresh();
@@ -591,6 +251,8 @@ export function Removed() {
           onClick={() =>
             st.run(async () => {
               await local.leave({});
+              // Set up again: through the first run, as a computer new to Hermesh.
+              setFirstRunDone(false);
               setProgress(null);
             })
           }
@@ -603,20 +265,20 @@ export function Removed() {
 }
 
 /** A failure that stops this step: what happened, what to do, and the raw cause behind Details. */
-type Trouble = { title: string; message: string; detail?: string };
+export type Trouble = { title: string; message: string; detail?: string };
 
 /**
  * e said for the person. hermeshd checks the relay before any Touch ID and
  * says "relay unreachable (host): reason" when this network can't reach it.
  */
-function troubleOf(t: TFunction<"firstrun">, e: unknown, title: string): Trouble {
+export function troubleOf(t: TFunction<"firstrun">, e: unknown, title: string): Trouble {
   const text = errorText(e);
   const m = /^relay unreachable \(([^)]+)\): (.*)$/s.exec(text);
   if (m) return { title: t("unreachable.title"), message: t("unreachable.body", { host: m[1] }), detail: m[2] };
   return { title, message: text };
 }
 
-function TroubleSheet({ trouble, close }: { trouble: Trouble; close: () => void }) {
+export function TroubleSheet({ trouble, close }: { trouble: Trouble; close: () => void }) {
   const { t } = useTranslation("firstrun");
   const [open, setOpen] = useState(false);
   useEffect(() => {

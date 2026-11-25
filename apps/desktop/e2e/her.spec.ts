@@ -86,6 +86,9 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   // This Mac: the test's signer signs SetHer, as Touch ID would. Her runs there with the mock's model, and greets.
   await choices.getByRole("listitem").filter({ hasText: thisComputer }).getByRole("button", { name: "开启 Her" }).click();
   await expect(page.getByText(/^你好，我是 .+，在 .+ 上为你做事/)).toBeVisible({ timeout: 120_000 });
+  // This Mac by its own name, as in Settings, not its machine's short one (another Mac keeps its machine's: below).
+  const computer = await page.evaluate(() => window.hermesh!.computerName());
+  await expect(page.getByText(`，在 ${computer} 上为你做事`, { exact: false })).toBeVisible();
   // The page is the conversation with Her alone: its name at the top, no list of assistants, no environments in
   // its ⋯ menu while there is one.
   await expect(page.locator(".her-id")).toContainText("Her");
@@ -680,7 +683,7 @@ test("Her: the first run, a chat, a secure card, the console, a second environme
   await offThere.getByRole("switch", { name: "同时清空 Her 的数据" }).click();
   await offThere.getByRole("button", { name: "关闭并清空" }).click();
   await expect(offThere).toBeHidden({ timeout: 30_000 });
-  await expect(win.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her，并清空了她的数据$/);
+  await expect(win.locator(".toast")).toHaveText(/^已在「.+」上关闭 Her，并清空了它的数据$/);
   await expect(run).toHaveAttribute("aria-checked", "false");
   await expect(kept).toBeHidden({ timeout: 30_000 });
 

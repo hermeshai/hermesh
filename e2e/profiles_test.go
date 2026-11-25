@@ -167,26 +167,40 @@ func TestAccountsOnOneDevice(t *testing.T) {
 	}
 	eventually(t, 30*time.Second, "mac2 sees mac-a online", func() bool { return machineOnline(app2, "mac-a") })
 
-	// Signing out keeps the keys but stops everything: no relay connection,
-	// no machine, no calls that need the owner.
+	// Signing out keeps the keys and this Mac's machine, in local mode
+	// (docs/cold-start-tech.md §2.1): no relay connection, the machine
+	// alone in its lists, the others reach it no more; calls that need the
+	// owner are refused.
+	localID := status(app).LocalMachineId
 	if _, err := app.client.SignOut(ctx, &localv1.SignOutRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	if st := status(app); !st.SignedOut || !st.Initialized || st.LocalMachineEnabled || st.RelayConnected {
+	signedOutLocal := func(st *localv1.GetStatusResponse) bool {
+		return st.SignedOut && st.Initialized && st.LocalMachineEnabled && st.LocalMachineId == localID && !st.RelayConnected && st.GetRelayHealth().GetPhase() == "local"
+	}
+	if st := status(app); !signedOutLocal(st) {
 		t.Fatalf("status after signing out: %+v", st)
 	}
-	if _, err := app.client.ListMachines(ctx, &localv1.ListMachinesRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-		t.Fatalf("listing machines signed out: %v", err)
+	if ms, err := app.client.ListMachines(ctx, &localv1.ListMachinesRequest{}); err != nil || len(ms.Machines) != 1 || ms.Machines[0].MachineId != localID || !ms.Machines[0].Local {
+		t.Fatalf("listing machines signed out: %v %v", ms, err)
+	}
+	if _, err := app.client.ListDevices(ctx, &localv1.ListDevicesRequest{}); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("listing devices signed out: %v", err)
 	}
 	eventually(t, 30*time.Second, "mac2 sees mac-a offline", func() bool { return !machineOnline(app2, "mac-a") })
-	// Signed out survives a restart.
+	// Signed out survives a restart, and the machine stays off the relay.
 	macProc.stop()
 	macProc = startMac()
 	app.cancel()
 	app = newTestApp(t, sock, rootA)
 	app.addKey(rootB)
-	if st := status(app); !st.SignedOut || st.OwnerId != setupA.OwnerId {
+	eventually(t, 20*time.Second, "signed out after a restart", func() bool { return signedOutLocal(status(app)) })
+	if st := status(app); st.OwnerId != setupA.OwnerId {
 		t.Fatalf("status after a restart: %+v", st)
+	}
+	time.Sleep(3 * time.Second)
+	if machineOnline(app2, "mac-a") {
+		t.Fatal("a signed-out Mac connected to the relay after a restart")
 	}
 	// Signing in again needs no other device (a self-hosted relay: no
 	// browser sign-in either).

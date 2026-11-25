@@ -134,7 +134,9 @@ export type Bridge = {
   /** The compact first-run window, or the main window. */
   setWindowMode(mode: "onboarding" | "main"): void;
   /** Starts the browser sign-in (or opens the browser again for the one under way); the link comes back through onLink. */
-  signIn(center: string): Promise<void>;
+  signIn(center: string, owner?: string): Promise<void>;
+  /** Signs this device in again to the owner it signed out of, with the link code the browser sent back (no Touch ID). */
+  completeResume(): Promise<void>;
   /** A browser sign-in is under way (also one started before the app was restarted). */
   signInPending(): Promise<boolean>;
   cancelSignIn(): Promise<void>;
