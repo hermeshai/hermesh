@@ -2960,6 +2960,9 @@ public nonisolated struct Hermesh_Local_V1_HerSendRequest: Sendable {
   /// Clears the value of `reply`. Subsequent reads from it will return its default value.
   public mutating func clearReply() {self._reply = nil}
 
+  /// The app's UI language (BCP 47, e.g. "zh-CN", "en") when the message was sent.
+  public var locale: String = String()
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -3121,6 +3124,8 @@ public nonisolated struct Hermesh_Local_V1_HerWaiting: Sendable {
   public var hasReply: Bool {self._reply != nil}
   /// Clears the value of `reply`. Subsequent reads from it will return its default value.
   public mutating func clearReply() {self._reply = nil}
+
+  public var locale: String = String()
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -8714,7 +8719,7 @@ nonisolated extension Hermesh_Local_V1_HerCallRequest: SwiftProtobuf.Message, Sw
 
 nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerSendRequest"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{1}pictures\0\u{1}id\0\u{3}connection_id\0\u{3}session_id\0\u{1}reply\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{1}pictures\0\u{1}id\0\u{3}connection_id\0\u{3}session_id\0\u{1}reply\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -8731,6 +8736,7 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
       case 7: try { try decoder.decodeSingularStringField(value: &self.connectionID) }()
       case 8: try { try decoder.decodeSingularStringField(value: &self.sessionID) }()
       case 9: try { try decoder.decodeSingularMessageField(value: &self._reply) }()
+      case 10: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -8768,6 +8774,9 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
     try { if let v = self._reply {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
     } }()
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 10)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -8781,6 +8790,7 @@ nonisolated extension Hermesh_Local_V1_HerSendRequest: SwiftProtobuf.Message, Sw
     if lhs.connectionID != rhs.connectionID {return false}
     if lhs.sessionID != rhs.sessionID {return false}
     if lhs._reply != rhs._reply {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -9026,7 +9036,7 @@ nonisolated extension Hermesh_Local_V1_DeleteHerWaitingResponse: SwiftProtobuf.M
 
 nonisolated extension Hermesh_Local_V1_HerWaiting: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".HerWaiting"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{3}created_at\0\u{1}error\0\u{1}reply\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}id\0\u{3}machine_id\0\u{3}bot_id\0\u{1}text\0\u{3}local_paths\0\u{3}created_at\0\u{1}error\0\u{1}reply\0\u{1}locale\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -9042,6 +9052,7 @@ nonisolated extension Hermesh_Local_V1_HerWaiting: SwiftProtobuf.Message, SwiftP
       case 6: try { try decoder.decodeSingularMessageField(value: &self._createdAt) }()
       case 7: try { try decoder.decodeSingularStringField(value: &self.error) }()
       case 8: try { try decoder.decodeSingularMessageField(value: &self._reply) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.locale) }()
       default: break
       }
     }
@@ -9076,6 +9087,9 @@ nonisolated extension Hermesh_Local_V1_HerWaiting: SwiftProtobuf.Message, SwiftP
     try { if let v = self._reply {
       try visitor.visitSingularMessageField(value: v, fieldNumber: 8)
     } }()
+    if !self.locale.isEmpty {
+      try visitor.visitSingularStringField(value: self.locale, fieldNumber: 9)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -9088,6 +9102,7 @@ nonisolated extension Hermesh_Local_V1_HerWaiting: SwiftProtobuf.Message, SwiftP
     if lhs._createdAt != rhs._createdAt {return false}
     if lhs.error != rhs.error {return false}
     if lhs._reply != rhs._reply {return false}
+    if lhs.locale != rhs.locale {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

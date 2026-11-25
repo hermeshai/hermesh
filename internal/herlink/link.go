@@ -17,6 +17,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/cli"
 	"github.com/hermeshai/hermesh/internal/herhost"
 	"github.com/hermeshai/hermesh/internal/machine"
+	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/identity"
 )
 
@@ -44,6 +45,8 @@ type state struct {
 	// Registered is how the post office was last told her inbox takes
 	// messages.
 	Registered string `json:"registered,omitempty"`
+	// Locale is the last normalized BCP 47 UI locale sent by the owner's app.
+	Locale string `json:"locale,omitempty"`
 	// Names are the names her assistants run commands as, by name: their ids.
 	Names    map[string]string  `json:"names,omitempty"`
 	Sessions map[string]session `json:"sessions,omitempty"`
@@ -86,6 +89,20 @@ func (l *Link) saveLocked() {
 }
 
 func (l *Link) Group() *herhost.MeshGroup { return group() }
+
+// SetLocale updates the client UI locale used for sessions Her starts.
+func (l *Link) SetLocale(locale string) {
+	loc := runtime.NormalizeLocale(locale)
+	if loc == "" {
+		return
+	}
+	l.mu.Lock()
+	if l.st.Locale != loc {
+		l.st.Locale = loc
+		l.saveLocked()
+	}
+	l.mu.Unlock()
+}
 
 // options are what a command runs with: her credentials and her kept
 // connection.
@@ -179,6 +196,12 @@ func (l *Link) arguments(t tool, bot, callID string, raw json.RawMessage) ([]str
 		}
 		if callID != "" {
 			values["idempotency_key"] = callID
+		}
+		l.mu.Lock()
+		loc := l.st.Locale
+		l.mu.Unlock()
+		if loc != "" {
+			values["locale"] = loc
 		}
 	}
 	if as := l.asName(bot); as != "" {

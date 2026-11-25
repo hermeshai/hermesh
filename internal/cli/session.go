@@ -26,6 +26,7 @@ import (
 	"github.com/hermeshai/hermesh/internal/localipc"
 	"github.com/hermeshai/hermesh/internal/paths"
 	"github.com/hermeshai/hermesh/internal/peer"
+	"github.com/hermeshai/hermesh/internal/runtime"
 	"github.com/hermeshai/hermesh/pkg/transport"
 )
 
@@ -240,7 +241,7 @@ func parseInteractionModeFlag(s string) sessionv1.InteractionMode {
 }
 
 func (a *app) startCmd() *cobra.Command {
-	var project, agent, base, model, effort, prompt, promptFile, title, idem string
+	var project, agent, base, model, effort, prompt, promptFile, title, locale, idem string
 	var socket, runtimeMode, interactionMode, workspaceMode, branch string
 	var options []string
 	var questionTimeout time.Duration
@@ -266,6 +267,10 @@ func (a *app) startCmd() *cobra.Command {
 			}
 			if idem == "" {
 				idem = newIdempotencyKey()
+			}
+			effLocale := locale
+			if effLocale == "" && a.mem == nil {
+				effLocale = runtime.DefaultLocaleFromEnv()
 			}
 			ctx := cmd.Context()
 			if timeout > 0 {
@@ -298,6 +303,7 @@ func (a *app) startCmd() *cobra.Command {
 					MachineId:              machineFlag,
 					ProjectId:              projID,
 					Title:                  title,
+					Locale:                 effLocale,
 					ModelSelection:         buildModelSelection(agent, model, effort, options),
 					Workspace:              ws,
 					RuntimeMode:            parseRuntimeModeFlag(runtimeMode),
@@ -331,6 +337,7 @@ func (a *app) startCmd() *cobra.Command {
 					CommandId:              idem,
 					ProjectId:              projectID,
 					Title:                  title,
+					Locale:                 effLocale,
 					ModelSelection:         buildModelSelection(agent, model, effort, options),
 					Workspace:              ws,
 					RuntimeMode:            parseRuntimeModeFlag(runtimeMode),
@@ -363,7 +370,8 @@ func (a *app) startCmd() *cobra.Command {
 	f.StringVar(&effort, "effort", "", "reasoning effort, one hermesh agent list shows for the model (default: the one the owner set for the agent on that machine, else the agent's own)")
 	f.StringVar(&prompt, "prompt", "", "prompt text")
 	f.StringVar(&promptFile, "prompt-file", "", "read the prompt from a file (- for stdin)")
-	f.StringVar(&title, "title", "", "a short title for session lists (default: the first line of the prompt)")
+	f.StringVar(&title, "title", "", "a short title for session lists (default: generated automatically)")
+	f.StringVar(&locale, "locale", "", "BCP 47 language tag for generated session title (e.g. zh-CN, en)")
 	f.StringArrayVarP(&files, "file", "f", nil, "attach a file (repeatable; images are shown to the agent, other files are saved on the machine and listed by path)")
 	f.DurationVar(&questionTimeout, "question-timeout", 30*time.Minute, "how long the agent's questions wait for an answer before it goes on alone (0: nobody will answer)")
 	f.StringVar(&idem, "idempotency-key", "", "retrying with the same key returns the same session")
@@ -1626,17 +1634,23 @@ func (a *app) queueCmd() *cobra.Command {
 }
 
 func (a *app) configCmd() *cobra.Command {
-	var socket, title, agent, model, effort, runtimeMode, interactionMode string
+	var socket, title, locale, agent, model, effort, runtimeMode, interactionMode string
 	var options []string
-	var pin, unpin bool
+	var pin, unpin, regenerateTitle bool
 	cmd := &cobra.Command{
 		Use:   "config <session id>",
 		Short: "Update a session's title, model, runtime mode, interaction mode, or pin state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			effLocale := locale
+			if effLocale == "" && regenerateTitle && a.mem == nil {
+				effLocale = runtime.DefaultLocaleFromEnv()
+			}
 			req := &sessionv1.UpdateSessionRequest{
 				SessionId:       args[0],
 				Title:           title,
+				RegenerateTitle: regenerateTitle,
+				Locale:          effLocale,
 				RuntimeMode:     parseRuntimeModeFlag(runtimeMode),
 				InteractionMode: parseInteractionModeFlag(interactionMode),
 			}
@@ -1657,6 +1671,8 @@ func (a *app) configCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "new title")
+	cmd.Flags().BoolVar(&regenerateTitle, "regenerate-title", false, "regenerate the session title with AI")
+	cmd.Flags().StringVar(&locale, "locale", "", "BCP 47 language tag for generated title (e.g. zh-CN, en)")
 	cmd.Flags().StringVar(&agent, "agent", "", "provider instance id")
 	cmd.Flags().StringVar(&model, "model", "", "model id")
 	cmd.Flags().StringVar(&effort, "effort", "", "reasoning effort")
@@ -1767,17 +1783,22 @@ func (a *app) rollbackCmd() *cobra.Command {
 }
 
 func (a *app) forkCmd() *cobra.Command {
-	var socket, title, agent, model, effort string
+	var socket, title, locale, agent, model, effort string
 	var upToTurn uint32
 	cmd := &cobra.Command{
 		Use:   "fork <session id>",
 		Short: "Fork a session (and its Git checkpoint tree) into a new independent session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			effLocale := locale
+			if effLocale == "" && a.mem == nil {
+				effLocale = runtime.DefaultLocaleFromEnv()
+			}
 			req := &sessionv1.ForkSessionRequest{
 				SourceSessionId: args[0],
 				UpToRunOrdinal:  upToTurn,
 				Title:           title,
+				Locale:          effLocale,
 			}
 			if agent != "" || model != "" || effort != "" {
 				req.ModelSelection = buildModelSelection(agent, model, effort, nil)
@@ -1793,6 +1814,7 @@ func (a *app) forkCmd() *cobra.Command {
 	}
 	cmd.Flags().Uint32Var(&upToTurn, "turn", 0, "fork up to this run ordinal (0: latest)")
 	cmd.Flags().StringVar(&title, "title", "", "title for forked session")
+	cmd.Flags().StringVar(&locale, "locale", "", "BCP 47 language tag for forked session title (e.g. zh-CN, en)")
 	cmd.Flags().StringVar(&agent, "agent", "", "provider instance id")
 	cmd.Flags().StringVar(&model, "model", "", "model id")
 	cmd.Flags().StringVar(&effort, "effort", "", "reasoning effort")

@@ -64,12 +64,13 @@ var tools = []tool{
 // hidden are the CLI's parameters she doesn't see: hermeshd sets `as` and
 // the idempotency key, she never waits, and the rest are for messages to
 // agents.
-var hidden = []string{"as", "idempotency_key", "wait", "timeout", "subject", "reply_to"}
+var hidden = []string{"as", "idempotency_key", "wait", "timeout", "subject", "reply_to", "locale"}
 
 // params are the descriptions that differ from the CLI's help.
 var params = map[string]string{
 	"project":          "Where to work: a machine/project address from project_list, or a project's name when only one computer has it",
 	"prompt":           "Required: the job, in words. It is all the coding agent knows",
+	"title":            "A short title in the user's UI language (omit to let Hermesh generate it automatically in the user's UI language)",
 	"agent":            "A coding agent the project offers in project_list (for example claude or codex)",
 	"model":            "A model the agent offers in coding_agent_list (default: the agent's default there)",
 	"effort":           "One of the model's reasoning efforts in coding_agent_list (default: the agent's default there)",

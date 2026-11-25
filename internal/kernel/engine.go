@@ -212,6 +212,9 @@ type Engine struct {
 	runDoneChs       map[string]<-chan struct{}             // run_id -> runCtx.Done()
 	runInterruptedBy map[string]string                      // run_id -> "interrupted by <actor>"
 	pumps            map[string]*leasePump                  // provider_session_id -> pump
+	titleSem         chan struct{}                          // bounds concurrent title generations
+	titleCancels     map[string]context.CancelFunc          // session_id -> cancel
+	titleDoneChs     map[string]chan struct{}               // session_id -> closed on completion
 	sessionSubs      map[string]map[*sessionSub]struct{}
 	shellSubs        map[*shellSub]struct{}
 }
@@ -248,6 +251,9 @@ func Open(cfg Config) (*Engine, error) {
 		runDoneChs:       map[string]<-chan struct{}{},
 		runInterruptedBy: map[string]string{},
 		pumps:            map[string]*leasePump{},
+		titleSem:         make(chan struct{}, maxConcurrentTitleGens),
+		titleCancels:     map[string]context.CancelFunc{},
+		titleDoneChs:     map[string]chan struct{}{},
 		sessionSubs:      map[string]map[*sessionSub]struct{}{},
 		shellSubs:        map[*shellSub]struct{}{},
 	}
@@ -532,7 +538,8 @@ func (e *Engine) recoverOrphans() error {
 		if s.Status != sessionv1.SessionStatus_SESSION_STATUS_RUNNING &&
 			s.Status != sessionv1.SessionStatus_SESSION_STATUS_PREPARING &&
 			s.Status != sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT &&
-			!hasOrphanBg {
+			!hasOrphanBg &&
+			!s.TitleGenerating {
 			continue
 		}
 		runs, _ := e.st.Runs(s.SessionId)
@@ -601,6 +608,7 @@ func (e *Engine) recoverOrphans() error {
 			queued, _ := tx.QueuedRuns(sess.SessionId)
 			sess.QueuedRunCount = uint32(len(queued))
 			sess.ActiveRunId = ""
+			sess.TitleGenerating = false
 			if hasPendingResumeReq {
 				sess.Status = sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT
 			} else if len(queued) > 0 {
@@ -1164,13 +1172,42 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 
 	sessionID := e.newSessionID()
+	hasInitial := strings.TrimSpace(req.InitialPrompt) != "" || len(req.Attachments) > 0
+	titleLocale := runtime.ResolveLocale(req.Locale)
 	title := runtime.CleanTitle(req.Title)
 	titleRenamed := title != ""
+	var (
+		titleState      = sessionv1.TitleState_TITLE_STATE_LOCKED
+		titleGenerating bool
+		titleSeq        uint64 = 1
+	)
 	if title == "" {
-		title = deriveTitle(req.InitialPrompt)
+		if !hasInitial {
+			title = runtime.LocalizedSeedFallback(titleLocale, "empty", "")
+			titleState = sessionv1.TitleState_TITLE_STATE_SEED
+			titleSeq = 0
+		} else {
+			seed, isFinal := runtime.DeriveSeedTitle(req.InitialPrompt, req.Attachments, titleLocale)
+			title = seed
+			if req.ParentSessionId != "" || isFinal || !e.hasTitleGenerator() {
+				titleState = sessionv1.TitleState_TITLE_STATE_FINAL
+			} else {
+				titleState = sessionv1.TitleState_TITLE_STATE_SEED
+				titleGenerating = true
+			}
+		}
+	} else if p.Actor.GetKind() != sessionv1.ActorKind_ACTOR_KIND_OWNER &&
+		strings.TrimSpace(req.Locale) != "" &&
+		req.ParentSessionId == "" &&
+		hasInitial &&
+		!runtime.TitleMatchesLocaleScript(title, titleLocale) &&
+		e.hasTitleGenerator() {
+		// An agent (such as Her) supplied a title in a different language than the
+		// client's UI locale: keep it as the 0ms seed and translate/refine in Pass 1.
+		titleRenamed = false
+		titleState = sessionv1.TitleState_TITLE_STATE_SEED
+		titleGenerating = true
 	}
-
-	hasInitial := strings.TrimSpace(req.InitialPrompt) != "" || len(req.Attachments) > 0
 
 	// The folder is set up at the first turn, which says in the conversation how it went
 	// (prepareWorkspace): a worktree made, a branch switched to. Here only what needs no git
@@ -1212,6 +1249,10 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 		ProjectId:            projectID,
 		Title:                title,
 		TitleRenamed:         titleRenamed,
+		TitleLocale:          titleLocale,
+		TitleGenerating:      titleGenerating,
+		TitleState:           titleState,
+		TitleSeq:             titleSeq,
 		Status:               status,
 		CreatedBy:            createdBy,
 		CreatedAs:            strings.TrimSpace(req.Conversation),
@@ -1303,6 +1344,9 @@ func (e *Engine) StartSession(ctx context.Context, p *Principal, req *sessionv1.
 	}
 	e.publish(events, nil)
 
+	if titleGenerating {
+		e.spawnTitleGen(sessionID, titleSeq, titleGenModeInitial, nil)
+	}
 	if initRun != nil {
 		e.spawnRun(sessionID, initRun.RunId, false)
 	}
@@ -1463,6 +1507,7 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 	// Otherwise, either start immediately (if idle and queue not held) or enqueue!
 	var startedRun *sessionv1.Run
 	var res *sessionv1.DispatchMessageResponse
+	var dispatchTitleSeq uint64
 	freshCtx := intent == sessionv1.DispatchIntent_DISPATCH_INTENT_FRESH_CONTEXT
 
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
@@ -1472,6 +1517,25 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 		}
 		if sNow.Progress == nil {
 			sNow.Progress = &sessionv1.SessionProgress{}
+		}
+		if !sNow.TitleRenamed && sNow.TitleState == sessionv1.TitleState_TITLE_STATE_SEED && !sNow.TitleGenerating && sNow.GetLineage().GetRelationship() != "subagent" {
+			loc := runtime.ResolveLocale(req.Locale, sNow.TitleLocale)
+			sNow.TitleLocale = loc
+			isFork := sNow.GetLineage().GetRelationship() == "fork"
+			seed, isFinal := runtime.DeriveSeedTitle(req.Text, req.Attachments, loc)
+			if !isFork {
+				sNow.Title = seed
+			}
+			sNow.TitleSeq++
+			if !isFork && (isFinal || !e.hasTitleGenerator()) {
+				sNow.TitleState = sessionv1.TitleState_TITLE_STATE_FINAL
+			} else if e.hasTitleGenerator() {
+				sNow.TitleGenerating = true
+				dispatchTitleSeq = sNow.TitleSeq
+			} else {
+				sNow.Title = seed
+				sNow.TitleState = sessionv1.TitleState_TITLE_STATE_FINAL
+			}
 		}
 		if sNow.ActiveRunId == "" {
 			sNow.ModelSelection = sel
@@ -1624,6 +1688,9 @@ func (e *Engine) DispatchMessage(ctx context.Context, p *Principal, req *session
 		return nil, err
 	}
 	e.publish(events, nil)
+	if dispatchTitleSeq > 0 {
+		e.spawnTitleGen(sess.SessionId, dispatchTitleSeq, titleGenModeInitial, nil)
+	}
 	if startedRun != nil {
 		e.spawnRun(sess.SessionId, startedRun.RunId, freshCtx)
 	}
@@ -3720,6 +3787,7 @@ func (e *Engine) recordSwitchItem(sessionID, runID string, fromSel, toSel *sessi
 }
 
 func (e *Engine) finishRunCompleted(sessionID, runID, psID string, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat, resultText string, pendingPlan *sessionv1.PlanReviewPayload) {
+	e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, cp, resultText)
 	unlock := e.lockSession(sessionID)
 	if pendingPlan != nil {
 		if existing, rErr := e.st.RuntimeRequests(sessionID); rErr == nil {
@@ -4037,6 +4105,7 @@ func (e *Engine) finishRunFailed(sessionID, runID, code, msg string, f *runtime.
 }
 
 func (e *Engine) finishRunFailedWithCheckpoint(sessionID, runID, code, msg string, f *runtime.Failure, cp *sessionv1.Checkpoint, cumStat *sessionv1.DiffStat) {
+	e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, cp, msg)
 	unlock := e.lockSession(sessionID)
 	var protoFail *sessionv1.Failure
 	if f != nil {
@@ -4193,6 +4262,10 @@ func (e *Engine) makeGate(sessionID, workdir string) runtime.GateFunc {
 			} else {
 				qTimeout = e.cfg.QuestionTimeout
 			}
+		}
+
+		if req.Kind == sessionv1.RuntimeRequestKind_RUNTIME_REQUEST_KIND_USER_INPUT {
+			e.maybeRefineTitleBeforeTurnEnd(sessionID, runID, nil, "")
 		}
 
 		reqID := newID("req")
@@ -5294,6 +5367,9 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 	}
 
 	cleanTitle := runtime.CleanTitle(req.Title)
+	if cleanTitle != "" || req.RegenerateTitle {
+		e.cancelTitleGen(req.SessionId)
+	}
 	if cleanTitle != "" && lease != nil {
 		if titler, ok := lease.Session.(runtime.Titler); ok {
 			_ = titler.SetTitle(ctx, cleanTitle)
@@ -5314,6 +5390,7 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 	}
 
 	var res *sessionv1.UpdateSessionResponse
+	var regenTitleSeq uint64
 	events, err := e.st.Mutate(func(tx *store.Tx) error {
 		sNow, err := tx.GetSession(req.SessionId)
 		if err != nil {
@@ -5327,6 +5404,19 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		if cleanTitle != "" {
 			sNow.Title = cleanTitle
 			sNow.TitleRenamed = true
+			sNow.TitleState = sessionv1.TitleState_TITLE_STATE_LOCKED
+			sNow.TitleGenerating = false
+			sNow.TitleSeq++
+			if req.Locale != "" {
+				sNow.TitleLocale = runtime.ResolveLocale(req.Locale, sNow.TitleLocale)
+			}
+		} else if req.RegenerateTitle && e.hasTitleGenerator() {
+			sNow.TitleLocale = runtime.ResolveLocale(req.Locale, sNow.TitleLocale)
+			sNow.TitleRenamed = false
+			sNow.TitleState = sessionv1.TitleState_TITLE_STATE_SEED
+			sNow.TitleGenerating = true
+			sNow.TitleSeq++
+			regenTitleSeq = sNow.TitleSeq
 		}
 		if req.HasPinned {
 			sNow.Pinned = req.Pinned
@@ -5392,6 +5482,9 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		}
 	}
 	e.publish(events, nil)
+	if regenTitleSeq > 0 {
+		e.spawnTitleGen(req.SessionId, regenTitleSeq, titleGenModeRegenerate, nil)
+	}
 	return res, nil
 }
 
@@ -5703,9 +5796,15 @@ func (e *Engine) ForkSession(ctx context.Context, p *Principal, req *sessionv1.F
 	if err := e.projectAllowsInstance(srcProj.Session.ProjectId, sel.GetInstanceId()); err != nil {
 		return nil, err
 	}
+	forkLocale := runtime.ResolveLocale(req.Locale, srcProj.Session.GetTitleLocale())
 	title := runtime.CleanTitle(req.Title)
+	forkTitleRenamed := title != ""
+	forkTitleState := sessionv1.TitleState_TITLE_STATE_LOCKED
+	var forkTitleSeq uint64 = 1
 	if title == "" {
-		title = srcProj.Session.Title + " (fork)"
+		title = runtime.LocalizedSeedFallback(forkLocale, "fork", srcProj.Session.Title)
+		forkTitleState = sessionv1.TitleState_TITLE_STATE_SEED
+		forkTitleSeq = 0
 	}
 
 	createdBy := p.Actor.GetId()
@@ -5718,7 +5817,10 @@ func (e *Engine) ForkSession(ctx context.Context, p *Principal, req *sessionv1.F
 		MachineId:            e.currentMachineID(),
 		ProjectId:            srcProj.Session.ProjectId,
 		Title:                title,
-		TitleRenamed:         true,
+		TitleRenamed:         forkTitleRenamed,
+		TitleLocale:          forkLocale,
+		TitleState:           forkTitleState,
+		TitleSeq:             forkTitleSeq,
 		Status:               sessionv1.SessionStatus_SESSION_STATUS_IDLE,
 		CreatedBy:            createdBy,
 		ModelSelection:       sel,
@@ -5813,6 +5915,7 @@ func (e *Engine) DeleteSession(ctx context.Context, p *Principal, sessionID stri
 		unlock()
 		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied"))
 	}
+	e.cancelTitleGen(sessionID)
 	if sess.ActiveRunId != "" {
 		e.mu.Lock()
 		if cancel, ok := e.runCancels[sess.ActiveRunId]; ok {
@@ -6075,19 +6178,4 @@ func (e *Engine) SubscribeSession(ctx context.Context, p *Principal, sessionID s
 			}
 		}
 	}
-}
-
-func deriveTitle(prompt string) string {
-	s := strings.TrimSpace(prompt)
-	if s == "" {
-		return "New Session"
-	}
-	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
-		s = strings.TrimSpace(s[:idx])
-	}
-	runes := []rune(s)
-	if len(runes) > 48 {
-		return string(runes[:48]) + "…"
-	}
-	return s
 }

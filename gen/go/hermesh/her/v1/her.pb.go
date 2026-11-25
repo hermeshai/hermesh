@@ -430,8 +430,10 @@ func (x *Notification) GetParams() []byte {
 type CallRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// A connection an Open stream holds; empty: a connection of its own.
-	ConnectionId  string   `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
-	Request       *Request `protobuf:"bytes,2,opt,name=request,proto3" json:"request,omitempty"`
+	ConnectionId string   `protobuf:"bytes,1,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
+	Request      *Request `protobuf:"bytes,2,opt,name=request,proto3" json:"request,omitempty"`
+	// Optional BCP 47 UI locale of the client sending the request (e.g. "zh-CN", "en").
+	Locale        string `protobuf:"bytes,3,opt,name=locale,proto3" json:"locale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -478,6 +480,13 @@ func (x *CallRequest) GetRequest() *Request {
 		return x.Request
 	}
 	return nil
+}
+
+func (x *CallRequest) GetLocale() string {
+	if x != nil {
+		return x.Locale
+	}
+	return ""
 }
 
 type CallResponse struct {
@@ -930,10 +939,11 @@ const file_hermesh_her_v1_her_proto_rawDesc = "" +
 	"\tresponses\x18\x02 \x03(\v2\x18.hermesh.her.v1.ResponseR\tresponses\">\n" +
 	"\fNotification\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x16\n" +
-	"\x06params\x18\x02 \x01(\fR\x06params\"e\n" +
+	"\x06params\x18\x02 \x01(\fR\x06params\"}\n" +
 	"\vCallRequest\x12#\n" +
 	"\rconnection_id\x18\x01 \x01(\tR\fconnectionId\x121\n" +
-	"\arequest\x18\x02 \x01(\v2\x17.hermesh.her.v1.RequestR\arequest\"D\n" +
+	"\arequest\x18\x02 \x01(\v2\x17.hermesh.her.v1.RequestR\arequest\x12\x16\n" +
+	"\x06locale\x18\x03 \x01(\tR\x06locale\"D\n" +
 	"\fCallResponse\x124\n" +
 	"\bresponse\x18\x01 \x01(\v2\x18.hermesh.her.v1.ResponseR\bresponse\"b\n" +
 	"\rUploadRequest\x123\n" +

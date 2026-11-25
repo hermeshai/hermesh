@@ -8276,7 +8276,9 @@ type HerSendRequest struct {
 	ConnectionId string `protobuf:"bytes,7,opt,name=connection_id,json=connectionId,proto3" json:"connection_id,omitempty"`
 	SessionId    string `protobuf:"bytes,8,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
 	// What the message replies to (docs/her-reply.md).
-	Reply         *HerReply `protobuf:"bytes,9,opt,name=reply,proto3" json:"reply,omitempty"`
+	Reply *HerReply `protobuf:"bytes,9,opt,name=reply,proto3" json:"reply,omitempty"`
+	// The app's UI language (BCP 47, e.g. "zh-CN", "en") when the message was sent.
+	Locale        string `protobuf:"bytes,10,opt,name=locale,proto3" json:"locale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8372,6 +8374,13 @@ func (x *HerSendRequest) GetReply() *HerReply {
 		return x.Reply
 	}
 	return nil
+}
+
+func (x *HerSendRequest) GetLocale() string {
+	if x != nil {
+		return x.Locale
+	}
+	return ""
 }
 
 // What a message replies to: an earlier message of the conversation, or a
@@ -8755,6 +8764,7 @@ type HerWaiting struct {
 	// Why the last try failed, when one did.
 	Error         string    `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
 	Reply         *HerReply `protobuf:"bytes,8,opt,name=reply,proto3" json:"reply,omitempty"`
+	Locale        string    `protobuf:"bytes,9,opt,name=locale,proto3" json:"locale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -8843,6 +8853,13 @@ func (x *HerWaiting) GetReply() *HerReply {
 		return x.Reply
 	}
 	return nil
+}
+
+func (x *HerWaiting) GetLocale() string {
+	if x != nil {
+		return x.Locale
+	}
+	return ""
 }
 
 type GetHerConversationRequest struct {
@@ -10123,7 +10140,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\x0eHerCallRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12/\n" +
-	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\xbb\x02\n" +
+	"\x04call\x18\x02 \x01(\v2\x1b.hermesh.her.v1.CallRequestR\x04call\"\xd3\x02\n" +
 	"\x0eHerSendRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x15\n" +
@@ -10136,7 +10153,9 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\rconnection_id\x18\a \x01(\tR\fconnectionId\x12\x1d\n" +
 	"\n" +
 	"session_id\x18\b \x01(\tR\tsessionId\x120\n" +
-	"\x05reply\x18\t \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\"\\\n" +
+	"\x05reply\x18\t \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\x12\x16\n" +
+	"\x06locale\x18\n" +
+	" \x01(\tR\x06locale\"\\\n" +
 	"\bHerReply\x12\x10\n" +
 	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x10\n" +
 	"\x03own\x18\x02 \x01(\bR\x03own\x12\x12\n" +
@@ -10159,7 +10178,7 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\"\x1a\n" +
-	"\x18DeleteHerWaitingResponse\"\x8a\x02\n" +
+	"\x18DeleteHerWaitingResponse\"\xa2\x02\n" +
 	"\n" +
 	"HerWaiting\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
@@ -10172,7 +10191,8 @@ const file_hermesh_local_v1_local_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
 	"\x05error\x18\a \x01(\tR\x05error\x120\n" +
-	"\x05reply\x18\b \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\":\n" +
+	"\x05reply\x18\b \x01(\v2\x1a.hermesh.local.v1.HerReplyR\x05reply\x12\x16\n" +
+	"\x06locale\x18\t \x01(\tR\x06locale\":\n" +
 	"\x19GetHerConversationRequest\x12\x1d\n" +
 	"\n" +
 	"machine_id\x18\x01 \x01(\tR\tmachineId\"j\n" +

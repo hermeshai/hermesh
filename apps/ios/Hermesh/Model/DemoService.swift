@@ -534,6 +534,7 @@ final class DemoService {
             let req = try Hermesh_Session_V1_UpdateSessionRequest(jsonUTF8Data: data, options: dec)
             guard let i = world.sessions.firstIndex(where: { $0.sessionID == req.sessionID }) else { throw CancellationError() }
             if !req.title.isEmpty { world.sessions[i].title = req.title }
+            if req.regenerateTitle, !req.locale.isEmpty { world.sessions[i].titleLocale = req.locale }
             if req.hasArchived_p { world.sessions[i].status = req.archived ? .archived : .idle }
             if req.hasModelSelection { world.sessions[i].modelSelection = req.modelSelection }
             if req.runtimeMode != .unspecified { world.sessions[i].runtimeMode = req.runtimeMode }
