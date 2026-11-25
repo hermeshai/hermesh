@@ -114,6 +114,49 @@ func TestQueuedDispatchDoesNotChangeActiveRunMode(t *testing.T) {
 	}
 }
 
+// Regression: changing the permission mode while a turn runs only took effect on the next turn; the
+// running turn's gate kept the mode the turn started with.
+func TestModeChangeMidRunAppliesToActiveRun(t *testing.T) {
+	ctx := context.Background()
+	owner := OwnerPrincipal("dev_owner", "Owner")
+	for _, tc := range []struct {
+		name         string
+		start        *Principal
+		from, to     identityv1.RuntimeMode
+		wantApproval bool
+	}{
+		{"loosen", owner, identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED, identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS, false},
+		{"tighten", owner, identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS, identityv1.RuntimeMode_RUNTIME_MODE_SUPERVISED, true},
+		// The owner raising the mode never lifts the running grant turn above the grant's ceiling.
+		{"grant ceiling", testGrant(identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS), identityv1.RuntimeMode_RUNTIME_MODE_AUTO_EDITS, identityv1.RuntimeMode_RUNTIME_MODE_FULL_ACCESS, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			eng, _, _ := openTestEngine(t, t.TempDir(), time.Minute)
+			defer eng.Close()
+			repo := initGitProject(t)
+			_ = eng.SyncWorkspace("repo", repo, "main", identityv1.Workspace_WORKSPACE_IN_PLACE, "", nil)
+			l, err := eng.StartSession(ctx, tc.start, &sessionv1.StartSessionRequest{
+				ProjectId:     "repo",
+				RuntimeMode:   tc.from,
+				InitialPrompt: "sleep 700ms\nshell npm install leftpad|installed",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(150 * time.Millisecond)
+			if _, err := eng.UpdateSession(ctx, owner, &sessionv1.UpdateSessionRequest{
+				SessionId: l.Session.SessionId, RuntimeMode: tc.to,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			final := waitForSessionStatus(t, eng, owner, l.Session.SessionId, sessionv1.SessionStatus_SESSION_STATUS_IDLE, sessionv1.SessionStatus_SESSION_STATUS_WAITING_INPUT)
+			if got := len(final.Requests) > 0; got != tc.wantApproval {
+				t.Errorf("approval requested = %v, want %v (mode %v -> %v mid-run)", got, tc.wantApproval, tc.from, tc.to)
+			}
+		})
+	}
+}
+
 // Regression: a cosmetic owner action (pin) on a grant-created session recomputes the ceiling with
 // the owner's (empty) grant -> MaxRuntimeMode/EffectiveRuntimeMode jump to FULL_ACCESS.
 func TestPinKeepsGrantCeiling(t *testing.T) {

@@ -5401,6 +5401,18 @@ func (e *Engine) UpdateSession(ctx context.Context, p *Principal, req *sessionv1
 		sNow.EffectiveRuntimeMode = nextEffMode
 		sNow.MaxRuntimeMode = nextMaxMode
 		sNow.InteractionMode = nextIMode
+		// The running turn's gate reads its run's mode: a mode set now applies to its next tool call,
+		// still within the ceiling of the grant that started it.
+		if req.RuntimeMode != identityv1.RuntimeMode_RUNTIME_MODE_UNSPECIFIED && sNow.ActiveRunId != "" {
+			rNow, err := tx.GetRun(sNow.ActiveRunId)
+			if err != nil {
+				return err
+			}
+			rNow.RuntimeMode = policy.EffectiveMode(e.machineMax(), e.st.RunGrantCeiling(rNow.RunId), nextEffMode)
+			if err := tx.PutRun(rNow); err != nil {
+				return err
+			}
+		}
 		if cleanTitle != "" {
 			sNow.Title = cleanTitle
 			sNow.TitleRenamed = true

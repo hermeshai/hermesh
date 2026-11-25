@@ -556,6 +556,25 @@ test("a running session shows what it does, and 停止 stops the turn", async ()
   await app.close();
 });
 
+test("a permission mode chosen while a turn runs holds for that turn's next step", async () => {
+  const id = JSON.parse(await cli("session", "start", "--project", "demo", "--agent", "gemini", "--title", "中途改权限", "--prompt", "sleep 30s\nwrite mid_mode.txt 改了\nsay 写好了", "-o", "json")).session.session_id as string;
+  const { app, page } = await launch();
+  await open(page, "中途改权限");
+  await expect(page.getByTestId("thread-working")).toBeVisible();
+  // While it runs, from 完全权限 (the mode the CLI started it in, which never asks) to 受控审批.
+  await page.getByTestId("thread-composer").getByRole("button", { name: "添加附件" }).click();
+  const plus = page.getByTestId("composer-plus-menu");
+  await expect(plus.getByRole("menuitemradio", { checked: true })).toContainText("完全权限");
+  await plus.getByRole("menuitemradio", { name: /受控审批/ }).click();
+  // The write the turn comes to next waits for the owner, as 受控审批 says.
+  const ask = page.getByTestId("pending-approval-banner");
+  await expect(ask).toContainText("mid_mode.txt", { timeout: 40_000 });
+  await page.getByTestId("approve-once-btn").click();
+  await expect(page.getByRole("log", { name: "对话" }).locator(".am").last()).toContainText("写好了", { timeout: 30_000 });
+  await expect.poll(async () => JSON.parse(await cli("session", "get", id, "-o", "json")).session.status).toBe("idle");
+  await app.close();
+});
+
 test("a turn of many steps opens them in a card that stops growing and scrolls inside, at the newest, following it while the turn runs", async () => {
   const title = "很多步";
   const steps = Array.from({ length: 60 }, (_, i) => `shell echo step-${i}`);
